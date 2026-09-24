@@ -413,6 +413,9 @@ export const en = {
   },
   accounts: {
     addAccount: 'Add account',
+    // T27: the accounts list's own "Debts" section heading, above the debt
+    // accounts' own drag-and-drop grid (spec §5.3).
+    debtsSection: 'Debts',
     emptyState: 'No accounts yet',
     icon: '{{name}} icon',
     title: 'Accounts',
@@ -561,6 +564,9 @@ export const en = {
   statistics: {
     accountContribution: 'Account Contribution',
     byType: 'By Type',
+    // T27: the "Debts" total shown under the account pie — a debt's own
+    // negative held value (spec §5.3), rendered through MoneyText.
+    debtsTotal: 'Debts',
     expensesByCategory: 'Expenses by Category',
     filterAccounts: 'Accounts',
     filterCategories: 'Categories',

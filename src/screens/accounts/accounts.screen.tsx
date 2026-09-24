@@ -54,6 +54,20 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     [accounts],
   );
 
+  // T27 (spec §5.3): a debt account gets its OWN "Debts" section, in its own
+  // drag-and-drop grid below the main one — never mixed into it, so a drag
+  // reorder in either grid can only ever reorder within that same section
+  // (`Sortable.Grid`'s `data` is scoped per grid). Both stay in the query's
+  // `sortOrder` order, same as the single grid did before this split.
+  const mainAccounts = useMemo(
+    () => activeAccounts.filter((account) => account.kind !== 'debt'),
+    [activeAccounts],
+  );
+  const debtAccounts = useMemo(
+    () => activeAccounts.filter((account) => account.kind === 'debt'),
+    [activeAccounts],
+  );
+
   // Group every open holding by its account id in ONE O(H) pass, so each card
   // indexes into this map instead of re-filtering all holdings per card — the
   // per-card `holdings.filter` was O(A×H) on every render and re-ran on every
@@ -91,6 +105,56 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const scrollOffset = useScrollOffset(scrollableRef);
   useScrollToTopOnTabPress(scrollableRef, scrollOffset);
 
+  // One account card, shared by the main grid and the Debts grid below — a
+  // debt account's balance reads negative through the SAME `MoneyText`
+  // rendering every other account uses (`holding-value.ts` already values a
+  // `loan` holding at minus its outstanding balance, so nothing here needs to
+  // know it is rendering a debt specifically).
+  const renderAccountCard = (item: (typeof activeAccounts)[number]) => {
+    const accountHoldings = holdingsByAccount.get(item.id) ?? [];
+    const balance = guardedNetWorth(accountHoldings, baseCurrency, rateTable, now, priceBook);
+    const color = resolveEntityColor(item.color, defaultAccountColor[item.kind]);
+
+    return (
+      <CardContextMenu
+        name={item.name}
+        deletable={!isSyncedAccount(item)}
+        onDelete={() => accountsRepo.remove(item.id)}
+      >
+        <Card
+          testID="account-card"
+          padding={4}
+          // The card itself is the shared solid content-layer
+          // surface — the entity color lives on the icon tile (see
+          // `EntityIconTile`) instead of the whole card.
+        >
+          <Pressable
+            accessibilityRole="button"
+            onPress={() =>
+              navigation.navigate('AccountDetail', { accountId: item.id, name: item.name })
+            }
+            style={styles.row}
+          >
+            <Box direction="row" gap={3} style={styles.rowLead}>
+              <EntityIconTile
+                name={item.icon ?? accountKindSymbol[item.kind]}
+                color={color}
+                accessibilityLabel={t('accounts.icon', { name: item.name })}
+              />
+              <Box gap={1}>
+                <Text variant="body">{item.name}</Text>
+                <Text variant="caption" tone="textSecondary">
+                  {t(`forms.account.${item.kind}`)}
+                </Text>
+              </Box>
+            </Box>
+            <MoneyText money={balance} context="balance" />
+          </Pressable>
+        </Card>
+      </CardContextMenu>
+    );
+  };
+
   return (
     <Screen
       scroll
@@ -113,87 +177,70 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
             <Text tone="textSecondary">{t('accounts.emptyState')}</Text>
           </Box>
         ) : (
-          // A single-column drag-and-drop grid of the existing wide account
-          // cards. A plain tap opens the account; a touch-and-hold-still on a
-          // manual card opens the deep-press (haptic) delete menu; a hold-and-move
-          // drags to reorder — see `CardContextMenu` and `onGridDragEnd`. `scrollableRef`
-          // + `autoScrollActivationOffset` let a drag near an edge scroll the
-          // parent list (F9).
-          <Box testID="accounts-grid">
-            <Sortable.Grid
-              data={activeAccounts}
-              sortEnabled={activeAccounts.length > 1}
-              // A subtle lift on touch-and-hold: the library default (1.1) pops
-              // the card up too much, so scale it just barely (see the account-
-              // detail grid, which uses the same value).
-              activeItemScale={1.03}
-              columns={1}
-              // Keep a dragged card on its vertical axis — a single column has no
-              // horizontal move to make, so the library default ('both') only lets
-              // a card wander sideways off the list.
-              overDrag="vertical"
-              rowGap={theme.spacing(4)}
-              scrollableRef={scrollableRef}
-              autoScrollActivationOffset={75}
-              keyExtractor={(account) => account.id}
-              renderItem={({ item }) => {
-                const accountHoldings = holdingsByAccount.get(item.id) ?? [];
-                const balance = guardedNetWorth(
-                  accountHoldings,
-                  baseCurrency,
-                  rateTable,
-                  now,
-                  priceBook,
-                );
-                const color = resolveEntityColor(item.color, defaultAccountColor[item.kind]);
+          <>
+            {mainAccounts.length > 0 && (
+              // A single-column drag-and-drop grid of the existing wide account
+              // cards. A plain tap opens the account; a touch-and-hold-still on a
+              // manual card opens the deep-press (haptic) delete menu; a hold-and-move
+              // drags to reorder — see `CardContextMenu` and `onGridDragEnd`. `scrollableRef`
+              // + `autoScrollActivationOffset` let a drag near an edge scroll the
+              // parent list (F9).
+              <Box testID="accounts-grid">
+                <Sortable.Grid
+                  data={mainAccounts}
+                  sortEnabled={mainAccounts.length > 1}
+                  // A subtle lift on touch-and-hold: the library default (1.1) pops
+                  // the card up too much, so scale it just barely (see the account-
+                  // detail grid, which uses the same value).
+                  activeItemScale={1.03}
+                  columns={1}
+                  // Keep a dragged card on its vertical axis — a single column has no
+                  // horizontal move to make, so the library default ('both') only lets
+                  // a card wander sideways off the list.
+                  overDrag="vertical"
+                  rowGap={theme.spacing(4)}
+                  scrollableRef={scrollableRef}
+                  autoScrollActivationOffset={75}
+                  keyExtractor={(account) => account.id}
+                  renderItem={({ item }) => renderAccountCard(item)}
+                  onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
+                    onGridDragEnd({ fromIndex, toIndex, indexToKey }, accountsRepo.reorder)
+                  }
+                />
+              </Box>
+            )}
 
-                return (
-                  <CardContextMenu
-                    name={item.name}
-                    deletable={!isSyncedAccount(item)}
-                    onDelete={() => accountsRepo.remove(item.id)}
-                  >
-                    <Card
-                      testID="account-card"
-                      padding={4}
-                      // The card itself is the shared solid content-layer
-                      // surface — the entity color lives on the icon tile (see
-                      // `EntityIconTile`) instead of the whole card.
-                    >
-                      <Pressable
-                        accessibilityRole="button"
-                        onPress={() =>
-                          navigation.navigate('AccountDetail', {
-                            accountId: item.id,
-                            name: item.name,
-                          })
-                        }
-                        style={styles.row}
-                      >
-                        <Box direction="row" gap={3} style={styles.rowLead}>
-                          <EntityIconTile
-                            name={item.icon ?? accountKindSymbol[item.kind]}
-                            color={color}
-                            accessibilityLabel={t('accounts.icon', { name: item.name })}
-                          />
-                          <Box gap={1}>
-                            <Text variant="body">{item.name}</Text>
-                            <Text variant="caption" tone="textSecondary">
-                              {t(`forms.account.${item.kind}`)}
-                            </Text>
-                          </Box>
-                        </Box>
-                        <MoneyText money={balance} context="balance" />
-                      </Pressable>
-                    </Card>
-                  </CardContextMenu>
-                );
-              }}
-              onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
-                onGridDragEnd({ fromIndex, toIndex, indexToKey }, accountsRepo.reorder)
-              }
-            />
-          </Box>
+            {debtAccounts.length > 0 && (
+              // T27 (spec §5.3): the "Debts" section — its own heading + its
+              // own grid, so a drag reorder here can never move a debt account
+              // into the main grid above (or vice versa). Rendered only when
+              // the user actually has a debt account (data-driven, not a
+              // build flag — Guideline 5.6).
+              <>
+                {mainAccounts.length > 0 && <Box style={styles.divider} />}
+                <Box gap={3}>
+                  <Text variant="heading">{t('accounts.debtsSection')}</Text>
+                  <Box testID="accounts-debts-grid">
+                    <Sortable.Grid
+                      data={debtAccounts}
+                      sortEnabled={debtAccounts.length > 1}
+                      activeItemScale={1.03}
+                      columns={1}
+                      overDrag="vertical"
+                      rowGap={theme.spacing(4)}
+                      scrollableRef={scrollableRef}
+                      autoScrollActivationOffset={75}
+                      keyExtractor={(account) => account.id}
+                      renderItem={({ item }) => renderAccountCard(item)}
+                      onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
+                        onGridDragEnd({ fromIndex, toIndex, indexToKey }, accountsRepo.reorder)
+                      }
+                    />
+                  </Box>
+                </Box>
+              </>
+            )}
+          </>
         )}
       </Box>
     </Screen>

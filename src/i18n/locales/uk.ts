@@ -385,6 +385,7 @@ export const uk: typeof en = {
   },
   accounts: {
     addAccount: 'Додати рахунок',
+    debtsSection: 'Борги',
     emptyState: 'Ще немає рахунків',
     icon: 'Іконка {{name}}',
     title: 'Рахунки',
@@ -514,6 +515,7 @@ export const uk: typeof en = {
   statistics: {
     accountContribution: 'Внесок рахунків',
     byType: 'За типом',
+    debtsTotal: 'Борги',
     expensesByCategory: 'Витрати за категоріями',
     filterAccounts: 'Рахунки',
     filterCategories: 'Категорії',

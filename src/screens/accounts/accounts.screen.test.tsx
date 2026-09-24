@@ -442,6 +442,92 @@ describe('AccountsScreen', () => {
     expect(queryByText(/1,000\.00 ₴/)).toBeNull();
   });
 
+  describe('Debts section (T27)', () => {
+    // A loan freshly started "now" (this test's own `Date.now()`, captured
+    // just before render): no scheduled installment is due yet, so the
+    // outstanding balance is deterministically the FULL principal — the
+    // loan's own held value (`holding-value.ts`) is exactly `-principal`,
+    // never a computed partial payoff this test would have to reproduce.
+    const debtAccount = (over: Partial<Account> = {}): Account => ({
+      id: 'd',
+      name: 'Mortgage',
+      kind: 'debt',
+      ...over,
+    });
+    const loanHolding = (over: Partial<Holding> = {}): Holding => ({
+      accountId: 'd',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      type: 'loan',
+      metadata: {
+        kind: 'mortgage',
+        principalMinorUnits: 500_000, // 5,000.00 UAH
+        startDate: Date.now(),
+        annualRatePct: 10,
+        termMonths: 120,
+        schedule: 'annuity',
+      },
+      ...over,
+    });
+
+    it('renders no Debts section when there is no debt account', async () => {
+      const { queryByText } = await renderAccounts();
+      expect(queryByText('Debts')).toBeNull();
+    });
+
+    it('renders a Debts section with the debt account, its total negative', async () => {
+      setLiveData({
+        accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }, debtAccount()],
+        holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_000 }, loanHolding()],
+      });
+
+      const { getByText } = await renderAccounts();
+
+      expect(getByText('Debts')).toBeTruthy();
+      expect(getByText('Mortgage')).toBeTruthy();
+      expect(getByText(/-5,000\.00 ₴/)).toBeTruthy();
+    });
+
+    it('keeps the debt account out of the main grid, in its own section grid', async () => {
+      setLiveData({
+        accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }, debtAccount()],
+        holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_000 }, loanHolding()],
+      });
+
+      const { getByTestId, getAllByTestId } = await renderAccounts();
+
+      expect(getAllByTestId('account-card')).toHaveLength(2);
+      // Both grids default to the mocked `sortable-grid` testID (there is no
+      // typed way to override it — `Sortable.Grid`'s props carry no `testID`),
+      // so each grid is scoped by its own wrapping Box instead.
+      const mainGrid = within(getByTestId('accounts-grid')).getByTestId('sortable-grid');
+      expect(within(mainGrid).queryByText('Mortgage')).toBeNull();
+      const debtsGrid = within(getByTestId('accounts-debts-grid')).getByTestId('sortable-grid');
+      expect(within(debtsGrid).getByText('Mortgage')).toBeTruthy();
+    });
+
+    it('persists a reorder within the Debts section separately from the main grid', async () => {
+      setLiveData({
+        accounts: [debtAccount(), debtAccount({ id: 'e', name: 'Car loan' })],
+        holdings: [loanHolding(), loanHolding({ accountId: 'e' })],
+      });
+
+      const { getByTestId } = await renderAccounts();
+      const debtsGrid = within(getByTestId('accounts-debts-grid')).getByTestId('sortable-grid');
+
+      await act(async () => {
+        debtsGrid.props.onDragEnd({
+          key: 'e',
+          fromIndex: 1,
+          toIndex: 0,
+          indexToKey: ['e', 'd'],
+        });
+      });
+
+      expect(mockAccountReorder).toHaveBeenCalledWith(['e', 'd']);
+    });
+  });
+
   describe('localization', () => {
     afterEach(async () => {
       await act(async () => {

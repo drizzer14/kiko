@@ -581,6 +581,51 @@ describe('StatisticsScreen', () => {
     expect(getByTestId('pie-chart-arc-b')).toBeTruthy();
   });
 
+  describe('Debts total (T27)', () => {
+    it('renders no Debts total under the account pie when there is no loan holding', async () => {
+      const { queryByTestId } = await renderScreen();
+      expect(queryByTestId('statistics-debts-total')).toBeNull();
+    });
+
+    it('renders the Debts total under the account pie, negative, excluded from the pie itself', async () => {
+      setLiveData({
+        accounts: [CASH, BANK, { id: 'd', name: 'Mortgage', kind: 'bank' }],
+        holdings: [
+          UAH_HOLDING,
+          USD_HOLDING,
+          {
+            id: 'loan-1',
+            accountId: 'd',
+            currency: 'UAH',
+            type: 'loan',
+            balanceMinorUnits: 0,
+            metadata: {
+              kind: 'mortgage',
+              principalMinorUnits: 500_000, // 5,000.00 UAH
+              startDate: Date.now(),
+              annualRatePct: 10,
+              termMonths: 120,
+              schedule: 'annuity',
+            },
+            closedAt: null,
+          },
+        ],
+        rates: [USD_UAH_RATE],
+        transactions: TRANSACTIONS,
+        history: HISTORY,
+      });
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      const debtsTotal = getByTestId('statistics-debts-total');
+      expect(within(debtsTotal).getByText(/-5,000\.00 ₴/)).toBeTruthy();
+      // A loan just started (no installment due yet) has no OTHER pie
+      // contribution of its own to worry about, but the account it lives
+      // under must still not get a negative slice.
+      expect(queryByTestId('pie-chart-arc-d')).toBeNull();
+    });
+  });
+
   it('shows the net-worth line loading state while history is empty and the backfill runs', async () => {
     setLiveData({
       accounts: [CASH, BANK],

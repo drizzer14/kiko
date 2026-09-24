@@ -1,6 +1,14 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-export const styles = StyleSheet.create(() => ({
+export const styles = StyleSheet.create((theme) => ({
+  // T27: separates the main accounts grid from the "Debts" section below it,
+  // matching the hairline divider account-detail.styles.ts uses between its
+  // own sections.
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginVertical: theme.spacing(2),
+    backgroundColor: theme.colors.border,
+  },
   // The screen's content column: fills the available space below the header.
   content: {
     flex: 1,

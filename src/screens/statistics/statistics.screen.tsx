@@ -33,7 +33,12 @@ import {
   runBackfill,
 } from '../../rates/history-backfill';
 import { buildRateTable } from '../../rates/net-worth-view';
-import { type AccountSlice, buildAccountContribution } from '../../statistics/account-contribution';
+import MoneyText from '../../design-system/components/money-text';
+import {
+  type AccountSlice,
+  buildAccountContribution,
+  buildDebtTotal,
+} from '../../statistics/account-contribution';
 import { bucketDaysForSpan } from '../../statistics/buckets';
 import {
   type BreakdownTransaction,
@@ -381,6 +386,21 @@ const StatisticsScreen: FC = () => {
     () =>
       buildAccountContribution({
         accounts: filtered.filteredAccounts,
+        holdings: filtered.visibleHoldings,
+        rateTable,
+        baseCurrency,
+        now,
+        book: priceBook,
+      }),
+    [filtered, rateTable, baseCurrency, now, priceBook],
+  );
+
+  // T27: the "Debts" total under the account pie — every loan holding's own
+  // negative held value, summed independently of the pie (which shows assets
+  // only — spec §5.3).
+  const debtTotal = useMemo(
+    () =>
+      buildDebtTotal({
         holdings: filtered.visibleHoldings,
         rateTable,
         baseCurrency,
@@ -836,6 +856,13 @@ const StatisticsScreen: FC = () => {
             </Text>
 
             <PieChart slices={slices} baseCurrency={baseCurrency} />
+
+            {!debtTotal.isZero() && (
+              <Box testID="statistics-debts-total" style={styles.debtsRow}>
+                <Text tone="textSecondary">{t('statistics.debtsTotal')}</Text>
+                <MoneyText money={debtTotal} context="balance" />
+              </Box>
+            )}
           </Box>
         </Card>
 
