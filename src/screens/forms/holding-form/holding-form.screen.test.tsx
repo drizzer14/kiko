@@ -1090,6 +1090,28 @@ describe('HoldingFormScreen save validation', () => {
     expect(screen.queryByText('Enter a whole number of months greater than 0.')).toBeNull();
   });
 
+  it('shows the annual-rate and term-months errors together at the same Save press, each clearing only its own field', async () => {
+    const screen = await renderScreen();
+
+    await selectHoldingType(screen, 'term_deposit');
+    await fill(screen, 'Name', 'My deposit');
+    await fill(screen, 'Contribution 1 amount', '1000');
+    await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Enter a rate of 0 or higher.')).toBeTruthy();
+    expect(screen.getByText('Enter a whole number of months greater than 0.')).toBeTruthy();
+
+    await fill(screen, 'Annual rate %', '12');
+
+    expect(screen.queryByText('Enter a rate of 0 or higher.')).toBeNull();
+    expect(screen.getByText('Enter a whole number of months greater than 0.')).toBeTruthy();
+
+    await fill(screen, 'Term (months)', '12');
+
+    expect(screen.queryByText('Enter a whole number of months greater than 0.')).toBeNull();
+  });
+
   it('keeps Save always enabled for a bond missing its numeric fields and dates', async () => {
     const screen = await renderScreen();
 
@@ -1183,6 +1205,27 @@ describe('HoldingFormScreen save validation', () => {
     expect(screen.queryByText('Enter a face value greater than 0.')).toBeNull();
     expect(screen.queryByText('Enter a coupon of 0 or higher.')).toBeNull();
     expect(screen.queryByText('Maturity date must be after the purchase date.')).toBeNull();
+  });
+
+  it('shows the quantity and face-value errors together at the same Save press, each clearing only its own field', async () => {
+    const screen = await renderScreen();
+
+    await selectHoldingType(screen, 'bond');
+    await fireEvent.press(screen.getByText('Manual'));
+    await fill(screen, 'Name', 'My bond');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Enter a quantity greater than 0.')).toBeTruthy();
+    expect(screen.getByText('Enter a face value greater than 0.')).toBeTruthy();
+
+    await fill(screen, 'Quantity', '10');
+
+    expect(screen.queryByText('Enter a quantity greater than 0.')).toBeNull();
+    expect(screen.getByText('Enter a face value greater than 0.')).toBeTruthy();
+
+    await fill(screen, 'Face value', '1000');
+
+    expect(screen.queryByText('Enter a face value greater than 0.')).toBeNull();
   });
 
   it('keeps Save always enabled when the holding name is blank, and pressing it neither creates nor navigates', async () => {
@@ -1548,6 +1591,25 @@ describe('HoldingFormScreen metal', () => {
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
 
+  it('shows the quantity and total-cost errors together at the same Save press, each clearing only its own field', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'Gold bar');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Enter a quantity greater than 0.')).toBeTruthy();
+    expect(screen.getByText('Total cost must be greater than 0.')).toBeTruthy();
+
+    await fill(screen, 'Quantity', '31.1');
+
+    expect(screen.queryByText('Enter a quantity greater than 0.')).toBeNull();
+    expect(screen.getByText('Total cost must be greater than 0.')).toBeTruthy();
+
+    await fill(screen, 'Total cost', '80000');
+
+    expect(screen.queryByText('Total cost must be greater than 0.')).toBeNull();
+  });
+
   // F4 audit 8: a garbled purity (e.g. the comma-decimal "999,9", parsed as
   // 999.9) used to silently fall back to the standard 0.9999 fineness
   // default, so a create wrote a valid-looking but WRONG MetalMeta with no
@@ -1880,6 +1942,26 @@ describe('HoldingFormScreen loan (T28)', () => {
 
     expect(screen.getByText('No start date selected.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('shows the principal and start-date errors together at the same Save press, each clearing only its own field', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'Car loan');
+    await fireEvent.press(screen.getByText('No schedule'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Principal must be greater than 0.')).toBeTruthy();
+    expect(screen.getByText('No start date selected.')).toBeTruthy();
+
+    await fill(screen, 'Principal', '500000');
+
+    expect(screen.queryByText('Principal must be greater than 0.')).toBeNull();
+    expect(screen.getByText('No start date selected.')).toBeTruthy();
+
+    await pickDate(screen, 'Start date', 2026, 1, 1);
+
+    expect(screen.queryByText('No start date selected.')).toBeNull();
   });
 
   // T26 review M1 (carried into T28): a degenerate term must not silently pass.

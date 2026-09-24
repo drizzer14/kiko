@@ -652,12 +652,21 @@ new component can land between reviews of this skill:
   `FieldLabel`'s required asterisk uses) — never next to a footer Save
   button, and never a reserved-height slot: it fades in on failure and
   the layout reflows, so a valid field shows no error node at all
-  (Option A, the current validation pattern; F4 Q1 answer). The same
-  press ALSO turns that field's own `FieldLabel` red (`invalid`) and, on
-  Save/Import, scrolls to the FIRST invalid field — Save/Import itself
-  is never disabled; it validates on press. Every form composes this
-  instead of hand-rolling its own error caption — see `kiko-code-style`'s
-  "Form validation model" section for when to show it.
+  (Option A, the current validation pattern; F4 Q1 answer). Every
+  invalid field shows its OWN error at the same Save/Import press —
+  each field's message is computed from ONLY that field's own inputs,
+  gated by the attempted-save flag, never by comparing against a
+  single shared "first failing field" reason (that shape hides every
+  error but one until the fields ahead of it are fixed one at a time,
+  and un-hides the next one instead of clearing — a real reported
+  bug, not a hypothetical). The first-invalid field is used ONLY as
+  the scroll target: on Save/Import, the same press ALSO turns that
+  field's own `FieldLabel` red (`invalid`) and scrolls to the FIRST
+  invalid field in the form's top-to-bottom order — Save/Import
+  itself is never disabled; it validates on press. Every form
+  composes this instead of hand-rolling its own error caption — see
+  `kiko-code-style`'s "Form validation model" section for when to
+  show it.
 - **FieldTrigger** (`src/design-system/components/field-trigger/`) —
   the shared "labeled field that opens a picker sheet" trigger: a
   caption above a bordered row showing the current icon (or leading

@@ -71,6 +71,50 @@ export const loanReasonKey = (params: {
   return null;
 };
 
+// Every field's OWN blocking reason, each derived from ONLY that field's own
+// input (plus the schedule gate rate/term already share) — unlike
+// `loanReasonKey` above, which stops at the first failing field in priority
+// order. A form that gates its displayed error on `loanReasonKey` directly
+// makes fixing one field re-target the SAME shared reason onto the next
+// invalid sibling instead of clearing it, so `HoldingFormScreen` renders each
+// field's error from this instead, keeping `loanReasonKey` for the Save-block
+// gate and the scroll-to-first-invalid target only.
+export type LoanFieldErrors = {
+  principalError: 'forms.holding.loanPrincipalError' | null;
+  startDateError: 'forms.holding.loanStartDateError' | null;
+  annualRateError: 'forms.holding.annualRateError' | null;
+  termMonthsError: 'forms.holding.termMonthsError' | null;
+};
+
+export const loanFieldErrors = (params: {
+  principal: string;
+  startDate: number | null;
+  schedule: LoanSchedule;
+  annualRatePct: string;
+  termMonths: string;
+}): LoanFieldErrors => {
+  const { principal, startDate, schedule, annualRatePct, termMonths } = params;
+  // 'none' (an informal debt) carries no schedule at all, so rate/term never
+  // block Save there — the same gate `loanReasonKey` applies.
+  const isStructuredSchedule = schedule !== 'none';
+  const rate = parseAmount(annualRatePct);
+  const months = parseAmount(termMonths);
+
+  return {
+    principalError: parseAmount(principal) > 0 ? null : 'forms.holding.loanPrincipalError',
+    startDateError: startDate === null ? 'forms.holding.loanStartDateError' : null,
+    annualRateError:
+      isStructuredSchedule && (annualRatePct.trim() === '' || !(rate >= 0))
+        ? 'forms.holding.annualRateError'
+        : null,
+    termMonthsError:
+      isStructuredSchedule &&
+      !(Number.isInteger(months) && months > 0 && months <= MAX_LOAN_TERM_MONTHS)
+        ? 'forms.holding.termMonthsError'
+        : null,
+  };
+};
+
 export type UseLoanFieldsResult = {
   kind: LoanKind;
   setKind: (kind: LoanKind) => void;
@@ -85,6 +129,9 @@ export type UseLoanFieldsResult = {
   termMonths: string;
   setTermMonths: (value: string) => void;
   reasonKey: LoanReasonKey | null;
+  // Independent per-field errors for display — see `loanFieldErrors`'s own
+  // doc comment for why the screen renders from this, not `reasonKey`.
+  fieldErrors: LoanFieldErrors;
   isValid: boolean;
   // Seeds every field from a stored `loan` holding's metadata (edit-mode
   // hydration) — a no-op for invalid/absent metadata, mirroring
@@ -115,6 +162,13 @@ export const useLoanFields = (): UseLoanFieldsResult => {
   const [termMonths, setTermMonths] = useState('');
 
   const reasonKey = loanReasonKey({ principal, startDate, schedule, annualRatePct, termMonths });
+  const fieldErrors = loanFieldErrors({
+    principal,
+    startDate,
+    schedule,
+    annualRatePct,
+    termMonths,
+  });
 
   const seed = useCallback((holding: HoldingRow): void => {
     const meta = asLoanMeta(holding.metadata);
@@ -145,6 +199,7 @@ export const useLoanFields = (): UseLoanFieldsResult => {
     termMonths,
     setTermMonths,
     reasonKey,
+    fieldErrors,
     isValid: reasonKey === null,
     seed,
   };

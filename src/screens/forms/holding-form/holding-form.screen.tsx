@@ -666,16 +666,17 @@ const saveReasonsFor = (params: {
   return { showNameReason: attemptedSave && name.trim().length === 0 };
 };
 
-// The active error message for one of `termDepositReasonKey`'s /
-// `bondReasonKey`'s own returned keys, or `undefined` while that field's own
-// check still passes (or before the first failed Save press) — shared by
-// every per-field `TextField`/`HoldingIdentityField` `error` prop and the two
-// relocated group `<FieldError>`s below, so each render site is a single call
-// rather than repeating the `attemptedSave &&` comparison inline at all seven
-// fields. Kept module-level and pure so its branch stays out of
-// HoldingFormScreen's own cognitive-complexity budget (the same reason
-// transaction-form's `resolveDescriptionPlaceholder` is a module-level
-// helper).
+// The active error message for a field's OWN independent reason (each of
+// `contributionsFieldReasonKey`/`annualRateFieldReasonKey`/`bondQuantityFieldReasonKey`
+// and their siblings below), or `undefined` while that field's own check
+// still passes (or before the first failed Save press). Every field computes
+// its reason from ONLY its own inputs, so fixing one field never changes
+// what a DIFFERENT field renders — the shared `TermDepositReasonKey`/
+// `BondReasonKey`/etc. chains stay in use only for `firstInvalidFieldRef`'s
+// scroll target and each type's own `isValid` gate. Kept module-level and
+// pure so its branch stays out of HoldingFormScreen's own
+// cognitive-complexity budget (the same reason transaction-form's
+// `resolveDescriptionPlaceholder` is a module-level helper).
 const fieldErrorMessage = (
   t: TFunction,
   attemptedSave: boolean,
@@ -687,19 +688,30 @@ const fieldErrorMessage = (
     | MetalReasonKey
     | LoanReasonKey
     | null,
-  expectedKey:
-    | TermDepositReasonKey
-    | BondReasonKey
-    | IsinReasonKey
-    | PropertyReasonKey
-    | MetalReasonKey
-    | LoanReasonKey,
-): string | undefined => (attemptedSave && reasonKey === expectedKey ? t(expectedKey) : undefined);
+): string | undefined => (attemptedSave && reasonKey !== null ? t(reasonKey) : undefined);
 
 // The ISIN field's OWN inline error text — every `isinReasonKey` EXCEPT
 // `isinNotInRegister`, which `BondIsinSection` already surfaces as its own
 // always-visible hint (not gated on Save), so showing it here too would
 // duplicate that message.
+// The contributions group's two sub-reasons (missing vs incomplete) render as
+// TWO separate `<FieldError>`s though both come from the SAME
+// `contributionsFieldReasonKey` check — this narrows to the specific
+// sub-reason each one owns, so neither shows for the other's cause. Kept
+// module-level so this comparison stays out of HoldingFormScreen's own
+// cognitive-complexity budget, the same reason `fieldErrorMessage` is.
+const contributionsSubReasonMessage = (
+  t: TFunction,
+  attemptedSave: boolean,
+  reasonKey:
+    | 'forms.holding.contributionsRequiredError'
+    | 'forms.holding.contributionIncompleteError'
+    | null,
+  expectedKey:
+    | 'forms.holding.contributionsRequiredError'
+    | 'forms.holding.contributionIncompleteError',
+): string | undefined => (attemptedSave && reasonKey === expectedKey ? t(expectedKey) : undefined);
+
 const isinFieldErrorMessage = (
   t: TFunction,
   attemptedSave: boolean,
@@ -709,7 +721,7 @@ const isinFieldErrorMessage = (
   reasonKey === 'forms.holding.isinNotInRegister' ||
   reasonKey === 'forms.holding.isinRegisterNotLoaded'
     ? undefined
-    : fieldErrorMessage(t, attemptedSave, reasonKey, reasonKey);
+    : fieldErrorMessage(t, attemptedSave, reasonKey);
 
 // The ISIN-mode-only coupon-frequency picker's OWN blocking error (T25
 // review round 2, N2, orchestrator ruling): only once a Save attempt was
@@ -987,23 +999,13 @@ const LoanFormBlock: FC<LoanFormBlockProps> = ({
         onSelectKind={loanFields.setKind}
         principal={loanFields.principal}
         onChangePrincipal={(text) => loanFields.setPrincipal(groupAmount(text))}
-        principalError={fieldErrorMessage(
-          t,
-          attemptedSave,
-          loanFields.reasonKey,
-          'forms.holding.loanPrincipalError',
-        )}
+        principalError={fieldErrorMessage(t, attemptedSave, loanFields.fieldErrors.principalError)}
         principalFieldRef={loanPrincipalFieldRef}
         principalInputRef={loanPrincipalInputRef}
         currencySuffix={currencySymbol[currency]}
         startDate={loanFields.startDate}
         onChangeStartDate={loanFields.setStartDate}
-        startDateError={fieldErrorMessage(
-          t,
-          attemptedSave,
-          loanFields.reasonKey,
-          'forms.holding.loanStartDateError',
-        )}
+        startDateError={fieldErrorMessage(t, attemptedSave, loanFields.fieldErrors.startDateError)}
         startDateFieldRef={loanStartDateFieldRef}
         schedule={loanFields.schedule}
         onSelectSchedule={loanFields.setSchedule}
@@ -1012,8 +1014,7 @@ const LoanFormBlock: FC<LoanFormBlockProps> = ({
         annualRatePctError={fieldErrorMessage(
           t,
           attemptedSave,
-          loanFields.reasonKey,
-          'forms.holding.annualRateError',
+          loanFields.fieldErrors.annualRateError,
         )}
         annualRatePctFieldRef={annualRateFieldRef}
         annualRatePctInputRef={annualRateInputRef}
@@ -1022,8 +1023,7 @@ const LoanFormBlock: FC<LoanFormBlockProps> = ({
         termMonthsError={fieldErrorMessage(
           t,
           attemptedSave,
-          loanFields.reasonKey,
-          'forms.holding.termMonthsError',
+          loanFields.fieldErrors.termMonthsError,
         )}
         termMonthsFieldRef={termMonthsFieldRef}
         termMonthsInputRef={termMonthsInputRef}
@@ -1579,6 +1579,40 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // exactly when there is no reason to reject.
   const isTermDepositValid = (): boolean => termDepositReasonKey() === null;
 
+  // The contributions group's OWN reason — the same two checks
+  // `termDepositReasonKey` runs first, but reading ONLY the contributions
+  // list, so it never depends on the annual-rate/term fields below it (see
+  // `fieldErrorMessage`'s own doc comment for why each field needs this).
+  const contributionsFieldReasonKey = ():
+    | 'forms.holding.contributionsRequiredError'
+    | 'forms.holding.contributionIncompleteError'
+    | null => {
+    if (parsedContributions().length === 0) {
+      return 'forms.holding.contributionsRequiredError';
+    }
+
+    if (contributions.some((contribution) => !isContributionRowValid(contribution))) {
+      return 'forms.holding.contributionIncompleteError';
+    }
+
+    return null;
+  };
+
+  // The annual-rate field's OWN reason, independent of the contributions/term
+  // fields around it.
+  const annualRateFieldReasonKey = (): 'forms.holding.annualRateError' | null => {
+    const rate = parseAmount(annualRate);
+
+    return annualRate.trim() === '' || !(rate >= 0) ? 'forms.holding.annualRateError' : null;
+  };
+
+  // The term-months field's OWN reason, independent of the fields above it.
+  const termMonthsFieldReasonKey = (): 'forms.holding.termMonthsError' | null => {
+    const months = parseAmount(termMonths);
+
+    return Number.isInteger(months) && months > 0 ? null : 'forms.holding.termMonthsError';
+  };
+
   // A bond needs a valid ISIN (`isinReasonKey`, from `useBondIsinMode`), a
   // positive quantity and face value, a non-negative coupon that was
   // actually entered, both dates picked, and a maturity strictly after the
@@ -1623,6 +1657,28 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
     return null;
   };
+
+  // The bond quantity field's OWN reason, independent of the fields below it.
+  const bondQuantityFieldReasonKey = (): 'forms.holding.quantityError' | null =>
+    parseAmount(quantity) > 0 ? null : 'forms.holding.quantityError';
+
+  // The face-value field's OWN reason, independent of quantity/coupon/dates.
+  const faceValueFieldReasonKey = (): 'forms.holding.faceValueError' | null =>
+    parseAmount(faceValue) > 0 ? null : 'forms.holding.faceValueError';
+
+  // The coupon field's OWN reason, independent of the other bond fields.
+  const couponPctFieldReasonKey = (): 'forms.holding.couponPctError' | null =>
+    couponPct.trim() === '' || !(parseAmount(couponPct) >= 0)
+      ? 'forms.holding.couponPctError'
+      : null;
+
+  // The maturity-date field's OWN reason (see `bondReasonKey`'s own doc
+  // comment for why a missing date returns null here rather than a redundant
+  // "pick a date" line) — independent of quantity/faceValue/coupon.
+  const maturityDateFieldReasonKey = (): 'forms.holding.maturityDateError' | null =>
+    purchaseDate !== null && maturityDate !== null && maturityDate <= purchaseDate
+      ? 'forms.holding.maturityDateError'
+      : null;
 
   // The cost field only applies at CREATE time (PropertySection hides it in
   // edit mode: cost/quantity history is fixed at creation, a later
@@ -1684,6 +1740,25 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // Derived from `metalReasonKey` so the two can never disagree: valid
   // exactly when there is no reason to reject.
   const isMetalValid = (): boolean => metalReasonKey() === null;
+
+  // The metal quantity field's OWN reason (the first-lot fields only apply at
+  // CREATE time — see `metalReasonKey`'s own doc comment), independent of
+  // purity/cost.
+  const metalQuantityFieldReasonKey = (): 'forms.holding.quantityError' | null => {
+    if (isEdit) {
+      return null;
+    }
+
+    const normalizedQuantity = normalizeDecimal(metalQuantity);
+
+    return normalizedQuantity === null || compareDecimal(normalizedQuantity, '0') <= 0
+      ? 'forms.holding.quantityError'
+      : null;
+  };
+
+  // The metal total-cost field's OWN reason, independent of purity/quantity.
+  const metalCostFieldReasonKey = (): 'forms.lot.totalCostError' | null =>
+    isEdit || parseAmount(metalCost) > 0 ? null : 'forms.lot.totalCostError';
 
   const isValid =
     name.trim().length > 0 &&
@@ -1894,23 +1969,23 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // Computed once here (rather than inline at each render site below) so the
   // group `<FieldError>`'s own `message` prop reuses this exact string
   // instead of calling `t()` a second time for the same key.
-  const contributionsRequiredMessage = fieldErrorMessage(
+  const contributionsFieldReason = contributionsFieldReasonKey();
+  const contributionsRequiredMessage = contributionsSubReasonMessage(
     t,
     attemptedSave,
-    termDepositReasonKey(),
+    contributionsFieldReason,
     'forms.holding.contributionsRequiredError',
   );
-  const contributionIncompleteMessage = fieldErrorMessage(
+  const contributionIncompleteMessage = contributionsSubReasonMessage(
     t,
     attemptedSave,
-    termDepositReasonKey(),
+    contributionsFieldReason,
     'forms.holding.contributionIncompleteError',
   );
   const maturityDateErrorMessage = fieldErrorMessage(
     t,
     attemptedSave,
-    bondReasonKey(),
-    'forms.holding.maturityDateError',
+    maturityDateFieldReasonKey(),
   );
   return (
     <Screen
@@ -2112,12 +2187,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                 keyboardType="decimal-pad"
                 placeholder={t('forms.holding.annualRatePlaceholder')}
                 required
-                error={fieldErrorMessage(
-                  t,
-                  attemptedSave,
-                  termDepositReasonKey(),
-                  'forms.holding.annualRateError',
-                )}
+                error={fieldErrorMessage(t, attemptedSave, annualRateFieldReasonKey())}
                 inputRef={annualRateInputRef}
               />
             </View>
@@ -2130,12 +2200,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                 keyboardType="number-pad"
                 placeholder={t('forms.holding.termMonthsPlaceholder')}
                 required
-                error={fieldErrorMessage(
-                  t,
-                  attemptedSave,
-                  termDepositReasonKey(),
-                  'forms.holding.termMonthsError',
-                )}
+                error={fieldErrorMessage(t, attemptedSave, termMonthsFieldReasonKey())}
                 inputRef={termMonthsInputRef}
               />
             </View>
@@ -2192,12 +2257,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                 keyboardType="number-pad"
                 placeholder={t('forms.holding.quantityPlaceholder')}
                 required
-                error={fieldErrorMessage(
-                  t,
-                  attemptedSave,
-                  bondReasonKey(),
-                  'forms.holding.quantityError',
-                )}
+                error={fieldErrorMessage(t, attemptedSave, bondQuantityFieldReasonKey())}
                 inputRef={quantityInputRef}
               />
             </View>
@@ -2227,22 +2287,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               bondMode={bondMode}
               faceValue={faceValue}
               onChangeFaceValue={(text) => setFaceValue(groupAmount(text))}
-              faceValueError={fieldErrorMessage(
-                t,
-                attemptedSave,
-                bondReasonKey(),
-                'forms.holding.faceValueError',
-              )}
+              faceValueError={fieldErrorMessage(t, attemptedSave, faceValueFieldReasonKey())}
               faceValueFieldRef={faceValueFieldRef}
               faceValueInputRef={faceValueInputRef}
               couponPct={couponPct}
               onChangeCouponPct={setCouponPct}
-              couponPctError={fieldErrorMessage(
-                t,
-                attemptedSave,
-                bondReasonKey(),
-                'forms.holding.couponPctError',
-              )}
+              couponPctError={fieldErrorMessage(t, attemptedSave, couponPctFieldReasonKey())}
               couponPctFieldRef={couponPctFieldRef}
               couponPctInputRef={couponPctInputRef}
               maturityDate={maturityDate}
@@ -2271,12 +2321,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               cost={propertyCost}
               onChangeCost={(text) => setPropertyCost(groupAmount(text))}
               currencySuffix={currencySymbol[currency]}
-              costError={fieldErrorMessage(
-                t,
-                attemptedSave,
-                propertyReasonKey(),
-                'forms.holding.propertyCostError',
-              )}
+              costError={fieldErrorMessage(t, attemptedSave, propertyReasonKey())}
               costFieldRef={propertyCostFieldRef}
               costInputRef={propertyCostInputRef}
             />
@@ -2298,12 +2343,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               onSelectUnit={setMetalUnit}
               purity={metalPurity}
               onChangePurity={setMetalPurity}
-              purityError={fieldErrorMessage(
-                t,
-                attemptedSave,
-                metalReasonKey(),
-                'forms.holding.purityError',
-              )}
+              purityError={fieldErrorMessage(t, attemptedSave, metalPurityReasonKey())}
               purityFieldRef={metalPurityFieldRef}
               purityInputRef={metalPurityInputRef}
               showFirstLot={!isEdit}
@@ -2312,18 +2352,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               cost={metalCost}
               onChangeCost={(text) => setMetalCost(groupAmount(text))}
               currencySuffix={currencySymbol.UAH}
-              quantityError={fieldErrorMessage(
-                t,
-                attemptedSave,
-                metalReasonKey(),
-                'forms.holding.quantityError',
-              )}
-              costError={fieldErrorMessage(
-                t,
-                attemptedSave,
-                metalReasonKey(),
-                'forms.lot.totalCostError',
-              )}
+              quantityError={fieldErrorMessage(t, attemptedSave, metalQuantityFieldReasonKey())}
+              costError={fieldErrorMessage(t, attemptedSave, metalCostFieldReasonKey())}
               quantityFieldRef={metalQuantityFieldRef}
               quantityInputRef={metalQuantityInputRef}
               costFieldRef={metalCostFieldRef}

@@ -1,6 +1,11 @@
 import { act, renderHook } from '@testing-library/react-native';
 
-import { loanReasonKey, MAX_LOAN_TERM_MONTHS, useLoanFields } from './use-loan-fields';
+import {
+  loanFieldErrors,
+  loanReasonKey,
+  MAX_LOAN_TERM_MONTHS,
+  useLoanFields,
+} from './use-loan-fields';
 
 const baseArgs = () => ({
   principal: '1000',
@@ -78,6 +83,47 @@ describe('loanReasonKey', () => {
   });
 });
 
+describe('loanFieldErrors', () => {
+  it('reports the principal and start-date errors independently, both at once when both are blank', () => {
+    const errors = loanFieldErrors({ ...baseArgs(), principal: '', startDate: null });
+
+    expect(errors.principalError).toBe('forms.holding.loanPrincipalError');
+    expect(errors.startDateError).toBe('forms.holding.loanStartDateError');
+  });
+
+  it('clears the principal error alone once principal is fixed, leaving the start-date error untouched', () => {
+    const errors = loanFieldErrors({ ...baseArgs(), principal: '1000', startDate: null });
+
+    expect(errors.principalError).toBeNull();
+    expect(errors.startDateError).toBe('forms.holding.loanStartDateError');
+  });
+
+  it('reports no rate/term error for a "none" schedule regardless of principal/start-date state', () => {
+    const errors = loanFieldErrors({
+      ...baseArgs(),
+      principal: '',
+      startDate: null,
+      schedule: 'none',
+      annualRatePct: '',
+      termMonths: '',
+    });
+
+    expect(errors.annualRateError).toBeNull();
+    expect(errors.termMonthsError).toBeNull();
+  });
+
+  it('reports every field valid once every field is filled for a structured schedule', () => {
+    const errors = loanFieldErrors(baseArgs());
+
+    expect(errors).toEqual({
+      principalError: null,
+      startDateError: null,
+      annualRateError: null,
+      termMonthsError: null,
+    });
+  });
+});
+
 describe('useLoanFields', () => {
   it('defaults to mortgage/annuity with every text field blank and no start date', async () => {
     const { result } = await renderHook(() => useLoanFields());
@@ -90,6 +136,8 @@ describe('useLoanFields', () => {
     expect(result.current.termMonths).toBe('');
     expect(result.current.isValid).toBe(false);
     expect(result.current.reasonKey).toBe('forms.holding.loanPrincipalError');
+    expect(result.current.fieldErrors.principalError).toBe('forms.holding.loanPrincipalError');
+    expect(result.current.fieldErrors.startDateError).toBe('forms.holding.loanStartDateError');
   });
 
   it('reports isValid/reasonKey derived from the live field state', async () => {
