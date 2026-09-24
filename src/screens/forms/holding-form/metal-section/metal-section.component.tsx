@@ -19,11 +19,12 @@ import type { MetalSectionProps } from './metal-section.props';
 
 // The `metal` create-form section (T20): a metal-element ChipRow, a physical
 // Form ChipRow, a Unit ChipRow, a Purity field (pre-filled `"0.9999"` — the
-// standard bar/coin fineness), and the first-lot Quantity/Total cost fields
-// (create-only — see `MetalSectionProps.showFirstLot`'s own doc comment). One
-// lot is what `holding-form.screen.tsx` builds from those two fields on save;
-// this component only collects and reports the fields, mirroring
-// PropertySection's shape.
+// standard bar/coin fineness, validated on Save as 0 < purity <= 1 in both
+// create and edit mode — F4 audit 8), and the first-lot Quantity/Total cost
+// fields (create-only — see `MetalSectionProps.showFirstLot`'s own doc
+// comment). One lot is what `holding-form.screen.tsx` builds from those two
+// fields on save; this component only collects and reports the fields,
+// mirroring PropertySection's shape.
 const MetalSection: FC<MetalSectionProps> = ({
   metal,
   onSelectMetal,
@@ -33,6 +34,9 @@ const MetalSection: FC<MetalSectionProps> = ({
   onSelectUnit,
   purity,
   onChangePurity,
+  purityError,
+  purityFieldRef,
+  purityInputRef,
   showFirstLot,
   quantity,
   onChangeQuantity,
@@ -92,12 +96,18 @@ const MetalSection: FC<MetalSectionProps> = ({
         labels={unitLabels}
       />
 
-      <TextField
-        label={t('forms.holding.purity')}
-        value={purity}
-        onChangeText={onChangePurity}
-        keyboardType="decimal-pad"
-      />
+      <View ref={purityFieldRef}>
+        <TextField
+          label={t('forms.holding.purity')}
+          value={purity}
+          onChangeText={onChangePurity}
+          keyboardType="decimal-pad"
+          placeholder={t('forms.holding.purityPlaceholder')}
+          required
+          error={purityError}
+          inputRef={purityInputRef}
+        />
+      </View>
 
       {showFirstLot && (
         <>

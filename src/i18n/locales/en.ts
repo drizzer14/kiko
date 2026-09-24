@@ -356,6 +356,8 @@ export const en = {
       purchasePrice: 'Purchase price (total paid)',
       purchasePricePlaceholder: 'Defaults to nominal',
       purity: 'Purity',
+      purityError: 'Enter a purity between 0 and 1.',
+      purityPlaceholder: '0.9999',
       quantity: 'Quantity',
       quantityError: 'Enter a quantity greater than 0.',
       quantityPlaceholder: '10',

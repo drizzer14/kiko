@@ -140,4 +140,24 @@ describe('MetalSection', () => {
     expect(getByText('Enter a quantity greater than 0.')).toBeTruthy();
     expect(getByText('Total cost must be greater than 0.')).toBeTruthy();
   });
+
+  // F4 audit 8: purity is validated on Save (0 < purity <= 1) — a required
+  // field with its own placeholder and inline error, like every other
+  // validated field.
+  it('renders purityError directly after the field', async () => {
+    const { getByText } = await render(
+      <MetalSection {...baseProps} purityError="Enter a purity between 0 and 1." />,
+    );
+
+    expect(getByText('Enter a purity between 0 and 1.')).toBeTruthy();
+  });
+
+  it('marks the purity field as required, with an example-value placeholder', async () => {
+    const { getAllByText, getByPlaceholderText } = await render(
+      <MetalSection {...baseProps} purity="" showFirstLot={false} />,
+    );
+
+    expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(1);
+    expect(getByPlaceholderText('0.9999')).toBeTruthy();
+  });
 });

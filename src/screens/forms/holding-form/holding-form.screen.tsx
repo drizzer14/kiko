@@ -105,8 +105,12 @@ type PropertyReasonKey = 'forms.holding.propertyCostError';
 // The literal i18n keys `metalReasonKey` may return — reusing the SAME
 // generic quantity error the bond form already carries, and the Lot form's
 // own total-cost error, rather than minting a metal-specific duplicate of
-// either message.
-type MetalReasonKey = 'forms.holding.quantityError' | 'forms.lot.totalCostError';
+// either message. `purityError` (F4 audit 8) is metal-specific: no other
+// form field validates a 0-1 fineness ratio.
+type MetalReasonKey =
+  | 'forms.holding.quantityError'
+  | 'forms.lot.totalCostError'
+  | 'forms.holding.purityError';
 
 // `saved` marks a contribution that is already persisted in the holding's
 // stored metadata (an edit-mode hydrated row) versus one the user just added in
@@ -339,8 +343,12 @@ const buildPropertyCreatePayload = (params: {
 };
 
 // The pre-filled purity — the standard bar/coin fineness (T20's own default).
-// Shared by the initial form state and the create-payload's fallback below,
-// so an emptied/garbled purity field never reaches `asMetalMeta` broken.
+// Shared by the initial form state and the create-payload's fallback below.
+// `metalPurityReasonKey` (F4 audit 8) now BLOCKS Save on an out-of-range or
+// garbled purity, so the `?? DEFAULT_METAL_PURITY` fallback below is
+// unreachable for anything the user actually typed — it stays purely for
+// type safety (`normalizeDecimal` can still return `null`), never as a
+// silent correction of a value Save already let through.
 const DEFAULT_METAL_PURITY = '0.9999';
 
 // The metal CREATE payload (T20): a `metal` holding writes a zero stored
@@ -734,6 +742,7 @@ type ValidatedFieldRefs = {
   purchaseDateFieldRef: RefObject<FieldInstance | null>;
   maturityDateFieldRef: RefObject<FieldInstance | null>;
   propertyCostFieldRef: RefObject<FieldInstance | null>;
+  metalPurityFieldRef: RefObject<FieldInstance | null>;
   metalQuantityFieldRef: RefObject<FieldInstance | null>;
   metalCostFieldRef: RefObject<FieldInstance | null>;
   loanPrincipalFieldRef: RefObject<FieldInstance | null>;
@@ -755,6 +764,7 @@ type ValidatedFieldFocus = {
   faceValue: () => void;
   couponPct: () => void;
   propertyCost: () => void;
+  metalPurity: () => void;
   metalQuantity: () => void;
   metalCost: () => void;
   loanPrincipal: () => void;
@@ -870,6 +880,13 @@ const firstInvalidFieldRef = (params: {
       : []),
     ...(type === 'metal'
       ? [
+          {
+            // Purity renders ABOVE the Quantity/Total cost fields in
+            // MetalSection's own JSX, so it takes priority here too.
+            invalid: metalReasonKey === 'forms.holding.purityError',
+            ref: refs.metalPurityFieldRef,
+            focus: focus.metalPurity,
+          },
           {
             invalid: metalReasonKey === 'forms.holding.quantityError',
             ref: refs.metalQuantityFieldRef,
@@ -1170,6 +1187,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const purchaseDateFieldRef = useRef<FieldInstance>(null);
   const maturityDateFieldRef = useRef<FieldInstance>(null);
   const propertyCostFieldRef = useRef<FieldInstance>(null);
+  const metalPurityFieldRef = useRef<FieldInstance>(null);
   const metalQuantityFieldRef = useRef<FieldInstance>(null);
   const metalCostFieldRef = useRef<FieldInstance>(null);
   const loanPrincipalFieldRef = useRef<FieldInstance>(null);
@@ -1190,6 +1208,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const faceValueInputRef = useRef<TextInputInstance>(null);
   const couponPctInputRef = useRef<TextInputInstance>(null);
   const propertyCostInputRef = useRef<TextInputInstance>(null);
+  const metalPurityInputRef = useRef<TextInputInstance>(null);
   const metalQuantityInputRef = useRef<TextInputInstance>(null);
   const metalCostInputRef = useRef<TextInputInstance>(null);
   const loanPrincipalInputRef = useRef<TextInputInstance>(null);
@@ -1606,14 +1625,34 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // exactly when there is no reason to reject.
   const isPropertyValid = (): boolean => propertyReasonKey() === null;
 
+  // Purity applies in BOTH create and edit mode — MetalSection always renders
+  // the field (unlike the create-only Quantity/Total cost pair below), and a
+  // fineness ratio is meaningful whenever it's shown. A garbled or
+  // out-of-range value now BLOCKS Save (F4 audit 8) instead of silently
+  // falling back to the standard fineness default — `buildMetalCreatePayload`/
+  // `buildMetadata`'s edit branch keep their own `?? DEFAULT_METAL_PURITY`
+  // fallback purely for type safety (`normalizeDecimal` can still return
+  // `null`); this check makes that fallback unreachable for anything the
+  // user actually typed, since Save never gets past it otherwise.
+  const metalPurityReasonKey = (): 'forms.holding.purityError' | null => {
+    const purity = parseAmount(metalPurity);
+
+    return Number.isFinite(purity) && purity > 0 && purity <= 1
+      ? null
+      : 'forms.holding.purityError';
+  };
+
   // The first-lot Quantity/Total cost fields only apply at CREATE time
   // (MetalSection hides them in edit mode: quantity/cost history is fixed at
   // creation, a later buy/sell goes through the dedicated Lot form instead),
-  // so this only rejects on create — an edit always passes. Purity carries a
-  // valid default and is never itself a rejection reason (`buildMetalCreatePayload`/
-  // `buildMetadata`'s edit branch both fall back to the default for a
-  // cleared/garbled value, so a save can never write a broken MetalMeta).
+  // so those two only reject on create — an edit always passes them.
   const metalReasonKey = (): MetalReasonKey | null => {
+    const purityReasonKey = metalPurityReasonKey();
+
+    if (purityReasonKey !== null) {
+      return purityReasonKey;
+    }
+
     if (isEdit) {
       return null;
     }
@@ -1678,6 +1717,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           purchaseDateFieldRef,
           maturityDateFieldRef,
           propertyCostFieldRef,
+          metalPurityFieldRef,
           metalQuantityFieldRef,
           metalCostFieldRef,
           loanPrincipalFieldRef,
@@ -1692,6 +1732,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           faceValue: () => faceValueInputRef.current?.focus(),
           couponPct: () => couponPctInputRef.current?.focus(),
           propertyCost: () => propertyCostInputRef.current?.focus(),
+          metalPurity: () => metalPurityInputRef.current?.focus(),
           metalQuantity: () => metalQuantityInputRef.current?.focus(),
           metalCost: () => metalCostInputRef.current?.focus(),
           loanPrincipal: () => loanPrincipalInputRef.current?.focus(),
@@ -2242,6 +2283,14 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               onSelectUnit={setMetalUnit}
               purity={metalPurity}
               onChangePurity={setMetalPurity}
+              purityError={fieldErrorMessage(
+                t,
+                attemptedSave,
+                metalReasonKey(),
+                'forms.holding.purityError',
+              )}
+              purityFieldRef={metalPurityFieldRef}
+              purityInputRef={metalPurityInputRef}
               showFirstLot={!isEdit}
               quantity={metalQuantity}
               onChangeQuantity={(text) => setMetalQuantity(groupAmount(text))}

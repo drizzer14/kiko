@@ -13,6 +13,12 @@ export type MetalSectionProps = {
   onSelectUnit: (unit: MetalUnit) => void;
   purity: string;
   onChangePurity: (text: string) => void;
+  // F4 audit 8: purity is validated on Save (0 < purity <= 1) in BOTH create
+  // and edit mode — a garbled or out-of-range value blocks Save instead of
+  // silently falling back to the standard fineness default.
+  purityError?: string;
+  purityFieldRef?: RefObject<FieldInstance | null>;
+  purityInputRef?: RefObject<TextInputInstance | null>;
   // The first-lot fields only apply at CREATE time — they seed the holding's
   // one lot (mirrors PropertySection's `showCost`). A later buy/sell goes
   // through the dedicated Lot form instead, so an edit-mode render hides them.

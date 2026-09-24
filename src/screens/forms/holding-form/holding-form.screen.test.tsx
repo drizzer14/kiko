@@ -1526,6 +1526,37 @@ describe('HoldingFormScreen metal', () => {
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
 
+  // F4 audit 8: a garbled purity (e.g. the comma-decimal "999,9", parsed as
+  // 999.9) used to silently fall back to the standard 0.9999 fineness
+  // default, so a create wrote a valid-looking but WRONG MetalMeta with no
+  // sign anything was off. Save now blocks on it instead.
+  it('blocks save and shows an error for a garbled purity, instead of silently defaulting it', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'Gold bar');
+    await fill(screen, 'Purity', '999,9');
+    await fill(screen, 'Quantity', '31.1');
+    await fill(screen, 'Total cost', '80000');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Enter a purity between 0 and 1.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('blocks save and shows an error for an out-of-range purity greater than 1', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'Gold bar');
+    await fill(screen, 'Purity', '1.5');
+    await fill(screen, 'Quantity', '31.1');
+    await fill(screen, 'Total cost', '80000');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Enter a purity between 0 and 1.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
   it('edits a metal holding without Quantity/Total cost fields, preserving its stored lots', async () => {
     const screen = await renderEdit({
       id: 'h1',
@@ -1564,6 +1595,35 @@ describe('HoldingFormScreen metal', () => {
       expect.any(Number),
     );
     expect(updateDeltaMock.mock.calls[0][1]).not.toHaveProperty('balanceMinorUnits');
+  });
+
+  // F4 audit 8: purity stays user-editable in edit mode (unlike
+  // Quantity/Total cost, which are create-only), so it must validate there
+  // too.
+  it('blocks save for a garbled purity in EDIT mode too, leaving the stored MetalMeta untouched', async () => {
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Gold bar',
+      type: 'metal',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        metal: 'XAU',
+        form: 'bar',
+        unit: 'oz',
+        purity: '0.9999',
+        lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 8_000_000 }],
+      },
+    });
+
+    await fill(screen, 'Purity', '999,9');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Enter a purity between 0 and 1.')).toBeTruthy();
+    expect(updateDeltaMock).not.toHaveBeenCalled();
   });
 
   it('edits a metal holding onto a different metal element, preserving its stored lots', async () => {
