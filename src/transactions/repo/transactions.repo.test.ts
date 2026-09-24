@@ -14,6 +14,7 @@ jest.mock('../../db/client', () => {
 });
 
 import { drizzle } from 'drizzle-orm/sqlite-proxy';
+import { renderCondition } from '@kiko/db/render-condition-test-helper';
 
 import { accountsRepo } from '../../accounts/accounts.repo';
 import { accounts, categoryOverrides, holdings, transactions } from '../../db/schema';
@@ -728,79 +729,52 @@ describe('transactionsRepo.addManyDedup cross-provider externalId namespacing', 
   });
 });
 
-// T29: proves the SAME guarantee `makeAddManyStoreTx` above already exercises
-// for cross-provider ids, but for the loan-link columns — a real re-sync of
-// the SAME externalId (a settled-amount refresh) must leave a previously-set
-// loanHoldingId/loanLinkSource/loanLinkRejected untouched. `NewTransaction`
-// never carries these fields on an incoming sync row, so the store's merge
-// (`{ ...existing, ...row }`) cannot overwrite them either — matching the
-// real upsert's `set` (see "never refreshes the loan-link columns" above).
-describe('transactionsRepo.addManyDedup re-sync keeps the loan link (T29)', () => {
-  it('keeps loanHoldingId, loanLinkSource, and loanLinkRejected across a re-sync of the same externalId', async () => {
-    const store: Record<string, unknown>[] = [
-      {
-        source: 'monobank',
-        externalId: 'e1',
-        amountMinorUnits: -10_000,
-        loanHoldingId: 'loan-1',
-        loanLinkSource: 'manual',
-        loanLinkRejected: false,
+// The store-backed re-sync test that used to live here was a tautology (the
+// fake's `{ ...existing, ...row }` merge cannot overwrite keys the incoming
+// row lacks, so it passed whatever the real upsert `set` contains) — dropped
+// per T29 review round 1 (ponytail). The SQL-shape test above ("never
+// refreshes the loan-link columns") is the real guard.
+
+// T29 review round 1: shared by `setLoanPayment` and `undoAutoLoanLink`
+// below (both single-row updates on `transactions`), hoisted per the
+// ponytail note that the `undoAutoLoanLink` test used to inline its own
+// copy.
+const captureUpdateTx = (): {
+  tx: unknown;
+  captured: { table?: unknown; set?: Record<string, unknown>; whereArg?: unknown };
+} => {
+  const captured: { table?: unknown; set?: Record<string, unknown>; whereArg?: unknown } = {};
+  const tx = {
+    update: (table: unknown) => ({
+      set: (values: Record<string, unknown>) => {
+        captured.table = table;
+        captured.set = values;
+
+        return {
+          where: (arg: unknown) => {
+            captured.whereArg = arg;
+
+            return Promise.resolve();
+          },
+        };
       },
-    ];
-    mockTx = makeAddManyStoreTx(store);
-
-    await transactionsRepo.addManyDedup([
-      syncedRow({ externalId: 'e1', amountMinorUnits: -10_500 }),
-    ]);
-
-    const row = store.find((candidate) => candidate.externalId === 'e1');
-    // The bank-owned amount DID refresh...
-    expect(row?.amountMinorUnits).toBe(-10_500);
-    // ...but the loan link, which is user/matcher state, did not move.
-    expect(row?.loanHoldingId).toBe('loan-1');
-    expect(row?.loanLinkSource).toBe('manual');
-    expect(row?.loanLinkRejected).toBe(false);
-  });
-});
-
-// T29, spec 5.4: `setLoanPayment` persists a loan-payment link — no source
-// gate, unlike `update`/`remove`, since the link is user/matcher state, not a
-// mutation of bank-owned ledger data.
-describe('transactionsRepo.setLoanPayment', () => {
-  const captureUpdateTx = (): {
-    tx: unknown;
-    captured: { table?: unknown; set?: Record<string, unknown>; whereArg?: unknown };
-  } => {
-    const captured: { table?: unknown; set?: Record<string, unknown>; whereArg?: unknown } = {};
-    const tx = {
-      update: (table: unknown) => ({
-        set: (values: Record<string, unknown>) => {
-          captured.table = table;
-          captured.set = values;
-
-          return {
-            where: (arg: unknown) => {
-              captured.whereArg = arg;
-
-              return Promise.resolve();
-            },
-          };
-        },
-      }),
-    };
-
-    return { tx, captured };
+    }),
   };
 
-  it('persists a manual link and its source on a synced (monobank) row, with no source gate', async () => {
+  return { tx, captured };
+};
+
+// T29, spec 5.4: `setLoanPayment` is the MANUAL write path (the user's own
+// picker) — no source gate on the TARGET row, unlike `update`/`remove`,
+// since the link is user state, not a mutation of bank-owned ledger data.
+// Split from the matcher's own path (`setAutoLoanLinks`, below) in T29
+// review round 1 (I2): only a manual action may move `loanLinkRejected`.
+describe('transactionsRepo.setLoanPayment', () => {
+  it('persists a manual link on a synced (monobank) row, with no source gate, clearing loanLinkRejected', async () => {
     const { tx, captured } = captureUpdateTx();
     mockTx = tx;
 
-    await transactionsRepo.setLoanPayment({
-      transactionId: 'txn-1',
-      loanHoldingId: 'loan-1',
-      source: 'manual',
-    });
+    await transactionsRepo.setLoanPayment({ transactionId: 'txn-1', loanHoldingId: 'loan-1' });
 
     expect(captured.table).toBe(transactions);
     expect(captured.set).toEqual({
@@ -808,78 +782,93 @@ describe('transactionsRepo.setLoanPayment', () => {
       loanLinkSource: 'manual',
       loanLinkRejected: false,
     });
-    expect(captured.whereArg).toBeDefined();
-  });
-
-  it('persists an auto-matched link with its own source', async () => {
-    const { tx, captured } = captureUpdateTx();
-    mockTx = tx;
-
-    await transactionsRepo.setLoanPayment({
-      transactionId: 'txn-1',
-      loanHoldingId: 'loan-1',
-      source: 'auto',
-    });
-
-    expect(captured.set).toEqual({
-      loanHoldingId: 'loan-1',
-      loanLinkSource: 'auto',
-      loanLinkRejected: false,
+    expect(renderCondition(captured.whereArg)).toEqual({
+      sql: '"transactions"."id" = ?',
+      params: ['txn-1'],
     });
   });
 
-  it('clears the link source too on a manual "None" (loanHoldingId: null)', async () => {
+  // I3 (T29 review round 1 ruling): a manual "None" SETS loanLinkRejected —
+  // the choice sticks, so the matcher never silently re-proposes a link the
+  // user explicitly rejected. This deviates from spec 5.4's literal text.
+  it('clears the link source AND sets loanLinkRejected on a manual "None" (loanHoldingId: null)', async () => {
     const { tx, captured } = captureUpdateTx();
     mockTx = tx;
 
-    await transactionsRepo.setLoanPayment({
-      transactionId: 'txn-1',
-      loanHoldingId: null,
-      source: 'manual',
-    });
+    await transactionsRepo.setLoanPayment({ transactionId: 'txn-1', loanHoldingId: null });
 
     expect(captured.set).toEqual({
       loanHoldingId: null,
       loanLinkSource: null,
-      loanLinkRejected: false,
+      loanLinkRejected: true,
     });
   });
+});
 
-  it('clears loanLinkRejected on a manual link, un-rejecting a row the user had previously undone', async () => {
-    const { tx, captured } = captureUpdateTx();
+// T32's auto-match write path — split from `setLoanPayment` in T29 review
+// round 1 (I2) because only a MANUAL action may ever move
+// `loanLinkRejected`. Every WHERE clause carries BOTH skip conditions
+// (M2-style exact-predicate assertions, not just "some where() was
+// called"): a candidate row already linked, or already rejected, is never
+// silently overwritten — SQLite itself enforces this (the WHERE simply
+// matches no row), so the test proves the PREDICATE carries both guards
+// rather than emulating SQLite's row filtering in JS.
+describe('transactionsRepo.setAutoLoanLinks', () => {
+  const captureBatchUpdateTx = (): {
+    tx: unknown;
+    captured: { set: Record<string, unknown>; whereArg: unknown }[];
+  } => {
+    const captured: { set: Record<string, unknown>; whereArg: unknown }[] = [];
+    const tx = {
+      update: (_table: unknown) => ({
+        set: (values: Record<string, unknown>) => ({
+          where: (whereArg: unknown) => {
+            captured.push({ set: values, whereArg });
+            return Promise.resolve();
+          },
+        }),
+      }),
+    };
+
+    return { tx, captured };
+  };
+
+  it('writes every link in one transaction, each guarded against an already-linked or already-rejected row', async () => {
+    const { tx, captured } = captureBatchUpdateTx();
     mockTx = tx;
 
-    await transactionsRepo.setLoanPayment({
-      transactionId: 'txn-1',
-      loanHoldingId: 'loan-1',
-      source: 'manual',
-    });
+    await transactionsRepo.setAutoLoanLinks([
+      { transactionId: 'txn-1', loanHoldingId: 'loan-1' },
+      { transactionId: 'txn-2', loanHoldingId: 'loan-1' },
+    ]);
 
-    expect(captured.set?.loanLinkRejected).toBe(false);
+    expect(captured).toHaveLength(2);
+    expect(captured[0].set).toEqual({ loanHoldingId: 'loan-1', loanLinkSource: 'auto' });
+    // Never touches loanLinkRejected — only a manual action may.
+    expect(captured[0].set).not.toHaveProperty('loanLinkRejected');
+    expect(renderCondition(captured[0].whereArg)).toEqual({
+      sql: '("transactions"."id" = ? and "transactions"."loan_holding_id" is null and "transactions"."loan_link_rejected" = ?)',
+      params: ['txn-1', 0],
+    });
+    expect(renderCondition(captured[1].whereArg).params).toEqual(['txn-2', 0]);
+  });
+
+  it('is a no-op for an empty link list', async () => {
+    const { tx, captured } = captureBatchUpdateTx();
+    mockTx = tx;
+
+    await transactionsRepo.setAutoLoanLinks([]);
+
+    expect(captured).toHaveLength(0);
   });
 });
 
 // T29, spec 5.4: undo clears the link and marks it rejected, so the matcher
 // never re-proposes the same link on this row.
 describe('transactionsRepo.undoAutoLoanLink', () => {
-  it('clears loanHoldingId and loanLinkSource, and sets loanLinkRejected', async () => {
-    const captured: { table?: unknown; set?: Record<string, unknown>; whereArg?: unknown } = {};
-    mockTx = {
-      update: (table: unknown) => ({
-        set: (values: Record<string, unknown>) => {
-          captured.table = table;
-          captured.set = values;
-
-          return {
-            where: (arg: unknown) => {
-              captured.whereArg = arg;
-
-              return Promise.resolve();
-            },
-          };
-        },
-      }),
-    };
+  it('clears loanHoldingId and loanLinkSource, and sets loanLinkRejected, scoped to an auto-sourced link', async () => {
+    const { tx, captured } = captureUpdateTx();
+    mockTx = tx;
 
     await transactionsRepo.undoAutoLoanLink('txn-1');
 
@@ -889,7 +878,12 @@ describe('transactionsRepo.undoAutoLoanLink', () => {
       loanLinkSource: null,
       loanLinkRejected: true,
     });
-    expect(captured.whereArg).toBeDefined();
+    // M5 (T29 review round 1): scoped to `loanLinkSource = 'auto'` too — an
+    // Undo called on a MANUAL link must not reject it.
+    expect(renderCondition(captured.whereArg)).toEqual({
+      sql: '("transactions"."id" = ? and "transactions"."loan_link_source" = ?)',
+      params: ['txn-1', 'auto'],
+    });
   });
 });
 

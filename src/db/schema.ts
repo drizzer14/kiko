@@ -149,14 +149,15 @@ export const transactions = sqliteTable(
     // an ordinary transaction. A loan holding writes no ledger rows of its
     // own (`isLedgerlessHoldingType`), so every payment lives on the LINKED
     // bank holding's own row instead, tied back here. Set by the auto-matcher
-    // (`loanLinkSource: 'auto'`, T32) or by the user
+    // (`transactionsRepo.setAutoLoanLinks`, T32) or by the user
     // (`transactionsRepo.setLoanPayment`). Allowed on a synced (bank-owned)
-    // row, unlike `category`'s own override path this is not — the link is
+    // row, EXACTLY LIKE `category`'s own override path — the link is
     // user/matcher state, not bank data, so `addManyDedup`'s upsert never
     // refreshes it. Cleared (along with `loanLinkSource`) in the SAME
-    // transaction a linked loan holding is deleted
-    // (`holdingsRepo.remove`, Review Focus 7) — a dangling id is never left
-    // to rot; a cleared link counts as normal spending again.
+    // transaction a linked loan holding is deleted, whether directly
+    // (`holdingsRepo.remove`, Review Focus 7) or via its owning account
+    // (`accountsRepo.remove`, T29 review round 1) — a dangling id is never
+    // left to rot; a cleared link counts as normal spending again.
     loanHoldingId: text('loan_holding_id'),
     // How `loanHoldingId` was set: 'auto' (the matcher) or 'manual' (the
     // user), null when there is no link — kept in sync with `loanHoldingId`
@@ -165,10 +166,16 @@ export const transactions = sqliteTable(
     loanLinkSource: text('loan_link_source', { enum: ['auto', 'manual'] }),
     // True once the user has explicitly rejected an auto-suggested link on
     // this row (`transactionsRepo.undoAutoLoanLink`), so the matcher never
-    // re-proposes it. A manual link, or a manual "None", clears this flag —
-    // spec 5.4's "False-positive handling". NOT NULL default 0: every
-    // existing row (pre-migration and every ordinary transaction) has never
-    // been rejected.
+    // re-proposes it — spec 5.4's "False-positive handling". Only a MANUAL
+    // action ever moves this flag (T29 review round 1, I2/I3): a manual
+    // LINK clears it (a fresh pick always overrides an earlier Undo), but a
+    // manual "None" SETS it — the user's explicit "not a loan payment" must
+    // stick, or the very next sync would just auto-link the row again. This
+    // deviates from spec 5.4's literal text ("a manual None clears the
+    // flag"). `setAutoLoanLinks` (the matcher's path) never touches this
+    // column either way; its own WHERE clause just skips a rejected row.
+    // NOT NULL default 0: every existing row (pre-migration and every
+    // ordinary transaction) has never been rejected.
     loanLinkRejected: integer('loan_link_rejected', { mode: 'boolean' }).notNull().default(false),
     comment: text('comment'),
     // 'btc_wallet' / 'binance' double as `accounts.institution` values. The

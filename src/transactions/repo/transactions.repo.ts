@@ -1,6 +1,6 @@
 import { match } from 'ts-pattern';
 import type { Repository } from '@kiko/db/repository';
-import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { appendDepositContributionTx } from '@kiko/holdings/repo';
 
 import {
@@ -38,12 +38,6 @@ type ManualTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' |
 
 type TransactionEdit = Pick<TransactionRow, 'amountMinorUnits' | 'time'> &
   Partial<Pick<TransactionRow, 'description'>> & { transactionId: string };
-
-// Non-null: `setLoanPayment` always names WHO is setting the link (the
-// matcher or the user), even when it is un-linking (`loanHoldingId: null`,
-// see that function's own doc comment for why `loanLinkSource` still ends up
-// null on the ROW in that case).
-type LoanLinkSource = NonNullable<TransactionRow['loanLinkSource']>;
 
 // No holding NAMES here: neither leg persists a description anymore, so the
 // only thing each leg needs about the other is its ID — the marker the display
@@ -717,40 +711,76 @@ export const transactionsRepo = {
       tx.update(transactions).set({ category }).where(eq(transactions.id, transactionId)),
     ),
   /**
-   * Link (or un-link) ONE transaction to a loan holding (D21, spec 5.4),
-   * inside a single op-sqlite transaction — the matcher (`source: 'auto'`,
-   * T32) and the user's own picker (`source: 'manual'`) share this one write
-   * path. `loanHoldingId: null` is a manual "None", which — like a manual
-   * link — clears `loanLinkRejected`, so a row the user had earlier undone
-   * can be re-linked and trusted again; it also clears `loanLinkSource`,
-   * keeping the two columns in lockstep (never a source with no link).
+   * Link (or un-link) ONE transaction to a loan holding via the USER's own
+   * picker (D21, spec 5.4) — the MANUAL write path, inside a single
+   * op-sqlite transaction. The matcher's own path is `setAutoLoanLinks`
+   * (`source: 'auto'`, T32), a separate function since T29 review round 1
+   * (I2): only a manual action may ever move `loanLinkRejected`.
    *
-   * There is NO `source`-column gate, exactly like `setCategory` above and
-   * for the same reason: the link is user/matcher state, not a mutation of
-   * bank-owned ledger data, so it is allowed on a synced row too. A later
-   * re-sync never clobbers it, because `addManyDedup`'s `onConflictDoUpdate`
-   * set names only the bank-owned columns and deliberately excludes all
-   * three loan-link columns.
+   * - A manual LINK (`loanHoldingId` non-null) clears `loanLinkRejected`,
+   *   un-rejecting a row the user had previously undone — a fresh manual
+   *   pick always overrides an earlier Undo.
+   * - A manual "None" (`loanHoldingId: null`) SETS `loanLinkRejected`
+   *   (T29 review round 1 ruling, I3): the choice sticks, so the matcher
+   *   never re-proposes a link on a row the user has explicitly said is not
+   *   a loan payment. This deviates from spec 5.4's literal text ("a manual
+   *   None clears the flag"), which the orchestrator ruled would make
+   *   "None" not stick — the next sync would just auto-link it again.
+   *
+   * `loanLinkSource` is always cleared to null alongside a null
+   * `loanHoldingId`, keeping the two columns in lockstep. There is NO
+   * `source`-column gate, exactly like `setCategory` above and for the same
+   * reason: the link is user state, not a mutation of bank-owned ledger
+   * data, so it is allowed on a synced row too. A later re-sync never
+   * clobbers it, because `addManyDedup`'s `onConflictDoUpdate` set names
+   * only the bank-owned columns and deliberately excludes all three
+   * loan-link columns.
    */
   setLoanPayment: ({
     transactionId,
     loanHoldingId,
-    source,
   }: {
     transactionId: string;
     loanHoldingId: string | null;
-    source: LoanLinkSource;
   }) =>
     write((tx) =>
       tx
         .update(transactions)
         .set({
           loanHoldingId,
-          loanLinkSource: loanHoldingId === null ? null : source,
-          loanLinkRejected: false,
+          loanLinkSource: loanHoldingId === null ? null : 'manual',
+          loanLinkRejected: loanHoldingId === null,
         })
         .where(eq(transactions.id, transactionId)),
     ),
+  /**
+   * Batch-link the matcher's PROPOSED candidates to their loan holdings, in
+   * ONE op-sqlite transaction — T32's auto-match write path, and spec 5.4's
+   * "one db.transaction() writes the links". Added in T29 review round 1
+   * (I2), split out of `setLoanPayment` because only a MANUAL action may
+   * ever move `loanLinkRejected`: this function never sets or reads it into
+   * the write, and its own WHERE clause skips any row that is already
+   * linked (`loanHoldingId` non-null) or already rejected, so a candidate
+   * list that is stale, or a user Undo/manual-link that raced this batch,
+   * can never be silently overwritten. A link whose row fails that WHERE is
+   * simply not updated — no error, no partial side effect. An empty
+   * `links` array is a no-op.
+   */
+  setAutoLoanLinks: (links: { transactionId: string; loanHoldingId: string }[]) =>
+    write(async (tx) => {
+      for (const link of links) {
+        await tx
+          .update(transactions)
+          .set({ loanHoldingId: link.loanHoldingId, loanLinkSource: 'auto' })
+          .where(
+            and(
+              eq(transactions.id, link.transactionId),
+              isNull(transactions.loanHoldingId),
+              eq(transactions.loanLinkRejected, false),
+            ),
+          );
+      }
+    }),
   /**
    * Undo an auto-suggested loan-payment link (spec 5.4's "False-positive
    * handling"): clears the link and sets `loanLinkRejected`, so the matcher
@@ -763,7 +793,7 @@ export const transactionsRepo = {
       tx
         .update(transactions)
         .set({ loanHoldingId: null, loanLinkSource: null, loanLinkRejected: true })
-        .where(eq(transactions.id, transactionId)),
+        .where(and(eq(transactions.id, transactionId), eq(transactions.loanLinkSource, 'auto'))),
     ),
   /**
    * Upsert a batch of imported rows on the `(source, external_id)` unique index
