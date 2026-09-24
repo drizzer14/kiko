@@ -2460,10 +2460,13 @@ describe('createCashAccount + importRows integration (N1)', () => {
     return {
       select: (fields?: Record<string, unknown>) => ({
         from: (table: unknown) => {
-          // `nextSortOrder` (accounts.repo.ts): a bare, un-`.where()`'d
-          // `select({ value }).from(accounts)`.
-          if (table === accounts && fields && 'value' in fields) {
-            return Promise.resolve([{ value: -1 }]);
+          // `nextSortOrder` (accounts.repo.ts, T30 — kind-aware): a bare,
+          // un-`.where()`'d `select({ assetMax, debtMin, allMax }).from(accounts)`.
+          // An empty store has no accounts of any kind yet, so every field
+          // reads the same "nothing here" default `nextSortOrder` itself
+          // falls back to.
+          if (table === accounts && fields && 'assetMax' in fields) {
+            return Promise.resolve([{ assetMax: -1, debtMin: null, allMax: -1 }]);
           }
 
           if (table === transactions && fields && 'time' in fields) {
