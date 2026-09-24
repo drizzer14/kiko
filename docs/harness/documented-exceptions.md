@@ -170,7 +170,8 @@ verified usage, not dead weight:
   (`src/i18n/locales/**`)** — pure nested string-data objects with no
   logic a surviving mutant could meaningfully expose (hundreds of
   low-value string mutants); the
-  locale test assertions (e.g. `en.button-casing.test.ts`) still run
+  locale test assertions (e.g. `en.casing-by-role.test.ts`,
+  `uk.casing.test.ts`) still run
   under Jest, so string/casing coverage is unaffected — only the mutation
   report drops those keys. (2) **`**/*.d.ts`** — type-only declarations,
   erased at compile time, so Stryker generates no runtime mutants from
