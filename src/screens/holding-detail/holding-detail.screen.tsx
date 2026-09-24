@@ -1,18 +1,18 @@
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { categoriesRepo } from '@kiko/categories/repo';
-import { holdingsRepo } from '@kiko/holdings/repo';
-import { ratesRepo } from '@kiko/rates/repo';
-import { settingsRepo } from '@kiko/settings/settings.repo';
-import { transactionsRepo } from '@kiko/transactions/repo';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { TFunction } from 'i18next';
-import { type FC, useLayoutEffect, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
-import { FlatList, Pressable } from 'react-native';
-import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { match } from 'ts-pattern';
+import type { TFunction } from 'i18next';
+import { ratesRepo } from '@kiko/rates/repo';
+import { useTranslation } from 'react-i18next';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { FlatList, Pressable } from 'react-native';
+import { categoriesRepo } from '@kiko/categories/repo';
+import { type FC, useLayoutEffect, useMemo } from 'react';
+import { transactionsRepo } from '@kiko/transactions/repo';
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { settingsRepo } from '@kiko/settings/settings.repo';
+import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import {
   isLedgerlessHoldingType,
@@ -37,12 +37,14 @@ import {
 import { Money } from '../../currency/money';
 import { formatMoney } from '../../currency/format';
 import Box from '../../design-system/components/box';
+import EntityHeaderIcon from '../entity-header-icon';
 import { useLiveQuery } from '../../db/use-live-query';
 import Card from '../../design-system/components/card';
 import Text from '../../design-system/components/text';
 import { startOfLocalDay } from '../../dates/local-day';
 import { activeLocale } from '../../i18n/active-locale';
 import type { Currency } from '../../currency/currency';
+import EntityAmountHeader from '../entity-amount-header';
 import { usePriceBook } from '../../prices/use-price-book';
 import Button from '../../design-system/components/button';
 import { formatDate, formatTime } from '../../dates/format';
@@ -69,8 +71,6 @@ import { asBondMeta, asLoanMeta, asMetalMeta } from '../../holdings/holding-meta
 import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
 import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
 import { type DerivedEntry, derivedEntries, type EntryTone } from '../../holdings/derived-entries';
-import EntityAmountHeader from '../entity-amount-header';
-import EntityHeaderIcon from '../entity-header-icon';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
 
@@ -235,9 +235,9 @@ const footerActionFor = (
 // for every other holding, for an invalid/absent `LoanMeta`, for a `'none'`
 // schedule (no installments at all — `loanInstallments` already returns
 // `[]` for it), once every installment has already come due (a fully repaid
-// loan), and — T28 review round 1, Minor 11 — once an overpaid correction
-// has already clamped the outstanding to 0 (N10a), even while
-// `loanInstallments` still has future rows on the ORIGINAL schedule.
+// loan), and once an overpaid correction has already clamped the
+// outstanding to 0 (N10a), even while `loanInstallments` still has future
+// rows on the ORIGINAL schedule.
 // Extracted to module scope for the same cognitive-complexity reason
 // `footerActionFor`/`priceAsOfCaption` are.
 const nextLoanInstallment = (
@@ -718,10 +718,9 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                   {
                     key: 'principal',
                     label: t('holdingDetail.principal'),
-                    // Scoped testIDs (T28 review round 1, Minor 3): a test can
-                    // assert the principal/interest split per row, not just
-                    // "both amounts appear somewhere", which would still pass
-                    // if the two values were swapped.
+                    // Scoped testID: a test can assert the principal/interest
+                    // split per row, not just "both amounts appear somewhere",
+                    // which would still pass if the two values were swapped.
                     testID: 'next-installment-principal',
                     value: (
                       <MoneyText money={Money.of(currency, nextInstallment.principalMinorUnits)} />
