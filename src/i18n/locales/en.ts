@@ -347,6 +347,7 @@ export const en = {
       applyCategoryToAll: 'Apply Category to All',
       applyToThisOne: 'Just for this one',
       category: 'Category',
+      comment: 'Comment',
       convertAmountPlaceholder: '100.00',
       convertToExchange: 'Exchange',
       counterpartAmountError: 'Amount must be greater than 0.',

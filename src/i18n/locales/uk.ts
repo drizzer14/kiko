@@ -326,6 +326,7 @@ export const uk: typeof en = {
       applyCategoryToAll: 'Застосувати категорію до всіх',
       applyToThisOne: 'Лише до цієї',
       category: 'Категорія',
+      comment: 'Коментар',
       convertAmountPlaceholder: '100,00',
       convertToExchange: 'Обміняти',
       counterpartAmountError: 'Сума має бути більшою за 0.',

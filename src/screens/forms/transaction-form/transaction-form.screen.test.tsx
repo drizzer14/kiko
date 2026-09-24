@@ -140,6 +140,7 @@ type Transaction = {
   description: string;
   source: 'manual' | 'monobank' | 'binance';
   category?: string | null;
+  comment?: string | null;
 };
 
 // The category options the picker renders in every test; a stable set so the
@@ -1324,6 +1325,72 @@ describe('TransactionFormScreen — read-only mode (monobank)', () => {
     // the required asterisk — hidden elements included, so a hidden marker would
     // still be caught.
     expect(queryAllByText('*', { includeHiddenElements: true })).toHaveLength(0);
+  });
+
+  // Item 17 (F3): the counterparty->comment mapping (item 10) writes a real
+  // column no screen ever displayed — show it here, the SummaryTable "label
+  // left, value right" detail-row pattern the deposit/bond breakdown and the
+  // statement-import preview already use.
+  it('shows no comment row when the synced transaction carries none', async () => {
+    const { queryByText } = await renderEdit('txn-9');
+
+    expect(queryByText('Comment')).toBeNull();
+  });
+});
+
+describe('TransactionFormScreen — comment detail row (item 17, F3)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('shows the comment as a read-only detail row on a Monobank-synced transaction', async () => {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
+      id: 'txn-9',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: 42,
+      description: 'Imported latte',
+      source: 'monobank',
+      comment: 'ФОП Іванов',
+    });
+
+    const { getByText } = await renderEdit('txn-9');
+
+    expect(getByText('Comment')).toBeTruthy();
+    expect(getByText('ФОП Іванов')).toBeTruthy();
+  });
+
+  it('shows the comment as a read-only detail row on a manual transaction too', async () => {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
+      id: 'txn-1',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: 42,
+      description: 'Coffee',
+      source: 'manual',
+      comment: 'Left at the counter',
+    });
+
+    const { getByText } = await renderEdit('txn-1');
+
+    expect(getByText('Comment')).toBeTruthy();
+    expect(getByText('Left at the counter')).toBeTruthy();
+  });
+
+  it('shows no comment row for a blank (whitespace-only) comment', async () => {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
+      id: 'txn-1',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: 42,
+      description: 'Coffee',
+      source: 'manual',
+      comment: '   ',
+    });
+
+    const { queryByText } = await renderEdit('txn-1');
+
+    expect(queryByText('Comment')).toBeNull();
   });
 });
 

@@ -56,6 +56,7 @@ import type { AccountRow, HoldingRow, TransactionRow } from '../../../db/schema'
 import type { TransactionFormParams } from '../../../navigation/types';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
+import SummaryTable from '../../../design-system/components/summary-table';
 import { type Currency, currencySymbol } from '../../../currency/currency';
 import { resolveCategoryColor } from '../../../statistics/category-breakdown';
 import { seedCounterpartMinorUnits } from '../../../holdings/exchange-prefill';
@@ -124,6 +125,40 @@ const renderReadOnlyNotice = (
         {noticeText}
       </Text>
     </Box>
+  );
+};
+
+// The counterparty->comment column (item 10) writes a real value no screen
+// ever surfaced (F3 device feedback item 17) — a single `SummaryTable` row,
+// the SAME "label left, value right" detail-row pattern the deposit/bond
+// value breakdown and the statement-import preview already use, shown
+// whenever the loaded row carries a non-blank comment. Not gated by
+// `isReadOnly`: `mapParsedTransaction`/Monobank sync can write `comment`
+// onto any imported row regardless of `source`, and a Monobank-synced row
+// is exactly the read-only case the brief calls out by name — so this
+// renders for both. Module-level for the same cognitive-complexity-budget
+// reason as `renderReadOnlyNotice` above.
+const renderCommentRow = (
+  comment: string | null | undefined,
+  label: string,
+): ReactElement | null => {
+  const trimmed = comment?.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  return (
+    <SummaryTable
+      rows={[
+        {
+          key: 'comment',
+          label,
+          value: <Text variant="body">{trimmed}</Text>,
+          testID: 'transaction-comment',
+        },
+      ]}
+    />
   );
 };
 
@@ -2307,6 +2342,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       >
         <Box gap={4} testID="transaction-form">
           {renderReadOnlyNotice(isReadOnly, theme.colors.surfaceHigh, syncedNotice)}
+          {renderCommentRow(existing?.comment, t('forms.transaction.comment'))}
 
           {/* B: the primary-leg holding picker, shown ONLY when no holding was
             fixed by navigation (the global-add entry). It drives the shared
