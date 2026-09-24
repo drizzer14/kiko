@@ -1,8 +1,10 @@
 import { fireEvent, render } from '@testing-library/react-native';
 
 import '../../../design-system/unistyles';
-import HoldingTypeField from '.';
+
 import type { HoldingType } from '../../../holdings/holding-type/holding-type';
+
+import HoldingTypeField from '.';
 
 const options: readonly HoldingType[] = ['card', 'term_deposit', 'bond'];
 

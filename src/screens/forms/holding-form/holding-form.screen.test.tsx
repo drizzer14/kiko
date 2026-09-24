@@ -12,8 +12,8 @@ import {
   navigationSpy,
 } from '../../../test-support/navigation-props';
 import { dayKeyOf } from '../../../prices/price-book';
-import { scrollToField } from '../scroll-to-field/scroll-to-field';
 import type { HoldingType } from '../../../holdings/holding-type';
+import { scrollToField } from '../scroll-to-field/scroll-to-field';
 import { refreshBondRegisterIfStale } from '../../../bonds/bond-register-repo';
 
 import HoldingFormScreen from './holding-form.screen';
@@ -184,7 +184,7 @@ const fill = async (screen: Screen, label: string, value: string): Promise<void>
   await fireEvent.changeText(screen.getByLabelText(label), value);
 };
 
-// The holding-type field is now a select sheet (HoldingTypeField on
+// The holding-type field is a select sheet (HoldingTypeField on
 // SelectField), not an inline ChipRow: a type press has to open the sheet
 // first, then press the option row — keyed on the underlying HoldingType
 // value (not the display label), since the trigger and a still-selected
