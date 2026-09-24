@@ -178,6 +178,24 @@ describe('scripts/checks/full-word-identifiers.sh', () => {
 
       expect(result.status).toBe(2);
     });
+
+    it('exempts only the exact identifier NAME, not every identifier holding the same word at the same path', () => {
+      mkdirSync(join(dir, 'src', 'crypto-sync', 'binance'), { recursive: true });
+      const file = join(dir, 'src', 'crypto-sync', 'binance', 'binance.transactions.ts');
+      writeFileSync(
+        file,
+        'const recordKey = (record: { id: string; txId: string }): string =>\n' +
+          "  record.id || record.txId || '';\n" +
+          'type BinanceTxSyncDeps = { readClient: string };\n' +
+          'export { recordKey };\nexport type { BinanceTxSyncDeps };\n',
+      );
+
+      const result = spawnSync('bash', [SCRIPT, file], { encoding: 'utf8' });
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('BinanceTxSyncDeps');
+      expect(result.stderr).not.toContain('txId');
+    });
   });
 
   describe('project-wide mode (no file argument)', () => {
