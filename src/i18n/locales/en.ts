@@ -614,6 +614,10 @@ export const en = {
     createNewHolding: 'Create new holding',
     importButton: 'Import',
     importedCount: 'Imported {{imported}} of {{total}}',
+    // The modal (item 15, F3) a successful Import shows, carrying the exact
+    // same result text `ImportOutcome` already rendered inline — its "Done"
+    // button (`common.done`) navigates back to the account screen.
+    importResultTitle: 'Import complete',
     // A row a format's parse could not resolve (e.g. a PrivatBank currency
     // word its abbreviation map doesn't cover yet, section C.1) — excluded
     // from the import, but surfaced honestly rather than silently dropped

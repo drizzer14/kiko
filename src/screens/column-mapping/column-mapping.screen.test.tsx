@@ -335,6 +335,36 @@ describe('ColumnMappingScreen', () => {
     expect(mockImportParsedStatement).not.toHaveBeenCalled();
   });
 
+  // Item 15 (F3): a successful Import shows a MODAL with the result text,
+  // then navigates back to the account screen once dismissed — the same
+  // pattern statement-import.screen.test.tsx exercises on its own screen.
+  it('shows the import result as a modal, then navigates to AccountDetail when Done is pressed', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    mockImportParsedStatement.mockResolvedValue({
+      formatId: 'column-mapping',
+      imported: 4,
+      total: 4,
+      skippedWrongCurrency: 0,
+    });
+
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.title'))).toBeTruthy());
+    await mapMonobankColumns(view);
+    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    await waitFor(() =>
+      expect(view.getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy(),
+    );
+
+    await fireEvent.press(view.getByText(i18n.t('common.done')));
+
+    expect(view.navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+      accountId: 'a',
+      name: 'Monobank',
+    });
+  });
+
   it('imports then saves the confirmed mapping under bank:<bankId>', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
     mockImportParsedStatement.mockResolvedValue({

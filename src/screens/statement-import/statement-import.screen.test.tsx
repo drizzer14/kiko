@@ -260,7 +260,7 @@ const renderScreen = async (params: {
 // the same single-holding default every pre-T7 test in this file relies on.
 const setLiveData = (data: {
   holdings?: { id: string; name: string; accountId: string; accountName: string }[];
-  account?: { id: string; bankId?: string | null };
+  account?: { id: string; name?: string; bankId?: string | null };
   statementMappings?: Record<string, unknown> | null;
 }): void => {
   const holdings = data.holdings ?? [
@@ -432,6 +432,33 @@ describe('StatementImportScreen', () => {
     expect(
       getByText(i18n.t('statementImport.importedCount', { imported: 3, total: 4 })),
     ).toBeTruthy();
+  });
+
+  // Item 15 (F3): a successful Import shows a MODAL with the result text —
+  // the same text the screen bottom used to show inline — then navigates
+  // back to the account screen once dismissed.
+  it('shows the import result as a modal, then navigates to AccountDetail when Done is pressed', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+    mockImportStatement.mockResolvedValue({ formatId: 'monobank-csv', imported: 3, total: 4 });
+    setLiveData({ account: { id: 'a', name: 'My Monobank card', bankId: 'monobank' } });
+
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+
+    await waitFor(() => expect(view.getByText('Monobank (CSV)')).toBeTruthy());
+
+    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    await waitFor(() =>
+      expect(view.getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy(),
+    );
+
+    await fireEvent.press(view.getByText(i18n.t('common.done')));
+
+    expect(view.navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+      accountId: 'a',
+      name: 'My Monobank card',
+    });
   });
 
   // Item 2 (F3, BUG): "Add new" holding must end up SELECTED once created,

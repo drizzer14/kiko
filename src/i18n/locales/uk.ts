@@ -557,6 +557,7 @@ export const uk: typeof en = {
     createNewHolding: 'Створити актив',
     importButton: 'Імпортувати',
     importedCount: 'Імпортовано {{imported}} з {{total}}',
+    importResultTitle: 'Імпорт завершено',
     // i18next's uk plural rule: _one (1 рядок), _few (2-4 рядки), _many (0,
     // 5-20 рядків), _other (fractional, unreachable here).
     unresolvedRowsSkipped_one: '{{count}} рядок пропущено: нерозпізнана валюта',

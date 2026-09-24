@@ -50,6 +50,7 @@ import MappingResult from './mapping-result';
 import ColumnSelectField from './column-select-field';
 import ChipRow from '../forms/chip-row';
 import ImportOutcome from '../statement-import/import-outcome';
+import ImportResultSheet from '../statement-import/import-result-sheet';
 import { previewStats, type PreviewStats } from '../statement-import/preview-stats/preview-stats';
 import TargetHoldingField from '../statement-import/target-holding-field';
 import type { AmountMode } from './amount-fields/amount-fields.props';
@@ -338,7 +339,6 @@ type ColumnMappingFormProps = {
   onSelectHolding: (holdingId: string) => void;
   onCreateNewHolding: () => void;
   importError: string | undefined;
-  importResult: ImportResult | undefined;
 };
 
 const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
@@ -387,7 +387,6 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
   onSelectHolding,
   onCreateNewHolding,
   importError,
-  importResult,
 }) => {
   const { t } = useTranslation();
   const encodingLabels: Partial<Record<Encoding, string>> = {
@@ -567,7 +566,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
         testID="target-holding-field"
       />
 
-      <ImportOutcome error={importError} result={importResult} />
+      <ImportOutcome error={importError} />
     </Box>
   );
 };
@@ -781,6 +780,24 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     }
   };
 
+  // Item 15 (F3): same shape as `statement-import.screen.tsx`'s own
+  // `handleImportDone` — dismisses the successful-import modal and hands
+  // control back to the account it was imported into. `navigation.navigate`
+  // finds the existing `AccountDetail` instance already on the stack
+  // (this screen was pushed from StatementImport, itself pushed FROM
+  // there) and pops back to it in one hop.
+  const handleImportDone = (): void => {
+    setImportResult(undefined);
+
+    if (account) {
+      navigation.navigate('AccountDetail', { accountId, name: account.name });
+
+      return;
+    }
+
+    navigation.goBack();
+  };
+
   const footer =
     loadState.kind === 'ready' ? (
       <Button variant="primary" onPress={handleImport} disabled={!canImport}>
@@ -849,10 +866,15 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
               })
             }
             importError={importError}
-            importResult={importResult}
           />
         )}
       </Box>
+
+      <ImportResultSheet
+        visible={importResult !== undefined}
+        result={importResult}
+        onDone={handleImportDone}
+      />
     </Screen>
   );
 };

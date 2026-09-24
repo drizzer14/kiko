@@ -35,6 +35,7 @@ import {
 import { importStatement, type ImportResult } from '../../statement-import/import-statement';
 
 import ImportOutcome from './import-outcome';
+import ImportResultSheet from './import-result-sheet';
 import { styles } from './statement-import.styles';
 import PreviewDetailList from './preview-detail-list';
 import ExampleTransaction from './example-transaction';
@@ -175,7 +176,6 @@ const StatementPreviewBlock: FC<{
   onSelectHolding: (holdingId: string) => void;
   onCreateNewHolding: () => void;
   importError: string | undefined;
-  importResult: ImportResult | undefined;
 }> = ({
   stats,
   holdingOptions,
@@ -184,7 +184,6 @@ const StatementPreviewBlock: FC<{
   onSelectHolding,
   onCreateNewHolding,
   importError,
-  importResult,
 }) => {
   const { t } = useTranslation();
 
@@ -244,7 +243,7 @@ const StatementPreviewBlock: FC<{
         testID="target-holding-field"
       />
 
-      <ImportOutcome error={importError} result={importResult} />
+      <ImportOutcome error={importError} />
     </Box>
   );
 };
@@ -403,6 +402,27 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     }
   };
 
+  // Item 15 (F3): dismisses the successful-import modal and hands control
+  // back to the account it was imported into — `navigation.navigate` finds
+  // the existing `AccountDetail` instance already on the stack (this screen,
+  // and Map Columns before it, were both pushed FROM there) and pops back to
+  // it, regardless of how many screens deep this import happened. Falls back
+  // to a plain `goBack()` when the account isn't resolvable (the accountId-
+  // less Share Extension entry point), rather than navigating nowhere.
+  const handleImportDone = (): void => {
+    setImportResult(undefined);
+
+    const account = accountRows.at(0);
+
+    if (accountId && account) {
+      navigation.navigate('AccountDetail', { accountId, name: account.name });
+
+      return;
+    }
+
+    navigation.goBack();
+  };
+
   // T7's manual entry point into the generic column-mapping screen. Only
   // navigates when `accountId` is known — the Share Extension entry point
   // (no `accountId`) has no defined "map for which account" behavior yet,
@@ -477,10 +497,15 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
             onSelectHolding={setSelectedHoldingId}
             onCreateNewHolding={handleCreateNewHolding}
             importError={importError}
-            importResult={importResult}
           />
         )}
       </Box>
+
+      <ImportResultSheet
+        visible={importResult !== undefined}
+        result={importResult}
+        onDone={handleImportDone}
+      />
     </Screen>
   );
 };
