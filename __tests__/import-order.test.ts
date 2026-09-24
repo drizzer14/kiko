@@ -65,6 +65,44 @@ describe('scripts/checks/import-order.sh', () => {
     expect(result.status).toBe(0);
   });
 
+  // I3: a jest.mock prelude (a `let` the mock factory closes over, then the
+  // mock call itself) sits before the real import block in real test files
+  // (settings.repo.test.ts, holdings.repo.test.ts). The checker must look
+  // PAST that prelude for the import header, not stop at the first
+  // non-blank/comment/import line and conclude there is nothing to check.
+  it('checks the import block even when a jest.mock prelude precedes it', () => {
+    const result = runCheck(
+      'let mockTransaction: unknown;\n' +
+        "jest.mock('../db/client', () => {\n" +
+        '  return { mockTransaction };\n' +
+        '});\n' +
+        '\n' +
+        "import { aVeryLongIdentifierNameHere } from 'some-external-package-name';\n" +
+        "import { x } from 'y';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('Import ordering');
+  });
+
+  it('passes a correctly-sorted import block behind a jest.mock prelude', () => {
+    const result = runCheck(
+      'let mockTransaction: unknown;\n' +
+        "jest.mock('../db/client', () => {\n" +
+        '  return { mockTransaction };\n' +
+        '});\n' +
+        '\n' +
+        "import { x } from 'y';\n" +
+        "import { aVeryLongIdentifierNameHere } from 'some-external-package-name';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+    );
+
+    expect(result.status).toBe(0);
+  });
+
   it('exits 0 on a non-.ts/.tsx file', () => {
     const file = join(dir, 'fixture.md');
     writeFileSync(file, '# not typescript\n');
@@ -228,6 +266,16 @@ describe('scripts/checks/import-order.js --write', () => {
         '// note about X\n' +
         '/** JSDoc for X */\n' +
         'export const X = 1;\n',
+      'let mockTransaction: unknown;\n' +
+        "jest.mock('../db/client', () => {\n" +
+        '  return { mockTransaction };\n' +
+        '});\n' +
+        '\n' +
+        "import { aVeryLongIdentifierNameHere } from 'some-external-package-name';\n" +
+        "import { x } from 'y';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+      '// A file with no import at all.\nexport const Foo = 1;\n',
     ];
 
     it.each(fixtures.map((source, index) => [index, source] as const))(

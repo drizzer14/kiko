@@ -22,6 +22,11 @@
 // `--write` leaves that file's imports untouched rather than guess where the
 // comment should travel — while the checker still evaluates order across
 // it, since detecting a violation does not require moving anything.
+//
+// A file may put a small prelude before its real import block (a `let`
+// closed over by a `jest.mock(...)` factory, then the mock call itself) —
+// skipPrelude below looks past it for the header, rather than concluding
+// there is nothing to check.
 
 const fs = require('node:fs');
 
@@ -67,7 +72,10 @@ function consumeLineComment(lines, start) {
   return i;
 }
 
-function consumeImport(lines, start) {
+// Consumes one `;`-terminated statement (wrapped or not) starting at
+// `start` — used both for a real import and, in skipPrelude below, for an
+// arbitrary leading statement this file needs to skip past.
+function consumeStatement(lines, start) {
   let i = start;
   while (i < lines.length && !endsStatement(lines[i])) {
     i += 1;
@@ -76,13 +84,52 @@ function consumeImport(lines, start) {
   return Math.min(i + 1, lines.length);
 }
 
-// Reads forward from the top of the file, classifying the leading run as a
-// sequence of raw entries ({ kind: 'blank' | 'comment' | 'import', lines }).
-// Stops (returns { entries, headerEnd }) at the first line that is none of
-// blank/comment/import — the header ends there, exclusive.
-function parseHeaderEntries(lines) {
-  const entries = [];
+// Some real test files put a small prelude before their real import block —
+// a `let` declaration a `jest.mock(...)` factory closes over, then the
+// mock call itself (settings.repo.test.ts, holdings.repo.test.ts). Returns
+// the index where the checkable header actually starts: the first prelude
+// statement (and any blank/comment run directly above it, which explains
+// the prelude, not the imports) is skipped, and skipping repeats until a
+// real import line is found or the file runs out. A file with no import at
+// all skips everything and returns lines.length — nothing to check, same
+// as today for such a file.
+function skipPrelude(lines) {
   let i = 0;
+
+  for (;;) {
+    let cursor = i;
+
+    while (cursor < lines.length) {
+      if (isBlockCommentOpen(lines[cursor])) {
+        cursor = consumeBlockComment(lines, cursor);
+        continue;
+      }
+      if (isLineComment(lines[cursor])) {
+        cursor = consumeLineComment(lines, cursor);
+        continue;
+      }
+      if (isBlank(lines[cursor])) {
+        cursor += 1;
+        continue;
+      }
+      break;
+    }
+
+    if (cursor >= lines.length || isImportOpen(lines[cursor])) {
+      return i;
+    }
+
+    i = consumeStatement(lines, cursor);
+  }
+}
+
+// Reads forward from `start`, classifying the leading run as a sequence of
+// raw entries ({ kind: 'blank' | 'comment' | 'import', lines }). Stops
+// (returns { entries, headerEnd }) at the first line that is none of
+// blank/comment/import — the header ends there, exclusive.
+function parseHeaderEntries(lines, start = 0) {
+  const entries = [];
+  let i = start;
 
   while (i < lines.length) {
     const line = lines[i];
@@ -108,7 +155,7 @@ function parseHeaderEntries(lines) {
     }
 
     if (isImportOpen(line)) {
-      const end = consumeImport(lines, i);
+      const end = consumeStatement(lines, i);
       entries.push({ kind: 'import', lines: lines.slice(i, end) });
       i = end;
       continue;
@@ -249,6 +296,21 @@ function trailingBlankCount(entries) {
   return count;
 }
 
+// Mirrors trailingBlankCount for the START of `entries` — normally 0 (a
+// header's first entry is its first comment or import), but skipPrelude
+// leaves the blank line that separated a prelude from the real import block
+// as entries[0], and that gap needs restoring the same way the trailing one
+// does.
+function leadingBlankCount(entries) {
+  let count = 0;
+
+  for (let i = 0; i < entries.length && entries[i].kind === 'blank'; i += 1) {
+    count += 1;
+  }
+
+  return count;
+}
+
 function isSorted(items) {
   for (let i = 1; i < items.length; i += 1) {
     if (compareKeys(sortKey(items[i - 1].statementLines), sortKey(items[i].statementLines)) > 0) {
@@ -261,7 +323,7 @@ function isSorted(items) {
 
 function checkImportOrder(source) {
   const lines = source.split('\n');
-  const { entries } = parseHeaderEntries(lines);
+  const { entries } = parseHeaderEntries(lines, skipPrelude(lines));
   const groups = splitIntoGroups(entries);
   const violations = [];
 
@@ -288,7 +350,9 @@ function checkImportOrder(source) {
 // left completely untouched. Returns { text, changed, unsafeGroups }.
 function fixImportOrder(source) {
   const lines = source.split('\n');
-  const { entries, headerEnd } = parseHeaderEntries(lines);
+  const start = skipPrelude(lines);
+  const prelude = lines.slice(0, start);
+  const { entries, headerEnd } = parseHeaderEntries(lines, start);
   const groups = splitIntoGroups(entries);
   let unsafeGroups = 0;
   let changed = false;
@@ -330,8 +394,9 @@ function fixImportOrder(source) {
     index === 0 ? group : ['', ...group],
   );
   const rest = lines.slice(headerEnd);
+  const leadingGap = Array(leadingBlankCount(entries)).fill('');
   const gap = Array(trailingBlankCount(entries)).fill('');
-  const text = [...rebuiltHeader, ...gap, ...rest].join('\n');
+  const text = [...prelude, ...leadingGap, ...rebuiltHeader, ...gap, ...rest].join('\n');
 
   return { text, changed, unsafeGroups };
 }
