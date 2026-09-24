@@ -1586,6 +1586,235 @@ describe('HoldingFormScreen metal', () => {
   });
 });
 
+describe('HoldingFormScreen loan (T28)', () => {
+  beforeEach(() => {
+    createMock.mockClear();
+    setIconMock.mockClear();
+    navigation.goBack.mockClear();
+    updateDeltaMock.mockClear();
+    mockAccountKind = 'debt';
+    mockAccountInstitution = null;
+  });
+
+  const fillLoanFields = async (screen: Screen): Promise<void> => {
+    await fill(screen, 'Name', 'Car loan');
+    await fill(screen, 'Principal', '500000');
+    await pickDate(screen, 'Start Date', 2026, 1, 1);
+  };
+
+  it('creates an annuity loan with a full LoanMeta and no firstPricePoint', async () => {
+    const screen = await renderScreen();
+
+    await fillLoanFields(screen);
+    await fill(screen, 'Annual Rate %', '12');
+    await fill(screen, 'Term (Months)', '24');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'loan',
+        balanceMinorUnits: 0,
+        metadata: {
+          kind: 'mortgage',
+          principalMinorUnits: 50_000_000,
+          startDate: localDay(2026, 1, 1),
+          schedule: 'annuity',
+          annualRatePct: 12,
+          termMonths: 24,
+        },
+      }),
+    );
+    expect(createMock.mock.calls[0][0]).not.toHaveProperty('firstPricePoint');
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('creates a car-loan-kind loan under the tapped kind chip', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Car loan'));
+    await fillLoanFields(screen);
+    await fill(screen, 'Annual Rate %', '9');
+    await fill(screen, 'Term (Months)', '36');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ kind: 'car_loan' }) }),
+    );
+  });
+
+  it('creates a "none" (informal) loan with a first manual price point equal to the principal at the start date', async () => {
+    const screen = await renderScreen();
+
+    await fillLoanFields(screen);
+    await fireEvent.press(screen.getByText('No schedule'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'loan',
+        balanceMinorUnits: 0,
+        metadata: {
+          kind: 'mortgage',
+          principalMinorUnits: 50_000_000,
+          startDate: localDay(2026, 1, 1),
+          schedule: 'none',
+        },
+        firstPricePoint: { day: expect.any(Number), price: '500000.00' },
+      }),
+    );
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('writes no balance TextField for a loan holding (it is ledgerless)', async () => {
+    const screen = await renderScreen();
+
+    expect(screen.queryByLabelText('Balance')).toBeNull();
+  });
+
+  it('hides the rate and term fields, and does not block save on them, for a "none" schedule', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('No schedule'));
+
+    expect(screen.queryByLabelText('Annual Rate %')).toBeNull();
+    expect(screen.queryByLabelText('Term (Months)')).toBeNull();
+
+    await fillLoanFields(screen);
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).toHaveBeenCalled();
+  });
+
+  it('blocks save and shows the principal error for a blank principal, only after Save is pressed', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'Car loan');
+    expect(screen.queryByText('Enter a principal greater than 0.')).toBeNull();
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Enter a principal greater than 0.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('shows the start-date reason directly on that field, once the principal is set but no date is picked', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'Car loan');
+    await fill(screen, 'Principal', '500000');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Pick a start date.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  // T26 review M1 (carried into T28): a degenerate term must not silently pass.
+  it('shows the term reason for a zero term on an annuity loan', async () => {
+    const screen = await renderScreen();
+
+    await fillLoanFields(screen);
+    await fill(screen, 'Annual Rate %', '12');
+    await fill(screen, 'Term (Months)', '0');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Enter a whole number of months greater than 0.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('renders a visible text label above every loan field', async () => {
+    const screen = await renderScreen();
+
+    expect(screen.getByText('Kind')).toBeTruthy();
+    expect(screen.getByLabelText('Principal')).toBeTruthy();
+    expect(screen.getByLabelText('Start Date')).toBeTruthy();
+    expect(screen.getByText('Schedule')).toBeTruthy();
+    expect(screen.getByLabelText('Annual Rate %')).toBeTruthy();
+    expect(screen.getByLabelText('Term (Months)')).toBeTruthy();
+  });
+
+  it('edits a loan holding, saving every field as editable metadata (not create-only)', async () => {
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Car loan',
+      type: 'loan',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        kind: 'car_loan',
+        principalMinorUnits: 50_000_000,
+        startDate: localDay(2026, 1, 1),
+        schedule: 'annuity',
+        annualRatePct: 12,
+        termMonths: 24,
+      },
+    });
+
+    expect(screen.getByLabelText('Principal').props.value).toBe('500 000');
+    expect(screen.getByLabelText('Annual Rate %').props.value).toBe('12');
+    expect(screen.getByLabelText('Term (Months)').props.value).toBe('24');
+
+    await fill(screen, 'Principal', '600000');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(updateDeltaMock).toHaveBeenCalledWith(
+      'h1',
+      expect.objectContaining({
+        metadata: {
+          kind: 'car_loan',
+          principalMinorUnits: 60_000_000,
+          startDate: localDay(2026, 1, 1),
+          schedule: 'annuity',
+          annualRatePct: 12,
+          termMonths: 24,
+        },
+      }),
+      expect.any(Number),
+    );
+    expect(updateDeltaMock.mock.calls[0][1]).not.toHaveProperty('balanceMinorUnits');
+  });
+
+  it('edits a "none" loan, keeping its schedule and hiding the rate/term fields', async () => {
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'IOU',
+      type: 'loan',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        kind: 'personal',
+        principalMinorUnits: 10_000_00,
+        startDate: localDay(2026, 1, 1),
+        schedule: 'none',
+      },
+    });
+
+    expect(screen.queryByLabelText('Annual Rate %')).toBeNull();
+    expect(screen.queryByLabelText('Term (Months)')).toBeNull();
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(updateDeltaMock).toHaveBeenCalledWith(
+      'h1',
+      expect.objectContaining({
+        metadata: {
+          kind: 'personal',
+          principalMinorUnits: 10_000_00,
+          startDate: localDay(2026, 1, 1),
+          schedule: 'none',
+        },
+      }),
+      expect.any(Number),
+    );
+  });
+});
+
 describe('HoldingFormScreen icon', () => {
   beforeEach(() => {
     createMock.mockClear();

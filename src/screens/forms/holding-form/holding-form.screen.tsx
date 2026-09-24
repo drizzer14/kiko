@@ -24,6 +24,8 @@ import {
   type BondKind,
   type BondMeta,
   type BondCouponFrequency,
+  type LoanKind,
+  type LoanSchedule,
   type Metal,
   type MetalForm,
   type MetalUnit,
@@ -67,10 +69,12 @@ import HoldingIdentityField from '../holding-identity-field';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import { groupAmount, majorAmountText } from '../amount-format/amount-format';
 
+import LoanSection from './loan-section';
 import MetalSection from './metal-section';
 import PropertySection from './property-section';
 import BondIsinSection from './bond-isin-section';
 import ManualBondFields from './manual-bond-fields';
+import { useLoanFields, type LoanReasonKey, type UseLoanFieldsResult } from './use-loan-fields';
 import { useBondIsinMode, type IsinReasonKey } from './use-bond-isin-mode';
 import type { BondEntryMode } from './bond-isin-section/bond-isin-section.props';
 
@@ -374,12 +378,99 @@ const buildMetalCreatePayload = (params: {
   };
 };
 
+// The fields `buildLoanEditMetadata`/`buildLoanCreatePayload` both need,
+// read straight off `useLoanFields`'s own state — kept as a small bespoke
+// shape (mirroring `buildMetalCreatePayload`'s own params object) rather
+// than importing the hook's full result type, so these two module-level
+// helpers stay decoupled from the hook's other (setter/validation) fields.
+type LoanFieldsSnapshot = {
+  kind: LoanKind;
+  principal: string;
+  startDate: number | null;
+  schedule: LoanSchedule;
+  annualRatePct: string;
+  termMonths: string;
+};
+
+// A loan's `LoanMeta` (T26/T28, spec 5.1): the principal converts to minor
+// units, the rate/term pair is included only for a structured schedule (a
+// `'none'` loan has no known rate/term at all — `asLoanMeta` round-trips
+// them as `undefined`). Shared by `buildMetadata`'s EDIT branch and
+// `buildLoanCreatePayload` below, so the two can never build a differently
+// shaped `LoanMeta` for the same field values.
+const buildLoanMeta = (
+  fields: LoanFieldsSnapshot,
+  currency: Currency,
+): Record<string, unknown> => ({
+  kind: fields.kind,
+  principalMinorUnits: Money.fromMajor(currency, parseAmount(fields.principal) || 0).minorUnits,
+  startDate: fields.startDate ?? Date.now(),
+  schedule: fields.schedule,
+  ...(fields.schedule === 'none'
+    ? {}
+    : {
+        annualRatePct: parseAmount(fields.annualRatePct) || 0,
+        termMonths: parseAmount(fields.termMonths) || 0,
+      }),
+});
+
+// EDIT-mode metadata: called from `buildMetadata` (extracted purely to keep
+// that function's own branch count under the cognitive-complexity budget —
+// the same reason `buildPropertyCreatePayload`/`buildMetalCreatePayload`
+// are their own module-level functions rather than inlined).
+const buildLoanEditMetadata = (
+  fields: LoanFieldsSnapshot,
+  currency: Currency,
+): Record<string, unknown> => buildLoanMeta(fields, currency);
+
+// The loan CREATE payload (T28): a zero stored balance (ledgerless — its
+// value derives entirely from the schedule math / its own manual series,
+// kiko-domain) plus the `LoanMeta` above. A `'none'` schedule (an informal
+// debt) ADDITIONALLY writes a first `manual` price point on the holding's
+// own `holding:<id>` series equal to the principal, dated the start day —
+// mirroring `buildPropertyCreatePayload`'s own first-point convention —
+// so `loanOutstandingMinorAt`'s manual-series read never comes up empty
+// before the user records a real correction. An `'annuity'`/`'differentiated'`
+// schedule writes none: its outstanding is computed at read time from the
+// principal + schedule (`loanOutstandingMinorAt`'s own no-correction
+// fallback), so no correction point is needed yet.
+const buildLoanCreatePayload = (
+  fields: LoanFieldsSnapshot,
+  currency: Currency,
+): {
+  balanceMinorUnits: number;
+  metadata: Record<string, unknown>;
+  firstPricePoint?: { day: number; price: string };
+} => {
+  const metadata = buildLoanMeta(fields, currency);
+
+  if (fields.schedule !== 'none') {
+    return { balanceMinorUnits: 0, metadata };
+  }
+
+  const principalMinorUnits = Money.fromMajor(
+    currency,
+    parseAmount(fields.principal) || 0,
+  ).minorUnits;
+  const day = dayKeyOf(fields.startDate ?? Date.now());
+
+  return {
+    balanceMinorUnits: 0,
+    metadata,
+    firstPricePoint: {
+      day,
+      price: shiftDecimal(String(principalMinorUnits), -currencyScale[currency]),
+    },
+  };
+};
+
 // The type-specific CREATE payload: `property_item` and `metal` (T20) each
 // seed their own first lot (`buildPropertyCreatePayload`/
 // `buildMetalCreatePayload` above) instead of a plain opening balance +
-// generic metadata. Grouped here — rather than a nested ternary in `save`'s
-// create call, which the project's `noNestedTernary` lint rule forbids — so
-// `save` keeps a single flat spread.
+// generic metadata; `loan` (T28) seeds its `LoanMeta` (and, for a `'none'`
+// schedule, its first manual correction point) the same way. Grouped here —
+// rather than a nested ternary in `save`'s create call, which the project's
+// `noNestedTernary` lint rule forbids — so `save` keeps a single flat spread.
 const createPayloadFor = (params: {
   type: HoldingType;
   currency: Currency;
@@ -393,6 +484,7 @@ const createPayloadFor = (params: {
   metalPurity: string;
   metalQuantity: string;
   metalCost: string;
+  loanFields: LoanFieldsSnapshot;
 }): {
   balanceMinorUnits: number;
   metadata: Record<string, unknown> | undefined;
@@ -417,6 +509,10 @@ const createPayloadFor = (params: {
       quantity: params.metalQuantity,
       cost: params.metalCost,
     });
+  }
+
+  if (type === 'loan') {
+    return buildLoanCreatePayload(params.loanFields, params.currency);
   }
 
   return {
@@ -469,13 +565,15 @@ const fieldErrorMessage = (
     | IsinReasonKey
     | PropertyReasonKey
     | MetalReasonKey
+    | LoanReasonKey
     | null,
   expectedKey:
     | TermDepositReasonKey
     | BondReasonKey
     | IsinReasonKey
     | PropertyReasonKey
-    | MetalReasonKey,
+    | MetalReasonKey
+    | LoanReasonKey,
 ): string | undefined => (attemptedSave && reasonKey === expectedKey ? t(expectedKey) : undefined);
 
 // The ISIN field's OWN inline error text — every `isinReasonKey` EXCEPT
@@ -536,6 +634,8 @@ type ValidatedFieldRefs = {
   propertyCostFieldRef: RefObject<FieldInstance | null>;
   metalQuantityFieldRef: RefObject<FieldInstance | null>;
   metalCostFieldRef: RefObject<FieldInstance | null>;
+  loanPrincipalFieldRef: RefObject<FieldInstance | null>;
+  loanStartDateFieldRef: RefObject<FieldInstance | null>;
 };
 
 // A blocked Save's FOCUS action for each TEXT-backed validated field — called
@@ -555,6 +655,7 @@ type ValidatedFieldFocus = {
   propertyCost: () => void;
   metalQuantity: () => void;
   metalCost: () => void;
+  loanPrincipal: () => void;
 };
 
 // The first still-invalid field's own wrapper ref (plus its FOCUS action,
@@ -577,6 +678,7 @@ const firstInvalidFieldRef = (params: {
   pickedCouponFrequency: BondCouponFrequency | null;
   propertyReasonKey: PropertyReasonKey | null;
   metalReasonKey: MetalReasonKey | null;
+  loanReasonKey: LoanReasonKey | null;
   refs: ValidatedFieldRefs;
   focus: ValidatedFieldFocus;
 }): { ref: RefObject<FieldInstance | null>; focus?: () => void } | null => {
@@ -591,6 +693,7 @@ const firstInvalidFieldRef = (params: {
     pickedCouponFrequency,
     propertyReasonKey,
     metalReasonKey,
+    loanReasonKey,
     refs,
     focus,
   } = params;
@@ -677,11 +780,131 @@ const firstInvalidFieldRef = (params: {
           },
         ]
       : []),
+    ...(type === 'loan'
+      ? [
+          {
+            invalid: loanReasonKey === 'forms.holding.loanPrincipalError',
+            ref: refs.loanPrincipalFieldRef,
+            focus: focus.loanPrincipal,
+          },
+          {
+            invalid: loanReasonKey === 'forms.holding.loanStartDateError',
+            ref: refs.loanStartDateFieldRef,
+          },
+          {
+            invalid: loanReasonKey === 'forms.holding.annualRateError',
+            ref: refs.annualRateFieldRef,
+            focus: focus.annualRate,
+          },
+          {
+            invalid: loanReasonKey === 'forms.holding.termMonthsError',
+            ref: refs.termMonthsFieldRef,
+            focus: focus.termMonths,
+          },
+        ]
+      : []),
   ];
 
   const entry = order.find((candidate) => candidate.invalid);
 
   return entry === undefined ? null : { ref: entry.ref, focus: entry.focus };
+};
+
+// The `type === 'loan'` details block (T28): a separate leaf component,
+// rather than an inline `{type === 'loan' && (...)}` conditional in
+// `HoldingFormScreen`'s own render — that conditional would be one more
+// branch on top of an already-at-the-ceiling component, tipping its
+// cognitive-complexity score over the budget. Wrapping it in its OWN
+// component moves the branch (and every field-error/ref wire-up inside it)
+// onto THIS function's own complexity budget instead, which starts fresh.
+// Renders null outside `type === 'loan'`, the same as the `&&` it replaces.
+type LoanFormBlockProps = {
+  type: HoldingType;
+  t: TFunction;
+  attemptedSave: boolean;
+  currency: Currency;
+  loanFields: UseLoanFieldsResult;
+  loanPrincipalFieldRef: RefObject<FieldInstance | null>;
+  loanPrincipalInputRef: RefObject<TextInputInstance | null>;
+  loanStartDateFieldRef: RefObject<FieldInstance | null>;
+  annualRateFieldRef: RefObject<FieldInstance | null>;
+  annualRateInputRef: RefObject<TextInputInstance | null>;
+  termMonthsFieldRef: RefObject<FieldInstance | null>;
+  termMonthsInputRef: RefObject<TextInputInstance | null>;
+};
+
+const LoanFormBlock: FC<LoanFormBlockProps> = ({
+  type,
+  t,
+  attemptedSave,
+  currency,
+  loanFields,
+  loanPrincipalFieldRef,
+  loanPrincipalInputRef,
+  loanStartDateFieldRef,
+  annualRateFieldRef,
+  annualRateInputRef,
+  termMonthsFieldRef,
+  termMonthsInputRef,
+}) => {
+  if (type !== 'loan') {
+    return null;
+  }
+
+  return (
+    <Box gap={4}>
+      <Divider testID="form-divider" />
+
+      <Text variant="heading">{t('forms.holding.details')}</Text>
+
+      <LoanSection
+        kind={loanFields.kind}
+        onSelectKind={loanFields.setKind}
+        principal={loanFields.principal}
+        onChangePrincipal={(text) => loanFields.setPrincipal(groupAmount(text))}
+        principalError={fieldErrorMessage(
+          t,
+          attemptedSave,
+          loanFields.reasonKey,
+          'forms.holding.loanPrincipalError',
+        )}
+        principalFieldRef={loanPrincipalFieldRef}
+        principalInputRef={loanPrincipalInputRef}
+        currencySuffix={currencySymbol[currency]}
+        startDate={loanFields.startDate}
+        onChangeStartDate={loanFields.setStartDate}
+        startDateError={fieldErrorMessage(
+          t,
+          attemptedSave,
+          loanFields.reasonKey,
+          'forms.holding.loanStartDateError',
+        )}
+        startDateFieldRef={loanStartDateFieldRef}
+        schedule={loanFields.schedule}
+        onSelectSchedule={loanFields.setSchedule}
+        annualRatePct={loanFields.annualRatePct}
+        onChangeAnnualRatePct={loanFields.setAnnualRatePct}
+        annualRatePctError={fieldErrorMessage(
+          t,
+          attemptedSave,
+          loanFields.reasonKey,
+          'forms.holding.annualRateError',
+        )}
+        annualRatePctFieldRef={annualRateFieldRef}
+        annualRatePctInputRef={annualRateInputRef}
+        termMonths={loanFields.termMonths}
+        onChangeTermMonths={loanFields.setTermMonths}
+        termMonthsError={fieldErrorMessage(
+          t,
+          attemptedSave,
+          loanFields.reasonKey,
+          'forms.holding.termMonthsError',
+        )}
+        termMonthsFieldRef={termMonthsFieldRef}
+        termMonthsInputRef={termMonthsInputRef}
+      />
+    </Box>
+  );
 };
 
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
@@ -845,6 +1068,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const propertyCostFieldRef = useRef<FieldInstance>(null);
   const metalQuantityFieldRef = useRef<FieldInstance>(null);
   const metalCostFieldRef = useRef<FieldInstance>(null);
+  const loanPrincipalFieldRef = useRef<FieldInstance>(null);
+  const loanStartDateFieldRef = useRef<FieldInstance>(null);
   // The TEXT-backed validated fields' own inner TextInput/name-input, so a
   // blocked Save can focus the first-invalid one imperatively once it has
   // scrolled into view — mirrors `TextField`'s own `inputRef` /
@@ -863,6 +1088,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const propertyCostInputRef = useRef<TextInputInstance>(null);
   const metalQuantityInputRef = useRef<TextInputInstance>(null);
   const metalCostInputRef = useRef<TextInputInstance>(null);
+  const loanPrincipalInputRef = useRef<TextInputInstance>(null);
 
   // term deposit state
   const nextContributionId = useRef(1);
@@ -935,6 +1161,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const [metalQuantity, setMetalQuantity] = useState('');
   const [metalCost, setMetalCost] = useState('');
   const [metalLots, setMetalLots] = useState<Lot[]>([]);
+
+  // loan state (T28). Unlike property/metal, every field here is editable in
+  // BOTH create and edit mode (mirrors term_deposit/bond) — see
+  // `useLoanFields`'s own doc comment for why this hook owns the full state
+  // + per-schedule validation rather than a bag of module-level helpers.
+  const loanFields = useLoanFields();
 
   // A `metal` holding's value is hard-fixed to UAH regardless of currency
   // (NBU quotes precious metals only in UAH — kiko-pricing), so the currency
@@ -1012,8 +1244,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       return;
     }
 
+    if (holding.type === 'loan') {
+      loanFields.seed(holding);
+      return;
+    }
+
     setOpeningBalance(groupAmount(majorAmountText(holding.currency, holding.balanceMinorUnits)));
-  }, [isEdit, editingHolding, setBondMode, setIsin]);
+  }, [isEdit, editingHolding, setBondMode, setIsin, loanFields.seed]);
 
   // The stack sets the static "Add Holding" title; in edit mode override it with
   // "Edit Holding" so the header reads correctly for the update flow.
@@ -1161,6 +1398,15 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         lots: metalLots,
       };
     }
+    // A loan's CREATE metadata is built separately (see `save`'s create
+    // branch, `buildLoanCreatePayload`) — a `'none'` schedule additionally
+    // writes a `firstPricePoint` there. This branch covers EDIT mode only:
+    // unlike property/metal, every field stays user-editable after
+    // creation (T28) — there is no fixed-at-creation "first lot" a loan's
+    // principal/dates/schedule are frozen against.
+    if (type === 'loan' && isEdit) {
+      return buildLoanEditMetadata(loanFields, currency);
+    }
     return undefined;
   };
 
@@ -1292,8 +1538,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       .with('bond', isBondValid)
       .with('property_item', isPropertyValid)
       .with('metal', isMetalValid)
-      // loan: no create section until T28.
-      .with('card', 'cash', 'crypto_asset', 'jar', 'loan', () => true)
+      .with('loan', () => loanFields.isValid)
+      .with('card', 'cash', 'crypto_asset', 'jar', () => true)
       .exhaustive();
 
   const [attemptedSave, setAttemptedSave] = useState(false);
@@ -1315,6 +1561,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         pickedCouponFrequency,
         propertyReasonKey: propertyReasonKey(),
         metalReasonKey: metalReasonKey(),
+        loanReasonKey: loanFields.reasonKey,
         refs: {
           nameFieldRef,
           contributionsFieldRef,
@@ -1329,6 +1576,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           propertyCostFieldRef,
           metalQuantityFieldRef,
           metalCostFieldRef,
+          loanPrincipalFieldRef,
+          loanStartDateFieldRef,
         },
         focus: {
           name: () => nameInputRef.current?.focus(),
@@ -1341,6 +1590,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           propertyCost: () => propertyCostInputRef.current?.focus(),
           metalQuantity: () => metalQuantityInputRef.current?.focus(),
           metalCost: () => metalCostInputRef.current?.focus(),
+          loanPrincipal: () => loanPrincipalInputRef.current?.focus(),
         },
       });
 
@@ -1429,6 +1679,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           metalPurity,
           metalQuantity,
           metalCost,
+          loanFields,
         }),
       });
 
@@ -1918,6 +2169,21 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             />
           </Box>
         )}
+
+        <LoanFormBlock
+          type={type}
+          t={t}
+          attemptedSave={attemptedSave}
+          currency={currency}
+          loanFields={loanFields}
+          loanPrincipalFieldRef={loanPrincipalFieldRef}
+          loanPrincipalInputRef={loanPrincipalInputRef}
+          loanStartDateFieldRef={loanStartDateFieldRef}
+          annualRateFieldRef={annualRateFieldRef}
+          annualRateInputRef={annualRateInputRef}
+          termMonthsFieldRef={termMonthsFieldRef}
+          termMonthsInputRef={termMonthsInputRef}
+        />
       </Box>
     </Screen>
   );

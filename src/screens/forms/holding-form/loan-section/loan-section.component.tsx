@@ -13,6 +13,7 @@ import {
 } from '../../../../holdings/holding-metadata';
 import Box from '../../../../design-system/components/box';
 import TextField from '../../../../design-system/components/text-field';
+import FieldLabel from '../../../../design-system/components/field-label';
 import SegmentedControl from '../../../../design-system/components/segmented-control';
 
 import type { LoanSectionProps } from './loan-section.props';
@@ -105,13 +106,17 @@ const LoanSection: FC<LoanSectionProps> = ({
         />
       </View>
 
-      <SegmentedControl<LoanSchedule>
-        options={loanSchedules}
-        selected={schedule}
-        onSelect={onSelectSchedule}
-        labels={loanScheduleLabels(t)}
-        accessibilityLabel={t('forms.holding.loanScheduleLabel')}
-      />
+      <Box gap={1}>
+        <FieldLabel label={t('forms.holding.loanScheduleLabel')} />
+
+        <SegmentedControl<LoanSchedule>
+          options={loanSchedules}
+          selected={schedule}
+          onSelect={onSelectSchedule}
+          labels={loanScheduleLabels(t)}
+          accessibilityLabel={t('forms.holding.loanScheduleLabel')}
+        />
+      </Box>
 
       {schedule !== 'none' && (
         <>

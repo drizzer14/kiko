@@ -86,9 +86,10 @@ describe('LoanSection', () => {
     expect(getByText('Pick a start date.')).toBeTruthy();
   });
 
-  it('renders the schedule choices under the Schedule control', async () => {
+  it('renders the schedule choices under the Schedule label and control', async () => {
     const { getByText } = await render(<LoanSection {...baseProps} />);
 
+    expect(getByText('Schedule')).toBeTruthy();
     expect(getByText('Annuity')).toBeTruthy();
     expect(getByText('Differentiated')).toBeTruthy();
     expect(getByText('No schedule')).toBeTruthy();
