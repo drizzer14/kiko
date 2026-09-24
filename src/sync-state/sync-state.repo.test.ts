@@ -4,12 +4,12 @@
 // single-row `settings` repo, `sync_state` holds one row PER account id, so the
 // fake handle interprets the `where(eq(syncState.accountId, id))` clause: a
 // setter must touch only the row for the given account id.
-let mockTx: unknown;
+let mockTransaction: unknown;
 jest.mock('../db/client', () => {
   const actual = jest.requireActual('../db/client');
   return {
     ...actual,
-    write: (work: (db: unknown) => unknown) => work(mockTx),
+    write: (work: (db: unknown) => unknown) => work(mockTransaction),
   };
 });
 
@@ -39,7 +39,7 @@ const accountIdFromCondition = (condition: unknown): string => {
  * a setter's `update(...).set(...).where(...)` mutates in place ONLY the row
  * whose account id matches the clause, proving cross-account isolation.
  */
-const makeSyncStateTx = (store: Record<string, unknown>[]): unknown => ({
+const makeSyncStateTransaction = (store: Record<string, unknown>[]): unknown => ({
   insert: () => ({
     values: (values: Record<string, unknown>) => ({
       onConflictDoNothing: async () => {
@@ -89,7 +89,7 @@ describe('syncStateRepo', () => {
 
   it('ensure inserts exactly one row for an account id and is idempotent', async () => {
     const store: Record<string, unknown>[] = [];
-    mockTx = makeSyncStateTx(store);
+    mockTransaction = makeSyncStateTransaction(store);
     spyOnSyncStateSelect(store);
 
     await syncStateRepo.ensure('acct-A');
@@ -103,7 +103,7 @@ describe('syncStateRepo', () => {
 
   it('ensure keeps a distinct row per account id', async () => {
     const store: Record<string, unknown>[] = [];
-    mockTx = makeSyncStateTx(store);
+    mockTransaction = makeSyncStateTransaction(store);
     spyOnSyncStateSelect(store);
 
     await syncStateRepo.ensure('acct-A');
@@ -115,7 +115,7 @@ describe('syncStateRepo', () => {
 
   it('setLastSyncAt writes only the target account row, never another account', async () => {
     const store: Record<string, unknown>[] = [{ accountId: 'acct-A' }, { accountId: 'acct-B' }];
-    mockTx = makeSyncStateTx(store);
+    mockTransaction = makeSyncStateTransaction(store);
     spyOnSyncStateSelect(store);
 
     await syncStateRepo.setLastSyncAt('acct-A', 1_700_000_000_000);
@@ -126,7 +126,7 @@ describe('syncStateRepo', () => {
 
   it('setLastFullSyncAt writes only the target account row', async () => {
     const store: Record<string, unknown>[] = [{ accountId: 'acct-A' }, { accountId: 'acct-B' }];
-    mockTx = makeSyncStateTx(store);
+    mockTransaction = makeSyncStateTransaction(store);
     spyOnSyncStateSelect(store);
 
     await syncStateRepo.setLastFullSyncAt('acct-B', 1_700_000_000_001);
@@ -137,7 +137,7 @@ describe('syncStateRepo', () => {
 
   it('setLastSyncDisplayAt writes only the target account row', async () => {
     const store: Record<string, unknown>[] = [{ accountId: 'acct-A' }, { accountId: 'acct-B' }];
-    mockTx = makeSyncStateTx(store);
+    mockTransaction = makeSyncStateTransaction(store);
     spyOnSyncStateSelect(store);
 
     await syncStateRepo.setLastSyncDisplayAt('acct-A', 1_700_000_000_002);
@@ -148,7 +148,7 @@ describe('syncStateRepo', () => {
 
   it('setFailedSyncMonobankIds round-trips an array and a null for the target account', async () => {
     const store: Record<string, unknown>[] = [{ accountId: 'acct-A' }, { accountId: 'acct-B' }];
-    mockTx = makeSyncStateTx(store);
+    mockTransaction = makeSyncStateTransaction(store);
     spyOnSyncStateSelect(store);
 
     await syncStateRepo.setFailedSyncMonobankIds('acct-A', ['card-1', 'card-2']);
