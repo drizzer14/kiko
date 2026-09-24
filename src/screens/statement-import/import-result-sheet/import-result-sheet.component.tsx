@@ -1,11 +1,11 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import ImportOutcome from '../import-outcome';
 import Text from '../../../design-system/components/text';
 import Button from '../../../design-system/components/button';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 
-import ImportOutcome from '../import-outcome';
 import type { ImportResultSheetProps } from './import-result-sheet.props';
 
 /**

@@ -24,12 +24,12 @@ import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import { isSyncedHolding } from '../../holdings/deletable';
 import { sumByCurrency } from '../../rates/currency-totals';
-import { fileNameOf } from '../../statement-import/read-statement-file';
 import { accountKindSymbol } from '../../holdings/entity-symbols';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { onGridDragEnd } from '../../design-system/grid-interaction';
 import type { AccountsStackParamList } from '../../navigation/types';
+import { fileNameOf } from '../../statement-import/read-statement-file';
 import { isConnectableBank, statementFormatIdForBank } from '../../bank-sync/bank-catalog';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
 import CardContextMenu from '../../design-system/components/card-context-menu';
@@ -130,20 +130,21 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
   // The document-picker statement-import entry point (docs/plans/statement-
   // import.md section B.1), same style as the create-form's `connectMonobank`
-  // closure: open the picker, then — on a real pick, not a cancel — hand the
-  // picked `uri` straight to `StatementImportScreen`, which owns the actual
-  // read/decode/detect/parse/preview. This handler does NOT pre-read the
-  // file: an earlier revision read it here too (as a validity check before
-  // navigating), but that made every pick pay for two reads of the same file
-  // and, worse, left the READ's own failure mode (an iCloud placeholder not
-  // yet downloaded, a revoked security-scoped URL) unhandled right here —
-  // the single read now lives entirely in `StatementImportScreen`, which
-  // already guards it and renders a graceful error state on failure. The
-  // accepted-type list includes xlsx from the start even though Phase 1 only
-  // ships the Monobank CSV format (PrivatBank XLSX lands in a later phase
-  // and must not need this list revisited). A cancelled picker rejects with
-  // `OPERATION_CANCELED` — caught and swallowed here, not surfaced as an
-  // error.
+  // closure: open the picker, then — on a real pick, not a cancel — copy it
+  // to a LOCAL cache path (item 6, F3, BUG — see the `keepLocalCopy` comment
+  // below) and hand THAT stable path to `StatementImportScreen`, which owns
+  // the actual read/decode/detect/parse/preview. This handler does NOT
+  // pre-read the file itself: an earlier revision read it here too (as a
+  // validity check before navigating), but that made every pick pay for two
+  // reads of the same file and, worse, left the READ's own failure mode (an
+  // iCloud placeholder not yet downloaded, a revoked security-scoped URL)
+  // unhandled right here — the single read now lives entirely in
+  // `StatementImportScreen`, which already guards it and renders a graceful
+  // error state on failure. The accepted-type list includes xlsx from the
+  // start even though Phase 1 only ships the Monobank CSV format (PrivatBank
+  // XLSX lands in a later phase and must not need this list revisited). A
+  // cancelled picker rejects with `OPERATION_CANCELED` — caught and
+  // swallowed here, not surfaced as an error.
   const pickAndOpenStatement = async (): Promise<void> => {
     let results: Awaited<ReturnType<typeof pick>>;
 
