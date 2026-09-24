@@ -1,5 +1,10 @@
 export type SelectFieldProps<Option extends string> = {
   label: string;
+  // The sheet's own header — a DISTINCT string from `label`, Title Case (the
+  // sheet-title UI role), never the sentence-case field label reused
+  // verbatim: a field label and a sheet title are two different UI roles
+  // per kiko-translator's casing-by-role rule.
+  sheetTitle: string;
   // Every offered option, in display order.
   options: readonly Option[];
   // `null` = nothing picked yet — renders the `placeholder` as the trigger's

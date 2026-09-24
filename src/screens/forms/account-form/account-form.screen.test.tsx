@@ -45,7 +45,7 @@ const selectKind = async (
   kind: 'bank' | 'cash' | 'crypto' | 'property' | 'metals',
 ): Promise<void> => {
   await fireEvent.press(getByTestId('account-kind-field'));
-  await fireEvent.press(getByTestId(`account-kind-option-${kind}`));
+  await fireEvent.press(getByTestId(`account-kind-field-option-${kind}`));
 };
 
 // The AccountKindField trigger's own `disabled` accessibility state — the
@@ -252,12 +252,16 @@ describe('AccountFormScreen', () => {
     // Each row's text content is the label immediately followed by its
     // subtitle (no separator node between them), so this checks a leading
     // partial match rather than an exact one.
-    expect(getByTestId('account-kind-option-bank')).toHaveTextContent('Bank', { exact: false });
-    expect(getByTestId('account-kind-option-cash')).toHaveTextContent('Cash', { exact: false });
-    expect(getByTestId('account-kind-option-crypto')).toHaveTextContent('Crypto', {
+    expect(getByTestId('account-kind-field-option-bank')).toHaveTextContent('Bank', {
       exact: false,
     });
-    expect(getByTestId('account-kind-option-property')).toHaveTextContent('Property', {
+    expect(getByTestId('account-kind-field-option-cash')).toHaveTextContent('Cash', {
+      exact: false,
+    });
+    expect(getByTestId('account-kind-field-option-crypto')).toHaveTextContent('Crypto', {
+      exact: false,
+    });
+    expect(getByTestId('account-kind-field-option-property')).toHaveTextContent('Property', {
       exact: false,
     });
     expect(queryByText('Broker')).toBeNull();
@@ -272,8 +276,8 @@ describe('AccountFormScreen', () => {
     // (accountKindSymbol's own key order), so their testIDs mount in that
     // same top-to-bottom order. The regex excludes each row's own
     // `-description` child testID, which shares the same prefix.
-    const order = getAllByTestId(/^account-kind-option-[a-z]+$/).map((node) =>
-      (node.props.testID as string).replace('account-kind-option-', ''),
+    const order = getAllByTestId(/^account-kind-field-option-[a-z]+$/).map((node) =>
+      (node.props.testID as string).replace('account-kind-field-option-', ''),
     );
 
     expect(order).toEqual(['bank', 'cash', 'crypto', 'property', 'metals', 'debt']);
@@ -284,7 +288,7 @@ describe('AccountFormScreen', () => {
 
     await fireEvent.press(getByTestId('account-kind-field'));
 
-    expect(getByTestId('account-kind-option-property-description')).toHaveTextContent(
+    expect(getByTestId('account-kind-field-option-property-description')).toHaveTextContent(
       'Real estate, car, valuables, money you lent.',
     );
   });
@@ -748,7 +752,7 @@ describe('AccountFormScreen edit mode', () => {
     expect(getByTestId('account-kind-field')).toHaveTextContent('Bank');
     expect(isKindFieldDisabled(getByTestId)).toBe(true);
     await fireEvent.press(getByTestId('account-kind-field'));
-    expect(() => getByTestId('account-kind-option-crypto')).toThrow();
+    expect(() => getByTestId('account-kind-field-option-crypto')).toThrow();
 
     // Save still routes to the account's original kind via update (never create).
     await fireEvent.press(getByText('Save'));
@@ -954,13 +958,13 @@ describe('AccountFormScreen — localization', () => {
     expect(getByTestId('account-kind-field')).toHaveTextContent('Банк');
 
     await fireEvent.press(getByTestId('account-kind-field'));
-    expect(getByTestId('account-kind-option-cash')).toHaveTextContent('Готівка', {
+    expect(getByTestId('account-kind-field-option-cash')).toHaveTextContent('Готівка', {
       exact: false,
     });
-    expect(getByTestId('account-kind-option-crypto')).toHaveTextContent('Крипто', {
+    expect(getByTestId('account-kind-field-option-crypto')).toHaveTextContent('Крипто', {
       exact: false,
     });
-    expect(getByTestId('account-kind-option-property')).toHaveTextContent('Майно', {
+    expect(getByTestId('account-kind-field-option-property')).toHaveTextContent('Майно', {
       exact: false,
     });
 
@@ -1430,7 +1434,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     // The kind field is now disabled; pressing it never opens the sheet.
     expect(isKindFieldDisabled(getByTestId)).toBe(true);
     await fireEvent.press(getByTestId('account-kind-field'));
-    expect(() => getByTestId('account-kind-option-bank')).toThrow();
+    expect(() => getByTestId('account-kind-field-option-bank')).toThrow();
 
     await fireEvent.press(getByText('Save'));
 

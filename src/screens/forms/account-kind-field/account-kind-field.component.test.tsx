@@ -42,6 +42,7 @@ const setup = async (overrides: Partial<Parameters<typeof AccountKindField>[0]> 
   const utils = await render(
     <AccountKindField
       label="Kind"
+      sheetTitle="Select an Account Kind"
       options={options}
       selected="bank"
       onSelect={onSelect}
@@ -69,14 +70,14 @@ describe('AccountKindField', () => {
     const { getByTestId, queryByTestId } = await setup();
 
     // Each option row is only mounted once the sheet opens.
-    expect(queryByTestId('account-kind-option-cash')).toBeNull();
+    expect(queryByTestId('account-kind-field-option-cash')).toBeNull();
 
     await fireEvent.press(getByTestId('account-kind-field'));
 
     for (const kind of options) {
-      const row = getByTestId(`account-kind-option-${kind}`);
+      const row = getByTestId(`account-kind-field-option-${kind}`);
       expect(row).toBeTruthy();
-      expect(getByTestId(`account-kind-option-${kind}-description`)).toHaveTextContent(
+      expect(getByTestId(`account-kind-field-option-${kind}-description`)).toHaveTextContent(
         subtitles[kind],
       );
     }
@@ -86,10 +87,10 @@ describe('AccountKindField', () => {
     const { onSelect, getByTestId, queryByTestId } = await setup();
 
     await fireEvent.press(getByTestId('account-kind-field'));
-    await fireEvent.press(getByTestId('account-kind-option-property'));
+    await fireEvent.press(getByTestId('account-kind-field-option-property'));
 
     expect(onSelect).toHaveBeenCalledWith('property');
-    expect(queryByTestId('account-kind-option-property')).toBeNull();
+    expect(queryByTestId('account-kind-field-option-property')).toBeNull();
   });
 
   it('shows a checkmark on the currently-selected kind option', async () => {
@@ -97,8 +98,12 @@ describe('AccountKindField', () => {
 
     await fireEvent.press(getByTestId('account-kind-field'));
 
-    expect(getByTestId('account-kind-option-crypto').props.accessibilityState.selected).toBe(true);
-    expect(getByTestId('account-kind-option-bank').props.accessibilityState.selected).toBe(false);
+    expect(getByTestId('account-kind-field-option-crypto').props.accessibilityState.selected).toBe(
+      true,
+    );
+    expect(getByTestId('account-kind-field-option-bank').props.accessibilityState.selected).toBe(
+      false,
+    );
   });
 
   it('dims and does not open while disabled (edit mode / a source already connected)', async () => {
@@ -109,6 +114,6 @@ describe('AccountKindField', () => {
 
     await fireEvent.press(getByTestId('account-kind-field'));
 
-    expect(queryByTestId('account-kind-option-cash')).toBeNull();
+    expect(queryByTestId('account-kind-field-option-cash')).toBeNull();
   });
 });

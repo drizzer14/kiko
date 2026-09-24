@@ -43,6 +43,7 @@ const PropertySection: FC<PropertySectionProps> = ({
     <Box gap={4}>
       <SelectField
         label={t('forms.holding.category')}
+        sheetTitle={t('forms.holding.categorySheetTitle')}
         options={propertyCategories}
         selected={category}
         onSelect={onSelectCategory}

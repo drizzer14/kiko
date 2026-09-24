@@ -1,22 +1,20 @@
-import { type FC, useState } from 'react';
+import type { FC } from 'react';
+import { useTranslation } from 'react-i18next';
 
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import BottomSheet from '../../../design-system/components/bottom-sheet';
-import FieldTrigger from '../../../design-system/components/field-trigger';
-import SelectableRow from '../../../design-system/components/selectable-row';
+import SelectField from '../../../design-system/components/select-field';
 
-import type { AccountKind, AccountKindFieldProps } from './account-kind-field.props';
+import type { AccountKindFieldProps } from './account-kind-field.props';
 
-// The account-kind selector: a labeled select FIELD (FieldTrigger + a
-// BottomSheet of SelectableRow options) replacing the former inline ChipRow
-// (T15), the same select-sheet family ModeSelectField and BankTypeField
-// already established — the trigger shows the current kind's glyph + label,
-// and the sheet lists every offered kind with a one-line subtitle
-// (device-feedback: a bare label like "Property" does not say what belongs
-// there). Selecting a row reports the kind and closes the sheet.
+// The account-kind selector: a thin wrapper over the shared design-system
+// `SelectField`, so this field stays one implementation with every other
+// long-list select rather than its own hand-rolled
+// FieldTrigger+BottomSheet+SelectableRow copy. `selected` is always a
+// concrete `AccountKind` (never `null` — an account always has one), so
+// `placeholder` is resolved here (not threaded through the caller, unlike
+// `label`/`sheetTitle`) since it is never shown.
 const AccountKindField: FC<AccountKindFieldProps> = ({
   label,
+  sheetTitle,
   options,
   selected,
   onSelect,
@@ -26,54 +24,23 @@ const AccountKindField: FC<AccountKindFieldProps> = ({
   disabled,
   testID,
 }) => {
-  const [open, setOpen] = useState(false);
-
-  const handleSelect = (kind: AccountKind): void => {
-    setOpen(false);
-    onSelect(kind);
-  };
+  const { t } = useTranslation();
 
   return (
-    <Box gap={1}>
-      <FieldTrigger
-        label={label}
-        disabled={disabled}
-        onPress={() => setOpen(true)}
-        icon={icons[selected]}
-        value={labels[selected]}
-        valueTone="textPrimary"
-        testID={testID}
-      />
-
-      <BottomSheet
-        visible={open}
-        onDismiss={() => setOpen(false)}
-        gap={2}
-        header={<Text variant="heading">{label}</Text>}
-        testID="account-kind-sheet"
-      >
-        {options.map((kind) => {
-          const isSelected = kind === selected;
-
-          return (
-            <SelectableRow
-              key={kind}
-              selected={isSelected}
-              onPress={() => handleSelect(kind)}
-              label={labels[kind]}
-              icon={icons[kind]}
-              accessibilityLabel={`${labels[kind]}. ${subtitles[kind]}`}
-              testID={`account-kind-option-${kind}`}
-              description={
-                <Text variant="caption" tone={isSelected ? 'onAccent' : 'textSecondary'}>
-                  {subtitles[kind]}
-                </Text>
-              }
-            />
-          );
-        })}
-      </BottomSheet>
-    </Box>
+    <SelectField
+      label={label}
+      sheetTitle={sheetTitle}
+      options={options}
+      selected={selected}
+      onSelect={onSelect}
+      labels={labels}
+      subtitles={subtitles}
+      icons={icons}
+      placeholder={t('forms.account.kindPlaceholder')}
+      disabled={disabled}
+      testID={testID}
+      sheetTestID="account-kind-sheet"
+    />
   );
 };
 

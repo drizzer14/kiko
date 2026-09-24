@@ -1,5 +1,6 @@
-import type { ReactElement } from 'react';
 import { useState } from 'react';
+import type { ReactElement } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
 
 import Box from '../box';
 import Text from '../text';
@@ -10,16 +11,15 @@ import SelectableRow from '../selectable-row';
 import type { SelectFieldProps } from './select-field.props';
 
 // The generic "labeled field that opens a picker sheet" family
-// (`FieldTrigger` + `BottomSheet` + a `SelectableRow` per option) —
-// `AccountKindField`, `ModeSelectField`, and `BankTypeField`
-// (`src/screens/forms/`) all hand-rolled this exact shape independently; this
-// is the one shared implementation the codebase-review round (decision 24)
-// asked for, so a NEW long-list select (property category, loan kind, bond
-// coupon frequency) reaches for this rather than a fourth hand-rolled copy.
-// Generic over the option type, so it is a plain function component (an `FC`
-// cannot carry a type parameter) — mirrors `ChipRow`'s own shape.
+// (`FieldTrigger` + `BottomSheet` + a `SelectableRow` per option) — a NEW
+// long-list select (property category, loan kind, bond coupon frequency,
+// account kind, transaction type) reaches for this rather than hand-rolling
+// its own copy. Generic over the option type, so it is a plain function
+// component (an `FC` cannot carry a type parameter) — mirrors `ChipRow`'s
+// own shape.
 const SelectField = <Option extends string>({
   label,
+  sheetTitle,
   options,
   selected,
   onSelect,
@@ -34,6 +34,7 @@ const SelectField = <Option extends string>({
   sheetTestID,
 }: SelectFieldProps<Option>): ReactElement => {
   const [open, setOpen] = useState(false);
+  const selectedOption = maybe(selected);
 
   const handleSelect = (option: Option): void => {
     setOpen(false);
@@ -47,8 +48,8 @@ const SelectField = <Option extends string>({
         required={required}
         disabled={disabled}
         onPress={() => setOpen(true)}
-        icon={selected === null ? undefined : icons?.[selected]}
-        value={selected === null ? placeholder : labels[selected]}
+        icon={foldMap(selectedOption, (option) => icons?.[option])}
+        value={foldMap(selectedOption, (option) => labels[option]) ?? placeholder}
         valueTone={selected === null ? 'textSecondary' : 'textPrimary'}
         error={error}
         testID={testID}
@@ -58,7 +59,7 @@ const SelectField = <Option extends string>({
         visible={open}
         onDismiss={() => setOpen(false)}
         gap={2}
-        header={<Text variant="heading">{label}</Text>}
+        header={<Text variant="heading">{sheetTitle}</Text>}
         testID={sheetTestID}
       >
         {options.map((option) => {
@@ -75,7 +76,7 @@ const SelectField = <Option extends string>({
               accessibilityLabel={
                 subtitle === undefined ? labels[option] : `${labels[option]}. ${subtitle}`
               }
-              testID={`${testID}-option-${option}`}
+              testID={testID ? `${testID}-option-${option}` : undefined}
               description={
                 subtitle === undefined ? undefined : (
                   <Text variant="caption" tone={isSelected ? 'onAccent' : 'textSecondary'}>

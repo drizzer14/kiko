@@ -226,6 +226,14 @@ export const en = {
       initialValue: 'Initial value',
       initialValuePlaceholder: '1000.00',
       kind: 'Kind',
+      // The account-kind SelectField's placeholder — unreachable today (an
+      // account's kind is always a concrete value, never `null`), kept for
+      // the SelectField contract's `selected: null` case, same as every
+      // other select field's placeholder.
+      kindPlaceholder: 'Select an account kind',
+      // The account-kind SelectField's sheet header — Title Case, distinct
+      // from the sentence-case field label (`kind` above).
+      kindSheetTitle: 'Select an Account Kind',
       kindSubtitle: {
         bank: 'Synced or imported from a bank statement.',
         cash: 'Cash you hold outside a bank.',
@@ -268,6 +276,10 @@ export const en = {
       // category), kept for the `SelectField` contract's `selected: null`
       // case, same as every other select field's placeholder.
       categoryPlaceholder: 'Select a category',
+      // The property-category SelectField's sheet header — Title Case, a
+      // distinct string from the sentence-case field label (`category`
+      // above), the sheet-title UI role.
+      categorySheetTitle: 'Select a Category',
       compounding: 'Compounding',
       contributionAmount: 'Contribution {{index}} amount',
       contributionDate: 'Contribution {{index}} date',
@@ -279,6 +291,9 @@ export const en = {
       couponFrequency: 'Coupon frequency',
       couponFrequencyPlaceholder: 'Select a frequency',
       couponFrequencyRequiredError: 'No coupon frequency selected.',
+      // The bond coupon-frequency SelectField's sheet header — Title Case,
+      // distinct from the sentence-case field label above.
+      couponFrequencySheetTitle: 'Select a Frequency',
       couponPct: 'Coupon %',
       couponPctError: 'Enter a coupon of 0 or higher.',
       couponPlaceholder: '8',
@@ -318,6 +333,9 @@ export const en = {
       // F4 audit item 9: the loan-kind select field's placeholder —
       // unreachable today (see `categoryPlaceholder`'s own doc comment).
       loanKindPlaceholder: 'Select a loan kind',
+      // The loan-kind SelectField's sheet header — Title Case, distinct from
+      // the sentence-case field label (`loanKindLabel` above).
+      loanKindSheetTitle: 'Select a Loan Kind',
       loanPrincipal: 'Principal',
       loanPrincipalError: 'Principal must be greater than 0.',
       loanPrincipalPlaceholder: '1000.00',
@@ -451,6 +469,14 @@ export const en = {
       title: 'Transaction',
       to: 'To',
       type: 'Type',
+      // The transaction-type SelectField's placeholder — unreachable today
+      // (a transaction's mode is always a concrete value, never `null`),
+      // kept for the SelectField contract's `selected: null` case, same as
+      // every other select field's placeholder.
+      typePlaceholder: 'Select a transaction type',
+      // The transaction-type SelectField's sheet header — Title Case,
+      // distinct from the sentence-case field label (`type` above).
+      typeSheetTitle: 'Select a Transaction Type',
       valueIn: 'Value in',
       valueInError: 'Amount must be greater than 0.',
       valueInPlaceholder: '100.00',

@@ -10,6 +10,10 @@ export type AccountKind = AccountRow['kind'];
 
 export type AccountKindFieldProps = {
   label: string;
+  // The sheet's own header — a distinct, Title Case string from `label`,
+  // the sheet-title UI role (this field is routed through the shared
+  // `SelectField`, whose `sheetTitle` prop is required).
+  sheetTitle: string;
   // Every kind offered in the sheet, in display order — the account-form
   // passes `Object.keys(accountKindSymbol)` (see that map's own doc comment
   // for why it is exhaustive over the schema's `kind` enum), so the option

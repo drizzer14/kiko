@@ -155,6 +155,7 @@ const BondIsinSection: FC<BondIsinSectionProps> = ({
         // in the trigger instead.
         <SelectField
           label={t('forms.holding.couponFrequency')}
+          sheetTitle={t('forms.holding.couponFrequencySheetTitle')}
           options={bondCouponFrequencies}
           selected={pickedCouponFrequency}
           onSelect={onPickCouponFrequency}

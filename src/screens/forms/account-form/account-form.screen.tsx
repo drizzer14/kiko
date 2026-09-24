@@ -480,6 +480,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             SECOND account and orphan the started row. */}
         <AccountKindField
           label={t('forms.account.kind')}
+          sheetTitle={t('forms.account.kindSheetTitle')}
           options={kinds}
           selected={kind}
           onSelect={handleSelectKind}

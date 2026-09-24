@@ -79,6 +79,7 @@ const LoanSection: FC<LoanSectionProps> = ({
     <Box gap={4}>
       <SelectField
         label={t('forms.holding.loanKindLabel')}
+        sheetTitle={t('forms.holding.loanKindSheetTitle')}
         options={loanKinds}
         selected={kind}
         onSelect={onSelectKind}

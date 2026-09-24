@@ -16,6 +16,7 @@ const setup = async (overrides: Partial<SelectFieldProps<Kind>> = {}) => {
   const utils = await render(
     <SelectField<Kind>
       label="Kind"
+      sheetTitle="Select a Kind"
       options={options}
       selected="a"
       onSelect={onSelect}
@@ -67,5 +68,34 @@ describe('SelectField', () => {
     const { getByTestId } = await setup({ selected: null, error: 'Pick a kind.' });
 
     expect(getByTestId('kind-field-error')).toHaveTextContent('Pick a kind.');
+  });
+
+  it('shows sheetTitle, not label, as the sheet header', async () => {
+    const { getByTestId, getByText } = await setup();
+
+    await fireEvent.press(getByTestId('kind-field'));
+
+    expect(getByText('Select a Kind')).toBeTruthy();
+  });
+
+  it('never writes an "undefined-option-x" testID when testID is omitted', async () => {
+    const onSelect = jest.fn();
+    const { getByText, queryByTestId } = await render(
+      <SelectField<Kind>
+        label="Kind"
+        sheetTitle="Select a Kind"
+        options={options}
+        selected="a"
+        onSelect={onSelect}
+        labels={labels}
+        placeholder="Select a kind"
+      />,
+    );
+
+    await fireEvent.press(getByText('Alpha'));
+    await fireEvent.press(getByText('Beta'));
+
+    expect(onSelect).toHaveBeenCalledWith('b');
+    expect(queryByTestId(/undefined-option-/)).toBeNull();
   });
 });

@@ -274,14 +274,14 @@ const flushDeferredModeSelect = async (): Promise<void> => {
 // category picker, each option is only mounted once the sheet opens (the type
 // selector is now a select field, not an inline chip row). `mode` is the
 // underlying FormMode value; each row carries a stable
-// `transaction-type-option-<mode>` testID so the tap never collides with the
+// `transaction-type-field-option-<mode>` testID so the tap never collides with the
 // trigger's own selected-value text.
 const pickType = async (
   utils: Awaited<ReturnType<typeof render>>,
   mode: 'income' | 'expense' | 'exchange' | 'split',
 ): Promise<void> => {
   await fireEvent.press(utils.getByLabelText('Type'));
-  await fireEvent.press(utils.getByTestId(`transaction-type-option-${mode}`));
+  await fireEvent.press(utils.getByTestId(`transaction-type-field-option-${mode}`));
   await flushDeferredModeSelect();
 };
 
@@ -1831,7 +1831,7 @@ describe('TransactionFormScreen — Exchange mode', () => {
     // page-wide text query) because this row also offers the "Exchange" convert
     // action elsewhere on screen, which renders the identical word.
     await fireEvent.press(utils.getByLabelText('Type'));
-    expect(utils.queryByTestId('transaction-type-option-exchange')).toBeNull();
+    expect(utils.queryByTestId('transaction-type-field-option-exchange')).toBeNull();
   });
 
   it('lists open, non-source cash holdings in the destination select', async () => {

@@ -62,12 +62,12 @@ describe('ModeSelectField', () => {
     const { getByLabelText, getByTestId, queryByTestId } = await setup();
 
     // Each option row is only mounted once the sheet opens.
-    expect(queryByTestId('transaction-type-option-income')).toBeNull();
+    expect(queryByTestId('transaction-type-field-option-income')).toBeNull();
 
     await fireEvent.press(getByLabelText('Type'));
 
     for (const mode of ['income', 'expense', 'exchange', 'split']) {
-      expect(getByTestId(`transaction-type-option-${mode}`)).toBeTruthy();
+      expect(getByTestId(`transaction-type-field-option-${mode}`)).toBeTruthy();
     }
   });
 
@@ -75,11 +75,11 @@ describe('ModeSelectField', () => {
     const { onSelect, getByLabelText, getByTestId, queryByTestId } = await setup();
 
     await fireEvent.press(getByLabelText('Type'));
-    await fireEvent.press(getByTestId('transaction-type-option-income'));
+    await fireEvent.press(getByTestId('transaction-type-field-option-income'));
 
     expect(onSelect).toHaveBeenCalledWith('income');
     // The sheet closes on pick, so the option rows unmount.
-    expect(queryByTestId('transaction-type-option-income')).toBeNull();
+    expect(queryByTestId('transaction-type-field-option-income')).toBeNull();
   });
 
   it('dims and does not open while disabled', async () => {
@@ -96,6 +96,6 @@ describe('ModeSelectField', () => {
     // Pressing an inert trigger never opens the sheet, so no option row mounts.
     await fireEvent.press(getByLabelText('Type'));
 
-    expect(queryByTestId('transaction-type-option-income')).toBeNull();
+    expect(queryByTestId('transaction-type-field-option-income')).toBeNull();
   });
 });
