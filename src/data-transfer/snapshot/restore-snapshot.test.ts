@@ -331,8 +331,7 @@ describe('restoreDataSnapshot', () => {
       ]);
     });
 
-    // I1 (review fix round 1): pins EVERY predicate clause in
-    // `isBalanceSetShapedRow` (`restore-snapshot.ts:41-46`) plus the map's
+    // Pins EVERY predicate clause in `isBalanceSetShapedRow` plus the map's
     // per-holding bucketing, one near-miss row at a time — each row is
     // IDENTICAL to a real hand-set-shaped match except for exactly ONE
     // field, so deleting any single clause makes exactly that row spuriously
