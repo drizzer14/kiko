@@ -95,6 +95,7 @@ const mockUseSync = jest.fn();
 const mockSaveToken = jest.fn();
 const mockFetchClientInfo = jest.fn();
 const mockPick = jest.fn();
+const mockKeepLocalCopy = jest.fn();
 const mockReadFile = jest.fn();
 const mockRemove = jest.fn();
 const mockReorder = jest.fn();
@@ -137,6 +138,7 @@ jest.mock('../../monobank/client', () => ({
 }));
 jest.mock('@react-native-documents/picker', () => ({
   pick: (...args: unknown[]) => mockPick(...args),
+  keepLocalCopy: (...args: unknown[]) => mockKeepLocalCopy(...args),
   types: { csv: 'text/csv', xlsx: 'application/xlsx', plainText: 'text/plain', allFiles: '*/*' },
   errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
   isErrorWithCode: (error: unknown): error is { code: string } =>
@@ -252,6 +254,12 @@ const account = (overrides: Partial<Account> = {}): Account => ({
   name: 'Monobank',
   kind: 'bank',
   institution: null,
+  // `bankId` defaults to `null` here, matching the real `AccountRow`'s
+  // Drizzle-inferred type (a nullable column is `string | null`, never
+  // `undefined`) — `BankSyncSection`'s disconnected default now reads this
+  // field directly (item 1, F3), so a fixture that left it `undefined`
+  // crashed `isBankProviderId`'s `bankProviderIdOf` call on a real render.
+  bankId: null,
   ...overrides,
 });
 
@@ -613,13 +621,14 @@ describe('AccountDetailScreen', () => {
       hidden: ['Connect Monobank', 'Sync', 'Add a bank'],
     },
     {
-      // A bank account whose picked bank IS connectable (Monobank) keeps the
-      // disconnected "Add a bank" trigger — only a KNOWN import-only bank
-      // hides the section.
+      // A bank account already identified as Monobank (item 1, F3) skips the
+      // "Add a bank" picker entirely and goes straight to Connect — only an
+      // UNIDENTIFIED bank account shows the "Add a bank" trigger, and a
+      // KNOWN import-only bank hides the section altogether.
       description: 'a bank account whose picked bank is connectable (Monobank), not yet connected',
       account: account({ kind: 'bank', bankId: 'monobank', institution: null }),
-      visible: ['Add a bank'],
-      hidden: ['Connect Monobank', 'Sync'],
+      visible: ['Connect Monobank'],
+      hidden: ['Add a bank', 'Sync'],
     },
   ];
 
@@ -1069,6 +1078,9 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     mockSync.mockResolvedValue(undefined);
     mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
     setLiveData({ accounts: [account({ bankId: 'monobank' })], holdings: [] });
+    mockKeepLocalCopy.mockResolvedValue([
+      { status: 'success', localUri: 'file:///cache/statement.csv' },
+    ]);
   });
 
   it('renders an Import statement action beside Add holding in the footer', async () => {
@@ -1125,9 +1137,18 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     expect(navigation.navigate).not.toHaveBeenCalledWith('StatementImport', expect.anything());
   });
 
-  it('navigates to StatementImport with the resolved filePath and accountId on success, without reading the file itself', async () => {
+  // Item 6 (F3, BUG): a raw picked URI can be a transient/security-scoped
+  // external one (iCloud/Files/AirDrop) that tolerates one or two reads but
+  // not the THIRD `RNFS.readFile` the preview + two Map-Columns visits each
+  // make — `keepLocalCopy` (the same pattern `import-data.screen.tsx`
+  // already uses) copies it into the app's own cache ONCE at pick time, so
+  // every later read is of a file Kiko itself owns.
+  it('copies the picked file locally (keepLocalCopy) and navigates to StatementImport with the LOCAL copy path, without reading the file itself', async () => {
     mockPick.mockResolvedValue([
       { uri: 'file:///mock/statement.csv', name: 'statement.csv', type: 'text/csv' },
+    ]);
+    mockKeepLocalCopy.mockResolvedValue([
+      { status: 'success', localUri: 'file:///cache/statement.csv' },
     ]);
     const { getByText, navigation } = await renderScreen();
 
@@ -1135,11 +1156,33 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
       await fireEvent.press(getByText('Import statement'));
     });
 
-    // `pickAndOpenStatement` hands the picked `uri` straight to
+    expect(mockKeepLocalCopy).toHaveBeenCalledWith({
+      files: [{ uri: 'file:///mock/statement.csv', fileName: 'statement.csv' }],
+      destination: 'cachesDirectory',
+    });
+    // `pickAndOpenStatement` hands the LOCAL copy's uri to
     // `StatementImportScreen`, which owns the ONE read of this file — a
     // pre-read here would pay for the read twice and leave its own failure
     // mode unhandled at this call site (see the handler's own doc comment).
     expect(mockReadFile).not.toHaveBeenCalled();
+    expect(navigation.navigate).toHaveBeenCalledWith('StatementImport', {
+      filePath: 'file:///cache/statement.csv',
+      accountId: 'a',
+      expectedFormatId: 'monobank-csv',
+    });
+  });
+
+  it('falls back to the raw picked uri when keepLocalCopy fails', async () => {
+    mockPick.mockResolvedValue([
+      { uri: 'file:///mock/statement.csv', name: 'statement.csv', type: 'text/csv' },
+    ]);
+    mockKeepLocalCopy.mockResolvedValue([{ status: 'error', copyError: 'boom' }]);
+    const { getByText, navigation } = await renderScreen();
+
+    await act(async () => {
+      await fireEvent.press(getByText('Import statement'));
+    });
+
     expect(navigation.navigate).toHaveBeenCalledWith('StatementImport', {
       filePath: 'file:///mock/statement.csv',
       accountId: 'a',
@@ -1152,6 +1195,9 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     mockPick.mockResolvedValue([
       { uri: 'file:///mock/statement.xlsx', name: 'statement.xlsx', type: 'application/xlsx' },
     ]);
+    mockKeepLocalCopy.mockResolvedValue([
+      { status: 'success', localUri: 'file:///cache/statement.xlsx' },
+    ]);
     const { getByText, navigation } = await renderScreen();
 
     await act(async () => {
@@ -1159,7 +1205,7 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     });
 
     expect(navigation.navigate).toHaveBeenCalledWith('StatementImport', {
-      filePath: 'file:///mock/statement.xlsx',
+      filePath: 'file:///cache/statement.xlsx',
       accountId: 'a',
       expectedFormatId: 'privatbank-xlsx',
     });

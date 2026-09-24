@@ -2,7 +2,7 @@ import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { ratesRepo } from '@kiko/rates/repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
-import { pick, types } from '@react-native-documents/picker';
+import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useLayoutEffect } from 'react';
@@ -24,6 +24,7 @@ import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import { isSyncedHolding } from '../../holdings/deletable';
 import { sumByCurrency } from '../../rates/currency-totals';
+import { fileNameOf } from '../../statement-import/read-statement-file';
 import { accountKindSymbol } from '../../holdings/entity-symbols';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import { resolveEntityColor } from '../../design-system/entity-tint';
@@ -162,8 +163,25 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
       return;
     }
 
+    // Item 6 (F3, BUG): the picker hands back a security-scoped external URI
+    // (iCloud / Files / an AirDropped file) that `RNFS.readFile` cannot
+    // reliably read more than once — both `StatementImportScreen` and
+    // `ColumnMappingScreen` independently re-read THIS SAME `filePath` on
+    // every mount, so a provider that tolerates one or two reads but not the
+    // third (preview, first Map Columns, second Map Columns after Back)
+    // degrades to the generic "unrecognized format" state with no action.
+    // Copy the picked file into the app's OWN cache ONCE here, at pick time
+    // — the same `keepLocalCopy` pattern `import-data.screen.tsx` already
+    // uses — and hand both downstream screens that local copy's stable
+    // path instead, falling back to the raw picked uri only if the copy
+    // itself fails.
+    const [copied] = await keepLocalCopy({
+      files: [{ uri: picked.uri, fileName: picked.name ?? fileNameOf(picked.uri) }],
+      destination: 'cachesDirectory',
+    });
+
     navigation.navigate('StatementImport', {
-      filePath: picked.uri,
+      filePath: copied.status === 'success' ? copied.localUri : picked.uri,
       accountId,
       expectedFormatId: statementFormatIdForBank(account?.bankId),
     });
