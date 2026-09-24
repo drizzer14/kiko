@@ -10,17 +10,51 @@ import { type AccountRow, accounts, holdings, transactions } from '../db/schema'
 import { isSyncedAccount, type SyncedInstitution } from '../holdings/deletable';
 import { SYNCED_AT_FIELD } from '../holdings/holding-metadata';
 
-// The next free grid slot for a new account: one past the current highest
-// `sortOrder` (or 0 when there are no accounts yet), so a freshly created
-// account appends to the end of the grid instead of tying with the first row.
-// Read inside the same write transaction as the insert so a concurrent create
-// cannot observe a stale maximum.
-const nextSortOrder = async (tx: typeof database): Promise<number> => {
+// The next free grid slot for a new account, one past the current highest
+// relevant `sortOrder` (or 0 when there are no accounts yet) — read inside
+// the same write transaction as the insert so a concurrent create cannot
+// observe a stale maximum. A new DEBT account appends after EVERY existing
+// account (`allMax + 1`, same as before this ever became kind-aware): the
+// Debts section already renders last, so tying with it here is harmless.
+//
+// A new ASSET account (any kind but `debt`) must never land AFTER an
+// existing debt account (T27 re-review round 1, item 6): `accountsRepo`'s
+// own "assets first, then debts" persisted order (`accountsRepo.reorder`,
+// `accounts.screen.tsx`) is otherwise only restored by the user's NEXT drag
+// reorder, so a freshly created asset account would sort into the Debts
+// section (or, in `listQuery`, after it) until then. `assetMax + 1` is
+// therefore only a CANDIDATE slot; when it would land at or after the
+// earliest debt account's `sortOrder` (`debtMin`), every debt account's
+// `sortOrder` is shifted up by one first, making room for the candidate to
+// land strictly before all of them. One combined query (not two round
+// trips) answers `assetMax`/`debtMin`/`allMax` together.
+const nextSortOrder = async (tx: typeof database, kind: AccountRow['kind']): Promise<number> => {
   const rows = await tx
-    .select({ value: sql<number>`coalesce(max(${accounts.sortOrder}), -1)` })
+    .select({
+      assetMax: sql<number>`coalesce(max(case when ${accounts.kind} != 'debt' then ${accounts.sortOrder} end), -1)`,
+      debtMin: sql<
+        number | null
+      >`min(case when ${accounts.kind} = 'debt' then ${accounts.sortOrder} end)`,
+      allMax: sql<number>`coalesce(max(${accounts.sortOrder}), -1)`,
+    })
     .from(accounts);
+  const row = rows.at(0);
 
-  return (rows.at(0)?.value ?? -1) + 1;
+  if (kind === 'debt') {
+    return (row?.allMax ?? -1) + 1;
+  }
+
+  const candidate = (row?.assetMax ?? -1) + 1;
+  const debtMin = row?.debtMin;
+
+  if (debtMin !== null && debtMin !== undefined && candidate >= debtMin) {
+    await tx
+      .update(accounts)
+      .set({ sortOrder: sql`${accounts.sortOrder} + 1` })
+      .where(eq(accounts.kind, 'debt'));
+  }
+
+  return candidate;
 };
 
 type NewAccount = Pick<AccountRow, 'name' | 'kind'> &
@@ -84,7 +118,7 @@ export const accountsRepo = {
   create: (input: NewAccount): Promise<string> =>
     write(async (tx) => {
       const accountId = input.id ?? id();
-      const sortOrder = input.sortOrder ?? (await nextSortOrder(tx));
+      const sortOrder = input.sortOrder ?? (await nextSortOrder(tx, input.kind));
       await tx.insert(accounts).values({ ...input, id: accountId, sortOrder });
       return accountId;
     }),
@@ -118,7 +152,7 @@ export const accountsRepo = {
     write(async (tx) => {
       const accountId = id();
       const holdingId = id();
-      const sortOrder = await nextSortOrder(tx);
+      const sortOrder = await nextSortOrder(tx, 'cash');
       const now = Date.now();
 
       await tx.insert(accounts).values({

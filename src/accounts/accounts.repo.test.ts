@@ -35,13 +35,28 @@ const tableNameOf = (table: unknown): string => {
   return table === holdings ? 'holdings' : 'transactions';
 };
 
+// `assetMax`/`debtMin`/`allMax` answer `nextSortOrder`'s ONE combined select
+// (`{ assetMax, debtMin, allMax }`, see accounts.repo.ts): `debtMin` default
+// null means "no debt account exists yet" so the shift-debts branch never
+// fires, and `allMax` defaults to `assetMax` — matching every fixture below
+// that has no debt rows, where the two are the same number anyway. Passing
+// `debtMin` explicitly builds the "an asset would collide with the debt
+// block" fixtures below; `update` captures a shift, if one is issued.
 const makeCreateTx = (
-  maxSortOrder = -1,
-): { tx: unknown; inserts: Record<string, unknown>[]; insertTables: string[] } => {
+  assetMax = -1,
+  debtMin: number | null = null,
+  allMax: number = assetMax,
+): {
+  tx: unknown;
+  inserts: Record<string, unknown>[];
+  insertTables: string[];
+  updates: { set: Record<string, unknown>; whereCalled: boolean }[];
+} => {
   const inserts: Record<string, unknown>[] = [];
   const insertTables: string[] = [];
+  const updates: { set: Record<string, unknown>; whereCalled: boolean }[] = [];
   const tx = {
-    select: () => ({ from: () => Promise.resolve([{ value: maxSortOrder }]) }),
+    select: () => ({ from: () => Promise.resolve([{ assetMax, debtMin, allMax }]) }),
     insert: (table: unknown) => ({
       values: (values: Record<string, unknown>) => {
         inserts.push(values);
@@ -49,8 +64,20 @@ const makeCreateTx = (
         return Promise.resolve();
       },
     }),
+    update: () => ({
+      set: (values: Record<string, unknown>) => {
+        const entry = { set: values, whereCalled: false };
+        updates.push(entry);
+        return {
+          where: () => {
+            entry.whereCalled = true;
+            return Promise.resolve();
+          },
+        };
+      },
+    }),
   };
-  return { tx, inserts, insertTables };
+  return { tx, inserts, insertTables, updates };
 };
 
 describe('accountsRepo', () => {
@@ -112,6 +139,46 @@ describe('accountsRepo', () => {
     await accountsRepo.create({ name: 'First', kind: 'bank' });
 
     expect(inserts[0]).toMatchObject({ sortOrder: 0 });
+  });
+
+  it('create inserts a new ASSET account before an existing debt block, shifting every debt sortOrder up by one', async () => {
+    // Two asset accounts at sortOrder 0-1, one debt account at sortOrder 2
+    // (allMax === debtMin here — the debt account is the current maximum).
+    // A naive max+1 would give the new asset account sortOrder 2 too,
+    // colliding with (and sorting no earlier than) the existing debt account.
+    const { tx, inserts, updates } = makeCreateTx(1, 2, 2);
+    mockTx = tx;
+
+    await accountsRepo.create({ name: 'Savings', kind: 'bank' });
+
+    expect(inserts[0]).toMatchObject({ sortOrder: 2 });
+    expect(updates).toEqual([{ set: { sortOrder: expect.anything() }, whereCalled: true }]);
+  });
+
+  it('create inserts a new asset account at max(asset) + 1 with no shift when it does not reach the debt block', async () => {
+    // Three asset accounts (max sortOrder 2) and a debt account already
+    // further out at sortOrder 5 — the fresh 3 lands well short of it, so no
+    // shift is needed.
+    const { tx, inserts, updates } = makeCreateTx(2, 5, 5);
+    mockTx = tx;
+
+    await accountsRepo.create({ name: 'Savings', kind: 'bank' });
+
+    expect(inserts[0]).toMatchObject({ sortOrder: 3 });
+    expect(updates).toEqual([]);
+  });
+
+  it('create appends a new DEBT account at sortOrder = max(ALL accounts) + 1, not max(asset) + 1', async () => {
+    // Two asset accounts (max sortOrder 1) and a debt account already at
+    // sortOrder 4 (allMax) — the new debt account must land after every
+    // existing debt account too, not merely after the assets.
+    const { tx, inserts, updates } = makeCreateTx(1, 4, 4);
+    mockTx = tx;
+
+    await accountsRepo.create({ name: 'Mortgage', kind: 'debt' });
+
+    expect(inserts[0]).toMatchObject({ sortOrder: 5 });
+    expect(updates).toEqual([]);
   });
 
   it('create honors an explicitly provided id (a caller that pre-generated it)', async () => {
