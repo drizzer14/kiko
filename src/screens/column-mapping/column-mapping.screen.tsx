@@ -36,6 +36,7 @@ import {
   type SavedColumnMapping,
   type ColumnMappingRowError,
   dateFormatIds,
+  dateFormatExamples,
   readTableRows,
   mappingKeyFor,
   applyColumnMapping,
@@ -355,9 +356,12 @@ const columnOptionsFor = (headerRow: TableCell[]): ColumnSelectFieldOption<numbe
     return { value: index, label: text === '' ? `#${index + 1}` : text };
   });
 
+// F4 item 8: each option shows a worked example date (e.g. "31.12.2026
+// 23:59:59"), not the raw preset id — meaningless to a user who doesn't
+// already know date-format notation.
 const dateFormatOptions: ColumnSelectFieldOption<DateFormatId>[] = dateFormatIds.map((id) => ({
   value: id,
-  label: id,
+  label: dateFormatExamples[id],
 }));
 
 // Literal technical labels, not translated — the same treatment the

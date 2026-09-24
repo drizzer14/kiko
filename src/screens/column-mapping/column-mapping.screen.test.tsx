@@ -264,6 +264,29 @@ describe('ColumnMappingScreen', () => {
     expect(view.getByText(i18n.t('columnMapping.result'))).toBeTruthy();
   });
 
+  // F4 item 8: the date-format picker shows a worked example ("31.12.2026
+  // 23:59:59") instead of the raw preset id — meaningless to a user who
+  // doesn't already know date-format notation.
+  it('shows a worked example date, not the raw preset id, in the date-format picker', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+
+    const view = await renderMonobankScreen();
+
+    await fireEvent.press(view.getByTestId('column-mapping-date-format'));
+
+    expect(view.getByText('31.12.2026 23:59:59')).toBeTruthy();
+    expect(view.queryByText('DD.MM.YYYY HH:MM:SS')).toBeNull();
+
+    await fireEvent.press(
+      view.getByTestId('column-mapping-date-format-option-DD.MM.YYYY HH:MM:SS'),
+    );
+
+    // The field's own displayed value is the SAME example text once picked.
+    expect(
+      within(view.getByTestId('column-mapping-date-format')).getByText('31.12.2026 23:59:59'),
+    ).toBeTruthy();
+  });
+
   // Item 2 (F3, BUG): same "Add new" holding return channel as
   // `statement-import.screen.test.tsx` — see that test file's matching case
   // for the full explanation.

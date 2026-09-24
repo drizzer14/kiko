@@ -87,6 +87,22 @@ const presets: Record<DateFormatId, DatePreset> = {
   },
 };
 
+// F4 item 8: the column-mapping date-format picker used to show the RAW
+// preset id ("DD.MM.YYYY HH:MM:SS") as its own option label — meaningless to
+// a user who doesn't already know date-format notation. Shows a real WORKED
+// example instead, all rendered off the SAME instant (31 Dec 2026,
+// 23:59:59 UTC — an unambiguous day > 12, so DD-first vs MM-first reads
+// correctly at a glance) so every option is directly comparable.
+export const dateFormatExamples: Record<DateFormatId, string> = {
+  'DD.MM.YYYY HH:MM:SS': '31.12.2026 23:59:59',
+  'DD.MM.YYYY HH:MM': '31.12.2026 23:59',
+  'DD.MM.YYYY': '31.12.2026',
+  'DD.MM.YY HH:MM': '31.12.26 23:59',
+  'YYYY-MM-DD HH:MM:SS': '2026-12-31 23:59:59',
+  'YYYY-MM-DD': '2026-12-31',
+  'MM/DD/YYYY': '12/31/2026',
+};
+
 /**
  * Parses one date/time cell against a single named preset, returning `undefined`
  * (never throwing) on a mismatch — the column-mapping core surfaces that as a

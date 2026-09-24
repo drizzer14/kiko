@@ -1,4 +1,4 @@
-import { dateFormatIds, parseDateWithFormat } from './date-formats';
+import { dateFormatIds, dateFormatExamples, parseDateWithFormat } from './date-formats';
 
 describe('dateFormatIds', () => {
   it('lists exactly the 7 presets in order', () => {
@@ -11,6 +11,33 @@ describe('dateFormatIds', () => {
       'YYYY-MM-DD',
       'MM/DD/YYYY',
     ]);
+  });
+});
+
+// F4 item 8: the date-format picker shows a worked example instead of the
+// raw preset id — self-verified by parsing each example back through its
+// OWN format, so a typo'd example can never silently drift from what its
+// format id actually accepts.
+describe('dateFormatExamples', () => {
+  it('gives exactly one example per dateFormatIds entry', () => {
+    expect(Object.keys(dateFormatExamples).sort()).toEqual([...dateFormatIds].sort());
+  });
+
+  it('every example round-trips through parseDateWithFormat under its own id, resolving to 31 Dec 2026', () => {
+    for (const id of dateFormatIds) {
+      const seconds = parseDateWithFormat(dateFormatExamples[id], id);
+
+      expect(seconds).toBeDefined();
+      expect(new Date((seconds ?? 0) * 1000).getUTCFullYear()).toBe(2026);
+      expect(new Date((seconds ?? 0) * 1000).getUTCMonth()).toBe(11);
+      expect(new Date((seconds ?? 0) * 1000).getUTCDate()).toBe(31);
+    }
+  });
+
+  it('never shows the raw preset id verbatim as its own example', () => {
+    for (const id of dateFormatIds) {
+      expect(dateFormatExamples[id]).not.toBe(id);
+    }
   });
 });
 
