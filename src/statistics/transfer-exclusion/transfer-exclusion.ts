@@ -94,7 +94,7 @@ export const isDescriptionExcludedTransfer = (description: string | null | undef
  * `isDescriptionExcludedTransfer`). Unioned by the caller with the mcc/IBAN ids
  * and the matched-pair ids.
  */
-export const descriptionExcludedTransferTxIds = (
+export const descriptionExcludedTransferTransactionIds = (
   transactions: readonly { id: string; description: string | null | undefined }[],
 ): Set<string> => {
   const ids = new Set<string>();
@@ -113,7 +113,7 @@ export const descriptionExcludedTransferTxIds = (
  * from `internalTransferTxIds` to drop both cash-outs/own-transfers and the
  * structurally-paired self-transfers the mcc rule cannot see.
  */
-export const mccExcludedTransferTxIds = (
+export const mccExcludedTransferTransactionIds = (
   transactions: readonly ({ id: string } & ExclusionTransaction)[],
   ownIbans: ReadonlySet<string>,
 ): Set<string> => {

@@ -102,7 +102,7 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings,
-      txByHolding: new Map(),
+      transactionByHolding: new Map(),
       historyRows,
       baseCurrency: 'USD',
       range: { from: D0, to: D1 },
@@ -125,7 +125,7 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings,
-      txByHolding: new Map(),
+      transactionByHolding: new Map(),
       historyRows,
       baseCurrency: 'USD',
       range: { from: D0, to: D2 },
@@ -140,7 +140,7 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings,
-      txByHolding: new Map(),
+      transactionByHolding: new Map(),
       historyRows,
       baseCurrency: 'USD',
       range: { from: D0, to: D1 },
@@ -159,7 +159,7 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings,
-      txByHolding: new Map(),
+      transactionByHolding: new Map(),
       historyRows,
       baseCurrency: 'USD',
       range: { from: D0, to: D1 },
@@ -179,7 +179,7 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings,
-      txByHolding: new Map(),
+      transactionByHolding: new Map(),
       historyRows,
       baseCurrency: 'USD',
       range: { from: D0, to: D1 },
@@ -200,7 +200,7 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings,
-      txByHolding: new Map(),
+      transactionByHolding: new Map(),
       historyRows,
       baseCurrency: 'USD',
       range: { from: D0 + 13 * HOUR, to: D1 + 13 * HOUR },
@@ -234,7 +234,7 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings: [card, bond],
-      txByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
+      transactionByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
       range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
@@ -267,7 +267,7 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings: [card, bond],
-      txByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_787 }]]]),
+      transactionByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_787 }]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
       range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
@@ -305,7 +305,7 @@ describe('buildNetWorthSeries', () => {
     const series = buildNetWorthSeries({
       holdings: [card, bond],
       // The synced debit is $1100.00 — NOT equal to the typed $1078.68 price.
-      txByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -110_000 }]]]),
+      transactionByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -110_000 }]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
       range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
@@ -404,7 +404,7 @@ describe('buildNetWorthSeries', () => {
       holdings: [card, bond],
       // The card's ledger holds the transaction the REAL mapping produced — not
       // a hand-typed `{ time, amountMinorUnits }` literal.
-      txByHolding: new Map([['card', [debitTransaction]]]),
+      transactionByHolding: new Map([['card', [debitTransaction]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
       range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
@@ -438,7 +438,9 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings: [cash, card, bond],
-      txByHolding: new Map([['card', [{ time: D0 + 6 * HOUR, amountMinorUnits: -40_000 }]]]),
+      transactionByHolding: new Map([
+        ['card', [{ time: D0 + 6 * HOUR, amountMinorUnits: -40_000 }]],
+      ]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
       range: { from: D0, to: D2 },
@@ -477,7 +479,7 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings: [card, bond],
-      txByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_787 }]]]),
+      transactionByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_787 }]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
       range: { from: D0, to: D0 + 2 * DAY }, // buckets at D0, D1 (=dayD), D2 — all midnight
@@ -516,7 +518,7 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings: [card, bond],
-      txByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
+      transactionByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
       range: { from: dayDm1, to: dayD2 },
@@ -556,7 +558,7 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings: [card, bond],
-      txByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
+      transactionByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
       range: { from: dayDm1, to: dayD2 },
@@ -590,7 +592,7 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings: [cash, bond],
-      txByHolding: new Map(), // no transaction anywhere funds the bond's cost
+      transactionByHolding: new Map(), // no transaction anywhere funds the bond's cost
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
       range: { from: D0, to: D2 },
@@ -641,7 +643,7 @@ describe('buildNetWorthSeries', () => {
 
       const series = buildNetWorthSeries({
         holdings: [cash, bond],
-        txByHolding: new Map([['cash', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
+        transactionByHolding: new Map([['cash', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
         historyRows: [uahUsd(D0, '0.025')],
         baseCurrency: 'USD',
         range: { from: debitDay, to: purchaseDay },
@@ -660,7 +662,7 @@ describe('buildNetWorthSeries', () => {
 
     const series: NetWorthSeries = buildNetWorthSeries({
       holdings,
-      txByHolding: new Map(),
+      transactionByHolding: new Map(),
       historyRows: [],
       baseCurrency: 'USD',
       range: { from: D0, to: D2 },
@@ -686,7 +688,7 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings: [propertyHolding],
-      txByHolding: new Map(),
+      transactionByHolding: new Map(),
       historyRows: [uahUsd(D0, '0.025')],
       baseCurrency: 'USD',
       range: { from: D0, to: D2 },
@@ -720,7 +722,7 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings: [propertyHolding],
-      txByHolding: new Map(),
+      transactionByHolding: new Map(),
       historyRows: [uahUsd(D0, '0.025')],
       baseCurrency: 'USD',
       range: { from: D0, to: D0 },
@@ -767,7 +769,7 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings: [goldBar],
-      txByHolding: new Map(),
+      transactionByHolding: new Map(),
       // `historyRows` gates the WHOLE series (empty -> "nothing accurate to
       // draw yet"), even though a same-currency holding needs no cross-rate
       // conversion — a row is required to get past that gate, same as the
@@ -812,7 +814,7 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings: [goldBar],
-      txByHolding: new Map(),
+      transactionByHolding: new Map(),
       historyRows: [uahUsd(D0, '0.025')],
       baseCurrency: 'UAH',
       range: { from: D0, to: D0 },
@@ -858,7 +860,7 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings: [loan],
-      txByHolding: new Map(),
+      transactionByHolding: new Map(),
       historyRows: [uahUsd(D0, '0.025')],
       baseCurrency: 'UAH',
       range: { from: D0, to: D1 },
@@ -897,7 +899,7 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings: [loan],
-      txByHolding: new Map(),
+      transactionByHolding: new Map(),
       historyRows: [uahUsd(D0, '0.025')],
       baseCurrency: 'UAH',
       range: { from: D0, to: D0 },

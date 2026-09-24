@@ -46,7 +46,7 @@ export type LoanHolding = Pick<HoldingRow, 'id' | 'metadata' | 'currency'>;
  * category, in full, exactly like an unlinked payment — a wrong-currency
  * interest amount would otherwise be silently wrong.
  */
-export const loanPaymentExcludedTxIds = (
+export const loanPaymentExcludedTransactionIds = (
   transactions: readonly Pick<LoanPaymentTransaction, 'id' | 'loanHoldingId' | 'currency'>[],
   loanHoldings: readonly Pick<LoanHolding, 'id' | 'currency'>[],
 ): Set<string> => {

@@ -6,12 +6,12 @@
 // pairs each transaction insert with a matching holding balance update inside
 // the one write(...), so a future balance-less writer can never silently desync
 // those charts. Modeled on transactions.repo.test.ts's makeExchangeTx seam.
-let mockTx: unknown;
+let mockTransaction: unknown;
 jest.mock('../db/client', () => {
   const actual = jest.requireActual('../db/client');
   return {
     ...actual,
-    write: (work: (db: unknown) => unknown) => work(mockTx),
+    write: (work: (db: unknown) => unknown) => work(mockTransaction),
   };
 });
 
@@ -21,17 +21,17 @@ import { transactionsRepo } from '../transactions/repo/transactions.repo';
 // A fake tx handle capturing inserts + balance updates in call order, answering
 // both the chained `.where(...).limit(1)` and the bare `await where(...)`
 // conventions — same shape as transactions.repo.test.ts's makeExchangeTx.
-const makeTx = (
+const makeTransaction = (
   selectQueue: unknown[][],
 ): {
-  tx: unknown;
+  transaction: unknown;
   inserts: Record<string, unknown>[];
   updates: { table: unknown; values: Record<string, unknown> }[];
 } => {
   const inserts: Record<string, unknown>[] = [];
   const updates: { table: unknown; values: Record<string, unknown> }[] = [];
   const queue = [...selectQueue];
-  const tx = {
+  const transaction = {
     select: () => ({
       from: () => ({
         where: () => {
@@ -54,13 +54,13 @@ const makeTx = (
     }),
   };
 
-  return { tx, inserts, updates };
+  return { transaction, inserts, updates };
 };
 
 describe('chart balance-consistency invariant', () => {
   it('recordManual pairs its single transaction insert with a holding balance update', async () => {
-    const { tx, inserts, updates } = makeTx([[{ balanceMinorUnits: 5_000 }]]);
-    mockTx = tx;
+    const { transaction, inserts, updates } = makeTransaction([[{ balanceMinorUnits: 5_000 }]]);
+    mockTransaction = transaction;
 
     await transactionsRepo.recordManual({
       holdingId: 'h-1',
@@ -78,12 +78,12 @@ describe('chart balance-consistency invariant', () => {
   });
 
   it('recordManualWithReturns pairs EVERY inserted row with its own holding balance update', async () => {
-    const { tx, inserts, updates } = makeTx([
+    const { transaction, inserts, updates } = makeTransaction([
       [{ balanceMinorUnits: 50_000 }], // payer read
       [{ balanceMinorUnits: 1_000 }], // return B read
       [{ balanceMinorUnits: 2_000 }], // return C read
     ]);
-    mockTx = tx;
+    mockTransaction = transaction;
 
     await transactionsRepo.recordManualWithReturns({
       payment: { holdingId: 'payer-1', amountMinorUnits: -21_200, time: 1, category: 'groceries' },

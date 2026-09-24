@@ -22,7 +22,7 @@ export const TRANSFER_MATCH_WINDOW_MS = 2 * 60 * 1000;
  * in by the caller so a cross-currency pair — whose minor units never line up —
  * is never mistaken for one transfer.
  */
-type InternalTransferTx = {
+type InternalTransferTransaction = {
   id: string;
   holdingId: string;
   time: number;
@@ -34,7 +34,10 @@ type InternalTransferTx = {
 // equal-and-opposite amount in the SAME currency, on a DIFFERENT holding, and
 // within the pairing window. `debit` is assumed negative and `credit` positive
 // by the caller, so equal magnitude reduces to `credit === -debit`.
-const isMatchingCredit = (debit: InternalTransferTx, credit: InternalTransferTx): boolean =>
+const isMatchingCredit = (
+  debit: InternalTransferTransaction,
+  credit: InternalTransferTransaction,
+): boolean =>
   credit.amountMinorUnits === -debit.amountMinorUnits &&
   credit.currency === debit.currency &&
   credit.holdingId !== debit.holdingId &&
@@ -51,7 +54,9 @@ const isMatchingCredit = (debit: InternalTransferTx, credit: InternalTransferTx)
  * counted). Zero-amount rows are never legs. The returned ids let a caller drop
  * these rows from a spending view without mutating the ledger.
  */
-export const internalTransferTxIds = (transactions: InternalTransferTx[]): Set<string> => {
+export const internalTransferTransactionIds = (
+  transactions: InternalTransferTransaction[],
+): Set<string> => {
   const matchedIds = new Set<string>();
   const consumedCredits = new Set<number>();
 

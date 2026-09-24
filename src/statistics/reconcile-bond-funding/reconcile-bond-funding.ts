@@ -78,7 +78,7 @@ export const reconcileBondFunding = (
   meta: BondMeta,
   bondCurrency: Currency,
   holdings: SeriesHolding[],
-  txByHolding: Map<string, SeriesTransaction[]>,
+  transactionByHolding: Map<string, SeriesTransaction[]>,
 ): BondRecognition => {
   const typedDay = startOfLocalDay(meta.purchaseDate);
   const typedPrice = meta.purchasePriceMinorUnits;
@@ -86,7 +86,7 @@ export const reconcileBondFunding = (
 
   const candidates = holdings.flatMap((holding) =>
     holding.currency === bondCurrency
-      ? (txByHolding.get(holding.id) ?? [])
+      ? (transactionByHolding.get(holding.id) ?? [])
           .filter(
             (transaction) =>
               transaction.amountMinorUnits < 0 &&

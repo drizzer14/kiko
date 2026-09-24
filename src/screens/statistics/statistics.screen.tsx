@@ -23,6 +23,10 @@ import {
   type TrendFilter,
 } from '../../statistics/trend-filter';
 import {
+  loanInterestEntries,
+  loanPaymentExcludedTransactionIds,
+} from '../../statistics/loan-payments';
+import {
   buildCategoryMeasures,
   buildCategoryTrend,
   type TrendTransaction,
@@ -34,8 +38,8 @@ import {
   type CategorySlice,
 } from '../../statistics/category-breakdown';
 import {
-  descriptionExcludedTransferTxIds,
-  mccExcludedTransferTxIds,
+  descriptionExcludedTransferTransactionIds,
+  mccExcludedTransferTransactionIds,
 } from '../../statistics/transfer-exclusion';
 import {
   type AccountSlice,
@@ -63,11 +67,10 @@ import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
 import SummaryTable from '../../design-system/components/summary-table';
 import { buildNetWorthSeries } from '../../statistics/net-worth-series';
 import type { SeriesTransaction } from '../../statistics/holding-value-at';
-import { exchangeExcludedTxIds } from '../../statistics/exchange-exclusion';
-import { internalTransferTxIds } from '../../statistics/internal-transfers';
 import FilterMenu, { FILTER_ALL, type FilterOption } from '../home/filter-menu';
+import { exchangeExcludedTransactionIds } from '../../statistics/exchange-exclusion';
+import { internalTransferTransactionIds } from '../../statistics/internal-transfers';
 import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
-import { loanInterestEntries, loanPaymentExcludedTxIds } from '../../statistics/loan-payments';
 import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '../../categories/category-display';
 
 import BarChart from './bar-chart';
@@ -359,7 +362,7 @@ const StatisticsScreen: FC = () => {
     () =>
       buildNetWorthSeries({
         holdings: filtered.visibleHoldings,
-        txByHolding: groupByHolding(transactions),
+        transactionByHolding: groupByHolding(transactions),
         historyRows,
         baseCurrency,
         range: { from: rangeFrom, to: rangeTo },
@@ -458,7 +461,7 @@ const StatisticsScreen: FC = () => {
   // are already ignored as income. Scoped to THIS chart only — every other view
   // (net worth, by-type, account pie) still sees the full ledger.
   const internalTransferIds = useMemo(
-    () => internalTransferTxIds(transactionsWithCurrency),
+    () => internalTransferTransactionIds(transactionsWithCurrency),
     [transactionsWithCurrency],
   );
 
@@ -476,7 +479,7 @@ const StatisticsScreen: FC = () => {
   // with its own derived entry) — computed over the full, unfiltered ledger
   // like every other exclusion rule here.
   const loanPaymentExcludedIds = useMemo(
-    () => loanPaymentExcludedTxIds(transactionsWithCurrency, loanHoldings),
+    () => loanPaymentExcludedTransactionIds(transactionsWithCurrency, loanHoldings),
     [transactionsWithCurrency, loanHoldings],
   );
 
@@ -576,7 +579,7 @@ const StatisticsScreen: FC = () => {
   // the ambiguous 4829). This catches the single-legged movements the matched-
   // pair matcher structurally cannot (a cash-out has no synced credit leg).
   const mccExcludedIds = useMemo(
-    () => mccExcludedTransferTxIds(breakdownTransactions, ownIbans),
+    () => mccExcludedTransferTransactionIds(breakdownTransactions, ownIbans),
     [breakdownTransactions, ownIbans],
   );
 
@@ -584,7 +587,7 @@ const StatisticsScreen: FC = () => {
   // (e.g. "Поповнення депозиту", "На чорну картку", the FOP top-up). The mcc
   // rule structurally cannot see these; the description rule catches them.
   const descriptionExcludedIds = useMemo(
-    () => descriptionExcludedTransferTxIds(breakdownTransactions),
+    () => descriptionExcludedTransferTransactionIds(breakdownTransactions),
     [breakdownTransactions],
   );
 
@@ -593,7 +596,7 @@ const StatisticsScreen: FC = () => {
   // rule can see them — null mcc, empty description, and a cross-currency
   // pair the matched-pair matcher rejects.
   const exchangeExcludedIds = useMemo(
-    () => exchangeExcludedTxIds(breakdownTransactions),
+    () => exchangeExcludedTransactionIds(breakdownTransactions),
     [breakdownTransactions],
   );
 

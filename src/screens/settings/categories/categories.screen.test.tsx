@@ -294,10 +294,12 @@ describe('CategoriesScreen', () => {
   it('scrolls the ScrollView to the newly revealed form when the add row expands', async () => {
     // The scroll is deferred to the next frame so the just-revealed fields are
     // measured first; run that frame synchronously to assert the effect.
-    const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-      cb(0);
-      return 0;
-    });
+    const rafSpy = jest
+      .spyOn(globalThis, 'requestAnimationFrame')
+      .mockImplementation((callback) => {
+        callback(0);
+        return 0;
+      });
 
     const { getByLabelText } = await renderScreen();
 

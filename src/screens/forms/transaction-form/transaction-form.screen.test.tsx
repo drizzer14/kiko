@@ -2801,10 +2801,12 @@ describe('TransactionFormScreen — Split-change mode', () => {
     // The scroll is deferred to the next frame so the just-added row is
     // measured first; run that frame synchronously to assert the effect (same
     // pattern as the categories screen's own deferred scroll-to-form test).
-    const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-      cb(0);
-      return 0;
-    });
+    const rafSpy = jest
+      .spyOn(globalThis, 'requestAnimationFrame')
+      .mockImplementation((callback) => {
+        callback(0);
+        return 0;
+      });
 
     const utils = await renderAddFromHolding('payer');
     await pickType(utils, 'split');
@@ -2826,10 +2828,12 @@ describe('TransactionFormScreen — Split-change mode', () => {
 
   it('targets the newly appended return row (not a fixed one) on each Add return press (round-6 item 3)', async () => {
     const scrollToFieldMock = scrollToField as jest.Mock;
-    const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-      cb(0);
-      return 0;
-    });
+    const rafSpy = jest
+      .spyOn(globalThis, 'requestAnimationFrame')
+      .mockImplementation((callback) => {
+        callback(0);
+        return 0;
+      });
 
     const utils = await renderAddFromHolding('payer');
     await pickType(utils, 'split');

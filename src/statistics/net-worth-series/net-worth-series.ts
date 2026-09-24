@@ -51,7 +51,7 @@ export type NetWorthSeries = { points: NetWorthPoint[]; startReference: number }
  */
 export const buildNetWorthSeries = (input: {
   holdings: SeriesHolding[];
-  txByHolding: Map<string, SeriesTransaction[]>;
+  transactionByHolding: Map<string, SeriesTransaction[]>;
   historyRows: HistoryRow[];
   baseCurrency: Currency;
   range: { from: number; to: number };
@@ -62,7 +62,7 @@ export const buildNetWorthSeries = (input: {
 }): NetWorthSeries => {
   const {
     holdings,
-    txByHolding,
+    transactionByHolding,
     historyRows,
     baseCurrency,
     range,
@@ -106,7 +106,7 @@ export const buildNetWorthSeries = (input: {
       meta,
       holding.currency,
       holdings,
-      txByHolding,
+      transactionByHolding,
     );
 
     return {
@@ -137,7 +137,12 @@ export const buildNetWorthSeries = (input: {
       .filter((holding) => canConvert(holding.currency, baseCurrency, table))
       .reduce(
         (sum, holding) => {
-          const value = holdingValueAt(holding, txByHolding.get(holding.id) ?? [], t, book);
+          const value = holdingValueAt(
+            holding,
+            transactionByHolding.get(holding.id) ?? [],
+            t,
+            book,
+          );
           return sum.add(convert(Money.of(holding.currency, value), baseCurrency, table));
         },
         Money.of(baseCurrency, 0),

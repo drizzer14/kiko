@@ -4,7 +4,7 @@ import {
   type LoanHolding,
   type LoanPaymentTransaction,
   loanInterestEntries,
-  loanPaymentExcludedTxIds,
+  loanPaymentExcludedTransactionIds,
   LOAN_INTEREST_CATEGORY_KEY,
 } from './loan-payments';
 
@@ -48,7 +48,7 @@ const linkedPayment: LoanPaymentTransaction = {
 
 describe('loanPaymentExcludedTxIds', () => {
   it('excludes a linked payment whose loan holding exists', () => {
-    const ids = loanPaymentExcludedTxIds([linkedPayment], [scheduledLoan]);
+    const ids = loanPaymentExcludedTransactionIds([linkedPayment], [scheduledLoan]);
 
     expect(ids.has('tx-linked')).toBe(true);
   });
@@ -60,7 +60,7 @@ describe('loanPaymentExcludedTxIds', () => {
       loanHoldingId: null,
     };
 
-    const ids = loanPaymentExcludedTxIds([unlinked], [scheduledLoan]);
+    const ids = loanPaymentExcludedTransactionIds([unlinked], [scheduledLoan]);
 
     expect(ids.has('tx-unlinked')).toBe(false);
   });
@@ -74,7 +74,7 @@ describe('loanPaymentExcludedTxIds', () => {
       loanHoldingId: 'ghost-loan',
     };
 
-    const ids = loanPaymentExcludedTxIds([dangling], [scheduledLoan]);
+    const ids = loanPaymentExcludedTransactionIds([dangling], [scheduledLoan]);
 
     expect(ids.has('tx-dangling')).toBe(false);
   });
@@ -91,7 +91,7 @@ describe('loanPaymentExcludedTxIds', () => {
       currency: 'USD',
     };
 
-    const ids = loanPaymentExcludedTxIds([crossCurrency], [scheduledLoan]);
+    const ids = loanPaymentExcludedTransactionIds([crossCurrency], [scheduledLoan]);
 
     expect(ids.has('tx-cross-currency')).toBe(false);
   });

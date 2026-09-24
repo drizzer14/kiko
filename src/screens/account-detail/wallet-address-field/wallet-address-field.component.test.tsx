@@ -14,8 +14,8 @@ const ADDRESS = 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq';
 /** Resolves deferred outside the executor, for controlling async timing in tests. */
 const deferred = <T,>(): { promise: Promise<T>; resolve: (value: T) => void } => {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((res) => {
-    resolve = res;
+  const promise = new Promise<T>((resolveCallback) => {
+    resolve = resolveCallback;
   });
 
   return { promise, resolve };

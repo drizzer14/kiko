@@ -26,17 +26,17 @@ const makeNavigation = (): {
 
   const navigation = {
     isFocused: () => true,
-    addListener: (event: string, cb: () => void) => {
+    addListener: (event: string, callback: () => void) => {
       if (event === 'focus') {
-        focusListeners.add(cb);
+        focusListeners.add(callback);
 
-        return () => focusListeners.delete(cb);
+        return () => focusListeners.delete(callback);
       }
 
       if (event === 'blur') {
-        blurListeners.add(cb);
+        blurListeners.add(callback);
 
-        return () => blurListeners.delete(cb);
+        return () => blurListeners.delete(callback);
       }
 
       return () => undefined;
@@ -44,12 +44,12 @@ const makeNavigation = (): {
   } as unknown as NavigationProp<ParamListBase>;
 
   const fireFocus = () => {
-    for (const cb of blurListeners) {
-      cb();
+    for (const callback of blurListeners) {
+      callback();
     }
 
-    for (const cb of focusListeners) {
-      cb();
+    for (const callback of focusListeners) {
+      callback();
     }
   };
 

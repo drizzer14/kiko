@@ -438,10 +438,12 @@ describe('HoldingFormScreen term deposit', () => {
   // scroll even when the newly added row was already fully visible.
   it('scrolls to the newly added contribution through the occlusion-aware scrollToField helper, not an unconditional scrollToEnd (round-6 item 3)', async () => {
     const scrollToFieldMock = scrollToField as jest.Mock;
-    const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-      cb(0);
-      return 0;
-    });
+    const rafSpy = jest
+      .spyOn(globalThis, 'requestAnimationFrame')
+      .mockImplementation((callback) => {
+        callback(0);
+        return 0;
+      });
     const screen = await renderScreen();
 
     await selectHoldingType(screen, 'term_deposit');
@@ -462,10 +464,12 @@ describe('HoldingFormScreen term deposit', () => {
 
   it('targets the newly appended row (not a fixed one) on each Add contribution press (round-6 item 3)', async () => {
     const scrollToFieldMock = scrollToField as jest.Mock;
-    const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-      cb(0);
-      return 0;
-    });
+    const rafSpy = jest
+      .spyOn(globalThis, 'requestAnimationFrame')
+      .mockImplementation((callback) => {
+        callback(0);
+        return 0;
+      });
     const screen = await renderScreen();
 
     await selectHoldingType(screen, 'term_deposit');
