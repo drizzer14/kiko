@@ -27,4 +27,10 @@ export const styles = StyleSheet.create((theme) => ({
   cell: {
     paddingRight: theme.spacing(2),
   },
+  // The selected header row's own cell text (F3 item 8): bolder than the
+  // caption step's own regular 400 weight, so the chosen row reads as
+  // clearly distinct at a glance, not only by its accent fill.
+  selectedCellText: {
+    fontWeight: '700',
+  },
 }));

@@ -68,4 +68,35 @@ describe('RawPreview', () => {
     expect(selectedFill.backgroundColor).toBe(darkTheme.colors.accent);
     expect(unselectedFill.backgroundColor).toBeUndefined();
   });
+
+  // F3 item 7: a wide export renders no more than 5 columns per row.
+  it('shows at most 5 columns per row', async () => {
+    const wideRows: TableCell[][] = [
+      ['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6'],
+      ['v0', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6'],
+    ];
+
+    const { getByText, queryByText } = await render(
+      <RawPreview rows={wideRows} headerRowIndex={0} onSelectHeaderRow={jest.fn()} />,
+    );
+
+    expect(getByText('c0')).toBeTruthy();
+    expect(getByText('c4')).toBeTruthy();
+    expect(queryByText('c5')).toBeNull();
+    expect(queryByText('c6')).toBeNull();
+  });
+
+  // F3 item 8: the selected header row's own cell text turns bold.
+  it('renders the selected header row’s cell text bold', async () => {
+    const { getByText } = await render(
+      <RawPreview rows={rows} headerRowIndex={0} onSelectHeaderRow={jest.fn()} />,
+    );
+
+    const { StyleSheet } = require('react-native');
+    const selectedCellStyle = StyleSheet.flatten(getByText('Date').props.style);
+    const unselectedCellStyle = StyleSheet.flatten(getByText('Coffee').props.style);
+
+    expect(selectedCellStyle.fontWeight).toBe('700');
+    expect(unselectedCellStyle.fontWeight).not.toBe('700');
+  });
 });

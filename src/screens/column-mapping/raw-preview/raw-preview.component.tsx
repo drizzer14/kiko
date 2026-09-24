@@ -9,22 +9,35 @@ import { computeColumnWidths } from './column-widths';
 import type { RawPreviewProps } from './raw-preview.props';
 
 const PREVIEW_ROW_COUNT = 10;
+// F3 item 7: the raw preview shows at most this many columns per row — a
+// wide export (a multi-card PrivatBank sheet, say) used to scroll dozens of
+// columns wide, which read as noise before the user has even picked a
+// header row. Every mapping field below (`ColumnSelectField`'s own option
+// list, derived from the FULL header row in `column-mapping.screen.tsx`) is
+// UNAFFECTED — every column stays selectable there; only this raw grid caps
+// what it renders.
+const PREVIEW_COLUMN_COUNT = 5;
 
 /**
  * The column-mapping screen's own raw-table preview: the first
- * `PREVIEW_ROW_COUNT` rows exactly as `readTableRows` parsed them, rendered
- * inside one shared horizontal `ScrollView` so every row's cells stay
- * column-aligned as the user scrolls sideways. Tapping a row sets it as the
- * header row — the row whose cells become every `ColumnSelectField`'s own
- * option list below. Each column takes a CONSISTENT width across every row
- * (device-feedback-round-F1 item 6, `computeColumnWidths`) rather than a flat
- * per-cell minimum, so the grid reads as a real aligned table. The selected
- * header row paints the theme's accent BLUE (item 12, the same fill
- * `SummaryTable`'s sibling controls use for a selected state) with
- * `onAccent` cell text, replacing the former neutral `surfaceHigh` tint.
+ * `PREVIEW_ROW_COUNT` rows exactly as `readTableRows` parsed them, capped to
+ * the first `PREVIEW_COLUMN_COUNT` columns (F3 item 7), rendered inside one
+ * shared horizontal `ScrollView` so every row's cells stay column-aligned as
+ * the user scrolls sideways. Tapping a row sets it as the header row — the
+ * row whose cells become every `ColumnSelectField`'s own option list below.
+ * Each column takes a CONSISTENT width across every row (device-feedback-
+ * round-F1 item 6, `computeColumnWidths`) rather than a flat per-cell
+ * minimum, so the grid reads as a real aligned table. The selected header
+ * row paints the theme's accent BLUE (item 12, the same fill `SummaryTable`'s
+ * sibling controls use for a selected state) with `onAccent` cell text,
+ * replacing the former neutral `surfaceHigh` tint, and its cell text turns
+ * BOLD (F3 item 8) so the chosen header row reads as clearly distinct from
+ * every other previewed row, not just differently colored.
  */
 const RawPreview: FC<RawPreviewProps> = ({ rows, headerRowIndex, onSelectHeaderRow, testID }) => {
-  const previewRows = rows.slice(0, PREVIEW_ROW_COUNT);
+  const previewRows = rows
+    .slice(0, PREVIEW_ROW_COUNT)
+    .map((row) => row.slice(0, PREVIEW_COLUMN_COUNT));
   const columnWidths = computeColumnWidths(previewRows);
 
   return (
@@ -66,6 +79,7 @@ const RawPreview: FC<RawPreviewProps> = ({ rows, headerRowIndex, onSelectHeaderR
                         variant="caption"
                         tone={isSelected ? 'onAccent' : 'textPrimary'}
                         numberOfLines={1}
+                        style={isSelected ? styles.selectedCellText : undefined}
                       >
                         {String(cell)}
                       </Text>
