@@ -513,8 +513,8 @@ BigInt decimal helper), `purchaseDate`, `purchasePriceMinorUnits`,
 'semiannually' | 'annually'`). `purchaseDate`/`maturityDate` are raw
 epoch-ms instants (often mid-day, e.g. `Date.now()`), read through
 `startOfLocalDay` wherever a day boundary matters
-(`holding-value.ts`), NOT through `dayKeyOf`'s UTC-midnight
-convention — do not conflate the two.
+(`holding-value.ts`), NOT through `dayKeyOf`'s "a local calendar date
+encoded as UTC midnight" convention — do not conflate the two.
 
 `src/bonds/isin/` (T23) validates an ISIN with no side effects:
 `normalizeIsin` trims/uppercases; `validateIsin` checks the ISO 6166
@@ -538,8 +538,13 @@ unparseable `pgs_date` rather than throwing. `nominal` ->
 an amount, not a scaled decimal-string price/quantity, so no
 `decimalFromJsonNumber` boundary conversion is needed (the same
 parity every other Money amount conversion follows). `pgs_date`
-(`YYYY-MM-DD`) is parsed as a UTC wall-clock instant, matching
-`parseDateTimeSeconds`'s "read a wall-clock date as UTC" convention.
+(`YYYY-MM-DD`) is parsed as a DEVICE-LOCAL midnight instant (`new
+Date(year, month - 1, day)`), NOT through `parseDateTimeSeconds`'s
+"read a wall-clock date as UTC" convention — `BondTerms.maturityDate`
+feeds straight into `BondMeta.maturityDate` above, and every consumer
+of that field reads it through local getters, so a UTC parse would
+silently shift the maturity date (and every coupon date derived from
+it) back a day for a user west of UTC (T24 review finding I1).
 `couponFrequencyFromPayPeriod(days)` maps the register's `pay_period`
 onto `BondCouponFrequency`, tolerating a ±5-day slack around each of
 the four canonical periods (30/91/182/364); a period outside every

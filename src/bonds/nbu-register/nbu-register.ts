@@ -1,7 +1,7 @@
 import { guard } from 'fnts';
 
-import { type Currency, currencyOptions } from '../../currency/currency';
 import { Money } from '../../currency/money';
+import { type Currency, currencyOptions } from '../../currency/currency';
 import type { BondCouponFrequency } from '../../holdings/holding-metadata';
 
 /**
@@ -14,9 +14,10 @@ const REGISTER_ENDPOINT = 'https://bank.gov.ua/depo_securities?json';
 
 /**
  * One record of the register payload, trimmed to the fields
- * `toBondTerms` reads (spec 6.2's field-mapping table) plus `payments`,
- * kept for realism though not yet consumed (a later phase reads it for
- * exact coupon dates instead of the frequency approximation).
+ * `toBondTerms` reads (spec 6.2's field-mapping table). The fixture keeps a
+ * real `payments[]` array for realism, but this type does not declare it: a
+ * later phase that reads exact coupon dates instead of the frequency
+ * approximation adds its own type for that field then.
  */
 type NbuRegisterRow = {
   cpcode: string;
@@ -26,7 +27,6 @@ type NbuRegisterRow = {
   cpdescr: string;
   val_code: string;
   pay_period: number;
-  payments?: { pay_date: string; pay_type: string; pay_val: number }[];
 };
 
 /** The register's resolved terms for one bond ISIN — the ISIN-mode form's read shape (spec 6.3). */
@@ -71,11 +71,17 @@ export const couponFrequencyFromPayPeriod = (days: number): BondCouponFrequency 
 const REGISTER_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /**
- * Parses the register's `YYYY-MM-DD` date fields (`pgs_date`) as a UTC
- * wall-clock instant — the same "read a wall-clock date as UTC" convention
- * `parseDateTimeSeconds` uses for a statement date, so a bond's maturity
- * date never drifts a calendar day against the device's own timezone.
- * Returns null for anything not shaped like that pattern.
+ * Parses the register's `YYYY-MM-DD` date fields (`pgs_date`) as a
+ * DEVICE-LOCAL midnight instant — NOT the `parseDateTimeSeconds`/UTC
+ * convention a statement-import dedup key uses. `BondTerms.maturityDate`
+ * feeds straight into `BondMeta.maturityDate`, and every consumer of that
+ * field reads it through local-getter helpers — `startOfLocalDay`
+ * (`src/holdings/holding-value/holding-value.ts`), `addMonths`/`midMonth`
+ * (`src/holdings/interest/interest.ts`) — the same way the Manual bond
+ * form itself writes a local instant (`holding-form.screen.tsx`). Parsing
+ * this as UTC would silently shift the maturity date (and every coupon
+ * date derived from it) back a day for any user west of UTC. Returns null
+ * for anything not shaped like that pattern.
  */
 const parseRegisterDate = (value: string): number | null => {
   const match = REGISTER_DATE_PATTERN.exec(value);
@@ -86,7 +92,7 @@ const parseRegisterDate = (value: string): number | null => {
 
   const [, year, month, day] = match;
 
-  return Date.UTC(Number(year), Number(month) - 1, Number(day));
+  return new Date(Number(year), Number(month) - 1, Number(day)).getTime();
 };
 
 /**

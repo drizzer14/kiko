@@ -15,8 +15,7 @@ export const bondRegisterRepo = {
    * The cache-wide `fetchedAt` high-water mark — every row shares one
    * write-time stamp (`replaceAll` writes them all in the same call), so a
    * `MAX` here reads the same value a `LIMIT 1` would. Awaited directly by
-   * `refreshBondRegisterIfStale`'s default `fetchedAt` dependency, and
-   * handed to `useLiveQuery` for a reactive "cache last updated" read.
+   * `refreshBondRegisterIfStale`'s default `fetchedAt` dependency.
    */
   fetchedAtQuery: () => database.select({ value: max(bondRegister.fetchedAt) }).from(bondRegister),
   /**
@@ -62,7 +61,12 @@ const defaultFetchedAt = async (): Promise<number | null> => {
  * the same `dayKeyOf` convention `price_points` uses (`kiko-pricing`) — a
  * device-local day, not a UTC one, so a refresh just after local midnight is
  * never mistaken for "already run today" against a stamp from the previous
- * evening. Every fetched row is written through ONE `replaceAll` call.
+ * evening. Every fetched row is written through ONE `replaceAll` call. An
+ * empty fetch result (0 rows — a malformed/empty response body, never
+ * observed from the live register, see the T24 review) is NOT written: it
+ * would wipe a good cache via `replaceAll([])`, and an offline form open
+ * needs that cache (spec 6.4 #4). The stale cache is left in place, and
+ * `fetchedAt` does not advance, so the next open retries the fetch.
  */
 export const refreshBondRegisterIfStale = async (
   deps: RefreshBondRegisterDeps = {},
@@ -81,6 +85,10 @@ export const refreshBondRegisterIfStale = async (
   }
 
   const terms = await fetchRegister(fetchImpl);
+
+  if (terms.length === 0) {
+    return;
+  }
 
   await replaceAll(terms.map((bond) => ({ isin: bond.isin, terms: bond, fetchedAt: at })));
 };

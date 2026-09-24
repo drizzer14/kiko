@@ -441,7 +441,8 @@ export type PricePointRow = typeof pricePoints.$inferSelect;
  * resolved `BondTerms` shape as JSON (`src/bonds/nbu-register/`) since the
  * ISIN-mode bond form reads the whole object at once; `fetchedAt` is the
  * one write-time stamp shared by every row in a given refresh, which is
- * what lets the refresh gate compare a single value instead of a MAX query.
+ * what makes `bondRegisterRepo.fetchedAtQuery()`'s `MAX(fetched_at)` read
+ * the same value any single row's own `fetchedAt` would.
  */
 export const bondRegister = sqliteTable('bond_register', {
   isin: text('isin').primaryKey(),

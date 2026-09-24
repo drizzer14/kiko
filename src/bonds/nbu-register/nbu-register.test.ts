@@ -10,6 +10,13 @@ import { couponFrequencyFromPayPeriod, fetchNbuRegister } from './nbu-register';
 const makeFetch = (body: unknown, ok = true): typeof fetch =>
   (async () => ({ ok, json: async () => body, status: ok ? 200 : 500 })) as unknown as typeof fetch;
 
+// `maturityDate` is parsed as DEVICE-LOCAL midnight (matching how every
+// `BondMeta.maturityDate` consumer reads it), never `Date.UTC`. Building the
+// expectation the SAME way the production code does keeps this assertion
+// timezone-independent — it holds under any host TZ, not just Kyiv's.
+const localMidnight = (year: number, month: number, day: number): number =>
+  new Date(year, month - 1, day).getTime();
+
 describe('couponFrequencyFromPayPeriod', () => {
   it('maps 182 (within 5 days of the semiannual band) to semiannually', () => {
     expect(couponFrequencyFromPayPeriod(182)).toBe('semiannually');
@@ -61,7 +68,7 @@ describe('fetchNbuRegister', () => {
       currency: 'UAH',
       faceValueMinorUnits: 100_000,
       couponPct: 15.1,
-      maturityDate: Date.UTC(2026, 5, 24),
+      maturityDate: localMidnight(2026, 6, 24),
       couponFrequency: 'semiannually',
       name: 'Середньострокові UA4000234215',
     });
@@ -76,7 +83,7 @@ describe('fetchNbuRegister', () => {
       currency: 'USD',
       faceValueMinorUnits: 100,
       couponPct: 4.5,
-      maturityDate: Date.UTC(2029, 1, 1),
+      maturityDate: localMidnight(2029, 2, 1),
       couponFrequency: 'semiannually',
       name: 'OЗДП-середньострокова XS2895055981',
     });
