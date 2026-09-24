@@ -3,7 +3,7 @@ import type { HoldingRow } from '../../db/schema';
 import {
   BINANCE_REQUEST_INTERVAL_MS,
   type BinanceTransactionRow,
-  type BinanceTxSyncDeps,
+  type BinanceTransactionSyncDeps,
   HISTORY_FLOOR_MS,
   parseWithdrawTime,
   syncBinanceTransactions,
@@ -49,7 +49,7 @@ const withdrawal = (over: Partial<BinanceWithdrawal> = {}): BinanceWithdrawal =>
 const emptyDepositFetch = () =>
   jest.fn(async (_apiKey: string, _secret: string, _window: HistoryWindow) => []);
 
-const makeDeps = (over: Partial<BinanceTxSyncDeps> = {}): BinanceTxSyncDeps => ({
+const makeDeps = (over: Partial<BinanceTransactionSyncDeps> = {}): BinanceTransactionSyncDeps => ({
   now: () => NOW,
   sleep: async () => undefined,
   fetchImpl: (async () => ({})) as unknown as typeof fetch,
