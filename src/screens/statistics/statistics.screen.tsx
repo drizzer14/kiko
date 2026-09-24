@@ -18,6 +18,7 @@ import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Card from '../../design-system/components/card';
+import MoneyText from '../../design-system/components/money-text';
 import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
 import { resolveEntityColor } from '../../design-system/entity-tint';
@@ -38,7 +39,6 @@ import {
   buildAccountContribution,
   buildDebtTotal,
 } from '../../statistics/account-contribution';
-import MoneyText from '../../design-system/components/money-text';
 import { bucketDaysForSpan } from '../../statistics/buckets';
 import {
   type BreakdownTransaction,
@@ -395,9 +395,10 @@ const StatisticsScreen: FC = () => {
     [filtered, rateTable, baseCurrency, now, priceBook],
   );
 
-  // T27: the "Debts" total under the account pie — every loan holding's own
-  // negative held value, summed independently of the pie (which shows assets
-  // only — spec §5.3).
+  // T27 (I2, T27 re-review round 1): the "Debts" total under the account pie
+  // — every NEGATIVE holding value (a loan's own value, or a non-loan
+  // holding in debit, e.g. a credit card), summed independently of the pie
+  // (which shows only POSITIVE values — spec §5.3).
   const debtTotal = useMemo(
     () =>
       buildDebtTotal({

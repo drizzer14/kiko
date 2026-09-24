@@ -12,7 +12,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import Box from '../../design-system/components/box';
 import Card from '../../design-system/components/card';
-import Divider from '../../design-system/components/divider';
 import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
 import type { Currency } from '../../currency/currency';
@@ -20,6 +19,7 @@ import { usePriceBook } from '../../prices/use-price-book';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import { isSyncedAccount } from '../../holdings/deletable';
+import Divider from '../../design-system/components/divider';
 import MoneyText from '../../design-system/components/money-text';
 import { accountKindSymbol } from '../../holdings/entity-symbols';
 import { defaultAccountColor } from '../../holdings/entity-colors';
