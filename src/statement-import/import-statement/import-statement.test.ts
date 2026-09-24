@@ -7,12 +7,12 @@
 // pattern: one persistent `store`/`holding` pair spans BOTH `importStatement`
 // calls in the re-import test below, the same way that file spans one store
 // across a disconnect-then-reconnect sequence.
-let mockTx: unknown;
+let mockTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
   return {
     ...actual,
-    write: (work: (db: unknown) => unknown) => work(mockTx),
+    write: (work: (db: unknown) => unknown) => work(mockTransaction),
   };
 });
 
@@ -172,7 +172,7 @@ const unsyncedAccount = { institution: null };
  * contents, the upsert itself applies for real via `applyUpsertRow`, and a
  * `holdings` balance write is captured.
  */
-type ImportTxOpts = {
+type ImportTransactionOptions = {
   store: { transactions: StoredRow[] };
   holding?: FakeHolding;
   account?: { institution: string | null };
@@ -187,7 +187,7 @@ type ImportTxOpts = {
  * hand-set boundary source comes back separately, straight off
  * `opts.holding.balanceSetAt`. */
 const resolveImportSelect = (
-  opts: ImportTxOpts,
+  options: ImportTransactionOptions,
   table: unknown,
   fields: Record<string, unknown> | undefined,
 ): unknown[] => {
@@ -196,37 +196,40 @@ const resolveImportSelect = (
   }
 
   if (table === holdings) {
-    return opts.holding ? [opts.holding] : [];
+    return options.holding ? [options.holding] : [];
   }
 
   if (table === accounts) {
-    return opts.account ? [opts.account] : [];
+    return options.account ? [options.account] : [];
   }
 
   if (table === transactions && fields && 'time' in fields) {
-    const syncTimes = opts.store.transactions
+    const syncTimes = options.store.transactions
       .filter((row) => row.source !== 'manual' && row.source !== 'import')
       .map((row) => row.time);
 
     return syncTimes.length > 0 ? [{ time: Math.max(...syncTimes) }] : [{ time: null }];
   }
 
-  return opts.store.transactions.map((row) => ({ source: row.source, externalId: row.externalId }));
+  return options.store.transactions.map((row) => ({
+    source: row.source,
+    externalId: row.externalId,
+  }));
 };
 
-const makeImportTx = (
-  opts: ImportTxOpts,
-): { tx: unknown; captured: { holdingSet?: Record<string, unknown> } } => {
+const makeImportTransaction = (
+  options: ImportTransactionOptions,
+): { transaction: unknown; captured: { holdingSet?: Record<string, unknown> } } => {
   let sequence = 0;
   const nextId = (): string => `row-${++sequence}`;
   const captured: { holdingSet?: Record<string, unknown> } = {};
   const resolveRows = (rows: unknown[]) =>
     Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
 
-  const tx = {
+  const transaction = {
     select: (fields?: Record<string, unknown>) => ({
       from: (table: unknown) => ({
-        where: () => resolveRows(resolveImportSelect(opts, table, fields)),
+        where: () => resolveRows(resolveImportSelect(options, table, fields)),
       }),
     }),
     insert: (table: unknown) => ({
@@ -237,7 +240,7 @@ const makeImportTx = (
           }
 
           for (const row of rows) {
-            applyUpsertRow(opts.store, row, set, nextId);
+            applyUpsertRow(options.store, row, set, nextId);
           }
         },
       }),
@@ -253,13 +256,17 @@ const makeImportTx = (
     }),
   };
 
-  return { tx, captured };
+  return { transaction, captured };
 };
 
 describe('importStatement', () => {
   it('detects the format, maps every row, and imports all of them on a first pass', async () => {
     const store: { transactions: StoredRow[] } = { transactions: [] };
-    mockTx = makeImportTx({ store, holding: defaultHolding(), account: unsyncedAccount }).tx;
+    mockTransaction = makeImportTransaction({
+      store,
+      holding: defaultHolding(),
+      account: unsyncedAccount,
+    }).transaction;
 
     const result = await importStatement(monobankInput, 'holding-1');
 
@@ -274,7 +281,11 @@ describe('importStatement', () => {
   it('imports zero new rows on a re-import of the identical text into the same holding (real dedup)', async () => {
     const store: { transactions: StoredRow[] } = { transactions: [] };
     const holding = defaultHolding();
-    mockTx = makeImportTx({ store, holding, account: unsyncedAccount }).tx;
+    mockTransaction = makeImportTransaction({
+      store,
+      holding,
+      account: unsyncedAccount,
+    }).transaction;
 
     const first = await importStatement(monobankInput, 'holding-1');
 
@@ -297,7 +308,11 @@ describe('importStatement', () => {
   // for both and the second silently overwrote the first.
   it('keeps two rows identical on (holding, time, amount, description) but differing only on mcc as distinct rows', async () => {
     const store: { transactions: StoredRow[] } = { transactions: [] };
-    mockTx = makeImportTx({ store, holding: defaultHolding(), account: unsyncedAccount }).tx;
+    mockTransaction = makeImportTransaction({
+      store,
+      holding: defaultHolding(),
+      account: unsyncedAccount,
+    }).transaction;
 
     const result = await importStatement(duplicateMccInput, 'holding-1');
 
@@ -310,7 +325,11 @@ describe('importStatement', () => {
 
   it('throws StatementParseError for an unrecognized file before calling the repo', async () => {
     const store: { transactions: StoredRow[] } = { transactions: [] };
-    mockTx = makeImportTx({ store, holding: defaultHolding(), account: unsyncedAccount }).tx;
+    mockTransaction = makeImportTransaction({
+      store,
+      holding: defaultHolding(),
+      account: unsyncedAccount,
+    }).transaction;
     const importRows = jest.spyOn(transactionsRepo, 'importRows');
 
     await expect(
@@ -329,7 +348,11 @@ describe('importStatement', () => {
   describe('importParsedStatement', () => {
     it('writes rows with source "import" and returns the given formatId for a hand-built column-mapping ParsedStatement, excluding a wrong-currency row', async () => {
       const store: { transactions: StoredRow[] } = { transactions: [] };
-      mockTx = makeImportTx({ store, holding: defaultHolding(), account: unsyncedAccount }).tx;
+      mockTransaction = makeImportTransaction({
+        store,
+        holding: defaultHolding(),
+        account: unsyncedAccount,
+      }).transaction;
       mockHoldingRows = [{ id: 'holding-1', currency: 'UAH' }];
 
       const parsed = {
@@ -371,8 +394,12 @@ describe('importStatement', () => {
     it('a mapped Balance column flows through to a real import and lands the holding on the closing balance', async () => {
       const store: { transactions: StoredRow[] } = { transactions: [] };
       const holding = defaultHolding({ balanceMinorUnits: 0 });
-      const { tx, captured } = makeImportTx({ store, holding, account: unsyncedAccount });
-      mockTx = tx;
+      const { transaction, captured } = makeImportTransaction({
+        store,
+        holding,
+        account: unsyncedAccount,
+      });
+      mockTransaction = transaction;
       mockHoldingRows = [{ id: 'holding-1', currency: 'UAH' }];
 
       const mapping: ColumnMapping = {
@@ -413,11 +440,11 @@ describe('importStatement', () => {
     it('imports only the UAH rows into a UAH holding, at their exact amount, and counts the rest as skipped', async () => {
       const store: { transactions: StoredRow[] } = { transactions: [] };
       mockHoldingRows = [{ id: 'holding-1', currency: 'UAH' }];
-      mockTx = makeImportTx({
+      mockTransaction = makeImportTransaction({
         store,
         holding: defaultHolding({ currency: 'UAH' }),
         account: unsyncedAccount,
-      }).tx;
+      }).transaction;
 
       const result = await importStatement(await readPrivatbankInput(), 'holding-1');
 
@@ -437,11 +464,11 @@ describe('importStatement', () => {
     it('imports only the USD row into a USD holding (the reverse split)', async () => {
       const store: { transactions: StoredRow[] } = { transactions: [] };
       mockHoldingRows = [{ id: 'holding-1', currency: 'USD' }];
-      mockTx = makeImportTx({
+      mockTransaction = makeImportTransaction({
         store,
         holding: defaultHolding({ currency: 'USD' }),
         account: unsyncedAccount,
-      }).tx;
+      }).transaction;
 
       const result = await importStatement(await readPrivatbankInput(), 'holding-1');
 
@@ -456,7 +483,11 @@ describe('importStatement', () => {
     it('throws when the target holding cannot be found, writing nothing', async () => {
       const store: { transactions: StoredRow[] } = { transactions: [] };
       mockHoldingRows = [];
-      mockTx = makeImportTx({ store, holding: defaultHolding(), account: unsyncedAccount }).tx;
+      mockTransaction = makeImportTransaction({
+        store,
+        holding: defaultHolding(),
+        account: unsyncedAccount,
+      }).transaction;
       const importRows = jest.spyOn(transactionsRepo, 'importRows');
 
       await expect(importStatement(monobankInput, 'missing-holding')).rejects.toThrow(
@@ -486,8 +517,12 @@ describe('importStatement', () => {
     it('moves a 0-balance holding to the net of the imported rows on a first import', async () => {
       const store: { transactions: StoredRow[] } = { transactions: [] };
       const holding = defaultHolding({ balanceMinorUnits: 0 });
-      const { tx, captured } = makeImportTx({ store, holding, account: unsyncedAccount });
-      mockTx = tx;
+      const { transaction, captured } = makeImportTransaction({
+        store,
+        holding,
+        account: unsyncedAccount,
+      });
+      mockTransaction = transaction;
 
       const result = await importStatement(ukrsibBusinessFixtureInput, 'holding-1');
 
@@ -500,7 +535,11 @@ describe('importStatement', () => {
     it('leaves the balance untouched on a re-import of the identical file (net of new rows is 0)', async () => {
       const store: { transactions: StoredRow[] } = { transactions: [] };
       const holding = defaultHolding({ balanceMinorUnits: 0 });
-      mockTx = makeImportTx({ store, holding, account: unsyncedAccount }).tx;
+      mockTransaction = makeImportTransaction({
+        store,
+        holding,
+        account: unsyncedAccount,
+      }).transaction;
 
       await importStatement(ukrsibBusinessFixtureInput, 'holding-1');
       // The fake commits `captured.holdingSet` to the SAME `holding` object a
@@ -508,8 +547,8 @@ describe('importStatement', () => {
       // read sees the first call's write.
       holding.balanceMinorUnits = 475_000;
 
-      const second = makeImportTx({ store, holding, account: unsyncedAccount });
-      mockTx = second.tx;
+      const second = makeImportTransaction({ store, holding, account: unsyncedAccount });
+      mockTransaction = second.transaction;
 
       const result = await importStatement(ukrsibBusinessFixtureInput, 'holding-1');
 
@@ -525,8 +564,12 @@ describe('importStatement', () => {
       // fallback.
       const store: { transactions: StoredRow[] } = { transactions: [] };
       const holding = defaultHolding({ balanceMinorUnits: 0 });
-      const { tx, captured } = makeImportTx({ store, holding, account: unsyncedAccount });
-      mockTx = tx;
+      const { transaction, captured } = makeImportTransaction({
+        store,
+        holding,
+        account: unsyncedAccount,
+      });
+      mockTransaction = transaction;
 
       await importStatement(monobankInput, 'holding-1');
 
@@ -545,12 +588,12 @@ describe('importStatement', () => {
         balanceMinorUnits: 0,
         metadata: { monobankId: 'mono-1' },
       });
-      const { tx, captured } = makeImportTx({
+      const { transaction, captured } = makeImportTransaction({
         store,
         holding,
         account: { institution: 'monobank' },
       });
-      mockTx = tx;
+      mockTransaction = transaction;
 
       const result = await importStatement(monobankInput, 'holding-1');
 
@@ -568,8 +611,12 @@ describe('importStatement', () => {
       // USD row's minor units (a ~40x cross-currency corruption if it did).
       mockHoldingRows = [{ id: 'holding-1', currency: 'UAH' }];
       const holding = defaultHolding({ currency: 'UAH', balanceMinorUnits: 0 });
-      const { tx, captured } = makeImportTx({ store, holding, account: unsyncedAccount });
-      mockTx = tx;
+      const { transaction, captured } = makeImportTransaction({
+        store,
+        holding,
+        account: unsyncedAccount,
+      });
+      mockTransaction = transaction;
 
       const result = await importStatement(await readPrivatbankInput(), 'holding-1');
 
@@ -583,8 +630,12 @@ describe('importStatement', () => {
       // `balanceSetAt`, not a seeded ledger row — see `holdings.repo.test.ts`
       // for `holdingsRepo.create`/`updateWithBalanceDelta` writing it for real).
       const holding = defaultHolding({ balanceMinorUnits: -999_999, balanceSetAt: 1 });
-      const { tx, captured } = makeImportTx({ store, holding, account: unsyncedAccount });
-      mockTx = tx;
+      const { transaction, captured } = makeImportTransaction({
+        store,
+        holding,
+        account: unsyncedAccount,
+      });
+      mockTransaction = transaction;
 
       await importStatement(monobankInput, 'holding-1');
 
@@ -609,8 +660,12 @@ describe('importStatement', () => {
         balanceMinorUnits: 500_000,
         balanceSetAt: Date.UTC(2025, 0, 1),
       });
-      const { tx, captured } = makeImportTx({ store, holding, account: unsyncedAccount });
-      mockTx = tx;
+      const { transaction, captured } = makeImportTransaction({
+        store,
+        holding,
+        account: unsyncedAccount,
+      });
+      mockTransaction = transaction;
 
       const result = await importStatement(monobankInput, 'holding-1');
 

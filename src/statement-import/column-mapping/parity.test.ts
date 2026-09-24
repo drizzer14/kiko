@@ -5,12 +5,12 @@
 // transaction handle that drives the REAL `transactionsRepo.addManyDedup`
 // upsert logic — the real (source, external_id) dedup, without a live
 // database.
-let mockTx: unknown;
+let mockTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
   return {
     ...actual,
-    write: (work: (db: unknown) => unknown) => work(mockTx),
+    write: (work: (db: unknown) => unknown) => work(mockTransaction),
   };
 });
 
@@ -124,7 +124,7 @@ const resolveParitySelect = (
  * deliberately NOT shared with that file (same reasoning as
  * `transactions.repo.test.ts`'s `makeImportRowsTx` doc comment): this suite
  * only needs a single fixed holding/account pair, never a per-test override. */
-const makeFakeTx = (store: { transactions: StoredRow[] }) => {
+const makeFakeTransaction = (store: { transactions: StoredRow[] }) => {
   let sequence = 0;
   const nextId = (): string => `row-${++sequence}`;
   const resolveRows = (rows: unknown[]) =>
@@ -207,7 +207,7 @@ describe('column-mapping parity (Monobank CSV)', () => {
 
   it('imports 0 new rows when the mapped result is re-imported after the dedicated import (real dedup)', async () => {
     const store: { transactions: StoredRow[] } = { transactions: [] };
-    mockTx = makeFakeTx(store);
+    mockTransaction = makeFakeTransaction(store);
 
     const first = await importStatement(monobankFixtureInput, 'holding-1');
 
