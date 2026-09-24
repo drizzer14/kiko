@@ -341,14 +341,24 @@ const buildPropertyCreatePayload = (params: {
   };
 };
 
-// The pre-filled purity — the standard bar/coin fineness (T20's own default).
-// Shared by the initial form state and the create-payload's fallback below.
-// `metalPurityReasonKey` BLOCKS Save on an out-of-range or garbled purity,
-// so the `?? DEFAULT_METAL_PURITY` fallback below is unreachable for
-// anything the user actually typed — it stays purely for type safety
-// (`normalizeDecimal` can still return `null`), never as a silent
-// correction of a value Save already let through.
+// The pre-filled purity — the standard bar/coin fineness (T20's own
+// default) — shown before the user types anything of their own.
 const DEFAULT_METAL_PURITY = '0.9999';
+
+// Both metal-metadata builders below only ever run once `metalPurityReasonKey`
+// has already confirmed `normalizeDecimal(value)` parses — a `null` result
+// here can only mean that validation gate itself has a bug, never a value
+// the user actually typed, so this throws instead of silently substituting
+// `DEFAULT_METAL_PURITY` for whatever the user entered.
+const normalizedPurityOrThrow = (purity: string): string => {
+  const normalized = normalizeDecimal(purity);
+
+  if (normalized === null) {
+    throw new Error('Metal purity failed to parse after passing Save validation');
+  }
+
+  return normalized;
+};
 
 // The metal CREATE payload (T20): a `metal` holding writes a zero stored
 // balance (its value lives entirely in `metadata.lots` / the SHARED
@@ -381,7 +391,7 @@ const buildMetalCreatePayload = (params: {
       metal,
       form,
       unit,
-      purity: normalizeDecimal(purity) ?? DEFAULT_METAL_PURITY,
+      purity: normalizedPurityOrThrow(purity),
       lots: [lot],
     },
   };
@@ -1516,7 +1526,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         metal: metalMetal,
         form: metalForm,
         unit: metalUnit,
-        purity: normalizeDecimal(metalPurity) ?? DEFAULT_METAL_PURITY,
+        purity: normalizedPurityOrThrow(metalPurity),
         lots: metalLots,
       };
     }
@@ -1627,18 +1637,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // Purity applies in BOTH create and edit mode — MetalSection always renders
   // the field (unlike the create-only Quantity/Total cost pair below), and a
   // fineness ratio is meaningful whenever it's shown. A garbled or
-  // out-of-range value BLOCKS Save instead of silently falling back to the
-  // standard fineness default — `buildMetalCreatePayload`/`buildMetadata`'s
-  // edit branch keep their own `?? DEFAULT_METAL_PURITY` fallback purely for
-  // type safety (`normalizeDecimal` can still return `null`); this check
-  // makes that fallback unreachable for anything the user actually typed,
-  // since Save never gets past it otherwise. Validates with `normalizeDecimal`
-  // + `compareDecimal`, the SAME parser the writer uses (mirroring the
-  // metal-quantity check below) — `parseAmount` used to validate this field
-  // instead, which accepts shapes (a leading-dot ".999", a comma-decimal
-  // ",999", a trailing-dot "1.") `normalizeDecimal` rejects, so a value that
-  // passed THIS check could still get silently overwritten by the writer's
-  // own fallback. Validating with the writer's own parser closes that gap.
+  // out-of-range value BLOCKS Save rather than reaching either metadata
+  // builder at all. Validates with `normalizeDecimal` + `compareDecimal`,
+  // the SAME parser `normalizedPurityOrThrow` (the writer) uses (mirroring
+  // the metal-quantity check below), so a value this check accepts is
+  // guaranteed to parse when the writer runs.
   const metalPurityReasonKey = (): 'forms.holding.purityError' | null => {
     const normalizedPurity = normalizeDecimal(metalPurity);
 

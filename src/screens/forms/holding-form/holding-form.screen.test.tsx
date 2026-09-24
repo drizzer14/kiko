@@ -1557,13 +1557,10 @@ describe('HoldingFormScreen metal', () => {
     expect(createMock).not.toHaveBeenCalled();
   });
 
-  // I3 (F4 fix round 1): purity used to validate with `parseAmount` (which
-  // accepts a leading-dot, a comma-decimal, or a trailing-dot shape) but
-  // WRITE with `normalizeDecimal` (which rejects all three) — so a value
-  // that passed the Save check could still get silently overwritten by the
-  // `?? DEFAULT_METAL_PURITY` fallback at write time. Validating with the
-  // SAME `normalizeDecimal` the writer uses closes that gap: each of these
-  // now blocks Save instead of writing a value the user never typed.
+  // Purity is validated with the SAME `normalizeDecimal` parser the writer
+  // uses — a leading-dot, comma-decimal, or trailing-dot shape is rejected
+  // by that parser, so each of these blocks Save rather than being written
+  // as some other value the user never typed.
   it.each(['.999', ',999', '1.'])(
     'blocks save and shows an error for a purity normalizeDecimal cannot parse: %s',
     async (purity) => {
@@ -1579,6 +1576,25 @@ describe('HoldingFormScreen metal', () => {
       expect(createMock).not.toHaveBeenCalled();
     },
   );
+
+  // Writes the exact normalized purity the user typed, never the pre-fill
+  // default — the value here is deliberately NOT '0.9999' so a substitution
+  // bug can't hide behind a coincidental match.
+  it('creates a metal holding with the exact typed purity, not the pre-filled default', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'Gold bar');
+    await fill(screen, 'Purity', '0.750');
+    await fill(screen, 'Quantity', '31.1');
+    await fill(screen, 'Total cost', '80000');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ purity: '0.750' }),
+      }),
+    );
+  });
 
   it('edits a metal holding without Quantity/Total cost fields, preserving its stored lots', async () => {
     const screen = await renderEdit({
@@ -1618,6 +1634,41 @@ describe('HoldingFormScreen metal', () => {
       expect.any(Number),
     );
     expect(updateDeltaMock.mock.calls[0][1]).not.toHaveProperty('balanceMinorUnits');
+  });
+
+  // Writes the exact normalized purity the user typed, never the value the
+  // holding was hydrated with — the value here is deliberately different
+  // from the hydrated '0.9999' so a substitution bug can't hide behind a
+  // coincidental match.
+  it('edits a metal holding writing the exact typed purity, not the hydrated one', async () => {
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Gold bar',
+      type: 'metal',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        metal: 'XAU',
+        form: 'bar',
+        unit: 'oz',
+        purity: '0.9999',
+        lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 8_000_000 }],
+      },
+    });
+
+    await fill(screen, 'Purity', '0.750');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(updateDeltaMock).toHaveBeenCalledWith(
+      'h1',
+      expect.objectContaining({
+        metadata: expect.objectContaining({ purity: '0.750' }),
+      }),
+      expect.any(Number),
+    );
   });
 
   // F4 audit 8: purity stays user-editable in edit mode (unlike
