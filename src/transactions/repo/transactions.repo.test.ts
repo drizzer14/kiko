@@ -777,6 +777,66 @@ describe('transactionsRepo.addManyDedup chunking', () => {
     expect(inserted).toBe(rowCount);
   });
 
+  it('applies category-override rules found in EVERY chunk, not just the first', async () => {
+    // Each chunked `categoryOverrides` select resolves its OWN slice of
+    // rules here (call order == chunk order), modelling what two separate
+    // DB round-trips actually return — proving `categoryByName` is built
+    // from the UNION of every chunk's rows, not just the first (or last)
+    // chunk's. A bug that dropped every chunk but one would still pass
+    // the param-count assertion above, since that only counts what was
+    // SENT, never what was UNIONED back.
+    let categoryOverrideCall = 0;
+    const rulesByCall = [
+      [{ normalizedName: 'desc-0', category: 'groceries' }],
+      [{ normalizedName: 'desc-32766', category: 'utilities' }],
+    ];
+    const captured: { inserted: Record<string, unknown>[] } = { inserted: [] };
+    mockTx = {
+      select: () => ({
+        from: (table: unknown) => ({
+          where: () => {
+            if (table !== categoryOverrides) {
+              return Promise.resolve([]);
+            }
+
+            const rules = rulesByCall[categoryOverrideCall] ?? [];
+            categoryOverrideCall += 1;
+
+            return Promise.resolve(rules);
+          },
+        }),
+      }),
+      insert: () => ({
+        values: (values: Record<string, unknown>[]) => {
+          captured.inserted = captured.inserted.concat(values);
+
+          return { onConflictDoUpdate: () => Promise.resolve() };
+        },
+      }),
+    };
+
+    const rowCount = SQLITE_MAX_VARIABLE_NUMBER + 1;
+    const rows = Array.from({ length: rowCount }, (_, index) => ({
+      holdingId: 'h1',
+      amountMinorUnits: -1,
+      time: 1 + index,
+      source: 'monobank' as const,
+      category: 'other',
+      // Unique descriptions push the deduplicated `keys` count to 32767,
+      // split by `chunkRows` into a 32000-key chunk (covers `desc-0`) and a
+      // 767-key chunk (covers `desc-32766`) — one rule lands in each.
+      description: `desc-${index}`,
+    }));
+
+    await transactionsRepo.addManyDedup(rows);
+
+    expect(categoryOverrideCall).toBeGreaterThan(1);
+    const firstChunkRow = captured.inserted.find((row) => row.description === 'desc-0');
+    const secondChunkRow = captured.inserted.find((row) => row.description === 'desc-32766');
+    expect(firstChunkRow).toMatchObject({ category: 'groceries' });
+    expect(secondChunkRow).toMatchObject({ category: 'utilities' });
+  });
+
   it('chunks the existing-external-id lookup under the SQLite bound-parameter limit', async () => {
     const { tx, statements } = makeOverflowGuardTx();
     mockTx = tx;
