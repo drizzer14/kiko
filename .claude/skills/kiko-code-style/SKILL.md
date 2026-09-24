@@ -524,6 +524,55 @@ follow ordinary camelCase per Drizzle/SQL convention, not this rule
 — this rule governs names you choose in application code, not
 database column identifiers already fixed by `kiko-domain`.
 
+## Full words in identifiers
+
+Do not shorten words in any identifier — a variable, parameter,
+function, type, or prop. Write the full word every time; an
+abbreviation saves a few keystrokes and costs the reader a lookup.
+
+Denylist (not exhaustive — the same judgment extends to any other
+shortened word):
+
+| Abbreviation | Full word |
+|---|---|
+| `cond` | `condition` |
+| `btn` | `button` |
+| `idx` | `index` |
+| `acc` | `accumulator` |
+| `tx` | `transaction` |
+| `err` | `error` |
+| `val` | `value` |
+| `prev` | `previous` |
+| `cfg` | `config` |
+| `e` | `event` or `error` |
+| `res` | `result` or `response` |
+| `msg` | `message` |
+| `cb` | `callback` |
+| `ctx` | `context` |
+| `el` | `element` |
+| `opts` | `options` |
+| `tmp` | `temporary` |
+| `num` | `number` |
+| `arr` / `obj` / `str` | a descriptive name for what the array/object/string actually holds |
+
+Explicit exceptions — these stay as they are, no rename:
+
+- `id` — established short form, not an abbreviation of a longer word
+  in practice.
+- `i18n` — the standard numeronym for "internationalization"; there is
+  no full-word form in use anywhere.
+- `ISIN` — a financial-domain acronym (International Securities
+  Identification Number), the canonical name for the identifier.
+- `URL`, `API`, `UI`, and other established acronyms — kept in full
+  caps per the "Variable naming" acronym rule above.
+- React's `ref` term — the framework's own name for the concept, not
+  an abbreviation chosen in this codebase.
+- A name forced by a third-party API, a DB column, a persisted JSON
+  key, an i18n key, or a testID — renaming any of these changes
+  behavior (a wire contract, a schema, or a lookup key), not just
+  style, so the abbreviated form stays even if it appears in the
+  denylist above.
+
 ## Exports: default for components, named for everything else
 
 A React component file uses a default export, keeping the underlying
