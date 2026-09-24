@@ -18,7 +18,10 @@ jest.mock('../../db/client', () => {
 // slug per MCC category (src/monobank/mcc-category.ts) plus `other`. Task 14's
 // MCC -> display-key mapping must produce these exact keys. Shared with the
 // screen tests via one fixture so the canonical list lives in a single place.
-import { SEEDED_CATEGORIES as CANONICAL_SEED } from '@kiko/db/__fixtures__/seeded-categories';
+import {
+  LOAN_INTEREST_CATEGORY,
+  SEEDED_CATEGORIES as CANONICAL_SEED,
+} from '@kiko/db/__fixtures__/seeded-categories';
 import type { SQL } from 'drizzle-orm';
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
 
@@ -478,5 +481,31 @@ describe('categories seed migration', () => {
     expect(sql).toMatch(
       /UPDATE `categories` SET `icon` = 'bus' WHERE `key` = 'transport' AND `icon` = 'car'/i,
     );
+  });
+
+  it('seeds the eleventh, loan_interest category in its own, later, idempotent migration (T30, spec 5/D14)', () => {
+    const files = migrationFiles();
+    const seed = seedMigration();
+
+    const loanInterestMigration = files.find(({ sql }) =>
+      sql.includes(`'${LOAN_INTEREST_CATEGORY.key}'`),
+    );
+    expect(loanInterestMigration).toBeDefined();
+    const { name, sql } = loanInterestMigration as { name: string; sql: string };
+
+    // Its own, later migration than 0002's original ten — the same "seed
+    // lives in a distinct, later journal entry" shape 0002 itself documents.
+    expect(name > seed.name).toBe(true);
+    expect(sql).toContain('INSERT OR IGNORE INTO `categories`');
+    expect(sql).toContain(`'${LOAN_INTEREST_CATEGORY.key}'`);
+    expect(sql).toContain(`'${LOAN_INTEREST_CATEGORY.title}'`);
+    expect(sql).toContain(`'${LOAN_INTEREST_CATEGORY.icon}'`);
+    // entityColors.indigo — the next unused token the original ten's own
+    // seed migration (0017) left unpainted.
+    expect(sql).toContain("'#5E5CE6'");
+    // Appends after every existing category (mirrors accountsRepo's own
+    // "max + 1" convention) rather than tying with `groceries` at the
+    // schema's default sort_order 0.
+    expect(sql).toMatch(/coalesce\(max\(`sort_order`\), -1\) \+ 1/i);
   });
 });

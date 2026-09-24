@@ -21,3 +21,18 @@ export const SEEDED_CATEGORIES: SeededCategory[] = [
   { key: 'transfers', title: 'Transfers', icon: 'arrow.left.arrow.right' },
   { key: 'other', title: 'Other', icon: 'square.grid.2x2' },
 ];
+
+// The ELEVENTH default category (T30, spec 5/D14 — "interest-only
+// spending"), seeded by its OWN later migration
+// (0039_seed_loan_interest_category, not 0002), so it is a SEPARATE export
+// rather than a member of `SEEDED_CATEGORIES` above — every existing
+// `SEEDED_CATEGORIES` consumer (categories.repo.test.ts's 0002-seed-SQL
+// row-count assertion, schema.category-overrides.test.ts's 0017-color-seed
+// key set, category-breakdown.test.ts's "ten keys" hue-collision test) pins
+// EXACTLY 0002's original ten rows, and folding this in would desync every
+// one of them from the migration each actually asserts against.
+export const LOAN_INTEREST_CATEGORY: SeededCategory = {
+  key: 'loan_interest',
+  title: 'Loan interest',
+  icon: 'percent',
+};
