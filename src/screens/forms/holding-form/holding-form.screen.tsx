@@ -24,8 +24,7 @@ import {
   type BondKind,
   type BondMeta,
   type BondCouponFrequency,
-  type LoanKind,
-  type LoanSchedule,
+  type LoanMeta,
   type Metal,
   type MetalForm,
   type MetalUnit,
@@ -378,30 +377,17 @@ const buildMetalCreatePayload = (params: {
   };
 };
 
-// The fields `buildLoanEditMetadata`/`buildLoanCreatePayload` both need,
-// read straight off `useLoanFields`'s own state — kept as a small bespoke
-// shape (mirroring `buildMetalCreatePayload`'s own params object) rather
-// than importing the hook's full result type, so these two module-level
-// helpers stay decoupled from the hook's other (setter/validation) fields.
-type LoanFieldsSnapshot = {
-  kind: LoanKind;
-  principal: string;
-  startDate: number | null;
-  schedule: LoanSchedule;
-  annualRatePct: string;
-  termMonths: string;
-};
+// The fields `buildLoanMeta`/`buildLoanCreatePayload` both need (ponytail:
+// a `Pick` off the hook's own result type, not a restated shape).
+type LoanFieldsSnapshot = Pick<
+  UseLoanFieldsResult,
+  'kind' | 'principal' | 'startDate' | 'schedule' | 'annualRatePct' | 'termMonths'
+>;
 
-// A loan's `LoanMeta` (T26/T28, spec 5.1): the principal converts to minor
-// units, the rate/term pair is included only for a structured schedule (a
-// `'none'` loan has no known rate/term at all — `asLoanMeta` round-trips
-// them as `undefined`). Shared by `buildMetadata`'s EDIT branch and
-// `buildLoanCreatePayload` below, so the two can never build a differently
-// shaped `LoanMeta` for the same field values.
-const buildLoanMeta = (
-  fields: LoanFieldsSnapshot,
-  currency: Currency,
-): Record<string, unknown> => ({
+// A loan's `LoanMeta` (T26/T28, spec 5.1) — shared by `buildMetadata`'s EDIT
+// branch and `buildLoanCreatePayload` below, so the two can never build a
+// differently shaped `LoanMeta` for the same field values.
+const buildLoanMeta = (fields: LoanFieldsSnapshot, currency: Currency): LoanMeta => ({
   kind: fields.kind,
   principalMinorUnits: Money.fromMajor(currency, parseAmount(fields.principal) || 0).minorUnits,
   startDate: fields.startDate ?? Date.now(),
@@ -413,15 +399,6 @@ const buildLoanMeta = (
         termMonths: parseAmount(fields.termMonths) || 0,
       }),
 });
-
-// EDIT-mode metadata: called from `buildMetadata` (extracted purely to keep
-// that function's own branch count under the cognitive-complexity budget —
-// the same reason `buildPropertyCreatePayload`/`buildMetalCreatePayload`
-// are their own module-level functions rather than inlined).
-const buildLoanEditMetadata = (
-  fields: LoanFieldsSnapshot,
-  currency: Currency,
-): Record<string, unknown> => buildLoanMeta(fields, currency);
 
 // The loan CREATE payload (T28): a zero stored balance (ledgerless — its
 // value derives entirely from the schedule math / its own manual series,
@@ -439,7 +416,7 @@ const buildLoanCreatePayload = (
   currency: Currency,
 ): {
   balanceMinorUnits: number;
-  metadata: Record<string, unknown>;
+  metadata: LoanMeta;
   firstPricePoint?: { day: number; price: string };
 } => {
   const metadata = buildLoanMeta(fields, currency);
@@ -448,10 +425,6 @@ const buildLoanCreatePayload = (
     return { balanceMinorUnits: 0, metadata };
   }
 
-  const principalMinorUnits = Money.fromMajor(
-    currency,
-    parseAmount(fields.principal) || 0,
-  ).minorUnits;
   const day = dayKeyOf(fields.startDate ?? Date.now());
 
   return {
@@ -459,7 +432,7 @@ const buildLoanCreatePayload = (
     metadata,
     firstPricePoint: {
       day,
-      price: shiftDecimal(String(principalMinorUnits), -currencyScale[currency]),
+      price: shiftDecimal(String(metadata.principalMinorUnits), -currencyScale[currency]),
     },
   };
 };
@@ -1405,7 +1378,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     // creation (T28) — there is no fixed-at-creation "first lot" a loan's
     // principal/dates/schedule are frozen against.
     if (type === 'loan' && isEdit) {
-      return buildLoanEditMetadata(loanFields, currency);
+      return buildLoanMeta(loanFields, currency);
     }
     return undefined;
   };
