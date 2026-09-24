@@ -51,7 +51,7 @@ const ExampleTransaction: FC<ExampleTransactionProps> = ({ transaction, holdingN
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
   const categoryByKey = buildCategoryDisplayMap(categories);
-  const rawCategory = foldMap(maybe(transaction.mcc), (mcc) => categoryForMcc(mcc)) ?? null;
+  const rawCategory = foldMap(maybe(transaction.mcc), categoryForMcc) ?? null;
   const category = resolveCategoryDisplay(rawCategory, categoryByKey, defaultCategoryKey);
   const categoryKey = resolveCategoryKey(rawCategory, categoryByKey, defaultCategoryKey);
   const title = transactionRowDescription({

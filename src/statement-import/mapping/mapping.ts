@@ -58,7 +58,7 @@ export const mapParsedTransaction = (
   time: transaction.timeSeconds * 1000,
   description: transaction.description,
   mcc: transaction.mcc,
-  category: foldMap(maybe(transaction.mcc), (mcc) => categoryForMcc(mcc)) ?? null,
+  category: foldMap(maybe(transaction.mcc), categoryForMcc) ?? null,
   counterIban: transaction.counterIban ?? null,
   comment: transaction.comment ?? null,
   source: 'import',
