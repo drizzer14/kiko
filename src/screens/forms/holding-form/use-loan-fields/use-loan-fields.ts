@@ -22,63 +22,28 @@ export type LoanReasonKey =
 // upper bound `loanReasonKey` rejects (Minor 10).
 export const MAX_LOAN_TERM_MONTHS = 600;
 
-// A loan needs a positive principal and a picked start date UNCONDITIONALLY
-// (M1, T28 brief); `annualRatePct`/`termMonths` are required ONLY while
-// `schedule` is `'annuity'`/`'differentiated'` — `'none'` (an informal debt,
-// spec 5.1) carries no schedule at all, so Save never blocks on them there.
-// `termMonths` must be a WHOLE number >= 1 (T26 review, M1): a degenerate
-// term (0, negative, fractional) would give `loanInstallments` a schedule
-// that never reduces the balance to exactly 0. Capped at `MAX_TERM_MONTHS`
-// (T28 review round 1, Minor 10): an uncapped value (e.g. "99999999", still
-// a valid positive integer) makes `loanInstallments` build ~1e8 rows on
-// every render, hanging the app. A plain top-level function
-// (not an inline closure in the hook body), mirroring `bondIsinReasonKey`,
-// so it carries its own cognitive-complexity budget and is directly
-// unit-testable with no hook/render machinery.
-export const loanReasonKey = (params: {
+// The shared shape both `loanFieldErrors` and `loanReasonKey` validate —
+// kept as one type so the two can never drift apart on WHAT they read.
+type LoanValidationParams = {
   principal: string;
   startDate: number | null;
   schedule: LoanSchedule;
   annualRatePct: string;
   termMonths: string;
-}): LoanReasonKey | null => {
-  const { principal, startDate, schedule, annualRatePct, termMonths } = params;
-
-  if (!(parseAmount(principal) > 0)) {
-    return 'forms.holding.loanPrincipalError';
-  }
-
-  if (startDate === null) {
-    return 'forms.holding.loanStartDateError';
-  }
-
-  if (schedule === 'none') {
-    return null;
-  }
-
-  const rate = parseAmount(annualRatePct);
-
-  if (annualRatePct.trim() === '' || !(rate >= 0)) {
-    return 'forms.holding.annualRateError';
-  }
-
-  const months = parseAmount(termMonths);
-
-  if (!(Number.isInteger(months) && months > 0 && months <= MAX_LOAN_TERM_MONTHS)) {
-    return 'forms.holding.termMonthsError';
-  }
-
-  return null;
 };
 
 // Every field's OWN blocking reason, each derived from ONLY that field's own
-// input (plus the schedule gate rate/term already share) — unlike
-// `loanReasonKey` above, which stops at the first failing field in priority
-// order. A form that gates its displayed error on `loanReasonKey` directly
-// makes fixing one field re-target the SAME shared reason onto the next
-// invalid sibling instead of clearing it, so `HoldingFormScreen` renders each
-// field's error from this instead, keeping `loanReasonKey` for the Save-block
-// gate and the scroll-to-first-invalid target only.
+// input (plus the schedule gate rate/term already share). A loan needs a
+// positive principal and a picked start date UNCONDITIONALLY (M1, T28
+// brief); `annualRatePct`/`termMonths` are required ONLY while `schedule` is
+// `'annuity'`/`'differentiated'` — `'none'` (an informal debt, spec 5.1)
+// carries no schedule at all, so Save never blocks on them there.
+// `termMonths` must be a WHOLE number >= 1 (T26 review, M1): a degenerate
+// term (0, negative, fractional) would give `loanInstallments` a schedule
+// that never reduces the balance to exactly 0. Capped at `MAX_TERM_MONTHS`
+// (T28 review round 1, Minor 10): an uncapped value (e.g. "99999999", still
+// a valid positive integer) makes `loanInstallments` build ~1e8 rows on
+// every render, hanging the app.
 export type LoanFieldErrors = {
   principalError: 'forms.holding.loanPrincipalError' | null;
   startDateError: 'forms.holding.loanStartDateError' | null;
@@ -86,13 +51,7 @@ export type LoanFieldErrors = {
   termMonthsError: 'forms.holding.termMonthsError' | null;
 };
 
-export const loanFieldErrors = (params: {
-  principal: string;
-  startDate: number | null;
-  schedule: LoanSchedule;
-  annualRatePct: string;
-  termMonths: string;
-}): LoanFieldErrors => {
+export const loanFieldErrors = (params: LoanValidationParams): LoanFieldErrors => {
   const { principal, startDate, schedule, annualRatePct, termMonths } = params;
   // 'none' (an informal debt) carries no schedule at all, so rate/term never
   // block Save there — the same gate `loanReasonKey` applies.
@@ -113,6 +72,25 @@ export const loanFieldErrors = (params: {
         ? 'forms.holding.termMonthsError'
         : null,
   };
+};
+
+// The loan's own reason, derived from `loanFieldErrors` above, in the SAME
+// priority order each field itself displays — kept for the Save-block gate
+// and the scroll-to-first-invalid target only (never for what a field
+// displays, see `loanFieldErrors`'s own doc comment), so the two can never
+// drift apart on WHICH field blocks Save first. A plain top-level function
+// (not an inline closure in the hook body), mirroring `bondIsinReasonKey`,
+// so it carries its own cognitive-complexity budget and is directly
+// unit-testable with no hook/render machinery.
+export const loanReasonKey = (params: LoanValidationParams): LoanReasonKey | null => {
+  const fieldErrors = loanFieldErrors(params);
+
+  return (
+    fieldErrors.principalError ??
+    fieldErrors.startDateError ??
+    fieldErrors.annualRateError ??
+    fieldErrors.termMonthsError
+  );
 };
 
 export type UseLoanFieldsResult = {

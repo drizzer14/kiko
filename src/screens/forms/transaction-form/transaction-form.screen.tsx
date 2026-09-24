@@ -280,47 +280,7 @@ type SaveDisabledParams = {
   currency: Currency;
 };
 
-const isSaveDisabled = (params: SaveDisabledParams): boolean => {
-  if (params.converting) {
-    return params.counterpartHoldingId === null || !isPositiveAmountText(params.counterpartAmount);
-  }
-
-  if (params.isExchange) {
-    return (
-      params.destinationHoldingId === null ||
-      !isPositiveAmountText(params.amount) ||
-      !isPositiveAmountText(params.valueIn)
-    );
-  }
-
-  // Split gates on the same invariant `saveSplit` writes: a positive payment
-  // and ≥1 distinct non-payer positive return whose sum stays below it, PLUS a
-  // category — a split expense's netted magnitude lands in the spending pie, so
-  // it must be categorised like any other create expense.
-  if (params.isSplit) {
-    return (
-      params.selectedCategory === null ||
-      !canSaveSplit(params.amount, params.changeReturns, params.currency)
-    );
-  }
-
-  if (params.isReadOnly) {
-    return false;
-  }
-
-  if (params.isEditing) {
-    return !isPositiveAmountText(params.amount);
-  }
-
-  return !isPositiveAmountText(params.amount) || params.selectedCategory === null;
-};
-
-// The field key each save-blocking condition above belongs to. Used ONLY to
-// pick the Save-block scroll target (`save`'s `onSettled` callback below) —
-// each field's DISPLAYED error comes from `transactionFieldErrors` further
-// down instead, which computes every field's OWN reason independently
-// rather than stopping at the first one in priority order (see that
-// function's own doc comment for why the two must stay separate).
+// The field key each save-blocking condition below belongs to.
 type SaveDisabledField =
   | 'counterpartHolding'
   | 'counterpartAmount'
@@ -331,101 +291,18 @@ type SaveDisabledField =
   | 'splitReturns'
   | 'amount';
 
-// Mirrors `isSaveDisabled`'s converting branch, in priority order.
-const convertingField = (params: SaveDisabledParams): SaveDisabledField | null => {
-  if (params.counterpartHoldingId === null) {
-    return 'counterpartHolding';
-  }
-
-  return isPositiveAmountText(params.counterpartAmount) ? null : 'counterpartAmount';
-};
-
-// Mirrors `isSaveDisabled`'s exchange branch, in priority order.
-const exchangeField = (params: SaveDisabledParams): SaveDisabledField | null => {
-  if (params.destinationHoldingId === null) {
-    return 'destinationHolding';
-  }
-
-  if (!isPositiveAmountText(params.amount)) {
-    return 'valueOut';
-  }
-
-  return isPositiveAmountText(params.valueIn) ? null : 'valueIn';
-};
-
-// Mirrors `isSaveDisabled`'s split branch, in priority order.
-const splitField = (params: SaveDisabledParams): SaveDisabledField | null => {
-  if (params.selectedCategory === null) {
-    return 'selectedCategory';
-  }
-
-  return canSaveSplit(params.amount, params.changeReturns, params.currency) ? null : 'splitReturns';
-};
-
-// Mirrors `isSaveDisabled`'s trailing read-only/editing/fresh-add branches,
-// in the same order.
-const plainField = (params: SaveDisabledParams): SaveDisabledField | null => {
-  if (params.isReadOnly) {
-    return null;
-  }
-
-  if (params.isEditing) {
-    return isPositiveAmountText(params.amount) ? null : 'amount';
-  }
-
-  if (!isPositiveAmountText(params.amount)) {
-    return 'amount';
-  }
-
-  return params.selectedCategory === null ? 'selectedCategory' : null;
-};
-
-// Mirrors `isSaveDisabled`'s own dispatcher exactly — the two must never
-// disagree about WHICH branch is active.
-const saveDisabledField = (params: SaveDisabledParams): SaveDisabledField | null => {
-  if (params.converting) {
-    return convertingField(params);
-  }
-
-  if (params.isExchange) {
-    return exchangeField(params);
-  }
-
-  if (params.isSplit) {
-    return splitField(params);
-  }
-
-  return plainField(params);
-};
-
 // Every field's OWN independent error, gated only by which mode is ACTIVE
 // (converting/isExchange/isSplit/plain are mutually exclusive, so only one
-// of these ever renders at a time) — unlike `saveDisabledField` above, which
-// stops at the FIRST blocking field in priority order. A form that gates a
-// field's displayed error on the first-blocking-field chain makes fixing one
-// field re-target the SAME shared reason onto the next invalid sibling
-// instead of clearing it (the reported bug this fixes), so `fieldError`
-// below reads from here instead — `saveDisabledField` stays in use for the
-// Save-block gate's scroll target only.
-type TransactionFieldErrors = Record<SaveDisabledField, string | undefined>;
+// of these ever renders at a time), typed to hold ONLY the active mode's own
+// field keys — a mode's function never even mentions a field it has no
+// opinion on, so there is no all-undefined record to keep in sync by hand.
+type TransactionFieldErrors = Partial<Record<SaveDisabledField, string>>;
 
-const NO_TRANSACTION_FIELD_ERRORS: TransactionFieldErrors = {
-  counterpartHolding: undefined,
-  counterpartAmount: undefined,
-  destinationHolding: undefined,
-  valueOut: undefined,
-  valueIn: undefined,
-  selectedCategory: undefined,
-  splitReturns: undefined,
-  amount: undefined,
-};
-
-// Mirrors `isSaveDisabled`'s converting branch, independently per field.
+// Every field's OWN independent error for the convert mode.
 const convertingFieldErrors = (
   params: SaveDisabledParams,
   t: TFunction,
 ): TransactionFieldErrors => ({
-  ...NO_TRANSACTION_FIELD_ERRORS,
   counterpartHolding:
     params.counterpartHoldingId === null
       ? t('forms.transaction.selectCounterpartError')
@@ -435,9 +312,8 @@ const convertingFieldErrors = (
     : t('forms.transaction.counterpartAmountError'),
 });
 
-// Mirrors `isSaveDisabled`'s exchange branch, independently per field.
+// Every field's OWN independent error for the exchange mode.
 const exchangeFieldErrors = (params: SaveDisabledParams, t: TFunction): TransactionFieldErrors => ({
-  ...NO_TRANSACTION_FIELD_ERRORS,
   destinationHolding:
     params.destinationHoldingId === null
       ? t('forms.transaction.selectDestinationError')
@@ -446,9 +322,12 @@ const exchangeFieldErrors = (params: SaveDisabledParams, t: TFunction): Transact
   valueIn: isPositiveAmountText(params.valueIn) ? undefined : t('forms.transaction.valueInError'),
 });
 
-// Mirrors `isSaveDisabled`'s split branch, independently per field.
+// Every field's OWN independent error for the split mode. Split gates on the
+// same invariant `saveSplit` writes: a positive payment and ≥1 distinct
+// non-payer positive return whose sum stays below it, PLUS a category — a
+// split expense's netted magnitude lands in the spending pie, so it must be
+// categorised like any other create expense.
 const splitFieldErrors = (params: SaveDisabledParams, t: TFunction): TransactionFieldErrors => ({
-  ...NO_TRANSACTION_FIELD_ERRORS,
   selectedCategory:
     params.selectedCategory === null ? t('forms.transaction.selectCategoryError') : undefined,
   splitReturns: canSaveSplit(params.amount, params.changeReturns, params.currency)
@@ -456,18 +335,18 @@ const splitFieldErrors = (params: SaveDisabledParams, t: TFunction): Transaction
     : t('forms.transaction.splitInvalidError'),
 });
 
-// Mirrors `isSaveDisabled`'s trailing read-only/editing/fresh-add branches,
-// independently per field — a fresh add's amount and category are two
-// SEPARATE fields (unlike `plainField`'s priority chain above), so both
-// show at once instead of the category error waiting for amount to clear
-// first.
+// Every field's OWN independent error for the read-only/editing/fresh-add
+// modes — a fresh add's amount and category are two SEPARATE fields, so
+// both show at once instead of the category error waiting for amount to
+// clear first. A read-only (synced) row is never blocked here: Save only
+// appears once the category changed (`showsSaveButton`), and its write
+// touches only the category, never the bank-owned amount.
 const plainFieldErrors = (params: SaveDisabledParams, t: TFunction): TransactionFieldErrors => {
   if (params.isReadOnly) {
-    return NO_TRANSACTION_FIELD_ERRORS;
+    return {};
   }
 
   return {
-    ...NO_TRANSACTION_FIELD_ERRORS,
     amount: isPositiveAmountText(params.amount) ? undefined : t('forms.transaction.amountError'),
     selectedCategory:
       params.isEditing || params.selectedCategory !== null
@@ -476,8 +355,7 @@ const plainFieldErrors = (params: SaveDisabledParams, t: TFunction): Transaction
   };
 };
 
-// Dispatches to the ACTIVE mode's own independent errors — mirrors
-// `saveDisabledField`'s dispatcher order exactly.
+// Dispatches to the ACTIVE mode's own independent errors.
 const transactionFieldErrors = (
   params: SaveDisabledParams,
   t: TFunction,
@@ -497,6 +375,47 @@ const transactionFieldErrors = (
   return plainFieldErrors(params, t);
 };
 
+// Each mode's own field keys, in the SAME priority order that mode's own
+// error function above tests them — `firstInvalidField` below finds the
+// first of these with an actual error, which is both the Save-block gate
+// AND the scroll-to-first-invalid target, so the two can never disagree.
+const CONVERTING_FIELD_ORDER: readonly SaveDisabledField[] = [
+  'counterpartHolding',
+  'counterpartAmount',
+];
+const EXCHANGE_FIELD_ORDER: readonly SaveDisabledField[] = [
+  'destinationHolding',
+  'valueOut',
+  'valueIn',
+];
+const SPLIT_FIELD_ORDER: readonly SaveDisabledField[] = ['selectedCategory', 'splitReturns'];
+const PLAIN_FIELD_ORDER: readonly SaveDisabledField[] = ['amount', 'selectedCategory'];
+
+// The active mode's own priority order — mirrors `transactionFieldErrors`'s
+// dispatcher exactly, so the two can never pick a different mode's fields.
+const activeFieldOrder = (params: SaveDisabledParams): readonly SaveDisabledField[] => {
+  if (params.converting) {
+    return CONVERTING_FIELD_ORDER;
+  }
+
+  if (params.isExchange) {
+    return EXCHANGE_FIELD_ORDER;
+  }
+
+  if (params.isSplit) {
+    return SPLIT_FIELD_ORDER;
+  }
+
+  return PLAIN_FIELD_ORDER;
+};
+
+// The first still-invalid field in priority order, or null once every field
+// in that order has cleared.
+const firstInvalidField = (
+  order: readonly SaveDisabledField[],
+  errors: TransactionFieldErrors,
+): SaveDisabledField | null => order.find((key) => errors[key] !== undefined) ?? null;
+
 // Whether `save` needs to raise the propagation-confirm sheet, and with what
 // payload: only when the category actually changed AND the affected name is
 // non-blank. `upsertCategoryOverride` refuses to write a rule for a blank
@@ -504,7 +423,8 @@ const transactionFieldErrors = (
 // for one asked `Apply "Groceries" to all transactions named ""?` and then
 // wrote nothing — the row's own category is already persisted by `writeManual`
 // regardless, so `save` just returns to the list instead. Kept module-level
-// and pure for the same cognitive-complexity-budget reason as `isSaveDisabled`.
+// and pure for the same cognitive-complexity-budget reason as
+// `transactionFieldErrors`.
 const resolveCategoryOverrideRequest = (
   categoryChanged: boolean,
   selectedCategory: string | null,
@@ -1368,7 +1288,7 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
               options={props.categoryOptions}
               selectedKey={props.selectedCategory}
               onSelect={props.onSelectCategory}
-              // A category is required only on a fresh add (isSaveDisabled
+              // A category is required only on a fresh add (`plainFieldErrors`
               // gates a create on it); an edit leaves the category optional.
               required={!props.isEditing}
             />
@@ -1829,8 +1749,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // The description field's placeholder previews the label the row would carry
   // if left blank (see `resolveDescriptionPlaceholder`), and the Save button is
   // disabled for a create still missing its amount or category (see
-  // `isSaveDisabled`). Both are module-level pure helpers so their branches
-  // stay out of this component's cognitive-complexity budget.
+  // `transactionFieldErrors`). Both are module-level pure helpers so their
+  // branches stay out of this component's cognitive-complexity budget.
   const descriptionPlaceholder = resolveDescriptionPlaceholder(holding, mode, t);
   const saveDisabledParams: SaveDisabledParams = {
     converting,
@@ -1847,17 +1767,20 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     changeReturns,
     currency,
   };
-  const disableSave = isSaveDisabled(saveDisabledParams);
-  // Non-null in exactly the same branches `isSaveDisabled` blocks on, naming
-  // the field to scroll to and focus — see `SaveDisabledField`'s own doc
-  // comment for why this stays separate from the DISPLAYED errors below.
-  const disableSaveField = saveDisabledField(saveDisabledParams);
   // Every field's OWN independent error (see `transactionFieldErrors`'s own
   // doc comment) — `fieldError` just applies the shared `attemptedSave` gate
   // once here instead of at each of the eight call sites below.
   const activeFieldErrors = transactionFieldErrors(saveDisabledParams, t);
   const fieldError = (key: SaveDisabledField): string | undefined =>
     attemptedSave ? activeFieldErrors[key] : undefined;
+  // The first still-blocking field, in the active mode's own priority order
+  // — both the Save-block gate AND the scroll-to-first-invalid target, so
+  // the two can never disagree about which field is blocking.
+  const disableSaveField = firstInvalidField(
+    activeFieldOrder(saveDisabledParams),
+    activeFieldErrors,
+  );
+  const disableSave = disableSaveField !== null;
 
   // An explicit category pick: record the choice AND flag it, so a later
   // description blur (the A1 auto-pick) never overwrites what the user chose.
@@ -1937,7 +1860,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         // only through the override rule, which returns early on a blank
         // normalized name — so a blank-description row (and any row whose
         // override the user cancelled) was written uncategorised despite
-        // `isSaveDisabled` forcing a pick on create.
+        // `plainFieldErrors` forcing a pick on create.
         category: selectedCategory,
       });
     }

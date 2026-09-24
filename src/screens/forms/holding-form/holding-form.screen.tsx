@@ -1556,46 +1556,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     return undefined;
   };
 
-  // A term deposit needs at least one contribution with a positive amount and a
-  // picked date (parsedContributions already drops blank/partial rows), EVERY
-  // row present to be either fully filled in or removed (never silently
-  // dropped — round-4 device feedback item 10), a non-negative annual rate
-  // that was actually entered, and a whole-month term greater than zero.
-  // Recapitalization and compounding always carry defaults. Not gated on
-  // whether the name is filled: the name's own required asterisk covers that
-  // separately.
-  const termDepositReasonKey = (): TermDepositReasonKey | null => {
-    if (parsedContributions().length === 0) {
-      return 'forms.holding.contributionsRequiredError';
-    }
-
-    if (contributions.some((contribution) => !isContributionRowValid(contribution))) {
-      return 'forms.holding.contributionIncompleteError';
-    }
-
-    const rate = parseAmount(annualRate);
-
-    if (annualRate.trim() === '' || !(rate >= 0)) {
-      return 'forms.holding.annualRateError';
-    }
-
-    const months = parseAmount(termMonths);
-
-    if (!(Number.isInteger(months) && months > 0)) {
-      return 'forms.holding.termMonthsError';
-    }
-
-    return null;
-  };
-
-  // Derived from `termDepositReasonKey` so the two can never disagree: valid
-  // exactly when there is no reason to reject.
-  const isTermDepositValid = (): boolean => termDepositReasonKey() === null;
-
-  // The contributions group's OWN reason — the same two checks
-  // `termDepositReasonKey` runs first, but reading ONLY the contributions
-  // list, so it never depends on the annual-rate/term fields below it (see
-  // `fieldErrorMessage`'s own doc comment for why each field needs this).
+  // The contributions group's OWN reason: at least one contribution with a
+  // positive amount and a picked date (`parsedContributions` already drops
+  // blank/partial rows), and EVERY row present either fully filled in or
+  // removed (never silently dropped — round-4 device feedback item 10).
   const contributionsFieldReasonKey = ():
     | 'forms.holding.contributionsRequiredError'
     | 'forms.holding.contributionIncompleteError'
@@ -1626,57 +1590,18 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     return Number.isInteger(months) && months > 0 ? null : 'forms.holding.termMonthsError';
   };
 
-  // A bond needs a valid ISIN (`isinReasonKey`, from `useBondIsinMode`), a
-  // positive quantity and face value, a non-negative coupon that was
-  // actually entered, both dates picked, and a maturity strictly after the
-  // purchase. Coupon frequency always carries a default, so it is always
-  // valid — EXCEPT while `needsCouponFrequencyPick` (an unmapped-frequency
-  // ISIN-mode match, T25 review round 2, N2): spec 6.2 forbids guessing
-  // one, so Save stays blocked until `pickedCouponFrequency` is set. In
-  // ISIN mode, face value/coupon/maturity are register-sourced (never
-  // directly edited) — so these same checks apply unchanged in both modes.
-  const isBondValid = (): boolean =>
-    isinReasonKey === null &&
-    !(needsCouponFrequencyPick && pickedCouponFrequency === null) &&
-    parseAmount(quantity) > 0 &&
-    parseAmount(faceValue) > 0 &&
-    couponPct.trim() !== '' &&
-    parseAmount(couponPct) >= 0 &&
-    purchaseDate !== null &&
-    maturityDate !== null &&
-    maturityDate > purchaseDate;
+  // A term deposit needs a valid contributions group, a non-negative annual
+  // rate that was actually entered, and a whole-month term greater than
+  // zero. Recapitalization and compounding always carry defaults. Not gated
+  // on whether the name is filled: the name's own required asterisk covers
+  // that separately. Derived from the three field functions above, in the
+  // SAME priority order, so this can never drift from what each field
+  // itself displays.
+  const termDepositReasonKey = (): TermDepositReasonKey | null =>
+    contributionsFieldReasonKey() ?? annualRateFieldReasonKey() ?? termMonthsFieldReasonKey();
 
-  // The reason `isBondValid` above is false, for the SAME checks in the
-  // SAME priority order — including a missing purchase or maturity date,
-  // each with its OWN "not selected" reason, ahead of the pair's relative-
-  // order check (which only makes sense once both are actually picked).
-  const bondReasonKey = (): BondReasonKey | null => {
-    if (!(parseAmount(quantity) > 0)) {
-      return 'forms.holding.quantityError';
-    }
-
-    if (!(parseAmount(faceValue) > 0)) {
-      return 'forms.holding.faceValueError';
-    }
-
-    if (couponPct.trim() === '' || !(parseAmount(couponPct) >= 0)) {
-      return 'forms.holding.couponPctError';
-    }
-
-    if (purchaseDate === null) {
-      return 'forms.holding.purchaseDateRequiredError';
-    }
-
-    if (maturityDate === null) {
-      return 'forms.holding.maturityDateRequiredError';
-    }
-
-    if (maturityDate <= purchaseDate) {
-      return 'forms.holding.maturityDateError';
-    }
-
-    return null;
-  };
+  // Valid exactly when there is no reason to reject.
+  const isTermDepositValid = (): boolean => termDepositReasonKey() === null;
 
   // The bond quantity field's OWN reason, independent of the fields below it.
   const bondQuantityFieldReasonKey = (): 'forms.holding.quantityError' | null =>
@@ -1722,6 +1647,26 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     return null;
   };
 
+  // The bond's own reason, derived from the five field functions above, in
+  // the SAME priority order each field itself displays — this can never
+  // drift from what any one field shows, unlike a hand-duplicated chain.
+  const bondReasonKey = (): BondReasonKey | null =>
+    bondQuantityFieldReasonKey() ??
+    faceValueFieldReasonKey() ??
+    couponPctFieldReasonKey() ??
+    purchaseDateFieldReasonKey() ??
+    maturityDateFieldReasonKey();
+
+  // A bond ALSO needs a valid ISIN (`isinReasonKey`, from `useBondIsinMode`)
+  // and, while `needsCouponFrequencyPick` (an unmapped-frequency ISIN-mode
+  // match), a picked coupon frequency — spec 6.2 forbids guessing one, so
+  // Save stays blocked until `pickedCouponFrequency` is set. Everything
+  // else is `bondReasonKey` alone, so the two can never disagree.
+  const isBondValid = (): boolean =>
+    isinReasonKey === null &&
+    !(needsCouponFrequencyPick && pickedCouponFrequency === null) &&
+    bondReasonKey() === null;
+
   // The cost field only applies at CREATE time (PropertySection hides it in
   // edit mode: cost/quantity history is fixed at creation, a later
   // revaluation goes through the dedicated "Update value" form instead), so
@@ -1751,41 +1696,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       : 'forms.holding.purityError';
   };
 
-  // The first-lot Quantity/Total cost fields only apply at CREATE time
-  // (MetalSection hides them in edit mode: quantity/cost history is fixed at
-  // creation, a later buy/sell goes through the dedicated Lot form instead),
-  // so those two only reject on create — an edit always passes them.
-  const metalReasonKey = (): MetalReasonKey | null => {
-    const purityReasonKey = metalPurityReasonKey();
-
-    if (purityReasonKey !== null) {
-      return purityReasonKey;
-    }
-
-    if (isEdit) {
-      return null;
-    }
-
-    const normalizedQuantity = normalizeDecimal(metalQuantity);
-
-    if (normalizedQuantity === null || compareDecimal(normalizedQuantity, '0') <= 0) {
-      return 'forms.holding.quantityError';
-    }
-
-    if (!(parseAmount(metalCost) > 0)) {
-      return 'forms.lot.totalCostError';
-    }
-
-    return null;
-  };
-
-  // Derived from `metalReasonKey` so the two can never disagree: valid
-  // exactly when there is no reason to reject.
-  const isMetalValid = (): boolean => metalReasonKey() === null;
-
-  // The metal quantity field's OWN reason (the first-lot fields only apply at
-  // CREATE time — see `metalReasonKey`'s own doc comment), independent of
-  // purity/cost.
+  // The metal quantity field's OWN reason (the first-lot Quantity/Total cost
+  // fields only apply at CREATE time — MetalSection hides them in edit mode:
+  // quantity/cost history is fixed at creation, a later buy/sell goes
+  // through the dedicated Lot form instead), independent of purity/cost.
   const metalQuantityFieldReasonKey = (): 'forms.holding.quantityError' | null => {
     if (isEdit) {
       return null;
@@ -1798,9 +1712,19 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       : null;
   };
 
-  // The metal total-cost field's OWN reason, independent of purity/quantity.
+  // The metal total-cost field's OWN reason (CREATE time only, see
+  // `metalQuantityFieldReasonKey`'s own doc comment), independent of
+  // purity/quantity.
   const metalCostFieldReasonKey = (): 'forms.lot.totalCostError' | null =>
     isEdit || parseAmount(metalCost) > 0 ? null : 'forms.lot.totalCostError';
+
+  // The metal's own reason, derived from the three field functions above, in
+  // the SAME priority order each field itself displays.
+  const metalReasonKey = (): MetalReasonKey | null =>
+    metalPurityReasonKey() ?? metalQuantityFieldReasonKey() ?? metalCostFieldReasonKey();
+
+  // Valid exactly when there is no reason to reject.
+  const isMetalValid = (): boolean => metalReasonKey() === null;
 
   const isValid =
     name.trim().length > 0 &&
