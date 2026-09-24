@@ -195,18 +195,21 @@ type ClosingBalanceCandidate = { row: TableCell[]; timeSeconds: number; currency
  * `pickClosingBalanceRow` then falls back to comparing the tied rows' own
  * balance cells instead of guessing an order. Callers only ever reach this
  * with two or more candidates (the lone-candidate case returns earlier in
- * `pickClosingBalanceRow`), so `first`/`last` are always defined here. */
+ * `pickClosingBalanceRow`), so plain indexing is safe here —
+ * `noUncheckedIndexedAccess` is off project-wide (see `kiko-code-style`),
+ * and `candidates[0]`/`candidates[candidates.length - 1]` are always
+ * defined for a non-empty array. */
 const resolveFileOrientation = (
   candidates: ClosingBalanceCandidate[],
 ): 'newestFirst' | 'oldestFirst' | 'undeterminable' => {
-  const first = candidates.at(0)?.timeSeconds;
-  const last = candidates.at(-1)?.timeSeconds;
+  const first = candidates[0].timeSeconds;
+  const last = candidates[candidates.length - 1].timeSeconds;
 
   if (first === last) {
     return 'undeterminable';
   }
 
-  return first !== undefined && last !== undefined && first > last ? 'newestFirst' : 'oldestFirst';
+  return first > last ? 'newestFirst' : 'oldestFirst';
 };
 
 type ClosingBalancePick = { candidate: ClosingBalanceCandidate; balanceMajor: number };
