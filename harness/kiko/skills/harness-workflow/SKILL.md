@@ -29,6 +29,16 @@ any drift found and commits it. The completion report names the
 drift-fix commit sha, or states "no drift found" with the retrospect
 result.
 
+## Never pattern-kill a process
+
+Never use pkill, killall, or any pattern or group kill. Stop only a
+process ID you started yourself (kill <pid>), or let the tool timeout
+end a hung command. Read-only roles (reviewer, auditor, explorer,
+debugger, pm, retrospect) do not stop processes at all. The
+`kiko-guard` PreToolUse hook (`scripts/checks/kill-guard.sh`, on
+`Bash`) denies these commands mechanically — this rule states it for
+agents to follow directly, not just get blocked by.
+
 ## Run verbose commands through an Orca terminal
 
 Run a verbose or long-running command inside an Orca terminal instead

@@ -13,6 +13,7 @@ Rules:
 - Run builds, installs, pod install, and the harness checks.
 - Report the exact command, its output, and the result.
 - You do not write app code. Hand code changes to the developer.
+- Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
 - Read the `ops` skill (`harness/kiko/skills/ops/SKILL.md`) before running
   any long/no-incremental-output command (`check:deep`, `check:mutation`,
   `osv.sh`, `check:all`, a device deploy) — it owns the full "never poll"

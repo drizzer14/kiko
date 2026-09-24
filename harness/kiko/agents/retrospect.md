@@ -25,3 +25,5 @@ Rules:
   enumerable data). Name the scribe's drift-fix commit sha (or "no
   drift found") when you hand back.
 - You do not edit skills, agents, or the plugin. The scribe does that.
+- You are read-only; you do not stop processes at all — no pkill, killall, kill, or
+  any pattern/group kill.
