@@ -63,7 +63,7 @@ describe('BinanceCredentialsField', () => {
 
     expect(getByPlaceholderText('Binance API key').props.secureTextEntry).toBe(true);
     expect(getByPlaceholderText('Binance API secret').props.secureTextEntry).toBe(true);
-    expect(getByText('Open Binance API Management')).toBeTruthy();
+    expect(getByText('Open Binance API management')).toBeTruthy();
     expect(getByText('Connect Binance')).toBeTruthy();
   });
 
@@ -107,7 +107,7 @@ describe('BinanceCredentialsField', () => {
     // The link reads as a tappable inline label via the shared `Text` tone
     // token, matching the pie legend's "Show all" toggle, rather than an
     // inline-styled raw RN `Text`.
-    expect(getByText('Open Binance API Management').props.testID).toBe('text-tone-accent');
+    expect(getByText('Open Binance API management').props.testID).toBe('text-tone-accent');
   });
 
   it('opens the Binance API management page from the link', async () => {
@@ -115,7 +115,7 @@ describe('BinanceCredentialsField', () => {
       <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
     );
 
-    await fireEvent.press(getByText('Open Binance API Management'));
+    await fireEvent.press(getByText('Open Binance API management'));
 
     expect(mockOpenURL).toHaveBeenCalledWith(
       'https://app.binance.com/en/my/settings/api-management',

@@ -142,9 +142,9 @@ describe('SettingsScreen', () => {
   it('labels the base-currency control exactly once (SettingsRow labels it, CurrencyField shows no duplicate caption)', async () => {
     const { getAllByText } = await renderScreen();
 
-    // The SettingsRow renders "Base Currency"; the CurrencyField must NOT also
+    // The SettingsRow renders "Base currency"; the CurrencyField must NOT also
     // render its own inline caption, or the label would appear twice.
-    expect(getAllByText('Base Currency')).toHaveLength(1);
+    expect(getAllByText('Base currency')).toHaveLength(1);
   });
 
   it('renders each setting in its own separate card, not one shared grouped card', async () => {
@@ -407,7 +407,7 @@ describe('SettingsScreen — footer', () => {
   it('renders a Privacy Policy link that opens the English page under en', async () => {
     const { getByText } = await renderScreen();
 
-    await fireEvent.press(getByText('Privacy Policy'));
+    await fireEvent.press(getByText('Privacy policy'));
 
     expect(mockOpenURL).toHaveBeenCalledWith('https://drizzer14.github.io/kiko/en.html');
   });
@@ -442,7 +442,7 @@ describe('SettingsScreen — localization', () => {
     });
     const { getByText } = await renderScreen();
 
-    expect(getByText('Base Currency')).toBeTruthy();
+    expect(getByText('Base currency')).toBeTruthy();
     expect(getByText('System')).toBeTruthy();
   });
 

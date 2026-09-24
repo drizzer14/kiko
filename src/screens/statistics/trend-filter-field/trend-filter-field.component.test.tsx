@@ -89,10 +89,10 @@ describe('TrendFilterField button label', () => {
     expect(getByTestId(TEST_ID)).toHaveTextContent('3 Categories');
   });
 
-  it('reads "All Categories" for an empty manual selection', async () => {
+  it('reads "All categories" for an empty manual selection', async () => {
     const { getByTestId } = await renderField({ filter: { mode: 'manual', keys: [] } });
 
-    expect(getByTestId(TEST_ID)).toHaveTextContent('All Categories');
+    expect(getByTestId(TEST_ID)).toHaveTextContent('All categories');
   });
 
   it('renders the three Ukrainian plural forms for the manual count', async () => {
@@ -100,15 +100,15 @@ describe('TrendFilterField button label', () => {
 
     expect(
       (await renderField({ filter: { mode: 'manual', keys: ['a'] } })).getByTestId(TEST_ID),
-    ).toHaveTextContent('1 Категорія');
+    ).toHaveTextContent('1 категорія');
     expect(
       (await renderField({ filter: { mode: 'manual', keys: ['a', 'b'] } })).getByTestId(TEST_ID),
-    ).toHaveTextContent('2 Категорії');
+    ).toHaveTextContent('2 категорії');
     expect(
       (
         await renderField({ filter: { mode: 'manual', keys: ['a', 'b', 'c', 'd', 'e'] } })
       ).getByTestId(TEST_ID),
-    ).toHaveTextContent('5 Категорій');
+    ).toHaveTextContent('5 категорій');
   });
 
   it('interpolates the Ukrainian instrumental measure into the top label', async () => {

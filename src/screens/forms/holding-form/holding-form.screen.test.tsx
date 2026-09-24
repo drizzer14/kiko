@@ -215,19 +215,19 @@ const fillBondFields = async (screen: Screen): Promise<void> => {
   await fireEvent.press(screen.getByText('Manual'));
   await fill(screen, 'Name', 'My bond');
   await fill(screen, 'Quantity', '10');
-  await fill(screen, 'Face Value', '1000');
+  await fill(screen, 'Face value', '1000');
   await fill(screen, 'Coupon %', '9');
-  await pickDate(screen, 'Purchase Date', 2026, 1, 1);
-  await pickDate(screen, 'Maturity Date', 2028, 1, 1);
+  await pickDate(screen, 'Purchase date', 2026, 1, 1);
+  await pickDate(screen, 'Maturity date', 2028, 1, 1);
 };
 
 const fillTermDepositFields = async (screen: Screen): Promise<void> => {
   await fireEvent.press(screen.getByText('Deposit'));
   await fill(screen, 'Name', 'My deposit');
-  await fill(screen, 'Contribution 1 Amount', '1000');
-  await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
-  await fill(screen, 'Annual Rate %', '12');
-  await fill(screen, 'Term (Months)', '12');
+  await fill(screen, 'Contribution 1 amount', '1000');
+  await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
+  await fill(screen, 'Annual rate %', '12');
+  await fill(screen, 'Term (months)', '12');
 };
 
 const metadataOfFirstCreate = (): Record<string, unknown> => createMock.mock.calls[0][0].metadata;
@@ -329,11 +329,11 @@ describe('HoldingFormScreen term deposit', () => {
     await fireEvent.press(screen.getByText('Deposit'));
 
     // The repeatable contributions list starts with one row.
-    expect(screen.getByLabelText('Contribution 1 Amount')).toBeTruthy();
-    expect(screen.getByLabelText('Contribution 1 Date')).toBeTruthy();
+    expect(screen.getByLabelText('Contribution 1 amount')).toBeTruthy();
+    expect(screen.getByLabelText('Contribution 1 date')).toBeTruthy();
     expect(screen.getByText('Add contribution')).toBeTruthy();
 
-    for (const label of ['Annual Rate %', 'Term (Months)', 'Recapitalization', 'Compounding']) {
+    for (const label of ['Annual rate %', 'Term (months)', 'Recapitalization', 'Compounding']) {
       expect(screen.getByText(label)).toBeTruthy();
     }
   });
@@ -345,7 +345,7 @@ describe('HoldingFormScreen term deposit', () => {
 
     // ISIN mode (the CREATE default, T25) shows quantity/purchase date —
     // always visible — plus the mode toggle and the ISIN field itself.
-    for (const label of ['Quantity', 'Purchase Date', 'Purchase Price (total paid)']) {
+    for (const label of ['Quantity', 'Purchase date', 'Purchase price (total paid)']) {
       expect(screen.getByText(label)).toBeTruthy();
     }
     expect(screen.getByPlaceholderText('UA4000234215')).toBeTruthy();
@@ -359,11 +359,11 @@ describe('HoldingFormScreen term deposit', () => {
 
     for (const label of [
       'Quantity',
-      'Face Value',
+      'Face value',
       'Coupon %',
-      'Purchase Date',
-      'Maturity Date',
-      'Bond Kind',
+      'Purchase date',
+      'Maturity date',
+      'Bond kind',
     ]) {
       expect(screen.getByText(label)).toBeTruthy();
     }
@@ -374,10 +374,10 @@ describe('HoldingFormScreen term deposit', () => {
 
     await fireEvent.press(screen.getByText('Deposit'));
     await fill(screen, 'Name', 'My deposit');
-    await fill(screen, 'Contribution 1 Amount', '1000');
-    await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
-    await fill(screen, 'Annual Rate %', '12');
-    await fill(screen, 'Term (Months)', '12');
+    await fill(screen, 'Contribution 1 amount', '1000');
+    await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
+    await fill(screen, 'Annual rate %', '12');
+    await fill(screen, 'Term (months)', '12');
 
     await fireEvent.press(screen.getByText('Save'));
 
@@ -396,15 +396,15 @@ describe('HoldingFormScreen term deposit', () => {
 
     await fireEvent.press(screen.getByText('Deposit'));
     await fill(screen, 'Name', 'My deposit');
-    await fill(screen, 'Contribution 1 Amount', '1000');
-    await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
+    await fill(screen, 'Contribution 1 amount', '1000');
+    await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
 
     await fireEvent.press(screen.getByText('Add contribution'));
 
-    await fill(screen, 'Contribution 2 Amount', '500');
-    await pickDate(screen, 'Contribution 2 Date', 2026, 2, 1);
-    await fill(screen, 'Annual Rate %', '12');
-    await fill(screen, 'Term (Months)', '12');
+    await fill(screen, 'Contribution 2 amount', '500');
+    await pickDate(screen, 'Contribution 2 date', 2026, 2, 1);
+    await fill(screen, 'Annual rate %', '12');
+    await fill(screen, 'Term (months)', '12');
 
     await fireEvent.press(screen.getByText('Save'));
 
@@ -477,10 +477,10 @@ describe('HoldingFormScreen term deposit', () => {
 
     await fireEvent.press(screen.getByText('Deposit'));
     await fill(screen, 'Name', 'My deposit');
-    await fill(screen, 'Contribution 1 Amount', '1000');
-    await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
-    await fill(screen, 'Annual Rate %', '12');
-    await fill(screen, 'Term (Months)', '12');
+    await fill(screen, 'Contribution 1 amount', '1000');
+    await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
+    await fill(screen, 'Annual rate %', '12');
+    await fill(screen, 'Term (months)', '12');
 
     // Add a second row but leave it blank.
     await fireEvent.press(screen.getByText('Add contribution'));
@@ -502,14 +502,14 @@ describe('HoldingFormScreen term deposit', () => {
 
     await fireEvent.press(screen.getByText('Deposit'));
     await fill(screen, 'Name', 'My deposit');
-    await fill(screen, 'Contribution 1 Amount', '1000');
-    await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
-    await fill(screen, 'Annual Rate %', '12');
-    await fill(screen, 'Term (Months)', '12');
+    await fill(screen, 'Contribution 1 amount', '1000');
+    await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
+    await fill(screen, 'Annual rate %', '12');
+    await fill(screen, 'Term (months)', '12');
 
     await fireEvent.press(screen.getByText('Add contribution'));
     // Partially filled: an amount but no picked date.
-    await fill(screen, 'Contribution 2 Amount', '500');
+    await fill(screen, 'Contribution 2 amount', '500');
 
     await fireEvent.press(screen.getByText('Save'));
 
@@ -524,10 +524,10 @@ describe('HoldingFormScreen term deposit', () => {
 
     await fireEvent.press(screen.getByText('Deposit'));
     await fill(screen, 'Name', 'My deposit');
-    await fill(screen, 'Contribution 1 Amount', '1000');
-    await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
-    await fill(screen, 'Annual Rate %', '12');
-    await fill(screen, 'Term (Months)', '12');
+    await fill(screen, 'Contribution 1 amount', '1000');
+    await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
+    await fill(screen, 'Annual rate %', '12');
+    await fill(screen, 'Term (months)', '12');
     await fireEvent.press(screen.getByText('Add contribution'));
     await fireEvent.press(screen.getByText('Save'));
 
@@ -535,8 +535,8 @@ describe('HoldingFormScreen term deposit', () => {
       screen.getByText("Fill in this contribution's amount and date, or remove it."),
     ).toBeTruthy();
 
-    await fill(screen, 'Contribution 2 Amount', '500');
-    await pickDate(screen, 'Contribution 2 Date', 2026, 2, 1);
+    await fill(screen, 'Contribution 2 amount', '500');
+    await pickDate(screen, 'Contribution 2 date', 2026, 2, 1);
 
     expect(
       screen.queryByText("Fill in this contribution's amount and date, or remove it."),
@@ -555,10 +555,10 @@ describe('HoldingFormScreen term deposit', () => {
 
     await fireEvent.press(screen.getByText('Deposit'));
     await fill(screen, 'Name', 'My deposit');
-    await fill(screen, 'Contribution 1 Amount', '1000');
-    await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
-    await fill(screen, 'Annual Rate %', '12');
-    await fill(screen, 'Term (Months)', '12');
+    await fill(screen, 'Contribution 1 amount', '1000');
+    await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
+    await fill(screen, 'Annual rate %', '12');
+    await fill(screen, 'Term (months)', '12');
     await fireEvent.press(screen.getByText('Add contribution'));
     await fireEvent.press(screen.getByText('Save'));
 
@@ -577,8 +577,8 @@ describe('HoldingFormScreen term deposit', () => {
 
     await fireEvent.press(screen.getByText('Deposit'));
     await fill(screen, 'Name', 'My deposit');
-    await fill(screen, 'Annual Rate %', '12');
-    await fill(screen, 'Term (Months)', '12');
+    await fill(screen, 'Annual rate %', '12');
+    await fill(screen, 'Term (months)', '12');
 
     await fireEvent.press(screen.getByText('Save'));
 
@@ -591,11 +591,11 @@ describe('HoldingFormScreen term deposit', () => {
     await fireEvent.press(screen.getByText('Deposit'));
     await fireEvent.press(screen.getByText('Add contribution'));
 
-    expect(screen.getByLabelText('Contribution 2 Amount')).toBeTruthy();
+    expect(screen.getByLabelText('Contribution 2 amount')).toBeTruthy();
 
     await fireEvent.press(screen.getByLabelText('Remove contribution 2'));
 
-    expect(screen.queryByLabelText('Contribution 2 Amount')).toBeNull();
+    expect(screen.queryByLabelText('Contribution 2 amount')).toBeNull();
   });
 
   it('saves a bond with a metadata block', async () => {
@@ -826,7 +826,7 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
     expect(screen.getByDisplayValue('Register Bond UA4000234215')).toBeTruthy();
 
     await fill(screen, 'Name', 'War bond 2029');
-    await pickDate(screen, 'Purchase Date', 2026, 1, 1);
+    await pickDate(screen, 'Purchase date', 2026, 1, 1);
 
     await fireEvent.press(screen.getByText('Save'));
 
@@ -1010,12 +1010,12 @@ describe('HoldingFormScreen save validation', () => {
 
     await fireEvent.press(screen.getByText('Deposit'));
     await fill(screen, 'Name', 'My deposit');
-    await fill(screen, 'Contribution 1 Amount', '1000');
-    await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
+    await fill(screen, 'Contribution 1 amount', '1000');
+    await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
     await fireEvent.press(screen.getByText('Save'));
 
     expect(screen.getByText('Enter a rate of 0 or higher.')).toBeTruthy();
-    const flatStyle = StyleSheet.flatten(screen.getByLabelText('Annual Rate %').props.style);
+    const flatStyle = StyleSheet.flatten(screen.getByLabelText('Annual rate %').props.style);
     expect(flatStyle.borderColor).not.toBe('#FF453A');
   });
 
@@ -1024,13 +1024,13 @@ describe('HoldingFormScreen save validation', () => {
 
     await fireEvent.press(screen.getByText('Deposit'));
     await fill(screen, 'Name', 'My deposit');
-    await fill(screen, 'Contribution 1 Amount', '1000');
-    await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
-    await fill(screen, 'Annual Rate %', '12');
+    await fill(screen, 'Contribution 1 amount', '1000');
+    await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
+    await fill(screen, 'Annual rate %', '12');
     await fireEvent.press(screen.getByText('Save'));
 
     expect(screen.getByText('Enter a whole number of months greater than 0.')).toBeTruthy();
-    const flatStyle = StyleSheet.flatten(screen.getByLabelText('Term (Months)').props.style);
+    const flatStyle = StyleSheet.flatten(screen.getByLabelText('Term (months)').props.style);
     expect(flatStyle.borderColor).not.toBe('#FF453A');
   });
 
@@ -1058,10 +1058,10 @@ describe('HoldingFormScreen save validation', () => {
       screen.getByText('Add at least one contribution with an amount and a date.'),
     ).toBeTruthy();
 
-    await fill(screen, 'Contribution 1 Amount', '1000');
-    await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
-    await fill(screen, 'Annual Rate %', '12');
-    await fill(screen, 'Term (Months)', '12');
+    await fill(screen, 'Contribution 1 amount', '1000');
+    await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
+    await fill(screen, 'Annual rate %', '12');
+    await fill(screen, 'Term (months)', '12');
 
     expect(
       screen.queryByText('Add at least one contribution with an amount and a date.'),
@@ -1086,10 +1086,10 @@ describe('HoldingFormScreen save validation', () => {
     await fireEvent.press(screen.getByText('Manual'));
     await fill(screen, 'Name', 'My bond');
     await fill(screen, 'Quantity', '10');
-    await fill(screen, 'Face Value', '1000');
+    await fill(screen, 'Face value', '1000');
     await fill(screen, 'Coupon %', '9');
-    await pickDate(screen, 'Purchase Date', 2026, 1, 1);
-    await pickDate(screen, 'Maturity Date', 2026, 1, 1);
+    await pickDate(screen, 'Purchase date', 2026, 1, 1);
+    await pickDate(screen, 'Maturity date', 2026, 1, 1);
     await fireEvent.press(screen.getByText('Save'));
 
     expect(
@@ -1134,7 +1134,7 @@ describe('HoldingFormScreen save validation', () => {
     await fireEvent.press(screen.getByText('Save'));
 
     expect(screen.getByText('Enter a face value greater than 0.')).toBeTruthy();
-    const flatStyle = StyleSheet.flatten(screen.getByLabelText('Face Value').props.style);
+    const flatStyle = StyleSheet.flatten(screen.getByLabelText('Face value').props.style);
     expect(flatStyle.borderColor).not.toBe('#FF453A');
   });
 
@@ -1145,7 +1145,7 @@ describe('HoldingFormScreen save validation', () => {
     await fireEvent.press(screen.getByText('Manual'));
     await fill(screen, 'Name', 'My bond');
     await fill(screen, 'Quantity', '10');
-    await fill(screen, 'Face Value', '1000');
+    await fill(screen, 'Face value', '1000');
     await fireEvent.press(screen.getByText('Save'));
 
     expect(screen.getByText('Enter a coupon of 0 or higher.')).toBeTruthy();
@@ -1196,14 +1196,14 @@ describe('HoldingFormScreen save validation', () => {
     await fireEvent.press(screen.getByText('Save'));
     const [, contributionsRef] = scrollToFieldMock.mock.calls[0];
 
-    await fill(screen, 'Contribution 1 Amount', '1000');
-    await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
+    await fill(screen, 'Contribution 1 amount', '1000');
+    await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
     await fireEvent.press(screen.getByText('Save'));
     const [, annualRateRef] = scrollToFieldMock.mock.calls[1];
 
     expect(annualRateRef).not.toBe(contributionsRef);
 
-    await fill(screen, 'Annual Rate %', '12');
+    await fill(screen, 'Annual rate %', '12');
     await fireEvent.press(screen.getByText('Save'));
     const [, termMonthsRef] = scrollToFieldMock.mock.calls[2];
 
@@ -1615,15 +1615,15 @@ describe('HoldingFormScreen loan (T28)', () => {
   const fillLoanFields = async (screen: Screen): Promise<void> => {
     await fill(screen, 'Name', 'Car loan');
     await fill(screen, 'Principal', '500000');
-    await pickDate(screen, 'Start Date', 2026, 1, 1);
+    await pickDate(screen, 'Start date', 2026, 1, 1);
   };
 
   it('creates an annuity loan with a full LoanMeta and no firstPricePoint', async () => {
     const screen = await renderScreen();
 
     await fillLoanFields(screen);
-    await fill(screen, 'Annual Rate %', '12');
-    await fill(screen, 'Term (Months)', '24');
+    await fill(screen, 'Annual rate %', '12');
+    await fill(screen, 'Term (months)', '24');
     await fireEvent.press(screen.getByText('Save'));
 
     expect(createMock).toHaveBeenCalledWith(
@@ -1649,8 +1649,8 @@ describe('HoldingFormScreen loan (T28)', () => {
 
     await fireEvent.press(screen.getByText('Car loan'));
     await fillLoanFields(screen);
-    await fill(screen, 'Annual Rate %', '9');
-    await fill(screen, 'Term (Months)', '36');
+    await fill(screen, 'Annual rate %', '9');
+    await fill(screen, 'Term (months)', '36');
     await fireEvent.press(screen.getByText('Save'));
 
     expect(createMock).toHaveBeenCalledWith(
@@ -1692,8 +1692,8 @@ describe('HoldingFormScreen loan (T28)', () => {
 
     await fireEvent.press(screen.getByText('No schedule'));
 
-    expect(screen.queryByLabelText('Annual Rate %')).toBeNull();
-    expect(screen.queryByLabelText('Term (Months)')).toBeNull();
+    expect(screen.queryByLabelText('Annual rate %')).toBeNull();
+    expect(screen.queryByLabelText('Term (months)')).toBeNull();
 
     await fillLoanFields(screen);
     await fireEvent.press(screen.getByText('Save'));
@@ -1730,8 +1730,8 @@ describe('HoldingFormScreen loan (T28)', () => {
     const screen = await renderScreen();
 
     await fillLoanFields(screen);
-    await fill(screen, 'Annual Rate %', '12');
-    await fill(screen, 'Term (Months)', '0');
+    await fill(screen, 'Annual rate %', '12');
+    await fill(screen, 'Term (months)', '0');
     await fireEvent.press(screen.getByText('Save'));
 
     expect(screen.getByText('Enter a whole number of months greater than 0.')).toBeTruthy();
@@ -1741,12 +1741,12 @@ describe('HoldingFormScreen loan (T28)', () => {
   it('renders a visible text label above every loan field', async () => {
     const screen = await renderScreen();
 
-    expect(screen.getByText('Loan Kind')).toBeTruthy();
+    expect(screen.getByText('Loan kind')).toBeTruthy();
     expect(screen.getByLabelText('Principal')).toBeTruthy();
-    expect(screen.getByLabelText('Start Date')).toBeTruthy();
+    expect(screen.getByLabelText('Start date')).toBeTruthy();
     expect(screen.getByText('Schedule')).toBeTruthy();
-    expect(screen.getByLabelText('Annual Rate %')).toBeTruthy();
-    expect(screen.getByLabelText('Term (Months)')).toBeTruthy();
+    expect(screen.getByLabelText('Annual rate %')).toBeTruthy();
+    expect(screen.getByLabelText('Term (months)')).toBeTruthy();
   });
 
   it('edits a loan holding, saving every field as editable metadata (not create-only)', async () => {
@@ -1770,8 +1770,8 @@ describe('HoldingFormScreen loan (T28)', () => {
     });
 
     expect(screen.getByLabelText('Principal').props.value).toBe('500 000');
-    expect(screen.getByLabelText('Annual Rate %').props.value).toBe('12');
-    expect(screen.getByLabelText('Term (Months)').props.value).toBe('24');
+    expect(screen.getByLabelText('Annual rate %').props.value).toBe('12');
+    expect(screen.getByLabelText('Term (months)').props.value).toBe('24');
 
     await fill(screen, 'Principal', '600000');
     await fireEvent.press(screen.getByText('Save'));
@@ -1816,8 +1816,8 @@ describe('HoldingFormScreen loan (T28)', () => {
       },
     });
 
-    expect(screen.queryByLabelText('Annual Rate %')).toBeNull();
-    expect(screen.queryByLabelText('Term (Months)')).toBeNull();
+    expect(screen.queryByLabelText('Annual rate %')).toBeNull();
+    expect(screen.queryByLabelText('Term (months)')).toBeNull();
 
     await fireEvent.press(screen.getByText('Save'));
 
@@ -1988,8 +1988,8 @@ describe('HoldingFormScreen loan (T28)', () => {
     });
 
     await fireEvent.press(screen.getByText('Annuity'));
-    await fill(screen, 'Annual Rate %', '10');
-    await fill(screen, 'Term (Months)', '12');
+    await fill(screen, 'Annual rate %', '10');
+    await fill(screen, 'Term (months)', '12');
     await fireEvent.press(screen.getByText('Save'));
 
     expect(updateLoanMock).toHaveBeenCalledWith(
@@ -2149,7 +2149,7 @@ describe('HoldingFormScreen type chips are constrained by the account kind', () 
     expect(screen.queryByText('Card')).toBeNull();
     expect(screen.queryByText('Jar')).toBeNull();
     expect(screen.queryByText('Cash')).toBeNull();
-    expect(screen.queryByText('Crypto Asset')).toBeNull();
+    expect(screen.queryByText('Crypto asset')).toBeNull();
   });
 
   it('offers Card on a NON-synced (statement-import-only) bank — no sync owns it there — while still excluding Jar', async () => {
@@ -2166,7 +2166,7 @@ describe('HoldingFormScreen type chips are constrained by the account kind', () 
     expect(screen.getByText('Bond')).toBeTruthy();
     expect(screen.queryByText('Jar')).toBeNull();
     expect(screen.queryByText('Cash')).toBeNull();
-    expect(screen.queryByText('Crypto Asset')).toBeNull();
+    expect(screen.queryByText('Crypto asset')).toBeNull();
   });
 
   it('offers only the crypto_asset holding type on a crypto account', async () => {
@@ -2174,7 +2174,7 @@ describe('HoldingFormScreen type chips are constrained by the account kind', () 
 
     const screen = await renderScreen();
 
-    expect(screen.getByText('Crypto Asset')).toBeTruthy();
+    expect(screen.getByText('Crypto asset')).toBeTruthy();
     expect(screen.queryByText('Card')).toBeNull();
     expect(screen.queryByText('Deposit')).toBeNull();
   });
@@ -2517,7 +2517,7 @@ describe('HoldingFormScreen edit mode', () => {
     expect(screen.getByDisplayValue('12')).toBeTruthy();
     expect(screen.getByDisplayValue('24')).toBeTruthy();
 
-    await fill(screen, 'Annual Rate %', '15');
+    await fill(screen, 'Annual rate %', '15');
     await fireEvent.press(screen.getByText('Save'));
 
     const patch = updateDeltaMock.mock.calls[0][1];
@@ -2569,13 +2569,13 @@ describe('HoldingFormScreen edit mode', () => {
     // disabled, and pressing it is a no-op (the disabled Pressable never fires).
     expect(savedRemove.props.accessibilityState.disabled).toBe(true);
     await fireEvent.press(savedRemove);
-    expect(screen.getByLabelText('Contribution 1 Amount')).toBeTruthy();
-    expect(screen.getByLabelText('Contribution 2 Amount')).toBeTruthy();
+    expect(screen.getByLabelText('Contribution 1 amount')).toBeTruthy();
+    expect(screen.getByLabelText('Contribution 2 amount')).toBeTruthy();
 
     // The newly-added row is removable: its Remove is enabled and drops the row.
     expect(newRemove.props.accessibilityState.disabled).toBe(false);
     await fireEvent.press(newRemove);
-    expect(screen.queryByLabelText('Contribution 2 Amount')).toBeNull();
+    expect(screen.queryByLabelText('Contribution 2 amount')).toBeNull();
   });
 });
 

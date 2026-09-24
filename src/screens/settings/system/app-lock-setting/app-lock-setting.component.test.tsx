@@ -25,8 +25,8 @@ describe('AppLockSetting', () => {
 
     expect(getByTestId('settings-card-app-lock')).toBeTruthy();
     expect(getByTestId('settings-row-app-lock')).toBeTruthy();
-    expect(getByText('App Lock')).toBeTruthy();
-    expect(getByText('Require Face ID or Passcode')).toBeTruthy();
+    expect(getByText('App lock')).toBeTruthy();
+    expect(getByText('Require Face ID or passcode')).toBeTruthy();
     expect(await findByRole('switch')).toBeEnabled();
     expect(queryByText(/Set a device passcode/)).toBeNull();
     expect(queryByText(/unavailable/)).toBeNull();
@@ -58,7 +58,7 @@ describe('AppLockSetting', () => {
     const { findByRole, findByText } = await renderSetting();
 
     expect(await findByRole('switch')).toBeDisabled();
-    expect(await findByText('Set a device passcode in iOS Settings to use App Lock.')).toBeTruthy();
+    expect(await findByText('Set a device passcode in iOS Settings to use app lock.')).toBeTruthy();
   });
 
   it('disables the switch with a hint when biometric hardware is unavailable', async () => {

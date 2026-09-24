@@ -29,17 +29,17 @@ describe('ManualBondFields', () => {
   it('renders face value, coupon %, maturity date, bond kind, and coupon frequency in Manual mode', async () => {
     const { getByLabelText, getByText } = await render(<ManualBondFields {...baseProps} />);
 
-    expect(getByLabelText('Face Value')).toBeTruthy();
+    expect(getByLabelText('Face value')).toBeTruthy();
     expect(getByLabelText('Coupon %')).toBeTruthy();
-    expect(getByText('Maturity Date')).toBeTruthy();
-    expect(getByText('Bond Kind')).toBeTruthy();
+    expect(getByText('Maturity date')).toBeTruthy();
+    expect(getByText('Bond kind')).toBeTruthy();
     expect(getByText('Coupon frequency')).toBeTruthy();
   });
 
   it('renders nothing in ISIN mode', async () => {
     const { queryByLabelText } = await render(<ManualBondFields {...baseProps} bondMode="isin" />);
 
-    expect(queryByLabelText('Face Value')).toBeNull();
+    expect(queryByLabelText('Face value')).toBeNull();
   });
 
   it('reports the entered face value and coupon %', async () => {
@@ -53,7 +53,7 @@ describe('ManualBondFields', () => {
       />,
     );
 
-    await fireEvent.changeText(getByLabelText('Face Value'), '1000');
+    await fireEvent.changeText(getByLabelText('Face value'), '1000');
     await fireEvent.changeText(getByLabelText('Coupon %'), '9');
 
     expect(onChangeFaceValue).toHaveBeenCalledWith('1000');

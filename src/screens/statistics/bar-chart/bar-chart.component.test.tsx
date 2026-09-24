@@ -27,7 +27,7 @@ describe('BarChart', () => {
     expect(getByTestId('bar-chart-label-term_deposit')).toBeTruthy();
     expect(getByText('Card')).toBeTruthy();
     expect(getByText('Deposit')).toBeTruthy();
-    expect(getByText('Crypto Asset')).toBeTruthy();
+    expect(getByText('Crypto asset')).toBeTruthy();
   });
 
   it('renders the converted amount label per entry', async () => {

@@ -89,7 +89,7 @@ describe('ImportDataScreen', () => {
     expect(
       await findByText('The key looks too short — paste the full key from your export.'),
     ).toBeTruthy();
-    expect(queryByText('Replace Data')).toBeNull();
+    expect(queryByText('Replace data')).toBeNull();
     expect(mockImportData).not.toHaveBeenCalled();
   });
 
@@ -103,7 +103,7 @@ describe('ImportDataScreen', () => {
     expect(
       queryByText('The key looks too short — paste the full key from your export.'),
     ).toBeNull();
-    expect(queryByText('Replace Data')).toBeNull();
+    expect(queryByText('Replace data')).toBeNull();
   });
 
   it('clears the missing-file error once a valid file is picked', async () => {
@@ -133,7 +133,7 @@ describe('ImportDataScreen', () => {
     await fireEvent.press(getByTestId('settings-button-import'));
 
     // Still no file — pressing Import must not call importData or open the sheet.
-    expect(queryByText('Replace Data')).toBeNull();
+    expect(queryByText('Replace data')).toBeNull();
     expect(mockImportData).not.toHaveBeenCalled();
   });
 
@@ -151,7 +151,7 @@ describe('ImportDataScreen', () => {
     expect(
       await findByText('The key looks too short — paste the full key from your export.'),
     ).toBeTruthy();
-    expect(queryByText('Replace Data')).toBeNull();
+    expect(queryByText('Replace data')).toBeNull();
     expect(mockImportData).not.toHaveBeenCalled();
   });
 
@@ -173,7 +173,7 @@ describe('ImportDataScreen', () => {
 
     // The destructive ConfirmSheet must appear before any real import runs.
     expect(mockImportData).not.toHaveBeenCalled();
-    await fireEvent.press(await findByText('Replace Data'));
+    await fireEvent.press(await findByText('Replace data'));
 
     // Imports the SANDBOX-LOCAL copy (`keepLocalCopy`'s `localUri`), never the
     // raw picked uri — reading the external URI directly is what made an
@@ -210,7 +210,7 @@ describe('ImportDataScreen', () => {
 
     await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), VALID_KEY);
     await fireEvent.press(getByTestId('settings-button-import'));
-    await fireEvent.press(await findByText('Replace Data'));
+    await fireEvent.press(await findByText('Replace data'));
 
     await waitFor(() =>
       expect(mockImportData).toHaveBeenCalledWith({
@@ -255,7 +255,7 @@ describe('ImportDataScreen', () => {
 
     await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), VALID_KEY);
     await fireEvent.press(getByTestId('settings-button-import'));
-    await fireEvent.press(await findByText('Replace Data'));
+    await fireEvent.press(await findByText('Replace data'));
 
     expect(await findByText('Імпорт завершено — відновлено рахунків: 2.')).toBeTruthy();
   });
@@ -272,7 +272,7 @@ describe('ImportDataScreen', () => {
     await waitFor(() => expect(mockPick).toHaveBeenCalled());
     await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), VALID_KEY);
     await fireEvent.press(getByTestId('settings-button-import'));
-    await fireEvent.press(await findByText('Replace Data'));
+    await fireEvent.press(await findByText('Replace data'));
 
     await waitFor(() => expect(mockImportData).toHaveBeenCalled());
   });

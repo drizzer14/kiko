@@ -186,7 +186,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
           <SettingsRow
             testID="settings-row-import-data"
             icon="square.and.arrow.down"
-            label={t('settings.dataImport.title')}
+            label={t('settings.dataImport.rowLabel')}
             onPress={() => navigation.navigate('ImportData')}
             style={dataTransferRowStyle}
           />
@@ -196,7 +196,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
           <SettingsRow
             testID="settings-row-export-data"
             icon="square.and.arrow.up"
-            label={t('settings.dataExport.title')}
+            label={t('settings.dataExport.rowLabel')}
             onPress={() => navigation.navigate('ExportData')}
             style={dataTransferRowStyle}
           />

@@ -104,7 +104,7 @@ describe('ExportDataScreen', () => {
 
     // The key card still renders (the export itself succeeded) and no
     // error Alert copy appears.
-    expect(await findByText('Encryption Key')).toBeTruthy();
+    expect(await findByText('Encryption key')).toBeTruthy();
   });
 
   it('passes includeSecrets:true once the toggle is switched on', async () => {
@@ -169,7 +169,7 @@ describe('ExportDataScreen — copy-key feedback', () => {
       jest.advanceTimersByTime(2000);
     });
 
-    expect(getByText('Copy Key')).toBeTruthy();
+    expect(getByText('Copy key')).toBeTruthy();
   });
 
   // BLOCKING (review): a fresh Export mints a brand-new key, but the button
@@ -189,6 +189,6 @@ describe('ExportDataScreen — copy-key feedback', () => {
     mockExportData.mockResolvedValueOnce({ fileUri: '/tmp/b.kiko', keyBase64: 'keyB==' });
     await fireEvent.press(getByTestId('settings-button-export'));
 
-    expect(getByText('Copy Key')).toBeTruthy();
+    expect(getByText('Copy key')).toBeTruthy();
   });
 });

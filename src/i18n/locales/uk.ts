@@ -59,6 +59,7 @@ export const uk: typeof en = {
       keyLabel: 'Ключ шифрування',
       keyWarning:
         'Збережіть цей ключ у надійному місці — він більше не показуватиметься, і це єдиний спосіб розблокувати цей файл.',
+      rowLabel: 'Експорт даних',
       shareFile: 'Поділитися файлом',
       title: 'Експорт даних',
     },
@@ -78,6 +79,7 @@ export const uk: typeof en = {
       keyTooShortError: 'Ключ виглядає надто коротким — вставте повний ключ з вашого експорту.',
       noFileError: 'Оберіть файл для імпорту.',
       pasteKey: 'Вставити ключ з буфера обміну',
+      rowLabel: 'Імпорт даних',
       successMessage: 'Імпорт завершено — відновлено рахунків: {{count}}.',
       title: 'Імпорт даних',
       wrongFileTypeError: 'Оберіть файл експорту Кіко (.kiko).',
@@ -423,6 +425,7 @@ export const uk: typeof en = {
   },
   accountDetail: {
     addBankAction: 'Додати банк',
+    addBankSheetTitle: 'Додати банк',
     addHolding: 'Додати актив',
     addressLabel: 'Адреса',
     apiKeyLabel: 'API ключ',
@@ -564,14 +567,16 @@ export const uk: typeof en = {
         rising: 'Зростанням',
       },
       // The three Ukrainian plural forms for the manual count, selected by
-      // i18next's uk plural rule: _one (1 Категорія), _few (2-4 Категорії),
-      // _many (0, 5-20 Категорій), _other (fractional, unreachable here).
+      // i18next's uk plural rule: _one (1 категорія), _few (2-4 категорії),
+      // _many (0, 5-20 категорій), _other (fractional, unreachable here).
+      // uk is sentence case everywhere, so the noun stays lowercase even
+      // mid-string here (CASE track, 2026-09-24).
       button: {
         allCategories: 'Всі категорії',
-        manual_one: '{{count}} Категорія',
-        manual_few: '{{count}} Категорії',
-        manual_many: '{{count}} Категорій',
-        manual_other: '{{count}} Категорії',
+        manual_one: '{{count}} категорія',
+        manual_few: '{{count}} категорії',
+        manual_many: '{{count}} категорій',
+        manual_other: '{{count}} категорії',
         top: 'Топ {{count}} за {{measure}}',
       },
     },
@@ -604,6 +609,7 @@ export const uk: typeof en = {
     unrecognizedFormat:
       'Ми не розпізнаємо формат цього файлу. Кіко вміє імпортувати виписки з: {{formats}}.',
     chooseHolding: 'Оберіть актив',
+    chooseHoldingSheetTitle: 'Оберіть актив',
     createNewHolding: 'Створити актив',
     importButton: 'Імпортувати',
     importedCount: 'Імпортовано {{imported}} з {{total}}',

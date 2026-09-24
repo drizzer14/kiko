@@ -28,12 +28,12 @@ const setup = async (overrides: Partial<Parameters<typeof ExchangeFields>[0]> = 
   );
 
 describe('ExchangeFields', () => {
-  it('renders the Value Out, To, Value In, and Date fields', async () => {
+  it('renders the Value out, To, Value in, and Date fields', async () => {
     const { getByLabelText } = await setup();
 
-    expect(getByLabelText('Value Out')).toBeTruthy();
+    expect(getByLabelText('Value out')).toBeTruthy();
     expect(getByLabelText('To')).toBeTruthy();
-    expect(getByLabelText('Value In')).toBeTruthy();
+    expect(getByLabelText('Value in')).toBeTruthy();
     expect(getByLabelText('Date')).toBeTruthy();
   });
 
@@ -51,21 +51,21 @@ describe('ExchangeFields', () => {
     expect(getByText('Select holding')).toBeTruthy();
   });
 
-  it('marks the three save-gating fields (Value Out, To, Value In) as required', async () => {
+  it('marks the three save-gating fields (Value out, To, Value in) as required', async () => {
     const { getAllByText } = await setup();
 
-    // The Value Out, destination (To), and Value In fields all gate save, so
+    // The Value out, destination (To), and Value in fields all gate save, so
     // each shows the required asterisk; Date and Time do not.
     expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(3);
   });
 
-  it('applies valueOutError to the Value Out field and renders it there', async () => {
+  it('applies valueOutError to the Value out field and renders it there', async () => {
     const { getByLabelText, getByText } = await setup({
-      valueOutError: 'Enter a Value Out greater than 0.',
+      valueOutError: 'Enter a Value out greater than 0.',
     });
 
-    expect(getByText('Enter a Value Out greater than 0.')).toBeTruthy();
-    const flatStyle = StyleSheet.flatten(getByLabelText('Value Out').props.style);
+    expect(getByText('Enter a Value out greater than 0.')).toBeTruthy();
+    const flatStyle = StyleSheet.flatten(getByLabelText('Value out').props.style);
     expect(flatStyle.borderColor).not.toBe('#FF453A');
   });
 
@@ -86,13 +86,13 @@ describe('ExchangeFields', () => {
     expect(StyleSheet.flatten(errorGroup?.props.style).gap).toBe(darkTheme.spacing(1));
   });
 
-  it('applies valueInError to the Value In field', async () => {
+  it('applies valueInError to the Value in field', async () => {
     const { getByLabelText, getByText } = await setup({
-      valueInError: 'Enter a Value In greater than 0.',
+      valueInError: 'Enter a Value in greater than 0.',
     });
 
-    expect(getByText('Enter a Value In greater than 0.')).toBeTruthy();
-    const flatStyle = StyleSheet.flatten(getByLabelText('Value In').props.style);
+    expect(getByText('Enter a Value in greater than 0.')).toBeTruthy();
+    const flatStyle = StyleSheet.flatten(getByLabelText('Value in').props.style);
     expect(flatStyle.borderColor).not.toBe('#FF453A');
   });
 
@@ -115,7 +115,7 @@ describe('ExchangeFields', () => {
       expect(getByLabelText('Отримано')).toBeTruthy();
       expect(getByLabelText('Дата')).toBeTruthy();
       expect(getByText('Оберіть актив')).toBeTruthy();
-      expect(queryByLabelText('Value Out')).toBeNull();
+      expect(queryByLabelText('Value out')).toBeNull();
     });
   });
 });

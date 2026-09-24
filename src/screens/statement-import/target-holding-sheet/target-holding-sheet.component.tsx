@@ -79,7 +79,7 @@ const TargetHoldingSheet: FC<TargetHoldingSheetProps> = ({
     <BottomSheet
       visible={visible}
       onDismiss={onDismiss}
-      header={<Text variant="heading">{t('statementImport.chooseHolding')}</Text>}
+      header={<Text variant="heading">{t('statementImport.chooseHoldingSheetTitle')}</Text>}
       testID="target-holding-sheet"
     >
       {accountId

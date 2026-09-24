@@ -1859,10 +1859,10 @@ describe('TransactionFormScreen — Exchange mode', () => {
     const rendered = collectRenderedText(utils.toJSON());
     // The transaction-TYPE selector sits at the TOP of the form (directly under
     // the Holding select, absent here since the holding is fixed by navigation)
-    // — ABOVE the entire Exchange field group (Value Out, Value In, Date),
+    // — ABOVE the entire Exchange field group (Value out, Value in, Date),
     // never dropped to the form bottom below Date/Time. Its 'Type' caption
     // stands in for the field's position.
-    const order = ['Type', 'Value Out', 'Value In', 'Date', 'Time'].map((label) =>
+    const order = ['Type', 'Value out', 'Value in', 'Date', 'Time'].map((label) =>
       rendered.indexOf(label),
     );
 
@@ -1884,12 +1884,12 @@ describe('TransactionFormScreen — Exchange mode', () => {
   });
 
   it.each([
-    ['empty Value Out', '', '2.50'],
-    ['zero Value Out', '0', '2.50'],
-    ['negative Value Out', '-10', '2.50'],
-    ['empty Value In', '100', ''],
-    ['zero Value In', '100', '0'],
-    ['negative Value In', '100', '-5'],
+    ['empty Value out', '', '2.50'],
+    ['zero Value out', '0', '2.50'],
+    ['negative Value out', '-10', '2.50'],
+    ['empty Value in', '100', ''],
+    ['zero Value in', '100', '0'],
+    ['negative Value in', '100', '-5'],
   ])('rejects %s: recordExchange is not called', async (_case, valueOut, valueIn) => {
     const { getByText, getByLabelText } = await renderAddFromHolding('cash-1');
     await fireEvent.press(getByLabelText('Type'));
@@ -1899,10 +1899,10 @@ describe('TransactionFormScreen — Exchange mode', () => {
     await fireEvent.press(getByText('Cash USD'));
 
     if (valueOut !== '') {
-      await fireEvent.changeText(getByLabelText('Value Out'), valueOut);
+      await fireEvent.changeText(getByLabelText('Value out'), valueOut);
     }
     if (valueIn !== '') {
-      await fireEvent.changeText(getByLabelText('Value In'), valueIn);
+      await fireEvent.changeText(getByLabelText('Value in'), valueIn);
     }
 
     await fireEvent.press(getByText('Save'));
@@ -1920,7 +1920,7 @@ describe('TransactionFormScreen — Exchange mode', () => {
     await fireEvent.press(utils.getByText('Save'));
     expect(mockRecordExchange).not.toHaveBeenCalled();
 
-    await fireEvent.changeText(utils.getByLabelText('Value Out'), '100');
+    await fireEvent.changeText(utils.getByLabelText('Value out'), '100');
     await fireEvent.press(utils.getByText('Save'));
     expect(mockRecordExchange).not.toHaveBeenCalled();
 
@@ -1929,7 +1929,7 @@ describe('TransactionFormScreen — Exchange mode', () => {
     await fireEvent.press(utils.getByText('Save'));
     expect(mockRecordExchange).not.toHaveBeenCalled();
 
-    await fireEvent.changeText(utils.getByLabelText('Value In'), '2.5');
+    await fireEvent.changeText(utils.getByLabelText('Value in'), '2.5');
     await fireEvent.press(utils.getByText('Save'));
     expect(mockRecordExchange).toHaveBeenCalledTimes(1);
   });
@@ -1952,17 +1952,17 @@ describe('TransactionFormScreen — Exchange mode', () => {
       within(utils.getByTestId('screen-footer')).queryByText('Amount must be greater than 0.'),
     ).toBeNull();
 
-    await fireEvent.changeText(utils.getByLabelText('Value Out'), '100');
+    await fireEvent.changeText(utils.getByLabelText('Value out'), '100');
     expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
     expect(
       within(utils.getByTestId('screen-footer')).queryByText('Amount must be greater than 0.'),
     ).toBeNull();
 
-    await fireEvent.changeText(utils.getByLabelText('Value In'), '2.5');
+    await fireEvent.changeText(utils.getByLabelText('Value in'), '2.5');
     expect(utils.queryByText('Amount must be greater than 0.')).toBeNull();
   });
 
-  it('shows the received (Value In) leg the destination currency glyph as its suffix', async () => {
+  it('shows the received (Value in) leg the destination currency glyph as its suffix', async () => {
     const utils = await renderAddFromHolding('cash-1');
     await pickType(utils, 'exchange');
 
@@ -1970,8 +1970,8 @@ describe('TransactionFormScreen — Exchange mode', () => {
     await fireEvent.press(utils.getByText('Cash USD'));
 
     // Scope each glyph to its own field so neither passes by matching the
-    // other leg's suffix: the sent (Value Out) leg reads in the source currency
-    // (UAH), the received (Value In) leg in the destination currency (USD).
+    // other leg's suffix: the sent (Value out) leg reads in the source currency
+    // (UAH), the received (Value in) leg in the destination currency (USD).
     const suffixWithin = (label: string): ReturnType<typeof within> => {
       const field = utils.getByLabelText(label).parent;
 
@@ -1982,8 +1982,8 @@ describe('TransactionFormScreen — Exchange mode', () => {
       return within(field);
     };
 
-    expect(suffixWithin('Value Out').getByText('₴')).toBeTruthy();
-    expect(suffixWithin('Value In').getByText('$')).toBeTruthy();
+    expect(suffixWithin('Value out').getByText('₴')).toBeTruthy();
+    expect(suffixWithin('Value in').getByText('$')).toBeTruthy();
   });
 
   it('saves an exchange with correct minor units and holding ids', async () => {
@@ -1992,10 +1992,10 @@ describe('TransactionFormScreen — Exchange mode', () => {
     await fireEvent.press(getByText('Exchange'));
     await flushDeferredModeSelect();
 
-    await fireEvent.changeText(getByLabelText('Value Out'), '100');
+    await fireEvent.changeText(getByLabelText('Value out'), '100');
     await fireEvent.press(getByLabelText('To'));
     await fireEvent.press(getByText('Cash USD'));
-    await fireEvent.changeText(getByLabelText('Value In'), '2.50');
+    await fireEvent.changeText(getByLabelText('Value in'), '2.50');
 
     await fireEvent.press(getByText('Save'));
 
@@ -2109,10 +2109,10 @@ describe('TransactionFormScreen — Exchange create (cash-only, account names)',
     await fireEvent.press(getByText('Exchange'));
     await flushDeferredModeSelect();
 
-    await fireEvent.changeText(getByLabelText('Value Out'), '100');
+    await fireEvent.changeText(getByLabelText('Value out'), '100');
     await fireEvent.press(getByLabelText('To'));
     await fireEvent.press(getByText('Cash USD'));
-    await fireEvent.changeText(getByLabelText('Value In'), '2.50');
+    await fireEvent.changeText(getByLabelText('Value in'), '2.50');
 
     await fireEvent.press(getByText('Save'));
 
@@ -2348,10 +2348,10 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
 
     await fireEvent.press(getByText('Exchange'));
 
-    // Expense source: the fixed side is Value Out; the picked leg is a destination ("To").
-    expect(getByText('Value Out')).toBeTruthy();
+    // Expense source: the fixed side is Value out; the picked leg is a destination ("To").
+    expect(getByText('Value out')).toBeTruthy();
     expect(getByLabelText('To')).toBeTruthy();
-    expect(getByLabelText('Value In')).toBeTruthy();
+    expect(getByLabelText('Value in')).toBeTruthy();
   });
 
   it('opens the source ("From") form for an income-sourced convert', async () => {
@@ -2359,10 +2359,10 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
 
     await fireEvent.press(getByText('Exchange'));
 
-    // Income destination: the fixed side is Value In; the picked leg is a source ("From").
-    expect(getByText('Value In')).toBeTruthy();
+    // Income destination: the fixed side is Value in; the picked leg is a source ("From").
+    expect(getByText('Value in')).toBeTruthy();
     expect(getByLabelText('From')).toBeTruthy();
-    expect(getByLabelText('Value Out')).toBeTruthy();
+    expect(getByLabelText('Value out')).toBeTruthy();
   });
 
   it('writes the destination leg with the right sign, id, and exchange marker for an expense convert', async () => {
@@ -2372,7 +2372,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     await fireEvent.press(getByText('Exchange'));
     await fireEvent.press(getByLabelText('To'));
     await fireEvent.press(getByText('Cash USD')); // a cash destination in another account
-    await fireEvent.changeText(getByLabelText('Value In'), '2.50');
+    await fireEvent.changeText(getByLabelText('Value in'), '2.50');
 
     await fireEvent.press(getByText('Save'));
 
@@ -2415,7 +2415,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     // the bundled fiat rate seed (`buildRateTable`'s fallback layer, proven in
     // the "convert counterpart prefill" describe block below) — explicitly
     // blank the field to exercise the validation guard this test targets.
-    await fireEvent.changeText(getByLabelText('Value In'), '');
+    await fireEvent.changeText(getByLabelText('Value in'), '');
     await fireEvent.press(getByText('Save'));
 
     expect(mockRecordExchangeCounterpart).not.toHaveBeenCalled();
@@ -2437,11 +2437,11 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     // Part A: picking a destination now PREFILLS an approximate value through
     // the bundled fiat rate seed — blank it explicitly so this still exercises
     // the "blocked until valid" guard (see the note on the test above).
-    await fireEvent.changeText(utils.getByLabelText('Value In'), '');
+    await fireEvent.changeText(utils.getByLabelText('Value in'), '');
     await fireEvent.press(utils.getByText('Save'));
     expect(mockRecordExchangeCounterpart).not.toHaveBeenCalled();
 
-    await fireEvent.changeText(utils.getByLabelText('Value In'), '2.5');
+    await fireEvent.changeText(utils.getByLabelText('Value in'), '2.5');
     await fireEvent.press(utils.getByText('Save'));
     expect(mockRecordExchangeCounterpart).toHaveBeenCalledTimes(1);
   });
@@ -2462,13 +2462,13 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     // Part A: picking a destination now PREFILLS an approximate value through
     // the bundled fiat rate seed — blank it explicitly to still reach the
     // "amount must be greater than 0" reason this test targets.
-    await fireEvent.changeText(utils.getByLabelText('Value In'), '');
+    await fireEvent.changeText(utils.getByLabelText('Value in'), '');
     expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
     expect(
       within(utils.getByTestId('screen-footer')).queryByText('Amount must be greater than 0.'),
     ).toBeNull();
 
-    await fireEvent.changeText(utils.getByLabelText('Value In'), '2.5');
+    await fireEvent.changeText(utils.getByLabelText('Value in'), '2.5');
     expect(utils.queryByText('Amount must be greater than 0.')).toBeNull();
   });
 
@@ -2478,7 +2478,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     await fireEvent.press(getByText('Exchange'));
     await fireEvent.press(getByLabelText('To'));
     await fireEvent.press(getByText('Cash USD'));
-    await fireEvent.changeText(getByLabelText('Value In'), '5');
+    await fireEvent.changeText(getByLabelText('Value in'), '5');
     await fireEvent.press(getByText('Save'));
 
     await waitFor(() => expect(mockRecordExchangeCounterpart).toHaveBeenCalled());
@@ -2991,7 +2991,7 @@ describe('TransactionFormScreen — convert counterpart prefill', () => {
     await fireEvent.press(utils.getByText('Cash UAH'));
 
     // 20.00 USD × 41.5 = 830.00 UAH, shown as the grouped major string "830".
-    await waitFor(() => expect(utils.getByLabelText('Value In').props.value).toBe('830'));
+    await waitFor(() => expect(utils.getByLabelText('Value in').props.value).toBe('830'));
     // The synced bank row is never mutated by a form-field prefill.
     expect(mockUpdate).not.toHaveBeenCalled();
   });
@@ -3015,7 +3015,7 @@ describe('TransactionFormScreen — convert counterpart prefill', () => {
     // 20.00 USD × the seed's USD:UAH (44.6) = 892.00 UAH — an APPROXIMATE
     // value until a live rate replaces it, unlike the exact 830 the live-rate
     // test above locks in for the same holdings at a different (live) rate.
-    await waitFor(() => expect(utils.getByLabelText('Value In').props.value).toBe('892'));
+    await waitFor(() => expect(utils.getByLabelText('Value in').props.value).toBe('892'));
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 });

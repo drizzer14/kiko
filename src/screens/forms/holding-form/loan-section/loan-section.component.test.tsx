@@ -25,7 +25,7 @@ describe('LoanSection', () => {
   it('renders every loan kind as a chip, under the Loan Kind label', async () => {
     const { getByText } = await render(<LoanSection {...baseProps} />);
 
-    expect(getByText('Loan Kind')).toBeTruthy();
+    expect(getByText('Loan kind')).toBeTruthy();
     expect(getByText('Mortgage')).toBeTruthy();
     expect(getByText('Car loan')).toBeTruthy();
     expect(getByText('Consumer loan')).toBeTruthy();
@@ -66,8 +66,8 @@ describe('LoanSection', () => {
       <LoanSection {...baseProps} onChangeStartDate={onChangeStartDate} />,
     );
 
-    await fireEvent.press(getByLabelText('Start Date'));
-    await fireEvent(getByTestId('Start Date calendar'), 'dayPress', {
+    await fireEvent.press(getByLabelText('Start date'));
+    await fireEvent(getByTestId('Start date calendar'), 'dayPress', {
       year: 2026,
       month: 1,
       day: 15,
@@ -111,15 +111,15 @@ describe('LoanSection', () => {
       <LoanSection {...baseProps} schedule="differentiated" />,
     );
 
-    expect(getByLabelText('Annual Rate %')).toBeTruthy();
-    expect(getByLabelText('Term (Months)')).toBeTruthy();
+    expect(getByLabelText('Annual rate %')).toBeTruthy();
+    expect(getByLabelText('Term (months)')).toBeTruthy();
   });
 
   it('hides the rate and term fields for a "none" schedule', async () => {
     const { queryByLabelText } = await render(<LoanSection {...baseProps} schedule="none" />);
 
-    expect(queryByLabelText('Annual Rate %')).toBeNull();
-    expect(queryByLabelText('Term (Months)')).toBeNull();
+    expect(queryByLabelText('Annual rate %')).toBeNull();
+    expect(queryByLabelText('Term (months)')).toBeNull();
   });
 
   it('reports the entered rate and term', async () => {
@@ -133,8 +133,8 @@ describe('LoanSection', () => {
       />,
     );
 
-    await fireEvent.changeText(getByLabelText('Annual Rate %'), '12');
-    await fireEvent.changeText(getByLabelText('Term (Months)'), '24');
+    await fireEvent.changeText(getByLabelText('Annual rate %'), '12');
+    await fireEvent.changeText(getByLabelText('Term (months)'), '24');
 
     expect(onChangeAnnualRatePct).toHaveBeenCalledWith('12');
     expect(onChangeTermMonths).toHaveBeenCalledWith('24');

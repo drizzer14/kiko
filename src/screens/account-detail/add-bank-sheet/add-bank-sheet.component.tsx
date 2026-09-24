@@ -50,7 +50,7 @@ const AddBankProviderSheet: FC<AddBankProviderSheetProps> = ({ visible, onDismis
     <BottomSheet
       visible={visible}
       onDismiss={onDismiss}
-      header={<Text variant="heading">{t('accountDetail.addBankAction')}</Text>}
+      header={<Text variant="heading">{t('accountDetail.addBankSheetTitle')}</Text>}
       testID="add-bank-sheet"
     >
       {availableEntries.map((entry) => (

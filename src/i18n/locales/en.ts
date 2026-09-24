@@ -38,7 +38,7 @@ export const en = {
     changeIcon: 'Change icon',
     changeIconLabel: 'Change {{label}}',
     iconLabel: 'Icon {{name}}',
-    noDataForRange: 'No Data For This Range',
+    noDataForRange: 'No data for this range',
     // A segment's position within its SegmentedControl group, e.g.
     // "1 of 2" — folded into each segment's accessibilityHint (F3 fix
     // round 2, M4), since React Native's own tab/tablist accessibility
@@ -47,48 +47,55 @@ export const en = {
   },
   settings: {
     appLock: {
-      label: 'App Lock',
-      requireFaceIdOrPasscode: 'Require Face ID or Passcode',
+      label: 'App lock',
+      requireFaceIdOrPasscode: 'Require Face ID or passcode',
       hint: {
-        passcodeNotSet: 'Set a device passcode in iOS Settings to use App Lock.',
+        passcodeNotSet: 'Set a device passcode in iOS Settings to use app lock.',
         passcodeOnly: 'No Face ID enrolled — your device passcode will be used.',
         unavailable: 'Biometric hardware is unavailable on this device.',
       },
     },
-    baseCurrency: 'Base Currency',
+    baseCurrency: 'Base currency',
     categories: 'Categories',
     dataExport: {
       copied: 'Copied',
-      copyKey: 'Copy Key',
+      copyKey: 'Copy key',
       description:
         'Export all your accounts, holdings, transactions, and categories to an encrypted file you can keep as a backup or move to another device.',
       errorMessage: 'Please try again.',
-      errorTitle: 'Export Failed',
-      exportButton: 'Export Data',
+      errorTitle: 'Export failed',
+      exportButton: 'Export data',
       includeSecrets: 'Include saved passwords & keys',
       includeSecretsHint:
         'Adds your saved Monobank token and Binance API keys to the file, so a restore can keep syncing without reconnecting. Turn this off to export only your data.',
-      keyLabel: 'Encryption Key',
+      keyLabel: 'Encryption key',
       keyWarning:
         'Save this key somewhere safe — it will not be shown again, and it is the only way to unlock this file.',
-      shareFile: 'Share File',
+      // The Settings screen's own row label — a menu item, always sentence
+      // case — separate from `title` below, which is the nav header for the
+      // same screen (a screen title, Title Case); the two roles read the
+      // same string on the same screen otherwise, one casing wrong either way.
+      rowLabel: 'Export data',
+      shareFile: 'Share file',
       title: 'Export Data',
     },
     dataImport: {
-      chooseFile: 'Choose File',
-      confirmButton: 'Replace Data',
+      chooseFile: 'Choose file',
+      confirmButton: 'Replace data',
       confirmMessage:
         'Importing replaces every account, holding, transaction, and category currently in Kiko with the contents of this file. This cannot be undone.',
       confirmTitle: 'Replace All Data?',
       description: 'Choose a Kiko export file and enter its encryption key to restore your data.',
-      errorTitle: 'Import Failed',
-      importButton: 'Import Data',
+      errorTitle: 'Import failed',
+      importButton: 'Import data',
       invalidFileError: 'This does not look like a valid Kiko export file.',
-      keyLabel: 'Encryption Key',
+      keyLabel: 'Encryption key',
       keyPlaceholder: 'Paste the key from your export',
       keyTooShortError: 'The key looks too short — paste the full key from your export.',
       noFileError: 'Choose a file to import.',
       pasteKey: 'Paste key from clipboard',
+      // See `dataExport.rowLabel` above — same Settings-row-vs-nav-title split.
+      rowLabel: 'Import data',
       successMessage: 'Import complete — {{count}} accounts restored.',
       title: 'Import Data',
       wrongFileTypeError: 'Choose a Kiko export file (.kiko).',
@@ -97,7 +104,7 @@ export const en = {
     footer: {
       appName: 'Kiko',
       copyrightHolder: 'Dmytro Vasylkivskyi',
-      privacyPolicy: 'Privacy Policy',
+      privacyPolicy: 'Privacy policy',
     },
     language: 'Language',
     system: 'System',
@@ -234,7 +241,7 @@ export const en = {
       addContribution: 'Add contribution',
       addTitle: 'Add Holding',
       annualRateError: 'Enter a rate of 0 or higher.',
-      annualRatePct: 'Annual Rate %',
+      annualRatePct: 'Annual rate %',
       annualRatePlaceholder: '12',
       // Frequency vocabulary shared by the term-deposit Compounding chip row
       // and the bond Coupon frequency chip row within this same screen.
@@ -243,12 +250,12 @@ export const en = {
       balancePlaceholder: '1000.00',
       biWeekly: 'Bi-weekly',
       bond: 'Bond',
-      bondKind: 'Bond Kind',
+      bondKind: 'Bond kind',
       card: 'Card',
       category: 'Category',
       compounding: 'Compounding',
-      contributionAmount: 'Contribution {{index}} Amount',
-      contributionDate: 'Contribution {{index}} Date',
+      contributionAmount: 'Contribution {{index}} amount',
+      contributionDate: 'Contribution {{index}} date',
       contributionIncompleteError: "Fill in this contribution's amount and date, or remove it.",
       contributionPlaceholder: '500.00',
       contributions: 'Contributions',
@@ -259,7 +266,7 @@ export const en = {
       couponPct: 'Coupon %',
       couponPctError: 'Enter a coupon of 0 or higher.',
       couponPlaceholder: '8',
-      cryptoAsset: 'Crypto Asset',
+      cryptoAsset: 'Crypto asset',
       deposit: 'Deposit',
       details: 'Details',
       // T25 — the Bond form's ISIN-mode hint (spec 7.1): Diia itself sells no
@@ -267,7 +274,7 @@ export const en = {
       // added under whichever institution the user actually picked there.
       diiaHint: 'Bought in Diia? Add the bond under the bank or broker you chose there.',
       editTitle: 'Edit Holding',
-      faceValue: 'Face Value',
+      faceValue: 'Face value',
       faceValueError: 'Enter a face value greater than 0.',
       faceValuePlaceholder: '1000.00',
       government: 'Government',
@@ -294,7 +301,7 @@ export const en = {
         mortgage: 'Mortgage',
         personal: 'From a person',
       },
-      loanKindLabel: 'Loan Kind',
+      loanKindLabel: 'Loan kind',
       loanPrincipal: 'Principal',
       loanPrincipalError: 'Principal must be greater than 0.',
       loanPrincipalPlaceholder: '1000.00',
@@ -305,9 +312,9 @@ export const en = {
         none: 'No schedule',
       },
       loanScheduleLabel: 'Schedule',
-      loanStartDate: 'Start Date',
+      loanStartDate: 'Start date',
       loanStartDateError: 'Pick a start date.',
-      maturityDate: 'Maturity Date',
+      maturityDate: 'Maturity date',
       maturityDateError: 'Maturity date must be after the purchase date.',
       metal: 'Precious metal',
       metalForm: 'Form',
@@ -342,8 +349,8 @@ export const en = {
       propertyCostError: 'Enter a cost greater than 0.',
       propertyCostPlaceholder: '1000.00',
       propertyItem: 'Property',
-      purchaseDate: 'Purchase Date',
-      purchasePrice: 'Purchase Price (total paid)',
+      purchaseDate: 'Purchase date',
+      purchasePrice: 'Purchase price (total paid)',
       purchasePricePlaceholder: 'Defaults to nominal',
       purity: 'Purity',
       quantity: 'Quantity',
@@ -356,7 +363,7 @@ export const en = {
       selectDatePlaceholder: 'Select a date',
       semiannually: 'Semiannually',
       switchToManual: 'Switch to manual',
-      termMonths: 'Term (Months)',
+      termMonths: 'Term (months)',
       termMonthsError: 'Enter a whole number of months greater than 0.',
       termMonthsPlaceholder: '12',
       terms: 'Terms',
@@ -429,10 +436,10 @@ export const en = {
       title: 'Transaction',
       to: 'To',
       type: 'Type',
-      valueIn: 'Value In',
+      valueIn: 'Value in',
       valueInError: 'Amount must be greater than 0.',
       valueInPlaceholder: '100.00',
-      valueOut: 'Value Out',
+      valueOut: 'Value out',
       valueOutError: 'Amount must be greater than 0.',
       valueOutPlaceholder: '100.00',
     },
@@ -462,6 +469,10 @@ export const en = {
   },
   accountDetail: {
     addBankAction: 'Add a bank',
+    // The `AddBankProviderSheet` header — a sheet title, Title Case — kept
+    // separate from `addBankAction` above (the Button that opens it, sentence
+    // case): the same string reads correctly in only one of the two roles.
+    addBankSheetTitle: 'Add a Bank',
     addHolding: 'Add holding',
     addressLabel: 'Address',
     apiKeyLabel: 'API key',
@@ -511,7 +522,7 @@ export const en = {
     noConnectionFound: 'No {{name}} connection found',
     noMonobankConnection: 'No Monobank account connected',
     noMonobankToken: 'No Monobank token found; connect an account before syncing.',
-    openBinanceLink: 'Open Binance API Management',
+    openBinanceLink: 'Open Binance API management',
     openMonobankLink: 'Open api.monobank.ua',
     pasteApiKey: 'Paste API key from clipboard',
     pasteApiSecret: 'Paste API secret from clipboard',
@@ -605,7 +616,7 @@ export const en = {
     filterAccounts: 'Accounts',
     filterCategories: 'Categories',
     netWorthOverTime: 'Net Worth Over Time',
-    noSpendingToShow: 'No Spending To Show',
+    noSpendingToShow: 'No spending to show',
     spendingTrendByCategory: 'Spending Trend by Category',
     title: 'Statistics',
     // The spending-trend chart's filter: a single "Filters" button (its label
@@ -633,7 +644,7 @@ export const en = {
       // `allCategories` is the empty-manual case. `top` interpolates the
       // instrumental-case `{{measure}}`.
       button: {
-        allCategories: 'All Categories',
+        allCategories: 'All categories',
         manual_one: '{{count}} Category',
         manual_few: '{{count}} Categories',
         manual_many: '{{count}} Categories',
@@ -662,10 +673,10 @@ export const en = {
   // carry their own hardcoded copy rather than taking it as a prop.
   components: {
     netWorthLine: {
-      loadingHistory: 'Loading History',
+      loadingHistory: 'Loading history',
     },
     pieChart: {
-      emptyDefault: 'No Accounts To Show',
+      emptyDefault: 'No accounts to show',
       showAll: 'Show all',
       showLess: 'Show less',
     },
@@ -681,18 +692,23 @@ export const en = {
   // src/screens/statement-import/statement-import.screen.tsx) that both statement-
   // import entry points converge on — see docs/plans/statement-import.md section B.
   statementImport: {
-    previewHeading: 'Statement preview',
+    previewHeading: 'Statement Preview',
     reading: 'Reading the file…',
     unrecognizedFormat:
       "We don't recognize this file's format. Kiko can import statements from: {{formats}}.",
     chooseHolding: 'Choose a holding',
+    // The target-holding sheet's own header — a sheet title, Title Case —
+    // kept separate from `chooseHolding` above (a field label on the same
+    // screen, sentence case): see `accountDetail.addBankSheetTitle` for the
+    // identical split.
+    chooseHoldingSheetTitle: 'Choose a Holding',
     createNewHolding: 'Create new holding',
     importButton: 'Import',
     importedCount: 'Imported {{imported}} of {{total}}',
     // The modal (item 15, F3) a successful Import shows, carrying the exact
     // same result text `ImportOutcome` already rendered inline — its "Done"
     // button (`common.done`) navigates back to the account screen.
-    importResultTitle: 'Import complete',
+    importResultTitle: 'Import Complete',
     // A row a format's parse could not resolve (e.g. a PrivatBank currency
     // word its abbreviation map doesn't cover yet, section C.1) — excluded
     // from the import, but surfaced honestly rather than silently dropped
@@ -745,8 +761,8 @@ export const en = {
   // fields every import needs, rather than being limited to a shipped
   // dedicated bank format.
   columnMapping: {
-    title: 'Map columns',
-    rawPreview: 'Tap the row with the column names',
+    title: 'Map Columns',
+    rawPreview: 'Tap the Row with the Column Names',
     // Section headings (F3 items 12/13/14): every group on this screen shows
     // its own heading now that the screen no longer duplicates the native
     // stack header's own title (item 12).
