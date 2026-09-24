@@ -111,6 +111,88 @@ export default MockTextTone;
     expect(exportedComponentNames(source)).toEqual(['MockTextTone']);
   });
 
+  it('resolves a memo-wrapped default export to the wrapped component name', () => {
+    const source = `
+const PieChart = (props: Props) => {
+  return <View />;
+};
+
+export default memo(PieChart);
+`;
+
+    expect(exportedComponentNames(source)).toEqual(['PieChart']);
+  });
+
+  it('finds a component exported through a named export list', () => {
+    const source = `
+const First = () => {
+  return <View />;
+};
+
+export { First };
+`;
+
+    expect(exportedComponentNames(source)).toEqual(['First']);
+  });
+
+  it('finds both names in a named export list exporting two components', () => {
+    const source = `
+const First = () => {
+  return <View />;
+};
+
+const Second = () => {
+  return <View />;
+};
+
+export { First, Second };
+`;
+
+    expect(exportedComponentNames(source)).toEqual(['First', 'Second']);
+  });
+
+  it('does not mistake a re-export list (with a from clause) for a local declaration', () => {
+    const source = `
+export { FILTER_ALL } from '../filter-menu';
+
+export const Table = () => {
+  return <View />;
+};
+`;
+
+    expect(exportedComponentNames(source)).toEqual(['Table']);
+  });
+
+  it('does not blank the rest of the file on an apostrophe inside JSX text', () => {
+    const source = `
+export const First = () => {
+  return <Text>Don't do that</Text>;
+};
+
+export const Second = () => {
+  return <View />;
+};
+`;
+
+    expect(exportedComponentNames(source)).toEqual(['First', 'Second']);
+  });
+
+  it('does not blank the rest of the file on a quote inside a regex literal', () => {
+    const source = `
+const stripQuote = (value: string) => value.replace(/'/g, '');
+
+export const First = () => {
+  return <View />;
+};
+
+export const Second = () => {
+  return <View />;
+};
+`;
+
+    expect(exportedComponentNames(source)).toEqual(['First', 'Second']);
+  });
+
   describe('the real src/ tree', () => {
     it('has no .tsx file exporting 2 or more components', () => {
       const violations = tsxFiles(SRC_ROOT)
