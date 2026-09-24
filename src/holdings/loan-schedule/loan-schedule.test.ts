@@ -2,12 +2,12 @@ import type { LoanMeta } from '../holding-metadata';
 import { holdingInstrument } from '../../prices/instrument';
 import { buildPriceBook, dayKeyOf, EMPTY_PRICE_BOOK } from '../../prices/price-book';
 
-import type { LoanInstallment } from './loan-schedule';
 import {
   loanInstallments,
   loanInterestForPaymentMinor,
   loanOutstandingMinorAt,
 } from './loan-schedule';
+import type { LoanInstallment } from './loan-schedule';
 
 const HOLDING_ID = 'loan-1';
 
@@ -81,7 +81,7 @@ describe('loanInstallments — annuity', () => {
     expect(totalPrincipal).toBe(annuityMeta.principalMinorUnits);
   });
 
-  it('returns no installments for a zero-rate loan by producing equal principal', () => {
+  it('produces equal-principal, zero-interest installments for a zero-rate loan', () => {
     const zeroRate = loanInstallments({ ...annuityMeta, annualRatePct: 0 });
     expect(zeroRate[0]).toMatchObject({ interestMinorUnits: 0, principalMinorUnits: 500_000 });
     expect(zeroRate[239]).toMatchObject({ interestMinorUnits: 0, balanceMinorUnits: 0 });
@@ -199,6 +199,48 @@ describe('loanOutstandingMinorAt', () => {
     expect(loanOutstandingMinorAt(annuityMeta, HOLDING_ID, book, laterDueDate)).toBe(
       90_000_000 - principalAfterCorrection,
     );
+  });
+
+  it('I1: a correction dated AFTER the queried instant never anchors it — the pure schedule applies instead', () => {
+    // A correction recorded on installment 50's due date (~4 years in) must
+    // not retroactively apply to a query from BEFORE that day — `priceAt`'s
+    // own earliest-point fallback would otherwise hand back this later
+    // point for an earlier query, which is wrong for a scheduled loan
+    // (unlike the `none` branch, which matches Property's convention).
+    const installments = loanInstallments(annuityMeta);
+    const correctionDay = installments[49].dueDate;
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument(HOLDING_ID),
+        day: dayKeyOf(correctionDay),
+        price: '900000.00',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+
+    const twelfthDueDate = installments[11].dueDate;
+    expect(loanOutstandingMinorAt(annuityMeta, HOLDING_ID, book, twelfthDueDate)).toBe(118_461_574);
+  });
+
+  it('M5: an overpaid correction clamps to 0 in the SCHEDULED (annuity/differentiated) branch too', () => {
+    const installments = loanInstallments(annuityMeta);
+    const correctionDay = installments[234].dueDate;
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument(HOLDING_ID),
+        day: dayKeyOf(correctionDay),
+        price: '100.00',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+
+    // The correction (100.00 = 10,000 minor units) is far smaller than the
+    // principal due over the next 5 installments, so the un-clamped
+    // subtraction would go deeply negative.
+    const lastDueDate = installments[239].dueDate;
+    expect(loanOutstandingMinorAt(annuityMeta, HOLDING_ID, book, lastDueDate)).toBe(0);
   });
 });
 

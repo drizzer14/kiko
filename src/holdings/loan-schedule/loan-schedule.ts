@@ -1,7 +1,7 @@
+import { addMonths } from '../interest';
 import type { LoanMeta } from '../holding-metadata';
 import { holdingInstrument } from '../../prices/instrument';
 import { multiplyToMinorUnits } from '../../currency/decimal';
-import { addMonths } from '../interest';
 import { dayKeyOf, priceAt, type PriceBook } from '../../prices/price-book';
 
 /**
@@ -42,29 +42,22 @@ export type LoanInstallment = {
  * as the shrinking balance's interest falls.
  */
 export const loanInstallments = (meta: LoanMeta): LoanInstallment[] => {
-  const hasSchedule =
-    meta.schedule !== 'none' && meta.annualRatePct !== undefined && meta.termMonths !== undefined;
+  const { schedule, annualRatePct, termMonths, principalMinorUnits: principal, startDate } = meta;
 
-  if (!hasSchedule) {
+  if (schedule === 'none' || annualRatePct === undefined || termMonths === undefined) {
     return [];
   }
 
-  const annualRatePct = meta.annualRatePct as number;
-  const termMonths = meta.termMonths as number;
   const monthlyRate = annualRatePct / 100 / 12;
-  const principal = meta.principalMinorUnits;
 
-  // A constant payment per period, the standard amortization formula
-  // (undefined for `differentiated`, which instead holds PRINCIPAL constant
-  // — see `nonLastPrincipalMinorUnits` below).
-  const roundedAnnuityPayment =
-    meta.schedule === 'annuity'
-      ? Math.round(
-          monthlyRate === 0
-            ? principal / termMonths
-            : (principal * monthlyRate) / (1 - (1 + monthlyRate) ** -termMonths),
-        )
-      : undefined;
+  // A constant payment per period, the standard amortization formula — used
+  // only by `annuity` (see `nonLastPrincipalMinorUnits` below); cheap enough
+  // to compute unconditionally rather than branch on `schedule` here too.
+  const roundedAnnuityPayment = Math.round(
+    monthlyRate === 0
+      ? principal / termMonths
+      : (principal * monthlyRate) / (1 - (1 + monthlyRate) ** -termMonths),
+  );
   const basePrincipal = Math.round(principal / termMonths);
 
   // The principal portion of a NON-last installment: `annuity` derives it
@@ -72,9 +65,7 @@ export const loanInstallments = (meta: LoanMeta): LoanInstallment[] => {
   // constant `basePrincipal`. Extracted so the loop below never nests a
   // ternary inside the last-installment one.
   const nonLastPrincipalMinorUnits = (interestMinorUnits: number): number =>
-    meta.schedule === 'annuity'
-      ? (roundedAnnuityPayment as number) - interestMinorUnits
-      : basePrincipal;
+    schedule === 'annuity' ? roundedAnnuityPayment - interestMinorUnits : basePrincipal;
 
   const installments: LoanInstallment[] = [];
   let balance = principal;
@@ -89,7 +80,7 @@ export const loanInstallments = (meta: LoanMeta): LoanInstallment[] => {
 
     installments.push({
       index: k,
-      dueDate: addMonths(meta.startDate, k),
+      dueDate: addMonths(startDate, k),
       interestMinorUnits,
       principalMinorUnits,
       paymentMinorUnits,
@@ -103,16 +94,23 @@ export const loanInstallments = (meta: LoanMeta): LoanInstallment[] => {
 /**
  * `annuity`/`differentiated` outstanding is computed AT READ TIME from the
  * schedule (N10a): the latest manual correction point on the holding's own
- * `holding:<id>` instrument (if any, at or before `instant`'s local day)
- * anchors a fresh baseline, and only the scheduled PRINCIPAL due strictly
- * AFTER that correction's day (and at or before `instant`) is subtracted
- * from it. With no correction, the anchor is the loan's own principal at
- * `startDate` — every installment's due date is after `startDate`, so this
- * reduces to "principal minus every installment due so far", the plain
- * no-correction schedule. `none` (an informal debt) reads the manual series
- * directly, with no schedule to subtract against. Both branches clamp the
- * result to never go below 0 (an overpaid/overcorrected loan reads as paid
- * off, never negative).
+ * `holding:<id>` instrument, WHEN ITS DAY IS ON OR BEFORE `instant`'s local
+ * day, anchors a fresh baseline, and only the scheduled PRINCIPAL due
+ * strictly AFTER that correction's day (and at or before `instant`) is
+ * subtracted from it. A correction dated AFTER `instant` must never anchor a
+ * query for an earlier instant — `priceAt` itself falls back to the
+ * EARLIEST stored point when every point is later than the requested day (a
+ * fallback that is correct for the `none`/Property "manual series"
+ * convention below, but not for a scheduled loan being queried before its
+ * only correction), so that fallback is deliberately NOT trusted here; the
+ * day is checked explicitly instead. With no correction (or none on or
+ * before `instant`), the anchor is the loan's own principal at `startDate`
+ * — every installment's due date is after `startDate`, so this reduces to
+ * "principal minus every installment due so far", the plain no-correction
+ * schedule. `none` (an informal debt) reads the manual series directly
+ * (earliest-point fallback included), with no schedule to subtract against.
+ * Both branches clamp the result to never go below 0 (an overpaid/
+ * overcorrected loan reads as paid off, never negative).
  */
 export const loanOutstandingMinorAt = (
   meta: LoanMeta,
@@ -128,12 +126,15 @@ export const loanOutstandingMinorAt = (
       : Math.max(0, multiplyToMinorUnits([correction.price], correction.currency));
   }
 
-  const anchorDayKey = correction === undefined ? dayKeyOf(meta.startDate) : correction.day;
-  const anchorValueMinor =
-    correction === undefined
-      ? meta.principalMinorUnits
-      : multiplyToMinorUnits([correction.price], correction.currency);
   const instantDayKey = dayKeyOf(instant);
+  const scheduledCorrection =
+    correction !== undefined && correction.day <= instantDayKey ? correction : undefined;
+  const anchorDayKey =
+    scheduledCorrection === undefined ? dayKeyOf(meta.startDate) : scheduledCorrection.day;
+  const anchorValueMinor =
+    scheduledCorrection === undefined
+      ? meta.principalMinorUnits
+      : multiplyToMinorUnits([scheduledCorrection.price], scheduledCorrection.currency);
   const principalDueAfterAnchor = loanInstallments(meta)
     .filter((row) => {
       const dueDayKey = dayKeyOf(row.dueDate);
@@ -147,22 +148,20 @@ export const loanOutstandingMinorAt = (
 /**
  * The interest portion of a bank payment linked to this loan (N10b, D14 —
  * "interest-only spending"): `none` (an informal debt has no schedule) never
- * counts any interest. Otherwise the payment maps to the installment whose
- * due date is NEAREST to the payment's own local day (not necessarily the
- * next unpaid one — an early or late payment still matches its intended
- * installment), and the interest counted is that installment's scheduled
- * interest, capped at the payment's own (absolute) amount — a partial
- * payment can never count more interest than it actually paid.
+ * counts any interest — `loanInstallments` already returns `[]` for it, so
+ * the length guard below covers that case with no separate `schedule` check.
+ * Otherwise the payment maps to the installment whose due date is NEAREST to
+ * the payment's own local day (not necessarily the next unpaid one — an
+ * early or late payment still matches its intended installment), and the
+ * interest counted is that installment's scheduled interest, capped at the
+ * payment's own (absolute) amount — a partial payment can never count more
+ * interest than it actually paid.
  */
 export const loanInterestForPaymentMinor = (
   meta: LoanMeta,
   paymentTime: number,
   paymentAbsMinor: number,
 ): number => {
-  if (meta.schedule === 'none') {
-    return 0;
-  }
-
   const installments = loanInstallments(meta);
 
   if (installments.length === 0) {

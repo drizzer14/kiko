@@ -1264,14 +1264,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       .with('bond', isBondValid)
       .with('property_item', isPropertyValid)
       .with('metal', isMetalValid)
-      // `loan` (T26) has no dedicated create-form section yet — that lands in
-      // T28 alongside its own validation (principal/schedule/rate/term),
-      // mirroring `property_item`'s own T13 -> T16 gap and `metal`'s T17 ->
-      // T20 one: a `debt` account and its sole `loan` type ARE already
-      // reachable through the account/holding Type pickers (same as those
-      // two were during their own gaps), so a loan can be created bare
-      // (name/currency/balance only) until then — grouped with the other
-      // no-extra-fields types purely to satisfy `match`'s exhaustiveness.
+      // loan: no create section until T28.
       .with('card', 'cash', 'crypto_asset', 'jar', 'loan', () => true)
       .exhaustive();
 
