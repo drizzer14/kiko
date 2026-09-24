@@ -8,6 +8,7 @@ import SymbolIcon from '../symbol';
 import FieldError from '../field-error';
 import FieldLabel from '../field-label';
 import { useKeyboardDoneAccessory } from '../keyboard-done-accessory';
+import { deriveFieldTestID } from '../../derive-field-test-id';
 
 import { styles } from './text-field.styles';
 import type { TextFieldProps } from './text-field.props';
@@ -39,13 +40,6 @@ const resolveReturnKeyType = (
 
   return 'done';
 };
-
-// Derives a nested testID from the field's own outer `testID`, or `undefined`
-// when the caller passed none — shared by the error slot and its inline
-// message so both stay `undefined`-safe without repeating the ternary inline
-// (which would add to TextField's own cognitive complexity).
-const deriveTestID = (testID: TextFieldProps['testID'], suffix: string): string | undefined =>
-  testID !== undefined ? `${testID}-${suffix}` : undefined;
 
 const TextField: FC<TextFieldProps> = ({
   label,
@@ -154,7 +148,7 @@ const TextField: FC<TextFieldProps> = ({
           so every valid field shares the same height; an invalid one grows
           to fit this line the instant `error` is set — see FieldError's own
           doc comment. */}
-        {hasError && <FieldError message={error} testID={deriveTestID(testID, 'error')} />}
+        {hasError && <FieldError message={error} testID={deriveFieldTestID(testID, 'error')} />}
       </Box>
 
       {accessory}

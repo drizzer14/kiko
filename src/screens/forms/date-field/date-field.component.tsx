@@ -1,5 +1,6 @@
 import { Pressable } from 'react-native';
 import KikoCalendar from '@kiko/calendar';
+import maybe, { foldMap } from 'fnts/maybe';
 import { type FC, useState } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
 import type { DateData } from 'react-native-calendars';
@@ -11,15 +12,10 @@ import SymbolIcon from '../../../design-system/components/symbol';
 import FieldError from '../../../design-system/components/field-error';
 import FieldLabel from '../../../design-system/components/field-label';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
+import { deriveFieldTestID } from '../../../design-system/derive-field-test-id';
 
 import { styles } from './date-field.styles';
 import type { DateFieldProps } from './date-field.props';
-
-// Derives the error message's own testID from the field's outer `testID`, or
-// `undefined` when the caller passed none — mirrors TextField's own
-// `deriveTestID` (text-field.component.tsx).
-const deriveErrorTestID = (testID: DateFieldProps['testID']): string | undefined =>
-  testID !== undefined ? `${testID}-error` : undefined;
 
 const pad2 = (value: number): string => value.toString().padStart(2, '0');
 
@@ -57,7 +53,7 @@ const DateField: FC<DateFieldProps> = ({
     // paired TimeField pick is not clobbered back to midnight. When nothing is
     // picked yet (value === null) there is no time to preserve, so the fields
     // default to zero and the timestamp lands on local midnight as before.
-    const previous = value === null ? null : new Date(value);
+    const previous = foldMap(maybe(value), (timestamp) => new Date(timestamp));
 
     onChange(
       new Date(
@@ -72,10 +68,9 @@ const DateField: FC<DateFieldProps> = ({
     setOpen(false);
   };
 
-  const markedDates =
-    value === null
-      ? undefined
-      : { [toCalendarKey(value)]: { selected: true, selectedColor: theme.colors.accent } };
+  const markedDates = foldMap(maybe(value), (timestamp) => ({
+    [toCalendarKey(timestamp)]: { selected: true, selectedColor: theme.colors.accent },
+  }));
 
   // Open on the field's current value rather than letting react-native-calendars
   // default to the current month — same fix as the Home date-range field's
@@ -111,7 +106,7 @@ const DateField: FC<DateFieldProps> = ({
         with every other field type, fixing the DATE field's own
         inconsistency (it used to show a message with no outline while
         TextField showed an outline; now neither shows an outline). */}
-      {hasError && <FieldError message={error} testID={deriveErrorTestID(testID)} />}
+      {hasError && <FieldError message={error} testID={deriveFieldTestID(testID, 'error')} />}
 
       <BottomSheet
         visible={open}

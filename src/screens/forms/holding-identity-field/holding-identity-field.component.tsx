@@ -7,19 +7,11 @@ import Box from '../../../design-system/components/box';
 import FieldError from '../../../design-system/components/field-error';
 import FieldLabel from '../../../design-system/components/field-label';
 import IconEditor from '../../../design-system/components/icon-editor';
+import { deriveFieldTestID } from '../../../design-system/derive-field-test-id';
 import { useKeyboardDoneAccessory } from '../../../design-system/components/keyboard-done-accessory';
 
 import type { HoldingIdentityFieldProps } from './holding-identity-field.props';
 import { styles } from './holding-identity-field.styles';
-
-// Derives a nested testID from the field's own outer `testID`, or `undefined`
-// when the caller passed none — mirrors TextField's own `deriveTestID`, so
-// the error message stays `undefined`-safe without repeating the ternary
-// inline.
-const deriveTestID = (
-  testID: HoldingIdentityFieldProps['testID'],
-  suffix: string,
-): string | undefined => (testID !== undefined ? `${testID}-${suffix}` : undefined);
 
 // An icon chip beside a labelled name field — the shared identity control used
 // by the holding create form and detail header, the account create form, and
@@ -113,7 +105,7 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
         name input rather than flush-left under the icon. */}
       {captioned && hasError && (
         <Box style={styles.nameFieldError}>
-          <FieldError message={error} testID={deriveTestID(testID, 'error')} />
+          <FieldError message={error} testID={deriveFieldTestID(testID, 'error')} />
         </Box>
       )}
 

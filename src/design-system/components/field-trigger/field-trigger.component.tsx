@@ -7,15 +7,10 @@ import Text from '../text';
 import SymbolIcon from '../symbol';
 import FieldError from '../field-error';
 import FieldLabel from '../field-label';
+import { deriveFieldTestID } from '../../derive-field-test-id';
 
 import { styles } from './field-trigger.styles';
 import type { FieldTriggerProps } from './field-trigger.props';
-
-// Derives the error message's own testID from the field's outer `testID`, or
-// `undefined` when the caller passed none — mirrors TextField's own
-// `deriveTestID` (text-field.component.tsx).
-const deriveErrorTestID = (testID: FieldTriggerProps['testID']): string | undefined =>
-  testID !== undefined ? `${testID}-error` : undefined;
 
 // The shared "labeled field that opens a picker sheet" trigger: a caption
 // above a bordered row showing the current icon + value, tapping which opens
@@ -88,7 +83,7 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
 
       {/* REFLOW, not reserve (Option A) — same contract as every other field
           type: no error node while valid. */}
-      {hasError && <FieldError message={error} testID={deriveErrorTestID(testID)} />}
+      {hasError && <FieldError message={error} testID={deriveFieldTestID(testID, 'error')} />}
     </Box>
   );
 };
