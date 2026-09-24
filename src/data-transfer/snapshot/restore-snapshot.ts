@@ -1,4 +1,6 @@
 // src/data-transfer/snapshot/restore-snapshot.ts
+import { type Table, getTableColumns } from 'drizzle-orm';
+
 import {
   accounts,
   bondRegister,
@@ -18,12 +20,21 @@ import { write } from '../../db/client';
 
 import type { DataSnapshot } from './data-snapshot';
 
-// Each row binds several parameters and SQLite rejects a statement with more
-// than SQLITE_MAX_VARIABLE_NUMBER (32766) bound parameters — the same ceiling
-// `rateHistoryRepo.upsertMany` (`src/rates/rate-history-repo/rate-history.repo.ts`)
-// chunks around. 2000 rows/chunk stays a safe margin under it for every table
-// here (the widest, `transactions`, binds ~14 params/row = 28000/chunk).
-const CHUNK_SIZE = 2000;
+// Each row binds one parameter per PRESENT key (nulls included — Drizzle
+// still binds them, `drizzle-orm/sqlite-core/dialect.js:362-380`), and
+// SQLite rejects a statement with more than SQLITE_MAX_VARIABLE_NUMBER
+// (32766) bound parameters — the same ceiling `rateHistoryRepo.upsertMany`
+// (`src/rates/rate-history-repo/rate-history.repo.ts`) chunks around. A
+// FIXED rows-per-chunk constant broke this once already: T29 added 3
+// columns to `transactions` (15 -> 18) and pushed 2000 rows/chunk from
+// 30000 params (safe) to 36000 (over the limit) — a `.kiko` backup with
+// >= 1821 transactions failed to restore. Deriving the chunk size from
+// EACH table's own column count, every time, means a future column can
+// never silently repeat this: the widest table just gets a smaller chunk.
+// A margin below SQLite's exact 32766 ceiling, in case a future insert
+// path binds a stray extra parameter per row (as `insertDedupRowsTx` now
+// does for `loanLinkRejected`'s JS default — see M6 in the T29 review).
+const SAFE_BOUND_PARAMETER_LIMIT = 32000;
 
 const chunk = <T>(rows: T[], size: number): T[][] => {
   const parts: T[][] = [];
@@ -31,6 +42,16 @@ const chunk = <T>(rows: T[], size: number): T[][] => {
     parts.push(rows.slice(start, start + size));
   }
   return parts;
+};
+
+/** Chunks `rows` for `table` at the largest size that keeps every insert's
+ * bound-parameter count under `SAFE_BOUND_PARAMETER_LIMIT`, computed from
+ * the table's OWN column count rather than a fixed row count — see the
+ * doc comment above the chunking constants. */
+const chunkForTable = <T>(table: Table, rows: T[]): T[][] => {
+  const columnCount = Object.keys(getTableColumns(table)).length;
+  const rowsPerChunk = Math.max(1, Math.floor(SAFE_BOUND_PARAMETER_LIMIT / columnCount));
+  return chunk(rows, rowsPerChunk);
 };
 
 /** True for a manual transaction row shaped like a hand-set balance under
@@ -139,46 +160,46 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
     // stay under the cognitive-complexity ceiling; overall parent-before-child
     // insert order is unchanged because the groups themselves run in order.
     const insertAccountsHoldingsCategories = async (): Promise<void> => {
-      for (const part of chunk(snapshot.accounts, CHUNK_SIZE)) {
+      for (const part of chunkForTable(accounts, snapshot.accounts)) {
         await tx.insert(accounts).values(part);
       }
       const boundaries = balanceSetAtBoundariesByHoldingId(snapshot.transactions);
       const holdingsToInsert = snapshot.holdings.map((holding) =>
         withLegacyBalanceSetAtBackfilled(holding, boundaries),
       );
-      for (const part of chunk(holdingsToInsert, CHUNK_SIZE)) {
+      for (const part of chunkForTable(holdings, holdingsToInsert)) {
         await tx.insert(holdings).values(part);
       }
-      for (const part of chunk(snapshot.categories, CHUNK_SIZE)) {
+      for (const part of chunkForTable(categories, snapshot.categories)) {
         await tx.insert(categories).values(part);
       }
     };
 
     const insertOverridesTransactionsSyncState = async (): Promise<void> => {
-      for (const part of chunk(snapshot.categoryOverrides, CHUNK_SIZE)) {
+      for (const part of chunkForTable(categoryOverrides, snapshot.categoryOverrides)) {
         await tx.insert(categoryOverrides).values(part);
       }
-      for (const part of chunk(snapshot.transactions, CHUNK_SIZE)) {
+      for (const part of chunkForTable(transactions, snapshot.transactions)) {
         await tx.insert(transactions).values(part);
       }
-      for (const part of chunk(snapshot.syncState, CHUNK_SIZE)) {
+      for (const part of chunkForTable(syncState, snapshot.syncState)) {
         await tx.insert(syncState).values(part);
       }
     };
 
     const insertRatesAndSettings = async (): Promise<void> => {
-      for (const part of chunk(snapshot.currencyRates, CHUNK_SIZE)) {
+      for (const part of chunkForTable(currencyRates, snapshot.currencyRates)) {
         await tx.insert(currencyRates).values(part);
       }
-      for (const part of chunk(snapshot.currencyRateHistory, CHUNK_SIZE)) {
+      for (const part of chunkForTable(currencyRateHistory, snapshot.currencyRateHistory)) {
         await tx.insert(currencyRateHistory).values(part);
       }
-      for (const part of chunk(snapshot.settings, CHUNK_SIZE)) {
+      for (const part of chunkForTable(settings, snapshot.settings)) {
         await tx.insert(settings).values(part);
       }
       // `?? []`: see the doc comment above — a pre-T11 export carries no
       // `pricePoints` key at all.
-      for (const part of chunk(snapshot.pricePoints ?? [], CHUNK_SIZE)) {
+      for (const part of chunkForTable(pricePoints, snapshot.pricePoints ?? [])) {
         await tx.insert(pricePoints).values(part);
       }
     };
@@ -187,7 +208,7 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
     // a pre-T24 export carries no `bondRegister` key at all, for the same
     // reason a pre-T11 export carries no `pricePoints` key.
     const insertBondRegister = async (): Promise<void> => {
-      for (const part of chunk(snapshot.bondRegister ?? [], CHUNK_SIZE)) {
+      for (const part of chunkForTable(bondRegister, snapshot.bondRegister ?? [])) {
         await tx.insert(bondRegister).values(part);
       }
     };

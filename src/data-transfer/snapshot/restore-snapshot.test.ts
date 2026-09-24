@@ -5,6 +5,8 @@ jest.mock('../../db/client', () => {
   return { ...actual, write: (work: (db: unknown) => unknown) => work(mockTx) };
 });
 
+import { getTableColumns } from 'drizzle-orm';
+
 import {
   accounts,
   bondRegister,
@@ -236,7 +238,16 @@ describe('restoreDataSnapshot', () => {
     expect(insertedTables).not.toContain('bondRegister');
   });
 
-  it('chunks a large table into inserts of at most 2000 rows (SQLite bound-parameter safety)', async () => {
+  // C1 (T29 review round 1): a chunk size fixed in rows (2000), rather than
+  // derived from a table's column count, broke silently the moment T29 added
+  // 3 columns to `transactions` (15 -> 18): 2000 rows x 18 columns = 36000
+  // bound parameters, over SQLite's 32766 ceiling, so a real backup with
+  // >= 1821 transactions failed to restore. This test binds a FULL-SHAPED
+  // transaction row (every column `transactions` actually declares, via
+  // `getTableColumns`) so the assertion exercises the real per-row
+  // parameter count, not a 1-key stub — it would have failed against the
+  // old fixed 2000-row chunk size.
+  it('chunks a large table at a size derived from its OWN column count (SQLite bound-parameter safety)', async () => {
     const insertedChunkSizes: number[] = [];
     mockTx = {
       delete: () => Promise.resolve(),
@@ -248,11 +259,24 @@ describe('restoreDataSnapshot', () => {
       }),
     };
 
-    const bigTransactions = Array.from({ length: 4500 }, (_, i) => ({ id: `t${i}` }));
+    const transactionColumnNames = Object.keys(getTableColumns(transactions));
+    const fullShapedRow = (id: string): Record<string, unknown> =>
+      Object.fromEntries(transactionColumnNames.map((name) => [name, name === 'id' ? id : null]));
+    const bigTransactions = Array.from({ length: 4500 }, (_, i) => fullShapedRow(`t${i}`));
 
     await restoreDataSnapshot({ ...emptySnapshot, transactions: bigTransactions as never });
 
-    expect(insertedChunkSizes).toEqual([2000, 2000, 500]);
+    // Every chunk must bind well under SQLite's 32766-parameter ceiling —
+    // the old fixed 2000-row chunk bound 2000 * 18 = 36000 and would fail
+    // this assertion.
+    const boundParametersPerChunk = insertedChunkSizes.map(
+      (size) => size * transactionColumnNames.length,
+    );
+    for (const bound of boundParametersPerChunk) {
+      expect(bound).toBeLessThanOrEqual(32766);
+    }
+    expect(insertedChunkSizes.reduce((sum, size) => sum + size, 0)).toBe(4500);
+    expect(insertedChunkSizes.length).toBeGreaterThan(1);
   });
 
   // T29: a `.kiko` exported before the loan-link columns existed carries
