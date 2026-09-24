@@ -45,6 +45,7 @@ import { startOfLocalDay } from '../../dates/local-day';
 import { activeLocale } from '../../i18n/active-locale';
 import type { Currency } from '../../currency/currency';
 import EntityAmountHeader from '../entity-amount-header';
+import type { PriceBook } from '../../prices/price-book';
 import { usePriceBook } from '../../prices/use-price-book';
 import Button from '../../design-system/components/button';
 import { formatDate, formatTime } from '../../dates/format';
@@ -55,19 +56,18 @@ import { isPricedHoldingType } from '../../holdings/priced-value';
 import MoneyText from '../../design-system/components/money-text';
 import { holdingTypeSymbol } from '../../holdings/entity-symbols';
 import { defaultHoldingColor } from '../../holdings/entity-colors';
+import { priceAsOfCaption } from '../../prices/price-as-of-caption';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../navigation/types';
-import { latestPoint, type PriceBook } from '../../prices/price-book';
 import SummaryTable from '../../design-system/components/summary-table';
 import { buildRateTable, canConvert } from '../../rates/net-worth-view';
+import { asBondMeta, asLoanMeta } from '../../holdings/holding-metadata';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
-import { holdingInstrument, metalInstrument } from '../../prices/instrument';
 import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
 import CardContextMenu from '../../design-system/components/card-context-menu';
 import { transactionRowDescription } from '../../transactions/row-description';
 import { isSyncedHolding, isSyncedTransaction } from '../../holdings/deletable';
 import EditHeaderButton from '../../design-system/components/edit-header-button';
-import { asBondMeta, asLoanMeta, asMetalMeta } from '../../holdings/holding-metadata';
 import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
 import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
 import { type DerivedEntry, derivedEntries, type EntryTone } from '../../holdings/derived-entries';
@@ -262,47 +262,6 @@ const nextLoanInstallment = (
   const todayStart = startOfLocalDay(now);
 
   return loanInstallments(meta).find((row) => row.dueDate >= todayStart);
-};
-
-// The "Value as of <date>" / "Price as of <date>" caption for a priced
-// holding (isPricedHoldingType): the LATEST stored price point's own day, so
-// the user sees how current the figure is. Undefined for a non-priced
-// holding, or a priced one with no stored point yet (its value still falls
-// back to cost basis — kiko-domain). `point.day` is a UTC-midnight epoch
-// standing for a LOCAL calendar day (`dayKeyOf`'s convention), so it is
-// formatted with the matching `{ timeZone: 'UTC' }` option — reading it with
-// the LOCAL getters could land on the previous calendar day in a
-// negative-UTC-offset timezone.
-//
-// `metal` (T20) reads a DIFFERENT instrument than every other priced type: it
-// shares `metal:<XAU|...>` across every holding of that metal (kiko-pricing),
-// never a per-holding `holding:<id>` series the way `property_item` uses —
-// and carries its own wording ("Price as of") since it is the metal's market
-// price, not a per-holding manual revaluation. An invalid/absent MetalMeta
-// resolves no instrument, matching the "no stored point yet" case below.
-const priceAsOfCaption = (
-  holding: HoldingRow | undefined,
-  priceBook: PriceBook,
-  t: TFunction,
-): string | undefined => {
-  if (holding === undefined || !isPricedHoldingType(holding.type)) {
-    return undefined;
-  }
-
-  if (holding.type === 'metal') {
-    const meta = asMetalMeta(holding.metadata);
-    const point = meta === null ? undefined : latestPoint(priceBook, metalInstrument(meta.metal));
-
-    return point === undefined
-      ? undefined
-      : t('holdingDetail.priceAsOf', { date: formatDate(point.day, { timeZone: 'UTC' }) });
-  }
-
-  const point = latestPoint(priceBook, holdingInstrument(holding.id));
-
-  return point === undefined
-    ? undefined
-    : t('holdingDetail.valueAsOf', { date: formatDate(point.day, { timeZone: 'UTC' }) });
 };
 
 // The Value header's secondary caption slot (`EntityAmountHeader`'s

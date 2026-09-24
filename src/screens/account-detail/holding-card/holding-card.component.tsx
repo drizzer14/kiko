@@ -1,10 +1,8 @@
-import type { TFunction } from 'i18next';
 import { Pressable } from 'react-native';
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import type { HoldingRow } from '../../../db/schema';
-import { formatDate } from '../../../dates/format';
 import { formatMoney } from '../../../currency/format';
 import Box from '../../../design-system/components/box';
 import Card from '../../../design-system/components/card';
@@ -13,40 +11,16 @@ import { activeLocale } from '../../../i18n/active-locale';
 import { canConvert } from '../../../rates/net-worth-view';
 import type { Currency } from '../../../currency/currency';
 import { holdingValue } from '../../../holdings/holding-value';
-import { holdingInstrument } from '../../../prices/instrument';
-import { isPricedHoldingType } from '../../../holdings/priced-value';
-import { latestPoint, type PriceBook } from '../../../prices/price-book';
+import type { PriceBook } from '../../../prices/price-book';
 import { convert, type RateTable } from '../../../rates/conversion';
 import MoneyText from '../../../design-system/components/money-text';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
+import { priceAsOfCaption } from '../../../prices/price-as-of-caption';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import EntityIconTile from '../../../design-system/components/entity-icon-tile';
 
 import { styles } from './holding-card.styles';
-
-// The "Value as of <date>" caption for a priced holding (property_item —
-// isPricedHoldingType): the LATEST stored price point's own day, mirroring
-// holding-detail's identical helper. Undefined for a non-priced holding, or a
-// priced one with no stored point yet (its value still falls back to cost
-// basis — kiko-domain). `point.day` is a UTC-midnight epoch standing for a
-// LOCAL calendar day, so it is formatted with the matching
-// `{ timeZone: 'UTC' }` option.
-const priceAsOfCaption = (
-  holding: HoldingRow,
-  priceBook: PriceBook,
-  t: TFunction,
-): string | undefined => {
-  if (!isPricedHoldingType(holding.type)) {
-    return undefined;
-  }
-
-  const point = latestPoint(priceBook, holdingInstrument(holding.id));
-
-  return point === undefined
-    ? undefined
-    : t('holdingDetail.valueAsOf', { date: formatDate(point.day, { timeZone: 'UTC' }) });
-};
 
 // One holding rendered as a wide row card, mirroring the accounts-list card: its
 // icon + name on the left, its computed value on the right. A plain tap opens the

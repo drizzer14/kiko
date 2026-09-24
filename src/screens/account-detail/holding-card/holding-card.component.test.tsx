@@ -201,5 +201,26 @@ describe('HoldingCard', () => {
 
       expect(queryByTestId('holding-card-value-as-of')).toBeNull();
     });
+
+    // F4 audit 13: divergent twins — this card's own copy of the caption
+    // helper used to lack the metal branch entirely, so a metal holding's
+    // card showed NO caption at all (its `holding:<id>` instrument never
+    // resolves for a metal — only the shared `metal:<slug>` one does). Now
+    // shared with holding-detail via `priceAsOfCaption`.
+    it('shows "Price as of <date>" for a metal holding, via its own SHARED metal:<slug> instrument', async () => {
+      const day = Date.UTC(2024, 0, 1);
+      const priceBook = buildPriceBook([
+        { instrument: 'metal:XAU', day, price: '2000.00', currency: 'USD', source: 'manual' },
+      ]);
+      const metalHolding = holding({
+        type: 'metal',
+        currency: 'USD',
+        metadata: { metal: 'XAU', form: 'bar', unit: 'g', purity: '0.9999', lots: [] },
+      });
+
+      const { getByText } = await renderCard({ holding: metalHolding, priceBook });
+
+      expect(getByText(`Price as of ${formatDate(day, { timeZone: 'UTC' })}`)).toBeTruthy();
+    });
   });
 });
