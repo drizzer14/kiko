@@ -83,7 +83,7 @@ if [ -z "${KIKO_MUTATION_FULL:-}" ]; then
   merge_base="$(git -C "$ROOT" merge-base "$base" HEAD 2>/dev/null || true)"
   if [ -n "$merge_base" ]; then
     changed="$(git -C "$ROOT" diff --name-only --diff-filter=d "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null \
-      | grep -Ev '(\.test\.tsx?$|(^|/)__tests__/|(^|/)rules/fixtures/|(^|/)i18n/locales/|\.d\.ts$)' || true)"
+      | grep -Ev '(\.test\.tsx?$|(^|/)__tests__/|(^|/)rules/fixtures/|(^|/)scripts/checks/|(^|/)i18n/locales/|\.d\.ts$)' || true)"
     # Part 2: drop zero/low-logic barrels (**/index.ts) + pure-static
     # *.styles.ts from the mutate set, preserving the 3 logic-bearing files
     # (src/i18n/index.ts, bottom-sheet.styles.ts, entity-icon-tile.styles.ts).

@@ -125,7 +125,7 @@ because it can compare against the actual pinned set.
 
 | Rule id | Finding | Enforce via | Notes |
 |---|---|---|---|
-| `exportedComponentNames` (one-component-per-file) | kiko-code-style's "One component per file" | Jest invariant (`src/code-style/one-component-per-file/one-component-per-file.test.ts`) | Semgrep has no same-file cross-declaration cardinality primitive, so this is a Jest invariant rather than a Semgrep rule — see the kiko-linter skill's "One exported component per `.tsx`" section for the scanner design and the jest.mock exemption's structural reason (a mock factory body can never syntactically contain a top-level `export`). Walks every real `.tsx` under `src/`; 0 violations today. |
+| `exportedComponentNames` (one-component-per-file) | kiko-code-style's "One component per file" | Jest invariant (`__tests__/one-component-per-file.test.ts`) | Semgrep has no same-file cross-declaration cardinality primitive, so this is a Jest invariant rather than a Semgrep rule — see the kiko-linter skill's "One exported component per `.tsx`" section for the scanner design and the jest.mock exemption's structural reason (a mock factory body can never syntactically contain a top-level `export`). Walks every real `.tsx` under `src/`; 0 violations today. |
 
 ### Enforced — 2026-09-25 R1 behavior-free refactor (R1.c)
 

@@ -233,9 +233,16 @@ verified usage, not dead weight:
   fixture or starts matching its negative one.
 - **Stryker mutate-set exclusions (`stryker.conf.json` `mutate`
   negations + the changed-file filter in `scripts/checks/mutation.sh`)**:
-  four NON-LOGIC categories are excluded from the set of files Stryker
+  five categories are excluded from the set of files Stryker
   mutates, in both run modes (the whole-project fallback array and the
-  diff-scoped changed-file filter). (1) **i18n locale catalogs
+  diff-scoped changed-file filter). (0) **`scripts/checks/**`** — the
+  harness's own check tooling, not app logic; `import-order.js`,
+  `kill-guard.js`, and `full-word-identifiers.js` are already exempt by
+  extension (plain `.js`, outside the `**/*.ts`/`**/*.tsx` mutate glob),
+  but `one-component-per-file.ts` (the one-exported-component-per-`.tsx`
+  Jest invariant, moved here from `src/code-style/` so it is treated the
+  same as the harness's other TypeScript-checked rules) needed an
+  explicit pattern since it IS `.ts`. (1) **i18n locale catalogs
   (`src/i18n/locales/**`)** — pure nested string-data objects with no
   logic a surviving mutant could meaningfully expose (hundreds of
   low-value string mutants); the

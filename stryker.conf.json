@@ -9,6 +9,7 @@
     "!**/*.test.ts",
     "!**/*.test.tsx",
     "!__tests__/**",
+    "!scripts/checks/**",
     "!ios/**",
     "!**/i18n/locales/**",
     "!**/*.d.ts",

@@ -1,16 +1,18 @@
 import { join } from 'node:path';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 
-import { exportedComponentNames } from './one-component-per-file';
+import { exportedComponentNames } from '../scripts/checks/one-component-per-file';
 
 // kiko-code-style's "One component per file" — define exactly one React
 // component per file. This walks every real `.tsx` file under `src/` (app
-// code AND shared test helpers, per the brief) and asserts none of them
-// exports 2+ components. The real splits this would otherwise force
-// (LoanFormBlock, StatementPreviewBlock, StatementImportFooter,
-// ColumnMappingForm) are a separate task — this test only adds the
-// invariant, so it must currently find ZERO violations.
-const SRC_ROOT = join(__dirname, '../..');
+// code and shared test helpers alike) and asserts none of them exports 2+
+// components. The scanner itself lives under scripts/checks/, not src/ — a
+// harness rule, not app code — and is excluded from Stryker's mutate set
+// there (stryker.conf.json) the same way the other checks are (`import-
+// order.js`, `kill-guard.js`, `full-word-identifiers.js` are already exempt
+// by extension, being plain `.js`; this one is `.ts`, so it needs its own
+// exclusion entry).
+const SRC_ROOT = join(__dirname, '../src');
 
 const tsxFiles = (directory: string): string[] =>
   readdirSync(directory).flatMap((entry) => {

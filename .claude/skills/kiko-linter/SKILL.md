@@ -297,8 +297,8 @@ lands):
   "Comments" section for the rule this mechanizes. Needs
   false-positive tuning before it can be Class A.
 
-The other three candidates from this same backlog are now implemented
-(R1 of the behavior-free refactor): the nullable-ternary rule is
+The other three candidates from this same backlog are now implemented:
+the nullable-ternary rule is
 `kiko-no-nullable-map-ternary` (Semgrep ERROR,
 `rules/semgrep-mobile.yml`) — see "Semgrep pattern strings need
 quoting" below for the one gotcha that cost the most time writing it.
@@ -310,17 +310,22 @@ hand-rolled checker (and fixer)" below.
 
 ## One exported component per `.tsx` — a Jest invariant, not Semgrep
 
-`src/code-style/one-component-per-file/one-component-per-file.ts`
-mechanizes kiko-code-style's "One component per file". Semgrep has no
-same-file cross-declaration cardinality primitive — no way to express
-"a second exported-component declaration exists elsewhere in this
-file" without `pattern-inside`/taint scoping, and neither spans two
-independent top-level statements — so this is a Jest invariant
-instead: `exportedComponentNames(source)` returns the name of every
-top-level, exported, component-like declaration in a `.tsx` source
-string, and `one-component-per-file.test.ts` asserts every real file
-under `src/` returns at most one name (0 known violations today — the
-real splits a 2+ finding would force are a separate task).
+`scripts/checks/one-component-per-file.ts` mechanizes kiko-code-style's
+"One component per file". It lives alongside the other check tooling
+(`import-order.js`, `kill-guard.js`, `full-word-identifiers.js`), not
+under `src/` — a harness rule, not app code — and is excluded from
+Stryker's mutate set there (`stryker.conf.json`'s `!scripts/checks/**`;
+see `docs/harness/documented-exceptions.md`). Its test,
+`__tests__/one-component-per-file.test.ts`, imports it directly (a
+plain module import, unlike the `.sh`-spawned checks). Semgrep has no
+way to express "a second exported-component declaration exists
+elsewhere in this file" without `pattern-inside`/taint scoping, and
+neither spans two independent top-level statements — so this is a
+Jest invariant instead: `exportedComponentNames(source)` returns the
+name of every top-level, exported, component-like declaration in a
+`.tsx` source string, and `one-component-per-file.test.ts` asserts
+every real file under `src/` returns at most one name (0 known
+violations today).
 
 The scanner is a hand-rolled heuristic, not a TypeScript AST parse —
 consistent with this project's Semgrep-regex style elsewhere (e.g.
@@ -391,13 +396,13 @@ group, by contrast, must travel WITH that import when it moves — the
 scanner marks the whole group "unsafe" and its `--write` mode leaves
 it completely untouched, rather than guess where the comment should
 end up. This is a real, load-bearing distinction, not a hypothetical:
-the R1.c sweep found 210 files with a real violation; `--write`
-resolved all but 7 of them, each left unresolved by exactly this
-"comment glued to a non-first import" safety rule. Those 7 were
+a repo-wide sweep once found 210 files with a real violation;
+`--write` resolved all but 7 of them, each left unresolved by exactly
+this "comment glued to a non-first import" safety rule. Those 7 were
 re-sorted by hand (moving the comment WITH its import, alongside the
 file-level prefix comment when both were present in the same file —
-see `net-worth-series.test.ts` in the R1.c commit history for a
-worked example of both rules applying in the same file at once).
+see `net-worth-series.test.ts` for a worked example of both rules
+applying in the same file at once).
 
 `--write` (`node scripts/checks/import-order.js --write <file...>`) is
 a repo-sweep tool, not part of the check-wrapper contract (see "The
