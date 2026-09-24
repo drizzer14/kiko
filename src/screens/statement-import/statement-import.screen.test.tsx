@@ -753,10 +753,14 @@ describe('StatementImportScreen — column-mapping entry point (T7)', () => {
       expectedFormatId: 'sensebank-csv',
     });
 
+    // N2 (fix round 2): `ownsFile: true` — the auto-replace hands
+    // ColumnMapping sole ownership of the file (no StatementImport route
+    // left below it on the stack).
     await waitFor(() =>
       expect(navigation.replace).toHaveBeenCalledWith('ColumnMapping', {
         filePath: '/mock/statement.csv',
         accountId: 'a',
+        ownsFile: true,
       }),
     );
   });

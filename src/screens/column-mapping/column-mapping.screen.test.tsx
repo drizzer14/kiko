@@ -137,6 +137,7 @@ const renderScreen = async (params: {
   filePath: string;
   accountId: string;
   holdingId?: string;
+  ownsFile?: boolean;
 }) => {
   const navigation = navigationSpy();
   const route = asRouteProp<ColumnMappingProps['route']>('ColumnMapping', params);
@@ -582,18 +583,42 @@ describe('ColumnMappingScreen', () => {
   });
 });
 
-// M8 (F3 part 1 fix round 1, Important): the local cache copy item 6's fix
-// makes is deleted once this screen is removed from the stack — a
-// successful import's popTo, or the user backing out. This screen never
-// hands the file off (unlike StatementImportScreen's T7 auto-replace), so
-// every unmount is a genuine "done with this file" event.
-describe('ColumnMappingScreen — local copy cleanup (M8)', () => {
+// M8 (F3 part 1 fix round 1, Important) + N2 (fix round 2, Important): the
+// local cache copy item 6's fix makes is deleted once this screen is
+// removed from the stack, but ONLY when this screen OWNS the file
+// (ownsFile, set exclusively by StatementImportScreen's T7 auto-replace).
+// Reached instead by "Map columns manually" (a PUSH), StatementImport
+// stays mounted underneath and still owns the file — deleting it here on a
+// plain Back would strand that still-reachable preview (item 6's exact bug
+// again).
+describe('ColumnMappingScreen — local copy cleanup (M8, N2)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding] });
   });
 
-  it('deletes the local cache copy on unmount', async () => {
+  it('deletes the local cache copy on unmount when it OWNS the file (the T7 auto-replace path)', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+
+    const view = await renderScreen({
+      filePath: '/mock/caches/statement-123.csv',
+      accountId: 'a',
+      ownsFile: true,
+    });
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+
+    await act(async () => {
+      view.unmount();
+    });
+
+    expect(mockUnlink).toHaveBeenCalledWith('/mock/caches/statement-123.csv');
+  });
+
+  // N2: the "Map columns manually" push — no ownsFile — must NOT delete on
+  // Back, since the preview screen underneath still owns and reads the
+  // SAME file. This is the literal "preview -> Map columns -> Back -> Map
+  // columns again" scenario the review asked to be proven.
+  it('does NOT delete the local cache copy on unmount when it does NOT own the file (pushed from the preview)', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
 
     const view = await renderScreen({
@@ -606,6 +631,34 @@ describe('ColumnMappingScreen — local copy cleanup (M8)', () => {
       view.unmount();
     });
 
-    expect(mockUnlink).toHaveBeenCalledWith('/mock/caches/statement-123.csv');
+    expect(mockUnlink).not.toHaveBeenCalled();
+  });
+
+  // N2's literal repro scenario: preview -> Map columns -> Back -> the file
+  // survives -> Map columns again still reads it successfully. Simulated
+  // here as a non-owning ColumnMapping instance unmounting (the Back),
+  // then a FRESH instance for the SAME filePath mounting again (the second
+  // "Map columns manually" tap) and reading the file without error.
+  it('preview -> Map columns -> Back -> Map columns again still reads the SAME file successfully', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+
+    const first = await renderScreen({
+      filePath: '/mock/caches/statement-123.csv',
+      accountId: 'a',
+    });
+    await waitFor(() => expect(first.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+
+    await act(async () => {
+      first.unmount();
+    });
+
+    expect(mockUnlink).not.toHaveBeenCalled();
+
+    const second = await renderScreen({
+      filePath: '/mock/caches/statement-123.csv',
+      accountId: 'a',
+    });
+
+    await waitFor(() => expect(second.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
   });
 });

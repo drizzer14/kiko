@@ -136,11 +136,20 @@ export type AccountsStackParamList = {
   // for this screen. `holdingId` is the SAME merged field `StatementImport`
   // carries above — still just a PRE-FILL/reselect, not a lock (the field
   // stays editable, and required, like every other required field on this
-  // screen).
+  // screen). `ownsFile` (N2, F3 part 1 fix round 2) is true ONLY when this
+  // screen was reached via the T7 auto-`replace` (no `StatementImport`
+  // route left below it on the stack, so THIS screen is the file's sole
+  // owner from then on); absent (falsy) on the "Map columns manually"
+  // PUSH, where `StatementImport` stays mounted underneath and still owns
+  // the file — this screen must never delete it out from under that still-
+  // reachable preview. Carried through `HoldingForm.returnTo.params`
+  // unchanged on a "Create new holding" round trip, same as every other
+  // field here.
   ColumnMapping: {
     filePath: string;
     accountId: string;
     holdingId?: string;
+    ownsFile?: boolean;
   };
 };
 

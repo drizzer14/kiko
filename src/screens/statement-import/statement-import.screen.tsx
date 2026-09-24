@@ -378,7 +378,13 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
 
     if (saved?.exact) {
       autoReplacedRef.current = true;
-      navigation.replace('ColumnMapping', { filePath, accountId });
+      // N2 (F3 part 1 fix round 2): `ownsFile: true` — this REPLACES
+      // StatementImport (no `StatementImport` route left below it on the
+      // stack), so ColumnMapping becomes the file's sole owner from here.
+      // The OTHER ColumnMapping entry point ("Map columns manually",
+      // below) never sets this: it PUSHES on top, leaving StatementImport
+      // still mounted and still the owner.
+      navigation.replace('ColumnMapping', { filePath, accountId, ownsFile: true });
     }
   }, [accountId, input, format, savedMappings, bankId, filePath, navigation]);
 
@@ -394,8 +400,9 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // test). Guarded on `autoReplacedRef`: the T7 auto-replace above ALSO
   // unmounts this screen (`navigation.replace`), but hands the SAME
   // `filePath` to the ColumnMapping screen that replaces it — that screen
-  // owns the file from then on (its own matching cleanup effect), so this
-  // one must NOT delete out from under it.
+  // owns the file from then on (its own matching cleanup effect, gated on
+  // the `ownsFile` param this screen just set — N2), so this one must NOT
+  // delete out from under it.
   useEffect(() => {
     return () => {
       if (!autoReplacedRef.current) {

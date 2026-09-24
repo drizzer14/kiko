@@ -594,7 +594,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
  * `mappingKeyFor(account.bankId, fingerprint)`.
  */
 const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }) => {
-  const { filePath, accountId, holdingId } = route.params;
+  const { filePath, accountId, holdingId, ownsFile } = route.params;
   const { t } = useTranslation();
 
   const [loadState, setLoadState] = useState<LoadState>({ kind: 'loading' });
@@ -677,19 +677,28 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
         }
       });
 
-    // M8 (F3 part 1 fix round 1, Important): `filePath` is a plaintext local
-    // cache copy (item 6's `keepLocalCopy` fix) outside the encrypted
-    // database — deleted once this screen is REMOVED from the stack (a
-    // successful import's `popTo`, or the user backing all the way out),
-    // never left behind in `Library/Caches`. This screen never hands the
-    // file off to another screen (unlike `StatementImportScreen`'s T7
-    // auto-replace), so no replace-guard is needed here — every unmount is
-    // a genuine "done with this file" event.
+    // M8 (F3 part 1 fix round 1, Important) + N2 (fix round 2, Important):
+    // `filePath` is a plaintext local cache copy (item 6's `keepLocalCopy`
+    // fix) outside the encrypted database — deleted once this screen is
+    // REMOVED from the stack, but ONLY when this screen actually OWNS the
+    // file (`ownsFile`, set by `StatementImportScreen`'s T7 auto-`replace`
+    // ONLY — see `navigation/types.d.ts`'s `ColumnMapping.ownsFile` doc
+    // comment). When this screen was reached instead by "Map columns
+    // manually" (a PUSH), `StatementImportScreen` stays mounted underneath
+    // and still owns the file — deleting it here on a plain Back would
+    // strand that still-reachable preview with a filePath that no longer
+    // resolves, reintroducing item 6's exact bug (a second "Map columns
+    // manually" tap re-reading a file this screen already deleted). The
+    // preview's OWN unmount cleanup is the one that eventually deletes the
+    // file in that case, once IT is genuinely done with the flow.
     return () => {
       cancelled = true;
-      deleteLocalStatementCopy(filePath);
+
+      if (ownsFile) {
+        deleteLocalStatementCopy(filePath);
+      }
     };
-  }, [filePath]);
+  }, [filePath, ownsFile]);
 
   const tableInput = tableInputFor(loadState, encoding);
   const { rows, delimiter: detectedDelimiter } = tableInput
