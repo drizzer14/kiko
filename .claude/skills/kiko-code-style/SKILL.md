@@ -108,7 +108,29 @@ From `biome.json`'s `linter.rules`:
 - `noExcessiveCognitiveComplexity` caps at 15 — decompose a
   complicated branch into named helper functions rather than one
   large function; this pairs naturally with the functional style
-  below.
+  below. What actually moves the score, confirmed by bisection while
+  fixing T25's `holding-form.screen.tsx` (it kept reporting the same
+  number through several rewrites that looked like real
+  simplifications): a ternary, `??`, or `?.` chain written DIRECTLY in
+  the measured function's own top-level body counts heavily — extract
+  it into a named module-level helper (a plain function BEFORE the
+  component, not a `const` closure defined inside it) and the cost
+  moves with it. A raw `if`/`&&`/`||` INSIDE a nested closure (a
+  `useEffect` callback, or a `const foo = () => {...}` defined inside
+  the component) did NOT measurably move the score in that same
+  session, in either direction — do not spend time hunting there.
+  A JSX conditional-render gate (`{cond && (...)}`) inside the
+  component's own `return` is the other real cost, and it does NOT
+  shrink by extracting the JSX CONTENT into a child component or a
+  helper function — only the gate itself matters. When a component
+  already exhausts its budget elsewhere, replace `{cond && (...)}`
+  with `ts-pattern`'s `match(cond ? 'a' : 'b').with(...).exhaustive()`
+  (or, for an existing enum-like value, `match(value).with(...)`
+  directly, mirroring the file's own `isValid` = `match(type)...`
+  pattern) — a chain of `.with()` calls did not register as
+  branching complexity the same session a bare `&&` did. Treat this
+  as a last-resort lint-satisfying tool, not a style preference: keep
+  a plain `{cond && (...)}` everywhere it already fits the budget.
 - `complexity.noVoid` is an error — never use the `void` operator. To
   fire-and-forget a promise that already captures its own errors (an
   `either(...)` call), call it as a plain expression statement; do

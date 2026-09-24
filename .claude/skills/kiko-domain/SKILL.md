@@ -566,6 +566,73 @@ the same run it disappears from the live register.
 most once per LOCAL calendar day, comparing the cache's single
 write-time `fetchedAt` stamp against `now` through `dayKeyOf`
 (`kiko-pricing`) — the same device-local-day convention `price_points`
-uses, not a UTC day. See spec section 6 (6.1-6.4) for the full
-ISIN-mode form design (not yet built as of T24 — do not invent
-detail beyond what `BondTerms`/`bondRegisterRepo` already expose).
+uses, not a UTC day. `src/bonds/bond-register-repo/index.ts` is a
+barrel (`export * from './bond-register.repo'`), added in T25 once the
+ISIN-mode form became a real consumer — see the T24 ruling's own note
+that no barrel existed yet (Knip would have flagged an unused one).
+
+### The ISIN-mode form (T25, spec 6.3/6.4)
+
+`BondMeta.isin?: string` (`holding-metadata.ts`) records how a bond was
+added — present for one saved through ISIN mode (or typed into
+Manual mode's own optional ISIN field), `undefined` for a legacy
+Manual-mode bond. Once saved, the holding never depends on the
+register again (spec 6.4 #5) — nothing re-validates a stored ISIN
+against a later register state.
+
+`holding-form.screen.tsx`'s bond section has an "ISIN / Manual"
+`BondEntryMode` mode, the design-system `SegmentedControl` (not
+`ChipRow` — F3/T24 ruling: one control type per kind of mode choice),
+rendered by `BondIsinSection`
+(`src/screens/forms/holding-form/bond-isin-section/`) — purely
+presentational, the same `MetalSection`/`PropertySection` split: the
+parent owns the `useLiveQuery` lookup
+(`bondRegisterRepo.findByIsinQuery`, keyed on the normalized ISIN when
+`validateIsin` passes, else an empty string that matches no row) and
+every auto-fill/validation decision; the section only renders what it
+is handed (the mode toggle, the ISIN field, a read-only summary
+once found, and a "not in the register" hint + Switch-to-manual button
+when a validly-shaped ISIN has no match — spec 6.4 #3, which covers a
+genuine not-found and an offline-with-no-cache open the same way,
+since both leave the lookup's result `null`).
+
+A CREATE defaults to `'isin'`; EDIT always seeds `'manual'` (spec 6.4
+#6 — the stored ISIN is shown there, still editable) via
+`seedBondMetaFields`. ISIN mode shows quantity (required),
+purchasePrice (optional, defaults to nominal — unchanged from Manual),
+and purchaseDate, defaulted to LOCAL MIDNIGHT (`startOfLocalDay`, not
+a raw `Date.now()`) the first time ISIN mode is entered — a raw
+`Date.now()` default would leave a LATER explicit pick composed with
+that moment's clock time instead of a clean day, because
+`DateField.handleDayPress` carries an existing value's own
+time-of-day onto a newly picked day (so a paired TimeField pick is
+never clobbered). ISIN mode hides face value, coupon, maturity, kind,
+and frequency — a found ISIN fills all of them
+(`applyFoundBondTerms`): `bondKind` is always `'government'` (the
+register is Minfin-only), `couponFrequency` only when the register's
+`pay_period` maps onto a known band; an unmapped period (spec 6.2's
+own documented fallback) instead switches the form to Manual, leaving
+every OTHER known field pre-filled, rather than guessing a frequency.
+The register's `currency` and `name` overwrite the form's own
+`currency`/`name` state on every new match — editable afterward, but
+re-applied whenever the ISIN changes to a new found bond.
+
+Validation (`isinReasonKey`, module-level and pure — the same
+extraction pattern `shouldRefreshBondRegister`/`shouldDefaultBondPurchaseDate`/
+`isFoundBondMatch` use to keep `HoldingFormScreen`'s own cognitive
+complexity down): required and blocking in ISIN mode; optional but
+still check-digit-validated when non-empty in Manual mode. A JSX
+conditional gate uses `ts-pattern`'s `match(bondMode).with(...).exhaustive()`
+(not a raw `&&`) for the same reason `isValid`'s own `match(type)`
+chain does — mirrors the project's "no nested ternary" convention and
+keeps a `noExcessiveCognitiveComplexity` budget the raw operator form
+tripped.
+
+The register refresh-on-open (`refreshBondRegisterIfStale`, fires once
+per bond-section open, create or edit, `.catch(() => {})`'d — never
+blocks the form and fails quietly offline per spec 6.4 #4) and the
+purchaseDate default and the found-ISIN auto-fill are combined into
+ONE `useEffect` (each independently guarded by its own predicate) —
+again purely to keep the component's cognitive-complexity score under
+budget, not a functional requirement; each guard is idempotent, so
+sharing one dependency array never mis-fires any of the three.

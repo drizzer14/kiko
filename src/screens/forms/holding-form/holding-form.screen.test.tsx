@@ -12,6 +12,7 @@ import {
   navigationSpy,
 } from '../../../test-support/navigation-props';
 import { scrollToField } from '../scroll-to-field/scroll-to-field';
+import { refreshBondRegisterIfStale } from '../../../bonds/bond-register-repo';
 
 import HoldingFormScreen from './holding-form.screen';
 
@@ -69,23 +70,42 @@ let mockAccountBankId: string | null = null;
 // The holding the edit-mode form loads through useLiveQuery. Empty by default
 // (create mode); edit-mode tests seed it before rendering.
 let mockEditHoldings: unknown[] = [];
+// The `bond_register` cache rows the ISIN-mode section's lookup reads
+// (T25). Empty by default — the "no match" / "offline with no cache" path
+// (spec 6.4) — so a test only sets this when it needs a found bond.
+let mockBondRegisterRows: unknown[] = [];
 
 jest.mock('../../../db/use-live-query', () => ({
   // Key on the subscribed table: the holdings query drives edit-mode hydration,
-  // the accounts query drives the allowed-type filter and the sync gate.
-  useLiveQuery: (_query: unknown, keys: string[]) =>
-    keys[0] === 'holdings'
-      ? { data: mockEditHoldings }
-      : {
-          data: [
-            {
-              id: 'acc-1',
-              kind: mockAccountKind,
-              institution: mockAccountInstitution,
-              bankId: mockAccountBankId,
-            },
-          ],
+  // the accounts query drives the allowed-type filter and the sync gate, and
+  // the bond_register query drives the ISIN-mode lookup.
+  useLiveQuery: (_query: unknown, keys: string[]) => {
+    if (keys[0] === 'holdings') {
+      return { data: mockEditHoldings };
+    }
+    if (keys[0] === 'bond_register') {
+      return { data: mockBondRegisterRows };
+    }
+    return {
+      data: [
+        {
+          id: 'acc-1',
+          kind: mockAccountKind,
+          institution: mockAccountInstitution,
+          bankId: mockAccountBankId,
         },
+      ],
+    };
+  },
+}));
+// `findByIsinQuery`'s return value is opaque to the mocked `useLiveQuery`
+// above (it ignores its `query` argument), so a bare stub is enough — the
+// same pattern `accountsRepo.byIdQuery` uses below. `refreshBondRegisterIfStale`
+// (T25, spec 6.4 #4) is mocked so no test hits a real network `fetch`; each
+// relevant test can assert it was invoked.
+jest.mock('../../../bonds/bond-register-repo', () => ({
+  bondRegisterRepo: { findByIsinQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+  refreshBondRegisterIfStale: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
@@ -112,6 +132,7 @@ beforeEach(() => {
   mockAccountInstitution = 'monobank';
   mockAccountBankId = null;
   mockEditHoldings = [];
+  mockBondRegisterRows = [];
 });
 
 const renderScreen = () =>
@@ -159,8 +180,11 @@ const pickDate = async (
   });
 };
 
+// A bond CREATE defaults to ISIN mode (T25); every test here exercises the
+// classic Manual-mode fields, so it switches over first.
 const fillBondFields = async (screen: Screen): Promise<void> => {
   await fireEvent.press(screen.getByText('Bond'));
+  await fireEvent.press(screen.getByText('Manual'));
   await fill(screen, 'Name', 'My bond');
   await fill(screen, 'Quantity', '10');
   await fill(screen, 'Face Value', '1000');
@@ -286,10 +310,24 @@ describe('HoldingFormScreen term deposit', () => {
     }
   });
 
-  it('renders a visible text label above every bond field', async () => {
+  it('renders a visible text label above every ISIN-mode bond field, defaulting to ISIN mode', async () => {
     const screen = await renderScreen();
 
     await fireEvent.press(screen.getByText('Bond'));
+
+    // ISIN mode (the CREATE default, T25) shows quantity/purchase date —
+    // always visible — plus the mode toggle and the ISIN field itself.
+    for (const label of ['Quantity', 'Purchase Date', 'Purchase Price (total paid)']) {
+      expect(screen.getByText(label)).toBeTruthy();
+    }
+    expect(screen.getByPlaceholderText('UA4000234215')).toBeTruthy();
+  });
+
+  it('renders a visible text label above every Manual-mode bond field', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+    await fireEvent.press(screen.getByText('Manual'));
 
     for (const label of [
       'Quantity',
@@ -609,6 +647,144 @@ describe('HoldingFormScreen term deposit', () => {
   });
 });
 
+describe('HoldingFormScreen bond ISIN mode (T25)', () => {
+  beforeEach(() => {
+    createMock.mockClear();
+    (refreshBondRegisterIfStale as jest.Mock).mockClear();
+  });
+
+  const isinInput = (screen: Screen) => screen.getByPlaceholderText('UA4000234215');
+
+  const foundRegisterRow = {
+    isin: 'UA4000234215',
+    terms: {
+      isin: 'UA4000234215',
+      currency: 'USD',
+      faceValueMinorUnits: 100_000,
+      couponPct: 9.5,
+      maturityDate: localDay(2029, 6, 24),
+      couponFrequency: 'quarterly',
+      name: 'Register Bond UA4000234215',
+    },
+    fetchedAt: 1,
+  };
+
+  it('defaults a bond create to ISIN mode', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+
+    expect(
+      screen.getByTestId('bond-isin-mode-control-option-isin').props.accessibilityState.selected,
+    ).toBe(true);
+  });
+
+  it('calls refreshBondRegisterIfStale once the bond section opens', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+
+    expect(refreshBondRegisterIfStale).toHaveBeenCalledTimes(1);
+  });
+
+  it('fills face value, coupon, maturity, frequency, bondKind, currency, and name once a found ISIN resolves, and saves BondMeta with the isin', async () => {
+    mockBondRegisterRows = [foundRegisterRow];
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+    await fireEvent.changeText(isinInput(screen), 'UA4000234215');
+    await fill(screen, 'Quantity', '10');
+
+    // The read-only summary reflects the found terms.
+    expect(within(screen.getByTestId('bond-isin-summary')).getByText(/9\.5/)).toBeTruthy();
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
+    const call = createMock.mock.calls[0][0];
+    expect(call.name).toBe('Register Bond UA4000234215');
+    expect(call.currency).toBe('USD');
+    expect(call.metadata).toEqual(
+      expect.objectContaining({
+        quantity: 10,
+        faceValueMinorUnits: 100_000,
+        couponPct: 9.5,
+        maturityDate: localDay(2029, 6, 24),
+        couponFrequency: 'quarterly',
+        bondKind: 'government',
+        isin: 'UA4000234215',
+      }),
+    );
+  });
+
+  it('shows a "not in the register" message with a Switch to manual button, keeping the typed ISIN, when the ISIN is not cached (also covers offline with no cache)', async () => {
+    mockBondRegisterRows = [];
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+    await fireEvent.changeText(isinInput(screen), 'UA4000234215');
+
+    expect(screen.getByText('Not in the NBU register.')).toBeTruthy();
+
+    await fireEvent.press(screen.getByText('Switch to manual'));
+
+    // Manual mode now shows the same ISIN, still editable.
+    expect(
+      screen.getByTestId('bond-isin-mode-control-option-manual').props.accessibilityState.selected,
+    ).toBe(true);
+    expect(isinInput(screen).props.value).toBe('UA4000234215');
+  });
+
+  it('blocks save with a check-digit error for an invalid ISIN', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+    await fill(screen, 'Name', 'My bond');
+    await fill(screen, 'Quantity', '10');
+    // A valid-shaped ISIN with a wrong check digit (T23 fixture).
+    await fireEvent.changeText(isinInput(screen), 'UA4000227046');
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('ISIN check digit is wrong.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('renders the Diia hint in both ISIN and Manual mode', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+
+    expect(
+      screen.getByText('Bought in Diia? Add the bond under the bank or broker you chose there.'),
+    ).toBeTruthy();
+
+    await fireEvent.press(screen.getByText('Manual'));
+
+    expect(
+      screen.getByText('Bought in Diia? Add the bond under the bank or broker you chose there.'),
+    ).toBeTruthy();
+  });
+
+  it('opens edit mode in Manual with the stored ISIN shown and editable', async () => {
+    const screen = await renderEdit({
+      ...bondHolding,
+      metadata: { ...bondHolding.metadata, isin: 'UA4000234215' },
+    });
+
+    expect(
+      screen.getByTestId('bond-isin-mode-control-option-manual').props.accessibilityState.selected,
+    ).toBe(true);
+    expect(isinInput(screen).props.value).toBe('UA4000234215');
+
+    await fireEvent.changeText(isinInput(screen), 'XS2895055981');
+    await fireEvent.press(screen.getByText('Save'));
+
+    const patch = updateDeltaMock.mock.calls[0][1];
+    expect(patch.metadata.isin).toBe('XS2895055981');
+  });
+});
+
 describe('HoldingFormScreen section titles', () => {
   it('renders "Contributions" and "Terms" section titles in the term-deposit block', async () => {
     const screen = await renderScreen();
@@ -747,6 +923,7 @@ describe('HoldingFormScreen save validation', () => {
     const screen = await renderScreen();
 
     await fireEvent.press(screen.getByText('Bond'));
+    await fireEvent.press(screen.getByText('Manual'));
     await fill(screen, 'Name', 'My bond');
     await fill(screen, 'Quantity', '10');
     await fill(screen, 'Face Value', '1000');
@@ -791,6 +968,7 @@ describe('HoldingFormScreen save validation', () => {
     const screen = await renderScreen();
 
     await fireEvent.press(screen.getByText('Bond'));
+    await fireEvent.press(screen.getByText('Manual'));
     await fill(screen, 'Name', 'My bond');
     await fill(screen, 'Quantity', '10');
     await fireEvent.press(screen.getByText('Save'));
@@ -804,6 +982,7 @@ describe('HoldingFormScreen save validation', () => {
     const screen = await renderScreen();
 
     await fireEvent.press(screen.getByText('Bond'));
+    await fireEvent.press(screen.getByText('Manual'));
     await fill(screen, 'Name', 'My bond');
     await fill(screen, 'Quantity', '10');
     await fill(screen, 'Face Value', '1000');
@@ -1877,6 +2056,7 @@ describe('HoldingFormScreen — localization', () => {
 
     const { getByText } = await renderScreen();
     await fireEvent.press(getByText('Облігація'));
+    await fireEvent.press(getByText('Вручну'));
 
     expect(getByText('Деталі облігації')).toBeTruthy();
     expect(getByText('Кількість')).toBeTruthy();

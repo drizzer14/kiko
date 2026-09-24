@@ -25,6 +25,12 @@ export type BondMeta = {
   maturityDate: number;
   bondKind: BondKind;
   couponFrequency: BondCouponFrequency;
+  // The ISIN the bond was added under (T25's ISIN-mode form), or `undefined`
+  // for a Manual-mode bond that never carried one (including every bond
+  // saved before T25). Once saved it never depends on the register again
+  // (spec 6.4 #5) — this is purely a record of how the holding was added,
+  // re-shown editable in edit mode's Manual view (spec 6.4 #6).
+  isin?: string;
 };
 
 const frequencies = new Set<string>(['bi-weekly', 'monthly', 'quarterly', 'annually']);
@@ -180,7 +186,8 @@ export const asBondMeta = (value: unknown): BondMeta | null => {
   if (!isRecord(value)) {
     return null;
   }
-  const { quantity, faceValueMinorUnits, couponPct, purchaseDate, maturityDate, bondKind } = value;
+  const { quantity, faceValueMinorUnits, couponPct, purchaseDate, maturityDate, bondKind, isin } =
+    value;
   if (
     !isNumber(quantity) ||
     !isNumber(faceValueMinorUnits) ||
@@ -208,6 +215,7 @@ export const asBondMeta = (value: unknown): BondMeta | null => {
     maturityDate,
     bondKind: bondKind === 'corporate' ? 'corporate' : 'government',
     couponFrequency: asBondCouponFrequency(value.couponFrequency),
+    isin: typeof isin === 'string' ? isin : undefined,
   };
 };
 

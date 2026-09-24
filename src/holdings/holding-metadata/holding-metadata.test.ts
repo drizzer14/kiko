@@ -141,6 +141,28 @@ describe('asBondMeta bondKind', () => {
   });
 });
 
+describe('asBondMeta isin', () => {
+  const base = {
+    quantity: 10,
+    faceValueMinorUnits: 10000,
+    couponPct: 10,
+    purchaseDate: 1000,
+    maturityDate: 2000,
+  };
+
+  it('round-trips a stored ISIN', () => {
+    expect(asBondMeta({ ...base, isin: 'UA4000234215' })?.isin).toBe('UA4000234215');
+  });
+
+  it('leaves isin undefined when absent (a legacy Manual-mode bond)', () => {
+    expect(asBondMeta({ ...base })?.isin).toBeUndefined();
+  });
+
+  it('leaves isin undefined when the stored value is not a string', () => {
+    expect(asBondMeta({ ...base, isin: 12345 })?.isin).toBeUndefined();
+  });
+});
+
 describe('asBondMeta couponFrequency', () => {
   const base = {
     quantity: 10,

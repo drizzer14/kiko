@@ -741,6 +741,11 @@ new component can land between reviews of this skill:
   and, as of F3 fix round 2 (M5, applied — not left as the round-1
   DEFAULT), its encoding and decimal-separator selectors too, superseding
   `ChipRow` for all four (F3 item 9, `21d53cc`'s prior `ChipRow` pass).
+  The Bond form's "ISIN / Manual" mode (T25, `BondIsinSection`,
+  `src/screens/forms/holding-form/bond-isin-section/`) is the same true
+  2-way mode toggle, composed with its own `FieldLabel` above it (no
+  surrounding section heading names the control) — see `kiko-domain`'s
+  Bonds section for the full ISIN-mode form.
 - **BarChart**, **PieChart**, **NetWorthLine** — the `react-native-svg`
   visualization components; see the dedicated `kiko-charts` skill for
   their coordinate-space and testID conventions before touching any
