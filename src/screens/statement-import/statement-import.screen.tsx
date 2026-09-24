@@ -36,12 +36,12 @@ import {
 import { importStatement, type ImportResult } from '../../statement-import/import-statement';
 
 import ImportOutcome from './import-outcome';
-import ImportResultSheet, { IMPORT_RESULT_SHEET_CLOSE_DELAY_MS } from './import-result-sheet';
 import { styles } from './statement-import.styles';
+import ImportResultSheet from './import-result-sheet';
 import PreviewDetailList from './preview-detail-list';
 import ExampleTransaction from './example-transaction';
-import { previewStats } from './preview-stats/preview-stats';
 import TargetHoldingField from './target-holding-field';
+import { previewStats } from './preview-stats/preview-stats';
 import { useTargetHoldingOptions } from './use-target-holding-options/use-target-holding-options';
 
 type StatementImportScreenProps = NativeStackScreenProps<AccountsStackParamList, 'StatementImport'>;
@@ -282,6 +282,9 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // N4 (F3 part 1 fix round 2): decoupled from `importResult` itself — see
   // `handleImportDone` below for why.
   const [resultSheetVisible, setResultSheetVisible] = useState(false);
+  // R2-1 (F3 part 1 fix round 3): guards `handleSheetClosed` against running
+  // its navigation more than once — see that function's own comment.
+  const navigatedAwayRef = useRef(false);
   const holdingOptions = useTargetHoldingOptions(accountId);
 
   // T7's auto-replace check: an account's own `bankId` and its saved
@@ -454,40 +457,52 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     }
   };
 
-  // Item 15 (F3): dismisses the successful-import modal and hands control
-  // back to the account it was imported into. `navigation.popTo` — NOT
-  // `navigate`, which on React Navigation 7 pushes a DUPLICATE of an
-  // already-on-stack route instead of reusing it (C1, F3 part 1 fix round 1
-  // — see `src/navigation/statement-import-return.navigator.test.tsx` for
-  // the real-router proof) — finds the existing `AccountDetail` instance
+  // Item 15 (F3): closes the successful-import modal. Does NOT navigate —
+  // see `handleSheetClosed` below (R2-1, fix round 3): a native-stack pop
+  // must wait for the sheet to ACTUALLY finish closing, which `onDone` (a
+  // Done press or a scrim tap) cannot promise on its own — only `onClosed`
+  // (the sheet's real completion signal) can. `importResult` itself is
+  // NEVER cleared (M4, fix round 1), so the sheet's last content stays
+  // correct for the whole close animation, independent of `visible`.
+  const handleImportDone = (): void => {
+    setResultSheetVisible(false);
+  };
+
+  // R2-1 (F3 part 1 fix round 3): runs once `ImportResultSheet`'s `onClosed`
+  // fires — `BottomSheet`'s pass-through of RN `Modal`'s own `onDismiss`,
+  // which only fires once the close ANIMATION has actually finished (round
+  // 2 re-review: a guessed `setTimeout` delay was "not tied to the real
+  // animation" — this removes the guess entirely). `navigatedAwayRef`
+  // ignores a repeated call (a double Done tap, or `onClosed` somehow
+  // firing more than once) so this navigates at most ONCE.
+  //
+  // `navigation.popTo` — NOT `navigate`, which on React Navigation 7 pushes
+  // a DUPLICATE of an already-on-stack route instead of reusing it (C1, F3
+  // part 1 fix round 1 — see
+  // `src/navigation/statement-import-return.navigator.test.tsx` for the
+  // real-router proof) — finds the existing `AccountDetail` instance
   // already on the stack (this screen, and Map Columns before it, were both
   // pushed FROM there) and pops back to it in place, regardless of how many
   // screens deep this import happened. Falls back to a plain `goBack()`
   // when the account isn't resolvable (the accountId-less Share Extension
   // entry point) — NEVER `popTo` in that branch, which would ADD an
   // `AccountDetail` that was never on this stack.
-  //
-  // N4 (F3 part 1 fix round 2): closes the sheet FIRST
-  // (`setResultSheetVisible(false)`) and only navigates
-  // `IMPORT_RESULT_SHEET_CLOSE_DELAY_MS` later — popping the underlying
-  // native-stack screen while its RN `Modal` is still mid-close is a known
-  // iOS rough edge (device feedback, round 1 re-review). `importResult`
-  // itself is NEVER cleared (M4, fix round 1), so the sheet's last content
-  // stays correct for the whole close animation, independent of `visible`.
-  const handleImportDone = (): void => {
-    setResultSheetVisible(false);
+  const handleSheetClosed = (): void => {
+    if (navigatedAwayRef.current) {
+      return;
+    }
+
+    navigatedAwayRef.current = true;
 
     const account = accountRows.at(0);
 
-    setTimeout(() => {
-      if (accountId && account) {
-        navigation.popTo('AccountDetail', { accountId, name: account.name }, { merge: true });
+    if (accountId && account) {
+      navigation.popTo('AccountDetail', { accountId, name: account.name }, { merge: true });
 
-        return;
-      }
+      return;
+    }
 
-      navigation.goBack();
-    }, IMPORT_RESULT_SHEET_CLOSE_DELAY_MS);
+    navigation.goBack();
   };
 
   // T7's manual entry point into the generic column-mapping screen. Only
@@ -572,6 +587,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
         visible={resultSheetVisible}
         result={importResult}
         onDone={handleImportDone}
+        onClosed={handleSheetClosed}
       />
     </Screen>
   );

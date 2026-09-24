@@ -8,15 +8,6 @@ import BottomSheet from '../../../design-system/components/bottom-sheet';
 
 import type { ImportResultSheetProps } from './import-result-sheet.props';
 
-// N4 (F3 part 1 fix round 2): how long a caller should wait, after setting
-// `visible={false}`, before actually navigating away — long enough for this
-// sheet's own (default `fade`) `BottomSheet`/`Modal` close animation to
-// finish, so a native-stack pop never lands mid-animation (a known iOS
-// rough edge). Matches the RN `Modal` system fade's own duration; exported
-// so both screens that own this sheet share one number rather than each
-// guessing their own.
-export const IMPORT_RESULT_SHEET_CLOSE_DELAY_MS = 300;
-
 /**
  * Item 15 (F3 device feedback): a completed Import used to leave its result
  * text sitting passively at the bottom of the scroll — easy to miss. This
@@ -33,14 +24,22 @@ export const IMPORT_RESULT_SHEET_CLOSE_DELAY_MS = 300;
  * before navigating away, while still passing the last `result` so the
  * body's content is correct for whatever the sheet's own closing animation
  * shows.
+ *
+ * `onClosed` (R2-1, fix round 3) is `BottomSheet`'s own pass-through of RN
+ * `Modal`'s real `onDismiss` — fired once the close animation has actually
+ * finished, unlike `onDone` (a mere close REQUEST: the Done button, or a
+ * scrim tap). The caller navigates from `onClosed`, not from `onDone`, so a
+ * native-stack pop never lands while this sheet is still visually closing —
+ * no guessed delay needed.
  */
-const ImportResultSheet: FC<ImportResultSheetProps> = ({ visible, result, onDone }) => {
+const ImportResultSheet: FC<ImportResultSheetProps> = ({ visible, result, onDone, onClosed }) => {
   const { t } = useTranslation();
 
   return (
     <BottomSheet
       visible={visible}
       onDismiss={onDone}
+      onClosed={onClosed}
       gap={3}
       header={<Text variant="heading">{t('statementImport.importResultTitle')}</Text>}
       testID="import-result-sheet"

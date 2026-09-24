@@ -53,9 +53,7 @@ import ChipRow from '../forms/chip-row';
 import FieldLabel from '../../design-system/components/field-label';
 import SegmentedControl from '../../design-system/components/segmented-control';
 import ImportOutcome from '../statement-import/import-outcome';
-import ImportResultSheet, {
-  IMPORT_RESULT_SHEET_CLOSE_DELAY_MS,
-} from '../statement-import/import-result-sheet';
+import ImportResultSheet from '../statement-import/import-result-sheet';
 import { previewStats, type PreviewStats } from '../statement-import/preview-stats/preview-stats';
 import TargetHoldingField from '../statement-import/target-holding-field';
 import type { AmountMode } from './amount-fields/amount-fields.props';
@@ -635,6 +633,9 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   // N4 (F3 part 1 fix round 2): decoupled from `importResult` itself — see
   // `handleImportDone` below for why.
   const [resultSheetVisible, setResultSheetVisible] = useState(false);
+  // R2-1 (F3 part 1 fix round 3): guards `handleSheetClosed` against running
+  // its navigation more than once — see that function's own comment.
+  const navigatedAwayRef = useRef(false);
 
   const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts']);
   const account = accounts.at(0);
@@ -822,32 +823,40 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     }
   };
 
-  // Item 15 (F3): same shape as `statement-import.screen.tsx`'s own
-  // `handleImportDone` — dismisses the successful-import modal and hands
-  // control back to the account it was imported into. `navigation.popTo` —
-  // NOT `navigate`, which on React Navigation 7 pushes a DUPLICATE of an
-  // already-on-stack route instead of reusing it (C1, F3 part 1 fix round 1
-  // — see `src/navigation/statement-import-return.navigator.test.tsx` for
-  // the real-router proof) — finds the existing `AccountDetail` instance
-  // already on the stack (this screen was pushed from StatementImport,
-  // itself pushed FROM there) and pops back to it in one hop.
-  //
-  // N4 (F3 part 1 fix round 2): closes the sheet FIRST, navigates
-  // `IMPORT_RESULT_SHEET_CLOSE_DELAY_MS` later — see the matching comment on
-  // `statement-import.screen.tsx`'s own `handleImportDone` for why.
-  // `importResult` itself is still never cleared (M4, fix round 1).
+  // Item 15 (F3): closes the successful-import modal. Does NOT navigate —
+  // see `handleSheetClosed` below (R2-1, fix round 3) and its matching
+  // comment on `statement-import.screen.tsx`'s own pair of handlers for the
+  // full rationale. `importResult` itself is still never cleared (M4, fix
+  // round 1).
   const handleImportDone = (): void => {
     setResultSheetVisible(false);
+  };
 
-    setTimeout(() => {
-      if (account) {
-        navigation.popTo('AccountDetail', { accountId, name: account.name }, { merge: true });
+  // R2-1 (F3 part 1 fix round 3): same shape as `statement-import.screen.tsx`'s
+  // own `handleSheetClosed` — runs once `ImportResultSheet`'s `onClosed`
+  // fires (the sheet's close animation actually finished), guarded by
+  // `navigatedAwayRef` so a repeated call navigates at most once.
+  // `navigation.popTo` — NOT `navigate`, which on React Navigation 7 pushes
+  // a DUPLICATE of an already-on-stack route instead of reusing it (C1, F3
+  // part 1 fix round 1 — see
+  // `src/navigation/statement-import-return.navigator.test.tsx` for the
+  // real-router proof) — finds the existing `AccountDetail` instance
+  // already on the stack (this screen was pushed from StatementImport,
+  // itself pushed FROM there) and pops back to it in one hop.
+  const handleSheetClosed = (): void => {
+    if (navigatedAwayRef.current) {
+      return;
+    }
 
-        return;
-      }
+    navigatedAwayRef.current = true;
 
-      navigation.goBack();
-    }, IMPORT_RESULT_SHEET_CLOSE_DELAY_MS);
+    if (account) {
+      navigation.popTo('AccountDetail', { accountId, name: account.name }, { merge: true });
+
+      return;
+    }
+
+    navigation.goBack();
   };
 
   const footer =
@@ -926,6 +935,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
         visible={resultSheetVisible}
         result={importResult}
         onDone={handleImportDone}
+        onClosed={handleSheetClosed}
       />
     </Screen>
   );

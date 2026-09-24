@@ -18,7 +18,7 @@ describe('ImportResultSheet', () => {
   // last `result`.
   it('renders nothing while not visible, even with a result', async () => {
     const { queryByText } = await render(
-      <ImportResultSheet visible={false} result={RESULT} onDone={jest.fn()} />,
+      <ImportResultSheet visible={false} result={RESULT} onDone={jest.fn()} onClosed={jest.fn()} />,
     );
 
     expect(queryByText(i18n.t('statementImport.importResultTitle'))).toBeNull();
@@ -26,7 +26,7 @@ describe('ImportResultSheet', () => {
 
   it('shows the title and the same result text ImportOutcome renders inline', async () => {
     const { getByText } = await render(
-      <ImportResultSheet visible result={RESULT} onDone={jest.fn()} />,
+      <ImportResultSheet visible result={RESULT} onDone={jest.fn()} onClosed={jest.fn()} />,
     );
 
     expect(getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy();
@@ -38,7 +38,7 @@ describe('ImportResultSheet', () => {
   it('calls onDone when the Done button is pressed', async () => {
     const onDone = jest.fn();
     const { getByText } = await render(
-      <ImportResultSheet visible result={RESULT} onDone={onDone} />,
+      <ImportResultSheet visible result={RESULT} onDone={onDone} onClosed={jest.fn()} />,
     );
 
     await fireEvent.press(getByText(i18n.t('common.done')));
@@ -49,11 +49,24 @@ describe('ImportResultSheet', () => {
   it('calls onDone on a scrim dismiss', async () => {
     const onDone = jest.fn();
     const { getByTestId } = await render(
-      <ImportResultSheet visible result={RESULT} onDone={onDone} />,
+      <ImportResultSheet visible result={RESULT} onDone={onDone} onClosed={jest.fn()} />,
     );
 
     await fireEvent.press(getByTestId('import-result-sheet-backdrop'));
 
     expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  // R2-1 (fix round 3): `onClosed` is BottomSheet's pass-through of RN
+  // Modal's real onDismiss — distinct from onDone (a mere close request).
+  it('calls onClosed when the underlying sheet reports it has actually finished closing', async () => {
+    const onClosed = jest.fn();
+    const { getByTestId } = await render(
+      <ImportResultSheet visible result={RESULT} onDone={jest.fn()} onClosed={onClosed} />,
+    );
+
+    await fireEvent(getByTestId('import-result-sheet-modal'), 'dismiss');
+
+    expect(onClosed).toHaveBeenCalledTimes(1);
   });
 });

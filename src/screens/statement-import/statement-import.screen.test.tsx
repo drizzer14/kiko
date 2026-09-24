@@ -11,7 +11,6 @@ import { headerFingerprint } from '../../statement-import/column-mapping';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import StatementImportScreen from './statement-import.screen';
-import { IMPORT_RESULT_SHEET_CLOSE_DELAY_MS } from './import-result-sheet';
 
 // The real uabean fixture (already committed by Task 1) — read as raw text
 // then re-encoded as base64, the exact shape `RNFS.readFile(uri, 'base64')`
@@ -780,22 +779,19 @@ describe('StatementImportScreen — column-mapping entry point (T7)', () => {
   });
 });
 
-// N4 (F3 part 1 fix round 2, orchestrator ruling): on Done, the sheet closes
+// N4 (F3 part 1 fix round 2) + R2-1 (fix round 3): on Done, the sheet closes
 // FIRST — popping the underlying native-stack screen while its RN Modal is
-// still mid-close is a known iOS rough edge — and only THEN, after the
-// sheet's own close animation has had time to finish, does the screen
-// navigate away.
-describe('StatementImportScreen — Done closes the sheet before navigating (N4)', () => {
+// still mid-close is a known iOS rough edge — and only navigates once the
+// sheet's `onClosed` fires (`BottomSheet`'s pass-through of RN `Modal`'s own
+// `onDismiss`, which only fires once the close ANIMATION has actually
+// finished), not from a guessed delay.
+describe('StatementImportScreen — Done closes the sheet before navigating (N4, R2-1)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     setLiveData({});
   });
 
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it('closes the sheet immediately, and defers popTo until after the close-animation delay', async () => {
+  const importSuccessfully = async (): Promise<Awaited<ReturnType<typeof renderScreen>>> => {
     mockReadFile.mockResolvedValue(fixtureBase64);
     mockImportStatement.mockResolvedValue({ formatId: 'monobank-csv', imported: 3, total: 4 });
     setLiveData({ account: { id: 'a', name: 'My Monobank card', bankId: 'monobank' } });
@@ -811,34 +807,51 @@ describe('StatementImportScreen — Done closes the sheet before navigating (N4)
       expect(view.getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy(),
     );
 
-    // Fake timers only from here — everything above needs real ones for
-    // `waitFor`'s own polling.
-    jest.useFakeTimers();
+    return view;
+  };
 
-    await act(async () => {
-      await fireEvent.press(view.getByText(i18n.t('common.done')));
-    });
+  it('Done closes the sheet, but does not navigate on its own', async () => {
+    const view = await importSuccessfully();
 
-    // Step 1 (immediate): the sheet is closed — its content is gone, matching
-    // a real `visible={false}` Modal transition starting right away.
+    await fireEvent.press(view.getByText(i18n.t('common.done')));
+
+    // The sheet is closed — its content is gone (the project's own Modal
+    // mock removes it the instant `visible` flips false, mirroring the
+    // start of a real close transition).
     expect(view.queryByText(i18n.t('statementImport.importResultTitle'))).toBeNull();
-    // Step 2 has NOT happened yet: no navigation until the close-animation
-    // delay elapses.
+    // No navigation yet — only `onClosed` (the sheet's real completion
+    // signal) triggers it, never `onDone` itself.
     expect(view.navigation.popTo).not.toHaveBeenCalled();
     expect(view.navigation.goBack).not.toHaveBeenCalled();
+  });
 
-    await act(async () => {
-      jest.advanceTimersByTime(IMPORT_RESULT_SHEET_CLOSE_DELAY_MS);
-    });
+  it('navigates once the sheet reports onClosed', async () => {
+    const view = await importSuccessfully();
 
-    // Step 2 (after the delay): NOW it navigates — `popTo`, not `navigate`
-    // (C1) — reusing the existing `AccountDetail` instance.
+    await fireEvent(view.getByTestId('import-result-sheet-modal'), 'dismiss');
+
+    // `popTo`, not `navigate` (C1) — reusing the existing `AccountDetail`
+    // instance.
     expect(view.navigation.popTo).toHaveBeenCalledWith(
       'AccountDetail',
       { accountId: 'a', name: 'My Monobank card' },
       { merge: true },
     );
     expect(view.navigation.navigate).not.toHaveBeenCalledWith('AccountDetail', expect.anything());
+  });
+
+  // R2-1: ignores a repeated close signal (e.g. a double Done tap under real
+  // animation timing firing `onClosed` more than once) — navigates AT MOST
+  // once.
+  it('a repeated onClosed (a double Done tap) navigates once', async () => {
+    const view = await importSuccessfully();
+
+    await fireEvent(view.getByTestId('import-result-sheet-modal'), 'dismiss');
+    expect(view.navigation.popTo).toHaveBeenCalledTimes(1);
+
+    await fireEvent(view.getByTestId('import-result-sheet-modal'), 'dismiss');
+
+    expect(view.navigation.popTo).toHaveBeenCalledTimes(1);
   });
 });
 

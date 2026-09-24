@@ -17,7 +17,12 @@ export type ImportResultSheetProps = {
    * unchanged — this sheet is never shown for that case. */
   result: ImportResult | undefined;
   /** Runs when the sheet's one "Done" action is pressed, or on a scrim/back
-   * dismiss — the caller closes the sheet and navigates back to the account
-   * screen from here. */
+   * dismiss — the caller closes the sheet (`visible={false}`) here. Does
+   * NOT navigate — see `onClosed`. */
   onDone: () => void;
+  /** Runs once the sheet has ACTUALLY finished closing — `BottomSheet`'s own
+   * pass-through of RN `Modal`'s real `onDismiss` (R2-1, fix round 3). The
+   * caller navigates from here, not from `onDone`, so a native-stack pop
+   * never lands mid-animation. */
+  onClosed: () => void;
 };

@@ -90,6 +90,36 @@ describe('BottomSheet', () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
+  // R2-1 (F3 part 1 fix round 3, Minor): a real completion signal for "the
+  // sheet has actually finished closing" — RN `Modal`'s own `onDismiss`
+  // (iOS only; fires once the dismiss ANIMATION has finished, unlike
+  // `onDismiss`/`onRequestClose` above, which mean "a dismiss was
+  // requested"). Passed through as its own optional prop so a caller that
+  // needs to run something ONLY after the close animation completes (e.g.
+  // navigating away) doesn't have to guess a delay.
+  it('calls onClosed when the underlying Modal reports its own dismiss (the close animation finished)', async () => {
+    const onClosed = jest.fn();
+    const { getByTestId } = await render(
+      <BottomSheet visible onDismiss={jest.fn()} onClosed={onClosed} testID={SHEET_TEST_ID}>
+        <Text>sheet body</Text>
+      </BottomSheet>,
+    );
+
+    await fireEvent(getByTestId(`${SHEET_TEST_ID}-modal`), 'dismiss');
+
+    expect(onClosed).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not require onClosed — every other caller stays unaffected', async () => {
+    const { getByText } = await render(
+      <BottomSheet visible onDismiss={jest.fn()}>
+        <Text>sheet body</Text>
+      </BottomSheet>,
+    );
+
+    expect(getByText('sheet body')).toBeTruthy();
+  });
+
   it('owns the bottom safe-area inset on top of its single base padding step', async () => {
     const { getByTestId } = await render(
       <BottomSheet visible onDismiss={jest.fn()} testID={SHEET_TEST_ID}>

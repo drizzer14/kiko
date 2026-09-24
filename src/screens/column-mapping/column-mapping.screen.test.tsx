@@ -10,7 +10,6 @@ import { headerFingerprint } from '../../statement-import/column-mapping';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import ColumnMappingScreen from './column-mapping.screen';
-import { IMPORT_RESULT_SHEET_CLOSE_DELAY_MS } from '../statement-import/import-result-sheet';
 
 const monobankFixtureText = readFileSync(
   path.join(
@@ -568,22 +567,18 @@ describe('ColumnMappingScreen', () => {
   });
 });
 
-// N4 (F3 part 1 fix round 2, orchestrator ruling): on Done, the sheet
-// closes FIRST, and only THEN, after the sheet's own close animation has
-// had time to finish, does the screen navigate away — see the matching
-// describe block in statement-import.screen.test.tsx for the full
+// N4 (F3 part 1 fix round 2) + R2-1 (fix round 3): on Done, the sheet
+// closes FIRST, and only navigates once the sheet's `onClosed` fires
+// (`BottomSheet`'s pass-through of RN `Modal`'s own `onDismiss`) — see the
+// matching describe block in statement-import.screen.test.tsx for the full
 // rationale.
-describe('ColumnMappingScreen — Done closes the sheet before navigating (N4)', () => {
+describe('ColumnMappingScreen — Done closes the sheet before navigating (N4, R2-1)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding] });
   });
 
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it('closes the sheet immediately, and defers popTo until after the close-animation delay', async () => {
+  const importSuccessfully = async (): Promise<Awaited<ReturnType<typeof renderScreen>>> => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
     mockImportParsedStatement.mockResolvedValue({
       formatId: 'column-mapping',
@@ -602,21 +597,23 @@ describe('ColumnMappingScreen — Done closes the sheet before navigating (N4)',
       expect(view.getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy(),
     );
 
-    // Fake timers only from here — everything above needs real ones for
-    // `waitFor`'s own polling.
-    jest.useFakeTimers();
+    return view;
+  };
 
-    await act(async () => {
-      await fireEvent.press(view.getByText(i18n.t('common.done')));
-    });
+  it('Done closes the sheet, but does not navigate on its own', async () => {
+    const view = await importSuccessfully();
+
+    await fireEvent.press(view.getByText(i18n.t('common.done')));
 
     expect(view.queryByText(i18n.t('statementImport.importResultTitle'))).toBeNull();
     expect(view.navigation.popTo).not.toHaveBeenCalled();
     expect(view.navigation.goBack).not.toHaveBeenCalled();
+  });
 
-    await act(async () => {
-      jest.advanceTimersByTime(IMPORT_RESULT_SHEET_CLOSE_DELAY_MS);
-    });
+  it('navigates once the sheet reports onClosed', async () => {
+    const view = await importSuccessfully();
+
+    await fireEvent(view.getByTestId('import-result-sheet-modal'), 'dismiss');
 
     expect(view.navigation.popTo).toHaveBeenCalledWith(
       'AccountDetail',
@@ -624,6 +621,17 @@ describe('ColumnMappingScreen — Done closes the sheet before navigating (N4)',
       { merge: true },
     );
     expect(view.navigation.navigate).not.toHaveBeenCalledWith('AccountDetail', expect.anything());
+  });
+
+  it('a repeated onClosed (a double Done tap) navigates once', async () => {
+    const view = await importSuccessfully();
+
+    await fireEvent(view.getByTestId('import-result-sheet-modal'), 'dismiss');
+    expect(view.navigation.popTo).toHaveBeenCalledTimes(1);
+
+    await fireEvent(view.getByTestId('import-result-sheet-modal'), 'dismiss');
+
+    expect(view.navigation.popTo).toHaveBeenCalledTimes(1);
   });
 });
 

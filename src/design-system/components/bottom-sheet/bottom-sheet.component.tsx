@@ -131,6 +131,7 @@ export const SHEET_DRAG_GESTURE_TEST_ID = 'bottom-sheet-drag';
 const BottomSheet: FC<BottomSheetProps> = ({
   visible,
   onDismiss,
+  onClosed,
   children,
   header,
   gap = 3,
@@ -314,7 +315,14 @@ const BottomSheet: FC<BottomSheetProps> = ({
   );
 
   return (
-    <Modal transparent visible={visible} animationType={animationType} onRequestClose={onDismiss}>
+    <Modal
+      transparent
+      visible={visible}
+      animationType={animationType}
+      onRequestClose={onDismiss}
+      onDismiss={onClosed}
+      testID={testID && `${testID}-modal`}
+    >
       {/* A Modal portals to its own native root OUTSIDE the app's root
           GestureHandlerRootView, so the sheet's drag Pan would never be
           recognized without this local root wrapping the overlay. */}
