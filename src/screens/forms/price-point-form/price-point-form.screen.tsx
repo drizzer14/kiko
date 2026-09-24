@@ -1,6 +1,6 @@
 import { holdingsRepo } from '@kiko/holdings/repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, useRef, useState } from 'react';
+import { type FC, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { Alert, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
@@ -65,6 +65,18 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
   const valueInputRef = useRef<TextInputInstance>(null);
   const headerInset = useHeaderInset();
   const contentHeightRef = useRef(0);
+
+  // The stack sets the static "Update Value" title (accounts.stack.tsx); a
+  // loan's own correction targets its manual OUTSTANDING series through this
+  // SAME form (holding-detail's footerActionFor reuses 'updateValue' for a
+  // loan rather than minting a separate action), so once the holding loads
+  // as a loan this overrides the title to read correctly for a debt. Mirrors
+  // HoldingFormScreen's own edit-mode title override.
+  useLayoutEffect(() => {
+    if (holding?.type === 'loan') {
+      navigation.setOptions({ title: t('forms.pricePoint.loanTitle') });
+    }
+  }, [holding?.type, navigation, t]);
 
   const save = async (): Promise<void> => {
     if (!holding) {

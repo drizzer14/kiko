@@ -134,4 +134,25 @@ describe('PricePointFormScreen', () => {
     expect(pricePointsRepo.upsertMany).not.toHaveBeenCalled();
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
+
+  // T28: a loan's correction targets its own manual outstanding series
+  // through this SAME form (PricePointForm never changes for a loan — see
+  // holding-detail's own footerActionFor doc comment), but the stack's
+  // static "Update Value" title reads wrong for a debt, so the screen
+  // overrides it once the holding loads.
+  it('overrides the title to "Update Outstanding" for a loan holding', async () => {
+    seed({ id: 'h-1', currency: 'UAH', type: 'loan' });
+
+    await renderScreen();
+
+    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Update Outstanding' });
+  });
+
+  it('does not override the title for a non-loan (property_item) holding', async () => {
+    seed({ id: 'h-1', currency: 'UAH', type: 'property_item' });
+
+    await renderScreen();
+
+    expect(navigation.setOptions).not.toHaveBeenCalled();
+  });
 });

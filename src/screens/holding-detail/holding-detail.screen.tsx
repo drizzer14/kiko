@@ -46,7 +46,8 @@ import { isSyncedHolding, isSyncedTransaction } from '../../holdings/deletable';
 import { type DerivedEntry, derivedEntries, type EntryTone } from '../../holdings/derived-entries';
 import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { holdingTypeSymbol } from '../../holdings/entity-symbols';
-import { asBondMeta, asMetalMeta } from '../../holdings/holding-metadata';
+import { asBondMeta, asLoanMeta, asMetalMeta } from '../../holdings/holding-metadata';
+import { loanInstallments, type LoanInstallment } from '../../holdings/loan-schedule';
 import {
   isLedgerlessHoldingType,
   isLotFormHoldingType,
@@ -204,11 +205,51 @@ const footerActionFor = (
     return 'updateValue';
   }
 
+  // A loan (T28) is ledgerless (checked below) but still takes the SAME
+  // `'updateValue'` action as a priced holding — it reuses `PricePointForm`
+  // to write a correction onto its own `holding:<id>` manual series
+  // (`loanOutstandingMinorAt` — every schedule, not just `'none'`, reads a
+  // correction there when one exists). The render below swaps the button's
+  // OWN label to "Update outstanding" for this type; the navigation target
+  // is identical. Checked before the ledgerless fallback so a loan does not
+  // fall through to `'none'`.
+  if (holding.type === 'loan') {
+    return 'updateValue';
+  }
+
   if (isLedgerlessHoldingType(holding.type) || isSyncedHolding(holding, account)) {
     return 'none';
   }
 
   return 'transaction';
+};
+
+// The next upcoming amortization row for an `'annuity'`/`'differentiated'`
+// loan (T28) — the one this holding's next scheduled payment falls on,
+// picked as the first installment whose due day is on or after `now`'s own
+// LOCAL day (mirrors `priceAsOfCaption`'s day-key convention). `undefined`
+// for every other holding, for an invalid/absent `LoanMeta`, for a `'none'`
+// schedule (no installments at all — `loanInstallments` already returns
+// `[]` for it), and once every installment has already come due (a fully
+// repaid loan). Extracted to module scope for the same cognitive-complexity
+// reason `footerActionFor`/`priceAsOfCaption` are.
+const nextLoanInstallment = (
+  holding: HoldingRow | undefined,
+  now: number,
+): LoanInstallment | undefined => {
+  if (holding === undefined || holding.type !== 'loan') {
+    return undefined;
+  }
+
+  const meta = asLoanMeta(holding.metadata);
+
+  if (meta === null || meta.schedule === 'none') {
+    return undefined;
+  }
+
+  const todayStart = startOfLocalDay(now);
+
+  return loanInstallments(meta).find((row) => row.dueDate >= todayStart);
 };
 
 // The "Value as of <date>" / "Price as of <date>" caption for a priced
@@ -507,6 +548,9 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const expectedProfit = bondMeta
     ? Money.of(currency, bondExpectedProfitMinor(bondMeta, currency))
     : null;
+  // An annuity/differentiated loan's next upcoming installment (T28) — its
+  // interest/principal split shown just below the Value header.
+  const nextInstallment = nextLoanInstallment(holding, now);
 
   // The user's main currency, and the rate table that converts into it. A
   // holding in a different currency shows a smaller converted base-currency
@@ -652,6 +696,31 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
               />
             </Box>
           )}
+          {nextInstallment && (
+            <Box style={styles.breakdown}>
+              <SummaryTable
+                title={t('holdingDetail.nextInstallment', {
+                  date: formatDate(nextInstallment.dueDate),
+                })}
+                rows={[
+                  {
+                    key: 'principal',
+                    label: t('holdingDetail.principal'),
+                    value: (
+                      <MoneyText money={Money.of(currency, nextInstallment.principalMinorUnits)} />
+                    ),
+                  },
+                  {
+                    key: 'interest',
+                    label: t('holdingDetail.interest'),
+                    value: (
+                      <MoneyText money={Money.of(currency, nextInstallment.interestMinorUnits)} />
+                    ),
+                  },
+                ]}
+              />
+            </Box>
+          )}
         </Box>
       )}
 
@@ -733,7 +802,11 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           ))
           .with('updateValue', () => (
             <Button onPress={() => navigation.navigate('PricePointForm', { holdingId })}>
-              {t('holdingDetail.updateValue')}
+              {t(
+                holding?.type === 'loan'
+                  ? 'holdingDetail.updateOutstanding'
+                  : 'holdingDetail.updateValue',
+              )}
             </Button>
           ))
           .with('addLot', () => (

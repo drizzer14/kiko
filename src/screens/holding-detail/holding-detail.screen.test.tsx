@@ -6,9 +6,12 @@ import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-han
 import '../../design-system/unistyles';
 import { transactionsRepo } from '@kiko/transactions/repo';
 
-import { formatMoney } from '../../currency/format';
 import { Money } from '../../currency/money';
 import { formatDate } from '../../dates/format';
+import { formatMoney } from '../../currency/format';
+import { startOfLocalDay } from '../../dates/local-day';
+import { loanInstallments } from '../../holdings/loan-schedule';
+import type { LoanMeta } from '../../holdings/holding-metadata';
 import {
   DELETE_ACTION_TEST_ID,
   DELETE_CONFIRM_TEST_ID,
@@ -114,6 +117,42 @@ const metalHolding = {
     unit: 'g',
     purity: '0.999',
     lots: [{ day: Date.UTC(2024, 0, 1), quantityDelta: '10', costMinorUnits: 5_000_000 }],
+  },
+};
+
+// A long-running structured loan, well underway by any real test-run date,
+// so its schedule always has an upcoming installment to show (T28).
+const annuityLoanMeta: LoanMeta = {
+  kind: 'car_loan',
+  principalMinorUnits: 100_000_00,
+  startDate: Date.UTC(2020, 0, 1),
+  schedule: 'annuity',
+  annualRatePct: 12,
+  termMonths: 120,
+};
+
+const annuityLoanHolding = {
+  id: 'h-1',
+  name: 'Car loan',
+  type: 'loan',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  metadata: annuityLoanMeta,
+};
+
+// An informal debt (spec 5.1) — its own outstanding is a manual price-point
+// series, never a computed schedule (loanInstallments returns [] for it).
+const noneLoanHolding = {
+  id: 'h-1',
+  name: 'IOU',
+  type: 'loan',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  metadata: {
+    kind: 'personal',
+    principalMinorUnits: 10_000_00,
+    startDate: Date.UTC(2020, 0, 1),
+    schedule: 'none',
   },
 };
 
@@ -1053,6 +1092,83 @@ describe('HoldingDetailScreen', () => {
     await fireEvent.press(getByText('Add lot'));
 
     expect(navigation.navigate).toHaveBeenCalledWith('LotForm', { holdingId: 'h-1' });
+  });
+
+  it('offers "Update outstanding" instead of a manual add action for a loan', async () => {
+    // A loan is ledgerless, but — unlike a plain ledgerless type (bond) —
+    // still takes an "Update outstanding" footer action: it writes a
+    // correction onto its own manual outstanding series (T28).
+    seed(annuityLoanHolding);
+
+    const { getByTestId, queryByText } = await renderScreen();
+
+    const footer = getByTestId('screen-footer');
+    expect(within(footer).getByText('Update outstanding')).toBeTruthy();
+    expect(queryByText('Update value')).toBeNull();
+    expect(queryByText('Add transaction')).toBeNull();
+    expect(queryByText('Add contribution')).toBeNull();
+  });
+
+  it('navigates to PricePointForm on "Update outstanding"', async () => {
+    seed(annuityLoanHolding);
+
+    const { getByText } = await renderScreen();
+
+    await fireEvent.press(getByText('Update outstanding'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('PricePointForm', { holdingId: 'h-1' });
+  });
+
+  it('shows the loan outstanding amount as negative in the Value header', async () => {
+    // A 'none' (informal) loan's outstanding reads directly from its manual
+    // holding:<id> price-point series (spec 5.1) — seeding one gives a
+    // deterministic figure, independent of the real test-run date.
+    seed(noneLoanHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [
+      {
+        instrument: 'holding:h-1',
+        day: Date.UTC(2020, 0, 1),
+        price: '7500.00',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+
+    const { getByText } = await renderScreen();
+
+    expect(getByText(formatMoney(Money.of('UAH', -750_000)))).toBeTruthy();
+  });
+
+  it("shows the next installment's interest/principal split for an annuity loan", async () => {
+    seed(annuityLoanHolding);
+
+    const { getByText } = await renderScreen();
+
+    const next = loanInstallments(annuityLoanMeta).find(
+      (row) => row.dueDate >= startOfLocalDay(Date.now()),
+    );
+    if (next === undefined) {
+      throw new Error('fixture must have an upcoming installment for this test to mean anything');
+    }
+
+    expect(getByText(`Next installment (${formatDate(next.dueDate)})`)).toBeTruthy();
+    expect(getByText(formatMoney(Money.of('UAH', next.principalMinorUnits)))).toBeTruthy();
+    expect(getByText(formatMoney(Money.of('UAH', next.interestMinorUnits)))).toBeTruthy();
+  });
+
+  it('shows no next-installment panel for a "none" schedule loan', async () => {
+    seed(noneLoanHolding);
+
+    const { queryByText } = await renderScreen();
+
+    expect(queryByText(/Next installment/)).toBeNull();
+  });
+
+  it('shows no next-installment panel for a non-loan holding', async () => {
+    seed(propertyHolding);
+
+    const { queryByText } = await renderScreen();
+
+    expect(queryByText(/Next installment/)).toBeNull();
   });
 
   it('hides the footer add action for a synced Monobank holding', async () => {
