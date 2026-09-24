@@ -534,7 +534,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           <Box gap={4}>
             <Divider testID="form-divider" />
 
-            {!isEdit && <Text variant="heading">{t('accountDetail.synchronization')}</Text>}
+            {/* F4 audit item 22: this used to be create-only, so an edit
+                render's bank block sat under a bare divider with no heading
+                naming the section at all — the SAME heading create mode
+                already shows above `BankTypeField`. */}
+            <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
             <BankTypeField
               label={t('forms.account.bankType')}

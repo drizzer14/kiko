@@ -814,6 +814,18 @@ describe('AccountFormScreen edit mode', () => {
     expect(getByTestId('account-bank-type-field')).toHaveTextContent('PrivatBank');
   });
 
+  // F4 audit item 22: the "Synchronization" heading above the bank picker
+  // used to be create-only, so an edit render's bank block sat under a bare
+  // divider with no section name at all.
+  it('shows the Synchronization heading above the bank picker in edit mode too', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: 'privatbank' },
+    ];
+    const { getByText } = await renderForm({ accountId: 'acc-1' });
+
+    expect(getByText('Synchronization')).toBeTruthy();
+  });
+
   it('edit form’s bank picker lists the same six banks the create form does, plus "Free"', async () => {
     mockAccounts = [
       { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: null },
