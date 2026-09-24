@@ -392,7 +392,7 @@ directly rather than trusting a restated MCC list here; see
 A linked loan payment (T29/T30, spec 5, D14 — "interest-only
 spending") is excluded the same way, but REPLACED rather than simply
 dropped: the loan-payments module (`src/statistics/loan-payments/`)
-exports `loanPaymentExcludedTxIds(transactions, loanHoldings)`, which
+exports `loanPaymentExcludedTransactionIds(transactions, loanHoldings)`, which
 drops a row from the pie/trend the same way every other exclusion
 rule does, IF AND ONLY IF its `transactions.loanHoldingId` marker
 (T29) points at a holding present in `loanHoldings` — Review Focus 7
@@ -995,12 +995,12 @@ refreshes any of the three loan-link columns on a re-sync — its
 exclusion `category`/`comment` already rely on (see that function's own
 existing doc comment). A settled-amount re-fetch of an already-linked payment
 therefore keeps its link untouched. Its underlying insert
-(`insertDedupRowsTx`) is chunked through `chunkForTable` (below) — a whole
+(`insertDedupRowsDatabaseTransaction`) is chunked through `chunkForTable` (below) — a whole
 statement-import file or Monobank sync above a few thousand rows failed
 `SQLITE_MAX_VARIABLE_NUMBER` before this (M6).
 
 **Review Focus 7, extended to the account-delete path (I1).**
-`holdingsRepo.clearLoanLinksForHoldingsTx(tx, holdingIds)` (exported, not
+`holdingsRepo.clearLoanLinksForHoldingsDatabaseTransaction(databaseTransaction, holdingIds)` (exported, not
 private to `remove`) clears `loanHoldingId`/`loanLinkSource` on every OTHER
 holding's transaction that still points at one of `holdingIds`, in the SAME
 `write()` transaction as the delete itself (`UPDATE transactions SET
@@ -1027,7 +1027,7 @@ round 1): T29's 3 new columns took `transactions` from 15 to 18 columns, so
 the OLD fixed 2000-rows-per-chunk constant bound 2000 x 18 = 36000
 parameters — over SQLite's 32766-bound-parameter ceiling — and a `.kiko`
 backup with >= 1821 transactions failed to restore. `chunkForTable`
-(`src/db/chunk-for-table.ts`, shared with `insertDedupRowsTx` above) derives
+(`src/db/chunk-for-table.ts`, shared with `insertDedupRowsDatabaseTransaction` above) derives
 the row count per chunk from the TARGET table's own column count
 (`getTableColumns`, floor-divided into a safety margin under the ceiling)
 instead of a fixed row constant, so a future column added to any of these

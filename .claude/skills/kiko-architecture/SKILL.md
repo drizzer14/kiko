@@ -180,7 +180,7 @@ row-count chunk; the safe size depends on the table's column count,
 which only `chunkForTable` knows.
 
 Examples: `ratesRepo.upsertMany` (`src/rates/repo/rates.repo.ts`) and the
-shared `insertDedupRowsTx`
+shared `insertDedupRowsDatabaseTransaction`
 (`src/transactions/repo/transactions.repo.ts`, called by both
 `transactionsRepo.addManyDedup` and `importRows`) — the latter also
 chunks its two per-row `inArray(...)` selects (the category-override
@@ -823,7 +823,7 @@ than restated here:
   Monobank uses, `src/monobank/`) from the injected
   `now`/`sleep` and threads it through EVERY deposit/withdraw page
   request, spacing them by `BINANCE_REQUEST_INTERVAL_MS` (small — a
-  background import, not Monobank's 60s). `sleep` is a `BinanceTxSyncDeps`
+  background import, not Monobank's 60s). `sleep` is a `BinanceTransactionSyncDeps`
   seam so a test paces instantly; there is no `gate` seam (same rationale
   as Monobank — the gate is built from `now`/`sleep`).
 - **Incremental cursor, no schema column.** The window start is derived

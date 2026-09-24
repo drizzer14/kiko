@@ -291,7 +291,7 @@ The allow-list is a static data field on the bank catalog entry (for example `se
 
 **Interest-only spending (D14).** A loan payment is a bank transaction (for example −UAH 12,000). For an `annuity` or `differentiated` loan, Kiko knows the schedule, so it can split each scheduled payment into interest and principal. Design:
 - The user links a payment transaction to the loan (a "Loan payment" action on the transaction, like the existing Exchange link that sets `exchangeCounterpartHoldingId`).
-- A linked payment is excluded from spending by a new id-set builder (next to `exchangeExcludedTxIds`). The interest part for that date is added back to spending as a derived entry, under a "Loan interest" category. It is computed on the fly, like bond coupons.
+- A linked payment is excluded from spending by a new id-set builder (next to `exchangeExcludedTransactionIds`). The interest part for that date is added back to spending as a derived entry, under a "Loan interest" category. It is computed on the fly, like bond coupons.
 - A `none`-schedule (informal) debt has no interest → a linked payment counts 0 as spending.
 - An unlinked payment stays normal spending.
 

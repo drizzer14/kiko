@@ -1,6 +1,6 @@
 import { exchangeExcludedTransactionIds } from './exchange-exclusion';
 
-describe('exchangeExcludedTxIds', () => {
+describe('exchangeExcludedTransactionIds', () => {
   it('excludes both legs of a cross-currency exchange', () => {
     const ids = exchangeExcludedTransactionIds([
       { id: 'out', exchangeCounterpartHoldingId: 'h-usd' },

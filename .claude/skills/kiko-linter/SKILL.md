@@ -413,11 +413,18 @@ hand, never from `import-order.sh`.
 
 `scripts/checks/full-word-identifiers.js` (+ its wrapper `.sh`) mechanizes
 kiko-code-style's "Full words in identifiers" rule. Wired at the fast tier
-(`fast.sh`, alongside `lint.sh`/`security.sh`/`import-order.sh`) — the rule
-is purely per-file with no cross-file dependency — and project-wide via
-`npm run check:full-word-identifiers` (part of `check:all`), scanning
-`src/`, `__tests__/`, `rules/fixtures/`, and `scripts/` (the same scope
-the R1.d sweep covered).
+(`fast.sh`, alongside `lint.sh`/`security.sh`/`import-order.sh`) — every
+`.ts`/`.tsx` is in scope, and a `.js`/`.mjs`/`.cjs` is in scope only under
+a `scripts/` directory (the fast tier's own harness-tooling files, the
+only place today's tree mixes CommonJS/ESM with TypeScript) — the rule is
+purely per-file with no cross-file dependency. Project-wide via `npm run
+check:full-word-identifiers` (part of `check:all`) mirrors that: every
+`.ts`/`.tsx` under `src/`, `__tests__/`, `rules/fixtures/`, `scripts/`,
+`jest/`, `__mocks__/`, `e2e/`, plus `App.tsx` and `drizzle.config.ts`
+themselves, and a second pass for `.js`/`.mjs`/`.cjs` under any `scripts/`
+directory in scope — everything the fast tier already checks on a fresh
+edit, so the project-wide scan can never silently miss a file the hook
+guards.
 
 The scanner is the same `blankNoise`-then-scan shape as
 `import-order.js`/`one-component-per-file.ts`: blank every string,
@@ -461,14 +468,14 @@ migration-journal JSON shape — see that file's own header comment) does
 NOT exempt `idx` anywhere else, and a (path, word)-only key would have
 been too WIDE inside a single file too — `src/crypto-sync/binance/binance.transactions.ts`
 needed its wire-mirrored `txId` field exempted while a DIFFERENT `tx`-bearing
-identifier in that SAME file (`BinanceTxSyncDeps`, this codebase's own type
+identifier in that SAME file (`BinanceTransactionSyncDeps`, this codebase's own type
 name) still needed the ordinary rename. Every entry needs a concrete,
 verified external-format citation, the same standard as every other
 ignore-list exception in this repo — see
 `docs/harness/documented-exceptions.md` for the full, individually-cited
-list (18 entries as of the R1.d sweep: the drizzle migration-journal shape,
-NBU register's `val_code`, Binance's `{code, msg}` error body and its
-`txId` history-record field, Esplora's `tx_count`, and React Native
+list (18 entries: the drizzle migration-journal shape, NBU register's
+`val_code`, Binance's `{code, msg}` error body and its `txId`
+history-record field, Esplora's `tx_count`, and React Native
 `FlatList`'s own `initialNumToRender` prop).
 
 ## Every mechanized finding gets an inventory row

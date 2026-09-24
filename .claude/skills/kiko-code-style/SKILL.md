@@ -556,6 +556,18 @@ shortened word):
 | `num` | `number` |
 | `arr` / `obj` / `str` | a descriptive name for what the array/object/string actually holds |
 
+`tx` spells to `transaction` EXCEPT the one case that means the SQL/Drizzle
+write-transaction handle (`write(async (tx) => ...)`'s parameter, and any
+helper it is threaded through, e.g. a test's fake-handle factory) — that
+one spells to `databaseTransaction` instead, never bare `transaction`:
+`transaction` is this codebase's own domain word for a ledger row, and
+`transaction.update(transactions)` or a fake-handle factory named
+`makeCreateTransaction` both read as though the ledger were mutating
+itself. A third-party API method that happens to be named `transaction`
+(e.g. op-sqlite's own `rawDatabase.transaction(...)`) is a forced external
+name per the exception list below and is never renamed either way — only
+ITS callback parameter (the handle) follows this rule.
+
 Explicit exceptions — these stay as they are, no rename:
 
 - `id` — established short form, not an abbreviation of a longer word

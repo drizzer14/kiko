@@ -46,7 +46,7 @@ const linkedPayment: LoanPaymentTransaction = {
   currency: 'UAH',
 };
 
-describe('loanPaymentExcludedTxIds', () => {
+describe('loanPaymentExcludedTransactionIds', () => {
   it('excludes a linked payment whose loan holding exists', () => {
     const ids = loanPaymentExcludedTransactionIds([linkedPayment], [scheduledLoan]);
 

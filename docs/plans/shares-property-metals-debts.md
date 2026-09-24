@@ -376,7 +376,7 @@ Flow: Account detail → Import statement → pick CSV or XLSX → (dedicated fo
 ### Task T30: Interest-only spending (developer, scribe)
 
 **Files:** Create `src/statistics/loan-payments/{loan-payments.ts,.test.ts,index.ts}`. Create the hand-authored data-only migration `drizzle/migrations/0038_seed_loan_interest_category.sql` (`INSERT OR IGNORE` of `loan_interest`, title "Loan interest", an icon, an `entityColors` color) with a journal entry. Modify `src/db/__fixtures__/seeded-categories.ts`, `en.ts`/`uk.ts` (`categories.loan_interest` "Loan interest"/"Відсотки за кредитом"), and `statistics.screen.tsx` (union into `excludedTransactionIds`; append interest entries to the list fed to **both** `buildCategoryBreakdown` and the category trend).
-**Produces:** `loanPaymentExcludedTxIds(transactions)` (only links whose loan exists); `loanInterestEntries({ transactions, loanHoldings })` (id `loan-interest:<txId>`, category `loan_interest`, amount `−interest`).
+**Produces:** `loanPaymentExcludedTransactionIds(transactions)` (only links whose loan exists); `loanInterestEntries({ transactions, loanHoldings })` (id `loan-interest:<txId>`, category `loan_interest`, amount `−interest`).
 
 - [ ] Failing tests: a linked −12,000 payment with installment interest 9,000 → the pie shows 9,000 under "Loan interest" and nothing from the raw row; an informal loan payment counts 0; an unlinked payment counts in full; **Review Focus 7**: a link to a missing loan counts as normal spending; the trend includes the interest.
 - [ ] Implement. Run `npx jest src/statistics src/db src/screens/statistics`, then `make typecheck && make lint`.

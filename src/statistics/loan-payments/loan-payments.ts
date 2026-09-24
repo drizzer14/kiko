@@ -75,7 +75,7 @@ export const loanPaymentExcludedTransactionIds = (
  * (`loanInterestForPaymentMinor`). A payment with 0 counted interest (an
  * informal `'none'`-schedule loan, or a payment more than one period
  * outside the schedule — M2) produces NO entry: its whole amount was
- * already dropped by `loanPaymentExcludedTxIds` above, so it simply counts
+ * already dropped by `loanPaymentExcludedTransactionIds` above, so it simply counts
  * as 0 spending rather than a stray zero-amount slice. A dangling
  * `loanHoldingId` (Review Focus 7) also produces no entry — that row was
  * never excluded above, so it already counts in full under its own
@@ -90,7 +90,7 @@ export const loanPaymentExcludedTransactionIds = (
  * interest in that currency, so stamping the payment's currency instead
  * would mislabel the amount the moment the two differ. A payment whose
  * currency differs from its linked loan's produces no entry at all (same
- * rule as `loanPaymentExcludedTxIds` above, so the row is never dropped
+ * rule as `loanPaymentExcludedTransactionIds` above, so the row is never dropped
  * from spending without a replacement). A CREDIT (a positive amount, e.g. a
  * linked row edited into a reversal) is never interest either — only a
  * debit pays down a loan.

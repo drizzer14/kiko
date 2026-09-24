@@ -188,7 +188,7 @@ verified usage, not dead weight:
   JSON key". The `name` field (not just word) matters: it is what lets
   `src/crypto-sync/binance/binance.transactions.ts` exempt only its
   wire-mirrored `txId` field while still catching a DIFFERENT `tx`-bearing
-  identifier chosen freely in the SAME file (`BinanceTxSyncDeps`, this
+  identifier chosen freely in the SAME file (`BinanceTransactionSyncDeps`, this
   codebase's own type name, correctly renamed to `BinanceTransactionSyncDeps`
   during the R1.d sweep — a word-only, file-wide exemption would have
   silently skipped that one too). Each of the 18 entries is a real,
