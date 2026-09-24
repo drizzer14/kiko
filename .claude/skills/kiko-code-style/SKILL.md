@@ -118,26 +118,6 @@ From `biome.json`'s `linter.rules`:
   `ManualBondFields`) is the right fix for a screen that is exhausting
   its budget: pull the state/effects/JSX that belong to one concern
   into their own file, not just their own local variable.
-  Two corollaries confirmed while fixing `holding-form.screen.tsx`
-  (T25 review round 1): a ternary, `??`, or `?.` chain written
-  DIRECTLY in a function's own top-level body counts against THAT
-  function, including a nested `const foo = () => {...}` closure
-  DEFINED INSIDE a component (a closure is not a separate
-  declaration in Biome's sense — it is still part of the enclosing
-  function's own body); and a JSX conditional-render gate
-  (`{cond && (...)}`) that is LEXICALLY NESTED inside another
-  conditional's rendered children (e.g. a mode-specific gate inside a
-  type-specific gate) costs more than the same gate as a flat sibling
-  — the fix is a plain, ungated `<TheFields cond={cond} .../>` element
-  whose OWN component does the `if (!cond) return null;`, not a
-  `match(cond ? 'a' : 'b').with(...).exhaustive()` trick at the call
-  site. A `match()`/`ts-pattern` chain in place of a raw `&&`/ternary
-  DOES avoid the score (Biome does not walk into `.with()` callbacks
-  either), but do not use it that way — CLAUDE.md's "fix the
-  underlying issue" rule and this rule's own "decompose" guidance both
-  rule it out as a workaround; reach for `match()` only where it is
-  already this codebase's idiom for a REAL exhaustive-union match
-  (`isValid = match(type)...`), never to dodge a lint budget.
 - `complexity.noVoid` is an error — never use the `void` operator. To
   fire-and-forget a promise that already captures its own errors (an
   `either(...)` call), call it as a plain expression statement; do

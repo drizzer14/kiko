@@ -23,7 +23,13 @@ const baseProps = {
   isin: '',
   onChangeIsin: jest.fn(),
   foundTerms: null,
+  // Non-null cache by default (a real "not found") — the M6 tests below
+  // override this to exercise the "never loaded" wording.
+  registerLoaded: true,
   onSwitchToManual: jest.fn(),
+  needsCouponFrequencyPick: false,
+  pickedCouponFrequency: null,
+  onPickCouponFrequency: jest.fn(),
 };
 
 describe('BondIsinSection', () => {
@@ -50,7 +56,7 @@ describe('BondIsinSection', () => {
     expect(onSelectMode).toHaveBeenCalledWith('manual');
   });
 
-  it('renders an ISIN field that auto-uppercases what is typed', async () => {
+  it("forwards the typed ISIN text as-is (normalizing is the caller/hook's job)", async () => {
     const onChangeIsin = jest.fn();
     const { getByPlaceholderText } = await render(
       <BondIsinSection {...baseProps} onChangeIsin={onChangeIsin} />,
@@ -58,7 +64,7 @@ describe('BondIsinSection', () => {
 
     await fireEvent.changeText(getByPlaceholderText('UA4000234215'), 'ua4000234215');
 
-    expect(onChangeIsin).toHaveBeenCalledWith('UA4000234215');
+    expect(onChangeIsin).toHaveBeenCalledWith('ua4000234215');
   });
 
   it('shows the passed-through ISIN error message', async () => {
@@ -79,12 +85,29 @@ describe('BondIsinSection', () => {
     expect(getByText(/USD/)).toBeTruthy();
   });
 
-  it('shows a "not in the NBU register" hint with a Switch to manual button once a validly-shaped ISIN is not found', async () => {
+  it('shows a "not in the NBU register" hint with a Switch to manual button once a validly-shaped ISIN is not found and the cache has data', async () => {
     const { getByText } = await render(
-      <BondIsinSection {...baseProps} isin="UA4000234215" foundTerms={null} />,
+      <BondIsinSection {...baseProps} isin="UA4000234215" foundTerms={null} registerLoaded />,
     );
 
     expect(getByText('Not in the NBU register.')).toBeTruthy();
+    expect(getByText('Switch to manual')).toBeTruthy();
+  });
+
+  // M6 (T25 review round 2): "no cache yet" reads a neutral message instead
+  // of a confident "not found" — same Switch-to-Manual button either way.
+  it('shows a neutral "register not loaded" hint instead, when the cache has never been populated', async () => {
+    const { getByText, queryByText } = await render(
+      <BondIsinSection
+        {...baseProps}
+        isin="UA4000234215"
+        foundTerms={null}
+        registerLoaded={false}
+      />,
+    );
+
+    expect(getByText('Register not loaded yet.')).toBeTruthy();
+    expect(queryByText('Not in the NBU register.')).toBeNull();
     expect(getByText('Switch to manual')).toBeTruthy();
   });
 
@@ -132,5 +155,68 @@ describe('BondIsinSection', () => {
     expect(
       getByText('Bought in Diia? Add the bond under the bank or broker you chose there.'),
     ).toBeTruthy();
+  });
+
+  // N2 (T25 review round 2, orchestrator ruling): an unmapped-frequency
+  // match shows its own picker, with NO chip pre-selected, and blocks Save
+  // via the caller's own `couponFrequencyError` until one is picked.
+  describe('the coupon-frequency pick (N2)', () => {
+    it('renders the picker with no chip selected when needsCouponFrequencyPick is true', async () => {
+      const { getByText } = await render(
+        <BondIsinSection {...baseProps} needsCouponFrequencyPick />,
+      );
+
+      expect(getByText('Coupon frequency')).toBeTruthy();
+      for (const label of ['Monthly', 'Quarterly', 'Semiannually', 'Annually']) {
+        expect(getByText(label).parent?.props.accessibilityState.selected).toBe(false);
+      }
+    });
+
+    it('does not render the picker when a pick is not needed', async () => {
+      const { queryByText } = await render(
+        <BondIsinSection {...baseProps} needsCouponFrequencyPick={false} />,
+      );
+
+      expect(queryByText('Coupon frequency')).toBeNull();
+    });
+
+    it('reports the tapped frequency', async () => {
+      const onPickCouponFrequency = jest.fn();
+      const { getByText } = await render(
+        <BondIsinSection
+          {...baseProps}
+          needsCouponFrequencyPick
+          onPickCouponFrequency={onPickCouponFrequency}
+        />,
+      );
+
+      await fireEvent.press(getByText('Quarterly'));
+
+      expect(onPickCouponFrequency).toHaveBeenCalledWith('quarterly');
+    });
+
+    it('shows the already-picked frequency as selected', async () => {
+      const { getByText } = await render(
+        <BondIsinSection
+          {...baseProps}
+          needsCouponFrequencyPick
+          pickedCouponFrequency="quarterly"
+        />,
+      );
+
+      expect(getByText('Quarterly').parent?.props.accessibilityState.selected).toBe(true);
+    });
+
+    it('shows the passed-through coupon-frequency error message', async () => {
+      const { getByText } = await render(
+        <BondIsinSection
+          {...baseProps}
+          needsCouponFrequencyPick
+          couponFrequencyError="Pick a coupon frequency."
+        />,
+      );
+
+      expect(getByText('Pick a coupon frequency.')).toBeTruthy();
+    });
   });
 });

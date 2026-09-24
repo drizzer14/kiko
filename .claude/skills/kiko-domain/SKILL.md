@@ -612,13 +612,20 @@ recombine them:
   `DateField.handleDayPress` carries an existing value's own
   time-of-day onto a newly picked day (so a paired TimeField pick is
   never clobbered);
-- applies a found ISIN's terms EXACTLY ONCE per match, keyed ONLY on
-  the matched row's own `isin` string (`registerTerms?.isin`), never
-  on `bondMode`/`purchaseDate`/anything else — fixes T25 review round
-  1's I1 (a merged effect re-applied on every unrelated change,
-  silently overwriting a typed name or a changed currency) and I3 (the
-  SAME merged effect re-firing on every re-tap of "ISIN" put the
-  control into a loop back to Manual for an unmapped-frequency match).
+- applies a found ISIN's terms once PER MATCH while in ISIN mode,
+  tracked by a REF (`lastAppliedIsinRef`, not the effect's own
+  dependency array) rather than "since `bondMode` is still isin" — the
+  register lookup itself is NOT gated on `bondMode` (a valid ISIN
+  typed in Manual mode resolves just as readily), so a match resolved
+  while the user is in Manual mode still applies the first time they
+  later switch to ISIN (T25 review round 2, N1: keying purely on
+  `registerTerms?.isin` missed exactly this case, because the effect
+  never ran again once `bondMode` stopped changing). This also fixes
+  T25 review round 1's I1 (a merged effect re-applied on every
+  unrelated change, silently overwriting a typed name or a changed
+  currency) and I3 (the same merged effect re-firing on every re-tap
+  of "ISIN" put the control into a loop back to Manual for an
+  unmapped-frequency match).
 
 ISIN mode shows quantity (required) and purchasePrice (optional,
 defaults to nominal — unchanged from Manual) always; it hides face
@@ -626,10 +633,18 @@ value, coupon, maturity, kind, and frequency — a found ISIN fills all
 of them: `bondKind` is always `'government'` (the register is
 Minfin-only), `couponFrequency` only when the register's `pay_period`
 maps onto a known band; an unmapped period (spec 6.2's own documented
-fallback) instead switches the form to Manual, leaving every OTHER
-known field pre-filled, rather than guessing a frequency — this
-auto-switch fires once per match (see I3 above), so re-tapping "ISIN"
-afterward correctly stays in ISIN mode instead of snapping back. In
+fallback) instead switches the form to Manual ONCE, the first time
+that match is applied, leaving every OTHER known field pre-filled,
+rather than guessing a frequency. Re-tapping "ISIN" afterward for that
+SAME match does stay in ISIN mode (I3) — but showing the register's
+summary there with no visible frequency would silently let the form
+carry the shared `couponFrequency` state's own untouched default into
+Save, which is the exact guess spec 6.2 forbids. So ISIN mode instead
+shows its OWN coupon-frequency `ChipRow` with NO default whenever the
+matched terms have `couponFrequency === null`
+(`needsCouponFrequencyPick`), and Save is blocked until the user picks
+one (T25 review round 2, N2) — never a frequency the user did not
+pick or the register did not give. In
 EDIT mode, a found ISIN whose currency differs from the (locked)
 holding currency is never applied at all — `isinReasonKey` returns
 `'forms.holding.isinCurrencyMismatchError'` instead, blocking Save

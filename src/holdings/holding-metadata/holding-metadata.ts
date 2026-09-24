@@ -14,7 +14,20 @@ export type TermDepositMeta = {
 
 export type BondKind = 'government' | 'corporate';
 
+// Exported alongside the type it enumerates (the same pattern
+// `preciousMetals`/`metalForms`/`propertyCategories` below establish) so a
+// ChipRow-building component (`ManualBondFields`, `BondIsinSection`) reads
+// its own `options` from here instead of re-declaring the same literal set.
+export const bondKinds: readonly BondKind[] = ['government', 'corporate'];
+
 export type BondCouponFrequency = 'monthly' | 'quarterly' | 'semiannually' | 'annually';
+
+export const bondCouponFrequencies: readonly BondCouponFrequency[] = [
+  'monthly',
+  'quarterly',
+  'semiannually',
+  'annually',
+];
 
 export type BondMeta = {
   quantity: number;
@@ -43,10 +56,10 @@ const frequencies = new Set<string>(['bi-weekly', 'monthly', 'quarterly', 'annua
 const normalizeCompounding = (value: string): CompoundingFrequency =>
   value === 'daily' ? 'monthly' : (value as CompoundingFrequency);
 
-const bondCouponFrequencies = new Set<string>(['monthly', 'quarterly', 'semiannually', 'annually']);
+const bondCouponFrequencySet = new Set<string>(bondCouponFrequencies);
 
 const asBondCouponFrequency = (value: unknown): BondCouponFrequency =>
-  typeof value === 'string' && bondCouponFrequencies.has(value)
+  typeof value === 'string' && bondCouponFrequencySet.has(value)
     ? (value as BondCouponFrequency)
     : 'annually';
 

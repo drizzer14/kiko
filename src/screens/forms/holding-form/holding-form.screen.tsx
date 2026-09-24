@@ -23,6 +23,7 @@ import {
   asTermDepositMeta,
   type BondKind,
   type BondMeta,
+  type BondCouponFrequency,
   type Metal,
   type MetalForm,
   type MetalUnit,
@@ -31,8 +32,8 @@ import {
   type TermDepositMeta,
 } from '../../../holdings/holding-metadata';
 import type { Lot } from '../../../holdings/lots';
-import { normalizeIsin } from '../../../bonds/isin';
 import { Money } from '../../../currency/money';
+import { normalizeIsin } from '../../../bonds/isin';
 import type { HoldingRow } from '../../../db/schema';
 import { dayKeyOf } from '../../../prices/price-book';
 import { parseAmount } from '../../../currency/parse';
@@ -426,17 +427,12 @@ const createPayloadFor = (params: {
   };
 };
 
-const bondKinds: readonly BondKind[] = ['government', 'corporate'];
-
 const compoundingOptions: readonly CompoundingFrequency[] = [
   'bi-weekly',
   'monthly',
   'quarterly',
   'annually',
 ];
-
-const couponFrequencies = ['monthly', 'quarterly', 'semiannually', 'annually'] as const;
-type CouponFrequency = (typeof couponFrequencies)[number];
 
 // The name-required reason, shown only after a failed Save press: gated on
 // `attemptedSave` so it renders nothing before the first press. The
@@ -492,9 +488,27 @@ const isinFieldErrorMessage = (
   attemptedSave: boolean,
   reasonKey: IsinReasonKey | null,
 ): string | undefined =>
-  reasonKey === null || reasonKey === 'forms.holding.isinNotInRegister'
+  reasonKey === null ||
+  reasonKey === 'forms.holding.isinNotInRegister' ||
+  reasonKey === 'forms.holding.isinRegisterNotLoaded'
     ? undefined
     : fieldErrorMessage(t, attemptedSave, reasonKey, reasonKey);
+
+// The ISIN-mode-only coupon-frequency picker's OWN blocking error (T25
+// review round 2, N2, orchestrator ruling): only once a Save attempt was
+// made, only for the one match that left `couponFrequency` unmapped, and
+// only until the user picks one. Module-level and pure, the same reason
+// `isinFieldErrorMessage` above is, rather than an inline ternary in the
+// component's own JSX.
+const couponFrequencyErrorMessage = (
+  t: TFunction,
+  attemptedSave: boolean,
+  needsCouponFrequencyPick: boolean,
+  pickedCouponFrequency: BondCouponFrequency | null,
+): string | undefined =>
+  attemptedSave && needsCouponFrequencyPick && pickedCouponFrequency === null
+    ? t('forms.holding.couponFrequencyRequiredError')
+    : undefined;
 
 // ISIN mode never mounts the maturity DateField (its terms are
 // register-sourced) — a matured-still-registered bond's reason is shown on
@@ -560,6 +574,8 @@ const firstInvalidFieldRef = (params: {
   termDepositReasonKey: TermDepositReasonKey | null;
   bondReasonKey: BondReasonKey | null;
   isinReasonKey: IsinReasonKey | null;
+  needsCouponFrequencyPick: boolean;
+  pickedCouponFrequency: BondCouponFrequency | null;
   propertyReasonKey: PropertyReasonKey | null;
   metalReasonKey: MetalReasonKey | null;
   refs: ValidatedFieldRefs;
@@ -572,6 +588,8 @@ const firstInvalidFieldRef = (params: {
     termDepositReasonKey,
     bondReasonKey,
     isinReasonKey,
+    needsCouponFrequencyPick,
+    pickedCouponFrequency,
     propertyReasonKey,
     metalReasonKey,
     refs,
@@ -608,6 +626,13 @@ const firstInvalidFieldRef = (params: {
             focus: focus.isin,
           },
           {
+            // The ISIN-mode-only coupon-frequency picker (N2) renders inside
+            // `BondIsinSection`, just below the ISIN field — reusing its ref
+            // lands the scroll close enough with no separate wrapper needed.
+            invalid: needsCouponFrequencyPick && pickedCouponFrequency === null,
+            ref: refs.isinFieldRef,
+          },
+          {
             invalid: bondReasonKey === 'forms.holding.quantityError',
             ref: refs.quantityFieldRef,
             focus: focus.quantity,
@@ -623,11 +648,8 @@ const firstInvalidFieldRef = (params: {
             focus: focus.couponPct,
           },
           {
-            // ISIN mode never mounts the maturity DateField (its terms are
-            // register-sourced) — a matured-still-registered bond's reason
-            // is shown and scrolled to on the purchase date instead (T25
-            // review round 1, I2), the one field the user actually controls
-            // there.
+            // See `purchaseDateErrorMessage`'s own doc comment for why ISIN
+            // mode's scroll target is the purchase date, not maturity.
             invalid: bondReasonKey === 'forms.holding.maturityDateError',
             ref: bondMode === 'isin' ? refs.purchaseDateFieldRef : refs.maturityDateFieldRef,
           },
@@ -681,10 +703,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     metal: t('forms.holding.metal'),
     loan: t('forms.holding.loan'),
   };
-  const bondKindLabels: Record<BondKind, string> = {
-    government: t('forms.holding.government'),
-    corporate: t('forms.holding.corporate'),
-  };
   // Coupon frequency additionally offers 'semiannually', which compounding
   // does not; the shared vocabulary (monthly/quarterly/annually) resolves to
   // the same catalog key either way.
@@ -692,12 +710,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     'bi-weekly': t('forms.holding.biWeekly'),
     monthly: t('forms.holding.monthly'),
     quarterly: t('forms.holding.quarterly'),
-    annually: t('forms.holding.annually'),
-  };
-  const couponFrequencyLabels: Record<CouponFrequency, string> = {
-    monthly: t('forms.holding.monthly'),
-    quarterly: t('forms.holding.quarterly'),
-    semiannually: t('forms.holding.semiannually'),
     annually: t('forms.holding.annually'),
   };
   // A `holdingId` in the route params switches the form to EDIT mode: the same
@@ -873,10 +885,21 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const [bondKind, setBondKind] = useState<BondKind>('government');
   // Semiannual coupons are the common case for the government/corporate bonds
   // this tracks (the Monobank statement default), so the picker starts there.
-  const [couponFrequency, setCouponFrequency] = useState<CouponFrequency>('semiannually');
+  const [couponFrequency, setCouponFrequency] = useState<BondCouponFrequency>('semiannually');
   // The Bond form's "ISIN / Manual" mode (spec 6.3/6.4) — its own state,
   // register lookup, and side effects all live in `useBondIsinMode`.
-  const { bondMode, setBondMode, isin, setIsin, registerTerms, isinReasonKey } = useBondIsinMode({
+  const {
+    bondMode,
+    setBondMode,
+    isin,
+    setIsin,
+    registerTerms,
+    registerLoaded,
+    isinReasonKey,
+    needsCouponFrequencyPick,
+    pickedCouponFrequency,
+    setPickedCouponFrequency,
+  } = useBondIsinMode({
     type,
     isEdit,
     currency,
@@ -1179,11 +1202,14 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // positive quantity and face value, a non-negative coupon that was
   // actually entered, both dates picked, and a maturity strictly after the
   // purchase. Coupon frequency always carries a default, so it is always
-  // valid. In ISIN mode, face value/coupon/maturity are register-sourced
-  // (never directly edited) — so these same checks apply unchanged in both
-  // modes.
+  // valid — EXCEPT while `needsCouponFrequencyPick` (an unmapped-frequency
+  // ISIN-mode match, T25 review round 2, N2): spec 6.2 forbids guessing
+  // one, so Save stays blocked until `pickedCouponFrequency` is set. In
+  // ISIN mode, face value/coupon/maturity are register-sourced (never
+  // directly edited) — so these same checks apply unchanged in both modes.
   const isBondValid = (): boolean =>
     isinReasonKey === null &&
+    !(needsCouponFrequencyPick && pickedCouponFrequency === null) &&
     parseAmount(quantity) > 0 &&
     parseAmount(faceValue) > 0 &&
     couponPct.trim() !== '' &&
@@ -1283,6 +1309,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         termDepositReasonKey: termDepositReasonKey(),
         bondReasonKey: bondReasonKey(),
         isinReasonKey,
+        needsCouponFrequencyPick,
+        pickedCouponFrequency,
         propertyReasonKey: propertyReasonKey(),
         metalReasonKey: metalReasonKey(),
         refs: {
@@ -1736,7 +1764,17 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               isinFieldRef={isinFieldRef}
               isinInputRef={isinInputRef}
               foundTerms={registerTerms}
+              registerLoaded={registerLoaded}
               onSwitchToManual={() => setBondMode('manual')}
+              needsCouponFrequencyPick={needsCouponFrequencyPick}
+              pickedCouponFrequency={pickedCouponFrequency}
+              onPickCouponFrequency={setPickedCouponFrequency}
+              couponFrequencyError={couponFrequencyErrorMessage(
+                t,
+                attemptedSave,
+                needsCouponFrequencyPick,
+                pickedCouponFrequency,
+              )}
             />
 
             <View ref={quantityFieldRef}>
@@ -1766,11 +1804,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               suffix={currencySymbol[currency]}
             />
 
-            {/* ISIN mode never mounts the maturity DateField below (its
-                terms are register-sourced), so a matured-still-registered
-                bond's maturityDateError is shown and scrolled to here
-                instead (T25 review round 1, I2) — the one date the user
-                actually controls in that mode. */}
+            {/* See `purchaseDateErrorMessage`'s own doc comment (I2). */}
             <View ref={purchaseDateFieldRef}>
               <DateField
                 label={t('forms.holding.purchaseDate')}
@@ -1810,12 +1844,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               maturityDateFieldRef={maturityDateFieldRef}
               bondKind={bondKind}
               onSelectBondKind={setBondKind}
-              bondKindOptions={bondKinds}
-              bondKindLabels={bondKindLabels}
               couponFrequency={couponFrequency}
               onSelectCouponFrequency={setCouponFrequency}
-              couponFrequencyOptions={couponFrequencies}
-              couponFrequencyLabels={couponFrequencyLabels}
               currencySuffix={currencySymbol[currency]}
             />
           </Box>

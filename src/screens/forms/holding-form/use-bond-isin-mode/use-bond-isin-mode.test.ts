@@ -1,13 +1,21 @@
 import { act, renderHook } from '@testing-library/react-native';
 
 let mockBondRegisterRows: { isin: string; terms: unknown; fetchedAt: number }[] = [];
+// Non-null by default (a cache exists) — most tests care about a FOUND vs.
+// NOT-FOUND match, not the "never loaded" M6 distinction; the dedicated M6
+// tests override this to `null`.
+let mockFetchedAtRows: { value: number | null }[] = [{ value: 1 }];
 
 jest.mock('../../../../db/use-live-query', () => ({
-  useLiveQuery: () => ({ data: mockBondRegisterRows }),
+  useLiveQuery: (query: { __kind?: string }) =>
+    query.__kind === 'fetchedAt' ? { data: mockFetchedAtRows } : { data: mockBondRegisterRows },
 }));
 
 jest.mock('../../../../bonds/bond-register-repo', () => ({
-  bondRegisterRepo: { findByIsinQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+  bondRegisterRepo: {
+    findByIsinQuery: () => ({ __kind: 'findByIsin', toSQL: () => ({ sql: '', params: [] }) }),
+    fetchedAtQuery: () => ({ __kind: 'fetchedAt', toSQL: () => ({ sql: '', params: [] }) }),
+  },
   refreshBondRegisterIfStale: jest.fn().mockResolvedValue(undefined),
 }));
 
@@ -51,8 +59,12 @@ const baseParams = () => ({
   setName: jest.fn(),
 });
 
+const renderTheHook = (params: UseBondIsinModeParams) =>
+  renderHook((props: UseBondIsinModeParams) => useBondIsinMode(props), { initialProps: params });
+
 beforeEach(() => {
   mockBondRegisterRows = [];
+  mockFetchedAtRows = [{ value: 1 }];
   refreshMock.mockClear();
 });
 
@@ -77,12 +89,31 @@ describe('useBondIsinMode', () => {
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
-  // M5 (T25 review round 1): a rejected refresh (e.g. offline) must stay
-  // quiet — no thrown error, no unhandled rejection, no form-visible state.
-  it('stays quiet when refreshBondRegisterIfStale rejects (offline)', async () => {
+  // M5 (T25 review round 2): the round-1 version of this test would still
+  // pass even if the fire-and-forget call were left uncaught — it only
+  // asserted `renderHook` itself resolved, which it always does regardless
+  // of the effect's own internal promise. A real regression (someone
+  // reverting `either(() => refreshBondRegisterIfStale())` back to a bare,
+  // uncaught call) is caught here via Node's own `unhandledRejection`
+  // event, which only fires for a promise rejection nothing ever handles.
+  it('never produces an unhandled rejection when the refresh rejects (a caught fire-and-forget)', async () => {
     refreshMock.mockRejectedValueOnce(new Error('network down'));
+    const onUnhandledRejection = jest.fn();
+    process.on('unhandledRejection', onUnhandledRejection);
 
-    await expect(renderHook(() => useBondIsinMode(baseParams()))).resolves.toBeDefined();
+    try {
+      await renderHook(() => useBondIsinMode(baseParams()));
+      // Flush the fire-and-forget promise chain (the rejection, and
+      // `either`'s own catch, both resolve on a microtask).
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(onUnhandledRejection).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection);
+    }
   });
 
   // I1 (T25 review round 1): the found-terms apply must fire ONCE per
@@ -91,12 +122,7 @@ describe('useBondIsinMode', () => {
   it('applies the found terms exactly once per matched ISIN, never again on an unrelated purchaseDate change', async () => {
     mockBondRegisterRows = [foundRow()];
     const params = baseParams();
-    const { result, rerender } = await renderHook(
-      (props: UseBondIsinModeParams) => useBondIsinMode(props),
-      {
-        initialProps: params,
-      },
-    );
+    const { result, rerender } = await renderTheHook(params);
 
     await act(async () => {
       result.current.setIsin(VALID_ISIN);
@@ -116,15 +142,73 @@ describe('useBondIsinMode', () => {
     expect(params.setCurrency).toHaveBeenCalledTimes(1);
   });
 
+  // N1 (T25 review round 2): a match that resolves while the user is in
+  // MANUAL mode must still apply the first time they switch to ISIN — the
+  // lookup itself never depended on `bondMode`, only the APPLY did.
+  it('applies a match resolved in Manual mode once the user switches to ISIN', async () => {
+    mockBondRegisterRows = [foundRow()];
+    const params = baseParams();
+    const { result } = await renderTheHook(params);
+
+    await act(async () => {
+      result.current.setBondMode('manual');
+      result.current.setIsin(VALID_ISIN);
+    });
+
+    // Still in Manual — nothing applied yet.
+    expect(params.setName).not.toHaveBeenCalled();
+    expect(result.current.registerTerms).not.toBeNull();
+
+    await act(async () => {
+      result.current.setBondMode('isin');
+    });
+
+    expect(params.setName).toHaveBeenCalledWith('Register Bond');
+    expect(params.setFaceValue).toHaveBeenCalledTimes(1);
+  });
+
+  // N1's own named variant: not-in-register -> Switch to manual -> the
+  // refresh lands (the isin becomes a match while still in Manual) -> the
+  // user taps ISIN again. The match must apply then, not stay dead.
+  it('applies a match that only resolves AFTER switching to Manual, once ISIN is tapped again', async () => {
+    mockBondRegisterRows = [];
+    const params = baseParams();
+    const { result, rerender } = await renderTheHook(params);
+
+    await act(async () => {
+      result.current.setIsin(VALID_ISIN);
+    });
+    expect(result.current.isinReasonKey).toBe('forms.holding.isinNotInRegister');
+
+    await act(async () => {
+      result.current.setBondMode('manual');
+    });
+
+    // The refresh lands: the register now has this ISIN, while the user is
+    // still in Manual mode. `rerender` (a genuine prop change) forces the
+    // hook to re-read the mocked `useLiveQuery` result.
+    mockBondRegisterRows = [foundRow()];
+    await act(async () => {
+      rerender({ ...params, purchaseDate: Date.now() });
+    });
+
+    await act(async () => {
+      result.current.setBondMode('isin');
+    });
+
+    expect(params.setName).toHaveBeenCalledWith('Register Bond');
+  });
+
   // I3: an unmapped `pay_period` (couponFrequency: null) auto-switches to
   // Manual once — but re-tapping "ISIN" afterward must not loop straight
   // back to Manual, since the effect is keyed on the isin string, not mode.
-  it('auto-switches to Manual once for an unmapped coupon frequency, and stays in ISIN mode on a re-tap', async () => {
+  // Minor 9 (T25 review round 2): also assert the OTHER found fields (face
+  // value, coupon, maturity, name) still applied, not just the frequency
+  // that was skipped.
+  it('auto-switches to Manual once for an unmapped coupon frequency, pre-fills every OTHER field, and stays in ISIN mode on a re-tap', async () => {
     mockBondRegisterRows = [foundRow({ couponFrequency: null })];
     const params = baseParams();
-    const { result } = await renderHook((props: UseBondIsinModeParams) => useBondIsinMode(props), {
-      initialProps: params,
-    });
+    const { result } = await renderTheHook(params);
 
     await act(async () => {
       result.current.setIsin(VALID_ISIN);
@@ -132,6 +216,11 @@ describe('useBondIsinMode', () => {
 
     expect(result.current.bondMode).toBe('manual');
     expect(params.setCouponFrequency).not.toHaveBeenCalled();
+    expect(params.setFaceValue).toHaveBeenCalledTimes(1);
+    expect(params.setCouponPct).toHaveBeenCalledWith('9.5');
+    expect(params.setMaturityDate).toHaveBeenCalledWith(new Date(2029, 5, 24).getTime());
+    expect(params.setBondKind).toHaveBeenCalledWith('government');
+    expect(params.setName).toHaveBeenCalledWith('Register Bond');
 
     await act(async () => {
       result.current.setBondMode('isin');
@@ -142,15 +231,57 @@ describe('useBondIsinMode', () => {
     expect(result.current.bondMode).toBe('isin');
   });
 
+  // N2 (T25 review round 2, orchestrator ruling): re-entering ISIN mode for
+  // an unmapped-frequency match must ask the user to pick a frequency —
+  // never silently keep whatever `couponFrequency` already happened to be
+  // in state (the untouched initial default).
+  it('needs a coupon-frequency pick once back in ISIN mode for an unmapped-frequency match, and clears once picked', async () => {
+    mockBondRegisterRows = [foundRow({ couponFrequency: null })];
+    const params = baseParams();
+    const { result } = await renderTheHook(params);
+
+    await act(async () => {
+      result.current.setIsin(VALID_ISIN);
+    });
+    // Auto-switched to Manual — no pick needed while there.
+    expect(result.current.needsCouponFrequencyPick).toBe(false);
+
+    await act(async () => {
+      result.current.setBondMode('isin');
+    });
+
+    expect(result.current.needsCouponFrequencyPick).toBe(true);
+    expect(result.current.pickedCouponFrequency).toBeNull();
+
+    await act(async () => {
+      result.current.setPickedCouponFrequency('quarterly');
+    });
+
+    expect(result.current.pickedCouponFrequency).toBe('quarterly');
+    // The pick also updates the shared `couponFrequency` state so Manual
+    // mode and `buildBondMetadata` see the same value.
+    expect(params.setCouponFrequency).toHaveBeenCalledWith('quarterly');
+  });
+
+  it('never needs a coupon-frequency pick for a match with a mapped frequency', async () => {
+    mockBondRegisterRows = [foundRow({ couponFrequency: 'quarterly' })];
+    const params = baseParams();
+    const { result } = await renderTheHook(params);
+
+    await act(async () => {
+      result.current.setIsin(VALID_ISIN);
+    });
+
+    expect(result.current.needsCouponFrequencyPick).toBe(false);
+  });
+
   // I5: in edit mode, a found ISIN whose currency differs from the
   // (locked) holding currency must not apply at all, and must block save
   // with its own reason.
   it('does not apply a found ISIN whose currency differs from the holding currency in edit mode, and blocks save', async () => {
     mockBondRegisterRows = [foundRow({ currency: 'USD' })];
     const params = { ...baseParams(), isEdit: true, currency: 'UAH' as const };
-    const { result } = await renderHook((props: UseBondIsinModeParams) => useBondIsinMode(props), {
-      initialProps: params,
-    });
+    const { result } = await renderTheHook(params);
 
     await act(async () => {
       result.current.setIsin(VALID_ISIN);
@@ -164,9 +295,7 @@ describe('useBondIsinMode', () => {
   it('applies a found ISIN in edit mode when the currency already matches, without writing currency', async () => {
     mockBondRegisterRows = [foundRow({ currency: 'UAH' })];
     const params = { ...baseParams(), isEdit: true, currency: 'UAH' as const };
-    const { result } = await renderHook((props: UseBondIsinModeParams) => useBondIsinMode(props), {
-      initialProps: params,
-    });
+    const { result } = await renderTheHook(params);
 
     await act(async () => {
       result.current.setIsin(VALID_ISIN);
@@ -179,9 +308,7 @@ describe('useBondIsinMode', () => {
 
   it('blocks with a check-digit reason for a valid-shaped ISIN with the wrong check digit', async () => {
     const params = baseParams();
-    const { result } = await renderHook((props: UseBondIsinModeParams) => useBondIsinMode(props), {
-      initialProps: params,
-    });
+    const { result } = await renderTheHook(params);
 
     await act(async () => {
       result.current.setIsin(INVALID_CHECKDIGIT_ISIN);
@@ -196,14 +323,42 @@ describe('useBondIsinMode', () => {
   it('ignores a register row whose own isin does not match the currently typed ISIN (a stale query result)', async () => {
     mockBondRegisterRows = [{ isin: 'XS2895055981', terms: foundRow().terms, fetchedAt: 1 }];
     const params = baseParams();
-    const { result } = await renderHook((props: UseBondIsinModeParams) => useBondIsinMode(props), {
-      initialProps: params,
-    });
+    const { result } = await renderTheHook(params);
 
     await act(async () => {
       result.current.setIsin(VALID_ISIN);
     });
 
     expect(result.current.registerTerms).toBeNull();
+  });
+
+  // M6 (T25 review round 2): "no cache yet" (never fetched) reads a
+  // different, neutral reason than a confident "not in the register".
+  it('reports a neutral "register not loaded" reason when the cache has never been populated', async () => {
+    mockBondRegisterRows = [];
+    mockFetchedAtRows = [{ value: null }];
+    const params = baseParams();
+    const { result } = await renderTheHook(params);
+
+    await act(async () => {
+      result.current.setIsin(VALID_ISIN);
+    });
+
+    expect(result.current.registerLoaded).toBe(false);
+    expect(result.current.isinReasonKey).toBe('forms.holding.isinRegisterNotLoaded');
+  });
+
+  it('reports a confident "not in the register" reason once the cache has SOME data', async () => {
+    mockBondRegisterRows = [];
+    mockFetchedAtRows = [{ value: 1_700_000_000_000 }];
+    const params = baseParams();
+    const { result } = await renderTheHook(params);
+
+    await act(async () => {
+      result.current.setIsin(VALID_ISIN);
+    });
+
+    expect(result.current.registerLoaded).toBe(true);
+    expect(result.current.isinReasonKey).toBe('forms.holding.isinNotInRegister');
   });
 });

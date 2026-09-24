@@ -20,17 +20,8 @@ const baseProps = {
   maturityDateFieldRef: undefined,
   bondKind: 'government' as const,
   onSelectBondKind: jest.fn(),
-  bondKindOptions: ['government', 'corporate'] as const,
-  bondKindLabels: { government: 'Government', corporate: 'Corporate' },
   couponFrequency: 'semiannually' as const,
   onSelectCouponFrequency: jest.fn(),
-  couponFrequencyOptions: ['monthly', 'quarterly', 'semiannually', 'annually'] as const,
-  couponFrequencyLabels: {
-    monthly: 'Monthly',
-    quarterly: 'Quarterly',
-    semiannually: 'Semiannually',
-    annually: 'Annually',
-  },
   currencySuffix: '₴',
 };
 

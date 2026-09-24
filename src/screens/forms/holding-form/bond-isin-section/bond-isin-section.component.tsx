@@ -6,19 +6,31 @@ import { useTranslation } from 'react-i18next';
 import { formatDate } from '../../../../dates/format';
 import Box from '../../../../design-system/components/box';
 import Text from '../../../../design-system/components/text';
+import { validateIsin } from '../../../../bonds/isin';
 import { activeLocale } from '../../../../i18n/active-locale';
 import Button from '../../../../design-system/components/button';
-import { normalizeIsin, validateIsin } from '../../../../bonds/isin';
 import TextField from '../../../../design-system/components/text-field';
 import FieldLabel from '../../../../design-system/components/field-label';
 import FieldError from '../../../../design-system/components/field-error';
+import {
+  bondCouponFrequencies,
+  type BondCouponFrequency,
+} from '../../../../holdings/holding-metadata';
 import SegmentedControl from '../../../../design-system/components/segmented-control';
 
+import ChipRow from '../../chip-row';
 import type { BondEntryMode, BondIsinSectionProps } from './bond-isin-section.props';
 
 const modeLabels = (t: TFunction): Record<BondEntryMode, string> => ({
   isin: t('forms.holding.isinModeIsin'),
   manual: t('forms.holding.isinModeManual'),
+});
+
+const couponFrequencyLabels = (t: TFunction) => ({
+  monthly: t('forms.holding.monthly'),
+  quarterly: t('forms.holding.quarterly'),
+  semiannually: t('forms.holding.semiannually'),
+  annually: t('forms.holding.annually'),
 });
 
 /**
@@ -27,12 +39,12 @@ const modeLabels = (t: TFunction): Record<BondEntryMode, string> => ({
  * kind of mode choice, not a `ChipRow`), the ISIN text field itself (always
  * shown — required in ISIN mode, optional but still validated in Manual
  * mode, see `useBondIsinMode`'s own `isinReasonKey`), a read-only summary
- * once the register finds a match, a "not in the register" hint with a
- * Switch-to-manual button when a validly-shaped ISIN has no match (spec
- * 6.4 #3 — covers BOTH "not found" and "offline with no cache", which read
- * identically here: `foundTerms` is simply `null`), and the Diia hint
- * (spec 7.1), which renders in every mode since Diia bonds land under a
- * partner institution regardless of how THIS holding gets added.
+ * once the register finds a match (plus, when that match left
+ * `couponFrequency` unmapped, a picker with no default — spec 6.2 forbids
+ * guessing one), a not-in-register/not-loaded hint with a Switch-to-manual
+ * button when a validly-shaped ISIN has no match, and the Diia hint (spec
+ * 7.1), which renders in every mode since Diia bonds land under a partner
+ * institution regardless of how THIS holding gets added.
  *
  * Purely presentational, like `MetalSection`/`PropertySection`: the NBU
  * register lookup and every auto-fill/validation decision live in
@@ -47,7 +59,12 @@ const BondIsinSection: FC<BondIsinSectionProps> = ({
   isinFieldRef,
   isinInputRef,
   foundTerms,
+  registerLoaded,
   onSwitchToManual,
+  needsCouponFrequencyPick,
+  pickedCouponFrequency,
+  onPickCouponFrequency,
+  couponFrequencyError,
 }) => {
   const { t } = useTranslation();
 
@@ -76,7 +93,7 @@ const BondIsinSection: FC<BondIsinSectionProps> = ({
         <TextField
           label={t('forms.holding.isin')}
           value={isin}
-          onChangeText={(text) => onChangeIsin(normalizeIsin(text))}
+          onChangeText={onChangeIsin}
           placeholder={t('forms.holding.isinPlaceholder')}
           autoCapitalize="characters"
           autoCorrect={false}
@@ -102,9 +119,36 @@ const BondIsinSection: FC<BondIsinSectionProps> = ({
         </Box>
       )}
 
+      {needsCouponFrequencyPick && (
+        // `<ChipRow<string>>` (widened from `BondCouponFrequency`, purely at
+        // this ONE call site) so `selected` can be `''` while nothing is
+        // picked yet — no chip then matches, so none renders selected,
+        // which is how this shows "no default" (spec 6.2 forbids guessing
+        // one; the orchestrator ruling for N2 requires this to start
+        // genuinely blank, not pre-highlight the general `couponFrequency`
+        // state's own untouched default).
+        <ChipRow<string>
+          label={t('forms.holding.couponFrequency')}
+          options={bondCouponFrequencies}
+          selected={pickedCouponFrequency ?? ''}
+          onSelect={(value) => onPickCouponFrequency(value as BondCouponFrequency)}
+          labels={couponFrequencyLabels(t)}
+          required
+        />
+      )}
+      {needsCouponFrequencyPick && couponFrequencyError !== undefined && (
+        <FieldError message={couponFrequencyError} />
+      )}
+
       {showNotFoundHint && (
         <Box gap={2} testID="bond-isin-not-found">
-          <FieldError message={t('forms.holding.isinNotInRegister')} />
+          <FieldError
+            message={t(
+              registerLoaded
+                ? 'forms.holding.isinNotInRegister'
+                : 'forms.holding.isinRegisterNotLoaded',
+            )}
+          />
 
           <Button
             variant="secondaryTonal"

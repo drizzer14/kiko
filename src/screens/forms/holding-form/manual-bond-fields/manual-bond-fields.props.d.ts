@@ -1,17 +1,13 @@
 import type { RefObject } from 'react';
 import type { TextInputInstance } from 'react-native';
 
-import type { BondKind, BondCouponFrequency } from '../../../../holdings/holding-metadata';
-import type { BondEntryMode } from '../bond-isin-section/bond-isin-section.props';
 import type { FieldInstance } from '../../scroll-to-field/scroll-to-field';
+import type { BondEntryMode } from '../bond-isin-section/bond-isin-section.props';
+import type { BondKind, BondCouponFrequency } from '../../../../holdings/holding-metadata';
 
 export type ManualBondFieldsProps = {
   // Renders nothing outside Manual mode (spec 6.3 hides these five fields
-  // in ISIN mode — they are register-sourced there instead). The caller
-  // passes `bondMode` straight through rather than gating
-  // `{bondMode === 'manual' && <ManualBondFields .../>}` itself, so this
-  // component's own conditional never nests inside the bond block's outer
-  // `{type === 'bond' && (...)}` gate in `holding-form.screen.tsx`.
+  // in ISIN mode — they are register-sourced there instead).
   bondMode: BondEntryMode;
   faceValue: string;
   onChangeFaceValue: (text: string) => void;
@@ -29,11 +25,7 @@ export type ManualBondFieldsProps = {
   maturityDateFieldRef?: RefObject<FieldInstance | null>;
   bondKind: BondKind;
   onSelectBondKind: (kind: BondKind) => void;
-  bondKindOptions: readonly BondKind[];
-  bondKindLabels: Record<BondKind, string>;
   couponFrequency: BondCouponFrequency;
   onSelectCouponFrequency: (frequency: BondCouponFrequency) => void;
-  couponFrequencyOptions: readonly BondCouponFrequency[];
-  couponFrequencyLabels: Record<BondCouponFrequency, string>;
   currencySuffix: string;
 };

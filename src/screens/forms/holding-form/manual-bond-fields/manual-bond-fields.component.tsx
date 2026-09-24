@@ -1,24 +1,31 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
+
+import { bondKinds, bondCouponFrequencies } from '../../../../holdings/holding-metadata';
+import TextField from '../../../../design-system/components/text-field';
 
 import ChipRow from '../../chip-row';
 import DateField from '../../date-field';
-import TextField from '../../../../design-system/components/text-field';
-
 import type { ManualBondFieldsProps } from './manual-bond-fields.props';
+
+const bondKindLabels = (t: TFunction) => ({
+  government: t('forms.holding.government'),
+  corporate: t('forms.holding.corporate'),
+});
+
+const couponFrequencyLabels = (t: TFunction) => ({
+  monthly: t('forms.holding.monthly'),
+  quarterly: t('forms.holding.quarterly'),
+  semiannually: t('forms.holding.semiannually'),
+  annually: t('forms.holding.annually'),
+});
 
 /**
  * The Manual-mode-only bond fields (face value, coupon %, maturity date,
  * bond kind, coupon frequency) — hidden in ISIN mode, where these five are
- * register-sourced instead (spec 6.3). This component owns its OWN
- * `bondMode !== 'manual'` early return, rather than the caller gating
- * `{bondMode === 'manual' && <ManualBondFields .../>}` around it: that
- * conditional would nest inside the bond block's own outer
- * `{type === 'bond' && (...)}` gate in `holding-form.screen.tsx`, and a
- * nested JSX conditional costs more against Biome's
- * `noExcessiveCognitiveComplexity` than the SAME condition evaluated inside
- * a separate component's own budget (T25 review round 1, I4).
+ * register-sourced instead (spec 6.3). Renders nothing outside Manual mode.
  */
 const ManualBondFields: FC<ManualBondFieldsProps> = ({
   bondMode,
@@ -38,12 +45,8 @@ const ManualBondFields: FC<ManualBondFieldsProps> = ({
   maturityDateFieldRef,
   bondKind,
   onSelectBondKind,
-  bondKindOptions,
-  bondKindLabels,
   couponFrequency,
   onSelectCouponFrequency,
-  couponFrequencyOptions,
-  couponFrequencyLabels,
   currencySuffix,
 }) => {
   const { t } = useTranslation();
@@ -94,18 +97,18 @@ const ManualBondFields: FC<ManualBondFieldsProps> = ({
 
       <ChipRow
         label={t('forms.holding.bondKind')}
-        options={bondKindOptions}
+        options={bondKinds}
         selected={bondKind}
         onSelect={onSelectBondKind}
-        labels={bondKindLabels}
+        labels={bondKindLabels(t)}
       />
 
       <ChipRow
         label={t('forms.holding.couponFrequency')}
-        options={couponFrequencyOptions}
+        options={bondCouponFrequencies}
         selected={couponFrequency}
         onSelect={onSelectCouponFrequency}
-        labels={couponFrequencyLabels}
+        labels={couponFrequencyLabels(t)}
       />
     </>
   );

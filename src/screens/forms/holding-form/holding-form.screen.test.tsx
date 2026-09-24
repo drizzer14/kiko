@@ -74,17 +74,26 @@ let mockEditHoldings: unknown[] = [];
 // (T25). Empty by default — the "no match" / "offline with no cache" path
 // (spec 6.4) — so a test only sets this when it needs a found bond.
 let mockBondRegisterRows: unknown[] = [];
+// The `fetchedAtQuery` cache-populated marker (T25 review round 2, M6).
+// Non-null by default (a cache exists) — most tests care about a FOUND vs.
+// NOT-FOUND match, not the "never loaded" distinction.
+let mockBondRegisterFetchedAtRows: { value: number | null }[] = [{ value: 1 }];
 
 jest.mock('../../../db/use-live-query', () => ({
   // Key on the subscribed table: the holdings query drives edit-mode hydration,
   // the accounts query drives the allowed-type filter and the sync gate, and
-  // the bond_register query drives the ISIN-mode lookup.
-  useLiveQuery: (_query: unknown, keys: string[]) => {
+  // the bond_register query drives the ISIN-mode lookup. Both
+  // `findByIsinQuery` and `fetchedAtQuery` subscribe under the SAME
+  // 'bond_register' key, so the query object's own `__kind` (set by the
+  // mocked `bondRegisterRepo` below) tells them apart.
+  useLiveQuery: (query: { __kind?: string }, keys: string[]) => {
     if (keys[0] === 'holdings') {
       return { data: mockEditHoldings };
     }
     if (keys[0] === 'bond_register') {
-      return { data: mockBondRegisterRows };
+      return query.__kind === 'fetchedAt'
+        ? { data: mockBondRegisterFetchedAtRows }
+        : { data: mockBondRegisterRows };
     }
     return {
       data: [
@@ -98,13 +107,16 @@ jest.mock('../../../db/use-live-query', () => ({
     };
   },
 }));
-// `findByIsinQuery`'s return value is opaque to the mocked `useLiveQuery`
-// above (it ignores its `query` argument), so a bare stub is enough — the
-// same pattern `accountsRepo.byIdQuery` uses below. `refreshBondRegisterIfStale`
-// (T25, spec 6.4 #4) is mocked so no test hits a real network `fetch`; each
-// relevant test can assert it was invoked.
+// `findByIsinQuery`/`fetchedAtQuery`'s return values are opaque to the
+// mocked `useLiveQuery` above (it only reads `__kind`), so a bare stub is
+// enough — the same pattern `accountsRepo.byIdQuery` uses below.
+// `refreshBondRegisterIfStale` (T25, spec 6.4 #4) is mocked so no test hits
+// a real network `fetch`; each relevant test can assert it was invoked.
 jest.mock('../../../bonds/bond-register-repo', () => ({
-  bondRegisterRepo: { findByIsinQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+  bondRegisterRepo: {
+    findByIsinQuery: () => ({ __kind: 'findByIsin', toSQL: () => ({ sql: '', params: [] }) }),
+    fetchedAtQuery: () => ({ __kind: 'fetchedAt', toSQL: () => ({ sql: '', params: [] }) }),
+  },
   refreshBondRegisterIfStale: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
@@ -133,6 +145,7 @@ beforeEach(() => {
   mockAccountBankId = null;
   mockEditHoldings = [];
   mockBondRegisterRows = [];
+  mockBondRegisterFetchedAtRows = [{ value: 1 }];
 });
 
 const renderScreen = () =>
@@ -806,6 +819,71 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
     expect(createMock.mock.calls[0][0].name).toBe('War bond 2029');
   });
 
+  // N1 (T25 review round 2): a match resolved while the user is in MANUAL
+  // mode must still apply the first time they later switch to ISIN — the
+  // register lookup itself never depended on `bondMode`, only the apply did.
+  it('applies a match found while in Manual mode once the user switches to ISIN', async () => {
+    mockBondRegisterRows = [foundRegisterRow];
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+    await fireEvent.press(screen.getByText('Manual'));
+    await fireEvent.changeText(isinInput(screen), 'UA4000234215');
+
+    // Still in Manual — nothing applied yet.
+    expect(screen.queryByDisplayValue('Register Bond UA4000234215')).toBeNull();
+
+    await fireEvent.press(screen.getByTestId('bond-isin-mode-control-option-isin'));
+    await fill(screen, 'Quantity', '10');
+
+    expect(within(screen.getByTestId('bond-isin-summary')).getByText(/9\.5/)).toBeTruthy();
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
+    const call = createMock.mock.calls[0][0];
+    expect(call.name).toBe('Register Bond UA4000234215');
+    expect(call.metadata).toEqual(
+      expect.objectContaining({
+        couponFrequency: 'quarterly',
+        bondKind: 'government',
+        isin: 'UA4000234215',
+      }),
+    );
+  });
+
+  // N2 (T25 review round 2, orchestrator ruling): an unmapped `pay_period`
+  // auto-switches to Manual once; re-tapping ISIN for that SAME match shows
+  // its own coupon-frequency picker with NO default and blocks Save until
+  // one is picked — never a frequency the user never chose.
+  it('blocks save with a visible reason until a coupon frequency is picked for an unmapped-frequency ISIN match, then saves the picked frequency', async () => {
+    mockBondRegisterRows = [
+      { ...foundRegisterRow, terms: { ...foundRegisterRow.terms, couponFrequency: null } },
+    ];
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+    await fireEvent.changeText(isinInput(screen), 'UA4000234215');
+    await fill(screen, 'Quantity', '10');
+
+    // Auto-switched to Manual for the unmapped frequency.
+    expect(
+      screen.getByTestId('bond-isin-mode-control-option-manual').props.accessibilityState.selected,
+    ).toBe(true);
+
+    await fireEvent.press(screen.getByTestId('bond-isin-mode-control-option-isin'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Pick a coupon frequency.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByText('Quarterly'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
+    expect(createMock.mock.calls[0][0].metadata.couponFrequency).toBe('quarterly');
+  });
+
   // I2 (T25 review round 1): a matured-still-registered bond (spec 6.1
   // counts 2) must block Save with a VISIBLE reason in ISIN mode — the
   // maturity DateField itself is unmounted there.
@@ -846,7 +924,7 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
     await fireEvent.press(screen.getByText('Save'));
 
     expect(
-      screen.getByText("This ISIN's currency doesn't match this holding's locked currency."),
+      screen.getByText("This ISIN's currency doesn't match the holding's currency."),
     ).toBeTruthy();
     expect(updateDeltaMock).not.toHaveBeenCalled();
   });
