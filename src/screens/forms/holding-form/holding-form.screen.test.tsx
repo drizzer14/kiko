@@ -889,7 +889,7 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
     await fireEvent.press(screen.getByTestId('bond-isin-mode-control-option-isin'));
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(screen.getByText('Pick a coupon frequency.')).toBeTruthy();
+    expect(screen.getByText('No coupon frequency selected.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
 
     await fireEvent.press(screen.getByTestId('bond-coupon-frequency-field'));
@@ -1859,7 +1859,7 @@ describe('HoldingFormScreen loan (T28)', () => {
     await fill(screen, 'Principal', '500000');
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(screen.getByText('Pick a start date.')).toBeTruthy();
+    expect(screen.getByText('No start date selected.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
   });
 

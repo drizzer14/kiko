@@ -86,10 +86,10 @@ describe('LoanSection', () => {
 
   it('renders startDateError directly after the field', async () => {
     const { getByText } = await render(
-      <LoanSection {...baseProps} startDateError="Pick a start date." />,
+      <LoanSection {...baseProps} startDateError="No start date selected." />,
     );
 
-    expect(getByText('Pick a start date.')).toBeTruthy();
+    expect(getByText('No start date selected.')).toBeTruthy();
   });
 
   it('renders the schedule choices under the Schedule label and control', async () => {

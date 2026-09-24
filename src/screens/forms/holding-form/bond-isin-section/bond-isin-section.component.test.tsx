@@ -216,11 +216,11 @@ describe('BondIsinSection', () => {
         <BondIsinSection
           {...baseProps}
           needsCouponFrequencyPick
-          couponFrequencyError="Pick a coupon frequency."
+          couponFrequencyError="No coupon frequency selected."
         />,
       );
 
-      expect(getByText('Pick a coupon frequency.')).toBeTruthy();
+      expect(getByText('No coupon frequency selected.')).toBeTruthy();
     });
   });
 });
