@@ -303,7 +303,7 @@ a P0 UI fix round driven by device feedback:
   tapped header row with the theme's accent BLUE
   (`theme.colors.accent`) with `onAccent` cell text — replacing the
   former neutral `surfaceHigh` tint — matching the app's standard
-  filled-accent selection vocabulary (OptionPills/ChipRow/SelectableRow),
+  filled-accent selection vocabulary (ChipRow/SelectableRow),
   with its own cell text turned SEMIBOLD too (F3 item 8, `fontWeight:
   '600'` — the app's selected-label weight everywhere else, not `'700'`;
   fixed from an initial `'700'` pass in F3 fix round 1, M3) so the
@@ -318,31 +318,27 @@ a P0 UI fix round driven by device feedback:
   `ColumnSelectField`'s own option list is unaffected, since that is
   derived from the FULL header row in `column-mapping.screen.tsx`, not
   from this capped preview.
-- **The amount-mode, currency-mode, encoding, and decimal-separator
-  toggles are the shared `SegmentedControl`**
-  (`src/design-system/components/segmented-control/`, F3 item 9) — an
-  iOS `UISegmentedControl` per the HIG, superseding the `ChipRow` pass
-  21d53cc gave them (see `kiko-design-system`'s own `SegmentedControl`
-  entry for the full HIG citation, contrast fix, and accessibility
-  details — fix round 1 addressed I3/M1/M2/M4; fix round 2 corrected M1's
-  hitSlop base and M4's accessibility shape). `AmountFields` and
-  `CurrencyFields` pass their own `accessibilityLabel` (the section
-  heading text, `columnMapping.sectionAmount`/`sectionCurrency`), a
-  REQUIRED prop; encoding/decimal-separator (`column-mapping.screen.tsx`,
-  F3 fix round 2, M5 — applied, not left as the round-1 DEFAULT any
-  more) pass their own field's label text instead, composed with a
-  visible `FieldLabel` above the control (`SegmentedControl` itself
-  carries no VISIBLE label prop — only `accessibilityLabel` — since the
-  amount/currency sections rely on their own section heading for that;
-  encoding/decimal-separator sit inside a shared "File Format" section
-  alongside delimiter, so they need their own visible caption).
-  DELIMITER (3-way) stays `ChipRow` (`src/screens/forms/chip-row/`) —
-  `SegmentedControl`'s own HIG reference is for a 2-3-way EXCLUSIVE mode
-  toggle, and delimiter fits it structurally too, but a 3-way delimiter
-  swap was not part of the M5 DEFAULT the coordinator ruled on; `ChipRow`
-  remains the compact short-code/label picker for it. `OptionPills` is
-  not used anywhere on this screen — its 44pt-minimum centered pill reads
-  as oversized for a short code/label.
+- **Only the amount-mode and currency-mode toggles are the shared
+  `SegmentedControl`** (`src/design-system/components/segmented-control/`)
+  — an iOS `UISegmentedControl` per the HIG (see `kiko-design-system`'s
+  own `SegmentedControl` entry for the full HIG citation, contrast fix,
+  and accessibility details). `AmountFields` and `CurrencyFields` pass
+  their own `accessibilityLabel` (the section heading text,
+  `columnMapping.sectionAmount`/`sectionCurrency`), a REQUIRED prop.
+  **ENCODING, DELIMITER, and DECIMAL SEPARATOR are all `ChipRow`**
+  (`src/design-system/components/chip-row/`), per the F4 Q2 USER RULE
+  (`kiko-design-system`'s tabs-vs-chips rule): none of the three changes
+  which fields the screen shows — picking a value just re-parses the
+  SAME preview with the SAME fields visible — while amount-mode/
+  currency-mode DO change the visible fields. An earlier round (F3 item
+  9) had moved encoding/decimal-separator to `SegmentedControl` as a
+  DEFAULT the user never asked for ("tabs ONLY for amount and currency
+  modes" was the actual instruction); F4 audit item 4 reverted that —
+  do not re-apply it. Each `ChipRow` composes its own visible
+  `FieldLabel` above it (`label` prop) since encoding/delimiter/decimal-
+  separator sit inside a shared "File Format" section alongside each
+  other, unlike the amount/currency sections where the section heading
+  itself is the only label needed.
 - **Every section shows its own heading, at ONE uniform spacing, on
   BOTH screens** (F3 items 12/13/14, fixed in fix round 1 I1/I2 for
   column-mapping, fix round 2 for statement-import): the screen's former

@@ -1,6 +1,6 @@
 ---
 name: kiko-design-system
-description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, CurrencyField, SummaryTable, EntityIconTile, CardContextMenu, ConfirmSheet, OptionPills, SelectableRow, SegmentedControl, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
+description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, CurrencyField, SummaryTable, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, SelectField, SelectableRow, SegmentedControl, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
 ---
 
 # Kiko design system
@@ -137,7 +137,7 @@ trend-filter sheet's selected manual-category row
 selected row paints the same filled `accent` background with
 `onAccent` text/icon/checkmark, REPLACING an earlier `surfaceHigh`
 selected-row treatment — the same filled-accent selection vocabulary
-as `OptionPills`/`ChipRow`, not a one-off. An UNCHECKED trend-filter
+as `ChipRow`, not a one-off. An UNCHECKED trend-filter
 row keeps its own category's identity color instead: `SymbolIcon`
 resolves an explicit `color` prop over its `tone` prop, so the row
 passes `color={checked ? undefined : option.color}` — clearing
@@ -407,8 +407,8 @@ new component can land between reviews of this skill:
   second one. The sheet is still a GROUPED surface: this translucent
   base (composited to ~rgb(17,17,18) over true-black — darker than
   `surfaceHigh` #2C2C2E) sits one level BELOW the `surfaceHigh`
-  cards/controls on it, so a control (e.g. an OptionPills selected
-  pill) reads as raised instead of blending into the sheet — it used
+  cards/controls on it, so a control (e.g. a ChipRow selected
+  chip) reads as raised instead of blending into the sheet — it used
   `surfaceHigh` itself before, the same tone as a selected pill, then a
   flat opaque `sheetBackground` token before this glass pass. It caps
   its own height at a fixed 66%-of-window ceiling and takes an optional
@@ -508,7 +508,7 @@ new component can land between reviews of this skill:
 - **SelectableRow** (`src/design-system/components/selectable-row/`) —
   the shared single-select row for a `BottomSheet` list: a 44pt-minimum
   tap target that fills with the accent background when `selected` (the
-  OptionPills/ChipRow selection vocabulary), with a leading checkmark
+  `ChipRow` selection vocabulary), with a leading checkmark
   slot, an optional leading `icon` (SF Symbol) or `leadingText` mark
   (mutually exclusive, for a glyph with no SF Symbol form — a currency
   sign or ISO code), an optional trailing node pinned to the row's far
@@ -524,11 +524,26 @@ new component can land between reviews of this skill:
   This is the ONE select-sheet row: a labeled-field-plus-`BottomSheet`
   picker (`FieldTrigger` + `BottomSheet` + a `SelectableRow` per option)
   is the shared "select field" family replacing the older inline
-  `ChipRow` for a picker with more than a couple of options —
+  `ChipRow` for a picker with more than a couple of options.
   `ModeSelectField`, `BankTypeField`, and `AccountKindField`
-  (`src/screens/forms/`) all follow this exact shape; a new field-plus-
-  sheet picker reaches for the same three rather than hand-rolling a new
-  option row.
+  (`src/screens/forms/`) each hand-roll this exact shape (each carries
+  extra behavior a generic wrapper doesn't cover — `BankTypeField`'s
+  always-first "no bank" row, Guideline-5.6 disclaimer, and dual
+  capability icons; `ModeSelectField`'s `visible` gate); **SelectField**
+  (`src/design-system/components/select-field/`, F4 codebase-review
+  decision 24) is the GENERIC version of the same three's shape —
+  `label`/`options`/`selected` (nullable — see below)/`onSelect`/
+  `labels`/optional `subtitles`/optional `icons`/`placeholder`/
+  `required`/`disabled`/`error`/`testID` — for a new field-plus-sheet
+  picker with no extra behavior of its own: `PropertySection`'s category
+  field and `LoanSection`'s kind field (6 and 4 long option names, too
+  wide for a `ChipRow`) and the Bond form's coupon-frequency picker
+  (`BondIsinSection`) all reach for `SelectField` directly rather than
+  hand-rolling a fourth copy. `SelectField`'s `selected` accepts `null`
+  for a picker that legitimately starts with nothing chosen — the
+  trigger then shows `placeholder` at `textSecondary`, the same "no
+  default" contract a `ChipRow` used to fake by widening its option type
+  to admit a value (`''`) that matches nothing (F4 audit item 10).
 - **ConfirmSheet** (`src/design-system/components/confirm-sheet/`) —
   the themed confirm-or-cancel `BottomSheet`: a title, an optional
   body `message` (omitted for a bare title-only confirm), a `confirmLabel`,
@@ -579,20 +594,26 @@ new component can land between reviews of this skill:
   can wrap (see `text-field.component.test.tsx` for the two behaviors
   contrasted).
 - **FieldError** (`src/design-system/components/field-error/`) — the
-  one inline validation-failure line a form renders next to a blocked
-  field or footer Save button (`Text variant="caption" tone="negative"`,
-  the same tone `FieldLabel`'s required asterisk uses). Every form
-  composes this instead of hand-rolling its own error caption — see
-  `kiko-code-style`'s "Form validation model" section for when to show
-  it.
+  one inline validation-failure line a form renders DIRECTLY UNDER its
+  own field (`Text variant="caption" tone="negative"`, the same tone
+  `FieldLabel`'s required asterisk uses) — never next to a footer Save
+  button, and never a reserved-height slot: it fades in on failure and
+  the layout reflows, so a valid field shows no error node at all
+  (Option A, the current validation pattern; F4 Q1 answer). The same
+  press ALSO turns that field's own `FieldLabel` red (`invalid`) and, on
+  Save/Import, scrolls to the FIRST invalid field — Save/Import itself
+  is never disabled; it validates on press. Every form composes this
+  instead of hand-rolling its own error caption — see `kiko-code-style`'s
+  "Form validation model" section for when to show it.
 - **FieldTrigger** (`src/design-system/components/field-trigger/`) —
   the shared "labeled field that opens a picker sheet" trigger: a
   caption above a bordered row showing the current icon (or leading
   text mark) + value, tapping which opens the caller's own
   `BottomSheet`. `CategoryField`, `HoldingSelectField`,
-  `ModeSelectField`, `BankTypeField` (`src/screens/forms/`) and
-  `CurrencyField` below all compose this rather than re-implementing
-  the same bordered-row JSX. Lives in `design-system/components/`, not
+  `ModeSelectField`, `BankTypeField` (`src/screens/forms/`),
+  `SelectField` and `CurrencyField` below all compose this rather than
+  re-implementing the same bordered-row JSX. Lives in
+  `design-system/components/`, not
   `screens/forms/` where it used to sit — a design-system component
   must never import from `src/screens/**`, enforced by the
   `kiko-no-import-screens-outside-ui` Semgrep rule (see `kiko-linter`).
@@ -628,54 +649,38 @@ new component can land between reviews of this skill:
   set). Supports `hideLabel` for a caller that already labels the
   control externally (the Settings base-currency row), `required`, and
   a `disabled` read-only state. A field opens a picker sheet for one
-  selection among many options; `OptionPills` below toggles inline
+  selection among many options; `ChipRow` below toggles inline
   among a small fixed set instead.
-- **OptionPills** (`src/design-system/components/option-pills/`) — a
-  shared row of selectable pill options; read that folder directly
-  for its current props and consumers (grep `OptionPills` for the live
-  set — includes `LanguageSwitch`, the Statistics trend-filter sheet,
-  the icon-picker modal, and the Lot form's buy/sell toggle) rather
-  than assuming a fixed shape. `ChipRow` (`src/screens/forms/chip-row/`
-  — outside this folder by design, not yet promoted to
-  `design-system/components/`) is the compact sibling for a short
-  code/label where a 44pt pill reads oversized; see
-  `kiko-statement-import`'s column-mapping section for the fullest
-  worked comparison of the two.
-  Its grid defaults to an always-2-column wrap (`LanguageSwitch`'s 2
-  options) via an optional `columns` prop (default `2`); a consumer
-  with a different, known option count that must render as a single
-  equal-width row instead of wrapping passes an explicit `columns={n}`
-  matching its own option count (the trend-filter sheet's amount/measure
-  rows do this). Do not add a second, parallel way to force a row
-  count; extend/override `columns` instead. The SELECTED pill reads as a
-  FILLED accent control: an `accent` background with an `onAccent`
-  label+icon and a semibold label, mirroring `ChipRow`'s selected chip
-  — not a low-contrast raised surface, so the selection stays clear on
-  the low-contrast sheet background. Unselected pills stay transparent
-  with a `textSecondary` label. The pill content is centered and the
-  pill holds the 44pt HIG minimum touch target. The pill label's `Text`
-  variant defaults to `body` (the original hardcoded size — every
-  existing consumer that omits the prop, e.g. `LanguageSwitch`, is
-  unaffected) and takes an optional `labelVariant`
-  override for a caller whose value sits under its own larger section
-  label and must read as visually subordinate to it — the Statistics
-  trend-filter sheet (`trend-filter-field.component.tsx`) passes
-  `labelVariant="caption"` for exactly this reason: its section labels
-  were raised from `caption` to `body` to fix an inverted
-  label-smaller-than-value hierarchy, so the values had to drop a step
-  to stay under them. The optional leading icon's size is derived from
-  the same prop (`theme.iconSizes[labelVariant]`, never a hardcoded
-  `theme.iconSizes.body`), per the "SF Symbol sizing" HIG rule — the
-  glyph stays paired with its label's type step rather than only ever
-  matching the default. The trend-filter sheet also dropped the frosted
-  `GlassSurface transparent bordered` card that used to sit behind each
-  value group — the values now sit directly on the sheet under their
-  labels (the iOS grouped-form look, no inner gray fill) — except the
-  manual-mode category list, which still needs a clipped, shrinkable
-  scroll region: that one case keeps a plain `Box` with `overflow:
-  'hidden'`, the shared radius token, and a hairline `border` (no fill),
-  reproducing only the corner-clip and shrink-to-scroll behavior
-  `GlassSurface` used to provide.
+- **ChipRow** (`src/design-system/components/chip-row/`) — the ONE
+  shared chips component (F4 codebase-review decision 24): this used to
+  be two near-duplicate selectable-pill-row components — the original
+  `ChipRow` (`src/screens/forms/chip-row/`, a compact wrap-flow row for
+  a short code/label, e.g. the account-kind/holding-type/currency
+  chips) and a separate `design-system/components/option-pills`
+  (equal-width column grid pills — `LanguageSwitch`, the Statistics
+  trend-filter sheet's amount/measure rows) — merged into this one, in
+  the original `ChipRow`'s compact look (`OptionPills`'s equal-width
+  `columns` grid did NOT carry over; every migrated consumer now wraps
+  like every other `ChipRow`, a deliberate visual change). Read the
+  folder directly for the current props; the load-bearing ones beyond
+  `options`/`selected`/`onSelect`: `Option` is `string | number` (the
+  trend-filter amount pills are `1 | 2 | 3 | 4 | 5`); `selected` accepts
+  `undefined` for a PICK LIST with no single-select toggle semantics —
+  `DescriptionSuggestions` passes `undefined` so no chip ever renders
+  highlighted, rather than faking it with a value (`''`) that matches
+  nothing; `labels`/`icons` are optional maps (id-like value -> display
+  text / SF Symbol name); `labelVariant` (default `'body'`) drops the
+  chip label a type step for a value sitting under its own larger
+  section label (the trend-filter sheet's amount/measure rows pass
+  `'caption'`, mirroring the SELECTED pill's own onAccent/semibold fill
+  rule). See `kiko-statement-import`'s column-mapping section for the
+  fullest worked comparison against `SegmentedControl` below. Because a
+  design-system component may never import from `src/screens/**`
+  (`kiko-no-import-screens-outside-ui`), `ChipRow` had to live in
+  `design-system/components/` the moment a design-system component
+  (`LanguageSwitch`) needed to render one — the SAME reason `FieldTrigger`
+  moved out of `screens/forms/` earlier; a screen-level consumer imports
+  it from there like any other design-system component.
 - **SegmentedControl** (`src/design-system/components/segmented-control/`)
   — a JS implementation of Apple's iOS `UISegmentedControl`, per the Human
   Interface Guidelines
@@ -689,7 +694,7 @@ new component can land between reviews of this skill:
   ratio rather than trusting a copy of either restated here (they drift —
   a duplicate here was itself a documented fix-round-1 skill-drift finding,
   N2). This is still NOT the app's other filled-accent selection
-  vocabulary (`OptionPills`/`ChipRow`/`SelectableRow`) — a segmented
+  vocabulary (`ChipRow`/`SelectableRow`) — a segmented
   control reads as its own distinct iOS control. No segmented-control
   NATIVE library is a dependency of this app (checked at F3 item 9); this
   renders the same visual/interaction contract in plain
@@ -711,7 +716,14 @@ new component can land between reviews of this skill:
   `segmented-control.styles.ts` for the exact geometry rather than a copy
   of the pixel values restated here. The selected label is semibold
   (`fontWeight: '600'`), matching UIKit, composed alongside (not
-  duplicating) the base label's own `textAlign: 'center'`.
+  duplicating) the base label's own `textAlign: 'center'`. The 32pt
+  visible track (F4 item 6, "is this how iOS does them?"): confirmed
+  against UIKit's own `UISegmentedControl` — its `intrinsicContentSize`
+  height is 32pt for the standard (`.small`/`.medium`, the default)
+  control size introduced with the iOS 13 redesign, the same height this
+  component's `TRACK_HEIGHT` constant already used — no change needed,
+  the app's segmented controls already match the real iOS control's
+  height; a segment "seeming short" is the native height, not a bug.
   Props: `options`/`selected`/`onSelect`/`labels`/`accessibilityLabel`
   (required — every segment folds it into its own `accessibilityHint`)
   /`testID`. Accessibility (F3 fix round 2, M4): each segment keeps
@@ -729,23 +741,47 @@ new component can land between reviews of this skill:
   confirmed on a real device — Jest only asserts prop values.
   `SegmentedControl` carries no VISIBLE label prop of its own (only the
   non-visual `accessibilityLabel`) — a caller that needs a visible
-  caption above it (encoding/decimal-separator on the column-mapping
-  screen, which sit inside a shared "File Format" section alongside
-  other fields, unlike the amount/currency sections where the section
-  heading itself is the only label needed) composes its own `FieldLabel`
-  above the control, the same way `ChipRow` does internally.
-  `ChipRow` remains the compact short-code/label picker — delimiter (3-way)
-  on the column-mapping screen stays `ChipRow` — while `SegmentedControl`
-  is for a true 2-3-way MODE toggle: the column-mapping screen's
-  amount-mode/currency-mode selectors (`AmountFields`/`CurrencyFields`)
-  and, as of F3 fix round 2 (M5, applied — not left as the round-1
-  DEFAULT), its encoding and decimal-separator selectors too, superseding
-  `ChipRow` for all four (F3 item 9, `21d53cc`'s prior `ChipRow` pass).
-  The Bond form's "ISIN / Manual" mode (T25, `BondIsinSection`,
-  `src/screens/forms/holding-form/bond-isin-section/`) is the same true
-  2-way mode toggle, composed with its own `FieldLabel` above it (no
-  surrounding section heading names the control) — see `kiko-domain`'s
-  Bonds section for the full ISIN-mode form.
+  caption above it composes its own `FieldLabel` above the control, the
+  same way `ChipRow` does internally (the crypto-sync Wallet/Binance
+  source toggle and the Bond form's "ISIN / Manual" mode both do this).
+
+  **The tabs-vs-chips rule (F4 Q2 USER RULE, binding, replaces the F3
+  item 9 DEFAULT below):** "Tabs (`SegmentedControl`) are used when the
+  selection changes the appearance — it shows different form fields.
+  Otherwise use chips (`ChipRow`) — a value selection that leaves the
+  form the same." A long option list (more than a handful) still uses
+  `SelectField`'s select sheet regardless of whether it changes fields.
+  Verify EVERY choice control against this rule before adding or
+  changing one — do not assume a control's existing type is correct.
+  Current app state (F4 part 2 sweep):
+  - `SegmentedControl` (changes fields): the column-mapping screen's
+    amount-mode/currency-mode selectors (`AmountFields`/`CurrencyFields`);
+    the Bond form's ISIN/Manual mode (`BondIsinSection`,
+    `src/screens/forms/holding-form/bond-isin-section/`); the Loan
+    form's schedule selector (`LoanSection` — `none` hides the
+    rate/term fields); the Lot form's Buy/Sell toggle (`LotFormScreen`
+    — Buy alone shows the Total-cost field); the account-detail crypto
+    sync form's Wallet/Binance source toggle (`CryptoSyncForm` — each
+    shows a different credential field); the Statistics trend-filter
+    sheet's Top/Manual mode (`TrendFilterField` — Top shows the
+    amount/measure controls, Manual shows the category list).
+  - `ChipRow` (leaves the form the same): the column-mapping screen's
+    encoding, delimiter, and decimal-separator pickers (F4 audit item 4
+    — the F3 item 9 DEFAULT below moved these to `SegmentedControl`
+    against the user's own instruction; reverted); the holding form's
+    metal-element/form/unit chips, the property/loan "kind" chips
+    consumed directly by `PropertySection`/`LoanSection` before F4 (now
+    `SelectField` — see above); the Statistics trend-filter sheet's
+    amount (1-5) and by-measure pills.
+  - `SelectField` (long list, regardless of field-change): the
+    property-category and loan-kind pickers (6 and 4 options — too wide
+    for a `ChipRow`); the Bond form's coupon-frequency picker.
+  ~~The F3 item 9 DEFAULT this replaces~~ (kept for history, NOT the
+  current rule): an earlier round moved the column-mapping screen's
+  encoding and decimal-separator selectors from `ChipRow` to
+  `SegmentedControl` as a widened DEFAULT the user never asked for — the
+  user's own instruction was "tabs ONLY for amount and currency modes."
+  F4 audit item 4 reverted this; do not re-apply it.
 - **BarChart**, **PieChart**, **NetWorthLine** — the `react-native-svg`
   visualization components; see the dedicated `kiko-charts` skill for
   their coordinate-space and testID conventions before touching any
