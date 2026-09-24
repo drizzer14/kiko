@@ -241,12 +241,12 @@ function sortKey(statementLines) {
   return [endingLine.length, isTypeOnlyImport(statementLines) ? 1 : 0];
 }
 
-function compareKeys(a, b) {
-  if (a[0] !== b[0]) {
-    return a[0] - b[0];
+function compareKeys(left, right) {
+  if (left[0] !== right[0]) {
+    return left[0] - right[0];
   }
 
-  return a[1] - b[1];
+  return left[1] - right[1];
 }
 
 // Splits the header entries (blank-separated) into groups, each a plain
@@ -347,7 +347,7 @@ function partitionAtBarriers(items) {
 function trailingBlankCount(entries) {
   let count = 0;
 
-  for (let i = entries.length - 1; i >= 0 && entries[i].kind === 'blank'; i -= 1) {
+  for (let index = entries.length - 1; index >= 0 && entries[index].kind === 'blank'; index -= 1) {
     count += 1;
   }
 
@@ -362,7 +362,7 @@ function trailingBlankCount(entries) {
 function leadingBlankCount(entries) {
   let count = 0;
 
-  for (let i = 0; i < entries.length && entries[i].kind === 'blank'; i += 1) {
+  for (let index = 0; index < entries.length && entries[index].kind === 'blank'; index += 1) {
     count += 1;
   }
 
@@ -370,8 +370,11 @@ function leadingBlankCount(entries) {
 }
 
 function isSorted(items) {
-  for (let i = 1; i < items.length; i += 1) {
-    if (compareKeys(sortKey(items[i - 1].statementLines), sortKey(items[i].statementLines)) > 0) {
+  for (let index = 1; index < items.length; index += 1) {
+    if (
+      compareKeys(sortKey(items[index - 1].statementLines), sortKey(items[index].statementLines)) >
+      0
+    ) {
       return false;
     }
   }
@@ -523,7 +526,9 @@ function runCli() {
 
     if (violations.length > 0) {
       anyViolation = true;
-      process.stdout.write(`${file}:\n${violations.map((v) => `  ${v}`).join('\n')}\n`);
+      process.stdout.write(
+        `${file}:\n${violations.map((violation) => `  ${violation}`).join('\n')}\n`,
+      );
     }
   }
 

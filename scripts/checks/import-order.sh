@@ -64,8 +64,8 @@ fi
 files=()
 for root in "${roots[@]}"; do
   [ -e "$root" ] || continue
-  while IFS= read -r f; do
-    [ -n "$f" ] && files+=("$f")
+  while IFS= read -r file; do
+    [ -n "$file" ] && files+=("$file")
   done < <(find "$root" -type f \( -name '*.ts' -o -name '*.tsx' \) 2>/dev/null | sort)
 done
 

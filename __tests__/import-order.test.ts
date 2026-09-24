@@ -11,18 +11,18 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 const SCRIPT = join(__dirname, '../scripts/checks/import-order.sh');
 const ANALYZER = join(__dirname, '../scripts/checks/import-order.js');
 
-let dir: string;
+let directory: string;
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'import-order-test-'));
+  directory = mkdtempSync(join(tmpdir(), 'import-order-test-'));
 });
 
 afterEach(() => {
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(directory, { recursive: true, force: true });
 });
 
 const runCheck = (source: string): SpawnSyncReturns<string> => {
-  const file = join(dir, 'fixture.ts');
+  const file = join(directory, 'fixture.ts');
   writeFileSync(file, source);
 
   return spawnSync('bash', [SCRIPT, file], { encoding: 'utf8' });
@@ -197,7 +197,7 @@ describe('scripts/checks/import-order.sh', () => {
   });
 
   it('exits 0 on a non-.ts/.tsx file', () => {
-    const file = join(dir, 'fixture.md');
+    const file = join(directory, 'fixture.md');
     writeFileSync(file, '# not typescript\n');
 
     const result = spawnSync('bash', [SCRIPT, file], { encoding: 'utf8' });
@@ -208,7 +208,7 @@ describe('scripts/checks/import-order.sh', () => {
   describe('project-wide mode (no file argument)', () => {
     it('exits 0 when IMPORT_ORDER_SRC_ROOT holds no violation', () => {
       writeFileSync(
-        join(dir, 'clean.ts'),
+        join(directory, 'clean.ts'),
         "import { type FC, useEffect } from 'react';\n" +
           "import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';\n" +
           '\n' +
@@ -217,7 +217,7 @@ describe('scripts/checks/import-order.sh', () => {
 
       const result = spawnSync('bash', [SCRIPT], {
         encoding: 'utf8',
-        env: { ...process.env, IMPORT_ORDER_SRC_ROOT: dir },
+        env: { ...process.env, IMPORT_ORDER_SRC_ROOT: directory },
       });
 
       expect(result.status).toBe(0);
@@ -225,7 +225,7 @@ describe('scripts/checks/import-order.sh', () => {
 
     it('exits 2 when IMPORT_ORDER_SRC_ROOT holds a violation', () => {
       writeFileSync(
-        join(dir, 'bad.ts'),
+        join(directory, 'bad.ts'),
         "import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';\n" +
           "import { type FC, useEffect } from 'react';\n" +
           '\n' +
@@ -234,7 +234,7 @@ describe('scripts/checks/import-order.sh', () => {
 
       const result = spawnSync('bash', [SCRIPT], {
         encoding: 'utf8',
-        env: { ...process.env, IMPORT_ORDER_SRC_ROOT: dir },
+        env: { ...process.env, IMPORT_ORDER_SRC_ROOT: directory },
       });
 
       expect(result.status).toBe(2);
@@ -245,7 +245,7 @@ describe('scripts/checks/import-order.sh', () => {
 
 describe('scripts/checks/import-order.js --write', () => {
   const write = (source: string): string => {
-    const file = join(dir, 'fixture.ts');
+    const file = join(directory, 'fixture.ts');
     writeFileSync(file, source);
     spawnSync('node', [ANALYZER, '--write', file], { encoding: 'utf8' });
 
