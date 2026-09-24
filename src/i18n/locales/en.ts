@@ -231,7 +231,6 @@ export const en = {
       namePlaceholder: 'Monobank',
       noBank: 'Free',
       property: 'Property',
-      selectBankPlaceholder: 'Select a bank (optional)',
     },
     contribution: {
       addTitle: 'Add Contribution',
@@ -708,7 +707,8 @@ export const en = {
     chooseHoldingSheetTitle: 'Choose a Holding',
     // The field's own "nothing picked yet" value (F4 audit 16): never
     // `chooseHolding` repeated verbatim — a different verb, the same "Select
-    // a …" copy style as `forms.account.selectBankPlaceholder`.
+    // a …" copy style as `columnMapping.dateColumnPlaceholder` and its
+    // siblings.
     chooseHoldingPlaceholder: 'Select a holding',
     // Shown on the field when Import/Save was pressed with no holding chosen
     // — "Pick …" matches the established picker-field error copy style (see

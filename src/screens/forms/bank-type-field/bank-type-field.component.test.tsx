@@ -7,7 +7,9 @@ import { darkTheme } from '../../../design-system/theme';
 import BankTypeField from '.';
 
 describe('BankTypeField', () => {
-  it('shows the placeholder before anything is picked, and opens the sheet on press', async () => {
+  // F4 item 3: "Free" is the DEFAULT option, shown as a real value the
+  // instant nothing else is picked — never a placeholder.
+  it('shows "Free" as the default value before anything else is picked, and opens the sheet on press', async () => {
     const onSelect = jest.fn();
     const { getByLabelText, getByTestId } = await render(
       <BankTypeField
@@ -19,7 +21,7 @@ describe('BankTypeField', () => {
     );
 
     expect(getByLabelText('Bank type')).toBeTruthy();
-    expect(getByTestId('bank-type-field')).toHaveTextContent('Select a bank (optional)');
+    expect(getByTestId('bank-type-field')).toHaveTextContent('Free');
 
     await fireEvent.press(getByTestId('bank-type-field'));
 

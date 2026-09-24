@@ -207,7 +207,6 @@ export const uk: typeof en = {
       namePlaceholder: 'Монобанк',
       noBank: 'Довільний',
       property: 'Майно',
-      selectBankPlaceholder: 'Оберіть банк (необов’язково)',
     },
     contribution: {
       addTitle: 'Додати внесок',
