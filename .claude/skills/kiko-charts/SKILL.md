@@ -161,6 +161,14 @@ the `AREA_OPACITY`/`NEGATIVE_AREA_OPACITY` constants in
 `net-worth-line.component.tsx` for the current values rather than
 restating them here.
 
+**T27 (spec §5.2, kiko-domain "Net worth"):** net worth can now go
+negative (a debt outweighing assets), so the line can cross 0 — this
+needed NO change to `NetWorthLine` itself: `buildLineSegments` and
+`toAreaPath` already split on sign per-segment (above), which is
+exactly the "cross 0" case. The Y axis already floors to the series'
+own minimum (whatever that is, positive or negative), so a negative
+range draws correctly with no separate floor-at-0 logic to remove.
+
 ## Legend percent labels sum to 100
 
 `pie-chart.component.tsx`'s legend column never rounds a slice's share
@@ -267,6 +275,20 @@ and an all-above set (nothing to crop) both show the full legend with no
 toggle. The Expenses-by-Category donut passes `legendMinShare={0.05}`
 (`CATEGORY_LEGEND_MIN_SHARE` in `statistics.screen.tsx`); the
 account-contribution pie passes nothing, so its legend is uncropped.
+
+## The account pie excludes debts (T27)
+
+`PieChart` itself has no debt concept — the exclusion lives entirely
+in its caller. `buildAccountContribution` (`src/statistics/account-contribution/`)
+filters to `slice.amount > 0` before this component ever sees the
+slice list, so a debt account's net worth (negative, since a `loan`
+holding's own value is negative — see `kiko-domain` "Net worth")
+never reaches the ring: no negative-slice case exists inside
+`PieChart`/`allocatePercents` to handle. The SAME file's
+`buildDebtTotal` sums every `loan` holding's value into a separate
+"Debts" `Money` total, rendered on Statistics via `MoneyText` under
+the account-contribution pie card (`statistics-debts-total`), not as
+a pie slice.
 
 ## Reuse the entity-color system for fills
 

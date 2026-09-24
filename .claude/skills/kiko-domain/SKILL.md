@@ -482,20 +482,49 @@ assume a specific convention for it without one.
 
 ## Net worth
 
-Net worth is **assets-only** — liabilities and debt are out of scope
-for this sub-project. It is the sum of every non-archived holding's
-balance, each converted to the user's selected base currency (stored
-in `Settings.baseCurrency`). An archived account's or closed holding's
-balance is excluded. The headline total (`guardedNetWorth`) and the
-per-currency breakdown shown beneath it (`guardedBreakdown`) share one
-`canConvert` filter in `src/rates/`, so a currency with no resolvable
-rate is dropped from both — never included in the breakdown after
-being excluded from the total. See `kiko-pricing`'s "Currency-rate
-fallback chain" section for how a rate is resolved (Monobank → NBU →
-bundled fiat seed); today CRYPTO is the only currency class that can still hit
-this silent-drop path (no offline seed, so an unrated crypto holding
-is excluded until a live CoinGecko price lands) — every fiat currency
-is covered by the bundled seed and effectively never drops.
+**T27 (spec §5.2) changed this rule: net worth = Σ asset values − Σ
+debt outstanding**, in the base currency — it is no longer
+assets-only. It is the sum of every non-archived holding's value
+(`holdingValue`/`holdingValueBreakdown`, `src/holdings/holding-value/`),
+each converted to the user's selected base currency (stored in
+`Settings.baseCurrency`). A `loan` holding's own value is NEGATIVE —
+minus its outstanding balance (`loanOutstandingMinorAt`,
+`src/holdings/loan-schedule/`) — so **no debt-aware branch exists
+anywhere in the summation path**: `netWorth`/`guardedNetWorth`
+(`src/rates/conversion/`, `src/rates/net-worth-view/`) and
+`buildNetWorthSeries` (`src/statistics/net-worth-series/`) simply add
+up every holding's own (possibly negative) value, exactly as they did
+before loans existed. A credit-card negative balance already worked
+the same way (a plain negative `balanceMinorUnits`) and still does —
+a loan is just the second holding shape whose value can be negative.
+The headline can now render negative; `MoneyText` already renders a
+negative `Money` with a minus sign through `formatMoney`, so no
+special-casing was needed there either (see `kiko-charts` for the pie
+chart and net-worth line's own T27 rules). An archived account's or
+closed holding's balance is excluded. The headline total
+(`guardedNetWorth`) and the per-currency breakdown shown beneath it
+(`guardedBreakdown`) share one `canConvert` filter in `src/rates/`, so
+a currency with no resolvable rate is dropped from both — never
+included in the breakdown after being excluded from the total. See
+`kiko-pricing`'s "Currency-rate fallback chain" section for how a rate
+is resolved (Monobank → NBU → bundled fiat seed); today CRYPTO is the
+only currency class that can still hit this silent-drop path (no
+offline seed, so an unrated crypto holding is excluded until a live
+CoinGecko price lands) — every fiat currency is covered by the bundled
+seed and effectively never drops.
+
+`buildTypeBreakdown` (`src/statistics/type-breakdown/`, the by-type
+bar) excludes `loan` outright rather than letting it slip through as a
+negative bar — it is an ASSET breakdown, and debt has its own total
+(see below). `buildAccountContribution` (`src/statistics/account-contribution/`,
+the account pie) already filtered to `amount > 0` before T27, so a
+debt account's negative net worth was excluded structurally with no
+code change; the SAME file's `buildDebtTotal` sums every `loan`
+holding's own value (already negative) into the separate "Debts"
+total shown on Statistics under the pie, on Home (folded into the
+headline, since Home has no separate debts line), and on Accounts (its
+own "Debts" section, `accounts.screen.tsx`) — read `kiko-charts` for
+the pie/line-specific rules.
 
 ## Price series and priced holdings
 
