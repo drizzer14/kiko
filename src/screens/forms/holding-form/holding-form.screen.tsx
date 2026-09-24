@@ -104,8 +104,8 @@ type PropertyReasonKey = 'forms.holding.propertyCostError';
 // The literal i18n keys `metalReasonKey` may return — reusing the SAME
 // generic quantity error the bond form already carries, and the Lot form's
 // own total-cost error, rather than minting a metal-specific duplicate of
-// either message. `purityError` (F4 audit 8) is metal-specific: no other
-// form field validates a 0-1 fineness ratio.
+// either message. `purityError` is metal-specific: no other form field
+// validates a 0-1 fineness ratio.
 type MetalReasonKey =
   | 'forms.holding.quantityError'
   | 'forms.lot.totalCostError'
@@ -343,11 +343,11 @@ const buildPropertyCreatePayload = (params: {
 
 // The pre-filled purity — the standard bar/coin fineness (T20's own default).
 // Shared by the initial form state and the create-payload's fallback below.
-// `metalPurityReasonKey` (F4 audit 8) now BLOCKS Save on an out-of-range or
-// garbled purity, so the `?? DEFAULT_METAL_PURITY` fallback below is
-// unreachable for anything the user actually typed — it stays purely for
-// type safety (`normalizeDecimal` can still return `null`), never as a
-// silent correction of a value Save already let through.
+// `metalPurityReasonKey` BLOCKS Save on an out-of-range or garbled purity,
+// so the `?? DEFAULT_METAL_PURITY` fallback below is unreachable for
+// anything the user actually typed — it stays purely for type safety
+// (`normalizeDecimal` can still return `null`), never as a silent
+// correction of a value Save already let through.
 const DEFAULT_METAL_PURITY = '0.9999';
 
 // The metal CREATE payload (T20): a `metal` holding writes a zero stored

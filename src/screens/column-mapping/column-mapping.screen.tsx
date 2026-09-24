@@ -148,9 +148,9 @@ const buildCurrency = (fields: MappingFormFields): ColumnMapping['currency'] | u
 
 // A structurally complete `ColumnMapping`, or `undefined` while a required
 // field (date, its format, amount(s), description, currency) is still
-// unmapped — read by `handleImport`'s own on-press validation (F4 audit 1:
-// Import is ALWAYS enabled, never a standing `disabled={!isValid}` gate — see
-// `kiko-code-style`'s "Form validation model"). `counterpartyColumn`
+// unmapped — read by `handleImport`'s own on-press validation. Import is
+// ALWAYS enabled, never a standing `disabled={!isValid}` gate — see
+// `kiko-code-style`'s "Form validation model". `counterpartyColumn`
 // (optional) never blocks this.
 const buildColumnMapping = (fields: MappingFormFields): ColumnMapping | undefined => {
   if (
@@ -270,11 +270,11 @@ const columnMappingFieldErrors = (params: {
   currencyMode: CurrencyMode;
   currencyColumn: number | undefined;
   // True once every required field IS mapped but `applyColumnMapping` still
-  // threw (F4 audit 6: a currency column whose values resolve to no known
-  // ISO code) — the ONE throw case that function's own doc comment
-  // documents, so `mapping !== undefined && applyResult === undefined`
-  // (the caller's own check) is exactly this state, never a false positive
-  // from some other failure.
+  // threw (a currency column whose values resolve to no known ISO code
+  // anywhere in the file) — the ONE throw case that function's own doc
+  // comment documents, so `mapping !== undefined && applyResult ===
+  // undefined` (the caller's own check) is exactly this state, never a
+  // false positive from some other per-row failure.
   currencyColumnUnresolved: boolean;
   descriptionColumn: number | undefined;
   // True once every required field IS mapped, `applyColumnMapping` succeeded
@@ -393,9 +393,9 @@ const columnOptionsFor = (headerRow: TableCell[]): ColumnSelectFieldOption<numbe
     return { value: index, label: text === '' ? `#${index + 1}` : text };
   });
 
-// F4 item 8: each option shows a worked example date (e.g. "31.12.2026
-// 23:59:59"), not the raw preset id — meaningless to a user who doesn't
-// already know date-format notation.
+// Each option shows a worked example date (e.g. "31.12.2026 23:59:59"), not
+// the raw preset id — meaningless to a user who doesn't already know
+// date-format notation.
 const dateFormatOptions: ColumnSelectFieldOption<DateFormatId>[] = dateFormatIds.map((id) => ({
   value: id,
   label: dateFormatExamples[id],
@@ -861,9 +861,9 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   // R2-1 (F3 part 1 fix round 3): guards `handleSheetClosed` against running
   // its navigation more than once — see that function's own comment.
   const navigatedAwayRef = useRef(false);
-  // F4 audit 1: Import is ALWAYS enabled — this flips true on the FIRST
-  // Import press and stays true, the same "validate on press" contract every
-  // other Kiko form uses (`kiko-code-style`'s "Form validation model").
+  // Import is ALWAYS enabled — this flips true on the FIRST Import press
+  // and stays true, the same "validate on press" contract every other Kiko
+  // form uses (`kiko-code-style`'s "Form validation model").
   const [attemptedImport, setAttemptedImport] = useState(false);
 
   // The scroll-to-first-invalid-field infrastructure (mirrors
@@ -1087,8 +1087,8 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     applyResult.statement.transactions.length > 0 &&
     selectedHoldingId !== undefined;
 
-  // F4 audit 1: Import is ALWAYS enabled (`disabled={importing}` only, see
-  // the footer below) — this validates on press instead of standing behind a
+  // Import is ALWAYS enabled (`disabled={importing}` only, see the footer
+  // below) — this validates on press instead of standing behind a
   // `disabled={!canImport}` gate, the shared form-validation model
   // (`kiko-code-style`). A blocked press flags every invalid field and
   // scrolls to the first one, exactly like `holding-form.screen.tsx`'s own
@@ -1128,8 +1128,8 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
         savedAt: Date.now(),
       });
     } catch {
-      // F4 audit 7: a translated Alert, never raw `error.message` rendered
-      // inline — see `statementImport.importErrorTitle`'s own doc comment.
+      // A translated Alert, never raw `error.message` rendered inline — see
+      // `statementImport.importErrorTitle`'s own doc comment.
       Alert.alert(t('statementImport.importErrorTitle'), t('statementImport.importErrorMessage'));
     } finally {
       setImporting(false);
@@ -1174,9 +1174,9 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
 
   const footer =
     loadState.kind === 'ready' ? (
-      // F4 audit 1: Import is ALWAYS enabled — `disabled={importing}` only,
-      // never a standing `disabled={!canImport}` gate. See `handleImport`'s
-      // own doc comment.
+      // Import is ALWAYS enabled — `disabled={importing}` only, never a
+      // standing `disabled={!canImport}` gate. See `handleImport`'s own doc
+      // comment.
       <Button variant="primary" onPress={handleImport} disabled={importing}>
         {t('statementImport.importButton')}
       </Button>
