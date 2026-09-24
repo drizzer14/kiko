@@ -15,7 +15,13 @@ import type { LanguageSwitchProps } from './language-switch.props';
 const LanguageSwitch: FC<LanguageSwitchProps> = ({ selected, onSelect }) => {
   const { t } = useTranslation();
 
-  const labels = { uk: t('language.uk'), en: t('language.en') };
+  // `satisfies` pins this object literal to exactly the `appLanguages` keys,
+  // so adding a third language without a matching label here is a compile
+  // error rather than a silently-unlabeled chip.
+  const labels = { uk: t('language.uk'), en: t('language.en') } satisfies Record<
+    (typeof appLanguages)[number],
+    string
+  >;
 
   return <ChipRow options={appLanguages} selected={selected} onSelect={onSelect} labels={labels} />;
 };
