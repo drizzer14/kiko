@@ -2,15 +2,18 @@ import type { FC } from 'react';
 import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import ChipRow from '../../chip-row';
 import Box from '../../../../design-system/components/box';
 import TextField from '../../../../design-system/components/text-field';
+import SelectField from '../../../../design-system/components/select-field';
 import { propertyCategories, type PropertyCategory } from '../../../../holdings/holding-metadata';
 
 import type { PropertySectionProps } from './property-section.props';
 
-// The `property_item` create-form section (T16): a category ChipRow (editable
-// in both create and edit mode) and a Cost field (create-only — see
+// The `property_item` create-form section (T16): a category select field
+// (editable in both create and edit mode; F4 audit item 9 — a `ChipRow` read
+// oversized for 6 long category names, converted to the
+// `FieldTrigger`+`BottomSheet`+`SelectableRow` family, same shape as
+// `AccountKindField`) and a Cost field (create-only — see
 // `PropertySectionProps.showCost`'s own doc comment). One lot + one manual
 // price point equal to this cost is what `holding-form.screen.tsx` builds
 // from it on save; this component only collects and reports the two fields.
@@ -38,12 +41,14 @@ const PropertySection: FC<PropertySectionProps> = ({
 
   return (
     <Box gap={4}>
-      <ChipRow
+      <SelectField
         label={t('forms.holding.category')}
         options={propertyCategories}
         selected={category}
         onSelect={onSelectCategory}
         labels={categoryLabels}
+        placeholder={t('forms.holding.categoryPlaceholder')}
+        testID="property-category-field"
       />
 
       {showCost && (

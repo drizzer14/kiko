@@ -22,21 +22,27 @@ const baseProps = {
 };
 
 describe('LoanSection', () => {
-  it('renders every loan kind as a chip, under the Loan Kind label', async () => {
-    const { getByText } = await render(<LoanSection {...baseProps} />);
+  it('shows the selected kind in the field trigger, labeled Loan kind', async () => {
+    const { getByTestId, getByText } = await render(<LoanSection {...baseProps} />);
 
     expect(getByText('Loan kind')).toBeTruthy();
-    expect(getByText('Mortgage')).toBeTruthy();
-    expect(getByText('Car loan')).toBeTruthy();
-    expect(getByText('Consumer loan')).toBeTruthy();
-    expect(getByText('From a person')).toBeTruthy();
+    expect(getByTestId('loan-kind-field')).toHaveTextContent('Mortgage');
   });
 
-  it('reports the tapped kind', async () => {
+  it('lists every loan kind in the sheet and reports the tapped one', async () => {
     const onSelectKind = jest.fn();
-    const { getByText } = await render(<LoanSection {...baseProps} onSelectKind={onSelectKind} />);
+    const { getByTestId } = await render(
+      <LoanSection {...baseProps} onSelectKind={onSelectKind} />,
+    );
 
-    await fireEvent.press(getByText('Car loan'));
+    await fireEvent.press(getByTestId('loan-kind-field'));
+
+    expect(getByTestId('loan-kind-field-option-mortgage')).toBeTruthy();
+    expect(getByTestId('loan-kind-field-option-car_loan')).toBeTruthy();
+    expect(getByTestId('loan-kind-field-option-consumer_loan')).toBeTruthy();
+    expect(getByTestId('loan-kind-field-option-personal')).toBeTruthy();
+
+    await fireEvent.press(getByTestId('loan-kind-field-option-car_loan'));
 
     expect(onSelectKind).toHaveBeenCalledWith('car_loan');
   });

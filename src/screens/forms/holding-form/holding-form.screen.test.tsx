@@ -1268,7 +1268,8 @@ describe('HoldingFormScreen property', () => {
     const screen = await renderScreen();
 
     await fill(screen, 'Name', 'My car');
-    await fireEvent.press(screen.getByText('Vehicle'));
+    await fireEvent.press(screen.getByTestId('property-category-field'));
+    await fireEvent.press(screen.getByTestId('property-category-field-option-vehicle'));
     await fill(screen, 'Cost', '5000');
     await fireEvent.press(screen.getByText('Save'));
 
@@ -1337,7 +1338,8 @@ describe('HoldingFormScreen property', () => {
       },
     });
 
-    await fireEvent.press(screen.getByText('Vehicle'));
+    await fireEvent.press(screen.getByTestId('property-category-field'));
+    await fireEvent.press(screen.getByTestId('property-category-field-option-vehicle'));
     await fireEvent.press(screen.getByText('Save'));
 
     expect(updateDeltaMock).toHaveBeenCalledWith(
@@ -1778,10 +1780,11 @@ describe('HoldingFormScreen loan (T28)', () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
-  it('creates a car-loan-kind loan under the tapped kind chip', async () => {
+  it('creates a car-loan-kind loan under the tapped kind option', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Car loan'));
+    await fireEvent.press(screen.getByTestId('loan-kind-field'));
+    await fireEvent.press(screen.getByTestId('loan-kind-field-option-car_loan'));
     await fillLoanFields(screen);
     await fill(screen, 'Annual rate %', '9');
     await fill(screen, 'Term (months)', '36');

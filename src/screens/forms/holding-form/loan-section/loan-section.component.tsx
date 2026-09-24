@@ -3,7 +3,6 @@ import { View } from 'react-native';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
-import ChipRow from '../../chip-row';
 import DateField from '../../date-field';
 import {
   loanKinds,
@@ -14,6 +13,7 @@ import {
 import Box from '../../../../design-system/components/box';
 import TextField from '../../../../design-system/components/text-field';
 import FieldLabel from '../../../../design-system/components/field-label';
+import SelectField from '../../../../design-system/components/select-field';
 import SegmentedControl from '../../../../design-system/components/segmented-control';
 
 import type { LoanSectionProps } from './loan-section.props';
@@ -31,10 +31,14 @@ const loanScheduleLabels = (t: TFunction): Record<LoanSchedule, string> => ({
   none: t('forms.holding.loanSchedule.none'),
 });
 
-// The `loan` create/edit-form section (T28, spec 5.1): a kind ChipRow, the
+// The `loan` create/edit-form section (T28, spec 5.1): a kind select field
+// (F4 audit item 9 — a `ChipRow` read oversized for 4 long kind names,
+// converted to the `FieldTrigger`+`BottomSheet`+`SelectableRow` family), the
 // principal + start-date fields, the schedule SegmentedControl (F3/T24
-// ruling — one control type per kind of mode choice, not a ChipRow, the
-// same reason the Bond form's ISIN/Manual toggle uses one), and the
+// ruling — one control type per kind of mode choice; the schedule DOES
+// change the visible fields below it, so the Q2 tabs-vs-chips rule keeps it
+// a SegmentedControl — the same reason the Bond form's ISIN/Manual toggle
+// uses one), and the
 // rate/term fields — hidden while `schedule` is `'none'` (an informal debt
 // has no known rate/term, spec 5.1). Unlike `PropertySection`/
 // `MetalSection`, every field here is editable in BOTH create and edit mode
@@ -73,12 +77,14 @@ const LoanSection: FC<LoanSectionProps> = ({
 
   return (
     <Box gap={4}>
-      <ChipRow
+      <SelectField
         label={t('forms.holding.loanKindLabel')}
         options={loanKinds}
         selected={kind}
         onSelect={onSelectKind}
         labels={loanKindLabels(t)}
+        placeholder={t('forms.holding.loanKindPlaceholder')}
+        testID="loan-kind-field"
       />
 
       <View ref={principalFieldRef}>

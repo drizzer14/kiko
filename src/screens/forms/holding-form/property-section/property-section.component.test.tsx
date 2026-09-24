@@ -15,25 +15,29 @@ const baseProps = {
 };
 
 describe('PropertySection', () => {
-  it('renders every property category as a chip, under a Category label', async () => {
-    const { getByText } = await render(<PropertySection {...baseProps} />);
+  it('shows the selected category in the field trigger, labeled Category', async () => {
+    const { getByTestId, getByText } = await render(<PropertySection {...baseProps} />);
 
     expect(getByText('Category')).toBeTruthy();
-    expect(getByText('Real estate')).toBeTruthy();
-    expect(getByText('Vehicle')).toBeTruthy();
-    expect(getByText('Valuable')).toBeTruthy();
-    expect(getByText('Loan given')).toBeTruthy();
-    expect(getByText('Business share')).toBeTruthy();
-    expect(getByText('Other')).toBeTruthy();
+    expect(getByTestId('property-category-field')).toHaveTextContent('Real estate');
   });
 
-  it('reports the tapped category', async () => {
+  it('lists every property category in the sheet and reports the tapped one', async () => {
     const onSelectCategory = jest.fn();
-    const { getByText } = await render(
+    const { getByTestId } = await render(
       <PropertySection {...baseProps} onSelectCategory={onSelectCategory} />,
     );
 
-    await fireEvent.press(getByText('Vehicle'));
+    await fireEvent.press(getByTestId('property-category-field'));
+
+    expect(getByTestId('property-category-field-option-real_estate')).toBeTruthy();
+    expect(getByTestId('property-category-field-option-vehicle')).toBeTruthy();
+    expect(getByTestId('property-category-field-option-valuable')).toBeTruthy();
+    expect(getByTestId('property-category-field-option-loan_given')).toBeTruthy();
+    expect(getByTestId('property-category-field-option-business_share')).toBeTruthy();
+    expect(getByTestId('property-category-field-option-other')).toBeTruthy();
+
+    await fireEvent.press(getByTestId('property-category-field-option-vehicle'));
 
     expect(onSelectCategory).toHaveBeenCalledWith('vehicle');
   });

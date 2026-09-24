@@ -263,6 +263,11 @@ export const en = {
       bondKind: 'Bond kind',
       card: 'Card',
       category: 'Category',
+      // F4 audit item 9: the property-category select field's placeholder —
+      // unreachable today (the field always starts with a concrete default
+      // category), kept for the `SelectField` contract's `selected: null`
+      // case, same as every other select field's placeholder.
+      categoryPlaceholder: 'Select a category',
       compounding: 'Compounding',
       contributionAmount: 'Contribution {{index}} amount',
       contributionDate: 'Contribution {{index}} date',
@@ -312,6 +317,9 @@ export const en = {
         personal: 'From a person',
       },
       loanKindLabel: 'Loan kind',
+      // F4 audit item 9: the loan-kind select field's placeholder —
+      // unreachable today (see `categoryPlaceholder`'s own doc comment).
+      loanKindPlaceholder: 'Select a loan kind',
       loanPrincipal: 'Principal',
       loanPrincipalError: 'Principal must be greater than 0.',
       loanPrincipalPlaceholder: '1000.00',
