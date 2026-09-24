@@ -942,6 +942,23 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
     expect(createMock).not.toHaveBeenCalled();
   });
 
+  // The purchase-date field's own "missing" reason must never misfire in
+  // ISIN mode, where `useBondIsinMode` already defaults it to today the
+  // moment the bond section opens.
+  it('never shows a purchase-date reason in ISIN mode, since it auto-fills to today', async () => {
+    mockBondRegisterRows = [foundRegisterRow];
+    const screen = await renderScreen();
+
+    await selectHoldingType(screen, 'bond');
+    await fireEvent.changeText(isinInput(screen), 'UA4000234215');
+    await fill(screen, 'Quantity', '10');
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.queryByText('No purchase date selected.')).toBeNull();
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
+  });
+
   // I5 (T25 review round 1): in edit mode, a found ISIN in a DIFFERENT
   // currency than the (locked) holding currency must not silently apply,
   // and must block save with its own visible reason.
@@ -1226,6 +1243,29 @@ describe('HoldingFormScreen save validation', () => {
     await fill(screen, 'Face value', '1000');
 
     expect(screen.queryByText('Enter a face value greater than 0.')).toBeNull();
+  });
+
+  // A Manual-mode bond missing its maturity date used to fail Save with no
+  // visible reason at all (`isBondValid` blocked it, but neither
+  // `bondReasonKey` nor the scroll target knew why) — the purchase date has
+  // the identical gap in the code, but is untestable through this screen:
+  // `useBondIsinMode`'s own effect defaults it to today the instant the bond
+  // section opens, in EITHER mode, before a test can ever observe it null.
+  it('shows the maturity-date reason directly on that field, for a Manual-mode bond missing its maturity date', async () => {
+    const screen = await renderScreen();
+
+    await selectHoldingType(screen, 'bond');
+    await fireEvent.press(screen.getByText('Manual'));
+    await fill(screen, 'Name', 'My bond');
+    await fill(screen, 'Quantity', '10');
+    await fill(screen, 'Face value', '1000');
+    await fill(screen, 'Coupon %', '9');
+    await pickDate(screen, 'Purchase date', 2026, 1, 1);
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('No maturity date selected.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
   });
 
   it('keeps Save always enabled when the holding name is blank, and pressing it neither creates nor navigates', async () => {

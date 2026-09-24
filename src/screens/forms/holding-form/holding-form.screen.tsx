@@ -96,6 +96,8 @@ type BondReasonKey =
   | 'forms.holding.quantityError'
   | 'forms.holding.faceValueError'
   | 'forms.holding.couponPctError'
+  | 'forms.holding.purchaseDateRequiredError'
+  | 'forms.holding.maturityDateRequiredError'
   | 'forms.holding.maturityDateError';
 
 // The literal i18n key `propertyReasonKey` may return, so `t()` (typed from
@@ -740,13 +742,16 @@ const couponFrequencyErrorMessage = (
     : undefined;
 
 // ISIN mode never mounts the maturity DateField (its terms are
-// register-sourced) — a matured-still-registered bond's reason is shown on
-// the purchase date instead (T25 review round 1, I2), the one date the
-// user actually controls there.
+// register-sourced) — a matured-still-registered bond's reason (or a
+// register terms with no maturity date at all) is shown on the purchase
+// date instead (T25 review round 1, I2), the one date the user actually
+// controls there. The purchase field's OWN missing-date reason (`ownError`)
+// always takes priority over a redirected maturity reason, in both modes.
 const purchaseDateErrorMessage = (
   bondMode: BondEntryMode,
+  ownError: string | undefined,
   maturityDateErrorMessage: string | undefined,
-): string | undefined => (bondMode === 'isin' ? maturityDateErrorMessage : undefined);
+): string | undefined => ownError ?? (bondMode === 'isin' ? maturityDateErrorMessage : undefined);
 
 // The wrapper refs `firstInvalidFieldRef` (below) picks a scroll target from —
 // grouped into its own type so that function's own signature reads as one
@@ -884,8 +889,16 @@ const firstInvalidFieldRef = (params: {
             focus: focus.couponPct,
           },
           {
+            invalid: bondReasonKey === 'forms.holding.purchaseDateRequiredError',
+            ref: refs.purchaseDateFieldRef,
+          },
+          {
             // See `purchaseDateErrorMessage`'s own doc comment for why ISIN
             // mode's scroll target is the purchase date, not maturity.
+            invalid: bondReasonKey === 'forms.holding.maturityDateRequiredError',
+            ref: bondMode === 'isin' ? refs.purchaseDateFieldRef : refs.maturityDateFieldRef,
+          },
+          {
             invalid: bondReasonKey === 'forms.holding.maturityDateError',
             ref: bondMode === 'isin' ? refs.purchaseDateFieldRef : refs.maturityDateFieldRef,
           },
@@ -1634,10 +1647,9 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     maturityDate > purchaseDate;
 
   // The reason `isBondValid` above is false, for the SAME checks in the
-  // SAME priority order. A missing (not-yet-picked) date is already covered
-  // by that field's own required asterisk, so this returns null rather than
-  // a redundant "pick a date" line until BOTH dates are set — only then does
-  // an invalid ORDER between them get its own reason.
+  // SAME priority order — including a missing purchase or maturity date,
+  // each with its OWN "not selected" reason, ahead of the pair's relative-
+  // order check (which only makes sense once both are actually picked).
   const bondReasonKey = (): BondReasonKey | null => {
     if (!(parseAmount(quantity) > 0)) {
       return 'forms.holding.quantityError';
@@ -1651,7 +1663,15 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       return 'forms.holding.couponPctError';
     }
 
-    if (purchaseDate !== null && maturityDate !== null && maturityDate <= purchaseDate) {
+    if (purchaseDate === null) {
+      return 'forms.holding.purchaseDateRequiredError';
+    }
+
+    if (maturityDate === null) {
+      return 'forms.holding.maturityDateRequiredError';
+    }
+
+    if (maturityDate <= purchaseDate) {
       return 'forms.holding.maturityDateError';
     }
 
@@ -1672,13 +1692,35 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       ? 'forms.holding.couponPctError'
       : null;
 
-  // The maturity-date field's OWN reason (see `bondReasonKey`'s own doc
-  // comment for why a missing date returns null here rather than a redundant
-  // "pick a date" line) — independent of quantity/faceValue/coupon.
-  const maturityDateFieldReasonKey = (): 'forms.holding.maturityDateError' | null =>
-    purchaseDate !== null && maturityDate !== null && maturityDate <= purchaseDate
-      ? 'forms.holding.maturityDateError'
-      : null;
+  // The purchase-date field's OWN reason: missing entirely, independent of
+  // the fields around it. This is the ONE bond field rendered in BOTH modes
+  // (see `purchaseDateErrorMessage`'s own doc comment for how ISIN mode ALSO
+  // redirects the maturity-date reason here, since ISIN mode never mounts
+  // its own maturity DateField). `useBondIsinMode`'s own effect already
+  // defaults this field to today the instant the bond section opens, in
+  // EITHER mode, so this stays defensive against a silent, unreadable Save
+  // block if that default ever stops applying before Save is reachable.
+  const purchaseDateFieldReasonKey = (): 'forms.holding.purchaseDateRequiredError' | null =>
+    purchaseDate === null ? 'forms.holding.purchaseDateRequiredError' : null;
+
+  // The maturity-date field's OWN reason: missing (Manual mode only — ISIN
+  // mode's date is register-sourced and applied automatically once an ISIN
+  // matches) or, once both dates are picked, out of order — independent of
+  // quantity/faceValue/coupon.
+  const maturityDateFieldReasonKey = ():
+    | 'forms.holding.maturityDateRequiredError'
+    | 'forms.holding.maturityDateError'
+    | null => {
+    if (maturityDate === null) {
+      return 'forms.holding.maturityDateRequiredError';
+    }
+
+    if (purchaseDate !== null && maturityDate <= purchaseDate) {
+      return 'forms.holding.maturityDateError';
+    }
+
+    return null;
+  };
 
   // The cost field only applies at CREATE time (PropertySection hides it in
   // edit mode: cost/quantity history is fixed at creation, a later
@@ -1987,6 +2029,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     attemptedSave,
     maturityDateFieldReasonKey(),
   );
+  const purchaseDateOwnErrorMessage = fieldErrorMessage(
+    t,
+    attemptedSave,
+    purchaseDateFieldReasonKey(),
+  );
   return (
     <Screen
       scroll
@@ -2279,7 +2326,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                 onChange={setPurchaseDate}
                 placeholder={t('forms.fields.selectDatePlaceholder')}
                 required
-                error={purchaseDateErrorMessage(bondMode, maturityDateErrorMessage)}
+                error={purchaseDateErrorMessage(
+                  bondMode,
+                  purchaseDateOwnErrorMessage,
+                  maturityDateErrorMessage,
+                )}
               />
             </View>
 
