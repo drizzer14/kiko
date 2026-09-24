@@ -13,6 +13,7 @@ import {
 } from '../../db/schema';
 import { id } from '../../db/id';
 import { database, write } from '../../db/client';
+import { chunkForTable } from '../../db/chunk-for-table';
 import { normalizeTransactionName } from '../normalize-name';
 import type { ClosingBalance } from '../../statement-import/parser';
 import { exchangeReceivePath } from '../../holdings/exchange-destination';
@@ -284,20 +285,33 @@ const insertDedupRowsTx = async (
   // Manual rows are untouched either way: they carry a null `external_id`,
   // and SQLite treats each NULL in a unique index as distinct, so two of
   // them never conflict.
-  await tx
-    .insert(transactions)
-    .values(withOverrides.map((input) => ({ id: id(), ...input })))
-    .onConflictDoUpdate({
-      target: [transactions.source, transactions.externalId],
-      set: {
-        amountMinorUnits: sql`excluded.amount_minor_units`,
-        description: sql`excluded.description`,
-        hold: sql`excluded.hold`,
-        mcc: sql`excluded.mcc`,
-        counterIban: sql`excluded.counter_iban`,
-        time: sql`excluded.time`,
-      },
-    });
+  //
+  // Chunked per `chunkForTable` (T29 review round 1, M6): a single
+  // unchunked insert bound one parameter per PRESENT key per row and SQLite
+  // rejects a statement over its 32766 bound-parameter ceiling — a whole
+  // statement-import file failed past ~2980 rows, a Monobank sync past
+  // ~2731. `dedupByConflictKey` already collapsed `withOverrides` to at
+  // most one row per `(source, external_id)` key BEFORE this split, so no
+  // two chunks can ever target the same conflict key — each chunk's
+  // ON CONFLICT resolves independently, with identical semantics to the
+  // old single-statement insert.
+  const rows = withOverrides.map((input) => ({ id: id(), ...input }));
+  for (const part of chunkForTable(transactions, rows)) {
+    await tx
+      .insert(transactions)
+      .values(part)
+      .onConflictDoUpdate({
+        target: [transactions.source, transactions.externalId],
+        set: {
+          amountMinorUnits: sql`excluded.amount_minor_units`,
+          description: sql`excluded.description`,
+          hold: sql`excluded.hold`,
+          mcc: sql`excluded.mcc`,
+          counterIban: sql`excluded.counter_iban`,
+          time: sql`excluded.time`,
+        },
+      });
+  }
 
   return newRows;
 };

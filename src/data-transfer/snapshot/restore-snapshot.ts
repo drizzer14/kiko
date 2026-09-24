@@ -1,6 +1,4 @@
 // src/data-transfer/snapshot/restore-snapshot.ts
-import { type Table, getTableColumns } from 'drizzle-orm';
-
 import {
   accounts,
   bondRegister,
@@ -17,42 +15,9 @@ import {
   transactions,
 } from '../../db/schema';
 import { write } from '../../db/client';
+import { chunkForTable } from '../../db/chunk-for-table';
 
 import type { DataSnapshot } from './data-snapshot';
-
-// Each row binds one parameter per PRESENT key (nulls included — Drizzle
-// still binds them, `drizzle-orm/sqlite-core/dialect.js:362-380`), and
-// SQLite rejects a statement with more than SQLITE_MAX_VARIABLE_NUMBER
-// (32766) bound parameters — the same ceiling `rateHistoryRepo.upsertMany`
-// (`src/rates/rate-history-repo/rate-history.repo.ts`) chunks around. A
-// FIXED rows-per-chunk constant broke this once already: T29 added 3
-// columns to `transactions` (15 -> 18) and pushed 2000 rows/chunk from
-// 30000 params (safe) to 36000 (over the limit) — a `.kiko` backup with
-// >= 1821 transactions failed to restore. Deriving the chunk size from
-// EACH table's own column count, every time, means a future column can
-// never silently repeat this: the widest table just gets a smaller chunk.
-// A margin below SQLite's exact 32766 ceiling, in case a future insert
-// path binds a stray extra parameter per row (as `insertDedupRowsTx` now
-// does for `loanLinkRejected`'s JS default — see M6 in the T29 review).
-const SAFE_BOUND_PARAMETER_LIMIT = 32000;
-
-const chunk = <T>(rows: T[], size: number): T[][] => {
-  const parts: T[][] = [];
-  for (let start = 0; start < rows.length; start += size) {
-    parts.push(rows.slice(start, start + size));
-  }
-  return parts;
-};
-
-/** Chunks `rows` for `table` at the largest size that keeps every insert's
- * bound-parameter count under `SAFE_BOUND_PARAMETER_LIMIT`, computed from
- * the table's OWN column count rather than a fixed row count — see the
- * doc comment above the chunking constants. */
-const chunkForTable = <T>(table: Table, rows: T[]): T[][] => {
-  const columnCount = Object.keys(getTableColumns(table)).length;
-  const rowsPerChunk = Math.max(1, Math.floor(SAFE_BOUND_PARAMETER_LIMIT / columnCount));
-  return chunk(rows, rowsPerChunk);
-};
 
 /** True for a manual transaction row shaped like a hand-set balance under
  * migration 0036's heuristic (`drizzle/migrations/0036_add_balance_set_at.sql`):

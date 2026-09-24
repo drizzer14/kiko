@@ -645,6 +645,40 @@ describe('transactionsRepo.addManyDedup upsert', () => {
     expect(setKeys).not.toContain('loanLinkSource');
     expect(setKeys).not.toContain('loanLinkRejected');
   });
+
+  // M6 (T29 review round 1): a single unchunked insert bound one parameter
+  // per PRESENT key per row, and failed a whole statement-import file past
+  // ~2980 rows (or a Monobank sync past ~2731) once T29 widened
+  // `transactions` to 18 columns — the same `SQLITE_MAX_VARIABLE_NUMBER`
+  // ceiling C1 hit in `restoreDataSnapshot`. `insertDedupRowsTx` now chunks
+  // through the SAME `chunkForTable` helper, sized off the table's own
+  // (`getTableColumns`) column count — independent of how many keys any one
+  // row actually carries, so this holds regardless of row shape.
+  it('splits a large batch into multiple chunked inserts, each within the SQLite bound-parameter limit', async () => {
+    const insertedChunkSizes: number[] = [];
+    mockTx = {
+      select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }),
+      insert: () => ({
+        values: (values: Record<string, unknown>[]) => {
+          insertedChunkSizes.push(values.length);
+          return { onConflictDoUpdate: () => Promise.resolve() };
+        },
+      }),
+    };
+
+    const rows = Array.from({ length: 5000 }, (_, i) => syncedRow({ externalId: `e${i}` }));
+    const inserted = await transactionsRepo.addManyDedup(rows);
+
+    expect(insertedChunkSizes.length).toBeGreaterThan(1);
+    expect(insertedChunkSizes.reduce((sum, size) => sum + size, 0)).toBe(5000);
+    // `transactions` has 18 columns; every chunk must stay well under
+    // SQLite's 32766-parameter ceiling — the old unchunked insert would
+    // have bound one 5000-row statement here and failed this assertion.
+    for (const size of insertedChunkSizes) {
+      expect(size * 18).toBeLessThanOrEqual(32766);
+    }
+    expect(inserted).toBe(5000);
+  });
 });
 
 // A STORE-backed fake transaction handle for `addManyDedup`, unlike
