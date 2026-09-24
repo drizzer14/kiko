@@ -1,7 +1,7 @@
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { mkdtempSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 
 // scripts/checks/mutation.sh prints a human ETA for a run that is about to start,
 // derived from the history of COMPLETED runs, and writes a user-watchable progress
@@ -14,13 +14,13 @@ import { join } from 'node:path';
 // keyed under TMPDIR), append/read history records, and assert the exact output.
 const LIB = join(__dirname, '../scripts/checks/_lib.sh');
 
-const freshTmp = (): string => mkdtempSync(join(tmpdir(), 'kiko-eta-'));
+const freshTemporaryDirectory = (): string => mkdtempSync(join(tmpdir(), 'kiko-eta-'));
 
 // Run a snippet with _lib.sh sourced. TMPDIR is isolated per call so the
 // per-worktree state dir (and thus the history file) starts clean.
-const sh = (script: string, tmp: string): string => {
+const sh = (script: string, temporaryDirectory: string): string => {
   const result = spawnSync('bash', ['-c', `source "${LIB}"\n${script}`], {
-    env: { ...process.env, TMPDIR: tmp },
+    env: { ...process.env, TMPDIR: temporaryDirectory },
     encoding: 'utf8',
   });
   return result.stdout.trim();
@@ -28,32 +28,34 @@ const sh = (script: string, tmp: string): string => {
 
 describe('_lib.sh harness_fmt_duration (pure)', () => {
   it('formats sub-minute durations as seconds', () => {
-    expect(sh('harness_fmt_duration 45', freshTmp())).toBe('45s');
+    expect(sh('harness_fmt_duration 45', freshTemporaryDirectory())).toBe('45s');
   });
 
   it('formats a whole-minute duration as minutes only', () => {
-    expect(sh('harness_fmt_duration 60', freshTmp())).toBe('1m');
-    expect(sh('harness_fmt_duration 420', freshTmp())).toBe('7m');
+    expect(sh('harness_fmt_duration 60', freshTemporaryDirectory())).toBe('1m');
+    expect(sh('harness_fmt_duration 420', freshTemporaryDirectory())).toBe('7m');
   });
 
   it('formats a minute-and-seconds duration as "Nm Ss"', () => {
-    expect(sh('harness_fmt_duration 90', freshTmp())).toBe('1m 30s');
+    expect(sh('harness_fmt_duration 90', freshTemporaryDirectory())).toBe('1m 30s');
   });
 
   it('treats a missing or non-numeric argument as zero, never crashing', () => {
-    expect(sh('harness_fmt_duration', freshTmp())).toBe('0s');
-    expect(sh('harness_fmt_duration abc', freshTmp())).toBe('0s');
+    expect(sh('harness_fmt_duration', freshTemporaryDirectory())).toBe('0s');
+    expect(sh('harness_fmt_duration abc', freshTemporaryDirectory())).toBe('0s');
   });
 });
 
 describe('_lib.sh harness_mutation_rate (pure)', () => {
   it('prints nothing when there is no history file yet', () => {
-    const tmp = freshTmp();
-    expect(sh('harness_mutation_rate "$(harness_mutation_history_file /some/root)"', tmp)).toBe('');
+    const temporaryDirectory = freshTemporaryDirectory();
+    expect(
+      sh('harness_mutation_rate "$(harness_mutation_history_file /some/root)"', temporaryDirectory),
+    ).toBe('');
   });
 
   it('prints nothing (never crashes) when the history file is corrupt', () => {
-    const tmp = freshTmp();
+    const temporaryDirectory = freshTemporaryDirectory();
     const out = sh(
       [
         'root=/x/corrupt',
@@ -61,13 +63,13 @@ describe('_lib.sh harness_mutation_rate (pure)', () => {
         'printf "garbage with no numeric fields\\nalso junk\\n" > "$f"',
         'harness_mutation_rate "$f"',
       ].join('\n'),
-      tmp,
+      temporaryDirectory,
     );
     expect(out).toBe('');
   });
 
   it('prints nothing for old-format records that have a duration but no count', () => {
-    const tmp = freshTmp();
+    const temporaryDirectory = freshTemporaryDirectory();
     // An old 2-field-ish record: duration present, count field empty. No rate is
     // computable from it (it would divide by an empty/zero count), so it is skipped.
     const out = sh(
@@ -76,13 +78,13 @@ describe('_lib.sh harness_mutation_rate (pure)', () => {
         'harness_mutation_history_append "$root" 2026-09-11T00:00:00Z 360 "" ""',
         'harness_mutation_rate "$(harness_mutation_history_file "$root")"',
       ].join('\n'),
-      tmp,
+      temporaryDirectory,
     );
     expect(out).toBe('');
   });
 
   it('excludes 0-duration (clock skew) and 0-count records; a lone valid record still yields its rate', () => {
-    const tmp = freshTmp();
+    const temporaryDirectory = freshTemporaryDirectory();
     const out = sh(
       [
         'root=/x/lone',
@@ -93,13 +95,13 @@ describe('_lib.sh harness_mutation_rate (pure)', () => {
         'harness_mutation_history_append "$root" 2026-09-10T10:00:00Z 300 150 68',
         'harness_mutation_rate "$(harness_mutation_history_file "$root")"',
       ].join('\n'),
-      tmp,
+      temporaryDirectory,
     );
     expect(out).toBe('2');
   });
 
   it('prints the MEDIAN seconds-per-mutant over the valid records', () => {
-    const tmp = freshTmp();
+    const temporaryDirectory = freshTemporaryDirectory();
     const out = sh(
       [
         'root=/x/median',
@@ -109,13 +111,13 @@ describe('_lib.sh harness_mutation_rate (pure)', () => {
         'harness_mutation_history_append "$root" 2026-09-10T12:00:00Z 900 300 72',
         'harness_mutation_rate "$(harness_mutation_history_file "$root")"',
       ].join('\n'),
-      tmp,
+      temporaryDirectory,
     );
     expect(out).toBe('2');
   });
 
   it('averages the two middle rates for an even count of valid records', () => {
-    const tmp = freshTmp();
+    const temporaryDirectory = freshTemporaryDirectory();
     const out = sh(
       [
         'root=/x/even',
@@ -124,13 +126,13 @@ describe('_lib.sh harness_mutation_rate (pure)', () => {
         'harness_mutation_history_append "$root" 2026-09-10T11:00:00Z 120 100 71',
         'harness_mutation_rate "$(harness_mutation_history_file "$root")"',
       ].join('\n'),
-      tmp,
+      temporaryDirectory,
     );
     expect(out).toBe('1.6');
   });
 
   it('normalizes a very large run by its mutant count (this round: ~5574 mutants)', () => {
-    const tmp = freshTmp();
+    const temporaryDirectory = freshTemporaryDirectory();
     // A single record using this round's REAL data point: ~5574 mutants at a
     // 72.58% mutation score. Its rate is duration / mutantCount, so a huge run
     // contributes a comparable per-mutant rate, not a huge whole-run duration.
@@ -141,13 +143,13 @@ describe('_lib.sh harness_mutation_rate (pure)', () => {
         'harness_mutation_history_append "$root" 2026-09-11T00:00:00Z 2787 5574 72.58',
         'harness_mutation_rate "$(harness_mutation_history_file "$root")"',
       ].join('\n'),
-      tmp,
+      temporaryDirectory,
     );
     expect(out).toBe('0.5');
   });
 
   it('uses only the last up-to-5 valid records', () => {
-    const tmp = freshTmp();
+    const temporaryDirectory = freshTemporaryDirectory();
     // Six valid records; the FIRST (rate 100) must fall outside the 5-record
     // window. The last five have rates 1,2,3,4,5 -> median 3.
     const out = sh(
@@ -161,7 +163,7 @@ describe('_lib.sh harness_mutation_rate (pure)', () => {
         'harness_mutation_history_append "$root" 2026-09-10T06:00:00Z 500 100 70',
         'harness_mutation_rate "$(harness_mutation_history_file "$root")"',
       ].join('\n'),
-      tmp,
+      temporaryDirectory,
     );
     expect(out).toBe('3');
   });

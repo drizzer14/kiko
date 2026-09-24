@@ -1,4 +1,3 @@
-import { execFileSync, spawnSync } from 'node:child_process';
 import {
   chmodSync,
   copyFileSync,
@@ -10,6 +9,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { execFileSync, spawnSync } from 'node:child_process';
 
 // scripts/checks/mutation.sh (the check:deep mutation step) must STREAM Stryker's
 // output to stdout live while preserving the exit code AND the structured failure
@@ -32,28 +32,34 @@ type Run = { code: number | null; stdout: string; stderr: string };
 // _lib.sh, so a subsequent wrapper run in that TMPDIR reads them. Each record is
 // "<iso> <dur> <count> <score>". This does NOT rely on a prior wrapper run
 // (content-dedup would skip an identical second run).
-const seedHistory = (tmp: string, records: string[]): void => {
+const seedHistory = (temporaryDirectory: string, records: string[]): void => {
   const script = [
     `source "${LIB}"`,
     ...records.map((r) => `harness_mutation_history_append "${ROOT}" ${r}`),
   ].join('\n');
-  spawnSync('bash', ['-c', script], { env: { ...process.env, TMPDIR: tmp }, encoding: 'utf8' });
+  spawnSync('bash', ['-c', script], {
+    env: { ...process.env, TMPDIR: temporaryDirectory },
+    encoding: 'utf8',
+  });
 };
 
 // Overwrite the history file for ROOT under the given TMPDIR with corrupt content
 // (no numeric fields), so harness_mutation_rate yields nothing and the wrapper
 // must still gate correctly.
-const seedCorruptHistory = (tmp: string): void => {
+const seedCorruptHistory = (temporaryDirectory: string): void => {
   const script = [
     `source "${LIB}"`,
     `f="$(harness_mutation_history_file "${ROOT}")"`,
     'printf "garbage\\nno numeric fields here\\n" > "$f"',
   ].join('\n');
-  spawnSync('bash', ['-c', script], { env: { ...process.env, TMPDIR: tmp }, encoding: 'utf8' });
+  spawnSync('bash', ['-c', script], {
+    env: { ...process.env, TMPDIR: temporaryDirectory },
+    encoding: 'utf8',
+  });
 };
 
-const makeStub = (tmp: string, body: string): string => {
-  const bin = join(tmp, 'stryker-stub');
+const makeStub = (temporaryDirectory: string, body: string): string => {
+  const bin = join(temporaryDirectory, 'stryker-stub');
   writeFileSync(bin, body, { mode: 0o755 });
   chmodSync(bin, 0o755);
   return bin;
@@ -62,13 +68,13 @@ const makeStub = (tmp: string, body: string): string => {
 // The streaming tests force the whole-project path (KIKO_MUTATION_FULL=1) so
 // they are independent of the diff-scoping (tested separately, in its own
 // hermetic git repo below).
-const run = (bin: string, tmp: string, callLog: string): Run => {
+const run = (bin: string, temporaryDirectory: string, callLog: string): Run => {
   const result = spawnSync('bash', [SCRIPT], {
     env: {
       ...process.env,
       KIKO_MUTATION_BIN: bin,
       KIKO_MUTATION_FULL: '1',
-      TMPDIR: tmp,
+      TMPDIR: temporaryDirectory,
       KIKO_STUB_CALLS: callLog,
     },
     encoding: 'utf8',
@@ -87,18 +93,18 @@ const stubBody = (exitCode: number): string =>
     `exit ${exitCode}`,
   ].join('\n');
 
-const freshTmp = (): string => mkdtempSync(join(tmpdir(), 'kiko-mut-'));
+const freshTemporaryDirectory = (): string => mkdtempSync(join(tmpdir(), 'kiko-mut-'));
 
 const callCount = (callLog: string): number =>
   readFileSync(callLog, 'utf8').split('\n').filter(Boolean).length;
 
 describe('scripts/checks/mutation.sh streaming', () => {
   it('streams the Stryker output to stdout on a PASSING run (not swallowed)', () => {
-    const tmp = freshTmp();
-    const callLog = join(tmp, 'calls');
-    const bin = makeStub(tmp, stubBody(0));
+    const temporaryDirectory = freshTemporaryDirectory();
+    const callLog = join(temporaryDirectory, 'calls');
+    const bin = makeStub(temporaryDirectory, stubBody(0));
 
-    const result = run(bin, tmp, callLog);
+    const result = run(bin, temporaryDirectory, callLog);
 
     expect(result.code).toBe(0);
     // The core regression: a passing run used to capture the output into a
@@ -108,11 +114,11 @@ describe('scripts/checks/mutation.sh streaming', () => {
   });
 
   it('prints the tail -f watch command and writes the streamed output to that progress log', () => {
-    const tmp = freshTmp();
-    const callLog = join(tmp, 'calls');
-    const bin = makeStub(tmp, stubBody(0));
+    const temporaryDirectory = freshTemporaryDirectory();
+    const callLog = join(temporaryDirectory, 'calls');
+    const bin = makeStub(temporaryDirectory, stubBody(0));
 
-    const result = run(bin, tmp, callLog);
+    const result = run(bin, temporaryDirectory, callLog);
 
     expect(result.code).toBe(0);
     // The wrapper prints the exact command a human runs to watch the run live.
@@ -128,13 +134,13 @@ describe('scripts/checks/mutation.sh streaming', () => {
   });
 
   it('prints the no-history estimate on the first run and records that completed run', () => {
-    const tmp = freshTmp();
-    const callLog = join(tmp, 'calls');
+    const temporaryDirectory = freshTemporaryDirectory();
+    const callLog = join(temporaryDirectory, 'calls');
     // Sleep ~1s so the run has a strictly-positive duration: the wrapper's
     // clock-skew guard refuses to record a 0s run, so an instant stub would
     // (correctly) leave no history. This exercises the record-on-completion path.
     const bin = makeStub(
-      tmp,
+      temporaryDirectory,
       [
         '#!/usr/bin/env bash',
         'printf "%s\\n" "$$" >> "$KIKO_STUB_CALLS"',
@@ -144,7 +150,7 @@ describe('scripts/checks/mutation.sh streaming', () => {
       ].join('\n'),
     );
 
-    const result = run(bin, tmp, callLog);
+    const result = run(bin, temporaryDirectory, callLog);
 
     expect(result.code).toBe(0);
     // With no prior runs the wrapper says so plainly rather than inventing an ETA.
@@ -161,16 +167,19 @@ describe('scripts/checks/mutation.sh streaming', () => {
   });
 
   it('prints the LIVE per-mutant ETA once Stryker reports the mutant count (not in the log)', () => {
-    const tmp = freshTmp();
-    const callLog = join(tmp, 'calls');
+    const temporaryDirectory = freshTemporaryDirectory();
+    const callLog = join(temporaryDirectory, 'calls');
     // Seed two valid history records: rates 600/300=2 and 900/300=3 -> the
     // wrapper's per-mutant rate is their median (avg of two = 2.5 s/mutant).
-    seedHistory(tmp, ['2026-09-10T10:00:00Z 600 300 70', '2026-09-10T11:00:00Z 900 300 72']);
+    seedHistory(temporaryDirectory, [
+      '2026-09-10T10:00:00Z 600 300 70',
+      '2026-09-10T11:00:00Z 900 300 72',
+    ]);
     // The stub reports an "N/M tested" counter (500 mutants) and sleeps ~1s so
     // the run has a positive duration. The filter must print the ETA line the
     // moment that counter appears.
     const bin = makeStub(
-      tmp,
+      temporaryDirectory,
       [
         '#!/usr/bin/env bash',
         'printf "%s\\n" "$$" >> "$KIKO_STUB_CALLS"',
@@ -180,7 +189,7 @@ describe('scripts/checks/mutation.sh streaming', () => {
       ].join('\n'),
     );
 
-    const result = run(bin, tmp, callLog);
+    const result = run(bin, temporaryDirectory, callLog);
 
     expect(result.code).toBe(0);
     // The full ETA prints live, scaled by the run's ACTUAL mutant count (500).
@@ -196,12 +205,12 @@ describe('scripts/checks/mutation.sh streaming', () => {
   });
 
   it('gates correctly on a CORRUPT history: no crash, no estimate, exit code unchanged (pass)', () => {
-    const tmp = freshTmp();
-    const callLog = join(tmp, 'calls');
-    seedCorruptHistory(tmp);
-    const bin = makeStub(tmp, stubBody(0));
+    const temporaryDirectory = freshTemporaryDirectory();
+    const callLog = join(temporaryDirectory, 'calls');
+    seedCorruptHistory(temporaryDirectory);
+    const bin = makeStub(temporaryDirectory, stubBody(0));
 
-    const result = run(bin, tmp, callLog);
+    const result = run(bin, temporaryDirectory, callLog);
 
     // A malformed history never crashes the gate: a passing run still exits 0...
     expect(result.code).toBe(0);
@@ -210,12 +219,12 @@ describe('scripts/checks/mutation.sh streaming', () => {
   });
 
   it('gates correctly on a CORRUPT history: exit code unchanged (fail -> 2)', () => {
-    const tmp = freshTmp();
-    const callLog = join(tmp, 'calls');
-    seedCorruptHistory(tmp);
-    const bin = makeStub(tmp, stubBody(1));
+    const temporaryDirectory = freshTemporaryDirectory();
+    const callLog = join(temporaryDirectory, 'calls');
+    seedCorruptHistory(temporaryDirectory);
+    const bin = makeStub(temporaryDirectory, stubBody(1));
 
-    const result = run(bin, tmp, callLog);
+    const result = run(bin, temporaryDirectory, callLog);
 
     // A malformed history never masks a real failure: a failing run still exits 2.
     expect(result.code).toBe(2);
@@ -223,11 +232,11 @@ describe('scripts/checks/mutation.sh streaming', () => {
   });
 
   it('streams the output, prints the failure block, and exits 2 on a FAILING run', () => {
-    const tmp = freshTmp();
-    const callLog = join(tmp, 'calls');
-    const bin = makeStub(tmp, stubBody(1));
+    const temporaryDirectory = freshTemporaryDirectory();
+    const callLog = join(temporaryDirectory, 'calls');
+    const bin = makeStub(temporaryDirectory, stubBody(1));
 
-    const result = run(bin, tmp, callLog);
+    const result = run(bin, temporaryDirectory, callLog);
 
     expect(result.code).toBe(2);
     // Output is streamed to stdout (not only echoed inside the block)...
@@ -238,12 +247,12 @@ describe('scripts/checks/mutation.sh streaming', () => {
   });
 
   it('records a pass so an identical second run is content-deduped (Stryker not re-run)', () => {
-    const tmp = freshTmp();
-    const callLog = join(tmp, 'calls');
-    const bin = makeStub(tmp, stubBody(0));
+    const temporaryDirectory = freshTemporaryDirectory();
+    const callLog = join(temporaryDirectory, 'calls');
+    const bin = makeStub(temporaryDirectory, stubBody(0));
 
-    const first = run(bin, tmp, callLog);
-    const second = run(bin, tmp, callLog);
+    const first = run(bin, temporaryDirectory, callLog);
+    const second = run(bin, temporaryDirectory, callLog);
 
     expect(first.code).toBe(0);
     expect(second.code).toBe(0);
@@ -253,12 +262,12 @@ describe('scripts/checks/mutation.sh streaming', () => {
   });
 
   it('does NOT record a skip on a FAILING run, so it re-runs next time', () => {
-    const tmp = freshTmp();
-    const callLog = join(tmp, 'calls');
-    const bin = makeStub(tmp, stubBody(1));
+    const temporaryDirectory = freshTemporaryDirectory();
+    const callLog = join(temporaryDirectory, 'calls');
+    const bin = makeStub(temporaryDirectory, stubBody(1));
 
-    run(bin, tmp, callLog);
-    run(bin, tmp, callLog);
+    run(bin, temporaryDirectory, callLog);
+    run(bin, temporaryDirectory, callLog);
 
     // A skip is only recorded on a PASS, so a failing check always re-runs.
     expect(callCount(callLog)).toBe(2);
