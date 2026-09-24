@@ -20,7 +20,8 @@ make verify GREEN (276/3223); next ff to c0b47c2; hotfix worktree+branch pruned;
 merge main (notes sent). Still to do: archive result -> user upload; retrospect/scribe drift result.
 UPDATE ~20:45: ARCHIVE READY ~/Library/Developer/Xcode/Archives/2026-09-24/Kiko.xcarchive (build 26, 27A266a, invariants
 verified by coordinator). Drift fix c2d6635 on main; next ff to c2d6635. Feat session 4 merges main @c2d6635 next, then
-USER runs /reload-plugins there. F4 part 1 keys (41) sent to user for review. Next: user uploads build 26.
+USER runs /reload-plugins there. F4 part 1 keys (41) APPROVED by user. USER DECISION: build 26 is uploaded ONLY if build 25 fails App Store review;
+if build 25 passes, the build 26 fix ships in the 1.1 release instead (archive kept as a standby).
 1. When the hotfix session sends the bump sha: `git -C ~/orca/workspaces/pff-ios/device-deploy checkout -q --detach <sha>`,
    then kiko:ops archives Release / KikoDistribution there: FORCE_BUNDLING=1, clean build (rm ios/build + pod install
    if needed), NON-beta Xcode (check DTXcodeBuild), move the .xcarchive to ~/Library/Developer/Xcode/Archives/<date>/,
