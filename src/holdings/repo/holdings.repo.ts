@@ -438,6 +438,16 @@ export const holdingsRepo = {
         throw new Error('remove: cannot delete a synced holding');
       }
       await tx.delete(transactions).where(eq(transactions.holdingId, holdingId));
+      // Review Focus 7 / spec 5.4 (T29): a loan holding is ledgerless, but
+      // OTHER holdings' payment rows can point back at it via
+      // `loanHoldingId`. Clear those links in the SAME transaction — never
+      // leaving a dangling id — so a previously-linked payment reverts to
+      // counting as normal spending. A no-op for every non-loan holding,
+      // since nothing ever points a `loanHoldingId` at one.
+      await tx
+        .update(transactions)
+        .set({ loanHoldingId: null, loanLinkSource: null })
+        .where(eq(transactions.loanHoldingId, holdingId));
       // A priced holding (property_item, T16) has no transactions, but it may
       // have its own price series on `holding:<id>` — cleared here, inline on
       // `tx` (not through `pricePointsRepo.removeInstrument`, which would open

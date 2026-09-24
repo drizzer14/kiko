@@ -824,11 +824,11 @@ decimal-string rule.
 `holding-value.ts`'s valuation branch (`gross = net = -outstanding`,
 `principalOrCost = -principal`, interest/tax always 0 — a loan never
 accrues either AT VALUATION time) and the net-worth assets-minus-debt
-rule change landed at T27. Not yet wired as of T28 (later tasks): the
-`loanHoldingId` link column (T29), interest-only spending (T30), the
-transaction-form field (T31), and the automatic payment-linking
-matcher itself (T32, spec 5.4) — read each task's own brief before
-assuming that works.
+rule change landed at T27. The `loanHoldingId` link column + its repo
+functions landed at T29 (own subsection below). Not yet wired as of
+T29 (later tasks): interest-only spending (T30), the transaction-form
+field (T31), and the automatic payment-linking matcher itself (T32,
+spec 5.4) — read each task's own brief before assuming that works.
 
 ### Loan form + detail (T28)
 
@@ -913,3 +913,55 @@ A fresh holding (`oldMeta === null`) has nothing to reconcile.
 term): an uncapped value would make `loanInstallments` build an
 unbounded row count for a degenerate but technically-valid positive
 integer.
+
+### Loan-payment link column + repo (T29)
+
+Migration 0038 adds three columns to `transactions` (spec 5.4): `loanHoldingId`
+(text, nullable — the linked loan holding), `loanLinkSource` (text enum
+`'auto' | 'manual'`, nullable), and `loanLinkRejected` (integer boolean,
+NOT NULL default `false`). The two link columns are kept in lockstep — never a
+`loanLinkSource` with no `loanHoldingId` or vice versa.
+
+`transactionsRepo.setLoanPayment({ transactionId, loanHoldingId, source })`
+is the ONE write path both the matcher (`source: 'auto'`, T32) and the
+user's own picker (`source: 'manual'`, T31) share: it writes
+`loanHoldingId`/`loanLinkSource` and always clears `loanLinkRejected` — a
+manual link, or a manual "None" (`loanHoldingId: null`), un-rejects a row the
+user had previously undone, per spec 5.4's "False-positive handling".
+`loanHoldingId: null` also nulls `loanLinkSource`, keeping the two columns in
+lockstep. `transactionsRepo.undoAutoLoanLink(transactionId)` is the Undo
+affordance: clears both link columns and sets `loanLinkRejected`, so the
+matcher never re-proposes the same link on that row. Neither function gates
+on `source` (the transaction's OWN bank-vs-manual origin) — exactly like
+`setCategory`, the link is user/matcher state, not a mutation of bank-owned
+ledger data, so it is allowed on a synced (`monobank`/`binance`/`import`) row
+too.
+
+`transactionsRepo.addManyDedup`'s upsert (the shared `(source, external_id)`
+conflict path both the Monobank sync and statement import share) never
+refreshes any of the three loan-link columns on a re-sync — its
+`onConflictDoUpdate` `set` names only the bank-owned columns, the same
+exclusion `category`/`comment` already rely on (see that function's own
+existing doc comment). A settled-amount re-fetch of an already-linked payment
+therefore keeps its link untouched.
+
+**Review Focus 7.** `holdingsRepo.remove` clears `loanHoldingId`/
+`loanLinkSource` on every OTHER holding's transaction that still points at
+the loan being deleted, in the SAME `write()` transaction as the delete
+itself (`UPDATE transactions SET loan_holding_id = NULL, loan_link_source =
+NULL WHERE loan_holding_id = <deleted loan id>`) — a no-op for every
+non-loan holding, since nothing ever points a `loanHoldingId` at one. A
+dangling link is never left to rot: once cleared, the payment counts as
+normal spending again, exactly like an unlinked transaction always has.
+`loanLinkRejected` is deliberately left untouched by this cascade — it is
+not part of "the link", and the loan it was rejected against no longer
+exists to re-propose anyway.
+
+No data-transfer (`src/data-transfer`) code changed for these columns: 
+`restoreDataSnapshot` inserts every `transactions` row verbatim with no
+per-row column handling (unlike `holdings.balanceSetAt`'s dedicated legacy
+backfill), so a `.kiko` exported before this migration — whose transaction
+rows carry no `loanHoldingId`/`loanLinkSource`/`loanLinkRejected` keys at
+all — restores unchanged and SQLite defaults the missing columns itself
+(null / null / false), the same way `counterIban`/`changeGroupId` already do
+for an older export.

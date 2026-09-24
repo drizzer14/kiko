@@ -20,7 +20,7 @@ jest.mock('../../db/client', () => {
 import { captureSetTx } from '@kiko/db/capture-set-tx';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 
-import { accounts, holdings, pricePoints } from '../../db/schema';
+import { accounts, holdings, pricePoints, transactions } from '../../db/schema';
 import { holdingValueAt } from '../../statistics/holding-value-at';
 
 import { holdingsRepo, type LoanPricePointOp } from './holdings.repo';
@@ -723,6 +723,68 @@ describe('holdings remove', () => {
 
     expect(store.holdings).toEqual([]);
     expect(store.transactions).toEqual([]);
+  });
+});
+
+// Review Focus 7 / T29 (spec 5.4): a loan holding is `isLedgerlessHoldingType`
+// (no transactions of its own), but OTHER holdings' payment rows can point
+// back at it via `loanHoldingId`. Deleting the loan must clear those links in
+// the SAME transaction, so a dangling id never survives the delete — a
+// cleared link then counts as normal spending again. `makeTx`'s own
+// `update`/`delete` fakes don't interpret `.where(...)` (see its doc
+// comment), so this intercepts the `transactions` update directly to prove
+// the exact payload issued, layered on top of `makeTx`'s existing seeded
+// holding/account handling for everything else `remove` reads.
+describe('holdings remove — loan link cleanup (Review Focus 7)', () => {
+  const makeRemoveTxWithLoanLinkCapture = (
+    store: Store,
+  ): {
+    tx: unknown;
+    captured: { linkClearSet?: Record<string, unknown>; linkClearWhereCalled: boolean };
+  } => {
+    const base = makeTx(store);
+    const captured: { linkClearSet?: Record<string, unknown>; linkClearWhereCalled: boolean } = {
+      linkClearWhereCalled: false,
+    };
+    const tx = {
+      ...base,
+      update: (table: unknown) => {
+        if (table !== transactions) {
+          return base.update(table);
+        }
+
+        return {
+          set: (values: Record<string, unknown>) => ({
+            where: () => {
+              captured.linkClearSet = values;
+              captured.linkClearWhereCalled = true;
+
+              return Promise.resolve();
+            },
+          }),
+        };
+      },
+    };
+
+    return { tx, captured };
+  };
+
+  it('clears loanHoldingId and loanLinkSource on transactions linked to the deleted loan, in the same transaction', async () => {
+    const store: Store = {
+      accounts: [{ id: 'acc-1', institution: null }],
+      holdings: [{ id: 'loan-1', accountId: 'acc-1', type: 'loan', metadata: null }],
+      transactions: [],
+      pricePoints: [],
+    };
+    const { tx, captured } = makeRemoveTxWithLoanLinkCapture(store);
+    mockTx = tx;
+
+    await holdingsRepo.remove('loan-1');
+
+    expect(captured.linkClearSet).toEqual({ loanHoldingId: null, loanLinkSource: null });
+    expect(captured.linkClearWhereCalled).toBe(true);
+    // The loan holding itself still deletes, in the SAME transaction.
+    expect(store.holdings).toEqual([]);
   });
 });
 

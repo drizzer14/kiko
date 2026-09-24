@@ -39,6 +39,12 @@ type ManualTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' |
 type TransactionEdit = Pick<TransactionRow, 'amountMinorUnits' | 'time'> &
   Partial<Pick<TransactionRow, 'description'>> & { transactionId: string };
 
+// Non-null: `setLoanPayment` always names WHO is setting the link (the
+// matcher or the user), even when it is un-linking (`loanHoldingId: null`,
+// see that function's own doc comment for why `loanLinkSource` still ends up
+// null on the ROW in that case).
+type LoanLinkSource = NonNullable<TransactionRow['loanLinkSource']>;
+
 // No holding NAMES here: neither leg persists a description anymore, so the
 // only thing each leg needs about the other is its ID — the marker the display
 // layer resolves the current name from (see transactions/exchange-description.ts).
@@ -709,6 +715,55 @@ export const transactionsRepo = {
   setCategory: ({ transactionId, category }: { transactionId: string; category: string }) =>
     write((tx) =>
       tx.update(transactions).set({ category }).where(eq(transactions.id, transactionId)),
+    ),
+  /**
+   * Link (or un-link) ONE transaction to a loan holding (D21, spec 5.4),
+   * inside a single op-sqlite transaction — the matcher (`source: 'auto'`,
+   * T32) and the user's own picker (`source: 'manual'`) share this one write
+   * path. `loanHoldingId: null` is a manual "None", which — like a manual
+   * link — clears `loanLinkRejected`, so a row the user had earlier undone
+   * can be re-linked and trusted again; it also clears `loanLinkSource`,
+   * keeping the two columns in lockstep (never a source with no link).
+   *
+   * There is NO `source`-column gate, exactly like `setCategory` above and
+   * for the same reason: the link is user/matcher state, not a mutation of
+   * bank-owned ledger data, so it is allowed on a synced row too. A later
+   * re-sync never clobbers it, because `addManyDedup`'s `onConflictDoUpdate`
+   * set names only the bank-owned columns and deliberately excludes all
+   * three loan-link columns.
+   */
+  setLoanPayment: ({
+    transactionId,
+    loanHoldingId,
+    source,
+  }: {
+    transactionId: string;
+    loanHoldingId: string | null;
+    source: LoanLinkSource;
+  }) =>
+    write((tx) =>
+      tx
+        .update(transactions)
+        .set({
+          loanHoldingId,
+          loanLinkSource: loanHoldingId === null ? null : source,
+          loanLinkRejected: false,
+        })
+        .where(eq(transactions.id, transactionId)),
+    ),
+  /**
+   * Undo an auto-suggested loan-payment link (spec 5.4's "False-positive
+   * handling"): clears the link and sets `loanLinkRejected`, so the matcher
+   * never re-proposes the same link on this row again. A later MANUAL link
+   * (or manual "None", via `setLoanPayment`) is the only thing that clears
+   * the flag back.
+   */
+  undoAutoLoanLink: (transactionId: string) =>
+    write((tx) =>
+      tx
+        .update(transactions)
+        .set({ loanHoldingId: null, loanLinkSource: null, loanLinkRejected: true })
+        .where(eq(transactions.id, transactionId)),
     ),
   /**
    * Upsert a batch of imported rows on the `(source, external_id)` unique index

@@ -255,6 +255,37 @@ describe('restoreDataSnapshot', () => {
     expect(insertedChunkSizes).toEqual([2000, 2000, 500]);
   });
 
+  // T29: a `.kiko` exported before the loan-link columns existed carries
+  // transaction rows with NO `loanHoldingId`/`loanLinkSource`/`loanLinkRejected`
+  // keys at all. `restoreDataSnapshot` inserts every transaction row verbatim
+  // (unlike `holdings`, it applies no per-row backfill), so such a row must
+  // still restore untouched rather than throw or gain injected `undefined`
+  // keys — SQLite then defaults the missing columns itself (null / false),
+  // exactly like every other nullable column added after `transactions` first
+  // shipped (`counterIban`, `changeGroupId`).
+  it('restores a legacy transaction row with no loan-link keys unchanged', async () => {
+    const insertedRows: Record<string, unknown[]> = {};
+    mockTx = {
+      delete: () => Promise.resolve(),
+      insert: (table: unknown) => ({
+        values: (rows: unknown[]) => {
+          const name = tableNameOf(table);
+          insertedRows[name] = [...(insertedRows[name] ?? []), ...rows];
+          return Promise.resolve();
+        },
+      }),
+    };
+    const legacyTransaction = { id: 't1', holdingId: 'h1', source: 'manual' };
+
+    await restoreDataSnapshot({
+      ...emptySnapshot,
+      transactions: [legacyTransaction] as never,
+    });
+
+    expect(insertedRows.transactions).toEqual([legacyTransaction]);
+    expect(insertedRows.transactions?.[0]).not.toHaveProperty('loanHoldingId');
+  });
+
   // FIX-restore-backfill-brief.md: a build-25-shaped `.kiko` export (before
   // `holdings.balance_set_at` existed) carries holdings rows with NO
   // `balanceSetAt` key at all. Restoring one must backfill it the SAME way

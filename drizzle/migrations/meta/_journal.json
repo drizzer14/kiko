@@ -267,6 +267,13 @@
       "when": 1790223905874,
       "tag": "0037_add_bond_register",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1790243858087,
+      "tag": "0038_add_loan_link",
+      "breakpoints": true
     }
   ]
 }

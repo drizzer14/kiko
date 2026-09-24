@@ -630,6 +630,20 @@ describe('transactionsRepo.addManyDedup upsert', () => {
     expect(captured.inserted).toHaveLength(2);
     expect(inserted).toBe(2);
   });
+
+  // T29: the loan-payment link is user/matcher state, not bank data — a
+  // re-sync must never refresh it, unlike `amountMinorUnits`/`description`/etc.
+  it('never refreshes the loan-link columns on a re-sync', async () => {
+    const { tx, captured } = makeAddManyTx([]);
+    mockTx = tx;
+
+    await transactionsRepo.addManyDedup([syncedRow()]);
+
+    const setKeys = Object.keys(captured.conflict?.set ?? {});
+    expect(setKeys).not.toContain('loanHoldingId');
+    expect(setKeys).not.toContain('loanLinkSource');
+    expect(setKeys).not.toContain('loanLinkRejected');
+  });
 });
 
 // A STORE-backed fake transaction handle for `addManyDedup`, unlike
@@ -711,6 +725,171 @@ describe('transactionsRepo.addManyDedup cross-provider externalId namespacing', 
     expect(monobankRow?.amountMinorUnits).toBe(-150);
     expect(binanceRow?.externalId).toBe('acc-1:1');
     expect(binanceRow?.amountMinorUnits).toBe(5000);
+  });
+});
+
+// T29: proves the SAME guarantee `makeAddManyStoreTx` above already exercises
+// for cross-provider ids, but for the loan-link columns — a real re-sync of
+// the SAME externalId (a settled-amount refresh) must leave a previously-set
+// loanHoldingId/loanLinkSource/loanLinkRejected untouched. `NewTransaction`
+// never carries these fields on an incoming sync row, so the store's merge
+// (`{ ...existing, ...row }`) cannot overwrite them either — matching the
+// real upsert's `set` (see "never refreshes the loan-link columns" above).
+describe('transactionsRepo.addManyDedup re-sync keeps the loan link (T29)', () => {
+  it('keeps loanHoldingId, loanLinkSource, and loanLinkRejected across a re-sync of the same externalId', async () => {
+    const store: Record<string, unknown>[] = [
+      {
+        source: 'monobank',
+        externalId: 'e1',
+        amountMinorUnits: -10_000,
+        loanHoldingId: 'loan-1',
+        loanLinkSource: 'manual',
+        loanLinkRejected: false,
+      },
+    ];
+    mockTx = makeAddManyStoreTx(store);
+
+    await transactionsRepo.addManyDedup([
+      syncedRow({ externalId: 'e1', amountMinorUnits: -10_500 }),
+    ]);
+
+    const row = store.find((candidate) => candidate.externalId === 'e1');
+    // The bank-owned amount DID refresh...
+    expect(row?.amountMinorUnits).toBe(-10_500);
+    // ...but the loan link, which is user/matcher state, did not move.
+    expect(row?.loanHoldingId).toBe('loan-1');
+    expect(row?.loanLinkSource).toBe('manual');
+    expect(row?.loanLinkRejected).toBe(false);
+  });
+});
+
+// T29, spec 5.4: `setLoanPayment` persists a loan-payment link — no source
+// gate, unlike `update`/`remove`, since the link is user/matcher state, not a
+// mutation of bank-owned ledger data.
+describe('transactionsRepo.setLoanPayment', () => {
+  const captureUpdateTx = (): {
+    tx: unknown;
+    captured: { table?: unknown; set?: Record<string, unknown>; whereArg?: unknown };
+  } => {
+    const captured: { table?: unknown; set?: Record<string, unknown>; whereArg?: unknown } = {};
+    const tx = {
+      update: (table: unknown) => ({
+        set: (values: Record<string, unknown>) => {
+          captured.table = table;
+          captured.set = values;
+
+          return {
+            where: (arg: unknown) => {
+              captured.whereArg = arg;
+
+              return Promise.resolve();
+            },
+          };
+        },
+      }),
+    };
+
+    return { tx, captured };
+  };
+
+  it('persists a manual link and its source on a synced (monobank) row, with no source gate', async () => {
+    const { tx, captured } = captureUpdateTx();
+    mockTx = tx;
+
+    await transactionsRepo.setLoanPayment({
+      transactionId: 'txn-1',
+      loanHoldingId: 'loan-1',
+      source: 'manual',
+    });
+
+    expect(captured.table).toBe(transactions);
+    expect(captured.set).toEqual({
+      loanHoldingId: 'loan-1',
+      loanLinkSource: 'manual',
+      loanLinkRejected: false,
+    });
+    expect(captured.whereArg).toBeDefined();
+  });
+
+  it('persists an auto-matched link with its own source', async () => {
+    const { tx, captured } = captureUpdateTx();
+    mockTx = tx;
+
+    await transactionsRepo.setLoanPayment({
+      transactionId: 'txn-1',
+      loanHoldingId: 'loan-1',
+      source: 'auto',
+    });
+
+    expect(captured.set).toEqual({
+      loanHoldingId: 'loan-1',
+      loanLinkSource: 'auto',
+      loanLinkRejected: false,
+    });
+  });
+
+  it('clears the link source too on a manual "None" (loanHoldingId: null)', async () => {
+    const { tx, captured } = captureUpdateTx();
+    mockTx = tx;
+
+    await transactionsRepo.setLoanPayment({
+      transactionId: 'txn-1',
+      loanHoldingId: null,
+      source: 'manual',
+    });
+
+    expect(captured.set).toEqual({
+      loanHoldingId: null,
+      loanLinkSource: null,
+      loanLinkRejected: false,
+    });
+  });
+
+  it('clears loanLinkRejected on a manual link, un-rejecting a row the user had previously undone', async () => {
+    const { tx, captured } = captureUpdateTx();
+    mockTx = tx;
+
+    await transactionsRepo.setLoanPayment({
+      transactionId: 'txn-1',
+      loanHoldingId: 'loan-1',
+      source: 'manual',
+    });
+
+    expect(captured.set?.loanLinkRejected).toBe(false);
+  });
+});
+
+// T29, spec 5.4: undo clears the link and marks it rejected, so the matcher
+// never re-proposes the same link on this row.
+describe('transactionsRepo.undoAutoLoanLink', () => {
+  it('clears loanHoldingId and loanLinkSource, and sets loanLinkRejected', async () => {
+    const captured: { table?: unknown; set?: Record<string, unknown>; whereArg?: unknown } = {};
+    mockTx = {
+      update: (table: unknown) => ({
+        set: (values: Record<string, unknown>) => {
+          captured.table = table;
+          captured.set = values;
+
+          return {
+            where: (arg: unknown) => {
+              captured.whereArg = arg;
+
+              return Promise.resolve();
+            },
+          };
+        },
+      }),
+    };
+
+    await transactionsRepo.undoAutoLoanLink('txn-1');
+
+    expect(captured.table).toBe(transactions);
+    expect(captured.set).toEqual({
+      loanHoldingId: null,
+      loanLinkSource: null,
+      loanLinkRejected: true,
+    });
+    expect(captured.whereArg).toBeDefined();
   });
 });
 

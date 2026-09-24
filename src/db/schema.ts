@@ -145,6 +145,31 @@ export const transactions = sqliteTable(
     // not a reserved `category` value, for the same reason the exchange marker
     // is: the category picker rewrites `category` and would destroy it.
     changeGroupId: text('change_group_id'),
+    // The loan holding this payment counts against (D21, spec 5.4) — null for
+    // an ordinary transaction. A loan holding writes no ledger rows of its
+    // own (`isLedgerlessHoldingType`), so every payment lives on the LINKED
+    // bank holding's own row instead, tied back here. Set by the auto-matcher
+    // (`loanLinkSource: 'auto'`, T32) or by the user
+    // (`transactionsRepo.setLoanPayment`). Allowed on a synced (bank-owned)
+    // row, unlike `category`'s own override path this is not — the link is
+    // user/matcher state, not bank data, so `addManyDedup`'s upsert never
+    // refreshes it. Cleared (along with `loanLinkSource`) in the SAME
+    // transaction a linked loan holding is deleted
+    // (`holdingsRepo.remove`, Review Focus 7) — a dangling id is never left
+    // to rot; a cleared link counts as normal spending again.
+    loanHoldingId: text('loan_holding_id'),
+    // How `loanHoldingId` was set: 'auto' (the matcher) or 'manual' (the
+    // user), null when there is no link — kept in sync with `loanHoldingId`
+    // (both null together, never one without the other). Drives the "Linked
+    // automatically" + Undo affordance vs a plain manual link.
+    loanLinkSource: text('loan_link_source', { enum: ['auto', 'manual'] }),
+    // True once the user has explicitly rejected an auto-suggested link on
+    // this row (`transactionsRepo.undoAutoLoanLink`), so the matcher never
+    // re-proposes it. A manual link, or a manual "None", clears this flag —
+    // spec 5.4's "False-positive handling". NOT NULL default 0: every
+    // existing row (pre-migration and every ordinary transaction) has never
+    // been rejected.
+    loanLinkRejected: integer('loan_link_rejected', { mode: 'boolean' }).notNull().default(false),
     comment: text('comment'),
     // 'btc_wallet' / 'binance' double as `accounts.institution` values. The
     // BALANCE sync writes no transaction rows, but the Binance crypto sync now

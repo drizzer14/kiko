@@ -302,6 +302,11 @@ const makeInMemoryDeps = (
         // A synced row is never part of a split-change group — that marker is
         // written only by the manual `recordManualWithReturns` path.
         changeGroupId: null,
+        // A synced row has no loan-payment link yet — the matcher (T32) and
+        // `transactionsRepo.setLoanPayment` are the only writers of these.
+        loanHoldingId: null,
+        loanLinkSource: null,
+        loanLinkRejected: false,
         comment: input.comment ?? null,
         externalId: input.externalId ?? null,
       });
