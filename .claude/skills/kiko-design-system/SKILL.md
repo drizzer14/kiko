@@ -886,8 +886,13 @@ before statement blocks" rule. This keeps distinct child elements
 visually distinct.
 
 Use title case for every heading and sub-heading shown in the UI —
-screen titles, section headers — styled through the typography tokens
-(see "Token categories" above). This does not cover Button labels:
-buttons are actions, not headings, and case themselves per the
-catalogue (see "Button" above) — English Button copy is sentence
-case.
+screen titles, section headers, sheet/modal titles — styled through
+the typography tokens (see "Token categories" above). This does not
+cover Button labels: buttons are actions, not headings, and case
+themselves per the catalogue (see "Button" above) — English Button
+copy is sentence case. Casing is decided per UI ROLE, not per
+component in isolation — the full rule (which roles are Title Case
+vs sentence case, the proper-noun keep-list, the uk
+sentence-case-everywhere rule, and the mechanized test) is owned by
+the `kiko-translator` skill's "Casing follows one rule per UI role"
+section; read that before adding a new heading/title/label string.

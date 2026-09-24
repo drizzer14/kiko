@@ -80,6 +80,54 @@ that resolved-language mechanism ends up being; read `App.tsx` and
 `migrations.gate.tsx` for the current wiring before adding a
 pre-`AppRoot` screen.
 
+## Casing follows one rule per UI role — the single source (CASE track, 2026-09-24)
+
+Every catalogue string's casing is decided by its UI ROLE, not by
+habit or by the key's name alone — verify the role by call site (grep
+`t('key')`, read the rendering component) before writing a new
+string:
+
+- **Title Case** — screen/navigation titles (`options.title` /
+  `navigation.setOptions({ title })`), section headings (rendered
+  `<Text variant="heading">`), sheet/modal titles (a `BottomSheet` /
+  `ConfirmSheet` `header`/`title` prop).
+- **Sentence case** — everything else: buttons, chips/segments, menu
+  items, field labels, captions, placeholders, errors, hints. This is
+  the majority role — assume sentence case for a new string unless it
+  is unambiguously one of the three Title Case roles above.
+- **Keep as written** — proper nouns and brand names (Kiko/Кіко,
+  Monobank, Binance, Diia/Дія, Apple, NBU/НБУ, Keychain, Face ID,
+  iOS), acronyms (ISIN, API, CSV, BTC, ISO codes), and a unit in
+  parentheses cases per the rule of the role it sits inside.
+- **uk is sentence case everywhere** — Ukrainian never switches to
+  Title Case for a screen title or a section heading the way English
+  does; see the next section.
+
+A string used in TWO roles (e.g. a Settings row's own label, which is
+a menu item, doubling as that screen's nav-header title) needs TWO
+keys, one per role, not one key reused — `settings.dataExport.title`
+(the nav title, Title Case: "Export Data") vs
+`settings.dataExport.rowLabel` (the same screen's Settings-row label,
+sentence case: "Export data") is the pattern; see
+`accountDetail.addBankSheetTitle` vs `accountDetail.addBankAction`,
+and `statementImport.chooseHoldingSheetTitle` vs
+`statementImport.chooseHolding`, for the other two instances. An
+`Alert.alert` title (a key ending `errorTitle`) is an ERROR, not a
+screen/sheet title, even though the key name ends in `Title` — it
+stays sentence case ("Export failed", not "Export Failed").
+
+The mechanized invariant lives in
+`src/i18n/locales/en.casing-by-role.test.ts` (walks the whole `en`
+catalog, classifies every key into the two roles by the same
+call-site-verified key patterns/explicit list documented in the test
+file's own header, and fails on any casing violation) and
+`src/i18n/locales/uk.casing.test.ts` (the uk sentence-case-everywhere
+invariant). Read the FAILURE MESSAGE'S key path before assuming a new
+string is miscased — the classifier defaults an unrecognized key
+pattern to sentence case, so a genuinely new heading/title key may
+need adding to the test's own `TITLE_KEY_EXPLICIT`/pattern list, not
+just to the catalogue.
+
 ## Ukrainian is sentence case — no blanket `textTransform`
 
 `Button` labels carry no style-layer `textTransform`; casing comes
