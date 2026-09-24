@@ -480,6 +480,27 @@ earning when the recap toggle is off) is unresolved — it needs a real
 bank statement to confirm against, not a guess; do not implement or
 assume a specific convention for it without one.
 
+When you introduce a new epoch-ms-from-string parse of an external
+feed's calendar date (e.g. `YYYY-MM-DD`), grep every consumer's own
+get-date convention before picking UTC vs. local for the parse.
+`BondMeta.maturityDate` was first parsed from the NBU register's
+`pgs_date` as UTC midnight, but every consumer reads it through
+device-local getters — silently shifting maturity (and every derived
+coupon date) back a day west of UTC (T24 review I1, fixed `33333c1`).
+
+Do not pin `process.env.TZ` mid-test to simulate a different
+timezone: in this project's `jest-environment-node`, a `TZ` mutation
+mid-test does not retarget `Date`/`Intl` local getters (confirmed in
+`bond-register.repo.test.ts` and ~8 other pre-existing "TZ-pinned"
+test files — `price-book.test.ts`, `local-day.test.ts`,
+`interest.test.ts`, `format.test.ts`, the category-trend-line/
+net-worth-line component tests, `statistics.screen.test.tsx`,
+`net-worth-series.test.ts`). These tests may not prove what they claim
+about local-day boundaries. Build fixed instants through the local
+`Date` constructor directly instead (the working pattern from T24's
+fix, `33333c1`) — never add a new test that pins `TZ` to simulate a
+timezone.
+
 ## Net worth
 
 **T27 (spec §5.2) changed this rule: net worth = Σ asset values − Σ

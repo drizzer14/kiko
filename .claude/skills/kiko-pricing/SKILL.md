@@ -108,6 +108,18 @@ other tables; a legacy export with no `pricePoints` key restores with
 an EMPTY `price_points` table (`?? []` defensive read in
 `restore-snapshot.ts`), never an error.
 
+Any new consumer of `priceAt` (or a similarly-shaped "nearest point in
+time" helper) must explicitly re-check whether the helper's fallback
+direction matches the new caller's own invariant. `priceAt`'s
+earliest-point fallback exists for "no earlier point yet" callers; a
+caller that requires a correction to never anchor a query for BEFORE
+that correction's own date needs its own guard, since the shared
+fallback will otherwise hand back a later point to an earlier query.
+This bit `loanOutstandingMinorAt`, which anchored on ANY stored
+correction point, including one dated after the queried instant (T26
+review I1, fixed `9cf5791`→`6901d27`) — read
+`loan-schedule.ts`'s `loanOutstandingMinorAt` for the fix shape.
+
 ## Priced holdings
 
 A **priced holding type** (`isPricedHoldingType`, `pricedHoldingTypes`
@@ -273,8 +285,9 @@ function so a format change only needs to happen in one place.
 ## Bank metal allow-list
 
 `bankCatalog` entries (`src/bank-sync/bank-catalog/`) carry
-`sellsMetals: boolean` (`true` only for PrivatBank as of T17 — read
-the catalog for the current set) and `bankSellsMetals(bankId)`,
+`sellsMetals: boolean` (`true` for the banks that currently sell
+metals — read the catalog (`bankCatalog`) for the current set, do not
+trust a bank name or task tag copied here) and `bankSellsMetals(bankId)`,
 defaulting to `false` for an unset/unrecognized `bankId` —
 deliberately the OPPOSITE default from `isConnectableBank`'s
 permissive `true`, since an unknown bank must not silently unlock the

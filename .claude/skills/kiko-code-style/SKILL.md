@@ -123,6 +123,22 @@ From `biome.json`'s `linter.rules`:
   `either(...)` call), call it as a plain expression statement; do
   not prefix it with `void`.
 
+## Split a `useEffect` per logical concern, before it ships
+
+A single `useEffect` combining two or more unrelated "when X changes,
+do Y" rules under one shared dependency array lets an unrelated
+dependency change re-fire the whole effect and cross-talk into
+another rule's side effect. `useBondIsinMode`
+(`src/screens/forms/holding-form/`) originally merged found-ISIN-terms
+apply + purchase-date default + register refresh into one effect: a
+picked date or a mode flip re-ran the whole thing, silently
+overwriting a typed name/currency, and the same re-fire put the form
+in a Manual/ISIN loop on repeated taps (T25 review round 1, I1/I3).
+The fix was splitting into three effects, each with its own narrow
+dependency array — not narrowing the dependency array on the merged
+effect. Split BEFORE it ships, not after a review catches the
+cross-talk.
+
 ## Style choice: functional-first, OOP for data models
 
 Default to functional or procedural code. Reach for OOP only when
