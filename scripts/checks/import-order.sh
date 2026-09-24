@@ -30,23 +30,49 @@ if [ -n "$TARGET" ]; then
     *) exit 0 ;;
   esac
 
+  dkey="import-order:$(printf '%s' "$TARGET" | harness_hash)"
+  fp="$( { shasum "$TARGET" 2>/dev/null
+          shasum "$DIR/import-order.js" 2>/dev/null; } | harness_hash )"
+  if harness_unchanged "$ROOT" "$dkey" "$fp"; then
+    exit 0
+  fi
+
   out="$(node "$DIR/import-order.js" "$TARGET" 2>&1)" || fail "$out"
+  harness_mark_pass "$ROOT" "$dkey" "$fp"
   exit 0
 fi
 
 # Project-wide mode (npm run check:import-order / check:all): every .ts/.tsx
-# under src/. IMPORT_ORDER_SRC_ROOT overrides the scanned directory — used
-# only by __tests__/import-order.test.ts, to point this mode at a disposable
-# temp fixture tree instead of the real (and much larger) repo src/.
-SRC_DIR="${IMPORT_ORDER_SRC_ROOT:-$ROOT/src}"
+# under src/, __tests__/, e2e/, plus App.tsx itself — everything the fast-tier
+# hook would check on a fresh edit, so this mode can never silently miss a
+# file the hook guards. IMPORT_ORDER_SRC_ROOT overrides the whole scanned-
+# roots list with one directory — used only by __tests__/import-order.test.ts,
+# to point this mode at a disposable temp fixture tree instead of the real
+# (and much larger) repo; dedup is skipped in that case, since the code
+# fingerprint below reads the real repo's git state, not the temp tree's
+# content.
+if [ -n "${IMPORT_ORDER_SRC_ROOT:-}" ]; then
+  roots=("$IMPORT_ORDER_SRC_ROOT")
+else
+  roots=("$ROOT/src" "$ROOT/__tests__" "$ROOT/e2e" "$ROOT/App.tsx")
+  fp="$(harness_code_fingerprint "$ROOT")"
+  if harness_unchanged "$ROOT" "import-order" "$fp"; then
+    exit 0
+  fi
+fi
+
 files=()
-while IFS= read -r f; do
-  [ -n "$f" ] && files+=("$f")
-done < <(find "$SRC_DIR" -type f \( -name '*.ts' -o -name '*.tsx' \) 2>/dev/null | sort)
+for root in "${roots[@]}"; do
+  [ -e "$root" ] || continue
+  while IFS= read -r f; do
+    [ -n "$f" ] && files+=("$f")
+  done < <(find "$root" -type f \( -name '*.ts' -o -name '*.tsx' \) 2>/dev/null | sort)
+done
 
 if [ ${#files[@]} -eq 0 ]; then
   exit 0
 fi
 
 out="$(node "$DIR/import-order.js" "${files[@]}" 2>&1)" || fail "$out"
+[ -n "${IMPORT_ORDER_SRC_ROOT:-}" ] || harness_mark_pass "$ROOT" "import-order" "$fp"
 exit 0

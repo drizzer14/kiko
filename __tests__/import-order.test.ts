@@ -53,6 +53,22 @@ describe('scripts/checks/import-order.sh', () => {
     expect(result.stderr).toContain('Import ordering');
   });
 
+  it('sorts an inline-`type`-modifier import by its own ending-line length, not as a value/type tiebreak', () => {
+    // The real full-word-identifiers.test.ts shape: `node:fs`'s named-import
+    // line is longer than `node:child_process`'s inline-`type` one, so the
+    // shorter (`node:child_process`) line must sort first — the inline
+    // `type` modifier does not make a mixed import "type-only" for the
+    // value-before-type tiebreak, which only applies at equal length.
+    const result = runCheck(
+      "import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';\n" +
+        "import { type SpawnSyncReturns, spawnSync } from 'node:child_process';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+    );
+
+    expect(result.status).toBe(0);
+  });
+
   it('does not reorder across a bare side-effect import barrier', () => {
     const result = runCheck(
       "import { aVeryLongIdentifierName } from 'some-external-package-name';\n" +

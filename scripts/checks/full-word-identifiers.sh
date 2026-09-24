@@ -30,7 +30,15 @@ if [ -n "$TARGET" ]; then
     *) exit 0 ;;
   esac
 
+  dkey="full-word-identifiers:$(printf '%s' "$TARGET" | harness_hash)"
+  fp="$( { shasum "$TARGET" 2>/dev/null
+          shasum "$DIR/full-word-identifiers.js" 2>/dev/null; } | harness_hash )"
+  if harness_unchanged "$ROOT" "$dkey" "$fp"; then
+    exit 0
+  fi
+
   out="$(node "$DIR/full-word-identifiers.js" "$TARGET" 2>&1)" || fail "$out"
+  harness_mark_pass "$ROOT" "$dkey" "$fp"
   exit 0
 fi
 
@@ -39,7 +47,16 @@ fi
 # scope the R1.d sweep covers. FULL_WORD_IDENTIFIERS_SRC_ROOT overrides the
 # whole scanned-roots list with one directory — used only by
 # __tests__/full-word-identifiers.test.ts, to point this mode at a
-# disposable temp fixture tree instead of the real (and much larger) repo.
+# disposable temp fixture tree instead of the real (and much larger) repo;
+# dedup is skipped in that case, since the code fingerprint below reads the
+# real repo's git state, not the temp tree's content.
+if [ -z "${FULL_WORD_IDENTIFIERS_SRC_ROOT:-}" ]; then
+  fp="$(harness_code_fingerprint "$ROOT")"
+  if harness_unchanged "$ROOT" "full-word-identifiers" "$fp"; then
+    exit 0
+  fi
+fi
+
 if [ -n "${FULL_WORD_IDENTIFIERS_SRC_ROOT:-}" ]; then
   roots=("$FULL_WORD_IDENTIFIERS_SRC_ROOT")
 else
@@ -59,4 +76,5 @@ if [ ${#files[@]} -eq 0 ]; then
 fi
 
 out="$(node "$DIR/full-word-identifiers.js" "${files[@]}" 2>&1)" || fail "$out"
+[ -n "${FULL_WORD_IDENTIFIERS_SRC_ROOT:-}" ] || harness_mark_pass "$ROOT" "full-word-identifiers" "$fp"
 exit 0
