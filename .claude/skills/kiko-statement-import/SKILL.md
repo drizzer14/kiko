@@ -197,6 +197,34 @@ generic statement-import screen whenever a file was read at all
 (including an unrecognized-format or bank-mismatch preview), routing
 to `src/screens/column-mapping/column-mapping.screen.tsx`.
 
+**`ownsFile` — which screen owns deleting the local copy.**
+`ColumnMapping`'s route param `ownsFile` (`src/navigation/types.d.ts`,
+`ColumnMapping.ownsFile` doc comment is the source of truth) is `true`
+only when `ColumnMapping` was reached via `StatementImportScreen`'s
+auto-`replace` (no `StatementImport` route left below it on the stack),
+making `ColumnMapping` the file's sole owner, responsible for deleting
+the local copy on unmount/cleanup. It is absent/falsy on the "Map
+columns manually" PUSH entry point above, where `StatementImport`
+stays mounted underneath and still owns the file — `ColumnMapping` must
+NOT delete it out from under that still-reachable screen. A future
+third entry point to `ColumnMapping` must set this flag correctly or it
+silently either deletes a file another screen still needs, or leaks a
+file nobody deletes.
+
+**React Navigation 7: `navigate()` to a screen already on the stack
+pushes a COPY rather than reusing the existing instance.** Use
+`navigation.popTo(name, params, { merge: true })` instead whenever the
+target route may already be on the stack (e.g. returning to
+`AccountDetail` after column-mapping/statement-import finishes). See
+`statement-import.screen.tsx`'s `navigation.popTo` call site comment
+for the canonical explanation and the real-router proof
+(`src/navigation/statement-import-return.navigator.test.tsx`); the same
+rule is applied at `column-mapping.screen.tsx` and
+`holding-form.screen.tsx`. Jest's shallow navigation mocks cannot catch
+a `navigate`-vs-`popTo` regression — verify a fix here with a real
+navigator test (as in the return-navigator test above) or a device
+check, not a mocked-navigation unit test.
+
 ## Screen layout (device-feedback-round-F1)
 
 Both `statement-import.screen.tsx` and `column-mapping.screen.tsx`

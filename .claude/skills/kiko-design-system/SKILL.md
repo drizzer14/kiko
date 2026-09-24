@@ -423,6 +423,23 @@ new component can land between reviews of this skill:
   `kiko-gestures`. Read `bottom-sheet.props.d.ts` for the exact current
   prop set rather than trusting this summary if it drifts.
 
+  **`onDismiss` vs `onClosed` — a close-timing contract, not two names
+  for the same event.** `onDismiss` fires the moment a close is
+  REQUESTED (a scrim tap, or a hardware/gesture back); `onClosed`
+  (optional) fires only when the underlying RN `Modal` reports its OWN
+  `onDismiss` — the close ANIMATION has actually finished (iOS only; RN's
+  `Modal` never fires it on Android). Anything that must not run until
+  the sheet is visually gone — most importantly navigating the screen
+  away — belongs on `onClosed`, not `onDismiss`: wiring a screen
+  navigation to `onDismiss` pops the sheet mid-animation. Read
+  `bottom-sheet.props.d.ts`'s `onDismiss`/`onClosed` doc comments as the
+  source of truth. Separately, the `testID` prop produces a
+  `${testID}-modal` hook on the underlying RN `Modal` itself
+  (`bottom-sheet.component.tsx`), distinct from the separate
+  `backdropTestID` prop, which names the dismiss-scrim `Pressable` (e.g.
+  a filter menu's `${id}-backdrop`) — don't conflate the two when wiring
+  a sheet's test hooks.
+
   The full-bleed dismiss SCRIM (a sibling of the sheet card, not the
   card's own `glassFill` above) is a SEPARATE Liquid Glass layer with a
   DEVICE BUG fix of its own: Liquid Glass draws a native specular rim at

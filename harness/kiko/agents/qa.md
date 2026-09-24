@@ -50,3 +50,11 @@ Rules:
 - An assertion that reads back a fixture literal instead of a value the
   code under test actually wrote or computed is not a test of the code
   — it only proves the fixture equals itself.
+- Jest cannot verify real navigator behavior (e.g. whether `navigate()`
+  vs `popTo()` pushes a duplicate route on React Navigation 7 — a mocked
+  navigation prop can't catch that) or native hit-testing geometry (e.g.
+  whether a `hitSlop`/`minHeight`-grown touch target is actually
+  reachable on device). A fix for either needs a real-navigator test
+  (see `src/navigation/statement-import-return.navigator.test.tsx`) or a
+  device check — never treat a green Jest assertion on a prop as proof
+  the real behavior is fixed.
