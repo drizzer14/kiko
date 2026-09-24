@@ -867,4 +867,49 @@ An `'annuity'`/`'differentiated'` loan additionally shows a "Next
 installment (`<date>`)" panel (`nextLoanInstallment` — the first
 `loanInstallments` row due on or after today's local day) with its
 principal/interest split; a `'none'` schedule and every other holding
-type render nothing there.
+type render nothing there. That panel is also hidden once
+`loanOutstandingMinorAt` reads 0 at `now` (`nextLoanInstallment`'s own
+`<= 0` guard) — a fully repaid, or overpaid/over-corrected, loan shows
+no next installment even while `loanInstallments` still has future
+rows on the loan's ORIGINAL schedule.
+
+A loan correction (the "Update outstanding" `PricePointForm` write
+above) accepts **0**, unlike every other holding type's "Update
+value" (`> 0`): a 0 point means repaid. `loanOutstandingMinorAt`
+already clamps every read at 0, and a 0 write never deletes the
+holding's earlier points — net worth reads 0 from that day forward
+while an earlier day still reads its own, earlier correction.
+
+**Loan EDIT reconciliation** — `holdingsRepo.updateLoan` writes the
+metadata patch and a `LoanPricePointOp` in ONE transaction
+(`buildLoanPricePointOp`, `holding-form.screen.tsx`), reconciling the
+loan's manual `holding:<id>` series against what the metadata edit
+just changed:
+
+- (a) a schedule change INTO `'none'` (from `'annuity'`/
+  `'differentiated'`) preserves the OLD schedule's current outstanding
+  as a manual point, so the debt never silently reads as 0 the instant
+  the schedule is cleared. Normally that point is dated TODAY. But
+  `loanOutstandingMinorAt` reads 0 for any instant before the loan's
+  own `startDate` (a future-start loan) — dating it today would then
+  write a PERMANENT 0 that outlives the start date once it arrives.
+  When today is still before the start day, the op instead writes the
+  new metadata's own PRINCIPAL at the start day, mirroring the
+  create-mode `'none'` first point.
+- (b) a `'none'` loan's principal/start-date edit MOVES its start-day
+  point — deletes the point at the OLD start day and writes the new
+  principal at the NEW start day. Any later correction point stays
+  untouched (an edge case: if the new start day lands on or after an
+  existing correction's day, that correction is overwritten or
+  shadowed — rare, and the ruling is written this way deliberately).
+- (c) every other transition (including `'none'` OUT to a schedule)
+  leaves the manual series untouched — a correction point is still
+  valid for a scheduled loan (N10a above).
+
+A fresh holding (`oldMeta === null`) has nothing to reconcile.
+
+`termMonths` is capped at `MAX_LOAN_TERM_MONTHS` (`use-loan-fields.ts`,
+600 months / 50 years — comfortably above any real mortgage/car-loan
+term): an uncapped value would make `loanInstallments` build an
+unbounded row count for a degenerate but technically-valid positive
+integer.
