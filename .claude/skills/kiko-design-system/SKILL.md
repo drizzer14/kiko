@@ -160,7 +160,48 @@ theme supplying values today. The token values live in `theme.ts`
 (`darkTheme`) and `palette.ts`; read those directly rather than
 restating them here.
 
+## UX patterns
+
+Before acting on a UI feedback round, audit the affected screens
+against this section and against how the same pattern is already
+built elsewhere in the app; fix the pattern everywhere it appears, not
+only the reported instance (see harness-workflow's "UI feedback
+rounds: audit before fixing" — single source, do not restate its text
+here).
+
+The established patterns grouped under this heading:
+
+- The form validation pattern — `FieldError` in "Component set" below.
+- The tabs-vs-chips rule (binding) — in "Component set" below, under
+  `SegmentedControl`.
+- The capability-icon transparency principle — its own heading further
+  down this file.
+- Field placeholder and error copy — below.
+
+## Field placeholder and error copy
+
+A placeholder never repeats its own field's label — enforced, not
+just convention: `placeholder` is a required prop on `DateField`,
+`TimeField`, `ColumnSelectField`, and `SelectField`, so a caller must
+supply distinct wording rather than default to the label text. The
+established placeholder copy is "Select a …" for a picker/select
+field.
+
+A picker/select field's error message takes the "No X selected." form
+(Ukrainian: "X не вибрано.") — never a synonym of the placeholder's
+own verb ("choose", "pick"). Read these live keys for the exact
+current wording rather than trusting a copy of it here — a new field
+adds its own key alongside them, in this same form:
+`columnMapping.*ColumnError` (`src/i18n/locales/en.ts`,
+`src/i18n/locales/uk.ts`), `statementImport.chooseHoldingError`,
+`forms.holding.loanStartDateError`,
+`forms.holding.couponFrequencyRequiredError`.
+
 ## Component set
+
+Every shared component here follows `kiko-code-style`'s "One component
+per file, each in its own folder" rule — read it there, not restated
+here.
 
 The primitive set has grown well past the original four. This is the
 real set — enumerated at `src/design-system/components/`; read that

@@ -267,6 +267,29 @@ happening to notice it. Needs a `rules/fixtures/<rule-id>.bad.ts` /
 `.good.ts` pair per the fixture contract above before it can land;
 tracked as a backlog item in `docs/harness/review-to-biome-inventory.md`.
 
+## Backlog: F4 code-style mechanization candidates
+
+Four proposed but NOT YET IMPLEMENTED checks (documentation only — do
+not implement without a dedicated pass; each needs its own inventory
+row in `docs/harness/review-to-biome-inventory.md` when it lands):
+
+- A comment-history check (Semgrep `pattern-regex` or a grep wrapper)
+  over `src` comments for a task id (`\bT\d{1,3}\b`), a review-round id
+  (`[IMN]\d+` in review context, `"review round"`), or a spec section
+  number (`"spec \d"`, `\bD\d{1,2}\b`) — see kiko-code-style's
+  "Comments" section for the rule this mechanizes. Needs
+  false-positive tuning before it can be Class A.
+- A nullable-ternary Semgrep ERROR rule for
+  `x === undefined ? undefined : f(x)` and its `null`/`== null`
+  variants — see kiko-code-style's "Banned: the nullable-map ternary".
+- An at-most-one-exported-component-per-`.tsx` check (Semgrep or a
+  Jest invariant) — see kiko-code-style's "One component per file"
+  section for the rule and its small-local-component exception.
+- An import length-sort checker for the hand-enforced ordering rule —
+  see kiko-code-style's "Import ordering and `import type`" section.
+
+These are implemented later in the refactor batch, not by this brief.
+
 ## Every mechanized finding gets an inventory row
 
 `docs/harness/review-to-biome-inventory.md` tracks every review

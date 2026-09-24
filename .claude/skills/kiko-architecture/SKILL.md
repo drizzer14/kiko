@@ -961,7 +961,12 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   value, including an explicit `null`, is left alone) and reproduces
   migration 0036's own heuristic in JS. The rule itself stays stated in full
   only in `transactionsRepo.importRows`'s doc comment
-  (`transactions/repo/transactions.repo.ts`).
+  (`transactions/repo/transactions.repo.ts`). Generalize this: a migration
+  that adds a column needing a backfill must apply the IDENTICAL backfill on
+  BOTH paths that can produce a row missing it — the migration path itself
+  and the restore/import path (`restoreDataSnapshot`) — never only one.
+  Follow the `balanceSetAt` / `loan_interest` re-seed precedent above for the
+  next such column.
 - **No `TextDecoder`/`TextEncoder`.** Hermes has no working `TextDecoder`
   (confirmed on device — see `utf8/utf8.ts`'s header comment); use the
   hand-rolled `utf8Encode`/`utf8Decode` and `encodeBytesToBase64`/

@@ -123,6 +123,23 @@ From `biome.json`'s `linter.rules`:
   `either(...)` call), call it as a plain expression statement; do
   not prefix it with `void`.
 
+## Comments: WHY only, never history
+
+A comment explains only WHY, and only when the code cannot show it on
+its own — never restate what the code already does. This applies to
+tests and skills too, not only application code.
+
+No history in a comment: no task id (`T28`), no review-round id (`I1`,
+`M2`, `N3`), no spec section number (`spec 6.2`, `D14`), and no
+"changed because …" narrative. That belongs in the commit message that
+made the change, or in the skill section that owns the rule — never
+in a comment left behind in the code.
+
+Documented exception: the data-provenance date comment in
+`src/rates/fiat-rate-seed/fiat-rate-seed.ts` stays — it records WHEN
+the seed values were captured, which the code cannot show on its own,
+not a history narrative about a task or review round.
+
 ## Split a `useEffect` per logical concern, before it ships
 
 A single `useEffect` combining two or more unrelated "when X changes,
@@ -177,11 +194,21 @@ Everything else defaults to plain functions and modules:
 ## `ts-pattern` for exhaustive mapping
 
 Any place that maps over a closed set of literals — currency codes,
-account/holding `kind`/`type`, Monobank statement kinds, ISO 4217
-numeric codes — uses `ts-pattern`'s `match(...).exhaustive()` rather
-than a `switch` or an `if`/`else` chain. Exhaustiveness checking means
-adding a new currency or a new holding type is a compile error at
-every mapping site that hasn't been updated, not a silent runtime gap.
+account/holding `kind`/`type` (including the `loan`, `metal`,
+`property_item`, and `share` holding types — see `src/db/schema.ts`
+for the current full set), Monobank statement kinds, ISO 4217 numeric
+codes — uses `ts-pattern`'s `match(...).exhaustive()` rather than a
+`switch` or an `if`/`else` chain. Exhaustiveness checking means adding
+a new currency or a new holding type is a compile error at every
+mapping site that hasn't been updated, not a silent runtime gap.
+
+A single boolean guard used exactly once (an `if`/`else` with no
+closed-set enum behind it) may stay as-is — reviewer-approved
+switch-statement exceptions already exist in the tree
+(`src/holdings/interest/interest.ts`,
+`src/holdings/holding-value/holding-value.ts`; see
+`docs/harness/review-to-biome-inventory.md:51` for why these are not
+mechanized).
 
 The set itself needs exactly one source of truth. Derive the literal
 union type from a `const` tuple, instead of hand-maintaining a union
@@ -211,20 +238,110 @@ Drizzle `$inferSelect` row type — directly after the `const` it comes
 from, not stacked together at the end of the file. The reader should
 never have to jump away from a declaration to see what it produces.
 
-## `fnts` for composition
+## Banned: the nullable-map ternary
 
-Use `fnts` (github.com/drizzer14/fnts) to compose functional
-transform pipelines. Don't hand-roll a `pipe`/`compose` helper; use
-the library's.
+`x === undefined ? undefined : f(x)` — and its `null`/`== null`
+variants — is banned. This smells badly: it hand-rolls exactly what a
+`Maybe` mapping already does, without the type making the "might be
+absent" case visible at the call site.
 
-No worked example is quoted here on purpose. The Monobank
-statement-item mapping used to be it, and its `pipe` was deleted when
-that pipeline's JS-side dedup filter moved into SQL (see
-`kiko-architecture`), which left this rule citing code that no longer
-existed. `grep -rn "from 'fnts'" src` for the live uses instead —
-today every one of them is `guard` in an HTTP client, and no `pipe`
-composition is left in the tree. The rule still governs the next
-pipeline that needs one.
+Use `fnts`'s `maybe` + `foldMap` instead — `foldMap` maps and unwraps
+in one step, which is the common case (compare to `fmap`, which stays
+wrapped as a `Maybe` when the result needs to flow into more `Maybe`
+operators):
+
+```ts
+// wrong
+const label = holding.nickname === undefined ? undefined : holding.nickname.trim();
+
+// correct
+import maybe, { foldMap } from 'fnts/maybe';
+
+const label = foldMap(maybe(holding.nickname), (nickname) => nickname.trim());
+```
+
+Reach for `fmap`/`bind`/`fold` instead of `foldMap` only when the
+result itself needs to stay a `Maybe` — chaining into another
+`maybe` operator, or returning a `Maybe` from the enclosing function.
+
+## `fnts` FIRST
+
+`fnts` (github.com/drizzer14/fnts, the user's own library) is the
+FIRST thing to reach for, before hand-rolling a `pipe`, a nullable
+check, an error boundary, or a throw contract. Readability stays the
+criterion for which piece to use, and where composition genuinely
+reads worse than plain code — see the carve-outs below — but check
+`fnts` before writing the hand-rolled version, not after.
+
+- **`pipe`/`compose`** — for a transform pipeline of two or more
+  steps. Don't hand-roll a `pipe` helper; use the library's:
+
+  ```ts
+  import { pipe } from 'fnts';
+
+  const toDisplayAmount = pipe(
+    (minorUnits: number) => minorUnits / 100,
+    (major: number) => major.toFixed(2),
+  );
+  ```
+
+  No worked example from this codebase is quoted here on purpose. The
+  Monobank statement-item mapping used to be it, and its `pipe` was
+  deleted when that pipeline's JS-side dedup filter moved into SQL
+  (see `kiko-architecture`), which left this rule citing code that no
+  longer existed. `grep -rn "from 'fnts'" src` for the live uses
+  instead. The rule still governs the next pipeline that needs one.
+
+- **`maybe`** — for a nullable value, in place of a hand-rolled
+  `!= null` check or a nullable ternary (see "Banned: the nullable-map
+  ternary" below):
+
+  ```ts
+  import maybe, { fmap, fold } from 'fnts/maybe';
+
+  const displayName: string | undefined = fold(
+    fmap(maybe(account.nickname), (nickname) => nickname.trim()),
+  );
+  ```
+
+- **`either`/`eitherSync` + `bifold`** — for a throwable operation's
+  error channel:
+
+  ```ts
+  import either, { bifold } from 'fnts/either';
+
+  const result = await either<Error, Rates>(() => fetchRates());
+  const rates: Rates | undefined = bifold(
+    result,
+    () => undefined,
+    (value: Rates) => value,
+  );
+  ```
+
+- **`guard`** — for a function whose own contract is to throw (an
+  HTTP ok-check, for example): replace an `if (!ok) throw` chain with
+  a `guard` validator/executor pair directly; do not wrap-and-rethrow
+  it through `either` first, that's pure overhead on a function that
+  was never meant to return an `Either`.
+
+  ```ts
+  import { guard } from 'fnts';
+
+  const readBody = guard(
+    [
+      (response: Response) => !response.ok,
+      (response: Response): never => {
+        throw new Error(`request failed: ${response.status}`);
+      },
+    ],
+    (response: Response): Promise<Body> => response.json(),
+  );
+  ```
+- **`curry`/`tap`/`identity`** — reach for these where they read
+  better than the hand-rolled equivalent (a `tap` side effect inside a
+  pipeline instead of breaking the pipeline to log a value, for
+  example); they are not mandatory the way `pipe`/`maybe`/`either`/
+  `guard` are above, just worth checking before hand-rolling.
 
 `fnts` also owns network and error-handling code — reach for it
 instead of hand-rolled `try`/`catch` plus manual `Error` normalization:
@@ -460,6 +577,17 @@ helper. Do not define such a helper inside another component's body;
 extract it to its own file and folder. The extracted component reads
 the theme through `useUnistyles()` itself, so it does not need the
 parent's closure.
+
+**Exception — a small local, non-reusable component.** A small
+component that must be extracted out of its parent's body (for
+readability, or so its own re-renders don't fire the parent's) but is
+not a reusable module in its own right may stay in the same file as
+its parent, as long as it is never `export`ed. The split criterion is
+readability and consistency with the existing structure in that file
+— line count is irrelevant. This applies to tests too: a mock
+component or fixture used by one test goes to that test's co-located
+test-helper file, not a new top-level component folder, unless it is
+reused across multiple test files.
 
 A component uses an explicit `return` —
 `(props) => { return (<...>); }` — never the arrow-shorthand implicit
