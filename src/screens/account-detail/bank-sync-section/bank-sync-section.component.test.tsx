@@ -129,6 +129,18 @@ describe('BankSyncSection — disconnected', () => {
 
     expect(view.getByText('monobank boom')).toBeTruthy();
   });
+
+  // Item 1 (F3): an account whose identity picker (BankTypeField, in the
+  // account form) already identified it as Monobank must not re-ask via the
+  // generic "Add a bank" picker (redundant when Monobank is the only
+  // connectable provider) — it goes straight to the Connect field.
+  it('skips the "Add a bank" trigger and goes straight to the Monobank field when bankId is already monobank', async () => {
+    const view = await render(<BankSyncSection account={bankAccount({ bankId: 'monobank' })} />);
+
+    expect(view.queryByText('Add a bank')).toBeNull();
+    expect(view.getByText('monobank field')).toBeTruthy();
+    expect(view.getByText('Change bank')).toBeTruthy();
+  });
 });
 
 describe('BankSyncSection — connected', () => {

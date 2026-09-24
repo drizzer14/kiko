@@ -102,11 +102,17 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
     connectedProviderId === undefined ? undefined : bankProviderRegistry[connectedProviderId];
 
   // Which provider's connect field to show BEFORE a connection exists — set
-  // by `AddBankProviderSheet`'s selection. Reset back to `undefined` on
-  // Disconnect (below), so the picker/trigger reappears rather than
-  // re-showing the just-disconnected provider's field.
+  // by `AddBankProviderSheet`'s selection, or DEFAULTED straight to the
+  // account's own `bankId` (item 1, F3): the account form's BankTypeField
+  // already identified this account as Monobank, so re-asking through the
+  // generic "Add a bank" picker (today a picker of exactly one entry) is
+  // redundant friction and the label was misleading ("Add a bank" on an
+  // account already known to be Monobank) — the section goes straight to
+  // the Connect field instead. Reset back to `undefined` on Disconnect
+  // (below), so the picker/trigger reappears rather than re-showing the
+  // just-disconnected provider's field.
   const [selectedProviderId, setSelectedProviderId] = useState<BankProviderId | undefined>(
-    undefined,
+    isBankProviderId(account.bankId) ? account.bankId : undefined,
   );
   const [providerPickerOpen, setProviderPickerOpen] = useState(false);
   // Whether the themed Disconnect confirm (`ConfirmSheet`) is up, replacing the
