@@ -693,10 +693,6 @@ const fieldErrorMessage = (
     | null,
 ): string | undefined => (attemptedSave ? foldMap(maybe(reasonKey), (key) => t(key)) : undefined);
 
-// The ISIN field's OWN inline error text — every `isinReasonKey` EXCEPT
-// `isinNotInRegister`, which `BondIsinSection` already surfaces as its own
-// always-visible hint (not gated on Save), so showing it here too would
-// duplicate that message.
 // The contributions group's two sub-reasons (missing vs incomplete) render as
 // TWO separate `<FieldError>`s though both come from the SAME
 // `contributionsFieldReasonKey` check — this narrows to the specific
@@ -715,6 +711,10 @@ const contributionsSubReasonMessage = (
     | 'forms.holding.contributionIncompleteError',
 ): string | undefined => (attemptedSave && reasonKey === expectedKey ? t(expectedKey) : undefined);
 
+// The ISIN field's OWN inline error text — every `isinReasonKey` EXCEPT
+// `isinNotInRegister`, which `BondIsinSection` already surfaces as its own
+// always-visible hint (not gated on Save), so showing it here too would
+// duplicate that message.
 const isinFieldErrorMessage = (
   t: TFunction,
   attemptedSave: boolean,
