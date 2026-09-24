@@ -223,6 +223,22 @@ describe('loanOutstandingMinorAt', () => {
     expect(loanOutstandingMinorAt(annuityMeta, HOLDING_ID, book, twelfthDueDate)).toBe(118_461_574);
   });
 
+  it('M4: is 0 before the loan start date, the none-schedule branch, even with a later correction', () => {
+    const point = { day: dayKeyOf(local(2021, 0, 1)), price: '30000.00', currency: 'UAH' as const };
+    const book = buildPriceBook([
+      { instrument: holdingInstrument(HOLDING_ID), ...point, source: 'manual' as const },
+    ]);
+    const dayBeforeStart = addDays(noneMeta.startDate, -1);
+    expect(loanOutstandingMinorAt(noneMeta, HOLDING_ID, book, dayBeforeStart)).toBe(0);
+  });
+
+  it('M4: is 0 before the loan start date, the SCHEDULED (annuity) branch — not the full principal', () => {
+    const dayBeforeStart = addDays(annuityMeta.startDate, -1);
+    expect(loanOutstandingMinorAt(annuityMeta, HOLDING_ID, EMPTY_PRICE_BOOK, dayBeforeStart)).toBe(
+      0,
+    );
+  });
+
   it('M5: an overpaid correction clamps to 0 in the SCHEDULED (annuity/differentiated) branch too', () => {
     const installments = loanInstallments(annuityMeta);
     const correctionDay = installments[234].dueDate;

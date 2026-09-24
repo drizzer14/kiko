@@ -111,6 +111,14 @@ export const loanInstallments = (meta: LoanMeta): LoanInstallment[] => {
  * (earliest-point fallback included), with no schedule to subtract against.
  * Both branches clamp the result to never go below 0 (an overpaid/
  * overcorrected loan reads as paid off, never negative).
+ *
+ * M4: an instant whose local day is BEFORE the loan's own `startDate` day
+ * contributes 0, in either branch — mirroring the rule a priced holding
+ * (`property_item`/`metal`) already follows for an instant before its first
+ * lot (`kiko-pricing`). Without this guard the `none` branch could surface a
+ * LATER manual correction (`priceAt`'s earliest-point fallback) for a query
+ * before the loan even started, and the scheduled branch would surface the
+ * full, un-amortized principal instead of "not taken out yet".
  */
 export const loanOutstandingMinorAt = (
   meta: LoanMeta,
@@ -118,6 +126,10 @@ export const loanOutstandingMinorAt = (
   book: PriceBook,
   instant: number,
 ): number => {
+  if (dayKeyOf(instant) < dayKeyOf(meta.startDate)) {
+    return 0;
+  }
+
   const correction = priceAt(book, holdingInstrument(holdingId), instant);
 
   if (meta.schedule === 'none') {
