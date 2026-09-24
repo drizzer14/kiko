@@ -8,8 +8,8 @@ export type HoldingTypeFieldProps = {
   selected: HoldingType;
   onSelect: (type: HoldingType) => void;
   // The catalog-resolved display label for each type, resolved by the
-  // screen so the field stays translation-agnostic — mirrors
-  // AccountKindField's own `labels` prop.
+  // screen (this field calls `t()` only for its own label/sheetTitle/
+  // placeholder) — mirrors AccountKindField's own `labels` prop.
   labels: Record<HoldingType, string>;
   // The SF Symbol glyph shown for each type (the trigger's leading icon and
   // each sheet row's leading icon) — the screen passes `holdingTypeSymbol`

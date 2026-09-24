@@ -71,11 +71,9 @@ describe('TrendFilterField section header tone', () => {
 });
 
 describe('TrendFilterField label/value type hierarchy', () => {
-  // The sheet title (`heading`, 20) > each section label (`body`, 16, raised
-  // from the former `caption`, 13) > its ChipRow/SegmentedControl value
-  // (`caption`, 13, dropped from the former hardcoded `body`) — the label
-  // must read strictly larger than the value it sits above, reversing the
-  // inverted hierarchy this was reported against.
+  // The sheet title (`heading`, 20) > each section label (`body`, 16) > its
+  // ChipRow/SegmentedControl value (`caption`, 13) — the label must read
+  // strictly larger than the value it sits above.
   it('renders each top-mode section label at body and its value control at caption', async () => {
     const { getByText } = await openSheet({ mode: 'top', amount: 3, by: 'contribution' });
 
@@ -90,9 +88,8 @@ describe('TrendFilterField label/value type hierarchy', () => {
     // still sits directly under its own SectionHeader ("Selection", `body`),
     // so its `labelVariant="caption"` keeps it visually SUBORDINATE to that
     // header, the same label-above-value hierarchy every other value control
-    // in this sheet follows. A control reading as a PEER of its own section
-    // header (both `body`) is the exact inverted hierarchy this sheet was
-    // reported against.
+    // in this sheet follows — a control reading as a PEER of its own section
+    // header (both `body`) would invert that hierarchy.
     expect(getByText('5').props.variant).toBe('caption');
     expect(getByText('Contribution').props.variant).toBe('caption');
     expect(getByText('Manual').props.variant).toBe('caption');

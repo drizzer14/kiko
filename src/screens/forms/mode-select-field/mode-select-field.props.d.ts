@@ -14,8 +14,8 @@ export type ModeSelectFieldProps = {
   options: readonly FormMode[];
   selected: FormMode;
   onSelect: (mode: FormMode) => void;
-  // The catalog-resolved display label for each mode, resolved by the screen so
-  // the field stays translation-agnostic.
+  // The catalog-resolved display label for each mode, resolved by the screen
+  // (this field calls `t()` only for its own sheet title/placeholder).
   labels: Record<FormMode, string>;
   // The SF Symbol glyph shown for each mode (the trigger's leading icon and each
   // sheet row's leading icon).

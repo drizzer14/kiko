@@ -66,9 +66,9 @@ const BankTypeField: FC<BankTypeFieldProps> = ({ label, selected, onSelect, test
       <FieldTrigger
         label={label}
         onPress={() => setOpen(true)}
-        // F4 item 3: "Free" (`selected === null`) IS the default selection,
-        // not an unset placeholder state — `noBank` renders as a real,
-        // textPrimary value, the same as any other picked bank.
+        // "Free" (`selected === null`) IS the default selection, not an
+        // unset placeholder state — `noBank` renders as a real, textPrimary
+        // value, the same as any other picked bank.
         value={selectedEntry?.displayName ?? t('forms.account.noBank')}
         valueTone="textPrimary"
         testID={testID}

@@ -9,7 +9,7 @@ import { propertyCategories, type PropertyCategory } from '../../../../holdings/
 
 import type { PropertySectionProps } from './property-section.props';
 
-// The `property_item` create-form section (T16): a category select field
+// The `property_item` create-form section: a category select field
 // (editable in both create and edit mode; a `ChipRow` read oversized for 6
 // long category names, converted to the
 // `FieldTrigger`+`BottomSheet`+`SelectableRow` family, same shape as

@@ -31,11 +31,11 @@ const loanScheduleLabels = (t: TFunction): Record<LoanSchedule, string> => ({
   none: t('forms.holding.loanSchedule.none'),
 });
 
-// The `loan` create/edit-form section (T28, spec 5.1): a kind select field
+// The `loan` create/edit-form section (spec 5.1): a kind select field
 // (a `ChipRow` read oversized for 4 long kind names, converted to the
 // `FieldTrigger`+`BottomSheet`+`SelectableRow` family), the
-// principal + start-date fields, the schedule SegmentedControl (F3/T24
-// ruling — one control type per kind of mode choice; the schedule DOES
+// principal + start-date fields, the schedule SegmentedControl (one
+// control type per kind of mode choice; the schedule DOES
 // change the visible fields below it, so the Q2 tabs-vs-chips rule keeps it
 // a SegmentedControl — the same reason the Bond form's ISIN/Manual toggle
 // uses one), and the

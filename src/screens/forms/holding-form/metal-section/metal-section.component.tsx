@@ -16,10 +16,10 @@ import TextField from '../../../../design-system/components/text-field';
 
 import type { MetalSectionProps } from './metal-section.props';
 
-// The `metal` create-form section (T20): a metal-element ChipRow, a physical
+// The `metal` create-form section: a metal-element ChipRow, a physical
 // Form ChipRow, a Unit ChipRow, a Purity field (pre-filled `"0.9999"` — the
 // standard bar/coin fineness, validated on Save as 0 < purity <= 1 in both
-// create and edit mode — F4 audit 8), and the first-lot Quantity/Total cost
+// create and edit mode), and the first-lot Quantity/Total cost
 // fields (create-only — see `MetalSectionProps.showFirstLot`'s own doc
 // comment). One lot is what `holding-form.screen.tsx` builds from those two
 // fields on save; this component only collects and reports the fields,

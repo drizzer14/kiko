@@ -262,7 +262,7 @@ export const en = {
       annualRatePct: 'Annual rate %',
       annualRatePlaceholder: '12',
       // Frequency vocabulary shared by the term-deposit Compounding chip row
-      // and the bond Coupon frequency chip row within this same screen.
+      // and the bond Coupon frequency select field within this same screen.
       annually: 'Annually',
       balance: 'Balance',
       balancePlaceholder: '1000.00',
@@ -326,7 +326,7 @@ export const en = {
       isinRequiredError: "Enter the bond's ISIN.",
       jar: 'Jar',
       loan: 'Loan',
-      // The Loan form's own kind ChipRow option map (T28); see loanKindLabel.
+      // The Loan form's own kind SelectField option map; see loanKindLabel.
       loanKind: {
         carLoan: 'Car loan',
         consumerLoan: 'Consumer loan',
