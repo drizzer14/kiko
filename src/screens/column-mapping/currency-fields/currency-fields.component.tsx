@@ -2,9 +2,9 @@ import type { FC } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
-import ChipRow from '../../forms/chip-row';
 import ColumnSelectField from '../column-select-field';
 import CurrencyField from '../../../design-system/components/currency-field';
+import SegmentedControl from '../../../design-system/components/segmented-control';
 
 import type { CurrencyFieldsProps, CurrencyMode } from './currency-fields.props';
 
@@ -34,11 +34,12 @@ const CurrencyFields: FC<CurrencyFieldsProps> = ({
 
   return (
     <>
-      <ChipRow<CurrencyMode>
+      <SegmentedControl<CurrencyMode>
         options={['column', 'fixed']}
         selected={mode}
         onSelect={onModeChange}
         labels={currencyModeLabels(t)}
+        testID="column-mapping-currency-mode-control"
       />
 
       {mode === 'column' && (

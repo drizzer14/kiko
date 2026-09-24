@@ -2,8 +2,8 @@ import type { FC } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
-import ChipRow from '../../forms/chip-row';
 import ColumnSelectField from '../column-select-field';
+import SegmentedControl from '../../../design-system/components/segmented-control';
 
 import type { AmountFieldsProps, AmountMode } from './amount-fields.props';
 
@@ -33,11 +33,12 @@ const AmountFields: FC<AmountFieldsProps> = ({
 
   return (
     <>
-      <ChipRow<AmountMode>
+      <SegmentedControl<AmountMode>
         options={['single', 'debitCredit']}
         selected={mode}
         onSelect={onModeChange}
         labels={amountModeLabels(t)}
+        testID="column-mapping-amount-mode-control"
       />
 
       {mode === 'single' && (
