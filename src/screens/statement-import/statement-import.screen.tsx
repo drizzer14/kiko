@@ -187,11 +187,20 @@ const StatementPreviewBlock: FC<{
   importError,
 }) => {
   const { t } = useTranslation();
+  const selectedHoldingName = holdingOptions.find(
+    (holding) => holding.id === selectedHoldingId,
+  )?.name;
 
   return (
     <Box gap={3} style={styles.previewBlock}>
+      {/* F3 fix round 2, I1/I2: the same plain-first-child-of-gap={3} heading
+          pattern `column-mapping.screen.tsx`'s sections use — `SummaryTable`
+          gets no `title` here either, so this screen's preview heading sits
+          at the SAME 12pt spacing every column-mapping section heading does,
+          not `SummaryTable`'s own `gap={1}` (4pt) internal spacing. */}
+      <Text variant="heading">{stats.displayName}</Text>
+
       <SummaryTable
-        title={stats.displayName}
         rows={[
           {
             key: 'transactionCount',
@@ -214,7 +223,12 @@ const StatementPreviewBlock: FC<{
         ]}
       />
 
-      {stats.firstTransaction && <ExampleTransaction transaction={stats.firstTransaction} />}
+      {stats.firstTransaction && (
+        <ExampleTransaction
+          transaction={stats.firstTransaction}
+          holdingName={selectedHoldingName}
+        />
+      )}
 
       {stats.maskedCardHints.length > 0 && (
         <PreviewDetailList items={stats.maskedCardHints} testID="statement-import-masked-cards" />

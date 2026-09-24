@@ -314,6 +314,22 @@ describe('StatementImportScreen', () => {
     expect(getByTestId('target-holding-field')).toBeTruthy();
   });
 
+  // F3 fix round 2, I1/I2: the preview heading (the format's own
+  // displayName) renders exactly once, through this screen's own `Text`
+  // rather than `SummaryTable`'s `title` row — so it sits at the same 12pt
+  // gap-driven spacing every column-mapping section heading uses, not
+  // `SummaryTable`'s own internal `gap={1}` (4pt).
+  it('renders the preview heading exactly once', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+
+    const { getAllByText } = await renderScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+    });
+
+    await waitFor(() => expect(getAllByText('Monobank (CSV)')).toHaveLength(1));
+  });
+
   // F2 fix regression guard: `account-detail.screen.tsx` resolves this
   // route's `expectedFormatId` via `statementFormatIdForBank(account.bankId)`,
   // which is `undefined` for a bank-less Bank account (`bankId: null` — a
