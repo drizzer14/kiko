@@ -154,6 +154,10 @@ export const en = {
     cash: 'Cash',
     transfers: 'Transfers',
     other: 'Other',
+    // T30 (spec 5/D14): the eleventh default category, seeded by its own
+    // later migration (0039) — the interest portion of a linked loan
+    // payment (never its principal) files under this key.
+    loan_interest: 'Loan interest',
     // Categories screen and inline add-category-row UI copy (distinct from the
     // seeded default-category display names above).
     addCategory: 'Add category',

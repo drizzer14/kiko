@@ -16,6 +16,11 @@ const DEFAULT_CATEGORY_SEED_TITLES = {
   cash: 'Cash',
   transfers: 'Transfers',
   other: 'Other',
+  // The eleventh default, seeded by its own later migration (T30, spec
+  // 5/D14 — `drizzle/migrations/0039_seed_loan_interest_category.sql`), not
+  // by 0002 like the ten above — see that migration's own comment for why
+  // it is a separate, later journal entry.
+  loan_interest: 'Loan interest',
 };
 
 // The literal union of seeded slugs, derived from the map above so it can
