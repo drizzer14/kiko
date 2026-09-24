@@ -5,12 +5,12 @@ import { readdirSync, readFileSync } from 'node:fs';
 // op-sqlite transaction). Override `write` to run the callback against a fake
 // transaction handle so the test can capture the update payload issued inside
 // that single transaction.
-let mockTransaction: unknown;
+let mockDatabaseTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
   return {
     ...actual,
-    write: (work: (db: unknown) => unknown) => work(mockTransaction),
+    write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
   };
 });
 
@@ -48,7 +48,7 @@ describe('categoriesRepo', () => {
     const captured: { set?: Record<string, unknown>; whereCalled: boolean } = {
       whereCalled: false,
     };
-    mockTransaction = {
+    mockDatabaseTransaction = {
       update: () => ({
         set: (values: Record<string, unknown>) => {
           captured.set = values;
@@ -72,11 +72,11 @@ describe('categoriesRepo', () => {
   // the current global max `sort_order` via `select(...).from(categories)` (to
   // append at `max + 1`), then inserts. This answers that max query with
   // `maxSortOrder` and captures the insert payload.
-  const makeCreateTransaction = (
+  const makeCreateDatabaseTransaction = (
     maxSortOrder = -1,
-  ): { transaction: unknown; captured: { values?: Record<string, unknown> } } => {
+  ): { databaseTransaction: unknown; captured: { values?: Record<string, unknown> } } => {
     const captured: { values?: Record<string, unknown> } = {};
-    const transaction = {
+    const databaseTransaction = {
       select: () => ({ from: () => Promise.resolve([{ value: maxSortOrder }]) }),
       insert: () => ({
         values: (values: Record<string, unknown>) => {
@@ -86,12 +86,12 @@ describe('categoriesRepo', () => {
         },
       }),
     };
-    return { transaction, captured };
+    return { databaseTransaction, captured };
   };
 
   it('create inserts a new category with a generated key, title and icon', async () => {
-    const { transaction, captured } = makeCreateTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await categoriesRepo.create({ title: 'Travel', icon: 'airplane' });
 
@@ -104,8 +104,8 @@ describe('categoriesRepo', () => {
   });
 
   it('create appends the category at the global sortOrder = max + 1', async () => {
-    const { transaction, captured } = makeCreateTransaction(4);
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeCreateDatabaseTransaction(4);
+    mockDatabaseTransaction = databaseTransaction;
 
     await categoriesRepo.create({ title: 'Travel', icon: 'airplane' });
 
@@ -113,8 +113,8 @@ describe('categoriesRepo', () => {
   });
 
   it('create uses sortOrder 0 for the first category', async () => {
-    const { transaction, captured } = makeCreateTransaction(-1);
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeCreateDatabaseTransaction(-1);
+    mockDatabaseTransaction = databaseTransaction;
 
     await categoriesRepo.create({ title: 'Travel', icon: 'airplane' });
 
@@ -125,7 +125,7 @@ describe('categoriesRepo', () => {
     const captured: { set?: Record<string, unknown>; whereCalled: boolean } = {
       whereCalled: false,
     };
-    mockTransaction = {
+    mockDatabaseTransaction = {
       update: () => ({
         set: (values: Record<string, unknown>) => {
           captured.set = values;
@@ -149,7 +149,7 @@ describe('categoriesRepo', () => {
     const captured: { set?: Record<string, unknown>; whereCalled: boolean } = {
       whereCalled: false,
     };
-    mockTransaction = {
+    mockDatabaseTransaction = {
       update: () => ({
         set: (values: Record<string, unknown>) => {
           captured.set = values;
@@ -171,7 +171,7 @@ describe('categoriesRepo', () => {
 
   it('create persists the picked color when supplied, and null when omitted', async () => {
     const captured: { values?: Record<string, unknown> } = {};
-    mockTransaction = {
+    mockDatabaseTransaction = {
       select: () => ({ from: () => Promise.resolve([{ value: -1 }]) }),
       insert: () => ({
         values: (values: Record<string, unknown>) => {
@@ -192,7 +192,7 @@ describe('categoriesRepo', () => {
 describe('categoriesRepo.reorder', () => {
   it('rewrites each category sortOrder to its 0-based index in the new order', async () => {
     const sortOrders: unknown[] = [];
-    mockTransaction = {
+    mockDatabaseTransaction = {
       update: () => ({
         set: (set: Record<string, unknown>) => ({
           where: () => {
@@ -214,7 +214,7 @@ describe('categoriesRepo.delete', () => {
   // the two category reassign updates (transactions + overrides) and the
   // category-row delete, each captured so the test can assert the whole
   // transaction without a real database.
-  const makeTransaction = (settingsRows: { defaultCategoryKey: string }[]) => {
+  const makeDatabaseTransaction = (settingsRows: { defaultCategoryKey: string }[]) => {
     const captured: {
       transactionUpdate?: Record<string, unknown>;
       transactionWhere?: unknown;
@@ -222,7 +222,7 @@ describe('categoriesRepo.delete', () => {
       overrideWhere?: unknown;
       deletedTable?: unknown;
     } = {};
-    const transaction = {
+    const databaseTransaction = {
       select: () => ({ from: () => Promise.resolve(settingsRows) }),
       update: (table: unknown) => ({
         set: (values: Record<string, unknown>) => ({
@@ -247,12 +247,14 @@ describe('categoriesRepo.delete', () => {
       }),
     };
 
-    return { transaction, captured };
+    return { databaseTransaction, captured };
   };
 
   it('reassigns matching transactions and overrides to the default, then removes the category row', async () => {
-    const { transaction, captured } = makeTransaction([{ defaultCategoryKey: 'other' }]);
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeDatabaseTransaction([
+      { defaultCategoryKey: 'other' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await categoriesRepo.delete('groceries');
 
@@ -277,8 +279,10 @@ describe('categoriesRepo.delete', () => {
   };
 
   it('reassigns a capitalized legacy category on delete', async () => {
-    const { transaction, captured } = makeTransaction([{ defaultCategoryKey: 'other' }]);
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeDatabaseTransaction([
+      { defaultCategoryKey: 'other' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await categoriesRepo.delete('groceries');
 
@@ -289,8 +293,10 @@ describe('categoriesRepo.delete', () => {
   });
 
   it('reassigns a capitalized legacy override on delete', async () => {
-    const { transaction, captured } = makeTransaction([{ defaultCategoryKey: 'other' }]);
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeDatabaseTransaction([
+      { defaultCategoryKey: 'other' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await categoriesRepo.delete('groceries');
 
@@ -301,8 +307,10 @@ describe('categoriesRepo.delete', () => {
   });
 
   it('compares against the lowercased key even when the key itself is capitalized', async () => {
-    const { transaction, captured } = makeTransaction([{ defaultCategoryKey: 'other' }]);
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeDatabaseTransaction([
+      { defaultCategoryKey: 'other' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await categoriesRepo.delete('Groceries');
 
@@ -311,8 +319,10 @@ describe('categoriesRepo.delete', () => {
   });
 
   it('reassigns to the CURRENT (configurable) default, not a hardcoded one', async () => {
-    const { transaction, captured } = makeTransaction([{ defaultCategoryKey: 'shopping' }]);
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeDatabaseTransaction([
+      { defaultCategoryKey: 'shopping' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await categoriesRepo.delete('groceries');
 
@@ -321,8 +331,10 @@ describe('categoriesRepo.delete', () => {
   });
 
   it('refuses to delete the default category and writes nothing', async () => {
-    const { transaction, captured } = makeTransaction([{ defaultCategoryKey: 'other' }]);
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeDatabaseTransaction([
+      { defaultCategoryKey: 'other' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await expect(categoriesRepo.delete('other')).rejects.toThrow(/default/i);
 

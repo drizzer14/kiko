@@ -23,12 +23,12 @@ export const syncStateRepo = {
    * target account.
    */
   ensure: (accountId: string) =>
-    write((transaction) =>
-      transaction.insert(syncState).values({ accountId }).onConflictDoNothing(),
+    write((databaseTransaction) =>
+      databaseTransaction.insert(syncState).values({ accountId }).onConflictDoNothing(),
     ),
   setLastSyncAt: (accountId: string, timestamp: number) =>
-    write((transaction) =>
-      transaction
+    write((databaseTransaction) =>
+      databaseTransaction
         .update(syncState)
         .set({ lastSyncAt: timestamp })
         .where(eq(syncState.accountId, accountId)),
@@ -40,8 +40,8 @@ export const syncStateRepo = {
    * `runSyncInner` in `monobank/sync.ts`.
    */
   setLastFullSyncAt: (accountId: string, timestamp: number) =>
-    write((transaction) =>
-      transaction
+    write((databaseTransaction) =>
+      databaseTransaction
         .update(syncState)
         .set({ lastFullSyncAt: timestamp })
         .where(eq(syncState.accountId, accountId)),
@@ -53,8 +53,8 @@ export const syncStateRepo = {
    * `db/schema.ts`.
    */
   setLastSyncDisplayAt: (accountId: string, timestamp: number) =>
-    write((transaction) =>
-      transaction
+    write((databaseTransaction) =>
+      databaseTransaction
         .update(syncState)
         .set({ lastSyncDisplayAt: timestamp })
         .where(eq(syncState.accountId, accountId)),
@@ -66,8 +66,8 @@ export const syncStateRepo = {
    * the end-of-run sequence in `monobank/sync.ts`.
    */
   setFailedSyncMonobankIds: (accountId: string, ids: string[] | null) =>
-    write((transaction) =>
-      transaction
+    write((databaseTransaction) =>
+      databaseTransaction
         .update(syncState)
         .set({ failedSyncMonobankIds: ids })
         .where(eq(syncState.accountId, accountId)),

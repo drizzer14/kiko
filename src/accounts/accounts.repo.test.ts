@@ -2,16 +2,16 @@
 // op-sqlite transaction). Override `write` to run the callback against a
 // fake transaction handle so the test can capture every insert issued
 // inside that single transaction.
-let mockTransaction: unknown;
+let mockDatabaseTransaction: unknown;
 jest.mock('../db/client', () => {
   const actual = jest.requireActual('../db/client');
   return {
     ...actual,
-    write: (work: (db: unknown) => unknown) => work(mockTransaction),
+    write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
   };
 });
 
-import { captureSetTransaction } from '@kiko/db/capture-set-tx';
+import { captureSetDatabaseTransaction } from '@kiko/db/capture-set-tx';
 import { renderCondition } from '@kiko/db/render-condition-test-helper';
 import { inArrayClauseFromCondition } from '@kiko/db/in-array-clause-test-helper';
 
@@ -43,12 +43,12 @@ const tableNameOf = (table: unknown): string => {
 // that has no debt rows, where the two are the same number anyway. Passing
 // `debtMin` explicitly builds the "an asset would collide with the debt
 // block" fixtures below; `update` captures a shift, if one is issued.
-const makeCreateTransaction = (
+const makeCreateDatabaseTransaction = (
   assetMax = -1,
   debtMin: number | null = null,
   allMax: number = assetMax,
 ): {
-  transaction: unknown;
+  databaseTransaction: unknown;
   inserts: Record<string, unknown>[];
   insertTables: string[];
   updates: { set: Record<string, unknown>; whereCalled: boolean }[];
@@ -56,7 +56,7 @@ const makeCreateTransaction = (
   const inserts: Record<string, unknown>[] = [];
   const insertTables: string[] = [];
   const updates: { set: Record<string, unknown>; whereCalled: boolean }[] = [];
-  const transaction = {
+  const databaseTransaction = {
     select: () => ({ from: () => Promise.resolve([{ assetMax, debtMin, allMax }]) }),
     insert: (table: unknown) => ({
       values: (values: Record<string, unknown>) => {
@@ -78,7 +78,7 @@ const makeCreateTransaction = (
       },
     }),
   };
-  return { transaction, inserts, insertTables, updates };
+  return { databaseTransaction, inserts, insertTables, updates };
 };
 
 describe('accountsRepo', () => {
@@ -105,8 +105,8 @@ describe('accountsRepo', () => {
   });
 
   it('create inserts the account and resolves to the generated id', async () => {
-    const { transaction, inserts } = makeCreateTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, inserts } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     const result = await accountsRepo.create({ name: 'Savings', kind: 'bank' });
 
@@ -116,8 +116,8 @@ describe('accountsRepo', () => {
   });
 
   it('create persists the chosen color on the inserted account row', async () => {
-    const { transaction, inserts } = makeCreateTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, inserts } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.create({ name: 'Savings', kind: 'bank', color: '#FFFFFF' });
 
@@ -125,8 +125,8 @@ describe('accountsRepo', () => {
   });
 
   it('create appends the new account at sortOrder = max + 1', async () => {
-    const { transaction, inserts } = makeCreateTransaction(4);
-    mockTransaction = transaction;
+    const { databaseTransaction, inserts } = makeCreateDatabaseTransaction(4);
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.create({ name: 'Savings', kind: 'bank' });
 
@@ -134,8 +134,8 @@ describe('accountsRepo', () => {
   });
 
   it('create uses sortOrder 0 for the first account (no existing rows)', async () => {
-    const { transaction, inserts } = makeCreateTransaction(-1);
-    mockTransaction = transaction;
+    const { databaseTransaction, inserts } = makeCreateDatabaseTransaction(-1);
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.create({ name: 'First', kind: 'bank' });
 
@@ -149,8 +149,8 @@ describe('accountsRepo', () => {
     // colliding with (and sorting no earlier than) the existing debt account.
     // candidate(2) - debtMin(2) + 1 = 1: the contiguous case still shifts by
     // exactly one, same as before this became gap-aware.
-    const { transaction, inserts, updates } = makeCreateTransaction(1, 2, 2);
-    mockTransaction = transaction;
+    const { databaseTransaction, inserts, updates } = makeCreateDatabaseTransaction(1, 2, 2);
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.create({ name: 'Savings', kind: 'bank' });
 
@@ -166,8 +166,8 @@ describe('accountsRepo', () => {
     // assetMax and debtMin both land on 2, so the new asset's candidate slot
     // (3) is already past the naive +1 shift a contiguous block would need.
     // candidate(3) - debtMin(2) + 1 = 2.
-    const { transaction, inserts, updates } = makeCreateTransaction(2, 2, 2);
-    mockTransaction = transaction;
+    const { databaseTransaction, inserts, updates } = makeCreateDatabaseTransaction(2, 2, 2);
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.create({ name: 'Checking', kind: 'bank' });
 
@@ -179,8 +179,8 @@ describe('accountsRepo', () => {
     // Three asset accounts (max sortOrder 2) and a debt account already
     // further out at sortOrder 5 — the fresh 3 lands well short of it, so no
     // shift is needed.
-    const { transaction, inserts, updates } = makeCreateTransaction(2, 5, 5);
-    mockTransaction = transaction;
+    const { databaseTransaction, inserts, updates } = makeCreateDatabaseTransaction(2, 5, 5);
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.create({ name: 'Savings', kind: 'bank' });
 
@@ -192,8 +192,8 @@ describe('accountsRepo', () => {
     // Two asset accounts (max sortOrder 1) and a debt account already at
     // sortOrder 4 (allMax) — the new debt account must land after every
     // existing debt account too, not merely after the assets.
-    const { transaction, inserts, updates } = makeCreateTransaction(1, 4, 4);
-    mockTransaction = transaction;
+    const { databaseTransaction, inserts, updates } = makeCreateDatabaseTransaction(1, 4, 4);
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.create({ name: 'Mortgage', kind: 'debt' });
 
@@ -211,7 +211,7 @@ describe('accountsRepo', () => {
   describe('a new asset always sorts before every debt in the real resulting order', () => {
     type StoreAccount = { id: string; kind: string; sortOrder: number; archived: boolean };
 
-    const makeRealOrderTransaction = (store: StoreAccount[]): unknown => ({
+    const makeRealOrderDatabaseTransaction = (store: StoreAccount[]): unknown => ({
       select: (fields: Record<string, unknown>) => ({
         from: () => {
           if (!('assetMax' in fields)) {
@@ -265,7 +265,7 @@ describe('accountsRepo', () => {
         { id: 'D', kind: 'debt', sortOrder: 2, archived: false },
         { id: 'X', kind: 'bank', sortOrder: 2, archived: true },
       ];
-      mockTransaction = makeRealOrderTransaction(store);
+      mockDatabaseTransaction = makeRealOrderDatabaseTransaction(store);
 
       await accountsRepo.create({ id: 'C', name: 'Checking', kind: 'bank' });
 
@@ -283,8 +283,8 @@ describe('accountsRepo', () => {
     // sync fields (which bind to an existing account id) can key their Keychain
     // write and sync to it BEFORE the row is inserted. `create` must persist that
     // exact id and resolve to it, rather than minting a fresh one.
-    const { transaction, inserts } = makeCreateTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, inserts } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     const result = await accountsRepo.create({
       id: 'pre-generated-id',
@@ -297,8 +297,8 @@ describe('accountsRepo', () => {
   });
 
   it('create honors an explicitly provided sortOrder', async () => {
-    const { transaction, inserts } = makeCreateTransaction(4);
-    mockTransaction = transaction;
+    const { databaseTransaction, inserts } = makeCreateDatabaseTransaction(4);
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.create({ name: 'Pinned', kind: 'bank', sortOrder: 0 });
 
@@ -311,8 +311,8 @@ describe('accountsRepo', () => {
   });
 
   it('createCashAccount persists the chosen color on the account row', async () => {
-    const { transaction, inserts } = makeCreateTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, inserts } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.createCashAccount({
       name: 'Wallet',
@@ -326,8 +326,8 @@ describe('accountsRepo', () => {
   });
 
   it('createCashAccount appends the account at sortOrder = max + 1', async () => {
-    const { transaction, inserts } = makeCreateTransaction(2);
-    mockTransaction = transaction;
+    const { databaseTransaction, inserts } = makeCreateDatabaseTransaction(2);
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.createCashAccount({
       name: 'Wallet',
@@ -339,8 +339,8 @@ describe('accountsRepo', () => {
   });
 
   it('createCashAccount inserts the account and its cash holding in one transaction', async () => {
-    const { transaction, inserts } = makeCreateTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, inserts } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.createCashAccount({
       name: 'Wallet',
@@ -367,8 +367,8 @@ describe('accountsRepo', () => {
   });
 
   it('seeds an opening transaction for the initial balance', async () => {
-    const { transaction, inserts, insertTables } = makeCreateTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, inserts, insertTables } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.createCashAccount({
       name: 'Wallet',
@@ -402,8 +402,8 @@ describe('accountsRepo', () => {
   });
 
   it('seeds no transaction for a zero initial balance, and does not stamp balanceSetAt', async () => {
-    const { transaction, inserts, insertTables } = makeCreateTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, inserts, insertTables } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.createCashAccount({
       name: 'Wallet',
@@ -420,7 +420,7 @@ describe('accountsRepo', () => {
 describe('accountsRepo.reorder', () => {
   it('rewrites each account sortOrder to its 0-based index in the new order', async () => {
     const sortOrders: unknown[] = [];
-    mockTransaction = {
+    mockDatabaseTransaction = {
       update: () => ({
         set: (set: Record<string, unknown>) => ({
           where: () => {
@@ -439,8 +439,8 @@ describe('accountsRepo.reorder', () => {
 
 describe('accountsRepo.setIcon', () => {
   it('sets the icon for the given account id', async () => {
-    const { captured, transaction } = captureSetTransaction();
-    mockTransaction = transaction;
+    const { captured, databaseTransaction } = captureSetDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.setIcon('a1', 'star');
 
@@ -449,8 +449,8 @@ describe('accountsRepo.setIcon', () => {
   });
 
   it('clears the icon when passed null', async () => {
-    const { captured, transaction } = captureSetTransaction();
-    mockTransaction = transaction;
+    const { captured, databaseTransaction } = captureSetDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.setIcon('a1', null);
 
@@ -464,13 +464,13 @@ describe('accountsRepo.setIcon', () => {
 // test can prove the cascade deletes transactions, then holdings, then the account
 // itself — all inside the single transaction the `write` mock runs the work in.
 // `update(transactions).set(...).where(...)` (I1, T29 review round 1:
-// `clearLoanLinksForHoldingsTx`) records its `set` payload and `where` arg the
+// `clearLoanLinksForHoldingsDatabaseTransaction`) records its `set` payload and `where` arg the
 // same way, so a test can prove the loan-link cascade ran, and with which ids.
-const makeRemoveTransaction = (options: {
+const makeRemoveDatabaseTransaction = (options: {
   account: Record<string, unknown> | null;
   holdings: Record<string, unknown>[];
 }): {
-  transaction: unknown;
+  databaseTransaction: unknown;
   captured: {
     deletedFrom: unknown[];
     linkClearSet?: Record<string, unknown>;
@@ -483,7 +483,7 @@ const makeRemoveTransaction = (options: {
     linkClearSet?: Record<string, unknown>;
     linkClearWhereArg?: unknown;
   } = { deletedFrom: [] };
-  const transaction = {
+  const databaseTransaction = {
     select: () => ({
       from: () => ({ where: () => Promise.resolve(selectQueue.shift() ?? []) }),
     }),
@@ -501,7 +501,7 @@ const makeRemoveTransaction = (options: {
       }),
     }),
   };
-  return { transaction, captured };
+  return { databaseTransaction, captured };
 };
 
 // Build a fake transaction handle for `disconnect`. The first
@@ -511,16 +511,16 @@ const makeRemoveTransaction = (options: {
 // holding's metadata. Every call is captured in issue order so a test can
 // prove the account is un-synced and each synced holding's `monobankId` is
 // stripped, all inside the single write transaction.
-const makeDisconnectTransaction = (
+const makeDisconnectDatabaseTransaction = (
   holdingRows: Record<string, unknown>[],
 ): {
-  transaction: unknown;
+  databaseTransaction: unknown;
   captured: { updates: { table: unknown; set: Record<string, unknown> }[] };
 } => {
   const captured: { updates: { table: unknown; set: Record<string, unknown> }[] } = {
     updates: [],
   };
-  const transaction = {
+  const databaseTransaction = {
     update: (table: unknown) => ({
       set: (values: Record<string, unknown>) => ({
         where: () => {
@@ -533,16 +533,16 @@ const makeDisconnectTransaction = (
       from: () => ({ where: () => Promise.resolve(holdingRows) }),
     }),
   };
-  return { transaction, captured };
+  return { databaseTransaction, captured };
 };
 
 describe('accountsRepo.disconnect', () => {
   it('clears the account institution and KEEPS each holding sync key', async () => {
-    const { transaction, captured } = makeDisconnectTransaction([
+    const { databaseTransaction, captured } = makeDisconnectDatabaseTransaction([
       { id: 'card-1', metadata: { monobankId: 'mono-card', iban: 'UA123', maskedPan: ['1234'] } },
       { id: 'jar-1', metadata: { monobankId: 'mono-jar' } },
     ]);
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.disconnect('acc-1');
 
@@ -555,11 +555,11 @@ describe('accountsRepo.disconnect', () => {
   });
 
   it('leaves a manual holding (no sync key) under the account untouched', async () => {
-    const { transaction, captured } = makeDisconnectTransaction([
+    const { databaseTransaction, captured } = makeDisconnectDatabaseTransaction([
       { id: 'manual-1', metadata: { contributions: [] } },
       { id: 'card-1', metadata: { monobankId: 'mono-card' } },
     ]);
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.disconnect('acc-1');
 
@@ -567,10 +567,10 @@ describe('accountsRepo.disconnect', () => {
   });
 
   it('empties metadata to null when the syncedAt stamp was its only key', async () => {
-    const { transaction, captured } = makeDisconnectTransaction([
+    const { databaseTransaction, captured } = makeDisconnectDatabaseTransaction([
       { id: 'btc-1', metadata: { syncedAt: 1 } },
     ]);
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.disconnect('acc-crypto');
 
@@ -578,11 +578,11 @@ describe('accountsRepo.disconnect', () => {
   });
 
   it('skips a holding whose metadata is not a record rather than throwing', async () => {
-    const { transaction, captured } = makeDisconnectTransaction([
+    const { databaseTransaction, captured } = makeDisconnectDatabaseTransaction([
       { id: 'odd-1', metadata: 'legacy-string' },
       { id: 'card-1', metadata: null },
     ]);
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.disconnect('acc-1');
 
@@ -590,8 +590,8 @@ describe('accountsRepo.disconnect', () => {
   });
 
   it('clears the institution even when the account has no holdings', async () => {
-    const { transaction, captured } = makeDisconnectTransaction([]);
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeDisconnectDatabaseTransaction([]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.disconnect('acc-1');
 
@@ -603,8 +603,8 @@ describe('accountsRepo.disconnect', () => {
       { id: 'card-1', metadata: { monobankId: 'mono-card', iban: 'UA123' } },
       { id: 'jar-1', metadata: { monobankId: 'mono-jar' } },
     ];
-    const { transaction, captured } = makeDisconnectTransaction(holdingRows);
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeDisconnectDatabaseTransaction(holdingRows);
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.disconnect('acc-1');
 
@@ -621,11 +621,12 @@ describe('accountsRepo.disconnect', () => {
     }
 
     // The now-manual account is accepted by remove and cascades to holdings/transactions.
-    const { transaction: removeTransaction, captured: removeCaptured } = makeRemoveTransaction({
-      account: { id: 'acc-1', ...disconnectedAccount },
-      holdings: [{ id: 'card-1' }, { id: 'jar-1' }],
-    });
-    mockTransaction = removeTransaction;
+    const { databaseTransaction: removeDatabaseTransaction, captured: removeCaptured } =
+      makeRemoveDatabaseTransaction({
+        account: { id: 'acc-1', ...disconnectedAccount },
+        holdings: [{ id: 'card-1' }, { id: 'jar-1' }],
+      });
+    mockDatabaseTransaction = removeDatabaseTransaction;
 
     await accountsRepo.remove('acc-1');
 
@@ -633,7 +634,7 @@ describe('accountsRepo.disconnect', () => {
   });
 
   it('drops the stale syncedAt stamp from a wallet-synced holding but keeps its address', async () => {
-    const { transaction, captured } = makeDisconnectTransaction([
+    const { databaseTransaction, captured } = makeDisconnectDatabaseTransaction([
       {
         id: 'btc-1',
         metadata: {
@@ -642,7 +643,7 @@ describe('accountsRepo.disconnect', () => {
         },
       },
     ]);
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.disconnect('acc-crypto');
 
@@ -656,10 +657,10 @@ describe('accountsRepo.disconnect', () => {
   });
 
   it('drops syncedAt from a Binance holding but keeps binanceAsset and unrelated keys', async () => {
-    const { transaction, captured } = makeDisconnectTransaction([
+    const { databaseTransaction, captured } = makeDisconnectDatabaseTransaction([
       { id: 'bnb-1', metadata: { binanceAsset: 'BTC', syncedAt: 1_704_326_400_000, note: 'spot' } },
     ]);
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.disconnect('acc-crypto');
 
@@ -672,11 +673,11 @@ describe('accountsRepo.disconnect', () => {
 
 describe('accountsRepo.remove', () => {
   it('cascades to holdings and their transactions in one transaction', async () => {
-    const { transaction, captured } = makeRemoveTransaction({
+    const { databaseTransaction, captured } = makeRemoveDatabaseTransaction({
       account: { id: 'acc-1', institution: null },
       holdings: [{ id: 'hold-1' }],
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.remove('acc-1');
 
@@ -686,11 +687,11 @@ describe('accountsRepo.remove', () => {
   });
 
   it('deletes each holding’s transactions before removing holdings and the account', async () => {
-    const { transaction, captured } = makeRemoveTransaction({
+    const { databaseTransaction, captured } = makeRemoveDatabaseTransaction({
       account: { id: 'acc-1', institution: null },
       holdings: [{ id: 'hold-1' }, { id: 'hold-2' }],
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.remove('acc-1');
 
@@ -705,11 +706,11 @@ describe('accountsRepo.remove', () => {
   // owned, in the SAME transaction as the delete — not just delete the loan
   // holding and leave a dangling id behind.
   it('clears loan links for every deleted holding, in the same transaction', async () => {
-    const { transaction, captured } = makeRemoveTransaction({
+    const { databaseTransaction, captured } = makeRemoveDatabaseTransaction({
       account: { id: 'acc-1', institution: null },
       holdings: [{ id: 'hold-1' }, { id: 'loan-1' }],
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.remove('acc-1');
 
@@ -721,19 +722,22 @@ describe('accountsRepo.remove', () => {
   });
 
   it('refuses a synced (monobank) account and leaves it in place', async () => {
-    const { transaction, captured } = makeRemoveTransaction({
+    const { databaseTransaction, captured } = makeRemoveDatabaseTransaction({
       account: { id: 'acc-1', institution: 'monobank' },
       holdings: [{ id: 'hold-1' }],
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await expect(accountsRepo.remove('acc-1')).rejects.toThrow(/synced/);
     expect(captured.deletedFrom).toEqual([]);
   });
 
   it('does nothing when the target account does not exist', async () => {
-    const { transaction, captured } = makeRemoveTransaction({ account: null, holdings: [] });
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeRemoveDatabaseTransaction({
+      account: null,
+      holdings: [],
+    });
+    mockDatabaseTransaction = databaseTransaction;
 
     await accountsRepo.remove('missing');
 

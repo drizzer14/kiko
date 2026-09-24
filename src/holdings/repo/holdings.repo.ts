@@ -18,8 +18,11 @@ import { accounts, type HoldingRow, holdings, pricePoints, transactions } from '
 // a freshly created holding appends to the end of that account's grid. Scoped
 // per account because each account renders its own holdings grid. Read inside
 // the write transaction so a concurrent create cannot observe a stale maximum.
-const nextSortOrder = async (transaction: typeof database, accountId: string): Promise<number> => {
-  const rows = await transaction
+const nextSortOrder = async (
+  databaseTransaction: typeof database,
+  accountId: string,
+): Promise<number> => {
+  const rows = await databaseTransaction
     .select({ value: sql<number>`coalesce(max(${holdings.sortOrder}), -1)` })
     .from(holdings)
     .where(eq(holdings.accountId, accountId));
@@ -90,12 +93,12 @@ export type LoanPricePointOp =
 // survives a re-sync — with ONE exception: the transition rename, applied only
 // when the stored name still equals `renameFromDefault` (see provider.ts).
 const upsertByMetadataKey = async (
-  transaction: typeof database,
+  databaseTransaction: typeof database,
   { metadataField, metadataKey, metadata, renameFromDefault, ...rest }: SyncedHolding,
 ): Promise<void> => {
   const merged = { ...(metadata as Record<string, unknown> | null), [metadataField]: metadataKey };
   const keyMatch = sql`json_extract(${holdings.metadata}, ${`$.${metadataField}`}) = ${metadataKey}`;
-  const existing = await transaction
+  const existing = await databaseTransaction
     .select({ id: holdings.id, name: holdings.name })
     .from(holdings)
     .where(and(eq(holdings.accountId, rest.accountId), keyMatch))
@@ -107,7 +110,7 @@ const upsertByMetadataKey = async (
     // one-time transition rename: rewrite it only when the stored name still
     // equals the exact old default `renameFromDefault` names.
     const rename = renameFromDefault !== undefined && current.name === renameFromDefault;
-    await transaction
+    await databaseTransaction
       .update(holdings)
       .set({
         balanceMinorUnits: rest.balanceMinorUnits ?? 0,
@@ -119,20 +122,22 @@ const upsertByMetadataKey = async (
     return;
   }
 
-  const sortOrder = rest.sortOrder ?? (await nextSortOrder(transaction, rest.accountId));
-  await transaction.insert(holdings).values({ id: id(), ...rest, metadata: merged, sortOrder });
+  const sortOrder = rest.sortOrder ?? (await nextSortOrder(databaseTransaction, rest.accountId));
+  await databaseTransaction
+    .insert(holdings)
+    .values({ id: id(), ...rest, metadata: merged, sortOrder });
 };
 
 // Append one contribution to a term deposit and rewrite its metadata, operating
 // on an EXISTING transaction handle so a caller (e.g. `recordExchange`) can run
 // it inside a larger single transaction. `appendDepositContribution` wraps this
 // in its own `write(...)`. Throws on a non-deposit or invalid/absent metadata.
-export const appendDepositContributionTransaction = async (
-  transaction: typeof database,
+export const appendDepositContributionDatabaseTransaction = async (
+  databaseTransaction: typeof database,
   holdingId: string,
   contribution: DepositContribution,
 ): Promise<void> => {
-  const rows = await transaction.select().from(holdings).where(eq(holdings.id, holdingId));
+  const rows = await databaseTransaction.select().from(holdings).where(eq(holdings.id, holdingId));
   const row = rows.at(0);
 
   if (row?.type !== 'term_deposit') {
@@ -157,7 +162,7 @@ export const appendDepositContributionTransaction = async (
     (a, b) => a.date - b.date,
   );
 
-  await transaction
+  await databaseTransaction
     .update(holdings)
     .set({
       metadata: {
@@ -179,15 +184,15 @@ export const appendDepositContributionTransaction = async (
 // the account delete — a loan holding removed either way never leaves a
 // dangling link on another holding's payment rows. A no-op when
 // `holdingIds` is empty or names no loan holding.
-export const clearLoanLinksForHoldingsTransaction = async (
-  transaction: typeof database,
+export const clearLoanLinksForHoldingsDatabaseTransaction = async (
+  databaseTransaction: typeof database,
   holdingIds: string[],
 ): Promise<void> => {
   if (holdingIds.length === 0) {
     return;
   }
 
-  await transaction
+  await databaseTransaction
     .update(transactions)
     .set({ loanHoldingId: null, loanLinkSource: null })
     .where(inArray(transactions.loanHoldingId, holdingIds));
@@ -235,13 +240,14 @@ export const holdingsRepo = {
    * hand-set balance, whichever create path writes it.
    */
   create: ({ firstPricePoint, ...input }: NewHolding): Promise<string> =>
-    write(async (transaction) => {
+    write(async (databaseTransaction) => {
       const holdingId = id();
-      const sortOrder = input.sortOrder ?? (await nextSortOrder(transaction, input.accountId));
+      const sortOrder =
+        input.sortOrder ?? (await nextSortOrder(databaseTransaction, input.accountId));
       const openingBalance = input.balanceMinorUnits ?? 0;
       const now = Date.now();
 
-      await transaction.insert(holdings).values({
+      await databaseTransaction.insert(holdings).values({
         id: holdingId,
         ...input,
         sortOrder,
@@ -249,7 +255,7 @@ export const holdingsRepo = {
       });
 
       if (openingBalance !== 0) {
-        await transaction.insert(transactions).values({
+        await databaseTransaction.insert(transactions).values({
           id: id(),
           holdingId,
           amountMinorUnits: openingBalance,
@@ -261,7 +267,7 @@ export const holdingsRepo = {
       }
 
       if (firstPricePoint) {
-        await transaction.insert(pricePoints).values({
+        await databaseTransaction.insert(pricePoints).values({
           instrument: holdingInstrument(holdingId),
           day: firstPricePoint.day,
           price: firstPricePoint.price,
@@ -273,8 +279,8 @@ export const holdingsRepo = {
       return holdingId;
     }),
   updateName: (holdingId: string, name: string) =>
-    write((transaction) =>
-      transaction.update(holdings).set({ name }).where(eq(holdings.id, holdingId)),
+    write((databaseTransaction) =>
+      databaseTransaction.update(holdings).set({ name }).where(eq(holdings.id, holdingId)),
     ),
   /**
    * Generic partial update for a holding row (name, color, metadata), mirroring
@@ -290,8 +296,8 @@ export const holdingsRepo = {
    * which must never start emitting transactions.
    */
   update: (holdingId: string, patch: Partial<HoldingRow>) =>
-    write((transaction) =>
-      transaction.update(holdings).set(patch).where(eq(holdings.id, holdingId)),
+    write((databaseTransaction) =>
+      databaseTransaction.update(holdings).set(patch).where(eq(holdings.id, holdingId)),
     ),
   /**
    * Update a holding's editable fields and, when `balanceMinorUnits` is part of
@@ -334,8 +340,8 @@ export const holdingsRepo = {
    * own doc comment is the full statement of why.
    */
   updateWithBalanceDelta: (holdingId: string, patch: Partial<HoldingRow>, time: number) =>
-    write(async (transaction) => {
-      const rows = await transaction
+    write(async (databaseTransaction) => {
+      const rows = await databaseTransaction
         .select({ balanceMinorUnits: holdings.balanceMinorUnits })
         .from(holdings)
         .where(eq(holdings.id, holdingId))
@@ -346,7 +352,7 @@ export const holdingsRepo = {
           ? patch.balanceMinorUnits - stored
           : 0;
 
-      await transaction
+      await databaseTransaction
         .update(holdings)
         .set({ ...patch, balanceSetAt: delta !== 0 ? time : undefined })
         .where(eq(holdings.id, holdingId));
@@ -355,7 +361,7 @@ export const holdingsRepo = {
         return;
       }
 
-      await transaction.insert(transactions).values({
+      await databaseTransaction.insert(transactions).values({
         id: id(),
         holdingId,
         amountMinorUnits: delta,
@@ -375,15 +381,15 @@ export const holdingsRepo = {
    * `LoanPricePointOp`'s own doc comment for what each op writes.
    */
   updateLoan: (holdingId: string, patch: Partial<HoldingRow>, pricePointOp: LoanPricePointOp) =>
-    write(async (transaction) => {
-      await transaction.update(holdings).set(patch).where(eq(holdings.id, holdingId));
+    write(async (databaseTransaction) => {
+      await databaseTransaction.update(holdings).set(patch).where(eq(holdings.id, holdingId));
 
       if (pricePointOp.kind === 'none') {
         return;
       }
 
       if (pricePointOp.kind === 'move') {
-        await transaction
+        await databaseTransaction
           .delete(pricePoints)
           .where(
             and(
@@ -398,7 +404,7 @@ export const holdingsRepo = {
           ? { day: pricePointOp.newDay, price: pricePointOp.price, currency: pricePointOp.currency }
           : pricePointOp;
 
-      await transaction
+      await databaseTransaction
         .insert(pricePoints)
         .values({
           instrument: holdingInstrument(holdingId),
@@ -422,8 +428,8 @@ export const holdingsRepo = {
    * when the stored icon is null.
    */
   setIcon: (holdingId: string, icon: string | null) =>
-    write((transaction) =>
-      transaction.update(holdings).set({ icon }).where(eq(holdings.id, holdingId)),
+    write((databaseTransaction) =>
+      databaseTransaction.update(holdings).set({ icon }).where(eq(holdings.id, holdingId)),
     ),
   /**
    * Sets the holding's color (an entity-color hex) or, with `null`, clears it
@@ -433,8 +439,8 @@ export const holdingsRepo = {
    * create form does.
    */
   setColor: (holdingId: string, color: string | null) =>
-    write((transaction) =>
-      transaction.update(holdings).set({ color }).where(eq(holdings.id, holdingId)),
+    write((databaseTransaction) =>
+      databaseTransaction.update(holdings).set({ color }).where(eq(holdings.id, holdingId)),
     ),
   /**
    * Appends one contribution to a term deposit and rewrites its metadata in a
@@ -443,8 +449,8 @@ export const holdingsRepo = {
    * carried forward. Contributions are kept sorted by date ascending.
    */
   appendDepositContribution: (holdingId: string, contribution: DepositContribution) =>
-    write((transaction) =>
-      appendDepositContributionTransaction(transaction, holdingId, contribution),
+    write((databaseTransaction) =>
+      appendDepositContributionDatabaseTransaction(databaseTransaction, holdingId, contribution),
     ),
   /**
    * Deletes a manual holding and all of its transactions in one transaction.
@@ -455,13 +461,16 @@ export const holdingsRepo = {
    * a reconnect re-adopts them, and those rows are deletable again.
    */
   remove: (holdingId: string) =>
-    write(async (transaction) => {
-      const rows = await transaction.select().from(holdings).where(eq(holdings.id, holdingId));
+    write(async (databaseTransaction) => {
+      const rows = await databaseTransaction
+        .select()
+        .from(holdings)
+        .where(eq(holdings.id, holdingId));
       const row = rows.at(0);
       if (!row) {
         return;
       }
-      const accountRows = await transaction
+      const accountRows = await databaseTransaction
         .select({ institution: accounts.institution })
         .from(accounts)
         .where(eq(accounts.id, row.accountId));
@@ -469,23 +478,23 @@ export const holdingsRepo = {
       if (isSyncedHolding(row, accountRows.at(0))) {
         throw new Error('remove: cannot delete a synced holding');
       }
-      await transaction.delete(transactions).where(eq(transactions.holdingId, holdingId));
+      await databaseTransaction.delete(transactions).where(eq(transactions.holdingId, holdingId));
       // Review Focus 7 / spec 5.4 (T29): a loan holding is ledgerless, but
       // OTHER holdings' payment rows can point back at it via
       // `loanHoldingId`. Clear those links in the SAME transaction — never
       // leaving a dangling id — so a previously-linked payment reverts to
       // counting as normal spending. A no-op for every non-loan holding,
       // since nothing ever points a `loanHoldingId` at one.
-      await clearLoanLinksForHoldingsTransaction(transaction, [holdingId]);
+      await clearLoanLinksForHoldingsDatabaseTransaction(databaseTransaction, [holdingId]);
       // A priced holding (property_item, T16) has no transactions, but it may
       // have its own price series on `holding:<id>` — cleared here, inline on
       // `tx` (not through `pricePointsRepo.removeInstrument`, which would open
       // its own transaction), so a deleted holding never leaves an orphaned
       // series behind.
-      await transaction
+      await databaseTransaction
         .delete(pricePoints)
         .where(eq(pricePoints.instrument, holdingInstrument(holdingId)));
-      await transaction.delete(holdings).where(eq(holdings.id, holdingId));
+      await databaseTransaction.delete(holdings).where(eq(holdings.id, holdingId));
     }),
   /**
    * Close a set of holdings (stamp `closedAt` with the current time) in ONE
@@ -497,18 +506,18 @@ export const holdingsRepo = {
    * a no-op.
    */
   closeMany: (holdingIds: string[]) =>
-    write(async (transaction) => {
+    write(async (databaseTransaction) => {
       if (holdingIds.length === 0) {
         return;
       }
-      await transaction
+      await databaseTransaction
         .update(holdings)
         .set({ closedAt: sql`(unixepoch() * 1000)` })
         .where(inArray(holdings.id, holdingIds));
     }),
   upsertMonobank: ({ monobankId, ...rest }: MonobankHolding) =>
-    write((transaction) =>
-      upsertByMetadataKey(transaction, {
+    write((databaseTransaction) =>
+      upsertByMetadataKey(databaseTransaction, {
         ...rest,
         metadataField: 'monobankId',
         metadataKey: monobankId,
@@ -524,9 +533,9 @@ export const holdingsRepo = {
    * strictly better: the balance snapshot lands all-or-nothing.
    */
   upsertMonobankMany: (holdings: MonobankHolding[]) =>
-    write(async (transaction) => {
+    write(async (databaseTransaction) => {
       for (const { monobankId, ...rest } of holdings) {
-        await upsertByMetadataKey(transaction, {
+        await upsertByMetadataKey(databaseTransaction, {
           ...rest,
           metadataField: 'monobankId',
           metadataKey: monobankId,
@@ -544,8 +553,8 @@ export const holdingsRepo = {
    * which `upsertMonobank` writes up front from /client-info every run.
    */
   setSyncedBalance: (holdingId: string, balanceMinorUnits: number) =>
-    write((transaction) =>
-      transaction
+    write((databaseTransaction) =>
+      databaseTransaction
         .update(holdings)
         .set({ syncedBalanceMinorUnits: balanceMinorUnits })
         .where(eq(holdings.id, holdingId)),
@@ -559,7 +568,7 @@ export const holdingsRepo = {
    * number, not a statement.
    */
   upsertExchange: (holding: ExchangeHolding) =>
-    write((transaction) => upsertByMetadataKey(transaction, holding)),
+    write((databaseTransaction) => upsertByMetadataKey(databaseTransaction, holding)),
   /**
    * Persist a drag-and-drop reorder of one account's holdings grid.
    * `orderedIds` is the full new front-to-back order of that account's visible
@@ -569,9 +578,9 @@ export const holdingsRepo = {
    * holdings are unaffected.
    */
   reorder: (orderedIds: string[]) =>
-    write(async (transaction) => {
+    write(async (databaseTransaction) => {
       for (let index = 0; index < orderedIds.length; index += 1) {
-        await transaction
+        await databaseTransaction
           .update(holdings)
           .set({ sortOrder: index })
           .where(eq(holdings.id, orderedIds[index]));

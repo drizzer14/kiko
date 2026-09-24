@@ -1,8 +1,8 @@
 // src/data-transfer/snapshot/restore-snapshot.test.ts
-let mockTransaction: unknown;
+let mockDatabaseTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
-  return { ...actual, write: (work: (db: unknown) => unknown) => work(mockTransaction) };
+  return { ...actual, write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction) };
 });
 
 import { getTableColumns } from 'drizzle-orm';
@@ -42,12 +42,12 @@ const tableNameOf = (table: unknown): string => {
 // Shared by every test below that only cares WHAT got inserted (not
 // deletion order) — a no-op `delete`, and an `insert` that accumulates
 // every table's rows by name so a test can assert on one table's own list.
-const makeRowCapturingTransaction = (): {
-  transaction: unknown;
+const makeRowCapturingDatabaseTransaction = (): {
+  databaseTransaction: unknown;
   insertedRows: Record<string, unknown[]>;
 } => {
   const insertedRows: Record<string, unknown[]> = {};
-  const transaction = {
+  const databaseTransaction = {
     delete: () => Promise.resolve(),
     insert: (table: unknown) => ({
       values: (rows: unknown[]) => {
@@ -58,7 +58,7 @@ const makeRowCapturingTransaction = (): {
     }),
   };
 
-  return { transaction, insertedRows };
+  return { databaseTransaction, insertedRows };
 };
 
 const emptySnapshot: DataSnapshot = {
@@ -81,7 +81,7 @@ describe('restoreDataSnapshot', () => {
     const insertedTables: string[] = [];
     const insertedRows: Record<string, unknown[]> = {};
 
-    mockTransaction = {
+    mockDatabaseTransaction = {
       delete: (table: unknown) => {
         deletedTables.push(tableNameOf(table));
         return Promise.resolve();
@@ -128,8 +128,8 @@ describe('restoreDataSnapshot', () => {
   });
 
   it('skips the insert entirely for every OTHER table with no rows (no empty .values([]) call)', async () => {
-    const { transaction, insertedRows } = makeRowCapturingTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await restoreDataSnapshot(emptySnapshot);
 
@@ -146,8 +146,8 @@ describe('restoreDataSnapshot', () => {
   // the picker.
   describe('loan_interest category reseed (a pre-0039 snapshot never had it)', () => {
     it('appends loan_interest at one past every OTHER category, when the snapshot has none', async () => {
-      const { transaction, insertedRows } = makeRowCapturingTransaction();
-      mockTransaction = transaction;
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
 
       await restoreDataSnapshot({
         ...emptySnapshot,
@@ -169,8 +169,8 @@ describe('restoreDataSnapshot', () => {
     });
 
     it('does not duplicate or overwrite the snapshot own loan_interest row when it already has one', async () => {
-      const { transaction, insertedRows } = makeRowCapturingTransaction();
-      mockTransaction = transaction;
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
       // A post-0039 export, carrying the user's OWN edited title/color.
       const ownLoanInterest = {
         key: 'loan_interest',
@@ -190,8 +190,8 @@ describe('restoreDataSnapshot', () => {
   });
 
   it('inserts a snapshot pricePoints row into the price_points table', async () => {
-    const { transaction, insertedRows } = makeRowCapturingTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await restoreDataSnapshot({
       ...emptySnapshot,
@@ -206,8 +206,8 @@ describe('restoreDataSnapshot', () => {
   });
 
   it('restores an empty price_points table for a legacy snapshot with no pricePoints field', async () => {
-    const { transaction, insertedRows } = makeRowCapturingTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
     // Simulates a `.kiko` file exported before T11 — the JS object literally
     // carries no `pricePoints` key, despite `DataSnapshot` declaring it
     // required.
@@ -240,8 +240,8 @@ describe('restoreDataSnapshot', () => {
   });
 
   it('inserts a snapshot bondRegister row into the bond_register table', async () => {
-    const { transaction, insertedRows } = makeRowCapturingTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await restoreDataSnapshot({
       ...emptySnapshot,
@@ -260,8 +260,8 @@ describe('restoreDataSnapshot', () => {
   });
 
   it('restores an empty bond_register table for a legacy (pre-T24) snapshot with no bondRegister field', async () => {
-    const { transaction, insertedRows } = makeRowCapturingTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
     // Simulates a `.kiko` file exported before T24 — the JS object literally
     // carries no `bondRegister` key, despite `DataSnapshot` declaring it
     // required.
@@ -284,7 +284,7 @@ describe('restoreDataSnapshot', () => {
   // old fixed 2000-row chunk size.
   it('chunks a large table at a size derived from its OWN column count (SQLite bound-parameter safety)', async () => {
     const insertedChunkSizes: number[] = [];
-    mockTransaction = {
+    mockDatabaseTransaction = {
       delete: () => Promise.resolve(),
       insert: (table: unknown) => ({
         values: (rows: unknown[]) => {
@@ -328,8 +328,8 @@ describe('restoreDataSnapshot', () => {
   // exactly like every other nullable column added after `transactions` first
   // shipped (`counterIban`, `changeGroupId`).
   it('restores a legacy transaction row with no loan-link keys unchanged', async () => {
-    const { transaction, insertedRows } = makeRowCapturingTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
     const legacyTransaction = { id: 't1', holdingId: 'h1', source: 'manual' };
 
     await restoreDataSnapshot({
@@ -351,20 +351,21 @@ describe('restoreDataSnapshot', () => {
   // as boundary-less.
   describe('legacy balanceSetAt backfill (build-25-shaped snapshot)', () => {
     const captureHoldingsInsert = (): {
-      mockTransaction: unknown;
+      mockDatabaseTransaction: unknown;
       insertedHoldings: () => Record<string, unknown>[];
     } => {
-      const { transaction, insertedRows } = makeRowCapturingTransaction();
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
 
       return {
-        mockTransaction: transaction,
+        mockDatabaseTransaction: databaseTransaction,
         insertedHoldings: () => (insertedRows.holdings ?? []) as Record<string, unknown>[],
       };
     };
 
     it("backfills a legacy holding's balanceSetAt from the LATEST matching manual balance-set-shaped row", async () => {
-      const { mockTransaction: transaction, insertedHoldings } = captureHoldingsInsert();
-      mockTransaction = transaction;
+      const { mockDatabaseTransaction: databaseTransaction, insertedHoldings } =
+        captureHoldingsInsert();
+      mockDatabaseTransaction = databaseTransaction;
 
       await restoreDataSnapshot({
         ...emptySnapshot,
@@ -399,8 +400,9 @@ describe('restoreDataSnapshot', () => {
     });
 
     it('backfills null when no manual row matches the balance-set shape', async () => {
-      const { mockTransaction: transaction, insertedHoldings } = captureHoldingsInsert();
-      mockTransaction = transaction;
+      const { mockDatabaseTransaction: databaseTransaction, insertedHoldings } =
+        captureHoldingsInsert();
+      mockDatabaseTransaction = databaseTransaction;
 
       await restoreDataSnapshot({
         ...emptySnapshot,
@@ -437,8 +439,9 @@ describe('restoreDataSnapshot', () => {
     });
 
     it('leaves a snapshot that ALREADY carries balanceSetAt unchanged, even when a manual row would compute differently', async () => {
-      const { mockTransaction: transaction, insertedHoldings } = captureHoldingsInsert();
-      mockTransaction = transaction;
+      const { mockDatabaseTransaction: databaseTransaction, insertedHoldings } =
+        captureHoldingsInsert();
+      mockDatabaseTransaction = databaseTransaction;
 
       await restoreDataSnapshot({
         ...emptySnapshot,
@@ -470,8 +473,9 @@ describe('restoreDataSnapshot', () => {
     // for `source` and `category`: temporarily deleting either clause from
     // `isBalanceSetShapedRow` turns this test red.
     it('excludes a row that differs from a real match in exactly ONE predicate field, for every field', async () => {
-      const { mockTransaction: transaction, insertedHoldings } = captureHoldingsInsert();
-      mockTransaction = transaction;
+      const { mockDatabaseTransaction: databaseTransaction, insertedHoldings } =
+        captureHoldingsInsert();
+      mockDatabaseTransaction = databaseTransaction;
 
       await restoreDataSnapshot({
         ...emptySnapshot,
@@ -553,8 +557,9 @@ describe('restoreDataSnapshot', () => {
     });
 
     it('leaves a snapshot that already carries a NULL balanceSetAt unchanged (not recomputed from a matching row)', async () => {
-      const { mockTransaction: transaction, insertedHoldings } = captureHoldingsInsert();
-      mockTransaction = transaction;
+      const { mockDatabaseTransaction: databaseTransaction, insertedHoldings } =
+        captureHoldingsInsert();
+      mockDatabaseTransaction = databaseTransaction;
 
       await restoreDataSnapshot({
         ...emptySnapshot,

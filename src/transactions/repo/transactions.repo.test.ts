@@ -4,12 +4,12 @@
 // what was inserted and what balance was written, proving the read-modify-
 // write of the balance happens inside the same unit and uses the DB-read
 // base (5000) + amount, not a caller-supplied snapshot.
-let mockTransaction: unknown;
+let mockDatabaseTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
   return {
     ...actual,
-    write: (work: (db: unknown) => unknown) => work(mockTransaction),
+    write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
   };
 });
 
@@ -27,11 +27,11 @@ import { transactionsRepo } from './transactions.repo';
 // transaction row, then the holding balance); each `update(table).set(values)`
 // is captured keyed by the schema table object it targeted, so a test can prove
 // exactly what was written to `transactions` vs to `holdings`.
-const makeUpdateTransaction = (options: {
+const makeUpdateDatabaseTransaction = (options: {
   existing: Record<string, unknown> | null;
   holdingBalance: number;
 }): {
-  transaction: unknown;
+  databaseTransaction: unknown;
   captured: {
     transactionSet?: Record<string, unknown>;
     holdingSet?: Record<string, unknown>;
@@ -45,7 +45,7 @@ const makeUpdateTransaction = (options: {
     transactionSet?: Record<string, unknown>;
     holdingSet?: Record<string, unknown>;
   } = {};
-  const transaction = {
+  const databaseTransaction = {
     select: () => ({
       from: () => ({
         where: () => ({ limit: () => Promise.resolve(selectQueue.shift() ?? []) }),
@@ -65,7 +65,7 @@ const makeUpdateTransaction = (options: {
     insert: () => ({ values: () => Promise.resolve() }),
   };
 
-  return { transaction, captured };
+  return { databaseTransaction, captured };
 };
 
 describe('transactionsRepo', () => {
@@ -149,7 +149,7 @@ describe('transactionsRepo', () => {
 
   it('records a manual transaction and adjusts the balance atomically', async () => {
     const captured: { insert?: Record<string, unknown>; set?: Record<string, unknown> } = {};
-    mockTransaction = {
+    mockDatabaseTransaction = {
       insert: () => ({
         values: (values: Record<string, unknown>) => {
           captured.insert = values;
@@ -189,7 +189,7 @@ describe('transactionsRepo', () => {
 
   it('persists the picked category on a manual row, even with a blank description', async () => {
     const captured: { insert?: Record<string, unknown> } = {};
-    mockTransaction = {
+    mockDatabaseTransaction = {
       insert: () => ({
         values: (values: Record<string, unknown>) => {
           captured.insert = values;
@@ -217,7 +217,7 @@ describe('transactionsRepo', () => {
 
   it('writes a null category when none is given', async () => {
     const captured: { insert?: Record<string, unknown> } = {};
-    mockTransaction = {
+    mockDatabaseTransaction = {
       insert: () => ({
         values: (values: Record<string, unknown>) => {
           captured.insert = values;
@@ -242,11 +242,11 @@ describe('transactionsRepo', () => {
   });
 
   it('updates a manual transaction and moves the balance by the amount delta when it grows', async () => {
-    const { transaction, captured } = makeUpdateTransaction({
+    const { databaseTransaction, captured } = makeUpdateDatabaseTransaction({
       existing: { holdingId: 'hold-1', amountMinorUnits: 1000, source: 'manual' },
       holdingBalance: 5000,
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.update({
       transactionId: 'txn-1',
@@ -265,11 +265,11 @@ describe('transactionsRepo', () => {
   });
 
   it('updates a manual transaction and moves the balance by the amount delta when it shrinks', async () => {
-    const { transaction, captured } = makeUpdateTransaction({
+    const { databaseTransaction, captured } = makeUpdateDatabaseTransaction({
       existing: { holdingId: 'hold-1', amountMinorUnits: 3000, source: 'manual' },
       holdingBalance: 5000,
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.update({
       transactionId: 'txn-1',
@@ -283,11 +283,11 @@ describe('transactionsRepo', () => {
   });
 
   it('leaves the balance untouched when only the description changes (amount unchanged)', async () => {
-    const { transaction, captured } = makeUpdateTransaction({
+    const { databaseTransaction, captured } = makeUpdateDatabaseTransaction({
       existing: { holdingId: 'hold-1', amountMinorUnits: 1000, source: 'manual' },
       holdingBalance: 5000,
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.update({
       transactionId: 'txn-1',
@@ -303,11 +303,11 @@ describe('transactionsRepo', () => {
   });
 
   it('never updates a synced (monobank) transaction and never moves the balance', async () => {
-    const { transaction, captured } = makeUpdateTransaction({
+    const { databaseTransaction, captured } = makeUpdateDatabaseTransaction({
       existing: { holdingId: 'hold-1', amountMinorUnits: 1000, source: 'monobank' },
       holdingBalance: 5000,
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.update({
       transactionId: 'txn-1',
@@ -321,11 +321,11 @@ describe('transactionsRepo', () => {
   });
 
   it('does nothing when the target transaction does not exist', async () => {
-    const { transaction, captured } = makeUpdateTransaction({
+    const { databaseTransaction, captured } = makeUpdateDatabaseTransaction({
       existing: null,
       holdingBalance: 5000,
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.update({
       transactionId: 'missing',
@@ -344,21 +344,21 @@ describe('transactionsRepo', () => {
 // row); each `delete(table)` records the table it targeted (so a test can prove
 // the transaction row was deleted) and each `update(holdings).set(values)` captures
 // the reversed balance written back.
-const makeRemoveTransaction = (options: {
-  transaction: Record<string, unknown> | null;
+const makeRemoveDatabaseTransaction = (options: {
+  databaseTransaction: Record<string, unknown> | null;
   holding: Record<string, unknown> | null;
 }): {
-  transaction: unknown;
+  databaseTransaction: unknown;
   captured: { deletedFrom: unknown[]; holdingSet?: Record<string, unknown> };
 } => {
   const selectQueue: unknown[][] = [
-    options.transaction ? [options.transaction] : [],
+    options.databaseTransaction ? [options.databaseTransaction] : [],
     options.holding ? [options.holding] : [],
   ];
   const captured: { deletedFrom: unknown[]; holdingSet?: Record<string, unknown> } = {
     deletedFrom: [],
   };
-  const transaction = {
+  const databaseTransaction = {
     select: () => ({
       from: () => ({ where: () => Promise.resolve(selectQueue.shift() ?? []) }),
     }),
@@ -375,7 +375,7 @@ const makeRemoveTransaction = (options: {
       },
     }),
   };
-  return { transaction, captured };
+  return { databaseTransaction, captured };
 };
 
 // Fake tx for addManyDedup: two reads (the name→category rules, and the rows
@@ -386,11 +386,11 @@ const makeRemoveTransaction = (options: {
 // `captured.inserted` is the FLATTENED concatenation of every chunk, in call
 // order — a single-chunk batch (every existing test below) sees the same
 // shape as before; `captured.insertCallCount` exposes how many chunks ran.
-const makeAddManyTransaction = (
+const makeAddManyDatabaseTransaction = (
   rules: { normalizedName: string; category: string }[],
   existing: { source: string; externalId: string }[] = [],
 ): {
-  transaction: unknown;
+  databaseTransaction: unknown;
   captured: {
     inserted?: Record<string, unknown>[];
     insertCallCount: number;
@@ -402,7 +402,7 @@ const makeAddManyTransaction = (
     insertCallCount: number;
     conflict?: { target: unknown; set: Record<string, unknown> };
   } = { insertCallCount: 0 };
-  const transaction = {
+  const databaseTransaction = {
     select: () => ({
       from: (table: unknown) => ({
         where: () => Promise.resolve(table === categoryOverrides ? rules : existing),
@@ -426,15 +426,15 @@ const makeAddManyTransaction = (
     }),
   };
 
-  return { transaction, captured };
+  return { databaseTransaction, captured };
 };
 
 describe('transactionsRepo.addManyDedup category overrides', () => {
   it('applies a matching rule to an incoming synced row at insert time', async () => {
-    const { transaction, captured } = makeAddManyTransaction([
+    const { databaseTransaction, captured } = makeAddManyDatabaseTransaction([
       { normalizedName: 'atb market', category: 'groceries' },
     ]);
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.addManyDedup([
       {
@@ -464,10 +464,10 @@ describe('transactionsRepo.addManyDedup category overrides', () => {
   });
 
   it('matches a Cyrillic case-variant name against its rule', async () => {
-    const { transaction, captured } = makeAddManyTransaction([
+    const { databaseTransaction, captured } = makeAddManyDatabaseTransaction([
       { normalizedName: 'атб', category: 'groceries' },
     ]);
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.addManyDedup([
       {
@@ -486,8 +486,8 @@ describe('transactionsRepo.addManyDedup category overrides', () => {
   });
 
   it('skips empty-description rows and inserts nothing when the input is empty', async () => {
-    const { transaction, captured } = makeAddManyTransaction([]);
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeAddManyDatabaseTransaction([]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.addManyDedup([]);
     expect(captured.inserted).toBeUndefined();
@@ -512,8 +512,8 @@ const syncedRow = (overrides: Record<string, unknown> = {}) => ({
 // its settled one — while every column the USER owns survives untouched.
 describe('transactionsRepo.addManyDedup upsert', () => {
   it('refreshes exactly the bank-owned columns on a (source, external id) conflict', async () => {
-    const { transaction, captured } = makeAddManyTransaction([]);
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeAddManyDatabaseTransaction([]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.addManyDedup([syncedRow()]);
 
@@ -546,8 +546,8 @@ describe('transactionsRepo.addManyDedup upsert', () => {
   });
 
   it('refreshes an imported binance description on re-sync while preserving a user category override', async () => {
-    const { transaction, captured } = makeAddManyTransaction([]);
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeAddManyDatabaseTransaction([]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.addManyDedup([binanceRow()]);
 
@@ -561,8 +561,8 @@ describe('transactionsRepo.addManyDedup upsert', () => {
   });
 
   it('keys the upsert on (source, external id) so a binance import never touches a monobank row', async () => {
-    const { transaction, captured } = makeAddManyTransaction([]);
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeAddManyDatabaseTransaction([]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.addManyDedup([binanceRow()]);
 
@@ -578,7 +578,7 @@ describe('transactionsRepo.addManyDedup upsert', () => {
     // The real Drizzle SQLite dialect, driven through the proxy driver, so this
     // asserts over the SQL that actually ships rather than over a fake's
     // arguments.
-    mockTransaction = drizzle(async (query: string) => {
+    mockDatabaseTransaction = drizzle(async (query: string) => {
       statements.push(query);
 
       return { rows: [] };
@@ -604,8 +604,8 @@ describe('transactionsRepo.addManyDedup upsert', () => {
     // SQLite refuses to upsert the same conflict target twice in one statement,
     // so a payload that repeats an id (overlapping statement pages) is folded in
     // JS first — keeping the LAST copy, which is the more settled one.
-    const { transaction, captured } = makeAddManyTransaction([]);
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeAddManyDatabaseTransaction([]);
+    mockDatabaseTransaction = databaseTransaction;
 
     const inserted = await transactionsRepo.addManyDedup([
       syncedRow({ amountMinorUnits: -10_000, hold: true }),
@@ -618,8 +618,11 @@ describe('transactionsRepo.addManyDedup upsert', () => {
   });
 
   it('counts only the rows that were new, not the ones it refreshed', async () => {
-    const { transaction } = makeAddManyTransaction([], [{ source: 'monobank', externalId: 'e1' }]);
-    mockTransaction = transaction;
+    const { databaseTransaction } = makeAddManyDatabaseTransaction(
+      [],
+      [{ source: 'monobank', externalId: 'e1' }],
+    );
+    mockDatabaseTransaction = databaseTransaction;
 
     const inserted = await transactionsRepo.addManyDedup([
       syncedRow({ externalId: 'e1' }),
@@ -632,8 +635,8 @@ describe('transactionsRepo.addManyDedup upsert', () => {
   it('never conflates two manual rows with a null external id', async () => {
     // SQLite treats every NULL as distinct in a unique index, so two manual rows
     // never conflict with each other — the JS fold must not collapse them either.
-    const { transaction, captured } = makeAddManyTransaction([]);
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeAddManyDatabaseTransaction([]);
+    mockDatabaseTransaction = databaseTransaction;
 
     const inserted = await transactionsRepo.addManyDedup([
       { holdingId: 'h-1', amountMinorUnits: -100, time: 1, source: 'manual' },
@@ -647,8 +650,8 @@ describe('transactionsRepo.addManyDedup upsert', () => {
   // T29: the loan-payment link is user/matcher state, not bank data — a
   // re-sync must never refresh it, unlike `amountMinorUnits`/`description`/etc.
   it('never refreshes the loan-link columns on a re-sync', async () => {
-    const { transaction, captured } = makeAddManyTransaction([]);
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeAddManyDatabaseTransaction([]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.addManyDedup([syncedRow()]);
 
@@ -662,13 +665,13 @@ describe('transactionsRepo.addManyDedup upsert', () => {
   // per PRESENT key per row, and failed a whole statement-import file past
   // ~2980 rows (or a Monobank sync past ~2731) once T29 widened
   // `transactions` to 18 columns — the same `SQLITE_MAX_VARIABLE_NUMBER`
-  // ceiling C1 hit in `restoreDataSnapshot`. `insertDedupRowsTx` now chunks
+  // ceiling C1 hit in `restoreDataSnapshot`. `insertDedupRowsDatabaseTransaction` now chunks
   // through the SAME `chunkForTable` helper, sized off the table's own
   // (`getTableColumns`) column count — independent of how many keys any one
   // row actually carries, so this holds regardless of row shape.
   it('splits a large batch into multiple chunked inserts, each within the SQLite bound-parameter limit', async () => {
     const insertedChunkSizes: number[] = [];
-    mockTransaction = {
+    mockDatabaseTransaction = {
       select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }),
       insert: () => ({
         values: (values: Record<string, unknown>[]) => {
@@ -703,12 +706,12 @@ describe('transactionsRepo.addManyDedup upsert', () => {
 // `rate-history.repo.test.ts` use for their own chunked upserts.
 const SQLITE_MAX_VARIABLE_NUMBER = 32_766;
 
-const makeOverflowGuardTransaction = (): {
-  transaction: unknown;
+const makeOverflowGuardDatabaseTransaction = (): {
+  databaseTransaction: unknown;
   statements: { sql: string; params: unknown[] }[];
 } => {
   const statements: { sql: string; params: unknown[] }[] = [];
-  const transaction = drizzle(async (sql: string, params: unknown[]) => {
+  const databaseTransaction = drizzle(async (sql: string, params: unknown[]) => {
     if (params.length > SQLITE_MAX_VARIABLE_NUMBER) {
       throw new Error('too many SQL variables');
     }
@@ -717,13 +720,13 @@ const makeOverflowGuardTransaction = (): {
     return { rows: [] };
   });
 
-  return { transaction, statements };
+  return { databaseTransaction, statements };
 };
 
 describe('transactionsRepo.addManyDedup chunking', () => {
   it('chunks a large sync batch insert under the SQLite bound-parameter limit, losing no row', async () => {
-    const { transaction, statements } = makeOverflowGuardTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, statements } = makeOverflowGuardDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     const rowCount = 5000;
     const rows = Array.from({ length: rowCount }, (_, index) => ({
@@ -756,8 +759,8 @@ describe('transactionsRepo.addManyDedup chunking', () => {
   });
 
   it('chunks the category-override rule lookup under the SQLite bound-parameter limit', async () => {
-    const { transaction, statements } = makeOverflowGuardTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, statements } = makeOverflowGuardDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     const rowCount = SQLITE_MAX_VARIABLE_NUMBER + 1;
     const rows = Array.from({ length: rowCount }, (_, index) => ({
@@ -797,7 +800,7 @@ describe('transactionsRepo.addManyDedup chunking', () => {
       [{ normalizedName: 'desc-32766', category: 'utilities' }],
     ];
     const captured: { inserted: Record<string, unknown>[] } = { inserted: [] };
-    mockTransaction = {
+    mockDatabaseTransaction = {
       select: () => ({
         from: (table: unknown) => ({
           where: () => {
@@ -844,8 +847,8 @@ describe('transactionsRepo.addManyDedup chunking', () => {
   });
 
   it('chunks the existing-external-id lookup under the SQLite bound-parameter limit', async () => {
-    const { transaction, statements } = makeOverflowGuardTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, statements } = makeOverflowGuardDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     const rowCount = SQLITE_MAX_VARIABLE_NUMBER + 1;
     const rows = Array.from({ length: rowCount }, (_, index) => ({
@@ -874,8 +877,8 @@ describe('transactionsRepo.addManyDedup chunking', () => {
   });
 
   it('collapses a duplicate pair split across a chunk boundary the same way a same-chunk duplicate would', async () => {
-    const { transaction, captured } = makeAddManyTransaction([]);
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeAddManyDatabaseTransaction([]);
+    mockDatabaseTransaction = databaseTransaction;
 
     const rowCount = 2200;
     const rows = Array.from({ length: rowCount }, (_, index) => ({
@@ -907,8 +910,8 @@ describe('transactionsRepo.addManyDedup chunking', () => {
       source: 'monobank',
       externalId: `id-${index}`,
     }));
-    const { transaction, captured } = makeAddManyTransaction([], existing);
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeAddManyDatabaseTransaction([], existing);
+    mockDatabaseTransaction = databaseTransaction;
 
     const rowCount = 3000;
     const rows = Array.from({ length: rowCount }, (_, index) => ({
@@ -939,7 +942,7 @@ describe('transactionsRepo.addManyDedup chunking', () => {
 // otherwise — so a test can run `addManyDedup` TWICE against the SAME store
 // (mirroring two providers' own syncs) and read back what actually persisted,
 // not just the SQL shape a single call would have issued.
-const makeAddManyStoreTransaction = (store: Record<string, unknown>[]) => ({
+const makeAddManyStoreDatabaseTransaction = (store: Record<string, unknown>[]) => ({
   select: () => ({
     from: (table: unknown) => ({
       // `categoryOverrides` never carries a matching rule here (no test row
@@ -980,7 +983,7 @@ describe('transactionsRepo.addManyDedup cross-provider externalId namespacing', 
   // `(source, external_id)`, not `external_id` alone.
   it('keeps both rows when two different providers report the SAME namespaced externalId, because source differs', async () => {
     const store: Record<string, unknown>[] = [];
-    mockTransaction = makeAddManyStoreTransaction(store);
+    mockDatabaseTransaction = makeAddManyStoreDatabaseTransaction(store);
 
     await transactionsRepo.addManyDedup([
       {
@@ -1023,12 +1026,12 @@ describe('transactionsRepo.addManyDedup cross-provider externalId namespacing', 
 // below (both single-row updates on `transactions`), hoisted per the
 // ponytail note that the `undoAutoLoanLink` test used to inline its own
 // copy.
-const captureUpdateTransaction = (): {
-  transaction: unknown;
+const captureUpdateDatabaseTransaction = (): {
+  databaseTransaction: unknown;
   captured: { table?: unknown; set?: Record<string, unknown>; whereArg?: unknown };
 } => {
   const captured: { table?: unknown; set?: Record<string, unknown>; whereArg?: unknown } = {};
-  const transaction = {
+  const databaseTransaction = {
     update: (table: unknown) => ({
       set: (values: Record<string, unknown>) => {
         captured.table = table;
@@ -1045,29 +1048,30 @@ const captureUpdateTransaction = (): {
     }),
   };
 
-  return { transaction, captured };
+  return { databaseTransaction, captured };
 };
 
 // A LINK (non-null `loanHoldingId`) now reads two currencies first — the
 // payment's own holding, then the target loan holding — before writing, so a
 // fake tx here answers those two selects (FIFO, in call order) ahead of the
-// `update` capture `captureUpdateTx` alone provides. "None" (`loanHoldingId:
-// null`) skips both reads, so `captureUpdateTx` (no `select` at all) still
+// `update` capture `captureUpdateDatabaseTransaction` alone provides. "None" (`loanHoldingId:
+// null`) skips both reads, so `captureUpdateDatabaseTransaction` (no `select` at all) still
 // serves that case unchanged.
-const makeSetLoanPaymentTransaction = (
+const makeSetLoanPaymentDatabaseTransaction = (
   selectResults: unknown[][],
 ): {
-  transaction: unknown;
+  databaseTransaction: unknown;
   captured: { table?: unknown; set?: Record<string, unknown>; whereArg?: unknown };
 } => {
   const queue = [...selectResults];
-  const { transaction: updateTransaction, captured } = captureUpdateTransaction();
-  const transaction = {
-    ...(updateTransaction as Record<string, unknown>),
+  const { databaseTransaction: updateDatabaseTransaction, captured } =
+    captureUpdateDatabaseTransaction();
+  const databaseTransaction = {
+    ...(updateDatabaseTransaction as Record<string, unknown>),
     select: () => ({ from: () => ({ where: () => Promise.resolve(queue.shift() ?? []) }) }),
   };
 
-  return { transaction, captured };
+  return { databaseTransaction, captured };
 };
 
 // T29, spec 5.4: `setLoanPayment` is the MANUAL write path (the user's own
@@ -1077,12 +1081,12 @@ const makeSetLoanPaymentTransaction = (
 // review round 1 (I2): only a manual action may move `loanLinkRejected`.
 describe('transactionsRepo.setLoanPayment', () => {
   it('persists a manual link on a synced (monobank) row, with no source gate, clearing loanLinkRejected', async () => {
-    const { transaction, captured } = makeSetLoanPaymentTransaction([
+    const { databaseTransaction, captured } = makeSetLoanPaymentDatabaseTransaction([
       [{ holdingId: 'hold-payment' }],
       [{ currency: 'UAH' }],
       [{ currency: 'UAH' }],
     ]);
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.setLoanPayment({ transactionId: 'txn-1', loanHoldingId: 'loan-1' });
 
@@ -1102,8 +1106,8 @@ describe('transactionsRepo.setLoanPayment', () => {
   // the choice sticks, so the matcher never silently re-proposes a link the
   // user explicitly rejected. This deviates from spec 5.4's literal text.
   it('clears the link source AND sets loanLinkRejected on a manual "None" (loanHoldingId: null)', async () => {
-    const { transaction, captured } = captureUpdateTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = captureUpdateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.setLoanPayment({ transactionId: 'txn-1', loanHoldingId: null });
 
@@ -1119,12 +1123,12 @@ describe('transactionsRepo.setLoanPayment', () => {
   // LOAN's own currency, so a cross-currency link would mislabel that
   // amount — refused outright rather than silently written wrong.
   it('throws and writes nothing when the payment holding currency differs from the loan holding currency', async () => {
-    const { transaction, captured } = makeSetLoanPaymentTransaction([
+    const { databaseTransaction, captured } = makeSetLoanPaymentDatabaseTransaction([
       [{ holdingId: 'hold-payment' }],
       [{ currency: 'UAH' }],
       [{ currency: 'USD' }],
     ]);
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await expect(
       transactionsRepo.setLoanPayment({ transactionId: 'txn-1', loanHoldingId: 'loan-usd' }),
@@ -1143,12 +1147,12 @@ describe('transactionsRepo.setLoanPayment', () => {
 // matches no row), so the test proves the PREDICATE carries both guards
 // rather than emulating SQLite's row filtering in JS.
 describe('transactionsRepo.setAutoLoanLinks', () => {
-  const captureBatchUpdateTransaction = (): {
-    transaction: unknown;
+  const captureBatchUpdateDatabaseTransaction = (): {
+    databaseTransaction: unknown;
     captured: { set: Record<string, unknown>; whereArg: unknown }[];
   } => {
     const captured: { set: Record<string, unknown>; whereArg: unknown }[] = [];
-    const transaction = {
+    const databaseTransaction = {
       update: (_table: unknown) => ({
         set: (values: Record<string, unknown>) => ({
           where: (whereArg: unknown) => {
@@ -1159,12 +1163,12 @@ describe('transactionsRepo.setAutoLoanLinks', () => {
       }),
     };
 
-    return { transaction, captured };
+    return { databaseTransaction, captured };
   };
 
   it('writes every link in one transaction, each guarded against an already-linked or already-rejected row', async () => {
-    const { transaction, captured } = captureBatchUpdateTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = captureBatchUpdateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.setAutoLoanLinks([
       { transactionId: 'txn-1', loanHoldingId: 'loan-1' },
@@ -1183,8 +1187,8 @@ describe('transactionsRepo.setAutoLoanLinks', () => {
   });
 
   it('is a no-op for an empty link list', async () => {
-    const { transaction, captured } = captureBatchUpdateTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = captureBatchUpdateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.setAutoLoanLinks([]);
 
@@ -1196,8 +1200,8 @@ describe('transactionsRepo.setAutoLoanLinks', () => {
 // never re-proposes the same link on this row.
 describe('transactionsRepo.undoAutoLoanLink', () => {
   it('clears loanHoldingId and loanLinkSource, and sets loanLinkRejected, scoped to an auto-sourced link', async () => {
-    const { transaction, captured } = captureUpdateTransaction();
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = captureUpdateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.undoAutoLoanLink('txn-1');
 
@@ -1219,7 +1223,7 @@ describe('transactionsRepo.undoAutoLoanLink', () => {
 describe('transactionsRepo.setCategory', () => {
   it("rewrites ONLY the target row's category inside one transaction, with no source gate", async () => {
     const captured: { table?: unknown; set?: Record<string, unknown>; whereArg?: unknown } = {};
-    mockTransaction = {
+    mockDatabaseTransaction = {
       update: (table: unknown) => ({
         set: (values: Record<string, unknown>) => {
           captured.table = table;
@@ -1252,8 +1256,8 @@ describe('transactionsRepo.remove', () => {
   it('deletes a manual transaction and reverses its balance effect', async () => {
     // Holding balance is 102500 after a +2500 manual top-up; removing the
     // transaction must reverse the effect, restoring 102500 - 2500 = 100000.
-    const { transaction, captured } = makeRemoveTransaction({
-      transaction: {
+    const { databaseTransaction, captured } = makeRemoveDatabaseTransaction({
+      databaseTransaction: {
         id: 'txn-1',
         holdingId: 'hold-1',
         amountMinorUnits: 2500,
@@ -1261,7 +1265,7 @@ describe('transactionsRepo.remove', () => {
       },
       holding: { id: 'hold-1', balanceMinorUnits: 102500 },
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.remove('txn-1');
 
@@ -1270,8 +1274,8 @@ describe('transactionsRepo.remove', () => {
   });
 
   it('reverses a negative-amount transaction by adding the amount back', async () => {
-    const { transaction, captured } = makeRemoveTransaction({
-      transaction: {
+    const { databaseTransaction, captured } = makeRemoveDatabaseTransaction({
+      databaseTransaction: {
         id: 'txn-1',
         holdingId: 'hold-1',
         amountMinorUnits: -1000,
@@ -1279,7 +1283,7 @@ describe('transactionsRepo.remove', () => {
       },
       holding: { id: 'hold-1', balanceMinorUnits: 4000 },
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.remove('txn-1');
 
@@ -1288,8 +1292,8 @@ describe('transactionsRepo.remove', () => {
   });
 
   it('refuses a synced (monobank) transaction and leaves it in place', async () => {
-    const { transaction, captured } = makeRemoveTransaction({
-      transaction: {
+    const { databaseTransaction, captured } = makeRemoveDatabaseTransaction({
+      databaseTransaction: {
         id: 'txn-1',
         holdingId: 'hold-1',
         amountMinorUnits: 2500,
@@ -1297,7 +1301,7 @@ describe('transactionsRepo.remove', () => {
       },
       holding: { id: 'hold-1', balanceMinorUnits: 102500 },
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await expect(transactionsRepo.remove('txn-1')).rejects.toThrow(/synced/);
     expect(captured.deletedFrom).toEqual([]);
@@ -1305,8 +1309,11 @@ describe('transactionsRepo.remove', () => {
   });
 
   it('does nothing when the target transaction does not exist', async () => {
-    const { transaction, captured } = makeRemoveTransaction({ transaction: null, holding: null });
-    mockTransaction = transaction;
+    const { databaseTransaction, captured } = makeRemoveDatabaseTransaction({
+      databaseTransaction: null,
+      holding: null,
+    });
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.remove('missing');
 
@@ -1328,30 +1335,30 @@ const depositMeta = {
 // Build a fake tx for `recordExchange`. `select(...).from(...).where(...)`
 // resolves the next queued row set in call order — the source balance read,
 // then the destination read (a balance row for a plain leg, or the deposit
-// row `appendDepositContributionTx` reads for a term_deposit leg). The
+// row `appendDepositContributionDatabaseTransaction` reads for a term_deposit leg). The
 // returned object answers BOTH calling conventions the two paths use: a
-// chained `.limit(1)` (as `recordManualTx` calls it) and a bare `await
-// where(...)` with no `.limit()` (as `appendDepositContributionTx` calls
+// chained `.limit(1)` (as `recordManualTransaction` calls it) and a bare `await
+// where(...)` with no `.limit()` (as `appendDepositContributionDatabaseTransaction` calls
 // it). Every insert value and every (table -> set) update is captured in
 // call order, so a test can prove both legs landed independently.
-const makeExchangeTransaction = (
+const makeExchangeDatabaseTransaction = (
   selectQueue: unknown[][],
 ): {
-  transaction: unknown;
+  databaseTransaction: unknown;
   inserts: Record<string, unknown>[];
   updates: { table: unknown; values: Record<string, unknown> }[];
 } => {
   const inserts: Record<string, unknown>[] = [];
   const updates: { table: unknown; values: Record<string, unknown> }[] = [];
   const queue = [...selectQueue];
-  const transaction = {
+  const databaseTransaction = {
     select: () => ({
       from: () => ({
         where: () => {
           const rows = queue.shift() ?? [];
           // A real Promise, resolving `rows` directly (as
-          // `appendDepositContributionTx` awaits `where(...)` with no
-          // `.limit()`), with `.limit()` attached so `recordManualTx`'s
+          // `appendDepositContributionDatabaseTransaction` awaits `where(...)` with no
+          // `.limit()`), with `.limit()` attached so `recordManualTransaction`'s
           // chained `.where(...).limit(1)` resolves the same rows.
           return Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
         },
@@ -1371,16 +1378,16 @@ const makeExchangeTransaction = (
     }),
   };
 
-  return { transaction, inserts, updates };
+  return { databaseTransaction, inserts, updates };
 };
 
 describe('transactionsRepo.recordExchange', () => {
   it('writes both legs as independent ledger rows and updates both balances for a plain destination', async () => {
-    const { transaction, inserts, updates } = makeExchangeTransaction([
+    const { databaseTransaction, inserts, updates } = makeExchangeDatabaseTransaction([
       [{ balanceMinorUnits: 10_000 }],
       [{ balanceMinorUnits: 2_000 }],
     ]);
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.recordExchange({
       sourceHoldingId: 'src-1',
@@ -1420,11 +1427,11 @@ describe('transactionsRepo.recordExchange', () => {
   });
 
   it('routes a term_deposit destination through a contribution metadata rewrite, not a second ledger row', async () => {
-    const { transaction, inserts, updates } = makeExchangeTransaction([
+    const { databaseTransaction, inserts, updates } = makeExchangeDatabaseTransaction([
       [{ balanceMinorUnits: 10_000 }],
       [{ type: 'term_deposit', metadata: depositMeta }],
     ]);
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.recordExchange({
       sourceHoldingId: 'src-1',
@@ -1471,7 +1478,7 @@ describe('transactionsRepo.recordExchange', () => {
   });
 
   it('rejects when the destination equals the source', async () => {
-    mockTransaction = {};
+    mockDatabaseTransaction = {};
 
     await expect(
       transactionsRepo.recordExchange({
@@ -1486,8 +1493,10 @@ describe('transactionsRepo.recordExchange', () => {
   });
 
   it('rejects an excluded destination type (bond/jar)', async () => {
-    const { transaction } = makeExchangeTransaction([[{ balanceMinorUnits: 10_000 }]]);
-    mockTransaction = transaction;
+    const { databaseTransaction } = makeExchangeDatabaseTransaction([
+      [{ balanceMinorUnits: 10_000 }],
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await expect(
       transactionsRepo.recordExchange({
@@ -1510,7 +1519,7 @@ describe('transactionsRepo.recordExchange', () => {
     // partial commit.
     let selectCalls = 0;
     const updates: { table: unknown; values: Record<string, unknown> }[] = [];
-    mockTransaction = {
+    mockDatabaseTransaction = {
       select: () => ({
         from: () => ({
           where: () => {
@@ -1551,7 +1560,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
   it('records a POSITIVE plain destination leg for an expense-sourced convert (record-destination)', async () => {
     const inserts: Record<string, unknown>[] = [];
     const updates: { table: unknown; values: Record<string, unknown> }[] = [];
-    mockTransaction = {
+    mockDatabaseTransaction = {
       insert: () => ({
         values: (values: Record<string, unknown>) => {
           inserts.push(values);
@@ -1601,7 +1610,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
 
   it('records a NEGATIVE plain source leg for an income-sourced convert (record-source)', async () => {
     const inserts: Record<string, unknown>[] = [];
-    mockTransaction = {
+    mockDatabaseTransaction = {
       insert: () => ({
         values: (values: Record<string, unknown>) => {
           inserts.push(values);
@@ -1646,11 +1655,11 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
     // carry the marker too — otherwise a CROSS-CURRENCY convert leaves the
     // original expense in the spending pie (nothing pairs it: the matched-pair
     // matcher requires one currency).
-    const { transaction, updates } = makeExchangeTransaction([
+    const { databaseTransaction, updates } = makeExchangeDatabaseTransaction([
       [{ balanceMinorUnits: 2_000 }], // the new leg's balance read
       [{ source: 'manual' }], // the existing row, read INSIDE the transaction
     ]);
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.recordExchangeCounterpart({
       direction: 'record-destination',
@@ -1669,11 +1678,11 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
   });
 
   it('never marks a SYNCED existing row (the bank owns it)', async () => {
-    const { transaction, updates } = makeExchangeTransaction([
+    const { databaseTransaction, updates } = makeExchangeDatabaseTransaction([
       [{ balanceMinorUnits: 2_000 }],
       [{ source: 'monobank' }],
     ]);
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.recordExchangeCounterpart({
       direction: 'record-destination',
@@ -1692,13 +1701,13 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
   });
 
   it('records a term_deposit destination as a contribution (metadata rewrite, no new ledger row)', async () => {
-    // Reuse the call-ordered `makeExchangeTx` select fake: the destination
+    // Reuse the call-ordered `makeExchangeDatabaseTransaction` select fake: the destination
     // read (the only select call this path makes) returns the term_deposit
-    // row `appendDepositContributionTx` expects.
-    const { transaction, inserts } = makeExchangeTransaction([
+    // row `appendDepositContributionDatabaseTransaction` expects.
+    const { databaseTransaction, inserts } = makeExchangeDatabaseTransaction([
       [{ type: 'term_deposit', metadata: depositMeta }],
     ]);
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.recordExchangeCounterpart({
       direction: 'record-destination',
@@ -1714,7 +1723,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
   });
 
   it('throws for an income-sourced convert into a term_deposit (a source leg is never a contribution)', async () => {
-    mockTransaction = {
+    mockDatabaseTransaction = {
       insert: () => ({ values: () => Promise.resolve() }),
       select: () => ({
         from: () => ({
@@ -1738,7 +1747,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
   });
 
   it('throws for a bond/jar destination (excluded)', async () => {
-    mockTransaction = {
+    mockDatabaseTransaction = {
       insert: () => ({ values: () => Promise.resolve() }),
       select: () => ({
         from: () => ({
@@ -1764,12 +1773,12 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
 
 describe('transactionsRepo.recordManualWithReturns', () => {
   it('writes the payment + N return rows sharing ONE changeGroupId in one transaction', async () => {
-    const { transaction, inserts, updates } = makeExchangeTransaction([
+    const { databaseTransaction, inserts, updates } = makeExchangeDatabaseTransaction([
       [{ balanceMinorUnits: 50_000 }], // payer balance read
       [{ balanceMinorUnits: 1_000 }], // return holding B balance read
       [{ balanceMinorUnits: 2_000 }], // return holding C balance read
     ]);
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.recordManualWithReturns({
       payment: {
@@ -1820,10 +1829,10 @@ describe('transactionsRepo.recordManualWithReturns', () => {
   });
 
   it('writes only the payment row when there are no returns', async () => {
-    const { transaction, inserts, updates } = makeExchangeTransaction([
+    const { databaseTransaction, inserts, updates } = makeExchangeDatabaseTransaction([
       [{ balanceMinorUnits: 50_000 }],
     ]);
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.recordManualWithReturns({
       payment: { holdingId: 'payer-1', amountMinorUnits: -5_000, time: 7, category: 'transport' },
@@ -1845,7 +1854,7 @@ describe('transactionsRepo.recordManualWithReturns', () => {
 // `{ source, externalId }` for the probe — since both share the same table
 // identity and neither chains `.limit()`. `holdings`/`accounts` reads chain
 // `.limit(1)`; every read here resolves either way, mirroring
-// `makeExchangeTx`'s dual-calling-convention trick. `syncBoundaryTime`
+// `makeExchangeDatabaseTransaction`'s dual-calling-convention trick. `syncBoundaryTime`
 // answers the sync-source aggregate (boundary source (b)) — the hand-set
 // boundary (source (a)) comes straight off `holding.balanceSetAt` instead,
 // no separate query.
@@ -1892,14 +1901,14 @@ const resolveImportRowsSelect = (
   return options.existing ?? [];
 };
 
-const makeImportRowsTransaction = (
+const makeImportRowsDatabaseTransaction = (
   options: ImportRowsTransactionOptions,
-): { transaction: unknown; captured: { holdingSet?: Record<string, unknown> } } => {
+): { databaseTransaction: unknown; captured: { holdingSet?: Record<string, unknown> } } => {
   const captured: { holdingSet?: Record<string, unknown> } = {};
   const resolveRows = (rows: unknown[]) =>
     Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
 
-  const transaction = {
+  const databaseTransaction = {
     select: (fields?: Record<string, unknown>) => ({
       from: (table: unknown) => ({
         where: () => resolveRows(resolveImportRowsSelect(options, table, fields)),
@@ -1919,7 +1928,7 @@ const makeImportRowsTransaction = (
     }),
   };
 
-  return { transaction, captured };
+  return { databaseTransaction, captured };
 };
 
 const baseHolding = {
@@ -1939,8 +1948,8 @@ describe('transactionsRepo.importRows', () => {
   // the real caller (`importStatement`) already validates the holding
   // exists before this ever runs.
   it('throws when the target holding cannot be found', async () => {
-    const { transaction } = makeImportRowsTransaction({ account: unsyncedAccount });
-    mockTransaction = transaction;
+    const { databaseTransaction } = makeImportRowsDatabaseTransaction({ account: unsyncedAccount });
+    mockDatabaseTransaction = databaseTransaction;
 
     await expect(
       transactionsRepo.importRows({
@@ -1953,11 +1962,11 @@ describe('transactionsRepo.importRows', () => {
   });
 
   it('moves a 0-balance holding by the net of the imported rows', async () => {
-    const { transaction, captured } = makeImportRowsTransaction({
+    const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
       holding: baseHolding,
       account: unsyncedAccount,
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     const imported = await transactionsRepo.importRows({
       holdingId: 'hold-1',
@@ -1973,12 +1982,12 @@ describe('transactionsRepo.importRows', () => {
   });
 
   it('leaves the balance untouched on a re-import where every row already exists (net of new rows is 0)', async () => {
-    const { transaction, captured } = makeImportRowsTransaction({
+    const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
       holding: { ...baseHolding, balanceMinorUnits: -17_000 },
       account: unsyncedAccount,
       existing: [{ source: 'import', externalId: 'e1' }],
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     const imported = await transactionsRepo.importRows({
       holdingId: 'hold-1',
@@ -1998,12 +2007,12 @@ describe('transactionsRepo.importRows', () => {
   });
 
   it('adds only the net of the genuinely new rows on a partial overlap', async () => {
-    const { transaction, captured } = makeImportRowsTransaction({
+    const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
       holding: { ...baseHolding, balanceMinorUnits: -5_000 },
       account: unsyncedAccount,
       existing: [{ source: 'import', externalId: 'e1' }],
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     const imported = await transactionsRepo.importRows({
       holdingId: 'hold-1',
@@ -2032,12 +2041,12 @@ describe('transactionsRepo.importRows', () => {
   });
 
   it('sets the balance to the closing balance when it is newer than the newest existing transaction', async () => {
-    const { transaction, captured } = makeImportRowsTransaction({
+    const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
       holding: { ...baseHolding, balanceMinorUnits: -5_000 },
       account: unsyncedAccount,
       syncBoundaryTime: 1_000,
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.importRows({
       holdingId: 'hold-1',
@@ -2056,12 +2065,12 @@ describe('transactionsRepo.importRows', () => {
   });
 
   it('ignores an OLDER closing balance and adds the net of new rows instead, when the rows themselves are AT/AFTER the boundary', async () => {
-    const { transaction, captured } = makeImportRowsTransaction({
+    const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
       holding: { ...baseHolding, balanceMinorUnits: -5_000 },
       account: unsyncedAccount,
       syncBoundaryTime: 5_000,
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.importRows({
       holdingId: 'hold-1',
@@ -2082,11 +2091,11 @@ describe('transactionsRepo.importRows', () => {
   });
 
   it('ignores a closing balance in the WRONG currency and adds the net of new rows instead', async () => {
-    const { transaction, captured } = makeImportRowsTransaction({
+    const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
       holding: { ...baseHolding, balanceMinorUnits: -5_000 },
       account: unsyncedAccount,
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.importRows({
       holdingId: 'hold-1',
@@ -2098,12 +2107,12 @@ describe('transactionsRepo.importRows', () => {
   });
 
   it('never moves a SYNCED holding’s balance, even with new rows and a fresh closing balance', async () => {
-    const { transaction, captured } = makeImportRowsTransaction({
+    const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
       holding: { ...baseHolding, metadata: { monobankId: 'mono-1' } },
       account: { institution: 'monobank' },
       syncBoundaryTime: 1,
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     const imported = await transactionsRepo.importRows({
       holdingId: 'hold-1',
@@ -2118,12 +2127,12 @@ describe('transactionsRepo.importRows', () => {
   });
 
   it('treats a holding with no prior transactions as always eligible for the closing balance', async () => {
-    const { transaction, captured } = makeImportRowsTransaction({
+    const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
       holding: { ...baseHolding, balanceMinorUnits: 0 },
       account: unsyncedAccount,
       syncBoundaryTime: null,
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.importRows({
       holdingId: 'hold-1',
@@ -2146,12 +2155,12 @@ describe('transactionsRepo.importRows', () => {
   // balance is as of precisely the holding's newest existing row) must still
   // win, not just a strictly-newer statement.
   it('uses the closing balance when it is exactly as of the newest existing transaction (the >= boundary)', async () => {
-    const { transaction, captured } = makeImportRowsTransaction({
+    const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
       holding: { ...baseHolding, balanceMinorUnits: -5_000 },
       account: unsyncedAccount,
       syncBoundaryTime: 2_000,
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.importRows({
       holdingId: 'hold-1',
@@ -2171,12 +2180,12 @@ describe('transactionsRepo.importRows', () => {
   // contributes 0 to the balance. See `importRows`'s own doc comment for
   // the full rule.
   it('treats a row dated BEFORE the boundary as history: it inserts but contributes 0 to the balance', async () => {
-    const { transaction, captured } = makeImportRowsTransaction({
+    const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
       holding: { ...baseHolding, balanceMinorUnits: -5_000 },
       account: unsyncedAccount,
       syncBoundaryTime: 5_000,
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     const imported = await transactionsRepo.importRows({
       holdingId: 'hold-1',
@@ -2192,12 +2201,12 @@ describe('transactionsRepo.importRows', () => {
   });
 
   it('moves the balance by only the rows AT/AFTER the boundary, when a batch mixes history and current rows', async () => {
-    const { transaction, captured } = makeImportRowsTransaction({
+    const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
       holding: { ...baseHolding, balanceMinorUnits: -5_000 },
       account: unsyncedAccount,
       syncBoundaryTime: 5_000,
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.importRows({
       holdingId: 'hold-1',
@@ -2214,12 +2223,12 @@ describe('transactionsRepo.importRows', () => {
   });
 
   it('adds the net of new rows dated AFTER the closing balance’s own as-of, on top of the closing balance itself', async () => {
-    const { transaction, captured } = makeImportRowsTransaction({
+    const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
       holding: { ...baseHolding, balanceMinorUnits: 0 },
       account: unsyncedAccount,
       syncBoundaryTime: null,
     });
-    mockTransaction = transaction;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.importRows({
       holdingId: 'hold-1',
@@ -2253,11 +2262,11 @@ describe('transactionsRepo.importRows', () => {
     const HAND_SET_TIME = 10_000;
 
     it('a typed-balance create leaves an OLDER statement’s balance untouched', async () => {
-      const { transaction, captured } = makeImportRowsTransaction({
+      const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
         holding: { ...baseHolding, balanceMinorUnits: 250_00, balanceSetAt: HAND_SET_TIME },
         account: unsyncedAccount,
       });
-      mockTransaction = transaction;
+      mockDatabaseTransaction = databaseTransaction;
 
       const imported = await transactionsRepo.importRows({
         holdingId: 'hold-1',
@@ -2276,11 +2285,11 @@ describe('transactionsRepo.importRows', () => {
     });
 
     it('a manual balance edit keeps its edited value when a later-imported statement is OLDER', async () => {
-      const { transaction, captured } = makeImportRowsTransaction({
+      const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
         holding: { ...baseHolding, balanceMinorUnits: 500_00, balanceSetAt: HAND_SET_TIME },
         account: unsyncedAccount,
       });
-      mockTransaction = transaction;
+      mockDatabaseTransaction = databaseTransaction;
 
       await transactionsRepo.importRows({
         holdingId: 'hold-1',
@@ -2298,11 +2307,11 @@ describe('transactionsRepo.importRows', () => {
     });
 
     it('a statement NEWER than the last hand-set time moves the balance by its own net', async () => {
-      const { transaction, captured } = makeImportRowsTransaction({
+      const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
         holding: { ...baseHolding, balanceMinorUnits: 500_00, balanceSetAt: HAND_SET_TIME },
         account: unsyncedAccount,
       });
-      mockTransaction = transaction;
+      mockDatabaseTransaction = databaseTransaction;
 
       await transactionsRepo.importRows({
         holdingId: 'hold-1',
@@ -2320,11 +2329,11 @@ describe('transactionsRepo.importRows', () => {
     });
 
     it('a statement NEWER than the last hand-set time, carrying its own closing balance, writes that closing balance', async () => {
-      const { transaction, captured } = makeImportRowsTransaction({
+      const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
         holding: { ...baseHolding, balanceMinorUnits: 500_00, balanceSetAt: HAND_SET_TIME },
         account: unsyncedAccount,
       });
-      mockTransaction = transaction;
+      mockDatabaseTransaction = databaseTransaction;
 
       await transactionsRepo.importRows({
         holdingId: 'hold-1',
@@ -2414,7 +2423,7 @@ const resolveOrderedSelect = (
   return options.store.map((row) => ({ source: row.source, externalId: row.externalId }));
 };
 
-const makeOrderedImportTransaction = (options: OrderedImportTransactionOptions) => {
+const makeOrderedImportDatabaseTransaction = (options: OrderedImportTransactionOptions) => {
   const resolveRows = (rows: unknown[]) =>
     Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
 
@@ -2478,7 +2487,7 @@ describe('transactionsRepo.importRows order independence (an applied closing bal
     const orderOneHolding = { ...baseHolding };
     const orderOneStore: OrderedStoreRow[] = [];
 
-    mockTransaction = makeOrderedImportTransaction({
+    mockDatabaseTransaction = makeOrderedImportDatabaseTransaction({
       holding: orderOneHolding,
       account: unsyncedAccount,
       store: orderOneStore,
@@ -2488,7 +2497,7 @@ describe('transactionsRepo.importRows order independence (an applied closing bal
       rows: mayRows,
       closingBalance: mayClosing,
     });
-    mockTransaction = makeOrderedImportTransaction({
+    mockDatabaseTransaction = makeOrderedImportDatabaseTransaction({
       holding: orderOneHolding,
       account: unsyncedAccount,
       store: orderOneStore,
@@ -2498,13 +2507,13 @@ describe('transactionsRepo.importRows order independence (an applied closing bal
     const orderTwoHolding = { ...baseHolding };
     const orderTwoStore: OrderedStoreRow[] = [];
 
-    mockTransaction = makeOrderedImportTransaction({
+    mockDatabaseTransaction = makeOrderedImportDatabaseTransaction({
       holding: orderTwoHolding,
       account: unsyncedAccount,
       store: orderTwoStore,
     });
     await transactionsRepo.importRows({ holdingId: 'hold-1', rows: aprilRows });
-    mockTransaction = makeOrderedImportTransaction({
+    mockDatabaseTransaction = makeOrderedImportDatabaseTransaction({
       holding: orderTwoHolding,
       account: unsyncedAccount,
       store: orderTwoStore,
@@ -2548,13 +2557,13 @@ describe('transactionsRepo.importRows boundary sources (R1 ruling b)', () => {
     const orderOneHolding = { ...baseHolding };
     const orderOneStore: OrderedStoreRow[] = [];
 
-    mockTransaction = makeOrderedImportTransaction({
+    mockDatabaseTransaction = makeOrderedImportDatabaseTransaction({
       holding: orderOneHolding,
       account: unsyncedAccount,
       store: orderOneStore,
     });
     await transactionsRepo.importRows({ holdingId: 'hold-1', rows: mayRows });
-    mockTransaction = makeOrderedImportTransaction({
+    mockDatabaseTransaction = makeOrderedImportDatabaseTransaction({
       holding: orderOneHolding,
       account: unsyncedAccount,
       store: orderOneStore,
@@ -2564,13 +2573,13 @@ describe('transactionsRepo.importRows boundary sources (R1 ruling b)', () => {
     const orderTwoHolding = { ...baseHolding };
     const orderTwoStore: OrderedStoreRow[] = [];
 
-    mockTransaction = makeOrderedImportTransaction({
+    mockDatabaseTransaction = makeOrderedImportDatabaseTransaction({
       holding: orderTwoHolding,
       account: unsyncedAccount,
       store: orderTwoStore,
     });
     await transactionsRepo.importRows({ holdingId: 'hold-1', rows: aprilRows });
-    mockTransaction = makeOrderedImportTransaction({
+    mockDatabaseTransaction = makeOrderedImportDatabaseTransaction({
       holding: orderTwoHolding,
       account: unsyncedAccount,
       store: orderTwoStore,
@@ -2596,7 +2605,11 @@ describe('transactionsRepo.importRows boundary sources (R1 ruling b)', () => {
       { time: HAND_SET_TIME + 5_000, source: 'import', externalId: 'later-import' },
     ];
 
-    mockTransaction = makeOrderedImportTransaction({ holding, account: unsyncedAccount, store });
+    mockDatabaseTransaction = makeOrderedImportDatabaseTransaction({
+      holding,
+      account: unsyncedAccount,
+      store,
+    });
     const imported = await transactionsRepo.importRows({
       holdingId: 'hold-1',
       rows: [
@@ -2617,7 +2630,11 @@ describe('transactionsRepo.importRows boundary sources (R1 ruling b)', () => {
     const holding = { ...baseHolding };
     const store: OrderedStoreRow[] = [];
 
-    mockTransaction = makeOrderedImportTransaction({ holding, account: unsyncedAccount, store });
+    mockDatabaseTransaction = makeOrderedImportDatabaseTransaction({
+      holding,
+      account: unsyncedAccount,
+      store,
+    });
     await transactionsRepo.importRows({
       holdingId: 'hold-1',
       rows: [],
@@ -2626,7 +2643,11 @@ describe('transactionsRepo.importRows boundary sources (R1 ruling b)', () => {
 
     expect(holding.balanceMinorUnits).toBe(100_000);
 
-    mockTransaction = makeOrderedImportTransaction({ holding, account: unsyncedAccount, store });
+    mockDatabaseTransaction = makeOrderedImportDatabaseTransaction({
+      holding,
+      account: unsyncedAccount,
+      store,
+    });
     await transactionsRepo.importRows({
       holdingId: 'hold-1',
       rows: [{ holdingId: 'hold-1', amountMinorUnits: -2_000, time: APRIL_TIME, source: 'import' }],
@@ -2655,7 +2676,11 @@ describe('transactionsRepo.importRows boundary sources (D-I1: a disconnected, fo
     const holding = { ...baseHolding, balanceMinorUnits: 500_000 };
     const store: OrderedStoreRow[] = [{ time: SEP_20, source: 'monobank', externalId: 'mono-1' }];
 
-    mockTransaction = makeOrderedImportTransaction({ holding, account: unsyncedAccount, store });
+    mockDatabaseTransaction = makeOrderedImportDatabaseTransaction({
+      holding,
+      account: unsyncedAccount,
+      store,
+    });
     const imported = await transactionsRepo.importRows({ holdingId: 'hold-1', rows: julyRows });
 
     expect(imported).toBe(1);
@@ -2667,7 +2692,11 @@ describe('transactionsRepo.importRows boundary sources (D-I1: a disconnected, fo
     const holding = { ...baseHolding, balanceMinorUnits: 500_000 };
     const store: OrderedStoreRow[] = [{ time: SEP_20, source: 'monobank', externalId: 'mono-1' }];
 
-    mockTransaction = makeOrderedImportTransaction({ holding, account: unsyncedAccount, store });
+    mockDatabaseTransaction = makeOrderedImportDatabaseTransaction({
+      holding,
+      account: unsyncedAccount,
+      store,
+    });
     const imported = await transactionsRepo.importRows({
       holdingId: 'hold-1',
       rows: julyRows,
@@ -2702,7 +2731,11 @@ describe('transactionsRepo.importRows boundary sources (D-I2: only a TRUE hand-s
     const holding = { ...baseHolding };
     const store: OrderedStoreRow[] = [];
 
-    mockTransaction = makeOrderedImportTransaction({ holding, account: unsyncedAccount, store });
+    mockDatabaseTransaction = makeOrderedImportDatabaseTransaction({
+      holding,
+      account: unsyncedAccount,
+      store,
+    });
     await transactionsRepo.importRows({
       holdingId: 'hold-1',
       rows: [{ holdingId: 'hold-1', amountMinorUnits: -1_000, time: MAY_15, source: 'import' }],
@@ -2714,7 +2747,11 @@ describe('transactionsRepo.importRows boundary sources (D-I2: only a TRUE hand-s
     holding.balanceMinorUnits -= 500;
     store.push({ time: JUN_5, source: 'manual', externalId: null });
 
-    mockTransaction = makeOrderedImportTransaction({ holding, account: unsyncedAccount, store });
+    mockDatabaseTransaction = makeOrderedImportDatabaseTransaction({
+      holding,
+      account: unsyncedAccount,
+      store,
+    });
     await transactionsRepo.importRows({
       holdingId: 'hold-1',
       rows: [{ holdingId: 'hold-1', amountMinorUnits: -2_000, time: APRIL_15, source: 'import' }],
@@ -2755,7 +2792,7 @@ describe('createCashAccount + importRows integration (N1)', () => {
    * (`.where().limit(1)` reads, the sync-boundary aggregate, the dedup
    * upsert, the balance update) against one shared `store` — the two real
    * repos see each other's writes, the way two real app actions would. */
-  const makeIntegrationTransaction = (store: IntegrationStore) => {
+  const makeIntegrationDatabaseTransaction = (store: IntegrationStore) => {
     const resolveRows = (rows: unknown[]) =>
       Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
 
@@ -2819,7 +2856,7 @@ describe('createCashAccount + importRows integration (N1)', () => {
   it('a cash account created with a typed starting balance keeps it after importing an OLDER statement', async () => {
     const store: IntegrationStore = { accounts: [], holdings: [], transactions: [] };
 
-    mockTransaction = makeIntegrationTransaction(store);
+    mockDatabaseTransaction = makeIntegrationDatabaseTransaction(store);
     await accountsRepo.createCashAccount({
       name: 'Wallet',
       currency: 'UAH',
@@ -2828,7 +2865,7 @@ describe('createCashAccount + importRows integration (N1)', () => {
 
     const holdingId = store.holdings[0].id as string;
 
-    mockTransaction = makeIntegrationTransaction(store);
+    mockDatabaseTransaction = makeIntegrationDatabaseTransaction(store);
     const imported = await transactionsRepo.importRows({
       holdingId,
       rows: [

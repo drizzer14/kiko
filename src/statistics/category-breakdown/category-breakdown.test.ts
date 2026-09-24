@@ -19,7 +19,7 @@ const DISPLAY = buildCategoryDisplayMap([
   { key: 'other', title: 'Other', icon: 'square.grid.2x2' },
 ]);
 
-const transaction = (over: Partial<BreakdownTransaction>): BreakdownTransaction => ({
+const makeTransaction = (over: Partial<BreakdownTransaction>): BreakdownTransaction => ({
   id: 'tx',
   category: 'groceries',
   amountMinorUnits: -10_00,
@@ -36,9 +36,9 @@ describe('buildCategoryBreakdown', () => {
   it('sums the magnitude of expense (negative) transactions per category, in base minor units', () => {
     const slices = buildCategoryBreakdown({
       transactions: [
-        transaction({ category: 'groceries', amountMinorUnits: -30_00 }),
-        transaction({ category: 'groceries', amountMinorUnits: -20_00 }),
-        transaction({ category: 'transport', amountMinorUnits: -40_00 }),
+        makeTransaction({ category: 'groceries', amountMinorUnits: -30_00 }),
+        makeTransaction({ category: 'groceries', amountMinorUnits: -20_00 }),
+        makeTransaction({ category: 'transport', amountMinorUnits: -40_00 }),
       ],
       categoryDisplay: DISPLAY,
       rateTable: {},
@@ -54,14 +54,14 @@ describe('buildCategoryBreakdown', () => {
   it("nets a split payment's linked change-returns into its category (not overstated by the change)", () => {
     const slices = buildCategoryBreakdown({
       transactions: [
-        transaction({
+        makeTransaction({
           id: 'pay',
           category: 'groceries',
           amountMinorUnits: -212_00,
           changeGroupId: 'grp-1',
         }),
-        transaction({ id: 'r1', category: null, amountMinorUnits: 20, changeGroupId: 'grp-1' }),
-        transaction({ id: 'r2', category: null, amountMinorUnits: 8, changeGroupId: 'grp-1' }),
+        makeTransaction({ id: 'r1', category: null, amountMinorUnits: 20, changeGroupId: 'grp-1' }),
+        makeTransaction({ id: 'r2', category: null, amountMinorUnits: 8, changeGroupId: 'grp-1' }),
       ],
       categoryDisplay: DISPLAY,
       rateTable: {},
@@ -79,9 +79,9 @@ describe('buildCategoryBreakdown', () => {
   it('excludes income (positive) transactions entirely', () => {
     const slices = buildCategoryBreakdown({
       transactions: [
-        transaction({ category: 'salary', amountMinorUnits: 100_00 }),
-        transaction({ category: 'groceries', amountMinorUnits: -25_00 }),
-        transaction({ category: 'groceries', amountMinorUnits: 5_00 }),
+        makeTransaction({ category: 'salary', amountMinorUnits: 100_00 }),
+        makeTransaction({ category: 'groceries', amountMinorUnits: -25_00 }),
+        makeTransaction({ category: 'groceries', amountMinorUnits: 5_00 }),
       ],
       categoryDisplay: DISPLAY,
       rateTable: {},
@@ -96,8 +96,8 @@ describe('buildCategoryBreakdown', () => {
   it('derives shares over the visible slices that sum to ~1', () => {
     const slices = buildCategoryBreakdown({
       transactions: [
-        transaction({ category: 'groceries', amountMinorUnits: -75_00 }),
-        transaction({ category: 'transport', amountMinorUnits: -25_00 }),
+        makeTransaction({ category: 'groceries', amountMinorUnits: -75_00 }),
+        makeTransaction({ category: 'transport', amountMinorUnits: -25_00 }),
       ],
       categoryDisplay: DISPLAY,
       rateTable: {},
@@ -113,7 +113,7 @@ describe('buildCategoryBreakdown', () => {
   it('converts a foreign-currency expense into the base currency at the rate table', () => {
     const slices = buildCategoryBreakdown({
       transactions: [
-        transaction({ category: 'groceries', amountMinorUnits: -10_00, currency: 'USD' }),
+        makeTransaction({ category: 'groceries', amountMinorUnits: -10_00, currency: 'USD' }),
       ],
       categoryDisplay: DISPLAY,
       rateTable: { 'USD:UAH': 40 },
@@ -128,8 +128,8 @@ describe('buildCategoryBreakdown', () => {
   it('silently drops an expense whose currency has no rate to the base', () => {
     const slices = buildCategoryBreakdown({
       transactions: [
-        transaction({ category: 'groceries', amountMinorUnits: -10_00, currency: 'EUR' }),
-        transaction({ category: 'transport', amountMinorUnits: -20_00, currency: 'UAH' }),
+        makeTransaction({ category: 'groceries', amountMinorUnits: -10_00, currency: 'EUR' }),
+        makeTransaction({ category: 'transport', amountMinorUnits: -20_00, currency: 'UAH' }),
       ],
       categoryDisplay: DISPLAY,
       rateTable: {},
@@ -143,8 +143,8 @@ describe('buildCategoryBreakdown', () => {
   it('folds null-category spending into the default category (no separate uncategorized bucket)', () => {
     const slices = buildCategoryBreakdown({
       transactions: [
-        transaction({ category: null, amountMinorUnits: -10_00 }),
-        transaction({ category: null, amountMinorUnits: -5_00 }),
+        makeTransaction({ category: null, amountMinorUnits: -10_00 }),
+        makeTransaction({ category: null, amountMinorUnits: -5_00 }),
       ],
       categoryDisplay: DISPLAY,
       rateTable: {},
@@ -161,8 +161,8 @@ describe('buildCategoryBreakdown', () => {
   it('merges null-category spending into the SAME slice as explicit default-category spending', () => {
     const slices = buildCategoryBreakdown({
       transactions: [
-        transaction({ category: 'other', amountMinorUnits: -10_00 }),
-        transaction({ category: null, amountMinorUnits: -5_00 }),
+        makeTransaction({ category: 'other', amountMinorUnits: -10_00 }),
+        makeTransaction({ category: null, amountMinorUnits: -5_00 }),
       ],
       categoryDisplay: DISPLAY,
       rateTable: {},
@@ -178,8 +178,8 @@ describe('buildCategoryBreakdown', () => {
   it('folds a category absent from the display map into the default slice', () => {
     const slices = buildCategoryBreakdown({
       transactions: [
-        transaction({ id: 'a', category: 'Groceries', amountMinorUnits: -500_00 }),
-        transaction({ id: 'b', category: 'other', amountMinorUnits: -100_00 }),
+        makeTransaction({ id: 'a', category: 'Groceries', amountMinorUnits: -500_00 }),
+        makeTransaction({ id: 'b', category: 'other', amountMinorUnits: -100_00 }),
       ],
       // 'Groceries' lowercases to 'groceries', which is NOT in this map — the
       // same fold `resolveCategoryKey` applies for Home's filter chips, so an
@@ -201,7 +201,7 @@ describe('buildCategoryBreakdown', () => {
 
   it('folds null spending into the CONFIGURED default key, not a hardcoded one', () => {
     const slices = buildCategoryBreakdown({
-      transactions: [transaction({ category: null, amountMinorUnits: -10_00 })],
+      transactions: [makeTransaction({ category: null, amountMinorUnits: -10_00 })],
       categoryDisplay: DISPLAY,
       rateTable: {},
       baseCurrency: 'UAH',
@@ -214,7 +214,7 @@ describe('buildCategoryBreakdown', () => {
 
   it('resolves each slice title and icon through the display map', () => {
     const slices = buildCategoryBreakdown({
-      transactions: [transaction({ category: 'transport', amountMinorUnits: -10_00 })],
+      transactions: [makeTransaction({ category: 'transport', amountMinorUnits: -10_00 })],
       categoryDisplay: DISPLAY,
       rateTable: {},
       baseCurrency: 'UAH',
@@ -228,8 +228,8 @@ describe('buildCategoryBreakdown', () => {
   it('excludes the categories named in excludedCategories and reshares the remainder', () => {
     const input = {
       transactions: [
-        transaction({ category: 'groceries', amountMinorUnits: -75_00 }),
-        transaction({ category: 'transport', amountMinorUnits: -25_00 }),
+        makeTransaction({ category: 'groceries', amountMinorUnits: -75_00 }),
+        makeTransaction({ category: 'transport', amountMinorUnits: -25_00 }),
       ],
       categoryDisplay: DISPLAY,
       rateTable: {},
@@ -250,8 +250,8 @@ describe('buildCategoryBreakdown', () => {
   it('drops the transactions whose id is in excludedTransactionIds and reshares the remainder', () => {
     const slices = buildCategoryBreakdown({
       transactions: [
-        transaction({ id: 'transfer-debit', category: 'groceries', amountMinorUnits: -75_00 }),
-        transaction({ id: 'kept', category: 'transport', amountMinorUnits: -25_00 }),
+        makeTransaction({ id: 'transfer-debit', category: 'groceries', amountMinorUnits: -75_00 }),
+        makeTransaction({ id: 'kept', category: 'transport', amountMinorUnits: -25_00 }),
       ],
       categoryDisplay: DISPLAY,
       rateTable: {},
@@ -273,8 +273,8 @@ describe('buildCategoryBreakdown', () => {
 
     const slices = buildCategoryBreakdown({
       transactions: [
-        transaction({ category: 'groceries', amountMinorUnits: -10_00 }),
-        transaction({ category: 'transport', amountMinorUnits: -10_00 }),
+        makeTransaction({ category: 'groceries', amountMinorUnits: -10_00 }),
+        makeTransaction({ category: 'transport', amountMinorUnits: -10_00 }),
       ],
       categoryDisplay: colored,
       rateTable: {},
@@ -290,8 +290,8 @@ describe('buildCategoryBreakdown', () => {
   it('colors each slice from the shared chart palette, stably per category key', () => {
     const slices = buildCategoryBreakdown({
       transactions: [
-        transaction({ category: 'groceries', amountMinorUnits: -10_00 }),
-        transaction({ category: 'transport', amountMinorUnits: -10_00 }),
+        makeTransaction({ category: 'groceries', amountMinorUnits: -10_00 }),
+        makeTransaction({ category: 'transport', amountMinorUnits: -10_00 }),
       ],
       categoryDisplay: DISPLAY,
       rateTable: {},

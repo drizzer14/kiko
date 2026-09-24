@@ -5,12 +5,12 @@
 // transaction handle that drives the REAL `transactionsRepo.addManyDedup`
 // upsert logic — the real (source, external_id) dedup, without a live
 // database.
-let mockTransaction: unknown;
+let mockDatabaseTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
   return {
     ...actual,
-    write: (work: (db: unknown) => unknown) => work(mockTransaction),
+    write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
   };
 });
 
@@ -124,7 +124,7 @@ const resolveParitySelect = (
  * deliberately NOT shared with that file (same reasoning as
  * `transactions.repo.test.ts`'s `makeImportRowsTx` doc comment): this suite
  * only needs a single fixed holding/account pair, never a per-test override. */
-const makeFakeTransaction = (store: { transactions: StoredRow[] }) => {
+const makeFakeDatabaseTransaction = (store: { transactions: StoredRow[] }) => {
   let sequence = 0;
   const nextId = (): string => `row-${++sequence}`;
   const resolveRows = (rows: unknown[]) =>
@@ -157,11 +157,11 @@ const makeFakeTransaction = (store: { transactions: StoredRow[] }) => {
 
 /** The 4 fields dedup/parity actually cares about — same field set Review
  * Focus 2 names. */
-const pick = (transaction: ParsedTransaction) => ({
-  currency: transaction.currency,
-  amountMinorUnits: transaction.amountMinorUnits,
-  timeSeconds: transaction.timeSeconds,
-  description: transaction.description,
+const pick = (databaseTransaction: ParsedTransaction) => ({
+  currency: databaseTransaction.currency,
+  amountMinorUnits: databaseTransaction.amountMinorUnits,
+  timeSeconds: databaseTransaction.timeSeconds,
+  description: databaseTransaction.description,
 });
 
 beforeEach(() => {
@@ -195,11 +195,11 @@ describe('column-mapping parity (Monobank CSV)', () => {
     const { statement } = applyColumnMapping(rows, mapping);
     const dedicated = monobankCsvFormat.parse(monobankFixtureInput);
 
-    const mappedKeys = statement.transactions.map((transaction) =>
-      computeDedupKey('holding-1', transaction, 0),
+    const mappedKeys = statement.transactions.map((databaseTransaction) =>
+      computeDedupKey('holding-1', databaseTransaction, 0),
     );
-    const dedicatedKeys = dedicated.transactions.map((transaction) =>
-      computeDedupKey('holding-1', transaction, 0),
+    const dedicatedKeys = dedicated.transactions.map((databaseTransaction) =>
+      computeDedupKey('holding-1', databaseTransaction, 0),
     );
 
     expect(mappedKeys).toEqual(dedicatedKeys);
@@ -207,7 +207,7 @@ describe('column-mapping parity (Monobank CSV)', () => {
 
   it('imports 0 new rows when the mapped result is re-imported after the dedicated import (real dedup)', async () => {
     const store: { transactions: StoredRow[] } = { transactions: [] };
-    mockTransaction = makeFakeTransaction(store);
+    mockDatabaseTransaction = makeFakeDatabaseTransaction(store);
 
     const first = await importStatement(monobankFixtureInput, 'holding-1');
 

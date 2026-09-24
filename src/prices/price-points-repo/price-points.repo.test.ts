@@ -4,12 +4,12 @@
 // (instrument, day) conflict target replaces an existing row in place rather
 // than inserting a duplicate — mirrors
 // `src/rates/rate-history-repo/rate-history.repo.test.ts`.
-let mockTransaction: unknown;
+let mockDatabaseTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
   return {
     ...actual,
-    write: (work: (db: unknown) => unknown) => work(mockTransaction),
+    write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
   };
 });
 
@@ -19,7 +19,7 @@ import { pricePointsRepo } from './price-points.repo';
 
 type Row = Pick<PricePointRow, 'instrument' | 'day' | 'price' | 'currency' | 'source'>;
 
-const makeUpsertTransaction = (store: Row[]): unknown => ({
+const makeUpsertDatabaseTransaction = (store: Row[]): unknown => ({
   insert: () => ({
     values: (rows: Row[]) => ({
       onConflictDoUpdate: () => {
@@ -50,7 +50,7 @@ describe('pricePointsRepo', () => {
 
   it('overwrites price and source on a repeat (instrument, day) upsert', async () => {
     const store: Row[] = [];
-    mockTransaction = makeUpsertTransaction(store);
+    mockDatabaseTransaction = makeUpsertDatabaseTransaction(store);
 
     await pricePointsRepo.upsertMany([
       { instrument: 'share:AAPL', day: day1, price: '190.00', currency: 'USD', source: 'eodhd' },
@@ -66,7 +66,7 @@ describe('pricePointsRepo', () => {
 
   it('keeps a distinct row per (instrument, day)', async () => {
     const store: Row[] = [];
-    mockTransaction = makeUpsertTransaction(store);
+    mockDatabaseTransaction = makeUpsertDatabaseTransaction(store);
 
     await pricePointsRepo.upsertMany([
       { instrument: 'share:AAPL', day: day1, price: '190.00', currency: 'USD', source: 'eodhd' },
@@ -79,8 +79,8 @@ describe('pricePointsRepo', () => {
   it('chunks a large batch into insert statements under the SQLite variable limit', async () => {
     const store: Row[] = [];
     const chunkSizes: number[] = [];
-    const upsertStore = makeUpsertTransaction(store);
-    mockTransaction = {
+    const upsertStore = makeUpsertDatabaseTransaction(store);
+    mockDatabaseTransaction = {
       insert: () => ({
         values: (rows: Row[]) => {
           chunkSizes.push(rows.length);
@@ -111,7 +111,7 @@ describe('pricePointsRepo', () => {
 
   it('issues no insert for an empty batch', async () => {
     let insertCalled = false;
-    mockTransaction = {
+    mockDatabaseTransaction = {
       insert: () => {
         insertCalled = true;
         return { values: () => ({ onConflictDoUpdate: () => Promise.resolve() }) };
@@ -125,7 +125,7 @@ describe('pricePointsRepo', () => {
 
   it('deletes every row for one instrument', async () => {
     const deleted: { instrument: string }[] = [];
-    mockTransaction = {
+    mockDatabaseTransaction = {
       delete: () => ({
         where: () => {
           deleted.push({ instrument: 'called' });

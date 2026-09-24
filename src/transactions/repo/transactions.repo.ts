@@ -1,7 +1,7 @@
 import { match } from 'ts-pattern';
 import type { Repository } from '@kiko/db/repository';
 import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
-import { appendDepositContributionTransaction } from '@kiko/holdings/repo';
+import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/repo';
 
 import {
   accounts,
@@ -91,7 +91,7 @@ type ManualWithReturnsInput = {
 // pick to every OTHER same-name row, not whether this row itself is
 // categorised.
 const recordManualTransaction = async (
-  transaction: typeof database,
+  databaseTransaction: typeof database,
   {
     holdingId,
     amountMinorUnits,
@@ -102,7 +102,7 @@ const recordManualTransaction = async (
     changeGroupId,
   }: ManualTransaction,
 ): Promise<void> => {
-  await transaction.insert(transactions).values({
+  await databaseTransaction.insert(transactions).values({
     id: id(),
     holdingId,
     amountMinorUnits,
@@ -114,14 +114,14 @@ const recordManualTransaction = async (
     source: 'manual',
   });
 
-  const current = await transaction
+  const current = await databaseTransaction
     .select({ balanceMinorUnits: holdings.balanceMinorUnits })
     .from(holdings)
     .where(eq(holdings.id, holdingId))
     .limit(1);
   const base = current.at(0)?.balanceMinorUnits ?? 0;
 
-  await transaction
+  await databaseTransaction
     .update(holdings)
     .set({ balanceMinorUnits: base + amountMinorUnits })
     .where(eq(holdings.id, holdingId));
@@ -137,10 +137,10 @@ const recordManualTransaction = async (
 // the residual documented on `transactions.exchangeCounterpartHoldingId` in
 // `db/schema.ts`).
 const markExistingLegTransaction = async (
-  transaction: typeof database,
+  databaseTransaction: typeof database,
   { existingTransactionId, counterpartHoldingId }: ExchangeCounterpartInput,
 ): Promise<void> => {
-  const existingRows = await transaction
+  const existingRows = await databaseTransaction
     .select({ source: transactions.source })
     .from(transactions)
     .where(eq(transactions.id, existingTransactionId))
@@ -150,7 +150,7 @@ const markExistingLegTransaction = async (
     return;
   }
 
-  await transaction
+  await databaseTransaction
     .update(transactions)
     .set({ exchangeCounterpartHoldingId: counterpartHoldingId })
     .where(eq(transactions.id, existingTransactionId));
@@ -207,7 +207,7 @@ const IN_CLAUSE_CHUNK_SIZE = 32_000;
  * count.
  */
 const partitionNewRows = async (
-  transaction: typeof database,
+  databaseTransaction: typeof database,
   inputs: NewTransaction[],
 ): Promise<NewTransaction[]> => {
   const externalIds = inputs
@@ -229,7 +229,7 @@ const partitionNewRows = async (
   // sync or statement import can carry tens of thousands) — see
   // `IN_CLAUSE_CHUNK_SIZE` above.
   for (const externalIdChunk of chunkRows(externalIds, IN_CLAUSE_CHUNK_SIZE)) {
-    const existing = await transaction
+    const existing = await databaseTransaction
       .select({ source: transactions.source, externalId: transactions.externalId })
       .from(transactions)
       .where(
@@ -259,8 +259,8 @@ const partitionNewRows = async (
  * genuinely NEW — a refreshed (already-imported) row is excluded; a caller
  * that only needs the count uses `.length`.
  */
-const insertDedupRowsTransaction = async (
-  transaction: typeof database,
+const insertDedupRowsDatabaseTransaction = async (
+  databaseTransaction: typeof database,
   inputs: NewTransaction[],
 ): Promise<NewTransaction[]> => {
   if (inputs.length === 0) {
@@ -279,7 +279,7 @@ const insertDedupRowsTransaction = async (
   const rules: { normalizedName: string; category: string }[] = [];
   for (const keyChunk of chunkRows(keys, IN_CLAUSE_CHUNK_SIZE)) {
     rules.push(
-      ...(await transaction
+      ...(await databaseTransaction
         .select()
         .from(categoryOverrides)
         .where(inArray(categoryOverrides.normalizedName, keyChunk))),
@@ -291,7 +291,7 @@ const insertDedupRowsTransaction = async (
 
     return override ? { ...input, category: override } : input;
   });
-  const newRows = await partitionNewRows(transaction, batch);
+  const newRows = await partitionNewRows(databaseTransaction, batch);
   // Upsert on the `(source, external_id)` unique index: a re-fetched
   // Monobank item is REFRESHED, not dropped. A `hold: true` authorization
   // imports at its PROVISIONAL amount and re-syncs at the settled one, which
@@ -319,7 +319,7 @@ const insertDedupRowsTransaction = async (
   // old single-statement insert.
   const rows = withOverrides.map((input) => ({ id: id(), ...input }));
   for (const part of chunkForTable(transactions, rows)) {
-    await transaction
+    await databaseTransaction
       .insert(transactions)
       .values(part)
       .onConflictDoUpdate({
@@ -494,7 +494,9 @@ export const transactionsRepo = {
       .orderBy(desc(transactions.time))
       .limit(1),
   add: (input: NewTransaction) =>
-    write((transaction) => transaction.insert(transactions).values({ id: id(), ...input })),
+    write((databaseTransaction) =>
+      databaseTransaction.insert(transactions).values({ id: id(), ...input }),
+    ),
   /**
    * Record a manual transaction and adjust its holding's balance in ONE
    * op-sqlite transaction, so the ledger and the balance can never desync
@@ -503,7 +505,7 @@ export const transactionsRepo = {
    * writes cannot clobber each other with a stale read-modify-write.
    */
   recordManual: (input: ManualTransaction) =>
-    write((transaction) => recordManualTransaction(transaction, input)),
+    write((databaseTransaction) => recordManualTransaction(databaseTransaction, input)),
   /**
    * Record an Exchange as two INDEPENDENT ledger rows in ONE transaction, tied
    * by the structural `exchangeCounterpartHoldingId` marker — each leg stores
@@ -517,12 +519,12 @@ export const transactionsRepo = {
    * render snapshot, exactly as `recordManual` does.
    */
   recordExchange: (input: ExchangeInput) =>
-    write(async (transaction) => {
+    write(async (databaseTransaction) => {
       if (input.destinationHoldingId === input.sourceHoldingId) {
         throw new Error('recordExchange: destination equals source');
       }
 
-      await recordManualTransaction(transaction, {
+      await recordManualTransaction(databaseTransaction, {
         holdingId: input.sourceHoldingId,
         amountMinorUnits: -input.valueOutMinorUnits,
         time: input.time,
@@ -536,7 +538,7 @@ export const transactionsRepo = {
 
       await match(exchangeReceivePath(input.destinationType))
         .with('plain', () =>
-          recordManualTransaction(transaction, {
+          recordManualTransaction(databaseTransaction, {
             holdingId: input.destinationHoldingId,
             amountMinorUnits: input.valueInMinorUnits,
             time: input.time,
@@ -549,8 +551,8 @@ export const transactionsRepo = {
             date: input.time,
           };
 
-          return appendDepositContributionTransaction(
-            transaction,
+          return appendDepositContributionDatabaseTransaction(
+            databaseTransaction,
             input.destinationHoldingId,
             contribution,
           );
@@ -578,12 +580,12 @@ export const transactionsRepo = {
    * EXISTING row's holding), and the label is resolved at render time from it.
    * The EXISTING row is marked too, pointing back at the new leg's holding —
    * both halves of one movement leave the spending pie together — unless the
-   * bank owns it (see `markExistingLegTx`).
+   * bank owns it (see `markExistingLegTransaction`).
    * Balances are read INSIDE the transaction, never from a render snapshot,
    * exactly as `recordManual` does.
    */
   recordExchangeCounterpart: (input: ExchangeCounterpartInput) =>
-    write(async (transaction) => {
+    write(async (databaseTransaction) => {
       if (
         input.direction === 'record-source' &&
         exchangeReceivePath(input.counterpartType) !== 'plain'
@@ -595,7 +597,7 @@ export const transactionsRepo = {
 
       await match(input.direction)
         .with('record-source', () =>
-          recordManualTransaction(transaction, {
+          recordManualTransaction(databaseTransaction, {
             holdingId: input.counterpartHoldingId,
             amountMinorUnits: -input.amountMinorUnits,
             time: input.time,
@@ -605,7 +607,7 @@ export const transactionsRepo = {
         .with('record-destination', () =>
           match(exchangeReceivePath(input.counterpartType))
             .with('plain', () =>
-              recordManualTransaction(transaction, {
+              recordManualTransaction(databaseTransaction, {
                 holdingId: input.counterpartHoldingId,
                 amountMinorUnits: input.amountMinorUnits,
                 time: input.time,
@@ -618,8 +620,8 @@ export const transactionsRepo = {
                 date: input.time,
               };
 
-              return appendDepositContributionTransaction(
-                transaction,
+              return appendDepositContributionDatabaseTransaction(
+                databaseTransaction,
                 input.counterpartHoldingId,
                 contribution,
               );
@@ -633,7 +635,7 @@ export const transactionsRepo = {
         )
         .exhaustive();
 
-      await markExistingLegTransaction(transaction, input);
+      await markExistingLegTransaction(databaseTransaction, input);
     }),
   /**
    * Record a manual payment and N linked change-returns as N+1 INDEPENDENT
@@ -648,13 +650,13 @@ export const transactionsRepo = {
    * does.
    */
   recordManualWithReturns: (input: ManualWithReturnsInput) =>
-    write(async (transaction) => {
+    write(async (databaseTransaction) => {
       const changeGroupId = id();
 
-      await recordManualTransaction(transaction, { ...input.payment, changeGroupId });
+      await recordManualTransaction(databaseTransaction, { ...input.payment, changeGroupId });
 
       for (const change of input.returns) {
-        await recordManualTransaction(transaction, {
+        await recordManualTransaction(databaseTransaction, {
           holdingId: change.holdingId,
           amountMinorUnits: change.amountMinorUnits,
           time: input.payment.time,
@@ -673,8 +675,8 @@ export const transactionsRepo = {
    * a missing id is a no-op rather than an error.
    */
   update: ({ transactionId, amountMinorUnits, time, description }: TransactionEdit) =>
-    write(async (transaction) => {
-      const existingRows = await transaction
+    write(async (databaseTransaction) => {
+      const existingRows = await databaseTransaction
         .select({
           holdingId: transactions.holdingId,
           amountMinorUnits: transactions.amountMinorUnits,
@@ -687,7 +689,7 @@ export const transactionsRepo = {
       if (existing?.source !== 'manual') {
         return;
       }
-      await transaction
+      await databaseTransaction
         .update(transactions)
         .set({ amountMinorUnits, time, description: description ?? '' })
         .where(eq(transactions.id, transactionId));
@@ -695,13 +697,13 @@ export const transactionsRepo = {
       if (delta === 0) {
         return;
       }
-      const current = await transaction
+      const current = await databaseTransaction
         .select({ balanceMinorUnits: holdings.balanceMinorUnits })
         .from(holdings)
         .where(eq(holdings.id, existing.holdingId))
         .limit(1);
       const base = current.at(0)?.balanceMinorUnits ?? 0;
-      await transaction
+      await databaseTransaction
         .update(holdings)
         .set({ balanceMinorUnits: base + delta })
         .where(eq(holdings.id, existing.holdingId));
@@ -716,8 +718,8 @@ export const transactionsRepo = {
    * a typed error; a missing id is a no-op rather than an error.
    */
   remove: (transactionId: string) =>
-    write(async (transaction) => {
-      const rows = await transaction
+    write(async (databaseTransaction) => {
+      const rows = await databaseTransaction
         .select()
         .from(transactions)
         .where(eq(transactions.id, transactionId));
@@ -728,14 +730,14 @@ export const transactionsRepo = {
       if (isSyncedTransaction(row)) {
         throw new Error('transactionsRepo.remove: cannot delete a synced transaction');
       }
-      await transaction.delete(transactions).where(eq(transactions.id, transactionId));
-      const holdingRows = await transaction
+      await databaseTransaction.delete(transactions).where(eq(transactions.id, transactionId));
+      const holdingRows = await databaseTransaction
         .select()
         .from(holdings)
         .where(eq(holdings.id, row.holdingId));
       const holding = holdingRows.at(0);
       if (holding) {
-        await transaction
+        await databaseTransaction
           .update(holdings)
           .set({ balanceMinorUnits: holding.balanceMinorUnits - row.amountMinorUnits })
           .where(eq(holdings.id, row.holdingId));
@@ -758,8 +760,11 @@ export const transactionsRepo = {
    * names only the bank-owned columns and deliberately excludes `category`.
    */
   setCategory: ({ transactionId, category }: { transactionId: string; category: string }) =>
-    write((transaction) =>
-      transaction.update(transactions).set({ category }).where(eq(transactions.id, transactionId)),
+    write((databaseTransaction) =>
+      databaseTransaction
+        .update(transactions)
+        .set({ category })
+        .where(eq(transactions.id, transactionId)),
     ),
   /**
    * Link (or un-link) ONE transaction to a loan holding via the USER's own
@@ -803,20 +808,20 @@ export const transactionsRepo = {
     transactionId: string;
     loanHoldingId: string | null;
   }) =>
-    write(async (transaction) => {
+    write(async (databaseTransaction) => {
       if (loanHoldingId !== null) {
-        const paymentRows = await transaction
+        const paymentRows = await databaseTransaction
           .select({ holdingId: transactions.holdingId })
           .from(transactions)
           .where(eq(transactions.id, transactionId));
         const paymentHoldingId = paymentRows.at(0)?.holdingId;
 
         if (paymentHoldingId !== undefined) {
-          const paymentHoldingRows = await transaction
+          const paymentHoldingRows = await databaseTransaction
             .select({ currency: holdings.currency })
             .from(holdings)
             .where(eq(holdings.id, paymentHoldingId));
-          const loanHoldingRows = await transaction
+          const loanHoldingRows = await databaseTransaction
             .select({ currency: holdings.currency })
             .from(holdings)
             .where(eq(holdings.id, loanHoldingId));
@@ -835,7 +840,7 @@ export const transactionsRepo = {
         }
       }
 
-      await transaction
+      await databaseTransaction
         .update(transactions)
         .set({
           loanHoldingId,
@@ -858,9 +863,9 @@ export const transactionsRepo = {
    * `links` array is a no-op.
    */
   setAutoLoanLinks: (links: { transactionId: string; loanHoldingId: string }[]) =>
-    write(async (transaction) => {
+    write(async (databaseTransaction) => {
       for (const link of links) {
-        await transaction
+        await databaseTransaction
           .update(transactions)
           .set({ loanHoldingId: link.loanHoldingId, loanLinkSource: 'auto' })
           .where(
@@ -880,8 +885,8 @@ export const transactionsRepo = {
    * the flag back.
    */
   undoAutoLoanLink: (transactionId: string) =>
-    write((transaction) =>
-      transaction
+    write((databaseTransaction) =>
+      databaseTransaction
         .update(transactions)
         .set({ loanHoldingId: null, loanLinkSource: null, loanLinkRejected: true })
         .where(and(eq(transactions.id, transactionId), eq(transactions.loanLinkSource, 'auto'))),
@@ -892,7 +897,10 @@ export const transactionsRepo = {
    * to the user as "imported".
    */
   addManyDedup: (inputs: NewTransaction[]) =>
-    write(async (transaction) => (await insertDedupRowsTransaction(transaction, inputs)).length),
+    write(
+      async (databaseTransaction) =>
+        (await insertDedupRowsDatabaseTransaction(databaseTransaction, inputs)).length,
+    ),
   /**
    * Statement import's ONE write: upsert the parsed rows (the same
    * `(source, external_id)` dedup as `addManyDedup`) AND move the target
@@ -927,7 +935,7 @@ export const transactionsRepo = {
    * bug-fix case (an import-only holding must show the statement's
    * net/closing balance, not 0).
    *
-   * With a boundary, each genuinely new row (from `insertDedupRowsTx`) is
+   * With a boundary, each genuinely new row (from `insertDedupRowsDatabaseTransaction`) is
    * split by its OWN `time` against it: a row dated BEFORE the boundary is
    * HISTORY — it still inserts as a real ledger row, but contributes 0 to
    * `netDelta`. A row dated AT/AFTER the boundary is CURRENT and counts at
@@ -987,7 +995,7 @@ export const transactionsRepo = {
    * closing balance overwrites the balance outright instead of adding a net
    * delta on top of an already-correct hand-set figure.
    *
-   * `insertDedupRowsTx`'s `(source, external_id)` dedup key includes
+   * `insertDedupRowsDatabaseTransaction`'s `(source, external_id)` dedup key includes
    * `source` — a row from ANOTHER source (a `manual` entry, a `monobank`
    * sync row) that happens to represent the same real-world transaction as
    * an imported row is NOT a dedup hit; it is a genuinely new `import`-
@@ -1026,8 +1034,8 @@ export const transactionsRepo = {
     rows: NewTransaction[];
     closingBalance?: ClosingBalance;
   }): Promise<number> =>
-    write(async (transaction) => {
-      const holdingRows = await transaction
+    write(async (databaseTransaction) => {
+      const holdingRows = await databaseTransaction
         .select()
         .from(holdings)
         .where(eq(holdings.id, input.holdingId))
@@ -1042,7 +1050,7 @@ export const transactionsRepo = {
         throw new Error(`Target holding not found: ${input.holdingId}`);
       }
 
-      const accountRows = await transaction
+      const accountRows = await databaseTransaction
         .select({ institution: accounts.institution })
         .from(accounts)
         .where(eq(accounts.id, holding.accountId))
@@ -1053,7 +1061,7 @@ export const transactionsRepo = {
       // holding's ledger as it stood going into this import — never a row
       // this very import is about to add. This IS boundary source (b): see
       // THE BOUNDARY in the doc comment above.
-      const syncRows = await transaction
+      const syncRows = await databaseTransaction
         .select({ time: sql<number | null>`max(${transactions.time})` })
         .from(transactions)
         .where(
@@ -1066,7 +1074,7 @@ export const transactionsRepo = {
       const syncBoundary = syncRows.at(0)?.time ?? null;
       const boundary = laterOf(holding.balanceSetAt, syncBoundary);
 
-      const newRows = await insertDedupRowsTransaction(transaction, input.rows);
+      const newRows = await insertDedupRowsDatabaseTransaction(databaseTransaction, input.rows);
 
       if (synced) {
         return newRows.length;
@@ -1080,7 +1088,7 @@ export const transactionsRepo = {
       );
 
       if (nextBalance !== holding.balanceMinorUnits || balanceSetAt !== undefined) {
-        await transaction
+        await databaseTransaction
           .update(holdings)
           .set({ balanceMinorUnits: nextBalance, balanceSetAt })
           .where(eq(holdings.id, input.holdingId));

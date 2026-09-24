@@ -6,7 +6,7 @@
  * id), and `StringChunk` SQL text — the array-clause counterpart of
  * `sync-state.repo.test.ts`'s `accountIdFromCondition`, which does the same
  * for a single-value `eq(...)` clause. Shared by the holding and account
- * repo tests that assert `clearLoanLinksForHoldingsTx`'s exact predicate
+ * repo tests that assert `clearLoanLinksForHoldingsDatabaseTransaction`'s exact predicate
  * (T29 review round 1, I1/M2), whose capture setup is otherwise identical.
  */
 export const inArrayClauseFromCondition = (

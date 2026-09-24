@@ -3,12 +3,12 @@
 // transaction handle backed by an in-memory store, so a test can prove the
 // (base, quote, day) conflict target replaces an existing row in place rather
 // than inserting a duplicate.
-let mockTransaction: unknown;
+let mockDatabaseTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
   return {
     ...actual,
-    write: (work: (db: unknown) => unknown) => work(mockTransaction),
+    write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
   };
 });
 
@@ -22,7 +22,7 @@ type HistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate'
 // plain array. The `excluded.*` set clause means "overwrite with the incoming
 // row's values", so the fake simply upserts each incoming row by the composite
 // (base, quote, day) key — replacing on match, appending otherwise.
-const makeUpsertTransaction = (store: HistoryRow[]): unknown => ({
+const makeUpsertDatabaseTransaction = (store: HistoryRow[]): unknown => ({
   insert: () => ({
     values: (rows: HistoryRow[]) => ({
       onConflictDoUpdate: () => {
@@ -58,7 +58,7 @@ describe('rateHistoryRepo', () => {
 
   it('replaces an existing (base, quote, day) row on a repeat upsert', async () => {
     const store: HistoryRow[] = [];
-    mockTransaction = makeUpsertTransaction(store);
+    mockDatabaseTransaction = makeUpsertDatabaseTransaction(store);
 
     await rateHistoryRepo.upsertMany([
       { base: 'USD', quote: 'UAH', day: friday, rate: '41.5', source: 'nbu' },
@@ -77,8 +77,8 @@ describe('rateHistoryRepo', () => {
     // (32766), so upsertMany must split the rows into bounded chunks.
     const store: HistoryRow[] = [];
     const chunkSizes: number[] = [];
-    const upsertStore = makeUpsertTransaction(store);
-    mockTransaction = {
+    const upsertStore = makeUpsertDatabaseTransaction(store);
+    mockDatabaseTransaction = {
       insert: () => ({
         values: (rows: HistoryRow[]) => {
           chunkSizes.push(rows.length);
@@ -113,7 +113,7 @@ describe('rateHistoryRepo', () => {
   it('issues no insert for an empty batch', async () => {
     const store: HistoryRow[] = [];
     let insertCalled = false;
-    mockTransaction = {
+    mockDatabaseTransaction = {
       insert: () => {
         insertCalled = true;
         return { values: () => ({ onConflictDoUpdate: () => Promise.resolve() }) };
