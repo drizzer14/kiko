@@ -24,8 +24,8 @@ import {
   EXPORT_VERSION,
 } from '../../../src/data-transfer/crypto/envelope';
 import type { AppLanguage } from '../../../src/i18n';
-import { ANCHOR, buildScreenshotDataset } from '../seed/screenshot-seed';
 import type { ExportPayload } from '../../../src/data-transfer/payload';
+import { ANCHOR, buildScreenshotDataset } from '../seed/screenshot-seed';
 import { generateExportKey } from '../../../src/data-transfer/crypto/generate-key';
 import { decodeBase64ToBytes, encodeBytesToBase64 } from '../../../src/data-transfer/base64/base64';
 

@@ -2,8 +2,8 @@
  * @format
  */
 
-import { render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
+import { render } from '@testing-library/react-native';
 
 // MigrationsGate pulls in the op-sqlite native binding, which has no jest
 // binary; stub it to render its children as if migrations already succeeded.

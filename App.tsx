@@ -6,17 +6,17 @@ import './src/design-system/unistyles';
 // useTranslation renders.
 import './src/i18n';
 
-import { NavigationContainer } from '@react-navigation/native';
 import type { FC } from 'react';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import LockGate from './src/auth/lock-gate/lock-gate.component';
-import { useSyncLanguageWithSettings } from './src/i18n/use-sync-language-with-settings';
-import MigrationsGate from './src/migration/migrations-gate';
-import { navigationDarkTheme } from './src/navigation/dark-theme';
-import RootNavigator from './src/navigation/root.navigator';
 import { useAutoSync } from './src/sync/use-auto-sync';
+import RootNavigator from './src/navigation/root.navigator';
+import MigrationsGate from './src/migration/migrations-gate';
+import LockGate from './src/auth/lock-gate/lock-gate.component';
+import { navigationDarkTheme } from './src/navigation/dark-theme';
+import { useSyncLanguageWithSettings } from './src/i18n/use-sync-language-with-settings';
 
 /**
  * Rendered only once `MigrationsGate` reports success, so its mount is the

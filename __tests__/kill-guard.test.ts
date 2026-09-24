@@ -1,5 +1,5 @@
-import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
 // scripts/checks/kill-guard.sh is the PreToolUse hook wired in
 // harness/kiko/hooks/hooks.json under the Bash tool. It reads the hook's
