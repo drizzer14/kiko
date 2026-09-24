@@ -168,4 +168,21 @@ describe('buildTypeBreakdown', () => {
 
     expect(result.map((slice) => slice.type)).toEqual(['cash']);
   });
+
+  // A negative holding must never NET against a positive one of the same
+  // type — it must be dropped entirely, same as the account pie's own
+  // per-holding rule. A card in debit sharing a type with a positive card
+  // used to reduce the bar's total instead of being excluded from it, so
+  // the same amount was silently subtracted here AND listed again under
+  // "Debts" elsewhere on Statistics.
+  it('never nets a negative holding against a positive one of the same type', () => {
+    const holdings = [
+      holding({ id: 'card-a', type: 'card', currency: 'USD', balanceMinorUnits: 10_000 }),
+      holding({ id: 'card-b', type: 'card', currency: 'USD', balanceMinorUnits: -3_000 }),
+    ];
+
+    const result = buildTypeBreakdown({ holdings, rateTable: rates, baseCurrency: 'USD', now: 0 });
+
+    expect(result).toEqual([{ type: 'card', amount: 10_000 }]);
+  });
 });

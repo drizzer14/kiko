@@ -561,9 +561,11 @@ CoinGecko price lands) — every fiat currency is covered by the bundled
 seed and effectively never drops.
 
 `buildTypeBreakdown` (`src/statistics/type-breakdown/`, the by-type
-bar) excludes `loan` outright rather than letting it slip through as a
-negative bar — it is an ASSET breakdown, and debt has its own total
-(see below).
+bar) is ASSETS ONLY, the same per-HOLDING rule the account pie follows
+(below): `loan` is excluded outright, and a non-loan holding in debit
+(e.g. a credit card) is dropped BEFORE the per-type sum rather than
+netted into it, so it can never reduce a positive holding of the same
+type. Debt has its own total (see below).
 
 **The account pie (`buildAccountContribution`,
 `src/statistics/account-contribution/`) is ASSETS ONLY (T27 round 1,
