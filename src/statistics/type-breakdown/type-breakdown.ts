@@ -32,6 +32,10 @@ export type TypeSlice = { type: HoldingType; amount: number };
  * loan's own held value is NEGATIVE (`holding-value.ts`), so it has its own
  * "Debts" total elsewhere on Statistics (`buildDebtTotal`,
  * `account-contribution.ts`) rather than showing up here as a negative bar.
+ * A NON-loan type that nets negative (e.g. a credit card in debit) is
+ * dropped the same way (T27 re-review round 1, item 6) — the bar is
+ * assets-only, the same rule `buildAccountContribution`'s pie already
+ * follows for an individual holding.
  */
 export const buildTypeBreakdown = (input: {
   holdings: BreakdownHolding[];
@@ -58,6 +62,6 @@ export const buildTypeBreakdown = (input: {
 
       return { type, amount: total.minorUnits };
     })
-    .filter((slice) => slice.amount !== 0)
+    .filter((slice) => slice.amount > 0)
     .sort((a, b) => b.amount - a.amount);
 };

@@ -153,4 +153,19 @@ describe('buildTypeBreakdown', () => {
 
     expect(result.map((slice) => slice.type)).toEqual(['card']);
   });
+
+  // T27 re-review round 1, item 6: the bar is an ASSET breakdown (spec §5.3,
+  // same rule the account-contribution pie follows) — a NON-loan holding in
+  // debit (e.g. a credit card balance) must not draw a negative bar either,
+  // not just `loan` (already covered above).
+  it('excludes a non-loan negative holding (e.g. a card in debit) from the bar entirely', () => {
+    const holdings = [
+      holding({ type: 'card', currency: 'USD', balanceMinorUnits: -3_000 }),
+      holding({ type: 'cash', currency: 'USD', balanceMinorUnits: 10_000 }),
+    ];
+
+    const result = buildTypeBreakdown({ holdings, rateTable: rates, baseCurrency: 'USD', now: 0 });
+
+    expect(result.map((slice) => slice.type)).toEqual(['cash']);
+  });
 });
