@@ -200,7 +200,7 @@ describe('applyColumnMapping (debitCredit mode)', () => {
 // The Balance column role (import-balance commit B): the row with the
 // newest parsed `timeSeconds`, read off the mapped balance cell with the
 // mapping's own `decimalSeparator`. A tie on the newest time is broken by
-// FILE ORDER (ruling I1, FIX-merge-commitB-round1-brief.md) — see the
+// FILE ORDER (ruling I1) — see the
 // dedicated describe block below for the tie-break rule itself.
 describe('applyColumnMapping (Balance column -> closingBalance)', () => {
   const BALANCE_HEADER: TableCell[] = ['Date', 'Description', 'Amount', 'Balance'];
@@ -282,7 +282,7 @@ describe('applyColumnMapping (Balance column -> closingBalance)', () => {
   });
 });
 
-// Ruling I1 (FIX-merge-commitB-round1-brief.md): a tie on the newest parsed
+// Ruling I1: a tie on the newest parsed
 // time is broken by FILE ORDER, not by "last one wins" — most bank exports
 // (Monobank included) list the newest row FIRST, so on a newest-first file
 // the FIRST tied row is really the latest transaction of that instant; an

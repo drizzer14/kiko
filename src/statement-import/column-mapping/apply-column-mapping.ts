@@ -187,71 +187,77 @@ const resolveRow = (row: TableCell[], mapping: ColumnMapping, rowNumber: number)
 type ClosingBalanceCandidate = { row: TableCell[]; timeSeconds: number; currency: Currency };
 
 /** File orientation, from the RESOLVED rows' own first vs. last parsed
- * time — used only to break a tie on the newest `timeSeconds` (ruling I1,
- * `FIX-merge-commitB-round1-brief.md`): most bank exports (Monobank
- * included) list the newest row FIRST, so on a tie the FIRST tied row in
- * file order is really the latest transaction of that instant; an
- * oldest-first file's LAST tied row is. `'undeterminable'` when the first
- * and last resolved rows share the same time — `pickClosingBalanceRow`
- * then falls back to comparing the tied rows' own balance cells instead of
- * guessing an order. */
+ * time — used only to break a tie on the newest `timeSeconds` (ruling I1):
+ * most bank exports (Monobank included) list the newest row FIRST, so on a
+ * tie the FIRST tied row in file order is really the latest transaction of
+ * that instant; an oldest-first file's LAST tied row is. `'undeterminable'`
+ * when the first and last resolved rows share the same time —
+ * `pickClosingBalanceRow` then falls back to comparing the tied rows' own
+ * balance cells instead of guessing an order. Callers only ever reach this
+ * with two or more candidates (the lone-candidate case returns earlier in
+ * `pickClosingBalanceRow`), so `first`/`last` are always defined here. */
 const resolveFileOrientation = (
   candidates: ClosingBalanceCandidate[],
 ): 'newestFirst' | 'oldestFirst' | 'undeterminable' => {
   const first = candidates.at(0)?.timeSeconds;
   const last = candidates.at(-1)?.timeSeconds;
 
-  if (first === undefined || last === undefined || first === last) {
+  if (first === last) {
     return 'undeterminable';
   }
 
-  return first > last ? 'newestFirst' : 'oldestFirst';
+  return first !== undefined && last !== undefined && first > last ? 'newestFirst' : 'oldestFirst';
 };
+
+type ClosingBalancePick = { candidate: ClosingBalanceCandidate; balanceMajor: number };
 
 /**
  * The one candidate `resolveMappedClosingBalance` reads the closing-balance
- * cell off (ruling I1). Finds every row tied on the NEWEST `timeSeconds`
- * among `candidates` (already RESOLVED rows only, in file order); a lone
- * newest row wins outright, a tied set is broken by `resolveFileOrientation`
- * when the file's own first/last rows disagree, and when they don't
- * (`'undeterminable'`) this returns the tied rows' own balance cell ONLY
- * when every one of them parses to the exact same value — genuinely
- * ambiguous cells return `undefined` (Rule B fallback) rather than guess an
- * order. A single-row file has exactly one "tied" row (itself), so it
- * always resolves through the lone-winner path.
+ * cell off (ruling I1), together with that cell's already-parsed value (so
+ * the caller never re-parses the same cell). Finds every row tied on the
+ * NEWEST `timeSeconds` among `candidates` (already RESOLVED rows only, in
+ * file order); a lone newest row wins outright, a tied set is broken by
+ * `resolveFileOrientation` when the file's own first/last rows disagree, and
+ * when they don't (`'undeterminable'`) this returns the tied rows' own
+ * balance cell ONLY when every one of them parses to the exact same value —
+ * genuinely ambiguous cells return `undefined` (Rule B fallback) rather than
+ * guess an order. A single-row file has exactly one "tied" row (itself), so
+ * it always resolves through the lone-winner path.
  */
 const pickClosingBalanceRow = (
   candidates: ClosingBalanceCandidate[],
   balanceColumn: number,
   decimalSeparator: ',' | '.',
-): ClosingBalanceCandidate | undefined => {
+): ClosingBalancePick | undefined => {
   if (candidates.length === 0) {
     return undefined;
   }
 
   const maxTime = Math.max(...candidates.map((candidate) => candidate.timeSeconds));
   const tied = candidates.filter((candidate) => candidate.timeSeconds === maxTime);
+  const parseCell = (candidate: ClosingBalanceCandidate) =>
+    parseAmountCell(candidate.row[balanceColumn] ?? '', decimalSeparator);
 
   if (tied.length === 1) {
-    return tied[0];
+    return { candidate: tied[0], balanceMajor: parseCell(tied[0]) };
   }
 
   const orientation = resolveFileOrientation(candidates);
 
   if (orientation === 'newestFirst') {
-    return tied[0];
+    return { candidate: tied[0], balanceMajor: parseCell(tied[0]) };
   }
 
   if (orientation === 'oldestFirst') {
-    return tied.at(-1);
+    const last = tied[tied.length - 1];
+
+    return { candidate: last, balanceMajor: parseCell(last) };
   }
 
-  const cellValues = tied.map((candidate) =>
-    parseAmountCell(candidate.row[balanceColumn] ?? '', decimalSeparator),
-  );
+  const cellValues = tied.map(parseCell);
   const allEqual = cellValues.every((value) => Number.isFinite(value) && value === cellValues[0]);
 
-  return allEqual ? tied[0] : undefined;
+  return allEqual ? { candidate: tied[0], balanceMajor: cellValues[0] } : undefined;
 };
 
 /**
@@ -263,7 +269,8 @@ const pickClosingBalanceRow = (
  * chosen row's balance cell is missing or non-numeric (review follow-up
  * I1's original guard) — never a `NaN` written to the ledger. The cell is
  * parsed with the mapping's OWN `decimalSeparator` (`parseAmountCell`),
- * matching every other amount cell this mapping reads.
+ * matching every other amount cell this mapping reads — `pickClosingBalanceRow`
+ * does that parse once and hands the value back, so it is never re-parsed here.
  */
 const resolveMappedClosingBalance = (
   mapping: ColumnMapping,
@@ -273,25 +280,16 @@ const resolveMappedClosingBalance = (
     return undefined;
   }
 
-  const chosen = pickClosingBalanceRow(candidates, mapping.balanceColumn, mapping.decimalSeparator);
+  const picked = pickClosingBalanceRow(candidates, mapping.balanceColumn, mapping.decimalSeparator);
 
-  if (!chosen) {
-    return undefined;
-  }
-
-  const balanceMajor = parseAmountCell(
-    chosen.row[mapping.balanceColumn] ?? '',
-    mapping.decimalSeparator,
-  );
-
-  if (!Number.isFinite(balanceMajor)) {
+  if (!picked || !Number.isFinite(picked.balanceMajor)) {
     return undefined;
   }
 
   return {
-    minorUnits: Money.fromMajor(chosen.currency, balanceMajor).minorUnits,
-    currency: chosen.currency,
-    asOfSeconds: chosen.timeSeconds,
+    minorUnits: Money.fromMajor(picked.candidate.currency, picked.balanceMajor).minorUnits,
+    currency: picked.candidate.currency,
+    asOfSeconds: picked.candidate.timeSeconds,
   };
 };
 
