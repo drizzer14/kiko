@@ -2,14 +2,14 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
 
-import { detectFormat } from '../registry';
-import { computeDedupKey, mapParsedTransaction } from '../mapping';
 import {
   StatementParseError,
   type ParsedStatement,
   type ParsedTransaction,
   type ParsedStatementSource,
 } from '../parser';
+import { detectFormat } from '../registry';
+import { computeDedupKey, mapParsedTransaction } from '../mapping';
 
 export type ImportResult = {
   formatId: ParsedStatementSource;
@@ -26,29 +26,6 @@ export type ImportResult = {
    * names WHICH currencies were skipped, not just how many rows — empty
    * when `skippedWrongCurrency` is 0. */
   skippedWrongCurrencyCodes: Currency[];
-};
-
-type CurrencyPartition = {
-  matching: ParsedTransaction[];
-  skipped: ParsedTransaction[];
-};
-
-// One pass over `transactions`, not two opposite `.filter()` calls — every
-// row lands in exactly one of `matching`/`skipped`, so there is nothing to
-// keep the two arrays' complementary invariant true besides the single loop
-// itself.
-const partitionByCurrency = (
-  transactions: ParsedTransaction[],
-  targetCurrency: Currency,
-): CurrencyPartition => {
-  const matching: ParsedTransaction[] = [];
-  const skipped: ParsedTransaction[] = [];
-
-  for (const transaction of transactions) {
-    (transaction.currency === targetCurrency ? matching : skipped).push(transaction);
-  }
-
-  return { matching, skipped };
 };
 
 /**
@@ -79,10 +56,17 @@ export const importParsedStatement = async (
     throw new Error(`Target holding not found: ${holdingId}`);
   }
 
-  const { matching: matchingTransactions, skipped: skippedTransactions } = partitionByCurrency(
-    parsed.transactions,
-    holding.currency,
-  );
+  // One pass over `parsed.transactions`, not two opposite `.filter()` calls —
+  // every row lands in exactly one of the two arrays below.
+  const matchingTransactions: ParsedTransaction[] = [];
+  const skippedTransactions: ParsedTransaction[] = [];
+
+  for (const transaction of parsed.transactions) {
+    (transaction.currency === holding.currency ? matchingTransactions : skippedTransactions).push(
+      transaction,
+    );
+  }
+
   const skippedWrongCurrency = skippedTransactions.length;
   const skippedWrongCurrencyCodes = Array.from(
     new Set(skippedTransactions.map((transaction) => transaction.currency)),
