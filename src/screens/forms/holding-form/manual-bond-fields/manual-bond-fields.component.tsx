@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
-import ChipRow from '../../chip-row';
+import ChipRow from '../../../../design-system/components/chip-row';
 import DateField from '../../date-field';
 import { couponFrequencyLabels } from '../bond-isin-section';
 import TextField from '../../../../design-system/components/text-field';

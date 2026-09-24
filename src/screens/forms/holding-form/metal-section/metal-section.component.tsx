@@ -2,7 +2,7 @@ import type { FC } from 'react';
 import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import ChipRow from '../../chip-row';
+import ChipRow from '../../../../design-system/components/chip-row';
 import {
   preciousMetals,
   metalForms,

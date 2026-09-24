@@ -7,7 +7,7 @@ import { View, Alert, type ScrollViewInstance } from 'react-native';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import ChipRow from '../forms/chip-row';
+import ChipRow from '../../design-system/components/chip-row';
 import {
   dateFormatIds,
   dateFormatExamples,

@@ -2,10 +2,10 @@ import type { ReactElement } from 'react';
 import { Pressable } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
-import Box from '../../../design-system/components/box';
-import FieldLabel from '../../../design-system/components/field-label';
-import SymbolIcon from '../../../design-system/components/symbol';
-import Text from '../../../design-system/components/text';
+import Box from '../box';
+import FieldLabel from '../field-label';
+import SymbolIcon from '../symbol';
+import Text from '../text';
 
 import type { ChipRowProps } from './chip-row.props';
 import { styles } from './chip-row.styles';
@@ -16,7 +16,12 @@ import { styles } from './chip-row.styles';
 // optional `labels` map humanizes id-like values (term_deposit -> Term Deposit)
 // for display while `onSelect` keeps reporting the underlying value; an optional
 // `label` renders a caption above the chips so it reads as a labeled field.
-const ChipRow = <Option extends string>({
+// Codebase-review decision 24: this is now the ONE chips component — the
+// former `design-system/components/option-pills` (LanguageSwitch, the
+// Statistics trend-filter sheet's amount/measure pills) merged in here, in
+// ChipRow's own compact look, rather than staying a second near-duplicate
+// selectable-pill-row component.
+const ChipRow = <Option extends string | number>({
   options,
   selected,
   onSelect,
@@ -25,6 +30,7 @@ const ChipRow = <Option extends string>({
   icons,
   disabled = false,
   required,
+  labelVariant = 'body',
 }: ChipRowProps<Option>): ReactElement => {
   const { theme } = useUnistyles();
 
@@ -62,7 +68,7 @@ const ChipRow = <Option extends string>({
                   tone={isSelected ? 'onAccent' : 'textSecondary'}
                 />
               )}
-              <Text variant="body" tone={isSelected ? 'onAccent' : 'textPrimary'}>
+              <Text variant={labelVariant} tone={isSelected ? 'onAccent' : 'textPrimary'}>
                 {labels?.[option] ?? option}
               </Text>
             </Pressable>

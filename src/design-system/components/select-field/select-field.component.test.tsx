@@ -2,6 +2,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 
 import '../../unistyles';
 import SelectField from '.';
+import type { SelectFieldProps } from './select-field.props';
 
 type Kind = 'a' | 'b' | 'c';
 
@@ -9,7 +10,7 @@ const options: readonly Kind[] = ['a', 'b', 'c'];
 const labels: Record<Kind, string> = { a: 'Alpha', b: 'Beta', c: 'Gamma' };
 const subtitles: Record<Kind, string> = { a: 'First', b: 'Second', c: 'Third' };
 
-const setup = async (overrides: Partial<Parameters<typeof SelectField>[0]> = {}) => {
+const setup = async (overrides: Partial<SelectFieldProps<Kind>> = {}) => {
   const onSelect = jest.fn();
 
   const utils = await render(

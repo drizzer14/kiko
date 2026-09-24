@@ -9,7 +9,7 @@ import type { ScrollViewInstance, TextInputInstance } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-import ChipRow from '../chip-row';
+import ChipRow from '../../../design-system/components/chip-row';
 import DateField from '../date-field';
 import {
   creatableHoldingTypesForAccount,

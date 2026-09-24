@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 
-import ChipRow from '../chip-row';
+import ChipRow from '../../../design-system/components/chip-row';
 import Box from '../../../design-system/components/box';
 import { normalizeTransactionName } from '../../../transactions/normalize-name';
 

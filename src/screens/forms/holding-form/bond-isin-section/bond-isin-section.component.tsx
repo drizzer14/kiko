@@ -3,7 +3,10 @@ import { View } from 'react-native';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
-import { bondCouponFrequencies } from '../../../../holdings/holding-metadata';
+import {
+  bondCouponFrequencies,
+  type BondCouponFrequency,
+} from '../../../../holdings/holding-metadata';
 import { formatDate } from '../../../../dates/format';
 import { validateIsin } from '../../../../bonds/isin';
 import Box from '../../../../design-system/components/box';
