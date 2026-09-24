@@ -203,12 +203,12 @@ a new currency or a new holding type is a compile error at every
 mapping site that hasn't been updated, not a silent runtime gap.
 
 A single boolean guard used exactly once (an `if`/`else` with no
-closed-set enum behind it) may stay as-is — reviewer-approved
-switch-statement exceptions already exist in the tree
-(`src/holdings/interest/interest.ts`,
-`src/holdings/holding-value/holding-value.ts`; see
-`docs/harness/review-to-biome-inventory.md:51` for why these are not
-mechanized).
+closed-set enum behind it) may stay as-is. Every branch over a closed
+literal set uses `ts-pattern`'s `match(...).exhaustive()` (or a typed
+`Record` for a pure lookup) — no `switch`, with no exception; a prior
+switch-statement exception for `src/holdings/interest/interest.ts`
+and `src/holdings/holding-value/holding-value.ts` has been withdrawn
+(see `docs/harness/review-to-biome-inventory.md:51`).
 
 The set itself needs exactly one source of truth. Derive the literal
 union type from a `const` tuple, instead of hand-maintaining a union
@@ -263,6 +263,22 @@ const label = foldMap(maybe(holding.nickname), (nickname) => nickname.trim());
 Reach for `fmap`/`bind`/`fold` instead of `foldMap` only when the
 result itself needs to stay a `Maybe` — chaining into another
 `maybe` operator, or returning a `Maybe` from the enclosing function.
+
+The list-or-empty form of the same smell — `x === null ? [] : [f(x)]`
+— is a nullable map too, and is banned the same way, with no
+exception. Convert it with the same `maybe` + `foldMap`, wrapping the
+mapped value in the singleton array and falling back to `[]` since
+`foldMap` returns `NextValue | undefined`:
+
+```ts
+// wrong
+const tags = holding.category === null ? [] : [toTag(holding.category)];
+
+// correct
+import maybe, { foldMap } from 'fnts/maybe';
+
+const tags = foldMap(maybe(holding.category), (category) => [toTag(category)]) ?? [];
+```
 
 ## `fnts` FIRST
 
@@ -587,7 +603,11 @@ readability and consistency with the existing structure in that file
 — line count is irrelevant. This applies to tests too: a mock
 component or fixture used by one test goes to that test's co-located
 test-helper file, not a new top-level component folder, unless it is
-reused across multiple test files.
+reused across multiple test files. An inline mock component defined
+inside a `jest.mock()` factory body is exempt from the one-component-
+per-file rule entirely — it lives with the mock it belongs to, not
+as a separate file, because the rule governs app code and shared test
+helpers, not a mock factory's own body.
 
 A component uses an explicit `return` —
 `(props) => { return (<...>); }` — never the arrow-shorthand implicit

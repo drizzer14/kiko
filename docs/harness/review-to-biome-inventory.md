@@ -48,7 +48,7 @@ mechanize well; keep in the skill).
 | No hand-rolled `pipe`/`compose`; use `fnts` | kiko-code-style | Semgrep | Safe |
 | Confirm `noNestedTernary` is enabled | kiko-design-system | Biome | Verify only |
 | Blank line before every `return` | kiko-code-style | Semgrep | Cleanup-first (likely many violations; noisy) |
-| Closed literal sets use `ts-pattern .exhaustive()`, not `switch` | kiko-code-style, kiko-domain, kiko-architecture | Semgrep | Judgment — the codebase uses `switch`/`Record` in places (currency.ts, interest.ts, holding-value.ts, all reviewer-approved); do NOT mechanize without a decision |
+| Closed literal sets use `ts-pattern .exhaustive()`, not `switch` | kiko-code-style, kiko-domain, kiko-architecture | Semgrep | Withdrawn by user decision — the prior `switch` exception for `interest.ts`/`holding-value.ts` no longer stands; the rule applies with no exception |
 | `guard` over `if (!ok) throw` | kiko-code-style | Semgrep (Class B) | Judgment (broad) |
 | No hand-rolled `try/catch` + Error normalization; use `fnts` either | kiko-code-style | Semgrep (Class B) | Judgment (broad; documented exceptions) |
 | Hardcoded URL/config literals must live in `@env` | kiko-code-style | Semgrep | Cleanup-first (false positives in tests/config) |
