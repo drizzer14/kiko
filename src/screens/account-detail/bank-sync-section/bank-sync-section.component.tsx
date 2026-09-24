@@ -294,14 +294,25 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
         <Box gap={2}>
           {connectFieldByProviderId[shownProviderId]}
 
-          <Button
-            variant="ghost"
-            size="small"
-            fullWidth={false}
-            onPress={() => setSelectedProviderId(undefined)}
-          >
-            {t('accountDetail.changeBankAction')}
-          </Button>
+          {/* N3 (F3 part 1 fix round 2, Minor — Guideline 2.1): hidden when
+              `bankId` itself already identifies Monobank — pressing it would
+              clear `selectedProviderId`, but `shownProviderId` falls
+              straight back to the live `bankIdProviderId` on the very next
+              render, so it visibly changes nothing. The bank is changed on
+              the account form instead. Still shown when the user reached
+              this field by picking a provider through `AddBankProviderSheet`
+              on an account with no `bankId` — there it genuinely clears the
+              pick and re-shows "Add a bank". */}
+          {bankIdProviderId === undefined && (
+            <Button
+              variant="ghost"
+              size="small"
+              fullWidth={false}
+              onPress={() => setSelectedProviderId(undefined)}
+            >
+              {t('accountDetail.changeBankAction')}
+            </Button>
+          )}
         </Box>
       )}
 

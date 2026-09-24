@@ -139,21 +139,19 @@ describe('BankSyncSection — disconnected', () => {
 
     expect(view.queryByText('Add a bank')).toBeNull();
     expect(view.getByText('monobank field')).toBeTruthy();
-    expect(view.getByText('Change bank')).toBeTruthy();
   });
 
-  // DEFAULT (I1, F3 part 1 fix round 1): "Change bank" clears the user's own
-  // pick, but the section still FOLLOWS `bankId` live — on an account
-  // already identified as Monobank (the one shipped connectable provider),
-  // pressing "Change bank" therefore re-derives straight back to the Connect
-  // field rather than the generic picker; there is nothing else to pick.
-  it('DEFAULT: "Change bank" on an already-Monobank account re-shows Connect immediately (no picker) — bankId still says Monobank', async () => {
+  // N3 (F3 part 1 fix round 2, Minor — Guideline 2.1, a button that does
+  // nothing): when `bankId` already identifies Monobank, `selectedProviderId`
+  // is always undefined and `shownProviderId` falls straight back to
+  // `bankIdProviderId` — pressing "Change bank" visibly changed nothing (the
+  // fix round 1 DEFAULT this replaces). The bank is changed on the account
+  // form instead, so the button is hidden here rather than left as a no-op.
+  it('N3: hides "Change bank" when bankId already identifies Monobank (it would do nothing)', async () => {
     const view = await render(<BankSyncSection account={bankAccount({ bankId: 'monobank' })} />);
 
-    await fireEvent.press(view.getByText('Change bank'));
-
-    expect(view.queryByText('Add a bank')).toBeNull();
     expect(view.getByText('monobank field')).toBeTruthy();
+    expect(view.queryByText('Change bank')).toBeNull();
   });
 
   // I1 (F3 part 1 fix round 1, Important): the mount-once `useState` seed
