@@ -28,6 +28,11 @@ bug -> separate bug commit) and GO given. USER DEVICE BUGS sent to feat session 
 import: completion sheet flashes, navigates back, then re-opens the import form; (2) fixing one field's validation
 error makes other fields show errors that do not clear until all are filled. User sends MORE F4 findings on 2026-09-25.
 User must /reload-plugins in feat session 4 (87bfb55).
+OVERNIGHT (user directive: finish ALL pending track work overnight; user reviews the batch in the morning): feat session 4
+runs phases 1-7 (F4 bugs, refactor, review batches, UAH-star, T31-T33, P5, T43); no merge to next, no check:deep (mine).
+Files: .superpowers/sdd/shares-property-metals-debts/DECISIONS-overnight.md + KEYS-overnight.md. Cron watch :17/:47 +
+ctxwatch (scratchpad) on term_1fd1d997. PHASE 1 DONE 575f19a (both F4 bugs fixed; retest F4FIX1-retest-script.md);
+NOT deployed: it carries 2 unapproved keys (maturity/purchase date required errors) -> deploy after morning key review.
 1. When the hotfix session sends the bump sha: `git -C ~/orca/workspaces/pff-ios/device-deploy checkout -q --detach <sha>`,
    then kiko:ops archives Release / KikoDistribution there: FORCE_BUNDLING=1, clean build (rm ios/build + pod install
    if needed), NON-beta Xcode (check DTXcodeBuild), move the .xcarchive to ~/Library/Developer/Xcode/Archives/<date>/,
