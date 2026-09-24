@@ -51,8 +51,8 @@ import MappingResult from './mapping-result';
 import ColumnSelectField from './column-select-field';
 import ChipRow from '../forms/chip-row';
 import FieldLabel from '../../design-system/components/field-label';
-import SegmentedControl from '../../design-system/components/segmented-control';
 import ImportOutcome from '../statement-import/import-outcome';
+import SegmentedControl from '../../design-system/components/segmented-control';
 import ImportResultSheet from '../statement-import/import-result-sheet';
 import { previewStats, type PreviewStats } from '../statement-import/preview-stats/preview-stats';
 import TargetHoldingField from '../statement-import/target-holding-field';
@@ -436,6 +436,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
           <>
             <Box gap={1} testID="column-mapping-encoding">
               <FieldLabel label={t('columnMapping.encoding')} />
+
               <SegmentedControl<Encoding>
                 options={['utf-8', 'windows-1251']}
                 selected={encoding}
@@ -459,6 +460,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
 
         <Box gap={1} testID="column-mapping-decimal-separator">
           <FieldLabel label={t('columnMapping.decimalSeparator')} />
+
           <SegmentedControl<',' | '.'>
             options={[',', '.']}
             selected={decimalSeparator}

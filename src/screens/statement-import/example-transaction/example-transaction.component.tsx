@@ -8,17 +8,17 @@ import {
   resolveCategoryKey,
 } from '../../../categories/category-display';
 import { Money } from '../../../currency/money';
+import { formatDate } from '../../../dates/format';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
-import { formatDate } from '../../../dates/format';
 import { categoriesRepo } from '../../../categories/repo';
 import { useLiveQuery } from '../../../db/use-live-query';
 import { settingsRepo } from '../../../settings/settings.repo';
 import Divider from '../../../design-system/components/divider';
 import { categoryForMcc } from '../../../monobank/mcc-category';
 import TransactionCard from '../../home/transaction-row/transaction-card';
-import { transactionRowDescription } from '../../../transactions/row-description';
 import { resolveCategoryColor } from '../../../statistics/category-breakdown';
+import { transactionRowDescription } from '../../../transactions/row-description';
 
 import type { ExampleTransactionProps } from './example-transaction.props';
 
