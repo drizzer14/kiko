@@ -89,23 +89,9 @@ describe('useBondIsinMode', () => {
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
-  // M5 (T25 review round 2, re-review): the round-1/round-2 version of this
-  // test asserted a `process.on('unhandledRejection', spy)` listener was
-  // never called — but that listener is attached to JEST'S SANDBOXED copy
-  // of `process` (jest-util's `createProcessObject` blacklists `_events`
-  // and re-runs the EventEmitter constructor on the copy), while Node
-  // emits `unhandledRejection` on the REAL process. The spy could never be
-  // called either way, so the assertion could never fail — the same
-  // accidental protection the round-1 test had. The fix (the reviewer's
-  // primary suggestion): drop the spy entirely and flush a MACROTASK
-  // boundary (`setImmediate`, not a microtask `Promise.resolve()`) so
-  // jest-circus's own REAL-process `unhandledRejection` handler gets a
-  // chance to run and fail this test itself — which it does, deterministically,
-  // for a reverted bare `refreshBondRegisterIfStale()` call (verified by
-  // temporarily reverting the production `either(...)` wrap while writing
-  // this test: the test failed with jest-circus's own
-  // "ReferenceError/Error: network down ... unhandled promise rejection"
-  // failure).
+  // M5: a macrotask flush (not a spy on jest's sandboxed `process`, which
+  // can never observe a real unhandledRejection) lets jest-circus's own
+  // real-process handler catch a reverted bare fire-and-forget call.
   it('never produces an unhandled rejection when the refresh rejects (a caught fire-and-forget)', async () => {
     refreshMock.mockRejectedValueOnce(new Error('network down'));
 

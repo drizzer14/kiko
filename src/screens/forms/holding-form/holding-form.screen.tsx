@@ -902,14 +902,10 @@ const firstInvalidFieldRef = (params: {
   return entry === undefined ? null : { ref: entry.ref, focus: entry.focus };
 };
 
-// The `type === 'loan'` details block (T28): a separate leaf component,
-// rather than an inline `{type === 'loan' && (...)}` conditional in
-// `HoldingFormScreen`'s own render — that conditional would be one more
-// branch on top of an already-at-the-ceiling component, tipping its
-// cognitive-complexity score over the budget. Wrapping it in its OWN
-// component moves the branch (and every field-error/ref wire-up inside it)
-// onto THIS function's own complexity budget instead, which starts fresh.
-// Renders null outside `type === 'loan'`, the same as the `&&` it replaces.
+// The `type === 'loan'` details block as its own leaf component (T28),
+// keeping its own cognitive-complexity budget instead of adding another
+// branch to the already-at-the-ceiling screen. Renders null outside
+// `type === 'loan'`, the same as the `&&` it replaces.
 type LoanFormBlockProps = {
   type: HoldingType;
   t: TFunction;
