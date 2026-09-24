@@ -13,10 +13,6 @@ const ISIN_FORMAT = /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/;
 
 export const normalizeIsin = (raw: string): string => raw.trim().toUpperCase();
 
-export type ValidateIsinResult =
-  | { ok: true; isin: string }
-  | { ok: false; reason: 'format' | 'checkDigit' };
-
 // Converts an ISIN's characters to the digit string the ISO 6166 checksum
 // operates on: a digit passes through unchanged; a letter becomes its
 // alphabet position offset so A=10, B=11, ..., Z=35 (a two-digit value) —
@@ -46,7 +42,14 @@ const isChecksumValid = (isin: string): boolean => {
   return total % 10 === 0;
 };
 
-export const validateIsin = (raw: string): ValidateIsinResult => {
+// Not a separately exported named type (knip flags it unused — nothing
+// outside this module consumes the shape by name yet): inlined here as the
+// function's own return type instead. A future caller that wires this up to
+// a form can pull it back out with `ReturnType<typeof validateIsin>` or
+// re-promote it to a named export at that point.
+export const validateIsin = (
+  raw: string,
+): { ok: true; isin: string } | { ok: false; reason: 'format' | 'checkDigit' } => {
   const isin = normalizeIsin(raw);
 
   if (!ISIN_FORMAT.test(isin)) {
