@@ -16,17 +16,18 @@ import type { ImportResultSheetProps } from './import-result-sheet.props';
  * for the body so the text is identical to what the screen used to render
  * inline. One "Done" action (`common.done`) — there is nothing to cancel
  * post-success — dismisses the sheet; the caller's `onDone` navigates back
- * to the account screen. Shown ONLY on success: the caller passes
- * `visible={false}` (or simply never sets it) on an import ERROR, which
- * stays the screen's existing inline `ImportOutcome` text so the user can
- * retry without a modal in the way.
+ * to the account screen. Shown ONLY on success: visibility is derived from
+ * `result` itself (`result !== undefined`, see the props doc comment), so
+ * the caller passes `result={undefined}` on an import ERROR, which stays
+ * the screen's existing inline `ImportOutcome` text so the user can retry
+ * without a modal in the way.
  */
-const ImportResultSheet: FC<ImportResultSheetProps> = ({ visible, result, onDone }) => {
+const ImportResultSheet: FC<ImportResultSheetProps> = ({ result, onDone }) => {
   const { t } = useTranslation();
 
   return (
     <BottomSheet
-      visible={visible}
+      visible={result !== undefined}
       onDismiss={onDone}
       gap={3}
       header={<Text variant="heading">{t('statementImport.importResultTitle')}</Text>}

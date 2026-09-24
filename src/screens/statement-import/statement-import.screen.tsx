@@ -541,11 +541,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
         )}
       </Box>
 
-      <ImportResultSheet
-        visible={importResult !== undefined}
-        result={importResult}
-        onDone={handleImportDone}
-      />
+      <ImportResultSheet result={importResult} onDone={handleImportDone} />
     </Screen>
   );
 };

@@ -13,18 +13,18 @@ const RESULT = {
 };
 
 describe('ImportResultSheet', () => {
-  it('renders nothing while not visible', async () => {
+  // Ponytail review (fix round 1): visibility is DERIVED from `result`
+  // (`result !== undefined`) — there is no separate `visible` prop.
+  it('renders nothing when result is undefined', async () => {
     const { queryByText } = await render(
-      <ImportResultSheet visible={false} result={RESULT} onDone={jest.fn()} />,
+      <ImportResultSheet result={undefined} onDone={jest.fn()} />,
     );
 
     expect(queryByText(i18n.t('statementImport.importResultTitle'))).toBeNull();
   });
 
   it('shows the title and the same result text ImportOutcome renders inline', async () => {
-    const { getByText } = await render(
-      <ImportResultSheet visible result={RESULT} onDone={jest.fn()} />,
-    );
+    const { getByText } = await render(<ImportResultSheet result={RESULT} onDone={jest.fn()} />);
 
     expect(getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy();
     expect(
@@ -34,9 +34,7 @@ describe('ImportResultSheet', () => {
 
   it('calls onDone when the Done button is pressed', async () => {
     const onDone = jest.fn();
-    const { getByText } = await render(
-      <ImportResultSheet visible result={RESULT} onDone={onDone} />,
-    );
+    const { getByText } = await render(<ImportResultSheet result={RESULT} onDone={onDone} />);
 
     await fireEvent.press(getByText(i18n.t('common.done')));
 
@@ -45,9 +43,7 @@ describe('ImportResultSheet', () => {
 
   it('calls onDone on a scrim dismiss', async () => {
     const onDone = jest.fn();
-    const { getByTestId } = await render(
-      <ImportResultSheet visible result={RESULT} onDone={onDone} />,
-    );
+    const { getByTestId } = await render(<ImportResultSheet result={RESULT} onDone={onDone} />);
 
     await fireEvent.press(getByTestId('import-result-sheet-backdrop'));
 

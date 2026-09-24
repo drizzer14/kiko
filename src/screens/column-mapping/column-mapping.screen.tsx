@@ -909,11 +909,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
         )}
       </Box>
 
-      <ImportResultSheet
-        visible={importResult !== undefined}
-        result={importResult}
-        onDone={handleImportDone}
-      />
+      <ImportResultSheet result={importResult} onDone={handleImportDone} />
     </Screen>
   );
 };
