@@ -341,8 +341,8 @@ const buildPropertyCreatePayload = (params: {
   };
 };
 
-// The pre-filled purity — the standard bar/coin fineness (T20's own
-// default) — shown before the user types anything of their own.
+// The pre-filled purity — the standard bar/coin fineness — shown before
+// the user types anything of their own.
 const DEFAULT_METAL_PURITY = '0.9999';
 
 // Both metal-metadata builders below only ever run once `metalPurityReasonKey`
