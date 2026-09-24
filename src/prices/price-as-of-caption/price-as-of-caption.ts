@@ -18,20 +18,18 @@ import { metalInstrument, holdingInstrument } from '../instrument';
  * the LOCAL getters could land on the previous calendar day in a
  * negative-UTC-offset timezone.
  *
- * `metal` (T20) reads a DIFFERENT instrument than every other priced type: it
+ * `metal` reads a DIFFERENT instrument than every other priced type: it
  * shares `metal:<XAU|...>` across every holding of that metal (kiko-pricing),
  * never a per-holding `holding:<id>` series the way `property_item` uses —
  * and carries its own wording ("Price as of") since it is the metal's market
  * price, not a per-holding manual revaluation. An invalid/absent MetalMeta
  * resolves no instrument, matching the "no stored point yet" case below.
  *
- * Extracted (F4 audit 13) out of `holding-detail.screen.tsx` into ONE shared
- * helper both `holding-detail.screen.tsx` and `holding-card.component.tsx`
- * import — the two used to carry independently hand-copied versions, and the
- * card's own copy had silently drifted to DROP the metal branch entirely, so
- * a metal holding's card never showed ANY "as of" caption (its
- * `holding:<id>` instrument never resolves for a metal — only the shared
- * `metal:<slug>` one does).
+ * The ONE shared implementation `holding-detail.screen.tsx` and
+ * `holding-card.component.tsx` both import — a per-call-site copy of this
+ * logic risks the two silently drifting apart (a holding-type branch present
+ * in one but not the other), so this stays a single source of truth rather
+ * than being inlined at either call site.
  */
 export const priceAsOfCaption = (
   holding: HoldingRow | undefined,

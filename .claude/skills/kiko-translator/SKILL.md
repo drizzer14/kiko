@@ -154,18 +154,26 @@ trailing punctuation is decided by its UI ROLE, not habit:
 The mechanized invariant lives in
 `src/i18n/locales/en.final-stop-by-role.test.ts` (checks both `en` and
 `uk` via `describe.each`). It reuses `TITLE_KEYS` for the no-final-"."
-side, and — for the always-final-"." side — checks every leaf key
-whose OWN name ends `Error` (or `Error_<plural suffix>`, e.g.
-`skippedWrongCurrency_one`'s sibling shape): every `*Error` key IS an
-error message by construction (`forms.holding.quantityError`,
-`columnMapping.dateColumnError`, ...), so this is a safe, already-
-verified name-based check for that one role — unlike the Title role,
-a wrongly-matched `*Error` key would fail LOUDLY here (an actual
-non-period string caught), never silently exempt something from a
-check it should have run. This does not re-derive the full per-key
-audit for every other always-period role (captions/hints, option
-subtitles, and toast/alert bodies have no equally reliable key-name
-suffix to check by pattern) — add a new key to the SAME role's
+side, and checks every OTHER role with a reliable name/path/value
+convention: a leaf key whose OWN name ends `Error` always ends "." or
+"?" (`forms.holding.quantityError`, `columnMapping.dateColumnError`,
+...; no key ends `Error_<plural suffix>` — a plural key's own root
+never carries the `Error` suffix itself, only its interpolated body
+does, e.g. `skippedWrongCurrency_one`); `*Placeholder` and
+`*ErrorTitle` keys never end ".";  `*Message` and `*Hint` keys always
+end "." (`*Message` also allows "?"); a `kindSubtitle.*` path always
+ends "."; and a value shaped like a plain `"Label: {{value}}"`
+fragment (no "." in the label part) never ends "." either, except the
+DECISION's one named exception (`accountDetail.unsupportedCurrencyCode`,
+which keeps its period on purpose — an explicit allow-list entry, not
+a pattern gap). Each of these is a safe, already-verified name/path/
+value-based check for its own role — unlike the Title role, a
+wrongly-matched key fails LOUDLY here (an actual violation caught),
+never silently exempts something from a check it should have run.
+This does not re-derive the full per-key audit for every other
+always-period role (option subtitles and toast/alert bodies with no
+`*Message`/`*Hint` suffix have no equally reliable name/path/value
+signal to check by pattern) — add a new key to the SAME role's
 existing sibling keys' punctuation, by hand, per the DECISION above.
 
 ## Ukrainian is sentence case — no blanket `textTransform`
