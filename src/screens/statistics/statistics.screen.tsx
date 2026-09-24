@@ -21,6 +21,7 @@ import Card from '../../design-system/components/card';
 import MoneyText from '../../design-system/components/money-text';
 import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
+import SummaryTable from '../../design-system/components/summary-table';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import { ibanOf } from '../../holdings/holding-metadata';
@@ -901,10 +902,19 @@ const StatisticsScreen: FC = () => {
             <PieChart slices={slices} baseCurrency={baseCurrency} />
 
             {!debtTotal.isZero() && (
-              <Box testID="statistics-debts-total" style={styles.debtsRow}>
-                <Text tone="textSecondary">{t('statistics.debtsTotal')}</Text>
-                <MoneyText money={debtTotal} context="balance" />
-              </Box>
+              // F4 audit item 17: this used to be a hand-built flexDirection
+              // row; SummaryTable is the shared "label left, value right"
+              // layout every other summary line in the app already uses.
+              <SummaryTable
+                testID="statistics-debts-total"
+                rows={[
+                  {
+                    key: 'debts',
+                    label: t('statistics.debtsTotal'),
+                    value: <MoneyText money={debtTotal} context="balance" />,
+                  },
+                ]}
+              />
             )}
           </Box>
         </Card>

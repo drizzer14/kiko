@@ -12,12 +12,4 @@ export const styles = StyleSheet.create((theme) => ({
   cardTitle: {
     ...theme.typography.heading,
   },
-  // T27: the "Debts" total row under the account pie — label on the left,
-  // negative amount on the right, matching `CurrencyBreakdown`'s own cell
-  // layout.
-  debtsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
 }));
