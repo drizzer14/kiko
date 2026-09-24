@@ -48,6 +48,18 @@ jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
     mockUseScrollToTopOnTabPress(ref, scrollOffset),
 }));
 
+// useFocusRefreshedNow also reads the navigation context (useFocusEffect) via
+// the same real-context requirement as the hook above; stand it in the same
+// way statistics.screen.test.tsx does — a `Date.now()` taken once at mount
+// and held STABLE across re-renders (no focus event fires in a standalone
+// screen render), so a re-render test can prove the screen no longer reads
+// its own fresh `Date.now()` per render.
+jest.mock('../statistics/use-focus-refreshed-now', () => {
+  const { useState } = jest.requireActual('react');
+
+  return { useFocusRefreshedNow: () => useState(() => Date.now())[0] };
+});
+
 const mockUseLiveQuery = jest.fn();
 const mockAccountRemove = jest.fn();
 const mockAccountReorder = jest.fn();
@@ -578,6 +590,57 @@ describe('AccountsScreen', () => {
       });
 
       expect(mockAccountReorder).toHaveBeenCalledWith(['c', 'a', 'd']);
+    });
+
+    // I5 (T30 re-review): `debtsTotal` used to depend on a bare `Date.now()`
+    // read fresh on every function-component render, not the mounted
+    // screen's own stable `now` — so it recomputed (and could drift) on
+    // every re-render, not just on focus. A re-render with the real clock
+    // jumped forward (past another installment boundary, so the loan's
+    // outstanding balance WOULD differ if `now` had advanced) must still
+    // show the SAME total.
+    it('keeps the Debts total stable across a re-render that is not a focus event', async () => {
+      const THIRTY_ONE_DAYS_MS = 31 * 24 * 60 * 60 * 1000;
+      let clock = Date.now();
+      jest.spyOn(Date, 'now').mockImplementation(() => clock);
+
+      setLiveData({
+        accounts: [debtAccount()],
+        holdings: [
+          loanHolding({
+            metadata: {
+              kind: 'mortgage',
+              principalMinorUnits: 500_000,
+              startDate: clock - THIRTY_ONE_DAYS_MS * 3,
+              annualRatePct: 10,
+              termMonths: 120,
+              schedule: 'annuity',
+            },
+          }),
+        ],
+      });
+
+      // A fresh element each render, exactly like a real re-render (a parent
+      // re-render, a sibling state update): reusing the SAME element
+      // instance across `render`/`rerender` lets React bail out of calling
+      // the component body a second time at all, which would make this
+      // assertion pass for the wrong reason.
+      const buildElement = () => (
+        <AccountsScreen
+          navigation={asNavigationProp<AccountsProps['navigation']>(navigation)}
+          route={asRouteProp<AccountsProps['route']>('Accounts')}
+        />
+      );
+      const { getByTestId, rerender } = await render(buildElement(), {
+        wrapper: gestureRootWrapper,
+      });
+      const firstTotal = within(getByTestId('accounts-debts-total')).getByText(/₴/).props.children;
+
+      clock += THIRTY_ONE_DAYS_MS * 2;
+      await act(async () => rerender(buildElement()));
+
+      const secondTotal = within(getByTestId('accounts-debts-total')).getByText(/₴/).props.children;
+      expect(secondTotal).toEqual(firstTotal);
     });
   });
 

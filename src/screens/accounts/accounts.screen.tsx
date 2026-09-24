@@ -27,6 +27,7 @@ import { resolveEntityColor } from '../../design-system/entity-tint';
 import { onGridDragEnd } from '../../design-system/grid-interaction';
 import type { AccountsStackParamList } from '../../navigation/types';
 import EntityIconTile from '../../design-system/components/entity-icon-tile';
+import { useFocusRefreshedNow } from '../statistics/use-focus-refreshed-now';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
 import CardContextMenu from '../../design-system/components/card-context-menu';
 import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
@@ -46,7 +47,10 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
 
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   const rateTable = useMemo(() => buildRateTable(rates), [rates]);
-  const now = Date.now();
+  // Stable across a re-render, refreshed only on focus — a bare `Date.now()`
+  // here recomputed `debtsTotal`'s (and every card's) time-dependent value on
+  // EVERY render, not just when the screen actually regains focus.
+  const now = useFocusRefreshedNow();
 
   // The grid renders in the query's `sortOrder` order (the drag-and-drop order),
   // filtered to the non-archived accounts.
@@ -179,9 +183,8 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
 
   // A single-column drag-and-drop grid of wide account cards, shared by the
   // main grid and the Debts grid below — the two differ only in which
-  // accounts they list and how a reorder is persisted (I1: each must
-  // splice its own new order back into the FULL account list, never just
-  // its own section's ids — see the two `persistOrder` callers below).
+  // accounts they list and how a reorder is persisted (see the main grid's
+  // own `persistOrder` comment below for why).
   const renderGrid = (
     data: typeof activeAccounts,
     persistOrder: (orderedIds: string[]) => void,
@@ -271,9 +274,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                     </Box>
                   </Box>
                   <Box testID="accounts-debts-grid">
-                    {/* I1: the mirror of the main grid's fix above — persist every
-                        main account's id unchanged, then this grid's new order, so
-                        the two sections never collide on sortOrder. */}
+                    {/* Mirrors the main grid's persist-order fix above. */}
                     {renderGrid(debtAccounts, (ids) =>
                       accountsRepo.reorder([...mainAccounts.map((account) => account.id), ...ids]),
                     )}
