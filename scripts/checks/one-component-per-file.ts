@@ -90,50 +90,50 @@ const regexLiteralEnd = (source: string, at: number): number => {
 // (`` tag`...` ``) legitimately opens right after an identifier.
 const blankNoise = (source: string): string => {
   let result = '';
-  let i = 0;
+  let cursor = 0;
 
-  while (i < source.length) {
-    const two = source.slice(i, i + 2);
+  while (cursor < source.length) {
+    const twoCharacterLookahead = source.slice(cursor, cursor + 2);
 
-    if (two === '//') {
-      const stop = lineCommentEnd(source, i);
-      result += blankSpan(source, i, stop);
-      i = stop;
+    if (twoCharacterLookahead === '//') {
+      const stop = lineCommentEnd(source, cursor);
+      result += blankSpan(source, cursor, stop);
+      cursor = stop;
       continue;
     }
 
-    if (two === '/*') {
-      const stop = blockCommentEnd(source, i);
-      result += blankSpan(source, i, stop);
-      i = stop;
+    if (twoCharacterLookahead === '/*') {
+      const stop = blockCommentEnd(source, cursor);
+      result += blankSpan(source, cursor, stop);
+      cursor = stop;
       continue;
     }
 
-    const quote = source[i];
+    const quote = source[cursor];
 
-    if ((quote === '"' || quote === "'") && !isIdentifierChar(source[i - 1])) {
-      const stop = stringLiteralEnd(source, i, quote);
-      result += blankSpan(source, i, stop);
-      i = stop;
+    if ((quote === '"' || quote === "'") && !isIdentifierChar(source[cursor - 1])) {
+      const stop = stringLiteralEnd(source, cursor, quote);
+      result += blankSpan(source, cursor, stop);
+      cursor = stop;
       continue;
     }
 
     if (quote === '`') {
-      const stop = stringLiteralEnd(source, i, quote);
-      result += blankSpan(source, i, stop);
-      i = stop;
+      const stop = stringLiteralEnd(source, cursor, quote);
+      result += blankSpan(source, cursor, stop);
+      cursor = stop;
       continue;
     }
 
     if (quote === '/' && REGEX_START_CONTEXT.test(result.replace(/\s+$/, ''))) {
-      const stop = regexLiteralEnd(source, i);
-      result += blankSpan(source, i, stop);
-      i = stop;
+      const stop = regexLiteralEnd(source, cursor);
+      result += blankSpan(source, cursor, stop);
+      cursor = stop;
       continue;
     }
 
-    result += source[i];
-    i += 1;
+    result += source[cursor];
+    cursor += 1;
   }
 
   return result;
@@ -145,17 +145,17 @@ const blankNoise = (source: string): string => {
 // but NOT a re-export `export { A } from '...';` — that `}` is followed by
 // `from`, not `;`) are both openers too, so a slice starting there is never
 // silently folded into whatever slice precedes it.
-const TOP_LEVEL_DECL =
+const TOP_LEVEL_DECLARATION =
   /^(export\s+default\s+function\s+\w|export\s+function\s+\w|export\s+default\s+memo\(\s*\w+\s*\)\s*;|export\s+default\s+\w+\s*;|export\s+const\s+\w|export\s*\{[^}]*\}\s*;|const\s+\w|function\s+\w)/gm;
 
 const declarationSlices = (source: string): string[] => {
   const starts: number[] = [];
-  TOP_LEVEL_DECL.lastIndex = 0;
+  TOP_LEVEL_DECLARATION.lastIndex = 0;
 
   for (
-    let match = TOP_LEVEL_DECL.exec(source);
+    let match = TOP_LEVEL_DECLARATION.exec(source);
     match !== null;
-    match = TOP_LEVEL_DECL.exec(source)
+    match = TOP_LEVEL_DECLARATION.exec(source)
   ) {
     starts.push(match.index);
   }
@@ -213,7 +213,7 @@ const classifySlice = (slice: string): SliceClassification => {
   }
 
   // A re-export (`export { A } from '...';`) never reaches here — its `}` is
-  // followed by `from`, not `;`, so TOP_LEVEL_DECL never opens a slice there
+  // followed by `from`, not `;`, so TOP_LEVEL_DECLARATION never opens a slice there
   // in the first place; its name resolves against a module this file never
   // declared, not a local one.
   const namedExportList = /^export\s*\{([^}]*)\}\s*;/.exec(slice);
@@ -245,7 +245,7 @@ const classifySlice = (slice: string): SliceClassification => {
 
 // A jest.mock(...) factory body cannot syntactically contain a top-level
 // `export` (export is only valid at module scope) or, by the same token, a
-// top-level `const`/`function` — TOP_LEVEL_DECL only matches column-0, and a
+// top-level `const`/`function` — TOP_LEVEL_DECLARATION only matches column-0, and a
 // factory body is always indented — so an inline mock component inside one
 // is never mistaken for an exported declaration, and its own local
 // `const`/`function` names never leak into `localDeclarations` either. No
