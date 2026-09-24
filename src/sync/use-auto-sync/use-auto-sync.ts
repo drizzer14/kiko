@@ -2,6 +2,7 @@ import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { ratesRepo } from '@kiko/rates/repo';
 import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 import either from 'fnts/either';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useEffect, useRef } from 'react';
 
 import { refreshRates } from '../../rates/rates-refresh';
@@ -106,7 +107,7 @@ export const useAutoSync = (): void => {
       const accounts = await accountsRepo.listQuery();
       const bankAccountId = bankAccountIdFor(accounts);
       const syncStateRows =
-        bankAccountId === undefined ? [] : await syncStateRepo.getQuery(bankAccountId);
+        (await foldMap(maybe(bankAccountId), (id) => syncStateRepo.getQuery(id))) ?? [];
       const lastSyncAt = syncStateRows.at(0)?.lastSyncAt ?? null;
 
       if (!throttleElapsed(lastSyncAt, Date.now())) {

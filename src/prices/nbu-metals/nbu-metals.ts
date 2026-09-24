@@ -78,9 +78,10 @@ const toCurrentRate = (row: NbuCurrentMetalRow): NbuMetalRate[] => {
     return [];
   }
 
+  const metal = row.cc;
   const price = decimalFromJsonNumber(row.rate);
 
-  return foldMap(maybe(price), (found) => [{ metal: row.cc, price: found }]) ?? [];
+  return foldMap(maybe(price), (found) => [{ metal, price: found }]) ?? [];
 };
 
 /**

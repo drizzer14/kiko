@@ -1,3 +1,5 @@
+import maybe, { foldMap } from 'fnts/maybe';
+
 import type { HoldingRow } from '../../db/schema';
 import type { Currency } from '../../currency/currency';
 import type { TrendTransaction } from '../category-trend';
@@ -103,7 +105,7 @@ export const loanInterestEntries = (input: {
     loanHoldings.flatMap((holding) => {
       const meta = asLoanMeta(holding.metadata);
 
-      return meta === null ? [] : [[holding.id, meta] as const];
+      return foldMap(maybe(meta), (found) => [[holding.id, found] as const]) ?? [];
     }),
   );
 

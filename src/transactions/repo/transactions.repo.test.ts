@@ -14,6 +14,7 @@ jest.mock('../../db/client', () => {
 });
 
 import { drizzle } from 'drizzle-orm/sqlite-proxy';
+import maybe, { foldMap } from 'fnts/maybe';
 import { renderCondition } from '@kiko/db/render-condition-test-helper';
 
 import { accountsRepo } from '../../accounts/accounts.repo';
@@ -1876,7 +1877,7 @@ const resolveImportRowsSelect = (
   if (table === transactions && fields && 'time' in fields) {
     const time = opts.syncBoundaryTime;
 
-    return time === undefined || time === null ? [] : [{ time }];
+    return foldMap(maybe(time), (found) => [{ time: found }]) ?? [];
   }
 
   return opts.existing ?? [];

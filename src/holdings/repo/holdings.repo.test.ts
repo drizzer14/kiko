@@ -18,6 +18,7 @@ jest.mock('../../db/client', () => {
 });
 
 import { captureSetTx } from '@kiko/db/capture-set-tx';
+import maybe, { foldMap } from 'fnts/maybe';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { inArrayClauseFromCondition } from '@kiko/db/in-array-clause-test-helper';
 
@@ -893,7 +894,9 @@ const makeBalanceDeltaTx = (
   const tx = {
     select: () => ({
       from: () => ({
-        where: () => ({ limit: () => Promise.resolve(stored === null ? [] : [stored]) }),
+        where: () => ({
+          limit: () => Promise.resolve(foldMap(maybe(stored), (row) => [row]) ?? []),
+        }),
       }),
     }),
     update: () => ({

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert } from 'react-native';
 import type { FC, ReactNode } from 'react';
 import { useSync } from '@kiko/sync/use-sync';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 
@@ -98,8 +99,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   const { data: syncStateRows } = useLiveQuery(syncStateRepo.getQuery(account.id), ['sync_state']);
 
   const connectedProviderId = resolveConnectedProviderId(account.institution);
-  const connectedEntry =
-    connectedProviderId === undefined ? undefined : bankProviderRegistry[connectedProviderId];
+  const connectedEntry = foldMap(maybe(connectedProviderId), (id) => bankProviderRegistry[id]);
 
   // Which provider's connect field the user explicitly picked THIS session
   // (via `AddBankProviderSheet`, or cleared via "Change bank"/Disconnect

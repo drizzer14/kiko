@@ -5,6 +5,7 @@ import { settingsRepo } from '@kiko/settings/settings.repo';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useLayoutEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ScrollViewInstance } from 'react-native';
@@ -52,12 +53,10 @@ import CryptoSyncSection from './crypto-sync-section';
 const accountIdentity = (
   account: AccountRow | undefined,
 ): { icon: string; color: string } | undefined =>
-  account === undefined
-    ? undefined
-    : {
-        icon: account.icon ?? accountKindSymbol[account.kind],
-        color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
-      };
+  foldMap(maybe(account), (found) => ({
+    icon: found.icon ?? accountKindSymbol[found.kind],
+    color: resolveEntityColor(found.color, defaultAccountColor[found.kind]),
+  }));
 
 type AccountDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountDetail'>;
 

@@ -962,7 +962,7 @@ const firstInvalidFieldRef = (params: {
 
   const entry = order.find((candidate) => candidate.invalid);
 
-  return entry === undefined ? null : { ref: entry.ref, focus: entry.focus };
+  return foldMap(maybe(entry), (found) => ({ ref: found.ref, focus: found.focus })) ?? null;
 };
 
 // The `type === 'loan'` details block as its own leaf component (T28),

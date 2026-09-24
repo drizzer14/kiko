@@ -1,4 +1,5 @@
 import { match } from 'ts-pattern';
+import maybe, { foldMap } from 'fnts/maybe';
 import type { Repository } from '@kiko/db/repository';
 import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { appendDepositContributionTx } from '@kiko/holdings/repo';
@@ -824,7 +825,7 @@ export const transactionsRepo = {
         .update(transactions)
         .set({
           loanHoldingId,
-          loanLinkSource: loanHoldingId === null ? null : 'manual',
+          loanLinkSource: foldMap(maybe(loanHoldingId), () => 'manual' as const) ?? null,
           loanLinkRejected: loanHoldingId === null,
         })
         .where(eq(transactions.id, transactionId));
