@@ -134,6 +134,17 @@ export const darkTheme = {
     // against the black screen behind it instead of reading as an elevated
     // card.
     sheetBackground: '#1C1C1E',
+    // The selected-segment fill for `SegmentedControl` — iOS's own
+    // `systemGray` (dark). `surfaceHigh` (`#2C2C2E`) against the control's
+    // `surface` (`#111112`) track only reaches a 1.35:1 contrast ratio,
+    // well under WCAG 1.4.11's 3:1 floor for a UI state indicator (F3 fix
+    // round 1, I3) — this token exists because no other surface token in
+    // this scale clears that floor against `surface`. `segmentSelected`
+    // against `surface` is 3.15:1. This is its own token, not folded into
+    // `surfaceHigh`, because the two are free to diverge: `surfaceHigh` is
+    // the general elevated-surface step, this is tuned specifically for
+    // the segmented control's own contrast requirement.
+    segmentSelected: '#636366',
     textPrimary: '#FFFFFF', // label
     textSecondary: 'rgba(235,235,245,0.60)', // secondaryLabel
     accent: '#0A84FF', // systemBlue (dark)

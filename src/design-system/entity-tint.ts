@@ -181,3 +181,13 @@ const GLYPH_CONTRAST_MINIMUM = 3;
 // method note above.
 export const isLightEntityColor = (colorHex: string): boolean =>
   contrastRatio(1, relativeLuminance(colorHex)) < GLYPH_CONTRAST_MINIMUM;
+
+// The general-purpose WCAG contrast ratio between two `#RRGGBB` hex colors —
+// exported so a NON-entity contrast check (e.g. `SegmentedControl`'s
+// selected-segment-vs-track ratio, F3 fix round 1, I3) reuses this module's
+// one `relativeLuminance`/`contrastRatio` pair instead of a second hand-
+// rolled luminance implementation. `isLightEntityColor` above is the
+// entity-specific glyph-on-fill case; this is the same math for any other
+// two-hex comparison.
+export const wcagContrastRatio = (hexA: string, hexB: string): number =>
+  contrastRatio(relativeLuminance(hexA), relativeLuminance(hexB));

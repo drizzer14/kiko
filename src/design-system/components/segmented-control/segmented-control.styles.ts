@@ -1,21 +1,13 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-import { DISABLED_OPACITY } from '../../disabled-opacity';
-
-// The segmented control's VISIBLE height — iOS's own UISegmentedControl reads
-// noticeably shorter than a 44pt row (see segmented-control.component.tsx's
-// SEGMENT_HIT_SLOP for how the 44pt HIG touch target is still met), the same
-// visible-short/hitSlop-restored split `Button`'s own `small` size documents
-// (`button.styles.ts`'s `SMALL_MIN_HEIGHT`).
-const SEGMENT_MIN_HEIGHT = 36;
+// The segment's own content height. Together with the track's `spacing(1)`
+// padding on both edges, the track's total VISIBLE height is 24 + 2*4 =
+// 32pt — matching native `UISegmentedControl` (F3 fix round 1, M1; the
+// component's own `SEGMENT_HIT_SLOP` restores the 44pt HIG touch target on
+// top of this shorter visible strip).
+const SEGMENT_MIN_HEIGHT = 24;
 
 export const styles = StyleSheet.create((theme) => ({
-  // The track: one elevation step above the screen background — the same
-  // "elevation via translucent overlay" scale the OLED dark theme uses
-  // elsewhere (see kiko-design-system's "Dark-only theme" section), so the
-  // selected segment (one step further, `surfaceHigh`) reads as clearly
-  // raised above it, mirroring real UISegmentedControl's fill-vs-selected-
-  // segment contrast.
   track: {
     flexDirection: 'row',
     backgroundColor: theme.colors.surface,
@@ -27,16 +19,22 @@ export const styles = StyleSheet.create((theme) => ({
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: SEGMENT_MIN_HEIGHT,
+    paddingHorizontal: theme.spacing(2),
     borderRadius: theme.radii.sm,
   },
+  // `theme.colors.segmentSelected` (F3 fix round 1, I3): a >=3:1 WCAG
+  // non-text contrast ratio against the `surface` track, unlike the former
+  // `surfaceHigh` fill (1.35:1) — see the token's own doc comment in
+  // theme.ts.
   segmentSelected: {
-    backgroundColor: theme.colors.surfaceHigh,
+    backgroundColor: theme.colors.segmentSelected,
   },
-  // A read-only control (an edit form's uneditable value): dimmed with the
-  // one shared disabled-pressable token so it reads as fixed while still
-  // showing which segment is selected — never a fresh inline opacity (see
-  // kiko-design-system's "Button" section on `DISABLED_OPACITY`).
-  disabled: {
-    opacity: DISABLED_OPACITY,
+  label: {
+    textAlign: 'center',
+  },
+  // UIKit renders a segmented control's selected label semibold (I3).
+  selectedLabel: {
+    textAlign: 'center',
+    fontWeight: '600',
   },
 }));

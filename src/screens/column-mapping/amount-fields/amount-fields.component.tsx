@@ -38,7 +38,7 @@ const AmountFields: FC<AmountFieldsProps> = ({
         selected={mode}
         onSelect={onModeChange}
         labels={amountModeLabels(t)}
-        testID="column-mapping-amount-mode-control"
+        accessibilityLabel={t('columnMapping.sectionAmount')}
       />
 
       {mode === 'single' && (

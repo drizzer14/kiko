@@ -39,7 +39,7 @@ const CurrencyFields: FC<CurrencyFieldsProps> = ({
         selected={mode}
         onSelect={onModeChange}
         labels={currencyModeLabels(t)}
-        testID="column-mapping-currency-mode-control"
+        accessibilityLabel={t('columnMapping.sectionCurrency')}
       />
 
       {mode === 'column' && (
