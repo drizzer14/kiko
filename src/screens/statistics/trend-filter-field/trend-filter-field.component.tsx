@@ -11,14 +11,14 @@ import {
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import Button from '../../../design-system/components/button';
-import SymbolIcon from '../../../design-system/components/symbol';
 import ChipRow from '../../../design-system/components/chip-row';
+import SymbolIcon from '../../../design-system/components/symbol';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import SheetFooter from '../../../design-system/components/sheet-footer';
 import { FILTER_ALL } from '../../home/filter-menu/filter-menu.component';
 import SelectableRow from '../../../design-system/components/selectable-row';
-import SegmentedControl from '../../../design-system/components/segmented-control';
 import type { FilterOption } from '../../home/filter-menu/filter-menu.props';
+import SegmentedControl from '../../../design-system/components/segmented-control';
 
 import { styles } from './trend-filter-field.styles';
 import type { TrendFilterFieldProps } from './trend-filter-field.props';
@@ -247,12 +247,17 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
         <Box gap={2} testID={`${testID}-group-selection`}>
           <SectionHeader>{t('statistics.trendFilter.selection')}</SectionHeader>
 
-          {/* F4 Q2 sweep (decision 14): Top/Manual swaps which section
-              renders below — the amount/measure controls or the category
-              list — so this is a mode toggle, not a same-form value pick.
-              SegmentedControl (no leading-icon slot, unlike the former
-              OptionPills — no SegmentedControl consumer in the app carries
-              one) replaces the OptionPills pair a widened DEFAULT put here. */}
+          {/* Top/Manual swaps which section renders below — the amount/
+              measure controls or the category list — so this is a mode
+              toggle, not a same-form value pick: a SegmentedControl (no
+              leading-icon slot — no SegmentedControl consumer in the app
+              carries one), not a ChipRow. `labelVariant="caption"` keeps the
+              mode labels visually SUBORDINATE to their own larger
+              `SectionHeader` above ("Selection", `body`) — the same
+              label-above-value hierarchy `ChipRow`'s `labelVariant` follows
+              elsewhere in this same sheet (the Amount/By value pills below),
+              rather than the mode toggle reading as a competing PEER of its
+              own section header. */}
           <SegmentedControl<TrendMode>
             options={MODES}
             selected={draft.mode}
@@ -261,6 +266,7 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
               top: t('statistics.trendFilter.top'),
               manual: t('statistics.trendFilter.manual'),
             }}
+            labelVariant="caption"
             accessibilityLabel={t('statistics.trendFilter.selection')}
             testID={`${testID}-mode-control`}
           />

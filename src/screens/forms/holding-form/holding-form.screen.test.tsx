@@ -682,7 +682,11 @@ describe('HoldingFormScreen term deposit', () => {
 
     await fillBondFields(screen);
 
-    await fireEvent.press(screen.getByText('Quarterly'));
+    // Coupon frequency is a select sheet (SelectField), not an inline chip.
+    await fireEvent.press(screen.getByTestId('manual-bond-coupon-frequency-field'));
+    await fireEvent.press(
+      screen.getByTestId('manual-bond-coupon-frequency-field-option-quarterly'),
+    );
 
     await fireEvent.press(screen.getByText('Save'));
 

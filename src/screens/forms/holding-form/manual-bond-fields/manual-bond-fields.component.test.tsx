@@ -63,7 +63,7 @@ describe('ManualBondFields', () => {
   it('reports the tapped bond kind and coupon frequency', async () => {
     const onSelectBondKind = jest.fn();
     const onSelectCouponFrequency = jest.fn();
-    const { getByText } = await render(
+    const { getByText, getByTestId } = await render(
       <ManualBondFields
         {...baseProps}
         onSelectBondKind={onSelectBondKind}
@@ -72,7 +72,10 @@ describe('ManualBondFields', () => {
     );
 
     await fireEvent.press(getByText('Corporate'));
-    await fireEvent.press(getByText('Quarterly'));
+    // Coupon frequency is a select sheet (SelectField), not an inline chip —
+    // the same control the ISIN mode's unmapped-frequency picker uses.
+    await fireEvent.press(getByTestId('manual-bond-coupon-frequency-field'));
+    await fireEvent.press(getByTestId('manual-bond-coupon-frequency-field-option-quarterly'));
 
     expect(onSelectBondKind).toHaveBeenCalledWith('corporate');
     expect(onSelectCouponFrequency).toHaveBeenCalledWith('quarterly');

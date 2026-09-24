@@ -297,6 +297,10 @@ export const en = {
       couponPct: 'Coupon %',
       couponPctError: 'Enter a coupon of 0 or higher.',
       couponPlaceholder: '8',
+      // The ISIN-mode summary row's own label (SummaryTable) — plain
+      // "Coupon", not "Coupon %": the row's own value already carries the
+      // "%" sign, so reusing `couponPct` here doubled it ("Coupon %: 8%").
+      couponSummaryLabel: 'Coupon',
       cryptoAsset: 'Crypto asset',
       deposit: 'Deposit',
       details: 'Details',

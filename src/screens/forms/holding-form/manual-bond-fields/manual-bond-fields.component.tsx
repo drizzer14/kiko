@@ -3,10 +3,11 @@ import { View } from 'react-native';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
-import ChipRow from '../../../../design-system/components/chip-row';
 import DateField from '../../date-field';
 import { couponFrequencyLabels } from '../bond-isin-section';
+import ChipRow from '../../../../design-system/components/chip-row';
 import TextField from '../../../../design-system/components/text-field';
+import SelectField from '../../../../design-system/components/select-field';
 import { bondKinds, bondCouponFrequencies } from '../../../../holdings/holding-metadata';
 
 import type { ManualBondFieldsProps } from './manual-bond-fields.props';
@@ -97,12 +98,18 @@ const ManualBondFields: FC<ManualBondFieldsProps> = ({
         labels={bondKindLabels(t)}
       />
 
-      <ChipRow
+      {/* One control for coupon frequency everywhere it appears — the ISIN
+          mode's unmapped-frequency picker (BondIsinSection) is a SelectField;
+          Manual mode used to hand-roll the same choice as a ChipRow. */}
+      <SelectField
         label={t('forms.holding.couponFrequency')}
+        sheetTitle={t('forms.holding.couponFrequencySheetTitle')}
         options={bondCouponFrequencies}
         selected={couponFrequency}
         onSelect={onSelectCouponFrequency}
         labels={couponFrequencyLabels(t)}
+        placeholder={t('forms.holding.couponFrequencyPlaceholder')}
+        testID="manual-bond-coupon-frequency-field"
       />
     </>
   );

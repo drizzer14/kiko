@@ -251,6 +251,7 @@ export const uk: typeof en = {
       couponPct: 'Купон %',
       couponPctError: 'Введіть купон 0 або вище.',
       couponPlaceholder: '8',
+      couponSummaryLabel: 'Купон',
       cryptoAsset: 'Криптоактив',
       deposit: 'Депозит',
       details: 'Деталі облігації',

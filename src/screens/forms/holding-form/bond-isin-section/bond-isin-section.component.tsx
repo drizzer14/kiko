@@ -117,7 +117,7 @@ const BondIsinSection: FC<BondIsinSectionProps> = ({
           rows={[
             {
               key: 'coupon',
-              label: t('forms.holding.couponPct'),
+              label: t('forms.holding.couponSummaryLabel'),
               value: (
                 <Text variant="caption" tone="textSecondary">
                   {`${foundTerms.couponPct.toLocaleString(activeLocale())}%`}

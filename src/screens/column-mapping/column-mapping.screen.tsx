@@ -7,7 +7,6 @@ import { View, Alert, type ScrollViewInstance } from 'react-native';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import ChipRow from '../../design-system/components/chip-row';
 import {
   dateFormatIds,
   dateFormatExamples,
@@ -47,6 +46,7 @@ import Screen from '../../design-system/components/screen';
 import { accountsRepo } from '../../accounts/accounts.repo';
 import { settingsRepo } from '../../settings/settings.repo';
 import Divider from '../../design-system/components/divider';
+import ChipRow from '../../design-system/components/chip-row';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { supportedFormatNames } from '../../statement-import/registry';
 import ImportResultSheet from '../statement-import/import-result-sheet';

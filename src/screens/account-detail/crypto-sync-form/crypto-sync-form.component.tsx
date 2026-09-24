@@ -8,9 +8,9 @@ import {
   providerDisplayName,
 } from '../../../crypto-sync/provider';
 import Box from '../../../design-system/components/box';
-import FieldLabel from '../../../design-system/components/field-label';
-import BinanceCredentialsField from '../binance-credentials-field';
 import WalletAddressField from '../wallet-address-field';
+import BinanceCredentialsField from '../binance-credentials-field';
+import FieldLabel from '../../../design-system/components/field-label';
 import SegmentedControl from '../../../design-system/components/segmented-control';
 
 type CryptoSyncFormProps = {

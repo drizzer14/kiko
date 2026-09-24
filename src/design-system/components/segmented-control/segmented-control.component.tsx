@@ -37,6 +37,7 @@ const SegmentedControl = <Option extends string>({
   selected,
   onSelect,
   labels,
+  labelVariant = 'body',
   accessibilityLabel,
   testID,
 }: SegmentedControlProps<Option>): ReactElement => {
@@ -79,7 +80,7 @@ const SegmentedControl = <Option extends string>({
               )}
 
               <Text
-                variant="body"
+                variant={labelVariant}
                 tone={isSelected ? 'textPrimary' : 'textSecondary'}
                 numberOfLines={1}
                 adjustsFontSizeToFit

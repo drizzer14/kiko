@@ -321,12 +321,11 @@ describe('TrendFilterField grouped sections', () => {
     expect(StyleSheet.flatten(measure.props.style).backgroundColor).toBeUndefined();
   });
 
-  // F4 Q2 sweep (decision 14): the Mode control swaps which section renders
-  // below it (amount/measure vs the category list), so it is a
-  // SegmentedControl, not the leading-glyph OptionPills pair it used to be
-  // — SegmentedControl has no icon slot (see `segmented-control.props.d.ts`
-  // — no consumer in the app renders one), so both mode options are
-  // text-only now, matching amount-mode/currency-mode elsewhere.
+  // The Mode control swaps which section renders below it (amount/measure vs
+  // the category list), so it is a SegmentedControl, not a ChipRow —
+  // SegmentedControl has no icon slot (see `segmented-control.props.d.ts` —
+  // no consumer in the app renders one), so both mode options are text-only,
+  // matching amount-mode/currency-mode elsewhere.
   it('renders the mode control as a SegmentedControl inside the selection group', async () => {
     const { getByTestId } = await renderField();
     await press(getByTestId(TEST_ID));
@@ -377,8 +376,9 @@ describe('TrendFilterField selected manual row', () => {
     const unselected = getByTestId(`${TEST_ID}-option-transport`);
 
     // The selected row paints the FILLED accent surface (the app's standard
-    // selection vocabulary — the OptionPills / ChipRow selected pill), so it
-    // reads unambiguously as chosen; the unselected row paints none.
+    // selection vocabulary — the same treatment ChipRow's selected pill
+    // uses), so it reads unambiguously as chosen; the unselected row paints
+    // none.
     expect(selected.props.accessibilityState.checked).toBe(true);
     expect(unselected.props.accessibilityState.checked).toBe(false);
     expect(StyleSheet.flatten(selected.props.style).backgroundColor).toBe(darkTheme.colors.accent);

@@ -107,7 +107,7 @@ describe('FilterMenu', () => {
     await openMenu(getByTestId);
 
     // Selecting a row now paints the FILLED accent surface (the shared
-    // SelectableRow / OptionPills selection vocabulary), so a chosen filter
+    // SelectableRow / ChipRow selection vocabulary), so a chosen filter
     // reads unambiguously blue instead of only carrying a checkmark; an
     // unselected row paints none.
     const selected = getByTestId(`${TEST_ID}-option-Monobank`);

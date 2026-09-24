@@ -72,11 +72,11 @@ describe('TrendFilterField section header tone', () => {
 
 describe('TrendFilterField label/value type hierarchy', () => {
   // The sheet title (`heading`, 20) > each section label (`body`, 16, raised
-  // from the former `caption`, 13) > its OptionPills value (`caption`, 13,
-  // dropped from the former hardcoded `body`) — the label must read strictly
-  // larger than the value it sits above, reversing the inverted hierarchy
-  // this was reported against.
-  it('renders each top-mode section label at body and its OptionPills value at caption', async () => {
+  // from the former `caption`, 13) > its ChipRow/SegmentedControl value
+  // (`caption`, 13, dropped from the former hardcoded `body`) — the label
+  // must read strictly larger than the value it sits above, reversing the
+  // inverted hierarchy this was reported against.
+  it('renders each top-mode section label at body and its value control at caption', async () => {
     const { getByText } = await openSheet({ mode: 'top', amount: 3, by: 'contribution' });
 
     expect(getByText('Selection').props.variant).toBe('body');
@@ -84,15 +84,19 @@ describe('TrendFilterField label/value type hierarchy', () => {
     expect(getByText('By').props.variant).toBe('body');
 
     // The Amount group's numeric pill values and the By group's measure pill
-    // values (both still OptionPills). The Selection group's own "Manual"/
-    // "Top" text moved to a SegmentedControl (F4 Q2 sweep, decision 14 — the
-    // mode choice swaps the section below it), which always renders `body`,
-    // matching every other SegmentedControl in the app (amount/currency mode)
-    // rather than the section's own subordinate `caption` step.
+    // values (both ChipRow). The Selection group's own "Manual"/"Top" text
+    // renders through a SegmentedControl — the mode choice swaps the section
+    // below it, so it is a mode toggle, not a same-form value pick — but it
+    // still sits directly under its own SectionHeader ("Selection", `body`),
+    // so its `labelVariant="caption"` keeps it visually SUBORDINATE to that
+    // header, the same label-above-value hierarchy every other value control
+    // in this sheet follows. A control reading as a PEER of its own section
+    // header (both `body`) is the exact inverted hierarchy this sheet was
+    // reported against.
     expect(getByText('5').props.variant).toBe('caption');
     expect(getByText('Contribution').props.variant).toBe('caption');
-    expect(getByText('Manual').props.variant).toBe('body');
-    expect(getByText('Top').props.variant).toBe('body');
+    expect(getByText('Manual').props.variant).toBe('caption');
+    expect(getByText('Top').props.variant).toBe('caption');
   });
 
   it('keeps the sheet title (heading) strictly above the manual-mode categories label (body)', async () => {
