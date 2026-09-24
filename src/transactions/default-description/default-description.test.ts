@@ -28,4 +28,20 @@ describe('defaultTransactionDescription', () => {
     expect(defaultTransactionDescription('Готівка', 5000, i18n.t)).toBe('Надходження: Готівка');
     expect(defaultTransactionDescription('Готівка', -5000, i18n.t)).toBe('Витрата: Готівка');
   });
+
+  // F3 fix round 3, N9: an empty holding name (the statement-import preview
+  // before a target holding is chosen) falls back to the PLAIN label — no
+  // dangling leading space ("{{name}} expense" with an empty name) or
+  // dangling colon ("Витрата: {{name}}" with an empty name).
+  it('falls back to the plain label with no dangling space when the holding name is empty (en)', () => {
+    expect(defaultTransactionDescription('', 5000, i18n.t)).toBe('Income');
+    expect(defaultTransactionDescription('', -5000, i18n.t)).toBe('Expense');
+  });
+
+  it('falls back to the plain label with no dangling colon when the holding name is empty (uk)', async () => {
+    await i18n.changeLanguage('uk');
+
+    expect(defaultTransactionDescription('', 5000, i18n.t)).toBe('Надходження');
+    expect(defaultTransactionDescription('', -5000, i18n.t)).toBe('Витрата');
+  });
 });

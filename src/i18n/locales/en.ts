@@ -41,8 +41,8 @@ export const en = {
     noDataForRange: 'No Data For This Range',
     // A segment's position within its SegmentedControl group, e.g.
     // "1 of 2" — folded into each segment's accessibilityHint (F3 fix
-    // round 2, M4), since VoiceOver's own tab/tablist roles map to no
-    // trait on iOS (RN 0.87).
+    // round 2, M4), since React Native's own tab/tablist accessibility
+    // roles map to no trait on iOS (RN 0.87).
     segmentPosition: '{{index}} of {{count}}',
   },
   settings: {
@@ -585,6 +585,12 @@ export const en = {
   transactions: {
     defaultDescriptionExpense: '{{name}} expense',
     defaultDescriptionIncome: '{{name}} income',
+    // The plain fallback with no holding name at all (F3 fix round 3,
+    // N9) — used only when the caller has no holding name yet (the
+    // statement-import preview before a target holding is chosen), so an
+    // empty name never interpolates into a dangling "{{name}} expense".
+    defaultDescriptionExpensePlain: 'Expense',
+    defaultDescriptionIncomePlain: 'Income',
     exchangeFrom: 'Exchange from {{name}}',
     exchangeTo: 'Exchange to {{name}}',
   },

@@ -532,6 +532,8 @@ export const uk: typeof en = {
   transactions: {
     defaultDescriptionExpense: 'Витрата: {{name}}',
     defaultDescriptionIncome: 'Надходження: {{name}}',
+    defaultDescriptionExpensePlain: 'Витрата',
+    defaultDescriptionIncomePlain: 'Надходження',
     exchangeFrom: 'Обмін з {{name}}',
     exchangeTo: 'Обмін на {{name}}',
   },

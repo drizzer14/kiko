@@ -79,6 +79,33 @@ describe('ExampleTransaction', () => {
     );
   });
 
+  // F3 fix round 3, N9: an empty description with NO holding chosen yet
+  // (the common state on first render, before the user picks a target
+  // holding) falls back to the PLAIN income/expense label — never a
+  // dangling leading space (en) or dangling colon (uk). Test both locales.
+  it('falls back to the plain income/expense title with no dangling space/colon when no holding is chosen (en)', async () => {
+    const blankDescription: ParsedTransaction = { ...transaction, description: '' };
+
+    await render(<ExampleTransaction transaction={blankDescription} />);
+
+    const props = mockTransactionCard.mock.calls.at(-1)?.[0];
+    expect(props.title).toBe(i18n.t('transactions.defaultDescriptionExpensePlain'));
+    expect(props.title.startsWith(' ')).toBe(false);
+  });
+
+  it('falls back to the plain income/expense title with no dangling space/colon when no holding is chosen (uk)', async () => {
+    await i18n.changeLanguage('uk');
+    const blankDescription: ParsedTransaction = { ...transaction, description: '' };
+
+    await render(<ExampleTransaction transaction={blankDescription} />);
+
+    const props = mockTransactionCard.mock.calls.at(-1)?.[0];
+    expect(props.title).toBe(i18n.t('transactions.defaultDescriptionExpensePlain'));
+    expect(props.title.endsWith(':')).toBe(false);
+
+    await i18n.changeLanguage('en');
+  });
+
   // Item 5: dividers bracket the card above and below.
   it('renders a Divider above and below the card', async () => {
     const { getAllByTestId } = await render(<ExampleTransaction transaction={transaction} />);
