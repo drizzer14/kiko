@@ -1956,6 +1956,18 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             bank create offers only term_deposit / bond. Edit mode uses the full
             set so an existing synced card/jar row still displays its (read-only)
             type. */}
+        {/* F4 Q2 sweep (decision 14, review row U10-select): the review
+            asks whether this should move to a select sheet like
+            AccountKindField (up to 9 long type names in the disabled
+            edit-mode fallback — the same "too long for chips" reasoning
+            that moved PropertySection's category and LoanSection's kind
+            onto `SelectField`). Left as `ChipRow` this round: that is an
+            open review QUESTION, not a ruling (unlike audit item 9's
+            property/loan kind pickers), and 30+ existing tests on this
+            screen assert every type chip renders inline and pressable
+            without opening a sheet first — converting needs its own
+            dedicated test-rewrite pass. Flagged in the F4 part 2 report
+            for a coordinator call before converting. */}
         <ChipRow
           label={t('forms.holding.type')}
           options={typeOptions}
