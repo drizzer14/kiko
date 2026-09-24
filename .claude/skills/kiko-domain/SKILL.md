@@ -803,8 +803,48 @@ decimal-string rule.
   scheduled interest capped at `paymentAbsMinor` — a partial payment
   can never count more interest than it actually paid.
 
-Not yet wired as of T26 (later tasks): `holding-value.ts`'s valuation
-branch (`gross = net = -outstanding`), net worth's assets-minus-debt
-rule change, the loan create-form section, and the automatic
-payment-linking matcher (spec 5.4) — read T27-T29's own briefs before
-assuming any of that already works.
+`holding-value.ts`'s valuation branch (`gross = net = -outstanding`,
+`principalOrCost = -principal`, interest/tax always 0 — a loan never
+accrues either AT VALUATION time) and the net-worth assets-minus-debt
+rule change landed at T27. Not yet wired as of T28 (a later task):
+the automatic payment-linking matcher (spec 5.4) — read T29/T30's own
+briefs before assuming that works.
+
+### Loan form + detail (T28)
+
+`src/screens/forms/holding-form/loan-section/` (kind ChipRow,
+principal, start date, schedule SegmentedControl, rate/term hidden for
+`'none'`) and its own `use-loan-fields/` hook (state + per-schedule
+`loanReasonKey` validation + edit-mode `seed`) mirror T25's
+`useBondIsinMode` extraction — the hook exists so the loan section's
+state/validation carries its own cognitive-complexity budget instead
+of borrowing `HoldingFormScreen`'s (already at the ceiling before this
+task). Unlike `PropertySection`/`MetalSection`'s create-only-lot
+fields, EVERY loan field stays editable in both create and edit mode
+(mirrors term_deposit/bond) — there is no fixed-at-creation "first
+lot" a loan's principal/dates/schedule freeze against. The
+`type === 'loan'` render block is its own leaf component
+(`LoanFormBlock`, module-scope in `holding-form.screen.tsx`) rather
+than an inline `{type === 'loan' && (...)}` conditional, for the same
+complexity-budget reason. A `'none'`-schedule CREATE additionally
+writes a first `manual` price point on the new holding's own
+`holding:<id>` series, equal to the principal at the start date
+(`buildLoanCreatePayload`) — mirroring `PropertySection`'s own
+first-point convention, so `loanOutstandingMinorAt`'s manual-series
+read never comes up empty before the user records a real correction.
+An `'annuity'`/`'differentiated'` CREATE writes none — its outstanding
+is computed at read time from principal + schedule.
+
+`holding-detail.screen.tsx`: `footerActionFor` returns `'updateValue'`
+for a loan too (checked before the ledgerless fallback) — it reuses
+`PricePointForm` to write a correction onto the SAME `holding:<id>`
+manual series every schedule reads a correction from (not just
+`'none'`), with the footer button's own label swapped to "Update
+outstanding" (`holdingDetail.updateOutstanding`) for that type, and
+`PricePointFormScreen` itself overriding the stack's static "Update
+Value" title to "Update Outstanding" once the holding loads as a loan.
+An `'annuity'`/`'differentiated'` loan additionally shows a "Next
+installment (`<date>`)" panel (`nextLoanInstallment` — the first
+`loanInstallments` row due on or after today's local day) with its
+principal/interest split; a `'none'` schedule and every other holding
+type render nothing there.
