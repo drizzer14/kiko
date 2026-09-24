@@ -409,12 +409,41 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // bank, skip straight to the manual-mapping screen instead of showing the
   // "we don't recognize this file" state — `ColumnMapping` still requires
   // its own Import tap (Review Focus 3), so this never imports anything on
-  // its own. Runs at most once (`autoReplacedRef`), so a re-render (the
-  // settings query resolving after the file read, say) never re-navigates.
+  // its own.
   const autoReplacedRef = useRef(false);
+  // The user chose the manual-mapping path themselves (`handleMapColumnsManually`
+  // below) — once that happens, the auto-replace check must never act for
+  // this screen instance again, no matter what it later re-evaluates.
+  const manualMapPushedRef = useRef(false);
+  // Decides at most once, the FIRST time `input` resolves — whether or not
+  // that first look finds a match. `savedMappings` stays a dependency (a
+  // mapping already saved before `input` even resolves must still be seen),
+  // but this guard fixes the decision at that moment and refuses to revisit
+  // it: a `savedMappings` write that lands LATER — the pushed ColumnMapping
+  // screen this effect is unaware of saving its own mapping while this
+  // screen sits blurred underneath it — used to flip the match from false to
+  // true and call `navigation.replace` from a screen the user had already
+  // navigated away from; the router's REPLACE carries no target and falls
+  // back to the FOCUSED route, silently swapping out the live ColumnMapping
+  // instance (and its open success sheet) for a brand-new one.
+  const evaluatedRef = useRef(false);
 
   useEffect(() => {
-    if (autoReplacedRef.current || !accountId || input === undefined || format !== undefined) {
+    if (
+      evaluatedRef.current ||
+      manualMapPushedRef.current ||
+      !accountId ||
+      input === undefined ||
+      format !== undefined
+    ) {
+      return;
+    }
+
+    evaluatedRef.current = true;
+
+    // A stack-mutating call from an effect must never act for a screen the
+    // user has already navigated away from.
+    if (!navigation.isFocused()) {
       return;
     }
 
@@ -554,6 +583,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // required `accountId`.
   const handleMapColumnsManually = (): void => {
     if (accountId) {
+      manualMapPushedRef.current = true;
       // Item 11 (F3): carry the holding already chosen on THIS preview
       // through to Map Columns, so it pre-fills instead of asking again.
       navigation.navigate('ColumnMapping', { filePath, accountId, holdingId: selectedHoldingId });

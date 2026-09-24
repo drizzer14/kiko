@@ -804,6 +804,60 @@ describe('StatementImportScreen — column-mapping entry point (T7)', () => {
     );
     expect(navigation.replace).not.toHaveBeenCalled();
   });
+
+  // A mapping saved by a DIFFERENT screen (the pushed ColumnMapping screen,
+  // mid-Import) notifies every mounted subscriber, including this one — the
+  // auto-replace check must decide once, the first time `input` is ready,
+  // and never revisit that decision on a later `savedMappings` change.
+  it('does not auto-replace when savedMappings changes to a match AFTER input is already ready', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+    setLiveData({ account: { id: 'a', bankId: 'sensebank' } });
+
+    const view = await renderScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      expectedFormatId: 'sensebank-csv',
+    });
+
+    await waitFor(() =>
+      expect(
+        view.getByText(i18n.t('statementImport.bankMismatch', { bank: 'Sensebank (CSV)' })),
+      ).toBeTruthy(),
+    );
+    expect(view.navigation.replace).not.toHaveBeenCalled();
+
+    setLiveData({
+      account: { id: 'a', bankId: 'sensebank' },
+      statementMappings: {
+        'bank:sensebank': {
+          headerRowIndex: 0,
+          decimalSeparator: '.',
+          dateColumn: 0,
+          dateFormat: 'DD.MM.YYYY HH:MM:SS',
+          amount: { mode: 'single', column: 3 },
+          descriptionColumn: 1,
+          currency: { mode: 'fixed', currency: 'UAH' },
+          fingerprint: headerFingerprint(fixtureHeaderRow),
+          savedAt: 1_700_000_000_000,
+        },
+      },
+    });
+
+    await act(async () => {
+      view.rerender(
+        <StatementImportScreen
+          route={asRouteProp<StatementImportProps['route']>('StatementImport', {
+            filePath: '/mock/statement.csv',
+            accountId: 'a',
+            expectedFormatId: 'sensebank-csv',
+          })}
+          navigation={asNavigationProp<StatementImportProps['navigation']>(view.navigation)}
+        />,
+      );
+    });
+
+    expect(view.navigation.replace).not.toHaveBeenCalled();
+  });
 });
 
 // N4 (F3 part 1 fix round 2) + R2-1 (fix round 3): on Done, the sheet closes

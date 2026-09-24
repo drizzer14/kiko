@@ -1,6 +1,6 @@
 import { match } from 'ts-pattern';
-import { type FC, useState } from 'react';
 import { Pressable, Text } from 'react-native';
+import { type FC, useRef, useState, useEffect } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -42,6 +42,36 @@ import type { AccountsStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<AccountsStackParamList>();
 
+// A minimal external-store stand-in for the shared `settings` row
+// `savedMappings` is read from (`useLiveQuery(settingsRepo.getQuery(), …)`
+// in the real screens) — every mounted subscriber re-renders the instant
+// `setSavedMappingMatches` fires, exactly like a live settings-table write
+// notifies every reader, including one sitting blurred underneath a pushed
+// screen.
+let savedMappingMatches = false;
+const savedMappingListeners = new Set<() => void>();
+const setSavedMappingMatches = (matches: boolean): void => {
+  savedMappingMatches = matches;
+
+  for (const listener of savedMappingListeners) {
+    listener();
+  }
+};
+const useSavedMappingMatches = (): boolean => {
+  const [, forceRender] = useState(0);
+
+  useEffect(() => {
+    const listener = (): void => forceRender((n) => n + 1);
+    savedMappingListeners.add(listener);
+
+    return () => {
+      savedMappingListeners.delete(listener);
+    };
+  }, []);
+
+  return savedMappingMatches;
+};
+
 const AccountDetailStub: FC<NativeStackScreenProps<AccountsStackParamList, 'AccountDetail'>> = ({
   route,
   navigation,
@@ -62,48 +92,77 @@ const AccountDetailStub: FC<NativeStackScreenProps<AccountsStackParamList, 'Acco
 // Mirrors statement-import.screen.tsx:439-444 (handleMapColumnsManually,
 // a genuine PUSH — ColumnMapping is not yet on the stack, so `navigate` is
 // correct there and stays `navigate`, not `popTo`) and :419-431
-// (handleImportDone, fixed to `popTo` — the case under test here).
+// (handleImportDone, fixed to `popTo` — the case under test here). The
+// `evaluatedRef`-guarded effect below mirrors that same file's own
+// auto-replace effect shape (decides at most once, against whatever
+// `savedMappingMatches` snapshot is available the first time it runs, and
+// never revisits that decision on a later change).
 const StatementImportStub: FC<
   NativeStackScreenProps<AccountsStackParamList, 'StatementImport'>
-> = ({ route, navigation }) => (
-  <>
-    <Text testID="screen-statement-import">StatementImport</Text>
-    <Pressable
-      testID="push-column-mapping"
-      onPress={() =>
-        navigation.navigate('ColumnMapping', {
-          filePath: route.params.filePath,
-          accountId: route.params.accountId ?? 'acc-1',
-        })
-      }
-    >
-      <Text>Map columns manually</Text>
-    </Pressable>
-    <Pressable
-      testID="push-holding-form-from-preview"
-      onPress={() =>
-        navigation.navigate('HoldingForm', {
-          accountId: route.params.accountId ?? 'acc-1',
-          returnTo: { screen: 'StatementImport', params: route.params },
-        })
-      }
-    >
-      <Text>Create new holding</Text>
-    </Pressable>
-    <Pressable
-      testID="done"
-      onPress={() =>
-        navigation.popTo(
-          'AccountDetail',
-          { accountId: route.params.accountId ?? 'acc-1', name: 'Acc' },
-          { merge: true },
-        )
-      }
-    >
-      <Text>Done</Text>
-    </Pressable>
-  </>
-);
+> = ({ route, navigation }) => {
+  const savedMappingMatchesSnapshot = useSavedMappingMatches();
+  const evaluatedRef = useRef(false);
+
+  useEffect(() => {
+    if (evaluatedRef.current) {
+      return;
+    }
+
+    evaluatedRef.current = true;
+
+    if (!navigation.isFocused()) {
+      return;
+    }
+
+    if (savedMappingMatchesSnapshot) {
+      navigation.replace('ColumnMapping', {
+        filePath: route.params.filePath,
+        accountId: route.params.accountId ?? 'acc-1',
+        ownsFile: true,
+      });
+    }
+  }, [savedMappingMatchesSnapshot, navigation, route.params]);
+
+  return (
+    <>
+      <Text testID="screen-statement-import">StatementImport</Text>
+      <Pressable
+        testID="push-column-mapping"
+        onPress={() =>
+          navigation.navigate('ColumnMapping', {
+            filePath: route.params.filePath,
+            accountId: route.params.accountId ?? 'acc-1',
+          })
+        }
+      >
+        <Text>Map columns manually</Text>
+      </Pressable>
+      <Pressable
+        testID="push-holding-form-from-preview"
+        onPress={() =>
+          navigation.navigate('HoldingForm', {
+            accountId: route.params.accountId ?? 'acc-1',
+            returnTo: { screen: 'StatementImport', params: route.params },
+          })
+        }
+      >
+        <Text>Create new holding</Text>
+      </Pressable>
+      <Pressable
+        testID="done"
+        onPress={() =>
+          navigation.popTo(
+            'AccountDetail',
+            { accountId: route.params.accountId ?? 'acc-1', name: 'Acc' },
+            { merge: true },
+          )
+        }
+      >
+        <Text>Done</Text>
+      </Pressable>
+    </>
+  );
+};
 
 // Mirrors column-mapping.screen.tsx's own "Create new holding" (a genuine
 // PUSH, stays `navigate`) and its `handleImportDone` (fixed to `popTo`).
@@ -117,12 +176,14 @@ const ColumnMappingStub: FC<NativeStackScreenProps<AccountsStackParamList, 'Colu
   navigation,
 }) => {
   const [dateColumn, setDateColumn] = useState<number | undefined>(undefined);
+  const [importResultVisible, setImportResultVisible] = useState(false);
 
   return (
     <>
       <Text testID="screen-column-mapping">ColumnMapping</Text>
       <Text testID="column-mapping-date-column">{dateColumn ?? 'unset'}</Text>
       <Text testID="column-mapping-holding">{route.params.holdingId ?? 'none'}</Text>
+      <Text testID="import-result">{importResultVisible ? 'shown' : 'hidden'}</Text>
       <Pressable testID="pick-date-column" onPress={() => setDateColumn(0)}>
         <Text>Pick date column</Text>
       </Pressable>
@@ -136,6 +197,31 @@ const ColumnMappingStub: FC<NativeStackScreenProps<AccountsStackParamList, 'Colu
         }
       >
         <Text>Create new holding</Text>
+      </Pressable>
+      <Pressable
+        testID="import"
+        onPress={() => {
+          // Mirrors column-mapping.screen.tsx's own `handleImport`: shows the
+          // success sheet FIRST, then saves the mapping — a write that
+          // notifies every mounted subscriber, including a blurred
+          // StatementImport instance sitting beneath this pushed screen.
+          setImportResultVisible(true);
+          setSavedMappingMatches(true);
+        }}
+      >
+        <Text>Import</Text>
+      </Pressable>
+      <Pressable
+        testID="done-column-mapping"
+        onPress={() =>
+          navigation.popTo(
+            'AccountDetail',
+            { accountId: route.params.accountId, name: 'Acc' },
+            { merge: true },
+          )
+        }
+      >
+        <Text>Done</Text>
       </Pressable>
     </>
   );
@@ -202,6 +288,10 @@ const routeNames = (): (keyof AccountsStackParamList)[] =>
   (navigationRef.getState()?.routes ?? []).map((r) => r.name as keyof AccountsStackParamList);
 
 describe('statement-import return-navigation (C1, real router)', () => {
+  beforeEach(() => {
+    savedMappingMatches = false;
+  });
+
   it('item 2 (Map Columns path): "Create new holding" returns to the SAME ColumnMapping instance, keeping its state and selecting the new holding — no duplicate route', async () => {
     const view = await renderNavigator();
 
@@ -246,5 +336,39 @@ describe('statement-import return-navigation (C1, real router)', () => {
 
     expect(routeNames()).toEqual(['AccountDetail']);
     expect(view.queryAllByTestId('screen-account-detail')).toHaveLength(1);
+  });
+
+  it('a saved-mapping write while the pushed ColumnMapping sheet is open does not swap out the live instance', async () => {
+    const view = await renderNavigator();
+
+    await fireEvent.press(view.getByTestId('push-statement-import'));
+    await fireEvent.press(view.getByTestId('push-column-mapping'));
+    // The user's own column choice, made BEFORE the write below — proves the
+    // instance below survives, not just the route name.
+    await fireEvent.press(view.getByTestId('pick-date-column'));
+
+    const columnMappingRouteKeyBefore = navigationRef
+      .getState()
+      ?.routes.find((r) => r.name === 'ColumnMapping')?.key;
+
+    // Mirrors the real bug: ColumnMapping's own Import shows its success
+    // sheet, then saves the mapping — a write that notifies EVERY mounted
+    // subscriber, including the blurred StatementImport instance beneath it.
+    await fireEvent.press(view.getByTestId('import'));
+
+    expect(routeNames()).toEqual(['AccountDetail', 'StatementImport', 'ColumnMapping']);
+    expect(view.queryAllByTestId('screen-column-mapping')).toHaveLength(1);
+    expect(navigationRef.getState()?.routes.find((r) => r.name === 'ColumnMapping')?.key).toBe(
+      columnMappingRouteKeyBefore,
+    );
+    // The SAME instance survived the write: its local state (the date column
+    // choice) is still '0', not reset by an unmount/remount, and the success
+    // sheet the write happened underneath is still showing.
+    expect(view.getByTestId('column-mapping-date-column')).toHaveTextContent('0');
+    expect(view.getByTestId('import-result')).toHaveTextContent('shown');
+
+    await fireEvent.press(view.getByTestId('done-column-mapping'));
+
+    expect(routeNames()).toEqual(['AccountDetail']);
   });
 });
