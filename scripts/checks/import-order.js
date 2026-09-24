@@ -3,15 +3,21 @@
 // Mechanizes kiko-code-style's "Import ordering" rule (hand-enforced, not
 // covered by Biome's organizeImports — see biome.json's
 // assist.actions.source.organizeImports.level: "off"). Checks (and, given
-// --write, fixes) the LEADING import header of a .ts/.tsx file: 3 groups
-// (external / ../** parent-relative / ./** sibling-relative), each separated
-// by a blank line, sorted ASCENDING within each group by the length of the
-// statement's ENDING physical line (the whole line for a single-line import,
-// the `} from '...';` closing line for a wrapped one), value imports before
-// `import type` only as an equal-length tiebreaker, and a bare side-effect
-// import (no specifiers) as a hard ordering BARRIER that splits its group
-// into independently-sorted before/after partitions rather than being
-// sorted itself.
+// --write, fixes) the LEADING import header of a .ts/.tsx file: 3 groups, in
+// this order and each separated by a blank line — external (including a
+// path alias like '@kiko/...'), then '../**' parent-relative, then './**'
+// sibling-relative — each holding only imports of its own kind (a group
+// mixing two kinds, or a group of one kind appearing before an
+// earlier-ranked kind, is a violation), sorted ASCENDING within the group by
+// the length of the statement's ENDING physical line (the whole line for a
+// single-line import, the `} from '...';` closing line for a wrapped one),
+// value imports before `import type` only as an equal-length tiebreaker,
+// and a bare side-effect import (no specifiers) as a hard ordering BARRIER
+// that splits its group into independently-sorted before/after partitions
+// rather than being sorted itself, and is excluded from group-kind checking
+// entirely (its position is pinned for module-initialization order, not
+// style grouping — see App.tsx's two leading sibling-relative side-effect
+// imports, which must run before the external group).
 //
 // A comment run directly above the FIRST import of a group is a "block
 // prefix" — pinned, never reordered, never treated as attached to the import
@@ -177,6 +183,58 @@ function isTypeOnlyImport(statementLines) {
   return /^\s*import\s+type\b/.test(statementLines[0] ?? '');
 }
 
+// The module specifier an import statement resolves ('../db/client',
+// 'react', './foo') — read from the joined statement text so a wrapped
+// import's specifier (on its `} from '...';` closing line) is still found.
+function specifierOf(statementLines) {
+  const joined = statementLines.join(' ');
+  const match = /from\s+['"]([^'"]+)['"]|^\s*import\s+['"]([^'"]+)['"]/.exec(joined);
+
+  return match ? (match[1] ?? match[2] ?? null) : null;
+}
+
+// kiko-code-style's 3 groups, ranked in the order they must appear:
+// external packages (including a path alias like '@kiko/...' — anything
+// that is not relative), '../**' parent-relative, then './**'
+// sibling-relative.
+const GROUP_KIND_RANK = { external: 0, parent: 1, sibling: 2 };
+
+function pathKind(specifier) {
+  if (specifier === null) {
+    return null;
+  }
+
+  if (specifier === '..' || specifier.startsWith('../')) {
+    return 'parent';
+  }
+
+  if (specifier === '.' || specifier.startsWith('./')) {
+    return 'sibling';
+  }
+
+  return 'external';
+}
+
+// The distinct kinds among a run of items with no side-effect barrier
+// between them — a bare side-effect import is never part of a `partition`
+// here (partitionAtBarriers always isolates it into its own 'barrier'
+// partition), so no explicit filtering is needed: its position is pinned
+// for module-initialization order, not style grouping, and it already
+// splits its surrounding real imports into independently-checked runs (the
+// same reason it is already a within-group SORT barrier) — this is what
+// lets a side-effect import glued between an external and a sibling import
+// in one blank-free block (text.component.test.tsx's real shape) sit there
+// without either side being flagged as "mixed" with the other.
+function partitionKinds(items) {
+  return [
+    ...new Set(
+      items
+        .map((item) => pathKind(specifierOf(item.statementLines)))
+        .filter((kind) => kind !== null),
+    ),
+  ];
+}
+
 function sortKey(statementLines) {
   const endingLine = statementLines[statementLines.length - 1] ?? '';
 
@@ -321,24 +379,61 @@ function isSorted(items) {
   return true;
 }
 
+// Checks one sortable partition's length-order and group-kind, pushing any
+// violation onto `violations`, and returns the running canonical-order rank
+// (unchanged when the partition mixes kinds or is barrier-only) for the
+// caller to carry into the next partition.
+function checkPartition(groupIndex, partition, previousRank, violations) {
+  if (!isSorted(partition.items)) {
+    violations.push(
+      `group ${groupIndex + 1}: not sorted ascending by ending-line length — ` +
+        partition.items
+          .map((item) => item.statementLines[item.statementLines.length - 1])
+          .join(' | '),
+    );
+  }
+
+  const kinds = partitionKinds(partition.items);
+
+  if (kinds.length > 1) {
+    violations.push(
+      `group ${groupIndex + 1}: mixes external / ../** / ./** imports with no side-effect barrier between them — split into separate groups`,
+    );
+
+    return previousRank;
+  }
+
+  if (kinds.length === 0) {
+    return previousRank;
+  }
+
+  const rank = GROUP_KIND_RANK[kinds[0]];
+
+  if (rank < previousRank) {
+    violations.push(
+      `group ${groupIndex + 1}: out of order — groups must appear external, then ../**, then ./**`,
+    );
+  }
+
+  return Math.max(previousRank, rank);
+}
+
 function checkImportOrder(source) {
   const lines = source.split('\n');
   const { entries } = parseHeaderEntries(lines, skipPrelude(lines));
   const groups = splitIntoGroups(entries);
   const violations = [];
+  let previousRank = -1;
 
   groups.forEach((groupEntries, groupIndex) => {
     const { items } = analyzeGroup(groupEntries);
 
     for (const partition of partitionAtBarriers(items)) {
-      if (partition.kind === 'sortable' && !isSorted(partition.items)) {
-        violations.push(
-          `group ${groupIndex + 1}: not sorted ascending by ending-line length — ` +
-            partition.items
-              .map((item) => item.statementLines[item.statementLines.length - 1])
-              .join(' | '),
-        );
+      if (partition.kind === 'barrier') {
+        continue;
       }
+
+      previousRank = checkPartition(groupIndex, partition, previousRank, violations);
     }
   });
 

@@ -65,7 +65,85 @@ describe('scripts/checks/import-order.sh', () => {
     expect(result.status).toBe(0);
   });
 
-  // I3: a jest.mock prelude (a `let` the mock factory closes over, then the
+  it('fails a group that mixes a ../ import with a ./ import', () => {
+    const result = runCheck(
+      "import SettingsRow from '../settings-row';\n" +
+        "import AppLockSetting from './app-lock-setting/app-lock-setting.component';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('Import ordering');
+  });
+
+  it('fails when a ../ group appears before the external group', () => {
+    const result = runCheck(
+      "import { x } from '../a';\n" +
+        '\n' +
+        "import { y } from 'external-pkg';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('Import ordering');
+  });
+
+  it('passes a leading side-effect-only group ahead of the external group', () => {
+    // App.tsx's own shape: two sibling-relative side-effect imports that
+    // must run before anything else is imported, ahead of the external
+    // group — a side-effect-only group carries no style-grouping intent to
+    // check, the same reason it is already a barrier within a group.
+    const result = runCheck(
+      "import './src/design-system/unistyles';\n" +
+        "import './src/i18n';\n" +
+        '\n' +
+        "import type { FC } from 'react';\n" +
+        "import { NavigationContainer } from '@react-navigation/native';\n" +
+        '\n' +
+        "import RootNavigator from './src/navigation/root.navigator';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+    );
+
+    expect(result.status).toBe(0);
+  });
+
+  it('does not flag a bare-`.` sibling index import as external', () => {
+    // The current-directory shorthand `from '.'` (no trailing slash) is a
+    // sibling-relative import — the same kind as `from './foo'` — not an
+    // external package. text.component.test.tsx's real files use this form.
+    const result = runCheck(
+      "import { fireEvent, render } from '@testing-library/react-native';\n" +
+        '\n' +
+        "import type { HoldingType } from '../../../holdings/holding-type/holding-type';\n" +
+        '\n' +
+        "import HoldingTypeField from '.';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+    );
+
+    expect(result.status).toBe(0);
+  });
+
+  it('does not flag a real import split from a same-group import by a side-effect barrier', () => {
+    // text.component.test.tsx's real shape: an external import, then a
+    // parent-relative side-effect import (excluded from grouping), then a
+    // sibling import — all in one blank-free block. The barrier already
+    // separates the two real imports, so this is not a "mixed group".
+    const result = runCheck(
+      "import { render } from '@testing-library/react-native';\n" +
+        "import '../../unistyles';\n" +
+        "import Text from './text.component';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+    );
+
+    expect(result.status).toBe(0);
+  });
+
+  // A jest.mock prelude (a `let` the mock factory closes over, then the
   // mock call itself) sits before the real import block in real test files
   // (settings.repo.test.ts, holdings.repo.test.ts). The checker must look
   // PAST that prelude for the import header, not stop at the first
@@ -215,8 +293,8 @@ describe('scripts/checks/import-order.js --write', () => {
     expect(write(source)).toBe(source);
   });
 
-  // C1 regression: a group of comments with NO import in it (a header block
-  // followed directly by another comment block, with no import between them —
+  // A group of comments with NO import in it (a header block followed
+  // directly by another comment block, with no import between them —
   // src/navigation/types.d.ts is the live shape) must never be silently
   // dropped when an unrelated earlier group in the same file DOES need
   // reordering (which is what flips fixImportOrder's file-level `changed`
