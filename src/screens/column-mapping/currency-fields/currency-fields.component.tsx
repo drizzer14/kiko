@@ -29,6 +29,7 @@ const CurrencyFields: FC<CurrencyFieldsProps> = ({
   onCurrencyColumnChange,
   fixedCurrency,
   onFixedCurrencyChange,
+  currencyColumnError,
 }) => {
   const { t } = useTranslation();
 
@@ -49,6 +50,8 @@ const CurrencyFields: FC<CurrencyFieldsProps> = ({
           selected={currencyColumn}
           onSelect={onCurrencyColumnChange}
           required
+          placeholder={t('columnMapping.currencyColumnPlaceholder')}
+          error={currencyColumnError}
           testID="column-mapping-currency-column"
         />
       )}

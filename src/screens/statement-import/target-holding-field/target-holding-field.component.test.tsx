@@ -26,8 +26,8 @@ const holdings: TargetHoldingOption[] = [
 ];
 
 describe('TargetHoldingField', () => {
-  it('shows the label as the placeholder value when nothing is selected', async () => {
-    const { getAllByText } = await render(
+  it('shows a distinct placeholder (not the label repeated) when nothing is selected', async () => {
+    const { getByText } = await render(
       <TargetHoldingField
         label="Choose a holding"
         holdings={holdings}
@@ -35,12 +35,15 @@ describe('TargetHoldingField', () => {
         selectedId={undefined}
         onSelect={jest.fn()}
         onCreateNew={jest.fn()}
+        placeholder="Select a holding"
       />,
     );
 
-    // The FieldLabel caption AND the trigger's placeholder value both show
-    // this text until a holding is picked.
-    expect(getAllByText('Choose a holding').length).toBeGreaterThan(0);
+    // The FieldLabel caption ("Choose a holding") and the trigger's own
+    // value ("Select a holding") must read as two DIFFERENT strings (F4
+    // audit 16) — a placeholder never repeats the label text verbatim.
+    expect(getByText('Choose a holding')).toBeTruthy();
+    expect(getByText('Select a holding')).toBeTruthy();
   });
 
   it('shows the selected holding name as the trigger value once selected', async () => {
@@ -52,6 +55,7 @@ describe('TargetHoldingField', () => {
         selectedId="h2"
         onSelect={jest.fn()}
         onCreateNew={jest.fn()}
+        placeholder="Select a holding"
       />,
     );
 
@@ -68,6 +72,7 @@ describe('TargetHoldingField', () => {
         selectedId="h2"
         onSelect={jest.fn()}
         onCreateNew={jest.fn()}
+        placeholder="Select a holding"
       />,
     );
 
@@ -86,6 +91,7 @@ describe('TargetHoldingField', () => {
         selectedId={undefined}
         onSelect={onSelect}
         onCreateNew={jest.fn()}
+        placeholder="Select a holding"
         testID="target-holding-field"
       />,
     );
@@ -94,5 +100,24 @@ describe('TargetHoldingField', () => {
     await fireEvent.press(view.getByTestId('target-holding-option-h1'));
 
     expect(onSelect).toHaveBeenCalledWith('h1');
+  });
+
+  it('shows the FieldError message and tints the label negative when `error` is set', async () => {
+    const { getByText, getByTestId } = await render(
+      <TargetHoldingField
+        label="Choose a holding"
+        holdings={holdings}
+        accountId="a"
+        selectedId={undefined}
+        onSelect={jest.fn()}
+        onCreateNew={jest.fn()}
+        placeholder="Select a holding"
+        error="Pick a holding."
+        testID="target-holding-field"
+      />,
+    );
+
+    expect(getByText('Pick a holding.')).toBeTruthy();
+    expect(getByTestId('target-holding-field-error')).toBeTruthy();
   });
 });

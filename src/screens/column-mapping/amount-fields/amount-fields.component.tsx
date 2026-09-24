@@ -28,6 +28,9 @@ const AmountFields: FC<AmountFieldsProps> = ({
   onDebitColumnChange,
   creditColumn,
   onCreditColumnChange,
+  amountColumnError,
+  debitColumnError,
+  creditColumnError,
 }) => {
   const { t } = useTranslation();
 
@@ -48,6 +51,8 @@ const AmountFields: FC<AmountFieldsProps> = ({
           selected={amountColumn}
           onSelect={onAmountColumnChange}
           required
+          placeholder={t('columnMapping.amountColumnPlaceholder')}
+          error={amountColumnError}
           testID="column-mapping-amount-column"
         />
       )}
@@ -60,6 +65,8 @@ const AmountFields: FC<AmountFieldsProps> = ({
             selected={debitColumn}
             onSelect={onDebitColumnChange}
             required
+            placeholder={t('columnMapping.debitColumnPlaceholder')}
+            error={debitColumnError}
             testID="column-mapping-debit-column"
           />
 
@@ -69,6 +76,8 @@ const AmountFields: FC<AmountFieldsProps> = ({
             selected={creditColumn}
             onSelect={onCreditColumnChange}
             required
+            placeholder={t('columnMapping.creditColumnPlaceholder')}
+            error={creditColumnError}
             testID="column-mapping-credit-column"
           />
         </>

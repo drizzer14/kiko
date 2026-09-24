@@ -59,4 +59,33 @@ describe('FieldTrigger', () => {
 
     expect(queryByText('AED')).toBeNull();
   });
+
+  it('renders no FieldError and a plain label when `error` is undefined', async () => {
+    const { queryByText } = await render(
+      <FieldTrigger
+        label="Category"
+        onPress={jest.fn()}
+        value="Groceries"
+        valueTone="textPrimary"
+      />,
+    );
+
+    expect(queryByText('Pick one.')).toBeNull();
+  });
+
+  it('shows the FieldError message and tints the label negative when `error` is set', async () => {
+    const { getByText, getByTestId } = await render(
+      <FieldTrigger
+        label="Category"
+        onPress={jest.fn()}
+        value="Select a category"
+        valueTone="textSecondary"
+        error="Pick one."
+        testID="category-field"
+      />,
+    );
+
+    expect(getByText('Pick one.')).toBeTruthy();
+    expect(getByTestId('category-field-error')).toBeTruthy();
+  });
 });

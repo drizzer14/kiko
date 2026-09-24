@@ -24,18 +24,29 @@ const ROW_ERROR_PREVIEW_COUNT = 20;
  * the mapping is complete or not, instead of jumping when the last required
  * column gets mapped.
  */
-const MappingResult: FC<MappingResultProps> = ({ stats, rowErrors, holdingName }) => {
+const MappingResult: FC<MappingResultProps> = ({
+  stats,
+  rowErrors,
+  holdingName,
+  currencyUnresolved = false,
+}) => {
   const { t } = useTranslation();
   const visibleRowErrors = rowErrors.slice(0, ROW_ERROR_PREVIEW_COUNT);
   const overflowCount = rowErrors.length - visibleRowErrors.length;
+  // F4 audit 6: the specific reason (currency values Kiko can't resolve)
+  // replaces the generic "still missing a column" hint, which used to show
+  // even though every required field WAS mapped.
+  const incompleteMessageKey = currencyUnresolved
+    ? 'columnMapping.currencyColumnUnresolvedError'
+    : 'columnMapping.incomplete';
 
   return (
     <Box gap={3} style={styles.resultBlock}>
       <Text variant="heading">{t('columnMapping.result')}</Text>
 
       {stats === undefined && (
-        <Text variant="body" tone="textSecondary">
-          {t('columnMapping.incomplete')}
+        <Text variant="body" tone={currencyUnresolved ? 'negative' : 'textSecondary'}>
+          {t(incompleteMessageKey)}
         </Text>
       )}
 

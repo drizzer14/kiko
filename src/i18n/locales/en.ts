@@ -706,6 +706,14 @@ export const en = {
     // screen, sentence case): see `accountDetail.addBankSheetTitle` for the
     // identical split.
     chooseHoldingSheetTitle: 'Choose a Holding',
+    // The field's own "nothing picked yet" value (F4 audit 16): never
+    // `chooseHolding` repeated verbatim — a different verb, the same "Select
+    // a …" copy style as `forms.account.selectBankPlaceholder`.
+    chooseHoldingPlaceholder: 'Select a holding',
+    // Shown on the field when Import/Save was pressed with no holding chosen
+    // — "Pick …" matches the established picker-field error copy style (see
+    // `forms.holding.couponFrequencyRequiredError`).
+    chooseHoldingError: 'Pick a holding to import into.',
     createNewHolding: 'Create new holding',
     importButton: 'Import',
     importedCount: 'Imported {{imported}} of {{total}}',
@@ -801,10 +809,45 @@ export const en = {
     // the user has made a choice — not part of the task brief's own literal
     // key list, but unavoidable: every FieldTrigger in this screen needs
     // SOME "nothing chosen yet" text, distinct from `notUsed` (an explicit
-    // opt-out for an OPTIONAL role, not "not yet picked").
+    // opt-out for an OPTIONAL role, not "not yet picked"). Kept as the
+    // fallback `ColumnSelectField` resolves to when a caller passes no own
+    // `placeholder` — every FIELD on this screen now passes its own below
+    // (F4 audit 16: a bare "Select" reads too generic per-field).
     selectValue: 'Select',
+    // Per-field placeholders (F4 audit 16 + F4 item 4): each names its own
+    // column role, matching the established "Select a bank (optional)"/
+    // "Select a date" copy style — never the bare `selectValue` above.
+    dateColumnPlaceholder: 'Select a date column',
+    dateFormatPlaceholder: 'Select a date format',
+    amountColumnPlaceholder: 'Select an amount column',
+    debitColumnPlaceholder: 'Select a debit column',
+    creditColumnPlaceholder: 'Select a credit column',
+    currencyColumnPlaceholder: 'Select a currency column',
+    descriptionColumnPlaceholder: 'Select a description column',
+    counterpartyColumnPlaceholder: 'Select a counterparty column',
+    balanceColumnPlaceholder: 'Select a balance column',
+    // Field-level Import-press validation errors (F4 audit 1: Import is
+    // never disabled, every required field validates on press instead) —
+    // "Pick …" matches the established `forms.holding.couponFrequencyRequiredError`
+    // copy style for a picker field.
+    dateColumnError: 'Pick a date column.',
+    dateFormatError: 'Pick a date format.',
+    amountColumnError: 'Pick an amount column.',
+    debitColumnError: 'Pick a debit column.',
+    creditColumnError: 'Pick a credit column.',
+    currencyColumnError: 'Pick a currency column.',
+    // F4 audit 6: a currency column whose values resolve to NO known ISO
+    // code (`applyColumnMapping` throws — see apply-column-mapping.ts) used
+    // to swallow the error and show the generic `incomplete` hint below
+    // instead, even though every required field WAS mapped — a dead Import
+    // button with no honest reason why. Shown on the currency-column field
+    // itself, and reused by `MappingResult`'s own hint (`currencyUnresolved`)
+    // in place of `incomplete` for the exact same reason.
+    currencyColumnUnresolvedError:
+      'None of the values in this column are currency codes Kiko recognizes.',
+    descriptionColumnError: 'Pick a description column.',
     result: 'Result',
-    incomplete: 'Choose the date, amount, and description columns',
+    incomplete: 'Choose the date, amount, and description columns.',
     rowError: {
       date: 'Row {{row}}: the date does not match the format',
       amount: 'Row {{row}}: the amount is not a number',

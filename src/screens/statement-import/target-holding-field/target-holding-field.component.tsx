@@ -27,6 +27,8 @@ const TargetHoldingField: FC<TargetHoldingFieldProps> = ({
   selectedId,
   onSelect,
   onCreateNew,
+  placeholder,
+  error,
   testID,
 }) => {
   const [open, setOpen] = useState(false);
@@ -40,8 +42,9 @@ const TargetHoldingField: FC<TargetHoldingFieldProps> = ({
         onPress={() => setOpen(true)}
         icon={selected?.icon}
         iconColor={selected?.color}
-        value={selected?.name ?? label}
+        value={selected?.name ?? placeholder}
         valueTone={selected ? 'textPrimary' : 'textSecondary'}
+        error={error}
         testID={testID}
       />
 

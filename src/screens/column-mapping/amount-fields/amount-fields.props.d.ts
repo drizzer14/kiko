@@ -12,4 +12,7 @@ export type AmountFieldsProps = {
   onDebitColumnChange: (value: number | undefined) => void;
   creditColumn: number | undefined;
   onCreditColumnChange: (value: number | undefined) => void;
+  amountColumnError?: string;
+  debitColumnError?: string;
+  creditColumnError?: string;
 };

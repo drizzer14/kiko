@@ -16,6 +16,19 @@ describe('MappingResult', () => {
     expect(queryByTestId('column-mapping-transaction-count')).toBeNull();
   });
 
+  // F4 audit 6: a currency column with no ISO codes throws inside
+  // `applyColumnMapping` even though every required field IS mapped — the
+  // generic "still missing a column" hint used to show anyway, misleading
+  // the user. `currencyUnresolved` swaps in the specific reason instead.
+  it('shows the currency-unresolved hint, not the generic incomplete one, when currencyUnresolved is set', async () => {
+    const { getByText, queryByText } = await render(
+      <MappingResult stats={undefined} rowErrors={[]} currencyUnresolved />,
+    );
+
+    expect(getByText(i18n.t('columnMapping.currencyColumnUnresolvedError'))).toBeTruthy();
+    expect(queryByText(i18n.t('columnMapping.incomplete'))).toBeNull();
+  });
+
   // F3 fix round 1, I2: the heading shows in BOTH the incomplete and
   // complete states — it no longer jumps position/spacing when the last
   // required column gets mapped (SummaryTable gets no `title` of its own).
