@@ -122,15 +122,51 @@ catalog via the shared `flattenCatalog` helper — also used by
 `uk.casing.test.ts`, `en.uk.parity.test.ts`, and
 `uk.catalog-rules.test.ts` — and fails on any casing violation) and
 `src/i18n/locales/uk.casing.test.ts` (the uk sentence-case-everywhere
-invariant). The Title Case role is an EXPLICIT key list
-(`TITLE_KEYS`), not a key-name pattern (a `Title`/`Heading`-suffixed
-key that is actually a button or a field label would otherwise be
-silently exempted from the sentence-case check — CASE fix round 1/5);
-every other key defaults to sentence case, so a genuinely new
+invariant). The Title Case role is an EXPLICIT key list (`TITLE_KEYS`,
+`src/i18n/locales/title-keys.ts` — shared with the full-stop invariant
+below), not a key-name pattern (a `Title`/`Heading`-suffixed key that
+is actually a button or a field label would otherwise be silently
+exempted from the sentence-case check — CASE fix round 1/5); every
+other key defaults to sentence case, so a genuinely new
 title/heading/sheet-title key fails this test until it is added to
 `TITLE_KEYS` on purpose. Read the FAILURE MESSAGE'S key path before
-assuming a new string is miscased: add a new title key to the list in
-`en.casing-by-role.test.ts`, not just to the catalogue.
+assuming a new string is miscased: add a new title key to
+`title-keys.ts`, not just to the catalogue.
+
+## Final "." follows one rule per UI role too (F4 full-stop DECISION, 2026-09-24)
+
+A second, independent axis from casing — every catalogue string's
+trailing punctuation is decided by its UI ROLE, not habit:
+
+- **No final "."** — titles, headings, sheet titles, buttons,
+  chips/options, menu items, field labels, placeholders, empty
+  states, alert titles, progress/status text (e.g.
+  `home.syncingHoldings`), and a `"Label: {{value}}"` string (e.g.
+  `migration.error: 'Migration error: {{message}}'`). A sheet title
+  phrased as a real question (`settings.dataImport.confirmTitle`,
+  "Replace All Data?") still ends in its own "?" — that is the
+  question's punctuation, not a violation of this rule.
+- **Final "." always** (or "?" when the body is itself a question) —
+  option descriptions/subtitles, captions/hints, errors, toast/alert
+  bodies, even for a one-word fragment (`isinNotInRegister`: "Not in
+  the NBU register.").
+
+The mechanized invariant lives in
+`src/i18n/locales/en.final-stop-by-role.test.ts` (checks both `en` and
+`uk` via `describe.each`). It reuses `TITLE_KEYS` for the no-final-"."
+side, and — for the always-final-"." side — checks every leaf key
+whose OWN name ends `Error` (or `Error_<plural suffix>`, e.g.
+`skippedWrongCurrency_one`'s sibling shape): every `*Error` key IS an
+error message by construction (`forms.holding.quantityError`,
+`columnMapping.dateColumnError`, ...), so this is a safe, already-
+verified name-based check for that one role — unlike the Title role,
+a wrongly-matched `*Error` key would fail LOUDLY here (an actual
+non-period string caught), never silently exempt something from a
+check it should have run. This does not re-derive the full per-key
+audit for every other always-period role (captions/hints, option
+subtitles, and toast/alert bodies have no equally reliable key-name
+suffix to check by pattern) — add a new key to the SAME role's
+existing sibling keys' punctuation, by hand, per the DECISION above.
 
 ## Ukrainian is sentence case — no blanket `textTransform`
 

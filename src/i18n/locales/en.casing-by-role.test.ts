@@ -13,20 +13,22 @@
 // value is caught the same as a plain literal) and assigned to one of the
 // two buckets.
 //
-// The Title Case bucket is an EXPLICIT key list (`TITLE_KEYS` below), not a
-// key-NAME pattern (`/Title$/`, `/Heading$/`, etc.) — CASE fix round 1/5.
-// A pattern is a blind spot in the direction that matters: a future BUTTON
-// or LABEL key that happens to end in `Title`/`Heading` would silently land
-// in the Title bucket and never get checked for sentence case (this file
-// already needed one `ErrorTitle` carve-out because a `*Title` key turned
-// out NOT to be a title — see `settings.dataExport.errorTitle`, an
-// `Alert.alert` title, i.e. an error). Every key NOT in `TITLE_KEYS` is
-// checked as sentence case, including one that matches a `Title`/`Heading`-
-// looking name — so a new title key fails this test the moment it renders
-// wrong, until it is added to `TITLE_KEYS` on purpose. Every entry in
-// `TITLE_KEYS` is verified by call site (a nav `options.title`/
-// `navigation.setOptions`, a `variant="heading"` `Text`, or a
-// `BottomSheet`/`ConfirmSheet` title/header prop) — see
+// The Title Case bucket is an EXPLICIT key list (`TITLE_KEYS`, now shared
+// via `./title-keys.ts` with `en.final-stop-by-role.test.ts` — the F4
+// full-stop invariant, since a title/heading/sheet-title key is ALSO one of
+// the no-final-"." roles), not a key-NAME pattern (`/Title$/`, `/Heading$/`,
+// etc.) — CASE fix round 1/5. A pattern is a blind spot in the direction
+// that matters: a future BUTTON or LABEL key that happens to end in
+// `Title`/`Heading` would silently land in the Title bucket and never get
+// checked for sentence case (this file already needed one `ErrorTitle`
+// carve-out because a `*Title` key turned out NOT to be a title — see
+// `settings.dataExport.errorTitle`, an `Alert.alert` title, i.e. an error).
+// Every key NOT in `TITLE_KEYS` is checked as sentence case, including one
+// that matches a `Title`/`Heading`-looking name — so a new title key fails
+// this test the moment it renders wrong, until it is added to `TITLE_KEYS`
+// on purpose. Every entry in `TITLE_KEYS` is verified by call site (a nav
+// `options.title`/`navigation.setOptions`, a `variant="heading"` `Text`, or
+// a `BottomSheet`/`ConfirmSheet` title/header prop) — see
 // `.superpowers/sdd/shares-property-metals-debts/CASE-report.md` for the
 // per-key call-site citations.
 //
@@ -40,6 +42,7 @@
 // role check entirely, the same way `settings.footer.copyrightHolder` (a
 // person's name) is exempt.
 import { en } from './en';
+import { TITLE_KEYS } from './title-keys';
 import { flattenCatalog } from './flatten-catalog';
 
 // Proper nouns / brand names / acronym-like words kept capitalized wherever
@@ -64,53 +67,6 @@ const EXEMPT_KEYS = new Set(['settings.footer.copyrightHolder']);
 
 const isExempt = (key: string): boolean =>
   EXEMPT_KEYS.has(key) || EXEMPT_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
-
-// Every screen/nav title, section heading, and sheet/modal title key —
-// verified by call site (see the file header). Add a new title/heading key
-// HERE on purpose; it is not picked up by a name pattern.
-const TITLE_KEYS = new Set([
-  'accountDetail.addBankSheetTitle',
-  'accountDetail.holdingsHeading',
-  'accounts.title',
-  'categories.chooseIconHeading',
-  'columnMapping.rawPreview',
-  'columnMapping.sectionAmount',
-  'columnMapping.sectionCurrency',
-  'columnMapping.sectionDates',
-  'columnMapping.sectionDetails',
-  'columnMapping.sectionFileFormat',
-  'columnMapping.title',
-  'forms.account.addTitle',
-  'forms.account.editTitle',
-  'forms.contribution.addTitle',
-  'forms.holding.addTitle',
-  'forms.holding.editTitle',
-  'forms.lot.addTitle',
-  'forms.pricePoint.loanTitle',
-  'forms.pricePoint.title',
-  'forms.transaction.addTitle',
-  'forms.transaction.applyCategoryToAll',
-  'forms.transaction.editTitle',
-  'forms.transaction.returnsHeading',
-  'forms.transaction.title',
-  'holdingDetail.transactionsHeading',
-  'home.dateRangeField.heading',
-  'home.title',
-  'settings.dataExport.title',
-  'settings.dataImport.confirmTitle',
-  'settings.dataImport.title',
-  'settings.title',
-  'statementImport.chooseHoldingSheetTitle',
-  'statementImport.importResultTitle',
-  'statementImport.previewHeading',
-  'statistics.accountContribution',
-  'statistics.byType',
-  'statistics.expensesByCategory',
-  'statistics.netWorthOverTime',
-  'statistics.spendingTrendByCategory',
-  'statistics.title',
-  'statistics.trendFilter.title',
-]);
 
 const isTitleRole = (key: string): boolean => TITLE_KEYS.has(key);
 

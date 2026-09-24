@@ -285,7 +285,7 @@ describe('AccountFormScreen', () => {
     await fireEvent.press(getByTestId('account-kind-field'));
 
     expect(getByTestId('account-kind-option-property-description')).toHaveTextContent(
-      'Real estate, car, valuables, money you lent',
+      'Real estate, car, valuables, money you lent.',
     );
   });
 
@@ -1103,12 +1103,13 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(mockMonobankSync).not.toHaveBeenCalled();
   });
 
+  // F4 item 3: "Free" (not a placeholder) is the default bank shown.
   it('does not auto-select any bank on a fresh bank create (no auto-jump to Monobank)', async () => {
     const view = await renderForm();
 
     await selectKind(view.getByTestId, 'bank');
 
-    expect(view.getByText('Select a bank (optional)')).toBeTruthy();
+    expect(view.getByText('Free')).toBeTruthy();
     expect(view.queryByLabelText('monobank-field')).toBeNull();
   });
 

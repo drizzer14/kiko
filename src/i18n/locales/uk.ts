@@ -200,8 +200,8 @@ export const uk: typeof en = {
         cash: 'Готівка поза банком.',
         crypto: 'Гаманець або обліковий запис біржі.',
         debt: 'Кредит або борг, який ви винні.',
-        metals: 'Золото, срібло, платина, паладій',
-        property: 'Нерухомість, авто, цінності, позики',
+        metals: 'Золото, срібло, платина, паладій.',
+        property: 'Нерухомість, авто, цінності, позики.',
       },
       metals: 'Дорогоцінні метали',
       namePlaceholder: 'Монобанк',
@@ -368,8 +368,12 @@ export const uk: typeof en = {
       amountError: 'Сума має бути більшою за 0.',
       amountPlaceholder: '250,00',
       apply: 'Застосувати',
+      // Full-stop DECISION (F4): rewritten to the SAME two-sentence
+      // structure as en.ts — a question about the existing transactions,
+      // then a separate statement about future imports — rather than one
+      // combined question.
       applyCategoryMessage:
-        'Застосувати категорію «{{category}}» до всіх транзакцій з назвою «{{name}}», включаючи майбутні?',
+        'Застосувати категорію «{{category}}» до всіх транзакцій з назвою «{{name}}»? Це також стосуватиметься майбутніх імпортів.',
       applyCategoryToAll: 'Застосувати категорію до всіх',
       applyToThisOne: 'Лише до цієї',
       category: 'Категорія',
@@ -485,7 +489,7 @@ export const uk: typeof en = {
     syncNow: 'Синхронізувати',
     tokenLabel: 'Токен',
     tryAgainMessage: 'Спробуйте ще раз.',
-    unsupportedCurrencyCode: 'Непідтримуваний код валюти Monobank: {{code}}',
+    unsupportedCurrencyCode: 'Непідтримуваний код валюти Monobank: {{code}}.',
     wallet: 'Гаманець',
     walletConnected: 'Гаманець підключено',
   },

@@ -224,8 +224,8 @@ export const en = {
         cash: 'Cash you hold outside a bank.',
         crypto: 'A wallet or exchange account.',
         debt: 'A loan or debt you owe.',
-        metals: 'Gold, silver, platinum, palladium',
-        property: 'Real estate, car, valuables, money you lent',
+        metals: 'Gold, silver, platinum, palladium.',
+        property: 'Real estate, car, valuables, money you lent.',
       },
       metals: 'Precious metals',
       namePlaceholder: 'Monobank',
@@ -534,7 +534,7 @@ export const en = {
     syncNow: 'Sync',
     tokenLabel: 'Token',
     tryAgainMessage: 'Please try again.',
-    unsupportedCurrencyCode: 'Unsupported Monobank currency code: {{code}}',
+    unsupportedCurrencyCode: 'Unsupported Monobank currency code: {{code}}.',
     wallet: 'Wallet',
     walletConnected: 'Wallet connected',
   },
@@ -826,8 +826,9 @@ export const en = {
     // (F4 audit 16: a bare "Select" reads too generic per-field).
     selectValue: 'Select',
     // Per-field placeholders (F4 audit 16 + F4 item 4): each names its own
-    // column role, matching the established "Select a bank (optional)"/
-    // "Select a date" copy style — never the bare `selectValue` above.
+    // column role, matching the established "Select a date"
+    // (`selectDatePlaceholder`) copy style — never the bare `selectValue`
+    // above.
     dateColumnPlaceholder: 'Select a date column',
     dateFormatPlaceholder: 'Select a date format',
     amountColumnPlaceholder: 'Select an amount column',
