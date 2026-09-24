@@ -467,6 +467,11 @@ describe('StatementImportScreen', () => {
       { merge: true },
     );
     expect(view.navigation.navigate).not.toHaveBeenCalledWith('AccountDetail', expect.anything());
+    // M4 (fix round 1, Minor): handleImportDone must NOT clear importResult
+    // — the screen is navigating away, so the sheet's own slide-out
+    // animation keeps showing the last result text instead of flashing
+    // empty content mid-transition.
+    expect(view.getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy();
   });
 
   // Item 2 (F3, BUG): "Add new" holding must end up SELECTED once created,

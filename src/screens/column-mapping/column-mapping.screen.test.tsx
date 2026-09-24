@@ -397,6 +397,9 @@ describe('ColumnMappingScreen', () => {
       { merge: true },
     );
     expect(view.navigation.navigate).not.toHaveBeenCalledWith('AccountDetail', expect.anything());
+    // M4 (fix round 1, Minor): same as statement-import.screen.test.tsx's
+    // matching assertion — handleImportDone must not clear importResult.
+    expect(view.getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy();
   });
 
   it('imports then saves the confirmed mapping under bank:<bankId>', async () => {
