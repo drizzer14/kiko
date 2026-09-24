@@ -184,6 +184,36 @@ const resolveRow = (row: TableCell[], mapping: ColumnMapping, rowNumber: number)
   };
 };
 
+// The account currency, resolved straight off the mapped currency COLUMN's
+// own cells across every data row — independent of whether that row's date
+// or amount also resolves. A `'column'` mapping used to learn its currency
+// only from a row that resolved END TO END, so a wrong date format failing
+// every row also blamed a currency column that was genuinely fine (it threw
+// "no known account currency" instead of reporting the real, per-row date
+// errors). Scanning the cells directly is the same resolution `resolveRow`
+// itself would reach for a fully-valid row, just decoupled from the other
+// fields' own success.
+const resolveAccountCurrency = (
+  dataRows: TableCell[][],
+  mapping: ColumnMapping,
+): Currency | undefined => {
+  if (mapping.currency.mode === 'fixed') {
+    return mapping.currency.currency;
+  }
+
+  const currencyColumn = mapping.currency.column;
+
+  for (const row of dataRows) {
+    const resolved = resolveCurrencyCell(cellText(row[currencyColumn]).trim());
+
+    if (resolved !== undefined) {
+      return resolved;
+    }
+  }
+
+  return undefined;
+};
+
 type ClosingBalanceCandidate = { row: TableCell[]; timeSeconds: number; currency: Currency };
 
 /** File orientation, from the RESOLVED rows' own first vs. last parsed
@@ -302,11 +332,15 @@ const resolveMappedClosingBalance = (
  * `statement.transactions` and reported instead, the same "recoverable, not
  * thrown, not silently dropped without a trace" treatment PrivatBank XLSX's
  * own `unresolvedRows` already established. `account.currency` is the fixed
- * currency, or the first successfully resolved row's own currency — a
- * currency-column mapping that resolves NO row at all has nothing to name the
- * account's currency, which throws (the same "no known account currency"
+ * currency, or resolved straight off the currency COLUMN's own cells
+ * (`resolveAccountCurrency`) — deliberately independent of whether any row
+ * resolves end to end, so an unrelated field (a wrong date format, say)
+ * failing every row never also throws away a currency column that is
+ * genuinely fine. Throws only when the currency column itself resolves to
+ * no known code anywhere in the file (the same "no known account currency"
  * failure every dedicated format already raises for its own unresolvable
- * case).
+ * case) — the one case this function cannot recover a `rowErrors` entry
+ * for, since there is nothing to name the account's currency at all.
  */
 export const applyColumnMapping = (
   rows: TableCell[][],
@@ -316,13 +350,18 @@ export const applyColumnMapping = (
   const mappedColumns = mappedColumnsFor(mapping);
   const transactions: ParsedTransaction[] = [];
   const rowErrors: ColumnMappingRowError[] = [];
-  let accountCurrency: Currency | undefined =
-    mapping.currency.mode === 'fixed' ? mapping.currency.currency : undefined;
+  const accountCurrency = resolveAccountCurrency(dataRows, mapping);
   // Every RESOLVED row, in file order — `resolveMappedClosingBalance` needs
   // the whole ordered list, not just a running "newest so far", so a tie on
   // the newest time can be broken by file order (ruling I1) rather than by
   // whichever tied row happens to be visited last.
   const balanceCandidates: ClosingBalanceCandidate[] = [];
+
+  if (!accountCurrency) {
+    throw new StatementParseError(
+      'Could not resolve any row currency for the column-mapping import',
+    );
+  }
 
   dataRows.forEach((row, index) => {
     if (mappedColumns.every((column) => isEmptyCell(row[column]))) {
@@ -337,7 +376,6 @@ export const applyColumnMapping = (
       return;
     }
 
-    accountCurrency ??= outcome.transaction.currency;
     transactions.push(outcome.transaction);
     balanceCandidates.push({
       row,
@@ -345,12 +383,6 @@ export const applyColumnMapping = (
       currency: outcome.transaction.currency,
     });
   });
-
-  if (!accountCurrency) {
-    throw new StatementParseError(
-      'Could not resolve any row currency for the column-mapping import',
-    );
-  }
 
   const account: ParsedAccountHint = { currency: accountCurrency };
   const closingBalance = resolveMappedClosingBalance(mapping, balanceCandidates);

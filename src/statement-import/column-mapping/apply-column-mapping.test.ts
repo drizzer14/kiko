@@ -2,6 +2,7 @@ import type { ColumnMapping } from './apply-column-mapping';
 import type { TableCell } from './table-rows';
 
 import { applyColumnMapping } from './apply-column-mapping';
+import { StatementParseError } from '../parser';
 
 const HEADER_ROW: TableCell[] = ['Date', 'Description', 'Amount', 'Currency', 'Counterparty'];
 
@@ -134,6 +135,49 @@ describe('applyColumnMapping (single-amount mode)', () => {
     const { rowErrors } = applyColumnMapping(rows, singleAmountMapping);
 
     expect(rowErrors).toEqual([{ rowNumber: 3, reason: 'date', value: 'not-a-date' }]);
+  });
+
+  // The account currency is resolved directly off the mapped currency
+  // COLUMN's own cells, independent of whether a row's date/amount also
+  // resolves — a wrong date format failing every row must never also blame
+  // a currency column that is genuinely fine, and a real date error must
+  // never be swallowed by a throw the currency column had nothing to do
+  // with.
+  it('resolves the account currency straight off the currency column, even when every row fails on an unrelated field', () => {
+    const columnCurrencyMapping: ColumnMapping = {
+      ...singleAmountMapping,
+      // A date format that matches none of the fixture's 'DD.MM.YYYY
+      // HH:MM:SS' cells.
+      dateFormat: 'YYYY-MM-DD',
+      currency: { mode: 'column', column: 3 },
+    };
+    const rows: TableCell[][] = [
+      HEADER_ROW,
+      ['01.07.2025 10:15:00', 'Coffee', 123.45, 'UAH', ''],
+      ['02.07.2025 10:15:00', 'Tea', 50, 'UAH', ''],
+    ];
+
+    const { statement, rowErrors } = applyColumnMapping(rows, columnCurrencyMapping);
+
+    expect(statement.account.currency).toBe('UAH');
+    expect(statement.transactions).toEqual([]);
+    expect(rowErrors).toEqual([
+      { rowNumber: 2, reason: 'date', value: '01.07.2025 10:15:00' },
+      { rowNumber: 3, reason: 'date', value: '02.07.2025 10:15:00' },
+    ]);
+  });
+
+  it('still throws when the currency column resolves to no known code anywhere in the file', () => {
+    const columnCurrencyMapping: ColumnMapping = {
+      ...singleAmountMapping,
+      currency: { mode: 'column', column: 3 },
+    };
+    const rows: TableCell[][] = [
+      HEADER_ROW,
+      ['01.07.2025 10:15:00', 'Coffee', 123.45, 'not-a-currency', ''],
+    ];
+
+    expect(() => applyColumnMapping(rows, columnCurrencyMapping)).toThrow(StatementParseError);
   });
 });
 
