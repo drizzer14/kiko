@@ -61,6 +61,27 @@ export type ExchangeHolding = NewHolding & {
   renameFromDefault?: string;
 };
 
+/**
+ * The price-point write a loan EDIT may need on its own `holding:<id>`
+ * manual series, alongside the metadata patch (T28 review I1 — the two must
+ * commit in the SAME transaction or the series can drift from what the
+ * detail screen reads). `'none'`: no write needed. `'upsert'`: a schedule
+ * change into `'none'` writes today's outstanding so the debt never silently
+ * reads as 0. `'move'`: a `'none'` loan's principal/start-date edit relocates
+ * its start-day point, leaving any later correction alone. See
+ * `kiko-domain`'s "Loan form + detail" for the full three-case ruling.
+ */
+export type LoanPricePointOp =
+  | { kind: 'none' }
+  | { kind: 'upsert'; day: number; price: string; currency: HoldingRow['currency'] }
+  | {
+      kind: 'move';
+      oldDay: number;
+      newDay: number;
+      price: string;
+      currency: HoldingRow['currency'];
+    };
+
 // Match on `json_extract(metadata, '$.<field>') = key`, scoped to the account;
 // update balance + metadata in place on a hit, insert with a fresh sortOrder on
 // a miss. The JSON path is bound as a parameter (json_extract takes any text
@@ -317,6 +338,57 @@ export const holdingsRepo = {
         category: null,
         source: 'manual',
       });
+    }),
+  /**
+   * A loan EDIT's metadata patch plus its `LoanPricePointOp`, in ONE
+   * transaction (T28 review I1) — a loan is ledgerless, so this never touches
+   * `balanceMinorUnits`/`transactions` the way `updateWithBalanceDelta` does;
+   * it exists instead of reusing that function because a loan's manual
+   * `holding:<id>` series has to stay consistent with the SAME edit that
+   * changes the metadata, or the two can drift on a partial failure. See
+   * `LoanPricePointOp`'s own doc comment for what each op writes.
+   */
+  updateLoan: (holdingId: string, patch: Partial<HoldingRow>, pricePointOp: LoanPricePointOp) =>
+    write(async (tx) => {
+      await tx.update(holdings).set(patch).where(eq(holdings.id, holdingId));
+
+      if (pricePointOp.kind === 'none') {
+        return;
+      }
+
+      if (pricePointOp.kind === 'move') {
+        await tx
+          .delete(pricePoints)
+          .where(
+            and(
+              eq(pricePoints.instrument, holdingInstrument(holdingId)),
+              eq(pricePoints.day, pricePointOp.oldDay),
+            ),
+          );
+      }
+
+      const point =
+        pricePointOp.kind === 'move'
+          ? { day: pricePointOp.newDay, price: pricePointOp.price, currency: pricePointOp.currency }
+          : pricePointOp;
+
+      await tx
+        .insert(pricePoints)
+        .values({
+          instrument: holdingInstrument(holdingId),
+          day: point.day,
+          price: point.price,
+          currency: point.currency,
+          source: 'manual',
+        })
+        .onConflictDoUpdate({
+          target: [pricePoints.instrument, pricePoints.day],
+          set: {
+            price: sql`excluded.price`,
+            currency: sql`excluded.currency`,
+            source: sql`excluded.source`,
+          },
+        });
     }),
   /**
    * Sets the holding's icon (an SF Symbol name) or, with `null`, clears it back

@@ -23,7 +23,7 @@ import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { accounts, holdings, pricePoints } from '../../db/schema';
 import { holdingValueAt } from '../../statistics/holding-value-at';
 
-import { holdingsRepo } from './holdings.repo';
+import { holdingsRepo, type LoanPricePointOp } from './holdings.repo';
 
 // The NAME of the schema table an operation targeted. The name, not the drizzle
 // table object: a failed `toBe(table)` assertion makes Jest serialize that
@@ -986,5 +986,118 @@ describe('holdingsRepo.closeMany', () => {
     await holdingsRepo.closeMany([]);
 
     expect(update).not.toHaveBeenCalled();
+  });
+});
+
+// A fake write-transaction handle for `updateLoan`. Captures the metadata
+// patch, whether `delete(pricePoints)` ran, and every `insert(pricePoints)`
+// payload — enough to prove the three `LoanPricePointOp` kinds each touch
+// exactly the tables I1's fix promises, all inside the SAME transaction
+// (`mockTx` is shared by every call the function makes).
+const makeUpdateLoanTx = (): {
+  tx: unknown;
+  captured: {
+    holdingSet?: Record<string, unknown>;
+    deleteCalls: number;
+    inserts: Record<string, unknown>[];
+  };
+} => {
+  const captured: {
+    holdingSet?: Record<string, unknown>;
+    deleteCalls: number;
+    inserts: Record<string, unknown>[];
+  } = { deleteCalls: 0, inserts: [] };
+  const tx = {
+    update: () => ({
+      set: (values: Record<string, unknown>) => {
+        captured.holdingSet = values;
+
+        return { where: () => Promise.resolve() };
+      },
+    }),
+    delete: () => ({
+      where: () => {
+        captured.deleteCalls += 1;
+
+        return Promise.resolve();
+      },
+    }),
+    insert: () => ({
+      values: (values: Record<string, unknown>) => ({
+        onConflictDoUpdate: () => {
+          captured.inserts.push(values);
+
+          return Promise.resolve();
+        },
+      }),
+    }),
+  };
+
+  return { tx, captured };
+};
+
+describe('holdingsRepo.updateLoan', () => {
+  it("writes only the metadata patch for a 'none' op — no price-point write", async () => {
+    const { tx, captured } = makeUpdateLoanTx();
+    mockTx = tx;
+
+    await holdingsRepo.updateLoan('h-1', { name: 'Renamed' }, { kind: 'none' });
+
+    expect(captured.holdingSet).toEqual({ name: 'Renamed' });
+    expect(captured.deleteCalls).toBe(0);
+    expect(captured.inserts).toHaveLength(0);
+  });
+
+  // I1(a): annuity/differentiated -> 'none' upserts today's outstanding so
+  // the debt never silently reads as 0.
+  it("(a) upserts a point for an 'upsert' op, with no delete", async () => {
+    const { tx, captured } = makeUpdateLoanTx();
+    mockTx = tx;
+    const op: LoanPricePointOp = {
+      kind: 'upsert',
+      day: 19_000,
+      price: '350000.00',
+      currency: 'UAH',
+    };
+
+    await holdingsRepo.updateLoan('h-1', { metadata: { schedule: 'none' } }, op);
+
+    expect(captured.deleteCalls).toBe(0);
+    expect(captured.inserts).toEqual([
+      {
+        instrument: 'holding:h-1',
+        day: 19_000,
+        price: '350000.00',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+  });
+
+  // I1(b): a 'none' loan's principal/start-date edit moves the start-day
+  // point — delete the old day, insert the new one.
+  it("(b) deletes the old day and inserts the new one for a 'move' op", async () => {
+    const { tx, captured } = makeUpdateLoanTx();
+    mockTx = tx;
+    const op: LoanPricePointOp = {
+      kind: 'move',
+      oldDay: 18_000,
+      newDay: 18_500,
+      price: '10000.00',
+      currency: 'UAH',
+    };
+
+    await holdingsRepo.updateLoan('h-1', { metadata: { schedule: 'none' } }, op);
+
+    expect(captured.deleteCalls).toBe(1);
+    expect(captured.inserts).toEqual([
+      {
+        instrument: 'holding:h-1',
+        day: 18_500,
+        price: '10000.00',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
   });
 });
