@@ -30,8 +30,8 @@ const DENY_JSON = JSON.stringify({
 // ---- matchDelimited: find the close matching an already-consumed open ----
 
 function stepQuoteInDelimited(state) {
-  const c = state.str[state.i];
-  if (state.quote === '"' && c === '\\' && state.i + 1 < state.str.length) {
+  const c = state.text[state.i];
+  if (state.quote === '"' && c === '\\' && state.i + 1 < state.text.length) {
     state.i += 2;
     return;
   }
@@ -43,15 +43,15 @@ function stepQuoteInDelimited(state) {
 // after `$`, or a backtick), honoring nested quotes and — for `(` — nested
 // parens. Returns the text between the delimiters and the index of the
 // closing delimiter.
-function matchDelimited(str, start, open, close) {
-  const state = { str, i: start, quote: null };
+function matchDelimited(text, start, open, close) {
+  const state = { text, i: start, quote: null };
   let depth = 1;
-  while (state.i < str.length) {
+  while (state.i < text.length) {
     if (state.quote) {
       stepQuoteInDelimited(state);
       continue;
     }
-    const c = str[state.i];
+    const c = text[state.i];
     if (c === "'" || c === '"') {
       state.quote = c;
       state.i++;
@@ -65,105 +65,105 @@ function matchDelimited(str, start, open, close) {
     if (c === close) {
       depth--;
       state.i++;
-      if (depth === 0) return { content: str.slice(start, state.i - 1), end: state.i - 1 };
+      if (depth === 0) return { content: text.slice(start, state.i - 1), end: state.i - 1 };
       continue;
     }
     state.i++;
   }
-  return { content: str.slice(start), end: str.length };
+  return { content: text.slice(start), end: text.length };
 }
 
 // ---- scanLevel: split one line into top-level simple commands ----
 
-function consumeSubshell(ctx, start, open, close) {
-  const { content, end } = matchDelimited(ctx.str, start, open, close);
-  ctx.nested.push(content);
-  ctx.buf += ' __SUBSHELL__ ';
-  ctx.i = end + 1;
+function consumeSubshell(context, start, open, close) {
+  const { content, end } = matchDelimited(context.text, start, open, close);
+  context.nested.push(content);
+  context.buf += ' __SUBSHELL__ ';
+  context.i = end + 1;
 }
 
 // A `$(...)` or backtick span expands (and so is recursed into) both at top
 // level and inside double quotes — the two callers that share this check.
-function tryConsumeSubshell(ctx) {
-  const { str, i } = ctx;
-  const c = str[i];
-  if (c === '$' && str[i + 1] === '(') {
-    consumeSubshell(ctx, i + 2, '(', ')');
+function tryConsumeSubshell(context) {
+  const { text, i } = context;
+  const c = text[i];
+  if (c === '$' && text[i + 1] === '(') {
+    consumeSubshell(context, i + 2, '(', ')');
     return true;
   }
   if (c === '`') {
-    consumeSubshell(ctx, i + 1, null, '`');
+    consumeSubshell(context, i + 1, null, '`');
     return true;
   }
   return false;
 }
 
-function stepSingleQuote(ctx) {
-  const c = ctx.str[ctx.i];
-  if (c === "'") ctx.quote = null;
-  ctx.buf += c;
-  ctx.i++;
+function stepSingleQuote(context) {
+  const c = context.text[context.i];
+  if (c === "'") context.quote = null;
+  context.buf += c;
+  context.i++;
 }
 
-function stepDoubleQuote(ctx) {
-  const { str, i, n } = ctx;
-  const c = str[i];
+function stepDoubleQuote(context) {
+  const { text, i, n } = context;
+  const c = text[i];
   if (c === '\\' && i + 1 < n) {
-    ctx.buf += c + str[i + 1];
-    ctx.i += 2;
+    context.buf += c + text[i + 1];
+    context.i += 2;
     return;
   }
   if (c === '"') {
-    ctx.quote = null;
-    ctx.buf += c;
-    ctx.i++;
+    context.quote = null;
+    context.buf += c;
+    context.i++;
     return;
   }
-  if (tryConsumeSubshell(ctx)) return;
-  ctx.buf += c;
-  ctx.i++;
+  if (tryConsumeSubshell(context)) return;
+  context.buf += c;
+  context.i++;
 }
 
 // Consumes an unquoted `;`, `&&`, `||`, `|`, `&`, or newline as a top-level
 // segment separator. Returns false (and consumes nothing) for anything else.
-function consumeSeparator(ctx) {
-  const { str, i } = ctx;
-  const c = str[i];
-  const isAndAnd = c === '&' && str[i + 1] === '&';
-  const isOrOr = c === '|' && str[i + 1] === '|';
+function consumeSeparator(context) {
+  const { text, i } = context;
+  const c = text[i];
+  const isAndAnd = c === '&' && text[i + 1] === '&';
+  const isOrOr = c === '|' && text[i + 1] === '|';
   if (isAndAnd || isOrOr) {
-    ctx.segments.push(ctx.buf);
-    ctx.buf = '';
-    ctx.i += 2;
+    context.segments.push(context.buf);
+    context.buf = '';
+    context.i += 2;
     return true;
   }
   if (c === ';' || c === '\n' || c === '&' || c === '|') {
-    ctx.segments.push(ctx.buf);
-    ctx.buf = '';
-    ctx.i += 1;
+    context.segments.push(context.buf);
+    context.buf = '';
+    context.i += 1;
     return true;
   }
   return false;
 }
 
-function stepTopLevel(ctx) {
-  const { str, i, n } = ctx;
-  const c = str[i];
+function stepTopLevel(context) {
+  const { text, i, n } = context;
+  const c = text[i];
   if (c === '\\' && i + 1 < n) {
-    ctx.buf += c + str[i + 1];
-    ctx.i += 2;
+    context.buf += c + text[i + 1];
+    context.i += 2;
     return;
   }
   if (c === "'" || c === '"') {
-    ctx.quote = c;
-    ctx.buf += c;
-    ctx.i++;
+    context.quote = c;
+    context.buf += c;
+    context.i++;
     return;
   }
-  if (tryConsumeSubshell(ctx)) return;
-  if (consumeSeparator(ctx)) return;
-  ctx.buf += c;
-  ctx.i++;
+  if (tryConsumeSubshell(context)) return;
+  if (consumeSeparator(context)) return;
+  context.buf += c;
+  context.i++;
 }
 
 // Splits one line of shell text into top-level simple-command segments at
@@ -171,80 +171,80 @@ function stepTopLevel(ctx) {
 // of every `$(...)` / backtick span found — at top level or inside double
 // quotes, where the shell still expands them (NOT inside single quotes,
 // where it never does) — for the caller to recurse into.
-function scanLevel(str) {
-  const ctx = { str, i: 0, n: str.length, buf: '', quote: null, segments: [], nested: [] };
-  while (ctx.i < ctx.n) {
-    if (ctx.quote === "'") {
-      stepSingleQuote(ctx);
+function scanLevel(text) {
+  const context = { text, i: 0, n: text.length, buf: '', quote: null, segments: [], nested: [] };
+  while (context.i < context.n) {
+    if (context.quote === "'") {
+      stepSingleQuote(context);
       continue;
     }
-    if (ctx.quote === '"') {
-      stepDoubleQuote(ctx);
+    if (context.quote === '"') {
+      stepDoubleQuote(context);
       continue;
     }
-    stepTopLevel(ctx);
+    stepTopLevel(context);
   }
-  ctx.segments.push(ctx.buf);
-  return { segments: ctx.segments, nested: ctx.nested };
+  context.segments.push(context.buf);
+  return { segments: context.segments, nested: context.nested };
 }
 
 // ---- words: word-split one simple command respecting quotes ----
 
-function stepWordQuoted(ctx) {
-  const c = ctx.segment[ctx.i];
-  if (c === ctx.quote) {
-    ctx.quote = null;
-    ctx.i++;
+function stepWordQuoted(context) {
+  const c = context.segment[context.i];
+  if (c === context.quote) {
+    context.quote = null;
+    context.i++;
     return;
   }
-  if (ctx.quote === '"' && c === '\\' && ctx.i + 1 < ctx.segment.length) {
-    ctx.cur += ctx.segment[ctx.i + 1];
-    ctx.i += 2;
+  if (context.quote === '"' && c === '\\' && context.i + 1 < context.segment.length) {
+    context.cur += context.segment[context.i + 1];
+    context.i += 2;
     return;
   }
-  ctx.cur += c;
-  ctx.i++;
+  context.cur += c;
+  context.i++;
 }
 
-function stepWordUnquoted(ctx) {
-  const c = ctx.segment[ctx.i];
+function stepWordUnquoted(context) {
+  const c = context.segment[context.i];
   if (c === "'" || c === '"') {
-    ctx.quote = c;
-    ctx.started = true;
-    ctx.i++;
+    context.quote = c;
+    context.started = true;
+    context.i++;
     return;
   }
   if (/\s/.test(c)) {
-    if (ctx.started || ctx.cur !== '') ctx.out.push(ctx.cur);
-    ctx.cur = '';
-    ctx.started = false;
-    ctx.i++;
+    if (context.started || context.cur !== '') context.out.push(context.cur);
+    context.cur = '';
+    context.started = false;
+    context.i++;
     return;
   }
-  if (c === '\\' && ctx.i + 1 < ctx.segment.length) {
-    ctx.cur += ctx.segment[ctx.i + 1];
-    ctx.i += 2;
-    ctx.started = true;
+  if (c === '\\' && context.i + 1 < context.segment.length) {
+    context.cur += context.segment[context.i + 1];
+    context.i += 2;
+    context.started = true;
     return;
   }
-  ctx.cur += c;
-  ctx.started = true;
-  ctx.i++;
+  context.cur += c;
+  context.started = true;
+  context.i++;
 }
 
 // Word-splits one simple-command segment respecting quotes (quotes group a
 // word; they do not survive into the token's value).
 function words(segment) {
-  const ctx = { segment, i: 0, cur: '', quote: null, started: false, out: [] };
-  while (ctx.i < ctx.segment.length) {
-    if (ctx.quote) {
-      stepWordQuoted(ctx);
+  const context = { segment, i: 0, cur: '', quote: null, started: false, out: [] };
+  while (context.i < context.segment.length) {
+    if (context.quote) {
+      stepWordQuoted(context);
       continue;
     }
-    stepWordUnquoted(ctx);
+    stepWordUnquoted(context);
   }
-  if (ctx.started || ctx.cur !== '') ctx.out.push(ctx.cur);
-  return ctx.out;
+  if (context.started || context.cur !== '') context.out.push(context.cur);
+  return context.out;
 }
 
 // ---- command-shape checks ----
