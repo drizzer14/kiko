@@ -8,7 +8,7 @@ import {
 } from '.';
 
 describe('bankCatalog', () => {
-  it('lists exactly the six banks, Monobank first', () => {
+  it('lists exactly the ten banks, Monobank first', () => {
     expect(bankCatalog.map((entry) => entry.id)).toEqual([
       'monobank',
       'privatbank',
@@ -16,6 +16,10 @@ describe('bankCatalog', () => {
       'procredit',
       'ukrsib',
       'alfa',
+      'pumb',
+      'oschadbank',
+      'raiffeisen',
+      'ukrgasbank',
     ]);
     expect(bankIds).toEqual(bankCatalog.map((entry) => entry.id));
   });
@@ -26,7 +30,7 @@ describe('bankCatalog', () => {
     expect(connectable).toEqual(['monobank']);
   });
 
-  it('maps every entry to its already-shipped statement format id', () => {
+  it('maps every entry that has a dedicated format to its already-shipped statement format id', () => {
     const byId = Object.fromEntries(
       bankCatalog.map((entry) => [entry.id, entry.statementFormatId]),
     );
@@ -38,12 +42,17 @@ describe('bankCatalog', () => {
       procredit: 'procredit-business-csv',
       ukrsib: 'ukrsib-business-csv',
       alfa: 'alfa-business-csv',
+      pumb: undefined,
+      oschadbank: undefined,
+      raiffeisen: undefined,
+      ukrgasbank: undefined,
     });
   });
 
   it('isBankId guards a stored institution/bankId value', () => {
     expect(isBankId('monobank')).toBe(true);
     expect(isBankId('privatbank')).toBe(true);
+    expect(isBankId('oschadbank')).toBe(true);
     expect(isBankId('revolut')).toBe(false);
     expect(isBankId(null)).toBe(false);
     expect(isBankId(undefined)).toBe(false);
@@ -51,6 +60,7 @@ describe('bankCatalog', () => {
 
   it('statementFormatIdForBank resolves a stored bankId to its format id, or undefined', () => {
     expect(statementFormatIdForBank('privatbank')).toBe('privatbank-xlsx');
+    expect(statementFormatIdForBank('oschadbank')).toBeUndefined();
     expect(statementFormatIdForBank(null)).toBeUndefined();
     expect(statementFormatIdForBank(undefined)).toBeUndefined();
     expect(statementFormatIdForBank('not-a-bank')).toBeUndefined();
@@ -63,6 +73,10 @@ describe('bankCatalog', () => {
     expect(isConnectableBank('procredit')).toBe(false);
     expect(isConnectableBank('ukrsib')).toBe(false);
     expect(isConnectableBank('alfa')).toBe(false);
+    expect(isConnectableBank('pumb')).toBe(false);
+    expect(isConnectableBank('oschadbank')).toBe(false);
+    expect(isConnectableBank('raiffeisen')).toBe(false);
+    expect(isConnectableBank('ukrgasbank')).toBe(false);
   });
 
   it('isConnectableBank defaults to true for an unset or unrecognized bankId', () => {
@@ -71,14 +85,18 @@ describe('bankCatalog', () => {
     expect(isConnectableBank('not-a-bank')).toBe(true);
   });
 
-  it('marks only PrivatBank as selling metals; every other entry is false', () => {
+  it('marks PrivatBank, PUMB, Oschadbank, and Ukrgasbank as selling metals; every other entry is false', () => {
     const sellsMetals = bankCatalog.filter((entry) => entry.sellsMetals).map((entry) => entry.id);
 
-    expect(sellsMetals).toEqual(['privatbank']);
+    expect(sellsMetals).toEqual(['privatbank', 'pumb', 'oschadbank', 'ukrgasbank']);
   });
 
-  it('bankSellsMetals is true for privatbank, false for every other known bank', () => {
+  it('bankSellsMetals is true for privatbank, pumb, oschadbank, and ukrgasbank; false for raiffeisen and every other known bank', () => {
     expect(bankSellsMetals('privatbank')).toBe(true);
+    expect(bankSellsMetals('pumb')).toBe(true);
+    expect(bankSellsMetals('oschadbank')).toBe(true);
+    expect(bankSellsMetals('ukrgasbank')).toBe(true);
+    expect(bankSellsMetals('raiffeisen')).toBe(false);
     expect(bankSellsMetals('monobank')).toBe(false);
     expect(bankSellsMetals('sensebank')).toBe(false);
     expect(bankSellsMetals('procredit')).toBe(false);

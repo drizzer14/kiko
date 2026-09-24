@@ -51,12 +51,15 @@ absent** — this skill states the shape and non-enum facts only:
   create-only; editing `bankId` on an already-connected account never
   writes `institution`, so its sync is untouched regardless of which
   identity is picked. Backed by the catalog at
-  `src/bank-sync/bank-catalog/` — read that file for the current
-  6-bank set (`BankId`/`bankCatalog`) rather than trusting a list
-  copied here. It is **identity-only, independent of `institution`**:
-  only Monobank has a live API Connect today (`connectable: true` in
-  the catalog), the other 5 entries are import-only, scoping which
-  `statement-import` parser applies. That parser is only ever a
+  `src/bank-sync/bank-catalog/` — read that file for the current bank
+  set (`BankId`/`bankCatalog`) rather than trusting a count or list
+  copied here; it grows over time (P3 added PUMB, Oschadbank,
+  Raiffeisen, and Ukrgasbank, each with no dedicated `statement-import`
+  parser — `statementFormatId` is optional for exactly this reason). It
+  is **identity-only, independent of `institution`**: only Monobank has
+  a live API Connect today (`connectable: true` in the catalog), every
+  other entry is import-only, scoping which `statement-import` parser
+  applies when it has one. That parser is only ever a
   PREFERENCE, not a gate: "Import statement" is offered on every bank
   account regardless of `bankId`, and a file that doesn't match its
   dedicated format (or has none) falls through to the generic

@@ -26,7 +26,7 @@ describe('BankTypeField', () => {
     expect(getByTestId('bank-type-sheet')).toBeTruthy();
   });
 
-  it('lists all six banks, Monobank connectable and the rest import-only', async () => {
+  it('lists all ten banks, Monobank connectable and the rest import-only', async () => {
     const onSelect = jest.fn();
     const { getByTestId, getAllByText } = await render(
       <BankTypeField
@@ -45,12 +45,21 @@ describe('BankTypeField', () => {
     expect(getByTestId('bank-type-option-procredit')).toBeTruthy();
     expect(getByTestId('bank-type-option-ukrsib')).toBeTruthy();
     expect(getByTestId('bank-type-option-alfa')).toBeTruthy();
-    // Monobank alone shows the connect-capable caption; the other five banks
-    // (import-only) share the "Statement import only" caption, so this
-    // asserts presence with getAllByText rather than the unique-match
-    // getByText the brief assumed.
+    expect(getByTestId('bank-type-option-pumb')).toBeTruthy();
+    expect(getByTestId('bank-type-option-oschadbank')).toBeTruthy();
+    expect(getByTestId('bank-type-option-raiffeisen')).toBeTruthy();
+    expect(getByTestId('bank-type-option-ukrgasbank')).toBeTruthy();
+    // Monobank alone shows the connect-capable caption; PrivatBank, Sensebank,
+    // ProCredit, UKRSIBBANK, and Alfa-Bank (import-only, each with its own
+    // dedicated `statement-import` parser) share the "Statement import only"
+    // caption.
     expect(getAllByText('Connect and import statements.')).toHaveLength(1);
     expect(getAllByText('Statement import only — no live connection.')).toHaveLength(5);
+    // PUMB, Oschadbank, Raiffeisen, and Ukrgasbank have no dedicated
+    // `statement-import` parser (T22) — they import only through the generic
+    // column-mapping screen, and say so honestly instead of implying a
+    // format-specific preview that doesn't exist for them.
+    expect(getAllByText('Import with column mapping')).toHaveLength(4);
   });
 
   it('offers a "Free" option that is selected by default and reports null when pressed', async () => {
@@ -202,7 +211,17 @@ describe('BankTypeField', () => {
     ).toBeTruthy();
   });
 
-  it.each(['privatbank', 'sensebank', 'procredit', 'ukrsib', 'alfa'])(
+  it.each([
+    'privatbank',
+    'sensebank',
+    'procredit',
+    'ukrsib',
+    'alfa',
+    'pumb',
+    'oschadbank',
+    'raiffeisen',
+    'ukrgasbank',
+  ])(
     "shows %s's description with the statements icon ONLY (no sync icon, honest import-only)",
     async (bankId) => {
       const onSelect = jest.fn();

@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
@@ -12,10 +13,32 @@ import SelectableRow from '../../../design-system/components/selectable-row';
 
 import type { BankTypeFieldProps } from './bank-type-field.props';
 
+// The caption a bank's row shows in the picker (T22): a live-sync bank shows
+// `bankConnectable`; an import-only bank with its own dedicated
+// `statement-import` parser shows `bankImportOnly`; an import-only bank with
+// NO dedicated parser (PUMB, Oschadbank, Ukrgasbank) shows
+// `bankColumnMappingOnly` instead, honestly naming its actual import path —
+// the generic column-mapping screen — rather than implying a format-specific
+// preview that doesn't exist for it. A pure helper (no hook access), so the
+// translator function is threaded in from the component's own
+// `useTranslation()`, the same pattern `sensorHint`
+// (`app-lock-setting.component.tsx`) uses.
+const captionFor = (entry: (typeof bankCatalog)[number], t: TFunction): string => {
+  if (entry.connectable) {
+    return t('forms.account.bankConnectable');
+  }
+
+  if (entry.statementFormatId === undefined) {
+    return t('forms.account.bankColumnMappingOnly');
+  }
+
+  return t('forms.account.bankImportOnly');
+};
+
 // The Option A "which bank is this account" picker (device-feedback-round-1
 // item 3): a labeled trigger (FieldTrigger, the same family CurrencyField
 // and CategoryField use) that opens a BottomSheet listing every
-// `bankCatalog` entry — ALWAYS all six, never conditionally hidden
+// `bankCatalog` entry — ALWAYS every entry, never conditionally hidden
 // (Guideline 5.6). Selecting a row reports the id and closes the sheet; the
 // trigger stays visible and re-openable afterward (no vanish-after-select —
 // see the account-detail BankSyncSection fix this plan also ships for the
@@ -76,9 +99,7 @@ const BankTypeField: FC<BankTypeFieldProps> = ({ label, selected, onSelect, test
 
         {bankCatalog.map((entry) => {
           const isSelected = entry.id === selected;
-          const caption = entry.connectable
-            ? t('forms.account.bankConnectable')
-            : t('forms.account.bankImportOnly');
+          const caption = captionFor(entry, t);
           // The compliance-load-bearing branch: `entry.connectable` (a plain
           // catalog data field, never a build/env flag — see bank-catalog.ts)
           // is the ONLY thing gating the live-sync icon. An import-only bank

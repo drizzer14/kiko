@@ -1211,6 +1211,29 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     });
   });
 
+  // T22: Oschadbank has no dedicated `statement-import` parser — its import
+  // routes through the generic column-mapping screen (T7), which
+  // `StatementImportScreen` reaches whenever `expectedFormatId` is undefined
+  // and nothing auto-detects. `pickAndOpenStatement` must not invent a format
+  // id for a bank the catalog has none for.
+  it('passes no expectedFormatId for Oschadbank (no dedicated format, falls through to column mapping)', async () => {
+    setLiveData({ accounts: [account({ bankId: 'oschadbank' })], holdings: [] });
+    mockPick.mockResolvedValue([
+      { uri: 'file:///mock/statement.csv', name: 'statement.csv', type: 'text/csv' },
+    ]);
+    const { getByText, navigation } = await renderScreen();
+
+    await act(async () => {
+      await fireEvent.press(getByText('Import statement'));
+    });
+
+    expect(navigation.navigate).toHaveBeenCalledWith('StatementImport', {
+      filePath: 'file:///cache/statement.csv',
+      accountId: 'a',
+      expectedFormatId: undefined,
+    });
+  });
+
   it('hides Import statement for a cash account', async () => {
     setLiveData({ accounts: [account({ kind: 'cash', bankId: null })], holdings: [] });
     const { queryByText } = await renderScreen();

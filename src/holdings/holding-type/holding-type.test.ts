@@ -165,6 +165,19 @@ describe('creatableHoldingTypesForAccount', () => {
     expect(creatableHoldingTypesForAccount('bank', true, 'privatbank')).toContain('metal');
   });
 
+  // T22: PUMB, Oschadbank, and Ukrgasbank join the catalog's metal
+  // allow-list; Raiffeisen does not.
+  it.each(['pumb', 'oschadbank', 'ukrgasbank'])(
+    'offers metal on a bank account allow-listed to sell metals (%s)',
+    (bankId) => {
+      expect(creatableHoldingTypesForAccount('bank', false, bankId)).toContain('metal');
+    },
+  );
+
+  it('drops metal from a Raiffeisen bank account (not allow-listed to sell metals)', () => {
+    expect(creatableHoldingTypesForAccount('bank', false, 'raiffeisen')).not.toContain('metal');
+  });
+
   it('never offers an empty create set for any account kind or synced state', () => {
     for (const kind of ['bank', 'cash', 'crypto', 'property', 'metals'] as const) {
       for (const isSynced of [true, false]) {
