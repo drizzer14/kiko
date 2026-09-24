@@ -39,6 +39,11 @@ export const en = {
     changeIconLabel: 'Change {{label}}',
     iconLabel: 'Icon {{name}}',
     noDataForRange: 'No Data For This Range',
+    // A segment's position within its SegmentedControl group, e.g.
+    // "1 of 2" — folded into each segment's accessibilityHint (F3 fix
+    // round 2, M4), since VoiceOver's own tab/tablist roles map to no
+    // trait on iOS (RN 0.87).
+    segmentPosition: '{{index}} of {{count}}',
   },
   settings: {
     appLock: {

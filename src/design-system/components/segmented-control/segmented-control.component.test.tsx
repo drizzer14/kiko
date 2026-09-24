@@ -1,7 +1,8 @@
-import { fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import '../../unistyles';
 
+import { i18n } from '../../../i18n';
 import { darkTheme } from '../../theme';
 import { wcagContrastRatio } from '../../entity-tint';
 
@@ -43,7 +44,11 @@ describe('SegmentedControl', () => {
     expect(onSelect).toHaveBeenCalledWith('debitCredit');
   });
 
-  it('marks the selected segment via accessibilityState and announces its N/M position', async () => {
+  // F3 fix round 2, M4: each segment keeps the "button" trait (RN 0.87 maps
+  // "tab"/"tablist" to no trait on iOS — see the component's own doc
+  // comment), carries its own accessibilityLabel and selected state, and
+  // folds the group name + a TRANSLATED "N of M" position into its hint.
+  it('marks the selected segment via accessibilityState, keeps the button role, and folds the group/position into the hint', async () => {
     const { getByTestId } = await render(
       <SegmentedControl
         options={options}
@@ -57,26 +62,16 @@ describe('SegmentedControl', () => {
     const single = getByTestId('mode-segmented-option-single');
     const debitCredit = getByTestId('mode-segmented-option-debitCredit');
 
+    expect(single.props.accessibilityRole).toBe('button');
     expect(single.props.accessibilityState).toEqual({ selected: true });
     expect(debitCredit.props.accessibilityState).toEqual({ selected: false });
-    expect(single.props.accessibilityRole).toBe('tab');
-    expect(single.props.accessibilityValue).toEqual({ text: '1 / 2' });
-    expect(debitCredit.props.accessibilityValue).toEqual({ text: '2 / 2' });
-  });
-
-  // F3 fix round 1, M4: the group itself carries an accessibilityLabel — a
-  // required prop, so VoiceOver never reads a segment with no group context.
-  it('labels the group with the given accessibilityLabel', async () => {
-    const { getByLabelText } = await render(
-      <SegmentedControl
-        options={options}
-        selected="single"
-        onSelect={jest.fn()}
-        accessibilityLabel="Amount mode"
-      />,
+    expect(single.props.accessibilityLabel).toBe('single');
+    expect(single.props.accessibilityHint).toBe(
+      `Amount mode, ${i18n.t('common.segmentPosition', { index: 1, count: 2 })}`,
     );
-
-    expect(getByLabelText('Amount mode').props.accessibilityRole).toBe('tablist');
+    expect(debitCredit.props.accessibilityHint).toBe(
+      `Amount mode, ${i18n.t('common.segmentPosition', { index: 2, count: 2 })}`,
+    );
   });
 
   // F3 fix round 1, I3: the selected segment's fill against the track meets
@@ -87,11 +82,11 @@ describe('SegmentedControl', () => {
     expect(ratio).toBeGreaterThanOrEqual(3);
   });
 
-  // F3 fix round 1, M1: the visible track is ~32pt, matching native
-  // UISegmentedControl, not the 44pt HIG floor itself — the floor is
-  // restored via hitSlop instead (proven structurally here; the actual
-  // hitSlop value is asserted below).
-  it('restores the 44pt HIG touch target via hitSlop on a shorter visible track', async () => {
+  // F3 fix round 2, M1: hitSlop expands the element it is SET ON — the
+  // 24pt segment, not the 32pt track — so the slop must reach 44pt off a
+  // 24pt base, not a 32pt one.
+  it('restores the 44pt HIG touch target via hitSlop on the 24pt segment', async () => {
+    const SEGMENT_HEIGHT = 24;
     const { getByTestId } = await render(
       <SegmentedControl
         options={options}
@@ -102,10 +97,9 @@ describe('SegmentedControl', () => {
       />,
     );
 
-    expect(getByTestId('mode-segmented-option-single').props.hitSlop).toEqual({
-      top: 6,
-      bottom: 6,
-    });
+    const hitSlop = getByTestId('mode-segmented-option-single').props.hitSlop;
+    expect(hitSlop).toEqual({ top: 10, bottom: 10 });
+    expect(SEGMENT_HEIGHT + hitSlop.top + hitSlop.bottom).toBeGreaterThanOrEqual(44);
   });
 
   // F3 fix round 1, M2: a long label stays on one line (shrinking to fit
@@ -125,5 +119,22 @@ describe('SegmentedControl', () => {
     expect(label.props.numberOfLines).toBe(1);
     expect(label.props.adjustsFontSizeToFit).toBe(true);
     expect(StyleSheet.flatten(label.props.style).textAlign).toBe('center');
+  });
+
+  // F3 fix round 2, N5 ponytail: the selected label's style composes ON TOP
+  // of the base `label` style (never a duplicate `textAlign`).
+  it('keeps the selected label centered too, alongside its semibold weight', async () => {
+    const { getByText } = await render(
+      <SegmentedControl
+        options={options}
+        selected="single"
+        onSelect={jest.fn()}
+        accessibilityLabel="Amount mode"
+      />,
+    );
+
+    const flattened = StyleSheet.flatten(getByText('single').props.style);
+    expect(flattened.textAlign).toBe('center');
+    expect(flattened.fontWeight).toBe('600');
   });
 });

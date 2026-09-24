@@ -2,9 +2,11 @@ import { StyleSheet } from 'react-native-unistyles';
 
 // The segment's own content height. Together with the track's `spacing(1)`
 // padding on both edges, the track's total VISIBLE height is 24 + 2*4 =
-// 32pt — matching native `UISegmentedControl` (F3 fix round 1, M1; the
-// component's own `SEGMENT_HIT_SLOP` restores the 44pt HIG touch target on
-// top of this shorter visible strip).
+// 32pt — matching native `UISegmentedControl`. The component's own
+// `SEGMENT_HIT_SLOP` restores the 44pt HIG touch target on top of this
+// segment's OWN 24pt height (F3 fix round 2, M1 — round 1's hitSlop math
+// used the 32pt track as its base by mistake; `hitSlop` only ever expands
+// the element it's set on, which is this 24pt segment, not the track).
 const SEGMENT_MIN_HEIGHT = 24;
 
 export const styles = StyleSheet.create((theme) => ({
@@ -32,9 +34,11 @@ export const styles = StyleSheet.create((theme) => ({
   label: {
     textAlign: 'center',
   },
-  // UIKit renders a segmented control's selected label semibold (I3).
+  // UIKit renders a segmented control's selected label semibold. Composed
+  // ALONGSIDE `label` (never alone — F3 fix round 2, N5 ponytail dropped
+  // the duplicate `textAlign: 'center'` this used to repeat), adding only
+  // the weight.
   selectedLabel: {
-    textAlign: 'center',
     fontWeight: '600',
   },
 }));

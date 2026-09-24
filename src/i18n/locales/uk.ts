@@ -30,6 +30,7 @@ export const uk: typeof en = {
     changeIconLabel: 'Змінити {{label}}',
     iconLabel: 'Іконка {{name}}',
     noDataForRange: 'Немає даних за цей період',
+    segmentPosition: '{{index}} з {{count}}',
   },
   settings: {
     appLock: {
