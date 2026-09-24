@@ -1628,16 +1628,24 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // Purity applies in BOTH create and edit mode — MetalSection always renders
   // the field (unlike the create-only Quantity/Total cost pair below), and a
   // fineness ratio is meaningful whenever it's shown. A garbled or
-  // out-of-range value now BLOCKS Save (F4 audit 8) instead of silently
-  // falling back to the standard fineness default — `buildMetalCreatePayload`/
-  // `buildMetadata`'s edit branch keep their own `?? DEFAULT_METAL_PURITY`
-  // fallback purely for type safety (`normalizeDecimal` can still return
-  // `null`); this check makes that fallback unreachable for anything the
-  // user actually typed, since Save never gets past it otherwise.
+  // out-of-range value BLOCKS Save instead of silently falling back to the
+  // standard fineness default — `buildMetalCreatePayload`/`buildMetadata`'s
+  // edit branch keep their own `?? DEFAULT_METAL_PURITY` fallback purely for
+  // type safety (`normalizeDecimal` can still return `null`); this check
+  // makes that fallback unreachable for anything the user actually typed,
+  // since Save never gets past it otherwise. Validates with `normalizeDecimal`
+  // + `compareDecimal`, the SAME parser the writer uses (mirroring the
+  // metal-quantity check below) — `parseAmount` used to validate this field
+  // instead, which accepts shapes (a leading-dot ".999", a comma-decimal
+  // ",999", a trailing-dot "1.") `normalizeDecimal` rejects, so a value that
+  // passed THIS check could still get silently overwritten by the writer's
+  // own fallback. Validating with the writer's own parser closes that gap.
   const metalPurityReasonKey = (): 'forms.holding.purityError' | null => {
-    const purity = parseAmount(metalPurity);
+    const normalizedPurity = normalizeDecimal(metalPurity);
 
-    return Number.isFinite(purity) && purity > 0 && purity <= 1
+    return normalizedPurity !== null &&
+      compareDecimal(normalizedPurity, '0') > 0 &&
+      compareDecimal(normalizedPurity, '1') <= 0
       ? null
       : 'forms.holding.purityError';
   };

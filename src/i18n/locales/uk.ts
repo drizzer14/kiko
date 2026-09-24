@@ -324,7 +324,7 @@ export const uk: typeof en = {
       purchasePricePlaceholder: 'За замовчуванням — номінал',
       purity: 'Чистота',
       purityError: 'Введіть чистоту від 0 до 1.',
-      purityPlaceholder: '0.9999',
+      purityPlaceholder: '0,9999',
       quantity: 'Кількість',
       quantityError: 'Введіть кількість більше 0.',
       quantityPlaceholder: '10',

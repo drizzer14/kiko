@@ -1557,6 +1557,29 @@ describe('HoldingFormScreen metal', () => {
     expect(createMock).not.toHaveBeenCalled();
   });
 
+  // I3 (F4 fix round 1): purity used to validate with `parseAmount` (which
+  // accepts a leading-dot, a comma-decimal, or a trailing-dot shape) but
+  // WRITE with `normalizeDecimal` (which rejects all three) — so a value
+  // that passed the Save check could still get silently overwritten by the
+  // `?? DEFAULT_METAL_PURITY` fallback at write time. Validating with the
+  // SAME `normalizeDecimal` the writer uses closes that gap: each of these
+  // now blocks Save instead of writing a value the user never typed.
+  it.each(['.999', ',999', '1.'])(
+    'blocks save and shows an error for a purity normalizeDecimal cannot parse: %s',
+    async (purity) => {
+      const screen = await renderScreen();
+
+      await fill(screen, 'Name', 'Gold bar');
+      await fill(screen, 'Purity', purity);
+      await fill(screen, 'Quantity', '31.1');
+      await fill(screen, 'Total cost', '80000');
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(screen.getByText('Enter a purity between 0 and 1.')).toBeTruthy();
+      expect(createMock).not.toHaveBeenCalled();
+    },
+  );
+
   it('edits a metal holding without Quantity/Total cost fields, preserving its stored lots', async () => {
     const screen = await renderEdit({
       id: 'h1',
