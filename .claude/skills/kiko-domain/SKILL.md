@@ -914,7 +914,7 @@ term): an uncapped value would make `loanInstallments` build an
 unbounded row count for a degenerate but technically-valid positive
 integer.
 
-### Loan-payment link column + repo (T29)
+### Loan-payment link column + repo (T29, revised by review round 1)
 
 Migration 0038 adds three columns to `transactions` (spec 5.4): `loanHoldingId`
 (text, nullable — the linked loan holding), `loanLinkSource` (text enum
@@ -922,20 +922,33 @@ Migration 0038 adds three columns to `transactions` (spec 5.4): `loanHoldingId`
 NOT NULL default `false`). The two link columns are kept in lockstep — never a
 `loanLinkSource` with no `loanHoldingId` or vice versa.
 
-`transactionsRepo.setLoanPayment({ transactionId, loanHoldingId, source })`
-is the ONE write path both the matcher (`source: 'auto'`, T32) and the
-user's own picker (`source: 'manual'`, T31) share: it writes
-`loanHoldingId`/`loanLinkSource` and always clears `loanLinkRejected` — a
-manual link, or a manual "None" (`loanHoldingId: null`), un-rejects a row the
-user had previously undone, per spec 5.4's "False-positive handling".
-`loanHoldingId: null` also nulls `loanLinkSource`, keeping the two columns in
-lockstep. `transactionsRepo.undoAutoLoanLink(transactionId)` is the Undo
-affordance: clears both link columns and sets `loanLinkRejected`, so the
-matcher never re-proposes the same link on that row. Neither function gates
-on `source` (the transaction's OWN bank-vs-manual origin) — exactly like
-`setCategory`, the link is user/matcher state, not a mutation of bank-owned
-ledger data, so it is allowed on a synced (`monobank`/`binance`/`import`) row
-too.
+**Two separate write paths, not one** (T29 review round 1, I2): only a
+MANUAL action may ever move `loanLinkRejected`.
+
+- `transactionsRepo.setLoanPayment({ transactionId, loanHoldingId })` is the
+  MANUAL path (the user's own picker, T31). A manual LINK
+  (`loanHoldingId` non-null) clears `loanLinkRejected`, un-rejecting a row
+  the user had previously undone — a fresh manual pick always overrides an
+  earlier Undo. A manual **"None"** (`loanHoldingId: null`) **SETS**
+  `loanLinkRejected` (I3 ruling) — the user's explicit "not a loan payment"
+  has to stick, or the very next sync would just auto-link the row again.
+  This deviates from spec 5.4's literal text ("a manual None clears the
+  flag"), which the orchestrator ruled would make "None" not stick.
+  `loanHoldingId: null` also nulls `loanLinkSource`, keeping the two
+  columns in lockstep. No `source`-column gate — exactly like `setCategory`,
+  the link is user state, not a mutation of bank-owned ledger data, so it
+  is allowed on a synced (`monobank`/`binance`/`import`) row too.
+- `transactionsRepo.setAutoLoanLinks(links: { transactionId, loanHoldingId }[])`
+  is the matcher's path (T32): writes every link in ONE transaction (spec
+  5.4's "one `db.transaction()` writes the links"), NEVER touches
+  `loanLinkRejected`, and its own WHERE clause skips any row that is
+  already linked (`loanHoldingId` non-null) or already rejected — so a
+  stale candidate read, or a race with the user's own Undo/manual link,
+  can never silently overwrite either.
+- `transactionsRepo.undoAutoLoanLink(transactionId)` is the Undo
+  affordance: clears both link columns and sets `loanLinkRejected`, scoped
+  to `loanLinkSource = 'auto'` — calling it on a manual link is a no-op,
+  not a rejection.
 
 `transactionsRepo.addManyDedup`'s upsert (the shared `(source, external_id)`
 conflict path both the Monobank sync and statement import share) never
@@ -943,25 +956,42 @@ refreshes any of the three loan-link columns on a re-sync — its
 `onConflictDoUpdate` `set` names only the bank-owned columns, the same
 exclusion `category`/`comment` already rely on (see that function's own
 existing doc comment). A settled-amount re-fetch of an already-linked payment
-therefore keeps its link untouched.
+therefore keeps its link untouched. Its underlying insert
+(`insertDedupRowsTx`) is chunked through `chunkForTable` (below) — a whole
+statement-import file or Monobank sync above a few thousand rows failed
+`SQLITE_MAX_VARIABLE_NUMBER` before this (M6).
 
-**Review Focus 7.** `holdingsRepo.remove` clears `loanHoldingId`/
-`loanLinkSource` on every OTHER holding's transaction that still points at
-the loan being deleted, in the SAME `write()` transaction as the delete
-itself (`UPDATE transactions SET loan_holding_id = NULL, loan_link_source =
-NULL WHERE loan_holding_id = <deleted loan id>`) — a no-op for every
-non-loan holding, since nothing ever points a `loanHoldingId` at one. A
-dangling link is never left to rot: once cleared, the payment counts as
-normal spending again, exactly like an unlinked transaction always has.
-`loanLinkRejected` is deliberately left untouched by this cascade — it is
-not part of "the link", and the loan it was rejected against no longer
-exists to re-propose anyway.
+**Review Focus 7, extended to the account-delete path (I1).**
+`holdingsRepo.clearLoanLinksForHoldingsTx(tx, holdingIds)` (exported, not
+private to `remove`) clears `loanHoldingId`/`loanLinkSource` on every OTHER
+holding's transaction that still points at one of `holdingIds`, in the SAME
+`write()` transaction as the delete itself (`UPDATE transactions SET
+loan_holding_id = NULL, loan_link_source = NULL WHERE loan_holding_id IN
+(...)`) — a no-op for every non-loan holding, since nothing ever points a
+`loanHoldingId` at one. Both delete paths call it: `holdingsRepo.remove`
+(one holding) AND `accountsRepo.remove` (every holding a deleted DEBT
+account owned, since a loan lives on a manual `debt` account) — a loan
+deleted either way never leaves a dangling link behind. A dangling link is
+never left to rot: once cleared, the payment counts as normal spending
+again, exactly like an unlinked transaction always has. `loanLinkRejected`
+is deliberately left untouched by this cascade — it is not part of "the
+link".
 
-No data-transfer (`src/data-transfer`) code changed for these columns: 
 `restoreDataSnapshot` inserts every `transactions` row verbatim with no
-per-row column handling (unlike `holdings.balanceSetAt`'s dedicated legacy
-backfill), so a `.kiko` exported before this migration — whose transaction
-rows carry no `loanHoldingId`/`loanLinkSource`/`loanLinkRejected` keys at
-all — restores unchanged and SQLite defaults the missing columns itself
-(null / null / false), the same way `counterIban`/`changeGroupId` already do
-for an older export.
+per-row column handling for these three columns (unlike
+`holdings.balanceSetAt`'s dedicated legacy backfill), so a `.kiko` exported
+before this migration — whose transaction rows carry no
+`loanHoldingId`/`loanLinkSource`/`loanLinkRejected` keys at all — restores
+unchanged and SQLite defaults the missing columns itself (null / null /
+false), the same way `counterIban`/`changeGroupId` already do for an older
+export. It DID need a fix for how it chunks every insert (C1, T29 review
+round 1): T29's 3 new columns took `transactions` from 15 to 18 columns, so
+the OLD fixed 2000-rows-per-chunk constant bound 2000 x 18 = 36000
+parameters — over SQLite's 32766-bound-parameter ceiling — and a `.kiko`
+backup with >= 1821 transactions failed to restore. `chunkForTable`
+(`src/db/chunk-for-table.ts`, shared with `insertDedupRowsTx` above) derives
+the row count per chunk from the TARGET table's own column count
+(`getTableColumns`, floor-divided into a safety margin under the ceiling)
+instead of a fixed row constant, so a future column added to any of these
+tables can never silently repeat this — the widest table just gets a
+smaller chunk automatically.
