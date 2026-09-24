@@ -26,7 +26,7 @@ export const categoryOverridesRepo = {
    * the display map with zero further writes.
    */
   upsertCategoryOverride: (name: string, category: string) =>
-    write(async (transaction) => {
+    write(async (databaseTransaction) => {
       const key = normalizeTransactionName(name);
 
       if (key === '') {
@@ -34,7 +34,7 @@ export const categoryOverridesRepo = {
       }
 
       const displayName = name.trim();
-      await transaction
+      await databaseTransaction
         .insert(categoryOverrides)
         .values({ normalizedName: key, category, displayName })
         .onConflictDoUpdate({
@@ -42,7 +42,7 @@ export const categoryOverridesRepo = {
           set: { category, displayName, updatedAt: sql`(unixepoch() * 1000)` },
         });
 
-      const rows = await transaction
+      const rows = await databaseTransaction
         .select({ id: transactions.id, description: transactions.description })
         .from(transactions);
       const matchingIds = rows
@@ -53,7 +53,7 @@ export const categoryOverridesRepo = {
         return;
       }
 
-      await transaction
+      await databaseTransaction
         .update(transactions)
         .set({ category })
         .where(inArray(transactions.id, matchingIds));

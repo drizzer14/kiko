@@ -15,12 +15,12 @@ export const pricePointsRepo = {
   /** Reactive select of the whole price-points table — hand straight to `useLiveQuery`. */
   allQuery: () => database.select().from(pricePoints),
   upsertMany: (rows: NewPricePointRow[]) =>
-    write(async (transaction) => {
+    write(async (databaseTransaction) => {
       // Chunk so a large backfill never exceeds SQLite's bound-variable limit.
       // Upsert on the (instrument, day) unique index: a re-fetched price for an
       // existing instrument-day overwrites its price and source in place.
       for (let start = 0; start < rows.length; start += UPSERT_CHUNK_SIZE) {
-        await transaction
+        await databaseTransaction
           .insert(pricePoints)
           .values(rows.slice(start, start + UPSERT_CHUNK_SIZE))
           .onConflictDoUpdate({
@@ -35,7 +35,7 @@ export const pricePointsRepo = {
     }),
   /** Deletes every stored price point for one instrument, in one transaction. */
   removeInstrument: (instrument: string) =>
-    write((transaction) =>
-      transaction.delete(pricePoints).where(eq(pricePoints.instrument, instrument)),
+    write((databaseTransaction) =>
+      databaseTransaction.delete(pricePoints).where(eq(pricePoints.instrument, instrument)),
     ),
 } satisfies Repository;

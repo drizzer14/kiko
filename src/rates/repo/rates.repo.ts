@@ -19,7 +19,7 @@ export const ratesRepo = {
     return rows.at(0)?.value ?? null;
   },
   upsertMany: (rates: NewRate[]) =>
-    write(async (transaction) => {
+    write(async (databaseTransaction) => {
       if (rates.length === 0) {
         return;
       }
@@ -30,7 +30,7 @@ export const ratesRepo = {
       for (const chunk of chunkForTable(currencyRates, rates)) {
         // Upsert on the (base, quote) unique index: a refreshed rate for an
         // existing pair overwrites its value, source, and timestamp in place.
-        await transaction
+        await databaseTransaction
           .insert(currencyRates)
           .values(chunk)
           .onConflictDoUpdate({

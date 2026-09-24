@@ -14,12 +14,12 @@ export const SETTINGS_ID = 1;
 export const settingsRepo = {
   getQuery: () => database.select().from(settings).where(eq(settings.id, SETTINGS_ID)),
   ensure: () =>
-    write((transaction) =>
-      transaction.insert(settings).values({ id: SETTINGS_ID }).onConflictDoNothing(),
+    write((databaseTransaction) =>
+      databaseTransaction.insert(settings).values({ id: SETTINGS_ID }).onConflictDoNothing(),
     ),
   setBaseCurrency: (currency: Currency) =>
-    write((transaction) =>
-      transaction
+    write((databaseTransaction) =>
+      databaseTransaction
         .update(settings)
         .set({ baseCurrency: currency })
         .where(eq(settings.id, SETTINGS_ID)),
@@ -31,8 +31,8 @@ export const settingsRepo = {
   // retained-but-dead (migrations here are additive-only — see their comments in
   // `db/schema.ts`), backfilled once into `sync_state` by migration 0028.
   setLockEnabled: (enabled: boolean) =>
-    write((transaction) =>
-      transaction
+    write((databaseTransaction) =>
+      databaseTransaction
         .update(settings)
         .set({ lockEnabled: enabled })
         .where(eq(settings.id, SETTINGS_ID)),
@@ -43,15 +43,15 @@ export const settingsRepo = {
    * transactions reassign to. Chosen from the Categories screen.
    */
   setDefaultCategoryKey: (key: string) =>
-    write((transaction) =>
-      transaction
+    write((databaseTransaction) =>
+      databaseTransaction
         .update(settings)
         .set({ defaultCategoryKey: key })
         .where(eq(settings.id, SETTINGS_ID)),
     ),
   setLanguage: (language: AppLanguage) =>
-    write((transaction) =>
-      transaction.update(settings).set({ language }).where(eq(settings.id, SETTINGS_ID)),
+    write((databaseTransaction) =>
+      databaseTransaction.update(settings).set({ language }).where(eq(settings.id, SETTINGS_ID)),
     ),
   /**
    * Persist (or clear) the user's saved spending-trend filter (see
@@ -60,8 +60,11 @@ export const settingsRepo = {
    * filter sheet's Save.
    */
   setTrendFilter: (filter: TrendFilter | null) =>
-    write((transaction) =>
-      transaction.update(settings).set({ trendFilter: filter }).where(eq(settings.id, SETTINGS_ID)),
+    write((databaseTransaction) =>
+      databaseTransaction
+        .update(settings)
+        .set({ trendFilter: filter })
+        .where(eq(settings.id, SETTINGS_ID)),
     ),
   /**
    * Saves (or overwrites) one column-mapping under `key`
@@ -74,14 +77,14 @@ export const settingsRepo = {
    * otherwise clobber every other bank/file's saved mapping.
    */
   saveStatementMapping: (key: string, mapping: SavedColumnMapping) =>
-    write(async (transaction) => {
-      const rows = await transaction
+    write(async (databaseTransaction) => {
+      const rows = await databaseTransaction
         .select({ statementMappings: settings.statementMappings })
         .from(settings)
         .where(eq(settings.id, SETTINGS_ID));
       const existing = rows[0]?.statementMappings ?? {};
 
-      await transaction
+      await databaseTransaction
         .update(settings)
         .set({ statementMappings: { ...existing, [key]: mapping } })
         .where(eq(settings.id, SETTINGS_ID));
