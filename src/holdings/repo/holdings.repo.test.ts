@@ -17,9 +17,9 @@ jest.mock('../../db/client', () => {
   };
 });
 
-import { captureSetTransaction } from '@kiko/db/capture-set-tx';
 import maybe, { foldMap } from 'fnts/maybe';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { captureSetTransaction } from '@kiko/db/capture-set-tx';
 import { inArrayClauseFromCondition } from '@kiko/db/in-array-clause-test-helper';
 
 import { holdingValueAt } from '../../statistics/holding-value-at';

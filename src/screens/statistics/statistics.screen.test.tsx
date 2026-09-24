@@ -16,13 +16,13 @@ jest.mock('../../rates/history-backfill', () => {
 
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 
-import { defaultDateRange } from '../../dates/default-range';
+import { i18n } from '../../i18n';
 import { formatDate } from '../../dates/format';
 import { startOfLocalDay } from '../../dates/local-day';
-import { i18n } from '../../i18n';
 import { toUtcMidnight } from '../../rates/history-entry';
-import { categoryColor } from '../../statistics/category-breakdown';
+import { defaultDateRange } from '../../dates/default-range';
 import type { TrendFilter } from '../../statistics/trend-filter';
+import { categoryColor } from '../../statistics/category-breakdown';
 import '../../design-system/unistyles';
 import { FILTER_ALL } from '../home/filter-menu';
 

@@ -8,8 +8,8 @@ jest.mock('../../crypto-sync/run-crypto-sync', () => ({
   runCryptoSync: (...args: unknown[]) => mockRunCryptoSync(...args),
 }));
 
-import type { SyncableAccount } from './sync-jobs';
 import { syncJobsFor } from './sync-jobs';
+import type { SyncableAccount } from './sync-jobs';
 
 const syncable = (overrides: Partial<SyncableAccount>): SyncableAccount => ({
   id: 'acc',

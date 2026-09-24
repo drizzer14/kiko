@@ -13,8 +13,8 @@ jest.mock('../../db/client', () => {
   };
 });
 
-import { drizzle } from 'drizzle-orm/sqlite-proxy';
 import maybe, { foldMap } from 'fnts/maybe';
+import { drizzle } from 'drizzle-orm/sqlite-proxy';
 import { renderCondition } from '@kiko/db/render-condition-test-helper';
 
 import { accountsRepo } from '../../accounts/accounts.repo';

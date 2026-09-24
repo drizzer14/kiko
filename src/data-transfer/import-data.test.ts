@@ -13,10 +13,10 @@ jest.mock('./secrets/restore-secrets', () => ({
 
 import { utf8ToBytes } from '@noble/ciphers/utils.js';
 
-import { encodeBytesToBase64 } from './base64/base64';
-import { encryptEnvelope } from './crypto/envelope';
-import { generateExportKey } from './crypto/generate-key';
 import { importData } from './import-data';
+import { encryptEnvelope } from './crypto/envelope';
+import { encodeBytesToBase64 } from './base64/base64';
+import { generateExportKey } from './crypto/generate-key';
 
 const payload = {
   exportedAt: 1,
