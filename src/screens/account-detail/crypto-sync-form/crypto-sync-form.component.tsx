@@ -8,9 +8,10 @@ import {
   providerDisplayName,
 } from '../../../crypto-sync/provider';
 import Box from '../../../design-system/components/box';
-import ChipRow from '../../forms/chip-row';
+import FieldLabel from '../../../design-system/components/field-label';
 import BinanceCredentialsField from '../binance-credentials-field';
 import WalletAddressField from '../wallet-address-field';
+import SegmentedControl from '../../../design-system/components/segmented-control';
 
 type CryptoSyncFormProps = {
   // The account the entered credential/address belongs to. On the detail screen
@@ -46,13 +47,24 @@ const CryptoSyncForm: FC<CryptoSyncFormProps> = ({
 
   return (
     <Box gap={3}>
-      <ChipRow
-        label={t('accountDetail.sourceLabel')}
-        options={balanceProviderIds}
-        selected={source}
-        onSelect={setSource}
-        labels={sourceLabels(t)}
-      />
+      {/* F4 Q2 sweep (decision 14): Wallet vs Binance swaps which credential
+          field renders below (WalletAddressField / BinanceCredentialsField),
+          so this is a mode toggle, not a same-form value pick — a
+          SegmentedControl, matching the amount/currency mode selectors.
+          SegmentedControl carries no visible label of its own (only the
+          non-visual accessibilityLabel), so the caller composes its own
+          FieldLabel above it, the same way ChipRow/BondIsinSection do. */}
+      <Box gap={1}>
+        <FieldLabel label={t('accountDetail.sourceLabel')} />
+
+        <SegmentedControl<BalanceProviderId>
+          options={balanceProviderIds}
+          selected={source}
+          onSelect={setSource}
+          labels={sourceLabels(t)}
+          accessibilityLabel={t('accountDetail.sourceLabel')}
+        />
+      </Box>
 
       {source === 'btc_wallet' && <WalletAddressField onConnect={onConnectWallet} />}
 
