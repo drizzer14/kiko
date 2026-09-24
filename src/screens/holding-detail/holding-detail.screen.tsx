@@ -25,6 +25,11 @@ import {
   holdingValueBreakdown,
 } from '../../holdings/holding-value';
 import {
+  loanInstallments,
+  loanOutstandingMinorAt,
+  type LoanInstallment,
+} from '../../holdings/loan-schedule';
+import {
   buildCategoryDisplayMap,
   DEFAULT_CATEGORY_KEY,
   resolveCategoryDisplay,
@@ -61,7 +66,6 @@ import { transactionRowDescription } from '../../transactions/row-description';
 import { isSyncedHolding, isSyncedTransaction } from '../../holdings/deletable';
 import EditHeaderButton from '../../design-system/components/edit-header-button';
 import { asBondMeta, asLoanMeta, asMetalMeta } from '../../holdings/holding-metadata';
-import { loanInstallments, type LoanInstallment } from '../../holdings/loan-schedule';
 import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
 import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
 import { type DerivedEntry, derivedEntries, type EntryTone } from '../../holdings/derived-entries';
@@ -230,11 +234,15 @@ const footerActionFor = (
 // LOCAL day (mirrors `priceAsOfCaption`'s day-key convention). `undefined`
 // for every other holding, for an invalid/absent `LoanMeta`, for a `'none'`
 // schedule (no installments at all — `loanInstallments` already returns
-// `[]` for it), and once every installment has already come due (a fully
-// repaid loan). Extracted to module scope for the same cognitive-complexity
-// reason `footerActionFor`/`priceAsOfCaption` are.
+// `[]` for it), once every installment has already come due (a fully repaid
+// loan), and — T28 review round 1, Minor 11 — once an overpaid correction
+// has already clamped the outstanding to 0 (N10a), even while
+// `loanInstallments` still has future rows on the ORIGINAL schedule.
+// Extracted to module scope for the same cognitive-complexity reason
+// `footerActionFor`/`priceAsOfCaption` are.
 const nextLoanInstallment = (
   holding: HoldingRow | undefined,
+  book: PriceBook,
   now: number,
 ): LoanInstallment | undefined => {
   if (holding === undefined || holding.type !== 'loan') {
@@ -244,6 +252,10 @@ const nextLoanInstallment = (
   const meta = asLoanMeta(holding.metadata);
 
   if (meta === null || meta.schedule === 'none') {
+    return undefined;
+  }
+
+  if (loanOutstandingMinorAt(meta, holding.id, book, now) <= 0) {
     return undefined;
   }
 
@@ -550,7 +562,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     : null;
   // An annuity/differentiated loan's next upcoming installment (T28) — its
   // interest/principal split shown just below the Value header.
-  const nextInstallment = nextLoanInstallment(holding, now);
+  const nextInstallment = nextLoanInstallment(holding, priceBook, now);
 
   // The user's main currency, and the rate table that converts into it. A
   // holding in a different currency shows a smaller converted base-currency
@@ -706,6 +718,11 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                   {
                     key: 'principal',
                     label: t('holdingDetail.principal'),
+                    // Scoped testIDs (T28 review round 1, Minor 3): a test can
+                    // assert the principal/interest split per row, not just
+                    // "both amounts appear somewhere", which would still pass
+                    // if the two values were swapped.
+                    testID: 'next-installment-principal',
                     value: (
                       <MoneyText money={Money.of(currency, nextInstallment.principalMinorUnits)} />
                     ),
@@ -713,6 +730,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                   {
                     key: 'interest',
                     label: t('holdingDetail.interest'),
+                    testID: 'next-installment-interest',
                     value: (
                       <MoneyText money={Money.of(currency, nextInstallment.interestMinorUnits)} />
                     ),

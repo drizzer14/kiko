@@ -8,6 +8,7 @@ import { transactionsRepo } from '@kiko/transactions/repo';
 
 import { Money } from '../../currency/money';
 import { formatDate } from '../../dates/format';
+import { dayKeyOf } from '../../prices/price-book';
 import { formatMoney } from '../../currency/format';
 import { startOfLocalDay } from '../../dates/local-day';
 import { loanInstallments } from '../../holdings/loan-schedule';
@@ -120,12 +121,21 @@ const metalHolding = {
   },
 };
 
-// A long-running structured loan, well underway by any real test-run date,
-// so its schedule always has an upcoming installment to show (T28).
+// A long-running structured loan, well underway by any real test-run date, so
+// its schedule always has an upcoming installment to show (T28). The start
+// date is derived from `Date.now()` (T28 review round 1, Minor 2), not a
+// fixed past year — a fixed 2020 start plus a 120-month term stops having any
+// upcoming installment past 2030, which would make this fixture throw.
+const startMonthsAgo = (monthsAgo: number): number => {
+  const now = new Date();
+
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthsAgo, 1);
+};
+
 const annuityLoanMeta: LoanMeta = {
   kind: 'car_loan',
   principalMinorUnits: 100_000_00,
-  startDate: Date.UTC(2020, 0, 1),
+  startDate: startMonthsAgo(12),
   schedule: 'annuity',
   annualRatePct: 12,
   termMonths: 120,
@@ -1141,7 +1151,7 @@ describe('HoldingDetailScreen', () => {
   it("shows the next installment's interest/principal split for an annuity loan", async () => {
     seed(annuityLoanHolding);
 
-    const { getByText } = await renderScreen();
+    const { getByText, getByTestId } = await renderScreen();
 
     const next = loanInstallments(annuityLoanMeta).find(
       (row) => row.dueDate >= startOfLocalDay(Date.now()),
@@ -1151,8 +1161,14 @@ describe('HoldingDetailScreen', () => {
     }
 
     expect(getByText(`Next installment (${formatDate(next.dueDate)})`)).toBeTruthy();
-    expect(getByText(formatMoney(Money.of('UAH', next.principalMinorUnits)))).toBeTruthy();
-    expect(getByText(formatMoney(Money.of('UAH', next.interestMinorUnits)))).toBeTruthy();
+    // Scoped per row (Minor 3): a swapped principal/interest would fail here,
+    // unlike a bare `getByText` search over the whole screen.
+    expect(getByTestId('next-installment-principal')).toHaveTextContent(
+      formatMoney(Money.of('UAH', next.principalMinorUnits)),
+    );
+    expect(getByTestId('next-installment-interest')).toHaveTextContent(
+      formatMoney(Money.of('UAH', next.interestMinorUnits)),
+    );
   });
 
   it('shows no next-installment panel for a "none" schedule loan', async () => {
@@ -1165,6 +1181,20 @@ describe('HoldingDetailScreen', () => {
 
   it('shows no next-installment panel for a non-loan holding', async () => {
     seed(propertyHolding);
+
+    const { queryByText } = await renderScreen();
+
+    expect(queryByText(/Next installment/)).toBeNull();
+  });
+
+  // Minor 11 (T28 review round 1): an overpaid correction clamps the
+  // outstanding to 0 (N10a) even though `loanInstallments` still has future
+  // rows on the schedule — the panel must not keep showing a "next" payment
+  // once the debt is actually paid off.
+  it('shows no next-installment panel once a correction clamps the outstanding to 0', async () => {
+    seed(annuityLoanHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [
+      { instrument: 'holding:h-1', day: dayKeyOf(Date.now()), price: '0.00', currency: 'UAH' },
+    ]);
 
     const { queryByText } = await renderScreen();
 
