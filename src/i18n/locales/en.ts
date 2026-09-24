@@ -200,11 +200,11 @@ export const en = {
       searchCurrencyPlaceholder: 'Search by code or name',
       selectCategory: 'Select category',
       selectCurrency: 'Select currency',
-      // F4 audit 16: DateField/TimeField fall back to their OWN `label`
-      // prop as the placeholder when a caller passes none — a caller that
-      // omits this repeats "Date"/"Time" as both the caption AND the
-      // unset-value text. Matches the established "Select a date" copy
-      // style (`forms.holding.selectDatePlaceholder`).
+      // The generic date/time field's own "nothing picked yet" copy — every
+      // DateField/TimeField call site passes one of these two explicitly
+      // (never its own `label` repeated as the unset-value text), including
+      // the holding form's date fields, which used to carry a near-
+      // duplicate copy of this same pair under `forms.holding`.
       selectDatePlaceholder: 'Select a date',
       selectTimePlaceholder: 'Select a time',
       time: 'Time',
@@ -372,7 +372,6 @@ export const en = {
       recapitalization: 'Recapitalization',
       remove: 'Remove',
       removeContribution: 'Remove contribution {{index}}',
-      selectDatePlaceholder: 'Select a date',
       semiannually: 'Semiannually',
       switchToManual: 'Switch to manual',
       termMonths: 'Term (months)',
@@ -557,8 +556,8 @@ export const en = {
     computed: 'Computed',
     coupon: 'Coupon',
     cost: 'Cost',
-    // The ledger FlatList's own empty state (F4 audit 14) — the SAME
-    // "no rows yet" pattern `home.emptyTransactions` uses, replacing a bare
+    // The ledger FlatList's own empty state — the SAME "no rows yet"
+    // pattern `home.emptyTransactions` uses, replacing a bare
     // "Transactions" heading with nothing below it.
     emptyTransactions: 'No transactions',
     expectedProfit: 'Expected profit',
@@ -710,16 +709,20 @@ export const en = {
     reading: 'Reading the file…',
     unrecognizedFormat:
       "We don't recognize this file's format. Kiko can import statements from: {{formats}}.",
-    chooseHolding: 'Choose a holding',
+    // The field's own caption — a plain noun, like every other field label
+    // on this screen (see `columnMapping.dateColumn`'s own "Date"), not the
+    // imperative "Choose a holding" the sheet title below already carries;
+    // repeating the same phrase as BOTH the caption and the closed field's
+    // own placeholder read as the same line twice.
+    chooseHolding: 'Holding',
     // The target-holding sheet's own header — a sheet title, Title Case —
     // kept separate from `chooseHolding` above (a field label on the same
     // screen, sentence case): see `accountDetail.addBankSheetTitle` for the
     // identical split.
     chooseHoldingSheetTitle: 'Choose a Holding',
-    // The field's own "nothing picked yet" value (F4 audit 16): never
-    // `chooseHolding` repeated verbatim — a different verb, the same "Select
-    // a …" copy style as `columnMapping.dateColumnPlaceholder` and its
-    // siblings.
+    // The field's own "nothing picked yet" value: never `chooseHolding`
+    // repeated verbatim — the established "Select a …" copy style shared
+    // with `columnMapping.dateColumnPlaceholder` and its siblings.
     chooseHoldingPlaceholder: 'Select a holding',
     // Shown on the field when Import/Save was pressed with no holding chosen
     // — "Pick …" matches the established picker-field error copy style (see
@@ -727,13 +730,13 @@ export const en = {
     chooseHoldingError: 'Pick a holding to import into.',
     createNewHolding: 'Create new holding',
     importButton: 'Import',
-    // F4 audit 7/23: a caught `importStatement`/`importParsedStatement`
-    // failure shows as this translated Alert — `import-data.screen.tsx`'s
-    // own `Alert.alert(t(errorTitle), t(errorMessage))` pattern — never the
-    // raw, untranslated `error.message` sitting inline at the page bottom.
+    // A caught `importStatement`/`importParsedStatement` failure shows as
+    // this translated Alert — `import-data.screen.tsx`'s own
+    // `Alert.alert(t(errorTitle), t(errorMessage))` pattern — never the raw,
+    // untranslated `error.message` sitting inline at the page bottom.
     // Shared by BOTH `statement-import.screen.tsx` and
     // `column-mapping.screen.tsx`, since both run the exact same import
-    // action (audit 23: one error-title key for the same Alert).
+    // action through one error-title key for the same Alert.
     importErrorTitle: 'Import failed',
     importErrorMessage: 'Please try again.',
     importedCount: 'Imported {{imported}} of {{total}}',
@@ -766,10 +769,11 @@ export const en = {
     skippedWrongCurrency_few: '{{count}} rows in a different currency were skipped',
     skippedWrongCurrency_many: '{{count}} rows in a different currency were skipped',
     skippedWrongCurrency_other: '{{count}} rows in a different currency were skipped',
-    // F4 item 9: names WHICH currencies were skipped, alongside the count
-    // line above — `ImportResult.skippedWrongCurrencyCodes`, distinct sorted
-    // ISO codes joined with ", ".
-    skippedWrongCurrencyCodes: 'Skipped currencies: {{currencies}}.',
+    // Names WHICH currencies were skipped, alongside the count line above —
+    // `ImportResult.skippedWrongCurrencyCodes`, distinct sorted ISO codes
+    // joined with ", ". A "Label: {{value}}" string like its sibling result
+    // lines above, so no final "." (kiko-translator's full-stop rule).
+    skippedWrongCurrencyCodes: 'Skipped currencies: {{currencies}}',
     // The picked file recognized as a DIFFERENT bank's format than the one
     // scoped by `expectedFormatId` (device-feedback-round-1 item 5) — a more
     // specific state than the generic `unrecognizedFormat`, so the user
@@ -829,19 +833,11 @@ export const en = {
     // Optional, like counterpartyColumn.
     balanceColumn: 'Balance',
     notUsed: 'Not used',
-    // The generic placeholder a column/date-format picker field shows before
-    // the user has made a choice — not part of the task brief's own literal
-    // key list, but unavoidable: every FieldTrigger in this screen needs
-    // SOME "nothing chosen yet" text, distinct from `notUsed` (an explicit
-    // opt-out for an OPTIONAL role, not "not yet picked"). Kept as the
-    // fallback `ColumnSelectField` resolves to when a caller passes no own
-    // `placeholder` — every FIELD on this screen now passes its own below
-    // (F4 audit 16: a bare "Select" reads too generic per-field).
-    selectValue: 'Select',
-    // Per-field placeholders (F4 audit 16 + F4 item 4): each names its own
-    // column role, matching the established "Select a date"
-    // (`selectDatePlaceholder`) copy style — never the bare `selectValue`
-    // above.
+    // Every column field's own placeholder — distinct per column role
+    // (never a bare generic "Select", which reads the same everywhere),
+    // matching the established "Select a date" (`selectDatePlaceholder`)
+    // copy style. `ColumnSelectField`'s `placeholder` prop is required, so
+    // every field below carries its own.
     dateColumnPlaceholder: 'Select a date column',
     dateFormatPlaceholder: 'Select a date format',
     amountColumnPlaceholder: 'Select an amount column',
@@ -851,9 +847,9 @@ export const en = {
     descriptionColumnPlaceholder: 'Select a description column',
     counterpartyColumnPlaceholder: 'Select a counterparty column',
     balanceColumnPlaceholder: 'Select a balance column',
-    // Field-level Import-press validation errors (F4 audit 1: Import is
-    // never disabled, every required field validates on press instead) —
-    // "Pick …" matches the established `forms.holding.couponFrequencyRequiredError`
+    // Field-level Import-press validation errors — Import is never
+    // disabled; every required field validates on press instead. "Pick …"
+    // matches the established `forms.holding.couponFrequencyRequiredError`
     // copy style for a picker field.
     dateColumnError: 'Pick a date column.',
     dateFormatError: 'Pick a date format.',
@@ -861,16 +857,19 @@ export const en = {
     debitColumnError: 'Pick a debit column.',
     creditColumnError: 'Pick a credit column.',
     currencyColumnError: 'Pick a currency column.',
-    // F4 audit 6: a currency column whose values resolve to NO known ISO
-    // code (`applyColumnMapping` throws — see apply-column-mapping.ts) used
-    // to swallow the error and show the generic `incomplete` hint below
-    // instead, even though every required field WAS mapped — a dead Import
-    // button with no honest reason why. Shown on the currency-column field
-    // itself, and reused by `MappingResult`'s own hint (`currencyUnresolved`)
-    // in place of `incomplete` for the exact same reason.
+    // A currency column whose values resolve to NO known ISO code anywhere
+    // in the file — `applyColumnMapping` throws in exactly this case (see
+    // its own doc comment) — shown on the currency-column field itself,
+    // once Import is pressed, same as every other field error here.
     currencyColumnUnresolvedError:
       'None of the values in this column are currency codes Kiko recognizes.',
     descriptionColumnError: 'Pick a description column.',
+    // Every required field IS mapped and the mapping applied without
+    // throwing, but literally zero rows survived their own per-row checks
+    // (e.g. a date format that matches none of the file's actual date
+    // cells) — shown on the Result block itself, once Import is pressed,
+    // since no single INPUT field is the one at fault here.
+    noRowsResolvedError: 'None of the rows in this file could be read with the current mapping.',
     result: 'Result',
     incomplete: 'Choose the date, amount, and description columns.',
     rowError: {

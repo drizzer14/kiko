@@ -70,7 +70,7 @@ const TimeField: FC<TimeFieldProps> = ({
           <SymbolIcon name="clock" size={theme.iconSizes.body} tone="textSecondary" />
 
           <Text variant="body" tone={disabled || value === null ? 'textSecondary' : 'textPrimary'}>
-            {value === null ? (placeholder ?? label) : formatTime(value)}
+            {value === null ? placeholder : formatTime(value)}
           </Text>
         </Box>
       </Pressable>

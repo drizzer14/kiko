@@ -198,11 +198,15 @@ type ColumnMappingFieldRefs = {
   amountGroupFieldRef: RefObject<FieldInstance | null>;
   currencyGroupFieldRef: RefObject<FieldInstance | null>;
   descriptionColumnFieldRef: RefObject<FieldInstance | null>;
+  // Wraps the Result block itself — the scroll target when every required
+  // field IS mapped and the mapping applied without throwing, but zero rows
+  // survived their own per-row checks (no single INPUT field is at fault).
+  resultFieldRef: RefObject<FieldInstance | null>;
   targetHoldingFieldRef: RefObject<FieldInstance | null>;
 };
 
-// Every field-level Import-press validation message (F4 audit 1/2/3/6/15) —
-// module-level and pure, the same reason `firstInvalidFieldRef` in
+// Every field-level Import-press validation message — module-level and
+// pure, the same reason `firstInvalidFieldRef` in
 // `holding-form.screen.tsx` is, so this branching stays out of the screen
 // component's own cognitive-complexity budget. Computed FRESH on every
 // render AND read directly inside `handleImport` (never gated on
@@ -219,18 +223,40 @@ type ColumnMappingFieldErrors = {
   creditColumnError: string | undefined;
   currencyColumnError: string | undefined;
   descriptionColumnError: string | undefined;
+  // Every required field IS mapped and `applyColumnMapping` succeeded, but
+  // literally zero rows survived their own per-row checks — no single INPUT
+  // field is at fault, so this is the Result block's own error instead of
+  // one of the fields above.
+  noRowsResolvedError: string | undefined;
   targetHoldingError: string | undefined;
 };
 
-const NO_COLUMN_MAPPING_ERRORS: ColumnMappingFieldErrors = {
-  dateColumnError: undefined,
-  dateFormatError: undefined,
-  amountColumnError: undefined,
-  debitColumnError: undefined,
-  creditColumnError: undefined,
-  currencyColumnError: undefined,
-  descriptionColumnError: undefined,
-  targetHoldingError: undefined,
+// Every field pre-press, all unset — `Partial` + `{}` rather than 8 hand-
+// listed `undefined`s, since every field is ALREADY `string | undefined`.
+const NO_COLUMN_MAPPING_ERRORS: Partial<ColumnMappingFieldErrors> = {};
+
+// Split out of `columnMappingFieldErrors` (below) purely to stay under
+// Biome's cognitive-complexity cap — the currency field's error has 2
+// independent reasons (missing, or mapped but unresolvable) layered on top
+// of the "only in column mode" gate every other field-specific check here
+// already has inline.
+const currencyColumnErrorFor = (params: {
+  t: TFunction;
+  currencyMode: CurrencyMode;
+  currencyColumn: number | undefined;
+  currencyColumnUnresolved: boolean;
+}): string | undefined => {
+  const { t, currencyMode, currencyColumn, currencyColumnUnresolved } = params;
+
+  if (currencyMode !== 'column') {
+    return undefined;
+  }
+
+  if (currencyColumn === undefined) {
+    return t('columnMapping.currencyColumnError');
+  }
+
+  return currencyColumnUnresolved ? t('columnMapping.currencyColumnUnresolvedError') : undefined;
 };
 
 const columnMappingFieldErrors = (params: {
@@ -251,6 +277,10 @@ const columnMappingFieldErrors = (params: {
   // from some other failure.
   currencyColumnUnresolved: boolean;
   descriptionColumn: number | undefined;
+  // True once every required field IS mapped, `applyColumnMapping` succeeded
+  // (so this is independent of `currencyColumnUnresolved` above, which is
+  // the THROW case), but zero rows survived their own per-row checks.
+  noRowsResolved: boolean;
   selectedHoldingId: string | undefined;
 }): ColumnMappingFieldErrors => {
   const {
@@ -265,13 +295,9 @@ const columnMappingFieldErrors = (params: {
     currencyColumn,
     currencyColumnUnresolved,
     descriptionColumn,
+    noRowsResolved,
     selectedHoldingId,
   } = params;
-
-  const currencyColumnMissingError =
-    currencyMode === 'column' && currencyColumn === undefined
-      ? t('columnMapping.currencyColumnError')
-      : undefined;
 
   return {
     dateColumnError: dateColumn === undefined ? t('columnMapping.dateColumnError') : undefined,
@@ -288,13 +314,15 @@ const columnMappingFieldErrors = (params: {
       amountMode === 'debitCredit' && creditColumn === undefined
         ? t('columnMapping.creditColumnError')
         : undefined,
-    currencyColumnError:
-      currencyColumnMissingError ??
-      (currencyMode === 'column' && currencyColumnUnresolved
-        ? t('columnMapping.currencyColumnUnresolvedError')
-        : undefined),
+    currencyColumnError: currencyColumnErrorFor({
+      t,
+      currencyMode,
+      currencyColumn,
+      currencyColumnUnresolved,
+    }),
     descriptionColumnError:
       descriptionColumn === undefined ? t('columnMapping.descriptionColumnError') : undefined,
+    noRowsResolvedError: noRowsResolved ? t('columnMapping.noRowsResolvedError') : undefined,
     targetHoldingError:
       selectedHoldingId === undefined ? t('statementImport.chooseHoldingError') : undefined,
   };
@@ -320,6 +348,7 @@ const firstInvalidColumnMappingFieldRef = (
     },
     { invalid: errors.currencyColumnError !== undefined, ref: refs.currencyGroupFieldRef },
     { invalid: errors.descriptionColumnError !== undefined, ref: refs.descriptionColumnFieldRef },
+    { invalid: errors.noRowsResolvedError !== undefined, ref: refs.resultFieldRef },
     { invalid: errors.targetHoldingError !== undefined, ref: refs.targetHoldingFieldRef },
   ];
   const firstInvalid = order.find((entry) => entry.invalid);
@@ -346,6 +375,14 @@ const applyMappingSafely = (
     return undefined;
   }
 };
+
+// True once the mapping applied without throwing but literally zero rows
+// survived their own per-row checks — split out of the screen component
+// purely to stay under Biome's cognitive-complexity cap.
+const noRowsResolvedFor = (applyResult: MappedResult | undefined): boolean =>
+  applyResult !== undefined &&
+  applyResult.statement.transactions.length === 0 &&
+  applyResult.rowErrors.length > 0;
 
 const cellText = (cell: TableCell | undefined): string => (cell === undefined ? '' : String(cell));
 
@@ -496,10 +533,10 @@ type ColumnMappingFormProps = {
   selectedHoldingId: string | undefined;
   onSelectHolding: (holdingId: string) => void;
   onCreateNewHolding: () => void;
-  // F4 audit 1/2/3/6/15: Import-press field-level errors, `undefined` before
-  // the first press — see `ColumnMappingFieldErrors`'s own doc comment.
-  validation: ColumnMappingFieldErrors;
-  currencyColumnUnresolved: boolean;
+  // Import-press field-level errors — every field is `undefined` before the
+  // first press, hence `Partial` rather than `ColumnMappingFieldErrors`
+  // itself (see `NO_COLUMN_MAPPING_ERRORS`'s own doc comment).
+  validation: Partial<ColumnMappingFieldErrors>;
   fieldRefs: ColumnMappingFieldRefs;
 };
 
@@ -549,7 +586,6 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
   onSelectHolding,
   onCreateNewHolding,
   validation,
-  currencyColumnUnresolved,
   fieldRefs,
 }) => {
   const { t } = useTranslation();
@@ -752,12 +788,14 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
       {/* Group (e): result — MappingResult renders its OWN heading
           (`columnMapping.result`) in both its complete and incomplete
           states, at the same gap-driven spacing every other section uses. */}
-      <MappingResult
-        stats={stats}
-        rowErrors={rowErrors}
-        holdingName={holdingOptions.find((holding) => holding.id === selectedHoldingId)?.name}
-        currencyUnresolved={currencyColumnUnresolved}
-      />
+      <View ref={fieldRefs.resultFieldRef}>
+        <MappingResult
+          stats={stats}
+          rowErrors={rowErrors}
+          holdingName={holdingOptions.find((holding) => holding.id === selectedHoldingId)?.name}
+          noRowsResolvedError={validation.noRowsResolvedError}
+        />
+      </View>
 
       <View ref={fieldRefs.targetHoldingFieldRef}>
         <TargetHoldingField
@@ -836,6 +874,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   const amountGroupFieldRef = useRef<FieldInstance>(null);
   const currencyGroupFieldRef = useRef<FieldInstance>(null);
   const descriptionColumnFieldRef = useRef<FieldInstance>(null);
+  const resultFieldRef = useRef<FieldInstance>(null);
   const targetHoldingFieldRef = useRef<FieldInstance>(null);
   const scrollableRef = useAnimatedRef<ScrollViewInstance>();
   const scrollOffset = useScrollOffset(scrollableRef);
@@ -995,14 +1034,20 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     : undefined;
   const loadMessageKey = loadStateMessageKey(loadState.kind);
 
-  // F4 audit 6: `applyColumnMapping` throws ONLY when a `currency: { mode:
-  // 'column' }` mapping resolves NO row's currency at all — so once every
-  // required field IS structurally mapped (`mapping !== undefined`) and the
-  // apply still failed (`applyResult === undefined`), that is exactly this
-  // state, never a false positive from some other failure (see
-  // `applyColumnMapping`'s own doc comment).
+  // `applyColumnMapping` throws ONLY when a `currency: { mode: 'column' }`
+  // mapping resolves NO known code anywhere in the mapped currency column —
+  // so once every required field IS structurally mapped (`mapping !==
+  // undefined`) and the apply still failed (`applyResult === undefined`),
+  // that is exactly this state, never a false positive from some other
+  // per-row failure (see `applyColumnMapping`'s own doc comment).
   const currencyColumnUnresolved =
     mapping !== undefined && applyResult === undefined && currencyMode === 'column';
+  // Every required field IS mapped and the apply succeeded, but zero rows
+  // survived their own per-row checks (a date format that matches none of
+  // the file's actual cells, say) — the Result block's own error, distinct
+  // from `currencyColumnUnresolved` above (a THROW, so `applyResult` itself
+  // would be `undefined` there, not a defined result with an empty list).
+  const noRowsResolved = noRowsResolvedFor(applyResult);
 
   // Computed FRESH on every render, never gated on `attemptedImport` itself
   // (see `ColumnMappingFieldErrors`'s own doc comment) — `handleImport` below
@@ -1020,6 +1065,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     currencyColumn,
     currencyColumnUnresolved,
     descriptionColumn,
+    noRowsResolved,
     selectedHoldingId,
   });
   const fieldRefs: ColumnMappingFieldRefs = {
@@ -1028,6 +1074,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     amountGroupFieldRef,
     currencyGroupFieldRef,
     descriptionColumnFieldRef,
+    resultFieldRef,
     targetHoldingFieldRef,
   };
   // The DISPLAYED errors — `undefined` everywhere until the first Import
@@ -1203,7 +1250,6 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
               })
             }
             validation={validation}
-            currencyColumnUnresolved={currencyColumnUnresolved}
             fieldRefs={fieldRefs}
           />
         )}

@@ -45,9 +45,7 @@ const ColumnSelectField = <T extends string | number>({
         label={label}
         required={required}
         onPress={() => setOpen(true)}
-        value={
-          selectedOption ? selectedOption.label : (placeholder ?? t('columnMapping.selectValue'))
-        }
+        value={selectedOption ? selectedOption.label : placeholder}
         valueTone={selectedOption ? 'textPrimary' : 'textSecondary'}
         error={error}
         testID={testID}

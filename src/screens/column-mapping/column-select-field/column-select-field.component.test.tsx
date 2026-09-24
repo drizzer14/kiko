@@ -1,7 +1,5 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
-// Real i18n init (side effect), same as App.tsx — the field's placeholder
-// resolves a real `t('columnMapping.selectValue')` call.
 import '../../../i18n';
 
 import ColumnSelectField from './column-select-field.component';
@@ -20,15 +18,22 @@ describe('ColumnSelectField', () => {
         options={options}
         selected={undefined}
         onSelect={jest.fn()}
+        placeholder="Select a date column"
       />,
     );
 
-    expect(getByText('Select')).toBeTruthy();
+    expect(getByText('Select a date column')).toBeTruthy();
   });
 
   it("shows the selected option's own label as the field's value", async () => {
     const { getByText } = await render(
-      <ColumnSelectField label="Date" options={options} selected={1} onSelect={jest.fn()} />,
+      <ColumnSelectField
+        label="Date"
+        options={options}
+        selected={1}
+        onSelect={jest.fn()}
+        placeholder="Select a date column"
+      />,
     );
 
     expect(getByText('Description')).toBeTruthy();
@@ -42,6 +47,7 @@ describe('ColumnSelectField', () => {
         options={options}
         selected={undefined}
         onSelect={onSelect}
+        placeholder="Select a date column"
         testID="date-column-field"
       />,
     );
@@ -61,6 +67,7 @@ describe('ColumnSelectField', () => {
         selected={0}
         onSelect={onSelect}
         allowNotUsed
+        placeholder="Select a counterparty column"
         testID="counterparty-field"
       />,
     );
@@ -80,6 +87,7 @@ describe('ColumnSelectField', () => {
         options={options}
         selected={0}
         onSelect={jest.fn()}
+        placeholder="Select a date column"
         testID="date-column-field"
       />,
     );

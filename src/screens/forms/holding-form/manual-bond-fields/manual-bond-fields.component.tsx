@@ -83,7 +83,7 @@ const ManualBondFields: FC<ManualBondFieldsProps> = ({
           label={t('forms.holding.maturityDate')}
           value={maturityDate}
           onChange={onChangeMaturityDate}
-          placeholder={t('forms.holding.selectDatePlaceholder')}
+          placeholder={t('forms.fields.selectDatePlaceholder')}
           required
           error={maturityDateError}
         />

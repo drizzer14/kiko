@@ -17,7 +17,7 @@ describe('TimeField', () => {
   it('shows the current time-of-day as HH:mm', async () => {
     const value = new Date(2026, 2, 4, 9, 5).getTime();
     const { getByText } = await render(
-      <TimeField label="Time" value={value} onChange={jest.fn()} />,
+      <TimeField label="Time" value={value} onChange={jest.fn()} placeholder="Pick a time" />,
     );
 
     expect(getByText(formatTime(value))).toBeTruthy();
@@ -29,7 +29,7 @@ describe('TimeField', () => {
     // Current value: 4 March 2026, 09:30.
     const value = new Date(2026, 2, 4, 9, 30).getTime();
     const { getByLabelText, getByTestId } = await render(
-      <TimeField label="Time" value={value} onChange={onChange} />,
+      <TimeField label="Time" value={value} onChange={onChange} placeholder="Pick a time" />,
     );
 
     await fireEvent.press(getByLabelText('Time'));
@@ -50,7 +50,7 @@ describe('TimeField', () => {
     const onChange = jest.fn();
     const value = new Date(2026, 2, 4, 9, 30).getTime();
     const { getByLabelText, getByTestId } = await render(
-      <TimeField label="Time" value={value} onChange={onChange} />,
+      <TimeField label="Time" value={value} onChange={onChange} placeholder="Pick a time" />,
     );
 
     await fireEvent.press(getByLabelText('Time'));
@@ -66,6 +66,7 @@ describe('TimeField', () => {
         label="Time"
         value={new Date(2026, 2, 4, 9, 30).getTime()}
         onChange={jest.fn()}
+        placeholder="Pick a time"
         disabled
       />,
     );

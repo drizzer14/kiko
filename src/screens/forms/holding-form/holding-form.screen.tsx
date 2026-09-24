@@ -2036,7 +2036,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                         label={t('forms.holding.contributionDate', { index: index + 1 })}
                         value={contribution.date}
                         onChange={(next) => updateContributionDate(index, next)}
-                        placeholder={t('forms.holding.selectDatePlaceholder')}
+                        placeholder={t('forms.fields.selectDatePlaceholder')}
                         required
                       />
 
@@ -2202,7 +2202,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                 label={t('forms.holding.purchaseDate')}
                 value={purchaseDate}
                 onChange={setPurchaseDate}
-                placeholder={t('forms.holding.selectDatePlaceholder')}
+                placeholder={t('forms.fields.selectDatePlaceholder')}
                 required
                 error={purchaseDateErrorMessage(bondMode, maturityDateErrorMessage)}
               />

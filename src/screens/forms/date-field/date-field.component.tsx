@@ -102,7 +102,7 @@ const DateField: FC<DateFieldProps> = ({
           <SymbolIcon name="calendar" size={theme.iconSizes.body} tone="textSecondary" />
 
           <Text variant="body" tone={disabled || value === null ? 'textSecondary' : 'textPrimary'}>
-            {value === null ? (placeholder ?? label) : formatDate(value)}
+            {value === null ? placeholder : formatDate(value)}
           </Text>
         </Box>
       </Pressable>

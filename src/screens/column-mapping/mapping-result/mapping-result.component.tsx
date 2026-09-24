@@ -28,52 +28,65 @@ const MappingResult: FC<MappingResultProps> = ({
   stats,
   rowErrors,
   holdingName,
-  currencyUnresolved = false,
+  noRowsResolvedError,
 }) => {
   const { t } = useTranslation();
   const visibleRowErrors = rowErrors.slice(0, ROW_ERROR_PREVIEW_COUNT);
   const overflowCount = rowErrors.length - visibleRowErrors.length;
-  // F4 audit 6: the specific reason (currency values Kiko can't resolve)
-  // replaces the generic "still missing a column" hint, which used to show
-  // even though every required field WAS mapped.
-  const incompleteMessageKey = currencyUnresolved
-    ? 'columnMapping.currencyColumnUnresolvedError'
-    : 'columnMapping.incomplete';
+  // Zero transactions parsed even though `stats` resolved (the mapping is
+  // structurally complete and `applyColumnMapping` succeeded) — every row
+  // failed its OWN per-row check, so there is nothing meaningful to show in
+  // the count/date-span summary below.
+  const hasResolvedTransactions = stats !== undefined && stats.transactionCount > 0;
 
   return (
     <Box gap={3} style={styles.resultBlock}>
       <Text variant="heading">{t('columnMapping.result')}</Text>
 
       {stats === undefined && (
-        <Text variant="body" tone={currencyUnresolved ? 'negative' : 'textSecondary'}>
-          {t(incompleteMessageKey)}
+        <Text variant="body" tone="textSecondary">
+          {t('columnMapping.incomplete')}
+        </Text>
+      )}
+
+      {stats !== undefined && !hasResolvedTransactions && noRowsResolvedError !== undefined && (
+        <Text variant="body" tone="negative">
+          {noRowsResolvedError}
         </Text>
       )}
 
       {stats !== undefined && (
         <>
-          {/* The deposit/bond value-breakdown table's own UI layout (item 3),
-              reused here via the shared `SummaryTable` — this screen's own
-              columns, never the deposit table's value/percent/tax ones. */}
-          <SummaryTable
-            rows={[
-              {
-                key: 'transactionCount',
-                label: t('statementImport.transactionCountLabel'),
-                value: <Text variant="body">{stats.transactionCount}</Text>,
-                testID: 'column-mapping-transaction-count',
-              },
-              {
-                key: 'dateSpan',
-                label: t('statementImport.dateSpanLabel'),
-                value: <Text variant="body">{stats.dateSpan}</Text>,
-                testID: 'column-mapping-date-span',
-              },
-            ]}
-          />
+          {hasResolvedTransactions && (
+            <>
+              {/* The deposit/bond value-breakdown table's own UI layout
+                  (item 3), reused here via the shared `SummaryTable` — this
+                  screen's own columns, never the deposit table's own
+                  value/percent/tax ones. */}
+              <SummaryTable
+                rows={[
+                  {
+                    key: 'transactionCount',
+                    label: t('statementImport.transactionCountLabel'),
+                    value: <Text variant="body">{stats.transactionCount}</Text>,
+                    testID: 'column-mapping-transaction-count',
+                  },
+                  {
+                    key: 'dateSpan',
+                    label: t('statementImport.dateSpanLabel'),
+                    value: <Text variant="body">{stats.dateSpan}</Text>,
+                    testID: 'column-mapping-date-span',
+                  },
+                ]}
+              />
 
-          {stats.firstTransaction && (
-            <ExampleTransaction transaction={stats.firstTransaction} holdingName={holdingName} />
+              {stats.firstTransaction && (
+                <ExampleTransaction
+                  transaction={stats.firstTransaction}
+                  holdingName={holdingName}
+                />
+              )}
+            </>
           )}
 
           {visibleRowErrors.length > 0 && (

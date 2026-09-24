@@ -402,10 +402,9 @@ describe('ColumnMappingScreen', () => {
     expect(commaAmounts).not.toEqual(dotAmounts);
   });
 
-  // F4 audit 1: Import is ALWAYS enabled (never `disabled={!canImport}`) —
-  // pressing it with no amount column mapped validates on press instead,
-  // showing the field's own inline error rather than a silently inert
-  // button.
+  // Import is ALWAYS enabled (never `disabled={!canImport}`) — pressing it
+  // with no amount column mapped validates on press instead, showing the
+  // field's own inline error rather than a silently inert button.
   it('Import stays enabled with no amount column mapped, but shows the field error and does not import', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
 
@@ -419,6 +418,102 @@ describe('ColumnMappingScreen', () => {
 
     expect(mockImportParsedStatement).not.toHaveBeenCalled();
     expect(view.getByText(i18n.t('columnMapping.amountColumnError'))).toBeTruthy();
+  });
+
+  // C1 (F4 fix round 1): a currency column with genuinely resolvable ISO
+  // codes ("Валюта" = UAH/EUR/UAH/UAH) must never be blamed when the REAL
+  // problem is an unrelated field — here, a date format that matches none
+  // of the fixture's actual date cells. The real per-row date errors show
+  // instead, and no currency error appears anywhere on the screen.
+  it('blames the date field, not the currency column, when every row fails on an unrelated date-format mismatch', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+
+    const view = await renderMonobankScreen();
+
+    await fireEvent.press(view.getByTestId('column-mapping-date-column'));
+    await fireEvent.press(view.getByTestId('column-mapping-date-column-option-0'));
+    await fireEvent.press(view.getByTestId('column-mapping-date-format'));
+    // 'YYYY-MM-DD' matches none of the fixture's own 'DD.MM.YYYY HH:MM:SS' cells.
+    await fireEvent.press(view.getByTestId('column-mapping-date-format-option-YYYY-MM-DD'));
+    await fireEvent.press(view.getByTestId('column-mapping-description-column'));
+    await fireEvent.press(view.getByTestId('column-mapping-description-column-option-1'));
+    await fireEvent.press(view.getByTestId('column-mapping-amount-column'));
+    await fireEvent.press(view.getByTestId('column-mapping-amount-column-option-3'));
+    await fireEvent.press(
+      within(view.getByTestId('column-mapping-currency-mode')).getByText(
+        i18n.t('columnMapping.currencyColumn'),
+      ),
+    );
+    await fireEvent.press(view.getByTestId('column-mapping-currency-column'));
+    // Column 5 ("Валюта") — every row's own cell is a real ISO code.
+    await fireEvent.press(view.getByTestId('column-mapping-currency-column-option-5'));
+
+    await waitFor(() =>
+      expect(view.queryAllByTestId(/^column-mapping-row-error-/).length).toBeGreaterThan(0),
+    );
+    expect(
+      view.getByText(
+        i18n.t('columnMapping.rowError.date', { row: 2, value: '01.04.2022 05:27:35' }),
+      ),
+    ).toBeTruthy();
+    expect(view.queryByText(i18n.t('columnMapping.currencyColumnUnresolvedError'))).toBeNull();
+  });
+
+  // I2 + m7 (F4 fix round 1): every required field is mapped and the mapping
+  // applies without throwing, but zero rows survive their own date-format
+  // check — Import press must surface SOMETHING (not silently do nothing),
+  // and the message only appears after that press, never before.
+  it('shows the noRowsResolvedError message on Import press when every row fails its own date check, and not before', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+
+    const view = await renderMonobankScreen();
+
+    await fireEvent.press(view.getByTestId('column-mapping-date-column'));
+    await fireEvent.press(view.getByTestId('column-mapping-date-column-option-0'));
+    await fireEvent.press(view.getByTestId('column-mapping-date-format'));
+    await fireEvent.press(view.getByTestId('column-mapping-date-format-option-YYYY-MM-DD'));
+    await fireEvent.press(view.getByTestId('column-mapping-description-column'));
+    await fireEvent.press(view.getByTestId('column-mapping-description-column-option-1'));
+    await fireEvent.press(view.getByTestId('column-mapping-amount-column'));
+    await fireEvent.press(view.getByTestId('column-mapping-amount-column-option-3'));
+    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
+
+    expect(view.queryByText(i18n.t('columnMapping.noRowsResolvedError'))).toBeNull();
+
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    expect(mockImportParsedStatement).not.toHaveBeenCalled();
+    expect(view.getByText(i18n.t('columnMapping.noRowsResolvedError'))).toBeTruthy();
+  });
+
+  // m7 (F4 fix round 1): a genuinely unresolvable currency column (every
+  // cell fails to resolve to a known code) shows its error in exactly ONE
+  // place — the currency field itself, only after the first Import press —
+  // never a second copy in the Result block, and never before the press.
+  it('shows the currency-unresolved error only on the field, only after a press, never twice', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+
+    const view = await renderMonobankScreen();
+
+    await mapMonobankColumns(view);
+    await fireEvent.press(
+      within(view.getByTestId('column-mapping-currency-mode')).getByText(
+        i18n.t('columnMapping.currencyColumn'),
+      ),
+    );
+    await fireEvent.press(view.getByTestId('column-mapping-currency-column'));
+    // Column 2 (MCC) — numeric merchant codes, never a currency code.
+    await fireEvent.press(view.getByTestId('column-mapping-currency-column-option-2'));
+    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
+
+    expect(view.queryByText(i18n.t('columnMapping.currencyColumnUnresolvedError'))).toBeNull();
+
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    expect(mockImportParsedStatement).not.toHaveBeenCalled();
+    expect(view.getAllByText(i18n.t('columnMapping.currencyColumnUnresolvedError'))).toHaveLength(
+      1,
+    );
   });
 
   // Item 15 (F3): a successful Import shows a MODAL with the result text.

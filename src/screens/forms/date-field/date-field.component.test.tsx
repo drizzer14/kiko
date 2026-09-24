@@ -19,7 +19,7 @@ describe('DateField', () => {
   it('shows the picked date as DD.MM.YYYY', async () => {
     const value = new Date(2026, 0, 15).getTime();
     const { getByText } = await render(
-      <DateField label="Start Date" value={value} onChange={jest.fn()} />,
+      <DateField label="Start Date" value={value} onChange={jest.fn()} placeholder="Pick a day" />,
     );
 
     expect(getByText(formatDate(value))).toBeTruthy();
@@ -27,7 +27,7 @@ describe('DateField', () => {
 
   it('pads the sheet clear of the home indicator (bottom safe-area inset)', async () => {
     const { getByLabelText, getByTestId } = await render(
-      <DateField label="Start Date" value={null} onChange={jest.fn()} />,
+      <DateField label="Start Date" value={null} onChange={jest.fn()} placeholder="Pick a day" />,
     );
 
     await fireEvent.press(getByLabelText('Start Date'));
@@ -43,7 +43,13 @@ describe('DateField', () => {
 
   it('is inert and dimmed when disabled: a press does not open the calendar', async () => {
     const { getByLabelText, queryByTestId } = await render(
-      <DateField label="Start Date" value={null} onChange={jest.fn()} disabled />,
+      <DateField
+        label="Start Date"
+        value={null}
+        onChange={jest.fn()}
+        placeholder="Pick a day"
+        disabled
+      />,
     );
 
     const field = getByLabelText('Start Date');
@@ -75,7 +81,7 @@ describe('DateField', () => {
   it('opens the calendar on the current value', async () => {
     const value = new Date(2026, 2, 4).getTime();
     const { getByLabelText, getByTestId } = await render(
-      <DateField label="Start Date" value={value} onChange={jest.fn()} />,
+      <DateField label="Start Date" value={value} onChange={jest.fn()} placeholder="Pick a day" />,
     );
 
     await fireEvent.press(getByLabelText('Start Date'));
@@ -86,7 +92,7 @@ describe('DateField', () => {
   it('opens the calendar and reports the picked day as a local-midnight timestamp', async () => {
     const onChange = jest.fn();
     const { getByLabelText, getByTestId } = await render(
-      <DateField label="Start Date" value={null} onChange={onChange} />,
+      <DateField label="Start Date" value={null} onChange={onChange} placeholder="Pick a day" />,
     );
 
     await fireEvent.press(getByLabelText('Start Date'));
@@ -108,7 +114,7 @@ describe('DateField', () => {
     // TimeField and DateField do not overwrite each other).
     const value = new Date(2026, 2, 4, 14, 37, 9).getTime();
     const { getByLabelText, getByTestId } = await render(
-      <DateField label="Start Date" value={value} onChange={onChange} />,
+      <DateField label="Start Date" value={value} onChange={onChange} placeholder="Pick a day" />,
     );
 
     await fireEvent.press(getByLabelText('Start Date'));
@@ -126,7 +132,13 @@ describe('DateField', () => {
 
   it('marks the label with a required asterisk when required', async () => {
     const { getByText } = await render(
-      <DateField label="Start Date" value={null} onChange={jest.fn()} required />,
+      <DateField
+        label="Start Date"
+        value={null}
+        onChange={jest.fn()}
+        placeholder="Pick a day"
+        required
+      />,
     );
 
     expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
@@ -134,7 +146,7 @@ describe('DateField', () => {
 
   it('renders no error message by default', async () => {
     const { queryByText } = await render(
-      <DateField label="Start Date" value={null} onChange={jest.fn()} />,
+      <DateField label="Start Date" value={null} onChange={jest.fn()} placeholder="Pick a day" />,
     );
 
     expect(queryByText('Select a date.')).toBeNull();
@@ -164,6 +176,7 @@ describe('DateField', () => {
         label="Start Date"
         value={null}
         onChange={jest.fn()}
+        placeholder="Pick a day"
         testID="maturity-date-field"
       />,
     );
@@ -177,6 +190,7 @@ describe('DateField', () => {
         label="Start Date"
         value={null}
         onChange={jest.fn()}
+        placeholder="Pick a day"
         error="Select a date."
         testID="maturity-date-field"
       />,

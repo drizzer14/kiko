@@ -7,8 +7,10 @@ export type TimeFieldProps = {
   // Reports the new timestamp: the picked hours/minutes combined with the DAY
   // (year/month/date) of the current `value`, so a time pick never moves the day.
   onChange: (timestamp: number) => void;
-  // Shown in the field when `value` is null.
-  placeholder?: string;
+  // Shown in the field when `value` is null. Required — see DateField's own
+  // matching `placeholder` doc comment for why the `?? label` fallback this
+  // replaced was a bug class, not a convenience default.
+  placeholder: string;
   // When true, the field is read-only: a press is inert (the picker never opens)
   // and the field is dimmed to read as locked — matching the disabled DateField /
   // TextField treatment. A synced (Monobank) transaction's time uses this so its

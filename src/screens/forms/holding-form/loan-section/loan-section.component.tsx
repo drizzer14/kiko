@@ -100,7 +100,7 @@ const LoanSection: FC<LoanSectionProps> = ({
           label={t('forms.holding.loanStartDate')}
           value={startDate}
           onChange={onChangeStartDate}
-          placeholder={t('forms.holding.selectDatePlaceholder')}
+          placeholder={t('forms.fields.selectDatePlaceholder')}
           required
           error={startDateError}
         />
