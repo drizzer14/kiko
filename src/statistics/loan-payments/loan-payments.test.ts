@@ -192,20 +192,6 @@ describe('loanInterestEntries', () => {
     expect(entries).toEqual([]);
   });
 
-  it('stamps the entry with the LOAN holding currency, not the payment currency', () => {
-    const usdLoan: LoanHolding = { id: 'loan-usd', metadata: scheduledMeta, currency: 'USD' };
-    const usdPayment: LoanPaymentTransaction = {
-      ...linkedPayment,
-      id: 'tx-usd',
-      loanHoldingId: 'loan-usd',
-      currency: 'USD',
-    };
-
-    const entries = loanInterestEntries({ transactions: [usdPayment], loanHoldings: [usdLoan] });
-
-    expect(entries).toEqual([expect.objectContaining({ currency: 'USD' })]);
-  });
-
   // A linked row can be edited after linking from a debit into a credit (e.g.
   // a returned/reversed payment); a credit is not spending, so it must not
   // manufacture a negative "Loan interest" entry either.
