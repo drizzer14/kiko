@@ -53,6 +53,12 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
   const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
   const holding = holdings.find((candidate) => candidate.id === holdingId);
   const currency: Currency = holding?.currency ?? 'UAH';
+  // A loan's correction targets its manual OUTSTANDING series through this
+  // SAME form (T28 review round 1, Minor 6) — the title, field label, Save
+  // label, and the 0-vs-greater-than-0 validation (I2: a loan can be repaid
+  // to exactly 0) all switch on this flag, so no wording still says "Value"
+  // once the holding has loaded as a loan.
+  const isLoan = holding?.type === 'loan';
 
   const { t } = useTranslation();
   const [value, setValue] = useState('');
@@ -66,24 +72,26 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
   const headerInset = useHeaderInset();
   const contentHeightRef = useRef(0);
 
-  // The stack sets the static "Update Value" title (accounts.stack.tsx); a
-  // loan's own correction targets its manual OUTSTANDING series through this
-  // SAME form (holding-detail's footerActionFor reuses 'updateValue' for a
-  // loan rather than minting a separate action), so once the holding loads
-  // as a loan this overrides the title to read correctly for a debt. Mirrors
-  // HoldingFormScreen's own edit-mode title override.
+  // The stack sets the static "Update Value" title (accounts.stack.tsx); this
+  // screen overrides it to read correctly for a debt once the holding loads
+  // as a loan (holding-detail's footerActionFor reuses 'updateValue' for a
+  // loan rather than minting a separate action). Mirrors HoldingFormScreen's
+  // own edit-mode title override.
   useLayoutEffect(() => {
-    if (holding?.type === 'loan') {
+    if (isLoan) {
       navigation.setOptions({ title: t('forms.pricePoint.loanTitle') });
     }
-  }, [holding?.type, navigation, t]);
+  }, [isLoan, navigation, t]);
 
   const save = async (): Promise<void> => {
     if (!holding) {
       return;
     }
     const majorValue = parseAmount(value);
-    if (!(majorValue > 0)) {
+    // I2: a loan's outstanding can reach exactly 0 (repaid) — every other
+    // priced holding's value must stay strictly positive.
+    const isValidValue = isLoan ? majorValue >= 0 : majorValue > 0;
+    if (!isValidValue) {
       setAttemptedSave(true);
       scrollToField(
         scrollableRef,
@@ -126,14 +134,14 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
       }}
       footer={
         <Button onPress={onSave} disabled={isSubmitting}>
-          {t('forms.pricePoint.save')}
+          {t(isLoan ? 'forms.pricePoint.loanSave' : 'forms.pricePoint.save')}
         </Button>
       }
     >
       <Box gap={4}>
         <View ref={valueFieldRef}>
           <TextField
-            label={t('forms.pricePoint.value')}
+            label={t(isLoan ? 'forms.pricePoint.loanValue' : 'forms.pricePoint.value')}
             value={value}
             onChangeText={(text) => setValue(groupAmount(text))}
             keyboardType="decimal-pad"
@@ -141,8 +149,8 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
             suffix={currencySymbol[currency]}
             required
             error={
-              attemptedSave && !(parseAmount(value) > 0)
-                ? t('forms.pricePoint.valueError')
+              attemptedSave && !(isLoan ? parseAmount(value) >= 0 : parseAmount(value) > 0)
+                ? t(isLoan ? 'forms.pricePoint.loanValueError' : 'forms.pricePoint.valueError')
                 : undefined
             }
             inputRef={valueInputRef}

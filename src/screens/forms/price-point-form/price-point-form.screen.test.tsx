@@ -155,4 +155,45 @@ describe('PricePointFormScreen', () => {
 
     expect(navigation.setOptions).not.toHaveBeenCalled();
   });
+
+  // I2 (T28 review round 1): a loan can be recorded as fully repaid — its
+  // outstanding series must be able to reach exactly 0, unlike every other
+  // priced holding type.
+  it('(I2) saves a loan outstanding of 0, writing 0.00 on its own holding:<id> series', async () => {
+    seed({ id: 'h-1', currency: 'UAH', type: 'loan' });
+    const utils = await renderScreen();
+
+    await fireEvent.changeText(utils.getByLabelText('Outstanding'), '0');
+    await fireEvent.press(utils.getByText('Save outstanding'));
+
+    expect(pricePointsRepo.upsertMany).toHaveBeenCalledWith([
+      expect.objectContaining({ instrument: 'holding:h-1', price: '0.00', currency: 'UAH' }),
+    ]);
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('(I2) still blocks a non-loan holding at 0, with the generic error', async () => {
+    seed({ id: 'h-1', currency: 'UAH', type: 'property_item' });
+    const utils = await renderScreen();
+
+    await fireEvent.press(utils.getByText('Save value'));
+
+    expect(utils.getByText('Value must be greater than 0.')).toBeTruthy();
+    expect(pricePointsRepo.upsertMany).not.toHaveBeenCalled();
+  });
+
+  // Minor 6: a loan's field label, Save button, and error string all read
+  // correctly for a debt too, not just the screen title.
+  it('(Minor 6) shows the loan-specific field label, button, and error', async () => {
+    seed({ id: 'h-1', currency: 'UAH', type: 'loan' });
+    const utils = await renderScreen();
+
+    expect(utils.getByLabelText('Outstanding')).toBeTruthy();
+    expect(utils.getByText('Save outstanding')).toBeTruthy();
+
+    await fireEvent.changeText(utils.getByLabelText('Outstanding'), '-1');
+    await fireEvent.press(utils.getByText('Save outstanding'));
+
+    expect(utils.getByText('Outstanding must be 0 or greater.')).toBeTruthy();
+  });
 });

@@ -384,11 +384,14 @@ export const en = {
       type: 'Type',
     },
     pricePoint: {
-      // The screen title override (T28) when this correction targets a loan
-      // holding's own manual outstanding series — `holding-detail.screen.tsx`
-      // sets it once the holding loads, in place of the static "Update
-      // Value" stack-options title.
+      // The loan-specific title/field/button/error overrides (T28, T28
+      // review round 1 Minor 6) `PricePointFormScreen` itself applies once
+      // the holding loads as a loan, in place of the generic wording below —
+      // `loanValueError` also accepts 0 (I2: a loan can be repaid to 0).
+      loanSave: 'Save outstanding',
       loanTitle: 'Update Outstanding',
+      loanValue: 'Outstanding',
+      loanValueError: 'Outstanding must be 0 or greater.',
       save: 'Save value',
       title: 'Update Value',
       value: 'Value',

@@ -349,7 +349,10 @@ export const uk: typeof en = {
       type: 'Тип',
     },
     pricePoint: {
+      loanSave: 'Зберегти залишок',
       loanTitle: 'Оновити залишок',
+      loanValue: 'Залишок',
+      loanValueError: 'Залишок має бути не менше 0.',
       save: 'Зберегти вартість',
       title: 'Оновити вартість',
       value: 'Вартість',
