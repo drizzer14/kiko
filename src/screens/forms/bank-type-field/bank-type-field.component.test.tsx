@@ -3,6 +3,7 @@ import '../../../design-system/unistyles';
 import '../../../i18n';
 
 import { darkTheme } from '../../../design-system/theme';
+import { bankIds } from '../../../bank-sync/bank-catalog';
 
 import BankTypeField from '.';
 
@@ -190,6 +191,27 @@ describe('BankTypeField', () => {
     );
     expect(getByTestId('bank-type-option-privatbank-import-icon').props.size).toBe(
       darkTheme.iconSizes.caption,
+    );
+  });
+
+  // F4 item 2 (ITEM 2 USER DECISION): column-mapping import is a capability
+  // shown on EVERY catalog bank — a sync-connectable bank, one with a
+  // dedicated statement format, and a column-mapping-only bank all get it.
+  it.each(bankIds)('shows the column-mapping capability icon on %s', async (bankId) => {
+    const onSelect = jest.fn();
+    const { getByTestId } = await render(
+      <BankTypeField
+        label="Bank type"
+        selected={null}
+        onSelect={onSelect}
+        testID="bank-type-field"
+      />,
+    );
+
+    await fireEvent.press(getByTestId('bank-type-field'));
+
+    expect(getByTestId(`bank-type-option-${bankId}-column-mapping-icon`).props.name).toBe(
+      'increase.indent',
     );
   });
 
