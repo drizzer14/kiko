@@ -1,6 +1,7 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import type { ComponentProps, ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
+import maybe, { foldMap } from 'fnts/maybe';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
@@ -303,7 +304,7 @@ const seed = (
     }
 
     if (keys[0] === 'accounts') {
-      return { data: account === undefined ? [] : [account] };
+      return { data: foldMap(maybe(account), (found) => [found]) ?? [] };
     }
 
     if (keys[0] === 'price_points') {

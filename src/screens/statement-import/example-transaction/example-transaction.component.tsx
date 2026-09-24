@@ -1,4 +1,5 @@
 import type { FC } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -50,7 +51,7 @@ const ExampleTransaction: FC<ExampleTransactionProps> = ({ transaction, holdingN
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
   const categoryByKey = buildCategoryDisplayMap(categories);
-  const rawCategory = transaction.mcc !== undefined ? categoryForMcc(transaction.mcc) : null;
+  const rawCategory = foldMap(maybe(transaction.mcc), (mcc) => categoryForMcc(mcc)) ?? null;
   const category = resolveCategoryDisplay(rawCategory, categoryByKey, defaultCategoryKey);
   const categoryKey = resolveCategoryKey(rawCategory, categoryByKey, defaultCategoryKey);
   const title = transactionRowDescription({

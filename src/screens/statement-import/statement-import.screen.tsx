@@ -1,5 +1,6 @@
 import * as RNFS from 'react-native-fs';
 import type { FC, RefObject } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { useRef, useEffect, useState } from 'react';
 import { View, Alert, type ScrollViewInstance } from 'react-native';
@@ -57,7 +58,7 @@ type StatementImportScreenProps = NativeStackScreenProps<AccountsStackParamList,
 // Extension entry point) — the caller then falls back to the existing
 // multi-format `detectFormat` auto-detect below.
 const expectedFormatOf = (id: StatementFormatId | undefined): StatementFormat | undefined =>
-  id === undefined ? undefined : statementFormats.find((format) => format.id === id);
+  foldMap(maybe(id), (found) => statementFormats.find((format) => format.id === found));
 
 // The recognized format for a ready `input` (device-feedback-round-1 item
 // 5): scoped to `expectedFormat` when the account's bank is known — ONLY

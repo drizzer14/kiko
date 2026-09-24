@@ -4,6 +4,8 @@
 // (`formatId: 'column-mapping'`), so the rest of the pipeline
 // (`importParsedStatement`, dedup, the preview screen) treats a mapped file
 // identically to a recognized bank export.
+import maybe, { foldMap } from 'fnts/maybe';
+
 import { Money } from '../../currency/money';
 import { isCurrency } from '../../currency/currency';
 import type { Currency } from '../../currency/currency';
@@ -59,7 +61,7 @@ const mappedColumnsFor = (mapping: ColumnMapping): number[] => [
     ? [mapping.amount.column]
     : [mapping.amount.debitColumn, mapping.amount.creditColumn]),
   ...(mapping.currency.mode === 'column' ? [mapping.currency.column] : []),
-  ...(mapping.counterpartyColumn === undefined ? [] : [mapping.counterpartyColumn]),
+  ...(foldMap(maybe(mapping.counterpartyColumn), (column) => [column]) ?? []),
 ];
 
 // An ISO code (already a recognized `Currency`) or a `CURRENCY_WORD_MAP` word

@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next';
+import maybe, { foldMap } from 'fnts/maybe';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
@@ -48,8 +49,9 @@ const BankTypeField: FC<BankTypeFieldProps> = ({ label, selected, onSelect, test
   const { theme } = useUnistyles();
   const [open, setOpen] = useState(false);
 
-  const selectedEntry =
-    selected === null ? undefined : bankCatalog.find((entry) => entry.id === selected);
+  const selectedEntry = foldMap(maybe(selected), (id) =>
+    bankCatalog.find((entry) => entry.id === id),
+  );
 
   const handleSelect = (bankId: BankId): void => {
     onSelect(bankId);

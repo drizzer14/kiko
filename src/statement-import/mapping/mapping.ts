@@ -1,3 +1,5 @@
+import maybe, { foldMap } from 'fnts/maybe';
+
 import type { ParsedTransaction } from '../parser';
 import type { TransactionRow } from '../../db/schema';
 import { categoryForMcc } from '../../monobank/mcc-category';
@@ -56,7 +58,7 @@ export const mapParsedTransaction = (
   time: transaction.timeSeconds * 1000,
   description: transaction.description,
   mcc: transaction.mcc,
-  category: transaction.mcc !== undefined ? categoryForMcc(transaction.mcc) : null,
+  category: foldMap(maybe(transaction.mcc), (mcc) => categoryForMcc(mcc)) ?? null,
   counterIban: transaction.counterIban ?? null,
   comment: transaction.comment ?? null,
   source: 'import',
