@@ -375,8 +375,11 @@ const makeRemoveTx = (opts: {
 // Fake tx for addManyDedup: two reads (the name→category rules, and the rows
 // that already hold an incoming external id) and one upsert. Each select
 // dispatches on the table it reads rather than on call order, because the rule
-// lookup is skipped entirely when no input carries a description. Both the
-// inserted values and the on-conflict config are captured.
+// lookup is skipped entirely when no input carries a description. The upsert
+// may now run as SEVERAL chunked `.values(...)` calls (`chunkForTable`), so
+// `captured.inserted` is the FLATTENED concatenation of every chunk, in call
+// order — a single-chunk batch (every existing test below) sees the same
+// shape as before; `captured.insertCallCount` exposes how many chunks ran.
 const makeAddManyTx = (
   rules: { normalizedName: string; category: string }[],
   existing: { source: string; externalId: string }[] = [],
@@ -384,13 +387,15 @@ const makeAddManyTx = (
   tx: unknown;
   captured: {
     inserted?: Record<string, unknown>[];
+    insertCallCount: number;
     conflict?: { target: unknown; set: Record<string, unknown> };
   };
 } => {
   const captured: {
     inserted?: Record<string, unknown>[];
+    insertCallCount: number;
     conflict?: { target: unknown; set: Record<string, unknown> };
-  } = {};
+  } = { insertCallCount: 0 };
   const tx = {
     select: () => ({
       from: (table: unknown) => ({
@@ -400,7 +405,8 @@ const makeAddManyTx = (
     insert: (table: unknown) => ({
       values: (values: Record<string, unknown>[]) => {
         if (table !== categoryOverrides) {
-          captured.inserted = values;
+          captured.inserted = (captured.inserted ?? []).concat(values);
+          captured.insertCallCount += 1;
         }
 
         return {
@@ -628,6 +634,181 @@ describe('transactionsRepo.addManyDedup upsert', () => {
 
     expect(captured.inserted).toHaveLength(2);
     expect(inserted).toBe(2);
+  });
+});
+
+// `transactions` has 15 columns, so `chunkForTable` caps an insert chunk at
+// floor(32000 / 15) = 2133 rows — a live Monobank sync or a large statement
+// import can carry far more. A REAL `drizzle-orm/sqlite-proxy` instance (not
+// a hand-rolled fake) is used below: its callback receives the ACTUAL
+// flattened `params` array Drizzle would bind for that statement, so
+// throwing above SQLite's own SQLITE_MAX_VARIABLE_NUMBER (32766) models
+// op-sqlite's real rejection — the same technique `rates.repo.test.ts` and
+// `rate-history.repo.test.ts` use for their own chunked upserts.
+const SQLITE_MAX_VARIABLE_NUMBER = 32_766;
+
+const makeOverflowGuardTx = (): {
+  tx: unknown;
+  statements: { sql: string; params: unknown[] }[];
+} => {
+  const statements: { sql: string; params: unknown[] }[] = [];
+  const tx = drizzle(async (sql: string, params: unknown[]) => {
+    if (params.length > SQLITE_MAX_VARIABLE_NUMBER) {
+      throw new Error('too many SQL variables');
+    }
+    statements.push({ sql, params });
+
+    return { rows: [] };
+  });
+
+  return { tx, statements };
+};
+
+describe('transactionsRepo.addManyDedup chunking', () => {
+  it('chunks a large sync batch insert under the SQLite bound-parameter limit, losing no row', async () => {
+    const { tx, statements } = makeOverflowGuardTx();
+    mockTx = tx;
+
+    const rowCount = 5000;
+    const rows = Array.from({ length: rowCount }, (_, index) => ({
+      holdingId: 'h1',
+      amountMinorUnits: -100 - index,
+      time: 1 + index,
+      source: 'monobank' as const,
+      description: `txn-${index}`,
+      category: 'other',
+      mcc: 5411,
+      hold: false,
+      counterIban: 'UA000000000000000000000000',
+      comment: '',
+      externalId: `ext-${index}`,
+    }));
+
+    const inserted = await transactionsRepo.addManyDedup(rows);
+
+    const insertStatements = statements.filter((statement) => statement.sql.startsWith('insert'));
+    // id + the 11 NewTransaction fields set on every row above.
+    const paramsPerRow = 12;
+    expect(insertStatements.length).toBeGreaterThan(1);
+    expect(insertStatements.reduce((sum, statement) => sum + statement.params.length, 0)).toBe(
+      rowCount * paramsPerRow,
+    );
+    expect(inserted).toBe(rowCount);
+  });
+
+  it('chunks the category-override rule lookup under the SQLite bound-parameter limit', async () => {
+    const { tx, statements } = makeOverflowGuardTx();
+    mockTx = tx;
+
+    const rowCount = SQLITE_MAX_VARIABLE_NUMBER + 1;
+    const rows = Array.from({ length: rowCount }, (_, index) => ({
+      holdingId: 'h1',
+      amountMinorUnits: -1,
+      time: 1 + index,
+      source: 'monobank' as const,
+      // A unique description per row pushes the deduplicated `keys` count
+      // past the ceiling. No externalId: `countNewRows`'s own select is
+      // skipped entirely (its guard returns early on an empty externalId
+      // list), isolating this test to the rule-lookup select.
+      description: `desc-${index}`,
+    }));
+
+    const inserted = await transactionsRepo.addManyDedup(rows);
+
+    const ruleSelects = statements.filter(
+      (statement) =>
+        statement.sql.startsWith('select') && statement.sql.includes('category_overrides'),
+    );
+    expect(ruleSelects.length).toBeGreaterThan(1);
+    expect(ruleSelects.reduce((sum, statement) => sum + statement.params.length, 0)).toBe(rowCount);
+    expect(inserted).toBe(rowCount);
+  });
+
+  it('chunks the existing-external-id lookup under the SQLite bound-parameter limit', async () => {
+    const { tx, statements } = makeOverflowGuardTx();
+    mockTx = tx;
+
+    const rowCount = SQLITE_MAX_VARIABLE_NUMBER + 1;
+    const rows = Array.from({ length: rowCount }, (_, index) => ({
+      holdingId: 'h1',
+      amountMinorUnits: -1,
+      time: 1 + index,
+      source: 'monobank' as const,
+      // No description: `keys` stays empty so the rule-lookup select never
+      // runs, isolating this test to `countNewRows`'s own select.
+      externalId: `ext-${index}`,
+    }));
+
+    const inserted = await transactionsRepo.addManyDedup(rows);
+
+    const existingSelects = statements.filter(
+      (statement) => statement.sql.startsWith('select') && statement.sql.includes('"transactions"'),
+    );
+    expect(existingSelects.length).toBeGreaterThan(1);
+    // Every chunk's statement also re-binds the (single-value) `sources`
+    // list, so the total is the externalId count plus one `source` param
+    // per chunk, not just `rowCount`.
+    expect(existingSelects.reduce((sum, statement) => sum + statement.params.length, 0)).toBe(
+      rowCount + existingSelects.length,
+    );
+    expect(inserted).toBe(rowCount);
+  });
+
+  it('collapses a duplicate pair split across a chunk boundary the same way a same-chunk duplicate would', async () => {
+    const { tx, captured } = makeAddManyTx([]);
+    mockTx = tx;
+
+    const rowCount = 2200;
+    const rows = Array.from({ length: rowCount }, (_, index) => ({
+      holdingId: 'h1',
+      amountMinorUnits: -1000 - index,
+      time: 1 + index,
+      source: 'monobank' as const,
+      externalId: index === 0 || index === rowCount - 1 ? 'shared' : `id-${index}`,
+    }));
+
+    const inserted = await transactionsRepo.addManyDedup(rows);
+
+    // 2200 rows fold to 2199 after the duplicate pair collapses to its LAST
+    // copy — `dedupByConflictKey` runs on the WHOLE batch BEFORE chunking,
+    // so this holds even though the pair's two copies are 2199 rows apart,
+    // far past `chunkForTable`'s own ~2133-row chunk size for this
+    // 15-column table (i.e. they would land in DIFFERENT chunks were the
+    // batch naively split before dedup).
+    expect(captured.inserted).toHaveLength(rowCount - 1);
+    expect(captured.insertCallCount).toBeGreaterThan(1);
+    const survivor = captured.inserted?.find((row) => row.externalId === 'shared');
+    expect(survivor?.amountMinorUnits).toBe(-1000 - (rowCount - 1));
+    expect(inserted).toBe(rowCount - 1);
+  });
+
+  it('counts new rows correctly for a mixed new/existing batch above the insert-chunk limit', async () => {
+    const existingCount = 1000;
+    const existing = Array.from({ length: existingCount }, (_, index) => ({
+      source: 'monobank',
+      externalId: `id-${index}`,
+    }));
+    const { tx, captured } = makeAddManyTx([], existing);
+    mockTx = tx;
+
+    const rowCount = 3000;
+    const rows = Array.from({ length: rowCount }, (_, index) => ({
+      holdingId: 'h1',
+      amountMinorUnits: -100 - index,
+      time: 1 + index,
+      source: 'monobank' as const,
+      externalId: `id-${index}`,
+    }));
+
+    const inserted = await transactionsRepo.addManyDedup(rows);
+
+    // The count is read ONCE against the whole pre-insert batch, so it
+    // stays correct regardless of how many chunks the subsequent insert
+    // splits into (more than one, for 3000 rows against this 15-column
+    // table).
+    expect(captured.insertCallCount).toBeGreaterThan(1);
+    expect(captured.inserted).toHaveLength(rowCount);
+    expect(inserted).toBe(rowCount - existingCount);
   });
 });
 

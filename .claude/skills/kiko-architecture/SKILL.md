@@ -136,6 +136,35 @@ It:
 `fireOn`) — get this list wrong and the query either never refreshes
 or refreshes on unrelated writes.
 
+## Bulk insert: chunk when row count is caller- or API-controlled
+
+SQLite (op-sqlite's bundled SQLCipher) caps bound parameters at
+`SQLITE_MAX_VARIABLE_NUMBER` = 32766 per statement. A bulk insert
+whose row count comes from an external source (an API page, a
+user-picked file) can blow past that — the insert throws, the
+transaction rolls back, and a swallowed error can make the failure
+silent (this happened: a live Monobank refresh, ~11,990 rate pairs x
+5 params, overflowed the limit and rates never saved).
+
+Rule: chunk with `chunkForTable(table, rows)`
+(`src/db/chunk-for-table.ts`) — it derives the safe row-per-chunk
+size from the table's column count — and issue every chunk inside
+the SAME `db.transaction()`/`write()` call. Never hand-roll a fixed
+row-count chunk; the safe size depends on the table's column count,
+which only `chunkForTable` knows.
+
+Examples: `ratesRepo.upsertMany` (`src/rates/repo/rates.repo.ts`) and
+`transactionsRepo.addManyDedup`
+(`src/transactions/repo/transactions.repo.ts`) — the latter also
+chunks its two per-row `inArray(...)` selects (the category-override
+rule lookup and the existing-external-id lookup) directly at a safe
+item-count margin, since a one-column `inArray` list has no table to
+derive a column count from.
+
+`rateHistoryRepo.upsertMany` and the restore-snapshot import path
+have their own, older, pre-existing chunking — don't assume they use
+`chunkForTable` too; check before touching either.
+
 ## Repository module shape
 
 One functional module per entity: `accountsRepo`, `holdingsRepo`,
@@ -826,6 +855,9 @@ null `externalId` and is never namespaced.
 
 ## Price data
 
+- Writing a live refresh's rows: `ratesRepo.upsertMany` chunks via
+  `chunkForTable` — see "Bulk insert: chunk when row count is
+  caller- or API-controlled" above.
 - Fiat cross rates, live: Monobank's `GET /bank/currency` (public,
   cert-pinned host, cached upstream about every 5 minutes) is the
   PREFERRED source, tried with a bounded retry. Only if that fails
