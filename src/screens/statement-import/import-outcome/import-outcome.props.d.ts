@@ -1,9 +1,10 @@
 import type { ImportResult } from '../../../statement-import/import-statement';
 
 export type ImportOutcomeProps = {
-  /** A caught `importStatement` failure's message, if the last attempt
-   * threw. */
-  error?: string;
-  /** The last successful `importStatement` result, if any. */
+  /** The last successful `importStatement` result, if any. A caught failure
+   * is no longer rendered here (F4 audit 7): it shows as a translated
+   * `Alert.alert(t(errorTitle), t(errorMessage))`, the same pattern
+   * `import-data.screen.tsx` already uses, instead of raw untranslated
+   * `error.message` sitting passively at the bottom of the page. */
   result?: ImportResult;
 };

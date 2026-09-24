@@ -428,7 +428,13 @@ describe('StatementImportScreen', () => {
 
   it('selecting a holding then pressing Import calls importStatement with the decoded text and shows the imported count', async () => {
     mockReadFile.mockResolvedValue(fixtureBase64);
-    mockImportStatement.mockResolvedValue({ formatId: 'monobank-csv', imported: 3, total: 4 });
+    mockImportStatement.mockResolvedValue({
+      formatId: 'monobank-csv',
+      imported: 3,
+      total: 4,
+      skippedWrongCurrency: 0,
+      skippedWrongCurrencyCodes: [],
+    });
 
     const { getByText, getByTestId } = await renderScreen({
       filePath: '/mock/statement.csv',
@@ -457,7 +463,13 @@ describe('StatementImportScreen', () => {
   // the same text the screen bottom used to show inline.
   it('shows the import result as a modal', async () => {
     mockReadFile.mockResolvedValue(fixtureBase64);
-    mockImportStatement.mockResolvedValue({ formatId: 'monobank-csv', imported: 3, total: 4 });
+    mockImportStatement.mockResolvedValue({
+      formatId: 'monobank-csv',
+      imported: 3,
+      total: 4,
+      skippedWrongCurrency: 0,
+      skippedWrongCurrencyCodes: [],
+    });
     setLiveData({ account: { id: 'a', name: 'My Monobank card', bankId: 'monobank' } });
 
     const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
@@ -534,7 +546,13 @@ describe('StatementImportScreen', () => {
 
   it('still requires an explicit holding pick before importing a multi-card PrivatBank file, even with a hint shown', async () => {
     mockReadFile.mockResolvedValue('irrelevant-base64-the-mocked-detectFormat-ignores-it');
-    mockImportStatement.mockResolvedValue({ formatId: 'privatbank-xlsx', imported: 2, total: 2 });
+    mockImportStatement.mockResolvedValue({
+      formatId: 'privatbank-xlsx',
+      imported: 2,
+      total: 2,
+      skippedWrongCurrency: 0,
+      skippedWrongCurrencyCodes: [],
+    });
 
     const { getByText, getByTestId } = await renderScreen({
       filePath: `/mock/${MULTI_CARD_FILE_NAME}`,
@@ -543,11 +561,15 @@ describe('StatementImportScreen', () => {
 
     await waitFor(() => expect(getByText('PrivatBank (XLSX)')).toBeTruthy());
 
-    // No holding picked yet: pressing Import must NOT auto-route by either
-    // card hint shown above — the masked-card hint is a display suggestion
-    // only, never a silent target pick (section C.1).
+    // F4 audit 2: Import is ALWAYS enabled (never `disabled={!canImport}`) —
+    // no holding picked yet: pressing it must NOT auto-route by either card
+    // hint shown above (the masked-card hint is a display suggestion only,
+    // never a silent target pick, section C.1), and validates on press
+    // instead, showing the field's own inline error.
+    expect(getByText(i18n.t('statementImport.importButton')).props.disabled).toBeFalsy();
     await fireEvent.press(getByText(i18n.t('statementImport.importButton')));
     expect(mockImportStatement).not.toHaveBeenCalled();
+    expect(getByText(i18n.t('statementImport.chooseHoldingError'))).toBeTruthy();
 
     await fireEvent.press(getByTestId('mock-select-holding-h1'));
     await fireEvent.press(getByText(i18n.t('statementImport.importButton')));
@@ -576,13 +598,15 @@ describe('StatementImportScreen', () => {
     expect(detectedCurrencies.getByText('USD')).toBeTruthy();
   });
 
-  it('surfaces the skipped-wrong-currency count after a real import excludes some rows', async () => {
+  it('surfaces the skipped-wrong-currency count and codes after a real import excludes some rows', async () => {
     mockReadFile.mockResolvedValue('irrelevant-base64-the-mocked-detectFormat-ignores-it');
     mockImportStatement.mockResolvedValue({
       formatId: 'privatbank-xlsx',
       imported: 1,
       total: 2,
       skippedWrongCurrency: 1,
+      // F4 item 9: the result names WHICH currency was skipped.
+      skippedWrongCurrencyCodes: ['USD'],
     });
 
     const { getByText, getByTestId } = await renderScreen({
@@ -597,6 +621,9 @@ describe('StatementImportScreen', () => {
     await waitFor(() =>
       expect(getByText(i18n.t('statementImport.skippedWrongCurrency', { count: 1 }))).toBeTruthy(),
     );
+    expect(
+      getByText(i18n.t('statementImport.skippedWrongCurrencyCodes', { currencies: 'USD' })),
+    ).toBeTruthy();
   });
 
   // Phase 3 (Task 4), section C.2's KEY DESIGN: Sensebank (and, later, Phase
@@ -793,7 +820,13 @@ describe('StatementImportScreen — Done closes the sheet before navigating (N4,
 
   const importSuccessfully = async (): Promise<Awaited<ReturnType<typeof renderScreen>>> => {
     mockReadFile.mockResolvedValue(fixtureBase64);
-    mockImportStatement.mockResolvedValue({ formatId: 'monobank-csv', imported: 3, total: 4 });
+    mockImportStatement.mockResolvedValue({
+      formatId: 'monobank-csv',
+      imported: 3,
+      total: 4,
+      skippedWrongCurrency: 0,
+      skippedWrongCurrencyCodes: [],
+    });
     setLiveData({ account: { id: 'a', name: 'My Monobank card', bankId: 'monobank' } });
 
     const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });

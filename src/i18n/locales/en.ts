@@ -716,6 +716,15 @@ export const en = {
     chooseHoldingError: 'Pick a holding to import into.',
     createNewHolding: 'Create new holding',
     importButton: 'Import',
+    // F4 audit 7/23: a caught `importStatement`/`importParsedStatement`
+    // failure shows as this translated Alert — `import-data.screen.tsx`'s
+    // own `Alert.alert(t(errorTitle), t(errorMessage))` pattern — never the
+    // raw, untranslated `error.message` sitting inline at the page bottom.
+    // Shared by BOTH `statement-import.screen.tsx` and
+    // `column-mapping.screen.tsx`, since both run the exact same import
+    // action (audit 23: one error-title key for the same Alert).
+    importErrorTitle: 'Import failed',
+    importErrorMessage: 'Please try again.',
     importedCount: 'Imported {{imported}} of {{total}}',
     // The modal (item 15, F3) a successful Import shows, carrying the exact
     // same result text `ImportOutcome` already rendered inline — its "Done"
@@ -746,6 +755,10 @@ export const en = {
     skippedWrongCurrency_few: '{{count}} rows in a different currency were skipped',
     skippedWrongCurrency_many: '{{count}} rows in a different currency were skipped',
     skippedWrongCurrency_other: '{{count}} rows in a different currency were skipped',
+    // F4 item 9: names WHICH currencies were skipped, alongside the count
+    // line above — `ImportResult.skippedWrongCurrencyCodes`, distinct sorted
+    // ISO codes joined with ", ".
+    skippedWrongCurrencyCodes: 'Skipped currencies: {{currencies}}.',
     // The picked file recognized as a DIFFERENT bank's format than the one
     // scoped by `expectedFormatId` (device-feedback-round-1 item 5) — a more
     // specific state than the generic `unrecognizedFormat`, so the user

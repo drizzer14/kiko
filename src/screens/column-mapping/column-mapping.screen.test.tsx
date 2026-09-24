@@ -153,11 +153,36 @@ const renderScreen = async (params: {
 const monobankAccount: Account = { id: 'a', name: 'Monobank', kind: 'bank', bankId: 'monobank' };
 const monobankHolding: Holding = { id: 'h1', name: 'Black card', accountId: 'a', currency: 'UAH' };
 
-// Drives the screen through the exact T4 Monobank mapping: header row 0
-// (already the auto-guess), date column 0 + 'DD.MM.YYYY HH:MM:SS', amount
-// column 3 (single mode, the default), description column 1 — fixed UAH
-// currency (the default, matching the seeded holding's own currency).
-const mapMonobankColumns = async (
+// The default successful `importParsedStatement` resolution — a clean
+// 4-of-4 Monobank import with nothing skipped — shared by every test that
+// only cares that Import SUCCEEDED, not its exact numbers (jscpd).
+const mockDefaultImportSuccess = (): void => {
+  mockImportParsedStatement.mockResolvedValue({
+    formatId: 'column-mapping',
+    imported: 4,
+    total: 4,
+    skippedWrongCurrency: 0,
+    skippedWrongCurrencyCodes: [],
+  });
+};
+
+// `renderScreen` for the standard Monobank fixture path, then waits for the
+// raw preview to resolve — the "render and wait for the file to load" pair
+// almost every test in this file opens with (jscpd).
+const renderMonobankScreen = async (
+  params: Parameters<typeof renderScreen>[0] = { filePath: '/mock/statement.csv', accountId: 'a' },
+): ReturnType<typeof renderScreen> => {
+  const view = await renderScreen(params);
+  await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+  return view;
+};
+
+// The date/date-format/description trio shared by EVERY test that needs some
+// (but not necessarily every) Monobank column picked — factored out so a
+// still-incomplete-mapping test (F4: no amount column mapped, say) shares
+// this exact sequence with `mapMonobankColumns` below instead of a
+// hand-copied near-duplicate (jscpd).
+const mapDateFormatAndDescription = async (
   view: Awaited<ReturnType<typeof renderScreen>>,
 ): Promise<void> => {
   await fireEvent.press(view.getByTestId('column-mapping-date-column'));
@@ -166,11 +191,32 @@ const mapMonobankColumns = async (
   await fireEvent.press(view.getByTestId('column-mapping-date-format'));
   await fireEvent.press(view.getByTestId('column-mapping-date-format-option-DD.MM.YYYY HH:MM:SS'));
 
-  await fireEvent.press(view.getByTestId('column-mapping-amount-column'));
-  await fireEvent.press(view.getByTestId('column-mapping-amount-column-option-3'));
-
   await fireEvent.press(view.getByTestId('column-mapping-description-column'));
   await fireEvent.press(view.getByTestId('column-mapping-description-column-option-1'));
+};
+
+// Drives the screen through the exact T4 Monobank mapping: header row 0
+// (already the auto-guess), date column 0 + 'DD.MM.YYYY HH:MM:SS', amount
+// column 3 (single mode, the default), description column 1 — fixed UAH
+// currency (the default, matching the seeded holding's own currency).
+const mapMonobankColumns = async (
+  view: Awaited<ReturnType<typeof renderScreen>>,
+): Promise<void> => {
+  await mapDateFormatAndDescription(view);
+
+  await fireEvent.press(view.getByTestId('column-mapping-amount-column'));
+  await fireEvent.press(view.getByTestId('column-mapping-amount-column-option-3'));
+};
+
+// Every field required for a T4 Monobank import: the columns above, plus
+// picking the one seeded holding — shared by every test that goes on to
+// press Import, so the "map, then pick holding h1" pair is written once.
+const mapMonobankColumnsAndSelectHolding = async (
+  view: Awaited<ReturnType<typeof renderScreen>>,
+  holdingId = 'h1',
+): Promise<void> => {
+  await mapMonobankColumns(view);
+  await fireEvent.press(view.getByTestId(`mock-select-holding-${holdingId}`));
 };
 
 describe('ColumnMappingScreen', () => {
@@ -182,8 +228,7 @@ describe('ColumnMappingScreen', () => {
   it('maps the Monobank fixture with the T4 mapping and shows 4 transactions', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
 
-    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+    const view = await renderMonobankScreen();
 
     await mapMonobankColumns(view);
 
@@ -200,8 +245,7 @@ describe('ColumnMappingScreen', () => {
   it('does not render a second in-body title duplicating the screen header (F3 item 12)', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
 
-    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+    const view = await renderMonobankScreen();
 
     expect(view.queryByText(i18n.t('columnMapping.title'))).toBeNull();
   });
@@ -210,8 +254,7 @@ describe('ColumnMappingScreen', () => {
   it('shows a heading for every section (F3 item 14)', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
 
-    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+    const view = await renderMonobankScreen();
 
     expect(view.getByText(i18n.t('columnMapping.sectionFileFormat'))).toBeTruthy();
     expect(view.getByText(i18n.t('columnMapping.sectionDates'))).toBeTruthy();
@@ -234,8 +277,7 @@ describe('ColumnMappingScreen', () => {
       ],
     });
 
-    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+    const view = await renderMonobankScreen();
 
     await fireEvent.press(view.getByTestId('mock-create-new-holding'));
 
@@ -299,29 +341,21 @@ describe('ColumnMappingScreen', () => {
   it('marks the target-holding field as required, alongside the screen’s existing required fields', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
 
-    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+    const view = await renderMonobankScreen();
 
     expect(view.getAllByText('*', { includeHiddenElements: true })).toHaveLength(5);
   });
 
   it('switching the decimal separator changes the parsed result', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
-    mockImportParsedStatement.mockResolvedValue({
-      formatId: 'column-mapping',
-      imported: 4,
-      total: 4,
-      skippedWrongCurrency: 0,
-    });
+    mockDefaultImportSuccess();
 
-    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
-    await mapMonobankColumns(view);
+    const view = await renderMonobankScreen();
+    await mapMonobankColumnsAndSelectHolding(view);
     await waitFor(() =>
       expect(view.getByTestId('column-mapping-transaction-count')).toHaveTextContent('4'),
     );
 
-    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
     await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
     await waitFor(() => expect(mockImportParsedStatement).toHaveBeenCalledTimes(1));
     const dotAmounts = mockImportParsedStatement.mock.calls[0][0].transactions.map(
@@ -345,42 +379,32 @@ describe('ColumnMappingScreen', () => {
     expect(commaAmounts).not.toEqual(dotAmounts);
   });
 
-  it('Import stays disabled with no amount column mapped', async () => {
+  // F4 audit 1: Import is ALWAYS enabled (never `disabled={!canImport}`) —
+  // pressing it with no amount column mapped validates on press instead,
+  // showing the field's own inline error rather than a silently inert
+  // button.
+  it('Import stays enabled with no amount column mapped, but shows the field error and does not import', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
 
-    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+    const view = await renderMonobankScreen();
 
-    await fireEvent.press(view.getByTestId('column-mapping-date-column'));
-    await fireEvent.press(view.getByTestId('column-mapping-date-column-option-0'));
-    await fireEvent.press(view.getByTestId('column-mapping-date-format'));
-    await fireEvent.press(
-      view.getByTestId('column-mapping-date-format-option-DD.MM.YYYY HH:MM:SS'),
-    );
-    await fireEvent.press(view.getByTestId('column-mapping-description-column'));
-    await fireEvent.press(view.getByTestId('column-mapping-description-column-option-1'));
-
+    await mapDateFormatAndDescription(view);
     await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
 
-    expect(view.getByText(i18n.t('statementImport.importButton')).props.disabled).not.toBe(false);
+    expect(view.getByText(i18n.t('statementImport.importButton')).props.disabled).toBeFalsy();
     await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
     expect(mockImportParsedStatement).not.toHaveBeenCalled();
+    expect(view.getByText(i18n.t('columnMapping.amountColumnError'))).toBeTruthy();
   });
 
   // Item 15 (F3): a successful Import shows a MODAL with the result text.
   it('shows the import result as a modal', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
-    mockImportParsedStatement.mockResolvedValue({
-      formatId: 'column-mapping',
-      imported: 4,
-      total: 4,
-      skippedWrongCurrency: 0,
-    });
+    mockDefaultImportSuccess();
 
-    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
-    await mapMonobankColumns(view);
-    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
+    const view = await renderMonobankScreen();
+    await mapMonobankColumnsAndSelectHolding(view);
     await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
 
     await waitFor(() =>
@@ -390,21 +414,14 @@ describe('ColumnMappingScreen', () => {
 
   it('imports then saves the confirmed mapping under bank:<bankId>', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
-    mockImportParsedStatement.mockResolvedValue({
-      formatId: 'column-mapping',
-      imported: 4,
-      total: 4,
-      skippedWrongCurrency: 0,
-    });
+    mockDefaultImportSuccess();
 
-    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
-    await mapMonobankColumns(view);
+    const view = await renderMonobankScreen();
+    await mapMonobankColumnsAndSelectHolding(view);
     await waitFor(() =>
       expect(view.getByTestId('column-mapping-transaction-count')).toHaveTextContent('4'),
     );
 
-    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
     await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
 
     await waitFor(() => expect(mockImportParsedStatement).toHaveBeenCalledTimes(1));
@@ -429,12 +446,7 @@ describe('ColumnMappingScreen', () => {
 
   it('pre-fills an exact saved mapping, shows the caption, and still requires the Import tap', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
-    mockImportParsedStatement.mockResolvedValue({
-      formatId: 'column-mapping',
-      imported: 4,
-      total: 4,
-      skippedWrongCurrency: 0,
-    });
+    mockDefaultImportSuccess();
     setLiveData({
       accounts: [monobankAccount],
       holdings: [monobankHolding],
@@ -580,17 +592,10 @@ describe('ColumnMappingScreen — Done closes the sheet before navigating (N4, R
 
   const importSuccessfully = async (): Promise<Awaited<ReturnType<typeof renderScreen>>> => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
-    mockImportParsedStatement.mockResolvedValue({
-      formatId: 'column-mapping',
-      imported: 4,
-      total: 4,
-      skippedWrongCurrency: 0,
-    });
+    mockDefaultImportSuccess();
 
-    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
-    await mapMonobankColumns(view);
-    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
+    const view = await renderMonobankScreen();
+    await mapMonobankColumnsAndSelectHolding(view);
     await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
 
     await waitFor(() =>

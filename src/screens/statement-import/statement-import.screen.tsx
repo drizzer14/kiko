@@ -1,7 +1,9 @@
-import type { FC } from 'react';
+import type { FC, RefObject } from 'react';
 import * as RNFS from 'react-native-fs';
-import { useRef, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { View, Alert, type ScrollViewInstance } from 'react-native';
+import { useRef, useEffect, useState } from 'react';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type {
@@ -35,13 +37,17 @@ import {
 } from '../../statement-import/registry';
 import { importStatement, type ImportResult } from '../../statement-import/import-statement';
 
-import ImportOutcome from './import-outcome';
 import { styles } from './statement-import.styles';
 import ImportResultSheet from './import-result-sheet';
 import PreviewDetailList from './preview-detail-list';
 import ExampleTransaction from './example-transaction';
 import TargetHoldingField from './target-holding-field';
 import { previewStats } from './preview-stats/preview-stats';
+import {
+  scrollToField,
+  useHeaderInset,
+  type FieldInstance,
+} from '../forms/scroll-to-field/scroll-to-field';
 import { useTargetHoldingOptions } from './use-target-holding-options/use-target-holding-options';
 
 type StatementImportScreenProps = NativeStackScreenProps<AccountsStackParamList, 'StatementImport'>;
@@ -135,10 +141,13 @@ type LoadState =
 const StatementImportFooter: FC<{
   hasStats: boolean;
   hasInput: boolean;
-  canImport: boolean;
+  // F4 audit 2: Import is ALWAYS enabled — this disables it ONLY while an
+  // import is actually in flight, never behind a `!canImport` gate. See
+  // `handleImport`'s own doc comment.
+  importing: boolean;
   onImport: () => void;
   onMapColumnsManually: () => void;
-}> = ({ hasStats, hasInput, canImport, onImport, onMapColumnsManually }) => {
+}> = ({ hasStats, hasInput, importing, onImport, onMapColumnsManually }) => {
   const { t } = useTranslation();
 
   if (!hasStats && !hasInput) {
@@ -148,7 +157,7 @@ const StatementImportFooter: FC<{
   return (
     <Box gap={2}>
       {hasStats && (
-        <Button variant="primary" onPress={onImport} disabled={!canImport}>
+        <Button variant="primary" onPress={onImport} disabled={importing}>
           {t('statementImport.importButton')}
         </Button>
       )}
@@ -176,7 +185,11 @@ const StatementPreviewBlock: FC<{
   selectedHoldingId: string | undefined;
   onSelectHolding: (holdingId: string) => void;
   onCreateNewHolding: () => void;
-  importError: string | undefined;
+  // F4 audit 2/15: Import-press field-level error, `undefined` before the
+  // first press — mirrors `column-mapping.screen.tsx`'s own validation
+  // model for the SAME target-holding field.
+  targetHoldingError: string | undefined;
+  targetHoldingFieldRef: RefObject<FieldInstance | null>;
 }> = ({
   stats,
   holdingOptions,
@@ -184,7 +197,8 @@ const StatementPreviewBlock: FC<{
   selectedHoldingId,
   onSelectHolding,
   onCreateNewHolding,
-  importError,
+  targetHoldingError,
+  targetHoldingFieldRef,
 }) => {
   const { t } = useTranslation();
   const selectedHoldingName = holdingOptions.find(
@@ -248,17 +262,20 @@ const StatementPreviewBlock: FC<{
         />
       )}
 
-      <TargetHoldingField
-        label={t('statementImport.chooseHolding')}
-        holdings={holdingOptions}
-        accountId={accountId}
-        selectedId={selectedHoldingId}
-        onSelect={onSelectHolding}
-        onCreateNew={onCreateNewHolding}
-        testID="target-holding-field"
-      />
-
-      <ImportOutcome error={importError} />
+      <View ref={targetHoldingFieldRef}>
+        <TargetHoldingField
+          label={t('statementImport.chooseHolding')}
+          required
+          holdings={holdingOptions}
+          accountId={accountId}
+          selectedId={selectedHoldingId}
+          onSelect={onSelectHolding}
+          onCreateNew={onCreateNewHolding}
+          placeholder={t('statementImport.chooseHoldingPlaceholder')}
+          error={targetHoldingError}
+          testID="target-holding-field"
+        />
+      </View>
     </Box>
   );
 };
@@ -277,7 +294,6 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   const [loadState, setLoadState] = useState<LoadState>({ kind: 'loading' });
   const [selectedHoldingId, setSelectedHoldingId] = useState<string | undefined>(undefined);
   const [importing, setImporting] = useState(false);
-  const [importError, setImportError] = useState<string | undefined>(undefined);
   const [importResult, setImportResult] = useState<ImportResult | undefined>(undefined);
   // N4 (F3 part 1 fix round 2): decoupled from `importResult` itself — see
   // `handleImportDone` below for why.
@@ -285,6 +301,15 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // R2-1 (F3 part 1 fix round 3): guards `handleSheetClosed` against running
   // its navigation more than once — see that function's own comment.
   const navigatedAwayRef = useRef(false);
+  // F4 audit 2: Import is ALWAYS enabled — this flips true on the FIRST
+  // Import press and stays true, the same "validate on press" contract every
+  // other Kiko form uses (`kiko-code-style`'s "Form validation model").
+  const [attemptedImport, setAttemptedImport] = useState(false);
+  const targetHoldingFieldRef = useRef<FieldInstance>(null);
+  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
+  const scrollOffset = useScrollOffset(scrollableRef);
+  const headerInset = useHeaderInset();
+  const contentHeightRef = useRef(0);
   const holdingOptions = useTargetHoldingOptions(accountId);
 
   // T7's auto-replace check: an account's own `bankId` and its saved
@@ -439,19 +464,35 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     !bankMismatch &&
     (loadState.kind === 'unreadable' || (input !== undefined && stats === undefined));
 
+  // F4 audit 2: Import is ALWAYS enabled (`disabled={importing}` only, see
+  // the footer below) — this validates on press instead of standing behind a
+  // `disabled={!canImport}` gate, mirroring `column-mapping.screen.tsx`'s own
+  // `handleImport` for the SAME target-holding field.
   const handleImport = async (): Promise<void> => {
-    if (!input || !selectedHoldingId || importing) {
+    if (!input || importing) {
+      return;
+    }
+
+    if (!selectedHoldingId) {
+      setAttemptedImport(true);
+      scrollToField(scrollableRef, targetHoldingFieldRef, {
+        currentOffset: scrollOffset.value,
+        headerInset,
+        contentHeight: contentHeightRef.current,
+      });
+
       return;
     }
 
     setImporting(true);
-    setImportError(undefined);
 
     try {
       setImportResult(await importStatement(input, selectedHoldingId));
       setResultSheetVisible(true);
-    } catch (error) {
-      setImportError(error instanceof Error ? error.message : String(error));
+    } catch {
+      // F4 audit 7: a translated Alert, never raw `error.message` rendered
+      // inline — see `statementImport.importErrorTitle`'s own doc comment.
+      Alert.alert(t('statementImport.importErrorTitle'), t('statementImport.importErrorMessage'));
     } finally {
       setImporting(false);
     }
@@ -543,14 +584,21 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
       <StatementImportFooter
         hasStats={stats !== undefined}
         hasInput={input !== undefined}
-        canImport={selectedHoldingId !== undefined && !importing}
+        importing={importing}
         onImport={handleImport}
         onMapColumnsManually={handleMapColumnsManually}
       />
     ) : undefined;
 
   return (
-    <Screen scroll footer={footer}>
+    <Screen
+      scroll
+      footer={footer}
+      scrollableRef={scrollableRef}
+      onContentSizeChange={(_width, height) => {
+        contentHeightRef.current = height;
+      }}
+    >
       <Box gap={4} testID="statement-import-content">
         {loadState.kind === 'loading' && (
           <Text variant="body" tone="textSecondary">
@@ -578,7 +626,12 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
             selectedHoldingId={selectedHoldingId}
             onSelectHolding={setSelectedHoldingId}
             onCreateNewHolding={handleCreateNewHolding}
-            importError={importError}
+            targetHoldingError={
+              attemptedImport && selectedHoldingId === undefined
+                ? t('statementImport.chooseHoldingError')
+                : undefined
+            }
+            targetHoldingFieldRef={targetHoldingFieldRef}
           />
         )}
       </Box>

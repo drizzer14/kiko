@@ -1,4 +1,5 @@
 import { holdingsRepo } from '@kiko/holdings/repo';
+import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
 
 import { detectFormat } from '../registry';
@@ -16,6 +17,10 @@ export type ImportResult = {
    * currencies per row; writing e.g. a $50.00 row's raw minor units into a
    * UAH holding would silently post +₴50.00 instead of +$50.00). */
   skippedWrongCurrency: number;
+  /** The DISTINCT skipped rows' own currency codes, alphabetically sorted
+   * (F4 item 9: the result names WHICH currencies were skipped, not just how
+   * many rows) — empty when `skippedWrongCurrency` is 0. */
+  skippedWrongCurrencyCodes: Currency[];
 };
 
 /**
@@ -49,7 +54,13 @@ export const importParsedStatement = async (
   const matchingTransactions = parsed.transactions.filter(
     (transaction) => transaction.currency === holding.currency,
   );
-  const skippedWrongCurrency = parsed.transactions.length - matchingTransactions.length;
+  const skippedTransactions = parsed.transactions.filter(
+    (transaction) => transaction.currency !== holding.currency,
+  );
+  const skippedWrongCurrency = skippedTransactions.length;
+  const skippedWrongCurrencyCodes = Array.from(
+    new Set(skippedTransactions.map((transaction) => transaction.currency)),
+  ).sort();
 
   // dedup-key -> occurrence count so far. Keyed on the SAME (holding, time,
   // amount, normalized-description) tuple `computeDedupKey` folds on —
@@ -78,6 +89,7 @@ export const importParsedStatement = async (
     imported,
     total: parsed.transactions.length,
     skippedWrongCurrency,
+    skippedWrongCurrencyCodes,
   };
 };
 

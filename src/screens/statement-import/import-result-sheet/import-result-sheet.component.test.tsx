@@ -10,6 +10,7 @@ const RESULT = {
   imported: 3,
   total: 4,
   skippedWrongCurrency: 0,
+  skippedWrongCurrencyCodes: [],
 };
 
 describe('ImportResultSheet', () => {

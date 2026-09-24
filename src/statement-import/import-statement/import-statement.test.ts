@@ -357,6 +357,8 @@ describe('importStatement', () => {
       expect(result.total).toBe(2);
       expect(result.imported).toBe(1);
       expect(result.skippedWrongCurrency).toBe(1);
+      // F4 item 9: the result names WHICH currency was skipped, not just how many rows.
+      expect(result.skippedWrongCurrencyCodes).toEqual(['USD']);
       expect(store.transactions).toHaveLength(1);
       expect(store.transactions[0].source).toBe('import');
     });
