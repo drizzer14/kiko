@@ -180,13 +180,44 @@ describe('ColumnMappingScreen', () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
 
     const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.title'))).toBeTruthy());
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
 
     await mapMonobankColumns(view);
 
     await waitFor(() =>
       expect(view.getByTestId('column-mapping-transaction-count')).toHaveTextContent('4'),
     );
+  });
+
+  // F3 item 12: the screen body no longer duplicates the native stack
+  // header's own title — the header (`accounts.stack.tsx`'s `title:
+  // t('columnMapping.title')`) is not itself rendered by this component
+  // under test (it lives in the navigator), so this only pins that the
+  // screen's OWN body renders the string exactly once — from the
+  // section-heading `columnMapping.result` line, not a second, separate
+  // `columnMapping.title` heading.
+  it('does not render a second in-body title duplicating the screen header (F3 item 12)', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+
+    expect(view.queryByText(i18n.t('columnMapping.title'))).toBeNull();
+  });
+
+  // F3 item 14: every section on this screen shows its own heading.
+  it('shows a heading for every section (F3 item 14)', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+
+    expect(view.getByText(i18n.t('columnMapping.sectionFileFormat'))).toBeTruthy();
+    expect(view.getByText(i18n.t('columnMapping.sectionDates'))).toBeTruthy();
+    expect(view.getByText(i18n.t('columnMapping.sectionAmount'))).toBeTruthy();
+    expect(view.getByText(i18n.t('columnMapping.sectionCurrency'))).toBeTruthy();
+    expect(view.getByText(i18n.t('columnMapping.sectionDetails'))).toBeTruthy();
+    expect(view.getByText(i18n.t('columnMapping.result'))).toBeTruthy();
   });
 
   // Item 2 (F3, BUG): same "Add new" holding return channel as
@@ -203,7 +234,7 @@ describe('ColumnMappingScreen', () => {
     });
 
     const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.title'))).toBeTruthy());
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
 
     await fireEvent.press(view.getByTestId('mock-create-new-holding'));
 
@@ -255,7 +286,7 @@ describe('ColumnMappingScreen', () => {
       accountId: 'a',
       holdingId: 'h2',
     });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.title'))).toBeTruthy());
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
 
     expect(within(view.getByTestId('target-holding-field')).getByText('Savings jar')).toBeTruthy();
   });
@@ -268,7 +299,7 @@ describe('ColumnMappingScreen', () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
 
     const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.title'))).toBeTruthy());
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
 
     expect(view.getAllByText('*', { includeHiddenElements: true })).toHaveLength(5);
   });
@@ -283,7 +314,7 @@ describe('ColumnMappingScreen', () => {
     });
 
     const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.title'))).toBeTruthy());
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
     await mapMonobankColumns(view);
     await waitFor(() =>
       expect(view.getByTestId('column-mapping-transaction-count')).toHaveTextContent('4'),
@@ -317,7 +348,7 @@ describe('ColumnMappingScreen', () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
 
     const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.title'))).toBeTruthy());
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
 
     await fireEvent.press(view.getByTestId('column-mapping-date-column'));
     await fireEvent.press(view.getByTestId('column-mapping-date-column-option-0'));
@@ -348,7 +379,7 @@ describe('ColumnMappingScreen', () => {
     });
 
     const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.title'))).toBeTruthy());
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
     await mapMonobankColumns(view);
     await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
     await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
@@ -375,7 +406,7 @@ describe('ColumnMappingScreen', () => {
     });
 
     const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.title'))).toBeTruthy());
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
     await mapMonobankColumns(view);
     await waitFor(() =>
       expect(view.getByTestId('column-mapping-transaction-count')).toHaveTextContent('4'),
@@ -521,7 +552,7 @@ describe('ColumnMappingScreen', () => {
       });
 
       const view = await renderScreen({ filePath: '/mock/sensebank.csv', accountId: 'a' });
-      await waitFor(() => expect(view.getByText(i18n.t('columnMapping.title'))).toBeTruthy());
+      await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
 
       await mapSensebankColumns(view);
 

@@ -579,6 +579,11 @@ export const uk: typeof en = {
   columnMapping: {
     title: 'Зіставлення стовпців',
     rawPreview: 'Торкніться рядка з назвами стовпців',
+    sectionFileFormat: 'Формат файлу',
+    sectionDates: 'Дати',
+    sectionAmount: 'Стовпці суми',
+    sectionCurrency: 'Валюта',
+    sectionDetails: 'Додаткові деталі',
     encoding: 'Кодування',
     delimiter: 'Розділювач',
     delimiterTab: 'Табуляція',

@@ -401,19 +401,26 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
 
   return (
     <Box gap={3}>
-      <Text variant="heading">{t('columnMapping.title')}</Text>
-
+      {/* The screen title itself is now the native stack header ONLY
+          (`accounts.stack.tsx`'s `title: t('columnMapping.title')`) — this
+          in-body heading used to duplicate it verbatim (F3 item 12,
+          removed). Every section below carries its OWN heading instead
+          (item 14), each at the same bottom margin the removed title had
+          (item 13, `styles.sectionHeading`). */}
       {savedApplied && (
         <Text variant="body" tone="textSecondary">
           {t('columnMapping.savedApplied')}
         </Text>
       )}
 
-      <Box gap={1}>
+      <Box>
         {/* A stronger, more visible hint (device-feedback-round-F1 item 12) —
             `heading` instead of the former muted `body`/`textSecondary`
-            caption. */}
-        <Text variant="heading">{t('columnMapping.rawPreview')}</Text>
+            caption; this line doubles as the raw-preview section's own
+            heading. */}
+        <Box style={styles.sectionHeading}>
+          <Text variant="heading">{t('columnMapping.rawPreview')}</Text>
+        </Box>
         <RawPreview
           rows={rows}
           headerRowIndex={headerRowIndex}
@@ -427,6 +434,10 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
           all switched from the (too-large, device-feedback-round-F1 item 7)
           `OptionPills` chips to the app's existing compact `ChipRow`. */}
       <Box gap={3}>
+        <Box style={styles.sectionHeading}>
+          <Text variant="heading">{t('columnMapping.sectionFileFormat')}</Text>
+        </Box>
+
         {!isXlsx && (
           <>
             <Box testID="column-mapping-encoding">
@@ -465,6 +476,10 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
 
       {/* Group (b): dates. */}
       <Box gap={3} style={styles.fieldGroup}>
+        <Box style={styles.sectionHeading}>
+          <Text variant="heading">{t('columnMapping.sectionDates')}</Text>
+        </Box>
+
         <ColumnSelectField
           label={t('columnMapping.dateColumn')}
           options={columnOptions}
@@ -488,6 +503,10 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
 
       {/* Group (c): amounts/currency. */}
       <Box gap={3} testID="column-mapping-amount-mode" style={styles.fieldGroup}>
+        <Box style={styles.sectionHeading}>
+          <Text variant="heading">{t('columnMapping.sectionAmount')}</Text>
+        </Box>
+
         <AmountFields
           columnOptions={columnOptions}
           mode={amountMode}
@@ -502,6 +521,10 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
       </Box>
 
       <Box gap={3} testID="column-mapping-currency-mode" style={styles.fieldGroup}>
+        <Box style={styles.sectionHeading}>
+          <Text variant="heading">{t('columnMapping.sectionCurrency')}</Text>
+        </Box>
+
         <CurrencyFields
           columnOptions={columnOptions}
           mode={currencyMode}
@@ -515,9 +538,14 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
 
       <Divider testID="column-mapping-divider-description" />
 
-      {/* Group (d): description/counterparty — moved to the bottom, in their
-          own divided group (device-feedback-round-F1 item 10). */}
-      <Box style={styles.fieldGroup}>
+      {/* Group (d): description/counterparty/balance — moved to the bottom,
+          in their own divided group (device-feedback-round-F1 item 10),
+          now sharing ONE section heading (F3 item 14). */}
+      <Box gap={3} style={styles.fieldGroup}>
+        <Box style={styles.sectionHeading}>
+          <Text variant="heading">{t('columnMapping.sectionDetails')}</Text>
+        </Box>
+
         <ColumnSelectField
           label={t('columnMapping.descriptionColumn')}
           options={columnOptions}
@@ -526,9 +554,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
           required
           testID="column-mapping-description-column"
         />
-      </Box>
 
-      <Box style={styles.fieldGroup}>
         <ColumnSelectField
           label={t('columnMapping.counterpartyColumn')}
           options={columnOptions}
@@ -537,9 +563,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
           allowNotUsed
           testID="column-mapping-counterparty-column"
         />
-      </Box>
 
-      <Box style={styles.fieldGroup}>
         <ColumnSelectField
           label={t('columnMapping.balanceColumn')}
           options={columnOptions}
@@ -552,7 +576,9 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
 
       <Divider testID="column-mapping-divider-result" />
 
-      {/* Group (e): result. */}
+      {/* Group (e): result — MappingResult renders its OWN heading
+          (`columnMapping.result`), styled to the same section-heading
+          margin internally (see mapping-result.styles.ts). */}
       <MappingResult stats={stats} rowErrors={rowErrors} />
 
       <TargetHoldingField

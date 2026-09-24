@@ -672,6 +672,14 @@ export const en = {
   columnMapping: {
     title: 'Map columns',
     rawPreview: 'Tap the row with the column names',
+    // Section headings (F3 items 12/13/14): every group on this screen shows
+    // its own heading now that the screen no longer duplicates the native
+    // stack header's own title (item 12).
+    sectionFileFormat: 'File format',
+    sectionDates: 'Dates',
+    sectionAmount: 'Amount columns',
+    sectionCurrency: 'Currency',
+    sectionDetails: 'Additional details',
     encoding: 'Encoding',
     delimiter: 'Separator',
     delimiterTab: 'Tab',
