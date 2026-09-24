@@ -23,6 +23,7 @@ import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
+import Divider from '../../design-system/components/divider';
 import { accountsRepo } from '../../accounts/accounts.repo';
 import { settingsRepo } from '../../settings/settings.repo';
 import SummaryTable from '../../design-system/components/summary-table';
@@ -213,7 +214,13 @@ const StatementPreviewBlock: FC<{
         ]}
       />
 
-      {stats.firstTransaction && <ExampleTransaction transaction={stats.firstTransaction} />}
+      {stats.firstTransaction && (
+        <>
+          <Divider testID="statement-import-divider-example-top" />
+          <ExampleTransaction transaction={stats.firstTransaction} />
+          <Divider testID="statement-import-divider-example-bottom" />
+        </>
+      )}
 
       {stats.maskedCardHints.length > 0 && (
         <PreviewDetailList items={stats.maskedCardHints} testID="statement-import-masked-cards" />

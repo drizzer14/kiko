@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
+import Divider from '../../../design-system/components/divider';
 import SummaryTable from '../../../design-system/components/summary-table';
 
 import { styles } from './mapping-result.styles';
@@ -29,7 +30,9 @@ const MappingResult: FC<MappingResultProps> = ({ stats, rowErrors }) => {
     <Box gap={2} style={styles.resultBlock}>
       {stats === undefined && (
         <>
-          <Text variant="heading">{t('columnMapping.result')}</Text>
+          <Box style={styles.sectionHeading}>
+            <Text variant="heading">{t('columnMapping.result')}</Text>
+          </Box>
           <Text variant="body" tone="textSecondary">
             {t('columnMapping.incomplete')}
           </Text>
@@ -59,7 +62,13 @@ const MappingResult: FC<MappingResultProps> = ({ stats, rowErrors }) => {
             ]}
           />
 
-          {stats.firstTransaction && <ExampleTransaction transaction={stats.firstTransaction} />}
+          {stats.firstTransaction && (
+            <>
+              <Divider testID="column-mapping-divider-example-top" />
+              <ExampleTransaction transaction={stats.firstTransaction} />
+              <Divider testID="column-mapping-divider-example-bottom" />
+            </>
+          )}
 
           {visibleRowErrors.length > 0 && (
             <Box gap={1} testID="column-mapping-row-errors">
