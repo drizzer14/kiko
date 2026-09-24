@@ -82,11 +82,14 @@ describe('SegmentedControl', () => {
     expect(ratio).toBeGreaterThanOrEqual(3);
   });
 
-  // F3 fix round 2, M1: hitSlop expands the element it is SET ON — the
-  // 24pt segment, not the 32pt track — so the slop must reach 44pt off a
-  // 24pt base, not a 32pt one.
-  it('restores the 44pt HIG touch target via hitSlop on the 24pt segment', async () => {
-    const SEGMENT_HEIGHT = 24;
+  // F3 fix round 3, N6: RN 0.87's Fabric hit-test drops any touch outside
+  // a non-overflowing parent's own layout bounds — `hitSlop` never counts
+  // toward that, so a real device only honors the segment's own real
+  // height, not a `hitSlop`-grown one (fix round 2's approach). Each
+  // segment is now a REAL 44pt-tall layout box, with no `hitSlop` at all;
+  // the shorter, native-matching visible track stays a decorative
+  // 32pt-tall layer underneath.
+  it('gives each segment a real 44pt layout height, with a 32pt visible track underneath', async () => {
     const { getByTestId } = await render(
       <SegmentedControl
         options={options}
@@ -97,9 +100,16 @@ describe('SegmentedControl', () => {
       />,
     );
 
-    const hitSlop = getByTestId('mode-segmented-option-single').props.hitSlop;
-    expect(hitSlop).toEqual({ top: 10, bottom: 10 });
-    expect(SEGMENT_HEIGHT + hitSlop.top + hitSlop.bottom).toBeGreaterThanOrEqual(44);
+    const segment = getByTestId('mode-segmented-option-single');
+    expect(segment.props.hitSlop).toBeUndefined();
+    expect(StyleSheet.flatten(segment.props.style).height).toBe(44);
+
+    const trackFill = StyleSheet.flatten(getByTestId('mode-segmented-track').props.style);
+    expect(trackFill.top).toBe(trackFill.bottom);
+    // The decorative track fill is absolutely positioned within the 44pt
+    // real segment height, inset symmetrically top/bottom, landing at
+    // exactly the 32pt visible track height.
+    expect(44 - trackFill.top - trackFill.bottom).toBe(32);
   });
 
   // F3 fix round 1, M2: a long label stays on one line (shrinking to fit

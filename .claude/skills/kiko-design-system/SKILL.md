@@ -676,18 +676,23 @@ new component can land between reviews of this skill:
   control reads as its own distinct iOS control. No segmented-control
   NATIVE library is a dependency of this app (checked at F3 item 9); this
   renders the same visual/interaction contract in plain
-  `Pressable`/`Box`/`Text` instead of adding one. Its VISIBLE track
-  height is ~32pt (`SEGMENT_MIN_HEIGHT` 24pt + the track's own
-  `spacing(1)` padding on both edges, `segmented-control.styles.ts`),
-  matching native `UISegmentedControl`; the 44pt HIG touch target is
-  restored via `SEGMENT_HIT_SLOP` (`{ top: 10, bottom: 10 }`,
-  `segmented-control.component.tsx`) — `hitSlop` expands the element it
-  is SET ON, the 24pt segment itself, not the 32pt track, so the slop
-  is measured off that 24pt base (24 + 10 + 10 = 44), not the track's own
-  32pt (a round-1 version of this component set the slop off the wrong
-  base, reaching only 36pt — fixed in fix round 2, M1). The selected
-  label is semibold (`fontWeight: '600'`), matching UIKit, composed
-  alongside (not duplicating) the base label's own `textAlign: 'center'`.
+  `Pressable`/`Box`/`Text` instead of adding one. Each segment `Pressable`
+  is a REAL 44pt-tall layout box — NOT a shorter box grown via `hitSlop`
+  (F3 fix round 3, N6): RN 0.87's Fabric hit-test
+  (`RCTViewComponentView betterHitTest`) drops any touch that falls
+  outside a non-overflowing parent's own LAYOUT bounds, and `hitSlop`
+  never counts toward that overflow — two earlier rounds (1 and 2) each
+  tried a `hitSlop`-grown box (36pt, then a supposedly-44pt one) that
+  measured correctly in Jest's arithmetic but was still only a 32pt real
+  target on a device, since the actual `Pressable` stayed 32pt tall the
+  whole time. The visible, native-matching ~32pt track/selected-pill fill
+  are instead drawn as absolutely-positioned DECORATIVE layers (each
+  `pointerEvents="none"`) underneath the real 44pt segment row — see
+  `segmented-control.styles.ts` (`container`/`trackFill`/`row`/`segment`/
+  `segmentSelected`) for the exact geometry rather than trusting a copy
+  of the pixel values restated here. The selected label is semibold
+  (`fontWeight: '600'`), matching UIKit, composed alongside (not
+  duplicating) the base label's own `textAlign: 'center'`.
   Props: `options`/`selected`/`onSelect`/`labels`/`accessibilityLabel`
   (required — every segment folds it into its own `accessibilityHint`)
   /`testID`. Accessibility (F3 fix round 2, M4): each segment keeps
