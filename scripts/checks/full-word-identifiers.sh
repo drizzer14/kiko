@@ -18,8 +18,12 @@ fail() {
   exit 2
 }
 
-# Fast-tier, per-file mode (called from fast.sh with one edited file). A
-# non-.ts/.tsx target, or no file at all, is silently out of scope.
+# Fast-tier, per-file mode (called from fast.sh with one edited file). Every
+# .ts/.tsx is in scope; a .js/.mjs/.cjs is in scope only under a scripts/
+# directory (fast.sh's own harness-tooling scripts, which are checked-in
+# source the same as everything else, and the only place today's tree has a
+# CommonJS/ESM file next to TypeScript). Anything else, or no file at all,
+# is silently out of scope.
 if [ -n "$TARGET" ]; then
   if [ ! -f "$TARGET" ]; then
     exit 0
@@ -27,6 +31,8 @@ if [ -n "$TARGET" ]; then
 
   case "$TARGET" in
     *.ts | *.tsx) : ;;
+    scripts/*.js | scripts/*.mjs | scripts/*.cjs) : ;;
+    */scripts/*.js | */scripts/*.mjs | */scripts/*.cjs) : ;;
     *) exit 0 ;;
   esac
 
@@ -43,13 +49,20 @@ if [ -n "$TARGET" ]; then
 fi
 
 # Project-wide mode (npm run check:full-word-identifiers / check:all): every
-# .ts/.tsx under src/, __tests__/, rules/fixtures/, and scripts/ — the same
-# scope the R1.d sweep covers. FULL_WORD_IDENTIFIERS_SRC_ROOT overrides the
-# whole scanned-roots list with one directory — used only by
-# __tests__/full-word-identifiers.test.ts, to point this mode at a
-# disposable temp fixture tree instead of the real (and much larger) repo;
-# dedup is skipped in that case, since the code fingerprint below reads the
-# real repo's git state, not the temp tree's content.
+# .ts/.tsx under src/, __tests__/, rules/fixtures/, scripts/, jest/,
+# __mocks__/, e2e/, plus App.tsx and drizzle.config.ts themselves —
+# everything the fast tier already checks on a fresh edit (App.tsx and
+# drizzle.config.ts are .ts/.tsx files the fast-tier case above admits like
+# any other; jest/, __mocks__/, and e2e/ hold .ts/.tsx test/fixture/mock
+# code, no different from __tests__/), plus a second pass for .js/.mjs/.cjs
+# under any scripts/ directory in scope, mirroring the fast-tier rule above
+# so this mode can never silently miss a file the hook guards.
+# FULL_WORD_IDENTIFIERS_SRC_ROOT overrides the whole scanned-roots list with
+# one directory — used only by __tests__/full-word-identifiers.test.ts, to
+# point this mode at a disposable temp fixture tree instead of the real (and
+# much larger) repo; dedup is skipped in that case, since the code
+# fingerprint below reads the real repo's git state, not the temp tree's
+# content.
 if [ -z "${FULL_WORD_IDENTIFIERS_SRC_ROOT:-}" ]; then
   fp="$(harness_code_fingerprint "$ROOT")"
   if harness_unchanged "$ROOT" "full-word-identifiers" "$fp"; then
@@ -59,8 +72,13 @@ fi
 
 if [ -n "${FULL_WORD_IDENTIFIERS_SRC_ROOT:-}" ]; then
   roots=("$FULL_WORD_IDENTIFIERS_SRC_ROOT")
+  script_roots=("$FULL_WORD_IDENTIFIERS_SRC_ROOT/scripts")
 else
-  roots=("$ROOT/src" "$ROOT/__tests__" "$ROOT/rules/fixtures" "$ROOT/scripts")
+  roots=(
+    "$ROOT/src" "$ROOT/__tests__" "$ROOT/rules/fixtures" "$ROOT/scripts"
+    "$ROOT/jest" "$ROOT/__mocks__" "$ROOT/e2e"
+  )
+  script_roots=("$ROOT/scripts")
 fi
 
 files=()
@@ -70,6 +88,19 @@ for root in "${roots[@]}"; do
     [ -n "$f" ] && files+=("$f")
   done < <(find "$root" -type f \( -name '*.ts' -o -name '*.tsx' \) 2>/dev/null | sort)
 done
+
+for root in "${script_roots[@]}"; do
+  [ -d "$root" ] || continue
+  while IFS= read -r f; do
+    [ -n "$f" ] && files+=("$f")
+  done < <(find "$root" -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' \) 2>/dev/null | sort)
+done
+
+if [ -z "${FULL_WORD_IDENTIFIERS_SRC_ROOT:-}" ]; then
+  for extra in "$ROOT/App.tsx" "$ROOT/drizzle.config.ts"; do
+    [ -f "$extra" ] && files+=("$extra")
+  done
+fi
 
 if [ ${#files[@]} -eq 0 ]; then
   exit 0

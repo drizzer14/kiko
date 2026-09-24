@@ -111,6 +111,47 @@ describe('scripts/checks/full-word-identifiers.sh', () => {
     expect(result.status).toBe(0);
   });
 
+  describe('.js/.mjs/.cjs under a scripts/ directory (fast-tier, per-file mode)', () => {
+    it('fails a bare abbreviated identifier in a .js file under scripts/', () => {
+      mkdirSync(join(dir, 'scripts'), { recursive: true });
+      const file = join(dir, 'scripts', 'fixture.js');
+      writeFileSync(file, 'const ctx = 1;\nmodule.exports = { ctx };\n');
+
+      const result = spawnSync('bash', [SCRIPT, file], { encoding: 'utf8' });
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('ctx');
+    });
+
+    it('fails a bare abbreviated identifier in a .mjs file under scripts/', () => {
+      mkdirSync(join(dir, 'scripts'), { recursive: true });
+      const file = join(dir, 'scripts', 'fixture.mjs');
+      writeFileSync(file, 'export const tmp = 1;\n');
+
+      const result = spawnSync('bash', [SCRIPT, file], { encoding: 'utf8' });
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('tmp');
+    });
+
+    it('fails a bare abbreviated identifier in a .cjs file under scripts/', () => {
+      mkdirSync(join(dir, 'scripts'), { recursive: true });
+      const file = join(dir, 'scripts', 'fixture.cjs');
+      writeFileSync(file, 'const opts = 1;\nmodule.exports = { opts };\n');
+
+      const result = spawnSync('bash', [SCRIPT, file], { encoding: 'utf8' });
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('opts');
+    });
+
+    it('exits 0 on a .js file outside any scripts/ directory', () => {
+      const result = runCheck('const ctx = 1;\nmodule.exports = { ctx };\n', 'fixture.js');
+
+      expect(result.status).toBe(0);
+    });
+  });
+
   describe('the exact-path exemption allowlist', () => {
     it('exempts a denylisted word at its documented exempt path', () => {
       mkdirSync(join(dir, 'src', 'db'), { recursive: true });
@@ -161,6 +202,30 @@ describe('scripts/checks/full-word-identifiers.sh', () => {
 
       expect(result.status).toBe(2);
       expect(result.stderr).toContain('Full words in identifiers');
+    });
+
+    it('scans .js/.mjs/.cjs under a scripts/ subdirectory of the scan root', () => {
+      mkdirSync(join(dir, 'scripts'), { recursive: true });
+      writeFileSync(join(dir, 'scripts', 'bad.js'), 'const ctx = 1;\nmodule.exports = { ctx };\n');
+
+      const result = spawnSync('bash', [SCRIPT], {
+        encoding: 'utf8',
+        env: { ...process.env, FULL_WORD_IDENTIFIERS_SRC_ROOT: dir },
+      });
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('Full words in identifiers');
+    });
+
+    it('does not scan a .js file outside a scripts/ subdirectory of the scan root', () => {
+      writeFileSync(join(dir, 'bad.js'), 'const ctx = 1;\nmodule.exports = { ctx };\n');
+
+      const result = spawnSync('bash', [SCRIPT], {
+        encoding: 'utf8',
+        env: { ...process.env, FULL_WORD_IDENTIFIERS_SRC_ROOT: dir },
+      });
+
+      expect(result.status).toBe(0);
     });
   });
 });
