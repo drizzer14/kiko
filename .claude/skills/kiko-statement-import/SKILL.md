@@ -96,8 +96,9 @@ non-zero, so the common unique case's key stays stable.
 `mapParsedTransaction` writes rows with `source: 'import'` and this
 key as `externalId` (or the format's own `externalId` when one is
 present), and `importParsedStatement` hands the whole batch to
-`transactionsRepo.addManyDedup` in one call — the existing dedup-write
-path every sync route also uses.
+`transactionsRepo.importRows` in one call — see "Detect → import
+pipeline" above; `addManyDedup` is the separate, still-live
+dedup-write path every sync route uses instead.
 
 ## Column mapping
 
@@ -141,24 +142,36 @@ builds its own `ParsedStatement` directly and calls
 Every `ColumnMapping` field (`apply-column-mapping.ts`) is a "role" a
 user assigns to one of the file's own columns: date, date format,
 amount (single, or debit/credit), description, and currency are
-REQUIRED; counterparty and balance are OPTIONAL. `balanceColumn` (T22
-brief) is the running balance after each row — when mapped,
-`resolveMappedClosingBalance` derives the parsed statement's
+REQUIRED; counterparty and balance are OPTIONAL. `balanceColumn`
+(import-balance commit B) is the running balance after each row — when
+mapped, `resolveMappedClosingBalance` derives the parsed statement's
 `closingBalance` from it, using the SAME "row with the newest parsed
-time, last one on a tie" rule Monobank CSV's own
-`resolveClosingBalance` uses (review follow-up M2), reading the cell
-with the mapping's own `decimalSeparator` (`parseAmountCell`, same as
-every other amount cell this mapping reads). A missing or non-numeric
-cell on that newest row yields no closing balance (review follow-up
-I1's same guard — never a `NaN` written to the ledger), and so does
-leaving the column unmapped. Unlike PrivatBank XLSX's own `balance`
-column (left unset — see `ClosingBalance`'s doc comment in
-`parser.ts`), a column-mapping import always targets exactly ONE
-holding (the one picked on the screen), so it never hits PrivatBank's
-multi-card ambiguity. `balanceColumn` is part of `ColumnMapping`, so a
-saved mapping (below) remembers it automatically — an old saved
-mapping simply lacks the field (`undefined`, backward compatible, no
-migration needed).
+time" rule Monobank CSV's own `resolveClosingBalance` uses (review
+follow-up M2), reading the cell with the mapping's own
+`decimalSeparator` (`parseAmountCell`, same as every other amount cell
+this mapping reads). A tie on the newest time is broken by FILE ORDER,
+not "last one wins" (ruling I1, `FIX-merge-commitB-round1-brief.md`):
+`pickClosingBalanceRow` reads the resolved rows' own first-vs-last time
+to tell a newest-first file from an oldest-first one, then takes the
+FIRST tied row in a newest-first file or the LAST in an oldest-first
+one; when that orientation can't be determined (the file's first and
+last resolved rows share one time), it falls back to the tied rows'
+own balance cells — identical cells resolve to that value, genuinely
+different cells yield no closing balance at all, rather than guess. A
+missing or non-numeric cell on the chosen row also yields no closing
+balance (review follow-up I1's original guard — never a `NaN` written
+to the ledger), and so does leaving the column unmapped. Unlike
+PrivatBank XLSX's own `balance` column (left unset — see
+`ClosingBalance`'s doc comment in `parser.ts`), column mapping has no
+`maskedCardHint` concept and accepts ANY file via "Map columns
+manually" (`statement-import.screen.tsx`), including a multi-card
+PrivatBank export — a mapped Balance column on one CAN mix cards (the
+newest row may belong to a different card than the target holding).
+This is an accepted, opt-in risk (see `ClosingBalance`'s own doc
+comment in `parser.ts`), not a guarded one. `balanceColumn` is part of
+`ColumnMapping`, so a saved mapping (below) remembers it automatically
+— an old saved mapping simply lacks the field (`undefined`, backward
+compatible, no migration needed).
 
 ## Saved mappings
 

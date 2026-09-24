@@ -1,17 +1,17 @@
 import type { Repository } from '@kiko/db/repository';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 
-import { database, write } from '../../db/client';
-import { id } from '../../db/id';
-import { holdingInstrument } from '../../prices/instrument';
-import { accounts, type HoldingRow, holdings, pricePoints, transactions } from '../../db/schema';
-import { isSyncedHolding } from '../deletable';
 import {
   asTermDepositMeta,
   type DepositContribution,
   type ExchangeMetadataField,
   type SyncedMetadataField,
 } from '../holding-metadata';
+import { id } from '../../db/id';
+import { isSyncedHolding } from '../deletable';
+import { database, write } from '../../db/client';
+import { holdingInstrument } from '../../prices/instrument';
+import { accounts, type HoldingRow, holdings, pricePoints, transactions } from '../../db/schema';
 
 // The next free grid slot for a new holding under one account: one past that
 // account's current highest `sortOrder` (or 0 when it has no holdings yet), so

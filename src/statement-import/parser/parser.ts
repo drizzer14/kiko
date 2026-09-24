@@ -100,12 +100,18 @@ export type ParsedStatement = {
    * to — deliberately left unset rather than guessed. Sensebank CSV and the
    * three FOP/business CSVs (ProCredit/Ukrsibbank/Alfa) carry no balance
    * field at all on their committed fixtures. The generic column-mapping
-   * path (T22 brief) also sets this, from an OPTIONAL user-mapped Balance
-   * column (`ColumnMapping.balanceColumn`, `column-mapping/apply-column-
-   * mapping.ts`'s `resolveMappedClosingBalance`) — same "newest row wins"
-   * rule as Monobank, and never PrivatBank's multi-card ambiguity: a
-   * column-mapping import always targets exactly ONE holding, the one the
-   * user picked on the screen.
+   * path (import-balance commit B) also sets this, from an OPTIONAL
+   * user-mapped Balance column (`ColumnMapping.balanceColumn`,
+   * `column-mapping/apply-column-mapping.ts`'s `resolveMappedClosingBalance`)
+   * — same "newest row wins" rule as Monobank, PLUS a file-order tie-break
+   * (ruling I1). Review follow-up M1: "Map columns manually" accepts ANY
+   * file, including a multi-card PrivatBank export — column mapping has no
+   * `maskedCardHint` concept, so a mapped Balance column on such a file can
+   * genuinely mix cards (the newest row's balance may belong to a
+   * DIFFERENT card than the one the user is importing into). Mapping
+   * Balance is opt-in, so this is an accepted risk, not a guarded one — a
+   * user who maps it on a multi-card file is trusting their own file, the
+   * same trust every other mapped column already extends.
    */
   closingBalance?: ClosingBalance;
 };

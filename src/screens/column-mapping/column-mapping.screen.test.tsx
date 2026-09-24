@@ -323,6 +323,42 @@ describe('ColumnMappingScreen', () => {
     await waitFor(() => expect(mockImportParsedStatement).toHaveBeenCalledTimes(1));
   });
 
+  // M5 (review round 1): the optional Balance column role renders as a
+  // field, and a saved mapping's `balanceColumn` pre-fills it — same
+  // pattern as the exact-saved-mapping test above, plus this one field.
+  it('renders the Balance field and pre-fills it from a saved mapping', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    setLiveData({
+      accounts: [monobankAccount],
+      holdings: [monobankHolding],
+      statementMappings: {
+        'bank:monobank': {
+          headerRowIndex: 0,
+          decimalSeparator: '.',
+          dateColumn: 0,
+          dateFormat: 'DD.MM.YYYY HH:MM:SS',
+          amount: { mode: 'single', column: 3 },
+          descriptionColumn: 1,
+          currency: { mode: 'fixed', currency: 'UAH' },
+          balanceColumn: 9,
+          fingerprint: headerFingerprint(monobankHeaderRow),
+          savedAt: 1_700_000_000_000,
+        },
+      },
+    });
+
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.savedApplied'))).toBeTruthy());
+
+    expect(view.getByText(i18n.t('columnMapping.balanceColumn'))).toBeTruthy();
+    expect(
+      within(view.getByTestId('column-mapping-balance-column')).getByText(
+        monobankHeaderRow[9].trim(),
+      ),
+    ).toBeTruthy();
+  });
+
   describe('Sensebank cp1251 decoding', () => {
     const mapSensebankColumns = async (
       view: Awaited<ReturnType<typeof renderScreen>>,

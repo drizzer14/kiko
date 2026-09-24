@@ -99,6 +99,24 @@ project-level pointer to this section.
   disorder). `MigrationsGate` (`src/migration/`) owns the launch UI: a loading
   state until migrations succeed and an error state if they fail —
   never proceed past a failed migration.
+- The count-based runner makes migration `idx` a SHARED NAMESPACE
+  across branches, not a per-branch sequence — two branches that each
+  add a migration at the same next `idx` are NOT independent (review
+  I3, `FIX-merge-commitB-round1-brief.md`): `fix/import-balance`'s own
+  `0034_add_balance_set_at` must NEVER reach `main` as-is. That fix
+  lands on `main` only through `feat/assets-debts`, where it was
+  renumbered to `0036` (after that branch's own `0034`/`0035`) at merge
+  time. A build cut from a `main` that still carries the fix's
+  `0034_add_balance_set_at` verbatim would leave a device's `COUNT(*)`
+  at 35 once it later upgrades to `feat/assets-debts`'s migration set —
+  the runner then applies idx 35 (`price_points`, already applied)
+  again and idx 36's `ALTER TABLE holdings ADD balance_set_at` fails
+  with "duplicate column name", tripping `MigrationsGate`'s error
+  state. If `fix/import-balance` (or any branch) ever needs a
+  `main`-only hotfix again, re-cut ITS migration with a fresh number at
+  THAT time, checked against whatever `main`'s own journal tail is
+  then — never assume a branch's own next `idx` is still free by the
+  time it lands.
 
 ## Hard rule: every write goes through `db.transaction()`
 

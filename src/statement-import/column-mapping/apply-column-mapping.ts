@@ -35,10 +35,7 @@ export type ColumnMapping = {
   descriptionColumn: number;
   currency: { mode: 'column'; column: number } | { mode: 'fixed'; currency: Currency };
   counterpartyColumn?: number;
-  // Optional running-balance column (T22 brief) — when mapped, the parsed
-  // statement's `closingBalance` is derived from it (see
-  // `resolveMappedClosingBalance` below), the same "Balance" role a saved
-  // mapping also remembers.
+  // Optional running-balance column — see `resolveMappedClosingBalance` below.
   balanceColumn?: number;
 };
 
@@ -189,30 +186,101 @@ const resolveRow = (row: TableCell[], mapping: ColumnMapping, rowNumber: number)
 
 type ClosingBalanceCandidate = { row: TableCell[]; timeSeconds: number; currency: Currency };
 
+/** File orientation, from the RESOLVED rows' own first vs. last parsed
+ * time — used only to break a tie on the newest `timeSeconds` (ruling I1,
+ * `FIX-merge-commitB-round1-brief.md`): most bank exports (Monobank
+ * included) list the newest row FIRST, so on a tie the FIRST tied row in
+ * file order is really the latest transaction of that instant; an
+ * oldest-first file's LAST tied row is. `'undeterminable'` when the first
+ * and last resolved rows share the same time — `pickClosingBalanceRow`
+ * then falls back to comparing the tied rows' own balance cells instead of
+ * guessing an order. */
+const resolveFileOrientation = (
+  candidates: ClosingBalanceCandidate[],
+): 'newestFirst' | 'oldestFirst' | 'undeterminable' => {
+  const first = candidates.at(0)?.timeSeconds;
+  const last = candidates.at(-1)?.timeSeconds;
+
+  if (first === undefined || last === undefined || first === last) {
+    return 'undeterminable';
+  }
+
+  return first > last ? 'newestFirst' : 'oldestFirst';
+};
+
 /**
- * The mapped statement's `closingBalance` (T22 brief, "Balance" column
- * role) — same rule as Monobank CSV's own `resolveClosingBalance`
- * (`formats/monobank-csv/monobank-csv.format.ts`, review follow-up M2): the
- * balance cell of the row with the NEWEST parsed time (last one on a tie),
- * among rows that resolved successfully — an error row's date/amount/
- * currency is already unreliable, so its balance cell is not trusted
- * either (`applyColumnMapping` only ever offers this a RESOLVED row's
- * candidate). `undefined` when no Balance column is mapped, no row
- * resolved, or the chosen row's balance cell is missing or non-numeric
- * (review follow-up I1's same guard) — never a `NaN` written to the
- * ledger. The cell is parsed with the mapping's OWN `decimalSeparator`
- * (`parseAmountCell`), matching every other amount cell this mapping reads.
+ * The one candidate `resolveMappedClosingBalance` reads the closing-balance
+ * cell off (ruling I1). Finds every row tied on the NEWEST `timeSeconds`
+ * among `candidates` (already RESOLVED rows only, in file order); a lone
+ * newest row wins outright, a tied set is broken by `resolveFileOrientation`
+ * when the file's own first/last rows disagree, and when they don't
+ * (`'undeterminable'`) this returns the tied rows' own balance cell ONLY
+ * when every one of them parses to the exact same value — genuinely
+ * ambiguous cells return `undefined` (Rule B fallback) rather than guess an
+ * order. A single-row file has exactly one "tied" row (itself), so it
+ * always resolves through the lone-winner path.
+ */
+const pickClosingBalanceRow = (
+  candidates: ClosingBalanceCandidate[],
+  balanceColumn: number,
+  decimalSeparator: ',' | '.',
+): ClosingBalanceCandidate | undefined => {
+  if (candidates.length === 0) {
+    return undefined;
+  }
+
+  const maxTime = Math.max(...candidates.map((candidate) => candidate.timeSeconds));
+  const tied = candidates.filter((candidate) => candidate.timeSeconds === maxTime);
+
+  if (tied.length === 1) {
+    return tied[0];
+  }
+
+  const orientation = resolveFileOrientation(candidates);
+
+  if (orientation === 'newestFirst') {
+    return tied[0];
+  }
+
+  if (orientation === 'oldestFirst') {
+    return tied.at(-1);
+  }
+
+  const cellValues = tied.map((candidate) =>
+    parseAmountCell(candidate.row[balanceColumn] ?? '', decimalSeparator),
+  );
+  const allEqual = cellValues.every((value) => Number.isFinite(value) && value === cellValues[0]);
+
+  return allEqual ? tied[0] : undefined;
+};
+
+/**
+ * The mapped statement's `closingBalance` (import-balance commit B,
+ * "Balance" column role) — same rule as Monobank CSV's own
+ * `resolveClosingBalance` (`formats/monobank-csv/monobank-csv.format.ts`),
+ * plus a file-order tie-break `pickClosingBalanceRow` handles (ruling I1).
+ * `undefined` when no Balance column is mapped, no row resolved, or the
+ * chosen row's balance cell is missing or non-numeric (review follow-up
+ * I1's original guard) — never a `NaN` written to the ledger. The cell is
+ * parsed with the mapping's OWN `decimalSeparator` (`parseAmountCell`),
+ * matching every other amount cell this mapping reads.
  */
 const resolveMappedClosingBalance = (
   mapping: ColumnMapping,
-  newest: ClosingBalanceCandidate | undefined,
+  candidates: ClosingBalanceCandidate[],
 ): ClosingBalance | undefined => {
-  if (mapping.balanceColumn === undefined || !newest) {
+  if (mapping.balanceColumn === undefined) {
+    return undefined;
+  }
+
+  const chosen = pickClosingBalanceRow(candidates, mapping.balanceColumn, mapping.decimalSeparator);
+
+  if (!chosen) {
     return undefined;
   }
 
   const balanceMajor = parseAmountCell(
-    newest.row[mapping.balanceColumn] ?? '',
+    chosen.row[mapping.balanceColumn] ?? '',
     mapping.decimalSeparator,
   );
 
@@ -221,9 +289,9 @@ const resolveMappedClosingBalance = (
   }
 
   return {
-    minorUnits: Money.fromMajor(newest.currency, balanceMajor).minorUnits,
-    currency: newest.currency,
-    asOfSeconds: newest.timeSeconds,
+    minorUnits: Money.fromMajor(chosen.currency, balanceMajor).minorUnits,
+    currency: chosen.currency,
+    asOfSeconds: chosen.timeSeconds,
   };
 };
 
@@ -249,7 +317,11 @@ export const applyColumnMapping = (
   const rowErrors: ColumnMappingRowError[] = [];
   let accountCurrency: Currency | undefined =
     mapping.currency.mode === 'fixed' ? mapping.currency.currency : undefined;
-  let newestBalanceCandidate: ClosingBalanceCandidate | undefined;
+  // Every RESOLVED row, in file order — `resolveMappedClosingBalance` needs
+  // the whole ordered list, not just a running "newest so far", so a tie on
+  // the newest time can be broken by file order (ruling I1) rather than by
+  // whichever tied row happens to be visited last.
+  const balanceCandidates: ClosingBalanceCandidate[] = [];
 
   dataRows.forEach((row, index) => {
     if (mappedColumns.every((column) => isEmptyCell(row[column]))) {
@@ -266,17 +338,11 @@ export const applyColumnMapping = (
 
     accountCurrency ??= outcome.transaction.currency;
     transactions.push(outcome.transaction);
-
-    if (
-      !newestBalanceCandidate ||
-      outcome.transaction.timeSeconds >= newestBalanceCandidate.timeSeconds
-    ) {
-      newestBalanceCandidate = {
-        row,
-        timeSeconds: outcome.transaction.timeSeconds,
-        currency: outcome.transaction.currency,
-      };
-    }
+    balanceCandidates.push({
+      row,
+      timeSeconds: outcome.transaction.timeSeconds,
+      currency: outcome.transaction.currency,
+    });
   });
 
   if (!accountCurrency) {
@@ -286,7 +352,7 @@ export const applyColumnMapping = (
   }
 
   const account: ParsedAccountHint = { currency: accountCurrency };
-  const closingBalance = resolveMappedClosingBalance(mapping, newestBalanceCandidate);
+  const closingBalance = resolveMappedClosingBalance(mapping, balanceCandidates);
 
   return {
     statement: {

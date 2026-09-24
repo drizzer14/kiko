@@ -361,7 +361,7 @@ describe('importStatement', () => {
       expect(store.transactions[0].source).toBe('import');
     });
 
-    // T22 brief: the column-mapping screen's optional "Balance" column role,
+    // import-balance commit B: the column-mapping screen's optional "Balance" column role,
     // end to end — a real `applyColumnMapping` output (not a hand-built
     // `ParsedStatement`) carries a `closingBalance` derived from the mapped
     // Balance column, and `importParsedStatement` -> `transactionsRepo.importRows`
