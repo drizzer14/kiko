@@ -13,8 +13,8 @@ import {
 } from '../../db/schema';
 import { id } from '../../db/id';
 import { database, write } from '../../db/client';
-import { chunkForTable, chunkRows } from '../../db/chunk-for-table';
 import { normalizeTransactionName } from '../normalize-name';
+import { chunkForTable, chunkRows } from '../../db/chunk-for-table';
 import type { ClosingBalance } from '../../statement-import/parser';
 import { exchangeReceivePath } from '../../holdings/exchange-destination';
 import type { DepositContribution } from '../../holdings/holding-metadata';
