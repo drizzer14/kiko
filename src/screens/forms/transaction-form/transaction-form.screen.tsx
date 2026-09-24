@@ -56,7 +56,6 @@ import type { AccountRow, HoldingRow, TransactionRow } from '../../../db/schema'
 import type { TransactionFormParams } from '../../../navigation/types';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
-import SummaryTable from '../../../design-system/components/summary-table';
 import { type Currency, currencySymbol } from '../../../currency/currency';
 import { resolveCategoryColor } from '../../../statistics/category-breakdown';
 import { seedCounterpartMinorUnits } from '../../../holdings/exchange-prefill';
@@ -129,15 +128,29 @@ const renderReadOnlyNotice = (
 };
 
 // The counterparty->comment column (item 10) writes a real value no screen
-// ever surfaced (F3 device feedback item 17) — a single `SummaryTable` row,
-// the SAME "label left, value right" detail-row pattern the deposit/bond
-// value breakdown and the statement-import preview already use, shown
-// whenever the loaded row carries a non-blank comment. Not gated by
-// `isReadOnly`: `mapParsedTransaction`/Monobank sync can write `comment`
-// onto any imported row regardless of `source`, and a Monobank-synced row
-// is exactly the read-only case the brief calls out by name — so this
-// renders for both. Module-level for the same cognitive-complexity-budget
-// reason as `renderReadOnlyNotice` above.
+// ever surfaced (F3 device feedback item 17), shown whenever the loaded row
+// carries a non-blank comment. Not gated by `isReadOnly`:
+// `mapParsedTransaction`/Monobank sync can write `comment` onto any
+// imported row regardless of `source`, and a Monobank-synced row is exactly
+// the read-only case the brief calls out by name — so this renders for
+// both. Module-level for the same cognitive-complexity-budget reason as
+// `renderReadOnlyNotice` above.
+//
+// I2 (F3 part 1 fix round 1, Important): this does NOT reuse `SummaryTable`
+// (the app's shared "label left, value right" ROW layout) — `SummaryTable`
+// was built for short values (money, counts, dates); Comment is free text
+// that can run to a full sentence. `SummaryTable` wraps a row's `value` in
+// its OWN `Box` (`summary-table.component.tsx`'s `<Box
+// testID={row.testID}>{row.value}</Box>`), one level BELOW the row's own
+// flex-row layout — a `flexShrink`/`textAlign` set on the VALUE node I pass
+// in (a grandchild of the row, not a direct flex child of it) has no effect
+// on that row's own layout pass in Yoga; only the WRAPPING `Box` itself
+// (which `SummaryTable` owns, not a caller) would need `flexShrink`, and
+// the brief is explicit: do not change `SummaryTable`'s shared row for one
+// caller. Stacking the label ABOVE the value instead — a plain `Box`
+// column, not a flex row — sidesteps the problem entirely: the value
+// `Text` gets the row's FULL width to itself and wraps normally, with no
+// label competing for horizontal space on the same line.
 const renderCommentRow = (
   comment: string | null | undefined,
   label: string,
@@ -149,16 +162,12 @@ const renderCommentRow = (
   }
 
   return (
-    <SummaryTable
-      rows={[
-        {
-          key: 'comment',
-          label,
-          value: <Text variant="body">{trimmed}</Text>,
-          testID: 'transaction-comment',
-        },
-      ]}
-    />
+    <Box gap={1} testID="transaction-comment">
+      <Text variant="caption" tone="textSecondary">
+        {label}
+      </Text>
+      <Text variant="body">{trimmed}</Text>
+    </Box>
   );
 };
 
@@ -2342,7 +2351,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       >
         <Box gap={4} testID="transaction-form">
           {renderReadOnlyNotice(isReadOnly, theme.colors.surfaceHigh, syncedNotice)}
-          {renderCommentRow(existing?.comment, t('forms.transaction.comment'))}
 
           {/* B: the primary-leg holding picker, shown ONLY when no holding was
             fixed by navigation (the global-add entry). It drives the shared
@@ -2490,6 +2498,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             categoryError: fieldError('selectedCategory'),
             categoryFieldRef,
           })}
+
+          {/* DEFAULT (M1, F3 part 1 fix round 1): after description AND
+              category — the brief said "existing detail row pattern" but
+              gave no position; the top of the form (above holding/type/
+              amount) read wrong for a supplementary, often-empty field, so
+              it moved here, at the end. */}
+          {renderCommentRow(existing?.comment, t('forms.transaction.comment'))}
         </Box>
       </Screen>
 

@@ -1392,6 +1392,28 @@ describe('TransactionFormScreen — comment detail row (item 17, F3)', () => {
 
     expect(queryByText('Comment')).toBeNull();
   });
+
+  // M1 DEFAULT (F3 part 1 fix round 1): the comment row renders AFTER the
+  // description/category rows, not at the very top of the form (the
+  // original item-17 placement, flagged as an undocumented default in
+  // review).
+  it('DEFAULT: renders the comment row AFTER the Category field, not at the top of the form', async () => {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
+      id: 'txn-9',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: 42,
+      description: 'Imported latte',
+      source: 'monobank',
+      comment: 'ФОП Іванов',
+    });
+
+    const utils = await renderEdit('txn-9');
+    const rendered = collectRenderedText(utils.toJSON());
+
+    expect(rendered.indexOf('Category')).toBeGreaterThan(-1);
+    expect(rendered.indexOf('Comment')).toBeGreaterThan(rendered.indexOf('Category'));
+  });
 });
 
 describe('TransactionFormScreen — synced (binance) row', () => {
