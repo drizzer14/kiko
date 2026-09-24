@@ -18,13 +18,20 @@ export type LoanReasonKey =
   | 'forms.holding.annualRateError'
   | 'forms.holding.termMonthsError';
 
+// 50 years — comfortably above any real mortgage/car-loan term, and the
+// upper bound `loanReasonKey` rejects (Minor 10).
+export const MAX_LOAN_TERM_MONTHS = 600;
+
 // A loan needs a positive principal and a picked start date UNCONDITIONALLY
 // (M1, T28 brief); `annualRatePct`/`termMonths` are required ONLY while
 // `schedule` is `'annuity'`/`'differentiated'` — `'none'` (an informal debt,
 // spec 5.1) carries no schedule at all, so Save never blocks on them there.
 // `termMonths` must be a WHOLE number >= 1 (T26 review, M1): a degenerate
 // term (0, negative, fractional) would give `loanInstallments` a schedule
-// that never reduces the balance to exactly 0. A plain top-level function
+// that never reduces the balance to exactly 0. Capped at `MAX_TERM_MONTHS`
+// (T28 review round 1, Minor 10): an uncapped value (e.g. "99999999", still
+// a valid positive integer) makes `loanInstallments` build ~1e8 rows on
+// every render, hanging the app. A plain top-level function
 // (not an inline closure in the hook body), mirroring `bondIsinReasonKey`,
 // so it carries its own cognitive-complexity budget and is directly
 // unit-testable with no hook/render machinery.
@@ -57,7 +64,7 @@ export const loanReasonKey = (params: {
 
   const months = parseAmount(termMonths);
 
-  if (!(Number.isInteger(months) && months > 0)) {
+  if (!(Number.isInteger(months) && months > 0 && months <= MAX_LOAN_TERM_MONTHS)) {
     return 'forms.holding.termMonthsError';
   }
 
