@@ -1,9 +1,11 @@
+import { Money } from '../../currency/money';
 import type { Currency } from '../../currency/currency';
 import type { AccountRow, HoldingRow } from '../../db/schema';
+import { holdingValue } from '../../holdings/holding-value';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { defaultAccountColor } from '../../holdings/entity-colors';
-import type { RateTable } from '../../rates/conversion';
-import { guardedNetWorth } from '../../rates/net-worth-view';
+import { convert, type RateTable } from '../../rates/conversion';
+import { canConvert, guardedNetWorth } from '../../rates/net-worth-view';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
 
 /**
@@ -85,4 +87,33 @@ export const buildAccountContribution = (input: {
   const total = valued.reduce((sum, slice) => sum + slice.amount, 0);
 
   return valued.map((slice) => ({ ...slice, share: slice.amount / total }));
+};
+
+/**
+ * The "Debts" total (T27, Statistics screen): the sum of every `loan`
+ * holding's own held value, converted to the base currency — a NEGATIVE
+ * `Money` (`holding-value.ts` values a loan at minus its outstanding
+ * balance), read verbatim by `MoneyText` to render the minus sign. Every
+ * non-`loan` holding is ignored outright, regardless of which account it
+ * lives under — this is a debt-only total, independent of `guardedNetWorth`'s
+ * per-account sum. An unconvertible loan (no rate for its currency) is
+ * silently dropped, same guard as `guardedNetWorth`/`buildTypeBreakdown`.
+ */
+export const buildDebtTotal = (input: {
+  holdings: ContributionHolding[];
+  rateTable: RateTable;
+  baseCurrency: Currency;
+  now: number;
+  book?: PriceBook;
+}): Money => {
+  const { holdings, rateTable, baseCurrency, now, book = EMPTY_PRICE_BOOK } = input;
+
+  return holdings
+    .filter(
+      (holding) => holding.type === 'loan' && canConvert(holding.currency, baseCurrency, rateTable),
+    )
+    .reduce(
+      (sum, holding) => sum.add(convert(holdingValue(holding, now, book), baseCurrency, rateTable)),
+      Money.of(baseCurrency, 0),
+    );
 };

@@ -530,3 +530,68 @@ function addMonthsMs(start: number, months: number): number {
   date.setMonth(date.getMonth() + months);
   return date.getTime();
 }
+
+const loanStart = local(2020, 0, 15);
+
+const loan = (over: Record<string, unknown> = {}): ValuableHolding => ({
+  id: 'loan-1',
+  type: 'loan',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  metadata: {
+    kind: 'mortgage',
+    principalMinorUnits: 120_000_000, // 1,200,000.00 UAH
+    startDate: loanStart,
+    annualRatePct: 12,
+    termMonths: 240,
+    schedule: 'annuity',
+    ...over,
+  },
+});
+
+describe('holdingValueBreakdown — loan (T27)', () => {
+  it('is negative — gross and net equal minus the outstanding balance, principalOrCost equals minus the principal', () => {
+    const b = holdingValueBreakdown(loan(), loanStart, EMPTY_PRICE_BOOK);
+    // At startDate itself, no installment is due yet: outstanding is the full principal.
+    expect(b.gross.minorUnits).toBe(-120_000_000);
+    expect(b.net.minorUnits).toBe(-120_000_000);
+    expect(b.principalOrCost.minorUnits).toBe(-120_000_000);
+    expect(b.interest.minorUnits).toBe(0);
+    expect(b.tax.minorUnits).toBe(0);
+  });
+
+  it('gross/net shrink toward 0 as the schedule pays the loan down, while principalOrCost stays at minus the ORIGINAL principal', () => {
+    const tenInstallmentsIn = loanStart;
+    const laterDay = local(2021, 0, 15); // one year (12 installments) later
+    const before = holdingValueBreakdown(loan(), tenInstallmentsIn, EMPTY_PRICE_BOOK);
+    const after = holdingValueBreakdown(loan(), laterDay, EMPTY_PRICE_BOOK);
+
+    expect(after.gross.minorUnits).toBeGreaterThan(before.gross.minorUnits);
+    expect(after.gross.minorUnits).toBeLessThan(0);
+    expect(after.principalOrCost.minorUnits).toBe(-120_000_000);
+  });
+
+  it('is 0 before the loan start date (M4 — a loan not yet taken out contributes nothing)', () => {
+    const dayBeforeStart = local(2020, 0, 14);
+    const b = holdingValueBreakdown(loan(), dayBeforeStart, EMPTY_PRICE_BOOK);
+    expect(b.gross.minorUnits).toBe(0);
+    expect(b.net.minorUnits).toBe(0);
+  });
+
+  it('reports no interest or tax on the held value — a loan never accrues either at valuation time', () => {
+    const b = holdingValueBreakdown(loan(), loanStart, EMPTY_PRICE_BOOK);
+    expect(b.interest.minorUnits).toBe(0);
+    expect(b.tax.minorUnits).toBe(0);
+  });
+
+  it('falls back to the cached balance when metadata is malformed', () => {
+    const holding: ValuableHolding = {
+      id: 'loan-2',
+      type: 'loan',
+      currency: 'UAH',
+      balanceMinorUnits: 5_000,
+      metadata: { junk: true },
+    };
+    expect(holdingValue(holding, loanStart).minorUnits).toBe(5_000);
+  });
+});

@@ -5,6 +5,7 @@ import { defaultAccountColor } from '../../holdings/entity-colors';
 
 import {
   buildAccountContribution,
+  buildDebtTotal,
   type ContributionAccount,
   type ContributionHolding,
 } from './account-contribution';
@@ -177,6 +178,41 @@ describe('buildAccountContribution', () => {
     expect(slices.map((slice) => slice.accountId)).toEqual(['a']);
   });
 
+  // T27: a debt account's net worth is a loan's negative held value
+  // (`holding-value.ts`) — it must never surface as a pie slice (a negative
+  // share would break the ring), same as the existing zero-net-worth filter.
+  it('excludes a debt account (negative net worth) from the pie — never a negative slice', () => {
+    const accounts = [account('a', 'Cash'), account('d', 'Mortgage', { kind: 'debt' })];
+    const holdings = [
+      holding({ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_000 }),
+      holding({
+        id: 'loan-1',
+        accountId: 'd',
+        type: 'loan',
+        currency: 'UAH',
+        metadata: {
+          kind: 'mortgage',
+          principalMinorUnits: 500_000,
+          startDate: NOW,
+          annualRatePct: 10,
+          termMonths: 12,
+          schedule: 'annuity',
+        },
+      }),
+    ];
+
+    const slices = buildAccountContribution({
+      accounts,
+      holdings,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      now: NOW,
+    });
+
+    expect(slices.map((slice) => slice.accountId)).toEqual(['a']);
+    expect(slices.every((slice) => slice.amount > 0)).toBe(true);
+  });
+
   // T14: threading a `PriceBook` through reaches a priced (property_item)
   // holding's value; with no book it falls back to its lots cost basis.
   it('values a property_item holding via the PriceBook, falling back to cost basis with no book', () => {
@@ -221,5 +257,91 @@ describe('buildAccountContribution', () => {
       book,
     });
     expect(withBook[0].amount).toBe(700_000);
+  });
+});
+
+describe('buildDebtTotal', () => {
+  it('sums every loan holding across accounts, converted to base, as a NEGATIVE total', () => {
+    const holdings = [
+      holding({
+        id: 'loan-1',
+        accountId: 'd',
+        type: 'loan',
+        currency: 'UAH',
+        metadata: {
+          kind: 'mortgage',
+          principalMinorUnits: 500_000,
+          startDate: NOW,
+          annualRatePct: 10,
+          termMonths: 12,
+          schedule: 'annuity',
+        },
+      }),
+      holding({
+        id: 'loan-2',
+        accountId: 'e',
+        type: 'loan',
+        currency: 'USD',
+        metadata: {
+          kind: 'personal',
+          principalMinorUnits: 10_000,
+          startDate: NOW,
+          annualRatePct: 5,
+          termMonths: 6,
+          schedule: 'annuity',
+        },
+      }),
+    ];
+
+    // Queried at each loan's own startDate: outstanding is the full principal,
+    // so each loan's own held value is exactly `-principal`.
+    const total = buildDebtTotal({
+      holdings,
+      rateTable: { 'USD:UAH': 40 },
+      baseCurrency: 'UAH',
+      now: NOW,
+    });
+
+    expect(total.currency).toBe('UAH');
+    expect(total.minorUnits).toBe(-500_000 - 10_000 * 40);
+  });
+
+  it('ignores every non-loan holding entirely', () => {
+    const holdings = [
+      holding({ accountId: 'a', type: 'cash', currency: 'UAH', balanceMinorUnits: 100_000 }),
+    ];
+
+    const total = buildDebtTotal({ holdings, rateTable: {}, baseCurrency: 'UAH', now: NOW });
+
+    expect(total.minorUnits).toBe(0);
+  });
+
+  it('is 0 when there are no loan holdings at all', () => {
+    const total = buildDebtTotal({ holdings: [], rateTable: {}, baseCurrency: 'UAH', now: NOW });
+
+    expect(total.minorUnits).toBe(0);
+  });
+
+  it('excludes an unconvertible loan holding rather than throwing', () => {
+    const holdings = [
+      holding({
+        id: 'loan-1',
+        accountId: 'd',
+        type: 'loan',
+        currency: 'EUR', // no EUR:UAH rate
+        metadata: {
+          kind: 'mortgage',
+          principalMinorUnits: 500_000,
+          startDate: NOW,
+          annualRatePct: 10,
+          termMonths: 12,
+          schedule: 'annuity',
+        },
+      }),
+    ];
+
+    const total = buildDebtTotal({ holdings, rateTable: {}, baseCurrency: 'UAH', now: NOW });
+
+    expect(total.minorUnits).toBe(0);
   });
 });

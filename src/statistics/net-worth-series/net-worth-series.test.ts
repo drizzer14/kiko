@@ -821,4 +821,89 @@ describe('buildNetWorthSeries', () => {
 
     expect(series.points[0]?.amount).toBe(0);
   });
+
+  // T27 (spec §5.2): net worth = assets − debt outstanding. A loan's own
+  // value is negative (`holding-value.ts`), and `buildNetWorthSeries` needs
+  // no debt-aware logic of its own — it already sums every holding's own
+  // (possibly negative) value at each bucket, day by day, following manual
+  // corrections the same way a `none`-schedule loan's series already does.
+  it("subtracts a loan holding's outstanding balance from net worth, day by day", () => {
+    const loan = holding({
+      id: 'loan',
+      currency: 'UAH',
+      type: 'loan',
+      metadata: {
+        kind: 'personal',
+        principalMinorUnits: 100_000_00,
+        startDate: D0,
+        schedule: 'none',
+      },
+    });
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('loan'),
+        day: D0,
+        price: '100000',
+        currency: 'UAH',
+        source: 'manual',
+      },
+      {
+        instrument: holdingInstrument('loan'),
+        day: D1,
+        price: '90000',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+
+    const series = buildNetWorthSeries({
+      holdings: [loan],
+      txByHolding: new Map(),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'UAH',
+      range: { from: D0, to: D1 },
+      book,
+    });
+
+    // Value = -outstanding, in major units, at each day's own correction.
+    expect(series.points.map((point) => point.amount)).toEqual([-100_000, -90_000]);
+  });
+
+  // M4: a correction dated AFTER the queried instant must never retroactively
+  // anchor it — the loan contributes exactly 0 before its own `startDate`,
+  // the same rule `holding-value.test.ts` covers at the single-holding level,
+  // now exercised through the full series builder.
+  it("contributes 0 to net worth before the loan's own start date (M4)", () => {
+    const loan = holding({
+      id: 'loan',
+      currency: 'UAH',
+      type: 'loan',
+      metadata: {
+        kind: 'personal',
+        principalMinorUnits: 100_000_00,
+        startDate: D1,
+        schedule: 'none',
+      },
+    });
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('loan'),
+        day: D1,
+        price: '100000',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+
+    const series = buildNetWorthSeries({
+      holdings: [loan],
+      txByHolding: new Map(),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'UAH',
+      range: { from: D0, to: D0 },
+      book,
+    });
+
+    expect(series.points[0]?.amount).toBe(0);
+  });
 });

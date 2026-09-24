@@ -3,10 +3,12 @@ import { taxOnInterestMinor } from '../tax';
 import { Money, toMajor } from '../../currency/money';
 import { startOfLocalDay } from '../../dates/local-day';
 import type { HoldingRow } from '../../db/schema';
+import { loanOutstandingMinorAt } from '../loan-schedule';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
 import { isPricedHoldingType, pricedValueMinor } from '../priced-value';
 import {
   asBondMeta,
+  asLoanMeta,
   asMetalMeta,
   asPropertyMeta,
   asTermDepositMeta,
@@ -175,6 +177,45 @@ const pricedLotsOf = (holding: ValuableHolding) =>
     ? asMetalMeta(holding.metadata)?.lots
     : asPropertyMeta(holding.metadata)?.lots;
 
+// A loan's held value is NEGATIVE (spec 5, T27): it is debt, not an asset, so
+// `holdingValue`/net-worth subtract it by simply summing every holding's own
+// signed value. `gross`/`net` are minus the outstanding balance at `now`
+// (`loanOutstandingMinorAt` — M4 already returns 0 before the loan's own
+// `startDate`, so a not-yet-taken loan contributes nothing, mirroring a
+// priced holding before its first lot). `principalOrCost` is minus the
+// ORIGINAL principal, flat, regardless of how much has been paid down —
+// mirroring `principalOrCost`'s role elsewhere as the reference point a
+// gain/loss (here, a payoff progress) is measured against, not the current
+// balance. A loan never accrues interest/tax at valuation time (interest is
+// a ledger event on payment, `loanInterestForPaymentMinor` — not a held
+// value), so both stay zero.
+const loanBreakdown = (
+  holding: ValuableHolding,
+  now: number,
+  book: PriceBook,
+): HoldingValueBreakdown => {
+  const meta = asLoanMeta(holding.metadata);
+  if (meta === null) {
+    return flat(holding.currency, holding.balanceMinorUnits);
+  }
+  const { currency } = holding;
+  const outstandingMinor = loanOutstandingMinorAt(meta, holding.id ?? '', book, now);
+  // `outstandingMinor` is always clamped >= 0 (`loanOutstandingMinorAt`);
+  // negating it directly would produce `-0` for a paid-off loan (`Object.is`
+  // distinguishes `-0` from `0`, which a `toBe(0)` assertion catches), so the
+  // `|| 0` normalizes the zero case back to a plain `0`.
+  const negatedOutstandingMinor = -outstandingMinor || 0;
+  const zero = Money.of(currency, 0);
+
+  return {
+    gross: Money.of(currency, negatedOutstandingMinor),
+    principalOrCost: Money.of(currency, -meta.principalMinorUnits),
+    interest: zero,
+    tax: zero,
+    net: Money.of(currency, negatedOutstandingMinor),
+  };
+};
+
 // A priced holding's gross/net are its `pricedValueMinor` (a `PriceBook`
 // lookup), falling back to its lots' cost basis when there is no stored price
 // point yet — Review Focus 5: never 0. `principalOrCost` is ALWAYS the cost
@@ -240,6 +281,8 @@ export const holdingValueBreakdown = (
       return depositBreakdown(holding, now);
     case 'bond':
       return bondBreakdown(holding, now);
+    case 'loan':
+      return loanBreakdown(holding, now, book);
     default:
       return flat(holding.currency, holding.balanceMinorUnits);
   }

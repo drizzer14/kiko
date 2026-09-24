@@ -27,6 +27,11 @@ export type TypeSlice = { type: HoldingType; amount: number };
  * no rate (so one unconvertible holding never voids the rest of its type).
  * Types that total zero — including those whose only holdings are unconvertible —
  * are excluded, and the remaining entries are sorted by amount descending.
+ *
+ * `loan` is excluded outright (T27): this bar is an ASSET breakdown, and a
+ * loan's own held value is NEGATIVE (`holding-value.ts`), so it has its own
+ * "Debts" total elsewhere on Statistics (`buildDebtTotal`,
+ * `account-contribution.ts`) rather than showing up here as a negative bar.
  */
 export const buildTypeBreakdown = (input: {
   holdings: BreakdownHolding[];
@@ -38,6 +43,7 @@ export const buildTypeBreakdown = (input: {
   const { holdings, rateTable, baseCurrency, now, book = EMPTY_PRICE_BOOK } = input;
 
   return holdingTypes
+    .filter((type) => type !== 'loan')
     .map((type) => {
       const total = holdings
         .filter(

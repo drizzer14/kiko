@@ -203,6 +203,35 @@ describe('guardedNetWorth', () => {
     expect(guardedNetWorth(holdings, 'UAH', rates, NOW).minorUnits).toBe(500_000);
     expect(guardedNetWorth(holdings, 'UAH', rates, NOW, book).minorUnits).toBe(900_000);
   });
+
+  // T27 (spec §5.2): net worth = assets − debt outstanding. A loan holding's
+  // own value is already NEGATIVE (`holding-value.ts`), so plainly summing
+  // every holding — exactly what `guardedNetWorth`/`netWorth` already do —
+  // subtracts the debt with no extra debt-aware logic here; a total can now
+  // go negative when the debt outweighs the assets.
+  it('subtracts a loan holding from the total, and goes negative when debt outweighs assets', () => {
+    const loan = {
+      id: 'loan-1',
+      currency: 'UAH' as const,
+      type: 'loan' as const,
+      balanceMinorUnits: 0,
+      metadata: {
+        kind: 'mortgage' as const,
+        principalMinorUnits: 900_000, // 9,000.00 UAH
+        startDate: NOW, // no installment due yet: outstanding is the full principal
+        annualRatePct: 10,
+        termMonths: 120,
+        schedule: 'annuity' as const,
+      },
+    };
+
+    const partialOffset = guardedNetWorth([cash('UAH', 500_000), loan], 'UAH', rates, NOW);
+    expect(partialOffset.minorUnits).toBe(500_000 - 900_000);
+    expect(partialOffset.minorUnits).toBeLessThan(0);
+
+    const debtOnly = guardedNetWorth([loan], 'UAH', rates, NOW);
+    expect(debtOnly.minorUnits).toBe(-900_000);
+  });
 });
 
 describe('guardedBreakdown', () => {

@@ -123,4 +123,34 @@ describe('buildTypeBreakdown', () => {
     });
     expect(withBook).toEqual([{ type: 'property_item', amount: 25_000 }]);
   });
+
+  // T27: debt is out of scope for the by-type ASSET bar (it has its own
+  // "Debts" total elsewhere on Statistics — `buildDebtTotal`), and a loan's
+  // held value is negative (T27, `holding-value.ts`), which would otherwise
+  // slip past the `amount !== 0` filter above as a negative bar.
+  it('excludes a loan holding entirely — no loan bar, even though its value is negative', () => {
+    const holdings = [
+      holding({ type: 'card', currency: 'USD', balanceMinorUnits: 10_000 }),
+      holding({
+        id: 'loan-1',
+        type: 'loan',
+        currency: 'USD',
+        metadata: {
+          kind: 'personal',
+          principalMinorUnits: 5_000,
+          startDate: 0,
+          annualRatePct: 10,
+          termMonths: 12,
+          schedule: 'annuity',
+        },
+      }),
+    ];
+
+    // Queried AT the loan's own startDate: outstanding is the full principal, so
+    // the loan's own held value is a genuinely non-zero negative amount — a loose
+    // `amount !== 0` filter alone would let it through as a negative bar.
+    const result = buildTypeBreakdown({ holdings, rateTable: rates, baseCurrency: 'USD', now: 0 });
+
+    expect(result.map((slice) => slice.type)).toEqual(['card']);
+  });
 });

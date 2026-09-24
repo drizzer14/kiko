@@ -138,6 +138,8 @@ type Holding = {
   currency: string;
   balanceMinorUnits: number;
   closedAt?: number | null;
+  type?: string;
+  metadata?: unknown;
 };
 type Rate = { base: string; quote: string; rate: string };
 type Settings = { baseCurrency: string };
@@ -527,6 +529,39 @@ describe('HomeScreen', () => {
     const [netWorth] = getAllByText(/0\.00 ₴/);
     expect(netWorth.props.testID).toBe('text-tone-textPrimary');
     expect(queryByTestId('net-worth-wash-svg')).toBeNull();
+  });
+
+  // T27 (spec §5.2/5.3): net worth = assets − debt outstanding, so a debt
+  // large enough goes the headline negative — MoneyText renders it with a
+  // minus sign, colored `negative` (never `textPrimary`, the positive/zero
+  // tone the two tests above assert).
+  it('renders a negative net worth with a minus sign, toned negative, when debt outweighs assets', async () => {
+    seed({
+      holdings: [
+        UAH_HOLDING, // 1,000.00 UAH asset
+        {
+          id: 'loan-1',
+          accountId: 'a',
+          currency: 'UAH',
+          balanceMinorUnits: 0,
+          type: 'loan',
+          metadata: {
+            kind: 'mortgage',
+            principalMinorUnits: 500_000, // 5,000.00 UAH — no installment due yet
+            startDate: Date.now(),
+            annualRatePct: 10,
+            termMonths: 120,
+            schedule: 'annuity',
+          },
+        },
+      ],
+    });
+
+    const { getAllByText } = await renderHome();
+
+    // 1,000.00 asset − 5,000.00 debt = −4,000.00.
+    const [netWorth] = getAllByText(/-4,000\.00 ₴/);
+    expect(netWorth.props.testID).toBe('text-tone-negative');
   });
 
   it('excludes holdings whose parent account is archived from the total', async () => {
