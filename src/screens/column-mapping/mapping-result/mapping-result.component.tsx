@@ -52,7 +52,7 @@ const MappingResult: FC<MappingResultProps> = ({
       )}
 
       {!hasResolvedTransactions && noRowsResolvedError !== undefined && (
-        <FieldError message={noRowsResolvedError} />
+        <FieldError message={noRowsResolvedError} testID="column-mapping-no-rows-error" />
       )}
 
       {stats !== undefined && (

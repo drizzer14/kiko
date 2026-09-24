@@ -49,6 +49,23 @@ describe('MappingResult', () => {
     expect(queryByText(i18n.t('columnMapping.incomplete'))).toBeNull();
   });
 
+  // A stable testID for the Result block's own error, mirroring every other
+  // field-level `FieldError` on this screen — round 2's Ruling A switched
+  // this message to the shared `FieldError` component but left it without
+  // one.
+  it('gives the noRowsResolvedError a stable testID', async () => {
+    const { getByTestId } = await render(
+      <MappingResult
+        stats={undefined}
+        rowErrors={[]}
+        mappingIncomplete={false}
+        noRowsResolvedError={i18n.t('columnMapping.noRowsResolvedError')}
+      />,
+    );
+
+    expect(getByTestId('column-mapping-no-rows-error')).toBeTruthy();
+  });
+
   // The heading shows in BOTH the incomplete and complete states — it never
   // jumps position/spacing when the last required column gets mapped
   // (SummaryTable gets no `title` of its own).
