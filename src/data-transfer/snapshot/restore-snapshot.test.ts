@@ -39,6 +39,25 @@ const tableNameOf = (table: unknown): string => {
   throw new Error('unknown table');
 };
 
+// Shared by every test below that only cares WHAT got inserted (not
+// deletion order) — a no-op `delete`, and an `insert` that accumulates
+// every table's rows by name so a test can assert on one table's own list.
+const makeRowCapturingTx = (): { tx: unknown; insertedRows: Record<string, unknown[]> } => {
+  const insertedRows: Record<string, unknown[]> = {};
+  const tx = {
+    delete: () => Promise.resolve(),
+    insert: (table: unknown) => ({
+      values: (rows: unknown[]) => {
+        const name = tableNameOf(table);
+        insertedRows[name] = [...(insertedRows[name] ?? []), ...rows];
+        return Promise.resolve();
+      },
+    }),
+  };
+
+  return { tx, insertedRows };
+};
+
 const emptySnapshot: DataSnapshot = {
   accounts: [],
   holdings: [],
@@ -106,22 +125,14 @@ describe('restoreDataSnapshot', () => {
   });
 
   it('skips the insert entirely for every OTHER table with no rows (no empty .values([]) call)', async () => {
-    const insertedTables: string[] = [];
-    mockTx = {
-      delete: () => Promise.resolve(),
-      insert: (table: unknown) => ({
-        values: (rows: unknown[]) => {
-          insertedTables.push(tableNameOf(table));
-          return Promise.resolve(rows);
-        },
-      }),
-    };
+    const { tx, insertedRows } = makeRowCapturingTx();
+    mockTx = tx;
 
     await restoreDataSnapshot(emptySnapshot);
 
     // `categories` is the one exception: the `loan_interest` reseed always
     // inserts, even from an otherwise-empty snapshot.
-    expect(insertedTables).toEqual(['categories']);
+    expect(Object.keys(insertedRows)).toEqual(['categories']);
   });
 
   // A pre-0039 `.kiko` file was exported before `loan_interest` existed, and
@@ -132,17 +143,8 @@ describe('restoreDataSnapshot', () => {
   // the picker.
   describe('loan_interest category reseed (a pre-0039 snapshot never had it)', () => {
     it('appends loan_interest at one past every OTHER category, when the snapshot has none', async () => {
-      const insertedRows: Record<string, unknown[]> = {};
-      mockTx = {
-        delete: () => Promise.resolve(),
-        insert: (table: unknown) => ({
-          values: (rows: unknown[]) => {
-            const name = tableNameOf(table);
-            insertedRows[name] = [...(insertedRows[name] ?? []), ...rows];
-            return Promise.resolve();
-          },
-        }),
-      };
+      const { tx, insertedRows } = makeRowCapturingTx();
+      mockTx = tx;
 
       await restoreDataSnapshot({
         ...emptySnapshot,
@@ -164,17 +166,8 @@ describe('restoreDataSnapshot', () => {
     });
 
     it('does not duplicate or overwrite the snapshot own loan_interest row when it already has one', async () => {
-      const insertedRows: Record<string, unknown[]> = {};
-      mockTx = {
-        delete: () => Promise.resolve(),
-        insert: (table: unknown) => ({
-          values: (rows: unknown[]) => {
-            const name = tableNameOf(table);
-            insertedRows[name] = [...(insertedRows[name] ?? []), ...rows];
-            return Promise.resolve();
-          },
-        }),
-      };
+      const { tx, insertedRows } = makeRowCapturingTx();
+      mockTx = tx;
       // A post-0039 export, carrying the user's OWN edited title/color.
       const ownLoanInterest = {
         key: 'loan_interest',
@@ -194,17 +187,8 @@ describe('restoreDataSnapshot', () => {
   });
 
   it('inserts a snapshot pricePoints row into the price_points table', async () => {
-    const insertedRows: Record<string, unknown[]> = {};
-    mockTx = {
-      delete: () => Promise.resolve(),
-      insert: (table: unknown) => ({
-        values: (rows: unknown[]) => {
-          const name = tableNameOf(table);
-          insertedRows[name] = [...(insertedRows[name] ?? []), ...rows];
-          return Promise.resolve();
-        },
-      }),
-    };
+    const { tx, insertedRows } = makeRowCapturingTx();
+    mockTx = tx;
 
     await restoreDataSnapshot({
       ...emptySnapshot,
@@ -219,16 +203,8 @@ describe('restoreDataSnapshot', () => {
   });
 
   it('restores an empty price_points table for a legacy snapshot with no pricePoints field', async () => {
-    const insertedTables: string[] = [];
-    mockTx = {
-      delete: () => Promise.resolve(),
-      insert: (table: unknown) => ({
-        values: (rows: unknown[]) => {
-          insertedTables.push(tableNameOf(table));
-          return Promise.resolve(rows);
-        },
-      }),
-    };
+    const { tx, insertedRows } = makeRowCapturingTx();
+    mockTx = tx;
     // Simulates a `.kiko` file exported before T11 — the JS object literally
     // carries no `pricePoints` key, despite `DataSnapshot` declaring it
     // required.
@@ -257,21 +233,12 @@ describe('restoreDataSnapshot', () => {
 
     await restoreDataSnapshot(legacySnapshot);
 
-    expect(insertedTables).not.toContain('pricePoints');
+    expect(Object.keys(insertedRows)).not.toContain('pricePoints');
   });
 
   it('inserts a snapshot bondRegister row into the bond_register table', async () => {
-    const insertedRows: Record<string, unknown[]> = {};
-    mockTx = {
-      delete: () => Promise.resolve(),
-      insert: (table: unknown) => ({
-        values: (rows: unknown[]) => {
-          const name = tableNameOf(table);
-          insertedRows[name] = [...(insertedRows[name] ?? []), ...rows];
-          return Promise.resolve();
-        },
-      }),
-    };
+    const { tx, insertedRows } = makeRowCapturingTx();
+    mockTx = tx;
 
     await restoreDataSnapshot({
       ...emptySnapshot,
@@ -290,16 +257,8 @@ describe('restoreDataSnapshot', () => {
   });
 
   it('restores an empty bond_register table for a legacy (pre-T24) snapshot with no bondRegister field', async () => {
-    const insertedTables: string[] = [];
-    mockTx = {
-      delete: () => Promise.resolve(),
-      insert: (table: unknown) => ({
-        values: (rows: unknown[]) => {
-          insertedTables.push(tableNameOf(table));
-          return Promise.resolve(rows);
-        },
-      }),
-    };
+    const { tx, insertedRows } = makeRowCapturingTx();
+    mockTx = tx;
     // Simulates a `.kiko` file exported before T24 — the JS object literally
     // carries no `bondRegister` key, despite `DataSnapshot` declaring it
     // required.
@@ -308,7 +267,7 @@ describe('restoreDataSnapshot', () => {
 
     await restoreDataSnapshot(legacySnapshot as unknown as DataSnapshot);
 
-    expect(insertedTables).not.toContain('bondRegister');
+    expect(Object.keys(insertedRows)).not.toContain('bondRegister');
   });
 
   // C1 (T29 review round 1): a chunk size fixed in rows (2000), rather than
@@ -366,17 +325,8 @@ describe('restoreDataSnapshot', () => {
   // exactly like every other nullable column added after `transactions` first
   // shipped (`counterIban`, `changeGroupId`).
   it('restores a legacy transaction row with no loan-link keys unchanged', async () => {
-    const insertedRows: Record<string, unknown[]> = {};
-    mockTx = {
-      delete: () => Promise.resolve(),
-      insert: (table: unknown) => ({
-        values: (rows: unknown[]) => {
-          const name = tableNameOf(table);
-          insertedRows[name] = [...(insertedRows[name] ?? []), ...rows];
-          return Promise.resolve();
-        },
-      }),
-    };
+    const { tx, insertedRows } = makeRowCapturingTx();
+    mockTx = tx;
     const legacyTransaction = { id: 't1', holdingId: 'h1', source: 'manual' };
 
     await restoreDataSnapshot({
@@ -401,17 +351,7 @@ describe('restoreDataSnapshot', () => {
       mockTx: unknown;
       insertedHoldings: () => Record<string, unknown>[];
     } => {
-      const insertedRows: Record<string, unknown[]> = {};
-      const tx = {
-        delete: () => Promise.resolve(),
-        insert: (table: unknown) => ({
-          values: (rows: unknown[]) => {
-            const name = tableNameOf(table);
-            insertedRows[name] = [...(insertedRows[name] ?? []), ...rows];
-            return Promise.resolve();
-          },
-        }),
-      };
+      const { tx, insertedRows } = makeRowCapturingTx();
 
       return {
         mockTx: tx,
