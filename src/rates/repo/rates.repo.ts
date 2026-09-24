@@ -1,6 +1,7 @@
 import type { Repository } from '@kiko/db/repository';
 import { max, sql } from 'drizzle-orm';
 
+import { chunkForTable } from '../../db/chunk-for-table';
 import { database, write } from '../../db/client';
 import { type CurrencyRateRow, currencyRates } from '../../db/schema';
 
@@ -22,18 +23,24 @@ export const ratesRepo = {
       if (rates.length === 0) {
         return;
       }
-      // Upsert on the (base, quote) unique index: a refreshed rate for an
-      // existing pair overwrites its value, source, and timestamp in place.
-      await tx
-        .insert(currencyRates)
-        .values(rates)
-        .onConflictDoUpdate({
-          target: [currencyRates.base, currencyRates.quote],
-          set: {
-            rate: sql`excluded.rate`,
-            source: sql`excluded.source`,
-            fetchedAt: sql`excluded.fetched_at`,
-          },
-        });
+      // A full Monobank sync composes every cross pair across the supported
+      // currency set (~11,990 rows at 5 params/row), which overflows SQLite's
+      // SQLITE_MAX_VARIABLE_NUMBER (32766) in one insert — chunk it the same
+      // way `rateHistoryRepo.upsertMany` does, all inside this one transaction.
+      for (const chunk of chunkForTable(currencyRates, rates)) {
+        // Upsert on the (base, quote) unique index: a refreshed rate for an
+        // existing pair overwrites its value, source, and timestamp in place.
+        await tx
+          .insert(currencyRates)
+          .values(chunk)
+          .onConflictDoUpdate({
+            target: [currencyRates.base, currencyRates.quote],
+            set: {
+              rate: sql`excluded.rate`,
+              source: sql`excluded.source`,
+              fetchedAt: sql`excluded.fetched_at`,
+            },
+          });
+      }
     }),
 } satisfies Repository;
