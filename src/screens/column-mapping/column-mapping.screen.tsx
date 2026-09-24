@@ -51,7 +51,9 @@ import MappingResult from './mapping-result';
 import ColumnSelectField from './column-select-field';
 import ChipRow from '../forms/chip-row';
 import ImportOutcome from '../statement-import/import-outcome';
-import ImportResultSheet from '../statement-import/import-result-sheet';
+import ImportResultSheet, {
+  IMPORT_RESULT_SHEET_CLOSE_DELAY_MS,
+} from '../statement-import/import-result-sheet';
 import { previewStats, type PreviewStats } from '../statement-import/preview-stats/preview-stats';
 import TargetHoldingField from '../statement-import/target-holding-field';
 import type { AmountMode } from './amount-fields/amount-fields.props';
@@ -622,6 +624,9 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | undefined>(undefined);
   const [importResult, setImportResult] = useState<ImportResult | undefined>(undefined);
+  // N4 (F3 part 1 fix round 2): decoupled from `importResult` itself — see
+  // `handleImportDone` below for why.
+  const [resultSheetVisible, setResultSheetVisible] = useState(false);
 
   const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts']);
   const account = accounts.at(0);
@@ -793,6 +798,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
 
     try {
       setImportResult(await importParsedStatement(applyResult.statement, selectedHoldingId));
+      setResultSheetVisible(true);
 
       const fingerprint = headerFingerprint(rows[mapping.headerRowIndex] ?? []);
       const key = mappingKeyFor(account?.bankId, fingerprint);
@@ -816,17 +822,24 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   // — see `src/navigation/statement-import-return.navigator.test.tsx` for
   // the real-router proof) — finds the existing `AccountDetail` instance
   // already on the stack (this screen was pushed from StatementImport,
-  // itself pushed FROM there) and pops back to it in one hop. Does NOT
-  // clear `importResult` (M4, fix round 1) — see the matching comment on
-  // `statement-import.screen.tsx`'s own `handleImportDone`.
+  // itself pushed FROM there) and pops back to it in one hop.
+  //
+  // N4 (F3 part 1 fix round 2): closes the sheet FIRST, navigates
+  // `IMPORT_RESULT_SHEET_CLOSE_DELAY_MS` later — see the matching comment on
+  // `statement-import.screen.tsx`'s own `handleImportDone` for why.
+  // `importResult` itself is still never cleared (M4, fix round 1).
   const handleImportDone = (): void => {
-    if (account) {
-      navigation.popTo('AccountDetail', { accountId, name: account.name }, { merge: true });
+    setResultSheetVisible(false);
 
-      return;
-    }
+    setTimeout(() => {
+      if (account) {
+        navigation.popTo('AccountDetail', { accountId, name: account.name }, { merge: true });
 
-    navigation.goBack();
+        return;
+      }
+
+      navigation.goBack();
+    }, IMPORT_RESULT_SHEET_CLOSE_DELAY_MS);
   };
 
   const footer =
@@ -901,7 +914,11 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
         )}
       </Box>
 
-      <ImportResultSheet result={importResult} onDone={handleImportDone} />
+      <ImportResultSheet
+        visible={resultSheetVisible}
+        result={importResult}
+        onDone={handleImportDone}
+      />
     </Screen>
   );
 };

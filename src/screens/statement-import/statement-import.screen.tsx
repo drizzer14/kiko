@@ -36,7 +36,7 @@ import {
 import { importStatement, type ImportResult } from '../../statement-import/import-statement';
 
 import ImportOutcome from './import-outcome';
-import ImportResultSheet from './import-result-sheet';
+import ImportResultSheet, { IMPORT_RESULT_SHEET_CLOSE_DELAY_MS } from './import-result-sheet';
 import { styles } from './statement-import.styles';
 import PreviewDetailList from './preview-detail-list';
 import ExampleTransaction from './example-transaction';
@@ -265,6 +265,9 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | undefined>(undefined);
   const [importResult, setImportResult] = useState<ImportResult | undefined>(undefined);
+  // N4 (F3 part 1 fix round 2): decoupled from `importResult` itself — see
+  // `handleImportDone` below for why.
+  const [resultSheetVisible, setResultSheetVisible] = useState(false);
   const holdingOptions = useTargetHoldingOptions(accountId);
 
   // T7's auto-replace check: an account's own `bankId` and its saved
@@ -429,6 +432,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
 
     try {
       setImportResult(await importStatement(input, selectedHoldingId));
+      setResultSheetVisible(true);
     } catch (error) {
       setImportError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -447,20 +451,29 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // screens deep this import happened. Falls back to a plain `goBack()`
   // when the account isn't resolvable (the accountId-less Share Extension
   // entry point) — NEVER `popTo` in that branch, which would ADD an
-  // `AccountDetail` that was never on this stack. Does NOT clear
-  // `importResult` (M4, fix round 1): the screen is navigating away, so the
-  // sheet's own slide-out animation keeps showing the last result text
-  // instead of flashing empty content mid-transition.
+  // `AccountDetail` that was never on this stack.
+  //
+  // N4 (F3 part 1 fix round 2): closes the sheet FIRST
+  // (`setResultSheetVisible(false)`) and only navigates
+  // `IMPORT_RESULT_SHEET_CLOSE_DELAY_MS` later — popping the underlying
+  // native-stack screen while its RN `Modal` is still mid-close is a known
+  // iOS rough edge (device feedback, round 1 re-review). `importResult`
+  // itself is NEVER cleared (M4, fix round 1), so the sheet's last content
+  // stays correct for the whole close animation, independent of `visible`.
   const handleImportDone = (): void => {
+    setResultSheetVisible(false);
+
     const account = accountRows.at(0);
 
-    if (accountId && account) {
-      navigation.popTo('AccountDetail', { accountId, name: account.name }, { merge: true });
+    setTimeout(() => {
+      if (accountId && account) {
+        navigation.popTo('AccountDetail', { accountId, name: account.name }, { merge: true });
 
-      return;
-    }
+        return;
+      }
 
-    navigation.goBack();
+      navigation.goBack();
+    }, IMPORT_RESULT_SHEET_CLOSE_DELAY_MS);
   };
 
   // T7's manual entry point into the generic column-mapping screen. Only
@@ -541,7 +554,11 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
         )}
       </Box>
 
-      <ImportResultSheet result={importResult} onDone={handleImportDone} />
+      <ImportResultSheet
+        visible={resultSheetVisible}
+        result={importResult}
+        onDone={handleImportDone}
+      />
     </Screen>
   );
 };

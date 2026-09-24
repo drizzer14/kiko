@@ -11,6 +11,7 @@ import { headerFingerprint } from '../../statement-import/column-mapping';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import StatementImportScreen from './statement-import.screen';
+import { IMPORT_RESULT_SHEET_CLOSE_DELAY_MS } from './import-result-sheet';
 
 // The real uabean fixture (already committed by Task 1) — read as raw text
 // then re-encoded as base64, the exact shape `RNFS.readFile(uri, 'base64')`
@@ -438,9 +439,8 @@ describe('StatementImportScreen', () => {
   });
 
   // Item 15 (F3): a successful Import shows a MODAL with the result text —
-  // the same text the screen bottom used to show inline — then navigates
-  // back to the account screen once dismissed.
-  it('shows the import result as a modal, then navigates to AccountDetail when Done is pressed', async () => {
+  // the same text the screen bottom used to show inline.
+  it('shows the import result as a modal', async () => {
     mockReadFile.mockResolvedValue(fixtureBase64);
     mockImportStatement.mockResolvedValue({ formatId: 'monobank-csv', imported: 3, total: 4 });
     setLiveData({ account: { id: 'a', name: 'My Monobank card', bankId: 'monobank' } });
@@ -455,26 +455,6 @@ describe('StatementImportScreen', () => {
     await waitFor(() =>
       expect(view.getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy(),
     );
-
-    await fireEvent.press(view.getByText(i18n.t('common.done')));
-
-    // C1 (fix round 1, Critical): `popTo`, not `navigate` — `navigate` on
-    // React Navigation 7 pushes a duplicate AccountDetail instead of
-    // reusing the existing one. This spy assertion proves PRODUCTION calls
-    // the right method with the right args; the real-router proof that
-    // `popTo` itself reuses the instance (no duplicate) lives in
-    // `src/navigation/statement-import-return.navigator.test.tsx`.
-    expect(view.navigation.popTo).toHaveBeenCalledWith(
-      'AccountDetail',
-      { accountId: 'a', name: 'My Monobank card' },
-      { merge: true },
-    );
-    expect(view.navigation.navigate).not.toHaveBeenCalledWith('AccountDetail', expect.anything());
-    // M4 (fix round 1, Minor): handleImportDone must NOT clear importResult
-    // — the screen is navigating away, so the sheet's own slide-out
-    // animation keeps showing the last result text instead of flashing
-    // empty content mid-transition.
-    expect(view.getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy();
   });
 
   // Item 2 (F3, BUG): "Add new" holding must end up SELECTED once created,
@@ -781,6 +761,68 @@ describe('StatementImportScreen — column-mapping entry point (T7)', () => {
       ).toBeTruthy(),
     );
     expect(navigation.replace).not.toHaveBeenCalled();
+  });
+});
+
+// N4 (F3 part 1 fix round 2, orchestrator ruling): on Done, the sheet closes
+// FIRST — popping the underlying native-stack screen while its RN Modal is
+// still mid-close is a known iOS rough edge — and only THEN, after the
+// sheet's own close animation has had time to finish, does the screen
+// navigate away.
+describe('StatementImportScreen — Done closes the sheet before navigating (N4)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setLiveData({});
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('closes the sheet immediately, and defers popTo until after the close-animation delay', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+    mockImportStatement.mockResolvedValue({ formatId: 'monobank-csv', imported: 3, total: 4 });
+    setLiveData({ account: { id: 'a', name: 'My Monobank card', bankId: 'monobank' } });
+
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+
+    await waitFor(() => expect(view.getByText('Monobank (CSV)')).toBeTruthy());
+
+    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    await waitFor(() =>
+      expect(view.getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy(),
+    );
+
+    // Fake timers only from here — everything above needs real ones for
+    // `waitFor`'s own polling.
+    jest.useFakeTimers();
+
+    await act(async () => {
+      await fireEvent.press(view.getByText(i18n.t('common.done')));
+    });
+
+    // Step 1 (immediate): the sheet is closed — its content is gone, matching
+    // a real `visible={false}` Modal transition starting right away.
+    expect(view.queryByText(i18n.t('statementImport.importResultTitle'))).toBeNull();
+    // Step 2 has NOT happened yet: no navigation until the close-animation
+    // delay elapses.
+    expect(view.navigation.popTo).not.toHaveBeenCalled();
+    expect(view.navigation.goBack).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(IMPORT_RESULT_SHEET_CLOSE_DELAY_MS);
+    });
+
+    // Step 2 (after the delay): NOW it navigates — `popTo`, not `navigate`
+    // (C1) — reusing the existing `AccountDetail` instance.
+    expect(view.navigation.popTo).toHaveBeenCalledWith(
+      'AccountDetail',
+      { accountId: 'a', name: 'My Monobank card' },
+      { merge: true },
+    );
+    expect(view.navigation.navigate).not.toHaveBeenCalledWith('AccountDetail', expect.anything());
   });
 });
 

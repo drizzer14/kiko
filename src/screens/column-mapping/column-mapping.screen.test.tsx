@@ -10,6 +10,7 @@ import { headerFingerprint } from '../../statement-import/column-mapping';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import ColumnMappingScreen from './column-mapping.screen';
+import { IMPORT_RESULT_SHEET_CLOSE_DELAY_MS } from '../statement-import/import-result-sheet';
 
 const monobankFixtureText = readFileSync(
   path.join(
@@ -367,10 +368,8 @@ describe('ColumnMappingScreen', () => {
     expect(mockImportParsedStatement).not.toHaveBeenCalled();
   });
 
-  // Item 15 (F3): a successful Import shows a MODAL with the result text,
-  // then navigates back to the account screen once dismissed — the same
-  // pattern statement-import.screen.test.tsx exercises on its own screen.
-  it('shows the import result as a modal, then navigates to AccountDetail when Done is pressed', async () => {
+  // Item 15 (F3): a successful Import shows a MODAL with the result text.
+  it('shows the import result as a modal', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
     mockImportParsedStatement.mockResolvedValue({
       formatId: 'column-mapping',
@@ -388,20 +387,6 @@ describe('ColumnMappingScreen', () => {
     await waitFor(() =>
       expect(view.getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy(),
     );
-
-    await fireEvent.press(view.getByText(i18n.t('common.done')));
-
-    // C1 (fix round 1, Critical): `popTo`, not `navigate` — see the matching
-    // assertion in statement-import.screen.test.tsx for why.
-    expect(view.navigation.popTo).toHaveBeenCalledWith(
-      'AccountDetail',
-      { accountId: 'a', name: 'Monobank' },
-      { merge: true },
-    );
-    expect(view.navigation.navigate).not.toHaveBeenCalledWith('AccountDetail', expect.anything());
-    // M4 (fix round 1, Minor): same as statement-import.screen.test.tsx's
-    // matching assertion — handleImportDone must not clear importResult.
-    expect(view.getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy();
   });
 
   it('imports then saves the confirmed mapping under bank:<bankId>', async () => {
@@ -580,6 +565,65 @@ describe('ColumnMappingScreen', () => {
         expect(errors.length).toBe(2);
       });
     });
+  });
+});
+
+// N4 (F3 part 1 fix round 2, orchestrator ruling): on Done, the sheet
+// closes FIRST, and only THEN, after the sheet's own close animation has
+// had time to finish, does the screen navigate away — see the matching
+// describe block in statement-import.screen.test.tsx for the full
+// rationale.
+describe('ColumnMappingScreen — Done closes the sheet before navigating (N4)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding] });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('closes the sheet immediately, and defers popTo until after the close-animation delay', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    mockImportParsedStatement.mockResolvedValue({
+      formatId: 'column-mapping',
+      imported: 4,
+      total: 4,
+      skippedWrongCurrency: 0,
+    });
+
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+    await mapMonobankColumns(view);
+    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    await waitFor(() =>
+      expect(view.getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy(),
+    );
+
+    // Fake timers only from here — everything above needs real ones for
+    // `waitFor`'s own polling.
+    jest.useFakeTimers();
+
+    await act(async () => {
+      await fireEvent.press(view.getByText(i18n.t('common.done')));
+    });
+
+    expect(view.queryByText(i18n.t('statementImport.importResultTitle'))).toBeNull();
+    expect(view.navigation.popTo).not.toHaveBeenCalled();
+    expect(view.navigation.goBack).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(IMPORT_RESULT_SHEET_CLOSE_DELAY_MS);
+    });
+
+    expect(view.navigation.popTo).toHaveBeenCalledWith(
+      'AccountDetail',
+      { accountId: 'a', name: 'Monobank' },
+      { merge: true },
+    );
+    expect(view.navigation.navigate).not.toHaveBeenCalledWith('AccountDetail', expect.anything());
   });
 });
 
