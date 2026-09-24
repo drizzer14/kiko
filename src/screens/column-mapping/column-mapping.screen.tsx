@@ -1,6 +1,7 @@
 import * as RNFS from 'react-native-fs';
 import type { TFunction } from 'i18next';
 import type { FC, RefObject } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useRef, useState } from 'react';
 import { View, Alert, type ScrollViewInstance } from 'react-native';
@@ -124,9 +125,7 @@ const tableInputFor = (
 
 const buildAmount = (fields: MappingFormFields): ColumnMapping['amount'] | undefined => {
   if (fields.amountMode === 'single') {
-    return fields.amountColumn === undefined
-      ? undefined
-      : { mode: 'single', column: fields.amountColumn };
+    return foldMap(maybe(fields.amountColumn), (column) => ({ mode: 'single' as const, column }));
   }
 
   return fields.debitColumn === undefined || fields.creditColumn === undefined
@@ -139,9 +138,7 @@ const buildCurrency = (fields: MappingFormFields): ColumnMapping['currency'] | u
     return { mode: 'fixed', currency: fields.fixedCurrency };
   }
 
-  return fields.currencyColumn === undefined
-    ? undefined
-    : { mode: 'column', column: fields.currencyColumn };
+  return foldMap(maybe(fields.currencyColumn), (column) => ({ mode: 'column' as const, column }));
 };
 
 // A structurally complete `ColumnMapping`, or `undefined` while a required
@@ -1058,7 +1055,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   const defaultCurrency: Currency = holdings.at(0)?.currency ?? 'UAH';
   const fixedCurrency = explicitFixedCurrency ?? defaultCurrency;
 
-  const headerRow = headerRowIndex !== undefined ? (rows[headerRowIndex] ?? []) : [];
+  const headerRow = foldMap(maybe(headerRowIndex), (index) => rows[index] ?? []) ?? [];
   const columnOptions = columnOptionsFor(headerRow);
 
   const mapping = buildColumnMapping({

@@ -1,4 +1,5 @@
 import { StackActions } from '@react-navigation/native';
+import maybe, { foldMap } from 'fnts/maybe';
 
 import { resetTabStackOnBlur } from './reset-tab-stack-on-blur';
 
@@ -10,7 +11,7 @@ import { resetTabStackOnBlur } from './reset-tab-stack-on-blur';
 const buildNavigation = (parentFocused: boolean | undefined, stackIndex = 1) => {
   const dispatch = jest.fn();
   const getParent = () =>
-    parentFocused === undefined ? undefined : { isFocused: () => parentFocused };
+    foldMap(maybe(parentFocused), (focused) => ({ isFocused: () => focused }));
   const getState = () => ({ index: stackIndex });
   // Only `getParent`, `getState`, and `dispatch` are exercised; cast the fake.
   const navigation = { dispatch, getParent, getState } as unknown as Parameters<
