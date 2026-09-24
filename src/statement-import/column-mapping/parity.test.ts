@@ -120,9 +120,9 @@ const resolveParitySelect = (
 
 /** A minimal in-memory fake for the write-transaction handle
  * `transactionsRepo.importRows` runs against — see `import-statement.test.ts`'s
- * own (more elaborate) `makeImportTx` for the full shape this mirrors;
+ * own (more elaborate) `makeImportDatabaseTransaction` for the full shape this mirrors;
  * deliberately NOT shared with that file (same reasoning as
- * `transactions.repo.test.ts`'s `makeImportRowsTx` doc comment): this suite
+ * `transactions.repo.test.ts`'s `makeImportRowsDatabaseTransaction` doc comment): this suite
  * only needs a single fixed holding/account pair, never a per-test override. */
 const makeFakeDatabaseTransaction = (store: { transactions: StoredRow[] }) => {
   let sequence = 0;

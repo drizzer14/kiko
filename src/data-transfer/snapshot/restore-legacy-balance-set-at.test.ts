@@ -32,7 +32,7 @@ type Row = Record<string, unknown>;
  * (select holding/account/sync-boundary, upsert, conditional balance
  * update) against ONE persistent in-memory store — the same
  * `store`-spanning-two-calls trick `import-statement.test.ts`'s
- * `makeImportTx` uses for its own re-import test, extended here to also
+ * `makeImportDatabaseTransaction` uses for its own re-import test, extended here to also
  * drive a restore first. Single holding, so table identity alone (no
  * `.where()` clause interpretation) is enough to route each call, mirroring
  * `transactions.repo.test.ts`'s and `import-statement.test.ts`'s own fakes. */

@@ -744,10 +744,10 @@ describe('holdings remove', () => {
 // (no transactions of its own), but OTHER holdings' payment rows can point
 // back at it via `loanHoldingId`. Deleting the loan must clear those links in
 // the SAME transaction, so a dangling id never survives the delete — a
-// cleared link then counts as normal spending again. `makeTx`'s own
+// cleared link then counts as normal spending again. `makeDatabaseTransaction`'s own
 // `update`/`delete` fakes don't interpret `.where(...)` (see its doc
 // comment), so this intercepts the `transactions` update directly to prove
-// the exact payload issued, layered on top of `makeTx`'s existing seeded
+// the exact payload issued, layered on top of `makeDatabaseTransaction`'s existing seeded
 // holding/account handling for everything else `remove` reads.
 // `inArrayClauseFromCondition` (asserting the exact WHERE predicate, M2) is
 // shared with `accounts.repo.test.ts` via `@kiko/db/in-array-clause-test-helper`.
@@ -1092,7 +1092,7 @@ describe('holdingsRepo.closeMany', () => {
 // patch, whether `delete(pricePoints)` ran, and every `insert(pricePoints)`
 // payload — enough to prove the three `LoanPricePointOp` kinds each touch
 // exactly the tables I1's fix promises, all inside the SAME transaction
-// (`mockTx` is shared by every call the function makes).
+// (`mockDatabaseTransaction` is shared by every call the function makes).
 const makeUpdateLoanDatabaseTransaction = (): {
   databaseTransaction: unknown;
   captured: {

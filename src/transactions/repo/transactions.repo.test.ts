@@ -935,7 +935,7 @@ describe('transactionsRepo.addManyDedup chunking', () => {
 });
 
 // A STORE-backed fake transaction handle for `addManyDedup`, unlike
-// `makeAddManyTx` above (which only CAPTURES the issued insert/conflict
+// `makeAddManyDatabaseTransaction` above (which only CAPTURES the issued insert/conflict
 // config for one call). `insert(...).onConflictDoUpdate(...)` here actually
 // applies the real `(source, external_id)` unique-index semantics against a
 // plain array — merging into an existing row on a match, pushing a new one
@@ -948,7 +948,7 @@ const makeAddManyStoreDatabaseTransaction = (store: Record<string, unknown>[]) =
       // `categoryOverrides` never carries a matching rule here (no test row
       // seeded), and the countNewRows existing-rows probe over `transactions`
       // does not need to be clause-accurate — mirrors `holdings.repo.test.ts`'s
-      // `makeTx`, which resolves the whole table rather than interpreting
+      // `makeDatabaseTransaction`, which resolves the whole table rather than interpreting
       // `.where(...)`.
       where: async () => (table === categoryOverrides ? [] : store),
     }),
@@ -1860,7 +1860,7 @@ describe('transactionsRepo.recordManualWithReturns', () => {
 // no separate query.
 //
 // Review follow-up: `import-statement.test.ts` has its own, similarly-shaped
-// `makeImportTx` — deliberately NOT shared with this one. That file's fake
+// `makeImportDatabaseTransaction` — deliberately NOT shared with this one. That file's fake
 // applies the upsert for real against a persistent `store` (its re-import
 // test spans TWO `importStatement` calls and asserts the SECOND sees the
 // first's real dedup effect), while every test here needs only a static,
@@ -2360,7 +2360,7 @@ describe('transactionsRepo.importRows', () => {
   });
 });
 
-// A STATEFUL fake, unlike `makeImportRowsTx` above (a static, per-call
+// A STATEFUL fake, unlike `makeImportRowsDatabaseTransaction` above (a static, per-call
 // answer): `holding` is a shared, mutable object a `holdings` write
 // actually mutates, and `store` is a shared, mutable transactions array a
 // row upsert actually appends to — so two SEQUENTIAL `importRows` calls
@@ -2369,7 +2369,7 @@ describe('transactionsRepo.importRows', () => {
 // block below that spans more than one `importRows` call in a single test
 // (order independence, and the R1(b)/D-I1/D-I2 boundary-source tests);
 // every OTHER `importRows` test needs just one static decision, per the
-// comment on `makeImportRowsTx`.
+// comment on `makeImportRowsDatabaseTransaction`.
 type OrderedStoreRow = { time: number; source: string; externalId: string | null };
 
 type OrderedImportHolding = {
