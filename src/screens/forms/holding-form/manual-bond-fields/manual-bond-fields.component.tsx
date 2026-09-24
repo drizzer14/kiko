@@ -98,9 +98,10 @@ const ManualBondFields: FC<ManualBondFieldsProps> = ({
         labels={bondKindLabels(t)}
       />
 
-      {/* One control for coupon frequency everywhere it appears — the ISIN
-          mode's unmapped-frequency picker (BondIsinSection) is a SelectField;
-          Manual mode used to hand-roll the same choice as a ChipRow. */}
+      {/* One shared SelectField for coupon frequency everywhere it appears
+          — Manual mode and the ISIN mode's unmapped-frequency picker
+          (BondIsinSection) reuse the exact same control, `required` included
+          on both. */}
       <SelectField
         label={t('forms.holding.couponFrequency')}
         sheetTitle={t('forms.holding.couponFrequencySheetTitle')}
@@ -109,6 +110,7 @@ const ManualBondFields: FC<ManualBondFieldsProps> = ({
         onSelect={onSelectCouponFrequency}
         labels={couponFrequencyLabels(t)}
         placeholder={t('forms.holding.couponFrequencyPlaceholder')}
+        required
         testID="manual-bond-coupon-frequency-field"
       />
     </>
