@@ -38,6 +38,8 @@ const TargetHoldingField: FC<TargetHoldingFieldProps> = ({
         label={label}
         required={required}
         onPress={() => setOpen(true)}
+        icon={selected?.icon}
+        iconColor={selected?.color}
         value={selected?.name ?? label}
         valueTone={selected ? 'textPrimary' : 'textSecondary'}
         testID={testID}

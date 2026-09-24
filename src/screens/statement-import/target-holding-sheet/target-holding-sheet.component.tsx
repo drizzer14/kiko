@@ -69,6 +69,8 @@ const TargetHoldingSheet: FC<TargetHoldingSheetProps> = ({
       selected={false}
       onPress={() => handleSelect(holding.id)}
       label={holding.name}
+      icon={holding.icon}
+      iconColor={holding.color}
       testID={`target-holding-option-${holding.id}`}
     />
   );

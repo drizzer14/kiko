@@ -8,9 +8,30 @@ import TargetHoldingSheet from '.';
 import type { TargetHoldingOption } from './target-holding-sheet.props';
 
 const holdings: TargetHoldingOption[] = [
-  { id: 'h1', name: 'Black card', accountId: 'a', accountName: 'Monobank' },
-  { id: 'h2', name: 'Dollar jar', accountId: 'a', accountName: 'Monobank' },
-  { id: 'h3', name: 'Savings', accountId: 'b', accountName: 'Ukrsibbank' },
+  {
+    id: 'h1',
+    name: 'Black card',
+    accountId: 'a',
+    accountName: 'Monobank',
+    icon: 'creditcard',
+    color: '#FFFFFF',
+  },
+  {
+    id: 'h2',
+    name: 'Dollar jar',
+    accountId: 'a',
+    accountName: 'Monobank',
+    icon: 'rectangle.portrait',
+    color: '#8E44AD',
+  },
+  {
+    id: 'h3',
+    name: 'Savings',
+    accountId: 'b',
+    accountName: 'Ukrsibbank',
+    icon: 'banknote',
+    color: '#C8A951',
+  },
 ];
 
 describe('TargetHoldingSheet', () => {

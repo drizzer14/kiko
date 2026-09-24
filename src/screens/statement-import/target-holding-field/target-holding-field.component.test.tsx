@@ -7,8 +7,22 @@ import type { TargetHoldingOption } from '../target-holding-sheet/target-holding
 import TargetHoldingField from '.';
 
 const holdings: TargetHoldingOption[] = [
-  { id: 'h1', name: 'Black card', accountId: 'a', accountName: 'Monobank' },
-  { id: 'h2', name: 'Dollar jar', accountId: 'a', accountName: 'Monobank' },
+  {
+    id: 'h1',
+    name: 'Black card',
+    accountId: 'a',
+    accountName: 'Monobank',
+    icon: 'creditcard',
+    color: '#FFFFFF',
+  },
+  {
+    id: 'h2',
+    name: 'Dollar jar',
+    accountId: 'a',
+    accountName: 'Monobank',
+    icon: 'rectangle.portrait',
+    color: '#8E44AD',
+  },
 ];
 
 describe('TargetHoldingField', () => {

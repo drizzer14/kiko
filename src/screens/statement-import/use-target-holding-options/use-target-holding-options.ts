@@ -1,7 +1,10 @@
 import { holdingsRepo } from '@kiko/holdings/repo';
+import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
+import { holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 
 import { useLiveQuery } from '../../../db/use-live-query';
 import { accountsRepo } from '../../../accounts/accounts.repo';
+import { resolveEntityColor } from '../../../design-system/entity-tint';
 import type { TargetHoldingOption } from '../target-holding-sheet/target-holding-sheet.props';
 
 /**
@@ -25,5 +28,7 @@ export const useTargetHoldingOptions = (accountId: string | undefined): TargetHo
     name: holding.name,
     accountId: holding.accountId,
     accountName: accountNameById.get(holding.accountId) ?? '',
+    icon: holding.icon ?? holdingTypeSymbol[holding.type],
+    color: resolveEntityColor(holding.color, defaultHoldingColor[holding.type]),
   }));
 };
