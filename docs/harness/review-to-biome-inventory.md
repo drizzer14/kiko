@@ -121,6 +121,12 @@ because it can compare against the actual pinned set.
 |---|---|---|---|
 | `kiko-no-nullable-map-ternary` | kiko-code-style's "Banned: the nullable-map ternary" — `x === undefined ? undefined : f(x)` and its `null`/`== null`/list-or-empty variants, previously prose-only | Semgrep (TS, ERROR) | Every `pattern-either` branch is a literal branch shape (basename `paths.include` N/A — no path scope needed, the rule applies repo-wide including tests), covering the direct (`===`/`==`-first) and inverted (`!==`/`!=`-first) forms plus the `||`/`&&`-joined longhand spelling of `== null` seen in `transactions.repo.test.ts`. Deliberately has NO test-file exclusion — the sweep this rule lands with converts existing test-file instances too. A default-value ternary (fallback is a real value, not a null/undefined/`[]` literal) and a validator-error ternary (opposite polarity: a real message on the absent side, `undefined` on the present side) both verified to draw zero findings on the negative fixture.|
 
+### Enforced — 2026-09-25 R1 behavior-free refactor (R1.b)
+
+| Rule id | Finding | Enforce via | Notes |
+|---|---|---|---|
+| `exportedComponentNames` (one-component-per-file) | kiko-code-style's "One component per file" | Jest invariant (`src/code-style/one-component-per-file/one-component-per-file.test.ts`) | Semgrep has no same-file cross-declaration cardinality primitive, so this is a Jest invariant rather than a Semgrep rule — see the kiko-linter skill's "One exported component per `.tsx`" section for the scanner design and the jest.mock exemption's structural reason (a mock factory body can never syntactically contain a top-level `export`). Walks every real `.tsx` under `src/`; 0 violations today. |
+
 ## Go-forward process (to wire into the retrospect/scribe loop)
 
 After each code review, triage every finding:

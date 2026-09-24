@@ -302,8 +302,52 @@ The other three candidates from this same backlog are now implemented
 `kiko-no-nullable-map-ternary` (Semgrep ERROR,
 `rules/semgrep-mobile.yml`) — see "Semgrep pattern strings need
 quoting" below for the one gotcha that cost the most time writing it.
-The one-exported-component-per-`.tsx` and import-length-sort checks
-are documented where they live once R1.b/R1.c land in this same file.
+The one-exported-component-per-`.tsx` check is a Jest invariant, not
+Semgrep — see "One exported component per `.tsx` — a Jest invariant,
+not Semgrep" below. The import-length-sort check is documented once
+R1.c lands in this same file.
+
+## One exported component per `.tsx` — a Jest invariant, not Semgrep
+
+`src/code-style/one-component-per-file/one-component-per-file.ts`
+mechanizes kiko-code-style's "One component per file". Semgrep has no
+same-file cross-declaration cardinality primitive — no way to express
+"a second exported-component declaration exists elsewhere in this
+file" without `pattern-inside`/taint scoping, and neither spans two
+independent top-level statements — so this is a Jest invariant
+instead: `exportedComponentNames(source)` returns the name of every
+top-level, exported, component-like declaration in a `.tsx` source
+string, and `one-component-per-file.test.ts` asserts every real file
+under `src/` returns at most one name (0 known violations today — the
+real splits a 2+ finding would force are a separate task).
+
+The scanner is a hand-rolled heuristic, not a TypeScript AST parse —
+consistent with this project's Semgrep-regex style elsewhere (e.g.
+`settings-columns.test.ts`'s column-name scan): it blanks every
+string/template/comment span first (so a regex never matches text
+that only *looks* like a declaration inside a literal), then finds
+each top-level (column-0 — Biome formats every top-level statement
+flush-left) declaration opener, and classifies each by regex
+(`export default function Name`, `export function Name`,
+`export const Name`, a two-step `const Name = …; export default
+Name;` alias, or a plain local `const`/`function` that might later be
+aliased). "Component-like" is `return`/`=>` leading into JSX, or an
+`FC`/`FunctionComponent` type annotation on the declaration's own
+line.
+
+The jest.mock exemption (an inline mock component defined inside a
+`jest.mock(...)` factory body never counts, per the brief) holds for
+a structural reason worth knowing before touching this file: a
+`jest.mock` factory body is a plain callback, and `export` is only
+valid at module top level — so a factory body can **never**
+syntactically contain a top-level `export`, meaning an export-keyword
+scanner could never mistake an inline mock component for an exported
+one in the first place. The scanner still explicitly blanks
+`jest.mock(...)` call bodies (bracket-matching, after the noise-blank
+pass) as a second, defensive layer — matching the design this rule
+shipped with — so a mock factory's own `const`/`function` text can
+never be mistaken for a *local* declaration a later `export default
+Name;` might resolve to either.
 
 These are implemented later in the refactor batch, not by this brief.
 
