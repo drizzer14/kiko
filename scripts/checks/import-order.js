@@ -496,8 +496,6 @@ function fixImportOrder(source) {
   return { text, changed, unsafeGroups };
 }
 
-module.exports = { checkImportOrder, fixImportOrder };
-
 function runCli() {
   const write = process.argv.includes('--write');
   const files = process.argv.slice(2).filter((arg) => arg !== '--write');
@@ -532,6 +530,4 @@ function runCli() {
   process.exit(anyViolation ? 1 : 0);
 }
 
-if (require.main === module) {
-  runCli();
-}
+runCli();
