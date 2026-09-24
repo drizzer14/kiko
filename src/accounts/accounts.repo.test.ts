@@ -12,6 +12,7 @@ jest.mock('../db/client', () => {
 });
 
 import { captureSetTx } from '@kiko/db/capture-set-tx';
+import { inArrayClauseFromCondition } from '@kiko/db/in-array-clause-test-helper';
 
 import { accounts, holdings, transactions } from '../db/schema';
 import { isSyncedAccount, isSyncedHolding } from '../holdings/deletable';
@@ -298,12 +299,26 @@ describe('accountsRepo.setIcon', () => {
 // holdings); each `delete(table)` records the table it targeted, in order, so a
 // test can prove the cascade deletes transactions, then holdings, then the account
 // itself — all inside the single transaction the `write` mock runs the work in.
+// `update(transactions).set(...).where(...)` (I1, T29 review round 1:
+// `clearLoanLinksForHoldingsTx`) records its `set` payload and `where` arg the
+// same way, so a test can prove the loan-link cascade ran, and with which ids.
 const makeRemoveTx = (opts: {
   account: Record<string, unknown> | null;
   holdings: Record<string, unknown>[];
-}): { tx: unknown; captured: { deletedFrom: unknown[] } } => {
+}): {
+  tx: unknown;
+  captured: {
+    deletedFrom: unknown[];
+    linkClearSet?: Record<string, unknown>;
+    linkClearWhereArg?: unknown;
+  };
+} => {
   const selectQueue: unknown[][] = [opts.account ? [opts.account] : [], opts.holdings];
-  const captured: { deletedFrom: unknown[] } = { deletedFrom: [] };
+  const captured: {
+    deletedFrom: unknown[];
+    linkClearSet?: Record<string, unknown>;
+    linkClearWhereArg?: unknown;
+  } = { deletedFrom: [] };
   const tx = {
     select: () => ({
       from: () => ({ where: () => Promise.resolve(selectQueue.shift() ?? []) }),
@@ -312,6 +327,15 @@ const makeRemoveTx = (opts: {
       captured.deletedFrom.push(table);
       return { where: () => Promise.resolve() };
     },
+    update: (_table: unknown) => ({
+      set: (values: Record<string, unknown>) => ({
+        where: (whereArg: unknown) => {
+          captured.linkClearSet = values;
+          captured.linkClearWhereArg = whereArg;
+          return Promise.resolve();
+        },
+      }),
+    }),
   };
   return { tx, captured };
 };
@@ -503,6 +527,28 @@ describe('accountsRepo.remove', () => {
 
     // One transactions delete per holding, then the holdings, then the account.
     expect(captured.deletedFrom).toEqual([transactions, transactions, holdings, accounts]);
+  });
+
+  // I1 (T29 review round 1): a debt account can hold a loan among its
+  // holdings, and OTHER holdings' payment rows (possibly on a different
+  // account entirely) can point back at that loan via `loanHoldingId`.
+  // `remove` must clear those links, for every holding the deleted account
+  // owned, in the SAME transaction as the delete — not just delete the loan
+  // holding and leave a dangling id behind.
+  it('clears loan links for every deleted holding, in the same transaction', async () => {
+    const { tx, captured } = makeRemoveTx({
+      account: { id: 'acc-1', institution: null },
+      holdings: [{ id: 'hold-1' }, { id: 'loan-1' }],
+    });
+    mockTx = tx;
+
+    await accountsRepo.remove('acc-1');
+
+    expect(captured.linkClearSet).toEqual({ loanHoldingId: null, loanLinkSource: null });
+    expect(inArrayClauseFromCondition(captured.linkClearWhereArg)).toEqual({
+      column: 'loan_holding_id',
+      ids: ['hold-1', 'loan-1'],
+    });
   });
 
   it('refuses a synced (monobank) account and leaves it in place', async () => {

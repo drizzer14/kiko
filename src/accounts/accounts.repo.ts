@@ -1,6 +1,8 @@
 import type { Repository } from '@kiko/db/repository';
 import { asc, eq, sql } from 'drizzle-orm';
 
+import { clearLoanLinksForHoldingsTx } from '@kiko/holdings/repo';
+
 import type { Currency } from '../currency/currency';
 import { database, write } from '../db/client';
 import { id } from '../db/id';
@@ -235,6 +237,14 @@ export const accountsRepo = {
    * parents: transactions, then holdings, then the account). A synced (monobank)
    * account is owned by the bank connection and is refused with a typed error; a
    * missing id is a no-op rather than an error.
+   *
+   * I1 (T29 review round 1): a debt account can hold a loan, and OTHER
+   * holdings' payment rows can point back at that loan via `loanHoldingId`.
+   * Deleting the account deletes the loan holding too, so this cascade
+   * clears those links in the SAME transaction — the same
+   * `clearLoanLinksForHoldingsTx` cascade `holdingsRepo.remove` runs for a
+   * single loan holding (Review Focus 7), applied here to every holding the
+   * deleted account owned. A no-op when none of them was a loan.
    */
   remove: (accountId: string) =>
     write(async (tx) => {
@@ -253,6 +263,10 @@ export const accountsRepo = {
       for (const holding of accountHoldings) {
         await tx.delete(transactions).where(eq(transactions.holdingId, holding.id));
       }
+      await clearLoanLinksForHoldingsTx(
+        tx,
+        accountHoldings.map((holding) => holding.id),
+      );
       await tx.delete(holdings).where(eq(holdings.accountId, accountId));
       await tx.delete(accounts).where(eq(accounts.id, accountId));
     }),

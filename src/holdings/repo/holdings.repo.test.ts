@@ -19,9 +19,10 @@ jest.mock('../../db/client', () => {
 
 import { captureSetTx } from '@kiko/db/capture-set-tx';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { inArrayClauseFromCondition } from '@kiko/db/in-array-clause-test-helper';
 
-import { accounts, holdings, pricePoints, transactions } from '../../db/schema';
 import { holdingValueAt } from '../../statistics/holding-value-at';
+import { accounts, holdings, pricePoints, transactions } from '../../db/schema';
 
 import { holdingsRepo, type LoanPricePointOp } from './holdings.repo';
 
@@ -735,17 +736,17 @@ describe('holdings remove', () => {
 // comment), so this intercepts the `transactions` update directly to prove
 // the exact payload issued, layered on top of `makeTx`'s existing seeded
 // holding/account handling for everything else `remove` reads.
+// `inArrayClauseFromCondition` (asserting the exact WHERE predicate, M2) is
+// shared with `accounts.repo.test.ts` via `@kiko/db/in-array-clause-test-helper`.
 describe('holdings remove — loan link cleanup (Review Focus 7)', () => {
   const makeRemoveTxWithLoanLinkCapture = (
     store: Store,
   ): {
     tx: unknown;
-    captured: { linkClearSet?: Record<string, unknown>; linkClearWhereCalled: boolean };
+    captured: { linkClearSet?: Record<string, unknown>; linkClearWhereArg?: unknown };
   } => {
     const base = makeTx(store);
-    const captured: { linkClearSet?: Record<string, unknown>; linkClearWhereCalled: boolean } = {
-      linkClearWhereCalled: false,
-    };
+    const captured: { linkClearSet?: Record<string, unknown>; linkClearWhereArg?: unknown } = {};
     const tx = {
       ...base,
       update: (table: unknown) => {
@@ -755,9 +756,9 @@ describe('holdings remove — loan link cleanup (Review Focus 7)', () => {
 
         return {
           set: (values: Record<string, unknown>) => ({
-            where: () => {
+            where: (whereArg: unknown) => {
               captured.linkClearSet = values;
-              captured.linkClearWhereCalled = true;
+              captured.linkClearWhereArg = whereArg;
 
               return Promise.resolve();
             },
@@ -782,7 +783,13 @@ describe('holdings remove — loan link cleanup (Review Focus 7)', () => {
     await holdingsRepo.remove('loan-1');
 
     expect(captured.linkClearSet).toEqual({ loanHoldingId: null, loanLinkSource: null });
-    expect(captured.linkClearWhereCalled).toBe(true);
+    // M2 (T29 review round 1): render the predicate, not just check the
+    // update was called — a mutant swapping the WHERE column
+    // (`transactions.id` for `transactions.loanHoldingId`) must fail this.
+    expect(inArrayClauseFromCondition(captured.linkClearWhereArg)).toEqual({
+      column: 'loan_holding_id',
+      ids: ['loan-1'],
+    });
     // The loan holding itself still deletes, in the SAME transaction.
     expect(store.holdings).toEqual([]);
   });

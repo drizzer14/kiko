@@ -171,6 +171,28 @@ export const appendDepositContributionTx = async (
     .where(eq(holdings.id, holdingId));
 };
 
+// Clears `loanHoldingId`/`loanLinkSource` on every transaction row that
+// still points at one of `holdingIds` — Review Focus 7 / spec 5.4 (T29).
+// A shared Tx helper (not private to `holdingsRepo.remove`) so
+// `accountsRepo.remove` (I1, T29 review round 1) runs the SAME cascade for
+// every holding a deleted debt account owned, in the SAME transaction as
+// the account delete — a loan holding removed either way never leaves a
+// dangling link on another holding's payment rows. A no-op when
+// `holdingIds` is empty or names no loan holding.
+export const clearLoanLinksForHoldingsTx = async (
+  tx: typeof database,
+  holdingIds: string[],
+): Promise<void> => {
+  if (holdingIds.length === 0) {
+    return;
+  }
+
+  await tx
+    .update(transactions)
+    .set({ loanHoldingId: null, loanLinkSource: null })
+    .where(inArray(transactions.loanHoldingId, holdingIds));
+};
+
 export const holdingsRepo = {
   // Ordered by the user-controlled `sortOrder` (the drag-and-drop grid order),
   // with `createdAt` as a stable tiebreak so rows sharing a rank keep a
@@ -444,10 +466,7 @@ export const holdingsRepo = {
       // leaving a dangling id — so a previously-linked payment reverts to
       // counting as normal spending. A no-op for every non-loan holding,
       // since nothing ever points a `loanHoldingId` at one.
-      await tx
-        .update(transactions)
-        .set({ loanHoldingId: null, loanLinkSource: null })
-        .where(eq(transactions.loanHoldingId, holdingId));
+      await clearLoanLinksForHoldingsTx(tx, [holdingId]);
       // A priced holding (property_item, T16) has no transactions, but it may
       // have its own price series on `holding:<id>` — cleared here, inline on
       // `tx` (not through `pricePointsRepo.removeInstrument`, which would open
