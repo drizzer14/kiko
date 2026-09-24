@@ -15,6 +15,9 @@ sessions below (they report to "pff-ios-9b" today) and to the PM pff-ios-89.
 | ipad-adaptive-e7, duo-adaptive-d4 | own worktrees | idle, unmerged; user: KEEP, do not ask again | — |
 
 ### Immediate TODO for the new coordinator (build 26)
+UPDATE ~19:00: bump done 28de06e; ops ARCHIVE running from device-deploy @28de06e; hotfix merged into main as c0b47c2
+make verify GREEN (276/3223); next ff to c0b47c2; hotfix worktree+branch pruned; feat session 4 told to
+merge main (notes sent). Still to do: archive result -> user upload; retrospect/scribe drift result.
 1. When the hotfix session sends the bump sha: `git -C ~/orca/workspaces/pff-ios/device-deploy checkout -q --detach <sha>`,
    then kiko:ops archives Release / KikoDistribution there: FORCE_BUNDLING=1, clean build (rm ios/build + pod install
    if needed), NON-beta Xcode (check DTXcodeBuild), move the .xcarchive to ~/Library/Developer/Xcode/Archives/<date>/,
