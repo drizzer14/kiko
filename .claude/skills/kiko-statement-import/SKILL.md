@@ -236,18 +236,36 @@ a P0 UI fix round driven by device feedback:
   of F3 fix round 1 (C1) it renders through the shared `TransactionCard`
   (`src/screens/home/transaction-row/transaction-card/`) — the SAME
   presentational card Home's own `TransactionRow` uses, extracted out of
-  that component so both consumers stay pixel-identical, NOT a rebuilt
-  card wrapping the base `Card` primitive (the original F3 item 4 attempt,
-  which showed the date as its title and the amount with no income color —
-  see the review's C1 finding). The category comes from the row's own
-  `mcc` via `categoryForMcc` (the same key `mapParsedTransaction` writes),
-  resolved through the live categories table exactly as Home resolves a
-  real row's category (`ExampleTransaction` queries `categoriesRepo`/
-  `settingsRepo` itself), and the amount uses `context="transaction"`, so
-  an income preview row shows the same icon and income (green) color a
-  Home row would. `ExampleTransaction` owns its own `Divider`s above and
-  below (F3 item 5) — a caller renders just `<ExampleTransaction ... />`,
-  not a Divider/ExampleTransaction/Divider triple.
+  that component, NOT a rebuilt card wrapping the base `Card` primitive
+  (the original F3 item 4 attempt, which showed the date as its title and
+  the amount with no income color — see the review's C1 finding). This
+  is NOT pixel-identical to a real Home row, though — that was a false
+  claim in an earlier pass of this skill (F3 fix round 2, N2): a preview
+  row has no real transaction id / account / holding-type row to read, so
+  its footer content differs from Home's own `"<account> · <category>"` +
+  time (see below), by design.
+  The category comes from the row's own `mcc` via `categoryForMcc` (the
+  same key `mapParsedTransaction` writes), resolved through the live
+  categories table exactly as Home resolves a real row's category
+  (`ExampleTransaction` queries `categoriesRepo`/`settingsRepo` itself),
+  and `TransactionCard` always renders its amount with `MoneyText`'s
+  `"transaction"` context (no longer a caller-configurable prop — F3 fix
+  round 2, N5 ponytail, since every consumer wanted exactly that), so an
+  income preview row shows the same icon and income (green) color a Home
+  row would. The title resolves through the SAME `transactionRowDescription`
+  Home uses (F3 fix round 2, N3) — an empty mapped description falls back
+  to the income/expense default label (fed the chosen target holding's
+  name, via each caller's own `holdingName` prop, `undefined` before a
+  holding is chosen) instead of rendering blank; `exchangeCounterpartHoldingId`
+  is always `null` here (an import never creates an exchange-marked row).
+  The footer shows the category title and the row's own date
+  (`formatDate`) via `TransactionCard`'s existing optional `footerMeta`/
+  `footerTrailing` props — the user's only per-row check that the chosen
+  date format/column is right; Home is unaffected, since it already
+  passes its own footer content through those same two props.
+  `ExampleTransaction` owns its own `Divider`s above and below (F3 item 5)
+  — a caller renders just `<ExampleTransaction ... />`, not a
+  Divider/ExampleTransaction/Divider triple.
 - **The raw preview grid** (`column-mapping/raw-preview/`) gives each
   column a CONSISTENT width across every row
   (`raw-preview/column-widths.ts`'s `computeColumnWidths`, keyed off
@@ -272,29 +290,34 @@ a P0 UI fix round driven by device feedback:
   `ColumnSelectField`'s own option list is unaffected, since that is
   derived from the FULL header row in `column-mapping.screen.tsx`, not
   from this capped preview.
-- **The amount-mode and currency-mode toggles are the shared
-  `SegmentedControl`** (`src/design-system/components/segmented-control/`,
-  F3 item 9) — an iOS `UISegmentedControl` per the HIG, superseding the
-  `ChipRow` pass 21d53cc gave them (see `kiko-design-system`'s own
-  `SegmentedControl` entry for the full HIG citation, contrast fix, and
-  accessibility details — fix round 1 addressed I3/M1/M2/M4). Both
-  `AmountFields` and `CurrencyFields` pass their own `accessibilityLabel`
-  (the section heading text, `columnMapping.sectionAmount`/
-  `sectionCurrency`), a REQUIRED prop. Every OTHER mode toggle on this
-  screen still uses the app's existing compact `ChipRow`
-  (`src/screens/forms/chip-row/`), not `OptionPills` — `OptionPills`'
-  44pt-minimum centered pill reads as oversized for a short code/label.
-  This covers encoding, delimiter, and decimal-separator (flagged
-  "too-large chips" originally) — `ChipRow` and `SegmentedControl` now
-  coexist on this screen, one per the shape of the choice it renders
-  (short code/label vs. a true 2-way mode toggle). Encoding and decimal
-  separator ARE both genuinely 2-way choices that fit `SegmentedControl`
-  just as well (delimiter is 3-way and fits too) — F3 fix round 1's M5
-  DEFAULT leaves them as `ChipRow` pending a user decision on whether to
-  swap them, not because they don't fit the shape (see "DEFAULTS" in the
-  F3-part2-report.md fix-round-1 section).
-- **Every section shows its own heading, at ONE uniform spacing** (F3
-  items 12/13/14, fixed in fix round 1 I1/I2): the screen's former
+- **The amount-mode, currency-mode, encoding, and decimal-separator
+  toggles are the shared `SegmentedControl`**
+  (`src/design-system/components/segmented-control/`, F3 item 9) — an
+  iOS `UISegmentedControl` per the HIG, superseding the `ChipRow` pass
+  21d53cc gave them (see `kiko-design-system`'s own `SegmentedControl`
+  entry for the full HIG citation, contrast fix, and accessibility
+  details — fix round 1 addressed I3/M1/M2/M4; fix round 2 corrected M1's
+  hitSlop base and M4's accessibility shape). `AmountFields` and
+  `CurrencyFields` pass their own `accessibilityLabel` (the section
+  heading text, `columnMapping.sectionAmount`/`sectionCurrency`), a
+  REQUIRED prop; encoding/decimal-separator (`column-mapping.screen.tsx`,
+  F3 fix round 2, M5 — applied, not left as the round-1 DEFAULT any
+  more) pass their own field's label text instead, composed with a
+  visible `FieldLabel` above the control (`SegmentedControl` itself
+  carries no VISIBLE label prop — only `accessibilityLabel` — since the
+  amount/currency sections rely on their own section heading for that;
+  encoding/decimal-separator sit inside a shared "File Format" section
+  alongside delimiter, so they need their own visible caption).
+  DELIMITER (3-way) stays `ChipRow` (`src/screens/forms/chip-row/`) —
+  `SegmentedControl`'s own HIG reference is for a 2-3-way EXCLUSIVE mode
+  toggle, and delimiter fits it structurally too, but a 3-way delimiter
+  swap was not part of the M5 DEFAULT the coordinator ruled on; `ChipRow`
+  remains the compact short-code/label picker for it. `OptionPills` is
+  not used anywhere on this screen — its 44pt-minimum centered pill reads
+  as oversized for a short code/label.
+- **Every section shows its own heading, at ONE uniform spacing, on
+  BOTH screens** (F3 items 12/13/14, fixed in fix round 1 I1/I2 for
+  column-mapping, fix round 2 for statement-import): the screen's former
   in-body title (duplicating the native stack header's own `title:
   t('columnMapping.title')`, `accounts.stack.tsx`) is REMOVED (item 12);
   every section — raw preview, file format, dates, amount columns,
@@ -314,10 +337,15 @@ a P0 UI fix round driven by device feedback:
   `title` to `SummaryTable` in the complete branch — before this fix the
   complete branch's heading was `SummaryTable`'s own `title` row (a
   `gap={1}` Box, 4pt below it), so the heading visibly jumped position the
-  moment the last required column got mapped; `SummaryTable` itself is
-  UNCHANGED (its `title` prop stays optional for its other callers, e.g.
-  the statement-import preview, whose own `SummaryTable` title is outside
-  this "MAP COLUMNS" screen's item-13 scope).
+  moment the last required column got mapped. `statement-import.screen.tsx`'s
+  `StatementPreviewBlock` gets the SAME fix (F3 fix round 2): it renders
+  its own `<Text variant="heading">{stats.displayName}</Text>` as the
+  plain first child of its own `gap={3}` `previewBlock` Box, passing NO
+  `title` to ITS `SummaryTable` either — before this fix that screen's
+  heading sat in `SummaryTable`'s own `gap={1}` Box (4pt), not the same
+  12pt every column-mapping section heading gets. `SummaryTable` itself
+  is UNCHANGED on both screens — its `title` prop stays optional, simply
+  unused by both these call sites now.
 - **Fields are grouped with the shared `Divider`** between: (a)
   encoding/separators, (b) dates, (c) amounts/currency, (d)
   description/counterparty/balance (moved to the BOTTOM, in their own

@@ -665,32 +665,58 @@ new component can land between reviews of this skill:
   (https://developer.apple.com/design/human-interface-guidelines/segmented-controls):
   a rounded track one elevation step above the screen background
   (`theme.colors.surface`), holding N equal-width segments, with the
-  SELECTED segment raised to `theme.colors.segmentSelected` — its own token
-  (F3 fix round 1, I3), not `surfaceHigh`: `surfaceHigh` against `surface`
-  only reaches a 1.35:1 contrast ratio, under the WCAG 1.4.11 3:1 floor for
-  a UI state indicator; `segmentSelected` (`#636366`, iOS `systemGray`)
-  reaches 3.15:1 (see the token's own doc comment in `theme.ts`). This is
-  still NOT the app's other filled-accent selection vocabulary
-  (`OptionPills`/`ChipRow`/`SelectableRow`) — a segmented control reads as
-  its own distinct iOS control. No segmented-control NATIVE library is a
-  dependency of this app (checked at F3 item 9); this renders the same
-  visual/interaction contract in plain `Pressable`/`Box`/`Text` instead of
-  adding one. Its VISIBLE track height is ~32pt (`SEGMENT_MIN_HEIGHT` 24pt +
-  the track's own `spacing(1)` padding on both edges,
-  `segmented-control.styles.ts`), matching native `UISegmentedControl`; the
-  44pt HIG touch target is restored per segment via `SEGMENT_HIT_SLOP`
-  (`segmented-control.component.tsx`). The selected label is semibold
-  (`fontWeight: '600'`), matching UIKit. Props: `options`/`selected`/
-  `onSelect`/`labels`/`accessibilityLabel` (required — VoiceOver has no
-  other group name to read) /`testID`; each segment carries
-  `accessibilityRole="tab"` inside the track's own `accessibilityRole=
-  "tablist"`, plus `accessibilityValue` announcing its "N / M" position.
-  `ChipRow` remains the compact short-code/label picker (encoding,
-  delimiter, decimal separator on the column-mapping screen), while
-  `SegmentedControl` is for a true 2-3-way MODE toggle — the column-mapping
-  screen's amount-mode and currency-mode selectors
-  (`AmountFields`/`CurrencyFields`) are its first consumers, superseding
-  `ChipRow` there (F3 item 9, `21d53cc`'s prior `ChipRow` pass).
+  SELECTED segment raised to `theme.colors.segmentSelected` — its own
+  token (F3 fix round 1, I3), not `surfaceHigh`, which fails the WCAG
+  1.4.11 3:1 non-text-contrast floor against `surface`; read `theme.ts`'s
+  own doc comment on `segmentSelected` for the current hex and measured
+  ratio rather than trusting a copy of either restated here (they drift —
+  a duplicate here was itself a documented fix-round-1 skill-drift finding,
+  N2). This is still NOT the app's other filled-accent selection
+  vocabulary (`OptionPills`/`ChipRow`/`SelectableRow`) — a segmented
+  control reads as its own distinct iOS control. No segmented-control
+  NATIVE library is a dependency of this app (checked at F3 item 9); this
+  renders the same visual/interaction contract in plain
+  `Pressable`/`Box`/`Text` instead of adding one. Its VISIBLE track
+  height is ~32pt (`SEGMENT_MIN_HEIGHT` 24pt + the track's own
+  `spacing(1)` padding on both edges, `segmented-control.styles.ts`),
+  matching native `UISegmentedControl`; the 44pt HIG touch target is
+  restored via `SEGMENT_HIT_SLOP` (`{ top: 10, bottom: 10 }`,
+  `segmented-control.component.tsx`) — `hitSlop` expands the element it
+  is SET ON, the 24pt segment itself, not the 32pt track, so the slop
+  is measured off that 24pt base (24 + 10 + 10 = 44), not the track's own
+  32pt (a round-1 version of this component set the slop off the wrong
+  base, reaching only 36pt — fixed in fix round 2, M1). The selected
+  label is semibold (`fontWeight: '600'`), matching UIKit, composed
+  alongside (not duplicating) the base label's own `textAlign: 'center'`.
+  Props: `options`/`selected`/`onSelect`/`labels`/`accessibilityLabel`
+  (required — every segment folds it into its own `accessibilityHint`)
+  /`testID`. Accessibility (F3 fix round 2, M4): each segment keeps
+  `accessibilityRole="button"` with `accessibilityState={{ selected }}`
+  — NOT `"tab"`/`"tablist"`, which RN 0.87 maps to NO accessibility trait
+  on iOS (confirmed against `RCTViewManager`/Fabric's
+  `accessibilityPropsConversions` — only `"tabbar"` maps to a trait there
+  — a round-1 version of this component used `"tab"`/`"tablist"` and lost
+  the Button trait VoiceOver needs to announce "can be activated"); each
+  segment's own `accessibilityLabel` is its visible text, and its
+  `accessibilityHint` folds in the group's `accessibilityLabel` plus a
+  TRANSLATED position string (`common.segmentPosition`, "N of M" — never
+  a hardcoded `"N / M"` literal, which VoiceOver would read as "N slash
+  M" and which never translates). VoiceOver behavior should still be
+  confirmed on a real device — Jest only asserts prop values.
+  `SegmentedControl` carries no VISIBLE label prop of its own (only the
+  non-visual `accessibilityLabel`) — a caller that needs a visible
+  caption above it (encoding/decimal-separator on the column-mapping
+  screen, which sit inside a shared "File Format" section alongside
+  other fields, unlike the amount/currency sections where the section
+  heading itself is the only label needed) composes its own `FieldLabel`
+  above the control, the same way `ChipRow` does internally.
+  `ChipRow` remains the compact short-code/label picker — delimiter (3-way)
+  on the column-mapping screen stays `ChipRow` — while `SegmentedControl`
+  is for a true 2-3-way MODE toggle: the column-mapping screen's
+  amount-mode/currency-mode selectors (`AmountFields`/`CurrencyFields`)
+  and, as of F3 fix round 2 (M5, applied — not left as the round-1
+  DEFAULT), its encoding and decimal-separator selectors too, superseding
+  `ChipRow` for all four (F3 item 9, `21d53cc`'s prior `ChipRow` pass).
 - **BarChart**, **PieChart**, **NetWorthLine** — the `react-native-svg`
   visualization components; see the dedicated `kiko-charts` skill for
   their coordinate-space and testID conventions before touching any
