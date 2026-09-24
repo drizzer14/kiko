@@ -340,8 +340,6 @@ export const uk: typeof en = {
     lot: {
       addTitle: 'Додати лот',
       buy: 'Купівля',
-      errorMessage: 'Спробуйте ще раз.',
-      errorTitle: 'Не вдалося додати лот',
       quantity: 'Кількість',
       quantityError: 'Введіть кількість більше 0.',
       quantityPlaceholder: '10',

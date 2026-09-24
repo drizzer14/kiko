@@ -375,8 +375,6 @@ export const en = {
     lot: {
       addTitle: 'Add Lot',
       buy: 'Buy',
-      errorMessage: 'Please try again.',
-      errorTitle: 'Could not add lot',
       quantity: 'Quantity',
       quantityError: 'Enter a quantity greater than 0.',
       quantityPlaceholder: '10',

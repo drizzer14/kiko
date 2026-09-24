@@ -196,9 +196,11 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
         metadata: { ...rawMetadata, lots: [...existingLots, lot] },
       });
     } catch {
-      // Mirrors contribution-form/price-point-form's Alert pattern: a write
-      // failure keeps the screen open with the entered values intact.
-      Alert.alert(t('forms.lot.errorTitle'), t('forms.lot.errorMessage'));
+      // F4 audit 23: the SAME shared save-error Alert every other form's
+      // write failure uses (account-form, holding-form, price-point-form,
+      // transaction-form) — a write failure keeps the screen open with the
+      // entered values intact.
+      Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
       return;
     }
     navigation.goBack();
