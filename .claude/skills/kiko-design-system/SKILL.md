@@ -676,20 +676,22 @@ new component can land between reviews of this skill:
   control reads as its own distinct iOS control. No segmented-control
   NATIVE library is a dependency of this app (checked at F3 item 9); this
   renders the same visual/interaction contract in plain
-  `Pressable`/`Box`/`Text` instead of adding one. Each segment `Pressable`
-  is a REAL 44pt-tall layout box — NOT a shorter box grown via `hitSlop`
-  (F3 fix round 3, N6): RN 0.87's Fabric hit-test
-  (`RCTViewComponentView betterHitTest`) drops any touch that falls
-  outside a non-overflowing parent's own LAYOUT bounds, and `hitSlop`
-  never counts toward that overflow — two earlier rounds (1 and 2) each
-  tried a `hitSlop`-grown box (36pt, then a supposedly-44pt one) that
-  measured correctly in Jest's arithmetic but was still only a 32pt real
-  target on a device, since the actual `Pressable` stayed 32pt tall the
-  whole time. The visible, native-matching ~32pt track/selected-pill fill
-  are instead drawn as absolutely-positioned DECORATIVE layers (each
-  `pointerEvents="none"`) underneath the real 44pt segment row — see
-  `segmented-control.styles.ts` (`container`/`trackFill`/`row`/`segment`/
-  `segmentSelected`) for the exact geometry rather than trusting a copy
+  `Pressable`/`Box`/`Text` instead of adding one. Touch target (F3 fix
+  rounds 3-4): each segment `Pressable` is a REAL layout box with
+  `minHeight` 44pt and no `hitSlop` (`minHeight`, not `height`, so
+  Dynamic Type can grow it). The native-matching visible track (32pt)
+  and selected pill (24pt, a 4pt ring of track around it) are
+  absolutely-positioned DECORATIVE insets (`pointerEvents="none"`), so
+  they grow with the segment. The container carries a negative
+  `marginVertical` equal to the track inset, so the parent lays the
+  control out at the 32pt track and no empty band appears above or below
+  it. The 44pt frame then overflows the parent, and RN 0.87 Fabric keeps
+  that band touchable: the parent's `overflowInset` is built from its
+  children's frames (`YogaLayoutableShadowNode::getContentBounds`), and
+  `RCTViewComponentView betterHitTest` only drops an outside-bounds touch
+  when `overflowInset` is zero or the view clips. So never wrap the
+  control in an `overflow: 'hidden'` parent. Jest cannot hit-test; see
+  `segmented-control.styles.ts` for the exact geometry rather than a copy
   of the pixel values restated here. The selected label is semibold
   (`fontWeight: '600'`), matching UIKit, composed alongside (not
   duplicating) the base label's own `textAlign: 'center'`.

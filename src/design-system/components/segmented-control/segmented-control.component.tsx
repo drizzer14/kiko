@@ -13,13 +13,12 @@ import type { SegmentedControlProps } from './segmented-control.props';
  * (https://developer.apple.com/design/human-interface-guidelines/segmented-controls)
  * — no segmented-control native library is a dependency of this app.
  *
- * Touch target (F3 fix round 3, N6): each segment `Pressable` is a REAL
- * 44pt-tall layout box — not a shorter box grown via `hitSlop` (fix round
- * 2's approach), which RN 0.87's Fabric hit-test never honors outside a
- * non-overflowing parent's own bounds. The shorter, native-matching
- * visible track/pill render as absolutely-positioned decorative layers
- * underneath (`segmented-control.styles.ts`) — see that file for the
- * exact geometry.
+ * Touch target (F3 fix rounds 3-4): each segment `Pressable` is a REAL
+ * layout box at least 44pt tall, with no `hitSlop`. The native-matching
+ * 32pt track and 24pt selected pill are absolutely-positioned decorative
+ * layers inset from it, and a negative vertical margin keeps the control's
+ * layout footprint at the 32pt track. `segmented-control.styles.ts` holds
+ * the exact geometry and the RN 0.87 Fabric hit-test reasoning.
  *
  * Accessibility (F3 fix round 2, M4): each segment keeps
  * `accessibilityRole="button"` with `accessibilityState={{ selected }}` —
@@ -71,7 +70,13 @@ const SegmentedControl = <Option extends string>({
               style={styles.segment}
               testID={testID ? `${testID}-option-${option}` : undefined}
             >
-              {isSelected && <Box style={styles.segmentSelected} pointerEvents="none" />}
+              {isSelected && (
+                <Box
+                  style={styles.segmentSelected}
+                  pointerEvents="none"
+                  testID={testID ? `${testID}-selected` : undefined}
+                />
+              )}
 
               <Text
                 variant="body"

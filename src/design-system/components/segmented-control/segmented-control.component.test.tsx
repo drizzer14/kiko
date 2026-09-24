@@ -82,14 +82,14 @@ describe('SegmentedControl', () => {
     expect(ratio).toBeGreaterThanOrEqual(3);
   });
 
-  // F3 fix round 3, N6: RN 0.87's Fabric hit-test drops any touch outside
-  // a non-overflowing parent's own layout bounds — `hitSlop` never counts
-  // toward that, so a real device only honors the segment's own real
-  // height, not a `hitSlop`-grown one (fix round 2's approach). Each
-  // segment is now a REAL 44pt-tall layout box, with no `hitSlop` at all;
-  // the shorter, native-matching visible track stays a decorative
-  // 32pt-tall layer underneath.
-  it('gives each segment a real 44pt layout height, with a 32pt visible track underneath', async () => {
+  // F3 fix round 3, N6 + fix round 4, N10/N11: each segment is a REAL
+  // layout box at least 44pt tall (no `hitSlop`; `minHeight`, so Dynamic
+  // Type can grow it). The visible 32pt track and the 24pt selected pill
+  // (a 4pt ring of track around it) are decorative insets. The container's
+  // negative vertical margin keeps the control's layout footprint at the
+  // 32pt track. Jest cannot hit-test; the RN 0.87 Fabric reasoning that
+  // the overflow band stays touchable lives in the styles file header.
+  it('gives each segment a real 44pt minimum height, a 32pt track, a 24pt pill, and a 32pt footprint', async () => {
     const { getByTestId } = await render(
       <SegmentedControl
         options={options}
@@ -101,15 +101,22 @@ describe('SegmentedControl', () => {
     );
 
     const segment = getByTestId('mode-segmented-option-single');
+    const segmentStyle = StyleSheet.flatten(segment.props.style);
     expect(segment.props.hitSlop).toBeUndefined();
-    expect(StyleSheet.flatten(segment.props.style).height).toBe(44);
+    expect(segmentStyle.minHeight).toBe(44);
+    expect(segmentStyle.height).toBeUndefined();
 
     const trackFill = StyleSheet.flatten(getByTestId('mode-segmented-track').props.style);
     expect(trackFill.top).toBe(trackFill.bottom);
-    // The decorative track fill is absolutely positioned within the 44pt
-    // real segment height, inset symmetrically top/bottom, landing at
-    // exactly the 32pt visible track height.
     expect(44 - trackFill.top - trackFill.bottom).toBe(32);
+
+    const container = StyleSheet.flatten(getByTestId('mode-segmented').props.style);
+    expect(44 + 2 * container.marginVertical).toBe(32);
+
+    const pill = StyleSheet.flatten(getByTestId('mode-segmented-selected').props.style);
+    expect(pill.top).toBe(pill.bottom);
+    expect(44 - pill.top - pill.bottom).toBe(24);
+    expect(pill.top - trackFill.top).toBe(4);
   });
 
   // F3 fix round 1, M2: a long label stays on one line (shrinking to fit

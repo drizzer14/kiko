@@ -1,26 +1,38 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-// The REAL touch target (F3 fix round 3, N6): RN 0.87's Fabric hit-test
-// (`RCTViewComponentView betterHitTest`) drops a touch that falls outside
-// the PARENT's own layout bounds when that parent does not overflow —
-// `hitSlop` never counts toward that overflow, so a `hitSlop`-only
-// "44pt target on a 32pt element" (fix round 2's approach) is a 32pt
-// target on a real device, not 44pt. Every segment `Pressable` is now
-// itself 44pt tall in real layout — no `hitSlop` at all — with the
-// SHORTER visible track/pill drawn as absolutely-positioned decorative
-// layers underneath, so the visual is unchanged.
-const SEGMENT_HEIGHT = 44;
-// The visible track/pill height, matching native `UISegmentedControl`.
+// The REAL touch target (F3 fix round 3, N6; fix round 4, N10/N11): every
+// segment `Pressable` is itself at least `SEGMENT_MIN_HEIGHT` (44pt) tall
+// in real layout, with no `hitSlop`. The shorter, native-matching visible
+// track (32pt) and selected pill (24pt, a 4pt ring of track around it) are
+// absolutely-positioned decorative layers inset from that real box.
+//
+// The 44pt box must not add empty space above/below the 32pt visible
+// track, so `container` pulls its own layout footprint back to the track
+// with a negative `marginVertical` (`-TRACK_INSET`). The parent then lays
+// the control out as 32pt, while the container's own frame stays 44pt and
+// overflows its parent by `TRACK_INSET` at each edge. RN 0.87 Fabric keeps
+// that overflow hit-testable: the parent's `overflowInset` is computed
+// from its children's frames (`YogaLayoutableShadowNode::getContentBounds`
+// + `calculateOverflowInset`), so it is non-zero, and
+// `RCTViewComponentView betterHitTest` only drops an outside-bounds touch
+// when `overflowInset` is zero (or the view clips). A parent with
+// `overflow: 'hidden'` would clip the overflow band — do not wrap the
+// control in one.
+const SEGMENT_MIN_HEIGHT = 44;
+// The visible track height, matching native `UISegmentedControl`.
 const TRACK_HEIGHT = 32;
-// How far the visible track/pill insets from the segment's own 44pt real
-// bounds, top and bottom, to land at the shorter `TRACK_HEIGHT`.
-const TRACK_INSET = (SEGMENT_HEIGHT - TRACK_HEIGHT) / 2;
+// How far the visible track insets from the 44pt real bounds, top and
+// bottom (6pt). Also the container's negative vertical margin.
+const TRACK_INSET = (SEGMENT_MIN_HEIGHT - TRACK_HEIGHT) / 2;
 
 export const styles = StyleSheet.create((theme) => ({
   // The outer positioning context for the absolutely-positioned track
-  // fill underneath the real, full-height segment row.
+  // fill underneath the real, full-height segment row. The negative
+  // margin cancels the 44pt box's extra height in the parent's layout, so
+  // the control occupies only the visible 32pt track (see the header).
   container: {
     position: 'relative',
+    marginVertical: -TRACK_INSET,
   },
   // The real, 44pt-tall row of segment `Pressable`s — see `segment` below.
   // `paddingHorizontal` reproduces the OLD track's own `padding` (the gap
@@ -46,26 +58,28 @@ export const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radii.sm,
   },
-  // One segment: the REAL 44pt-tall touch target. `position: 'relative'`
-  // so its own selected-pill fill (below) can anchor to ITS bounds.
+  // One segment: the REAL touch target, at least 44pt tall. `minHeight`
+  // (not a fixed `height`) lets it grow with Dynamic Type at accessibility
+  // text sizes; the track and pill are insets, so they grow with it.
+  // `position: 'relative'` anchors the selected pill to ITS bounds.
   segment: {
     flex: 1,
     position: 'relative',
-    height: SEGMENT_HEIGHT,
+    minHeight: SEGMENT_MIN_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: theme.spacing(2),
   },
-  // The selected segment's own `TRACK_HEIGHT`-tall pill fill — inset the
-  // SAME `TRACK_INSET` top/bottom as `trackFill` (both measure off the
-  // identical 44pt base), filling the segment's own width edge-to-edge
-  // (no additional horizontal inset — segments sit flush against each
-  // other, matching native `UISegmentedControl`). Rendered BEHIND the
-  // segment's own label `Text` (JSX order), `pointerEvents="none"`.
+  // The selected segment's pill: inset `TRACK_INSET + spacing(1)` (10pt)
+  // top/bottom from the segment's real bounds, so it sits 24pt tall inside
+  // the 32pt track with a 4pt ring of track above and below it, like the
+  // native thumb. It fills the segment's width edge to edge; the ring at
+  // the outer ends comes from `row`'s `paddingHorizontal`. Rendered BEHIND
+  // the label `Text` (JSX order), `pointerEvents="none"`.
   segmentSelected: {
     position: 'absolute',
-    top: TRACK_INSET,
-    bottom: TRACK_INSET,
+    top: TRACK_INSET + theme.spacing(1),
+    bottom: TRACK_INSET + theme.spacing(1),
     left: 0,
     right: 0,
     backgroundColor: theme.colors.segmentSelected,
