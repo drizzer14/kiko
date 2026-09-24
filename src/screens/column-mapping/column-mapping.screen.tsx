@@ -1,15 +1,35 @@
-import type { FC, RefObject } from 'react';
-import type { TFunction } from 'i18next';
 import * as RNFS from 'react-native-fs';
+import type { TFunction } from 'i18next';
+import type { FC, RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View, Alert, type ScrollViewInstance } from 'react-native';
 import { useEffect, useRef, useState } from 'react';
+import { View, Alert, type ScrollViewInstance } from 'react-native';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import type { Currency } from '../../currency/currency';
+import ChipRow from '../forms/chip-row';
+import {
+  dateFormatIds,
+  dateFormatExamples,
+  type TableCell,
+  type ColumnMapping,
+  type DateFormatId,
+  type TableDelimiter,
+  type SavedColumnMapping,
+  type ColumnMappingRowError,
+  readTableRows,
+  mappingKeyFor,
+  applyColumnMapping,
+  findSavedMapping,
+  headerFingerprint,
+  guessHeaderRowIndex,
+} from '../../statement-import/column-mapping';
+import {
+  scrollToField,
+  useHeaderInset,
+  type FieldInstance,
+} from '../forms/scroll-to-field/scroll-to-field';
 import { holdingsRepo } from '../../holdings/repo';
-import type { SpreadsheetCellValue, StatementFormatInput } from '../../statement-import/parser';
 import {
   fileNameOf,
   isXlsxFile,
@@ -21,52 +41,32 @@ import {
 import Box from '../../design-system/components/box';
 import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
+import type { Currency } from '../../currency/currency';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
-import Divider from '../../design-system/components/divider';
 import { accountsRepo } from '../../accounts/accounts.repo';
 import { settingsRepo } from '../../settings/settings.repo';
+import Divider from '../../design-system/components/divider';
+import FieldLabel from '../../design-system/components/field-label';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { supportedFormatNames } from '../../statement-import/registry';
-import {
-  type TableCell,
-  type ColumnMapping,
-  type DateFormatId,
-  type TableDelimiter,
-  type SavedColumnMapping,
-  type ColumnMappingRowError,
-  dateFormatIds,
-  dateFormatExamples,
-  readTableRows,
-  mappingKeyFor,
-  applyColumnMapping,
-  findSavedMapping,
-  headerFingerprint,
-  guessHeaderRowIndex,
-} from '../../statement-import/column-mapping';
+import ImportResultSheet from '../statement-import/import-result-sheet';
+import TargetHoldingField from '../statement-import/target-holding-field';
+import SegmentedControl from '../../design-system/components/segmented-control';
+import type { SpreadsheetCellValue, StatementFormatInput } from '../../statement-import/parser';
+import { previewStats, type PreviewStats } from '../statement-import/preview-stats/preview-stats';
 import { importParsedStatement, type ImportResult } from '../../statement-import/import-statement';
+import { useTargetHoldingOptions } from '../statement-import/use-target-holding-options/use-target-holding-options';
 
 import RawPreview from './raw-preview';
 import AmountFields from './amount-fields';
-import { styles } from './column-mapping.styles';
-import CurrencyFields from './currency-fields';
 import MappingResult from './mapping-result';
+import CurrencyFields from './currency-fields';
+import { styles } from './column-mapping.styles';
 import ColumnSelectField from './column-select-field';
-import ChipRow from '../forms/chip-row';
-import FieldLabel from '../../design-system/components/field-label';
-import ImportResultSheet from '../statement-import/import-result-sheet';
-import SegmentedControl from '../../design-system/components/segmented-control';
-import { previewStats, type PreviewStats } from '../statement-import/preview-stats/preview-stats';
-import TargetHoldingField from '../statement-import/target-holding-field';
 import type { AmountMode } from './amount-fields/amount-fields.props';
 import type { CurrencyMode } from './currency-fields/currency-fields.props';
-import {
-  scrollToField,
-  useHeaderInset,
-  type FieldInstance,
-} from '../forms/scroll-to-field/scroll-to-field';
 import type { ColumnSelectFieldOption } from './column-select-field/column-select-field.props';
-import { useTargetHoldingOptions } from '../statement-import/use-target-holding-options/use-target-holding-options';
 
 type ColumnMappingScreenProps = NativeStackScreenProps<AccountsStackParamList, 'ColumnMapping'>;
 

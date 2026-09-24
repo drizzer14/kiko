@@ -1,38 +1,37 @@
-import { holdingsRepo } from '@kiko/holdings/repo';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { type FC, useRef, useState } from 'react';
+import { holdingsRepo } from '@kiko/holdings/repo';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Alert, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
-import { type Currency, currencyScale, currencySymbol } from '../../../currency/currency';
 import {
   compareDecimal,
   multiplyToMinorUnits,
   normalizeDecimal,
   shiftDecimal,
 } from '../../../currency/decimal';
-import { Money } from '../../../currency/money';
-import { parseAmount } from '../../../currency/parse';
-import { useLiveQuery } from '../../../db/use-live-query';
-import Box from '../../../design-system/components/box';
-import Button from '../../../design-system/components/button';
-import FieldLabel from '../../../design-system/components/field-label';
-import OptionPills from '../../../design-system/components/option-pills';
-import Screen from '../../../design-system/components/screen';
-import TextField from '../../../design-system/components/text-field';
-import { asLots, costBasisMinorAt, quantityAt, type Lot } from '../../../holdings/lots';
-import { dayKeyOf } from '../../../prices/price-book';
-import type { AccountsStackParamList } from '../../../navigation/types';
-
 import DateField from '../date-field';
-import { groupAmount } from '../amount-format/amount-format';
-import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import {
   useHeaderInset,
   scrollToField,
   type FieldInstance,
 } from '../scroll-to-field/scroll-to-field';
+import { Money } from '../../../currency/money';
+import { parseAmount } from '../../../currency/parse';
+import { dayKeyOf } from '../../../prices/price-book';
+import Box from '../../../design-system/components/box';
+import { useLiveQuery } from '../../../db/use-live-query';
+import { groupAmount } from '../amount-format/amount-format';
+import Button from '../../../design-system/components/button';
+import Screen from '../../../design-system/components/screen';
+import { useSubmitOnce } from '../use-submit-once/use-submit-once';
+import TextField from '../../../design-system/components/text-field';
+import FieldLabel from '../../../design-system/components/field-label';
+import type { AccountsStackParamList } from '../../../navigation/types';
+import OptionPills from '../../../design-system/components/option-pills';
+import { asLots, costBasisMinorAt, quantityAt, type Lot } from '../../../holdings/lots';
+import { type Currency, currencyScale, currencySymbol } from '../../../currency/currency';
 
 type LotFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'LotForm'>;
 

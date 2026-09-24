@@ -2,6 +2,7 @@ import type { FC } from 'react';
 import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
+import ChipRow from '../../chip-row';
 import {
   preciousMetals,
   metalForms,
@@ -12,8 +13,6 @@ import {
 } from '../../../../holdings/holding-metadata';
 import Box from '../../../../design-system/components/box';
 import TextField from '../../../../design-system/components/text-field';
-
-import ChipRow from '../../chip-row';
 
 import type { MetalSectionProps } from './metal-section.props';
 

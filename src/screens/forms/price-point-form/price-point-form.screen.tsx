@@ -1,32 +1,31 @@
-import { holdingsRepo } from '@kiko/holdings/repo';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { type FC, useLayoutEffect, useRef, useState } from 'react';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Alert, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
-import { type Currency, currencyScale, currencySymbol } from '../../../currency/currency';
-import { shiftDecimal } from '../../../currency/decimal';
-import { Money } from '../../../currency/money';
-import { parseAmount } from '../../../currency/parse';
-import { useLiveQuery } from '../../../db/use-live-query';
-import Box from '../../../design-system/components/box';
-import Button from '../../../design-system/components/button';
-import Screen from '../../../design-system/components/screen';
-import TextField from '../../../design-system/components/text-field';
-import { holdingInstrument } from '../../../prices/instrument';
-import { dayKeyOf } from '../../../prices/price-book';
-import { pricePointsRepo } from '../../../prices/price-points-repo';
-import type { AccountsStackParamList } from '../../../navigation/types';
-
 import DateField from '../date-field';
-import { groupAmount } from '../amount-format/amount-format';
-import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import {
   useHeaderInset,
   scrollToField,
   type FieldInstance,
 } from '../scroll-to-field/scroll-to-field';
+import { Money } from '../../../currency/money';
+import { parseAmount } from '../../../currency/parse';
+import { dayKeyOf } from '../../../prices/price-book';
+import Box from '../../../design-system/components/box';
+import { shiftDecimal } from '../../../currency/decimal';
+import { useLiveQuery } from '../../../db/use-live-query';
+import { groupAmount } from '../amount-format/amount-format';
+import Button from '../../../design-system/components/button';
+import Screen from '../../../design-system/components/screen';
+import { holdingInstrument } from '../../../prices/instrument';
+import { useSubmitOnce } from '../use-submit-once/use-submit-once';
+import { pricePointsRepo } from '../../../prices/price-points-repo';
+import TextField from '../../../design-system/components/text-field';
+import type { AccountsStackParamList } from '../../../navigation/types';
+import { type Currency, currencyScale, currencySymbol } from '../../../currency/currency';
 
 type PricePointFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'PricePointForm'>;
 
