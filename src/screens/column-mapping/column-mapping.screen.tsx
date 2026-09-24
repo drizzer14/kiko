@@ -610,7 +610,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
  * `mappingKeyFor(account.bankId, fingerprint)`.
  */
 const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }) => {
-  const { filePath, accountId, holdingId, newHoldingId } = route.params;
+  const { filePath, accountId, holdingId } = route.params;
   const { t } = useTranslation();
 
   const [loadState, setLoadState] = useState<LoadState>({ kind: 'loading' });
@@ -634,11 +634,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   const [balanceColumn, setBalanceColumn] = useState<number | undefined>(undefined);
   const [savedApplied, setSavedApplied] = useState(false);
 
-  // Item 11 (F3): a holding already chosen on the statement-import preview
-  // pre-fills this screen's own target-holding field instead of asking
-  // again — a plain initial-state seed (not a `useEffect`), since this only
-  // ever matters once, at mount.
-  const [selectedHoldingId, setSelectedHoldingId] = useState<string | undefined>(holdingId);
+  const [selectedHoldingId, setSelectedHoldingId] = useState<string | undefined>(undefined);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | undefined>(undefined);
   const [importResult, setImportResult] = useState<ImportResult | undefined>(undefined);
@@ -650,14 +646,18 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   const savedMappings = settingsRows.at(0)?.statementMappings;
   const holdingOptions = useTargetHoldingOptions(accountId);
 
-  // Item 2 (F3, BUG): same "Add new" holding return channel as
-  // `statement-import.screen.tsx` — see that screen's matching effect for
-  // the full explanation.
+  // Items 2 + 11 (F3), merged into one field in fix round 1 (ponytail
+  // review): `holdingId` covers BOTH the preview's prefill (item 11) and
+  // the "Add new" holding return channel (item 2, via
+  // `navigation.popTo(..., { merge: true })` — see `statement-import.screen.tsx`'s
+  // matching effect and C1 for why `popTo`, not `navigate`). This ONE effect
+  // handles both: it runs on mount (the prefill case) and again whenever
+  // `holdingId` changes later (the create-and-return case).
   useEffect(() => {
-    if (newHoldingId !== undefined) {
-      setSelectedHoldingId(newHoldingId);
+    if (holdingId !== undefined) {
+      setSelectedHoldingId(holdingId);
     }
-  }, [newHoldingId]);
+  }, [holdingId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -808,15 +808,18 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
 
   // Item 15 (F3): same shape as `statement-import.screen.tsx`'s own
   // `handleImportDone` — dismisses the successful-import modal and hands
-  // control back to the account it was imported into. `navigation.navigate`
-  // finds the existing `AccountDetail` instance already on the stack
-  // (this screen was pushed from StatementImport, itself pushed FROM
-  // there) and pops back to it in one hop.
+  // control back to the account it was imported into. `navigation.popTo` —
+  // NOT `navigate`, which on React Navigation 7 pushes a DUPLICATE of an
+  // already-on-stack route instead of reusing it (C1, F3 part 1 fix round 1
+  // — see `src/navigation/statement-import-return.navigator.test.tsx` for
+  // the real-router proof) — finds the existing `AccountDetail` instance
+  // already on the stack (this screen was pushed from StatementImport,
+  // itself pushed FROM there) and pops back to it in one hop. Does NOT
+  // clear `importResult` (M4, fix round 1) — see the matching comment on
+  // `statement-import.screen.tsx`'s own `handleImportDone`.
   const handleImportDone = (): void => {
-    setImportResult(undefined);
-
     if (account) {
-      navigation.navigate('AccountDetail', { accountId, name: account.name });
+      navigation.popTo('AccountDetail', { accountId, name: account.name }, { merge: true });
 
       return;
     }

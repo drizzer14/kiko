@@ -1304,26 +1304,45 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         await holdingsRepo.setIcon(newHoldingId, icon);
       }
 
-      // Item 2 (F3, BUG): a `returnTo` route param (set only by the "Create
-      // new holding" entry points on StatementImport/ColumnMapping) carries
-      // that screen's own full params plus a `screen` discriminant — this
-      // create was launched from THAT screen's own target-holding picker, so
-      // navigate back to it with `newHoldingId` merged in, rather than a
-      // bare `goBack()`, which handed back no id and left the just-created
-      // holding unselected even though it already showed in the list.
-      // `ts-pattern`'s exhaustive match narrows the union so each branch's
-      // `params` type-checks against its own screen (kiko-code-style).
-      // Every other HoldingForm entry point carries no `returnTo` and keeps
-      // the plain `goBack()`.
+      // Item 2 (F3, BUG) + C1 (F3 part 1 fix round 1, Critical): a `returnTo`
+      // route param (set only by the "Create new holding" entry points on
+      // StatementImport/ColumnMapping) carries that screen's own full params
+      // plus a `screen` discriminant — this create was launched from THAT
+      // screen's own target-holding picker, so pop back to it with
+      // `holdingId` merged in, rather than a bare `goBack()`, which handed
+      // back no id and left the just-created holding unselected even though
+      // it already showed in the list. This is `popTo`, NOT `navigate`:
+      // React Navigation 7's `navigate(name, params)` PUSHES a duplicate of
+      // an already-on-stack route unless it is the CURRENT route, `getId`
+      // matches, or `{ pop: true }` is passed
+      // (`node_modules/@react-navigation/routers/src/StackRouter.tsx`'s
+      // `NAVIGATE` case) — none of which apply here. `popTo` reuses the
+      // existing StatementImport/ColumnMapping instance in place (its own
+      // local React state, e.g. the user's already-picked columns, survives)
+      // and merges `holdingId` into its params; see
+      // `src/navigation/statement-import-return.navigator.test.tsx` for the
+      // real-router proof a `navigationSpy` test cannot give. `ts-pattern`'s
+      // exhaustive match narrows the union so each branch's `params`
+      // type-checks against its own screen (kiko-code-style). Every other
+      // HoldingForm entry point carries no `returnTo` and keeps the plain
+      // `goBack()`.
       if (returnTo === undefined) {
         navigation.goBack();
       } else {
         match(returnTo)
           .with({ screen: 'StatementImport' }, ({ params }) =>
-            navigation.navigate('StatementImport', { ...params, newHoldingId }),
+            navigation.popTo(
+              'StatementImport',
+              { ...params, holdingId: newHoldingId },
+              { merge: true },
+            ),
           )
           .with({ screen: 'ColumnMapping' }, ({ params }) =>
-            navigation.navigate('ColumnMapping', { ...params, newHoldingId }),
+            navigation.popTo(
+              'ColumnMapping',
+              { ...params, holdingId: newHoldingId },
+              { merge: true },
+            ),
           )
           .exhaustive();
       }

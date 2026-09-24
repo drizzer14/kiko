@@ -134,7 +134,6 @@ const renderScreen = async (params: {
   filePath: string;
   accountId: string;
   holdingId?: string;
-  newHoldingId?: string;
 }) => {
   const navigation = navigationSpy();
   const route = asRouteProp<ColumnMappingProps['route']>('ColumnMapping', params);
@@ -223,7 +222,7 @@ describe('ColumnMappingScreen', () => {
   // Item 2 (F3, BUG): same "Add new" holding return channel as
   // `statement-import.screen.test.tsx` — see that test file's matching case
   // for the full explanation.
-  it('navigates to HoldingForm with a returnTo, then selects the holding once newHoldingId arrives back', async () => {
+  it('navigates to HoldingForm with a returnTo, then selects the holding once holdingId arrives back', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
     setLiveData({
       accounts: [monobankAccount],
@@ -249,7 +248,7 @@ describe('ColumnMappingScreen', () => {
     const updatedRoute = asRouteProp<ColumnMappingProps['route']>('ColumnMapping', {
       filePath: '/mock/statement.csv',
       accountId: 'a',
-      newHoldingId: 'h2',
+      holdingId: 'h2',
     });
 
     await act(async () => {
@@ -390,10 +389,14 @@ describe('ColumnMappingScreen', () => {
 
     await fireEvent.press(view.getByText(i18n.t('common.done')));
 
-    expect(view.navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
-      accountId: 'a',
-      name: 'Monobank',
-    });
+    // C1 (fix round 1, Critical): `popTo`, not `navigate` — see the matching
+    // assertion in statement-import.screen.test.tsx for why.
+    expect(view.navigation.popTo).toHaveBeenCalledWith(
+      'AccountDetail',
+      { accountId: 'a', name: 'Monobank' },
+      { merge: true },
+    );
+    expect(view.navigation.navigate).not.toHaveBeenCalledWith('AccountDetail', expect.anything());
   });
 
   it('imports then saves the confirmed mapping under bank:<bankId>', async () => {

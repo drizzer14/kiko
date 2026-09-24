@@ -1022,11 +1022,20 @@ describe('HoldingFormScreen create-and-return (item 2, F3)', () => {
     setIconMock.mockClear();
     navigation.goBack.mockClear();
     navigation.navigate.mockClear();
+    navigation.popTo.mockClear();
     mockAccountKind = 'property';
     mockAccountInstitution = null;
   });
 
-  it('navigates back to the StatementImport caller with newHoldingId merged in, instead of goBack', async () => {
+  // C1 (F3 part 1 fix round 1, Critical): `popTo`, not `navigate` — React
+  // Navigation 7's `navigate(name, params)` PUSHES a duplicate of a route
+  // already on the stack instead of reusing it
+  // (`node_modules/@react-navigation/routers/src/StackRouter.tsx`'s
+  // `NAVIGATE` case). This spy assertion proves PRODUCTION calls `popTo`
+  // with the right args; the real-router proof that `popTo` itself reuses
+  // the existing instance (no duplicate, its own state kept) lives in
+  // `src/navigation/statement-import-return.navigator.test.tsx`.
+  it('pops back to the StatementImport caller with holdingId merged in, instead of goBack or a duplicating navigate', async () => {
     const returnRoute = asRouteProp<HoldingFormProps['route']>('HoldingForm', {
       accountId: 'acc-1',
       returnTo: {
@@ -1045,15 +1054,16 @@ describe('HoldingFormScreen create-and-return (item 2, F3)', () => {
 
     await waitFor(() => expect(createMock).toHaveBeenCalled());
 
-    expect(navigation.navigate).toHaveBeenCalledWith('StatementImport', {
-      filePath: '/mock/statement.csv',
-      accountId: 'acc-1',
-      newHoldingId: 'new-holding-id',
-    });
+    expect(navigation.popTo).toHaveBeenCalledWith(
+      'StatementImport',
+      { filePath: '/mock/statement.csv', accountId: 'acc-1', holdingId: 'new-holding-id' },
+      { merge: true },
+    );
     expect(navigation.goBack).not.toHaveBeenCalled();
+    expect(navigation.navigate).not.toHaveBeenCalledWith('StatementImport', expect.anything());
   });
 
-  it('navigates back to the ColumnMapping caller with newHoldingId merged in, instead of goBack', async () => {
+  it('pops back to the ColumnMapping caller with holdingId merged in, instead of goBack or a duplicating navigate', async () => {
     const returnRoute = asRouteProp<HoldingFormProps['route']>('HoldingForm', {
       accountId: 'acc-1',
       returnTo: {
@@ -1072,12 +1082,13 @@ describe('HoldingFormScreen create-and-return (item 2, F3)', () => {
 
     await waitFor(() => expect(createMock).toHaveBeenCalled());
 
-    expect(navigation.navigate).toHaveBeenCalledWith('ColumnMapping', {
-      filePath: '/mock/statement.csv',
-      accountId: 'acc-1',
-      newHoldingId: 'new-holding-id',
-    });
+    expect(navigation.popTo).toHaveBeenCalledWith(
+      'ColumnMapping',
+      { filePath: '/mock/statement.csv', accountId: 'acc-1', holdingId: 'new-holding-id' },
+      { merge: true },
+    );
     expect(navigation.goBack).not.toHaveBeenCalled();
+    expect(navigation.navigate).not.toHaveBeenCalledWith('ColumnMapping', expect.anything());
   });
 });
 

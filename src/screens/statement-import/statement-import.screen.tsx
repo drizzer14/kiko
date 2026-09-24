@@ -264,7 +264,7 @@ const StatementPreviewBlock: FC<{
  * and the `importStatement` action.
  */
 const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigation }) => {
-  const { filePath, accountId, expectedFormatId, newHoldingId } = route.params;
+  const { filePath, accountId, expectedFormatId, holdingId } = route.params;
   const { t } = useTranslation();
   const [loadState, setLoadState] = useState<LoadState>({ kind: 'loading' });
   const [selectedHoldingId, setSelectedHoldingId] = useState<string | undefined>(undefined);
@@ -287,14 +287,18 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // below) never got SELECTED — the live-queried option list already showed
   // it (`useTargetHoldingOptions` above), but nothing told the picker to
   // select it. `HoldingFormScreen`'s create-save path now hands the new id
-  // back through this same route's own `newHoldingId` param (merged in via
-  // `navigation.navigate` rather than a bare `goBack()` — see `returnTo` on
-  // `HoldingForm`'s route type); select it the moment it arrives.
+  // back through this same route's own `holdingId` param, merged in via
+  // `navigation.popTo(..., { merge: true })` — NOT `navigate`, which on
+  // React Navigation 7 pushes a duplicate of this already-on-stack route
+  // instead of reusing it (C1, F3 part 1 fix round 1; see `returnTo` on
+  // `HoldingForm`'s route type, and
+  // `src/navigation/statement-import-return.navigator.test.tsx` for the
+  // real-router proof). This effect selects it the moment it arrives.
   useEffect(() => {
-    if (newHoldingId !== undefined) {
-      setSelectedHoldingId(newHoldingId);
+    if (holdingId !== undefined) {
+      setSelectedHoldingId(holdingId);
     }
-  }, [newHoldingId]);
+  }, [holdingId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -410,19 +414,25 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   };
 
   // Item 15 (F3): dismisses the successful-import modal and hands control
-  // back to the account it was imported into — `navigation.navigate` finds
-  // the existing `AccountDetail` instance already on the stack (this screen,
-  // and Map Columns before it, were both pushed FROM there) and pops back to
-  // it, regardless of how many screens deep this import happened. Falls back
-  // to a plain `goBack()` when the account isn't resolvable (the accountId-
-  // less Share Extension entry point), rather than navigating nowhere.
+  // back to the account it was imported into. `navigation.popTo` — NOT
+  // `navigate`, which on React Navigation 7 pushes a DUPLICATE of an
+  // already-on-stack route instead of reusing it (C1, F3 part 1 fix round 1
+  // — see `src/navigation/statement-import-return.navigator.test.tsx` for
+  // the real-router proof) — finds the existing `AccountDetail` instance
+  // already on the stack (this screen, and Map Columns before it, were both
+  // pushed FROM there) and pops back to it in place, regardless of how many
+  // screens deep this import happened. Falls back to a plain `goBack()`
+  // when the account isn't resolvable (the accountId-less Share Extension
+  // entry point) — NEVER `popTo` in that branch, which would ADD an
+  // `AccountDetail` that was never on this stack. Does NOT clear
+  // `importResult` (M4, fix round 1): the screen is navigating away, so the
+  // sheet's own slide-out animation keeps showing the last result text
+  // instead of flashing empty content mid-transition.
   const handleImportDone = (): void => {
-    setImportResult(undefined);
-
     const account = accountRows.at(0);
 
     if (accountId && account) {
-      navigation.navigate('AccountDetail', { accountId, name: account.name });
+      navigation.popTo('AccountDetail', { accountId, name: account.name }, { merge: true });
 
       return;
     }

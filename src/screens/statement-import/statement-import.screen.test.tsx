@@ -455,15 +455,23 @@ describe('StatementImportScreen', () => {
 
     await fireEvent.press(view.getByText(i18n.t('common.done')));
 
-    expect(view.navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
-      accountId: 'a',
-      name: 'My Monobank card',
-    });
+    // C1 (fix round 1, Critical): `popTo`, not `navigate` — `navigate` on
+    // React Navigation 7 pushes a duplicate AccountDetail instead of
+    // reusing the existing one. This spy assertion proves PRODUCTION calls
+    // the right method with the right args; the real-router proof that
+    // `popTo` itself reuses the instance (no duplicate) lives in
+    // `src/navigation/statement-import-return.navigator.test.tsx`.
+    expect(view.navigation.popTo).toHaveBeenCalledWith(
+      'AccountDetail',
+      { accountId: 'a', name: 'My Monobank card' },
+      { merge: true },
+    );
+    expect(view.navigation.navigate).not.toHaveBeenCalledWith('AccountDetail', expect.anything());
   });
 
   // Item 2 (F3, BUG): "Add new" holding must end up SELECTED once created,
   // not just present in the live-queried option list.
-  it('navigates to HoldingForm with a returnTo, then selects the holding once newHoldingId arrives back', async () => {
+  it('navigates to HoldingForm with a returnTo, then selects the holding once holdingId arrives back', async () => {
     mockReadFile.mockResolvedValue(fixtureBase64);
     setLiveData({
       holdings: [
@@ -489,7 +497,7 @@ describe('StatementImportScreen', () => {
     const updatedRoute = asRouteProp<StatementImportProps['route']>('StatementImport', {
       filePath: '/mock/statement.csv',
       accountId: 'a',
-      newHoldingId: 'h2',
+      holdingId: 'h2',
     });
 
     await act(async () => {

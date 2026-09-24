@@ -54,12 +54,18 @@ export type AccountsStackParamList = {
   AccountForm: { accountId?: string };
   // `returnTo` (item 2, F3 device feedback) is the CREATE-only return channel
   // for a "Create new holding" launched from the statement-import preview or
-  // Map Columns: the caller's OWN full route params (so a re-navigate never
+  // Map Columns: the caller's OWN full route params (so a re-`popTo` never
   // needs to reconstruct `filePath`/`accountId`/etc. from scratch), tagged
   // with `screen` as a discriminant `save()` narrows with `ts-pattern`
-  // (kiko-code-style: exhaustive mapping over a closed literal set) to merge
-  // the fresh `newHoldingId` back in — instead of a bare `goBack()` that
-  // hands back no id at all. Absent for every other HoldingForm entry point
+  // (kiko-code-style: exhaustive mapping over a closed literal set) to
+  // `navigation.popTo(screen, { ...params, holdingId }, { merge: true })` —
+  // NOT `navigation.navigate`, which on React Navigation 7 PUSHES a
+  // duplicate of a route already on the stack instead of reusing it (C1,
+  // F3 part 1 fix round 1 — `popTo` reuses the existing instance in place,
+  // keeping its own local state, and merges the fresh `holdingId` into its
+  // params); see `src/navigation/statement-import-return.navigator.test.tsx`
+  // for the real-router proof. Instead of a bare `goBack()`, which hands
+  // back no id at all. Absent for every other HoldingForm entry point
   // (account-detail's "Add holding", holding-detail's "Edit"), which keep
   // the plain `goBack()`.
   HoldingForm: {
@@ -99,17 +105,27 @@ export type AccountsStackParamList = {
   // `statementFormatIdForBank` (`src/bank-sync/bank-catalog/`). Undefined
   // falls back to the existing multi-format auto-detect (an account with no
   // `bankId`, or the accountId-less Share Extension entry point).
-  // `newHoldingId` (item 2, F3 device feedback) is the return-channel param
-  // `HoldingFormScreen`'s create-save path merges in via `navigation.navigate`
-  // when it was reached through this screen's own "Create new holding" (see
-  // `HoldingForm.returnTo` above) — this screen selects it the moment it
-  // arrives (a `useEffect` on this field), rather than leaving the freshly
-  // created holding unselected even though it already appears in the list.
+  // `holdingId` (items 2 and 11, F3 device feedback; merged into ONE field in
+  // fix round 1 per the ponytail review — a single field a fresh mount AND a
+  // later param change both feed into the SAME "select this holding" effect
+  // covers both cases cleanly) is the holding this screen should have
+  // selected: either the id `HoldingFormScreen`'s create-save path merges in
+  // via `navigation.popTo(screen, { ...params, holdingId }, { merge: true })`
+  // when reached through this screen's own "Create new holding" (see
+  // `HoldingForm.returnTo` above — `popTo`, NOT `navigate`: React Navigation
+  // 7's `navigate()` PUSHES a duplicate of an already-on-stack route instead
+  // of reusing it, `popTo` reuses it and merges the params in place), or (on
+  // `ColumnMapping` only) the holding already chosen on the statement-import
+  // preview, carried through so Map Columns pre-fills instead of asking
+  // again. Either way this screen selects it the moment it arrives (a
+  // `useEffect` on this field, which also covers the initial-mount prefill
+  // case for free) rather than leaving a freshly created holding unselected
+  // even though it already appears in the list.
   StatementImport: {
     filePath: string;
     accountId?: string;
     expectedFormatId?: StatementFormatId;
-    newHoldingId?: string;
+    holdingId?: string;
   };
   // The generic column-mapping import screen (T6), reached from
   // `StatementImportScreen`'s "Map columns manually" entry point (T7) — or
@@ -117,17 +133,14 @@ export type AccountsStackParamList = {
   // shipped parser recognized. `accountId` is required here (unlike
   // `StatementImport` above): a column mapping always saves under this
   // account's own bank/header key, so there is no accountId-less entry point
-  // for this screen. `holdingId` (item 11, F3) is the holding already chosen
-  // on the statement-import preview — this screen pre-fills its own
-  // target-holding field from it instead of asking again; still just a
-  // PRE-FILL, not a lock (the field stays editable, and required, like every
-  // other required field on this screen). `newHoldingId` is the same
-  // "Create new holding" return channel `StatementImport` carries above.
+  // for this screen. `holdingId` is the SAME merged field `StatementImport`
+  // carries above — still just a PRE-FILL/reselect, not a lock (the field
+  // stays editable, and required, like every other required field on this
+  // screen).
   ColumnMapping: {
     filePath: string;
     accountId: string;
     holdingId?: string;
-    newHoldingId?: string;
   };
 };
 
