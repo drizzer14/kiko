@@ -82,6 +82,22 @@ function consumeSubshell(ctx, start, open, close) {
   ctx.i = end + 1;
 }
 
+// A `$(...)` or backtick span expands (and so is recursed into) both at top
+// level and inside double quotes — the two callers that share this check.
+function tryConsumeSubshell(ctx) {
+  const { str, i } = ctx;
+  const c = str[i];
+  if (c === '$' && str[i + 1] === '(') {
+    consumeSubshell(ctx, i + 2, '(', ')');
+    return true;
+  }
+  if (c === '`') {
+    consumeSubshell(ctx, i + 1, null, '`');
+    return true;
+  }
+  return false;
+}
+
 function stepSingleQuote(ctx) {
   const c = ctx.str[ctx.i];
   if (c === "'") ctx.quote = null;
@@ -103,14 +119,7 @@ function stepDoubleQuote(ctx) {
     ctx.i++;
     return;
   }
-  if (c === '$' && str[i + 1] === '(') {
-    consumeSubshell(ctx, i + 2, '(', ')');
-    return;
-  }
-  if (c === '`') {
-    consumeSubshell(ctx, i + 1, null, '`');
-    return;
-  }
+  if (tryConsumeSubshell(ctx)) return;
   ctx.buf += c;
   ctx.i++;
 }
@@ -151,14 +160,7 @@ function stepTopLevel(ctx) {
     ctx.i++;
     return;
   }
-  if (c === '$' && str[i + 1] === '(') {
-    consumeSubshell(ctx, i + 2, '(', ')');
-    return;
-  }
-  if (c === '`') {
-    consumeSubshell(ctx, i + 1, null, '`');
-    return;
-  }
+  if (tryConsumeSubshell(ctx)) return;
   if (consumeSeparator(ctx)) return;
   ctx.buf += c;
   ctx.i++;
