@@ -33,8 +33,16 @@ const sensebankFixtureBase64 = readFileSync(
 
 // A header row with NO data rows below it — the exact shape a header-only
 // export, or a saved header row picked at the very LAST line, leaves the
-// screen with (N2): `dataRows` is empty either way.
+// screen with an empty `dataRows` either way.
 const headerOnlyCsvBase64 = Buffer.from('Date,Description,Amount\n', 'utf-8').toString('base64');
+
+// Real data rows, but the mapped CURRENCY column itself is blank in every
+// one of them — unlike `headerOnlyCsvBase64` above, this file has content
+// to read; only the one column is empty.
+const blankCurrencyColumnCsvBase64 = Buffer.from(
+  'Date,Description,Amount,Currency\n01.01.2024,Coffee,10,\n02.01.2024,Tea,20,\n',
+  'utf-8',
+).toString('base64');
 
 const mockReadFile = jest.fn();
 const mockUnlink = jest.fn();
@@ -544,6 +552,40 @@ describe('ColumnMappingScreen', () => {
     expect(mockImportParsedStatement).not.toHaveBeenCalled();
     expect(view.queryByText(i18n.t('columnMapping.currencyColumnUnresolvedError'))).toBeNull();
     expect(view.getByText(i18n.t('columnMapping.noRowsResolvedError'))).toBeTruthy();
+  });
+
+  // A file WITH data rows, where only the mapped currency column happens to
+  // be blank, is NOT the same as a header-only file — there is real content
+  // to import, so the currency field keeps its own "not recognized" error
+  // instead of the Result block's generic no-rows one (narrowed ruling,
+  // round 3 item 1).
+  it('keeps the currency-field error, not the noRowsResolvedError, for a blank currency column in a file WITH data rows', async () => {
+    mockReadFile.mockResolvedValue(blankCurrencyColumnCsvBase64);
+
+    const view = await renderScreen({ filePath: '/mock/blank-currency.csv', accountId: 'a' });
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+
+    await fireEvent.press(view.getByTestId('column-mapping-date-column'));
+    await fireEvent.press(view.getByTestId('column-mapping-date-column-option-0'));
+    await fireEvent.press(view.getByTestId('column-mapping-date-format'));
+    await fireEvent.press(view.getByTestId('column-mapping-date-format-option-DD.MM.YYYY'));
+    await fireEvent.press(view.getByTestId('column-mapping-description-column'));
+    await fireEvent.press(view.getByTestId('column-mapping-description-column-option-1'));
+    await fireEvent.press(view.getByTestId('column-mapping-amount-column'));
+    await fireEvent.press(view.getByTestId('column-mapping-amount-column-option-2'));
+    await fireEvent.press(
+      within(view.getByTestId('column-mapping-currency-mode')).getByText(
+        i18n.t('columnMapping.currencyColumn'),
+      ),
+    );
+    await fireEvent.press(view.getByTestId('column-mapping-currency-column'));
+    await fireEvent.press(view.getByTestId('column-mapping-currency-column-option-3'));
+    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    expect(mockImportParsedStatement).not.toHaveBeenCalled();
+    expect(view.getByText(i18n.t('columnMapping.currencyColumnUnresolvedError'))).toBeTruthy();
+    expect(view.queryByText(i18n.t('columnMapping.noRowsResolvedError'))).toBeNull();
   });
 
   // A genuinely unresolvable currency column (every cell fails to resolve to

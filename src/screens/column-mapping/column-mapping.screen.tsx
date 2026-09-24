@@ -196,9 +196,10 @@ type ColumnMappingFieldRefs = {
   amountGroupFieldRef: RefObject<FieldInstance | null>;
   currencyGroupFieldRef: RefObject<FieldInstance | null>;
   descriptionColumnFieldRef: RefObject<FieldInstance | null>;
-  // Wraps the Result block itself — the scroll target when every required
-  // field IS mapped and the mapping applied without throwing, but zero rows
-  // survived their own per-row checks (no single INPUT field is at fault).
+  // Wraps the Result block itself — the scroll target whenever zero rows
+  // survived (`noRowsResolved`, see `ColumnMappingResolutionState`'s own doc
+  // comment), whether the apply succeeded with an empty result or threw on
+  // a genuinely empty file — no single INPUT field is at fault either way.
   resultFieldRef: RefObject<FieldInstance | null>;
   targetHoldingFieldRef: RefObject<FieldInstance | null>;
 };
@@ -221,10 +222,11 @@ type ColumnMappingFieldErrors = {
   creditColumnError: string | undefined;
   currencyColumnError: string | undefined;
   descriptionColumnError: string | undefined;
-  // Every required field IS mapped and `applyColumnMapping` succeeded, but
-  // literally zero rows survived their own per-row checks — no single INPUT
-  // field is at fault, so this is the Result block's own error instead of
-  // one of the fields above.
+  // Every required field IS mapped, but literally zero rows resolved to a
+  // transaction — whether every row failed its own per-row check, the apply
+  // succeeded with nothing to show, or the apply threw on a genuinely empty
+  // file — no single INPUT field is at fault, so this is the Result block's
+  // own error instead of one of the fields above.
   noRowsResolvedError: string | undefined;
   targetHoldingError: string | undefined;
 };
@@ -268,16 +270,16 @@ const columnMappingFieldErrors = (params: {
   currencyMode: CurrencyMode;
   currencyColumn: number | undefined;
   // True once every required field IS mapped but `applyColumnMapping` still
-  // threw (a currency column whose values resolve to no known ISO code
-  // anywhere in the file) — the ONE throw case that function's own doc
-  // comment documents, so `mapping !== undefined && applyResult ===
-  // undefined` (the caller's own check) is exactly this state, never a
-  // false positive from some other per-row failure.
+  // threw on a currency column whose values resolve to no known ISO code —
+  // as opposed to throwing because the file has no data rows at all, which
+  // routes to `noRowsResolved` below instead (see `resolutionStateFor`'s own
+  // `noDataRows` split).
   currencyColumnUnresolved: boolean;
   descriptionColumn: number | undefined;
-  // True once every required field IS mapped, `applyColumnMapping` succeeded
-  // (so this is independent of `currencyColumnUnresolved` above, which is
-  // the THROW case), but zero rows survived their own per-row checks.
+  // True once every required field IS mapped, but zero rows resolved to a
+  // transaction — whether the apply succeeded with nothing to show or threw
+  // on a genuinely empty file (independent of `currencyColumnUnresolved`
+  // above, which is the "real column, unresolvable values" case).
   noRowsResolved: boolean;
   selectedHoldingId: string | undefined;
 }): ColumnMappingFieldErrors => {
@@ -360,9 +362,9 @@ type MappedResult = {
 };
 
 // `applyColumnMapping` throws only when a `currency: { mode: 'column' }`
-// mapping resolves NO row's currency at all (its own doc comment) — degrades
-// to the same "nothing to show yet" state the incomplete-mapping case
-// already renders, rather than crashing the screen.
+// mapping resolves NO row's currency at all (its own doc comment) — caught
+// here so the screen renders its own "nothing resolved yet" state (an
+// `undefined` `applyResult`) instead of crashing.
 const applyMappingSafely = (
   rows: TableCell[][],
   mapping: ColumnMapping,
@@ -383,17 +385,15 @@ const noRowsResolvedFor = (applyResult: MappedResult | undefined): boolean =>
 
 const cellText = (cell: TableCell | undefined): string => (cell === undefined ? '' : String(cell));
 
-// True when a `currency: { mode: 'column' }` mapping's own column has zero
-// non-empty cells across every data row — the reason `applyColumnMapping`
-// throws in that case is "there is no data to read", not "the codes in this
-// column aren't recognized", so the screen shows the no-rows error instead
-// of a false currency-column complaint.
-const currencyColumnIsBlank = (
-  rows: TableCell[][],
-  headerRowIndex: number,
-  currencyColumn: number,
-): boolean =>
-  rows.slice(headerRowIndex + 1).every((row) => cellText(row[currencyColumn]).trim() === '');
+// True when NO data row in the file has ANY non-empty cell at all (a
+// header-only export, or a saved header row picked at the very last line) —
+// the one shape where there is genuinely nothing to import, so the Result
+// block's own no-rows error is the right message. Narrower than "the
+// CURRENCY column is blank": a file that has real data in its other columns
+// but an empty currency column still blames the currency field itself (see
+// `currencyColumnErrorFor`).
+const noDataRowsIn = (rows: TableCell[][], headerRowIndex: number): boolean =>
+  rows.slice(headerRowIndex + 1).every((row) => row.every((cell) => cellText(cell).trim() === ''));
 
 type ColumnMappingResolutionState = {
   // `applyColumnMapping` throws ONLY when a `currency: { mode: 'column' }`
@@ -401,36 +401,34 @@ type ColumnMappingResolutionState = {
   // so once every required field IS structurally mapped (`mapping !==
   // undefined`) and the apply still failed (`applyResult === undefined`),
   // that is exactly this state, never a false positive from some other
-  // per-row failure (see `applyColumnMapping`'s own doc comment) — EXCEPT a
-  // blank currency column, which is really the no-rows case below.
+  // per-row failure (see `applyColumnMapping`'s own doc comment) — EXCEPT
+  // when the file has no data rows at all, which is really the no-rows case
+  // below.
   currencyColumnUnresolved: boolean;
   // Every required field IS mapped and the apply succeeded, but zero rows
   // resolved to a transaction (a date format that matches none of the
-  // file's actual cells, say) — OR the apply THREW because the mapped
-  // currency column had no data to read at all, which is also "nothing to
-  // import", the same as a defined result with none.
+  // file's actual cells, say) — OR the apply THREW because the file has no
+  // data rows to read at all, which is also "nothing to import", the same
+  // as a defined result with none.
   noRowsResolved: boolean;
 };
 
-// Both booleans above share `currencyColumnBlank` — split out of the screen
+// Both booleans above share `noDataRows` — split out of the screen
 // component purely to stay under Biome's cognitive-complexity cap.
 const resolutionStateFor = (
   rows: TableCell[][],
   mapping: ColumnMapping | undefined,
   applyResult: MappedResult | undefined,
 ): ColumnMappingResolutionState => {
-  const currencyColumnBlank =
-    mapping !== undefined &&
-    mapping.currency.mode === 'column' &&
-    currencyColumnIsBlank(rows, mapping.headerRowIndex, mapping.currency.column);
+  const noDataRows = mapping !== undefined && noDataRowsIn(rows, mapping.headerRowIndex);
 
   return {
     currencyColumnUnresolved:
       mapping !== undefined &&
       applyResult === undefined &&
       mapping.currency.mode === 'column' &&
-      !currencyColumnBlank,
-    noRowsResolved: noRowsResolvedFor(applyResult) || currencyColumnBlank,
+      !noDataRows,
+    noRowsResolved: noRowsResolvedFor(applyResult) || noDataRows,
   };
 };
 
