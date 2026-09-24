@@ -261,10 +261,16 @@ const renderScreen = async (params: {
 // own shapes (T7's auto-replace-to-ColumnMapping check), everything else
 // (the holdings/accounts-list pair `useTargetHoldingOptions` reads) keeps
 // the same single-holding default every pre-T7 test in this file relies on.
+// `accountIsLoading`/`settingsIsLoading` default to `false` (an already-
+// resolved query) so every existing call site keeps behaving exactly as
+// before; a test that cares about the cold-start ordering passes one or
+// both explicitly.
 const setLiveData = (data: {
   holdings?: { id: string; name: string; accountId: string; accountName: string }[];
   account?: { id: string; name?: string; bankId?: string | null };
   statementMappings?: Record<string, unknown> | null;
+  accountIsLoading?: boolean;
+  settingsIsLoading?: boolean;
 }): void => {
   const holdings = data.holdings ?? [
     { id: 'h1', name: 'Black card', accountId: 'a', accountName: 'Monobank' },
@@ -272,14 +278,20 @@ const setLiveData = (data: {
 
   mockUseLiveQuery.mockImplementation((query: { __kind?: string }) => {
     if (query.__kind === 'account-by-id') {
-      return { data: data.account ? [data.account] : [] };
+      return {
+        data: data.account ? [data.account] : [],
+        isLoading: data.accountIsLoading ?? false,
+      };
     }
 
     if (query.__kind === 'settings') {
-      return { data: [{ statementMappings: data.statementMappings ?? null }] };
+      return {
+        data: [{ statementMappings: data.statementMappings ?? null }],
+        isLoading: data.settingsIsLoading ?? false,
+      };
     }
 
-    return { data: holdings };
+    return { data: holdings, isLoading: false };
   });
 };
 
@@ -805,11 +817,74 @@ describe('StatementImportScreen — column-mapping entry point (T7)', () => {
     expect(navigation.replace).not.toHaveBeenCalled();
   });
 
+  // The exact saved mapping to reuse across the three cases below.
+  const exactSensebankMapping = {
+    'bank:sensebank': {
+      headerRowIndex: 0,
+      decimalSeparator: '.',
+      dateColumn: 0,
+      dateFormat: 'DD.MM.YYYY HH:MM:SS',
+      amount: { mode: 'single', column: 3 },
+      descriptionColumn: 1,
+      currency: { mode: 'fixed', currency: 'UAH' },
+      fingerprint: headerFingerprint(fixtureHeaderRow),
+      savedAt: 1_700_000_000_000,
+    },
+  };
+
+  // `useLiveQuery` starts at `data: []`/`isLoading: true` and fills in
+  // later — a cold-started settings query resolving AFTER the file itself
+  // is decoded must still be seen by the auto-replace check the moment it
+  // resolves, not treated as "no mapping exists" just because it hadn't
+  // loaded yet at the instant `input` became ready.
+  it('replaces the route once the still-loading settings query resolves with an exact match (cold start)', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+    setLiveData({ account: { id: 'a', bankId: 'sensebank' }, settingsIsLoading: true });
+
+    const view = await renderScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      expectedFormatId: 'sensebank-csv',
+    });
+
+    await waitFor(() =>
+      expect(
+        view.getByText(i18n.t('statementImport.bankMismatch', { bank: 'Sensebank (CSV)' })),
+      ).toBeTruthy(),
+    );
+    expect(view.navigation.replace).not.toHaveBeenCalled();
+
+    setLiveData({
+      account: { id: 'a', bankId: 'sensebank' },
+      statementMappings: exactSensebankMapping,
+    });
+
+    await act(async () => {
+      view.rerender(
+        <StatementImportScreen
+          route={asRouteProp<StatementImportProps['route']>('StatementImport', {
+            filePath: '/mock/statement.csv',
+            accountId: 'a',
+            expectedFormatId: 'sensebank-csv',
+          })}
+          navigation={asNavigationProp<StatementImportProps['navigation']>(view.navigation)}
+        />,
+      );
+    });
+
+    expect(view.navigation.replace).toHaveBeenCalledTimes(1);
+    expect(view.navigation.replace).toHaveBeenCalledWith('ColumnMapping', {
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      ownsFile: true,
+    });
+  });
+
   // A mapping saved by a DIFFERENT screen (the pushed ColumnMapping screen,
-  // mid-Import) notifies every mounted subscriber, including this one — the
-  // auto-replace check must decide once, the first time `input` is ready,
-  // and never revisit that decision on a later `savedMappings` change.
-  it('does not auto-replace when savedMappings changes to a match AFTER input is already ready', async () => {
+  // mid-Import) notifies every mounted subscriber, including this one — once
+  // both live queries have already resolved and the check has decided
+  // "no match", a LATER `savedMappings` write must never re-arm it.
+  it('does not auto-replace when savedMappings changes to a match AFTER the initial decision', async () => {
     mockReadFile.mockResolvedValue(fixtureBase64);
     setLiveData({ account: { id: 'a', bankId: 'sensebank' } });
 
@@ -828,19 +903,47 @@ describe('StatementImportScreen — column-mapping entry point (T7)', () => {
 
     setLiveData({
       account: { id: 'a', bankId: 'sensebank' },
-      statementMappings: {
-        'bank:sensebank': {
-          headerRowIndex: 0,
-          decimalSeparator: '.',
-          dateColumn: 0,
-          dateFormat: 'DD.MM.YYYY HH:MM:SS',
-          amount: { mode: 'single', column: 3 },
-          descriptionColumn: 1,
-          currency: { mode: 'fixed', currency: 'UAH' },
-          fingerprint: headerFingerprint(fixtureHeaderRow),
-          savedAt: 1_700_000_000_000,
-        },
-      },
+      statementMappings: exactSensebankMapping,
+    });
+
+    await act(async () => {
+      view.rerender(
+        <StatementImportScreen
+          route={asRouteProp<StatementImportProps['route']>('StatementImport', {
+            filePath: '/mock/statement.csv',
+            accountId: 'a',
+            expectedFormatId: 'sensebank-csv',
+          })}
+          navigation={asNavigationProp<StatementImportProps['navigation']>(view.navigation)}
+        />,
+      );
+    });
+
+    expect(view.navigation.replace).not.toHaveBeenCalled();
+  });
+
+  // The user pushing "Map columns manually" themselves must disable
+  // auto-replace for good, even when they did it while the settings query
+  // was still loading and a matching mapping only shows up afterward.
+  it('does not auto-replace after a manual push, even once a still-loading settings query resolves with a match', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+    setLiveData({ account: { id: 'a', bankId: 'sensebank' }, settingsIsLoading: true });
+
+    const view = await renderScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      expectedFormatId: 'sensebank-csv',
+    });
+
+    await waitFor(() =>
+      expect(view.getByText(i18n.t('statementImport.mapColumnsManually'))).toBeTruthy(),
+    );
+
+    await fireEvent.press(view.getByText(i18n.t('statementImport.mapColumnsManually')));
+
+    setLiveData({
+      account: { id: 'a', bankId: 'sensebank' },
+      statementMappings: exactSensebankMapping,
     });
 
     await act(async () => {

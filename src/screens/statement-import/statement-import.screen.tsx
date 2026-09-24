@@ -317,9 +317,15 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // Share Extension entry point has none) — an empty-string id query simply
   // returns no rows rather than being skipped, so every render still calls
   // the SAME hooks (React's rules of hooks).
-  const { data: accountRows } = useLiveQuery(accountsRepo.byIdQuery(accountId ?? ''), ['accounts']);
+  const { data: accountRows, isLoading: accountIsLoading } = useLiveQuery(
+    accountsRepo.byIdQuery(accountId ?? ''),
+    ['accounts'],
+  );
   const bankId = accountRows.at(0)?.bankId;
-  const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  const { data: settingsRows, isLoading: settingsIsLoading } = useLiveQuery(
+    settingsRepo.getQuery(),
+    ['settings'],
+  );
   const savedMappings = settingsRows.at(0)?.statementMappings;
 
   // Item 2 (F3, BUG): a holding created via "Add new" (`handleCreateNewHolding`
@@ -415,10 +421,15 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // below) — once that happens, the auto-replace check must never act for
   // this screen instance again, no matter what it later re-evaluates.
   const manualMapPushedRef = useRef(false);
-  // Decides at most once, the FIRST time `input` resolves — whether or not
-  // that first look finds a match. `savedMappings` stays a dependency (a
-  // mapping already saved before `input` even resolves must still be seen),
-  // but this guard fixes the decision at that moment and refuses to revisit
+  // Decides at most once, the FIRST time `input` resolves AND both the
+  // account and settings live queries have finished their own INITIAL
+  // load — whether or not that look finds a match. Both queries start at
+  // `data: []`/`isLoading: true` and fill in later: deciding while either
+  // is still loading would read an empty `savedMappings`/`bankId` as "no
+  // mapping exists" and lock in a wrong "no match" for a returning user
+  // whose mapping simply hadn't loaded yet. `savedMappings` stays a
+  // dependency (a mapping already saved before the queries resolve must
+  // still be seen), but once the decision is made it refuses to revisit
   // it: a `savedMappings` write that lands LATER — the pushed ColumnMapping
   // screen this effect is unaware of saving its own mapping while this
   // screen sits blurred underneath it — used to flip the match from false to
@@ -434,7 +445,9 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
       manualMapPushedRef.current ||
       !accountId ||
       input === undefined ||
-      format !== undefined
+      format !== undefined ||
+      accountIsLoading ||
+      settingsIsLoading
     ) {
       return;
     }
@@ -460,7 +473,17 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
       // still mounted and still the owner.
       navigation.replace('ColumnMapping', { filePath, accountId, ownsFile: true });
     }
-  }, [accountId, input, format, savedMappings, bankId, filePath, navigation]);
+  }, [
+    accountId,
+    input,
+    format,
+    savedMappings,
+    bankId,
+    filePath,
+    navigation,
+    accountIsLoading,
+    settingsIsLoading,
+  ]);
 
   // M8 (F3 part 1 fix round 1, Important): `filePath` is a plaintext local
   // cache copy (item 6's `keepLocalCopy` fix) outside the encrypted
