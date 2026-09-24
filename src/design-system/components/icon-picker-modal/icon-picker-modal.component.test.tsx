@@ -5,9 +5,10 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 import '../../unistyles';
 import '../../../i18n';
+import { SEEDED_CATEGORIES } from '../../../db/__fixtures__/seeded-categories';
+
 import IconPickerModal from '.';
 import { KIKO_CATEGORIES_ICONS, KIKO_ENTITIES_ICONS } from './icon-pools';
-import { SEEDED_CATEGORIES } from '../../../db/__fixtures__/seeded-categories';
 
 type Overrides = Partial<ComponentProps<typeof IconPickerModal>>;
 

@@ -13,6 +13,7 @@ import type { SettingsStackParamList } from '../../../navigation/types';
 import LanguageSwitch from '../../../design-system/components/language-switch';
 
 import SettingsRow from '../settings-row';
+
 import AppLockSetting from './app-lock-setting/app-lock-setting.component';
 
 type SystemScreenProps = NativeStackScreenProps<SettingsStackParamList, 'System'>;

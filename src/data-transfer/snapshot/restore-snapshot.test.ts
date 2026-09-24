@@ -20,8 +20,8 @@ import {
   syncState,
   transactions,
 } from '../../db/schema';
-import type { DataSnapshot } from './data-snapshot';
 
+import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
 
 const tableNameOf = (table: unknown): string => {

@@ -13,12 +13,6 @@
 // (account/currency/operationDate/debit/credit/paymentPurpose) is read only
 // to locate/skip (the EDRPOU pair, per the plan's disposition) and stays
 // entirely in each format's own `COLUMN` export, never duplicated here.
-import {
-  parseFiniteAmountMajor,
-  readDataRows,
-  resolveRowCurrency,
-  resolveSoleColumnValue,
-} from './csv-row';
 import type {
   ParsedStatement,
   ParsedTransaction,
@@ -29,6 +23,13 @@ import type {
 import { Money } from '../../../currency/money';
 import { StatementParseError } from '../../parser';
 import { parseDateTimeSeconds } from '../../parse-date-time';
+
+import {
+  parseFiniteAmountMajor,
+  readDataRows,
+  resolveRowCurrency,
+  resolveSoleColumnValue,
+} from './csv-row';
 
 // Not exported — nothing outside this file references either type by name
 // (every call site passes an inline object literal to

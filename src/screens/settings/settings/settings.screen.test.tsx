@@ -12,8 +12,9 @@ import {
 } from '../../../test-support/navigation-props';
 import { darkTheme } from '../../../design-system/theme';
 
-import SettingsScreen from './settings.screen';
 import { chevronSize, chevronTrailingWhitespace } from '../settings-row/settings-row.chevron';
+
+import SettingsScreen from './settings.screen';
 
 type SettingsProps = ComponentProps<typeof SettingsScreen>;
 

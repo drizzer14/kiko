@@ -5,8 +5,9 @@ import '../../../design-system/unistyles';
 import { i18n } from '../../../i18n';
 import { darkTheme as theme } from '../../../design-system/theme';
 
-import HoldingIdentityField from '.';
 import { KIKO_CATEGORIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
+
+import HoldingIdentityField from '.';
 
 type Overrides = Partial<ComponentProps<typeof HoldingIdentityField>>;
 

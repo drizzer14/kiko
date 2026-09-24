@@ -4,8 +4,9 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../unistyles';
 import { i18n } from '../../../i18n';
 
-import IconEditor from '.';
 import { KIKO_CATEGORIES_ICONS } from '../icon-picker-modal/icon-pools';
+
+import IconEditor from '.';
 
 type Overrides = Partial<ComponentProps<typeof IconEditor>>;
 
