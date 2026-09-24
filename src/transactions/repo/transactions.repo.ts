@@ -749,6 +749,15 @@ export const transactionsRepo = {
    * clobbers it, because `addManyDedup`'s `onConflictDoUpdate` set names
    * only the bank-owned columns and deliberately excludes all three
    * loan-link columns.
+   *
+   * A LINK (`loanHoldingId` non-null) is refused with a typed error when the
+   * payment's own holding currency differs from the target loan holding's
+   * currency: `loanInterestForPaymentMinor` computes interest in the LOAN's
+   * currency, so a cross-currency link would either mislabel that amount or
+   * compare two currencies' minor units directly (`statistics/loan-payments`
+   * treats such a link, however written, as ordinary spending — this guard
+   * is what keeps one from being written in the first place). "None" never
+   * needs the check — there is no target currency to compare against.
    */
   setLoanPayment: ({
     transactionId,
@@ -757,16 +766,47 @@ export const transactionsRepo = {
     transactionId: string;
     loanHoldingId: string | null;
   }) =>
-    write((tx) =>
-      tx
+    write(async (tx) => {
+      if (loanHoldingId !== null) {
+        const paymentRows = await tx
+          .select({ holdingId: transactions.holdingId })
+          .from(transactions)
+          .where(eq(transactions.id, transactionId));
+        const paymentHoldingId = paymentRows.at(0)?.holdingId;
+
+        if (paymentHoldingId !== undefined) {
+          const paymentHoldingRows = await tx
+            .select({ currency: holdings.currency })
+            .from(holdings)
+            .where(eq(holdings.id, paymentHoldingId));
+          const loanHoldingRows = await tx
+            .select({ currency: holdings.currency })
+            .from(holdings)
+            .where(eq(holdings.id, loanHoldingId));
+          const paymentCurrency = paymentHoldingRows.at(0)?.currency;
+          const loanCurrency = loanHoldingRows.at(0)?.currency;
+
+          if (
+            paymentCurrency !== undefined &&
+            loanCurrency !== undefined &&
+            paymentCurrency !== loanCurrency
+          ) {
+            throw new Error(
+              'transactionsRepo.setLoanPayment: cannot link a payment to a loan holding in a different currency',
+            );
+          }
+        }
+      }
+
+      await tx
         .update(transactions)
         .set({
           loanHoldingId,
           loanLinkSource: loanHoldingId === null ? null : 'manual',
           loanLinkRejected: loanHoldingId === null,
         })
-        .where(eq(transactions.id, transactionId)),
-    ),
+        .where(eq(transactions.id, transactionId));
+    }),
   /**
    * Batch-link the matcher's PROPOSED candidates to their loan holdings, in
    * ONE op-sqlite transaction — T32's auto-match write path, and spec 5.4's

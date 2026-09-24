@@ -31,8 +31,12 @@ const informalMeta: LoanMeta = {
 
 const PAYMENT_TIME = new Date(2024, 0, 5).getTime();
 
-const scheduledLoan: LoanHolding = { id: 'loan-scheduled', metadata: scheduledMeta };
-const informalLoan: LoanHolding = { id: 'loan-informal', metadata: informalMeta };
+const scheduledLoan: LoanHolding = {
+  id: 'loan-scheduled',
+  metadata: scheduledMeta,
+  currency: 'UAH',
+};
+const informalLoan: LoanHolding = { id: 'loan-informal', metadata: informalMeta, currency: 'UAH' };
 
 const linkedPayment: LoanPaymentTransaction = {
   id: 'tx-linked',
@@ -73,6 +77,23 @@ describe('loanPaymentExcludedTxIds', () => {
     const ids = loanPaymentExcludedTxIds([dangling], [scheduledLoan]);
 
     expect(ids.has('tx-dangling')).toBe(false);
+  });
+
+  // A USD loan paid from a UAH card (or vice versa) is a common case for
+  // Kiko's users; the write path (`transactionsRepo.setLoanPayment`) refuses
+  // such a link going forward, but a link written before that guard existed
+  // must still read back as ordinary spending, not a wrong-currency interest
+  // entry.
+  it('does not exclude a payment whose currency differs from its linked loan holding currency', () => {
+    const crossCurrency: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-cross-currency',
+      currency: 'USD',
+    };
+
+    const ids = loanPaymentExcludedTxIds([crossCurrency], [scheduledLoan]);
+
+    expect(ids.has('tx-cross-currency')).toBe(false);
   });
 });
 
@@ -154,5 +175,49 @@ describe('loanInterestEntries', () => {
     const entries = loanInterestEntries({ transactions: [partial], loanHoldings: [scheduledLoan] });
 
     expect(entries).toEqual([expect.objectContaining({ amountMinorUnits: -4_000 })]);
+  });
+
+  it('produces no interest entry for a payment whose currency differs from its linked loan holding currency', () => {
+    const crossCurrency: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-cross-currency',
+      currency: 'USD',
+    };
+
+    const entries = loanInterestEntries({
+      transactions: [crossCurrency],
+      loanHoldings: [scheduledLoan],
+    });
+
+    expect(entries).toEqual([]);
+  });
+
+  it('stamps the entry with the LOAN holding currency, not the payment currency', () => {
+    const usdLoan: LoanHolding = { id: 'loan-usd', metadata: scheduledMeta, currency: 'USD' };
+    const usdPayment: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-usd',
+      loanHoldingId: 'loan-usd',
+      currency: 'USD',
+    };
+
+    const entries = loanInterestEntries({ transactions: [usdPayment], loanHoldings: [usdLoan] });
+
+    expect(entries).toEqual([expect.objectContaining({ currency: 'USD' })]);
+  });
+
+  // A linked row can be edited after linking from a debit into a credit (e.g.
+  // a returned/reversed payment); a credit is not spending, so it must not
+  // manufacture a negative "Loan interest" entry either.
+  it('produces no interest entry for a linked CREDIT (a positive amount)', () => {
+    const credit: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-credit',
+      amountMinorUnits: 12_000,
+    };
+
+    const entries = loanInterestEntries({ transactions: [credit], loanHoldings: [scheduledLoan] });
+
+    expect(entries).toEqual([]);
   });
 });

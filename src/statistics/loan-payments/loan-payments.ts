@@ -1,8 +1,8 @@
-import type { Currency } from '../../currency/currency';
 import type { HoldingRow } from '../../db/schema';
+import type { Currency } from '../../currency/currency';
+import type { TrendTransaction } from '../category-trend';
 import { asLoanMeta } from '../../holdings/holding-metadata';
 import { loanInterestForPaymentMinor } from '../../holdings/loan-schedule';
-import type { TrendTransaction } from '../category-trend';
 
 // The seeded default category (`drizzle/migrations/0039_seed_loan_interest_category.sql`)
 // every derived interest entry below is filed under.
@@ -17,33 +17,47 @@ export type LoanPaymentTransaction = {
   currency: Currency;
 };
 
-/** A loan holding as `loanInterestEntries` needs it — its id plus its raw metadata to parse. */
-export type LoanHolding = Pick<HoldingRow, 'id' | 'metadata'>;
+/**
+ * A loan holding as `loanInterestEntries` needs it — its id, its currency
+ * (a link is only valid when this equals the payment's own currency — see
+ * both functions below), and its raw metadata to parse.
+ */
+export type LoanHolding = Pick<HoldingRow, 'id' | 'metadata' | 'currency'>;
 
 /**
  * The ids of every transaction that is a LINKED loan payment whose loan
- * holding still exists (spec 5, D14 — "interest-only spending"): the caller
- * drops these from the raw spending pie/trend and replaces each one with its
- * own `loanInterestEntries` row (the interest portion only), so a linked
- * loan payment's PRINCIPAL never counts as spending and its INTEREST counts
- * once, under its own category.
+ * holding still exists AND is in the SAME currency as the payment (spec 5,
+ * D14 — "interest-only spending"): the caller drops these from the raw
+ * spending pie/trend and replaces each one with its own `loanInterestEntries`
+ * row (the interest portion only), so a linked loan payment's PRINCIPAL
+ * never counts as spending and its INTEREST counts once, under its own
+ * category.
  *
- * Review Focus 7 (global-constraints.md): a `loanHoldingId` pointing at a
- * holding that is not in `loanHoldings` — a dangling link — is NOT
- * excluded here. `holdingsRepo.remove`/`accountsRepo.remove` already clear
- * the link transactionally the moment its loan holding is deleted (T29), so
- * this is the belt to that braces: the payment counts as ordinary spending
- * under its own category, in full, exactly like an unlinked payment.
+ * A dangling `loanHoldingId` (Review Focus 7, global-constraints.md) — or,
+ * the same defensive shape, one whose loan holding exists but is in a
+ * DIFFERENT currency than the payment — is NOT excluded here:
+ * `holdingsRepo.remove`/`accountsRepo.remove` clear a dangling link
+ * transactionally the moment its loan holding is deleted, and
+ * `transactionsRepo.setLoanPayment` refuses a cross-currency link outright,
+ * so both cases can only reach here from data written before either guard
+ * existed. Either way the payment counts as ordinary spending under its own
+ * category, in full, exactly like an unlinked payment — a wrong-currency
+ * interest amount would otherwise be silently wrong.
  */
 export const loanPaymentExcludedTxIds = (
-  transactions: readonly Pick<LoanPaymentTransaction, 'id' | 'loanHoldingId'>[],
-  loanHoldings: readonly Pick<LoanHolding, 'id'>[],
+  transactions: readonly Pick<LoanPaymentTransaction, 'id' | 'loanHoldingId' | 'currency'>[],
+  loanHoldings: readonly Pick<LoanHolding, 'id' | 'currency'>[],
 ): Set<string> => {
-  const loanHoldingIds = new Set(loanHoldings.map((holding) => holding.id));
+  const currencyByLoanHoldingId = new Map(
+    loanHoldings.map((holding) => [holding.id, holding.currency] as const),
+  );
   const ids = new Set<string>();
 
   for (const transaction of transactions) {
-    if (transaction.loanHoldingId !== null && loanHoldingIds.has(transaction.loanHoldingId)) {
+    if (
+      transaction.loanHoldingId !== null &&
+      currencyByLoanHoldingId.get(transaction.loanHoldingId) === transaction.currency
+    ) {
       ids.add(transaction.id);
     }
   }
@@ -70,13 +84,21 @@ export const loanPaymentExcludedTxIds = (
  * (statistics.screen.tsx): the id is `loan-interest:<txId>` (never collides
  * with a real transaction id), the category is the seeded `loan_interest`
  * key, and the amount is the interest as a NEGATIVE minor-units expense, in
- * the payment's own currency.
+ * the LOAN holding's own currency — `loanInterestForPaymentMinor` computes
+ * interest in that currency, so stamping the payment's currency instead
+ * would mislabel the amount the moment the two differ. A payment whose
+ * currency differs from its linked loan's produces no entry at all (same
+ * rule as `loanPaymentExcludedTxIds` above, so the row is never dropped
+ * from spending without a replacement). A CREDIT (a positive amount, e.g. a
+ * linked row edited into a reversal) is never interest either — only a
+ * debit pays down a loan.
  */
 export const loanInterestEntries = (input: {
   transactions: readonly LoanPaymentTransaction[];
   loanHoldings: readonly LoanHolding[];
 }): TrendTransaction[] => {
   const { transactions, loanHoldings } = input;
+  const holdingById = new Map(loanHoldings.map((holding) => [holding.id, holding] as const));
   const metaById = new Map(
     loanHoldings.flatMap((holding) => {
       const meta = asLoanMeta(holding.metadata);
@@ -86,12 +108,13 @@ export const loanInterestEntries = (input: {
   );
 
   return transactions.flatMap((transaction) => {
-    if (transaction.loanHoldingId === null) {
+    if (transaction.loanHoldingId === null || transaction.amountMinorUnits >= 0) {
       return [];
     }
 
+    const holding = holdingById.get(transaction.loanHoldingId);
     const meta = metaById.get(transaction.loanHoldingId);
-    if (meta === undefined) {
+    if (holding === undefined || meta === undefined || holding.currency !== transaction.currency) {
       return [];
     }
 
@@ -115,7 +138,7 @@ export const loanInterestEntries = (input: {
         description: '',
         exchangeCounterpartHoldingId: null,
         changeGroupId: null,
-        currency: transaction.currency,
+        currency: holding.currency,
         time: transaction.time,
       },
     ];

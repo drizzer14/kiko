@@ -53,6 +53,7 @@ import {
 import { exchangeExcludedTxIds } from '../../statistics/exchange-exclusion';
 import type { SeriesTransaction } from '../../statistics/holding-value-at';
 import { internalTransferTxIds } from '../../statistics/internal-transfers';
+import { loanInterestEntries, loanPaymentExcludedTxIds } from '../../statistics/loan-payments';
 import { buildNetWorthSeries } from '../../statistics/net-worth-series';
 import {
   descriptionExcludedTransferTxIds,
@@ -67,7 +68,6 @@ import { buildTypeBreakdown } from '../../statistics/type-breakdown';
 import { transactionSpan } from '../../transactions/transaction-span';
 import DateRangeField from '../home/date-range-field';
 import FilterMenu, { FILTER_ALL, type FilterOption } from '../home/filter-menu';
-import { loanInterestEntries, loanPaymentExcludedTxIds } from '../../statistics/loan-payments';
 
 import BarChart from './bar-chart';
 import CategoryTrendLine from './category-trend-line';

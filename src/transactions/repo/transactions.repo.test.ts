@@ -798,6 +798,28 @@ const captureUpdateTx = (): {
   return { tx, captured };
 };
 
+// A LINK (non-null `loanHoldingId`) now reads two currencies first — the
+// payment's own holding, then the target loan holding — before writing, so a
+// fake tx here answers those two selects (FIFO, in call order) ahead of the
+// `update` capture `captureUpdateTx` alone provides. "None" (`loanHoldingId:
+// null`) skips both reads, so `captureUpdateTx` (no `select` at all) still
+// serves that case unchanged.
+const makeSetLoanPaymentTx = (
+  selectResults: unknown[][],
+): {
+  tx: unknown;
+  captured: { table?: unknown; set?: Record<string, unknown>; whereArg?: unknown };
+} => {
+  const queue = [...selectResults];
+  const { tx: updateTx, captured } = captureUpdateTx();
+  const tx = {
+    ...(updateTx as Record<string, unknown>),
+    select: () => ({ from: () => ({ where: () => Promise.resolve(queue.shift() ?? []) }) }),
+  };
+
+  return { tx, captured };
+};
+
 // T29, spec 5.4: `setLoanPayment` is the MANUAL write path (the user's own
 // picker) — no source gate on the TARGET row, unlike `update`/`remove`,
 // since the link is user state, not a mutation of bank-owned ledger data.
@@ -805,7 +827,11 @@ const captureUpdateTx = (): {
 // review round 1 (I2): only a manual action may move `loanLinkRejected`.
 describe('transactionsRepo.setLoanPayment', () => {
   it('persists a manual link on a synced (monobank) row, with no source gate, clearing loanLinkRejected', async () => {
-    const { tx, captured } = captureUpdateTx();
+    const { tx, captured } = makeSetLoanPaymentTx([
+      [{ holdingId: 'hold-payment' }],
+      [{ currency: 'UAH' }],
+      [{ currency: 'UAH' }],
+    ]);
     mockTx = tx;
 
     await transactionsRepo.setLoanPayment({ transactionId: 'txn-1', loanHoldingId: 'loan-1' });
@@ -836,6 +862,25 @@ describe('transactionsRepo.setLoanPayment', () => {
       loanLinkSource: null,
       loanLinkRejected: true,
     });
+  });
+
+  // A USD mortgage paid from a UAH card (or vice versa) is a common case for
+  // Kiko's users; `loanInterestForPaymentMinor` computes interest in the
+  // LOAN's own currency, so a cross-currency link would mislabel that
+  // amount — refused outright rather than silently written wrong.
+  it('throws and writes nothing when the payment holding currency differs from the loan holding currency', async () => {
+    const { tx, captured } = makeSetLoanPaymentTx([
+      [{ holdingId: 'hold-payment' }],
+      [{ currency: 'UAH' }],
+      [{ currency: 'USD' }],
+    ]);
+    mockTx = tx;
+
+    await expect(
+      transactionsRepo.setLoanPayment({ transactionId: 'txn-1', loanHoldingId: 'loan-usd' }),
+    ).rejects.toThrow(/different currency/);
+
+    expect(captured.set).toBeUndefined();
   });
 });
 
