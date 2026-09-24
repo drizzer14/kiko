@@ -52,7 +52,23 @@ export type AccountsStackParamList = {
   // `accountId` (its kind constrains the offered holding types) whether creating
   // a new holding or editing an existing one.
   AccountForm: { accountId?: string };
-  HoldingForm: { accountId: string; holdingId?: string };
+  // `returnTo` (item 2, F3 device feedback) is the CREATE-only return channel
+  // for a "Create new holding" launched from the statement-import preview or
+  // Map Columns: the caller's OWN full route params (so a re-navigate never
+  // needs to reconstruct `filePath`/`accountId`/etc. from scratch), tagged
+  // with `screen` as a discriminant `save()` narrows with `ts-pattern`
+  // (kiko-code-style: exhaustive mapping over a closed literal set) to merge
+  // the fresh `newHoldingId` back in — instead of a bare `goBack()` that
+  // hands back no id at all. Absent for every other HoldingForm entry point
+  // (account-detail's "Add holding", holding-detail's "Edit"), which keep
+  // the plain `goBack()`.
+  HoldingForm: {
+    accountId: string;
+    holdingId?: string;
+    returnTo?:
+      | { screen: 'StatementImport'; params: AccountsStackParamList['StatementImport'] }
+      | { screen: 'ColumnMapping'; params: AccountsStackParamList['ColumnMapping'] };
+  };
   TransactionForm: TransactionFormParams;
   // Add a top-up ("contribution") to a term deposit, reached from the holding's
   // detail screen. Bonds record a contribution as a plain TransactionForm entry
@@ -83,15 +99,27 @@ export type AccountsStackParamList = {
   // `statementFormatIdForBank` (`src/bank-sync/bank-catalog/`). Undefined
   // falls back to the existing multi-format auto-detect (an account with no
   // `bankId`, or the accountId-less Share Extension entry point).
-  StatementImport: { filePath: string; accountId?: string; expectedFormatId?: StatementFormatId };
+  // `newHoldingId` (item 2, F3 device feedback) is the return-channel param
+  // `HoldingFormScreen`'s create-save path merges in via `navigation.navigate`
+  // when it was reached through this screen's own "Create new holding" (see
+  // `HoldingForm.returnTo` above) — this screen selects it the moment it
+  // arrives (a `useEffect` on this field), rather than leaving the freshly
+  // created holding unselected even though it already appears in the list.
+  StatementImport: {
+    filePath: string;
+    accountId?: string;
+    expectedFormatId?: StatementFormatId;
+    newHoldingId?: string;
+  };
   // The generic column-mapping import screen (T6), reached from
   // `StatementImportScreen`'s "Map columns manually" entry point (T7) — or
   // navigated to directly when an exact saved mapping is found for a file no
   // shipped parser recognized. `accountId` is required here (unlike
   // `StatementImport` above): a column mapping always saves under this
   // account's own bank/header key, so there is no accountId-less entry point
-  // for this screen.
-  ColumnMapping: { filePath: string; accountId: string };
+  // for this screen. `newHoldingId` is the same "Create new holding" return
+  // channel `StatementImport` carries above.
+  ColumnMapping: { filePath: string; accountId: string; newHoldingId?: string };
 };
 
 export type SettingsStackParamList = {

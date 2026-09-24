@@ -258,7 +258,7 @@ const StatementPreviewBlock: FC<{
  * and the `importStatement` action.
  */
 const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigation }) => {
-  const { filePath, accountId, expectedFormatId } = route.params;
+  const { filePath, accountId, expectedFormatId, newHoldingId } = route.params;
   const { t } = useTranslation();
   const [loadState, setLoadState] = useState<LoadState>({ kind: 'loading' });
   const [selectedHoldingId, setSelectedHoldingId] = useState<string | undefined>(undefined);
@@ -276,6 +276,19 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   const bankId = accountRows.at(0)?.bankId;
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const savedMappings = settingsRows.at(0)?.statementMappings;
+
+  // Item 2 (F3, BUG): a holding created via "Add new" (`handleCreateNewHolding`
+  // below) never got SELECTED — the live-queried option list already showed
+  // it (`useTargetHoldingOptions` above), but nothing told the picker to
+  // select it. `HoldingFormScreen`'s create-save path now hands the new id
+  // back through this same route's own `newHoldingId` param (merged in via
+  // `navigation.navigate` rather than a bare `goBack()` — see `returnTo` on
+  // `HoldingForm`'s route type); select it the moment it arrives.
+  useEffect(() => {
+    if (newHoldingId !== undefined) {
+      setSelectedHoldingId(newHoldingId);
+    }
+  }, [newHoldingId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -410,7 +423,10 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // required `accountId`.
   const handleCreateNewHolding = (): void => {
     if (accountId) {
-      navigation.navigate('HoldingForm', { accountId });
+      navigation.navigate('HoldingForm', {
+        accountId,
+        returnTo: { screen: 'StatementImport', params: route.params },
+      });
     }
   };
 

@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import type { ComponentProps } from 'react';
-import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import '../../i18n';
 
@@ -82,9 +82,11 @@ jest.mock('./../statement-import/target-holding-sheet', () => {
     default: ({
       holdings,
       onSelect,
+      onCreateNew,
     }: {
       holdings: { id: string; name: string }[];
       onSelect: (holdingId: string) => void;
+      onCreateNew: () => void;
     }) => (
       <>
         {holdings.map((holding) => (
@@ -96,6 +98,9 @@ jest.mock('./../statement-import/target-holding-sheet', () => {
             <RNText>{holding.name}</RNText>
           </Pressable>
         ))}
+        <Pressable testID="mock-create-new-holding" onPress={onCreateNew}>
+          <RNText>Create new holding</RNText>
+        </Pressable>
       </>
     ),
   };
@@ -176,6 +181,54 @@ describe('ColumnMappingScreen', () => {
 
     await waitFor(() =>
       expect(view.getByTestId('column-mapping-transaction-count')).toHaveTextContent('4'),
+    );
+  });
+
+  // Item 2 (F3, BUG): same "Add new" holding return channel as
+  // `statement-import.screen.test.tsx` — see that test file's matching case
+  // for the full explanation.
+  it('navigates to HoldingForm with a returnTo, then selects the holding once newHoldingId arrives back', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    setLiveData({
+      accounts: [monobankAccount],
+      holdings: [
+        monobankHolding,
+        { id: 'h2', name: 'New savings', accountId: 'a', currency: 'UAH' },
+      ],
+    });
+
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.title'))).toBeTruthy());
+
+    await fireEvent.press(view.getByTestId('mock-create-new-holding'));
+
+    expect(view.navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+      accountId: 'a',
+      returnTo: {
+        screen: 'ColumnMapping',
+        params: { filePath: '/mock/statement.csv', accountId: 'a' },
+      },
+    });
+
+    const updatedRoute = asRouteProp<ColumnMappingProps['route']>('ColumnMapping', {
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      newHoldingId: 'h2',
+    });
+
+    await act(async () => {
+      view.rerender(
+        <ColumnMappingScreen
+          route={updatedRoute}
+          navigation={asNavigationProp<ColumnMappingProps['navigation']>(view.navigation)}
+        />,
+      );
+    });
+
+    await waitFor(() =>
+      expect(
+        within(view.getByTestId('target-holding-field')).getByText('New savings'),
+      ).toBeTruthy(),
     );
   });
 

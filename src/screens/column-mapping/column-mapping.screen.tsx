@@ -584,7 +584,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
  * `mappingKeyFor(account.bankId, fingerprint)`.
  */
 const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }) => {
-  const { filePath, accountId } = route.params;
+  const { filePath, accountId, newHoldingId } = route.params;
   const { t } = useTranslation();
 
   const [loadState, setLoadState] = useState<LoadState>({ kind: 'loading' });
@@ -619,6 +619,15 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const savedMappings = settingsRows.at(0)?.statementMappings;
   const holdingOptions = useTargetHoldingOptions(accountId);
+
+  // Item 2 (F3, BUG): same "Add new" holding return channel as
+  // `statement-import.screen.tsx` — see that screen's matching effect for
+  // the full explanation.
+  useEffect(() => {
+    if (newHoldingId !== undefined) {
+      setSelectedHoldingId(newHoldingId);
+    }
+  }, [newHoldingId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -828,7 +837,12 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
             accountId={accountId}
             selectedHoldingId={selectedHoldingId}
             onSelectHolding={setSelectedHoldingId}
-            onCreateNewHolding={() => navigation.navigate('HoldingForm', { accountId })}
+            onCreateNewHolding={() =>
+              navigation.navigate('HoldingForm', {
+                accountId,
+                returnTo: { screen: 'ColumnMapping', params: route.params },
+              })
+            }
             importError={importError}
             importResult={importResult}
           />

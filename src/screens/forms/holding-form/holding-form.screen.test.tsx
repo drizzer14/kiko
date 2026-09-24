@@ -1014,6 +1014,73 @@ describe('HoldingFormScreen property', () => {
   });
 });
 
+// Item 2 (F3, BUG): "Add new" holding launched from the statement-import
+// preview or Map Columns must end up SELECTED back there, not just created.
+describe('HoldingFormScreen create-and-return (item 2, F3)', () => {
+  beforeEach(() => {
+    createMock.mockClear();
+    setIconMock.mockClear();
+    navigation.goBack.mockClear();
+    navigation.navigate.mockClear();
+    mockAccountKind = 'property';
+    mockAccountInstitution = null;
+  });
+
+  it('navigates back to the StatementImport caller with newHoldingId merged in, instead of goBack', async () => {
+    const returnRoute = asRouteProp<HoldingFormProps['route']>('HoldingForm', {
+      accountId: 'acc-1',
+      returnTo: {
+        screen: 'StatementImport',
+        params: { filePath: '/mock/statement.csv', accountId: 'acc-1' },
+      },
+    });
+
+    const screen = await render(
+      <HoldingFormScreen navigation={navigationProp(navigation)} route={returnRoute} />,
+    );
+
+    await fill(screen, 'Name', 'Apartment');
+    await fill(screen, 'Cost', '5000');
+    await fireEvent.press(screen.getByText('Save'));
+
+    await waitFor(() => expect(createMock).toHaveBeenCalled());
+
+    expect(navigation.navigate).toHaveBeenCalledWith('StatementImport', {
+      filePath: '/mock/statement.csv',
+      accountId: 'acc-1',
+      newHoldingId: 'new-holding-id',
+    });
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('navigates back to the ColumnMapping caller with newHoldingId merged in, instead of goBack', async () => {
+    const returnRoute = asRouteProp<HoldingFormProps['route']>('HoldingForm', {
+      accountId: 'acc-1',
+      returnTo: {
+        screen: 'ColumnMapping',
+        params: { filePath: '/mock/statement.csv', accountId: 'acc-1' },
+      },
+    });
+
+    const screen = await render(
+      <HoldingFormScreen navigation={navigationProp(navigation)} route={returnRoute} />,
+    );
+
+    await fill(screen, 'Name', 'Apartment');
+    await fill(screen, 'Cost', '5000');
+    await fireEvent.press(screen.getByText('Save'));
+
+    await waitFor(() => expect(createMock).toHaveBeenCalled());
+
+    expect(navigation.navigate).toHaveBeenCalledWith('ColumnMapping', {
+      filePath: '/mock/statement.csv',
+      accountId: 'acc-1',
+      newHoldingId: 'new-holding-id',
+    });
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+});
+
 describe('HoldingFormScreen metal', () => {
   beforeEach(() => {
     createMock.mockClear();

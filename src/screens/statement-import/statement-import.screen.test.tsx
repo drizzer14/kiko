@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import type { ComponentProps } from 'react';
-import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 
 import { i18n } from '../../i18n';
@@ -210,9 +210,11 @@ jest.mock('./target-holding-sheet', () => {
     default: ({
       holdings,
       onSelect,
+      onCreateNew,
     }: {
       holdings: { id: string; name: string }[];
       onSelect: (holdingId: string) => void;
+      onCreateNew: () => void;
     }) => (
       <>
         {holdings.map((holding) => (
@@ -224,6 +226,9 @@ jest.mock('./target-holding-sheet', () => {
             <RNText>{holding.name}</RNText>
           </Pressable>
         ))}
+        <Pressable testID="mock-create-new-holding" onPress={onCreateNew}>
+          <RNText>Create new holding</RNText>
+        </Pressable>
       </>
     ),
   };
@@ -427,6 +432,53 @@ describe('StatementImportScreen', () => {
     expect(
       getByText(i18n.t('statementImport.importedCount', { imported: 3, total: 4 })),
     ).toBeTruthy();
+  });
+
+  // Item 2 (F3, BUG): "Add new" holding must end up SELECTED once created,
+  // not just present in the live-queried option list.
+  it('navigates to HoldingForm with a returnTo, then selects the holding once newHoldingId arrives back', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+    setLiveData({
+      holdings: [
+        { id: 'h1', name: 'Black card', accountId: 'a', accountName: 'Monobank' },
+        { id: 'h2', name: 'New savings', accountId: 'a', accountName: 'Monobank' },
+      ],
+    });
+
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+
+    await waitFor(() => expect(view.getByText('Monobank (CSV)')).toBeTruthy());
+
+    await fireEvent.press(view.getByTestId('mock-create-new-holding'));
+
+    expect(view.navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+      accountId: 'a',
+      returnTo: {
+        screen: 'StatementImport',
+        params: { filePath: '/mock/statement.csv', accountId: 'a' },
+      },
+    });
+
+    const updatedRoute = asRouteProp<StatementImportProps['route']>('StatementImport', {
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      newHoldingId: 'h2',
+    });
+
+    await act(async () => {
+      view.rerender(
+        <StatementImportScreen
+          route={updatedRoute}
+          navigation={asNavigationProp<StatementImportProps['navigation']>(view.navigation)}
+        />,
+      );
+    });
+
+    await waitFor(() =>
+      expect(
+        within(view.getByTestId('target-holding-field')).getByText('New savings'),
+      ).toBeTruthy(),
+    );
   });
 
   it('surfaces each row’s distinct masked-card hint in a multi-card PrivatBank preview', async () => {

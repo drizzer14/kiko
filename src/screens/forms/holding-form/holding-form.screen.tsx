@@ -599,7 +599,7 @@ const firstInvalidFieldRef = (params: {
 };
 
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
-  const { accountId, holdingId } = route.params;
+  const { accountId, holdingId, returnTo } = route.params;
   const { t } = useTranslation();
   // Human display text for the id-like holding types, the bond kind, and the
   // two frequency chip rows below; the chips still report the underlying
@@ -1304,7 +1304,29 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         await holdingsRepo.setIcon(newHoldingId, icon);
       }
 
-      navigation.goBack();
+      // Item 2 (F3, BUG): a `returnTo` route param (set only by the "Create
+      // new holding" entry points on StatementImport/ColumnMapping) carries
+      // that screen's own full params plus a `screen` discriminant — this
+      // create was launched from THAT screen's own target-holding picker, so
+      // navigate back to it with `newHoldingId` merged in, rather than a
+      // bare `goBack()`, which handed back no id and left the just-created
+      // holding unselected even though it already showed in the list.
+      // `ts-pattern`'s exhaustive match narrows the union so each branch's
+      // `params` type-checks against its own screen (kiko-code-style).
+      // Every other HoldingForm entry point carries no `returnTo` and keeps
+      // the plain `goBack()`.
+      if (returnTo === undefined) {
+        navigation.goBack();
+      } else {
+        match(returnTo)
+          .with({ screen: 'StatementImport' }, ({ params }) =>
+            navigation.navigate('StatementImport', { ...params, newHoldingId }),
+          )
+          .with({ screen: 'ColumnMapping' }, ({ params }) =>
+            navigation.navigate('ColumnMapping', { ...params, newHoldingId }),
+          )
+          .exhaustive();
+      }
     } catch {
       // Mirrors contribution-form's and account-form's Alert pattern: a write
       // failure keeps the screen open with the entered values intact, rather
