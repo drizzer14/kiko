@@ -1,6 +1,7 @@
 import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import { Alert, View } from 'react-native';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { holdingsRepo, type LoanPricePointOp } from '@kiko/holdings/repo';
@@ -690,7 +691,7 @@ const fieldErrorMessage = (
     | MetalReasonKey
     | LoanReasonKey
     | null,
-): string | undefined => (attemptedSave && reasonKey !== null ? t(reasonKey) : undefined);
+): string | undefined => (attemptedSave ? foldMap(maybe(reasonKey), (key) => t(key)) : undefined);
 
 // The ISIN field's OWN inline error text — every `isinReasonKey` EXCEPT
 // `isinNotInRegister`, which `BondIsinSection` already surfaces as its own
