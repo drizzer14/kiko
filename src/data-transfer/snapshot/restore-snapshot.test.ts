@@ -90,7 +90,10 @@ describe('restoreDataSnapshot', () => {
     ]);
     expect(insertedTables).toEqual(['accounts', 'holdings', 'transactions']);
     expect(insertedRows.accounts).toEqual([{ id: 'a1' }]);
-    expect(insertedRows.holdings).toEqual([{ id: 'h1' }]);
+    // `{ id: 'h1' }` carries no `balanceSetAt` key — the legacy-backfill path
+    // (see the dedicated tests below) stamps `null` since `t1` (this test's
+    // only transaction row) has no matching `holdingId`/shape.
+    expect(insertedRows.holdings).toEqual([{ id: 'h1', balanceSetAt: null }]);
     expect(insertedRows.transactions).toEqual([{ id: 't1' }]);
   });
 
@@ -195,5 +198,163 @@ describe('restoreDataSnapshot', () => {
     await restoreDataSnapshot({ ...emptySnapshot, transactions: bigTransactions as never });
 
     expect(insertedChunkSizes).toEqual([2000, 2000, 500]);
+  });
+
+  // FIX-restore-backfill-brief.md: a build-25-shaped `.kiko` export (before
+  // `holdings.balance_set_at` existed) carries holdings rows with NO
+  // `balanceSetAt` key at all. Restoring one must backfill it the SAME way
+  // migration 0036 (`drizzle/migrations/0036_add_balance_set_at.sql`) did
+  // on-device, so a later statement import applies the real boundary rule
+  // (`transactionsRepo.importRows`'s doc comment,
+  // `transactions/repo/transactions.repo.ts`) instead of treating every row
+  // as boundary-less.
+  describe('legacy balanceSetAt backfill (build-25-shaped snapshot)', () => {
+    const captureHoldingsInsert = (): {
+      mockTx: unknown;
+      insertedHoldings: () => Record<string, unknown>[];
+    } => {
+      const insertedRows: Record<string, unknown[]> = {};
+      const tx = {
+        delete: () => Promise.resolve(),
+        insert: (table: unknown) => ({
+          values: (rows: unknown[]) => {
+            const name = tableNameOf(table);
+            insertedRows[name] = [...(insertedRows[name] ?? []), ...rows];
+            return Promise.resolve();
+          },
+        }),
+      };
+
+      return {
+        mockTx: tx,
+        insertedHoldings: () => (insertedRows.holdings ?? []) as Record<string, unknown>[],
+      };
+    };
+
+    it("backfills a legacy holding's balanceSetAt from the LATEST matching manual balance-set-shaped row", async () => {
+      const { mockTx: tx, insertedHoldings } = captureHoldingsInsert();
+      mockTx = tx;
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        holdings: [{ id: 'h1', balanceMinorUnits: 5_000 }] as never,
+        transactions: [
+          {
+            id: 't1',
+            holdingId: 'h1',
+            source: 'manual',
+            description: '',
+            category: null,
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: null,
+            time: 100,
+          },
+          {
+            id: 't2',
+            holdingId: 'h1',
+            source: 'manual',
+            description: '',
+            category: null,
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: null,
+            time: 300,
+          },
+        ] as never,
+      });
+
+      expect(insertedHoldings()).toEqual([
+        { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: 300 },
+      ]);
+    });
+
+    it('backfills null when no manual row matches the balance-set shape', async () => {
+      const { mockTx: tx, insertedHoldings } = captureHoldingsInsert();
+      mockTx = tx;
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        holdings: [{ id: 'h1', balanceMinorUnits: 5_000 }] as never,
+        transactions: [
+          // A real spend: carries a description, so it's not a hand-set-shaped row.
+          {
+            id: 't1',
+            holdingId: 'h1',
+            source: 'manual',
+            description: 'Coffee',
+            category: null,
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: null,
+            time: 100,
+          },
+          // An exchange leg: carries the structural marker.
+          {
+            id: 't2',
+            holdingId: 'h1',
+            source: 'manual',
+            description: '',
+            category: null,
+            exchangeCounterpartHoldingId: 'h2',
+            changeGroupId: null,
+            time: 200,
+          },
+        ] as never,
+      });
+
+      expect(insertedHoldings()).toEqual([
+        { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: null },
+      ]);
+    });
+
+    it('leaves a snapshot that ALREADY carries balanceSetAt unchanged, even when a manual row would compute differently', async () => {
+      const { mockTx: tx, insertedHoldings } = captureHoldingsInsert();
+      mockTx = tx;
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        holdings: [{ id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: 999 }] as never,
+        transactions: [
+          {
+            id: 't1',
+            holdingId: 'h1',
+            source: 'manual',
+            description: '',
+            category: null,
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: null,
+            time: 100,
+          },
+        ] as never,
+      });
+
+      expect(insertedHoldings()).toEqual([
+        { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: 999 },
+      ]);
+    });
+
+    it('leaves a snapshot that already carries a NULL balanceSetAt unchanged (not recomputed from a matching row)', async () => {
+      const { mockTx: tx, insertedHoldings } = captureHoldingsInsert();
+      mockTx = tx;
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        holdings: [{ id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: null }] as never,
+        transactions: [
+          {
+            id: 't1',
+            holdingId: 'h1',
+            source: 'manual',
+            description: '',
+            category: null,
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: null,
+            time: 100,
+          },
+        ] as never,
+      });
+
+      expect(insertedHoldings()).toEqual([
+        { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: null },
+      ]);
+    });
   });
 });

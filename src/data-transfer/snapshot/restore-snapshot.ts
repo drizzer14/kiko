@@ -13,6 +13,8 @@ import {
   transactions,
 } from '../../db/schema';
 
+import type { HoldingRow, TransactionRow } from '../../db/schema';
+
 import type { DataSnapshot } from './data-snapshot';
 
 // Each row binds several parameters and SQLite rejects a statement with more
@@ -28,6 +30,61 @@ const chunk = <T>(rows: T[], size: number): T[][] => {
     parts.push(rows.slice(start, start + size));
   }
   return parts;
+};
+
+/** True for a manual transaction row shaped like a hand-set balance under
+ * migration 0036's heuristic (`drizzle/migrations/0036_add_balance_set_at.sql`):
+ * no description, no category, and neither the exchange-leg nor the
+ * change-return structural marker. See `transactionsRepo.importRows`'s doc
+ * comment (`transactions/repo/transactions.repo.ts`) for the single-source
+ * rule this backfills toward. */
+const isBalanceSetShapedRow = (row: TransactionRow): boolean =>
+  row.source === 'manual' &&
+  row.description === '' &&
+  row.category === null &&
+  row.exchangeCounterpartHoldingId === null &&
+  row.changeGroupId === null;
+
+/**
+ * Restores a build-25-shaped holding — exported before `holdings.balance_set_at`
+ * existed — to the SAME state migration 0036 would have backfilled on-device:
+ * the latest time among that holding's own balance-set-shaped manual rows, or
+ * `null` when none match. The migration's own SQL is left untouched (migration
+ * files are checksummed history, never edited after they ship); this recomputes
+ * the identical result in JS, straight from the snapshot's own `transactions`
+ * array rather than a second correlated SQL query after the insert — since
+ * `restoreDataSnapshot` REPLACES the whole database with this exact snapshot,
+ * the in-memory rows here are exactly what a post-insert query would see, so
+ * reading them directly is both simpler (no raw SQL / extra round trip) and
+ * cheaper.
+ *
+ * Detection keys on the JSON key's PRESENCE, not its value: a legacy
+ * snapshot's holdings simply carry no `balanceSetAt` key at all
+ * (`Object.hasOwn` is false). A snapshot exported AFTER this column shipped
+ * is returned unchanged even where its own `balanceSetAt` is legitimately
+ * `null` — it already carries whatever value the live column held at export
+ * time. `Object.hasOwn`, not the `in` operator: `HoldingRow`'s own type
+ * already declares `balanceSetAt` as always-present, so `in` would type-
+ * narrow the "missing" branch to `never` — a real, legacy-shaped runtime
+ * object (parsed from JSON, not literally constructed as a `HoldingRow`)
+ * regardless.
+ */
+const withLegacyBalanceSetAtBackfilled = (
+  holding: HoldingRow,
+  allTransactions: TransactionRow[],
+): HoldingRow => {
+  if (Object.hasOwn(holding, 'balanceSetAt')) {
+    return holding;
+  }
+
+  const boundaryTimes = allTransactions
+    .filter((row) => row.holdingId === holding.id && isBalanceSetShapedRow(row))
+    .map((row) => row.time);
+
+  return {
+    ...holding,
+    balanceSetAt: boundaryTimes.length > 0 ? Math.max(...boundaryTimes) : null,
+  };
 };
 
 /**
@@ -54,6 +111,12 @@ const chunk = <T>(rows: T[], size: number): T[][] => {
  * type declaring it required — that JSON simply never had the field. Such a
  * legacy import must still restore cleanly, with an EMPTY `price_points`
  * table, rather than throw on the missing key.
+ *
+ * `snapshot.holdings` is passed through `withLegacyBalanceSetAtBackfilled`
+ * (above) before insert, for the same reason: a build-25-shaped `.kiko` file
+ * carries no `balanceSetAt` key on its holdings at all, and without this the
+ * restored holding would come back with a NULL boundary the live database
+ * never actually had, undoing migration 0036's own backfill for that user.
  */
 export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
   write(async (tx) => {
@@ -77,7 +140,10 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
       for (const part of chunk(snapshot.accounts, CHUNK_SIZE)) {
         await tx.insert(accounts).values(part);
       }
-      for (const part of chunk(snapshot.holdings, CHUNK_SIZE)) {
+      const holdingsToInsert = snapshot.holdings.map((holding) =>
+        withLegacyBalanceSetAtBackfilled(holding, snapshot.transactions),
+      );
+      for (const part of chunk(holdingsToInsert, CHUNK_SIZE)) {
         await tx.insert(holdings).values(part);
       }
       for (const part of chunk(snapshot.categories, CHUNK_SIZE)) {
