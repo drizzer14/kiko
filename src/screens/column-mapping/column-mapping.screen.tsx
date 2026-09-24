@@ -47,12 +47,10 @@ import Screen from '../../design-system/components/screen';
 import { accountsRepo } from '../../accounts/accounts.repo';
 import { settingsRepo } from '../../settings/settings.repo';
 import Divider from '../../design-system/components/divider';
-import FieldLabel from '../../design-system/components/field-label';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { supportedFormatNames } from '../../statement-import/registry';
 import ImportResultSheet from '../statement-import/import-result-sheet';
 import TargetHoldingField from '../statement-import/target-holding-field';
-import SegmentedControl from '../../design-system/components/segmented-control';
 import type { SpreadsheetCellValue, StatementFormatInput } from '../../statement-import/parser';
 import { previewStats, type PreviewStats } from '../statement-import/preview-stats/preview-stats';
 import { importParsedStatement, type ImportResult } from '../../statement-import/import-statement';
@@ -677,23 +675,25 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
 
       <Divider testID="column-mapping-divider-encoding" />
 
-      {/* Group (a): encoding/separators. Encoding/delimiter/decimal-separator
-          all switched from the (too-large, device-feedback-round-F1 item 7)
-          `OptionPills` chips to the app's existing compact `ChipRow`. */}
+      {/* Group (a): encoding/separators. F4 audit item 4 / Q2 tabs-vs-chips
+          rule: none of encoding, delimiter, or decimal separator changes
+          which fields the form shows — picking a value just re-parses the
+          same preview with the same fields — so all three are `ChipRow`,
+          never `SegmentedControl` (that control is reserved for a choice
+          that swaps the visible form, e.g. the amount/currency mode
+          selectors below). */}
       <Box gap={3}>
         <Text variant="heading">{t('columnMapping.sectionFileFormat')}</Text>
 
         {!isXlsx && (
           <>
-            <Box gap={1} testID="column-mapping-encoding">
-              <FieldLabel label={t('columnMapping.encoding')} />
-
-              <SegmentedControl<Encoding>
+            <Box testID="column-mapping-encoding">
+              <ChipRow<Encoding>
+                label={t('columnMapping.encoding')}
                 options={['utf-8', 'windows-1251']}
                 selected={encoding}
                 onSelect={onEncodingChange}
                 labels={encodingLabels}
-                accessibilityLabel={t('columnMapping.encoding')}
               />
             </Box>
 
@@ -709,14 +709,12 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
           </>
         )}
 
-        <Box gap={1} testID="column-mapping-decimal-separator">
-          <FieldLabel label={t('columnMapping.decimalSeparator')} />
-
-          <SegmentedControl<',' | '.'>
+        <Box testID="column-mapping-decimal-separator">
+          <ChipRow<',' | '.'>
+            label={t('columnMapping.decimalSeparator')}
             options={[',', '.']}
             selected={decimalSeparator}
             onSelect={onDecimalSeparatorChange}
-            accessibilityLabel={t('columnMapping.decimalSeparator')}
           />
         </Box>
       </Box>
