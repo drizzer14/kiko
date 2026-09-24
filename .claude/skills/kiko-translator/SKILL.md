@@ -118,15 +118,19 @@ stays sentence case ("Export failed", not "Export Failed").
 
 The mechanized invariant lives in
 `src/i18n/locales/en.casing-by-role.test.ts` (walks the whole `en`
-catalog, classifies every key into the two roles by the same
-call-site-verified key patterns/explicit list documented in the test
-file's own header, and fails on any casing violation) and
+catalog via the shared `flattenCatalog` helper — also used by
+`uk.casing.test.ts`, `en.uk.parity.test.ts`, and
+`uk.catalog-rules.test.ts` — and fails on any casing violation) and
 `src/i18n/locales/uk.casing.test.ts` (the uk sentence-case-everywhere
-invariant). Read the FAILURE MESSAGE'S key path before assuming a new
-string is miscased — the classifier defaults an unrecognized key
-pattern to sentence case, so a genuinely new heading/title key may
-need adding to the test's own `TITLE_KEY_EXPLICIT`/pattern list, not
-just to the catalogue.
+invariant). The Title Case role is an EXPLICIT key list
+(`TITLE_KEYS`), not a key-name pattern (a `Title`/`Heading`-suffixed
+key that is actually a button or a field label would otherwise be
+silently exempted from the sentence-case check — CASE fix round 1/5);
+every other key defaults to sentence case, so a genuinely new
+title/heading/sheet-title key fails this test until it is added to
+`TITLE_KEYS` on purpose. Read the FAILURE MESSAGE'S key path before
+assuming a new string is miscased: add a new title key to the list in
+`en.casing-by-role.test.ts`, not just to the catalogue.
 
 ## Ukrainian is sentence case — no blanket `textTransform`
 

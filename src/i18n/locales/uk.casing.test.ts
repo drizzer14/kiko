@@ -19,22 +19,7 @@
 // exempt entirely, the same proper-noun exemptions `en.casing-by-role.test.ts`
 // makes.
 import { uk } from './uk';
-
-type Leaf = { path: string; value: string };
-
-const leaves = (object: unknown, prefix = ''): Leaf[] => {
-  if (typeof object === 'string') {
-    return [{ path: prefix, value: object }];
-  }
-
-  if (object !== null && typeof object === 'object') {
-    return Object.entries(object as Record<string, unknown>).flatMap(([key, value]) =>
-      leaves(value, prefix ? `${prefix}.${key}` : key),
-    );
-  }
-
-  return [];
-};
+import { flattenCatalog } from './flatten-catalog';
 
 const EXEMPT_KEY_PREFIXES = ['currencyNames.'];
 const EXEMPT_KEYS = new Set(['settings.footer.copyrightHolder']);
@@ -75,7 +60,7 @@ const sentenceCaseViolations = (value: string): string[] => {
 
 describe('uk catalog is sentence case everywhere', () => {
   it('never capitalizes a word outside a sentence start, or the proper-noun allow-list', () => {
-    const offenders = leaves(uk)
+    const offenders = flattenCatalog(uk)
       .filter(({ path }) => !isExempt(path))
       .map(({ path, value }) => [path, value, sentenceCaseViolations(value)] as const)
       .filter(([, , violations]) => violations.length > 0);

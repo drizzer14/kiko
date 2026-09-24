@@ -11,48 +11,36 @@
 // Every leaf string in the `en` catalog is walked at runtime (not the
 // source text — a violation buried behind an interpolation or a computed
 // value is caught the same as a plain literal) and assigned to one of the
-// two buckets by its KEY, via the same call-site-verified patterns used to
-// fix the catalog (see the case-measure doc): a key ending in `Title` or
-// `Heading`, whose last segment is `title` or `heading`, or that lives
-// under `columnMapping.section*`, is a Title Case role; a small explicit
-// list covers the handful of heading/sheet-title keys that don't follow
-// that naming convention (verified by call site — each renders through
-// `variant="heading"`, a `BottomSheet`/`ConfirmSheet` title, or a nav
-// `options.title`). Every other key defaults to sentence case — the
-// majority role per the DECISION above, so an unrecognized future key is
-// checked against it rather than silently skipped.
+// two buckets.
 //
-// A key ending `ErrorTitle` is carved OUT of the Title bucket on purpose:
-// it is an `Alert.alert` title, i.e. an error, not a screen/sheet title
-// (`settings.dataExport.errorTitle` -> "Export failed", not "Export
-// Failed") — verified by call site, not by assumption from the key name.
+// The Title Case bucket is an EXPLICIT key list (`TITLE_KEYS` below), not a
+// key-NAME pattern (`/Title$/`, `/Heading$/`, etc.) — CASE fix round 1/5.
+// A pattern is a blind spot in the direction that matters: a future BUTTON
+// or LABEL key that happens to end in `Title`/`Heading` would silently land
+// in the Title bucket and never get checked for sentence case (this file
+// already needed one `ErrorTitle` carve-out because a `*Title` key turned
+// out NOT to be a title — see `settings.dataExport.errorTitle`, an
+// `Alert.alert` title, i.e. an error). Every key NOT in `TITLE_KEYS` is
+// checked as sentence case, including one that matches a `Title`/`Heading`-
+// looking name — so a new title key fails this test the moment it renders
+// wrong, until it is added to `TITLE_KEYS` on purpose. Every entry in
+// `TITLE_KEYS` is verified by call site (a nav `options.title`/
+// `navigation.setOptions`, a `variant="heading"` `Text`, or a
+// `BottomSheet`/`ConfirmSheet` title/header prop) — see
+// `.superpowers/sdd/shares-property-metals-debts/CASE-report.md` for the
+// per-key call-site citations.
 //
 // `columnMapping.rawPreview` and `forms.transaction.applyCategoryToAll`
 // look like ordinary sentence-case keys by name, but both render through
 // `<Text variant="heading">` as a section/sheet header (confirmed by call
-// site) and so are explicitly Title-role despite the key name.
+// site) and so are Title-role despite the key name.
 //
 // `currencyNames.*` and `language.*` are official currency/language names
 // (proper nouns, e.g. "Ukrainian Hryvnia", "English") — exempt from the
 // role check entirely, the same way `settings.footer.copyrightHolder` (a
 // person's name) is exempt.
 import { en } from './en';
-
-type Leaf = { path: string; value: string };
-
-const leaves = (object: unknown, prefix = ''): Leaf[] => {
-  if (typeof object === 'string') {
-    return [{ path: prefix, value: object }];
-  }
-
-  if (object !== null && typeof object === 'object') {
-    return Object.entries(object as Record<string, unknown>).flatMap(([key, value]) =>
-      leaves(value, prefix ? `${prefix}.${key}` : key),
-    );
-  }
-
-  return [];
-};
+import { flattenCatalog } from './flatten-catalog';
 
 // Proper nouns / brand names / acronym-like words kept capitalized wherever
 // they appear, per the DECISION's keep-list ("Keep: proper nouns and brand
@@ -74,26 +62,57 @@ const PROPER_NOUNS = new Set([
 const EXEMPT_KEY_PREFIXES = ['currencyNames.', 'language.'];
 const EXEMPT_KEYS = new Set(['settings.footer.copyrightHolder']);
 
-const TITLE_KEY_PATTERNS = [/\.title$/i, /\.heading$/i, /Heading$/, /^columnMapping\.section/];
-const TITLE_KEY_SUFFIX = /Title$/;
-const TITLE_KEY_SUFFIX_EXCLUDE = /ErrorTitle$/i; // an Alert title is an error, not a screen/sheet title
-const TITLE_KEY_EXPLICIT = new Set([
+const isExempt = (key: string): boolean =>
+  EXEMPT_KEYS.has(key) || EXEMPT_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
+
+// Every screen/nav title, section heading, and sheet/modal title key —
+// verified by call site (see the file header). Add a new title/heading key
+// HERE on purpose; it is not picked up by a name pattern.
+const TITLE_KEYS = new Set([
+  'accountDetail.addBankSheetTitle',
+  'accountDetail.holdingsHeading',
+  'accounts.title',
+  'categories.chooseIconHeading',
   'columnMapping.rawPreview',
+  'columnMapping.sectionAmount',
+  'columnMapping.sectionCurrency',
+  'columnMapping.sectionDates',
+  'columnMapping.sectionDetails',
+  'columnMapping.sectionFileFormat',
+  'columnMapping.title',
+  'forms.account.addTitle',
+  'forms.account.editTitle',
+  'forms.contribution.addTitle',
+  'forms.holding.addTitle',
+  'forms.holding.editTitle',
+  'forms.lot.addTitle',
+  'forms.pricePoint.loanTitle',
+  'forms.pricePoint.title',
+  'forms.transaction.addTitle',
   'forms.transaction.applyCategoryToAll',
+  'forms.transaction.editTitle',
+  'forms.transaction.returnsHeading',
+  'forms.transaction.title',
+  'holdingDetail.transactionsHeading',
+  'home.dateRangeField.heading',
+  'home.title',
+  'settings.dataExport.title',
+  'settings.dataImport.confirmTitle',
+  'settings.dataImport.title',
+  'settings.title',
+  'statementImport.chooseHoldingSheetTitle',
+  'statementImport.importResultTitle',
+  'statementImport.previewHeading',
   'statistics.accountContribution',
   'statistics.byType',
   'statistics.expensesByCategory',
   'statistics.netWorthOverTime',
   'statistics.spendingTrendByCategory',
+  'statistics.title',
+  'statistics.trendFilter.title',
 ]);
 
-const isExempt = (key: string): boolean =>
-  EXEMPT_KEYS.has(key) || EXEMPT_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
-
-const isTitleRole = (key: string): boolean =>
-  TITLE_KEY_EXPLICIT.has(key) ||
-  TITLE_KEY_PATTERNS.some((pattern) => pattern.test(key)) ||
-  (TITLE_KEY_SUFFIX.test(key) && !TITLE_KEY_SUFFIX_EXCLUDE.test(key));
+const isTitleRole = (key: string): boolean => TITLE_KEYS.has(key);
 
 const SMALL_TITLE_WORDS = new Set([
   'a',
@@ -184,13 +203,20 @@ const sentenceCaseViolations = (value: string): string[] => {
 };
 
 describe('en catalog casing follows one rule per UI role', () => {
-  const allLeaves = leaves(en).filter(({ path }) => !isExempt(path));
+  const allLeaves = flattenCatalog(en).filter(({ path }) => !isExempt(path));
   const titleRoleLeaves = allLeaves.filter(({ path }) => isTitleRole(path));
   const sentenceRoleLeaves = allLeaves.filter(({ path }) => !isTitleRole(path));
 
   it('covers a non-trivial number of keys in each role (the fixture is alive)', () => {
     expect(titleRoleLeaves.length).toBeGreaterThan(10);
     expect(sentenceRoleLeaves.length).toBeGreaterThan(100);
+  });
+
+  it('every TITLE_KEYS entry still exists in the catalog (no stale/renamed key)', () => {
+    const catalogPaths = new Set(flattenCatalog(en).map(({ path }) => path));
+    const staleTitleKeys = [...TITLE_KEYS].filter((key) => !catalogPaths.has(key));
+
+    expect(staleTitleKeys).toEqual([]);
   });
 
   it('renders every screen/nav title, section heading, and sheet/modal title in Title Case', () => {
@@ -207,16 +233,5 @@ describe('en catalog casing follows one rule per UI role', () => {
       .filter(([, , violations]) => violations.length > 0);
 
     expect(offenders).toEqual([]);
-  });
-
-  // The Button no longer force-capitalizes, so each catalogue supplies its
-  // own casing; a handful of concrete labels pinned directly as a readable
-  // smoke test on top of the role sweep above.
-  it('renders every button label in sentence case', () => {
-    expect(en.accounts.addAccount).toBe('Add account');
-    expect(en.forms.contribution.save).toBe('Save contribution');
-    expect(en.common.save).toBe('Save');
-    expect(en.common.cancel).toBe('Cancel');
-    expect(en.common.delete).toBe('Delete');
   });
 });

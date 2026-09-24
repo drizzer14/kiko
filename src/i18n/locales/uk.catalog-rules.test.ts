@@ -9,17 +9,7 @@
 // (b) the app name appears only as Cyrillic `Кіко`, never Latin `Kiko`, in
 //     any string value.
 import { uk } from './uk';
-
-const leafStringValues = (object: Record<string, unknown>, prefix = ''): Array<[string, string]> =>
-  Object.entries(object).flatMap(([key, value]) => {
-    const path = prefix ? `${prefix}.${key}` : key;
-
-    if (value !== null && typeof value === 'object') {
-      return leafStringValues(value as Record<string, unknown>, path);
-    }
-
-    return typeof value === 'string' ? [[path, value] as [string, string]] : [];
-  });
+import { flattenCatalog } from './flatten-catalog';
 
 const CYRILLIC = 'А-Яа-яЁёІіЇїЄєҐґ';
 const ASCII_APOSTROPHE_IN_CYRILLIC_WORD = new RegExp(`[${CYRILLIC}]'[${CYRILLIC}]`);
@@ -27,7 +17,7 @@ const LATIN_KIKO = /\bKiko\b/;
 
 describe('uk.ts catalogue rules', () => {
   it('never uses an ASCII apostrophe inside a Cyrillic word (must be U+2019 ’)', () => {
-    const offenders = leafStringValues(uk).filter(([, value]) =>
+    const offenders = flattenCatalog(uk).filter(({ value }) =>
       ASCII_APOSTROPHE_IN_CYRILLIC_WORD.test(value),
     );
 
@@ -35,7 +25,7 @@ describe('uk.ts catalogue rules', () => {
   });
 
   it('never spells the app name in Latin script ("Kiko") — must be Cyrillic "Кіко"', () => {
-    const offenders = leafStringValues(uk).filter(([, value]) => LATIN_KIKO.test(value));
+    const offenders = flattenCatalog(uk).filter(({ value }) => LATIN_KIKO.test(value));
 
     expect(offenders).toEqual([]);
   });
