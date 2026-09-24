@@ -224,6 +224,24 @@ const mapMonobankColumnsAndSelectHolding = async (
   await fireEvent.press(view.getByTestId(`mock-select-holding-${holdingId}`));
 };
 
+// `headerOnlyCsvBase64`'s render + the date/format/description/amount
+// mapping shared by both N2 header-only-CSV tests below — only the currency
+// mode differs between them (jscpd).
+const renderHeaderOnlyScreenMapped = async (): Promise<
+  Awaited<ReturnType<typeof renderScreen>>
+> => {
+  mockReadFile.mockResolvedValue(headerOnlyCsvBase64);
+
+  const view = await renderScreen({ filePath: '/mock/header-only.csv', accountId: 'a' });
+  await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+
+  await mapDateFormatAndDescription(view);
+  await fireEvent.press(view.getByTestId('column-mapping-amount-column'));
+  await fireEvent.press(view.getByTestId('column-mapping-amount-column-option-2'));
+
+  return view;
+};
+
 describe('ColumnMappingScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -496,23 +514,9 @@ describe('ColumnMappingScreen', () => {
   // per-row basis, but there is also nothing to import, so Import press must
   // still surface the noRowsResolvedError rather than do nothing at all.
   it('shows the noRowsResolvedError for a header-only CSV, fixed-currency mode', async () => {
-    mockReadFile.mockResolvedValue(headerOnlyCsvBase64);
+    const view = await renderHeaderOnlyScreenMapped();
 
-    const view = await renderScreen({ filePath: '/mock/header-only.csv', accountId: 'a' });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
-
-    await fireEvent.press(view.getByTestId('column-mapping-date-column'));
-    await fireEvent.press(view.getByTestId('column-mapping-date-column-option-0'));
-    await fireEvent.press(view.getByTestId('column-mapping-date-format'));
-    await fireEvent.press(
-      view.getByTestId('column-mapping-date-format-option-DD.MM.YYYY HH:MM:SS'),
-    );
-    await fireEvent.press(view.getByTestId('column-mapping-description-column'));
-    await fireEvent.press(view.getByTestId('column-mapping-description-column-option-1'));
-    await fireEvent.press(view.getByTestId('column-mapping-amount-column'));
-    await fireEvent.press(view.getByTestId('column-mapping-amount-column-option-2'));
     await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
-
     await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
 
     expect(mockImportParsedStatement).not.toHaveBeenCalled();
@@ -525,21 +529,8 @@ describe('ColumnMappingScreen', () => {
   // this column aren't recognized", so the screen must show the no-rows
   // error, never the currency-unresolved one.
   it('shows the noRowsResolvedError, not a currency-unresolved error, for a header-only CSV in column-currency mode', async () => {
-    mockReadFile.mockResolvedValue(headerOnlyCsvBase64);
+    const view = await renderHeaderOnlyScreenMapped();
 
-    const view = await renderScreen({ filePath: '/mock/header-only.csv', accountId: 'a' });
-    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
-
-    await fireEvent.press(view.getByTestId('column-mapping-date-column'));
-    await fireEvent.press(view.getByTestId('column-mapping-date-column-option-0'));
-    await fireEvent.press(view.getByTestId('column-mapping-date-format'));
-    await fireEvent.press(
-      view.getByTestId('column-mapping-date-format-option-DD.MM.YYYY HH:MM:SS'),
-    );
-    await fireEvent.press(view.getByTestId('column-mapping-description-column'));
-    await fireEvent.press(view.getByTestId('column-mapping-description-column-option-1'));
-    await fireEvent.press(view.getByTestId('column-mapping-amount-column'));
-    await fireEvent.press(view.getByTestId('column-mapping-amount-column-option-2'));
     await fireEvent.press(
       within(view.getByTestId('column-mapping-currency-mode')).getByText(
         i18n.t('columnMapping.currencyColumn'),
@@ -548,7 +539,6 @@ describe('ColumnMappingScreen', () => {
     await fireEvent.press(view.getByTestId('column-mapping-currency-column'));
     await fireEvent.press(view.getByTestId('column-mapping-currency-column-option-0'));
     await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
-
     await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
 
     expect(mockImportParsedStatement).not.toHaveBeenCalled();
