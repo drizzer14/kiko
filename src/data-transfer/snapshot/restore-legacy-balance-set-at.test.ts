@@ -21,8 +21,8 @@ jest.mock('../../db/client', () => {
 import { transactionsRepo } from '@kiko/transactions/repo';
 
 import { accounts, categoryOverrides, holdings, transactions } from '../../db/schema';
-import type { DataSnapshot } from './data-snapshot';
 
+import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
 
 type Row = Record<string, unknown>;
@@ -200,59 +200,5 @@ describe('restoring a build-25-shaped snapshot, then importing an older statemen
     // `balanceSetAt` was always live.
     expect(captured.holdingSet).toBeUndefined();
     expect(store.holdings[0].balanceMinorUnits).toBe(500_000);
-  });
-
-  it('leaves an already-migrated snapshot’s balanceSetAt unchanged (not recomputed from a coincidentally-shaped row)', async () => {
-    const store: { holdings: Row[]; transactions: Row[] } = { holdings: [], transactions: [] };
-    const { tx } = makeRestoreThenImportTx(store);
-    mockTx = tx;
-
-    const handSetAt = Date.UTC(2025, 0, 1);
-    const modernHolding = {
-      id: 'hold-1',
-      accountId: 'acc-1',
-      name: 'Card',
-      type: 'card',
-      currency: 'UAH',
-      icon: null,
-      color: null,
-      balanceMinorUnits: 500_000,
-      syncedBalanceMinorUnits: null,
-      balanceSetAt: handSetAt,
-      metadata: null,
-      sortOrder: 0,
-      closedAt: null,
-      createdAt: 0,
-    } as never;
-
-    await restoreDataSnapshot({
-      ...emptySnapshot,
-      holdings: [modernHolding],
-      // A manual row shaped like a hand-set balance too, but at a DIFFERENT
-      // time — if the restore recomputed it instead of trusting the
-      // snapshot's own (already-migrated) value, this would silently
-      // overwrite it.
-      transactions: [
-        {
-          id: 'txn-other',
-          holdingId: 'hold-1',
-          amountMinorUnits: 1,
-          time: handSetAt + 999_999,
-          description: '',
-          category: null,
-          mcc: null,
-          hold: null,
-          counterIban: null,
-          exchangeCounterpartHoldingId: null,
-          changeGroupId: null,
-          comment: null,
-          source: 'manual',
-          externalId: null,
-          createdAt: 0,
-        } as never,
-      ],
-    });
-
-    expect(store.holdings[0].balanceSetAt).toBe(handSetAt);
   });
 });

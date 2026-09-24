@@ -842,14 +842,8 @@ export const transactionsRepo = {
    * for backfilling PRE-migration data only, not a repair of the balance
    * itself.
    *
-   * A build-25-shaped `.kiko` RESTORE hits the identical gap: its holdings
-   * JSON has no `balanceSetAt` key at all, since it was exported before this
-   * migration existed. `restoreDataSnapshot`
-   * (`data-transfer/snapshot/restore-snapshot.ts`) applies the SAME
-   * heuristic, in JS, from the snapshot's own `transactions` array, before
-   * the restored holding is even inserted — see that file's
-   * `withLegacyBalanceSetAtBackfilled` for why this is a second
-   * implementation rather than a shared function, not a second RULE.
+   * A legacy `.kiko` restore backfills the same way: see
+   * `restoreDataSnapshot` (`data-transfer/snapshot/restore-snapshot.ts`).
    */
   importRows: (input: {
     holdingId: string;

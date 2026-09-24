@@ -331,6 +331,97 @@ describe('restoreDataSnapshot', () => {
       ]);
     });
 
+    // I1 (review fix round 1): pins EVERY predicate clause in
+    // `isBalanceSetShapedRow` (`restore-snapshot.ts:41-46`) plus the map's
+    // per-holding bucketing, one near-miss row at a time — each row is
+    // IDENTICAL to a real hand-set-shaped match except for exactly ONE
+    // field, so deleting any single clause makes exactly that row spuriously
+    // qualify and the `null` expectation below goes red. Manually verified
+    // for `source` and `category`: temporarily deleting either clause from
+    // `isBalanceSetShapedRow` turns this test red.
+    it('excludes a row that differs from a real match in exactly ONE predicate field, for every field', async () => {
+      const { mockTx: tx, insertedHoldings } = captureHoldingsInsert();
+      mockTx = tx;
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        holdings: [{ id: 'h1', balanceMinorUnits: 5_000 }] as never,
+        transactions: [
+          // Wrong source (a synced row can't be a hand-set balance).
+          {
+            id: 't-source',
+            holdingId: 'h1',
+            source: 'monobank',
+            description: '',
+            category: null,
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: null,
+            time: 100,
+          },
+          // Wrong description (a real, named spend).
+          {
+            id: 't-description',
+            holdingId: 'h1',
+            source: 'manual',
+            description: 'Coffee',
+            category: null,
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: null,
+            time: 200,
+          },
+          // Wrong category (a categorized manual entry).
+          {
+            id: 't-category',
+            holdingId: 'h1',
+            source: 'manual',
+            description: '',
+            category: 'food',
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: null,
+            time: 300,
+          },
+          // Wrong exchangeCounterpartHoldingId (an exchange leg).
+          {
+            id: 't-exchange',
+            holdingId: 'h1',
+            source: 'manual',
+            description: '',
+            category: null,
+            exchangeCounterpartHoldingId: 'h2',
+            changeGroupId: null,
+            time: 400,
+          },
+          // Wrong changeGroupId (a change-return row).
+          {
+            id: 't-change-group',
+            holdingId: 'h1',
+            source: 'manual',
+            description: '',
+            category: null,
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: 'g1',
+            time: 500,
+          },
+          // Wrong holdingId (a real hand-set-shaped row, but on a DIFFERENT
+          // holding — must not backfill h1).
+          {
+            id: 't-holding',
+            holdingId: 'h2',
+            source: 'manual',
+            description: '',
+            category: null,
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: null,
+            time: 600,
+          },
+        ] as never,
+      });
+
+      expect(insertedHoldings()).toEqual([
+        { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: null },
+      ]);
+    });
+
     it('leaves a snapshot that already carries a NULL balanceSetAt unchanged (not recomputed from a matching row)', async () => {
       const { mockTx: tx, insertedHoldings } = captureHoldingsInsert();
       mockTx = tx;

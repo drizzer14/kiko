@@ -887,18 +887,13 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   the same pattern for any future field added to `ExportPayload`: make its
   absence in an older file a no-op, never a hard failure.
 - **A legacy snapshot's missing `balanceSetAt` is BACKFILLED, not left
-  `null`.** A build-25-shaped `.kiko` export (before `holdings.balance_set_at`
-  existed) carries holdings rows with no `balanceSetAt` key at all.
-  `restoreDataSnapshot` (`snapshot/restore-snapshot.ts`) detects that (`in`
-  check, not a value check — an already-migrated snapshot's legitimate `null`
-  is left alone) and recomputes migration 0036's own heuristic
-  (`drizzle/migrations/0036_add_balance_set_at.sql`) in JS, from the
-  snapshot's own `transactions` array, before the holding is inserted — the
-  migration's SQL stays frozen (migration files are checksummed history), so
-  this is a second IMPLEMENTATION of the identical rule, not a second rule:
-  `transactionsRepo.importRows`'s doc comment
-  (`transactions/repo/transactions.repo.ts`) is still the one place the rule
-  itself is stated in full.
+  `null`.** A build-25-shaped `.kiko` export has no `balanceSetAt` key at all
+  on its holdings. `restoreDataSnapshot` (`snapshot/restore-snapshot.ts`)
+  detects that with an `Object.hasOwn` check (an already-migrated snapshot's
+  value, including an explicit `null`, is left alone) and reproduces
+  migration 0036's own heuristic in JS. The rule itself stays stated in full
+  only in `transactionsRepo.importRows`'s doc comment
+  (`transactions/repo/transactions.repo.ts`).
 - **No `TextDecoder`/`TextEncoder`.** Hermes has no working `TextDecoder`
   (confirmed on device — see `utf8/utf8.ts`'s header comment); use the
   hand-rolled `utf8Encode`/`utf8Decode` and `encodeBytesToBase64`/

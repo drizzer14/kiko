@@ -1,19 +1,19 @@
 // src/data-transfer/snapshot/restore-snapshot.ts
-import { write } from '../../db/client';
 import {
   accounts,
   categories,
   categoryOverrides,
   currencyRateHistory,
   currencyRates,
+  type HoldingRow,
   holdings,
   pricePoints,
   settings,
   syncState,
+  type TransactionRow,
   transactions,
 } from '../../db/schema';
-
-import type { HoldingRow, TransactionRow } from '../../db/schema';
+import { write } from '../../db/client';
 
 import type { DataSnapshot } from './data-snapshot';
 
@@ -45,46 +45,46 @@ const isBalanceSetShapedRow = (row: TransactionRow): boolean =>
   row.exchangeCounterpartHoldingId === null &&
   row.changeGroupId === null;
 
+/** Migration 0036's `MAX(time)` per holding, computed in one pass over
+ * `allTransactions` rather than re-filtering the whole array per holding. */
+const balanceSetAtBoundariesByHoldingId = (
+  allTransactions: TransactionRow[],
+): Map<string, number> => {
+  const boundaries = new Map<string, number>();
+
+  for (const row of allTransactions) {
+    if (!isBalanceSetShapedRow(row)) {
+      continue;
+    }
+
+    const current = boundaries.get(row.holdingId);
+    if (current === undefined || row.time > current) {
+      boundaries.set(row.holdingId, row.time);
+    }
+  }
+
+  return boundaries;
+};
+
 /**
- * Restores a build-25-shaped holding — exported before `holdings.balance_set_at`
- * existed — to the SAME state migration 0036 would have backfilled on-device:
- * the latest time among that holding's own balance-set-shaped manual rows, or
- * `null` when none match. The migration's own SQL is left untouched (migration
- * files are checksummed history, never edited after they ship); this recomputes
- * the identical result in JS, straight from the snapshot's own `transactions`
- * array rather than a second correlated SQL query after the insert — since
- * `restoreDataSnapshot` REPLACES the whole database with this exact snapshot,
- * the in-memory rows here are exactly what a post-insert query would see, so
- * reading them directly is both simpler (no raw SQL / extra round trip) and
- * cheaper.
- *
- * Detection keys on the JSON key's PRESENCE, not its value: a legacy
- * snapshot's holdings simply carry no `balanceSetAt` key at all
- * (`Object.hasOwn` is false). A snapshot exported AFTER this column shipped
- * is returned unchanged even where its own `balanceSetAt` is legitimately
- * `null` — it already carries whatever value the live column held at export
- * time. `Object.hasOwn`, not the `in` operator: `HoldingRow`'s own type
- * already declares `balanceSetAt` as always-present, so `in` would type-
- * narrow the "missing" branch to `never` — a real, legacy-shaped runtime
- * object (parsed from JSON, not literally constructed as a `HoldingRow`)
- * regardless.
+ * Reproduces migration 0036's backfill for a holding restored from a
+ * build-25-shaped snapshot (no `balanceSetAt` key at all). Detects on the
+ * JSON key's PRESENCE, not its value, so an already-migrated snapshot's
+ * value — including an explicit `null` — is returned unchanged.
+ * `Object.hasOwn`, not `in`: `HoldingRow` declares `balanceSetAt` as
+ * always-present, so `in` would type-narrow the "missing" branch to
+ * `never`, even though a legacy runtime object (parsed from JSON) can
+ * still lack the key.
  */
 const withLegacyBalanceSetAtBackfilled = (
   holding: HoldingRow,
-  allTransactions: TransactionRow[],
+  boundaries: Map<string, number>,
 ): HoldingRow => {
   if (Object.hasOwn(holding, 'balanceSetAt')) {
     return holding;
   }
 
-  const boundaryTimes = allTransactions
-    .filter((row) => row.holdingId === holding.id && isBalanceSetShapedRow(row))
-    .map((row) => row.time);
-
-  return {
-    ...holding,
-    balanceSetAt: boundaryTimes.length > 0 ? Math.max(...boundaryTimes) : null,
-  };
+  return { ...holding, balanceSetAt: boundaries.get(holding.id) ?? null };
 };
 
 /**
@@ -140,8 +140,9 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
       for (const part of chunk(snapshot.accounts, CHUNK_SIZE)) {
         await tx.insert(accounts).values(part);
       }
+      const boundaries = balanceSetAtBoundariesByHoldingId(snapshot.transactions);
       const holdingsToInsert = snapshot.holdings.map((holding) =>
-        withLegacyBalanceSetAtBackfilled(holding, snapshot.transactions),
+        withLegacyBalanceSetAtBackfilled(holding, boundaries),
       );
       for (const part of chunk(holdingsToInsert, CHUNK_SIZE)) {
         await tx.insert(holdings).values(part);
