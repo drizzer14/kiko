@@ -461,26 +461,19 @@ const StatisticsScreen: FC = () => {
     [transactionsWithCurrency],
   );
 
-  // T30 (spec 5/D14 — "interest-only spending"): every LOAN holding
-  // currently in the ledger, read off the raw (unfiltered-by-account,
-  // unfiltered-by-`closedAt`) `holdings` query. A payment's linked loan can
-  // live under an account the user has filtered OUT of the other charts,
-  // and a closed/paid-off loan still EXISTS (only a DELETED one clears its
-  // links — Review Focus 7) — neither should change whether its payment's
-  // interest counts.
+  // Every LOAN holding in the raw, unfiltered ledger: a payment's linked
+  // loan can live under an account filtered out of the other charts, and a
+  // closed/paid-off loan still EXISTS (only a delete clears its links), so
+  // neither should change whether its payment's interest counts.
   const loanHoldings = useMemo(
     () => holdings.filter((holding) => holding.type === 'loan'),
     [holdings],
   );
 
-  // A linked loan payment never counts its PRINCIPAL as spending — only its
-  // INTEREST does (N10b). Every raw linked row (whose loan still exists) is
-  // dropped from the pie/trend by id below, alongside the other exclusion
-  // rules; `loanInterestRows` (below) replaces each one with its own
-  // derived "Loan interest" entry, fed into the SAME breakdown/trend
-  // builders. Computed over the FULL, unfiltered `transactionsWithCurrency`
-  // — same as every exclusion rule above — the range is applied only to the
-  // rows actually shown (see `rangeFilteredBreakdownTransactions` below).
+  // A linked payment never counts its PRINCIPAL as spending, only its
+  // INTEREST (`loanInterestRows` below, which replaces each excluded row
+  // with its own derived entry) — computed over the full, unfiltered ledger
+  // like every other exclusion rule here.
   const loanPaymentExcludedIds = useMemo(
     () => loanPaymentExcludedTxIds(transactionsWithCurrency, loanHoldings),
     [transactionsWithCurrency, loanHoldings],

@@ -175,7 +175,7 @@ export const loanOutstandingMinorAt = (
  * even started, or years after it was fully paid off, is not this loan's
  * interest. "One period" is the same monthly cadence every due date is built
  * from (`addMonths(startDate, k)`): one period before the first installment
- * is `addMonths(startDate, 0)` (= `startDate` itself), one period after the
+ * is `startDate` itself, one period after the
  * last is `addMonths(startDate, installments.length + 1)`. Both bounds are
  * INCLUSIVE — a payment exactly on one still maps to its boundary
  * installment, only a payment strictly beyond it counts 0.
@@ -192,7 +192,7 @@ export const loanInterestForPaymentMinor = (
   }
 
   const paymentDayKey = dayKeyOf(paymentTime);
-  const lowerBoundDayKey = dayKeyOf(addMonths(meta.startDate, 0));
+  const lowerBoundDayKey = dayKeyOf(meta.startDate);
   const upperBoundDayKey = dayKeyOf(addMonths(meta.startDate, installments.length + 1));
 
   if (paymentDayKey < lowerBoundDayKey || paymentDayKey > upperBoundDayKey) {
