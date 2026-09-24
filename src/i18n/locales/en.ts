@@ -675,11 +675,11 @@ export const en = {
     // Section headings (F3 items 12/13/14): every group on this screen shows
     // its own heading now that the screen no longer duplicates the native
     // stack header's own title (item 12).
-    sectionFileFormat: 'File format',
+    sectionFileFormat: 'File Format',
     sectionDates: 'Dates',
-    sectionAmount: 'Amount columns',
+    sectionAmount: 'Amount Columns',
     sectionCurrency: 'Currency',
-    sectionDetails: 'Additional details',
+    sectionDetails: 'Additional Details',
     encoding: 'Encoding',
     delimiter: 'Separator',
     delimiterTab: 'Tab',
