@@ -176,4 +176,67 @@ describe('scripts/checks/import-order.js --write', () => {
 
     expect(write(source)).toBe(source);
   });
+
+  // C1 regression: a group of comments with NO import in it (a header block
+  // followed directly by another comment block, with no import between them —
+  // src/navigation/types.d.ts is the live shape) must never be silently
+  // dropped when an unrelated earlier group in the same file DOES need
+  // reordering (which is what flips fixImportOrder's file-level `changed`
+  // flag and triggers the rewrite).
+  it('never drops a second comment block trailing an unsorted group', () => {
+    const source =
+      "import { Gesture, GestureDetector } from 'react-native-gesture-handler';\n" +
+      "import a from 'a';\n" +
+      '\n' +
+      '// note about X\n' +
+      '/** JSDoc for X */\n' +
+      'export const X = 1;\n';
+
+    const fixed = write(source);
+
+    expect(fixed).toContain('// note about X');
+    expect(fixed).toContain('/** JSDoc for X */');
+  });
+
+  // Property: for every fixture above, --write only ever reorders lines — it
+  // never loses or invents one. Sorting a multiset-equal line array proves
+  // nothing was dropped or duplicated, independent of what order they land in.
+  describe('permutation property (no line lost or gained)', () => {
+    const fixtures = [
+      "import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';\n" +
+        "import { type FC, useEffect } from 'react';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+      '// A file header explaining this module.\n' +
+        "import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';\n" +
+        "import { type FC, useEffect } from 'react';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+      "import { type FC, useEffect } from 'react';\n" +
+        '// explains the next import specifically\n' +
+        "import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+      "import { aVeryLongIdentifierName } from 'some-external-package-name';\n" +
+        "import '../../design-system/unistyles';\n" +
+        "import { x } from 'y';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+      "import { Gesture, GestureDetector } from 'react-native-gesture-handler';\n" +
+        "import a from 'a';\n" +
+        '\n' +
+        '// note about X\n' +
+        '/** JSDoc for X */\n' +
+        'export const X = 1;\n',
+    ];
+
+    it.each(fixtures.map((source, index) => [index, source] as const))(
+      'fixture %i: output is a permutation of the input lines',
+      (_index, source) => {
+        const fixed = write(source);
+
+        expect(fixed.split('\n').sort()).toEqual(source.split('\n').sort());
+      },
+    );
+  });
 });

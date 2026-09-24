@@ -172,8 +172,17 @@ function splitIntoGroups(entries) {
 // Reduces one group's entries into { prefix, items, interiorComment } —
 // `prefix` is the pinned leading comment run (if any), `items` are
 // { comments, statementLines } pairs in original order, and
-// `interiorComment` is true when a comment run appears before a NON-first
-// import (making this group unsafe to auto-fix).
+// `interiorComment` is true when a comment run appears anywhere after the
+// prefix — whether or not an import follows it. A comment run with NO
+// import after it (a group that is entirely comments, or a comment that
+// trails the group's last import) has nowhere safe to attach: dropping it
+// from `items` would silently delete it from the rebuilt file the moment
+// --write touches ANY other group in the same file (fixImportOrder only
+// gates a whole-file rewrite on whether an INDIVIDUAL group's items
+// changed, so a lossy group with an unchanged, empty `items` list would
+// never trip that gate on its own). Marking it unsafe unconditionally
+// means fixImportOrder always returns such a group's original lines
+// untouched instead of guessing where an orphaned comment belongs.
 function analyzeGroup(entries) {
   let index = 0;
   let prefix = null;
@@ -200,7 +209,7 @@ function analyzeGroup(entries) {
     pendingComments = [];
   }
 
-  return { prefix, items, interiorComment: interiorComment && items.length > 0 };
+  return { prefix, items, interiorComment };
 }
 
 // Partitions `items` at each side-effect import — that entry stays in place,
