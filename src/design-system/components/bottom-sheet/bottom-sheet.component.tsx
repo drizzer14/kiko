@@ -1,5 +1,6 @@
 import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
 import { type FC, useEffect } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
 import { Keyboard, Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
@@ -331,7 +332,7 @@ const BottomSheet: FC<BottomSheetProps> = ({
           style={styles.backdrop}
           onPress={onDismiss}
           testID={backdropTestID}
-          accessibilityRole={backdropAccessibilityLabel === undefined ? undefined : 'button'}
+          accessibilityRole={foldMap(maybe(backdropAccessibilityLabel), () => 'button' as const)}
           accessibilityLabel={backdropAccessibilityLabel}
         >
           {isLiquidGlassSupported ? (

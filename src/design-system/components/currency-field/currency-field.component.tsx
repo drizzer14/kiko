@@ -1,5 +1,6 @@
 import { FlatList, Keyboard } from 'react-native';
 import type { TFunction } from 'i18next';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { type FC, useEffect, useState } from 'react';
 
@@ -164,7 +165,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
         disabled={disabled}
         testID={testID}
         onPress={() => updateOpen(true)}
-        leadingText={selected === undefined ? undefined : currencySymbol[selected]}
+        leadingText={foldMap(maybe(selected), (currency) => currencySymbol[currency])}
         value={triggerValue}
         valueTone={selected === undefined ? 'textSecondary' : 'textPrimary'}
       />

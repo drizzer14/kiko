@@ -75,13 +75,11 @@ const SelectField = <Option extends string>({
                 subtitle === undefined ? labels[option] : `${labels[option]}. ${subtitle}`
               }
               testID={testID ? `${testID}-option-${option}` : undefined}
-              description={
-                subtitle === undefined ? undefined : (
-                  <Text variant="caption" tone={isSelected ? 'onAccent' : 'textSecondary'}>
-                    {subtitle}
-                  </Text>
-                )
-              }
+              description={foldMap(maybe(subtitle), (found) => (
+                <Text variant="caption" tone={isSelected ? 'onAccent' : 'textSecondary'}>
+                  {found}
+                </Text>
+              ))}
             />
           );
         })}
