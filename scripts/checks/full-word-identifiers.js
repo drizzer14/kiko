@@ -43,88 +43,131 @@ const DENYLIST = new Set([
 // name forced by a third-party API/format, not a choice made in this
 // codebase (see kiko-code-style's "Full words in identifiers" exception
 // list, and CLAUDE.md's "Documented exceptions" for the same "narrow,
-// verifiable reason" standard). Keyed by (path suffix, word), not by word
-// alone, so the exemption stays scoped to the one file it was verified
-// against — a denylisted word anywhere else still fails.
+// verifiable reason" standard). Keyed by (path suffix, word, EXACT
+// identifier name) — name is required, not just word, so a file that uses
+// the same denylisted word BOTH as a forced external name and as a free
+// local choice (binance.transactions.ts: the wire-mirrored `txId` field
+// stays, but `BinanceTxSyncDeps` — this codebase's own type name — does
+// not) exempts only the one identifier it was verified against, not every
+// identifier containing that word in the whole file.
 const EXEMPTIONS = [
   {
     suffix: 'src/db/run-migrations.ts',
     word: 'idx',
+    name: 'idx',
     reason: 'mirrors drizzle-kit’s own generated _journal.json {idx, when, tag} shape',
   },
   {
     suffix: 'src/db/run-migrations.test.ts',
     word: 'idx',
+    name: 'idx',
     reason: 'same drizzle migration-journal shape as run-migrations.ts',
   },
   {
     suffix: 'src/db/schema.category-overrides.test.ts',
     word: 'idx',
+    name: 'idx',
     reason: 'test fixture mirrors the drizzle migration-journal entry shape',
   },
   {
     suffix: 'src/db/schema.change-group.test.ts',
     word: 'idx',
+    name: 'idx',
     reason: 'test fixture mirrors the drizzle migration-journal entry shape',
   },
   {
     suffix: 'src/db/schema.namespace-external-ids.test.ts',
     word: 'idx',
+    name: 'idx',
     reason: 'test fixture mirrors the drizzle migration-journal entry shape',
   },
   {
     suffix: 'src/db/schema.statement-mappings.test.ts',
     word: 'idx',
+    name: 'idx',
     reason: 'test fixture mirrors the drizzle migration-journal entry shape',
   },
   {
     suffix: 'src/db/schema.sync-state.test.ts',
     word: 'idx',
+    name: 'idx',
     reason: 'test fixture mirrors the drizzle migration-journal entry shape',
   },
   {
     suffix: 'src/db/schema.trend-filter.test.ts',
     word: 'idx',
+    name: 'idx',
     reason: 'test fixture mirrors the drizzle migration-journal entry shape',
   },
   {
     suffix: 'src/bonds/nbu-register/nbu-register.ts',
     word: 'val',
+    name: 'val_code',
     reason: 'val_code is the literal NBU register external JSON field name',
   },
   {
     suffix: 'src/bonds/nbu-register/nbu-register.test.ts',
     word: 'val',
+    name: 'val_code',
     reason: 'val_code is the literal NBU register external JSON field name',
   },
   {
     suffix: 'src/crypto-sync/binance/binance.client.ts',
     word: 'msg',
+    name: 'msg',
     reason: 'msg is the literal field name in a Binance error body {code, msg}',
   },
   {
     suffix: 'src/crypto-sync/binance/binance.client.test.ts',
     word: 'msg',
+    name: 'msg',
     reason: 'msg is the literal field name in a Binance error body {code, msg}',
   },
   {
     suffix: 'src/design-system/components/currency-field/currency-field.component.tsx',
     word: 'num',
+    name: 'initialNumToRender',
     reason: 'initialNumToRender is React Native FlatList’s own prop name',
   },
   {
     suffix: 'src/crypto-sync/btc-wallet/btc-wallet.client.test.ts',
     word: 'tx',
+    name: 'tx_count',
     reason: 'tx_count is the literal Esplora/Blockstream address-stats API field name',
+  },
+  {
+    suffix: 'src/crypto-sync/binance/binance.client.ts',
+    word: 'tx',
+    name: 'txId',
+    reason: 'txId is the literal field name on Binance’s deposit/withdraw history records',
+  },
+  {
+    suffix: 'src/crypto-sync/binance/binance.client.test.ts',
+    word: 'tx',
+    name: 'txId',
+    reason: 'txId is the literal field name on Binance’s deposit/withdraw history records',
+  },
+  {
+    suffix: 'src/crypto-sync/binance/binance.transactions.ts',
+    word: 'tx',
+    name: 'txId',
+    reason: 'recordKey reads the same Binance record’s literal txId field',
+  },
+  {
+    suffix: 'src/crypto-sync/binance/binance.transactions.test.ts',
+    word: 'tx',
+    name: 'txId',
+    reason: 'fixtures mirror Binance’s literal txId field',
   },
 ];
 
-const isExempt = (targetPath, word) => {
+const isExempt = (targetPath, word, name) => {
   const normalized = targetPath.split(path.sep).join('/');
 
   return EXEMPTIONS.some(
     (exemption) =>
       exemption.word === word &&
+      exemption.name === name &&
       (normalized === exemption.suffix || normalized.endsWith(`/${exemption.suffix}`)),
   );
 };
@@ -284,7 +327,7 @@ const findViolations = (source, targetPath) => {
       const words = splitIdentifierWords(name);
 
       for (const word of words) {
-        if (DENYLIST.has(word) && !isExempt(targetPath, word)) {
+        if (DENYLIST.has(word) && !isExempt(targetPath, word, name)) {
           violations.push(
             `${targetPath}:${lineIndex + 1}: \`${name}\` — abbreviated word \`${word}\` (write the full word)`,
           );

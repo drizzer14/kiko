@@ -182,10 +182,17 @@ verified usage, not dead weight:
   subprocess — not an import, so Jest's coverage does not make Knip see it
   as reachable either.
 - **`scripts/checks/full-word-identifiers.js`'s own `EXEMPTIONS` list**: an
-  exact `(file path suffix, denylisted word)` allowlist mechanizing
-  kiko-code-style's "Full words in identifiers" exception for "a name
-  forced by a third-party API/DB column/persisted JSON key". Each entry is
-  a real, verified external-format mirror, not a style preference:
+  exact `(file path suffix, denylisted word, EXACT identifier name)`
+  allowlist mechanizing kiko-code-style's "Full words in identifiers"
+  exception for "a name forced by a third-party API/DB column/persisted
+  JSON key". The `name` field (not just word) matters: it is what lets
+  `src/crypto-sync/binance/binance.transactions.ts` exempt only its
+  wire-mirrored `txId` field while still catching a DIFFERENT `tx`-bearing
+  identifier chosen freely in the SAME file (`BinanceTxSyncDeps`, this
+  codebase's own type name, correctly renamed to `BinanceTransactionSyncDeps`
+  during the R1.d sweep — a word-only, file-wide exemption would have
+  silently skipped that one too). Each of the 18 entries is a real,
+  verified external-format mirror, not a style preference:
   `src/db/run-migrations.ts` + its test + the six
   `src/db/schema.*.test.ts` fixtures (`idx`) mirror drizzle-kit's own
   generated `_journal.json` `{idx, when, tag}` shape, which this runner
@@ -194,13 +201,20 @@ verified usage, not dead weight:
   `val_code`) mirror the National Bank of Ukraine securities register's
   own external JSON field; `src/crypto-sync/binance/binance.client.ts` +
   its test (`msg`) mirror Binance's own error-body shape `{code, msg}`;
-  `src/crypto-sync/btc-wallet/btc-wallet.client.test.ts` (`tx`, from
-  `tx_count`) mirrors the Esplora/Blockstream address-stats API's own
-  field name; `src/design-system/components/currency-field/currency-field.component.tsx`
+  those same two files plus `binance.transactions.ts`/`.test.ts` (`tx`,
+  from `txId`) mirror the literal field name on Binance's deposit/withdraw
+  history records (`GET /sapi/v1/capital/deposit/hisrec` and
+  `/withdraw/history`) — found only by reading the ACTUAL diff after an
+  initial mechanical `tx` → `transaction` sweep pass, not by inspection
+  beforehand, which is exactly why this allowlist is exact-name-scoped
+  rather than trusted-by-eye; `src/crypto-sync/btc-wallet/btc-wallet.client.test.ts`
+  (`tx`, from `tx_count`) mirrors the Esplora/Blockstream address-stats
+  API's own field name; `src/design-system/components/currency-field/currency-field.component.tsx`
   (`num`, from `initialNumToRender`) is React Native's own `FlatList` prop
   name. A denylisted word anywhere else in the tree — including the same
-  word in a different file — still fails; add a new entry here only for
-  another verified external-name case, per this file's own standing rule.
+  word in a different file, or a DIFFERENT identifier in the same file —
+  still fails; add a new entry here only for another verified
+  external-name case, per this file's own standing rule.
 - **`rules/fixtures/**` (Biome `files.includes`, `knip.json` `ignore`,
   `.jscpd.json` `ignore`, and `--exclude 'fixtures'` in
   `scripts/checks/security.sh`)**: the positive/negative fixture pair that

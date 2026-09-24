@@ -445,20 +445,26 @@ persisted JSON key" is NOT syntactically detectable — a DB column's JS-side
 field name is a plain identifier, indistinguishable from any other. Rather
 than a new per-line suppression-comment syntax (which would need its own
 override-guard-style justification check), this rule uses an exact
-`{ suffix: '<path from repo root>', word: '<denylisted word>' }` allowlist
-in the analyzer file itself, checked by path SUFFIX match (so a temp
-fixture ending in the same relative path also matches — this is what makes
-the allowlist unit-testable without coupling the test to real repo
-files). Keyed by (path, word), not by word alone, so exempting `idx` in
-`src/db/run-migrations.ts` (drizzle-kit's own generated migration-journal
-JSON shape — see that file's own header comment) does NOT exempt `idx`
-anywhere else; a future `idx` in an unrelated file still fails. Every entry
-needs a concrete, verified external-format citation, the same standard as
-every other ignore-list exception in this repo — see
+`{ suffix: '<path from repo root>', word: '<denylisted word>', name:
+'<exact identifier>' }` allowlist in the analyzer file itself, checked by
+path SUFFIX match (so a temp fixture ending in the same relative path also
+matches — this is what makes the allowlist unit-testable without coupling
+the test to real repo files). Keyed by (path, word, EXACT NAME), not by
+word alone — the name field is load-bearing, not redundant: exempting
+`idx` in `src/db/run-migrations.ts` (drizzle-kit's own generated
+migration-journal JSON shape — see that file's own header comment) does
+NOT exempt `idx` anywhere else, and a (path, word)-only key would have
+been too WIDE inside a single file too — `src/crypto-sync/binance/binance.transactions.ts`
+needed its wire-mirrored `txId` field exempted while a DIFFERENT `tx`-bearing
+identifier in that SAME file (`BinanceTxSyncDeps`, this codebase's own type
+name) still needed the ordinary rename. Every entry needs a concrete,
+verified external-format citation, the same standard as every other
+ignore-list exception in this repo — see
 `docs/harness/documented-exceptions.md` for the full, individually-cited
-list (13 entries as of the R1.d sweep: the drizzle migration-journal shape,
-NBU register's `val_code`, Binance's `{code, msg}` error body, Esplora's
-`tx_count`, and React Native `FlatList`'s own `initialNumToRender` prop).
+list (18 entries as of the R1.d sweep: the drizzle migration-journal shape,
+NBU register's `val_code`, Binance's `{code, msg}` error body and its
+`txId` history-record field, Esplora's `tx_count`, and React Native
+`FlatList`'s own `initialNumToRender` prop).
 
 ## Every mechanized finding gets an inventory row
 
