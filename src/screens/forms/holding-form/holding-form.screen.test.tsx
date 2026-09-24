@@ -1675,7 +1675,7 @@ describe('HoldingFormScreen loan (T28)', () => {
           startDate: localDay(2026, 1, 1),
           schedule: 'none',
         },
-        firstPricePoint: { day: expect.any(Number), price: '500000.00' },
+        firstPricePoint: { day: dayKeyOf(localDay(2026, 1, 1)), price: '500000.00' },
       }),
     );
     expect(navigation.goBack).toHaveBeenCalled();
