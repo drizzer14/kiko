@@ -406,6 +406,15 @@ one validation model — don't hand-roll a different one:
 - The error's visibility is its own piece of state (e.g.
   `showNameError`), set true only after a failed submit attempt, so a
   fresh form shows no error before the user has tried to save.
+- Every field's error is computed from ONLY that field's own inputs,
+  gated by the shared attempted-submit flag — never by comparing
+  against a single shared "first failing field" reason. That shape
+  hides every error but one until the fields ahead of it are fixed one
+  at a time, and un-hides the next one instead of clearing once fixed.
+  Every condition that blocks Save must have its own visible field
+  error; the first-invalid field (in the form's top-to-bottom order)
+  is used ONLY to pick the scroll target, never to decide which
+  fields' errors show.
 
 ## Import ordering and `import type`
 
