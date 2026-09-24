@@ -20,7 +20,7 @@ export const fallbackLabel = (value: string | null): string =>
 export const requiredError = (value: string | null): string | undefined =>
   value === null ? 'required' : undefined;
 
-export const choice = (cond: boolean): string => (cond ? 'a' : 'b');
+export const choice = (condition: boolean): string => (condition ? 'a' : 'b');
 
 export const emptyStringFallback = (value: string | undefined): string =>
   value === undefined ? '' : String(value);
