@@ -31,10 +31,10 @@ import {
   type TermDepositMeta,
 } from '../../../holdings/holding-metadata';
 import type { Lot } from '../../../holdings/lots';
+import { normalizeIsin } from '../../../bonds/isin';
 import { Money } from '../../../currency/money';
-import type { HoldingRow, BondRegisterRow } from '../../../db/schema';
+import type { HoldingRow } from '../../../db/schema';
 import { dayKeyOf } from '../../../prices/price-book';
-import { startOfLocalDay } from '../../../dates/local-day';
 import { parseAmount } from '../../../currency/parse';
 import { compareDecimal, normalizeDecimal, shiftDecimal } from '../../../currency/decimal';
 import Box from '../../../design-system/components/box';
@@ -54,25 +54,25 @@ import type { AccountsStackParamList } from '../../../navigation/types';
 import CurrencyField from '../../../design-system/components/currency-field';
 import { type Currency, currencyScale, currencySymbol } from '../../../currency/currency';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
-import type { BondTerms } from '../../../bonds/nbu-register';
-import { normalizeIsin, validateIsin } from '../../../bonds/isin';
-import { bondRegisterRepo, refreshBondRegisterIfStale } from '../../../bonds/bond-register-repo';
 
 import ChipRow from '../chip-row';
 import DateField from '../date-field';
 import ColorPicker from '../color-picker';
-import HoldingIdentityField from '../holding-identity-field';
-import MetalSection from './metal-section';
-import PropertySection from './property-section';
-import BondIsinSection from './bond-isin-section';
-import { useSubmitOnce } from '../use-submit-once/use-submit-once';
-import { groupAmount, majorAmountText } from '../amount-format/amount-format';
-import type { BondEntryMode } from './bond-isin-section/bond-isin-section.props';
 import {
   useHeaderInset,
   scrollToField,
   type FieldInstance,
 } from '../scroll-to-field/scroll-to-field';
+import HoldingIdentityField from '../holding-identity-field';
+import { useSubmitOnce } from '../use-submit-once/use-submit-once';
+import { groupAmount, majorAmountText } from '../amount-format/amount-format';
+
+import MetalSection from './metal-section';
+import PropertySection from './property-section';
+import BondIsinSection from './bond-isin-section';
+import ManualBondFields from './manual-bond-fields';
+import { useBondIsinMode, type IsinReasonKey } from './use-bond-isin-mode';
+import type { BondEntryMode } from './bond-isin-section/bond-isin-section.props';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 
@@ -91,15 +91,6 @@ type BondReasonKey =
   | 'forms.holding.faceValueError'
   | 'forms.holding.couponPctError'
   | 'forms.holding.maturityDateError';
-
-// The literal i18n keys `isinReasonKey` may return (T25, spec 6.4). Required
-// in ISIN mode, optional-but-must-be-valid-if-typed in Manual mode (spec 6.4
-// #6 keeps the ISIN editable there) — see `isinReasonKey`'s own doc comment.
-type IsinReasonKey =
-  | 'forms.holding.isinRequiredError'
-  | 'forms.holding.isinFormatError'
-  | 'forms.holding.isinCheckDigitError'
-  | 'forms.holding.isinNotInRegister';
 
 // The literal i18n key `propertyReasonKey` may return, so `t()` (typed from
 // src/i18n/locales/en.ts) accepts it.
@@ -215,113 +206,6 @@ const seedBondMetaFields = (
   // Edit always opens Manual (spec 6.4 #6) — the register is never consulted
   // again once a holding is saved (spec 6.4 #5).
   setters.setBondMode('manual');
-};
-
-// The register-sourced field set a found ISIN fills (spec 6.2/6.3): face
-// value, coupon, maturity, bond kind (always 'government' — the register is
-// Minfin-only), currency, and name. `couponFrequency` only applies when the
-// register's `pay_period` maps onto a known band; an unmapped period (spec
-// 6.2's own fallback) instead switches the form to Manual, leaving every
-// OTHER known field pre-filled, so the user only has to pick the frequency
-// by hand rather than the form guessing one. Extracted to a module-level
-// pure function (mirrors `seedBondMetaFields` above) so the effect that
-// calls it stays out of `HoldingFormScreen`'s own cognitive-complexity
-// budget.
-const applyFoundBondTerms = (
-  terms: BondTerms,
-  setters: {
-    setFaceValue: (value: string) => void;
-    setCouponPct: (value: string) => void;
-    setMaturityDate: (value: number) => void;
-    setBondKind: (value: BondKind) => void;
-    setCouponFrequency: (value: BondMeta['couponFrequency']) => void;
-    setCurrency: (value: Currency) => void;
-    setName: (value: string) => void;
-    setBondMode: (value: BondEntryMode) => void;
-  },
-): void => {
-  setters.setFaceValue(groupAmount(majorAmountText(terms.currency, terms.faceValueMinorUnits)));
-  setters.setCouponPct(String(terms.couponPct));
-  setters.setMaturityDate(terms.maturityDate);
-  setters.setBondKind('government');
-  setters.setCurrency(terms.currency);
-  setters.setName(terms.name);
-
-  if (terms.couponFrequency === null) {
-    setters.setBondMode('manual');
-  } else {
-    setters.setCouponFrequency(terms.couponFrequency);
-  }
-};
-
-// The ISIN `bondRegisterRepo.findByIsinQuery` looks up this render: the
-// normalized candidate once it is shaped/check-digit valid, else an empty
-// string (matches no row) — so an incomplete/malformed candidate never
-// probes the cache. Extracted (rather than an inline ternary in the
-// component) so this stays out of `HoldingFormScreen`'s own
-// cognitive-complexity budget.
-const isinForRegisterLookup = (isin: string): string => {
-  const result = validateIsin(isin);
-
-  return result.ok ? result.isin : '';
-};
-
-// The first matched register row's own `terms`, or `null` when the lookup
-// found nothing — extracted for the same reason as `isinForRegisterLookup`
-// above.
-const firstRegisterTerms = (rows: BondRegisterRow[]): BondTerms | null => rows.at(0)?.terms ?? null;
-
-// Whether `registerTerms` is a genuine match for the CURRENT mode — a type
-// predicate so the effect that guards on it (`save`'s own auto-fill effect
-// below) narrows `registerTerms` to `BondTerms` on its early-return branch,
-// keeping that effect's own body to a single flat `if`.
-const isFoundBondMatch = (bondMode: BondEntryMode, terms: BondTerms | null): terms is BondTerms =>
-  bondMode === 'isin' && terms !== null;
-
-// Whether the register cache should be refreshed this render (spec 6.4 #4)
-// — extracted so the effect that calls it stays a single flat `if`, the
-// same reason `isFoundBondMatch` above is its own function.
-const shouldRefreshBondRegister = (type: HoldingType, alreadyTriggered: boolean): boolean =>
-  type === 'bond' && !alreadyTriggered;
-
-// Whether ISIN mode's `purchaseDate` default (spec 6.3) should apply this
-// render — extracted for the same reason as the two helpers above.
-const shouldDefaultBondPurchaseDate = (params: {
-  type: HoldingType;
-  bondMode: BondEntryMode;
-  purchaseDate: number | null;
-}): boolean => params.type === 'bond' && params.bondMode === 'isin' && params.purchaseDate === null;
-
-// The ISIN field's own blocking reason (T25, spec 6.4): required while in
-// ISIN mode, optional-but-still-validated when non-empty in Manual mode
-// (spec 6.4 #6 keeps it shown and editable there). `isinNotInRegister` only
-// applies in ISIN mode, once the shape/check-digit both pass but the cache
-// has no match (spec 6.4 #3 — covers a genuine "not found" and an "offline
-// with no cache" the same way, since both leave `registerTerms` null).
-// Module-level and pure (given the already-computed `registerTerms`), the
-// same extraction reason as the helpers above.
-const isinReasonKey = (
-  bondMode: BondEntryMode,
-  isin: string,
-  registerTerms: BondTerms | null,
-): IsinReasonKey | null => {
-  if (bondMode !== 'isin' && isin.trim() === '') {
-    return null;
-  }
-
-  if (isin.trim() === '') {
-    return 'forms.holding.isinRequiredError';
-  }
-
-  const validation = validateIsin(isin);
-
-  if (!validation.ok) {
-    return validation.reason === 'format'
-      ? 'forms.holding.isinFormatError'
-      : 'forms.holding.isinCheckDigitError';
-  }
-
-  return bondMode === 'isin' && registerTerms === null ? 'forms.holding.isinNotInRegister' : null;
 };
 
 // Seeds property_item's two edit-mode fields (category + the ORIGINAL lots,
@@ -601,30 +485,25 @@ const fieldErrorMessage = (
 
 // The ISIN field's OWN inline error text — every `isinReasonKey` EXCEPT
 // `isinNotInRegister`, which `BondIsinSection` already surfaces as its own
-// always-visible hint block (not gated on `attemptedSave`), so showing it a
-// second time here would duplicate that message. Unlike `fieldErrorMessage`
-// above (one specific expected key per call site), the ISIN field is the
-// ONLY consumer of `IsinReasonKey`, so this checks membership directly
-// instead of three chained `fieldErrorMessage` calls — kept as its own
-// module-level function (rather than inline in the component) for the same
-// cognitive-complexity reason `fieldErrorMessage` itself is one.
-const ISIN_FIELD_ERROR_KEYS: readonly IsinReasonKey[] = [
-  'forms.holding.isinRequiredError',
-  'forms.holding.isinFormatError',
-  'forms.holding.isinCheckDigitError',
-];
-
+// always-visible hint (not gated on Save), so showing it here too would
+// duplicate that message.
 const isinFieldErrorMessage = (
   t: TFunction,
   attemptedSave: boolean,
   reasonKey: IsinReasonKey | null,
-): string | undefined => {
-  if (!attemptedSave || reasonKey === null) {
-    return undefined;
-  }
+): string | undefined =>
+  reasonKey === null || reasonKey === 'forms.holding.isinNotInRegister'
+    ? undefined
+    : fieldErrorMessage(t, attemptedSave, reasonKey, reasonKey);
 
-  return ISIN_FIELD_ERROR_KEYS.includes(reasonKey) ? t(reasonKey) : undefined;
-};
+// ISIN mode never mounts the maturity DateField (its terms are
+// register-sourced) — a matured-still-registered bond's reason is shown on
+// the purchase date instead (T25 review round 1, I2), the one date the
+// user actually controls there.
+const purchaseDateErrorMessage = (
+  bondMode: BondEntryMode,
+  maturityDateErrorMessage: string | undefined,
+): string | undefined => (bondMode === 'isin' ? maturityDateErrorMessage : undefined);
 
 // The wrapper refs `firstInvalidFieldRef` (below) picks a scroll target from —
 // grouped into its own type so that function's own signature reads as one
@@ -639,6 +518,7 @@ type ValidatedFieldRefs = {
   quantityFieldRef: RefObject<FieldInstance | null>;
   faceValueFieldRef: RefObject<FieldInstance | null>;
   couponPctFieldRef: RefObject<FieldInstance | null>;
+  purchaseDateFieldRef: RefObject<FieldInstance | null>;
   maturityDateFieldRef: RefObject<FieldInstance | null>;
   propertyCostFieldRef: RefObject<FieldInstance | null>;
   metalQuantityFieldRef: RefObject<FieldInstance | null>;
@@ -676,6 +556,7 @@ type ValidatedFieldFocus = {
 const firstInvalidFieldRef = (params: {
   name: string;
   type: HoldingType;
+  bondMode: BondEntryMode;
   termDepositReasonKey: TermDepositReasonKey | null;
   bondReasonKey: BondReasonKey | null;
   isinReasonKey: IsinReasonKey | null;
@@ -687,6 +568,7 @@ const firstInvalidFieldRef = (params: {
   const {
     name,
     type,
+    bondMode,
     termDepositReasonKey,
     bondReasonKey,
     isinReasonKey,
@@ -741,8 +623,13 @@ const firstInvalidFieldRef = (params: {
             focus: focus.couponPct,
           },
           {
+            // ISIN mode never mounts the maturity DateField (its terms are
+            // register-sourced) — a matured-still-registered bond's reason
+            // is shown and scrolled to on the purchase date instead (T25
+            // review round 1, I2), the one field the user actually controls
+            // there.
             invalid: bondReasonKey === 'forms.holding.maturityDateError',
-            ref: refs.maturityDateFieldRef,
+            ref: bondMode === 'isin' ? refs.purchaseDateFieldRef : refs.maturityDateFieldRef,
           },
         ]
       : []),
@@ -942,6 +829,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const quantityFieldRef = useRef<FieldInstance>(null);
   const faceValueFieldRef = useRef<FieldInstance>(null);
   const couponPctFieldRef = useRef<FieldInstance>(null);
+  const purchaseDateFieldRef = useRef<FieldInstance>(null);
   const maturityDateFieldRef = useRef<FieldInstance>(null);
   const propertyCostFieldRef = useRef<FieldInstance>(null);
   const metalQuantityFieldRef = useRef<FieldInstance>(null);
@@ -986,11 +874,22 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // Semiannual coupons are the common case for the government/corporate bonds
   // this tracks (the Monobank statement default), so the picker starts there.
   const [couponFrequency, setCouponFrequency] = useState<CouponFrequency>('semiannually');
-  // T25 — the "ISIN / Manual" mode (spec 6.3/6.4). A CREATE defaults to
-  // 'isin'; edit mode's own seed effect below always forces 'manual' (spec
-  // 6.4 #6 — the stored ISIN is shown there, still editable).
-  const [bondMode, setBondMode] = useState<BondEntryMode>('isin');
-  const [isin, setIsin] = useState('');
+  // The Bond form's "ISIN / Manual" mode (spec 6.3/6.4) — its own state,
+  // register lookup, and side effects all live in `useBondIsinMode`.
+  const { bondMode, setBondMode, isin, setIsin, registerTerms, isinReasonKey } = useBondIsinMode({
+    type,
+    isEdit,
+    currency,
+    purchaseDate,
+    setPurchaseDate,
+    setFaceValue,
+    setCouponPct,
+    setMaturityDate,
+    setBondKind,
+    setCouponFrequency,
+    setCurrency,
+    setName,
+  });
 
   // property_item state. `propertyCost` is CREATE-only (PropertySection hides
   // its field in edit mode — cost/quantity history is fixed at creation; a
@@ -1026,63 +925,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       setCurrency('UAH');
     }
   }, [type, currency]);
-
-  // T25 — the ISIN-mode register lookup (spec 6.4 #3/#4): a validly-shaped
-  // ISIN queries the cached `bond_register` (`useLiveQuery`, so an in-flight
-  // `refreshBondRegisterIfStale` below reactively updates the result once it
-  // lands); an incomplete/malformed candidate queries an empty string, which
-  // matches no row. `BondIsinSection` stays presentational — this is the
-  // SAME split `MetalSection`/`PropertySection` establish.
-  const { data: bondRegisterRows } = useLiveQuery(
-    bondRegisterRepo.findByIsinQuery(isinForRegisterLookup(isin)),
-    ['bond_register'],
-  );
-  const registerTerms: BondTerms | null = firstRegisterTerms(bondRegisterRows);
-
-  // Three independent bond-open side effects, combined into ONE effect
-  // (each guarded by its own already-extracted predicate, so this body
-  // stays three flat `if`s, no nesting) to keep this component's own
-  // cognitive-complexity score down: refreshing the register cache at most
-  // once per local day (spec 6.4 #4, fired once the bond section first
-  // opens, create OR edit — never awaited/blocking, and fails quietly
-  // offline; the caught rejection is deliberately dropped, a network
-  // failure here must never surface as a form error, the register cache
-  // simply stays stale until the next open); defaulting ISIN mode's
-  // `purchaseDate` to today (spec 6.3) — unlike Manual mode, which requires
-  // the user to pick one explicitly, defaulted to LOCAL MIDNIGHT
-  // (`startOfLocalDay`), not a raw `Date.now()`: `DateField.handleDayPress`
-  // carries over an existing value's own time-of-day onto a newly picked
-  // day (so a paired TimeField pick is never clobbered — see its own doc
-  // comment), so a raw `Date.now()` default would leave a LATER explicit
-  // pick composed with today's current clock time instead of a clean local
-  // midnight; and applying a found ISIN's terms
-  // (spec 6.2/6.3 — see `applyFoundBondTerms`'s own doc comment for the
-  // field list and the unmapped-`pay_period` fallback). The union of every
-  // dependency covers all three guards; each is independently idempotent
-  // (re-running a guard whose own predicate is already false is a no-op),
-  // so sharing one dependency array never mis-fires any of the three.
-  const bondRegisterRefreshTriggered = useRef(false);
-  useEffect(() => {
-    if (shouldRefreshBondRegister(type, bondRegisterRefreshTriggered.current)) {
-      bondRegisterRefreshTriggered.current = true;
-      refreshBondRegisterIfStale().catch(() => {});
-    }
-    if (shouldDefaultBondPurchaseDate({ type, bondMode, purchaseDate })) {
-      setPurchaseDate(startOfLocalDay(Date.now()));
-    }
-    if (isFoundBondMatch(bondMode, registerTerms)) {
-      applyFoundBondTerms(registerTerms, {
-        setFaceValue,
-        setCouponPct,
-        setMaturityDate,
-        setBondKind,
-        setCouponFrequency,
-        setCurrency,
-        setName,
-        setBondMode,
-      });
-    }
-  }, [type, bondMode, purchaseDate, registerTerms]);
 
   // Seed the form once from the loaded holding (edit mode only). `useLiveQuery`
   // resolves asynchronously, so the initial render precedes the data; a one-shot
@@ -1149,7 +991,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     }
 
     setOpeningBalance(groupAmount(majorAmountText(holding.currency, holding.balanceMinorUnits)));
-  }, [isEdit, editingHolding]);
+  }, [isEdit, editingHolding, setBondMode, setIsin]);
 
   // The stack sets the static "Add Holding" title; in edit mode override it with
   // "Edit Holding" so the header reads correctly for the update flow.
@@ -1333,15 +1175,15 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // exactly when there is no reason to reject.
   const isTermDepositValid = (): boolean => termDepositReasonKey() === null;
 
-  // A bond needs a valid ISIN (`isinReasonKey`, module-level below), a
+  // A bond needs a valid ISIN (`isinReasonKey`, from `useBondIsinMode`), a
   // positive quantity and face value, a non-negative coupon that was
   // actually entered, both dates picked, and a maturity strictly after the
   // purchase. Coupon frequency always carries a default, so it is always
   // valid. In ISIN mode, face value/coupon/maturity are register-sourced
-  // (never directly edited) — see `applyFoundBondTerms` — so these same
-  // checks apply unchanged in both modes.
+  // (never directly edited) — so these same checks apply unchanged in both
+  // modes.
   const isBondValid = (): boolean =>
-    isinReasonKey(bondMode, isin, registerTerms) === null &&
+    isinReasonKey === null &&
     parseAmount(quantity) > 0 &&
     parseAmount(faceValue) > 0 &&
     couponPct.trim() !== '' &&
@@ -1444,9 +1286,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       const target = firstInvalidFieldRef({
         name,
         type,
+        bondMode,
         termDepositReasonKey: termDepositReasonKey(),
         bondReasonKey: bondReasonKey(),
-        isinReasonKey: isinReasonKey(bondMode, isin, registerTerms),
+        isinReasonKey,
         propertyReasonKey: propertyReasonKey(),
         metalReasonKey: metalReasonKey(),
         refs: {
@@ -1458,6 +1301,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           quantityFieldRef,
           faceValueFieldRef,
           couponPctFieldRef,
+          purchaseDateFieldRef,
           maturityDateFieldRef,
           propertyCostFieldRef,
           metalQuantityFieldRef,
@@ -1644,7 +1488,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     bondReasonKey(),
     'forms.holding.maturityDateError',
   );
-
   return (
     <Screen
       scroll
@@ -1896,11 +1739,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               onSelectMode={setBondMode}
               isin={isin}
               onChangeIsin={setIsin}
-              isinError={isinFieldErrorMessage(
-                t,
-                attemptedSave,
-                isinReasonKey(bondMode, isin, registerTerms),
-              )}
+              isinError={isinFieldErrorMessage(t, attemptedSave, isinReasonKey)}
               isinFieldRef={isinFieldRef}
               isinInputRef={isinInputRef}
               foundTerms={registerTerms}
@@ -1934,89 +1773,58 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               suffix={currencySymbol[currency]}
             />
 
-            <DateField
-              label={t('forms.holding.purchaseDate')}
-              value={purchaseDate}
-              onChange={setPurchaseDate}
-              placeholder={t('forms.holding.selectDatePlaceholder')}
-              required
+            {/* ISIN mode never mounts the maturity DateField below (its
+                terms are register-sourced), so a matured-still-registered
+                bond's maturityDateError is shown and scrolled to here
+                instead (T25 review round 1, I2) — the one date the user
+                actually controls in that mode. */}
+            <View ref={purchaseDateFieldRef}>
+              <DateField
+                label={t('forms.holding.purchaseDate')}
+                value={purchaseDate}
+                onChange={setPurchaseDate}
+                placeholder={t('forms.holding.selectDatePlaceholder')}
+                required
+                error={purchaseDateErrorMessage(bondMode, maturityDateErrorMessage)}
+              />
+            </View>
+
+            <ManualBondFields
+              bondMode={bondMode}
+              faceValue={faceValue}
+              onChangeFaceValue={(text) => setFaceValue(groupAmount(text))}
+              faceValueError={fieldErrorMessage(
+                t,
+                attemptedSave,
+                bondReasonKey(),
+                'forms.holding.faceValueError',
+              )}
+              faceValueFieldRef={faceValueFieldRef}
+              faceValueInputRef={faceValueInputRef}
+              couponPct={couponPct}
+              onChangeCouponPct={setCouponPct}
+              couponPctError={fieldErrorMessage(
+                t,
+                attemptedSave,
+                bondReasonKey(),
+                'forms.holding.couponPctError',
+              )}
+              couponPctFieldRef={couponPctFieldRef}
+              couponPctInputRef={couponPctInputRef}
+              maturityDate={maturityDate}
+              onChangeMaturityDate={setMaturityDate}
+              maturityDateError={maturityDateErrorMessage}
+              maturityDateFieldRef={maturityDateFieldRef}
+              bondKind={bondKind}
+              onSelectBondKind={setBondKind}
+              bondKindOptions={bondKinds}
+              bondKindLabels={bondKindLabels}
+              couponFrequency={couponFrequency}
+              onSelectCouponFrequency={setCouponFrequency}
+              couponFrequencyOptions={couponFrequencies}
+              couponFrequencyLabels={couponFrequencyLabels}
+              currencySuffix={currencySymbol[currency]}
             />
-
-            {/* Manual-only: face value, coupon, maturity, kind, and frequency
-                are all register-sourced in ISIN mode (spec 6.3). `match`
-                (not a raw `&&`) mirrors the `isValid` `match(type)` chain
-                above — ts-pattern's own exhaustive check keeps this in sync
-                if `BondEntryMode` ever grows a third mode. */}
-            {match(bondMode)
-              .with('isin', () => null)
-              .with('manual', () => (
-                <>
-                  <View ref={faceValueFieldRef}>
-                    <TextField
-                      label={t('forms.holding.faceValue')}
-                      value={faceValue}
-                      onChangeText={(text) => setFaceValue(groupAmount(text))}
-                      keyboardType="decimal-pad"
-                      placeholder={t('forms.holding.faceValuePlaceholder')}
-                      suffix={currencySymbol[currency]}
-                      required
-                      error={fieldErrorMessage(
-                        t,
-                        attemptedSave,
-                        bondReasonKey(),
-                        'forms.holding.faceValueError',
-                      )}
-                      inputRef={faceValueInputRef}
-                    />
-                  </View>
-
-                  <View ref={couponPctFieldRef}>
-                    <TextField
-                      label={t('forms.holding.couponPct')}
-                      value={couponPct}
-                      onChangeText={setCouponPct}
-                      keyboardType="decimal-pad"
-                      placeholder={t('forms.holding.couponPlaceholder')}
-                      required
-                      error={fieldErrorMessage(
-                        t,
-                        attemptedSave,
-                        bondReasonKey(),
-                        'forms.holding.couponPctError',
-                      )}
-                      inputRef={couponPctInputRef}
-                    />
-                  </View>
-
-                  <View ref={maturityDateFieldRef} testID="maturity-date-field">
-                    <DateField
-                      label={t('forms.holding.maturityDate')}
-                      value={maturityDate}
-                      onChange={setMaturityDate}
-                      placeholder={t('forms.holding.selectDatePlaceholder')}
-                      required
-                      error={maturityDateErrorMessage}
-                    />
-                  </View>
-
-                  <ChipRow
-                    label={t('forms.holding.bondKind')}
-                    options={bondKinds}
-                    selected={bondKind}
-                    onSelect={setBondKind}
-                    labels={bondKindLabels}
-                  />
-
-                  <ChipRow
-                    label={t('forms.holding.couponFrequency')}
-                    options={couponFrequencies}
-                    selected={couponFrequency}
-                    onSelect={setCouponFrequency}
-                    labels={couponFrequencyLabels}
-                  />
-                </>
-              ))
-              .exhaustive()}
           </Box>
         )}
 

@@ -1,12 +1,13 @@
 import type { FC } from 'react';
-import type { TFunction } from 'i18next';
 import { View } from 'react-native';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
+import { formatDate } from '../../../../dates/format';
 import Box from '../../../../design-system/components/box';
 import Text from '../../../../design-system/components/text';
+import { activeLocale } from '../../../../i18n/active-locale';
 import Button from '../../../../design-system/components/button';
-import { formatDate } from '../../../../dates/format';
 import { normalizeIsin, validateIsin } from '../../../../bonds/isin';
 import TextField from '../../../../design-system/components/text-field';
 import FieldLabel from '../../../../design-system/components/field-label';
@@ -21,22 +22,21 @@ const modeLabels = (t: TFunction): Record<BondEntryMode, string> => ({
 });
 
 /**
- * The Bond form's ISIN/Manual mode section (T25, spec 6.3/6.4): the shared
+ * The Bond form's ISIN/Manual mode section (spec 6.3/6.4): the shared
  * design-system `SegmentedControl` (F3/T24 ruling — one control type per
  * kind of mode choice, not a `ChipRow`), the ISIN text field itself (always
  * shown — required in ISIN mode, optional but still validated in Manual
- * mode, see `holding-form.screen.tsx`'s own `isinReasonKey`), a read-only
- * summary once the register finds a match, a "not in the register" hint
- * with a Switch-to-manual button when a validly-shaped ISIN has no match
- * (spec 6.4 #3 — covers BOTH "not found" and "offline with no cache", which
- * read identically here: `foundTerms` is simply `null`), and the Diia hint
+ * mode, see `useBondIsinMode`'s own `isinReasonKey`), a read-only summary
+ * once the register finds a match, a "not in the register" hint with a
+ * Switch-to-manual button when a validly-shaped ISIN has no match (spec
+ * 6.4 #3 — covers BOTH "not found" and "offline with no cache", which read
+ * identically here: `foundTerms` is simply `null`), and the Diia hint
  * (spec 7.1), which renders in every mode since Diia bonds land under a
  * partner institution regardless of how THIS holding gets added.
  *
  * Purely presentational, like `MetalSection`/`PropertySection`: the NBU
- * register lookup (`useLiveQuery` against `bondRegisterRepo`) and every
- * auto-fill/validation decision live in the parent screen; this component
- * only renders what it is handed.
+ * register lookup and every auto-fill/validation decision live in
+ * `useBondIsinMode`; this component only renders what it is handed.
  */
 const BondIsinSection: FC<BondIsinSectionProps> = ({
   mode,
@@ -55,7 +55,6 @@ const BondIsinSection: FC<BondIsinSectionProps> = ({
   // complete, validly-shaped (check-digit-passing) ISIN — otherwise it would
   // flash on every keystroke while the user is still mid-typing.
   const isValidlyShaped = validateIsin(isin).ok;
-  const showFoundSummary = mode === 'isin' && foundTerms !== null;
   const showNotFoundHint = mode === 'isin' && foundTerms === null && isValidlyShaped;
 
   return (
@@ -87,16 +86,18 @@ const BondIsinSection: FC<BondIsinSectionProps> = ({
         />
       </View>
 
-      {showFoundSummary && foundTerms !== null && (
+      {mode === 'isin' && foundTerms !== null && (
         <Box gap={2} testID="bond-isin-summary">
           <Text variant="caption" tone="textSecondary">
-            {t('forms.holding.couponPct')}: {foundTerms.couponPct}%
+            {t('forms.holding.isinSummaryCoupon', {
+              value: foundTerms.couponPct.toLocaleString(activeLocale()),
+            })}
           </Text>
           <Text variant="caption" tone="textSecondary">
-            {t('forms.holding.maturityDate')}: {formatDate(foundTerms.maturityDate)}
+            {t('forms.holding.isinSummaryMaturity', { value: formatDate(foundTerms.maturityDate) })}
           </Text>
           <Text variant="caption" tone="textSecondary">
-            {t('forms.fields.currency')}: {foundTerms.currency}
+            {t('forms.holding.isinSummaryCurrency', { value: foundTerms.currency })}
           </Text>
         </Box>
       )}

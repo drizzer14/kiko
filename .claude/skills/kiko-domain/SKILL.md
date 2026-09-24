@@ -587,57 +587,87 @@ against a later register state.
 `ChipRow` — F3/T24 ruling: one control type per kind of mode choice),
 rendered by `BondIsinSection`
 (`src/screens/forms/holding-form/bond-isin-section/`) — purely
-presentational, the same `MetalSection`/`PropertySection` split: the
-parent owns the `useLiveQuery` lookup
+presentational, the same `MetalSection`/`PropertySection` split.
+
+**`useBondIsinMode`** (`src/screens/forms/holding-form/use-bond-isin-mode/`)
+owns ALL of the ISIN-mode state, the `useLiveQuery` lookup
 (`bondRegisterRepo.findByIsinQuery`, keyed on the normalized ISIN when
-`validateIsin` passes, else an empty string that matches no row) and
-every auto-fill/validation decision; the section only renders what it
-is handed (the mode toggle, the ISIN field, a read-only summary
-once found, and a "not in the register" hint + Switch-to-manual button
-when a validly-shaped ISIN has no match — spec 6.4 #3, which covers a
-genuine not-found and an offline-with-no-cache open the same way,
-since both leave the lookup's result `null`).
+`validateIsin` passes, else an empty string that matches no row), and
+THREE SEPARATE effects — extracted out of `HoldingFormScreen` (T25
+review round 1, I4) specifically because a single MERGED effect
+sharing one dependency array is what caused I1 below; the hook has its
+own cognitive-complexity budget instead of borrowing the screen's, so
+its effects stay genuinely separate with no lint-driven pressure to
+recombine them:
+- refreshes the register cache at most once per local day (spec 6.4
+  #4), fired once per bond-section open (create or edit); the
+  fire-and-forget call is `either(() => refreshBondRegisterIfStale())`
+  as a bare statement (the project's standing fire-and-forget idiom —
+  `either` never rejects, so a network failure can never surface as a
+  form error or an unhandled rejection);
+- defaults `purchaseDate` to LOCAL MIDNIGHT (`startOfLocalDay`, not a
+  raw `Date.now()`) the first time ISIN mode is entered — a raw
+  `Date.now()` default would leave a LATER explicit pick composed with
+  that moment's clock time instead of a clean day, because
+  `DateField.handleDayPress` carries an existing value's own
+  time-of-day onto a newly picked day (so a paired TimeField pick is
+  never clobbered);
+- applies a found ISIN's terms EXACTLY ONCE per match, keyed ONLY on
+  the matched row's own `isin` string (`registerTerms?.isin`), never
+  on `bondMode`/`purchaseDate`/anything else — fixes T25 review round
+  1's I1 (a merged effect re-applied on every unrelated change,
+  silently overwriting a typed name or a changed currency) and I3 (the
+  SAME merged effect re-firing on every re-tap of "ISIN" put the
+  control into a loop back to Manual for an unmapped-frequency match).
+
+ISIN mode shows quantity (required) and purchasePrice (optional,
+defaults to nominal — unchanged from Manual) always; it hides face
+value, coupon, maturity, kind, and frequency — a found ISIN fills all
+of them: `bondKind` is always `'government'` (the register is
+Minfin-only), `couponFrequency` only when the register's `pay_period`
+maps onto a known band; an unmapped period (spec 6.2's own documented
+fallback) instead switches the form to Manual, leaving every OTHER
+known field pre-filled, rather than guessing a frequency — this
+auto-switch fires once per match (see I3 above), so re-tapping "ISIN"
+afterward correctly stays in ISIN mode instead of snapping back. In
+EDIT mode, a found ISIN whose currency differs from the (locked)
+holding currency is never applied at all — `isinReasonKey` returns
+`'forms.holding.isinCurrencyMismatchError'` instead, blocking Save
+(T25 review round 1, I5 — the currency field is locked
+`disabled={isEdit}`, so a silent apply used to store one currency's
+terms under a holding balance denominated in another). Outside edit
+mode a found ISIN's `currency`/`name` DO overwrite the form's own
+state on every new match — editable afterward, but re-applied whenever
+the ISIN changes to a new found bond.
 
 A CREATE defaults to `'isin'`; EDIT always seeds `'manual'` (spec 6.4
 #6 — the stored ISIN is shown there, still editable) via
-`seedBondMetaFields`. ISIN mode shows quantity (required),
-purchasePrice (optional, defaults to nominal — unchanged from Manual),
-and purchaseDate, defaulted to LOCAL MIDNIGHT (`startOfLocalDay`, not
-a raw `Date.now()`) the first time ISIN mode is entered — a raw
-`Date.now()` default would leave a LATER explicit pick composed with
-that moment's clock time instead of a clean day, because
-`DateField.handleDayPress` carries an existing value's own
-time-of-day onto a newly picked day (so a paired TimeField pick is
-never clobbered). ISIN mode hides face value, coupon, maturity, kind,
-and frequency — a found ISIN fills all of them
-(`applyFoundBondTerms`): `bondKind` is always `'government'` (the
-register is Minfin-only), `couponFrequency` only when the register's
-`pay_period` maps onto a known band; an unmapped period (spec 6.2's
-own documented fallback) instead switches the form to Manual, leaving
-every OTHER known field pre-filled, rather than guessing a frequency.
-The register's `currency` and `name` overwrite the form's own
-`currency`/`name` state on every new match — editable afterward, but
-re-applied whenever the ISIN changes to a new found bond.
+`seedBondMetaFields`, which also calls the hook's own `setBondMode`.
 
-Validation (`isinReasonKey`, module-level and pure — the same
-extraction pattern `shouldRefreshBondRegister`/`shouldDefaultBondPurchaseDate`/
-`isFoundBondMatch` use to keep `HoldingFormScreen`'s own cognitive
-complexity down): required and blocking in ISIN mode; optional but
-still check-digit-validated when non-empty in Manual mode. A JSX
-conditional gate uses `ts-pattern`'s `match(bondMode).with(...).exhaustive()`
-(not a raw `&&`) for the same reason `isValid`'s own `match(type)`
-chain does — mirrors the project's "no nested ternary" convention and
-keeps a `noExcessiveCognitiveComplexity` budget the raw operator form
-tripped.
+Validation (`isinReasonKey`, returned by the hook, backed by a
+module-level pure `bondIsinReasonKey`): required and blocking in ISIN
+mode; optional but still check-digit-validated when non-empty in
+Manual mode; `isinNotInRegister` once shape/check-digit both pass but
+the cache has no match (spec 6.4 #3 — a genuine not-found and an
+offline-with-no-cache open the same way, since both leave the lookup's
+result `null`); `isinCurrencyMismatchError` in edit mode per I5 above.
+A maturity-before-purchase reason (`bondReasonKey`, unrelated to the
+ISIN reason above) still applies unchanged in ISIN mode — a
+matured-still-registered bond (spec 6.1 counts 2 in the live register)
+can pass every ISIN check yet still fail this — but ISIN mode never
+mounts the maturity `DateField`, so `holding-form.screen.tsx` shows and
+scrolls to that reason on the purchase date `DateField` instead (T25
+review round 1, I2), the one date the user actually controls there.
 
-The register refresh-on-open (`refreshBondRegisterIfStale`, fires once
-per bond-section open, create or edit, `.catch(() => {})`'d — never
-blocks the form and fails quietly offline per spec 6.4 #4) and the
-purchaseDate default and the found-ISIN auto-fill are combined into
-ONE `useEffect` (each independently guarded by its own predicate) —
-again purely to keep the component's cognitive-complexity score under
-budget, not a functional requirement; each guard is idempotent, so
-sharing one dependency array never mis-fires any of the three.
+The five Manual-only fields (face value, coupon %, maturity date, bond
+kind, coupon frequency) are their own component,
+`ManualBondFields` (`src/screens/forms/holding-form/manual-bond-fields/`):
+it takes `bondMode` as a prop and returns `null` outside Manual mode,
+rather than the caller gating `{bondMode === 'manual' && (...)}`
+around its JSX — see `kiko-code-style`'s `noExcessiveCognitiveComplexity`
+entry for why a conditional NESTED inside the bond block's own
+`{type === 'bond' && (...)}` gate needed a real extraction, not a
+`match()` trick (T25 review round 1, I4).
 
 ## Debts — the `debt` kind, `loan` type, and schedule math (T26)
 

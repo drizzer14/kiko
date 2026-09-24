@@ -783,6 +783,73 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
     const patch = updateDeltaMock.mock.calls[0][1];
     expect(patch.metadata.isin).toBe('XS2895055981');
   });
+
+  // I1 (T25 review round 1): the found-terms apply must not re-fire on an
+  // unrelated change — renaming the holding after a match, then picking a
+  // date, must save the TYPED name, not the register's.
+  it('keeps a renamed holding name after a found ISIN, even after a later purchase-date pick', async () => {
+    mockBondRegisterRows = [foundRegisterRow];
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+    await fireEvent.changeText(isinInput(screen), 'UA4000234215');
+    await fill(screen, 'Quantity', '10');
+
+    expect(screen.getByDisplayValue('Register Bond UA4000234215')).toBeTruthy();
+
+    await fill(screen, 'Name', 'War bond 2029');
+    await pickDate(screen, 'Purchase Date', 2026, 1, 1);
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
+    expect(createMock.mock.calls[0][0].name).toBe('War bond 2029');
+  });
+
+  // I2 (T25 review round 1): a matured-still-registered bond (spec 6.1
+  // counts 2) must block Save with a VISIBLE reason in ISIN mode — the
+  // maturity DateField itself is unmounted there.
+  it('shows a visible maturity-after-purchase error in ISIN mode for a matured-still-registered bond', async () => {
+    mockBondRegisterRows = [
+      {
+        isin: 'UA4000234215',
+        terms: { ...foundRegisterRow.terms, maturityDate: localDay(2020, 1, 1) },
+        fetchedAt: 1,
+      },
+    ];
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+    await fireEvent.changeText(isinInput(screen), 'UA4000234215');
+    await fill(screen, 'Quantity', '10');
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Maturity date must be after the purchase date.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  // I5 (T25 review round 1): in edit mode, a found ISIN in a DIFFERENT
+  // currency than the (locked) holding currency must not silently apply,
+  // and must block save with its own visible reason.
+  it('does not apply a found ISIN in a different currency in edit mode, and blocks save', async () => {
+    mockBondRegisterRows = [foundRegisterRow];
+    const screen = await renderEdit(bondHolding);
+
+    expect(bondHolding.currency).toBe('UAH');
+
+    await fireEvent.press(screen.getByTestId('bond-isin-mode-control-option-isin'));
+    await fireEvent.changeText(isinInput(screen), 'UA4000234215');
+
+    expect(screen.queryByDisplayValue('Register Bond UA4000234215')).toBeNull();
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(
+      screen.getByText("This ISIN's currency doesn't match this holding's locked currency."),
+    ).toBeTruthy();
+    expect(updateDeltaMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('HoldingFormScreen section titles', () => {

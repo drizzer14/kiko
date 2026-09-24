@@ -105,32 +105,39 @@ From `biome.json`'s `linter.rules`:
   `unknown` + narrowing is the fallback, not `any`.
 - `noUnusedVariables` / `noUnusedImports` are errors — no unused
   bindings, ever, not even during a work-in-progress edit.
-- `noExcessiveCognitiveComplexity` caps at 15 — decompose a
-  complicated branch into named helper functions rather than one
-  large function; this pairs naturally with the functional style
-  below. What actually moves the score, confirmed by bisection while
-  fixing T25's `holding-form.screen.tsx` (it kept reporting the same
-  number through several rewrites that looked like real
-  simplifications): a ternary, `??`, or `?.` chain written DIRECTLY in
-  the measured function's own top-level body counts heavily — extract
-  it into a named module-level helper (a plain function BEFORE the
-  component, not a `const` closure defined inside it) and the cost
-  moves with it. A raw `if`/`&&`/`||` INSIDE a nested closure (a
-  `useEffect` callback, or a `const foo = () => {...}` defined inside
-  the component) did NOT measurably move the score in that same
-  session, in either direction — do not spend time hunting there.
-  A JSX conditional-render gate (`{cond && (...)}`) inside the
-  component's own `return` is the other real cost, and it does NOT
-  shrink by extracting the JSX CONTENT into a child component or a
-  helper function — only the gate itself matters. When a component
-  already exhausts its budget elsewhere, replace `{cond && (...)}`
-  with `ts-pattern`'s `match(cond ? 'a' : 'b').with(...).exhaustive()`
-  (or, for an existing enum-like value, `match(value).with(...)`
-  directly, mirroring the file's own `isValid` = `match(type)...`
-  pattern) — a chain of `.with()` calls did not register as
-  branching complexity the same session a bare `&&` did. Treat this
-  as a last-resort lint-satisfying tool, not a style preference: keep
-  a plain `{cond && (...)}` everywhere it already fits the budget.
+- `noExcessiveCognitiveComplexity` caps at 15 — measured PER FUNCTION
+  DECLARATION, not per file. **Real extraction is the fix — moving a
+  branch, effect, or piece of state into its own named function, hook,
+  or component (something with its own top-level `const .../function
+  ... = (...) => {...}` binding) removes that code from the caller's
+  score entirely, because Biome measures each declared function
+  independently and does not walk into what it CALLS.** This is why a
+  custom hook (`useBondIsinMode`, `src/screens/forms/holding-form/`,
+  T25 review round 1, I4) or a sibling section component
+  (`MetalSection`/`PropertySection`/`BondIsinSection`/
+  `ManualBondFields`) is the right fix for a screen that is exhausting
+  its budget: pull the state/effects/JSX that belong to one concern
+  into their own file, not just their own local variable.
+  Two corollaries confirmed while fixing `holding-form.screen.tsx`
+  (T25 review round 1): a ternary, `??`, or `?.` chain written
+  DIRECTLY in a function's own top-level body counts against THAT
+  function, including a nested `const foo = () => {...}` closure
+  DEFINED INSIDE a component (a closure is not a separate
+  declaration in Biome's sense — it is still part of the enclosing
+  function's own body); and a JSX conditional-render gate
+  (`{cond && (...)}`) that is LEXICALLY NESTED inside another
+  conditional's rendered children (e.g. a mode-specific gate inside a
+  type-specific gate) costs more than the same gate as a flat sibling
+  — the fix is a plain, ungated `<TheFields cond={cond} .../>` element
+  whose OWN component does the `if (!cond) return null;`, not a
+  `match(cond ? 'a' : 'b').with(...).exhaustive()` trick at the call
+  site. A `match()`/`ts-pattern` chain in place of a raw `&&`/ternary
+  DOES avoid the score (Biome does not walk into `.with()` callbacks
+  either), but do not use it that way — CLAUDE.md's "fix the
+  underlying issue" rule and this rule's own "decompose" guidance both
+  rule it out as a workaround; reach for `match()` only where it is
+  already this codebase's idiom for a REAL exhaustive-union match
+  (`isValid = match(type)...`), never to dodge a lint budget.
 - `complexity.noVoid` is an error — never use the `void` operator. To
   fire-and-forget a promise that already captures its own errors (an
   `either(...)` call), call it as a plain expression statement; do

@@ -25,10 +25,9 @@ export type BondIsinSectionProps = {
   isinFieldRef?: RefObject<FieldInstance | null>;
   isinInputRef?: RefObject<TextInputInstance | null>;
   // The register's resolved terms for the current ISIN, or `null` while
-  // nothing has matched yet — `holding-form.screen.tsx` owns the
-  // `useLiveQuery` lookup against `bondRegisterRepo` and passes the result
-  // straight through, so this component stays presentational (the same
-  // split `MetalSection`/`PropertySection` already establish).
+  // nothing has matched yet — `useBondIsinMode` owns the lookup and passes
+  // the result straight through, so this component stays presentational
+  // (the same split `MetalSection`/`PropertySection` already establish).
   foundTerms: BondTerms | null;
   // "Not in the NBU register" → Switch to Manual (spec 6.4 #3). Keeps the
   // typed ISIN — the caller's mode state is the only thing that changes.

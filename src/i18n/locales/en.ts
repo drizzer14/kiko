@@ -272,6 +272,8 @@ export const en = {
       government: 'Government',
       isin: 'ISIN',
       isinCheckDigitError: 'ISIN check digit is wrong.',
+      isinCurrencyMismatchError:
+        "This ISIN's currency doesn't match this holding's locked currency.",
       isinFormatError: 'Enter a valid ISIN.',
       isinMode: 'Entry mode',
       isinModeIsin: 'ISIN',
@@ -279,6 +281,9 @@ export const en = {
       isinNotInRegister: 'Not in the NBU register.',
       isinPlaceholder: 'UA4000234215',
       isinRequiredError: "Enter the bond's ISIN.",
+      isinSummaryCoupon: 'Coupon: {{value}}%',
+      isinSummaryCurrency: 'Currency: {{value}}',
+      isinSummaryMaturity: 'Maturity: {{value}}',
       jar: 'Jar',
       loan: 'Loan',
       maturityDate: 'Maturity Date',
