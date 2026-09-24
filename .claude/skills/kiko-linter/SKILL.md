@@ -404,6 +404,62 @@ a repo-sweep tool, not part of the check-wrapper contract (see "The
 wrapper contract" above — a checker only checks) — it is invoked by
 hand, never from `import-order.sh`.
 
+## Full words in identifiers — exact-path exemption allowlist, not a suppression comment
+
+`scripts/checks/full-word-identifiers.js` (+ its wrapper `.sh`) mechanizes
+kiko-code-style's "Full words in identifiers" rule. Wired at the fast tier
+(`fast.sh`, alongside `lint.sh`/`security.sh`/`import-order.sh`) — the rule
+is purely per-file with no cross-file dependency — and project-wide via
+`npm run check:full-word-identifiers` (part of `check:all`), scanning
+`src/`, `__tests__/`, `rules/fixtures/`, and `scripts/` (the same scope
+the R1.d sweep covered).
+
+The scanner is the same `blankNoise`-then-scan shape as
+`import-order.js`/`one-component-per-file.ts`: blank every string,
+template, comment, AND regex-literal span first (a bare letter inside a
+regex, e.g. the `e` in `/e([+-]\d+)/`, is not an identifier — a real false
+positive hit writing this rule, in `src/currency/decimal/decimal.ts`), then
+scan every remaining identifier-like token and split it into lowercase word
+parts on snake_case underscores and camelCase/PascalCase transitions
+(including the acronym-run boundary — `maskedPAN` splits `masked` + `PAN`,
+not `masked` + `PANValue`-style). A word part is flagged only when it
+EQUALS a denylisted word from the exact table in kiko-code-style's "Full
+words in identifiers" section — never a substring match, so `context`,
+`value`, and `cube` never trip on the `ctx`/`val`/`cb` entries buried
+inside them (no camelCase transition means no split, so the whole word
+stays one part).
+
+This is a hand-rolled checker, not Semgrep, for the same reason
+`import-order.js` is: Semgrep has no primitive that splits an identifier
+into word parts and tests each against a list across every
+identifier-bearing syntax position (a `const` declaration, a function
+parameter, a type/interface member, a destructuring binding, a JSX prop) at
+once — writing that as `pattern-either` branches would need one branch per
+syntax position, is fragile the same way the quoting/anchoring gotchas
+above are, and Semgrep still couldn't do the case-preserving word-part
+split itself.
+
+**Exact-path exemption allowlist, not an inline suppression comment.** The
+brief's exception for "a name forced by a third-party API, a DB column, a
+persisted JSON key" is NOT syntactically detectable — a DB column's JS-side
+field name is a plain identifier, indistinguishable from any other. Rather
+than a new per-line suppression-comment syntax (which would need its own
+override-guard-style justification check), this rule uses an exact
+`{ suffix: '<path from repo root>', word: '<denylisted word>' }` allowlist
+in the analyzer file itself, checked by path SUFFIX match (so a temp
+fixture ending in the same relative path also matches — this is what makes
+the allowlist unit-testable without coupling the test to real repo
+files). Keyed by (path, word), not by word alone, so exempting `idx` in
+`src/db/run-migrations.ts` (drizzle-kit's own generated migration-journal
+JSON shape — see that file's own header comment) does NOT exempt `idx`
+anywhere else; a future `idx` in an unrelated file still fails. Every entry
+needs a concrete, verified external-format citation, the same standard as
+every other ignore-list exception in this repo — see
+`docs/harness/documented-exceptions.md` for the full, individually-cited
+list (13 entries as of the R1.d sweep: the drizzle migration-journal shape,
+NBU register's `val_code`, Binance's `{code, msg}` error body, Esplora's
+`tx_count`, and React Native `FlatList`'s own `initialNumToRender` prop).
+
 ## Every mechanized finding gets an inventory row
 
 `docs/harness/review-to-biome-inventory.md` tracks every review

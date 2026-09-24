@@ -12,4 +12,5 @@ esac
 "$DIR/security.sh" "$file" || exit 2
 "$DIR/secrets.sh" "$file" || exit 2
 "$DIR/import-order.sh" "$file" || exit 2
+"$DIR/full-word-identifiers.sh" "$file" || exit 2
 exit 0

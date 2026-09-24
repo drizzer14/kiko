@@ -170,6 +170,37 @@ verified usage, not dead weight:
   direct `node import-order.js --write` invocation in the same test file
   — neither of which Jest's static import graph makes Knip see as
   reachable.
+- **`knip.json` `ignore`**: `scripts/checks/full-word-identifiers.js` —
+  the same shape as `import-order.js`/`kill-guard.js` above.
+  `scripts/checks/full-word-identifiers.sh` reaches it only via a `node`
+  invocation (both the fast-tier per-file check and the project-wide
+  `check:full-word-identifiers` mode), never a static `import`/`require`,
+  and never a package.json script Knip's static scan can see, so Knip's
+  reachability graph reports it as unused. Exercised directly by
+  `__tests__/full-word-identifiers.test.ts`, which spawns
+  `full-word-identifiers.sh` (and so `full-word-identifiers.js`) as a
+  subprocess — not an import, so Jest's coverage does not make Knip see it
+  as reachable either.
+- **`scripts/checks/full-word-identifiers.js`'s own `EXEMPTIONS` list**: an
+  exact `(file path suffix, denylisted word)` allowlist mechanizing
+  kiko-code-style's "Full words in identifiers" exception for "a name
+  forced by a third-party API/DB column/persisted JSON key". Each entry is
+  a real, verified external-format mirror, not a style preference:
+  `src/db/run-migrations.ts` + its test + the six
+  `src/db/schema.*.test.ts` fixtures (`idx`) mirror drizzle-kit's own
+  generated `_journal.json` `{idx, when, tag}` shape, which this runner
+  reimplements byte-for-byte (see the file's own header comment);
+  `src/bonds/nbu-register/nbu-register.ts` + its test (`val`, from
+  `val_code`) mirror the National Bank of Ukraine securities register's
+  own external JSON field; `src/crypto-sync/binance/binance.client.ts` +
+  its test (`msg`) mirror Binance's own error-body shape `{code, msg}`;
+  `src/crypto-sync/btc-wallet/btc-wallet.client.test.ts` (`tx`, from
+  `tx_count`) mirrors the Esplora/Blockstream address-stats API's own
+  field name; `src/design-system/components/currency-field/currency-field.component.tsx`
+  (`num`, from `initialNumToRender`) is React Native's own `FlatList` prop
+  name. A denylisted word anywhere else in the tree — including the same
+  word in a different file — still fails; add a new entry here only for
+  another verified external-name case, per this file's own standing rule.
 - **`rules/fixtures/**` (Biome `files.includes`, `knip.json` `ignore`,
   `.jscpd.json` `ignore`, and `--exclude 'fixtures'` in
   `scripts/checks/security.sh`)**: the positive/negative fixture pair that

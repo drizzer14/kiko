@@ -53,7 +53,7 @@ mechanize well; keep in the skill).
 | No hand-rolled `try/catch` + Error normalization; use `fnts` either | kiko-code-style | Semgrep (Class B) | Judgment (broad; documented exceptions) |
 | Hardcoded URL/config literals must live in `@env` | kiko-code-style | Semgrep | Cleanup-first (false positives in tests/config) |
 | Components never hardcode raw color/spacing/radius; read theme tokens | kiko-design-system | Semgrep | Cleanup-first (false-positive-prone) |
-| Full unabbreviated variable names | kiko-code-style | Semgrep blocklist | Judgment (inherently incomplete) |
+| Full unabbreviated variable names | kiko-code-style | ~~Semgrep blocklist~~ superseded — see "Enforced — 2026-09-25 R1.d" below | Now enforced (hand-rolled shell+JS check, not Semgrep — Semgrep cannot split an identifier into camelCase/snake_case parts across every identifier-bearing syntax position) |
 
 ### Candidates — currency-fix round (2026-09-21, not yet enforced)
 
@@ -132,6 +132,12 @@ because it can compare against the actual pinned set.
 | Rule id | Finding | Enforce via | Notes |
 |---|---|---|---|
 | `scripts/checks/import-order.js`/`.sh` | kiko-code-style's "Import ordering" — hand-enforced rather than mechanized, so it drifted (two prior `kiko:reviewer` passes flagged pre-existing violations under `src/screens/`) | Shell + JS check (fast tier, per-file; project-wide via `npm run check:import-order`) | Biome's `organizeImports` cannot express this project's length-sort convention, so this is a hand-rolled scanner, not a Biome/Semgrep rule — see the kiko-linter skill's "Import length-sort" section for the scanner design, the file-header-comment pinning rule, and the `--write` auto-fix mode. The R1.c sweep found 210 violating files; `--write` fixed all but 7 (each with a comment glued to a non-first import), fixed by hand. `check:import-order` now reports zero violations across `src/`. |
+
+### Enforced — 2026-09-25 R1.d (full words in identifiers, new user rule)
+
+| Rule id | Finding | Enforce via | Notes |
+|---|---|---|---|
+| `scripts/checks/full-word-identifiers.js`/`.sh` | kiko-code-style's "Full words in identifiers" — a new user rule (not a past review finding): no abbreviated word (`cond`/`btn`/`idx`/`acc`/`tx`/`err`/`val`/`prev`/`cfg`/`e`/`res`/`msg`/`cb`/`ctx`/`el`/`opts`/`tmp`/`num`/`arr`/`obj`/`str`) as a whole camelCase/PascalCase/snake_case PART of a variable, parameter, function, type, or prop name | Shell + JS check (fast tier, per-file; project-wide via `npm run check:full-word-identifiers`, scanning `src/`, `__tests__/`, `rules/fixtures/`, and `scripts/`) | Semgrep has no primitive that splits an identifier into word parts and tests each against a denylist across every identifier-bearing syntax position at once, so this is a hand-rolled scanner, same shape as `import-order.js` — see the kiko-linter skill's "Full words in identifiers" section for the scanner design and the exact-path exemption allowlist (13 entries, each a verified third-party-API/DB-format mirror, e.g. `idx` in `src/db/run-migrations.ts` mirroring drizzle-kit's own generated migration-journal JSON shape). The sweep found 1783 violations across 78 files (dominated by `tx` — the Drizzle `write((tx) => ...)` transaction-handle callback parameter, used ~1500 times); `check:full-word-identifiers` now reports zero violations across its scanned roots. |
 
 ## Go-forward process (to wire into the retrospect/scribe loop)
 
