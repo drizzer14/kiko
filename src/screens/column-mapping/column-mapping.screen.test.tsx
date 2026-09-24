@@ -420,12 +420,12 @@ describe('ColumnMappingScreen', () => {
     expect(view.getByText(i18n.t('columnMapping.amountColumnError'))).toBeTruthy();
   });
 
-  // C1 (F4 fix round 1): a currency column with genuinely resolvable ISO
-  // codes ("Валюта" = UAH/EUR/UAH/UAH) must never be blamed when the REAL
-  // problem is an unrelated field — here, a date format that matches none
-  // of the fixture's actual date cells. The real per-row date errors show
+  // A currency column with genuinely resolvable ISO codes ("Валюта" =
+  // UAH/EUR/UAH/UAH) must never be blamed when the REAL problem is an
+  // unrelated field — here, a date format that matches none of the
+  // fixture's actual date cells. The real per-row date errors show
   // instead, and no currency error appears anywhere on the screen.
-  it('blames the date field, not the currency column, when every row fails on an unrelated date-format mismatch', async () => {
+  it('shows the real per-row date errors, never a currency error, when every row fails on an unrelated date-format mismatch', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
 
     const view = await renderMonobankScreen();
@@ -459,10 +459,10 @@ describe('ColumnMappingScreen', () => {
     expect(view.queryByText(i18n.t('columnMapping.currencyColumnUnresolvedError'))).toBeNull();
   });
 
-  // I2 + m7 (F4 fix round 1): every required field is mapped and the mapping
-  // applies without throwing, but zero rows survive their own date-format
-  // check — Import press must surface SOMETHING (not silently do nothing),
-  // and the message only appears after that press, never before.
+  // Every required field is mapped and the mapping applies without
+  // throwing, but zero rows survive their own date-format check — Import
+  // press must surface SOMETHING (not silently do nothing), and the
+  // message only appears after that press, never before.
   it('shows the noRowsResolvedError message on Import press when every row fails its own date check, and not before', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
 
@@ -486,10 +486,13 @@ describe('ColumnMappingScreen', () => {
     expect(view.getByText(i18n.t('columnMapping.noRowsResolvedError'))).toBeTruthy();
   });
 
-  // m7 (F4 fix round 1): a genuinely unresolvable currency column (every
-  // cell fails to resolve to a known code) shows its error in exactly ONE
-  // place — the currency field itself, only after the first Import press —
-  // never a second copy in the Result block, and never before the press.
+  // A genuinely unresolvable currency column (every cell fails to resolve to
+  // a known code) shows its error in exactly ONE place — the currency field
+  // itself, only after the first Import press — never a second copy in the
+  // Result block, and never before the press. Nor does the Result block show
+  // its OWN generic "choose the date, amount, description columns" hint —
+  // every OTHER required column IS mapped here, so that hint would misname
+  // the actual problem.
   it('shows the currency-unresolved error only on the field, only after a press, never twice', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
 
@@ -507,6 +510,7 @@ describe('ColumnMappingScreen', () => {
     await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
 
     expect(view.queryByText(i18n.t('columnMapping.currencyColumnUnresolvedError'))).toBeNull();
+    expect(view.queryByText(i18n.t('columnMapping.incomplete'))).toBeNull();
 
     await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
 
@@ -514,6 +518,7 @@ describe('ColumnMappingScreen', () => {
     expect(view.getAllByText(i18n.t('columnMapping.currencyColumnUnresolvedError'))).toHaveLength(
       1,
     );
+    expect(view.queryByText(i18n.t('columnMapping.incomplete'))).toBeNull();
   });
 
   // Item 15 (F3): a successful Import shows a MODAL with the result text.

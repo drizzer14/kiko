@@ -528,6 +528,9 @@ type ColumnMappingFormProps = {
   onBalanceColumnChange: (value: number | undefined) => void;
   stats: PreviewStats | undefined;
   rowErrors: ColumnMappingRowError[];
+  // Forwarded to `MappingResult` — see that component's own `stats` doc
+  // comment for why this suppresses the generic incomplete hint.
+  currencyColumnUnresolved: boolean;
   holdingOptions: ReturnType<typeof useTargetHoldingOptions>;
   accountId: string;
   selectedHoldingId: string | undefined;
@@ -580,6 +583,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
   onBalanceColumnChange,
   stats,
   rowErrors,
+  currencyColumnUnresolved,
   holdingOptions,
   accountId,
   selectedHoldingId,
@@ -794,6 +798,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
           rowErrors={rowErrors}
           holdingName={holdingOptions.find((holding) => holding.id === selectedHoldingId)?.name}
           noRowsResolvedError={validation.noRowsResolvedError}
+          currencyColumnUnresolved={currencyColumnUnresolved}
         />
       </View>
 
@@ -1239,6 +1244,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
             onBalanceColumnChange={setBalanceColumn}
             stats={stats}
             rowErrors={applyResult?.rowErrors ?? []}
+            currencyColumnUnresolved={currencyColumnUnresolved}
             holdingOptions={holdingOptions}
             accountId={accountId}
             selectedHoldingId={selectedHoldingId}

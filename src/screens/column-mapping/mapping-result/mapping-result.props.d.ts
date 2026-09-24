@@ -4,14 +4,18 @@ import type { PreviewStats } from '../../statement-import/preview-stats/preview-
 export type MappingResultProps = {
   // `undefined` when the mapping is not yet structurally complete (a
   // required column/date-format is still unset) OR `applyColumnMapping`
-  // itself failed — either way the screen shows `columnMapping.incomplete`
-  // rather than a stale/partial result. A currency-column-unresolved throw
-  // is deliberately NOT distinguished here — that specific reason shows on
-  // the currency field itself (`columnMapping.currencyColumnUnresolvedError`,
-  // gated on the first Import press, same as every other field error), not
-  // as a second copy of the same message in this block.
+  // itself failed. A currency-column-unresolved throw (`currencyColumnUnresolved`
+  // below) is the one `stats === undefined` cause this block never shows
+  // `columnMapping.incomplete` for — every OTHER required column IS mapped
+  // in that case, so that hint would misname the real problem; the currency
+  // field's own error (`columnMapping.currencyColumnUnresolvedError`, gated
+  // on the first Import press, same as every other field error) is the sole
+  // message for that reason.
   stats: PreviewStats | undefined;
   rowErrors: ColumnMappingRowError[];
+  // True once every required field IS mapped but a `currency: { mode:
+  // 'column' }` mapping still threw — see `stats`'s own doc comment above.
+  currencyColumnUnresolved?: boolean;
   // Every required field IS mapped and `applyColumnMapping` succeeded, but
   // literally zero rows survived their own per-row checks — no single INPUT
   // field is at fault (the itemized `rowErrors` below explain the real, and
