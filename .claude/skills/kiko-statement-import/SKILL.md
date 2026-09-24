@@ -150,7 +150,7 @@ time" rule Monobank CSV's own `resolveClosingBalance` uses (review
 follow-up M2), reading the cell with the mapping's own
 `decimalSeparator` (`parseAmountCell`, same as every other amount cell
 this mapping reads). A tie on the newest time is broken by FILE ORDER,
-not "last one wins" (ruling I1, `FIX-merge-commitB-round1-brief.md`):
+not "last one wins" (ruling I1, commit `245265a`):
 `pickClosingBalanceRow` reads the resolved rows' own first-vs-last time
 to tell a newest-first file from an oldest-first one, then takes the
 FIRST tied row in a newest-first file or the LAST in an oldest-first
@@ -264,8 +264,9 @@ a P0 UI fix round driven by device feedback:
 - **Required fields show the red asterisk marker** (`FieldLabel`'s
   `required` prop, forwarded through `ColumnSelectField` and
   `FieldTrigger`) — date, date format, amount/debit/credit column(s),
-  currency column (when in column mode), and description are marked
-  required; counterparty stays unmarked (optional), and
+  currency column (when in column mode), description, and the target
+  holding field are marked required (holding: commit `6a835dd`);
+  counterparty stays unmarked (optional), and
   `columnMapping.counterpartyColumn` no longer carries an
   "(optional)"/"(необов'язково)" suffix — the absent marker IS the
   optional signal now, matching every other optional field.

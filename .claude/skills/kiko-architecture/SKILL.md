@@ -102,21 +102,29 @@ project-level pointer to this section.
 - The count-based runner makes migration `idx` a SHARED NAMESPACE
   across branches, not a per-branch sequence — two branches that each
   add a migration at the same next `idx` are NOT independent (review
-  I3, `FIX-merge-commitB-round1-brief.md`): `fix/import-balance`'s own
+  I3, merge commit `86c4838`): `fix/import-balance`'s own
   `0034_add_balance_set_at` must NEVER reach `main` as-is. That fix
   lands on `main` only through `feat/assets-debts`, where it was
   renumbered to `0036` (after that branch's own `0034`/`0035`) at merge
   time. A build cut from a `main` that still carries the fix's
   `0034_add_balance_set_at` verbatim would leave a device's `COUNT(*)`
-  at 35 once it later upgrades to `feat/assets-debts`'s migration set —
-  the runner then applies idx 35 (`price_points`, already applied)
-  again and idx 36's `ALTER TABLE holdings ADD balance_set_at` fails
-  with "duplicate column name", tripping `MigrationsGate`'s error
-  state. If `fix/import-balance` (or any branch) ever needs a
-  `main`-only hotfix again, re-cut ITS migration with a fresh number at
-  THAT time, checked against whatever `main`'s own journal tail is
-  then — never assume a branch's own next `idx` is still free by the
-  time it lands.
+  at 35 once it later upgrades to `feat/assets-debts`'s renumbered
+  journal (`0034_add_statement_mappings`, `0035_add_price_points`,
+  `0036_add_balance_set_at`) — the runner then applies
+  `journal.entries.slice(35)`, i.e. idx 35 and 36 only. idx 35 in the
+  new journal is `0035_add_price_points`, which this device has never
+  run before, so it applies for the FIRST time and succeeds (not
+  "already applied ... again"). idx 36 (`0036_add_balance_set_at`) is
+  the one that then fails with "duplicate column name", since the
+  pre-upgrade build already added that column under its own local idx
+  34. `feat/assets-debts`'s own idx-34 migration,
+  `0034_add_statement_mappings`, is skipped entirely by this
+  `slice(35)` and is never created on that device at all, tripping
+  `MigrationsGate`'s error state either way. If `fix/import-balance`
+  (or any branch) ever needs a `main`-only hotfix again, re-cut ITS
+  migration with a fresh number at THAT time, checked against whatever
+  `main`'s own journal tail is then — never assume a branch's own next
+  `idx` is still free by the time it lands.
 
 ## Hard rule: every write goes through `db.transaction()`
 
