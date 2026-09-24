@@ -1,6 +1,7 @@
 // src/data-transfer/snapshot/restore-snapshot.ts
 import {
   accounts,
+  bondRegister,
   categories,
   categoryOverrides,
   currencyRateHistory,
@@ -131,9 +132,10 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
       await tx.delete(currencyRates);
       await tx.delete(settings);
       await tx.delete(pricePoints);
+      await tx.delete(bondRegister);
     };
 
-    // Split into three sequential groups (rather than one 9-loop function) to
+    // Split into four sequential groups (rather than one 10-loop function) to
     // stay under the cognitive-complexity ceiling; overall parent-before-child
     // insert order is unchanged because the groups themselves run in order.
     const insertAccountsHoldingsCategories = async (): Promise<void> => {
@@ -181,8 +183,18 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
       }
     };
 
+    // `?? []`: `bond_register` (T24) postdates every other table here too —
+    // a pre-T24 export carries no `bondRegister` key at all, for the same
+    // reason a pre-T11 export carries no `pricePoints` key.
+    const insertBondRegister = async (): Promise<void> => {
+      for (const part of chunk(snapshot.bondRegister ?? [], CHUNK_SIZE)) {
+        await tx.insert(bondRegister).values(part);
+      }
+    };
+
     await deleteAllTables();
     await insertAccountsHoldingsCategories();
     await insertOverridesTransactionsSyncState();
     await insertRatesAndSettings();
+    await insertBondRegister();
   });

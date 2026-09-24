@@ -7,6 +7,7 @@ jest.mock('../../db/client', () => {
 
 import {
   accounts,
+  bondRegister,
   categories,
   categoryOverrides,
   currencyRateHistory,
@@ -32,6 +33,7 @@ const tableNameOf = (table: unknown): string => {
   if (table === categories) return 'categories';
   if (table === categoryOverrides) return 'categoryOverrides';
   if (table === pricePoints) return 'pricePoints';
+  if (table === bondRegister) return 'bondRegister';
   throw new Error('unknown table');
 };
 
@@ -46,6 +48,7 @@ const emptySnapshot: DataSnapshot = {
   categories: [],
   categoryOverrides: [],
   pricePoints: [],
+  bondRegister: [],
 };
 
 describe('restoreDataSnapshot', () => {
@@ -87,6 +90,7 @@ describe('restoreDataSnapshot', () => {
       'currencyRates',
       'settings',
       'pricePoints',
+      'bondRegister',
     ]);
     expect(insertedTables).toEqual(['accounts', 'holdings', 'transactions']);
     expect(insertedRows.accounts).toEqual([{ id: 'a1' }]);
@@ -179,6 +183,57 @@ describe('restoreDataSnapshot', () => {
     await restoreDataSnapshot(legacySnapshot);
 
     expect(insertedTables).not.toContain('pricePoints');
+  });
+
+  it('inserts a snapshot bondRegister row into the bond_register table', async () => {
+    const insertedRows: Record<string, unknown[]> = {};
+    mockTx = {
+      delete: () => Promise.resolve(),
+      insert: (table: unknown) => ({
+        values: (rows: unknown[]) => {
+          const name = tableNameOf(table);
+          insertedRows[name] = [...(insertedRows[name] ?? []), ...rows];
+          return Promise.resolve();
+        },
+      }),
+    };
+
+    await restoreDataSnapshot({
+      ...emptySnapshot,
+      bondRegister: [
+        {
+          isin: 'UA4000234215',
+          terms: { isin: 'UA4000234215', currency: 'UAH' },
+          fetchedAt: 1,
+        },
+      ] as never,
+    });
+
+    expect(insertedRows.bondRegister).toEqual([
+      { isin: 'UA4000234215', terms: { isin: 'UA4000234215', currency: 'UAH' }, fetchedAt: 1 },
+    ]);
+  });
+
+  it('restores an empty bond_register table for a legacy (pre-T24) snapshot with no bondRegister field', async () => {
+    const insertedTables: string[] = [];
+    mockTx = {
+      delete: () => Promise.resolve(),
+      insert: (table: unknown) => ({
+        values: (rows: unknown[]) => {
+          insertedTables.push(tableNameOf(table));
+          return Promise.resolve(rows);
+        },
+      }),
+    };
+    // Simulates a `.kiko` file exported before T24 — the JS object literally
+    // carries no `bondRegister` key, despite `DataSnapshot` declaring it
+    // required.
+    const legacySnapshot = { ...emptySnapshot } as unknown as Record<string, unknown>;
+    delete legacySnapshot.bondRegister;
+
+    await restoreDataSnapshot(legacySnapshot as unknown as DataSnapshot);
+
+    expect(insertedTables).not.toContain('bondRegister');
   });
 
   it('chunks a large table into inserts of at most 2000 rows (SQLite bound-parameter safety)', async () => {

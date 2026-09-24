@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 import { currencyOptions } from '../currency/currency';
+import type { BondTerms } from '../bonds/nbu-register';
 import type { TrendFilter } from '../statistics/trend-filter';
 import type { SavedColumnMapping } from '../statement-import/column-mapping/saved-mapping';
 
@@ -431,3 +432,21 @@ export const pricePoints = sqliteTable(
 );
 
 export type PricePointRow = typeof pricePoints.$inferSelect;
+
+/**
+ * NBU securities-register cache (T24, spec 6.4) — one row per bond ISIN,
+ * refreshed WHOLESALE (never patched field-by-field) at most once per
+ * local day by `refreshBondRegisterIfStale`
+ * (`src/bonds/bond-register-repo/`). `terms` stores the register's
+ * resolved `BondTerms` shape as JSON (`src/bonds/nbu-register/`) since the
+ * ISIN-mode bond form reads the whole object at once; `fetchedAt` is the
+ * one write-time stamp shared by every row in a given refresh, which is
+ * what lets the refresh gate compare a single value instead of a MAX query.
+ */
+export const bondRegister = sqliteTable('bond_register', {
+  isin: text('isin').primaryKey(),
+  terms: text('terms', { mode: 'json' }).notNull().$type<BondTerms>(),
+  fetchedAt: integer('fetched_at').notNull(),
+});
+
+export type BondRegisterRow = typeof bondRegister.$inferSelect;

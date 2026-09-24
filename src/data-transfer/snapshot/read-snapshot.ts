@@ -4,6 +4,7 @@ import { asc } from 'drizzle-orm';
 import { database } from '../../db/client';
 import {
   accounts,
+  bondRegister,
   categories,
   categoryOverrides,
   currencyRateHistory,
@@ -51,4 +52,5 @@ export const readDataSnapshot = async (): Promise<DataSnapshot> => ({
     .select()
     .from(pricePoints)
     .orderBy(asc(pricePoints.instrument), asc(pricePoints.day)),
+  bondRegister: await database.select().from(bondRegister).orderBy(asc(bondRegister.isin)),
 });

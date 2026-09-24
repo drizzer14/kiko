@@ -38,6 +38,7 @@ import m0033 from './0033_add_account_bank_id.sql';
 import m0034 from './0034_add_statement_mappings.sql';
 import m0035 from './0035_add_price_points.sql';
 import m0036 from './0036_add_balance_set_at.sql';
+import m0037 from './0037_add_bond_register.sql';
 
 export default {
   journal,
@@ -79,5 +80,6 @@ export default {
     m0034,
     m0035,
     m0036,
+    m0037,
   },
 };

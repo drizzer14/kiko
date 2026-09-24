@@ -500,3 +500,67 @@ is covered by the bundled seed and effectively never drops.
 See `kiko-pricing` for `price_points`, `PriceBook`, priced-holding
 valuation (`property_item`/`metal`), the create-time `firstPricePoint`
 and remove-time series cleanup, and `PricePointForm` / "Update value".
+
+## Bonds — ISIN validation and the NBU register cache (T23/T24)
+
+`BondMeta` (`src/holdings/holding-metadata/holding-metadata.ts`)
+already carries the full bond shape a Manual-mode form writes:
+`quantity`, `faceValueMinorUnits`, `couponPct` (a plain `number`, not
+a scaled decimal string — it is a percentage, never fed through the
+BigInt decimal helper), `purchaseDate`, `purchasePriceMinorUnits`,
+`maturityDate`, `bondKind` (`'government' | 'corporate'`), and
+`couponFrequency` (`BondCouponFrequency` — `'monthly' | 'quarterly' |
+'semiannually' | 'annually'`). `purchaseDate`/`maturityDate` are raw
+epoch-ms instants (often mid-day, e.g. `Date.now()`), read through
+`startOfLocalDay` wherever a day boundary matters
+(`holding-value.ts`), NOT through `dayKeyOf`'s UTC-midnight
+convention — do not conflate the two.
+
+`src/bonds/isin/` (T23) validates an ISIN with no side effects:
+`normalizeIsin` trims/uppercases; `validateIsin` checks the ISO 6166
+shape (`^[A-Z]{2}[A-Z0-9]{9}[0-9]$`) and Luhn check digit, returning
+`{ ok: true, isin }` or `{ ok: false, reason: 'format' | 'checkDigit'
+}` — never throws on an expected validation failure, the standing
+domain convention.
+
+`src/bonds/nbu-register/` (T24) is the NBU securities-register client
+(spec 6.1/6.2), mirroring `nbu-metals.ts`'s pattern (fetch + `guard`-
+based validation + a recorded JSON fixture, no network in tests) on
+the SAME `bank.gov.ua` host — no new pinning (kiko-compliance: this
+host stays keyless and unpinned; see `docs/security/README.md`'s host
+table). `fetchNbuRegister(fetchImpl)` reads `GET
+https://bank.gov.ua/depo_securities?json` and maps each record to
+`BondTerms` (`{ isin, currency, faceValueMinorUnits, couponPct,
+maturityDate, couponFrequency: BondCouponFrequency | null, name }`),
+dropping a record with an unmodeled `val_code` currency or an
+unparseable `pgs_date` rather than throwing. `nominal` ->
+`faceValueMinorUnits` goes straight through `Money.fromMajor` — it is
+an amount, not a scaled decimal-string price/quantity, so no
+`decimalFromJsonNumber` boundary conversion is needed (the same
+parity every other Money amount conversion follows). `pgs_date`
+(`YYYY-MM-DD`) is parsed as a UTC wall-clock instant, matching
+`parseDateTimeSeconds`'s "read a wall-clock date as UTC" convention.
+`couponFrequencyFromPayPeriod(days)` maps the register's `pay_period`
+onto `BondCouponFrequency`, tolerating a ±5-day slack around each of
+the four canonical periods (30/91/182/364); a period outside every
+band resolves to `null` — the eventual ISIN-mode form falls back to
+Manual mode with the known fields pre-filled rather than guessing
+(spec 6.2).
+
+`src/bonds/bond-register-repo/` caches the register in the
+`bond_register` table (migration `0037`; `isin` primary key, `terms`
+a JSON `BondTerms` column, `fetchedAt`). `bondRegisterRepo` exposes
+`findByIsinQuery(isin)` and `fetchedAtQuery()` (both hand straight to
+`useLiveQuery`; `fetchedAtQuery` is also awaited directly as a
+one-shot read, the same dual-purpose pattern `ratesRepo` and
+`pricePointsRepo` establish) and `replaceAll(rows)` — a REPLACE, not
+an upsert: every existing row is deleted and the fresh set inserted in
+ONE transaction, so a matured/delisted ISIN disappears from the cache
+the same run it disappears from the live register.
+`refreshBondRegisterIfStale({ now, fetchImpl })` gates the fetch at
+most once per LOCAL calendar day, comparing the cache's single
+write-time `fetchedAt` stamp against `now` through `dayKeyOf`
+(`kiko-pricing`) — the same device-local-day convention `price_points`
+uses, not a UTC day. See spec section 6 (6.1-6.4) for the full
+ISIN-mode form design (not yet built as of T24 — do not invent
+detail beyond what `BondTerms`/`bondRegisterRepo` already expose).

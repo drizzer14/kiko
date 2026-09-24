@@ -165,5 +165,6 @@ export const buildDemoSnapshot = (dataset: ScreenshotDataset): DataSnapshot => {
     categories: buildCategories(),
     categoryOverrides: [],
     pricePoints: [],
+    bondRegister: [],
   };
 };

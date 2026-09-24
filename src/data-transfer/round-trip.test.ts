@@ -119,6 +119,21 @@ const fixturePayload = (): ExportPayload => ({
         source: 'eodhd',
       } as never,
     ],
+    bondRegister: [
+      {
+        isin: 'UA4000234215',
+        terms: {
+          isin: 'UA4000234215',
+          currency: 'UAH',
+          faceValueMinorUnits: 100000,
+          couponPct: 15.1,
+          maturityDate: 1782259200000,
+          couponFrequency: 'semiannually',
+          name: 'Середньострокові UA4000234215',
+        },
+        fetchedAt: 1700000000000,
+      } as never,
+    ],
   },
   secrets: {
     dbKeyHex: 'a'.repeat(64),

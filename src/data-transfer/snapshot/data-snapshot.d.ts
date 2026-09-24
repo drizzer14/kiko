@@ -1,6 +1,7 @@
 // src/data-transfer/snapshot/data-snapshot.d.ts
 import type {
   AccountRow,
+  BondRegisterRow,
   CategoryOverrideRow,
   CategoryRow,
   CurrencyRateHistoryRow,
@@ -29,4 +30,5 @@ export type DataSnapshot = {
   categories: CategoryRow[];
   categoryOverrides: CategoryOverrideRow[];
   pricePoints: PricePointRow[];
+  bondRegister: BondRegisterRow[];
 };

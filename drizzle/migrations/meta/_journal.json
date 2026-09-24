@@ -260,6 +260,13 @@
       "when": 1790208400306,
       "tag": "0036_add_balance_set_at",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1790223905874,
+      "tag": "0037_add_bond_register",
+      "breakpoints": true
     }
   ]
 }
