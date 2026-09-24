@@ -892,7 +892,8 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
     expect(screen.getByText('Pick a coupon frequency.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
 
-    await fireEvent.press(screen.getByText('Quarterly'));
+    await fireEvent.press(screen.getByTestId('bond-coupon-frequency-field'));
+    await fireEvent.press(screen.getByTestId('bond-coupon-frequency-field-option-quarterly'));
     await fireEvent.press(screen.getByText('Save'));
 
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));

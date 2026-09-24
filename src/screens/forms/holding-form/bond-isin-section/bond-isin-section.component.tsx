@@ -3,11 +3,7 @@ import { View } from 'react-native';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
-import ChipRow from '../../chip-row';
-import {
-  bondCouponFrequencies,
-  type BondCouponFrequency,
-} from '../../../../holdings/holding-metadata';
+import { bondCouponFrequencies } from '../../../../holdings/holding-metadata';
 import { formatDate } from '../../../../dates/format';
 import { validateIsin } from '../../../../bonds/isin';
 import Box from '../../../../design-system/components/box';
@@ -16,7 +12,8 @@ import { activeLocale } from '../../../../i18n/active-locale';
 import Button from '../../../../design-system/components/button';
 import TextField from '../../../../design-system/components/text-field';
 import FieldLabel from '../../../../design-system/components/field-label';
-import FieldError from '../../../../design-system/components/field-error';
+import SelectField from '../../../../design-system/components/select-field';
+import SummaryTable from '../../../../design-system/components/summary-table';
 import SegmentedControl from '../../../../design-system/components/segmented-control';
 
 import type { BondEntryMode, BondIsinSectionProps } from './bond-isin-section.props';
@@ -108,51 +105,78 @@ const BondIsinSection: FC<BondIsinSectionProps> = ({
       </View>
 
       {mode === 'isin' && foundTerms !== null && (
-        <Box gap={2} testID="bond-isin-summary">
-          <Text variant="caption" tone="textSecondary">
-            {t('forms.holding.isinSummaryCoupon', {
-              value: foundTerms.couponPct.toLocaleString(activeLocale()),
-            })}
-          </Text>
-          <Text variant="caption" tone="textSecondary">
-            {t('forms.holding.isinSummaryMaturity', { value: formatDate(foundTerms.maturityDate) })}
-          </Text>
-          <Text variant="caption" tone="textSecondary">
-            {t('forms.holding.isinSummaryCurrency', { value: foundTerms.currency })}
-          </Text>
-        </Box>
+        // F4 audit item 12: three "X: value" captions -> the shared
+        // "label left, value right" SummaryTable, the same row layout the
+        // holding-detail value breakdown and the statement-import preview
+        // already use, instead of a one-off stack of colon-joined captions.
+        <SummaryTable
+          testID="bond-isin-summary"
+          rows={[
+            {
+              key: 'coupon',
+              label: t('forms.holding.couponPct'),
+              value: (
+                <Text variant="caption" tone="textSecondary">
+                  {`${foundTerms.couponPct.toLocaleString(activeLocale())}%`}
+                </Text>
+              ),
+            },
+            {
+              key: 'maturity',
+              label: t('forms.holding.maturityDate'),
+              value: (
+                <Text variant="caption" tone="textSecondary">
+                  {formatDate(foundTerms.maturityDate)}
+                </Text>
+              ),
+            },
+            {
+              key: 'currency',
+              label: t('forms.fields.currency'),
+              value: (
+                <Text variant="caption" tone="textSecondary">
+                  {foundTerms.currency}
+                </Text>
+              ),
+            },
+          ]}
+        />
       )}
 
       {needsCouponFrequencyPick && (
-        // `<ChipRow<string>>` (widened from `BondCouponFrequency`, purely at
-        // this ONE call site) so `selected` can be `''` while nothing is
-        // picked yet — no chip then matches, so none renders selected,
-        // which is how this shows "no default" (spec 6.2 forbids guessing
-        // one; the orchestrator ruling for N2 requires this to start
-        // genuinely blank, not pre-highlight the general `couponFrequency`
-        // state's own untouched default).
-        <ChipRow<string>
+        // F4 audit item 10: a `ChipRow` with no chip selected read as a
+        // picker nobody had touched yet, not a deliberately blank "no
+        // default" (spec 6.2 forbids guessing one). `SelectField` supports
+        // `selected: null` directly (no more widening the option type to
+        // fake an empty string match) and shows a "Select..." placeholder
+        // in the trigger instead.
+        <SelectField
           label={t('forms.holding.couponFrequency')}
           options={bondCouponFrequencies}
-          selected={pickedCouponFrequency ?? ''}
-          onSelect={(value) => onPickCouponFrequency(value as BondCouponFrequency)}
+          selected={pickedCouponFrequency}
+          onSelect={onPickCouponFrequency}
           labels={couponFrequencyLabels(t)}
+          placeholder={t('forms.holding.couponFrequencyPlaceholder')}
           required
+          error={couponFrequencyError}
+          testID="bond-coupon-frequency-field"
         />
-      )}
-      {needsCouponFrequencyPick && couponFrequencyError !== undefined && (
-        <FieldError message={couponFrequencyError} />
       )}
 
       {showNotFoundHint && (
         <Box gap={2} testID="bond-isin-not-found">
-          <FieldError
-            message={t(
+          {/* F4 audit item 11: this used to render through the red
+              `FieldError` — a blocking-validation tone for a hint the user
+              can act on (Switch to Manual) rather than a form error to fix
+              in place. The Diia hint two rows below is the exact same
+              caption/textSecondary tone; this now matches it. */}
+          <Text variant="caption" tone="textSecondary">
+            {t(
               registerLoaded
                 ? 'forms.holding.isinNotInRegister'
                 : 'forms.holding.isinRegisterNotLoaded',
             )}
-          />
+          </Text>
 
           <Button
             variant="secondaryTonal"

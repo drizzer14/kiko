@@ -277,6 +277,7 @@ export const en = {
       contributionsRequiredError: 'Add at least one contribution with an amount and a date.',
       corporate: 'Corporate',
       couponFrequency: 'Coupon frequency',
+      couponFrequencyPlaceholder: 'Select a frequency',
       couponFrequencyRequiredError: 'Pick a coupon frequency.',
       couponPct: 'Coupon %',
       couponPctError: 'Enter a coupon of 0 or higher.',
@@ -304,9 +305,6 @@ export const en = {
       isinPlaceholder: 'UA4000234215',
       isinRegisterNotLoaded: 'Register not loaded yet.',
       isinRequiredError: "Enter the bond's ISIN.",
-      isinSummaryCoupon: 'Coupon: {{value}}%',
-      isinSummaryCurrency: 'Currency: {{value}}',
-      isinSummaryMaturity: 'Maturity: {{value}}',
       jar: 'Jar',
       loan: 'Loan',
       // The Loan form's own kind ChipRow option map (T28); see loanKindLabel.

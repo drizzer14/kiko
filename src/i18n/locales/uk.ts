@@ -242,6 +242,7 @@ export const uk: typeof en = {
       contributionsRequiredError: 'Додайте щонайменше один внесок із сумою та датою.',
       corporate: 'Корпоративна',
       couponFrequency: 'Частота купона',
+      couponFrequencyPlaceholder: 'Оберіть частоту',
       couponFrequencyRequiredError: 'Оберіть частоту купона.',
       couponPct: 'Купон %',
       couponPctError: 'Введіть купон 0 або вище.',
@@ -266,9 +267,6 @@ export const uk: typeof en = {
       isinPlaceholder: 'UA4000234215',
       isinRegisterNotLoaded: 'Реєстр ще не завантажено.',
       isinRequiredError: 'Введіть ISIN облігації.',
-      isinSummaryCoupon: 'Купон: {{value}}%',
-      isinSummaryCurrency: 'Валюта: {{value}}',
-      isinSummaryMaturity: 'Погашення: {{value}}',
       jar: 'Банка',
       loan: 'Кредит',
       loanKind: {

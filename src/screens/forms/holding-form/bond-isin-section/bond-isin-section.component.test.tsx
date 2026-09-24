@@ -161,15 +161,13 @@ describe('BondIsinSection', () => {
   // match shows its own picker, with NO chip pre-selected, and blocks Save
   // via the caller's own `couponFrequencyError` until one is picked.
   describe('the coupon-frequency pick (N2)', () => {
-    it('renders the picker with no chip selected when needsCouponFrequencyPick is true', async () => {
-      const { getByText } = await render(
+    it('renders the picker with a "Select..." placeholder, no chip pre-highlighted, when needsCouponFrequencyPick is true', async () => {
+      const { getByText, getByTestId } = await render(
         <BondIsinSection {...baseProps} needsCouponFrequencyPick />,
       );
 
       expect(getByText('Coupon frequency')).toBeTruthy();
-      for (const label of ['Monthly', 'Quarterly', 'Semiannually', 'Annually']) {
-        expect(getByText(label).parent?.props.accessibilityState.selected).toBe(false);
-      }
+      expect(getByTestId('bond-coupon-frequency-field')).toHaveTextContent('Select a frequency');
     });
 
     it('does not render the picker when a pick is not needed', async () => {
@@ -180,9 +178,9 @@ describe('BondIsinSection', () => {
       expect(queryByText('Coupon frequency')).toBeNull();
     });
 
-    it('reports the tapped frequency', async () => {
+    it('lists every frequency on trigger press, and reports the tapped one', async () => {
       const onPickCouponFrequency = jest.fn();
-      const { getByText } = await render(
+      const { getByTestId } = await render(
         <BondIsinSection
           {...baseProps}
           needsCouponFrequencyPick
@@ -190,13 +188,19 @@ describe('BondIsinSection', () => {
         />,
       );
 
-      await fireEvent.press(getByText('Quarterly'));
+      await fireEvent.press(getByTestId('bond-coupon-frequency-field'));
+
+      for (const option of ['monthly', 'quarterly', 'semiannually', 'annually']) {
+        expect(getByTestId(`bond-coupon-frequency-field-option-${option}`)).toBeTruthy();
+      }
+
+      await fireEvent.press(getByTestId('bond-coupon-frequency-field-option-quarterly'));
 
       expect(onPickCouponFrequency).toHaveBeenCalledWith('quarterly');
     });
 
-    it('shows the already-picked frequency as selected', async () => {
-      const { getByText } = await render(
+    it('shows the already-picked frequency in the trigger', async () => {
+      const { getByTestId } = await render(
         <BondIsinSection
           {...baseProps}
           needsCouponFrequencyPick
@@ -204,7 +208,7 @@ describe('BondIsinSection', () => {
         />,
       );
 
-      expect(getByText('Quarterly').parent?.props.accessibilityState.selected).toBe(true);
+      expect(getByTestId('bond-coupon-frequency-field')).toHaveTextContent('Quarterly');
     });
 
     it('shows the passed-through coupon-frequency error message', async () => {
