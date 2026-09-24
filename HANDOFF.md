@@ -22,6 +22,12 @@ UPDATE ~20:45: ARCHIVE READY ~/Library/Developer/Xcode/Archives/2026-09-24/Kiko.
 verified by coordinator). Drift fix c2d6635 on main; next ff to c2d6635. Feat session 4 merges main @c2d6635 next, then
 USER runs /reload-plugins there. F4 part 1 keys (41) APPROVED by user. USER DECISION: build 26 is uploaded ONLY if build 25 fails App Store review;
 if build 25 passes, the build 26 fix ships in the 1.1 release instead (archive kept as a standby).
+UPDATE ~22:30: F4 @2f783ef INSTALLED on iPhone (Release-AdHoc). All 57 F4 keys approved. Refactor questions answered
+(mocks in jest.mock exempt; list-or-empty ternary -> fnts; 4 switches -> match(); statistics.screen.tsx:330 backfill
+bug -> separate bug commit) and GO given. USER DEVICE BUGS sent to feat session 4 as a priority fix round: (1) mapped
+import: completion sheet flashes, navigates back, then re-opens the import form; (2) fixing one field's validation
+error makes other fields show errors that do not clear until all are filled. User sends MORE F4 findings on 2026-09-25.
+User must /reload-plugins in feat session 4 (87bfb55).
 1. When the hotfix session sends the bump sha: `git -C ~/orca/workspaces/pff-ios/device-deploy checkout -q --detach <sha>`,
    then kiko:ops archives Release / KikoDistribution there: FORCE_BUNDLING=1, clean build (rm ios/build + pod install
    if needed), NON-beta Xcode (check DTXcodeBuild), move the .xcarchive to ~/Library/Developer/Xcode/Archives/<date>/,
