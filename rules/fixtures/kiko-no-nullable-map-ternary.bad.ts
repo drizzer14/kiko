@@ -31,3 +31,15 @@ export const timeRows = (time: number | null | undefined): { time: number }[] =>
 export const presentRow = (value: string | null | undefined): string[] =>
   // EXPECT-FINDING
   value !== null && value !== undefined ? toRow(value) : [];
+
+export const looseNicknameLabel = (holding: Holding): string | undefined =>
+  // EXPECT-FINDING
+  holding.nickname == undefined ? undefined : holding.nickname.trim();
+
+export const looseErrorTestID = (testID: string | undefined): string | undefined =>
+  // EXPECT-FINDING
+  testID != undefined ? `${testID}-error` : undefined;
+
+export const reversedNicknameLabel = (holding: Holding): string | undefined =>
+  // EXPECT-FINDING
+  undefined === holding.nickname ? undefined : holding.nickname.trim();

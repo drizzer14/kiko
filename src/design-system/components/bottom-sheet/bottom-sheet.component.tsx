@@ -5,7 +5,6 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { type FC, useEffect } from 'react';
-import maybe, { foldMap } from 'fnts/maybe';
 import { useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
@@ -332,7 +331,7 @@ const BottomSheet: FC<BottomSheetProps> = ({
           style={styles.backdrop}
           onPress={onDismiss}
           testID={backdropTestID}
-          accessibilityRole={foldMap(maybe(backdropAccessibilityLabel), () => 'button' as const)}
+          accessibilityRole={backdropAccessibilityLabel === undefined ? undefined : 'button'}
           accessibilityLabel={backdropAccessibilityLabel}
         >
           {isLiquidGlassSupported ? (

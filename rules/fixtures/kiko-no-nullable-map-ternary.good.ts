@@ -24,3 +24,14 @@ export const choice = (condition: boolean): string => (condition ? 'a' : 'b');
 
 export const emptyStringFallback = (value: string | undefined): string =>
   value === undefined ? '' : String(value);
+
+// Presence ternary: the present-side branch is a constant that never
+// references $X — not a MAP of $X's value, so this must NOT match (the real
+// shapes at bottom-sheet.component.tsx's accessibilityRole and
+// transactions.repo.ts's loanLinkSource, forced through the rule and
+// reverted once the metavariable-pattern constraint below caught them).
+export const roleFor = (label: string | undefined): string | undefined =>
+  label === undefined ? undefined : 'button';
+
+export const linkSourceFor = (loanHoldingId: string | null): string | null =>
+  loanHoldingId === null ? null : 'manual';
