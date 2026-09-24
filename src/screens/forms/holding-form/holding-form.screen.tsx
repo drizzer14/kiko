@@ -2,10 +2,10 @@ import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import { Alert, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { holdingsRepo } from '@kiko/holdings/repo';
-import type { ScrollViewInstance, TextInputInstance } from 'react-native';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { holdingsRepo, type LoanPricePointOp } from '@kiko/holdings/repo';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { ScrollViewInstance, TextInputInstance } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
@@ -18,6 +18,7 @@ import {
 } from '../../../holdings/holding-type';
 import {
   asBondMeta,
+  asLoanMeta,
   asMetalMeta,
   asPropertyMeta,
   asTermDepositMeta,
@@ -32,28 +33,30 @@ import {
   type CompoundingFrequency,
   type TermDepositMeta,
 } from '../../../holdings/holding-metadata';
-import type { Lot } from '../../../holdings/lots';
 import { Money } from '../../../currency/money';
+import type { Lot } from '../../../holdings/lots';
 import type { HoldingRow } from '../../../db/schema';
-import { dayKeyOf } from '../../../prices/price-book';
 import { parseAmount } from '../../../currency/parse';
-import { compareDecimal, normalizeDecimal, shiftDecimal } from '../../../currency/decimal';
 import Box from '../../../design-system/components/box';
 import { useLiveQuery } from '../../../db/use-live-query';
 import Text from '../../../design-system/components/text';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import Switch from '../../../design-system/components/switch';
-import { isSyncedAccount, isSyncedHolding } from '../../../holdings/deletable';
+import { usePriceBook } from '../../../prices/use-price-book';
 import Divider from '../../../design-system/components/divider';
 import TextField from '../../../design-system/components/text-field';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
+import { dayKeyOf, type PriceBook } from '../../../prices/price-book';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import FieldError from '../../../design-system/components/field-error';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../../navigation/types';
+import { loanOutstandingMinorAt } from '../../../holdings/loan-schedule';
 import CurrencyField from '../../../design-system/components/currency-field';
+import { isSyncedAccount, isSyncedHolding } from '../../../holdings/deletable';
 import { type Currency, currencyScale, currencySymbol } from '../../../currency/currency';
+import { compareDecimal, normalizeDecimal, shiftDecimal } from '../../../currency/decimal';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 
 import ChipRow from '../chip-row';
@@ -435,6 +438,122 @@ const buildLoanCreatePayload = (
       price: shiftDecimal(String(metadata.principalMinorUnits), -currencyScale[currency]),
     },
   };
+};
+
+/**
+ * The `LoanPricePointOp` a loan EDIT's `holdingsRepo.updateLoan` call needs
+ * (T28 review round 1, I1) — the three-case ruling in kiko-domain's "Loan
+ * form + detail": (a) a schedule change INTO `'none'` preserves the OLD
+ * schedule's current outstanding as a manual point dated today, so the debt
+ * never silently reads as 0 the instant the schedule is cleared; (b) a
+ * `'none'` loan's principal/start-date edit moves its start-day point (any
+ * later correction stays); (c) every other transition (including `'none'`
+ * OUT to a schedule) leaves the manual series untouched — a correction point
+ * is still valid for a scheduled loan (N10a). `oldMeta === null` (a fresh
+ * holding, or unparsed metadata) has nothing to reconcile.
+ */
+const buildLoanPricePointOp = (params: {
+  oldMeta: LoanMeta | null;
+  newMeta: LoanMeta;
+  holdingId: string;
+  currency: Currency;
+  book: PriceBook;
+  now: number;
+}): LoanPricePointOp => {
+  const { oldMeta, newMeta, holdingId, currency, book, now } = params;
+
+  if (oldMeta === null) {
+    return { kind: 'none' };
+  }
+
+  if (oldMeta.schedule !== 'none' && newMeta.schedule === 'none') {
+    const outstanding = loanOutstandingMinorAt(oldMeta, holdingId, book, now);
+
+    return {
+      kind: 'upsert',
+      day: dayKeyOf(now),
+      price: shiftDecimal(String(outstanding), -currencyScale[currency]),
+      currency,
+    };
+  }
+
+  if (
+    oldMeta.schedule === 'none' &&
+    newMeta.schedule === 'none' &&
+    (oldMeta.principalMinorUnits !== newMeta.principalMinorUnits ||
+      oldMeta.startDate !== newMeta.startDate)
+  ) {
+    return {
+      kind: 'move',
+      oldDay: dayKeyOf(oldMeta.startDate),
+      newDay: dayKeyOf(newMeta.startDate),
+      price: shiftDecimal(String(newMeta.principalMinorUnits), -currencyScale[currency]),
+      currency,
+    };
+  }
+
+  return { kind: 'none' };
+};
+
+// The EDIT-mode save for a loan (T28 review round 1, I1) — extracted out of
+// `save` purely to keep that function's own branch count under the
+// cognitive-complexity budget, the same reason `buildLoanPricePointOp` and
+// `LoanFormBlock` are their own top-level functions. `oldMeta` reads the
+// STILL-STORED (pre-edit) metadata off the live-queried `editingHolding`, so
+// `buildLoanPricePointOp` can tell what actually changed.
+const saveLoanEdit = (params: {
+  holdingId: string;
+  patch: Partial<HoldingRow>;
+  editingHolding: HoldingRow | undefined;
+  loanFields: LoanFieldsSnapshot;
+  currency: Currency;
+  book: PriceBook;
+}): Promise<void> => {
+  const { holdingId, patch, editingHolding, loanFields, currency, book } = params;
+  const oldMeta = editingHolding ? asLoanMeta(editingHolding.metadata) : null;
+
+  return holdingsRepo.updateLoan(
+    holdingId,
+    patch,
+    buildLoanPricePointOp({
+      oldMeta,
+      newMeta: buildLoanMeta(loanFields, currency),
+      holdingId,
+      currency,
+      book,
+      now: Date.now(),
+    }),
+  );
+};
+
+// The whole EDIT-mode write (metadata/balance + icon), extracted out of
+// `save` purely to keep that function's own branch count under the
+// cognitive-complexity budget. A loan's edit ALSO reconciles its manual
+// `holding:<id>` series in the same transaction (`saveLoanEdit`, T28 review
+// round 1, I1); every other type's edited balance lands on the ledger
+// instead (`updateWithBalanceDelta`, not `update` — a patch with no balance
+// in it, a deposit/bond/synced holding, writes no ledger row).
+const saveEdit = async (params: {
+  holdingId: string;
+  patch: Partial<HoldingRow>;
+  editingHolding: HoldingRow | undefined;
+  loanFields: LoanFieldsSnapshot;
+  type: HoldingType;
+  currency: Currency;
+  book: PriceBook;
+  icon: string | null;
+}): Promise<void> => {
+  const { holdingId, patch, editingHolding, loanFields, type, currency, book, icon } = params;
+
+  if (type === 'loan') {
+    await saveLoanEdit({ holdingId, patch, editingHolding, loanFields, currency, book });
+  } else {
+    await holdingsRepo.updateWithBalanceDelta(holdingId, patch, Date.now());
+  }
+
+  // Write the icon unconditionally in edit mode so clearing a custom icon
+  // (icon === null) persists the removal rather than leaving the old glyph.
+  await holdingsRepo.setIcon(holdingId, icon);
 };
 
 // The type-specific CREATE payload: `property_item` and `metal` (T20) each
@@ -954,6 +1073,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // those balances again meanwhile.
   const isSyncedEdit =
     editingHolding !== undefined && isSyncedHolding(editingHolding, accounts.at(0));
+
+  // Reactive `PriceBook` (T28 review round 1, I1): a loan edit that changes
+  // its schedule INTO `'none'` needs the OLD schedule's outstanding, which
+  // may itself be anchored on an existing manual correction — see
+  // `buildLoanPricePointOp`.
+  const priceBook = usePriceBook();
 
   const [name, setName] = useState('');
   // The selected type starts at `card`, then the effect below snaps it to the
@@ -1587,20 +1712,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
     try {
       if (isEdit && holdingId !== undefined) {
-        // Update the editable fields in one transaction (see buildHoldingPatch:
-        // deposit/bond write metadata, every other type writes its balance). The
-        // icon routes through setIcon (so a cleared icon persists an explicit
-        // null), the same split the create path uses. Type/currency are read-only.
-        //
-        // `updateWithBalanceDelta`, not `update`: an edited balance also has to
-        // land on the ledger as a `manual` transaction for the difference, or the
-        // holding's history stops being derivable from its transactions and the
-        // whole past net-worth series shifts under the edit (kiko-domain). A patch
-        // with no balance in it (a deposit/bond, or a synced holding) writes no
-        // ledger row, so this is the right call for every edit.
-        await holdingsRepo.updateWithBalanceDelta(
+        // Update the editable fields (see buildHoldingPatch: deposit/bond write
+        // metadata, every other type writes its balance) plus the icon, all via
+        // `saveEdit` (extracted purely to keep THIS function's own branch count
+        // under the cognitive-complexity budget). Type/currency are read-only.
+        await saveEdit({
           holdingId,
-          buildHoldingPatch({
+          patch: buildHoldingPatch({
             name,
             color,
             type,
@@ -1609,12 +1727,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             metadata,
             isSynced: isSyncedEdit,
           }),
-          Date.now(),
-        );
-
-        // Write the icon unconditionally in edit mode so clearing a custom icon
-        // (icon === null) persists the removal rather than leaving the old glyph.
-        await holdingsRepo.setIcon(holdingId, icon);
+          editingHolding,
+          loanFields,
+          type,
+          currency,
+          book: priceBook,
+          icon,
+        });
 
         navigation.goBack();
 

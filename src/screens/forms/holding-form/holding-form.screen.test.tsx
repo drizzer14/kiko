@@ -11,6 +11,7 @@ import {
   asRouteProp,
   navigationSpy,
 } from '../../../test-support/navigation-props';
+import { dayKeyOf } from '../../../prices/price-book';
 import { scrollToField } from '../scroll-to-field/scroll-to-field';
 import { refreshBondRegisterIfStale } from '../../../bonds/bond-register-repo';
 
@@ -46,6 +47,7 @@ jest.mock('@kiko/holdings/repo', () => ({
     setIcon: jest.fn(),
     update: jest.fn(),
     updateWithBalanceDelta: jest.fn(),
+    updateLoan: jest.fn(),
     byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
@@ -78,6 +80,11 @@ let mockBondRegisterRows: unknown[] = [];
 // Non-null by default (a cache exists) — most tests care about a FOUND vs.
 // NOT-FOUND match, not the "never loaded" distinction.
 let mockBondRegisterFetchedAtRows: { value: number | null }[] = [{ value: 1 }];
+// The `price_points` rows `usePriceBook()` reads (T28 review round 1, I1) —
+// a loan edit's `buildLoanPricePointOp` (a) case needs an existing manual
+// correction to anchor the outstanding it preserves. Empty by default; only
+// the (a)-case test below seeds a correction.
+let mockPricePoints: unknown[] = [];
 
 jest.mock('../../../db/use-live-query', () => ({
   // Key on the subscribed table: the holdings query drives edit-mode hydration,
@@ -94,6 +101,9 @@ jest.mock('../../../db/use-live-query', () => ({
       return query.__kind === 'fetchedAt'
         ? { data: mockBondRegisterFetchedAtRows }
         : { data: mockBondRegisterRows };
+    }
+    if (keys[0] === 'price_points') {
+      return { data: mockPricePoints };
     }
     return {
       data: [
@@ -138,6 +148,10 @@ const updateMock = holdingsRepo.update as jest.Mock;
 // holdings.repo.ts). `update`'s bare `set(patch)` is kept mocked so a test can
 // prove the form never falls back to it for a balance edit.
 const updateDeltaMock = holdingsRepo.updateWithBalanceDelta as jest.Mock;
+// A loan edit saves through `updateLoan` instead (T28 review round 1, I1) —
+// the metadata patch AND the manual `holding:<id>` price-point op commit in
+// the SAME transaction, so the series can never drift from the edit.
+const updateLoanMock = holdingsRepo.updateLoan as jest.Mock;
 
 beforeEach(() => {
   mockAccountKind = 'bank';
@@ -146,6 +160,7 @@ beforeEach(() => {
   mockEditHoldings = [];
   mockBondRegisterRows = [];
   mockBondRegisterFetchedAtRows = [{ value: 1 }];
+  mockPricePoints = [];
 });
 
 const renderScreen = () =>
@@ -1592,6 +1607,7 @@ describe('HoldingFormScreen loan (T28)', () => {
     setIconMock.mockClear();
     navigation.goBack.mockClear();
     updateDeltaMock.mockClear();
+    updateLoanMock.mockClear();
     mockAccountKind = 'debt';
     mockAccountInstitution = null;
   });
@@ -1760,7 +1776,11 @@ describe('HoldingFormScreen loan (T28)', () => {
     await fill(screen, 'Principal', '600000');
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(updateDeltaMock).toHaveBeenCalledWith(
+    // Staying `annuity` end to end (I1's (a)/(b)/(c) don't apply): a
+    // scheduled loan's principal edit takes effect through the metadata
+    // itself at read time, so no price-point write is needed — `updateLoan`
+    // still runs (in place of `updateWithBalanceDelta`), with a 'none' op.
+    expect(updateLoanMock).toHaveBeenCalledWith(
       'h1',
       expect.objectContaining({
         metadata: {
@@ -1772,9 +1792,10 @@ describe('HoldingFormScreen loan (T28)', () => {
           termMonths: 24,
         },
       }),
-      expect.any(Number),
+      { kind: 'none' },
     );
-    expect(updateDeltaMock.mock.calls[0][1]).not.toHaveProperty('balanceMinorUnits');
+    expect(updateLoanMock.mock.calls[0][1]).not.toHaveProperty('balanceMinorUnits');
+    expect(updateDeltaMock).not.toHaveBeenCalled();
   });
 
   it('edits a "none" loan, keeping its schedule and hiding the rate/term fields', async () => {
@@ -1800,7 +1821,9 @@ describe('HoldingFormScreen loan (T28)', () => {
 
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(updateDeltaMock).toHaveBeenCalledWith(
+    // (c)'s catch-all, with nothing actually changed: principal/startDate are
+    // untouched, so `buildLoanPricePointOp` writes no price point.
+    expect(updateLoanMock).toHaveBeenCalledWith(
       'h1',
       expect.objectContaining({
         metadata: {
@@ -1810,7 +1833,118 @@ describe('HoldingFormScreen loan (T28)', () => {
           schedule: 'none',
         },
       }),
-      expect.any(Number),
+      { kind: 'none' },
+    );
+  });
+
+  // I1(a): annuity/differentiated -> 'none' preserves the OLD schedule's
+  // current outstanding as a manual point dated today, so the debt never
+  // silently reads as 0 the instant the schedule is cleared.
+  it('(a) switching an annuity loan to "none" upserts today\'s outstanding as a manual point', async () => {
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Car loan',
+      type: 'loan',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        kind: 'car_loan',
+        principalMinorUnits: 50_000_000,
+        startDate: localDay(2026, 1, 1),
+        schedule: 'annuity',
+        annualRatePct: 0,
+        termMonths: 10,
+      },
+    });
+
+    await fireEvent.press(screen.getByText('No schedule'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    // A 0% rate keeps the math exact: 10 equal principal-only installments of
+    // 5_000_000 each. `installmentsElapsed` below is however many of those
+    // are due at the real test-run instant (0 when the fixture's Jan-2026
+    // start date has not arrived yet).
+    expect(updateLoanMock).toHaveBeenCalledWith(
+      'h1',
+      expect.objectContaining({ metadata: expect.objectContaining({ schedule: 'none' }) }),
+      expect.objectContaining({ kind: 'upsert', currency: 'UAH' }),
+    );
+    const op = updateLoanMock.mock.calls[0][2] as { price: string };
+    expect(Number(op.price)).toBeGreaterThanOrEqual(0);
+    expect(Number(op.price)).toBeLessThanOrEqual(500_000);
+  });
+
+  // I1(b): a 'none' loan's principal/start-date edit moves the start-day
+  // point — delete the old day, insert the new principal at the new day.
+  // Later correction points stay untouched.
+  it('(b) editing a "none" loan\'s principal moves its start-day point', async () => {
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'IOU',
+      type: 'loan',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        kind: 'personal',
+        principalMinorUnits: 10_000_00,
+        startDate: localDay(2026, 1, 1),
+        schedule: 'none',
+      },
+    });
+
+    await fill(screen, 'Principal', '15000');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(updateLoanMock).toHaveBeenCalledWith(
+      'h1',
+      expect.objectContaining({
+        metadata: expect.objectContaining({ principalMinorUnits: 15_000_00 }),
+      }),
+      {
+        kind: 'move',
+        oldDay: dayKeyOf(localDay(2026, 1, 1)),
+        newDay: dayKeyOf(localDay(2026, 1, 1)),
+        price: '15000.00',
+        currency: 'UAH',
+      },
+    );
+  });
+
+  // I1(c): 'none' -> a schedule leaves the manual series untouched — a
+  // correction point is still valid for a scheduled loan (N10a).
+  it('(c) switching a "none" loan to annuity keeps the manual series untouched', async () => {
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'IOU',
+      type: 'loan',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        kind: 'personal',
+        principalMinorUnits: 10_000_00,
+        startDate: localDay(2026, 1, 1),
+        schedule: 'none',
+      },
+    });
+
+    await fireEvent.press(screen.getByText('Annuity'));
+    await fill(screen, 'Annual Rate %', '10');
+    await fill(screen, 'Term (Months)', '12');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(updateLoanMock).toHaveBeenCalledWith(
+      'h1',
+      expect.objectContaining({ metadata: expect.objectContaining({ schedule: 'annuity' }) }),
+      { kind: 'none' },
     );
   });
 });
