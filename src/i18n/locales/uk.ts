@@ -500,6 +500,7 @@ export const uk: typeof en = {
     computed: 'Обчислено',
     coupon: 'Купон',
     cost: 'Вартість',
+    emptyTransactions: 'Немає транзакцій',
     expectedProfit: 'Очікуваний прибуток',
     grossValue: 'Валова вартість',
     incomeTax: 'Податок на доходи {{pct}}%',

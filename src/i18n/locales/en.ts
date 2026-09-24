@@ -548,6 +548,10 @@ export const en = {
     computed: 'Computed',
     coupon: 'Coupon',
     cost: 'Cost',
+    // The ledger FlatList's own empty state (F4 audit 14) — the SAME
+    // "no rows yet" pattern `home.emptyTransactions` uses, replacing a bare
+    // "Transactions" heading with nothing below it.
+    emptyTransactions: 'No transactions',
     expectedProfit: 'Expected profit',
     grossValue: 'Gross value',
     incomeTax: 'Income tax {{pct}}%',

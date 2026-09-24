@@ -828,6 +828,11 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           </>
         )}
         ListHeaderComponent={listHeader}
+        ListEmptyComponent={
+          <Box style={styles.empty}>
+            <Text tone="textSecondary">{t('holdingDetail.emptyTransactions')}</Text>
+          </Box>
+        }
         // The list owns the scrolling under the native large title, so it — not
         // Screen's ScrollView — must carry the automatic content-inset
         // adjustment that seats content below the expanded large title (Screen
@@ -880,6 +885,14 @@ const styles = StyleSheet.create((theme) => ({
   sectionHeader: {
     paddingTop: theme.spacing(3),
     paddingBottom: theme.spacing(1),
+  },
+  // The ledger's own empty state (F4 audit 14, `home.screen.tsx`'s
+  // `ListEmptyComponent` pattern) — a plain centered caption below the
+  // "Transactions" heading, replacing a bare heading with nothing beneath it
+  // for a holding type (property_item, loan) with no real transactions yet.
+  empty: {
+    alignItems: 'center',
+    paddingVertical: theme.spacing(6),
   },
   // A projected (post-`now`) lifecycle entry, dimmed so it reads as an estimate
   // rather than a settled statement line.

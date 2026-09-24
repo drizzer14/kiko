@@ -1078,6 +1078,19 @@ describe('HoldingDetailScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('PricePointForm', { holdingId: 'h-1' });
   });
 
+  // F4 audit 14: a property_item (ledgerless, no derived lifecycle entries)
+  // with no real transactions used to leave a bare "Transactions" heading
+  // with nothing below it — the same ListEmptyComponent pattern
+  // `home.screen.tsx` uses.
+  it('shows the empty-transactions state for a property_item with no real transactions', async () => {
+    seed(propertyHolding);
+
+    const { getByText, queryAllByTestId } = await renderScreen();
+
+    expect(queryAllByTestId('ledger-row')).toHaveLength(0);
+    expect(getByText('No transactions')).toBeTruthy();
+  });
+
   it('offers "Add lot" instead of a manual add action for a metal holding', async () => {
     // metal is ledgerless (isLedgerlessHoldingType) AND lot-form-eligible
     // (isLotFormHoldingType, T18) — unlike property_item it does NOT take
