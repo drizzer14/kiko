@@ -69,6 +69,19 @@ describe('RawPreview', () => {
     expect(unselectedFill.backgroundColor).toBeUndefined();
   });
 
+  // F4 audit item 21: the header-row tap target was ~34pt, below the HIG
+  // 44pt floor.
+  it('gives each row at least the 44pt HIG tap-target height', async () => {
+    const { getByTestId } = await render(
+      <RawPreview rows={rows} headerRowIndex={0} onSelectHeaderRow={jest.fn()} />,
+    );
+
+    const { StyleSheet } = require('react-native');
+    const fill = StyleSheet.flatten(getByTestId('raw-preview-row-0-fill').props.style);
+
+    expect(fill.minHeight).toBeGreaterThanOrEqual(44);
+  });
+
   // F3 item 7: a wide export renders no more than 5 columns per row.
   it('shows at most 5 columns per row', async () => {
     const wideRows: TableCell[][] = [
