@@ -1,0 +1,149 @@
+import type { FC } from 'react';
+import { View } from 'react-native';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
+
+import ChipRow from '../../chip-row';
+import DateField from '../../date-field';
+import {
+  loanKinds,
+  loanSchedules,
+  type LoanKind,
+  type LoanSchedule,
+} from '../../../../holdings/holding-metadata';
+import Box from '../../../../design-system/components/box';
+import TextField from '../../../../design-system/components/text-field';
+import SegmentedControl from '../../../../design-system/components/segmented-control';
+
+import type { LoanSectionProps } from './loan-section.props';
+
+const loanKindLabels = (t: TFunction): Record<LoanKind, string> => ({
+  mortgage: t('forms.holding.loanKind.mortgage'),
+  car_loan: t('forms.holding.loanKind.carLoan'),
+  consumer_loan: t('forms.holding.loanKind.consumerLoan'),
+  personal: t('forms.holding.loanKind.personal'),
+});
+
+const loanScheduleLabels = (t: TFunction): Record<LoanSchedule, string> => ({
+  annuity: t('forms.holding.loanSchedule.annuity'),
+  differentiated: t('forms.holding.loanSchedule.differentiated'),
+  none: t('forms.holding.loanSchedule.none'),
+});
+
+// The `loan` create/edit-form section (T28, spec 5.1): a kind ChipRow, the
+// principal + start-date fields, the schedule SegmentedControl (F3/T24
+// ruling — one control type per kind of mode choice, not a ChipRow, the
+// same reason the Bond form's ISIN/Manual toggle uses one), and the
+// rate/term fields — hidden while `schedule` is `'none'` (an informal debt
+// has no known rate/term, spec 5.1). Unlike `PropertySection`/
+// `MetalSection`, every field here is editable in BOTH create and edit mode
+// (mirrors the term-deposit/bond forms, not the create-only-lot pattern) —
+// there is no separate "first lot" this section seeds once and never
+// revisits. Purely presentational: every piece of state and the validation
+// reason live in `useLoanFields`; this component only renders what it is
+// handed.
+const LoanSection: FC<LoanSectionProps> = ({
+  kind,
+  onSelectKind,
+  principal,
+  onChangePrincipal,
+  principalError,
+  principalFieldRef,
+  principalInputRef,
+  currencySuffix,
+  startDate,
+  onChangeStartDate,
+  startDateError,
+  startDateFieldRef,
+  schedule,
+  onSelectSchedule,
+  annualRatePct,
+  onChangeAnnualRatePct,
+  annualRatePctError,
+  annualRatePctFieldRef,
+  annualRatePctInputRef,
+  termMonths,
+  onChangeTermMonths,
+  termMonthsError,
+  termMonthsFieldRef,
+  termMonthsInputRef,
+}) => {
+  const { t } = useTranslation();
+
+  return (
+    <Box gap={4}>
+      <ChipRow
+        label={t('forms.holding.loanKindLabel')}
+        options={loanKinds}
+        selected={kind}
+        onSelect={onSelectKind}
+        labels={loanKindLabels(t)}
+      />
+
+      <View ref={principalFieldRef}>
+        <TextField
+          label={t('forms.holding.loanPrincipal')}
+          value={principal}
+          onChangeText={onChangePrincipal}
+          keyboardType="decimal-pad"
+          placeholder={t('forms.holding.loanPrincipalPlaceholder')}
+          suffix={currencySuffix}
+          required
+          error={principalError}
+          inputRef={principalInputRef}
+        />
+      </View>
+
+      <View ref={startDateFieldRef}>
+        <DateField
+          label={t('forms.holding.loanStartDate')}
+          value={startDate}
+          onChange={onChangeStartDate}
+          placeholder={t('forms.holding.selectDatePlaceholder')}
+          required
+          error={startDateError}
+        />
+      </View>
+
+      <SegmentedControl<LoanSchedule>
+        options={loanSchedules}
+        selected={schedule}
+        onSelect={onSelectSchedule}
+        labels={loanScheduleLabels(t)}
+        accessibilityLabel={t('forms.holding.loanScheduleLabel')}
+      />
+
+      {schedule !== 'none' && (
+        <>
+          <View ref={annualRatePctFieldRef}>
+            <TextField
+              label={t('forms.holding.annualRatePct')}
+              value={annualRatePct}
+              onChangeText={onChangeAnnualRatePct}
+              keyboardType="decimal-pad"
+              placeholder={t('forms.holding.annualRatePlaceholder')}
+              required
+              error={annualRatePctError}
+              inputRef={annualRatePctInputRef}
+            />
+          </View>
+
+          <View ref={termMonthsFieldRef}>
+            <TextField
+              label={t('forms.holding.termMonths')}
+              value={termMonths}
+              onChangeText={onChangeTermMonths}
+              keyboardType="number-pad"
+              placeholder={t('forms.holding.termMonthsPlaceholder')}
+              required
+              error={termMonthsError}
+              inputRef={termMonthsInputRef}
+            />
+          </View>
+        </>
+      )}
+    </Box>
+  );
+};
+
+export default LoanSection;

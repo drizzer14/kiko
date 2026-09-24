@@ -287,6 +287,31 @@ export const en = {
       isinSummaryMaturity: 'Maturity: {{value}}',
       jar: 'Jar',
       loan: 'Loan',
+      // The Loan form's own kind ChipRow (T28) — mirrors `metalKind`'s own
+      // option-map/field-label split (`loanKindLabel` below), keeping the
+      // per-chip text separate from the Type chip's own "Loan" label above.
+      loanKind: {
+        carLoan: 'Car loan',
+        consumerLoan: 'Consumer loan',
+        mortgage: 'Mortgage',
+        personal: 'Personal',
+      },
+      loanKindLabel: 'Kind',
+      loanPrincipal: 'Principal',
+      loanPrincipalError: 'Enter a principal greater than 0.',
+      loanPrincipalPlaceholder: '1000.00',
+      // The Loan form's own schedule SegmentedControl (T28, spec 5.1): the
+      // mode choice that shows/hides the rate + term fields below it,
+      // mirroring the Bond form's ISIN/Manual mode (F3/T24 ruling — one
+      // control type per kind of mode choice, not a ChipRow).
+      loanSchedule: {
+        annuity: 'Annuity',
+        differentiated: 'Differentiated',
+        none: 'No schedule',
+      },
+      loanScheduleLabel: 'Schedule',
+      loanStartDate: 'Start Date',
+      loanStartDateError: 'Pick a start date.',
       maturityDate: 'Maturity Date',
       maturityDateError: 'Maturity date must be after the purchase date.',
       metal: 'Precious metal',
@@ -359,6 +384,11 @@ export const en = {
       type: 'Type',
     },
     pricePoint: {
+      // The screen title override (T28) when this correction targets a loan
+      // holding's own manual outstanding series — `holding-detail.screen.tsx`
+      // sets it once the holding loads, in place of the static "Update
+      // Value" stack-options title.
+      loanTitle: 'Update Outstanding',
       save: 'Save value',
       title: 'Update Value',
       value: 'Value',
@@ -517,6 +547,11 @@ export const en = {
     interestAccrual: 'Interest accrual',
     interestEarned: 'Interest earned',
     militaryLevy: 'Military levy {{pct}}%',
+    // The loan detail screen's own "next installment" panel (T28,
+    // annuity/differentiated only): the amortization schedule's next
+    // upcoming due date, with its principal/interest split shown via the
+    // shared `principal`/`interest` labels below it.
+    nextInstallment: 'Next installment ({{date}})',
     openingDeposit: 'Opening deposit',
     priceAsOf: 'Price as of {{date}}',
     principal: 'Principal',
@@ -528,6 +563,10 @@ export const en = {
     taxWithheld: 'Tax withheld',
     topUp: 'Top-up',
     transactionsHeading: 'Transactions',
+    // The loan footer action's own label (T28) — writes a correction point
+    // to the loan's manual outstanding series (`PricePointForm`, the same
+    // mechanism `updateValue` below uses for a priced holding).
+    updateOutstanding: 'Update outstanding',
     updateValue: 'Update value',
     valueAsOf: 'Value as of {{date}}',
     valueLabel: 'Value',
