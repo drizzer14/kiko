@@ -561,9 +561,11 @@ describe('holdingValueBreakdown — loan (T27)', () => {
   });
 
   it('gross/net shrink toward 0 as the schedule pays the loan down, while principalOrCost stays at minus the ORIGINAL principal', () => {
-    const tenInstallmentsIn = loanStart;
+    // M8: renamed from `tenInstallmentsIn` — at `loanStart` itself, ZERO
+    // installments are due yet (the first is a month out), not ten.
+    const atStart = loanStart;
     const laterDay = local(2021, 0, 15); // one year (12 installments) later
-    const before = holdingValueBreakdown(loan(), tenInstallmentsIn, EMPTY_PRICE_BOOK);
+    const before = holdingValueBreakdown(loan(), atStart, EMPTY_PRICE_BOOK);
     const after = holdingValueBreakdown(loan(), laterDay, EMPTY_PRICE_BOOK);
 
     expect(after.gross.minorUnits).toBeGreaterThan(before.gross.minorUnits);
@@ -578,13 +580,12 @@ describe('holdingValueBreakdown — loan (T27)', () => {
     expect(b.net.minorUnits).toBe(0);
   });
 
-  it('reports no interest or tax on the held value — a loan never accrues either at valuation time', () => {
-    const b = holdingValueBreakdown(loan(), loanStart, EMPTY_PRICE_BOOK);
-    expect(b.interest.minorUnits).toBe(0);
-    expect(b.tax.minorUnits).toBe(0);
-  });
-
-  it('falls back to the cached balance when metadata is malformed', () => {
+  // M1 (T27 round 1): missing/malformed loan metadata must value the loan at
+  // 0, never `+balanceMinorUnits` — a debt must never read as a positive
+  // asset (the T26 review's finding (c), carried forward). Harmless in
+  // practice today (the form always writes balance 0), but the fallback
+  // itself must have the right sign.
+  it('values a loan with missing/malformed metadata at 0, never the cached balance', () => {
     const holding: ValuableHolding = {
       id: 'loan-2',
       type: 'loan',
@@ -592,6 +593,6 @@ describe('holdingValueBreakdown — loan (T27)', () => {
       balanceMinorUnits: 5_000,
       metadata: { junk: true },
     };
-    expect(holdingValue(holding, loanStart).minorUnits).toBe(5_000);
+    expect(holdingValue(holding, loanStart).minorUnits).toBe(0);
   });
 });

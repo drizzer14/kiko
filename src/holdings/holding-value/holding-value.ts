@@ -196,7 +196,11 @@ const loanBreakdown = (
 ): HoldingValueBreakdown => {
   const meta = asLoanMeta(holding.metadata);
   if (meta === null) {
-    return flat(holding.currency, holding.balanceMinorUnits);
+    // M1 (T27 round 1, carried from the T26 review finding (c)): a debt must
+    // never read as a positive asset — missing/malformed metadata values the
+    // loan at 0, NOT `holding.balanceMinorUnits` (the flat fallback every
+    // other type uses), which would otherwise surface as a positive balance.
+    return flat(holding.currency, 0);
   }
   const { currency } = holding;
   const outstandingMinor = loanOutstandingMinorAt(meta, holding.id ?? '', book, now);
