@@ -15,40 +15,6 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { match } from 'ts-pattern';
 
 import {
-  buildCategoryDisplayMap,
-  DEFAULT_CATEGORY_KEY,
-  resolveCategoryDisplay,
-} from '../../categories/category-display';
-import type { Currency } from '../../currency/currency';
-import { usePriceBook } from '../../prices/use-price-book';
-import { formatMoney } from '../../currency/format';
-import { Money } from '../../currency/money';
-import { formatDate, formatTime } from '../../dates/format';
-import { holdingInstrument, metalInstrument } from '../../prices/instrument';
-import { startOfLocalDay } from '../../dates/local-day';
-import { isPricedHoldingType } from '../../holdings/priced-value';
-import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
-import { useLiveQuery } from '../../db/use-live-query';
-import Box from '../../design-system/components/box';
-import Button from '../../design-system/components/button';
-import Card from '../../design-system/components/card';
-import CardContextMenu from '../../design-system/components/card-context-menu';
-import { latestPoint, type PriceBook } from '../../prices/price-book';
-import EditHeaderButton from '../../design-system/components/edit-header-button';
-import MoneyText from '../../design-system/components/money-text';
-import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
-import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
-import SummaryTable from '../../design-system/components/summary-table';
-import SymbolIcon from '../../design-system/components/symbol';
-import Text from '../../design-system/components/text';
-import { resolveEntityColor } from '../../design-system/entity-tint';
-import { isSyncedHolding, isSyncedTransaction } from '../../holdings/deletable';
-import { type DerivedEntry, derivedEntries, type EntryTone } from '../../holdings/derived-entries';
-import { defaultHoldingColor } from '../../holdings/entity-colors';
-import { holdingTypeSymbol } from '../../holdings/entity-symbols';
-import { asBondMeta, asLoanMeta, asMetalMeta } from '../../holdings/holding-metadata';
-import { loanInstallments, type LoanInstallment } from '../../holdings/loan-schedule';
-import {
   isLedgerlessHoldingType,
   isLotFormHoldingType,
   isTimeExemptHoldingType,
@@ -58,13 +24,47 @@ import {
   type HoldingValueBreakdown,
   holdingValueBreakdown,
 } from '../../holdings/holding-value';
+import {
+  buildCategoryDisplayMap,
+  DEFAULT_CATEGORY_KEY,
+  resolveCategoryDisplay,
+} from '../../categories/category-display';
+import { Money } from '../../currency/money';
+import { formatMoney } from '../../currency/format';
+import Box from '../../design-system/components/box';
+import { useLiveQuery } from '../../db/use-live-query';
+import Card from '../../design-system/components/card';
+import Text from '../../design-system/components/text';
+import { startOfLocalDay } from '../../dates/local-day';
 import { activeLocale } from '../../i18n/active-locale';
-import type { AccountsStackParamList } from '../../navigation/types';
+import type { Currency } from '../../currency/currency';
+import { usePriceBook } from '../../prices/use-price-book';
+import Button from '../../design-system/components/button';
+import { formatDate, formatTime } from '../../dates/format';
+import { groupByDay } from '../../transactions/group-by-day';
+import SymbolIcon from '../../design-system/components/symbol';
 import { convert, type RateTable } from '../../rates/conversion';
+import { isPricedHoldingType } from '../../holdings/priced-value';
+import MoneyText from '../../design-system/components/money-text';
+import { holdingTypeSymbol } from '../../holdings/entity-symbols';
+import { defaultHoldingColor } from '../../holdings/entity-colors';
+import { resolveEntityColor } from '../../design-system/entity-tint';
+import type { AccountsStackParamList } from '../../navigation/types';
+import { latestPoint, type PriceBook } from '../../prices/price-book';
+import SummaryTable from '../../design-system/components/summary-table';
 import { buildRateTable, canConvert } from '../../rates/net-worth-view';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
-import { groupByDay } from '../../transactions/group-by-day';
+import { holdingInstrument, metalInstrument } from '../../prices/instrument';
+import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
+import CardContextMenu from '../../design-system/components/card-context-menu';
 import { transactionRowDescription } from '../../transactions/row-description';
+import { isSyncedHolding, isSyncedTransaction } from '../../holdings/deletable';
+import EditHeaderButton from '../../design-system/components/edit-header-button';
+import { asBondMeta, asLoanMeta, asMetalMeta } from '../../holdings/holding-metadata';
+import { loanInstallments, type LoanInstallment } from '../../holdings/loan-schedule';
+import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
+import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
+import { type DerivedEntry, derivedEntries, type EntryTone } from '../../holdings/derived-entries';
 import EntityAmountHeader from '../entity-amount-header';
 import EntityHeaderIcon from '../entity-header-icon';
 

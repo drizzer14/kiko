@@ -74,9 +74,9 @@ import MetalSection from './metal-section';
 import PropertySection from './property-section';
 import BondIsinSection from './bond-isin-section';
 import ManualBondFields from './manual-bond-fields';
-import { useLoanFields, type LoanReasonKey, type UseLoanFieldsResult } from './use-loan-fields';
 import { useBondIsinMode, type IsinReasonKey } from './use-bond-isin-mode';
 import type { BondEntryMode } from './bond-isin-section/bond-isin-section.props';
+import { useLoanFields, type LoanReasonKey, type UseLoanFieldsResult } from './use-loan-fields';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 
