@@ -1839,8 +1839,21 @@ describe('HoldingFormScreen loan (T28)', () => {
 
   // I1(a): annuity/differentiated -> 'none' preserves the OLD schedule's
   // current outstanding as a manual point dated today, so the debt never
-  // silently reads as 0 the instant the schedule is cleared.
+  // silently reads as 0 the instant the schedule is cleared. Seeds a
+  // correction dated today so the anchored outstanding is an exact, known
+  // value — proving the reactive `book` is actually wired through, not just
+  // that some in-range number came out.
   it('(a) switching an annuity loan to "none" upserts today\'s outstanding as a manual point', async () => {
+    const today = dayKeyOf(Date.now());
+    mockPricePoints = [
+      {
+        instrument: 'holding:h1',
+        day: today,
+        price: '300000.00',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ];
     const screen = await renderEdit({
       id: 'h1',
       accountId: 'acc-1',
@@ -1863,18 +1876,56 @@ describe('HoldingFormScreen loan (T28)', () => {
     await fireEvent.press(screen.getByText('No schedule'));
     await fireEvent.press(screen.getByText('Save'));
 
-    // A 0% rate keeps the math exact: 10 equal principal-only installments of
-    // 5_000_000 each. `installmentsElapsed` below is however many of those
-    // are due at the real test-run instant (0 when the fixture's Jan-2026
-    // start date has not arrived yet).
+    // The seeded correction anchors the outstanding: no installment can fall
+    // strictly after `today` and on or before `today`, so the preserved
+    // value is exactly the correction's own price.
     expect(updateLoanMock).toHaveBeenCalledWith(
       'h1',
       expect.objectContaining({ metadata: expect.objectContaining({ schedule: 'none' }) }),
-      expect.objectContaining({ kind: 'upsert', currency: 'UAH' }),
+      { kind: 'upsert', day: today, price: '300000.00', currency: 'UAH' },
     );
-    const op = updateLoanMock.mock.calls[0][2] as { price: string };
-    expect(Number(op.price)).toBeGreaterThanOrEqual(0);
-    expect(Number(op.price)).toBeLessThanOrEqual(500_000);
+  });
+
+  // N1 (T28 review round 2): case (a) on a loan whose start date is still in
+  // the FUTURE must never write today's (0) outstanding as a permanent
+  // point — `loanOutstandingMinorAt` reads 0 for any instant before
+  // `startDate`, so that 0 would outlive the start date once it arrives and
+  // the debt would silently read as 0 forever. It must write the principal
+  // at the start day instead, mirroring the create-mode first point.
+  it('(a) switching a future-start annuity loan to "none" writes the principal at the start day, not a 0 today', async () => {
+    const futureStart = localDay(2099, 1, 1);
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Car loan',
+      type: 'loan',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        kind: 'car_loan',
+        principalMinorUnits: 50_000_000,
+        startDate: futureStart,
+        schedule: 'annuity',
+        annualRatePct: 12,
+        termMonths: 10,
+      },
+    });
+
+    await fireEvent.press(screen.getByText('No schedule'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(updateLoanMock).toHaveBeenCalledWith(
+      'h1',
+      expect.objectContaining({ metadata: expect.objectContaining({ schedule: 'none' }) }),
+      {
+        kind: 'upsert',
+        day: dayKeyOf(futureStart),
+        price: '500000.00',
+        currency: 'UAH',
+      },
+    );
   });
 
   // I1(b): a 'none' loan's principal/start-date edit moves the start-day

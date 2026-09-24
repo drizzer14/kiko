@@ -442,15 +442,15 @@ const buildLoanCreatePayload = (
 
 /**
  * The `LoanPricePointOp` a loan EDIT's `holdingsRepo.updateLoan` call needs
- * (T28 review round 1, I1) — the three-case ruling in kiko-domain's "Loan
- * form + detail": (a) a schedule change INTO `'none'` preserves the OLD
- * schedule's current outstanding as a manual point dated today, so the debt
- * never silently reads as 0 the instant the schedule is cleared; (b) a
- * `'none'` loan's principal/start-date edit moves its start-day point (any
- * later correction stays); (c) every other transition (including `'none'`
- * OUT to a schedule) leaves the manual series untouched — a correction point
- * is still valid for a scheduled loan (N10a). `oldMeta === null` (a fresh
- * holding, or unparsed metadata) has nothing to reconcile.
+ * — the three-case ruling in kiko-domain's "Loan form + detail": (a) a
+ * schedule change INTO `'none'` preserves the OLD schedule's current
+ * outstanding as a manual point, so the debt never silently reads as 0 the
+ * instant the schedule is cleared; (b) a `'none'` loan's principal/start-date
+ * edit moves its start-day point (any later correction stays); (c) every
+ * other transition (including `'none'` OUT to a schedule) leaves the manual
+ * series untouched — a correction point is still valid for a scheduled loan
+ * (N10a). `oldMeta === null` (a fresh holding, or unparsed metadata) has
+ * nothing to reconcile.
  */
 const buildLoanPricePointOp = (params: {
   oldMeta: LoanMeta | null;
@@ -467,11 +467,21 @@ const buildLoanPricePointOp = (params: {
   }
 
   if (oldMeta.schedule !== 'none' && newMeta.schedule === 'none') {
-    const outstanding = loanOutstandingMinorAt(oldMeta, holdingId, book, now);
+    // (a) normally dates the preserved point today. But `loanOutstandingMinorAt`
+    // reads 0 for any instant before the loan's own `startDate` (a future-start
+    // loan), so dating it today would write a permanent 0 that outlives the
+    // start date once it arrives. Write the principal at the start day instead
+    // — mirroring the create-mode `'none'` first point — whenever today is
+    // still before that day.
+    const beforeStart = dayKeyOf(now) < dayKeyOf(newMeta.startDate);
+    const day = beforeStart ? dayKeyOf(newMeta.startDate) : dayKeyOf(now);
+    const outstanding = beforeStart
+      ? newMeta.principalMinorUnits
+      : loanOutstandingMinorAt(oldMeta, holdingId, book, now);
 
     return {
       kind: 'upsert',
-      day: dayKeyOf(now),
+      day,
       price: shiftDecimal(String(outstanding), -currencyScale[currency]),
       currency,
     };
