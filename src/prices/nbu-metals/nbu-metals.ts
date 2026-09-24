@@ -1,4 +1,5 @@
 import { guard } from 'fnts';
+import maybe, { foldMap } from 'fnts/maybe';
 
 import { decimalFromJsonNumber } from '../../currency/decimal';
 import { type Metal, preciousMetals } from '../../holdings/holding-metadata';
@@ -79,7 +80,7 @@ const toCurrentRate = (row: NbuCurrentMetalRow): NbuMetalRate[] => {
 
   const price = decimalFromJsonNumber(row.rate);
 
-  return price === null ? [] : [{ metal: row.cc, price }];
+  return foldMap(maybe(price), (found) => [{ metal: row.cc, price: found }]) ?? [];
 };
 
 /**
@@ -120,7 +121,11 @@ const rangeUrl = (metal: Metal, start: number, end: number): string =>
 const toHistoryPoint = (metal: Metal, row: NbuRangeMetalRow): NbuMetalHistoryPoint[] => {
   const price = decimalFromJsonNumber(row.rate_per_unit ?? row.rate / row.units);
 
-  return price === null ? [] : [{ metal, day: parseNbuDate(row.exchangedate), price }];
+  return (
+    foldMap(maybe(price), (found) => [
+      { metal, day: parseNbuDate(row.exchangedate), price: found },
+    ]) ?? []
+  );
 };
 
 /**

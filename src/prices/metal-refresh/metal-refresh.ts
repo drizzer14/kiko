@@ -1,4 +1,5 @@
 import { holdingsRepo } from '@kiko/holdings/repo';
+import maybe, { foldMap } from 'fnts/maybe';
 
 import type { HoldingRow, PricePointRow } from '../../db/schema';
 import { asMetalMeta, type Metal } from '../../holdings/holding-metadata';
@@ -157,7 +158,7 @@ const currentRows = async (
   return metals.flatMap((metal) => {
     const rate = current.find((entry) => entry.metal === metal);
 
-    return rate === undefined ? [] : [toRow(metal, today, rate.price)];
+    return foldMap(maybe(rate), (found) => [toRow(metal, today, found.price)]) ?? [];
   });
 };
 

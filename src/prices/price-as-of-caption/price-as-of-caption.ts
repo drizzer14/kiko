@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next';
+import maybe, { foldMap } from 'fnts/maybe';
 
 import { formatDate } from '../../dates/format';
 import type { HoldingRow } from '../../db/schema';
@@ -42,16 +43,18 @@ export const priceAsOfCaption = (
 
   if (holding.type === 'metal') {
     const meta = asMetalMeta(holding.metadata);
-    const point = meta === null ? undefined : latestPoint(priceBook, metalInstrument(meta.metal));
+    const point = foldMap(maybe(meta), (found) =>
+      latestPoint(priceBook, metalInstrument(found.metal)),
+    );
 
-    return point === undefined
-      ? undefined
-      : t('holdingDetail.priceAsOf', { date: formatDate(point.day, { timeZone: 'UTC' }) });
+    return foldMap(maybe(point), (found) =>
+      t('holdingDetail.priceAsOf', { date: formatDate(found.day, { timeZone: 'UTC' }) }),
+    );
   }
 
   const point = latestPoint(priceBook, holdingInstrument(holding.id));
 
-  return point === undefined
-    ? undefined
-    : t('holdingDetail.valueAsOf', { date: formatDate(point.day, { timeZone: 'UTC' }) });
+  return foldMap(maybe(point), (found) =>
+    t('holdingDetail.valueAsOf', { date: formatDate(found.day, { timeZone: 'UTC' }) }),
+  );
 };
