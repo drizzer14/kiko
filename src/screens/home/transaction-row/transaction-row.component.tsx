@@ -82,7 +82,6 @@ const TransactionRow: FC<TransactionRowProps> = ({
           categoryIconColor={resolveCategoryColor(category.color, categoryKeyForRow(item.category))}
           categoryAccessibilityLabel={category.title}
           money={Money.of(item.currency, item.amountMinorUnits)}
-          moneyContext="transaction"
           footerMeta={`${item.accountName} · ${category.title}`}
           footerTrailing={
             isTimeExemptHoldingType(item.holdingType) ? undefined : formatTime(item.time)

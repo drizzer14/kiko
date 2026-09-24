@@ -26,7 +26,6 @@ const TransactionCard: FC<TransactionCardProps> = ({
   categoryIconColor,
   categoryAccessibilityLabel,
   money,
-  moneyContext = 'transaction',
   footerMeta,
   footerTrailing,
   style,
@@ -52,7 +51,7 @@ const TransactionCard: FC<TransactionCardProps> = ({
             </Box>
           </Box>
           <Box style={styles.rowAmount}>
-            <MoneyText money={money} context={moneyContext} />
+            <MoneyText money={money} context="transaction" />
           </Box>
         </Box>
 

@@ -3,6 +3,8 @@ import { render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import '../../../i18n';
 
+import { i18n } from '../../../i18n';
+import { formatDate } from '../../../dates/format';
 import type { ParsedTransaction } from '../../../statement-import/parser';
 
 import ExampleTransaction from './example-transaction.component';
@@ -38,18 +40,42 @@ describe('ExampleTransaction', () => {
   });
 
   // Item 4: the example transaction uses the existing TRANSACTION CARD
-  // component, with the "transaction" money context so an income preview
-  // reads with the same income color a Home row would.
-  it('renders through TransactionCard with the transaction money context', async () => {
+  // component (no `moneyContext` prop any more — TransactionCard always
+  // renders the "transaction" context itself, F3 fix round 2, N5).
+  it('renders through TransactionCard with a resolved category icon/color', async () => {
     await render(<ExampleTransaction transaction={transaction} />);
 
     expect(mockTransactionCard).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Coffee shop',
-        moneyContext: 'transaction',
         categoryIcon: expect.any(String),
         categoryIconColor: expect.any(String),
       }),
+    );
+  });
+
+  // F3 fix round 2, N3: the footer shows the category and the row's own
+  // date — the user's only per-row check of the chosen date format/column.
+  it('shows the category and the row date in the footer', async () => {
+    await render(<ExampleTransaction transaction={transaction} />);
+
+    const props = mockTransactionCard.mock.calls.at(-1)?.[0];
+    expect(props.footerMeta).toEqual(expect.any(String));
+    expect(props.footerTrailing).toBe(formatDate(transaction.timeSeconds * 1000));
+  });
+
+  // F3 fix round 2, N3: an empty mapped description falls back to the same
+  // income/expense default label Home falls back to — never a blank title.
+  it('falls back to the income/expense default title when the description is empty', async () => {
+    const blankDescription: ParsedTransaction = { ...transaction, description: '' };
+
+    await render(<ExampleTransaction transaction={blankDescription} holdingName="Black card" />);
+
+    const props = mockTransactionCard.mock.calls.at(-1)?.[0];
+    expect(props.title).not.toBe('');
+    // A negative amount is an expense — the same sign rule Home uses.
+    expect(props.title).toBe(
+      i18n.t('transactions.defaultDescriptionExpense', { name: 'Black card' }),
     );
   });
 

@@ -39,7 +39,6 @@ describe('TransactionCard', () => {
         categoryIconColor="#C8A951"
         categoryAccessibilityLabel="Income"
         money={Money.of('UAH', 50_000)}
-        moneyContext="transaction"
       />,
     );
 

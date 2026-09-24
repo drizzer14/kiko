@@ -24,7 +24,7 @@ const ROW_ERROR_PREVIEW_COUNT = 20;
  * the mapping is complete or not, instead of jumping when the last required
  * column gets mapped.
  */
-const MappingResult: FC<MappingResultProps> = ({ stats, rowErrors }) => {
+const MappingResult: FC<MappingResultProps> = ({ stats, rowErrors, holdingName }) => {
   const { t } = useTranslation();
   const visibleRowErrors = rowErrors.slice(0, ROW_ERROR_PREVIEW_COUNT);
   const overflowCount = rowErrors.length - visibleRowErrors.length;
@@ -61,7 +61,9 @@ const MappingResult: FC<MappingResultProps> = ({ stats, rowErrors }) => {
             ]}
           />
 
-          {stats.firstTransaction && <ExampleTransaction transaction={stats.firstTransaction} />}
+          {stats.firstTransaction && (
+            <ExampleTransaction transaction={stats.firstTransaction} holdingName={holdingName} />
+          )}
 
           {visibleRowErrors.length > 0 && (
             <Box gap={1} testID="column-mapping-row-errors">

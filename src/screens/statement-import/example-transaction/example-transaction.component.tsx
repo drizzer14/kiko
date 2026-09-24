@@ -10,12 +10,14 @@ import {
 import { Money } from '../../../currency/money';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
+import { formatDate } from '../../../dates/format';
 import { categoriesRepo } from '../../../categories/repo';
 import { useLiveQuery } from '../../../db/use-live-query';
 import { settingsRepo } from '../../../settings/settings.repo';
 import Divider from '../../../design-system/components/divider';
 import { categoryForMcc } from '../../../monobank/mcc-category';
 import TransactionCard from '../../home/transaction-row/transaction-card';
+import { transactionRowDescription } from '../../../transactions/row-description';
 import { resolveCategoryColor } from '../../../statistics/category-breakdown';
 
 import type { ExampleTransactionProps } from './example-transaction.props';
@@ -30,10 +32,19 @@ import type { ExampleTransactionProps } from './example-transaction.props';
  * row's own `mcc` via `categoryForMcc` (the same key `mapParsedTransaction`
  * writes), resolved through the live categories table exactly as Home
  * resolves a real row's category, so an income preview row shows the same
- * icon and income color a Home row would. Owns its own `Divider`s above and
- * below (F3 item 5), so a caller renders just `<ExampleTransaction ... />`.
+ * icon and income color a Home row would. The title resolves through the
+ * SAME `transactionRowDescription` Home uses (F3 fix round 2, N3) — an
+ * empty mapped description falls back to the income/expense default label
+ * instead of rendering blank; `exchangeCounterpartHoldingId` is always
+ * `null` here (an import never creates an exchange-marked row). The footer
+ * shows the category title and the row's own date (`formatDate`) — the
+ * user's only per-row check that the chosen date format/column is right —
+ * reusing `TransactionCard`'s existing optional `footerMeta`/
+ * `footerTrailing` props, so Home (which passes its own footer content) is
+ * unaffected. Owns its own `Divider`s above and below (F3 item 5), so a
+ * caller renders just `<ExampleTransaction ... />`.
  */
-const ExampleTransaction: FC<ExampleTransactionProps> = ({ transaction, testID }) => {
+const ExampleTransaction: FC<ExampleTransactionProps> = ({ transaction, holdingName, testID }) => {
   const { t } = useTranslation();
   const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
@@ -42,6 +53,16 @@ const ExampleTransaction: FC<ExampleTransactionProps> = ({ transaction, testID }
   const rawCategory = transaction.mcc !== undefined ? categoryForMcc(transaction.mcc) : null;
   const category = resolveCategoryDisplay(rawCategory, categoryByKey, defaultCategoryKey);
   const categoryKey = resolveCategoryKey(rawCategory, categoryByKey, defaultCategoryKey);
+  const title = transactionRowDescription({
+    transaction: {
+      description: transaction.description,
+      amountMinorUnits: transaction.amountMinorUnits,
+      exchangeCounterpartHoldingId: null,
+    },
+    holdingName: holdingName ?? '',
+    holdingNameById: new Map(),
+    t,
+  });
 
   return (
     <Box gap={3} testID={testID}>
@@ -53,12 +74,13 @@ const ExampleTransaction: FC<ExampleTransactionProps> = ({ transaction, testID }
         </Text>
 
         <TransactionCard
-          title={transaction.description}
+          title={title}
           categoryIcon={category.icon}
           categoryIconColor={resolveCategoryColor(category.color, categoryKey)}
           categoryAccessibilityLabel={category.title}
           money={Money.of(transaction.currency, transaction.amountMinorUnits)}
-          moneyContext="transaction"
+          footerMeta={category.title}
+          footerTrailing={formatDate(transaction.timeSeconds * 1000)}
         />
       </Box>
 
