@@ -59,15 +59,18 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   // drag-and-drop grid below the main one — never mixed into it, so a drag
   // reorder in either grid can only ever reorder within that same section
   // (`Sortable.Grid`'s `data` is scoped per grid). Both stay in the query's
-  // `sortOrder` order, same as the single grid did before this split.
-  const mainAccounts = useMemo(
-    () => activeAccounts.filter((account) => account.kind !== 'debt'),
-    [activeAccounts],
-  );
-  const debtAccounts = useMemo(
-    () => activeAccounts.filter((account) => account.kind === 'debt'),
-    [activeAccounts],
-  );
+  // `sortOrder` order, same as the single grid did before this split. One
+  // partition pass over `activeAccounts` rather than two separate filters.
+  const { mainAccounts, debtAccounts } = useMemo(() => {
+    const main: typeof activeAccounts = [];
+    const debt: typeof activeAccounts = [];
+
+    for (const account of activeAccounts) {
+      (account.kind === 'debt' ? debt : main).push(account);
+    }
+
+    return { mainAccounts: main, debtAccounts: debt };
+  }, [activeAccounts]);
 
   // Group every open holding by its account id in ONE O(H) pass, so each card
   // indexes into this map instead of re-filtering all holdings per card — the
@@ -174,6 +177,38 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     );
   };
 
+  // A single-column drag-and-drop grid of wide account cards, shared by the
+  // main grid and the Debts grid below — the two differ only in which
+  // accounts they list and how a reorder is persisted (I1: each must
+  // splice its own new order back into the FULL account list, never just
+  // its own section's ids — see the two `persistOrder` callers below).
+  const renderGrid = (
+    data: typeof activeAccounts,
+    persistOrder: (orderedIds: string[]) => void,
+  ) => (
+    <Sortable.Grid
+      data={data}
+      sortEnabled={data.length > 1}
+      // A subtle lift on touch-and-hold: the library default (1.1) pops the
+      // card up too much, so scale it just barely (see the account-detail
+      // grid, which uses the same value).
+      activeItemScale={1.03}
+      columns={1}
+      // Keep a dragged card on its vertical axis — a single column has no
+      // horizontal move to make, so the library default ('both') only lets a
+      // card wander sideways off the list.
+      overDrag="vertical"
+      rowGap={theme.spacing(4)}
+      scrollableRef={scrollableRef}
+      autoScrollActivationOffset={75}
+      keyExtractor={(account) => account.id}
+      renderItem={({ item }) => renderAccountCard(item)}
+      onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
+        onGridDragEnd({ fromIndex, toIndex, indexToKey }, persistOrder)
+      }
+    />
+  );
+
   return (
     <Screen
       scroll
@@ -204,39 +239,19 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
               // drags to reorder — see `CardContextMenu` and `onGridDragEnd`. `scrollableRef`
               // + `autoScrollActivationOffset` let a drag near an edge scroll the
               // parent list (F9).
+              // I1 (T27 round 1): `accountsRepo.reorder` rewrites `sortOrder`
+              // for ONLY the ids it is given. Persisting just this grid's own
+              // reordered ids would restart both sections at 0, so a later
+              // read of the FULL account list (Statistics' account filter,
+              // the transaction-form account rank, Home, statement import —
+              // every other `listQuery` consumer) interleaves the two
+              // sections instead of keeping assets first, then debts. Always
+              // persist the WHOLE order: this grid's new order, then every
+              // debt account's id unchanged.
               <Box testID="accounts-grid">
-                <Sortable.Grid
-                  data={mainAccounts}
-                  sortEnabled={mainAccounts.length > 1}
-                  // A subtle lift on touch-and-hold: the library default (1.1) pops
-                  // the card up too much, so scale it just barely (see the account-
-                  // detail grid, which uses the same value).
-                  activeItemScale={1.03}
-                  columns={1}
-                  // Keep a dragged card on its vertical axis — a single column has no
-                  // horizontal move to make, so the library default ('both') only lets
-                  // a card wander sideways off the list.
-                  overDrag="vertical"
-                  rowGap={theme.spacing(4)}
-                  scrollableRef={scrollableRef}
-                  autoScrollActivationOffset={75}
-                  keyExtractor={(account) => account.id}
-                  renderItem={({ item }) => renderAccountCard(item)}
-                  // I1 (T27 round 1): `accountsRepo.reorder` rewrites `sortOrder`
-                  // for ONLY the ids it is given. Persisting just this grid's own
-                  // reordered ids would restart both sections at 0, so a later
-                  // read of the FULL account list (Statistics' account filter,
-                  // the transaction-form account rank, Home, statement import —
-                  // every other `listQuery` consumer) interleaves the two
-                  // sections instead of keeping assets first, then debts. Always
-                  // persist the WHOLE order: this grid's new order, then every
-                  // debt account's id unchanged.
-                  onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
-                    onGridDragEnd({ fromIndex, toIndex, indexToKey }, (ids) =>
-                      accountsRepo.reorder([...ids, ...debtAccounts.map((account) => account.id)]),
-                    )
-                  }
-                />
+                {renderGrid(mainAccounts, (ids) =>
+                  accountsRepo.reorder([...ids, ...debtAccounts.map((account) => account.id)]),
+                )}
               </Box>
             )}
 
@@ -256,29 +271,12 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                     </Box>
                   </Box>
                   <Box testID="accounts-debts-grid">
-                    <Sortable.Grid
-                      data={debtAccounts}
-                      sortEnabled={debtAccounts.length > 1}
-                      activeItemScale={1.03}
-                      columns={1}
-                      overDrag="vertical"
-                      rowGap={theme.spacing(4)}
-                      scrollableRef={scrollableRef}
-                      autoScrollActivationOffset={75}
-                      keyExtractor={(account) => account.id}
-                      renderItem={({ item }) => renderAccountCard(item)}
-                      // I1: the mirror of the main grid's fix above — persist
-                      // every main account's id unchanged, then this grid's new
-                      // order, so the two sections never collide on sortOrder.
-                      onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
-                        onGridDragEnd({ fromIndex, toIndex, indexToKey }, (ids) =>
-                          accountsRepo.reorder([
-                            ...mainAccounts.map((account) => account.id),
-                            ...ids,
-                          ]),
-                        )
-                      }
-                    />
+                    {/* I1: the mirror of the main grid's fix above — persist every
+                        main account's id unchanged, then this grid's new order, so
+                        the two sections never collide on sortOrder. */}
+                    {renderGrid(debtAccounts, (ids) =>
+                      accountsRepo.reorder([...mainAccounts.map((account) => account.id), ...ids]),
+                    )}
                   </Box>
                 </Box>
               </>
