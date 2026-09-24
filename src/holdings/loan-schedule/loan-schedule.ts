@@ -168,6 +168,17 @@ export const loanOutstandingMinorAt = (
  * interest counted is that installment's scheduled interest, capped at the
  * payment's own (absolute) amount — a partial payment can never count more
  * interest than it actually paid.
+ *
+ * M2 (T26 review, carried to T30): a payment MORE THAN ONE PERIOD outside the
+ * schedule counts 0 interest, rather than mapping to the nearest (first/
+ * last) installment regardless of distance — a payment years before the loan
+ * even started, or years after it was fully paid off, is not this loan's
+ * interest. "One period" is the same monthly cadence every due date is built
+ * from (`addMonths(startDate, k)`): one period before the first installment
+ * is `addMonths(startDate, 0)` (= `startDate` itself), one period after the
+ * last is `addMonths(startDate, installments.length + 1)`. Both bounds are
+ * INCLUSIVE — a payment exactly on one still maps to its boundary
+ * installment, only a payment strictly beyond it counts 0.
  */
 export const loanInterestForPaymentMinor = (
   meta: LoanMeta,
@@ -181,6 +192,13 @@ export const loanInterestForPaymentMinor = (
   }
 
   const paymentDayKey = dayKeyOf(paymentTime);
+  const lowerBoundDayKey = dayKeyOf(addMonths(meta.startDate, 0));
+  const upperBoundDayKey = dayKeyOf(addMonths(meta.startDate, installments.length + 1));
+
+  if (paymentDayKey < lowerBoundDayKey || paymentDayKey > upperBoundDayKey) {
+    return 0;
+  }
+
   const nearest = installments.reduce((closest, candidate) =>
     Math.abs(dayKeyOf(candidate.dueDate) - paymentDayKey) <
     Math.abs(dayKeyOf(closest.dueDate) - paymentDayKey)

@@ -1,3 +1,4 @@
+import { addMonths } from '../interest';
 import type { LoanMeta } from '../holding-metadata';
 import { holdingInstrument } from '../../prices/instrument';
 import { buildPriceBook, dayKeyOf, EMPTY_PRICE_BOOK } from '../../prices/price-book';
@@ -288,6 +289,40 @@ describe('loanInterestForPaymentMinor', () => {
     const paymentDay = addDays(hundredth.dueDate, -2);
     expect(loanInterestForPaymentMinor(annuityMeta, paymentDay, 10_000_000)).toBe(
       hundredth.interestMinorUnits,
+    );
+  });
+
+  // M2 (T26 review, carried to T30): a payment more than ONE PERIOD outside
+  // the schedule counts 0 interest, rather than mapping to the nearest
+  // (first/last) installment regardless of distance. "One period" is the
+  // same monthly cadence `loanInstallments` builds each due date from
+  // (`addMonths(startDate, k)`): one period before the first installment is
+  // `addMonths(startDate, 0)` (= `startDate` itself), one period after the
+  // last is `addMonths(startDate, termMonths + 1)`.
+  it('M2: a payment more than one period before the first installment counts 0 interest', () => {
+    const beforeLowerBound = addDays(annuityMeta.startDate, -1);
+    expect(loanInterestForPaymentMinor(annuityMeta, beforeLowerBound, 10_000_000)).toBe(0);
+  });
+
+  it('M2: a payment more than one period after the last installment counts 0 interest', () => {
+    const installments = loanInstallments(annuityMeta);
+    const upperBound = addMonths(annuityMeta.startDate, installments.length + 1);
+    const afterUpperBound = addDays(upperBound, 1);
+    expect(loanInterestForPaymentMinor(annuityMeta, afterUpperBound, 10_000_000)).toBe(0);
+  });
+
+  it('M2: a payment exactly one period before the first installment still maps to it (boundary is inclusive)', () => {
+    const installments = loanInstallments(annuityMeta);
+    expect(loanInterestForPaymentMinor(annuityMeta, annuityMeta.startDate, 10_000_000)).toBe(
+      installments[0].interestMinorUnits,
+    );
+  });
+
+  it('M2: a payment exactly one period after the last installment still maps to it (boundary is inclusive)', () => {
+    const installments = loanInstallments(annuityMeta);
+    const upperBound = addMonths(annuityMeta.startDate, installments.length + 1);
+    expect(loanInterestForPaymentMinor(annuityMeta, upperBound, 10_000_000)).toBe(
+      installments[installments.length - 1].interestMinorUnits,
     );
   });
 });
