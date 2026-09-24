@@ -203,8 +203,19 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                   autoScrollActivationOffset={75}
                   keyExtractor={(account) => account.id}
                   renderItem={({ item }) => renderAccountCard(item)}
+                  // I1 (T27 round 1): `accountsRepo.reorder` rewrites `sortOrder`
+                  // for ONLY the ids it is given. Persisting just this grid's own
+                  // reordered ids would restart both sections at 0, so a later
+                  // read of the FULL account list (Statistics' account filter,
+                  // the transaction-form account rank, Home, statement import —
+                  // every other `listQuery` consumer) interleaves the two
+                  // sections instead of keeping assets first, then debts. Always
+                  // persist the WHOLE order: this grid's new order, then every
+                  // debt account's id unchanged.
                   onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
-                    onGridDragEnd({ fromIndex, toIndex, indexToKey }, accountsRepo.reorder)
+                    onGridDragEnd({ fromIndex, toIndex, indexToKey }, (ids) =>
+                      accountsRepo.reorder([...ids, ...debtAccounts.map((account) => account.id)]),
+                    )
                   }
                 />
               </Box>
@@ -232,8 +243,16 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                       autoScrollActivationOffset={75}
                       keyExtractor={(account) => account.id}
                       renderItem={({ item }) => renderAccountCard(item)}
+                      // I1: the mirror of the main grid's fix above — persist
+                      // every main account's id unchanged, then this grid's new
+                      // order, so the two sections never collide on sortOrder.
                       onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
-                        onGridDragEnd({ fromIndex, toIndex, indexToKey }, accountsRepo.reorder)
+                        onGridDragEnd({ fromIndex, toIndex, indexToKey }, (ids) =>
+                          accountsRepo.reorder([
+                            ...mainAccounts.map((account) => account.id),
+                            ...ids,
+                          ]),
+                        )
                       }
                     />
                   </Box>

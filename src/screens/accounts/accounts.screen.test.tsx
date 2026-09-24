@@ -506,9 +506,19 @@ describe('AccountsScreen', () => {
       expect(within(debtsGrid).getByText('Mortgage')).toBeTruthy();
     });
 
-    it('persists a reorder within the Debts section separately from the main grid', async () => {
+    // I1 (T27 round 1): a Debts-section drag must persist the FULL account
+    // order (main accounts first, then the debts section), never just its
+    // own section's ids starting back at 0 — otherwise every OTHER screen
+    // that lists all accounts (Statistics' account filter, the
+    // transaction-form account rank, Home, statement import) interleaves the
+    // two sections instead of keeping assets first, then debts.
+    it('persists the FULL account order (main accounts first, then debts) when the Debts grid is reordered', async () => {
       setLiveData({
-        accounts: [debtAccount(), debtAccount({ id: 'e', name: 'Car loan' })],
+        accounts: [
+          { id: 'a', name: 'Monobank', kind: 'bank' },
+          debtAccount(),
+          debtAccount({ id: 'e', name: 'Car loan' }),
+        ],
         holdings: [loanHolding(), loanHolding({ accountId: 'e' })],
       });
 
@@ -524,7 +534,32 @@ describe('AccountsScreen', () => {
         });
       });
 
-      expect(mockAccountReorder).toHaveBeenCalledWith(['e', 'd']);
+      expect(mockAccountReorder).toHaveBeenCalledWith(['a', 'e', 'd']);
+    });
+
+    it('persists the FULL account order (main accounts, then debts unchanged) when the main grid is reordered', async () => {
+      setLiveData({
+        accounts: [
+          { id: 'a', name: 'Monobank', kind: 'bank' },
+          { id: 'c', name: 'Privat', kind: 'bank' },
+          debtAccount(),
+        ],
+        holdings: [loanHolding()],
+      });
+
+      const { getByTestId } = await renderAccounts();
+      const mainGrid = within(getByTestId('accounts-grid')).getByTestId('sortable-grid');
+
+      await act(async () => {
+        mainGrid.props.onDragEnd({
+          key: 'c',
+          fromIndex: 1,
+          toIndex: 0,
+          indexToKey: ['c', 'a'],
+        });
+      });
+
+      expect(mockAccountReorder).toHaveBeenCalledWith(['c', 'a', 'd']);
     });
   });
 
