@@ -12,6 +12,7 @@ jest.mock('../db/client', () => {
 });
 
 import { captureSetTx } from '@kiko/db/capture-set-tx';
+import { renderCondition } from '@kiko/db/render-condition-test-helper';
 import { inArrayClauseFromCondition } from '@kiko/db/in-array-clause-test-helper';
 
 import { accounts, holdings, transactions } from '../db/schema';
@@ -146,13 +147,32 @@ describe('accountsRepo', () => {
     // (allMax === debtMin here — the debt account is the current maximum).
     // A naive max+1 would give the new asset account sortOrder 2 too,
     // colliding with (and sorting no earlier than) the existing debt account.
+    // candidate(2) - debtMin(2) + 1 = 1: the contiguous case still shifts by
+    // exactly one, same as before this became gap-aware.
     const { tx, inserts, updates } = makeCreateTx(1, 2, 2);
     mockTx = tx;
 
     await accountsRepo.create({ name: 'Savings', kind: 'bank' });
 
     expect(inserts[0]).toMatchObject({ sortOrder: 2 });
-    expect(updates).toEqual([{ set: { sortOrder: expect.anything() }, whereCalled: true }]);
+    expect(updates).toHaveLength(1);
+    expect(updates[0].whereCalled).toBe(true);
+    expect(renderCondition(updates[0].set.sortOrder).params).toEqual([1]);
+  });
+
+  it('create shifts every debt by the exact gap needed when an asset already sorts at or after the first debt (non-contiguous)', async () => {
+    // An archived asset (never touched by `reorder`, which rewrites only
+    // active ids) can sit at the SAME sortOrder as the first debt account —
+    // assetMax and debtMin both land on 2, so the new asset's candidate slot
+    // (3) is already past the naive +1 shift a contiguous block would need.
+    // candidate(3) - debtMin(2) + 1 = 2.
+    const { tx, inserts, updates } = makeCreateTx(2, 2, 2);
+    mockTx = tx;
+
+    await accountsRepo.create({ name: 'Checking', kind: 'bank' });
+
+    expect(inserts[0]).toMatchObject({ sortOrder: 3 });
+    expect(renderCondition(updates[0].set.sortOrder).params).toEqual([2]);
   });
 
   it('create inserts a new asset account at max(asset) + 1 with no shift when it does not reach the debt block', async () => {
@@ -179,6 +199,83 @@ describe('accountsRepo', () => {
 
     expect(inserts[0]).toMatchObject({ sortOrder: 5 });
     expect(updates).toEqual([]);
+  });
+
+  // A real archive-then-reorder flow: `reorder` rewrites only the ACTIVE ids
+  // it is given, so an archived account keeps its old `sortOrder` and can end
+  // up tied with (or past) the first debt account's own slot — the shape the
+  // mock-shape-only tests above cannot exercise. This drives the real
+  // aggregate + shift SQL against a fake store (applying the update's actual
+  // delta, not a stubbed one) and asserts the FINAL `listQuery` order —
+  // `orderBy(sortOrder, createdAt)` — rather than the shift's shape.
+  describe('a new asset always sorts before every debt in the real resulting order', () => {
+    type StoreAccount = { id: string; kind: string; sortOrder: number; archived: boolean };
+
+    const makeRealOrderTx = (store: StoreAccount[]): unknown => ({
+      select: (fields: Record<string, unknown>) => ({
+        from: () => {
+          if (!('assetMax' in fields)) {
+            return Promise.resolve([]);
+          }
+          const assetRows = store.filter((row) => row.kind !== 'debt');
+          const debtRows = store.filter((row) => row.kind === 'debt');
+          const assetMax = assetRows.reduce((max, row) => Math.max(max, row.sortOrder), -1);
+          const allMax = store.reduce((max, row) => Math.max(max, row.sortOrder), -1);
+          const debtMin =
+            debtRows.length > 0 ? Math.min(...debtRows.map((row) => row.sortOrder)) : null;
+
+          return Promise.resolve([{ assetMax, debtMin, allMax }]);
+        },
+      }),
+      insert: () => ({
+        values: (values: Record<string, unknown>) => {
+          store.push({
+            id: values.id as string,
+            kind: values.kind as string,
+            sortOrder: values.sortOrder as number,
+            archived: false,
+          });
+
+          return Promise.resolve();
+        },
+      }),
+      update: () => ({
+        set: (values: Record<string, unknown>) => ({
+          where: () => {
+            const delta = renderCondition(values.sortOrder).params[0] as number;
+            for (const row of store) {
+              if (row.kind === 'debt') {
+                row.sortOrder += delta;
+              }
+            }
+
+            return Promise.resolve();
+          },
+        }),
+      }),
+    });
+
+    it('lands strictly before the debt block even with an archived account interleaved at the same sortOrder', async () => {
+      // B0, A1, D2 (debt), X2 (archived asset, tied with D — never rewritten
+      // by `reorder`): exactly the shape a real archive-then-reorder flow
+      // leaves behind.
+      const store: StoreAccount[] = [
+        { id: 'B', kind: 'bank', sortOrder: 0, archived: false },
+        { id: 'A', kind: 'bank', sortOrder: 1, archived: false },
+        { id: 'D', kind: 'debt', sortOrder: 2, archived: false },
+        { id: 'X', kind: 'bank', sortOrder: 2, archived: true },
+      ];
+      mockTx = makeRealOrderTx(store);
+
+      await accountsRepo.create({ id: 'C', name: 'Checking', kind: 'bank' });
+
+      const activeOrder = store
+        .filter((row) => !row.archived)
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((row) => row.id);
+
+      expect(activeOrder).toEqual(['B', 'A', 'C', 'D']);
+    });
   });
 
   it('create honors an explicitly provided id (a caller that pre-generated it)', async () => {

@@ -10,24 +10,15 @@ import { type AccountRow, accounts, holdings, transactions } from '../db/schema'
 import { isSyncedAccount, type SyncedInstitution } from '../holdings/deletable';
 import { SYNCED_AT_FIELD } from '../holdings/holding-metadata';
 
-// The next free grid slot for a new account, one past the current highest
-// relevant `sortOrder` (or 0 when there are no accounts yet) — read inside
-// the same write transaction as the insert so a concurrent create cannot
-// observe a stale maximum. A new DEBT account appends after EVERY existing
-// account (`allMax + 1`, same as before this ever became kind-aware): the
-// Debts section already renders last, so tying with it here is harmless.
-//
-// A new ASSET account (any kind but `debt`) must never land AFTER an
-// existing debt account (T27 re-review round 1, item 6): `accountsRepo`'s
-// own "assets first, then debts" persisted order (`accountsRepo.reorder`,
-// `accounts.screen.tsx`) is otherwise only restored by the user's NEXT drag
-// reorder, so a freshly created asset account would sort into the Debts
-// section (or, in `listQuery`, after it) until then. `assetMax + 1` is
-// therefore only a CANDIDATE slot; when it would land at or after the
-// earliest debt account's `sortOrder` (`debtMin`), every debt account's
-// `sortOrder` is shifted up by one first, making room for the candidate to
-// land strictly before all of them. One combined query (not two round
-// trips) answers `assetMax`/`debtMin`/`allMax` together.
+// The next free grid slot for a new account, read inside the same write
+// transaction as the insert so a concurrent create cannot observe a stale
+// maximum. A new DEBT account appends after every account (`allMax + 1`). A
+// new ASSET account must sort before every debt account's `listQuery`
+// position (`accountsRepo.reorder` normally keeps assets first, but only
+// rewrites ACTIVE ids, so an archived row can leave `assetMax` tied with or
+// past `debtMin`): when the candidate slot would collide, every debt
+// account is shifted up by exactly enough room — `candidate - debtMin + 1`,
+// not a flat `+ 1` — to clear the WHOLE gap, not just a contiguous one.
 const nextSortOrder = async (tx: typeof database, kind: AccountRow['kind']): Promise<number> => {
   const rows = await tx
     .select({
@@ -50,7 +41,7 @@ const nextSortOrder = async (tx: typeof database, kind: AccountRow['kind']): Pro
   if (debtMin !== null && debtMin !== undefined && candidate >= debtMin) {
     await tx
       .update(accounts)
-      .set({ sortOrder: sql`${accounts.sortOrder} + 1` })
+      .set({ sortOrder: sql`${accounts.sortOrder} + ${candidate - debtMin + 1}` })
       .where(eq(accounts.kind, 'debt'));
   }
 
