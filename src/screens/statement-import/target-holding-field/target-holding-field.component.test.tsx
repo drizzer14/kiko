@@ -58,6 +58,24 @@ describe('TargetHoldingField', () => {
     expect(getByText('Dollar jar')).toBeTruthy();
   });
 
+  // F3 item 3: the trigger shows the SELECTED holding's own icon.
+  it('shows the selected holding’s own icon on the trigger', async () => {
+    const { toJSON } = await render(
+      <TargetHoldingField
+        label="Choose a holding"
+        holdings={holdings}
+        accountId="a"
+        selectedId="h2"
+        onSelect={jest.fn()}
+        onCreateNew={jest.fn()}
+      />,
+    );
+
+    // The mocked SFSymbolView forwards `name` to a host View, so the
+    // selected holding's icon name appears in the rendered tree.
+    expect(JSON.stringify(toJSON())).toContain('rectangle.portrait');
+  });
+
   it('opens the holding sheet on tap and reports a pick through onSelect', async () => {
     const onSelect = jest.fn();
     const view = await render(

@@ -112,6 +112,27 @@ describe('TargetHoldingSheet', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'a' });
   });
 
+  // F3 item 3: the sheet shows each holding's own icon, like every other
+  // holding picker.
+  it('shows each holding’s own icon', async () => {
+    const view = await render(
+      <TargetHoldingSheet
+        visible
+        onDismiss={jest.fn()}
+        holdings={holdings}
+        accountId="a"
+        onSelect={jest.fn()}
+        onCreateNew={jest.fn()}
+      />,
+    );
+
+    // The mocked SFSymbolView forwards `name` to a host View, so each
+    // holding's own icon name appears in the rendered tree.
+    const tree = JSON.stringify(view.toJSON());
+    expect(tree).toContain('creditcard');
+    expect(tree).toContain('rectangle.portrait');
+  });
+
   it('renders nothing when not visible', async () => {
     const view = await render(
       <TargetHoldingSheet
