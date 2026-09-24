@@ -7,6 +7,24 @@ import { bankIds } from '../../../bank-sync/bank-catalog';
 
 import BankTypeField from '.';
 
+// Renders the field with nothing selected and opens its sheet — the shared
+// setup every per-bank it.each test below starts from.
+const renderOpenSheet = async () => {
+  const onSelect = jest.fn();
+  const utils = await render(
+    <BankTypeField
+      label="Bank type"
+      selected={null}
+      onSelect={onSelect}
+      testID="bank-type-field"
+    />,
+  );
+
+  await fireEvent.press(utils.getByTestId('bank-type-field'));
+
+  return utils;
+};
+
 describe('BankTypeField', () => {
   // F4 item 3: "Free" is the DEFAULT option, shown as a real value the
   // instant nothing else is picked — never a placeholder.
@@ -171,17 +189,7 @@ describe('BankTypeField', () => {
   });
 
   it("sizes the capability icons at the caption icon-size step (one step down from round-3's body)", async () => {
-    const onSelect = jest.fn();
-    const { getByTestId } = await render(
-      <BankTypeField
-        label="Bank type"
-        selected={null}
-        onSelect={onSelect}
-        testID="bank-type-field"
-      />,
-    );
-
-    await fireEvent.press(getByTestId('bank-type-field'));
+    const { getByTestId } = await renderOpenSheet();
 
     expect(getByTestId('bank-type-option-monobank-connect-icon').props.size).toBe(
       darkTheme.iconSizes.caption,
@@ -198,17 +206,7 @@ describe('BankTypeField', () => {
   // shown on EVERY catalog bank — a sync-connectable bank, one with a
   // dedicated statement format, and a column-mapping-only bank all get it.
   it.each(bankIds)('shows the column-mapping capability icon on %s', async (bankId) => {
-    const onSelect = jest.fn();
-    const { getByTestId } = await render(
-      <BankTypeField
-        label="Bank type"
-        selected={null}
-        onSelect={onSelect}
-        testID="bank-type-field"
-      />,
-    );
-
-    await fireEvent.press(getByTestId('bank-type-field'));
+    const { getByTestId } = await renderOpenSheet();
 
     expect(getByTestId(`bank-type-option-${bankId}-column-mapping-icon`).props.name).toBe(
       'increase.indent',
@@ -216,17 +214,7 @@ describe('BankTypeField', () => {
   });
 
   it('shows the not-a-bank disclaimer as a caption on the bank-selection sheet', async () => {
-    const onSelect = jest.fn();
-    const { getByTestId, getByText } = await render(
-      <BankTypeField
-        label="Bank type"
-        selected={null}
-        onSelect={onSelect}
-        testID="bank-type-field"
-      />,
-    );
-
-    await fireEvent.press(getByTestId('bank-type-field'));
+    const { getByText } = await renderOpenSheet();
 
     expect(
       getByText(
@@ -235,34 +223,31 @@ describe('BankTypeField', () => {
     ).toBeTruthy();
   });
 
-  it.each([
-    'privatbank',
-    'sensebank',
-    'procredit',
-    'ukrsib',
-    'alfa',
-    'pumb',
-    'oschadbank',
-    'raiffeisen',
-    'ukrgasbank',
-  ])(
-    "shows %s's description with the statements icon ONLY (no sync icon, honest import-only)",
+  it.each(['privatbank', 'sensebank', 'procredit', 'ukrsib', 'alfa'])(
+    "shows %s's description with the statements icon (a dedicated statementFormatId), no sync icon",
     async (bankId) => {
-      const onSelect = jest.fn();
-      const { getByTestId } = await render(
-        <BankTypeField
-          label="Bank type"
-          selected={null}
-          onSelect={onSelect}
-          testID="bank-type-field"
-        />,
-      );
-
-      await fireEvent.press(getByTestId('bank-type-field'));
+      const { getByTestId } = await renderOpenSheet();
 
       const optionTree = JSON.stringify(getByTestId(`bank-type-option-${bankId}`).toJSON());
       expect(optionTree).toContain('receipt');
       expect(optionTree).not.toContain('arrow.trianglehead.2.clockwise.rotate.90');
+    },
+  );
+
+  // Each capability icon stands for exactly one real capability — `receipt`
+  // means a known, dedicated statement format. A bank with no
+  // `statementFormatId` (column-mapping only) must not show it, or the icon
+  // would imply a capability the bank doesn't actually have.
+  it.each(['pumb', 'oschadbank', 'raiffeisen', 'ukrgasbank'])(
+    'does not show the receipt icon on %s (no dedicated statementFormatId — column-mapping only)',
+    async (bankId) => {
+      const { getByTestId } = await renderOpenSheet();
+
+      const optionTree = JSON.stringify(getByTestId(`bank-type-option-${bankId}`).toJSON());
+      expect(optionTree).not.toContain('receipt');
+      expect(optionTree).not.toContain('arrow.trianglehead.2.clockwise.rotate.90');
+      // Column mapping is still shown — the bank's only real import path.
+      expect(optionTree).toContain('increase.indent');
     },
   );
 });

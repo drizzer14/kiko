@@ -188,8 +188,8 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
   // Save stays disabled until the draft differs from the applied filter, so
   // pressing it can never re-persist the already-applied selection unchanged.
   const dirty = isDraftDirty(draft, filter);
-  // ChipRow (decision 24's merged chips component) takes a `labels` record,
-  // not a function — `measureLabel` stays a function for the button-label
+  // ChipRow takes a `labels` record, not a function — `measureLabel` stays a
+  // function for the button-label
   // interpolation above, and this is its one-time resolution into a record
   // for the By pills below.
   const measureLabels: Record<TrendMeasure, string> = {

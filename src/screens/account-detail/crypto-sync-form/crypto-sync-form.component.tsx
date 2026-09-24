@@ -47,13 +47,13 @@ const CryptoSyncForm: FC<CryptoSyncFormProps> = ({
 
   return (
     <Box gap={3}>
-      {/* F4 Q2 sweep (decision 14): Wallet vs Binance swaps which credential
-          field renders below (WalletAddressField / BinanceCredentialsField),
-          so this is a mode toggle, not a same-form value pick — a
-          SegmentedControl, matching the amount/currency mode selectors.
-          SegmentedControl carries no visible label of its own (only the
-          non-visual accessibilityLabel), so the caller composes its own
-          FieldLabel above it, the same way ChipRow/BondIsinSection do. */}
+      {/* Wallet vs Binance swaps which credential field renders below
+          (WalletAddressField / BinanceCredentialsField), so this is a mode
+          toggle, not a same-form value pick — a SegmentedControl, matching
+          the amount/currency mode selectors. SegmentedControl carries no
+          visible label of its own (only the non-visual accessibilityLabel),
+          so the caller composes its own FieldLabel above it, the same way
+          ChipRow/BondIsinSection do. */}
       <Box gap={1}>
         <FieldLabel label={t('accountDetail.sourceLabel')} />
 

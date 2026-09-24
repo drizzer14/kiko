@@ -902,9 +902,9 @@ const StatisticsScreen: FC = () => {
             <PieChart slices={slices} baseCurrency={baseCurrency} />
 
             {!debtTotal.isZero() && (
-              // F4 audit item 17: this used to be a hand-built flexDirection
-              // row; SummaryTable is the shared "label left, value right"
-              // layout every other summary line in the app already uses.
+              // SummaryTable is the shared "label left, value right" layout
+              // every other summary line in the app already uses, rather
+              // than a hand-built flexDirection row.
               <SummaryTable
                 testID="statistics-debts-total"
                 rows={[

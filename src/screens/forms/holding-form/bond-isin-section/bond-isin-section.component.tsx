@@ -108,10 +108,10 @@ const BondIsinSection: FC<BondIsinSectionProps> = ({
       </View>
 
       {mode === 'isin' && foundTerms !== null && (
-        // F4 audit item 12: three "X: value" captions -> the shared
-        // "label left, value right" SummaryTable, the same row layout the
-        // holding-detail value breakdown and the statement-import preview
-        // already use, instead of a one-off stack of colon-joined captions.
+        // Three "X: value" captions render through the shared "label left,
+        // value right" SummaryTable, the same row layout the holding-detail
+        // value breakdown and the statement-import preview already use,
+        // instead of a one-off stack of colon-joined captions.
         <SummaryTable
           testID="bond-isin-summary"
           rows={[
@@ -147,12 +147,12 @@ const BondIsinSection: FC<BondIsinSectionProps> = ({
       )}
 
       {needsCouponFrequencyPick && (
-        // F4 audit item 10: a `ChipRow` with no chip selected read as a
-        // picker nobody had touched yet, not a deliberately blank "no
-        // default" (spec 6.2 forbids guessing one). `SelectField` supports
-        // `selected: null` directly (no more widening the option type to
-        // fake an empty string match) and shows a "Select..." placeholder
-        // in the trigger instead.
+        // A `ChipRow` with no chip selected read as a picker nobody had
+        // touched yet, not a deliberately blank "no default" (spec 6.2
+        // forbids guessing one). `SelectField` supports `selected: null`
+        // directly (no more widening the option type to fake an empty
+        // string match) and shows a "Select..." placeholder in the trigger
+        // instead.
         <SelectField
           label={t('forms.holding.couponFrequency')}
           sheetTitle={t('forms.holding.couponFrequencySheetTitle')}
@@ -169,11 +169,11 @@ const BondIsinSection: FC<BondIsinSectionProps> = ({
 
       {showNotFoundHint && (
         <Box gap={2} testID="bond-isin-not-found">
-          {/* F4 audit item 11: this used to render through the red
-              `FieldError` — a blocking-validation tone for a hint the user
-              can act on (Switch to Manual) rather than a form error to fix
-              in place. The Diia hint two rows below is the exact same
-              caption/textSecondary tone; this now matches it. */}
+          {/* A plain caption, not the red `FieldError` — a blocking-validation
+              tone is wrong for a hint the user can act on (Switch to Manual)
+              rather than a form error to fix in place. The Diia hint two
+              rows below is the exact same caption/textSecondary tone; this
+              matches it. */}
           <Text variant="caption" tone="textSecondary">
             {t(
               registerLoaded

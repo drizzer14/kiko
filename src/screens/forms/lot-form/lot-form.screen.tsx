@@ -223,8 +223,7 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
       <Box gap={4}>
         <Box gap={1}>
           <FieldLabel label={t('forms.lot.type')} />
-          {/* F4 audit item 18, superseded by the Q2 tabs-vs-chips rule
-              (decision 14): Buy/Sell shows/hides the Total cost field below
+          {/* Buy/Sell shows/hides the Total cost field below
               (`direction === 'buy'`), so — unlike a value selection that
               leaves the form the same — this is a mode toggle and takes
               `SegmentedControl`, not a chip row. */}

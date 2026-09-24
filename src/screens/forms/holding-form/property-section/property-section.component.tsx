@@ -10,8 +10,8 @@ import { propertyCategories, type PropertyCategory } from '../../../../holdings/
 import type { PropertySectionProps } from './property-section.props';
 
 // The `property_item` create-form section (T16): a category select field
-// (editable in both create and edit mode; F4 audit item 9 — a `ChipRow` read
-// oversized for 6 long category names, converted to the
+// (editable in both create and edit mode; a `ChipRow` read oversized for 6
+// long category names, converted to the
 // `FieldTrigger`+`BottomSheet`+`SelectableRow` family, same shape as
 // `AccountKindField`) and a Cost field (create-only — see
 // `PropertySectionProps.showCost`'s own doc comment). One lot + one manual

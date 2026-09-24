@@ -271,10 +271,10 @@ export const en = {
       bondKind: 'Bond kind',
       card: 'Card',
       category: 'Category',
-      // F4 audit item 9: the property-category select field's placeholder —
-      // unreachable today (the field always starts with a concrete default
-      // category), kept for the `SelectField` contract's `selected: null`
-      // case, same as every other select field's placeholder.
+      // The property-category select field's placeholder — unreachable
+      // today (the field always starts with a concrete default category),
+      // kept for the `SelectField` contract's `selected: null` case, same as
+      // every other select field's placeholder.
       categoryPlaceholder: 'Select a category',
       // The property-category SelectField's sheet header — Title Case, a
       // distinct string from the sentence-case field label (`category`
@@ -334,8 +334,8 @@ export const en = {
         personal: 'From a person',
       },
       loanKindLabel: 'Loan kind',
-      // F4 audit item 9: the loan-kind select field's placeholder —
-      // unreachable today (see `categoryPlaceholder`'s own doc comment).
+      // The loan-kind select field's placeholder — unreachable today (see
+      // `categoryPlaceholder`'s own doc comment).
       loanKindPlaceholder: 'Select a loan kind',
       // The loan-kind SelectField's sheet header — Title Case, distinct from
       // the sentence-case field label (`loanKindLabel` above).

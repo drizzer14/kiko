@@ -673,13 +673,13 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
 
       <Divider testID="column-mapping-divider-encoding" />
 
-      {/* Group (a): encoding/separators. F4 audit item 4 / Q2 tabs-vs-chips
-          rule: none of encoding, delimiter, or decimal separator changes
-          which fields the form shows — picking a value just re-parses the
-          same preview with the same fields — so all three are `ChipRow`,
-          never `SegmentedControl` (that control is reserved for a choice
-          that swaps the visible form, e.g. the amount/currency mode
-          selectors below). */}
+      {/* Group (a): encoding/separators. The tabs-vs-chips rule: none of
+          encoding, delimiter, or decimal separator changes which fields the
+          form shows — picking a value just re-parses the same preview with
+          the same fields — so all three are `ChipRow`, never
+          `SegmentedControl` (that control is reserved for a choice that
+          swaps the visible form, e.g. the amount/currency mode selectors
+          below). */}
       <Box gap={3}>
         <Text variant="heading">{t('columnMapping.sectionFileFormat')}</Text>
 

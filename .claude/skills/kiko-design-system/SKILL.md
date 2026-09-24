@@ -513,7 +513,8 @@ new component can land between reviews of this skill:
   (mutually exclusive, for a glyph with no SF Symbol form — a currency
   sign or ISO code), an optional trailing node pinned to the row's far
   right and top-aligned to the label (the bank picker's capability
-  icons), and an optional `description` — a second line rendered below
+  icons — see the transparency principle below), and an optional
+  `description` — a second line rendered below
   the label in the SAME leading-slot-aligned column, wrapping onto
   multiple lines rather than truncating, for a subtitle explaining what
   the option means (the account-kind picker's "Real estate, car,
@@ -525,25 +526,36 @@ new component can land between reviews of this skill:
   picker (`FieldTrigger` + `BottomSheet` + a `SelectableRow` per option)
   is the shared "select field" family replacing the older inline
   `ChipRow` for a picker with more than a couple of options.
-  `ModeSelectField`, `BankTypeField`, and `AccountKindField`
-  (`src/screens/forms/`) each hand-roll this exact shape (each carries
-  extra behavior a generic wrapper doesn't cover — `BankTypeField`'s
-  always-first "no bank" row, Guideline-5.6 disclaimer, and dual
-  capability icons; `ModeSelectField`'s `visible` gate); **SelectField**
-  (`src/design-system/components/select-field/`, F4 codebase-review
-  decision 24) is the GENERIC version of the same three's shape —
-  `label`/`options`/`selected` (nullable — see below)/`onSelect`/
-  `labels`/optional `subtitles`/optional `icons`/`placeholder`/
-  `required`/`disabled`/`error`/`testID` — for a new field-plus-sheet
-  picker with no extra behavior of its own: `PropertySection`'s category
-  field and `LoanSection`'s kind field (6 and 4 long option names, too
-  wide for a `ChipRow`) and the Bond form's coupon-frequency picker
-  (`BondIsinSection`) all reach for `SelectField` directly rather than
-  hand-rolling a fourth copy. `SelectField`'s `selected` accepts `null`
-  for a picker that legitimately starts with nothing chosen — the
-  trigger then shows `placeholder` at `textSecondary`, the same "no
-  default" contract a `ChipRow` used to fake by widening its option type
-  to admit a value (`''`) that matches nothing (F4 audit item 10).
+  **SelectField** (`src/design-system/components/select-field/`) is the
+  GENERIC version of this shape — `label`/`sheetTitle`/`options`/
+  `selected` (nullable — see below)/`onSelect`/`labels`/optional
+  `subtitles`/optional `icons`/`placeholder`/`required`/`disabled`/
+  `error`/`testID` — and is now the ONE shared implementation:
+  `PropertySection`'s category field, `LoanSection`'s kind field (6 and
+  4 long option names, too wide for a `ChipRow`), the Bond form's
+  coupon-frequency picker (shared by both `BondIsinSection`'s ISIN-mode
+  unmapped-frequency picker and `ManualBondFields`'s own frequency
+  field), the holding-type picker, `AccountKindField`, and
+  `ModeSelectField` all reach for it directly. `AccountKindField` and
+  `ModeSelectField` (`src/screens/forms/`) are now thin wrappers over
+  `SelectField` — `ModeSelectField` keeps its own caller-side `visible`
+  gate (a convert has no mode toggle at all) ahead of it. `BankTypeField`
+  is the one remaining hand-rolled implementation, kept apart because it
+  carries extra behavior `SelectField` doesn't generalize (an
+  always-first "no bank" row, a Guideline-5.6 disclaimer, and dual
+  capability icons) — retrofitting it onto `SelectField` is a separate,
+  larger task. `sheetTitle` is REQUIRED and distinct from `label` — a
+  field label (sentence case) and a sheet title (Title Case) are two
+  different UI roles per `kiko-translator`'s casing-by-role rule, so the
+  sheet header can never just reuse the label verbatim. `SelectField`'s
+  `selected` accepts `null` for a picker that legitimately starts with
+  nothing chosen — the trigger then shows `placeholder` at
+  `textSecondary`, the same "no default" contract a `ChipRow` used to
+  fake by widening its option type to admit a value (`''`) that matches
+  nothing. A picker whose `selected` is never actually `null` (an
+  account always has a kind, a transaction always has a mode) still
+  supplies a `placeholder` to satisfy the contract — it is simply never
+  shown.
 - **ConfirmSheet** (`src/design-system/components/confirm-sheet/`) —
   the themed confirm-or-cancel `BottomSheet`: a title, an optional
   body `message` (omitted for a bare title-only confirm), a `confirmLabel`,
@@ -672,8 +684,12 @@ new component can land between reviews of this skill:
   text / SF Symbol name); `labelVariant` (default `'body'`) drops the
   chip label a type step for a value sitting under its own larger
   section label (the trend-filter sheet's amount/measure rows pass
-  `'caption'`, mirroring the SELECTED pill's own onAccent/semibold fill
-  rule). See `kiko-statement-import`'s column-mapping section for the
+  `'caption'`); at every step, the chip also holds a real 44pt tap
+  target — `minHeight: 44` at the default `'body'` step, a compact
+  visible size restored to 44pt via `hitSlop` at `'caption'` (mirroring
+  `Button`'s `small` size). A selected chip's icon size follows the same
+  `labelVariant` step through `theme.iconSizes`, never a hardcoded
+  literal. See `kiko-statement-import`'s column-mapping section for the
   fullest worked comparison against `SegmentedControl` below. Because a
   design-system component may never import from `src/screens/**`
   (`kiko-no-import-screens-outside-ui`), `ChipRow` had to live in
@@ -717,13 +733,14 @@ new component can land between reviews of this skill:
   of the pixel values restated here. The selected label is semibold
   (`fontWeight: '600'`), matching UIKit, composed alongside (not
   duplicating) the base label's own `textAlign: 'center'`. The 32pt
-  visible track (F4 item 6, "is this how iOS does them?"): confirmed
-  against UIKit's own `UISegmentedControl` — its `intrinsicContentSize`
-  height is 32pt for the standard (`.small`/`.medium`, the default)
-  control size introduced with the iOS 13 redesign, the same height this
-  component's `TRACK_HEIGHT` constant already used — no change needed,
-  the app's segmented controls already match the real iOS control's
-  height; a segment "seeming short" is the native height, not a bug.
+  visible track (answering a device-feedback question, "is this how iOS
+  does them?" — a segment "seeming short"): this component's
+  `TRACK_HEIGHT` constant matches `UISegmentedControl`'s commonly
+  MEASURED intrinsic height at its standard control size — there is no
+  Apple-documented public constant for this number (the HIG page above
+  covers behavior and appearance, not a numeric height), so treat 32pt
+  as a community-measured convention, not an Apple primary source, until
+  confirmed on a real device.
   Props: `options`/`selected`/`onSelect`/`labels`/`accessibilityLabel`
   (required — every segment folds it into its own `accessibilityHint`)
   /`testID`. Accessibility (F3 fix round 2, M4): each segment keeps
@@ -745,15 +762,22 @@ new component can land between reviews of this skill:
   same way `ChipRow` does internally (the crypto-sync Wallet/Binance
   source toggle and the Bond form's "ISIN / Manual" mode both do this).
 
-  **The tabs-vs-chips rule (F4 Q2 USER RULE, binding, replaces the F3
-  item 9 DEFAULT below):** "Tabs (`SegmentedControl`) are used when the
-  selection changes the appearance — it shows different form fields.
-  Otherwise use chips (`ChipRow`) — a value selection that leaves the
-  form the same." A long option list (more than a handful) still uses
-  `SelectField`'s select sheet regardless of whether it changes fields.
-  Verify EVERY choice control against this rule before adding or
-  changing one — do not assume a control's existing type is correct.
-  Current app state (F4 part 2 sweep):
+  **The tabs-vs-chips rule (binding), quoted verbatim from the user:**
+  "Tabs (SegmentedControl) are used when the selection changes the
+  appearance, for example it shows different form fields (like import
+  mapping's currency field). Otherwise use chips (a value selection
+  that leaves the form the same)." A long option list (more than a
+  handful — the loan-kind picker's 4 long kind names, e.g. "Погашення
+  за іншого", already ran too wide for a comfortable chip row) still
+  uses `SelectField`'s select sheet regardless of whether it changes
+  fields. Verify EVERY choice control against this rule before adding
+  or changing one — do not assume a control's existing type is
+  correct. An orchestrator DEFAULT must never widen this rule on its
+  own (a past regression moved the column-mapping screen's encoding and
+  decimal-separator selectors from `ChipRow` to `SegmentedControl` as
+  an unrequested DEFAULT, against the user's own explicit "tabs ONLY
+  for amount and currency modes" instruction — reverted; do not
+  re-apply it). Current app state:
   - `SegmentedControl` (changes fields): the column-mapping screen's
     amount-mode/currency-mode selectors (`AmountFields`/`CurrencyFields`);
     the Bond form's ISIN/Manual mode (`BondIsinSection`,
@@ -764,30 +788,61 @@ new component can land between reviews of this skill:
     sync form's Wallet/Binance source toggle (`CryptoSyncForm` — each
     shows a different credential field); the Statistics trend-filter
     sheet's Top/Manual mode (`TrendFilterField` — Top shows the
-    amount/measure controls, Manual shows the category list).
+    amount/measure controls, Manual shows the category list; this one
+    ALSO passes `labelVariant="caption"` — it sits directly under its
+    own larger `SectionHeader`, so it stays visually subordinate to
+    that header rather than reading as a competing peer of it, the
+    same label-above-value hierarchy `ChipRow`'s `labelVariant` follows
+    elsewhere in the same sheet).
   - `ChipRow` (leaves the form the same): the column-mapping screen's
-    encoding, delimiter, and decimal-separator pickers (F4 audit item 4
-    — the F3 item 9 DEFAULT below moved these to `SegmentedControl`
-    against the user's own instruction; reverted); the holding form's
-    metal-element/form/unit chips, the property/loan "kind" chips
-    consumed directly by `PropertySection`/`LoanSection` before F4 (now
-    `SelectField` — see above); the Statistics trend-filter sheet's
-    amount (1-5) and by-measure pills.
+    encoding, delimiter, and decimal-separator pickers; the holding
+    form's metal-element/form/unit chips and the term-deposit/bond
+    Compounding chips; the Manual-mode bond-kind chips
+    (`ManualBondFields`); the Statistics trend-filter sheet's amount
+    (1-5) and by-measure pills.
   - `SelectField` (long list, regardless of field-change): the
-    property-category and loan-kind pickers (6 and 4 options — too wide
-    for a `ChipRow`); the Bond form's coupon-frequency picker.
-  ~~The F3 item 9 DEFAULT this replaces~~ (kept for history, NOT the
-  current rule): an earlier round moved the column-mapping screen's
-  encoding and decimal-separator selectors from `ChipRow` to
-  `SegmentedControl` as a widened DEFAULT the user never asked for — the
-  user's own instruction was "tabs ONLY for amount and currency modes."
-  F4 audit item 4 reverted this; do not re-apply it.
+    property-category and loan-kind pickers (6 and 4 options — too
+    wide for a `ChipRow`); the bond coupon-frequency picker (shared by
+    both the ISIN mode's unmapped-frequency picker and the Manual
+    mode's own frequency field — one control everywhere it appears);
+    the holding-type picker (up to 9 long type names); the account-kind
+    and transaction-type pickers (`AccountKindField`/`ModeSelectField`,
+    both now thin wrappers over `SelectField`). The transaction-type
+    picker is a DOCUMENTED EXCEPTION to the tabs-vs-fields half of the
+    rule: its choice does change visible fields (Exchange/Split add
+    their own fields), which is tabs territory by the letter of the
+    rule, but it stays a select sheet on purpose — 4 options on create,
+    already the same shape `AccountKindField`/`BankTypeField` use, so
+    converting it to `SegmentedControl` would trade one working pattern
+    for another rather than fixing a real violation.
 - **BarChart**, **PieChart**, **NetWorthLine** — the `react-native-svg`
   visualization components; see the dedicated `kiko-charts` skill for
   their coordinate-space and testID conventions before touching any
   of the three. `PieChart` additionally supports `innerRatio` (ring
   thickness) and `centerTotal` (an amount centered in the donut hole)
   — see `kiko-charts`.
+
+## Capability icons — the transparency principle
+
+The interface must be transparent about the abilities it provides to the
+user: every capability an entity supports is visible (a capability icon
+in a picker option's `trailing`/`description`), never hidden or implied.
+A capability icon stands for exactly ONE real capability — never a
+"probably true" or "usually true" one, and never gated on a build/env
+flag (Guideline 5.6). The bank picker (`BankTypeField`,
+`src/screens/forms/bank-type-field/`) is the exemplar: `receipt` means
+"this bank has a known, dedicated statement format" — gated on the
+catalog's own `statementFormatId` field, so a column-mapping-only bank
+(no dedicated parser) does not show it, even though it still offers
+import (through the generic column-mapping screen, which
+`increase.indent` names); `increase.indent` means "column-mapping import
+is available" — shown unconditionally, since every catalog bank offers
+it, a dedicated parser or not; `arrow.trianglehead.2.clockwise.rotate.90`
+means "this bank supports a live sync connection" — gated on the
+catalog's own `connectable` field. Derive a capability icon's gate from
+catalog DATA (a field on the entry), never a hard-coded id list — a
+hard-coded list drifts the moment the catalog gains or loses an entry,
+silently misrepresenting that entry's real capabilities.
 
 ## App-lock UI
 

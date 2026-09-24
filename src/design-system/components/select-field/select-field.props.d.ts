@@ -8,9 +8,9 @@ export type SelectFieldProps<Option extends string> = {
   // Every offered option, in display order.
   options: readonly Option[];
   // `null` = nothing picked yet — renders the `placeholder` as the trigger's
-  // value (textSecondary), the same "no default" contract ChipRow's own
-  // `selected=''` workaround used to fake (F4 audit item 10). A caller with
-  // an always-populated selection just never passes `null`.
+  // value (textSecondary), rather than faking a "no default" state with a
+  // `selected=''` value that matches nothing. A caller with an
+  // always-populated selection just never passes `null`.
   selected: Option | null;
   onSelect: (option: Option) => void;
   // The catalog-resolved display label for each option, resolved by the

@@ -137,23 +137,30 @@ const BankTypeField: FC<BankTypeFieldProps> = ({ label, selected, onSelect, test
                       testID={`bank-type-option-${entry.id}-connect-icon`}
                     />
                   )}
-                  <SymbolIcon
-                    name="receipt"
-                    size={theme.iconSizes.caption}
-                    tone={titleTone}
-                    testID={`bank-type-option-${entry.id}-import-icon`}
-                  />
-                  {/* F4 item 2 (ITEM 2 USER DECISION): column-mapping import
-                      is a capability EVERY catalog bank offers — a bank with
-                      a dedicated `statementFormatId` still falls through to
-                      the generic column-mapping screen for anything its own
-                      parser doesn't recognize, and a bank with none uses it
-                      exclusively (`bankColumnMappingOnly` above). The design
-                      system's transparency principle (kiko-design-system UX
-                      patterns) says every capability an entity supports is
-                      always visible, never implied — so this renders
-                      unconditionally, next to the other capability icons,
-                      not gated on `entry.statementFormatId`. */}
+                  {/* One capability icon per real capability (the design
+                      system's transparency principle): `receipt` means "this
+                      bank has a known, dedicated statement format" — gated on
+                      `statementFormatId`, so a column-mapping-only bank (no
+                      dedicated parser) does not show it; that bank still
+                      offers import, but only through the generic
+                      column-mapping screen, which `increase.indent` below
+                      already names. */}
+                  {entry.statementFormatId !== undefined && (
+                    <SymbolIcon
+                      name="receipt"
+                      size={theme.iconSizes.caption}
+                      tone={titleTone}
+                      testID={`bank-type-option-${entry.id}-import-icon`}
+                    />
+                  )}
+                  {/* `increase.indent`: column-mapping import is a capability
+                      EVERY catalog bank offers — a bank with a dedicated
+                      `statementFormatId` still falls through to the generic
+                      column-mapping screen for anything its own parser
+                      doesn't recognize, and a bank with none uses it
+                      exclusively (`bankColumnMappingOnly` above) — so this
+                      renders unconditionally, not gated on
+                      `entry.statementFormatId`. */}
                   <SymbolIcon
                     name="increase.indent"
                     size={theme.iconSizes.caption}

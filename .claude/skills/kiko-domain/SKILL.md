@@ -207,9 +207,10 @@ rather than trusting a restated summary here.
 ## `property_item` / `metal` create-form sections
 
 `src/screens/forms/holding-form/property-section/` is the
-`property_item` create-form section: a category `ChipRow`
+`property_item` create-form section: a category `SelectField`
 (`propertyCategories` from `src/holdings/holding-metadata`, editable
-in both create and edit mode) plus a Cost field (create-only). One lot
+in both create and edit mode — too many long category names for a
+`ChipRow`) plus a Cost field (create-only). One lot
 plus one manual price point equal to that cost is what
 `holding-form.screen.tsx` builds from it on save, via
 `holdingsRepo.create`'s `firstPricePoint` param — see `kiko-pricing`'s
@@ -736,7 +737,8 @@ SAME match does stay in ISIN mode (I3) — but showing the register's
 summary there with no visible frequency would silently let the form
 carry the shared `couponFrequency` state's own untouched default into
 Save, which is the exact guess spec 6.2 forbids. So ISIN mode instead
-shows its OWN coupon-frequency `ChipRow` with NO default whenever the
+shows its OWN coupon-frequency `SelectField` (`selected: null`) with NO
+default whenever the
 matched terms have `couponFrequency === null`
 (`needsCouponFrequencyPick`), and Save is blocked until the user picks
 one (T25 review round 2, N2) — never a frequency the user did not
@@ -868,7 +870,7 @@ assuming that works.
 
 ### Loan form + detail (T28)
 
-`src/screens/forms/holding-form/loan-section/` (kind ChipRow,
+`src/screens/forms/holding-form/loan-section/` (kind `SelectField`,
 principal, start date, schedule SegmentedControl, rate/term hidden for
 `'none'`) and its own `use-loan-fields/` hook (state + per-schedule
 `loanReasonKey` validation + edit-mode `seed`) mirror T25's

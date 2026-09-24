@@ -54,10 +54,9 @@ const ColumnSelectField = <T extends string | number>({
       <BottomSheet
         visible={open}
         onDismiss={() => setOpen(false)}
-        // F4 audit item 19: this left `gap` at the BottomSheet default (3),
-        // where the rest of the select-sheet family (AccountKindField,
-        // ModeSelectField, CategoryField, CurrencyField, SelectField) all
-        // pass an explicit `gap={2}`.
+        // Matches the rest of the select-sheet family (AccountKindField,
+        // ModeSelectField, CategoryField, CurrencyField, SelectField), which
+        // all pass an explicit `gap={2}` rather than the BottomSheet default.
         gap={2}
         header={<Text variant="heading">{label}</Text>}
         testID={testID ? `${testID}-sheet` : undefined}
@@ -72,15 +71,8 @@ const ColumnSelectField = <T extends string | number>({
           />
         ))}
 
-        {/* F4 audit item 20 (verified, no change): trailing, not leading,
-            like `bank-type-field`'s own "No bank" row sits first. The two
-            read differently on purpose — F4 item 3 makes "Free"/"No bank" a
-            real DEFAULT VALUE the bank picker starts on, so it earns the
-            first, most-prominent slot; "Not used" is an opt-OUT of an
-            optional column nobody starts on (the field opens on a blank
-            placeholder, never pre-selected to "Not used"), so it reads as
-            the trailing escape hatch every option list below its real
-            choices. */}
+        {/* Trailing, not leading: "Not used" is an opt-OUT of an optional
+            column nobody starts on, unlike the bank picker's "Free" default. */}
         {allowNotUsed && (
           <SelectableRow
             selected={selected === undefined}

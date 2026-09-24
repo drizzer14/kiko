@@ -1,8 +1,8 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-// The HIG 44pt tap-target floor (F4 audit item 21): the row's own
-// `paddingVertical` plus a caption line only reached ~34pt of real tappable
-// height. `minHeight` (not `hitSlop`) grows the row's REAL layout box —
+// The HIG 44pt tap-target floor: the row's own `paddingVertical` plus a
+// caption line only reached ~34pt of real tappable height. `minHeight` (not
+// `hitSlop`) grows the row's REAL layout box —
 // `hitSlop` would extend into the next row (they sit directly adjacent under
 // a `gap={2}` stack, not far enough apart to safely grow past their own
 // bounds) and create overlapping touch targets between two rows.
