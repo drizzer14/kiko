@@ -1,8 +1,8 @@
-import type { ColumnMapping } from './apply-column-mapping';
-import type { TableCell } from './table-rows';
-
-import { applyColumnMapping } from './apply-column-mapping';
 import { StatementParseError } from '../parser';
+
+import type { TableCell } from './table-rows';
+import { applyColumnMapping } from './apply-column-mapping';
+import type { ColumnMapping } from './apply-column-mapping';
 
 const HEADER_ROW: TableCell[] = ['Date', 'Description', 'Amount', 'Currency', 'Counterparty'];
 

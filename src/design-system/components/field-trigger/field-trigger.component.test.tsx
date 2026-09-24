@@ -1,5 +1,5 @@
-import { fireEvent, render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
+import { fireEvent, render } from '@testing-library/react-native';
 import '../../unistyles';
 import FieldTrigger from '.';
 

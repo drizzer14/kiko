@@ -5,24 +5,23 @@ import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Alert, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
-import { Money } from '../../../currency/money';
-import { parseAmount } from '../../../currency/parse';
-import Box from '../../../design-system/components/box';
-import { useLiveQuery } from '../../../db/use-live-query';
-import Button from '../../../design-system/components/button';
-import Screen from '../../../design-system/components/screen';
-import TextField from '../../../design-system/components/text-field';
-import type { AccountsStackParamList } from '../../../navigation/types';
-import { type Currency, currencySymbol } from '../../../currency/currency';
-
 import DateField from '../date-field';
 import {
   useHeaderInset,
   scrollToField,
   type FieldInstance,
 } from '../scroll-to-field/scroll-to-field';
+import { Money } from '../../../currency/money';
+import { parseAmount } from '../../../currency/parse';
+import Box from '../../../design-system/components/box';
+import { useLiveQuery } from '../../../db/use-live-query';
 import { groupAmount } from '../amount-format/amount-format';
+import Button from '../../../design-system/components/button';
+import Screen from '../../../design-system/components/screen';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
+import TextField from '../../../design-system/components/text-field';
+import type { AccountsStackParamList } from '../../../navigation/types';
+import { type Currency, currencySymbol } from '../../../currency/currency';
 
 type ContributionFormScreenProps = NativeStackScreenProps<
   AccountsStackParamList,

@@ -1,5 +1,5 @@
-import { Pressable } from 'react-native';
 import type { FC } from 'react';
+import { Pressable } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import type { HoldingRow } from '../../../db/schema';
