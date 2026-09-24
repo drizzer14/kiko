@@ -321,20 +321,22 @@ describe('TrendFilterField grouped sections', () => {
     expect(StyleSheet.flatten(measure.props.style).backgroundColor).toBeUndefined();
   });
 
-  it('renders each mode pill with its decided glyph (Top -> chart.bar.fill, Manual -> tag)', async () => {
+  // F4 Q2 sweep (decision 14): the Mode control swaps which section renders
+  // below it (amount/measure vs the category list), so it is a
+  // SegmentedControl, not the leading-glyph OptionPills pair it used to be
+  // — SegmentedControl has no icon slot (see `segmented-control.props.d.ts`
+  // — no consumer in the app renders one), so both mode options are
+  // text-only now, matching amount-mode/currency-mode elsewhere.
+  it('renders the mode control as a SegmentedControl inside the selection group', async () => {
     const { getByTestId } = await renderField();
     await press(getByTestId(TEST_ID));
 
-    // The Mode OptionPills carry a leading glyph per option (infra item I4):
-    // Top ranks -> chart.bar.fill, Manual pins categories -> tag. Both pills are
-    // rendered at once (only the selected one fills), so both glyphs appear
-    // inside the selection group.
-    const selection = getByTestId(`${TEST_ID}-group-selection`);
-    const topPill = within(selection).getByText('Top').parent;
-    const manualPill = within(selection).getByText('Manual').parent;
-
-    expect(topPill?.queryAll((node) => node.props.name === 'chart.bar.fill')).not.toHaveLength(0);
-    expect(manualPill?.queryAll((node) => node.props.name === 'tag')).not.toHaveLength(0);
+    expect(
+      getByTestId(`${TEST_ID}-mode-control-option-top`).props.accessibilityState.selected,
+    ).toBe(true);
+    expect(
+      getByTestId(`${TEST_ID}-mode-control-option-manual`).props.accessibilityState.selected,
+    ).toBe(false);
   });
 
   it('renders the Top mode option before Manual in the selection group', async () => {

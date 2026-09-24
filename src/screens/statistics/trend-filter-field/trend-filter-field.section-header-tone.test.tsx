@@ -83,12 +83,16 @@ describe('TrendFilterField label/value type hierarchy', () => {
     expect(getByText('Amount').props.variant).toBe('body');
     expect(getByText('By').props.variant).toBe('body');
 
-    // The Selection group's own pill values ("Manual" / "Top"), the Amount
-    // group's numeric pill values, and the By group's measure pill values.
-    expect(getByText('Manual').props.variant).toBe('caption');
-    expect(getByText('Top').props.variant).toBe('caption');
+    // The Amount group's numeric pill values and the By group's measure pill
+    // values (both still OptionPills). The Selection group's own "Manual"/
+    // "Top" text moved to a SegmentedControl (F4 Q2 sweep, decision 14 — the
+    // mode choice swaps the section below it), which always renders `body`,
+    // matching every other SegmentedControl in the app (amount/currency mode)
+    // rather than the section's own subordinate `caption` step.
     expect(getByText('5').props.variant).toBe('caption');
     expect(getByText('Contribution').props.variant).toBe('caption');
+    expect(getByText('Manual').props.variant).toBe('body');
+    expect(getByText('Top').props.variant).toBe('body');
   });
 
   it('keeps the sheet title (heading) strictly above the manual-mode categories label (body)', async () => {

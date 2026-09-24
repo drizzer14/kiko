@@ -17,6 +17,7 @@ import OptionPills from '../../../design-system/components/option-pills';
 import SheetFooter from '../../../design-system/components/sheet-footer';
 import { FILTER_ALL } from '../../home/filter-menu/filter-menu.component';
 import SelectableRow from '../../../design-system/components/selectable-row';
+import SegmentedControl from '../../../design-system/components/segmented-control';
 import type { FilterOption } from '../../home/filter-menu/filter-menu.props';
 
 import { styles } from './trend-filter-field.styles';
@@ -237,17 +238,22 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
         <Box gap={2} testID={`${testID}-group-selection`}>
           <SectionHeader>{t('statistics.trendFilter.selection')}</SectionHeader>
 
-          <OptionPills
+          {/* F4 Q2 sweep (decision 14): Top/Manual swaps which section
+              renders below — the amount/measure controls or the category
+              list — so this is a mode toggle, not a same-form value pick.
+              SegmentedControl (no leading-icon slot, unlike the former
+              OptionPills — no SegmentedControl consumer in the app carries
+              one) replaces the OptionPills pair a widened DEFAULT put here. */}
+          <SegmentedControl<TrendMode>
             options={MODES}
             selected={draft.mode}
             onSelect={setMode}
-            label={(mode) => t(`statistics.trendFilter.${mode}`)}
-            // The Mode pills carry a leading glyph per option (infra item I4):
-            // Top ranks by measure -> chart.bar.fill, Manual pins categories ->
-            // tag (the app-wide categories glyph). Amount/Measure stay text-only.
-            icon={(mode) => (mode === 'manual' ? 'tag' : 'chart.bar.fill')}
-            columns={2}
-            labelVariant="caption"
+            labels={{
+              top: t('statistics.trendFilter.top'),
+              manual: t('statistics.trendFilter.manual'),
+            }}
+            accessibilityLabel={t('statistics.trendFilter.selection')}
+            testID={`${testID}-mode-control`}
           />
         </Box>
 
