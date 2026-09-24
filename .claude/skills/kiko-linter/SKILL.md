@@ -48,6 +48,20 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   are unchanged. A fast, hook-wired wrapper must still be silent on
   success.
 
+  A SECOND exception, of a different shape: `scripts/checks/kill-guard.sh`
+  (+ its sibling `scripts/checks/kill-guard.js`) is a `PreToolUse` hook on
+  the Bash tool, not a check wrapper — it has no fail/pass, only allow/deny
+  a command before Bash ever runs it, so it does not follow the
+  fail-loud/`exit 2` half of the contract either: it ALWAYS exits 0, prints
+  nothing on allow, and prints the documented `permissionDecision: "deny"`
+  JSON on stdout (never stderr) when the command is a pkill/killall or a
+  pattern/process-group kill. It has no `print_block`/`_lib.sh` dependency
+  and no content-dedup fingerprint — a `PreToolUse` hook runs on every Bash
+  call by design, and skipping one because "nothing changed" would mean
+  skipping the one call the guard exists to catch. See CLAUDE.md's
+  "Automatic wiring" and `harness/kiko/hooks/hooks.json`'s `PreToolUse`
+  entry for the wiring, and `kill-guard.js` for the tokenizer.
+
   `mutation.sh` also DIFF-SCOPES by default: it mutates only the `.ts`/
   `.tsx` source files this branch changed vs the merge-base with
   `${KIKO_MUTATION_BASE:-main}`, passed to Stryker as an explicit

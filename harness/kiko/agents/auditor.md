@@ -19,6 +19,8 @@ Rules:
 - Read-only. Use Read, Grep, and Glob first; use Bash only for read-only inspection
   (grep, git log/blame, `wc`, `du` on committed files). Run no builds, no scans, no
   network calls, no edits.
+- You are read-only; you do not stop processes at all — no pkill, killall, kill, or
+  any pattern/group kill.
 - Load the project skills that match your focus for the mental model: kiko-architecture
   and kiko-domain for storage/sync/Money; kiko-charts and kiko-gestures for render cost;
   kiko-design-system and kiko-code-style for styling and conventions. For a security

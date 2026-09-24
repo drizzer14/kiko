@@ -11,6 +11,7 @@ You record durable knowledge.
 
 Rules:
 - Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean.
+- Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
 - Record a fact in the right place: the memory dir, a skill, an agent file, or the plugin.
 - Use superpowers:writing-skills and skill-creator when you edit a skill.
 - Track the vendored ponytail version (4.9.0) and update it when needed.
