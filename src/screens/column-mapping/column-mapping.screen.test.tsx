@@ -194,10 +194,8 @@ describe('ColumnMappingScreen', () => {
   // F3 item 12: the screen body no longer duplicates the native stack
   // header's own title — the header (`accounts.stack.tsx`'s `title:
   // t('columnMapping.title')`) is not itself rendered by this component
-  // under test (it lives in the navigator), so this only pins that the
-  // screen's OWN body renders the string exactly once — from the
-  // section-heading `columnMapping.result` line, not a second, separate
-  // `columnMapping.title` heading.
+  // under test (it lives in the navigator), so this pins that the
+  // screen's OWN body renders that exact string ZERO times.
   it('does not render a second in-body title duplicating the screen header (F3 item 12)', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
 

@@ -402,26 +402,19 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
 
   return (
     <Box gap={3}>
-      {/* The screen title itself is now the native stack header ONLY
-          (`accounts.stack.tsx`'s `title: t('columnMapping.title')`) — this
-          in-body heading used to duplicate it verbatim (F3 item 12,
-          removed). Every section below carries its OWN heading instead
-          (item 14), each at the same bottom margin the removed title had
-          (item 13, `styles.sectionHeading`). */}
       {savedApplied && (
         <Text variant="body" tone="textSecondary">
           {t('columnMapping.savedApplied')}
         </Text>
       )}
 
-      <Box>
+      <Box gap={3}>
         {/* A stronger, more visible hint (device-feedback-round-F1 item 12) —
             `heading` instead of the former muted `body`/`textSecondary`
             caption; this line doubles as the raw-preview section's own
             heading. */}
-        <Box style={styles.sectionHeading}>
-          <Text variant="heading">{t('columnMapping.rawPreview')}</Text>
-        </Box>
+        <Text variant="heading">{t('columnMapping.rawPreview')}</Text>
+
         <RawPreview
           rows={rows}
           headerRowIndex={headerRowIndex}
@@ -435,9 +428,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
           all switched from the (too-large, device-feedback-round-F1 item 7)
           `OptionPills` chips to the app's existing compact `ChipRow`. */}
       <Box gap={3}>
-        <Box style={styles.sectionHeading}>
-          <Text variant="heading">{t('columnMapping.sectionFileFormat')}</Text>
-        </Box>
+        <Text variant="heading">{t('columnMapping.sectionFileFormat')}</Text>
 
         {!isXlsx && (
           <>
@@ -477,9 +468,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
 
       {/* Group (b): dates. */}
       <Box gap={3} style={styles.fieldGroup}>
-        <Box style={styles.sectionHeading}>
-          <Text variant="heading">{t('columnMapping.sectionDates')}</Text>
-        </Box>
+        <Text variant="heading">{t('columnMapping.sectionDates')}</Text>
 
         <ColumnSelectField
           label={t('columnMapping.dateColumn')}
@@ -504,9 +493,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
 
       {/* Group (c): amounts/currency. */}
       <Box gap={3} testID="column-mapping-amount-mode" style={styles.fieldGroup}>
-        <Box style={styles.sectionHeading}>
-          <Text variant="heading">{t('columnMapping.sectionAmount')}</Text>
-        </Box>
+        <Text variant="heading">{t('columnMapping.sectionAmount')}</Text>
 
         <AmountFields
           columnOptions={columnOptions}
@@ -522,9 +509,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
       </Box>
 
       <Box gap={3} testID="column-mapping-currency-mode" style={styles.fieldGroup}>
-        <Box style={styles.sectionHeading}>
-          <Text variant="heading">{t('columnMapping.sectionCurrency')}</Text>
-        </Box>
+        <Text variant="heading">{t('columnMapping.sectionCurrency')}</Text>
 
         <CurrencyFields
           columnOptions={columnOptions}
@@ -543,9 +528,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
           in their own divided group (device-feedback-round-F1 item 10),
           now sharing ONE section heading (F3 item 14). */}
       <Box gap={3} style={styles.fieldGroup}>
-        <Box style={styles.sectionHeading}>
-          <Text variant="heading">{t('columnMapping.sectionDetails')}</Text>
-        </Box>
+        <Text variant="heading">{t('columnMapping.sectionDetails')}</Text>
 
         <ColumnSelectField
           label={t('columnMapping.descriptionColumn')}
@@ -578,8 +561,8 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
       <Divider testID="column-mapping-divider-result" />
 
       {/* Group (e): result — MappingResult renders its OWN heading
-          (`columnMapping.result`), styled to the same section-heading
-          margin internally (see mapping-result.styles.ts). */}
+          (`columnMapping.result`) in both its complete and incomplete
+          states, at the same gap-driven spacing every other section uses. */}
       <MappingResult stats={stats} rowErrors={rowErrors} />
 
       <TargetHoldingField
