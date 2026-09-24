@@ -253,6 +253,13 @@
       "when": 1790186131250,
       "tag": "0035_add_price_points",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1790208400306,
+      "tag": "0036_add_balance_set_at",
+      "breakpoints": true
     }
   ]
 }

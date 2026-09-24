@@ -110,6 +110,7 @@ const makeInMemoryDeps = (initialAccounts: AccountRow[]) => {
       // The Monobank-only crash-safe statement-import marker; a crypto holding
       // never carries one (it imports no statements).
       syncedBalanceMinorUnits: null,
+      balanceSetAt: null,
       ...rest,
       metadata: merged,
     });

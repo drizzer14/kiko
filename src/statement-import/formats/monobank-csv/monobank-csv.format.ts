@@ -4,6 +4,7 @@
 import Papa from 'papaparse';
 
 import type {
+  ClosingBalance,
   ParsedStatement,
   ParsedTransaction,
   StatementFormat,
@@ -32,6 +33,7 @@ const COLUMN = {
   description: 1,
   mcc: 2,
   amount: 3,
+  balanceAfter: 9,
 } as const;
 
 const isAbsentColumn = (value: string | undefined): boolean =>
@@ -95,14 +97,60 @@ const resolveAccountCurrency = (headerRow: string[] | undefined): Currency => {
   return currencyCode;
 };
 
+// The fixture's own "Залишок після операції" (balance after transaction)
+// column — a genuine running balance, unlike every other format shipped so
+// far. Monobank's own export is single-card/single-account per file, so the
+// row with the LARGEST parsed time (last one on a tie — review follow-up
+// M2: a file is not guaranteed oldest-first, only unambiguous by time) is
+// the closing balance of the whole statement, as of that row's own time
+// (see `ClosingBalance`'s doc comment in `parser.ts` for why `asOfSeconds`
+// is that row's time, not "now"). Returns `undefined` when there are no data
+// rows, or when the chosen row's balance-after cell is missing or
+// non-numeric (review follow-up I1: a truncated export or the format's own
+// "—" absent-column marker must fall back to Rule B, never a `TypeError` or
+// a `NaN` written to the ledger).
+const resolveClosingBalance = (
+  dataRows: string[][],
+  currency: Currency,
+): ClosingBalance | undefined => {
+  let newest: { row: string[]; timeSeconds: number } | undefined;
+
+  for (const row of dataRows) {
+    const timeSeconds = parseDateTimeSeconds(row[COLUMN.date], 'Monobank');
+
+    if (!newest || timeSeconds >= newest.timeSeconds) {
+      newest = { row, timeSeconds };
+    }
+  }
+
+  if (!newest) {
+    return undefined;
+  }
+
+  const balanceCell = newest.row[COLUMN.balanceAfter];
+  const balanceMajor = isAbsentColumn(balanceCell) ? Number.NaN : parseAmount(balanceCell);
+
+  if (!Number.isFinite(balanceMajor)) {
+    return undefined;
+  }
+
+  return {
+    minorUnits: Money.fromMajor(currency, balanceMajor).minorUnits,
+    currency,
+    asOfSeconds: newest.timeSeconds,
+  };
+};
+
 const parse = (input: StatementFormatInput): ParsedStatement => {
   const [headerRow, ...dataRows] = readRows(input);
   const currency = resolveAccountCurrency(headerRow);
+  const closingBalance = resolveClosingBalance(dataRows, currency);
 
   return {
     formatId: 'monobank-csv',
     account: { currency },
     transactions: dataRows.map((row) => parseRow(row, currency)),
+    ...(closingBalance ? { closingBalance } : {}),
   };
 };
 

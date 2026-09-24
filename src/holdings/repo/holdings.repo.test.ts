@@ -17,8 +17,8 @@ jest.mock('../../db/client', () => {
   };
 });
 
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { captureSetTx } from '@kiko/db/capture-set-tx';
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
 
 import { accounts, holdings, pricePoints } from '../../db/schema';
 import { holdingValueAt } from '../../statistics/holding-value-at';
@@ -183,10 +183,14 @@ describe('holdingsRepo', () => {
       category: null,
     });
     expect(typeof inserts[1].time).toBe('number');
+    // D-I2: a non-zero opening balance also stamps the holding's own
+    // `balanceSetAt`, at the SAME instant as the ledger row's `time` —
+    // `transactionsRepo.importRows`'s boundary reads it directly.
+    expect(inserts[0].balanceSetAt).toBe(inserts[1].time);
   });
 
   it('create seeds no transaction for a zero opening balance', async () => {
-    const { tx, insertTables } = makeCreateTx();
+    const { tx, insertTables, inserts } = makeCreateTx();
     mockTx = tx;
 
     await holdingsRepo.create({
@@ -198,15 +202,17 @@ describe('holdingsRepo', () => {
     });
 
     expect(insertTables).toEqual(['holdings']);
+    expect(inserts[0].balanceSetAt).toBeNull();
   });
 
   it('create seeds no transaction when no opening balance is given', async () => {
-    const { tx, insertTables } = makeCreateTx();
+    const { tx, insertTables, inserts } = makeCreateTx();
     mockTx = tx;
 
     await holdingsRepo.create({ accountId: 'acc-1', name: 'Card', type: 'card', currency: 'EUR' });
 
     expect(insertTables).toEqual(['holdings']);
+    expect(inserts[0].balanceSetAt).toBeNull();
   });
 
   it('create persists the chosen color on the inserted row', async () => {
@@ -851,7 +857,12 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
       1_700_000_000_000,
     );
 
-    expect(captured.holdingSet).toEqual({ balanceMinorUnits: 500_00 });
+    // D-I2: a non-zero delta also stamps `balanceSetAt` at this edit's own
+    // `time`, in the SAME `.set(...)` as the balance patch.
+    expect(captured.holdingSet).toEqual({
+      balanceMinorUnits: 500_00,
+      balanceSetAt: 1_700_000_000_000,
+    });
     expect(captured.inserts).toHaveLength(1);
     expect(captured.inserts[0]).toMatchObject({
       holdingId: 'h-1',
@@ -882,7 +893,7 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     await holdingsRepo.updateWithBalanceDelta('h-1', { balanceMinorUnits: 100_00 }, 1);
 
     expect(captured.inserts[0]).toMatchObject({ amountMinorUnits: -400_00 });
-    expect(captured.holdingSet).toEqual({ balanceMinorUnits: 100_00 });
+    expect(captured.holdingSet).toEqual({ balanceMinorUnits: 100_00, balanceSetAt: 1 });
   });
 
   it('writes no transaction for a name-only edit', async () => {
@@ -895,13 +906,14 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     expect(captured.holdingSet).toEqual({ name: 'Renamed' });
   });
 
-  it('writes no transaction for a zero delta', async () => {
+  it('writes no transaction for a zero delta, and does not stamp balanceSetAt', async () => {
     const { tx, captured } = makeBalanceDeltaTx({ balanceMinorUnits: 100_00 });
     mockTx = tx;
 
     await holdingsRepo.updateWithBalanceDelta('h-1', { balanceMinorUnits: 100_00 }, 1);
 
     expect(captured.inserts).toHaveLength(0);
+    expect(captured.holdingSet).toEqual({ balanceMinorUnits: 100_00 });
   });
 
   it('writes no transaction when no holding carries the id', async () => {

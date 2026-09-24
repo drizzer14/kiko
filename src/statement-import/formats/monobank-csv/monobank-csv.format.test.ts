@@ -31,6 +31,37 @@ const malformedAmountInput = {
   fileName: 'malformed-amount.csv',
 };
 
+// Review follow-up (I1): the last row's balance-after cell can be missing
+// (a truncated 9-column export) or non-numeric ("—", the same absent-column
+// marker every other optional column uses) — `resolveClosingBalance` must
+// fall back to no closing balance (Rule B) instead of throwing a `TypeError`
+// on the missing cell or writing a `NaN` `minorUnits` from the dash cell.
+const missingBalanceCellInput = {
+  text: [MONOBANK_HEADER, '01.06.2023 12:00:00,No Balance Column,5411,-100,-100,UAH,—,—,—'].join(
+    '\n',
+  ),
+  fileName: 'missing-balance-cell.csv',
+};
+
+const dashBalanceCellInput = {
+  text: [MONOBANK_HEADER, '01.06.2023 12:00:00,Dash Balance,5411,-100,-100,UAH,—,—,—,—'].join('\n'),
+  fileName: 'dash-balance-cell.csv',
+};
+
+// Review follow-up (M2): `resolveClosingBalance` used to assume the file's
+// rows are oldest-first (`dataRows.at(-1)`), which is true of every real
+// Monobank export seen so far but not guaranteed — the closing balance must
+// come from whichever row has the LARGEST parsed time, regardless of its
+// position in the file.
+const newestFirstInput = {
+  text: [
+    MONOBANK_HEADER,
+    '12.05.2023 17:30:36,Uklon,4121,-180,-180,UAH,—,—,9,100000',
+    '01.04.2022 05:27:35,Відсотки за березень,4829,19.32,19.32,UAH,—,—,—,9499.41',
+  ].join('\n'),
+  fileName: 'newest-first.csv',
+};
+
 describe('monobankCsvFormat.detect', () => {
   it('accepts the real Monobank CSV export', () => {
     expect(monobankCsvFormat.detect(fixtureInput)).toBe(true);
@@ -88,10 +119,56 @@ describe('monobankCsvFormat.parse', () => {
     expect(parsed.transactions.every((transaction) => transaction.currency === 'UAH')).toBe(true);
   });
 
+  // The fixture's own "Залишок після операції" (balance after transaction)
+  // column, section C.4 — Monobank is the one format that carries a genuine
+  // running balance per row, verified against the real uabean fixture bytes.
+  // Its last row is "…,9,100000", so the closing balance is the LAST row's
+  // balance-after, not the first — a single-card/single-account export keeps
+  // this unambiguous (see `ParsedStatement.closingBalance`'s doc comment).
+  it('carries the closing balance from the LAST row’s "balance after transaction" column', () => {
+    const parsed = monobankCsvFormat.parse(fixtureInput);
+
+    expect(parsed.closingBalance).toEqual({
+      minorUnits: 10_000_000,
+      currency: 'UAH',
+      asOfSeconds: 1_683_912_636,
+    });
+  });
+
   // Task 3 review, IMPORTANT: an empty/malformed amount cell must never
   // silently become a `NaN` `amountMinorUnits` written to the ledger —
   // `parse()` throws instead, the same way a bad date cell already does.
   it('throws a StatementParseError instead of writing a NaN amount for a malformed amount cell', () => {
     expect(() => monobankCsvFormat.parse(malformedAmountInput)).toThrow(StatementParseError);
+  });
+
+  // Review follow-up (I1): a missing balance-after cell must not throw —
+  // `resolveClosingBalance` falls back to no closing balance (Rule B takes
+  // over), the transactions themselves still parse.
+  it('returns no closing balance and still parses the row when the balance-after cell is missing', () => {
+    const parsed = monobankCsvFormat.parse(missingBalanceCellInput);
+
+    expect(parsed.closingBalance).toBeUndefined();
+    expect(parsed.transactions).toHaveLength(1);
+  });
+
+  // Review follow-up (I1): a "—" balance-after cell (the format's own
+  // absent-column marker) must not become a `NaN` closing balance.
+  it('returns no closing balance when the balance-after cell is "—"', () => {
+    const parsed = monobankCsvFormat.parse(dashBalanceCellInput);
+
+    expect(parsed.closingBalance).toBeUndefined();
+  });
+
+  // Review follow-up (M2): the closing balance must come from the row with
+  // the largest parsed time, not simply the last row in file order.
+  it('uses the row with the largest parsed time as the closing balance, not just the last row in the file', () => {
+    const parsed = monobankCsvFormat.parse(newestFirstInput);
+
+    expect(parsed.closingBalance).toEqual({
+      minorUnits: 10_000_000,
+      currency: 'UAH',
+      asOfSeconds: 1_683_912_636,
+    });
   });
 });

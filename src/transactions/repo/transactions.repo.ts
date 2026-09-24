@@ -1,10 +1,8 @@
-import type { Repository } from '@kiko/db/repository';
-import { appendDepositContributionTx } from '@kiko/holdings/repo';
-import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { match } from 'ts-pattern';
+import type { Repository } from '@kiko/db/repository';
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { appendDepositContributionTx } from '@kiko/holdings/repo';
 
-import { database, write } from '../../db/client';
-import { id } from '../../db/id';
 import {
   accounts,
   categoryOverrides,
@@ -13,11 +11,14 @@ import {
   type TransactionRow,
   transactions,
 } from '../../db/schema';
-import { isSyncedTransaction } from '../../holdings/deletable';
-import type { ExchangeConvertDirection } from '../../holdings/exchange-convert';
+import { id } from '../../db/id';
+import { database, write } from '../../db/client';
+import { normalizeTransactionName } from '../normalize-name';
+import type { ClosingBalance } from '../../statement-import/parser';
 import { exchangeReceivePath } from '../../holdings/exchange-destination';
 import type { DepositContribution } from '../../holdings/holding-metadata';
-import { normalizeTransactionName } from '../normalize-name';
+import { isSyncedHolding, isSyncedTransaction } from '../../holdings/deletable';
+import type { ExchangeConvertDirection } from '../../holdings/exchange-convert';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<
@@ -189,17 +190,24 @@ const dedupByConflictKey = (inputs: NewTransaction[]): NewTransaction[] => {
 };
 
 /**
- * How many of these rows the upsert will INSERT rather than refresh. Read inside
- * the caller's own transaction, so the count can never disagree with the write
- * it describes.
+ * The subset of these rows the upsert will INSERT rather than refresh. Read
+ * inside the caller's own transaction, so the result can never disagree with
+ * the write it describes. `addManyDedup` uses only its `.length`; the
+ * statement-import balance write (`importRows` below) additionally needs the
+ * actual rows, to sum their `amountMinorUnits` — a refreshed (already
+ * imported) row must contribute 0 to that sum, not just be excluded from the
+ * count.
  */
-const countNewRows = async (tx: typeof database, inputs: NewTransaction[]): Promise<number> => {
+const partitionNewRows = async (
+  tx: typeof database,
+  inputs: NewTransaction[],
+): Promise<NewTransaction[]> => {
   const externalIds = inputs
     .map((input) => input.externalId)
     .filter((externalId): externalId is string => Boolean(externalId));
 
   if (externalIds.length === 0) {
-    return inputs.length;
+    return inputs;
   }
 
   const sources = Array.from(
@@ -221,7 +229,131 @@ const countNewRows = async (tx: typeof database, inputs: NewTransaction[]): Prom
     const key = conflictKeyOf(input);
 
     return key === null || !known.has(key);
-  }).length;
+  });
+};
+
+/**
+ * Apply name->category override rules and upsert a batch of imported rows on
+ * the `(source, external_id)` unique index — the shared core `addManyDedup`
+ * and `importRows` (statement import's balance-write path, below) both run
+ * inside their own `write(...)` transaction. Returns the rows that were
+ * genuinely NEW — a refreshed (already-imported) row is excluded; a caller
+ * that only needs the count uses `.length`.
+ */
+const insertDedupRowsTx = async (
+  tx: typeof database,
+  inputs: NewTransaction[],
+): Promise<NewTransaction[]> => {
+  if (inputs.length === 0) {
+    return [];
+  }
+
+  const batch = dedupByConflictKey(inputs);
+  // Apply name→category override rules at insert time. Normalize each
+  // incoming description in JS (never SQL) and look the rules up by exact
+  // equality on the already-normalized key.
+  const keys = Array.from(
+    new Set(batch.map((input) => normalizeTransactionName(input.description ?? ''))),
+  ).filter((key) => key !== '');
+  const rules =
+    keys.length > 0
+      ? await tx
+          .select()
+          .from(categoryOverrides)
+          .where(inArray(categoryOverrides.normalizedName, keys))
+      : [];
+  const categoryByName = new Map(rules.map((rule) => [rule.normalizedName, rule.category]));
+  const withOverrides = batch.map((input) => {
+    const override = categoryByName.get(normalizeTransactionName(input.description ?? ''));
+
+    return override ? { ...input, category: override } : input;
+  });
+  const newRows = await partitionNewRows(tx, batch);
+  // Upsert on the `(source, external_id)` unique index: a re-fetched
+  // Monobank item is REFRESHED, not dropped. A `hold: true` authorization
+  // imports at its PROVISIONAL amount and re-syncs at the settled one, which
+  // `onConflictDoNothing` silently discarded — freezing the wrong amount
+  // forever. `excluded` is SQLite's alias for the row that would have been
+  // inserted.
+  //
+  // The update set names only the BANK-owned columns. `category` (which may
+  // be the user's own override, or a name rule's rewrite) and `comment` (the
+  // user's note) are deliberately absent, as is every structural column
+  // (`id`, `holding_id`, `exchange_counterpart_holding_id`).
+  //
+  // Manual rows are untouched either way: they carry a null `external_id`,
+  // and SQLite treats each NULL in a unique index as distinct, so two of
+  // them never conflict.
+  await tx
+    .insert(transactions)
+    .values(withOverrides.map((input) => ({ id: id(), ...input })))
+    .onConflictDoUpdate({
+      target: [transactions.source, transactions.externalId],
+      set: {
+        amountMinorUnits: sql`excluded.amount_minor_units`,
+        description: sql`excluded.description`,
+        hold: sql`excluded.hold`,
+        mcc: sql`excluded.mcc`,
+        counterIban: sql`excluded.counter_iban`,
+        time: sql`excluded.time`,
+      },
+    });
+
+  return newRows;
+};
+
+/** The LATER of two nullable instants, treating `null` as "no boundary from
+ * this source" rather than as an actual instant to compare — used by
+ * `importRows` to combine its two boundary sources (`holding.balanceSetAt`,
+ * the newest sync-source transaction) without a nested ternary. */
+const laterOf = (a: number | null, b: number | null): number | null => {
+  if (a === null) {
+    return b;
+  }
+
+  if (b === null) {
+    return a;
+  }
+
+  return Math.max(a, b);
+};
+
+type ImportBalanceDecision = {
+  nextBalance: number;
+  balanceSetAt?: number;
+};
+
+/** `importRows`'s pure balance decision, pulled out of the write closure to
+ * stay under Biome's cognitive-complexity cap — see that function's own doc
+ * comment for the full rule this implements. `balanceSetAt` is present only
+ * when a closing balance actually applied this call; the caller writes it to
+ * `holdings` alongside `nextBalance`. */
+const resolveImportBalance = (
+  holding: Pick<HoldingRow, 'balanceMinorUnits' | 'currency'>,
+  boundary: number | null,
+  newRows: NewTransaction[],
+  closingBalance: ClosingBalance | undefined,
+): ImportBalanceDecision => {
+  const netDelta = newRows
+    .filter((row) => boundary === null || row.time >= boundary)
+    .reduce((sum, row) => sum + row.amountMinorUnits, 0);
+  const useClosingBalance =
+    closingBalance !== undefined &&
+    closingBalance.currency === holding.currency &&
+    (boundary === null || closingBalance.asOfSeconds * 1000 >= boundary);
+
+  if (!useClosingBalance) {
+    return { nextBalance: holding.balanceMinorUnits + netDelta };
+  }
+
+  const postClosingNet = newRows
+    .filter((row) => row.time > closingBalance.asOfSeconds * 1000)
+    .reduce((sum, row) => sum + row.amountMinorUnits, 0);
+
+  return {
+    nextBalance: closingBalance.minorUnits + postClosingNet,
+    balanceSetAt: closingBalance.asOfSeconds * 1000,
+  };
 };
 
 export const transactionsRepo = {
@@ -584,61 +716,197 @@ export const transactionsRepo = {
    * to the user as "imported".
    */
   addManyDedup: (inputs: NewTransaction[]) =>
-    write(async (tx): Promise<number> => {
-      if (inputs.length === 0) {
-        return 0;
+    write(async (tx) => (await insertDedupRowsTx(tx, inputs)).length),
+  /**
+   * Statement import's ONE write: upsert the parsed rows (the same
+   * `(source, external_id)` dedup as `addManyDedup`) AND move the target
+   * holding's `balanceMinorUnits`, in a SINGLE op-sqlite transaction. This
+   * is the ONE full statement of the balance rule — `kiko-domain`'s
+   * "Statement import" section, `ParsedStatement.closingBalance`'s doc
+   * comment (`parser.ts`), `importStatement`'s own doc comment, and
+   * `resolveClosingBalance`'s doc comment (`monobank-csv.format.ts`) all
+   * point back here rather than restating it. This was a real, shipped
+   * production bug (App Store build 25): `importStatement` used to call only
+   * `addManyDedup`, which upserts `transactions` and never touches
+   * `holdings`, so an import-only holding's displayed balance stayed 0
+   * forever even though its transaction list showed the real imported rows.
+   *
+   * THE BOUNDARY: every decision below is relative to one "as-of" instant —
+   * the LATER of (a) `holding.balanceSetAt` — set by `holdingsRepo.create`
+   * (a non-zero typed opening balance), `holdingsRepo.updateWithBalanceDelta`
+   * (a balance edit whose delta is non-zero, stamped at the edit's own
+   * `time`), and this function's own closing-balance write below (see "The
+   * closing-balance write" further down); NOT by `recordManual`, either leg
+   * of an exchange, a change-return row, or `accountsRepo.createCashAccount`
+   * — those write ordinary ledger entries, not a balance being SET — and (b)
+   * the newest transaction from a SYNC source (`source` not in `('manual',
+   * 'import')`). A sync-set balance is authoritative the same way an applied
+   * closing balance is, and it survives a disconnect: `accountsRepo.disconnect`
+   * clears `accounts.institution` only, so the holding keeps its
+   * `monobank`/`btc_wallet`/`binance` rows and this still finds them.
+   *
+   * `boundary` is `null` when NEITHER (a) nor (b) has ever happened for this
+   * holding: every genuinely new row moves the balance regardless of its own
+   * date, and a `closingBalance` is always eligible — this is the original
+   * bug-fix case (an import-only holding must show the statement's
+   * net/closing balance, not 0).
+   *
+   * With a boundary, each genuinely new row (from `insertDedupRowsTx`) is
+   * split by its OWN `time` against it: a row dated BEFORE the boundary is
+   * HISTORY — it still inserts as a real ledger row, but contributes 0 to
+   * `netDelta`. A row dated AT/AFTER the boundary is CURRENT and counts at
+   * its full amount.
+   *
+   * The balance move is `base + netDelta` — the sum of only the CURRENT new
+   * rows — so a re-import of an already-imported file (every row refreshed,
+   * none new) leaves the balance untouched, exactly like a second identical
+   * import must. UNLESS `closingBalance` is given, is in the holding's OWN
+   * currency, and is AS OF a time at or after the boundary — then the
+   * closing balance is written outright PLUS the net of any new rows dated
+   * STRICTLY AFTER the closing balance's own as-of (normally none, since a
+   * statement's closing balance is drawn from its own newest row — see
+   * `resolveClosingBalance`, `monobank-csv.format.ts`), correcting for any
+   * drift the ledger delta alone can't see. A statement OLDER than the
+   * boundary falls back to the net-delta rule instead (where its own rows
+   * are, by construction, all history and add 0 too), so an out-of-order
+   * re-import can never regress the balance to a stale closing figure.
+   *
+   * The closing-balance write is `nextBalance = closingBalance.minorUnits +
+   * postClosingNet`, not `base + netDelta` — the implicit adjustment this
+   * makes, `D = closingBalance.minorUnits - (base + netDelta)`, is never
+   * recorded as a ledger row, it just overwrites `base`; `holding.balanceSetAt`
+   * is the only durable trace this write leaves behind, not a transaction
+   * row. For a holding with NO prior transaction (`base` is always 0, and
+   * this statement's own rows are the WHOLE history) this is exact: nothing
+   * is left unaccounted for.
+   * For a holding with pre-existing history, `D` silently absorbs whatever
+   * happened before this statement's own coverage started — a prior manual
+   * entry error, an out-of-band transfer, or a real gap this particular
+   * statement predates — the resulting balance is correct as of
+   * `asOfSeconds`, but the SIZE of `D` is never surfaced anywhere. A
+   * history-only import (rows before the boundary, inserted at 0) leaves the
+   * same kind of untracked adjustment one level down: `holdingValueAt`
+   * (`src/statistics/holding-value-at.ts`) derives a holding's opening
+   * balance as `current balance - sum(all transactions)`, so those newly
+   * inserted rows shift that subtraction even though they added 0 to the
+   * current balance, moving every PAST value the net-worth series
+   * reconstructs for this holding by the same untracked amount.
+   *
+   * The eligibility comparison (`asOfSeconds * 1000 >= boundary`) is itself
+   * imprecise: `parseDateTimeSeconds` (`parse-date-time.ts`) reads a bank
+   * export's wall-clock timestamp with `Date.UTC(...)` directly, with no
+   * timezone offset applied — Ukraine is UTC+2/UTC+3, so every `asOfSeconds`
+   * (and every imported row's own `time`) is actually 2-3 hours LATER than
+   * the transaction's true UTC instant (the wall-clock digits get read as if
+   * they were already UTC, so a Kyiv-local instant is stamped 2-3 hours
+   * ahead of its real UTC value). Comparisons between two statement-derived
+   * times stay self-consistent (both carry the same skew), but a comparison
+   * against a genuinely-UTC boundary (e.g. a manual entry or edit
+   * timestamped with the real `Date.now()`) can land on the wrong side of
+   * this gate when the two times are within that 2-3 hour window: a balance
+   * hand-set at 12:00 Kyiv time, followed by a same-day PrivatBank or
+   * Sensebank import, sees its own 10:00-12:00 Kyiv rows parsed as at/after
+   * the boundary and counted as CURRENT — double-counting an amount the
+   * hand-set balance already reflects. Monobank is safe from this: its
+   * closing balance overwrites the balance outright instead of adding a net
+   * delta on top of an already-correct hand-set figure.
+   *
+   * `insertDedupRowsTx`'s `(source, external_id)` dedup key includes
+   * `source` — a row from ANOTHER source (a `manual` entry, a `monobank`
+   * sync row) that happens to represent the same real-world transaction as
+   * an imported row is NOT a dedup hit; it is a genuinely new `import`-
+   * sourced row, and its amount counts fully in `netDelta` PROVIDED it is
+   * also dated at/after the boundary — exactly like any other genuinely new
+   * row. Importing a statement that covers a transaction the user already
+   * entered manually therefore double-counts that amount in the net-delta
+   * path when both land on the current side of the boundary (the
+   * closing-balance path is unaffected, since it overwrites rather than
+   * adds).
+   *
+   * A SYNCED holding (`isSyncedHolding`) is the one exception: its balance is
+   * already owned by the live sync pipeline (`upsertMonobank` et al.), so this
+   * never touches it here, even when the statement carries new rows or a
+   * fresher closing balance — the rows still import as real ledger history,
+   * they just don't move the display balance a second, competing way.
+   *
+   * NO MIGRATION was written for holdings a pre-fix build already wrote a
+   * wrong (0 or under-counted) balance into (user ruling, I3): `1.0.0` is
+   * not published — build 25 was still in App Store review when this fix
+   * landed — so no real user has broken data to repair; a corrected build
+   * simply starts applying this rule to every import going forward. The
+   * `balance_set_at` migration DOES backfill existing rows, but only as a
+   * HEURISTIC (`drizzle/migrations/0036_*.sql`): it guesses a hand-set row
+   * by shape (`description ''`, `category` NULL, no exchange/change-return
+   * marker), since pre-migration data carries no direct signal for "this
+   * manual row was a balance being SET, not an ordinary entry" — this is
+   * for backfilling PRE-migration data only, not a repair of the balance
+   * itself.
+   */
+  importRows: (input: {
+    holdingId: string;
+    rows: NewTransaction[];
+    closingBalance?: ClosingBalance;
+  }): Promise<number> =>
+    write(async (tx) => {
+      const holdingRows = await tx
+        .select()
+        .from(holdings)
+        .where(eq(holdings.id, input.holdingId))
+        .limit(1);
+      const holding = holdingRows.at(0);
+
+      if (!holding) {
+        // Review follow-up (ponytail): the real caller (`importStatement`)
+        // already validates the holding exists before this ever runs — a
+        // missing holding here means a caller bug or a race, not a normal
+        // path to silently degrade into a balance-less dedup insert.
+        throw new Error(`Target holding not found: ${input.holdingId}`);
       }
-      const batch = dedupByConflictKey(inputs);
-      // Apply name→category override rules at insert time. Normalize each
-      // incoming description in JS (never SQL) and look the rules up by exact
-      // equality on the already-normalized key.
-      const keys = Array.from(
-        new Set(batch.map((input) => normalizeTransactionName(input.description ?? ''))),
-      ).filter((key) => key !== '');
-      const rules =
-        keys.length > 0
-          ? await tx
-              .select()
-              .from(categoryOverrides)
-              .where(inArray(categoryOverrides.normalizedName, keys))
-          : [];
-      const categoryByName = new Map(rules.map((rule) => [rule.normalizedName, rule.category]));
-      const withOverrides = batch.map((input) => {
-        const override = categoryByName.get(normalizeTransactionName(input.description ?? ''));
 
-        return override ? { ...input, category: override } : input;
-      });
-      const newRows = await countNewRows(tx, batch);
-      // Upsert on the `(source, external_id)` unique index: a re-fetched
-      // Monobank item is REFRESHED, not dropped. A `hold: true` authorization
-      // imports at its PROVISIONAL amount and re-syncs at the settled one, which
-      // `onConflictDoNothing` silently discarded — freezing the wrong amount
-      // forever. `excluded` is SQLite's alias for the row that would have been
-      // inserted.
-      //
-      // The update set names only the BANK-owned columns. `category` (which may
-      // be the user's own override, or a name rule's rewrite) and `comment` (the
-      // user's note) are deliberately absent, as is every structural column
-      // (`id`, `holding_id`, `exchange_counterpart_holding_id`).
-      //
-      // Manual rows are untouched either way: they carry a null `external_id`,
-      // and SQLite treats each NULL in a unique index as distinct, so two of
-      // them never conflict.
-      await tx
-        .insert(transactions)
-        .values(withOverrides.map((input) => ({ id: id(), ...input })))
-        .onConflictDoUpdate({
-          target: [transactions.source, transactions.externalId],
-          set: {
-            amountMinorUnits: sql`excluded.amount_minor_units`,
-            description: sql`excluded.description`,
-            hold: sql`excluded.hold`,
-            mcc: sql`excluded.mcc`,
-            counterIban: sql`excluded.counter_iban`,
-            time: sql`excluded.time`,
-          },
-        });
+      const accountRows = await tx
+        .select({ institution: accounts.institution })
+        .from(accounts)
+        .where(eq(accounts.id, holding.accountId))
+        .limit(1);
+      const synced = isSyncedHolding(holding, accountRows.at(0));
 
-      return newRows;
+      // Read BEFORE the new rows are upserted below, so this reflects the
+      // holding's ledger as it stood going into this import — never a row
+      // this very import is about to add. This IS boundary source (b): see
+      // THE BOUNDARY in the doc comment above.
+      const syncRows = await tx
+        .select({ time: sql<number | null>`max(${transactions.time})` })
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.holdingId, input.holdingId),
+            ne(transactions.source, 'manual'),
+            ne(transactions.source, 'import'),
+          ),
+        );
+      const syncBoundary = syncRows.at(0)?.time ?? null;
+      const boundary = laterOf(holding.balanceSetAt, syncBoundary);
+
+      const newRows = await insertDedupRowsTx(tx, input.rows);
+
+      if (synced) {
+        return newRows.length;
+      }
+
+      const { nextBalance, balanceSetAt } = resolveImportBalance(
+        holding,
+        boundary,
+        newRows,
+        input.closingBalance,
+      );
+
+      if (nextBalance !== holding.balanceMinorUnits || balanceSetAt !== undefined) {
+        await tx
+          .update(holdings)
+          .set({ balanceMinorUnits: nextBalance, balanceSetAt })
+          .where(eq(holdings.id, input.holdingId));
+      }
+
+      return newRows.length;
     }),
 } satisfies Repository;

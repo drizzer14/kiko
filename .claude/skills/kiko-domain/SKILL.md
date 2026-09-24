@@ -174,6 +174,31 @@ provider owns that number (`upsertByMetadataKey` in
 `src/holdings/`), and the form hides the balance field for a synced
 holding entirely.
 
+## Statement import moves the target holding's balance too
+
+A file-based statement import (`transactionsRepo.importRows`,
+`src/transactions/repo/transactions.repo.ts`, called from
+`importStatement`, `src/statement-import/import-statement/`) is a
+FOURTH balance writer, alongside the three above — it does NOT write
+an extra ledger row (like a manual adjustment does): the imported rows
+THEMSELVES already explain the balance move, the same way a Monobank
+sync's own upsert does. Everything (the row upsert AND the balance
+write) happens in ONE db transaction, so a partial failure can never
+leave the ledger and the balance disagreeing. This was a real, shipped
+production bug (App Store build 25): `importStatement` used to call
+only `transactionsRepo.addManyDedup`, which upserts `transactions` and
+never touches `holdings` — an import-only holding (created purely to
+receive a statement, opening balance 0, never touched by anything
+else) stayed at `balanceMinorUnits: 0` forever, so the Home headline
+and that holding's own card showed 0 even though its transaction list
+showed the real imported rows.
+
+`importRows`'s own doc comment (`transactions.repo.ts`) is the ONE
+full statement of the exact rule — the boundary, `holdings.balanceSetAt`,
+the closing-balance override, the wall-clock skew, the synced-holding
+exception, and why no migration repairs pre-fix data — read it there
+rather than trusting a restated summary here.
+
 ## `property_item` / `metal` create-form sections
 
 `src/screens/forms/holding-form/property-section/` is the

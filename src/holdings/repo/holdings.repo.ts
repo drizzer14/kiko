@@ -184,21 +184,33 @@ export const holdingsRepo = {
    * this insert has already set. It is the SYNC upserts (`upsertMonobank` /
    * `upsertExchange`), not this function, that write a provider-owned balance,
    * so no sync path is affected.
+   *
+   * The same non-zero opening balance also stamps `holdings.balanceSetAt` —
+   * `transactionsRepo.importRows`'s own doc comment is the full statement of
+   * why. `accountsRepo.createCashAccount` (a cash account's first holding)
+   * stamps it too, for the same reason: a typed starting balance IS a
+   * hand-set balance, whichever create path writes it.
    */
   create: ({ firstPricePoint, ...input }: NewHolding): Promise<string> =>
     write(async (tx) => {
       const holdingId = id();
       const sortOrder = input.sortOrder ?? (await nextSortOrder(tx, input.accountId));
-      await tx.insert(holdings).values({ id: holdingId, ...input, sortOrder });
-
       const openingBalance = input.balanceMinorUnits ?? 0;
+      const now = Date.now();
+
+      await tx.insert(holdings).values({
+        id: holdingId,
+        ...input,
+        sortOrder,
+        balanceSetAt: openingBalance !== 0 ? now : null,
+      });
 
       if (openingBalance !== 0) {
         await tx.insert(transactions).values({
           id: id(),
           holdingId,
           amountMinorUnits: openingBalance,
-          time: Date.now(),
+          time: now,
           description: '',
           category: null,
           source: 'manual',
@@ -269,6 +281,10 @@ export const holdingsRepo = {
    * excluding these rows without a decision to give them a structural marker
    * (the exchange precedent in db/schema.ts), which a reserved category value
    * cannot provide.
+   *
+   * A non-zero delta also stamps `holdings.balanceSetAt` at this edit's own
+   * `time`, in the SAME `.set(...)` as `patch` — `transactionsRepo.importRows`'s
+   * own doc comment is the full statement of why.
    */
   updateWithBalanceDelta: (holdingId: string, patch: Partial<HoldingRow>, time: number) =>
     write(async (tx) => {
@@ -278,14 +294,15 @@ export const holdingsRepo = {
         .where(eq(holdings.id, holdingId))
         .limit(1);
       const stored = rows.at(0)?.balanceMinorUnits;
+      const delta =
+        patch.balanceMinorUnits !== undefined && stored !== undefined
+          ? patch.balanceMinorUnits - stored
+          : 0;
 
-      await tx.update(holdings).set(patch).where(eq(holdings.id, holdingId));
-
-      if (patch.balanceMinorUnits === undefined || stored === undefined) {
-        return;
-      }
-
-      const delta = patch.balanceMinorUnits - stored;
+      await tx
+        .update(holdings)
+        .set({ ...patch, balanceSetAt: delta !== 0 ? time : undefined })
+        .where(eq(holdings.id, holdingId));
 
       if (delta === 0) {
         return;

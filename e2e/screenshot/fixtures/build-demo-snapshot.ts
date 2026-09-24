@@ -12,11 +12,11 @@ import type {
   TransactionRow,
 } from '../../../src/db/schema';
 
-import { ANCHOR, type ScreenshotDataset } from '../seed/screenshot-seed';
 import { SETTINGS_ID } from '../../../src/settings/settings.repo';
+import { ANCHOR, type ScreenshotDataset } from '../seed/screenshot-seed';
 import { SEEDED_CATEGORIES } from '../../../src/db/__fixtures__/seeded-categories';
-import { readSeedCategoryColors } from '../../../src/db/__fixtures__/seed-category-colors';
 import type { DataSnapshot } from '../../../src/data-transfer/snapshot/data-snapshot';
+import { readSeedCategoryColors } from '../../../src/db/__fixtures__/seed-category-colors';
 
 /**
  * The 10 default categories, sourced from the same fixture the repo tests
@@ -117,6 +117,7 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
         color: holding.color,
         balanceMinorUnits,
         syncedBalanceMinorUnits: null,
+        balanceSetAt: null,
         metadata: null,
         sortOrder: holdingIndex,
         closedAt: null,

@@ -22,13 +22,18 @@ export type ImportResult = {
  * Exclude any row whose currency doesn't match the TARGET HOLDING's own
  * currency (see `ImportResult.skippedWrongCurrency` above), build the
  * per-parse dedup occurrence map over the remaining rows, map each through
- * `mapParsedTransaction`, and hand the whole batch to the EXISTING
- * `transactionsRepo.addManyDedup` in one call — see
- * `docs/plans/statement-import.md` section A.4. Takes an already-parsed
- * `ParsedStatement` — shared by `importStatement` (a shipped bank format)
- * and the generic column-mapping import path (T1-T2 brief), which builds its
- * own `ParsedStatement` with `formatId: 'column-mapping'` and has no
- * dedicated `StatementFormat` to detect/parse through.
+ * `mapParsedTransaction`, and hand the whole batch — plus the parsed
+ * statement's own `closingBalance`, when it has one — to
+ * `transactionsRepo.importRows` in one call, which upserts the rows AND
+ * moves the target holding's `balanceMinorUnits` in a SINGLE db transaction
+ * (see that function's own doc comment, and `kiko-domain`'s "Statement
+ * import" section, for the exact balance rule). See
+ * `docs/plans/statement-import.md` section A.4 for the row-mapping shape.
+ * Takes an already-parsed `ParsedStatement` — shared by `importStatement`
+ * (a shipped bank format) and the generic column-mapping import path
+ * (T1-T2 brief), which builds its own `ParsedStatement` with
+ * `formatId: 'column-mapping'` and has no dedicated `StatementFormat` to
+ * detect/parse through.
  */
 export const importParsedStatement = async (
   parsed: ParsedStatement,
@@ -62,7 +67,11 @@ export const importParsedStatement = async (
 
     return mapParsedTransaction(transaction, holdingId, occurrenceIndex);
   });
-  const imported = await transactionsRepo.addManyDedup(rows);
+  const imported = await transactionsRepo.importRows({
+    holdingId,
+    rows,
+    closingBalance: parsed.closingBalance,
+  });
 
   return {
     formatId: parsed.formatId,

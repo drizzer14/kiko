@@ -229,9 +229,14 @@ describe('accountsRepo', () => {
       category: null,
     });
     expect(typeof openingRow.time).toBe('number');
+    // N1 (round-1 re-review): a typed starting balance IS a hand-set
+    // balance — it must stamp `balanceSetAt`, at the SAME instant as the
+    // opening ledger row's `time`, or `transactionsRepo.importRows` never
+    // sees this holding as ever hand-set.
+    expect(holdingInsert.balanceSetAt).toBe(openingRow.time);
   });
 
-  it('seeds no transaction for a zero initial balance', async () => {
+  it('seeds no transaction for a zero initial balance, and does not stamp balanceSetAt', async () => {
     const { tx, inserts, insertTables } = makeCreateTx();
     mockTx = tx;
 
@@ -243,6 +248,7 @@ describe('accountsRepo', () => {
 
     expect(inserts).toHaveLength(2);
     expect(insertTables).toEqual(['accounts', 'holdings']);
+    expect(inserts[1].balanceSetAt).toBeNull();
   });
 });
 

@@ -66,6 +66,11 @@ export const holdings = sqliteTable('holdings', {
   // balance, so the skip cannot fire), which also RECOVERS any card the old bug
   // had stranded, and then sets the marker.
   syncedBalanceMinorUnits: integer('synced_balance_minor_units'),
+  // The instant (ms) this holding's balance was last SET, not moved — the
+  // statement-import boundary. `transactionsRepo.importRows`'s own doc
+  // comment (`transactions/repo/transactions.repo.ts`) is the ONE full
+  // statement of exactly which writes set it.
+  balanceSetAt: integer('balance_set_at'),
   metadata: text('metadata', { mode: 'json' }),
   sortOrder: integer('sort_order').notNull().default(0),
   closedAt: integer('closed_at'),

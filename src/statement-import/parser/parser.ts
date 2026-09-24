@@ -64,6 +64,20 @@ export type UnresolvedStatementRow =
   | { reason: 'unmapped-currency'; rawCurrency: string; description: string }
   | { reason: 'invalid-amount'; description: string; rawAmount: string };
 
+/**
+ * The statement's own running/closing balance, when the export format
+ * carries one. `asOfSeconds` is the timestamp this balance is AS OF (the row
+ * it was read from), not the time the file was exported. See
+ * `transactionsRepo.importRows`'s doc comment (`transactions.repo.ts`) for
+ * the ONE full statement of how this is used to write the target holding's
+ * balance — this doc comment is a pointer, not a restatement.
+ */
+export type ClosingBalance = {
+  minorUnits: number;
+  currency: Currency;
+  asOfSeconds: number;
+};
+
 export type ParsedStatement = {
   formatId: ParsedStatementSource;
   account: ParsedAccountHint;
@@ -73,6 +87,21 @@ export type ParsedStatement = {
    * shipped so far) simply omits it, so `ParsedStatement`'s shape stays
    * unchanged for them. */
   unresolvedRows?: UnresolvedStatementRow[];
+  /** Only set by a format whose export carries a genuine running/closing
+   * balance field on a real committed fixture — see `ClosingBalance`'s doc
+   * comment. Today only Monobank CSV's per-row "Залишок після операції"
+   * (balance after transaction) qualifies: it is single-account, single-card
+   * per file, so the row with the largest parsed time is unambiguous (see
+   * `resolveClosingBalance`, `monobank-csv.format.ts`). PrivatBank XLSX also
+   * has a `balance` column (section C.1), but a PrivatBank export can mix
+   * MULTIPLE cards per file (`maskedCardHint` differs per row, see that
+   * format's own test), so a single closing balance cannot be attributed to
+   * one target holding without also matching on which card each row belongs
+   * to — deliberately left unset rather than guessed. Sensebank CSV and the
+   * three FOP/business CSVs (ProCredit/Ukrsibbank/Alfa) carry no balance
+   * field at all on their committed fixtures.
+   */
+  closingBalance?: ClosingBalance;
 };
 
 /** One entry per SHIPPED format. Phase 1 shipped Monobank CSV; Phase 2 added

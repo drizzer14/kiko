@@ -34,19 +34,20 @@ import {
 import { computeDedupKey } from '../mapping';
 import { monobankCsvFormat } from '../formats/monobank-csv';
 import { sensebankCsvFormat } from '../formats/sensebank-csv';
-import { categoryOverrides, transactions } from '../../db/schema';
 import { privatbankXlsxFormat } from '../formats/privatbank-xlsx';
 import type { ParsedTransaction, StatementFormatInput } from '../parser';
 import { importParsedStatement, importStatement } from '../import-statement';
 import { procreditBusinessCsvFormat } from '../formats/procredit-business-csv';
+import { accounts, categoryOverrides, holdings, transactions } from '../../db/schema';
 
 import { readTableRows } from './table-rows';
 import { applyColumnMapping } from './apply-column-mapping';
 import type { ColumnMapping } from './apply-column-mapping';
 
-/** A row as `addManyDedup`'s upsert sees it — same minimal shape
- * `import-statement.test.ts` uses for its own fake transaction handle. */
-type StoredRow = { id: string; source: string; externalId: string | null } & Record<
+/** A row as `importRows`'s upsert sees it — same minimal shape
+ * `import-statement.test.ts` uses for its own fake transaction handle, plus
+ * its own `time` (the fake's sync-boundary aggregate reads this back). */
+type StoredRow = { id: string; source: string; externalId: string | null; time: number } & Record<
   string,
   unknown
 >;
@@ -83,21 +84,56 @@ const applyUpsertRow = (
   store.transactions.push({ id: nextId(), ...row } as StoredRow);
 };
 
+const fakeHolding = { id: 'holding-1', currency: 'UAH', balanceMinorUnits: 0, balanceSetAt: null };
+const fakeAccount = { institution: null };
+
+/** The rows one fake `select(fields).from(table).where(...)` resolves to,
+ * dispatched by table identity — mirrors `import-statement.test.ts`'s own
+ * `resolveImportSelect`. */
+const resolveParitySelect = (
+  store: { transactions: StoredRow[] },
+  table: unknown,
+  fields: Record<string, unknown> | undefined,
+): unknown[] => {
+  if (table === categoryOverrides) {
+    return [];
+  }
+
+  if (table === holdings) {
+    return [fakeHolding];
+  }
+
+  if (table === accounts) {
+    return [fakeAccount];
+  }
+
+  if (table === transactions && fields && 'time' in fields) {
+    const syncTimes = store.transactions
+      .filter((row) => row.source !== 'manual' && row.source !== 'import')
+      .map((row) => row.time);
+
+    return syncTimes.length > 0 ? [{ time: Math.max(...syncTimes) }] : [{ time: null }];
+  }
+
+  return store.transactions.map((row) => ({ source: row.source, externalId: row.externalId }));
+};
+
 /** A minimal in-memory fake for the write-transaction handle
- * `transactionsRepo.addManyDedup` runs against — see
- * `import-statement.test.ts`'s own (more elaborate) version for the full
- * shape this mirrors. */
+ * `transactionsRepo.importRows` runs against — see `import-statement.test.ts`'s
+ * own (more elaborate) `makeImportTx` for the full shape this mirrors;
+ * deliberately NOT shared with that file (same reasoning as
+ * `transactions.repo.test.ts`'s `makeImportRowsTx` doc comment): this suite
+ * only needs a single fixed holding/account pair, never a per-test override. */
 const makeFakeTx = (store: { transactions: StoredRow[] }) => {
   let sequence = 0;
   const nextId = (): string => `row-${++sequence}`;
+  const resolveRows = (rows: unknown[]) =>
+    Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
 
   return {
-    select: () => ({
+    select: (fields?: Record<string, unknown>) => ({
       from: (table: unknown) => ({
-        where: async () =>
-          table === categoryOverrides
-            ? []
-            : store.transactions.map((row) => ({ source: row.source, externalId: row.externalId })),
+        where: () => resolveRows(resolveParitySelect(store, table, fields)),
       }),
     }),
     insert: (table: unknown) => ({
@@ -112,6 +148,9 @@ const makeFakeTx = (store: { transactions: StoredRow[] }) => {
           }
         },
       }),
+    }),
+    update: (table: unknown) => ({
+      set: () => ({ where: () => (table === holdings ? Promise.resolve() : undefined) }),
     }),
   };
 };
