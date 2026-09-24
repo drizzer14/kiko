@@ -2,6 +2,7 @@
 import {
   accounts,
   bondRegister,
+  type CategoryRow,
   categories,
   categoryOverrides,
   currencyRateHistory,
@@ -74,6 +75,41 @@ const withLegacyBalanceSetAtBackfilled = (
   return { ...holding, balanceSetAt: boundaries.get(holding.id) ?? null };
 };
 
+// Migration 0039's own seed values (`drizzle/migrations/0039_seed_loan_interest_category.sql`),
+// duplicated here rather than imported: that migration's SQL runs only on a
+// LIVE device upgrade, never against a restored snapshot's own categories.
+const LOAN_INTEREST_CATEGORY_KEY = 'loan_interest';
+
+/**
+ * A pre-0039 `.kiko` snapshot's categories never included `loan_interest` —
+ * migration 0039 seeds it only on-device, and `restoreDataSnapshot` REPLACEs
+ * the whole table with the snapshot's own rows, so nothing re-seeds it
+ * afterward. Appended here, at one past every OTHER category's own
+ * `sortOrder` (mirroring the migration's own "append at max + 1"), the same
+ * way restore already re-applies migration 0036's backfill for a legacy
+ * snapshot (`withLegacyBalanceSetAtBackfilled`). A no-op when the snapshot
+ * already carries its own `loan_interest` row (a post-0039 export, or one
+ * already restored once), so a user's own edit to it is never overwritten.
+ */
+const withLoanInterestReseeded = (snapshotCategories: CategoryRow[]): CategoryRow[] => {
+  if (snapshotCategories.some((category) => category.key === LOAN_INTEREST_CATEGORY_KEY)) {
+    return snapshotCategories;
+  }
+
+  const sortOrder = Math.max(-1, ...snapshotCategories.map((category) => category.sortOrder)) + 1;
+
+  return [
+    ...snapshotCategories,
+    {
+      key: LOAN_INTEREST_CATEGORY_KEY,
+      title: 'Loan interest',
+      icon: 'percent',
+      color: '#5E5CE6',
+      sortOrder,
+    },
+  ];
+};
+
 /**
  * Replaces every row in every one of the 10 logical tables with the given
  * snapshot's rows, inside ONE `write()` transaction — so a failure partway
@@ -135,7 +171,7 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
       for (const part of chunkForTable(holdings, holdingsToInsert)) {
         await tx.insert(holdings).values(part);
       }
-      for (const part of chunkForTable(categories, snapshot.categories)) {
+      for (const part of chunkForTable(categories, withLoanInterestReseeded(snapshot.categories))) {
         await tx.insert(categories).values(part);
       }
     };

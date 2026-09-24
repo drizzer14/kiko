@@ -94,7 +94,9 @@ describe('restoreDataSnapshot', () => {
       'pricePoints',
       'bondRegister',
     ]);
-    expect(insertedTables).toEqual(['accounts', 'holdings', 'transactions']);
+    // `categories` appears here even though this snapshot carries none: the
+    // `loan_interest` reseed (below) always runs, even into an empty table.
+    expect(insertedTables).toEqual(['accounts', 'holdings', 'categories', 'transactions']);
     expect(insertedRows.accounts).toEqual([{ id: 'a1' }]);
     // `{ id: 'h1' }` carries no `balanceSetAt` key — the legacy-backfill path
     // (see the dedicated tests below) stamps `null` since `t1` (this test's
@@ -103,7 +105,7 @@ describe('restoreDataSnapshot', () => {
     expect(insertedRows.transactions).toEqual([{ id: 't1' }]);
   });
 
-  it('skips the insert entirely for a table with no rows (no empty .values([]) call)', async () => {
+  it('skips the insert entirely for every OTHER table with no rows (no empty .values([]) call)', async () => {
     const insertedTables: string[] = [];
     mockTx = {
       delete: () => Promise.resolve(),
@@ -117,7 +119,78 @@ describe('restoreDataSnapshot', () => {
 
     await restoreDataSnapshot(emptySnapshot);
 
-    expect(insertedTables).toEqual([]);
+    // `categories` is the one exception: the `loan_interest` reseed always
+    // inserts, even from an otherwise-empty snapshot.
+    expect(insertedTables).toEqual(['categories']);
+  });
+
+  // A pre-0039 `.kiko` file was exported before `loan_interest` existed, and
+  // REPLACE deletes the whole `categories` table before re-inserting the
+  // snapshot's own rows, so nothing re-seeds it afterward the way migration
+  // 0039 does on a fresh install — a restored user's linked-payment interest
+  // would silently land under "Other" and the category would vanish from
+  // the picker.
+  describe('loan_interest category reseed (a pre-0039 snapshot never had it)', () => {
+    it('appends loan_interest at one past every OTHER category, when the snapshot has none', async () => {
+      const insertedRows: Record<string, unknown[]> = {};
+      mockTx = {
+        delete: () => Promise.resolve(),
+        insert: (table: unknown) => ({
+          values: (rows: unknown[]) => {
+            const name = tableNameOf(table);
+            insertedRows[name] = [...(insertedRows[name] ?? []), ...rows];
+            return Promise.resolve();
+          },
+        }),
+      };
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        categories: [
+          { key: 'groceries', title: 'Groceries', icon: 'cart', color: null, sortOrder: 0 },
+        ] as never,
+      });
+
+      expect(insertedRows.categories).toEqual([
+        { key: 'groceries', title: 'Groceries', icon: 'cart', color: null, sortOrder: 0 },
+        {
+          key: 'loan_interest',
+          title: 'Loan interest',
+          icon: 'percent',
+          color: '#5E5CE6',
+          sortOrder: 1,
+        },
+      ]);
+    });
+
+    it('does not duplicate or overwrite the snapshot own loan_interest row when it already has one', async () => {
+      const insertedRows: Record<string, unknown[]> = {};
+      mockTx = {
+        delete: () => Promise.resolve(),
+        insert: (table: unknown) => ({
+          values: (rows: unknown[]) => {
+            const name = tableNameOf(table);
+            insertedRows[name] = [...(insertedRows[name] ?? []), ...rows];
+            return Promise.resolve();
+          },
+        }),
+      };
+      // A post-0039 export, carrying the user's OWN edited title/color.
+      const ownLoanInterest = {
+        key: 'loan_interest',
+        title: 'Interest expense',
+        icon: 'percent',
+        color: '#123456',
+        sortOrder: 7,
+      };
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        categories: [ownLoanInterest] as never,
+      });
+
+      expect(insertedRows.categories).toEqual([ownLoanInterest]);
+    });
   });
 
   it('inserts a snapshot pricePoints row into the price_points table', async () => {
@@ -251,9 +324,14 @@ describe('restoreDataSnapshot', () => {
     const insertedChunkSizes: number[] = [];
     mockTx = {
       delete: () => Promise.resolve(),
-      insert: () => ({
+      insert: (table: unknown) => ({
         values: (rows: unknown[]) => {
-          insertedChunkSizes.push(rows.length);
+          // Scoped to `transactions`: the `loan_interest` reseed also
+          // inserts into `categories` on every restore, which would
+          // otherwise inflate this table's own row-count total below.
+          if (table === transactions) {
+            insertedChunkSizes.push(rows.length);
+          }
           return Promise.resolve();
         },
       }),
