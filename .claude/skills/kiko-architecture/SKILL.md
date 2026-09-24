@@ -153,19 +153,17 @@ the SAME `db.transaction()`/`write()` call. Never hand-roll a fixed
 row-count chunk; the safe size depends on the table's column count,
 which only `chunkForTable` knows.
 
-Example: `ratesRepo.upsertMany`
-(`src/rates/repo/rates.repo.ts`).
+Examples: `ratesRepo.upsertMany` (`src/rates/repo/rates.repo.ts`) and
+`transactionsRepo.addManyDedup`
+(`src/transactions/repo/transactions.repo.ts`) — the latter also
+chunks its two per-row `inArray(...)` selects (the category-override
+rule lookup and the existing-external-id lookup) directly at a safe
+item-count margin, since a one-column `inArray` list has no table to
+derive a column count from.
 
 `rateHistoryRepo.upsertMany` and the restore-snapshot import path
 have their own, older, pre-existing chunking — don't assume they use
 `chunkForTable` too; check before touching either.
-
-KNOWN OPEN DEBT (as of the hotfix-build-26 branch):
-`transactionsRepo.addManyDedup`
-(`src/transactions/repo/transactions.repo.ts`) is still unchunked —
-15 columns means it fails past ~2184 rows. `feat/assets-debts` fixes
-this via `insertDedupRowsTx`; land that fix (or port it) before
-relying on large dedup imports here.
 
 ## Repository module shape
 

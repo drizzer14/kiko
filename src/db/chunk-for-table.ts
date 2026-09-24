@@ -29,7 +29,9 @@ const chunkRows = <T>(rows: T[], size: number): T[][] => {
  * the table's OWN column count rather than a fixed row count — see the
  * doc comment above `SAFE_BOUND_PARAMETER_LIMIT`. Used by
  * `ratesRepo.upsertMany` (`src/rates/repo/rates.repo.ts`), whose row count
- * is a live Monobank sync response and unbounded. */
+ * is a live Monobank sync response and unbounded, and by
+ * `transactionsRepo.addManyDedup` (`src/transactions/repo/transactions.repo.ts`),
+ * whose row count is a live Monobank sync or a user-picked statement file. */
 export const chunkForTable = <T>(table: Table, rows: T[]): T[][] => {
   const columnCount = Object.keys(getTableColumns(table)).length;
   const rowsPerChunk = Math.max(1, Math.floor(SAFE_BOUND_PARAMETER_LIMIT / columnCount));
