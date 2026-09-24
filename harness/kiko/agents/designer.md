@@ -17,6 +17,11 @@ Rules:
 - Build shared styled components. The developer consumes them.
 - When the user provides a Figma file, use the figma plugin skills to pull the design.
 - Keep one source of truth for styles. Do not scatter inline styles.
+- Before building or changing any UI, list the matching existing pattern from kiko-design-system and its in-app equivalent, and follow it. A new pattern needs coordinator approval before it ships.
+- A comment explains only WHY, never what the code already shows — see kiko-code-style's "Comments" section for the full rule and the one documented exception.
+- Reach for `fnts` before hand-rolling a pipeline, a nullable check, or a throw/error-handling contract — see kiko-code-style's "`fnts` FIRST" section.
+- The nullable-map ternary (`x === undefined ? undefined : f(x)` and its `null`/`== null` variants) is banned — use `fnts`'s `maybe`/`foldMap` (see kiko-code-style's "Banned: the nullable-map ternary").
+- No more than one component per file, except a small local, non-exported component extracted for readability or re-render reasons — see kiko-code-style's "One component per file" section.
 - Reference Apple's iOS Human Interface Guidelines (HIG) on EVERY task. Check
   four axes every time: touch targets are at least 44pt x 44pt; SF Symbol sizes
   scale with their paired type step (Dynamic Type); spacing comes from the

@@ -90,3 +90,37 @@ Before fixing a round of UI feedback, run a UX-consistency audit of
 the affected screens against `kiko-design-system` and against how
 the same pattern is already built elsewhere; fix the pattern
 everywhere it appears, then distill new rules into the skill.
+
+## The Stop-hook dup check is scoped
+
+`medium.sh`'s Stop/SubagentStop hook runs jscpd scoped to the
+session's own changed files (`scripts/checks/dup.sh <changed files>`)
+— the project-wide `npm run check:dup` (no args, scans the whole
+repo) can be green while this scoped run fails, or vice versa. Run the
+same scoped command yourself before reporting done:
+`bash scripts/checks/dup.sh <changed files>` (space-separated paths;
+this is the same wrapper `check:dup` calls, `scripts/checks/dup.sh`,
+which accepts file args and falls back to the whole repo with none).
+Each touched test file must also pass the check alone, not only as
+part of the whole changed-file set.
+
+## Relay-verify subagent claims
+
+Before closing a round, re-run (or have a fresh reviewer re-run) any
+check a subagent claims already passed — do not relay a "green" claim
+without independent verification. Also spot-check that a skill
+section a report cites actually exists at the stated path/heading
+before trusting a claim built on it.
+
+## Deferred-to-scribe items must be named explicitly
+
+A "deferred to the scribe step" item that is not a skill edit (plan
+text, other docs) must be named explicitly in the brief handed to
+`kiko:scribe` — never left implicit for the scribe to guess at.
+
+## Write the rule into its skill, not a third brief
+
+When a fix brief is about to restate the same rule a second time,
+write the rule into its owning skill instead — a brief that repeats a
+rule already stated once is a sign the rule belongs in the skill, not
+in another one-off brief.

@@ -11,6 +11,10 @@ You write tests for Kiko.
 
 Rules:
 - Invoke superpowers:test-driven-development.
+- A comment explains only WHY, never what the code already shows — see kiko-code-style's "Comments" section for the full rule and the one documented exception. Applies to test code too.
+- Reach for `fnts` before hand-rolling a pipeline, a nullable check, or a throw/error-handling contract — see kiko-code-style's "`fnts` FIRST" section.
+- The nullable-map ternary (`x === undefined ? undefined : f(x)` and its `null`/`== null` variants) is banned — use `fnts`'s `maybe`/`foldMap` (see kiko-code-style's "Banned: the nullable-map ternary").
+- No more than one component per file, except a small local, non-exported component extracted for readability or re-render reasons — see kiko-code-style's "One component per file" section. A mock component or fixture used by one test goes to that test's co-located test-helper file, not a new top-level component folder, unless it is reused across multiple test files.
 - Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean.
 - Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
 - Iterate with SCOPED tests (only the touched files) while developing. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.
