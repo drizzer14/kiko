@@ -620,7 +620,7 @@ export const uk: typeof en = {
     chooseHolding: 'Актив',
     chooseHoldingSheetTitle: 'Оберіть актив',
     chooseHoldingPlaceholder: 'Оберіть актив',
-    chooseHoldingError: 'Оберіть актив для імпорту.',
+    chooseHoldingError: 'Актив для імпорту не вибрано.',
     createNewHolding: 'Створити актив',
     importButton: 'Імпортувати',
     importErrorTitle: 'Не вдалося імпортувати',

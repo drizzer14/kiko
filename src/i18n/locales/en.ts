@@ -848,22 +848,23 @@ export const en = {
     counterpartyColumnPlaceholder: 'Select a counterparty column',
     balanceColumnPlaceholder: 'Select a balance column',
     // Field-level Import-press validation errors — Import is never
-    // disabled; every required field validates on press instead. "Pick …"
-    // matches the established `forms.holding.couponFrequencyRequiredError`
-    // copy style for a picker field.
-    dateColumnError: 'Pick a date column.',
-    dateFormatError: 'Pick a date format.',
-    amountColumnError: 'Pick an amount column.',
-    debitColumnError: 'Pick a debit column.',
-    creditColumnError: 'Pick a credit column.',
-    currencyColumnError: 'Pick a currency column.',
+    // disabled; every required field validates on press instead. The "No …
+    // selected." form reads as its own distinct line next to each field's
+    // own "Select a …" placeholder above, rather than the same imperative
+    // verb stacked twice.
+    dateColumnError: 'No date column selected.',
+    dateFormatError: 'No date format selected.',
+    amountColumnError: 'No amount column selected.',
+    debitColumnError: 'No debit column selected.',
+    creditColumnError: 'No credit column selected.',
+    currencyColumnError: 'No currency column selected.',
     // A currency column whose values resolve to NO known ISO code anywhere
     // in the file — `applyColumnMapping` throws in exactly this case (see
     // its own doc comment) — shown on the currency-column field itself,
     // once Import is pressed, same as every other field error here.
     currencyColumnUnresolvedError:
       'None of the values in this column are currency codes Kiko recognizes.',
-    descriptionColumnError: 'Pick a description column.',
+    descriptionColumnError: 'No description column selected.',
     // Every required field IS mapped and the mapping applied without
     // throwing, but literally zero rows survived their own per-row checks
     // (e.g. a date format that matches none of the file's actual date
