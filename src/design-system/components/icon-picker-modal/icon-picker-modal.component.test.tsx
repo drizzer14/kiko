@@ -30,9 +30,9 @@ const setup = async (overrides: Overrides = {}) => {
 };
 
 describe('icon pools', () => {
-  it('exposes exactly 62 Kiko Entities symbols and 76 Kiko Categories symbols', () => {
+  it('exposes exactly 62 Kiko Entities symbols and 77 Kiko Categories symbols', () => {
     expect(KIKO_ENTITIES_ICONS).toHaveLength(62);
-    expect(KIKO_CATEGORIES_ICONS).toHaveLength(76);
+    expect(KIKO_CATEGORIES_ICONS).toHaveLength(77);
   });
 
   it('includes every seeded category default so each is selectable in the picker', () => {
@@ -43,6 +43,13 @@ describe('icon pools', () => {
     for (const icon of SEEDED_CATEGORIES.map((category) => category.icon)) {
       expect(KIKO_CATEGORIES_ICONS).toContain(icon);
     }
+  });
+
+  // T30 (spec 5/D14): the eleventh default category (`loan_interest`, seeded
+  // by 0039 — not part of SEEDED_CATEGORIES, see that fixture's own comment)
+  // still needs its `percent` icon selectable, same as the original ten.
+  it('includes percent, the loan_interest default icon (T30, seeded by 0039)', () => {
+    expect(KIKO_CATEGORIES_ICONS).toContain('percent');
   });
 
   it('keeps the two pools distinct: an entities-only symbol is not a categories one, and vice versa', () => {
