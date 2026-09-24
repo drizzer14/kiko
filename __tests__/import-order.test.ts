@@ -1,8 +1,7 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readFileSync } from 'node:fs';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 
 // scripts/checks/import-order.sh mechanizes kiko-code-style's "Import
 // ordering" rule (hand-enforced, not covered by Biome — see biome.json's
