@@ -693,7 +693,7 @@ export const uk: typeof en = {
     descriptionColumnError: 'Стовпець опису не вибрано.',
     noRowsResolvedError: 'Жоден рядок цього файлу не вдалося прочитати з поточним зіставленням.',
     result: 'Результат',
-    incomplete: 'Оберіть стовпці дати, суми та опису.',
+    incomplete: 'Оберіть обов’язкові стовпці.',
     rowError: {
       date: 'Рядок {{row}}: дата не відповідає формату',
       amount: 'Рядок {{row}}: сума не є числом',

@@ -879,7 +879,11 @@ export const en = {
     // since no single INPUT field is the one at fault here.
     noRowsResolvedError: 'None of the rows in this file could be read with the current mapping.',
     result: 'Result',
-    incomplete: 'Choose the date, amount, and description columns.',
+    // Shown while ANY required field is still unmapped — date, date format,
+    // amount(s), description, or (in column-currency mode) the currency
+    // column — so a naming-only list of 3 fields would misname the real gap
+    // whenever it's the currency column instead.
+    incomplete: 'Choose the required columns.',
     rowError: {
       date: 'Row {{row}}: the date does not match the format',
       amount: 'Row {{row}}: the amount is not a number',
