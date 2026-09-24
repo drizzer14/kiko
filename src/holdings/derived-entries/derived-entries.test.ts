@@ -40,12 +40,12 @@ describe('derivedEntries', () => {
     const entries = derivedEntries(holding, now, i18n.t);
 
     // The opening deposit and the top-up lead, labelled distinctly.
-    const contributions = entries.filter((e) => e.kind === 'contribution');
-    expect(contributions.map((e) => e.label)).toEqual(['Opening deposit', 'Top-up']);
+    const contributions = entries.filter((entry) => entry.kind === 'contribution');
+    expect(contributions.map((entry) => entry.label)).toEqual(['Opening deposit', 'Top-up']);
     expect(contributions[0].amountMinorUnits).toBe(100_000_00);
 
     // The first interest accrual and its two withholding lines, dated 1 Feb.
-    const firstAccrual = entries.find((e) => e.kind === 'accrual');
+    const firstAccrual = entries.find((entry) => entry.kind === 'accrual');
     expect(firstAccrual).toMatchObject({
       time: local(2026, 1, 1),
       amountMinorUnits: 87_671,
@@ -53,15 +53,15 @@ describe('derivedEntries', () => {
       isFuture: false,
       derived: true,
     });
-    const firstIncome = entries.find((e) => e.kind === 'income-tax');
+    const firstIncome = entries.find((entry) => entry.kind === 'income-tax');
     expect(firstIncome).toMatchObject({ amountMinorUnits: -15_781, label: 'Income tax 18%' });
-    const firstMilitary = entries.find((e) => e.kind === 'military-levy');
+    const firstMilitary = entries.find((entry) => entry.kind === 'military-levy');
     expect(firstMilitary).toMatchObject({ amountMinorUnits: -4_384, label: 'Military levy 5%' });
 
     // The 12 Feb capitalization folds both February periods' net into the balance:
     // 675.06 ([12.01-31.01]) + 388.17 ([01.02-11.02], military levy 25.20 under the
     // bank's cumulative withholding) = 1063.23, exactly the statement.
-    const firstCap = entries.find((e) => e.kind === 'capitalization');
+    const firstCap = entries.find((entry) => entry.kind === 'capitalization');
     expect(firstCap).toMatchObject({
       time: local(2026, 1, 12),
       amountMinorUnits: 106_323,
@@ -71,7 +71,7 @@ describe('derivedEntries', () => {
 
     // Accruals whose capitalization is still ahead are projected (dimmed): the
     // deposit runs to Jan 2027, so late accruals are future-dated.
-    expect(entries.some((e) => e.kind === 'accrual' && e.isFuture)).toBe(true);
+    expect(entries.some((entry) => entry.kind === 'accrual' && entry.isFuture)).toBe(true);
   });
 
   it('sorts the lifecycle oldest-first and keeps same-instant lines grouped', () => {
@@ -94,7 +94,9 @@ describe('derivedEntries', () => {
       expect(entries[i].time).toBeGreaterThanOrEqual(entries[i - 1].time);
     }
     // The 1 Feb accrual line precedes its income and military lines (same instant).
-    const feb1 = entries.filter((e) => e.time === local(2026, 1, 1)).map((e) => e.kind);
+    const feb1 = entries
+      .filter((entry) => entry.time === local(2026, 1, 1))
+      .map((entry) => entry.kind);
     expect(feb1).toEqual(['accrual', 'income-tax', 'military-levy']);
   });
 
@@ -117,9 +119,9 @@ describe('derivedEntries', () => {
 
     const entries = derivedEntries(holding, now, i18n.t);
 
-    expect(entries.map((e) => e.kind)).toEqual(['contribution', 'interest', 'tax']);
-    const interest = entries.find((e) => e.kind === 'interest');
-    const tax = entries.find((e) => e.kind === 'tax');
+    expect(entries.map((entry) => entry.kind)).toEqual(['contribution', 'interest', 'tax']);
+    const interest = entries.find((entry) => entry.kind === 'interest');
+    const tax = entries.find((entry) => entry.kind === 'tax');
     // BUG2 day-after convention: accrues from the day AFTER the contribution, so
     // the 365-day span earns 364 days: 10,000 * 10% * 364/365 = 997.26 (99726
     // minor); tax = round(99726*18%) + round(99726*5%) = 17,951 + 4,986 = 22,937.
@@ -214,7 +216,7 @@ describe('derivedEntries', () => {
         derived: true,
       },
     ]);
-    expect(entries.some((e) => e.kind === 'tax')).toBe(false);
+    expect(entries.some((entry) => entry.kind === 'tax')).toBe(false);
   });
 
   it('pays a corporate bond coupon net of the 23% withholding, using the real price', () => {
@@ -250,10 +252,10 @@ describe('derivedEntries', () => {
       isFuture: false,
       derived: true,
     });
-    expect(entries.filter((e) => e.kind === 'coupon').map((e) => e.amountMinorUnits)).toEqual([
-      38_500, 38_500, 38_500,
-    ]);
-    expect(entries.some((e) => e.kind === 'tax')).toBe(false);
+    expect(
+      entries.filter((entry) => entry.kind === 'coupon').map((entry) => entry.amountMinorUnits),
+    ).toEqual([38_500, 38_500, 38_500]);
+    expect(entries.some((entry) => entry.kind === 'tax')).toBe(false);
   });
 
   it('tones a recap-on deposit: tax lines negative, interest/capitalization positive, contributions neutral', () => {
@@ -272,7 +274,8 @@ describe('derivedEntries', () => {
     };
 
     const entries = derivedEntries(holding, local(2026, 8, 2), i18n.t);
-    const toneOf = (kind: string): string | undefined => entries.find((e) => e.kind === kind)?.tone;
+    const toneOf = (kind: string): string | undefined =>
+      entries.find((entry) => entry.kind === kind)?.tone;
 
     // Withholding lines read red (negative); interest accrual and capitalization
     // read green (positive); the opening/top-up contribution stays neutral.
@@ -300,8 +303,8 @@ describe('derivedEntries', () => {
 
     const entries = derivedEntries(holding, T0 + 365 * DAY, i18n.t);
 
-    expect(entries.find((e) => e.kind === 'interest')?.tone).toBe('positive');
-    expect(entries.find((e) => e.kind === 'tax')?.tone).toBe('negative');
+    expect(entries.find((entry) => entry.kind === 'interest')?.tone).toBe('positive');
+    expect(entries.find((entry) => entry.kind === 'tax')?.tone).toBe('negative');
   });
 
   it('tones a bond: coupons positive, purchase/redemption neutral', () => {
@@ -323,9 +326,9 @@ describe('derivedEntries', () => {
 
     const entries = derivedEntries(holding, local(2025, 5, 1), i18n.t);
 
-    expect(entries.find((e) => e.kind === 'coupon')?.tone).toBe('positive');
-    expect(entries.find((e) => e.kind === 'purchase')?.tone).toBe('neutral');
-    expect(entries.find((e) => e.kind === 'redemption')?.tone).toBe('neutral');
+    expect(entries.find((entry) => entry.kind === 'coupon')?.tone).toBe('positive');
+    expect(entries.find((entry) => entry.kind === 'purchase')?.tone).toBe('neutral');
+    expect(entries.find((entry) => entry.kind === 'redemption')?.tone).toBe('neutral');
   });
 
   it('returns [] for non deposit/bond holdings', () => {
@@ -369,7 +372,7 @@ describe('derivedEntries', () => {
     try {
       const entries = derivedEntries(holding, local(2025, 5, 1), i18n.t);
 
-      expect(entries.map((e) => e.label)).toEqual([
+      expect(entries.map((entry) => entry.label)).toEqual([
         'Купівля',
         'Купон',
         'Купон',
@@ -407,7 +410,7 @@ describe('derivedEntries', () => {
 
     it('renders a buy lot as a Purchase entry, money out', () => {
       const entries = derivedEntries(metalHolding, local(2025, 8, 1), i18n.t);
-      const purchase = entries.find((e) => e.kind === 'purchase');
+      const purchase = entries.find((entry) => entry.kind === 'purchase');
 
       expect(purchase).toMatchObject({
         time: local(2025, 0, 1),
@@ -419,7 +422,7 @@ describe('derivedEntries', () => {
 
     it('renders a sell lot as a Sale entry, money in', () => {
       const entries = derivedEntries(metalHolding, local(2025, 8, 1), i18n.t);
-      const sale = entries.find((e) => e.kind === 'sale');
+      const sale = entries.find((entry) => entry.kind === 'sale');
 
       expect(sale).toMatchObject({
         time: local(2025, 5, 1),

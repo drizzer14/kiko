@@ -2,15 +2,18 @@
 // reference variables prefixed with `mock` (case-insensitive) — see
 // babel-plugin-jest-hoist.
 const mockExecute = jest.fn();
-const mockTxExecute = jest.fn();
-const mockTransaction = jest.fn(async (work: (tx: { execute: jest.Mock }) => Promise<void>) => {
-  await work({ execute: mockTxExecute });
-});
+const mockTransactionExecute = jest.fn();
+const mockTransaction = jest.fn(
+  async (work: (transaction: { execute: jest.Mock }) => Promise<void>) => {
+    await work({ execute: mockTransactionExecute });
+  },
+);
 
 jest.mock('./client', () => ({
   rawDatabase: {
     execute: (...args: unknown[]) => mockExecute(...args),
-    transaction: (work: (tx: { execute: jest.Mock }) => Promise<void>) => mockTransaction(work),
+    transaction: (work: (transaction: { execute: jest.Mock }) => Promise<void>) =>
+      mockTransaction(work),
   },
 }));
 
@@ -91,7 +94,7 @@ beforeEach(() => {
   jest.doMock('../../drizzle/migrations/migrations', migrationBundleFactory);
 
   mockExecute.mockReset();
-  mockTxExecute.mockReset();
+  mockTransactionExecute.mockReset();
   mockTransaction.mockClear();
   appliedCount.current = 0;
   mockExecute.mockImplementation(async (sql: string) => {
@@ -149,9 +152,9 @@ describe('runMigrations', () => {
     await runMigrations();
 
     expect(mockTransaction).toHaveBeenCalledTimes(2);
-    expect(mockTxExecute).toHaveBeenCalledWith('CREATE TABLE a (id text);');
-    expect(mockTxExecute).toHaveBeenCalledWith('CREATE TABLE b (id text);');
-    expect(mockTxExecute).toHaveBeenCalledWith('\nCREATE TABLE c (id text);');
+    expect(mockTransactionExecute).toHaveBeenCalledWith('CREATE TABLE a (id text);');
+    expect(mockTransactionExecute).toHaveBeenCalledWith('CREATE TABLE b (id text);');
+    expect(mockTransactionExecute).toHaveBeenCalledWith('\nCREATE TABLE c (id text);');
   });
 
   it('filters empty statements so a trailing breakpoint never executes a blank query', async () => {
@@ -159,8 +162,8 @@ describe('runMigrations', () => {
 
     await runMigrations();
 
-    expect(mockTxExecute).not.toHaveBeenCalledWith('');
-    expect(mockTxExecute).not.toHaveBeenCalledWith('\n');
+    expect(mockTransactionExecute).not.toHaveBeenCalledWith('');
+    expect(mockTransactionExecute).not.toHaveBeenCalledWith('\n');
   });
 
   it('records each applied migration with its own journal timestamp', async () => {
@@ -168,11 +171,11 @@ describe('runMigrations', () => {
 
     await runMigrations();
 
-    expect(mockTxExecute).toHaveBeenCalledWith(
+    expect(mockTransactionExecute).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO __drizzle_migrations'),
       ['', 1000],
     );
-    expect(mockTxExecute).toHaveBeenCalledWith(
+    expect(mockTransactionExecute).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO __drizzle_migrations'),
       ['', 2000],
     );
@@ -185,8 +188,8 @@ describe('runMigrations', () => {
     await runMigrations();
 
     expect(mockTransaction).toHaveBeenCalledTimes(1);
-    expect(mockTxExecute).toHaveBeenCalledWith('CREATE TABLE b (id text);');
-    expect(mockTxExecute).not.toHaveBeenCalledWith('CREATE TABLE a (id text);');
+    expect(mockTransactionExecute).toHaveBeenCalledWith('CREATE TABLE b (id text);');
+    expect(mockTransactionExecute).not.toHaveBeenCalledWith('CREATE TABLE a (id text);');
   });
 
   it('applies nothing when every bundled migration is already recorded', async () => {
@@ -273,24 +276,24 @@ describe('runMigrations — non-monotonic journal self-heal', () => {
     await runMigrations();
 
     expect(mockTransaction).toHaveBeenCalledTimes(2);
-    expect(mockTxExecute).toHaveBeenCalledWith(
+    expect(mockTransactionExecute).toHaveBeenCalledWith(
       expect.stringContaining('CREATE TABLE `category_overrides`'),
     );
-    expect(mockTxExecute).toHaveBeenCalledWith(
+    expect(mockTransactionExecute).toHaveBeenCalledWith(
       expect.stringContaining('ALTER TABLE `categories` ADD `color`'),
     );
     // The two applied migrations are recorded under their own (earlier) `when`.
-    expect(mockTxExecute).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO'), [
+    expect(mockTransactionExecute).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO'), [
       '',
       1788510193092,
     ]);
-    expect(mockTxExecute).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO'), [
+    expect(mockTransactionExecute).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO'), [
       '',
       1788514551234,
     ]);
     // Nothing at or before idx 6 is re-run.
-    expect(mockTxExecute).not.toHaveBeenCalledWith('UPDATE accounts SET sort_order = 0;');
-    expect(mockTxExecute).not.toHaveBeenCalledWith('CREATE TABLE accounts (id text);');
+    expect(mockTransactionExecute).not.toHaveBeenCalledWith('UPDATE accounts SET sort_order = 0;');
+    expect(mockTransactionExecute).not.toHaveBeenCalledWith('CREATE TABLE accounts (id text);');
   });
 
   it('applies ALL nine journal migrations, in order, on a fresh/empty database', async () => {
@@ -301,10 +304,10 @@ describe('runMigrations — non-monotonic journal self-heal', () => {
 
     expect(mockTransaction).toHaveBeenCalledTimes(9);
     // The tail schema (the previously-skipped migrations) is built.
-    expect(mockTxExecute).toHaveBeenCalledWith(
+    expect(mockTransactionExecute).toHaveBeenCalledWith(
       expect.stringContaining('CREATE TABLE `category_overrides`'),
     );
-    expect(mockTxExecute).toHaveBeenCalledWith(
+    expect(mockTransactionExecute).toHaveBeenCalledWith(
       expect.stringContaining('ALTER TABLE `categories` ADD `color`'),
     );
   });
@@ -328,10 +331,10 @@ describe('runMigrations — non-monotonic journal self-heal', () => {
 
     await runMigrations();
 
-    expect(mockTxExecute).not.toHaveBeenCalledWith(
+    expect(mockTransactionExecute).not.toHaveBeenCalledWith(
       expect.stringContaining('CREATE TABLE `category_overrides`'),
     );
-    expect(mockTxExecute).not.toHaveBeenCalledWith(
+    expect(mockTransactionExecute).not.toHaveBeenCalledWith(
       expect.stringContaining('ALTER TABLE `categories` ADD `color`'),
     );
   });

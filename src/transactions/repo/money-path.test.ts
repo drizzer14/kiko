@@ -3,12 +3,12 @@
 // must seed the right counterpart amount without ever mutating the bank row.
 // Modeled on rates-refresh/crypto-coverage.test.ts: drive the real logic
 // through fast seams, no simulator.
-let mockTx: unknown;
+let mockTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
   return {
     ...actual,
-    write: (work: (db: unknown) => unknown) => work(mockTx),
+    write: (work: (db: unknown) => unknown) => work(mockTransaction),
   };
 });
 
@@ -23,17 +23,17 @@ import { transactionsRepo } from './transactions.repo';
 // A fake tx handle capturing inserts + balance updates in call order, answering
 // both the chained `.where(...).limit(1)` and the bare `await where(...)`
 // conventions — same shape as transactions.repo.test.ts's makeExchangeTx.
-const makeTx = (
+const makeTransaction = (
   selectQueue: unknown[][],
 ): {
-  tx: unknown;
+  transaction: unknown;
   inserts: Record<string, unknown>[];
   updates: { table: unknown; values: Record<string, unknown> }[];
 } => {
   const inserts: Record<string, unknown>[] = [];
   const updates: { table: unknown; values: Record<string, unknown> }[] = [];
   const queue = [...selectQueue];
-  const tx = {
+  const transaction = {
     select: () => ({
       from: () => ({
         where: () => {
@@ -56,19 +56,19 @@ const makeTx = (
     }),
   };
 
-  return { tx, inserts, updates };
+  return { transaction, inserts, updates };
 };
 
 describe('Money-path guard: split-change + convert prefill', () => {
   it('keeps net worth correct after a split-change (payment + N linked returns)', async () => {
     // Opening balances: payer 500_00, holding B 10_00, holding C 20_00 UAH.
     const opening = { 'payer-1': 500_00, 'hold-b': 10_00, 'hold-c': 20_00 };
-    const { tx, updates } = makeTx([
+    const { transaction, updates } = makeTransaction([
       [{ balanceMinorUnits: opening['payer-1'] }],
       [{ balanceMinorUnits: opening['hold-b'] }],
       [{ balanceMinorUnits: opening['hold-c'] }],
     ]);
-    mockTx = tx;
+    mockTransaction = transaction;
 
     await transactionsRepo.recordManualWithReturns({
       payment: { holdingId: 'payer-1', amountMinorUnits: -212_00, time: 1, category: 'groceries' },
@@ -136,11 +136,11 @@ describe('Money-path guard: split-change + convert prefill', () => {
 
     // Convert of a SYNCED (bank-owned) withdrawal: only the new cash leg is
     // written; the existing monobank row is never updated.
-    const { tx, inserts, updates } = makeTx([
+    const { transaction, inserts, updates } = makeTransaction([
       [{ balanceMinorUnits: 0 }], // the new cash leg's balance read
       [{ source: 'monobank' }], // the existing bank row, read inside the tx
     ]);
-    mockTx = tx;
+    mockTransaction = transaction;
 
     await transactionsRepo.recordExchangeCounterpart({
       direction: 'record-destination',

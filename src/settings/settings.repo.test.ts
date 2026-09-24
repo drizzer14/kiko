@@ -1,12 +1,12 @@
 // The setters run their update through the `write` helper (one op-sqlite
 // transaction). Override `write` to run the callback against a fake transaction
 // handle so the test can capture the update payload.
-let mockTx: unknown;
+let mockTransaction: unknown;
 jest.mock('../db/client', () => {
   const actual = jest.requireActual('../db/client');
   return {
     ...actual,
-    write: (work: (db: unknown) => unknown) => work(mockTx),
+    write: (work: (db: unknown) => unknown) => work(mockTransaction),
   };
 });
 
@@ -24,7 +24,7 @@ import { settingsRepo } from './settings.repo';
  * `database.select` spy, so a test can prove a write survives through to a
  * read without a native database.
  */
-const makeSettingsRowTx = (store: Record<string, unknown>[]): unknown => ({
+const makeSettingsRowTransaction = (store: Record<string, unknown>[]): unknown => ({
   insert: () => ({
     values: (values: Record<string, unknown>) => ({
       onConflictDoNothing: async () => {
@@ -60,9 +60,9 @@ const spyOnSettingsSelect = (store: Record<string, unknown>[]): void => {
 
 type Captured = { set?: Record<string, unknown>; whereCalled: boolean };
 
-const captureSetTx = (): { captured: Captured; tx: unknown } => {
+const captureSetTransaction = (): { captured: Captured; transaction: unknown } => {
   const captured: Captured = { whereCalled: false };
-  const tx = {
+  const transaction = {
     update: () => ({
       set: (values: Record<string, unknown>) => {
         captured.set = values;
@@ -76,7 +76,7 @@ const captureSetTx = (): { captured: Captured; tx: unknown } => {
     }),
   };
 
-  return { captured, tx };
+  return { captured, transaction };
 };
 
 describe('settingsRepo', () => {
@@ -89,8 +89,8 @@ describe('settingsRepo', () => {
   });
 
   it('setDefaultCategoryKey writes the new default category key to the single settings row', async () => {
-    const { captured, tx } = captureSetTx();
-    mockTx = tx;
+    const { captured, transaction } = captureSetTransaction();
+    mockTransaction = transaction;
 
     await settingsRepo.setDefaultCategoryKey('groceries');
 
@@ -99,8 +99,8 @@ describe('settingsRepo', () => {
   });
 
   it('setLockEnabled updates the single settings row', async () => {
-    const { captured, tx } = captureSetTx();
-    mockTx = tx;
+    const { captured, transaction } = captureSetTransaction();
+    mockTransaction = transaction;
 
     await settingsRepo.setLockEnabled(true);
 
@@ -109,8 +109,8 @@ describe('settingsRepo', () => {
   });
 
   it('setLanguage updates the single settings row with the chosen language', async () => {
-    const { captured, tx } = captureSetTx();
-    mockTx = tx;
+    const { captured, transaction } = captureSetTransaction();
+    mockTransaction = transaction;
 
     await settingsRepo.setLanguage('uk');
 
@@ -120,7 +120,7 @@ describe('settingsRepo', () => {
 
   it('ensure inserts the single settings row and is idempotent', async () => {
     const store: Record<string, unknown>[] = [];
-    mockTx = makeSettingsRowTx(store);
+    mockTransaction = makeSettingsRowTransaction(store);
     spyOnSettingsSelect(store);
 
     await settingsRepo.ensure();
@@ -134,7 +134,7 @@ describe('settingsRepo', () => {
 
   it('setBaseCurrency persists after ensure has run', async () => {
     const store: Record<string, unknown>[] = [];
-    mockTx = makeSettingsRowTx(store);
+    mockTransaction = makeSettingsRowTransaction(store);
     spyOnSettingsSelect(store);
 
     await settingsRepo.ensure();
@@ -145,7 +145,7 @@ describe('settingsRepo', () => {
 
   it('round-trips a saved trend filter and clears it with null', async () => {
     const store: Record<string, unknown>[] = [{ id: 1 }];
-    mockTx = makeSettingsRowTx(store);
+    mockTransaction = makeSettingsRowTransaction(store);
     spyOnSettingsSelect(store);
 
     await settingsRepo.setTrendFilter({ mode: 'manual', keys: ['groceries', 'transport'] });
@@ -172,7 +172,7 @@ describe('settingsRepo', () => {
 
   it('saveStatementMapping keeps both when saving two different keys', async () => {
     const store: Record<string, unknown>[] = [{ id: 1 }];
-    mockTx = makeSettingsRowTx(store);
+    mockTransaction = makeSettingsRowTransaction(store);
 
     const bankMapping = buildMapping(0);
     const otherMapping = buildMapping(1);
@@ -187,7 +187,7 @@ describe('settingsRepo', () => {
 
   it('saveStatementMapping overwrites an existing key with the same name', async () => {
     const store: Record<string, unknown>[] = [{ id: 1 }];
-    mockTx = makeSettingsRowTx(store);
+    mockTransaction = makeSettingsRowTransaction(store);
 
     await settingsRepo.saveStatementMapping('bank:monobank', buildMapping(0));
     const replacement = buildMapping(2);

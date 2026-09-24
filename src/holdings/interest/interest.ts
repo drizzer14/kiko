@@ -190,17 +190,17 @@ const depositPeriods = (
     }
     return periods;
   }
-  let prev = start;
+  let previous = start;
   for (let k = 1; ; k += 1) {
     const boundary = periodBoundary(start, frequency, k);
     if (boundary >= maturity) {
       break;
     }
-    periods.push({ periodStart: prev, periodEnd: boundary, capitalize: true });
-    prev = boundary;
+    periods.push({ periodStart: previous, periodEnd: boundary, capitalize: true });
+    previous = boundary;
   }
-  if (maturity > prev) {
-    periods.push({ periodStart: prev, periodEnd: maturity, capitalize: true });
+  if (maturity > previous) {
+    periods.push({ periodStart: previous, periodEnd: maturity, capitalize: true });
   }
   return periods;
 };

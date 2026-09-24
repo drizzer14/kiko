@@ -87,15 +87,15 @@ const applyMigration = async (entry: MigrationJournalEntry): Promise<void> => {
   // Each migration's statements and its bookkeeping insert commit atomically,
   // matching drizzle's own transactional migration semantics. drizzle records
   // an empty hash for op-sqlite migrations, so this does the same.
-  await rawDatabase.transaction(async (tx) => {
+  await rawDatabase.transaction(async (transaction) => {
     for (const statement of statements) {
-      await tx.execute(statement);
+      await transaction.execute(statement);
     }
 
-    await tx.execute(`INSERT INTO ${MIGRATIONS_TABLE} ("hash", "created_at") VALUES(?, ?)`, [
-      '',
-      entry.when,
-    ]);
+    await transaction.execute(
+      `INSERT INTO ${MIGRATIONS_TABLE} ("hash", "created_at") VALUES(?, ?)`,
+      ['', entry.when],
+    );
   });
 };
 

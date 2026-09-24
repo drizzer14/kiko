@@ -1,7 +1,7 @@
 import { asc, eq, sql } from 'drizzle-orm';
 import type { Repository } from '@kiko/db/repository';
 
-import { clearLoanLinksForHoldingsTx } from '@kiko/holdings/repo';
+import { clearLoanLinksForHoldingsTransaction } from '@kiko/holdings/repo';
 
 import { id } from '../db/id';
 import { database, write } from '../db/client';
@@ -19,8 +19,11 @@ import { type AccountRow, accounts, holdings, transactions } from '../db/schema'
 // past `debtMin`): when the candidate slot would collide, every debt
 // account is shifted up by exactly enough room — `candidate - debtMin + 1`,
 // not a flat `+ 1` — to clear the WHOLE gap, not just a contiguous one.
-const nextSortOrder = async (tx: typeof database, kind: AccountRow['kind']): Promise<number> => {
-  const rows = await tx
+const nextSortOrder = async (
+  transaction: typeof database,
+  kind: AccountRow['kind'],
+): Promise<number> => {
+  const rows = await transaction
     .select({
       assetMax: sql<number>`coalesce(max(case when ${accounts.kind} != 'debt' then ${accounts.sortOrder} end), -1)`,
       debtMin: sql<
@@ -39,7 +42,7 @@ const nextSortOrder = async (tx: typeof database, kind: AccountRow['kind']): Pro
   const debtMin = row?.debtMin;
 
   if (debtMin !== null && debtMin !== undefined && candidate >= debtMin) {
-    await tx
+    await transaction
       .update(accounts)
       .set({ sortOrder: sql`${accounts.sortOrder} + ${candidate - debtMin + 1}` })
       .where(eq(accounts.kind, 'debt'));
@@ -107,10 +110,10 @@ export const accountsRepo = {
    * not returned.
    */
   create: (input: NewAccount): Promise<string> =>
-    write(async (tx) => {
+    write(async (transaction) => {
       const accountId = input.id ?? id();
-      const sortOrder = input.sortOrder ?? (await nextSortOrder(tx, input.kind));
-      await tx.insert(accounts).values({ ...input, id: accountId, sortOrder });
+      const sortOrder = input.sortOrder ?? (await nextSortOrder(transaction, input.kind));
+      await transaction.insert(accounts).values({ ...input, id: accountId, sortOrder });
       return accountId;
     }),
   /**
@@ -140,13 +143,13 @@ export const accountsRepo = {
    * this matters) — at the SAME instant as the ledger row's `time`.
    */
   createCashAccount: ({ name, currency, initialBalanceMinorUnits, icon, color }: NewCashAccount) =>
-    write(async (tx) => {
+    write(async (transaction) => {
       const accountId = id();
       const holdingId = id();
-      const sortOrder = await nextSortOrder(tx, 'cash');
+      const sortOrder = await nextSortOrder(transaction, 'cash');
       const now = Date.now();
 
-      await tx.insert(accounts).values({
+      await transaction.insert(accounts).values({
         id: accountId,
         name,
         kind: 'cash',
@@ -154,7 +157,7 @@ export const accountsRepo = {
         color: color ?? null,
         sortOrder,
       });
-      await tx.insert(holdings).values({
+      await transaction.insert(holdings).values({
         id: holdingId,
         accountId,
         name,
@@ -168,7 +171,7 @@ export const accountsRepo = {
         return;
       }
 
-      await tx.insert(transactions).values({
+      await transaction.insert(transactions).values({
         id: id(),
         holdingId,
         amountMinorUnits: initialBalanceMinorUnits,
@@ -197,9 +200,12 @@ export const accountsRepo = {
    * `crypto-sync/disconnect` operations compose both.
    */
   disconnect: (accountId: string) =>
-    write(async (tx) => {
-      await tx.update(accounts).set({ institution: null }).where(eq(accounts.id, accountId));
-      const accountHoldings = await tx
+    write(async (transaction) => {
+      await transaction
+        .update(accounts)
+        .set({ institution: null })
+        .where(eq(accounts.id, accountId));
+      const accountHoldings = await transaction
         .select()
         .from(holdings)
         .where(eq(holdings.accountId, accountId));
@@ -217,24 +223,31 @@ export const accountsRepo = {
           continue;
         }
 
-        await tx
+        await transaction
           .update(holdings)
           .set({ metadata: withoutSyncMetadata(metadata as Record<string, unknown>) })
           .where(eq(holdings.id, holding.id));
       }
     }),
   update: (accountId: string, patch: Partial<AccountRow>) =>
-    write((tx) => tx.update(accounts).set(patch).where(eq(accounts.id, accountId))),
+    write((transaction) =>
+      transaction.update(accounts).set(patch).where(eq(accounts.id, accountId)),
+    ),
   /**
    * Sets the account's icon (an SF Symbol name) or, with `null`, clears it back
    * to no custom icon. The display layer falls back to a kind-derived default
    * when the stored icon is null.
    */
   setIcon: (accountId: string, icon: string | null) =>
-    write((tx) => tx.update(accounts).set({ icon }).where(eq(accounts.id, accountId))),
+    write((transaction) =>
+      transaction.update(accounts).set({ icon }).where(eq(accounts.id, accountId)),
+    ),
   archive: (accountId: string) =>
-    write((tx) =>
-      tx.update(accounts).set({ archivedAt: Date.now() }).where(eq(accounts.id, accountId)),
+    write((transaction) =>
+      transaction
+        .update(accounts)
+        .set({ archivedAt: Date.now() })
+        .where(eq(accounts.id, accountId)),
     ),
   /**
    * Persist a drag-and-drop reorder of the accounts grid. `orderedIds` is the
@@ -246,9 +259,9 @@ export const accountsRepo = {
    * `createdAt` tiebreak keeps any tie deterministic.
    */
   reorder: (orderedIds: string[]) =>
-    write(async (tx) => {
+    write(async (transaction) => {
       for (let index = 0; index < orderedIds.length; index += 1) {
-        await tx
+        await transaction
           .update(accounts)
           .set({ sortOrder: index })
           .where(eq(accounts.id, orderedIds[index]));
@@ -272,8 +285,8 @@ export const accountsRepo = {
    * deleted account owned. A no-op when none of them was a loan.
    */
   remove: (accountId: string) =>
-    write(async (tx) => {
-      const rows = await tx.select().from(accounts).where(eq(accounts.id, accountId));
+    write(async (transaction) => {
+      const rows = await transaction.select().from(accounts).where(eq(accounts.id, accountId));
       const row = rows.at(0);
       if (!row) {
         return;
@@ -281,18 +294,18 @@ export const accountsRepo = {
       if (isSyncedAccount(row)) {
         throw new Error('accountsRepo.remove: cannot delete a synced account');
       }
-      const accountHoldings = await tx
+      const accountHoldings = await transaction
         .select()
         .from(holdings)
         .where(eq(holdings.accountId, accountId));
       for (const holding of accountHoldings) {
-        await tx.delete(transactions).where(eq(transactions.holdingId, holding.id));
+        await transaction.delete(transactions).where(eq(transactions.holdingId, holding.id));
       }
-      await clearLoanLinksForHoldingsTx(
-        tx,
+      await clearLoanLinksForHoldingsTransaction(
+        transaction,
         accountHoldings.map((holding) => holding.id),
       );
-      await tx.delete(holdings).where(eq(holdings.accountId, accountId));
-      await tx.delete(accounts).where(eq(accounts.id, accountId));
+      await transaction.delete(holdings).where(eq(holdings.accountId, accountId));
+      await transaction.delete(accounts).where(eq(accounts.id, accountId));
     }),
 } satisfies Repository;
