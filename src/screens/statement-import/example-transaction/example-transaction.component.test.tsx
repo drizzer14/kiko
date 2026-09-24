@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
 
 import '../../../design-system/unistyles';
 import '../../../i18n';
@@ -33,6 +33,14 @@ jest.mock('../../home/transaction-row/transaction-card', () => ({
 }));
 
 describe('ExampleTransaction', () => {
+  // A uk test switches the language; reset here so a failed assertion in
+  // it cannot leave later tests running in uk.
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
   it('renders the description and the formatted amount', async () => {
     const { getByText } = await render(<ExampleTransaction transaction={transaction} />);
 
@@ -102,8 +110,6 @@ describe('ExampleTransaction', () => {
     const props = mockTransactionCard.mock.calls.at(-1)?.[0];
     expect(props.title).toBe(i18n.t('transactions.defaultDescriptionExpensePlain'));
     expect(props.title.endsWith(':')).toBe(false);
-
-    await i18n.changeLanguage('en');
   });
 
   // Item 5: dividers bracket the card above and below.
