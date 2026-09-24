@@ -1,20 +1,20 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
-import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
+import type { ComponentProps } from 'react';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 
-import { defaultDateRange } from '../../dates/default-range';
+import { i18n } from '../../i18n';
 import { DAY_MS } from '../../dates/duration';
 import { formatDate } from '../../dates/format';
-import { resolveBottomClearance } from '../../design-system/components/screen';
 import { darkTheme } from '../../design-system/theme';
-import { i18n } from '../../i18n';
-import { resolveCategoryColor } from '../../statistics/category-breakdown';
+import { defaultDateRange } from '../../dates/default-range';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
 // resolved MoneyText `tone` via a testID — see the module for the full rationale.
 import mockTextTone from '../../test-support/mock-text-tone';
+import { resolveCategoryColor } from '../../statistics/category-breakdown';
+import { resolveBottomClearance } from '../../design-system/components/screen';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import HomeScreen from './home.screen';

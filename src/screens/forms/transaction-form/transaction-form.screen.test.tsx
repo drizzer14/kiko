@@ -1,20 +1,20 @@
-import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { Alert, StyleSheet } from 'react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 
 import type { TransactionFormParams } from '../../../navigation/types';
 import '../../../design-system/unistyles';
 import { i18n } from '../../../i18n';
-import { darkTheme } from '../../../design-system/theme';
-import { scrollToField } from '../scroll-to-field/scroll-to-field';
-// Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
-// ONLY `useAnimatedRef` — see the module for the full rationale.
-import { mockReanimatedScrollToEnd } from '../../../test-support/mock-reanimated-scroll-to-end';
 import {
   asNavigationProp,
   asRouteProp,
   navigationSpy,
 } from '../../../test-support/navigation-props';
+import { darkTheme } from '../../../design-system/theme';
+import { scrollToField } from '../scroll-to-field/scroll-to-field';
+// Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
+// ONLY `useAnimatedRef` — see the module for the full rationale.
+import { mockReanimatedScrollToEnd } from '../../../test-support/mock-reanimated-scroll-to-end';
 
 import TransactionFormScreen, { canSaveSplit } from './transaction-form.screen';
 

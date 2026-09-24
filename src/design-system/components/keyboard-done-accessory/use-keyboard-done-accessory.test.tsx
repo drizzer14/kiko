@@ -1,6 +1,6 @@
-import { fireEvent, render } from '@testing-library/react-native';
 import type { FC, ReactNode } from 'react';
 import { Keyboard, StyleSheet, TextInput } from 'react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 // The border width the pill's bordered glass applies comes from Unistyles'
 // own `StyleSheet.hairlineWidth`, which is not necessarily react-native's, so
 // the assertion below reads the expected value from the same source the

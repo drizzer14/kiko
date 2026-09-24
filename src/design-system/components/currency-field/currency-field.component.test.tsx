@@ -1,5 +1,5 @@
-import { fireEvent, render } from '@testing-library/react-native';
 import { Keyboard } from 'react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import '../../unistyles';
 // Real i18n init (side effect), same as App.tsx. Previously reached only by
 // accident through GlassSurface -> screenshot-mode -> i18n before the 5.6

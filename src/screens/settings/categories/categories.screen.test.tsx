@@ -5,16 +5,16 @@ import '../../../design-system/unistyles';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 
 import { i18n } from '../../../i18n';
-import { darkTheme } from '../../../design-system/theme';
-import { categoryColor } from '../../../statistics/category-breakdown';
-// Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
-// ONLY `useAnimatedRef` — see the module for the full rationale.
-import { mockReanimatedScrollToEnd } from '../../../test-support/mock-reanimated-scroll-to-end';
 import {
   asNavigationProp,
   asRouteProp,
   navigationSpy,
 } from '../../../test-support/navigation-props';
+import { darkTheme } from '../../../design-system/theme';
+import { categoryColor } from '../../../statistics/category-breakdown';
+// Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
+// ONLY `useAnimatedRef` — see the module for the full rationale.
+import { mockReanimatedScrollToEnd } from '../../../test-support/mock-reanimated-scroll-to-end';
 
 import CategoriesScreen from './categories.screen';
 
