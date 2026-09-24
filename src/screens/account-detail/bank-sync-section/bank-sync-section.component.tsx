@@ -101,19 +101,32 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   const connectedEntry =
     connectedProviderId === undefined ? undefined : bankProviderRegistry[connectedProviderId];
 
-  // Which provider's connect field to show BEFORE a connection exists — set
-  // by `AddBankProviderSheet`'s selection, or DEFAULTED straight to the
-  // account's own `bankId` (item 1, F3): the account form's BankTypeField
-  // already identified this account as Monobank, so re-asking through the
-  // generic "Add a bank" picker (today a picker of exactly one entry) is
-  // redundant friction and the label was misleading ("Add a bank" on an
-  // account already known to be Monobank) — the section goes straight to
-  // the Connect field instead. Reset back to `undefined` on Disconnect
-  // (below), so the picker/trigger reappears rather than re-showing the
-  // just-disconnected provider's field.
+  // Which provider's connect field the user explicitly picked THIS session
+  // (via `AddBankProviderSheet`, or cleared via "Change bank"/Disconnect
+  // below) — `undefined` means "no explicit pick yet this session", not
+  // necessarily "show the generic Add-a-bank trigger". Combined with
+  // `bankIdProviderId` below into `shownProviderId`, the value actually
+  // rendered.
   const [selectedProviderId, setSelectedProviderId] = useState<BankProviderId | undefined>(
-    isBankProviderId(account.bankId) ? account.bankId : undefined,
+    undefined,
   );
+  // The account's own `bankId` (item 1, F3), resolved to a connectable
+  // provider id EVERY RENDER, live off the current `account` prop — NOT
+  // seeded once into `selectedProviderId`'s initial state (I1, F3 part 1
+  // fix round 1): a `useState` initializer only runs at MOUNT, so it never
+  // reacted to the account's OWN `bankId` changing after this component was
+  // already mounted (the account form editing the bank to Monobank, or a
+  // Disconnect — which clears `institution` but never `bankId`, see
+  // `kiko-domain`'s "bankId is identity-only, independent of institution")
+  // while `AccountDetail`/this section stayed mounted the whole time.
+  const bankIdProviderId = isBankProviderId(account.bankId) ? account.bankId : undefined;
+  // The account form's `BankTypeField` already identified this account as
+  // Monobank, so re-asking through the generic "Add a bank" picker (today a
+  // picker of exactly one entry) is redundant friction and the label was
+  // misleading ("Add a bank" on an account already known to be Monobank) —
+  // this goes straight to the Connect field instead, and keeps doing so on
+  // every later render as long as `bankId` still says so, live.
+  const shownProviderId = selectedProviderId ?? bankIdProviderId;
   const [providerPickerOpen, setProviderPickerOpen] = useState(false);
   // Whether the themed Disconnect confirm (`ConfirmSheet`) is up, replacing the
   // old native `Alert.alert`; a scrim/back dismiss behaves like Cancel.
@@ -267,7 +280,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
     <Box gap={3}>
       <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
-      {selectedProviderId === undefined ? (
+      {shownProviderId === undefined ? (
         <Button
           variant="secondaryTonal"
           size="small"
@@ -279,7 +292,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
         </Button>
       ) : (
         <Box gap={2}>
-          {connectFieldByProviderId[selectedProviderId]}
+          {connectFieldByProviderId[shownProviderId]}
 
           <Button
             variant="ghost"

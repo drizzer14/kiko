@@ -141,6 +141,65 @@ describe('BankSyncSection — disconnected', () => {
     expect(view.getByText('monobank field')).toBeTruthy();
     expect(view.getByText('Change bank')).toBeTruthy();
   });
+
+  // DEFAULT (I1, F3 part 1 fix round 1): "Change bank" clears the user's own
+  // pick, but the section still FOLLOWS `bankId` live — on an account
+  // already identified as Monobank (the one shipped connectable provider),
+  // pressing "Change bank" therefore re-derives straight back to the Connect
+  // field rather than the generic picker; there is nothing else to pick.
+  it('DEFAULT: "Change bank" on an already-Monobank account re-shows Connect immediately (no picker) — bankId still says Monobank', async () => {
+    const view = await render(<BankSyncSection account={bankAccount({ bankId: 'monobank' })} />);
+
+    await fireEvent.press(view.getByText('Change bank'));
+
+    expect(view.queryByText('Add a bank')).toBeNull();
+    expect(view.getByText('monobank field')).toBeTruthy();
+  });
+
+  // I1 (F3 part 1 fix round 1, Important): the mount-once `useState` seed
+  // only read `bankId` once — editing the bank to Monobank AFTER this
+  // component already mounted (AccountForm pops, the live-queried `account`
+  // prop updates with the SAME component instance still mounted) left the
+  // section showing "Add a bank" forever, the exact label item 1 says must
+  // not appear. The shown provider must follow `account.bankId` LIVE, not
+  // just at mount.
+  it('follows bankId LIVE: editing an unidentified bank account to Monobank switches "Add a bank" to Connect, with no remount', async () => {
+    const view = await render(<BankSyncSection account={bankAccount({ bankId: null })} />);
+
+    expect(view.getByText('Add a bank')).toBeTruthy();
+
+    await act(async () => {
+      view.rerender(<BankSyncSection account={bankAccount({ bankId: 'monobank' })} />);
+    });
+
+    expect(view.queryByText('Add a bank')).toBeNull();
+    expect(view.getByText('monobank field')).toBeTruthy();
+  });
+
+  // I1's second transition: Disconnect does not clear `bankId` (only
+  // `institution` — see `kiko-architecture`'s "bankId is identity-only,
+  // independent of institution"), so a just-disconnected account is STILL
+  // Monobank and must show Connect again, not "Add a bank".
+  it('follows bankId LIVE: disconnecting a Monobank account (bankId unchanged) shows Connect again, not "Add a bank"', async () => {
+    const view = await render(
+      <BankSyncSection account={bankAccount({ institution: 'monobank', bankId: 'monobank' })} />,
+    );
+
+    await fireEvent.press(view.getByText('Disconnect'));
+    await fireEvent.press(view.getByTestId('bank-disconnect-confirm'));
+    await waitFor(() => expect(mockDisconnectMonobank).toHaveBeenCalledWith('a'));
+
+    // Disconnect itself clears `institution`, not `bankId` — the live query
+    // re-renders this same instance with the post-disconnect row.
+    await act(async () => {
+      view.rerender(
+        <BankSyncSection account={bankAccount({ institution: null, bankId: 'monobank' })} />,
+      );
+    });
+
+    expect(view.queryByText('Add a bank')).toBeNull();
+    expect(view.getByText('monobank field')).toBeTruthy();
+  });
 });
 
 describe('BankSyncSection — connected', () => {
