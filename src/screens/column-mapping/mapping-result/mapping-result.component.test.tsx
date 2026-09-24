@@ -16,6 +16,30 @@ describe('MappingResult', () => {
     expect(queryByTestId('column-mapping-transaction-count')).toBeNull();
   });
 
+  // F3 fix round 1, I2: the heading shows in BOTH the incomplete and
+  // complete states — it no longer jumps position/spacing when the last
+  // required column gets mapped (SummaryTable gets no `title` of its own).
+  it('shows exactly one "Result" heading, whether the mapping is complete or not', async () => {
+    const incomplete = await render(<MappingResult stats={undefined} rowErrors={[]} />);
+    expect(incomplete.getAllByText(i18n.t('columnMapping.result'))).toHaveLength(1);
+
+    const complete = await render(
+      <MappingResult
+        stats={{
+          displayName: 'x',
+          transactionCount: 4,
+          currency: 'UAH',
+          dateSpan: '01.01.2024 – 02.01.2024',
+          maskedCardHints: [],
+          unresolvedRowCount: 0,
+          detectedCurrencies: ['UAH'],
+        }}
+        rowErrors={[]}
+      />,
+    );
+    expect(complete.getAllByText(i18n.t('columnMapping.result'))).toHaveLength(1);
+  });
+
   it('shows the transaction count and date span once stats resolve', async () => {
     const { getByTestId, queryByText } = await render(
       <MappingResult

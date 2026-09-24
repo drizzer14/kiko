@@ -1,53 +1,68 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import Box from '../../../design-system/components/box';
-import Card from '../../../design-system/components/card';
-import Text from '../../../design-system/components/text';
+import {
+  DEFAULT_CATEGORY_KEY,
+  buildCategoryDisplayMap,
+  resolveCategoryDisplay,
+  resolveCategoryKey,
+} from '../../../categories/category-display';
 import { Money } from '../../../currency/money';
-import { formatDate } from '../../../dates/format';
-import MoneyText from '../../../design-system/components/money-text';
+import Box from '../../../design-system/components/box';
+import Text from '../../../design-system/components/text';
+import { categoriesRepo } from '../../../categories/repo';
+import { useLiveQuery } from '../../../db/use-live-query';
+import { settingsRepo } from '../../../settings/settings.repo';
+import Divider from '../../../design-system/components/divider';
+import { categoryForMcc } from '../../../monobank/mcc-category';
+import TransactionCard from '../../home/transaction-row/transaction-card';
+import { resolveCategoryColor } from '../../../statistics/category-breakdown';
 
-import { styles } from './example-transaction.styles';
 import type { ExampleTransactionProps } from './example-transaction.props';
 
 /**
  * ONE shared row previewing the first parsed transaction — device-feedback-
- * round-F1 items 9/14, F3 item 4: shown under the summary table on both
- * `statement-import.screen.tsx` and the column-mapping result section, so the
- * user sees a real example of what will actually be written BEFORE tapping
- * Import. Date left, description below it, amount right — the same
- * lead/trailing row shape the holding-detail ledger row uses, now rendered
- * through the SAME shared `Card` content surface every real transaction row
- * (Home's `TransactionRow`, the holding-detail ledger's `LedgerRowItem`) uses
- * — a flat, opaque `surface` fill with a hairline border, so this preview
- * reads as an actual sample transaction card rather than plain text (F3 item
- * 4). The caller (`StatementPreviewBlock`/`MappingResult`) wraps this in
- * `Divider`s on either side (F3 item 5).
+ * round-F1 items 9/14, F3 item 4/5: shown under the summary table on both
+ * `statement-import.screen.tsx` and the column-mapping result section, so
+ * the user sees a real example of what will actually be written BEFORE
+ * tapping Import, rendered through the SAME `TransactionCard` Home's own
+ * `TransactionRow` uses — not a rebuilt one. The category comes from the
+ * row's own `mcc` via `categoryForMcc` (the same key `mapParsedTransaction`
+ * writes), resolved through the live categories table exactly as Home
+ * resolves a real row's category, so an income preview row shows the same
+ * icon and income color a Home row would. Owns its own `Divider`s above and
+ * below (F3 item 5), so a caller renders just `<ExampleTransaction ... />`.
  */
 const ExampleTransaction: FC<ExampleTransactionProps> = ({ transaction, testID }) => {
   const { t } = useTranslation();
+  const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
+  const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
+  const categoryByKey = buildCategoryDisplayMap(categories);
+  const rawCategory = transaction.mcc !== undefined ? categoryForMcc(transaction.mcc) : null;
+  const category = resolveCategoryDisplay(rawCategory, categoryByKey, defaultCategoryKey);
+  const categoryKey = resolveCategoryKey(rawCategory, categoryByKey, defaultCategoryKey);
 
   return (
-    <Box gap={1} testID={testID}>
-      <Text variant="caption" tone="textSecondary">
-        {t('statementImport.exampleTransaction')}
-      </Text>
+    <Box gap={3} testID={testID}>
+      <Divider testID="example-transaction-divider" />
 
-      <Card padding={3}>
-        <Box direction="row" style={styles.row}>
-          <Box style={styles.lead}>
-            <Text variant="body" numberOfLines={1}>
-              {formatDate(transaction.timeSeconds * 1000)}
-            </Text>
-            <Text variant="caption" tone="textSecondary" numberOfLines={1}>
-              {transaction.description}
-            </Text>
-          </Box>
+      <Box gap={1}>
+        <Text variant="caption" tone="textSecondary">
+          {t('statementImport.exampleTransaction')}
+        </Text>
 
-          <MoneyText money={Money.of(transaction.currency, transaction.amountMinorUnits)} />
-        </Box>
-      </Card>
+        <TransactionCard
+          title={transaction.description}
+          categoryIcon={category.icon}
+          categoryIconColor={resolveCategoryColor(category.color, categoryKey)}
+          categoryAccessibilityLabel={category.title}
+          money={Money.of(transaction.currency, transaction.amountMinorUnits)}
+          moneyContext="transaction"
+        />
+      </Box>
+
+      <Divider testID="example-transaction-divider" />
     </Box>
   );
 };

@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
-import Divider from '../../../design-system/components/divider';
 import SummaryTable from '../../../design-system/components/summary-table';
 
 import { styles } from './mapping-result.styles';
@@ -19,7 +18,11 @@ const ROW_ERROR_PREVIEW_COUNT = 20;
  * then the first `ROW_ERROR_PREVIEW_COUNT` row errors (then a count of the
  * rest) once the mapping is structurally complete — extracted out of the
  * screen so its own branching doesn't count against that component's
- * cognitive-complexity budget.
+ * cognitive-complexity budget. Renders its OWN `columnMapping.result`
+ * heading in BOTH branches (F3 fix round 1, I2) — `SummaryTable` gets no
+ * `title` — so the heading sits at the exact same spot and spacing whether
+ * the mapping is complete or not, instead of jumping when the last required
+ * column gets mapped.
  */
 const MappingResult: FC<MappingResultProps> = ({ stats, rowErrors }) => {
   const { t } = useTranslation();
@@ -27,16 +30,13 @@ const MappingResult: FC<MappingResultProps> = ({ stats, rowErrors }) => {
   const overflowCount = rowErrors.length - visibleRowErrors.length;
 
   return (
-    <Box gap={2} style={styles.resultBlock}>
+    <Box gap={3} style={styles.resultBlock}>
+      <Text variant="heading">{t('columnMapping.result')}</Text>
+
       {stats === undefined && (
-        <>
-          <Box style={styles.sectionHeading}>
-            <Text variant="heading">{t('columnMapping.result')}</Text>
-          </Box>
-          <Text variant="body" tone="textSecondary">
-            {t('columnMapping.incomplete')}
-          </Text>
-        </>
+        <Text variant="body" tone="textSecondary">
+          {t('columnMapping.incomplete')}
+        </Text>
       )}
 
       {stats !== undefined && (
@@ -45,7 +45,6 @@ const MappingResult: FC<MappingResultProps> = ({ stats, rowErrors }) => {
               reused here via the shared `SummaryTable` — this screen's own
               columns, never the deposit table's value/percent/tax ones. */}
           <SummaryTable
-            title={t('columnMapping.result')}
             rows={[
               {
                 key: 'transactionCount',
@@ -62,13 +61,7 @@ const MappingResult: FC<MappingResultProps> = ({ stats, rowErrors }) => {
             ]}
           />
 
-          {stats.firstTransaction && (
-            <>
-              <Divider testID="column-mapping-divider-example-top" />
-              <ExampleTransaction transaction={stats.firstTransaction} />
-              <Divider testID="column-mapping-divider-example-bottom" />
-            </>
-          )}
+          {stats.firstTransaction && <ExampleTransaction transaction={stats.firstTransaction} />}
 
           {visibleRowErrors.length > 0 && (
             <Box gap={1} testID="column-mapping-row-errors">
