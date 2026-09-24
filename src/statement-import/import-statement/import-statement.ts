@@ -4,7 +4,12 @@ import { transactionsRepo } from '@kiko/transactions/repo';
 
 import { detectFormat } from '../registry';
 import { computeDedupKey, mapParsedTransaction } from '../mapping';
-import { StatementParseError, type ParsedStatement, type ParsedStatementSource } from '../parser';
+import {
+  StatementParseError,
+  type ParsedStatement,
+  type ParsedTransaction,
+  type ParsedStatementSource,
+} from '../parser';
 
 export type ImportResult = {
   formatId: ParsedStatementSource;
@@ -17,10 +22,33 @@ export type ImportResult = {
    * currencies per row; writing e.g. a $50.00 row's raw minor units into a
    * UAH holding would silently post +₴50.00 instead of +$50.00). */
   skippedWrongCurrency: number;
-  /** The DISTINCT skipped rows' own currency codes, alphabetically sorted
-   * (F4 item 9: the result names WHICH currencies were skipped, not just how
-   * many rows) — empty when `skippedWrongCurrency` is 0. */
+  /** The DISTINCT skipped rows' own currency codes, alphabetically sorted —
+   * names WHICH currencies were skipped, not just how many rows — empty
+   * when `skippedWrongCurrency` is 0. */
   skippedWrongCurrencyCodes: Currency[];
+};
+
+type CurrencyPartition = {
+  matching: ParsedTransaction[];
+  skipped: ParsedTransaction[];
+};
+
+// One pass over `transactions`, not two opposite `.filter()` calls — every
+// row lands in exactly one of `matching`/`skipped`, so there is nothing to
+// keep the two arrays' complementary invariant true besides the single loop
+// itself.
+const partitionByCurrency = (
+  transactions: ParsedTransaction[],
+  targetCurrency: Currency,
+): CurrencyPartition => {
+  const matching: ParsedTransaction[] = [];
+  const skipped: ParsedTransaction[] = [];
+
+  for (const transaction of transactions) {
+    (transaction.currency === targetCurrency ? matching : skipped).push(transaction);
+  }
+
+  return { matching, skipped };
 };
 
 /**
@@ -51,11 +79,9 @@ export const importParsedStatement = async (
     throw new Error(`Target holding not found: ${holdingId}`);
   }
 
-  const matchingTransactions = parsed.transactions.filter(
-    (transaction) => transaction.currency === holding.currency,
-  );
-  const skippedTransactions = parsed.transactions.filter(
-    (transaction) => transaction.currency !== holding.currency,
+  const { matching: matchingTransactions, skipped: skippedTransactions } = partitionByCurrency(
+    parsed.transactions,
+    holding.currency,
   );
   const skippedWrongCurrency = skippedTransactions.length;
   const skippedWrongCurrencyCodes = Array.from(
