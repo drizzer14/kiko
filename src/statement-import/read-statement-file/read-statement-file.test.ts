@@ -85,4 +85,25 @@ describe('deleteLocalStatementCopy', () => {
       deleteLocalStatementCopy('/mock/caches/statement-123.csv'),
     ).resolves.toBeUndefined();
   });
+
+  // N1 (F3 part 1 fix round 2, Important): `keepLocalCopy`'s real iOS
+  // `localUri` is a percent-encoded `file://` URL
+  // (`destinationUrl.absoluteString`), not the plain path
+  // `RNFS.CachesDirectoryPath` is — a bare `startsWith` comparison against
+  // the raw URL always failed, so this deleted nothing on a real device.
+  it('unlinks a realistic file:// keepLocalCopy URL (with an encoded space), normalized to the plain decoded path', async () => {
+    await deleteLocalStatementCopy(
+      'file:///mock/caches/E1B2C3D4-5678-90AB-CDEF-1234567890AB/Bank%20Statement.csv',
+    );
+
+    expect(mockUnlink).toHaveBeenCalledWith(
+      '/mock/caches/E1B2C3D4-5678-90AB-CDEF-1234567890AB/Bank Statement.csv',
+    );
+  });
+
+  it('still unlinks a plain (non-file://) cache path unchanged', async () => {
+    await deleteLocalStatementCopy('/mock/caches/statement-123.csv');
+
+    expect(mockUnlink).toHaveBeenCalledWith('/mock/caches/statement-123.csv');
+  });
 });

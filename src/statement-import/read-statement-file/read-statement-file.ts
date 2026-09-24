@@ -141,6 +141,35 @@ export const decodeStatementText = (base64: string, encoding: 'utf-8' | 'windows
   return encoding === 'utf-8' ? decodeUtf8Bytes(bytes) : decodeWindows1251(new Uint8Array(bytes));
 };
 
+// N1 (F3 part 1 fix round 2, Important): `keepLocalCopy`'s `localUri` on iOS
+// is `destinationUrl.absoluteString` — a `file:///var/mobile/.../Library/
+// Caches/<uuid>/<name>` URL, percent-encoded (a space becomes `%20`) — NOT
+// the plain filesystem path `RNFS.CachesDirectoryPath` is. Comparing the raw
+// `file://` URL against the plain path with `startsWith` always fails, so
+// `deleteLocalStatementCopy`'s guard silently no-opped on every real device
+// call before this fix (verified against `keepLocalCopy`'s own iOS
+// implementation, `FileOperations.swift`'s `destinationUrl.absoluteString`).
+// Strips the `file://` scheme and `decodeURIComponent`s the rest — BEFORE
+// both the cache-directory guard below and the `unlink` call itself, so a
+// real device path with an encoded space matches correctly on both. `RNFS.
+// unlink` already strips `file://` internally (`FS.common.js`'s own
+// `normalizeFilePath`) but does NOT percent-decode, so passing it the raw
+// URL would still fail on any encoded character even post-strip.
+const normalizeFilePathForDelete = (filePath: string): string => {
+  const withoutScheme = filePath.startsWith('file://')
+    ? filePath.slice('file://'.length)
+    : filePath;
+
+  try {
+    return decodeURIComponent(withoutScheme);
+  } catch {
+    // A malformed percent-sequence (defensively; unreachable for anything
+    // `keepLocalCopy`/the OS itself produces) — fall back to the
+    // scheme-stripped-but-undecoded path rather than throwing.
+    return withoutScheme;
+  }
+};
+
 // M8 (F3 part 1 fix round 1, Important): the local cache copy item 6's fix
 // makes (`account-detail.screen.tsx`'s `pickAndOpenStatement`, via
 // `keepLocalCopy`) is a PLAINTEXT copy of a bank statement in
@@ -150,23 +179,26 @@ export const decodeStatementText = (base64: string, encoding: 'utf-8' | 'windows
 // WHEN to call this (`StatementImportScreen`/`ColumnMappingScreen`'s own
 // unmount cleanup — see each screen's own comment for the exact trigger);
 // this function owns only the SAFE deletion itself:
-// - Guarded to a path INSIDE the app's own cache directory. `filePath` can
-//   also be the RAW picked uri — the fallback `pickAndOpenStatement` uses
-//   when `keepLocalCopy` itself failed — which is a provider-owned external
-//   file this app must never touch; that path never starts with
-//   `RNFS.CachesDirectoryPath`, so this guard doubles as the correctness
-//   check and the safety check.
+// - Guarded to a NORMALIZED path (see `normalizeFilePathForDelete` above)
+//   INSIDE the app's own cache directory. `filePath` can also be the RAW
+//   picked uri — the fallback `pickAndOpenStatement` uses when
+//   `keepLocalCopy` itself failed — which is a provider-owned external file
+//   this app must never touch; that path never starts with
+//   `RNFS.CachesDirectoryPath` even once normalized, so this guard doubles
+//   as the correctness check and the safety check.
 // - Best-effort: a failed `unlink` (already deleted — e.g. a sibling
 //   screen's own cleanup fired first on the same multi-screen pop) is
 //   swallowed. This is hygiene, not a correctness guarantee (see the
 //   review's own framing: "privacy hygiene, not a guideline breach").
 export const deleteLocalStatementCopy = async (filePath: string): Promise<void> => {
-  if (!filePath.startsWith(RNFS.CachesDirectoryPath)) {
+  const normalized = normalizeFilePathForDelete(filePath);
+
+  if (!normalized.startsWith(RNFS.CachesDirectoryPath)) {
     return;
   }
 
   try {
-    await RNFS.unlink(filePath);
+    await RNFS.unlink(normalized);
   } catch {
     // Already gone, or never existed — nothing to do.
   }
