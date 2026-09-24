@@ -2,12 +2,12 @@
 // `write` helper (one op-sqlite transaction). Override `write` to run the
 // callback against a fake transaction handle backed by an in-memory store —
 // mirrors `src/prices/price-points-repo/price-points.repo.test.ts`.
-let mockTx: unknown;
+let mockTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
   return {
     ...actual,
-    write: (work: (db: unknown) => unknown) => work(mockTx),
+    write: (work: (db: unknown) => unknown) => work(mockTransaction),
   };
 });
 
@@ -43,7 +43,7 @@ describe('bondRegisterRepo', () => {
 
   it('replaces the whole cache in one transaction: delete first, then insert', async () => {
     const calls: string[] = [];
-    mockTx = {
+    mockTransaction = {
       delete: () => {
         calls.push('delete');
         return Promise.resolve();
@@ -63,7 +63,7 @@ describe('bondRegisterRepo', () => {
 
   it('deletes the stale cache without inserting for an empty replacement (a matured/delisted ISIN drops out)', async () => {
     const calls: string[] = [];
-    mockTx = {
+    mockTransaction = {
       delete: () => {
         calls.push('delete');
         return Promise.resolve();

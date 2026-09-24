@@ -26,14 +26,14 @@ export const bondRegisterRepo = {
    * row an upsert would leave behind.
    */
   replaceAll: (rows: NewBondRegisterRow[]) =>
-    write(async (tx) => {
-      await tx.delete(bondRegister);
+    write(async (transaction) => {
+      await transaction.delete(bondRegister);
 
       if (rows.length === 0) {
         return;
       }
 
-      await tx.insert(bondRegister).values(rows);
+      await transaction.insert(bondRegister).values(rows);
     }),
 } satisfies Repository;
 
