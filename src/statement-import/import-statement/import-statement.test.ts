@@ -36,6 +36,8 @@ import readXlsxFile from 'read-excel-file/node';
 import { transactionsRepo } from '@kiko/transactions/repo';
 
 import { StatementParseError } from '../parser';
+import { applyColumnMapping } from '../column-mapping';
+import type { ColumnMapping } from '../column-mapping';
 import { ukrsibBusinessFixtureInput } from '../formats/format-test-fixtures';
 import { accounts, categoryOverrides, holdings, transactions } from '../../db/schema';
 
@@ -357,6 +359,47 @@ describe('importStatement', () => {
       expect(result.skippedWrongCurrency).toBe(1);
       expect(store.transactions).toHaveLength(1);
       expect(store.transactions[0].source).toBe('import');
+    });
+
+    // T22 brief: the column-mapping screen's optional "Balance" column role,
+    // end to end — a real `applyColumnMapping` output (not a hand-built
+    // `ParsedStatement`) carries a `closingBalance` derived from the mapped
+    // Balance column, and `importParsedStatement` -> `transactionsRepo.importRows`
+    // applies it exactly like a dedicated format's own closing balance would.
+    it('a mapped Balance column flows through to a real import and lands the holding on the closing balance', async () => {
+      const store: { transactions: StoredRow[] } = { transactions: [] };
+      const holding = defaultHolding({ balanceMinorUnits: 0 });
+      const { tx, captured } = makeImportTx({ store, holding, account: unsyncedAccount });
+      mockTx = tx;
+      mockHoldingRows = [{ id: 'holding-1', currency: 'UAH' }];
+
+      const mapping: ColumnMapping = {
+        headerRowIndex: 0,
+        decimalSeparator: '.',
+        dateColumn: 0,
+        dateFormat: 'DD.MM.YYYY HH:MM:SS',
+        amount: { mode: 'single', column: 2 },
+        descriptionColumn: 1,
+        currency: { mode: 'fixed', currency: 'UAH' },
+        balanceColumn: 3,
+      };
+      const rows = [
+        ['Date', 'Description', 'Amount', 'Balance'],
+        ['01.07.2025 10:00:00', 'Coffee', '-100.00', '900.00'],
+        ['02.07.2025 10:00:00', 'Salary', '5000.00', '5900.00'],
+      ];
+      const { statement } = applyColumnMapping(rows, mapping);
+
+      const result = await importParsedStatement(statement, 'holding-1');
+
+      expect(result.imported).toBe(2);
+      // A virgin holding has no boundary at all (I2), so the mapped closing
+      // balance (5,900.00 UAH -> 590_000 minor units, as of the newest row's
+      // own time) applies outright, over the plain net-delta fallback.
+      expect(captured.holdingSet).toEqual({
+        balanceMinorUnits: 590_000,
+        balanceSetAt: 1_751_450_400_000,
+      });
     });
   });
 

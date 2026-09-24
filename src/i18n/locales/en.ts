@@ -686,6 +686,11 @@ export const en = {
     // which now reads as the one "this field is optional" signal, matching
     // every other optional field in the app.
     counterpartyColumn: 'Counterparty',
+    // Optional, same treatment as `counterpartyColumn` above (no "(optional)"
+    // suffix — the absent required-marker IS the optional signal) — the
+    // running balance after each row, used to derive the import's closing
+    // balance (T22 brief).
+    balanceColumn: 'Balance',
     notUsed: 'Not used',
     // The generic placeholder a column/date-format picker field shows before
     // the user has made a choice — not part of the task brief's own literal

@@ -592,6 +592,7 @@ export const uk: typeof en = {
     currencyColumn: 'Стовпець валюти',
     fixedCurrency: 'Валюта для всіх рядків',
     counterpartyColumn: 'Контрагент',
+    balanceColumn: 'Баланс',
     notUsed: 'Не використовується',
     selectValue: 'Оберіть',
     result: 'Результат',

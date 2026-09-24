@@ -9,7 +9,7 @@ import { isCurrency } from '../../currency/currency';
 import type { Currency } from '../../currency/currency';
 import { CURRENCY_WORD_MAP } from '../formats/privatbank-xlsx';
 import { StatementParseError, type ParsedStatement } from '../parser';
-import type { ParsedAccountHint, ParsedTransaction } from '../parser';
+import type { ClosingBalance, ParsedAccountHint, ParsedTransaction } from '../parser';
 
 import { parseAmountCell } from './amount';
 import type { TableCell } from './table-rows';
@@ -35,6 +35,11 @@ export type ColumnMapping = {
   descriptionColumn: number;
   currency: { mode: 'column'; column: number } | { mode: 'fixed'; currency: Currency };
   counterpartyColumn?: number;
+  // Optional running-balance column (T22 brief) — when mapped, the parsed
+  // statement's `closingBalance` is derived from it (see
+  // `resolveMappedClosingBalance` below), the same "Balance" role a saved
+  // mapping also remembers.
+  balanceColumn?: number;
 };
 
 export type ColumnMappingRowError = {
@@ -182,6 +187,46 @@ const resolveRow = (row: TableCell[], mapping: ColumnMapping, rowNumber: number)
   };
 };
 
+type ClosingBalanceCandidate = { row: TableCell[]; timeSeconds: number; currency: Currency };
+
+/**
+ * The mapped statement's `closingBalance` (T22 brief, "Balance" column
+ * role) — same rule as Monobank CSV's own `resolveClosingBalance`
+ * (`formats/monobank-csv/monobank-csv.format.ts`, review follow-up M2): the
+ * balance cell of the row with the NEWEST parsed time (last one on a tie),
+ * among rows that resolved successfully — an error row's date/amount/
+ * currency is already unreliable, so its balance cell is not trusted
+ * either (`applyColumnMapping` only ever offers this a RESOLVED row's
+ * candidate). `undefined` when no Balance column is mapped, no row
+ * resolved, or the chosen row's balance cell is missing or non-numeric
+ * (review follow-up I1's same guard) — never a `NaN` written to the
+ * ledger. The cell is parsed with the mapping's OWN `decimalSeparator`
+ * (`parseAmountCell`), matching every other amount cell this mapping reads.
+ */
+const resolveMappedClosingBalance = (
+  mapping: ColumnMapping,
+  newest: ClosingBalanceCandidate | undefined,
+): ClosingBalance | undefined => {
+  if (mapping.balanceColumn === undefined || !newest) {
+    return undefined;
+  }
+
+  const balanceMajor = parseAmountCell(
+    newest.row[mapping.balanceColumn] ?? '',
+    mapping.decimalSeparator,
+  );
+
+  if (!Number.isFinite(balanceMajor)) {
+    return undefined;
+  }
+
+  return {
+    minorUnits: Money.fromMajor(newest.currency, balanceMajor).minorUnits,
+    currency: newest.currency,
+    asOfSeconds: newest.timeSeconds,
+  };
+};
+
 /**
  * Applies a user-confirmed `ColumnMapping` to already-read `TableCell` rows.
  * `rowErrors` never aborts the parse — every unresolvable row is dropped from
@@ -204,6 +249,7 @@ export const applyColumnMapping = (
   const rowErrors: ColumnMappingRowError[] = [];
   let accountCurrency: Currency | undefined =
     mapping.currency.mode === 'fixed' ? mapping.currency.currency : undefined;
+  let newestBalanceCandidate: ClosingBalanceCandidate | undefined;
 
   dataRows.forEach((row, index) => {
     if (mappedColumns.every((column) => isEmptyCell(row[column]))) {
@@ -220,6 +266,17 @@ export const applyColumnMapping = (
 
     accountCurrency ??= outcome.transaction.currency;
     transactions.push(outcome.transaction);
+
+    if (
+      !newestBalanceCandidate ||
+      outcome.transaction.timeSeconds >= newestBalanceCandidate.timeSeconds
+    ) {
+      newestBalanceCandidate = {
+        row,
+        timeSeconds: outcome.transaction.timeSeconds,
+        currency: outcome.transaction.currency,
+      };
+    }
   });
 
   if (!accountCurrency) {
@@ -229,9 +286,15 @@ export const applyColumnMapping = (
   }
 
   const account: ParsedAccountHint = { currency: accountCurrency };
+  const closingBalance = resolveMappedClosingBalance(mapping, newestBalanceCandidate);
 
   return {
-    statement: { formatId: 'column-mapping', account, transactions },
+    statement: {
+      formatId: 'column-mapping',
+      account,
+      transactions,
+      ...(closingBalance ? { closingBalance } : {}),
+    },
     rowErrors,
   };
 };

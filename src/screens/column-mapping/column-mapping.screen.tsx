@@ -95,6 +95,7 @@ type MappingFormFields = {
   currencyColumn: number | undefined;
   fixedCurrency: Currency;
   counterpartyColumn: number | undefined;
+  balanceColumn: number | undefined;
 };
 
 // `input.sheetRows` always wins over `text` once present (readTableRows's
@@ -166,6 +167,7 @@ const buildColumnMapping = (fields: MappingFormFields): ColumnMapping | undefine
     descriptionColumn: fields.descriptionColumn,
     currency,
     counterpartyColumn: fields.counterpartyColumn,
+    balanceColumn: fields.balanceColumn,
   };
 };
 
@@ -261,6 +263,7 @@ type SavedFormState = {
   currencyColumn: number | undefined;
   explicitFixedCurrency: Currency | undefined;
   counterpartyColumn: number | undefined;
+  balanceColumn: number | undefined;
 };
 
 const formStateFromSavedMapping = (mapping: SavedColumnMapping): SavedFormState => ({
@@ -279,6 +282,7 @@ const formStateFromSavedMapping = (mapping: SavedColumnMapping): SavedFormState 
   currencyColumn: mapping.currency.mode === 'column' ? mapping.currency.column : undefined,
   explicitFixedCurrency: mapping.currency.mode === 'fixed' ? mapping.currency.currency : undefined,
   counterpartyColumn: mapping.counterpartyColumn,
+  balanceColumn: mapping.balanceColumn,
 });
 
 // Every prop the `ready`-state form needs — a module-scope component
@@ -324,6 +328,8 @@ type ColumnMappingFormProps = {
   onDescriptionColumnChange: (value: number | undefined) => void;
   counterpartyColumn: number | undefined;
   onCounterpartyColumnChange: (value: number | undefined) => void;
+  balanceColumn: number | undefined;
+  onBalanceColumnChange: (value: number | undefined) => void;
   stats: PreviewStats | undefined;
   rowErrors: ColumnMappingRowError[];
   holdingOptions: ReturnType<typeof useTargetHoldingOptions>;
@@ -371,6 +377,8 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
   onDescriptionColumnChange,
   counterpartyColumn,
   onCounterpartyColumnChange,
+  balanceColumn,
+  onBalanceColumnChange,
   stats,
   rowErrors,
   holdingOptions,
@@ -532,6 +540,17 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
         />
       </Box>
 
+      <Box style={styles.fieldGroup}>
+        <ColumnSelectField
+          label={t('columnMapping.balanceColumn')}
+          options={columnOptions}
+          selected={balanceColumn}
+          onSelect={onBalanceColumnChange}
+          allowNotUsed
+          testID="column-mapping-balance-column"
+        />
+      </Box>
+
       <Divider testID="column-mapping-divider-result" />
 
       {/* Group (e): result. */}
@@ -586,6 +605,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     undefined,
   );
   const [counterpartyColumn, setCounterpartyColumn] = useState<number | undefined>(undefined);
+  const [balanceColumn, setBalanceColumn] = useState<number | undefined>(undefined);
   const [savedApplied, setSavedApplied] = useState(false);
 
   const [selectedHoldingId, setSelectedHoldingId] = useState<string | undefined>(undefined);
@@ -681,6 +701,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     setCurrencyColumn(state.currencyColumn);
     setExplicitFixedCurrency(state.explicitFixedCurrency);
     setCounterpartyColumn(state.counterpartyColumn);
+    setBalanceColumn(state.balanceColumn);
     setSavedApplied(saved.exact);
   }, [rows, savedMappings, account?.bankId]);
 
@@ -706,6 +727,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     currencyColumn,
     fixedCurrency,
     counterpartyColumn,
+    balanceColumn,
   });
   const applyResult = mapping ? applyMappingSafely(rows, mapping) : undefined;
   const stats: PreviewStats | undefined = applyResult
@@ -798,6 +820,8 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
             onDescriptionColumnChange={setDescriptionColumn}
             counterpartyColumn={counterpartyColumn}
             onCounterpartyColumnChange={setCounterpartyColumn}
+            balanceColumn={balanceColumn}
+            onBalanceColumnChange={setBalanceColumn}
             stats={stats}
             rowErrors={applyResult?.rowErrors ?? []}
             holdingOptions={holdingOptions}

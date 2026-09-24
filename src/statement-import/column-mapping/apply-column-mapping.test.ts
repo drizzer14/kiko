@@ -196,3 +196,99 @@ describe('applyColumnMapping (debitCredit mode)', () => {
     ]);
   });
 });
+
+// The Balance column role (T22 brief): same rule as Monobank CSV's own
+// `resolveClosingBalance` (`formats/monobank-csv/monobank-csv.format.ts`) —
+// the row with the newest parsed `timeSeconds` (last on a tie), read off the
+// mapped balance cell with the mapping's own `decimalSeparator`.
+describe('applyColumnMapping (Balance column -> closingBalance)', () => {
+  const BALANCE_HEADER: TableCell[] = ['Date', 'Description', 'Amount', 'Balance'];
+
+  const mappingWithBalance: ColumnMapping = {
+    headerRowIndex: 0,
+    decimalSeparator: '.',
+    dateColumn: 0,
+    dateFormat: 'DD.MM.YYYY HH:MM:SS',
+    amount: { mode: 'single', column: 2 },
+    descriptionColumn: 1,
+    currency: { mode: 'fixed', currency: 'UAH' },
+    balanceColumn: 3,
+  };
+
+  it('sets closingBalance from the row with the newest parsed time', () => {
+    const rows: TableCell[][] = [
+      BALANCE_HEADER,
+      ['01.07.2025 10:00:00', 'Coffee', -100, 900],
+      ['02.07.2025 10:00:00', 'Salary', 5000, 5900],
+    ];
+
+    const { statement } = applyColumnMapping(rows, mappingWithBalance);
+
+    expect(statement.closingBalance).toEqual({
+      minorUnits: 590_000,
+      currency: 'UAH',
+      asOfSeconds: 1_751_450_400,
+    });
+  });
+
+  it('picks the LAST row on a time tie', () => {
+    const rows: TableCell[][] = [
+      BALANCE_HEADER,
+      ['01.07.2025 10:00:00', 'Coffee', -100, 900],
+      ['01.07.2025 10:00:00', 'Refund', 100, 1000],
+    ];
+
+    const { statement } = applyColumnMapping(rows, mappingWithBalance);
+
+    expect(statement.closingBalance?.minorUnits).toBe(100_000);
+  });
+
+  it('sets no closingBalance when the newest row’s balance cell is missing', () => {
+    const rows: TableCell[][] = [
+      BALANCE_HEADER,
+      ['01.07.2025 10:00:00', 'Coffee', -100, 900],
+      ['02.07.2025 10:00:00', 'Salary', 5000, ''],
+    ];
+
+    const { statement } = applyColumnMapping(rows, mappingWithBalance);
+
+    expect(statement.closingBalance).toBeUndefined();
+  });
+
+  it('sets no closingBalance when the newest row’s balance cell is non-numeric', () => {
+    const rows: TableCell[][] = [
+      BALANCE_HEADER,
+      ['01.07.2025 10:00:00', 'Coffee', -100, 900],
+      ['02.07.2025 10:00:00', 'Salary', 5000, 'n/a'],
+    ];
+
+    const { statement } = applyColumnMapping(rows, mappingWithBalance);
+
+    expect(statement.closingBalance).toBeUndefined();
+  });
+
+  it('sets no closingBalance when the Balance column is left unmapped', () => {
+    const rows: TableCell[][] = [
+      BALANCE_HEADER,
+      ['01.07.2025 10:00:00', 'Coffee', -100, 900],
+      ['02.07.2025 10:00:00', 'Salary', 5000, 5900],
+    ];
+    const { balanceColumn: _omit, ...withoutBalance } = mappingWithBalance;
+
+    const { statement } = applyColumnMapping(rows, withoutBalance);
+
+    expect(statement.closingBalance).toBeUndefined();
+  });
+
+  it('ignores a row that failed to resolve (bad date) when picking the newest balance row', () => {
+    const rows: TableCell[][] = [
+      BALANCE_HEADER,
+      ['01.07.2025 10:00:00', 'Coffee', -100, 900],
+      ['not-a-date', 'Broken', 5000, 999_999],
+    ];
+
+    const { statement } = applyColumnMapping(rows, mappingWithBalance);
+
+    expect(statement.closingBalance?.minorUnits).toBe(90_000);
+  });
+});

@@ -76,8 +76,14 @@ dedicated-format path: `detectFormat` → `format.parse` →
 `applyColumnMapping` and calls `importParsedStatement` itself,
 skipping `importStatement`. Both converge on the same
 `importParsedStatement`, which excludes any row whose `currency`
-doesn't match the target holding's, dedups, and writes through
-`transactionsRepo.addManyDedup`.
+doesn't match the target holding's, dedups, and hands the batch —
+plus the parsed statement's own `closingBalance`, when it has one —
+to `transactionsRepo.importRows` in one db transaction, which upserts
+the rows AND moves the target holding's balance (see `kiko-domain`'s
+"Statement import moves the target holding's balance too" section,
+and `importRows`'s own doc comment, for the exact balance rule —
+`addManyDedup` is a DIFFERENT, still-live upsert-only path the sync
+routes use, not statement import).
 
 ## Dedup
 
@@ -124,10 +130,35 @@ The mapped `ParsedStatement` reaches the DB through the SAME
 `importParsedStatement` (`src/statement-import/import-statement/`)
 every dedicated format uses — it excludes any row whose currency
 doesn't match the target holding's, dedups, and writes via
-`transactionsRepo.addManyDedup`. Column mapping has no dedicated
-`StatementFormat` to detect/parse through, so it builds its own
-`ParsedStatement` directly and calls `importParsedStatement` rather
-than `importStatement`.
+`transactionsRepo.importRows` (upsert + balance write in one
+transaction — see "Detect → import pipeline" above). Column mapping
+has no dedicated `StatementFormat` to detect/parse through, so it
+builds its own `ParsedStatement` directly and calls
+`importParsedStatement` rather than `importStatement`.
+
+### Column roles, and the optional Balance column
+
+Every `ColumnMapping` field (`apply-column-mapping.ts`) is a "role" a
+user assigns to one of the file's own columns: date, date format,
+amount (single, or debit/credit), description, and currency are
+REQUIRED; counterparty and balance are OPTIONAL. `balanceColumn` (T22
+brief) is the running balance after each row — when mapped,
+`resolveMappedClosingBalance` derives the parsed statement's
+`closingBalance` from it, using the SAME "row with the newest parsed
+time, last one on a tie" rule Monobank CSV's own
+`resolveClosingBalance` uses (review follow-up M2), reading the cell
+with the mapping's own `decimalSeparator` (`parseAmountCell`, same as
+every other amount cell this mapping reads). A missing or non-numeric
+cell on that newest row yields no closing balance (review follow-up
+I1's same guard — never a `NaN` written to the ledger), and so does
+leaving the column unmapped. Unlike PrivatBank XLSX's own `balance`
+column (left unset — see `ClosingBalance`'s doc comment in
+`parser.ts`), a column-mapping import always targets exactly ONE
+holding (the one picked on the screen), so it never hits PrivatBank's
+multi-card ambiguity. `balanceColumn` is part of `ColumnMapping`, so a
+saved mapping (below) remembers it automatically — an old saved
+mapping simply lacks the field (`undefined`, backward compatible, no
+migration needed).
 
 ## Saved mappings
 

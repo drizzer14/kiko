@@ -89,9 +89,9 @@ export type ParsedStatement = {
   unresolvedRows?: UnresolvedStatementRow[];
   /** Only set by a format whose export carries a genuine running/closing
    * balance field on a real committed fixture — see `ClosingBalance`'s doc
-   * comment. Today only Monobank CSV's per-row "Залишок після операції"
-   * (balance after transaction) qualifies: it is single-account, single-card
-   * per file, so the row with the largest parsed time is unambiguous (see
+   * comment. Today Monobank CSV's per-row "Залишок після операції" (balance
+   * after transaction) qualifies: it is single-account, single-card per
+   * file, so the row with the largest parsed time is unambiguous (see
    * `resolveClosingBalance`, `monobank-csv.format.ts`). PrivatBank XLSX also
    * has a `balance` column (section C.1), but a PrivatBank export can mix
    * MULTIPLE cards per file (`maskedCardHint` differs per row, see that
@@ -99,7 +99,13 @@ export type ParsedStatement = {
    * one target holding without also matching on which card each row belongs
    * to — deliberately left unset rather than guessed. Sensebank CSV and the
    * three FOP/business CSVs (ProCredit/Ukrsibbank/Alfa) carry no balance
-   * field at all on their committed fixtures.
+   * field at all on their committed fixtures. The generic column-mapping
+   * path (T22 brief) also sets this, from an OPTIONAL user-mapped Balance
+   * column (`ColumnMapping.balanceColumn`, `column-mapping/apply-column-
+   * mapping.ts`'s `resolveMappedClosingBalance`) — same "newest row wins"
+   * rule as Monobank, and never PrivatBank's multi-card ambiguity: a
+   * column-mapping import always targets exactly ONE holding, the one the
+   * user picked on the screen.
    */
   closingBalance?: ClosingBalance;
 };
