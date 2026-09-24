@@ -139,49 +139,6 @@ const blankNoise = (source: string): string => {
   return result;
 };
 
-// A jest.mock(...) factory body cannot syntactically contain a top-level
-// `export` (export is only valid at module scope), so a name-scanner keyed on
-// the literal `export` keyword can never mistake an inline mock component for
-// an exported one. This blanking is still done — matching the R1 brief's
-// design — as a second, explicit layer: it also removes any stray
-// `const`/`function` text a mock factory defines, so a later "was this local
-// name later default-exported?" lookup never accidentally resolves to
-// something declared only inside a mock.
-const blankJestMockBodies = (source: string): string => {
-  let result = source;
-  let searchFrom = 0;
-
-  for (;;) {
-    const start = result.indexOf('jest.mock(', searchFrom);
-
-    if (start === -1) {
-      return result;
-    }
-
-    const openParen = start + 'jest.mock'.length;
-    let depth = 0;
-    let end = openParen;
-
-    for (let i = openParen; i < result.length; i += 1) {
-      if (result[i] === '(') {
-        depth += 1;
-      }
-
-      if (result[i] === ')') {
-        depth -= 1;
-
-        if (depth === 0) {
-          end = i + 1;
-          break;
-        }
-      }
-    }
-
-    result = result.slice(0, openParen) + blankSpan(result, openParen, end) + result.slice(end);
-    searchFrom = end;
-  }
-};
-
 // A top-level (column-0) declaration opener — Biome formats every top-level
 // statement flush-left, so this is a reliable boundary in this codebase.
 // `export default memo(Name);` and a named export list (`export { A, B };`,
@@ -229,27 +186,17 @@ type SliceClassification =
   | { kind: 'other' };
 
 const classifySlice = (slice: string): SliceClassification => {
-  const defaultFunction = /^export\s+default\s+function\s+(\w+)/.exec(slice);
+  // Covers all 3 direct-export shapes at once: `export default function
+  // Name`, `export function Name`, `export const Name` — `default` is
+  // optional, and only `function`/`const` ever introduce a component this
+  // way (a bare `export default Name;`/`export default memo(Name);` alias
+  // is handled separately below, since there is no declaration here to
+  // classify, only a reference to one).
+  const exportedDeclaration = /^export\s+(?:default\s+)?(?:function|const)\s+(\w+)/.exec(slice);
 
-  if (defaultFunction) {
+  if (exportedDeclaration) {
     return looksLikeComponent(slice)
-      ? { kind: 'exportedComponent', name: defaultFunction[1] as string }
-      : { kind: 'other' };
-  }
-
-  const namedFunction = /^export\s+function\s+(\w+)/.exec(slice);
-
-  if (namedFunction) {
-    return looksLikeComponent(slice)
-      ? { kind: 'exportedComponent', name: namedFunction[1] as string }
-      : { kind: 'other' };
-  }
-
-  const namedConst = /^export\s+const\s+(\w+)/.exec(slice);
-
-  if (namedConst) {
-    return looksLikeComponent(slice)
-      ? { kind: 'exportedComponent', name: namedConst[1] as string }
+      ? { kind: 'exportedComponent', name: exportedDeclaration[1] as string }
       : { kind: 'other' };
   }
 
@@ -296,8 +243,16 @@ const classifySlice = (slice: string): SliceClassification => {
   return { kind: 'other' };
 };
 
+// A jest.mock(...) factory body cannot syntactically contain a top-level
+// `export` (export is only valid at module scope) or, by the same token, a
+// top-level `const`/`function` — TOP_LEVEL_DECL only matches column-0, and a
+// factory body is always indented — so an inline mock component inside one
+// is never mistaken for an exported declaration, and its own local
+// `const`/`function` names never leak into `localDeclarations` either. No
+// separate blanking pass is needed to enforce that; it falls out of the
+// column-0 opener requirement already in place for every other reason.
 export const exportedComponentNames = (rawSource: string): string[] => {
-  const source = blankJestMockBodies(blankNoise(rawSource));
+  const source = blankNoise(rawSource);
   const slices = declarationSlices(source);
 
   const localDeclarations = new Map<string, string>();
