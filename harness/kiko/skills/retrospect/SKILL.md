@@ -14,7 +14,8 @@ Rules:
   paths, symbol names) against the actual code in BOTH
   `.claude/skills/` and `harness/kiko/skills/`, plus
   `harness/kiko/agents/`. Flag any drift found to the scribe as a
-  distinct item from new lessons.
+  distinct item from new lessons, including prose that only describes
+  current usage instead of prescribing a rule.
 - Name the scribe's drift-fix commit sha (or "no drift found") in your
   report, per the standing rule.
 - Hand each lesson (and any drift found) to the scribe to persist. Do

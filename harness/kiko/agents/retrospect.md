@@ -22,6 +22,9 @@ Rules:
   own item, distinct from new lessons, so the scribe can fix the skill
   or, better, replace the stale copied fact with a pointer to its
   source file (see the scribe's own authoring rule for copied
-  enumerable data). Name the scribe's drift-fix commit sha (or "no
-  drift found") when you hand back.
+  enumerable data), and flag prose that only describes current usage
+  instead of prescribing a rule. Name the scribe's drift-fix commit sha
+  (or "no drift found") when you hand back.
 - You do not edit skills, agents, or the plugin. The scribe does that.
+- You are read-only; you do not stop processes at all — no pkill, killall, kill, or
+  any pattern/group kill.

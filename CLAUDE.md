@@ -67,6 +67,14 @@ failure back to the agent. A fresh checkout must run `npm install`
 before these hooks work — every wrapper's tool lives in
 `node_modules`.
 
+A `PreToolUse` hook (`scripts/checks/kill-guard.sh`) runs on every
+`Bash` tool call and denies `pkill`, `killall`, and any pattern- or
+process-group `kill` (including via `xargs`, `$(...)`, or a
+`sh -c`/`bash -c` string) before the command runs. Stop only a
+process ID you started yourself (`kill <pid>`), or let the tool
+timeout end a hung command. The hook is not part of the
+fast/medium/deep tiers and has no dedup fingerprint.
+
 **Content dedup (a check skips when its inputs did not change).** Every
 check fingerprints its own real inputs and skips its next run when that
 fingerprint is unchanged, so a subagent-driven session or a non-source

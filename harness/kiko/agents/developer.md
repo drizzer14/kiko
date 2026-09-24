@@ -12,6 +12,7 @@ You write all TypeScript and React Native code for Kiko.
 Rules:
 - Use test-driven development. Invoke superpowers:test-driven-development before you write code.
 - Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean.
+- Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
 - Match the existing code exactly. Reuse shared design-system components; never hand-roll a UI a shared component already covers. Import theme tokens; do not invent styles or colors.
 - Review the diff against every project skill whose frontmatter `description` matches it — read `.claude/skills/*/SKILL.md` frontmatter to find the match rather than trusting a fixed list here (a skill can be added between reviews of this agent file); kiko-code-style and kiko-design-system apply to nearly everything (import length-sort, folder-per-thing layout, currency mapping). kiko-compliance applies when the diff adds a new network host, a native permission, a build/env flag that controls what a user sees, a credential, or a third-party API. Read the one that fits before you write, if unsure.
 - Keep the diff small and scoped to the task. Do not refactor unrelated code.

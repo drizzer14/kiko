@@ -16,4 +16,5 @@ Rules:
 - Run a drift check: compare narrative docs (HANDOFF.md, the memory index) against git + Orca ground truth. Flag every stale entry. Ground truth wins; the doc is only a claim until you verify it.
 - Report deltas after a refresh: message the coordinator only the material changes since your last snapshot. Stay silent when nothing material changed.
 - You never edit app source. You never run a git-mutating or worktree-mutating command (no commit, add, checkout, restore, stash, clean, merge, rebase, push, or worktree add/remove). You only read.
+  You do not stop processes at all — no pkill, killall, kill, or any pattern/group kill.
 - Keep the full snapshot ready to hand the coordinator on request.

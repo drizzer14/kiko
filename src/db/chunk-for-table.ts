@@ -16,7 +16,13 @@ import { type Table, getTableColumns } from 'drizzle-orm';
 // repeat this: the widest table just gets a smaller chunk.
 const SAFE_BOUND_PARAMETER_LIMIT = 32000;
 
-const chunkRows = <T>(rows: T[], size: number): T[][] => {
+/** Splits `rows` into fixed-size chunks, preserving order. The one generic
+ * list-chunking primitive in the codebase — `chunkForTable` derives its
+ * per-table chunk SIZE from column count and calls this to do the actual
+ * slicing; `insertDedupRowsTx`'s `IN_CLAUSE_CHUNK_SIZE` (`transactions.repo.ts`)
+ * reuses it directly for its scalar `IN (...)` lookups, which have no
+ * column count to derive a size from. */
+export const chunkRows = <T>(rows: T[], size: number): T[][] => {
   const parts: T[][] = [];
   for (let start = 0; start < rows.length; start += size) {
     parts.push(rows.slice(start, start + size));
@@ -28,9 +34,12 @@ const chunkRows = <T>(rows: T[], size: number): T[][] => {
  * bound-parameter count under `SAFE_BOUND_PARAMETER_LIMIT`, computed from
  * the table's OWN column count rather than a fixed row count — see the
  * doc comment above `SAFE_BOUND_PARAMETER_LIMIT`. Shared by
- * `restoreDataSnapshot` (`data-transfer/snapshot/restore-snapshot.ts`) and
- * `insertDedupRowsTx` (`transactions/repo/transactions.repo.ts`), the two
- * insert paths whose row count is caller-controlled and unbounded. */
+ * `restoreDataSnapshot` (`data-transfer/snapshot/restore-snapshot.ts`),
+ * `insertDedupRowsTx` (`transactions/repo/transactions.repo.ts`), and
+ * `ratesRepo.upsertMany` (`src/rates/repo/rates.repo.ts`) — three insert
+ * paths whose row count is caller-controlled (a `.kiko` restore, a
+ * Monobank sync or user-picked statement file, a live rate-history
+ * response) and unbounded. */
 export const chunkForTable = <T>(table: Table, rows: T[]): T[][] => {
   const columnCount = Object.keys(getTableColumns(table)).length;
   const rowsPerChunk = Math.max(1, Math.floor(SAFE_BOUND_PARAMETER_LIMIT / columnCount));

@@ -92,6 +92,16 @@ motivated it. Summary — every step is required, not optional:
    `ios/DerivedData` — those trip the repo's gitleaks secrets scan (see
    root `CLAUDE.md`'s "Documented exceptions").
 
+## Device-test checkout
+
+Build device-test installs from the dedicated detached checkout
+`~/orca/workspaces/pff-ios/device-deploy` (move its HEAD with `git
+checkout --detach <sha>`; it keeps `node_modules`, Pods, and the build
+cache — never prune it), never from a worktree with work in progress.
+Installing over a database created by a NEWER branch is a downgrade:
+do a clean reinstall instead. After the checkout path changes, the
+first build is clean (`rm ios/build`, `pod install`).
+
 ## Device verification checklist
 
 Ops owns device builds, so this checklist lives here; the orchestrator

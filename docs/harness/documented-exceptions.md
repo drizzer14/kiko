@@ -146,6 +146,19 @@ verified usage, not dead weight:
   scope. Revisit or remove this exception if the two charts' structure
   ever diverges enough that the duplication is no longer a deliberate
   mirror.
+- **`knip.json` `ignore`**: `scripts/checks/kill-guard.js` — the PreToolUse
+  hook script that `scripts/checks/kill-guard.sh` invokes (`node
+  kill-guard.js`) to tokenize a Bash-tool command and deny pkill/killall and
+  pattern/process-group kills (see CLAUDE.md's "Automatic wiring" and
+  `.claude/skills/kiko-linter/SKILL.md`). It is reached only from a sibling
+  `.sh` wrapper's `node` invocation — never a static `import`/`require` from
+  any TypeScript/JavaScript source, and never a package.json script Knip's
+  static scan can see (unlike `scripts/ensure-env.js`, which IS a
+  `postinstall` package.json script and so needs no ignore entry) — so
+  Knip's reachability graph reports it as an unused file. It is exercised
+  directly by `__tests__/kill-guard.test.ts`, which spawns
+  `kill-guard.sh` (and so `kill-guard.js`) as a subprocess, not an import,
+  so Jest's coverage does not make Knip see it as reachable either.
 - **`rules/fixtures/**` (Biome `files.includes`, `knip.json` `ignore`,
   `.jscpd.json` `ignore`, and `--exclude 'fixtures'` in
   `scripts/checks/security.sh`)**: the positive/negative fixture pair that

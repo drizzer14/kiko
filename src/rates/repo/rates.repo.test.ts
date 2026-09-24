@@ -31,7 +31,27 @@ jest.mock('../../db/encrypted-database', () => ({
   }),
 }));
 
+// `upsertMany` runs its insert(s) through the `write` helper (one op-sqlite
+// transaction). Override `write` to run the callback against a fake
+// transaction handle and count invocations, so a test can prove every chunk
+// of a large batch runs inside the SAME transaction — the same pattern
+// `rateHistoryRepo`'s own chunking test uses (`rate-history.repo.test.ts`).
+let mockTx: unknown;
+let writeCalls = 0;
+jest.mock('../../db/client', () => {
+  const actual = jest.requireActual('../../db/client');
+  return {
+    ...actual,
+    write: (work: (db: unknown) => unknown) => {
+      writeCalls += 1;
+      return work(mockTx);
+    },
+  };
+});
+
 import { initDatabase } from '../../db/client';
+import type { CurrencyRateRow } from '../../db/schema';
+import { currencyOptions } from '../../currency/currency';
 
 import { ratesRepo } from './rates.repo';
 
@@ -40,6 +60,60 @@ const rawResult = (rawRows: unknown[][]) => ({
   columnNames: ['fetchedAt'],
   rowsAffected: 0,
 });
+
+// currency_rates binds 5 params/row (base, quote, rate, source, fetchedAt).
+// SQLITE_MAX_VARIABLE_NUMBER is 32766 — a fake `.values(...)` call that
+// receives more rows than that fits models op-sqlite's real rejection, so
+// an unchunked insert fails this test the same way it fails on device.
+const PARAMS_PER_ROW = 5;
+const SQLITE_MAX_VARIABLE_NUMBER = 32_766;
+
+type NewRate = Pick<CurrencyRateRow, 'base' | 'quote' | 'rate' | 'source' | 'fetchedAt'>;
+
+// A fake `insert(...).values(...).onConflictDoUpdate(...)` chain backed by a
+// plain array, recording each `.values(...)` call's row count so a test can
+// assert every executed statement stays under the bound-parameter ceiling.
+const makeUpsertTx = (store: NewRate[], chunkSizes: number[]): unknown => ({
+  insert: () => ({
+    values: (rows: NewRate[]) => {
+      if (rows.length * PARAMS_PER_ROW > SQLITE_MAX_VARIABLE_NUMBER) {
+        throw new Error('too many SQL variables');
+      }
+      chunkSizes.push(rows.length);
+      return {
+        onConflictDoUpdate: () => {
+          for (const row of rows) {
+            const index = store.findIndex(
+              (existing) => existing.base === row.base && existing.quote === row.quote,
+            );
+            if (index >= 0) {
+              store[index] = { ...row };
+            } else {
+              store.push({ ...row });
+            }
+          }
+          return Promise.resolve();
+        },
+      };
+    },
+  }),
+});
+
+// 110 currencies x 109 cross pairs each = 11,990 rows — the exact shape a
+// live Monobank sync's `buildPairs` (`rates-refresh.ts`) produces across
+// `currencyOptions` (`src/currency/currency/currency.ts`).
+const buildRates = (): NewRate[] => {
+  const rows: NewRate[] = [];
+  for (const base of currencyOptions) {
+    for (const quote of currencyOptions) {
+      if (base === quote) {
+        continue;
+      }
+      rows.push({ base, quote, rate: '1.5', source: 'monobank', fetchedAt: 1_700_000_000_000 });
+    }
+  }
+  return rows;
+};
 
 describe('ratesRepo', () => {
   beforeAll(async () => {
@@ -60,5 +134,45 @@ describe('ratesRepo', () => {
   it('returns null when no rate has been stored yet', async () => {
     mockExecuteRaw.mockResolvedValue(rawResult([[null]]));
     expect(await ratesRepo.latestFetchedAt()).toBeNull();
+  });
+
+  describe('upsertMany', () => {
+    beforeEach(() => {
+      writeCalls = 0;
+    });
+
+    it('chunks a full-sync batch under the SQLite bound-parameter limit, in one transaction', async () => {
+      const store: NewRate[] = [];
+      const chunkSizes: number[] = [];
+      mockTx = makeUpsertTx(store, chunkSizes);
+
+      const rates = buildRates();
+      expect(rates).toHaveLength(11_990);
+
+      await ratesRepo.upsertMany(rates);
+
+      // Every chunk stayed under the bound-parameter ceiling (the fake tx
+      // above throws otherwise), more than one chunk was needed, and no
+      // row was lost or duplicated across the chunk boundaries.
+      expect(chunkSizes.length).toBeGreaterThan(1);
+      for (const size of chunkSizes) {
+        expect(size * PARAMS_PER_ROW).toBeLessThanOrEqual(SQLITE_MAX_VARIABLE_NUMBER);
+      }
+      expect(chunkSizes.reduce((sum, size) => sum + size, 0)).toBe(11_990);
+      expect(store).toHaveLength(11_990);
+      // All chunks ran inside the same single write (one op-sqlite transaction).
+      expect(writeCalls).toBe(1);
+    });
+
+    it('issues no insert for an empty batch', async () => {
+      const store: NewRate[] = [];
+      const chunkSizes: number[] = [];
+      mockTx = makeUpsertTx(store, chunkSizes);
+
+      await ratesRepo.upsertMany([]);
+
+      expect(chunkSizes).toHaveLength(0);
+      expect(store).toHaveLength(0);
+    });
   });
 });

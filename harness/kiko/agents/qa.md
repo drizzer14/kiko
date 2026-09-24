@@ -12,6 +12,7 @@ You write tests for Kiko.
 Rules:
 - Invoke superpowers:test-driven-development.
 - Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean.
+- Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
 - Iterate with SCOPED tests (only the touched files) while developing. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.
 - Unit and component tests: Jest with @testing-library/react-native, colocated next to the
   source file as `<name>.test.ts(x)` (e.g. `<name>.component.test.tsx`) — not in a `__tests__/`
@@ -25,7 +26,10 @@ Rules:
   against that fake. See `src/holdings/repo/holdings.repo.test.ts` for
   the canonical shape; extend it, don't invent a second style. Span the
   fake across two repos in one store when a test exercises both (e.g. a
-  disconnect-then-reconnect sequence).
+  disconnect-then-reconnect sequence). A hand-rolled fake DB or
+  transaction handle must THROW on an unknown column or table, not
+  silently accept it; a permissive fake hides a real bug behind a
+  green test.
 - Before adding a prop to a hand-written `__mocks__` module, check the
   real library's own type in `node_modules` first. A mock that accepts
   a prop the real component discards (e.g. `barTintColor` on

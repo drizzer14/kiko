@@ -13,7 +13,7 @@ import {
 } from '../../db/schema';
 import { id } from '../../db/id';
 import { database, write } from '../../db/client';
-import { chunkForTable } from '../../db/chunk-for-table';
+import { chunkForTable, chunkRows } from '../../db/chunk-for-table';
 import { normalizeTransactionName } from '../normalize-name';
 import type { ClosingBalance } from '../../statement-import/parser';
 import { exchangeReceivePath } from '../../holdings/exchange-destination';
@@ -190,6 +190,13 @@ const dedupByConflictKey = (inputs: NewTransaction[]): NewTransaction[] => {
   });
 };
 
+// A one-column `inArray(...)` predicate binds one parameter per item — the
+// same SQLITE_MAX_VARIABLE_NUMBER (32766) ceiling `chunkForTable`
+// (`src/db/chunk-for-table.ts`) guards the multi-column insert below
+// against, chunked directly at its own safe margin rather than derived from
+// a table's column count, which a plain scalar list has none of.
+const IN_CLAUSE_CHUNK_SIZE = 32_000;
+
 /**
  * The subset of these rows the upsert will INSERT rather than refresh. Read
  * inside the caller's own transaction, so the result can never disagree with
@@ -214,17 +221,28 @@ const partitionNewRows = async (
   const sources = Array.from(
     new Set(inputs.filter((input) => conflictKeyOf(input) !== null).map((input) => input.source)),
   );
+  const known = new Set<string>();
   // BOTH halves of the unique key are constrained, so SQLite SEARCHes
   // `transactions_source_external` on its leading `source` column; an
   // `external_id`-only predicate cannot use that index and SCANs it instead
-  // (verified with EXPLAIN QUERY PLAN).
-  const existing = await tx
-    .select({ source: transactions.source, externalId: transactions.externalId })
-    .from(transactions)
-    .where(
-      and(inArray(transactions.source, sources), inArray(transactions.externalId, externalIds)),
-    );
-  const known = new Set(existing.map((row) => `${row.source}:${row.externalId}`));
+  // (verified with EXPLAIN QUERY PLAN). Chunked over `externalIds` (a large
+  // sync or statement import can carry tens of thousands) — see
+  // `IN_CLAUSE_CHUNK_SIZE` above.
+  for (const externalIdChunk of chunkRows(externalIds, IN_CLAUSE_CHUNK_SIZE)) {
+    const existing = await tx
+      .select({ source: transactions.source, externalId: transactions.externalId })
+      .from(transactions)
+      .where(
+        and(
+          inArray(transactions.source, sources),
+          inArray(transactions.externalId, externalIdChunk),
+        ),
+      );
+
+    for (const row of existing) {
+      known.add(`${row.source}:${row.externalId}`);
+    }
+  }
 
   return inputs.filter((input) => {
     const key = conflictKeyOf(input);
@@ -252,17 +270,21 @@ const insertDedupRowsTx = async (
   const batch = dedupByConflictKey(inputs);
   // Apply name→category override rules at insert time. Normalize each
   // incoming description in JS (never SQL) and look the rules up by exact
-  // equality on the already-normalized key.
+  // equality on the already-normalized key. Chunked over `keys` (a large
+  // import can carry tens of thousands of distinct descriptions) — see
+  // `IN_CLAUSE_CHUNK_SIZE` above.
   const keys = Array.from(
     new Set(batch.map((input) => normalizeTransactionName(input.description ?? ''))),
   ).filter((key) => key !== '');
-  const rules =
-    keys.length > 0
-      ? await tx
-          .select()
-          .from(categoryOverrides)
-          .where(inArray(categoryOverrides.normalizedName, keys))
-      : [];
+  const rules: { normalizedName: string; category: string }[] = [];
+  for (const keyChunk of chunkRows(keys, IN_CLAUSE_CHUNK_SIZE)) {
+    rules.push(
+      ...(await tx
+        .select()
+        .from(categoryOverrides)
+        .where(inArray(categoryOverrides.normalizedName, keyChunk))),
+    );
+  }
   const categoryByName = new Map(rules.map((rule) => [rule.normalizedName, rule.category]));
   const withOverrides = batch.map((input) => {
     const override = categoryByName.get(normalizeTransactionName(input.description ?? ''));
