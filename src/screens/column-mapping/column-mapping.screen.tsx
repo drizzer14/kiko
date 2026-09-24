@@ -50,6 +50,8 @@ import CurrencyFields from './currency-fields';
 import MappingResult from './mapping-result';
 import ColumnSelectField from './column-select-field';
 import ChipRow from '../forms/chip-row';
+import FieldLabel from '../../design-system/components/field-label';
+import SegmentedControl from '../../design-system/components/segmented-control';
 import ImportOutcome from '../statement-import/import-outcome';
 import ImportResultSheet, {
   IMPORT_RESULT_SHEET_CLOSE_DELAY_MS,
@@ -434,13 +436,14 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
 
         {!isXlsx && (
           <>
-            <Box testID="column-mapping-encoding">
-              <ChipRow<Encoding>
-                label={t('columnMapping.encoding')}
+            <Box gap={1} testID="column-mapping-encoding">
+              <FieldLabel label={t('columnMapping.encoding')} />
+              <SegmentedControl<Encoding>
                 options={['utf-8', 'windows-1251']}
                 selected={encoding}
                 onSelect={onEncodingChange}
                 labels={encodingLabels}
+                accessibilityLabel={t('columnMapping.encoding')}
               />
             </Box>
 
@@ -456,12 +459,13 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
           </>
         )}
 
-        <Box testID="column-mapping-decimal-separator">
-          <ChipRow<',' | '.'>
-            label={t('columnMapping.decimalSeparator')}
+        <Box gap={1} testID="column-mapping-decimal-separator">
+          <FieldLabel label={t('columnMapping.decimalSeparator')} />
+          <SegmentedControl<',' | '.'>
             options={[',', '.']}
             selected={decimalSeparator}
             onSelect={onDecimalSeparatorChange}
+            accessibilityLabel={t('columnMapping.decimalSeparator')}
           />
         </Box>
       </Box>
@@ -565,7 +569,11 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
       {/* Group (e): result — MappingResult renders its OWN heading
           (`columnMapping.result`) in both its complete and incomplete
           states, at the same gap-driven spacing every other section uses. */}
-      <MappingResult stats={stats} rowErrors={rowErrors} />
+      <MappingResult
+        stats={stats}
+        rowErrors={rowErrors}
+        holdingName={holdingOptions.find((holding) => holding.id === selectedHoldingId)?.name}
+      />
 
       <TargetHoldingField
         label={t('statementImport.chooseHolding')}
