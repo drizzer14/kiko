@@ -216,10 +216,12 @@ describe('GlassSurface', () => {
   // the non-glass fallback path at all, so `bloom` here must not schedule
   // one even though it is set.
   it('does not schedule a remount for a bloom surface on the non-glass fallback path', async () => {
-    const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-      cb(0);
-      return 0;
-    });
+    const rafSpy = jest
+      .spyOn(globalThis, 'requestAnimationFrame')
+      .mockImplementation((callback) => {
+        callback(0);
+        return 0;
+      });
 
     await render(
       <GlassSurface testID="bloom-fallback-resample" bloom>
@@ -580,10 +582,12 @@ describe('GlassSurface', () => {
       // never fewer (a single read has nothing to compare against) and never
       // more.
       it('remounts once two consecutive reads agree, for a card whose position is already settled', async () => {
-        const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-          cb(0);
-          return 0;
-        });
+        const rafSpy = jest
+          .spyOn(globalThis, 'requestAnimationFrame')
+          .mockImplementation((callback) => {
+            callback(0);
+            return 0;
+          });
 
         try {
           measureInWindowSpy.mockImplementation((callback: MeasureInWindowCallback) =>
@@ -630,10 +634,12 @@ describe('GlassSurface', () => {
       // loop instead keeps polling — six reads here — until the position
       // finally repeats, and only remounts then.
       it('keeps polling past a fixed 2-frame count while the position keeps moving, and remounts once it settles', async () => {
-        const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-          cb(0);
-          return 0;
-        });
+        const rafSpy = jest
+          .spyOn(globalThis, 'requestAnimationFrame')
+          .mockImplementation((callback) => {
+            callback(0);
+            return 0;
+          });
 
         try {
           const positions = [10, 40, 90, 150, 150, 150];
@@ -669,10 +675,12 @@ describe('GlassSurface', () => {
       // out at `MAX_SETTLE_ATTEMPTS` and remounts anyway rather than leaving
       // the card unsampled indefinitely.
       it('caps the settle loop and remounts anyway if the position never stops changing', async () => {
-        const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-          cb(0);
-          return 0;
-        });
+        const rafSpy = jest
+          .spyOn(globalThis, 'requestAnimationFrame')
+          .mockImplementation((callback) => {
+            callback(0);
+            return 0;
+          });
 
         try {
           let y = 0;
@@ -699,10 +707,12 @@ describe('GlassSurface', () => {
       // backdrop, or the standard `'regular'` effect), so it must not pay for
       // an extra native remount it does not need.
       it('does not schedule a remount for a non-bloom surface on the real glass path', async () => {
-        const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-          cb(0);
-          return 0;
-        });
+        const rafSpy = jest
+          .spyOn(globalThis, 'requestAnimationFrame')
+          .mockImplementation((callback) => {
+            callback(0);
+            return 0;
+          });
 
         try {
           await render(

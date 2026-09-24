@@ -50,9 +50,9 @@ describe('surfaceTranslucent vs surfaceTranslucentStrong', () => {
 
     const match = darkTheme.colors.surfaceWashStrong.match(/^rgba\((\d+),(\d+),(\d+),([\d.]+)\)$/);
     if (!match) throw new Error('surfaceWashStrong is not an rgba() string');
-    const [, r, g, b, alphaStr] = match;
+    const [, r, g, b, alphaString] = match;
     expect(`${r},${g},${b}`).toBe('0,0,0');
-    const alpha = Number(alphaStr);
+    const alpha = Number(alphaString);
     expect(alpha).toBeGreaterThan(0.2);
     expect(alpha).toBeLessThan(0.4);
   });
