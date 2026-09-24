@@ -580,6 +580,39 @@ describe('holdingValueBreakdown — loan (T27)', () => {
     expect(b.net.minorUnits).toBe(0);
   });
 
+  // I2 (T28 review round 1/2): a 'none' loan's manual correction accepts 0
+  // (repaid) and, end to end, contributes 0 to net worth from that day
+  // forward while its EARLIER history — valued as of an earlier day — still
+  // reads its earlier, nonzero correction. A price-point write never
+  // deletes prior points, so history survives the 0 correction.
+  it('a "none" loan set to 0 counts 0 in net worth and keeps its earlier history (I2)', () => {
+    const paidOffDay = local(2020, 2, 1); // 1 Mar 2020
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('loan-1'),
+        day: loanStart,
+        price: '120000.00',
+        currency: 'UAH',
+        source: 'manual',
+      },
+      {
+        instrument: holdingInstrument('loan-1'),
+        day: paidOffDay,
+        price: '0.00',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+    const noneLoan = loan({ schedule: 'none', annualRatePct: undefined, termMonths: undefined });
+
+    const atPayoff = holdingValueBreakdown(noneLoan, paidOffDay, book);
+    expect(atPayoff.gross.minorUnits).toBe(0);
+    expect(atPayoff.net.minorUnits).toBe(0);
+
+    const atStart = holdingValueBreakdown(noneLoan, loanStart, book);
+    expect(atStart.gross.minorUnits).toBe(-12_000_000);
+  });
+
   // M1 (T27 round 1): missing/malformed loan metadata must value the loan at
   // 0, never `+balanceMinorUnits` — a debt must never read as a positive
   // asset (the T26 review's finding (c), carried forward). Harmless in
