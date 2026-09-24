@@ -38,9 +38,9 @@ describe('reconcileBondFunding', () => {
     const debitDay = startOfLocalDay(meta.purchaseDate) - 2 * DAY; // funded two days earlier
     const holdings = [cardHolding('card', 'USD')];
     // The synced debit (110_000) differs from the typed price (107_868): a ~2% gap.
-    const transactionByHolding = new Map([['card', [transaction(debitDay + 7 * HOUR, -110_000)]]]);
+    const transactionsByHolding = new Map([['card', [transaction(debitDay + 7 * HOUR, -110_000)]]]);
 
-    expect(reconcileBondFunding(meta, 'USD', holdings, transactionByHolding)).toEqual({
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toEqual({
       recognitionDay: debitDay,
       recognitionCostMinorUnits: 110_000,
     });
@@ -52,13 +52,13 @@ describe('reconcileBondFunding', () => {
     const near = typedDay - DAY;
     const far = typedDay - 5 * DAY;
     const holdings = [cardHolding('card', 'USD')];
-    const transactionByHolding = new Map([
+    const transactionsByHolding = new Map([
       ['card', [transaction(far + 7 * HOUR, -108_000), transaction(near + 7 * HOUR, -110_000)]],
     ]);
 
     // The nearer day wins on the day axis even though its amount is FARTHER from
     // the typed price — day proximity is the primary key, amount only the tie-break.
-    expect(reconcileBondFunding(meta, 'USD', holdings, transactionByHolding)).toEqual({
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toEqual({
       recognitionDay: near,
       recognitionCostMinorUnits: 110_000,
     });
@@ -69,14 +69,14 @@ describe('reconcileBondFunding', () => {
     const typedDay = startOfLocalDay(meta.purchaseDate);
     const holdings = [cardHolding('card', 'USD')];
     // Two debits on the SAME day: the one closest to the typed 107_868 wins.
-    const transactionByHolding = new Map([
+    const transactionsByHolding = new Map([
       [
         'card',
         [transaction(typedDay + 3 * HOUR, -110_000), transaction(typedDay + 9 * HOUR, -108_000)],
       ],
     ]);
 
-    expect(reconcileBondFunding(meta, 'USD', holdings, transactionByHolding)).toEqual({
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toEqual({
       recognitionDay: typedDay,
       recognitionCostMinorUnits: 108_000,
     });
@@ -86,11 +86,11 @@ describe('reconcileBondFunding', () => {
     const meta = bondMeta();
     const debitDay = startOfLocalDay(meta.purchaseDate) - DAY;
     const holdings = [cardHolding('card', 'USD')];
-    const transactionByHolding = new Map([
+    const transactionsByHolding = new Map([
       ['card', [transaction(debitDay + 7 * HOUR, -meta.purchasePriceMinorUnits)]],
     ]);
 
-    expect(reconcileBondFunding(meta, 'USD', holdings, transactionByHolding)).toEqual({
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toEqual({
       recognitionDay: debitDay,
       recognitionCostMinorUnits: meta.purchasePriceMinorUnits,
     });
@@ -101,11 +101,11 @@ describe('reconcileBondFunding', () => {
     const holdings = [cardHolding('card', 'USD')];
     // A debit far from the price (here ~7% off, beyond the 5% band) is not the
     // bond's funding outflow.
-    const transactionByHolding = new Map([
+    const transactionsByHolding = new Map([
       ['card', [transaction(meta.purchaseDate - 2 * DAY, -100_000)]],
     ]);
 
-    expect(reconcileBondFunding(meta, 'USD', holdings, transactionByHolding)).toEqual({
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toEqual({
       recognitionDay: startOfLocalDay(meta.purchaseDate),
       recognitionCostMinorUnits: meta.purchasePriceMinorUnits,
     });
@@ -115,11 +115,11 @@ describe('reconcileBondFunding', () => {
     const meta = bondMeta();
     const holdings = [cardHolding('card', 'USD')];
     // A same-magnitude CREDIT is not an outflow — it must never fund a bond.
-    const transactionByHolding = new Map([
+    const transactionsByHolding = new Map([
       ['card', [transaction(meta.purchaseDate - 2 * DAY, 108_000)]],
     ]);
 
-    expect(reconcileBondFunding(meta, 'USD', holdings, transactionByHolding)).toEqual({
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toEqual({
       recognitionDay: startOfLocalDay(meta.purchaseDate),
       recognitionCostMinorUnits: meta.purchasePriceMinorUnits,
     });
@@ -128,11 +128,11 @@ describe('reconcileBondFunding', () => {
   it('ignores a matching debit that is in a different currency than the bond', () => {
     const meta = bondMeta();
     const holdings = [cardHolding('uah-card', 'UAH')];
-    const transactionByHolding = new Map([
+    const transactionsByHolding = new Map([
       ['uah-card', [transaction(meta.purchaseDate - 2 * DAY, -108_000)]],
     ]);
 
-    expect(reconcileBondFunding(meta, 'USD', holdings, transactionByHolding)).toEqual({
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toEqual({
       recognitionDay: startOfLocalDay(meta.purchaseDate),
       recognitionCostMinorUnits: meta.purchasePriceMinorUnits,
     });

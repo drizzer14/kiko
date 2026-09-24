@@ -362,7 +362,7 @@ const StatisticsScreen: FC = () => {
     () =>
       buildNetWorthSeries({
         holdings: filtered.visibleHoldings,
-        transactionByHolding: groupByHolding(transactions),
+        transactionsByHolding: groupByHolding(transactions),
         historyRows,
         baseCurrency,
         range: { from: rangeFrom, to: rangeTo },
