@@ -86,8 +86,9 @@ describe('RawPreview', () => {
     expect(queryByText('c6')).toBeNull();
   });
 
-  // F3 item 8: the selected header row's own cell text turns bold.
-  it('renders the selected header row’s cell text bold', async () => {
+  // F3 item 8 / fix round 1 M3: the selected header row's own cell text
+  // turns semibold (600) — the app's selected-label weight everywhere else.
+  it('renders the selected header row’s cell text semibold', async () => {
     const { getByText } = await render(
       <RawPreview rows={rows} headerRowIndex={0} onSelectHeaderRow={jest.fn()} />,
     );
@@ -96,7 +97,7 @@ describe('RawPreview', () => {
     const selectedCellStyle = StyleSheet.flatten(getByText('Date').props.style);
     const unselectedCellStyle = StyleSheet.flatten(getByText('Coffee').props.style);
 
-    expect(selectedCellStyle.fontWeight).toBe('700');
-    expect(unselectedCellStyle.fontWeight).not.toBe('700');
+    expect(selectedCellStyle.fontWeight).toBe('600');
+    expect(unselectedCellStyle.fontWeight).not.toBe('600');
   });
 });

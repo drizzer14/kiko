@@ -9,13 +9,8 @@ import { computeColumnWidths } from './column-widths';
 import type { RawPreviewProps } from './raw-preview.props';
 
 const PREVIEW_ROW_COUNT = 10;
-// F3 item 7: the raw preview shows at most this many columns per row — a
-// wide export (a multi-card PrivatBank sheet, say) used to scroll dozens of
-// columns wide, which read as noise before the user has even picked a
-// header row. Every mapping field below (`ColumnSelectField`'s own option
-// list, derived from the FULL header row in `column-mapping.screen.tsx`) is
-// UNAFFECTED — every column stays selectable there; only this raw grid caps
-// what it renders.
+// F3 item 7: the raw preview shows at most this many columns per row — every
+// `ColumnSelectField` option list still derives from the FULL header row.
 const PREVIEW_COLUMN_COUNT = 5;
 
 /**
@@ -31,8 +26,9 @@ const PREVIEW_COLUMN_COUNT = 5;
  * row paints the theme's accent BLUE (item 12, the same fill `SummaryTable`'s
  * sibling controls use for a selected state) with `onAccent` cell text,
  * replacing the former neutral `surfaceHigh` tint, and its cell text turns
- * BOLD (F3 item 8) so the chosen header row reads as clearly distinct from
- * every other previewed row, not just differently colored.
+ * SEMIBOLD (F3 item 8, `'600'` — the app's selected-label weight elsewhere,
+ * not `'700'`) so the chosen header row reads as clearly distinct from every
+ * other previewed row, not just differently colored.
  */
 const RawPreview: FC<RawPreviewProps> = ({ rows, headerRowIndex, onSelectHeaderRow, testID }) => {
   const previewRows = rows
