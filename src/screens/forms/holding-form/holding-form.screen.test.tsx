@@ -3151,6 +3151,28 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
     expect(mockRefreshMetalPrices).toHaveBeenCalled();
   });
 
+  it('navigates back immediately, without waiting for the refresh to settle', async () => {
+    // The refresh is a background nicety, not a save precondition — Save must
+    // not sit on the network before returning to the account. A still-pending
+    // refresh promise proves navigation already fired without it.
+    mockAccountKind = 'cash';
+    let resolveRefresh: () => void = () => {};
+    mockRefreshRates.mockImplementation(
+      () =>
+        new Promise<undefined>((resolve) => {
+          resolveRefresh = () => resolve(undefined);
+        }),
+    );
+
+    const screen = await renderScreen();
+    await fill(screen, 'Name', 'My cash');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(navigation.goBack).toHaveBeenCalled();
+
+    resolveRefresh();
+  });
+
   it('does not trigger the refresh after an edit (type/currency cannot change)', async () => {
     const screen = await renderEdit({
       id: 'h1',

@@ -91,6 +91,32 @@ describe('importData', () => {
     expect(mockRefreshMetalPrices).toHaveBeenCalled();
   });
 
+  // The refresh is a background nicety, not an import precondition —
+  // `importData` must resolve with its row-count summary without sitting on
+  // the network, even while the refresh is still pending.
+  it('resolves with the row-count summary without waiting for the refresh to settle', async () => {
+    const { fileText, keyBase64 } = encryptedFixture();
+    mockReadFile.mockResolvedValue(fileText);
+    let resolveRefresh: () => void = () => {};
+    mockRefreshRates.mockImplementation(
+      () =>
+        new Promise<undefined>((resolve) => {
+          resolveRefresh = () => resolve(undefined);
+        }),
+    );
+
+    const summary = await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+
+    expect(summary).toEqual({
+      accountsRestored: 1,
+      holdingsRestored: 1,
+      transactionsRestored: 1,
+      languageRestored: null,
+    });
+
+    resolveRefresh();
+  });
+
   // The success alert is built from `t()` right after `importData` resolves
   // (import-data.screen.tsx `runImport`) — if the imported settings row
   // carries a different language, the caller needs it BEFORE building that

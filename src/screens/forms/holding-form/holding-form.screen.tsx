@@ -392,7 +392,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       // (kiko-architecture), so this is a no-op for a type/currency that
       // needs neither. `Promise.allSettled` never rejects, so a refresh
       // failure here never turns a successful create into a shown error.
-      await Promise.allSettled([refreshRates(), refreshMetalPrices()]);
+      // Fire-and-forget (not awaited): the refresh is a background nicety,
+      // not a save precondition — Save must not sit on the network before
+      // navigating back; only fire the refresh after the write commits.
+      Promise.allSettled([refreshRates(), refreshMetalPrices()]);
 
       // A `returnTo` route param (set only by the "Create new holding" entry
       // points on StatementImport/ColumnMapping) carries that screen's own

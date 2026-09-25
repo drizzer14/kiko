@@ -158,8 +158,12 @@ export const importData = async (options: {
   // explicitly here. Both calls gate themselves on data presence
   // (kiko-architecture), so this is a no-op for a restore with neither.
   // `Promise.allSettled` never rejects, so a refresh failure here never
-  // turns a successful import into a shown error.
-  await Promise.allSettled([refreshRates(), refreshMetalPrices()]);
+  // turns a successful import into a shown error. Fire-and-forget (not
+  // awaited): the refresh is a background nicety, not an import
+  // precondition — `importData` must resolve with its row-count summary
+  // without sitting on the network; only fire the refresh after the write
+  // commits.
+  Promise.allSettled([refreshRates(), refreshMetalPrices()]);
 
   return {
     accountsRestored: payload.tables.accounts.length,
