@@ -21,10 +21,10 @@ export const isExchangeDestinationType = (type: HoldingType): boolean =>
 export const isExchangeSourceType = (type: HoldingType): boolean =>
   holdingDescriptor(type).exchange.source;
 
-// CREATE-mode eligibility (Requirement B, device review 2026-09-06): a NEW
-// exchange must move cash -> cash. Narrower than `isExchangeSourceType` /
-// `isExchangeDestinationType` (the wider convert-mode rule), which stay as-is so
-// convert-mode keeps the original card/crypto/term_deposit reach. Both sides
+// CREATE-mode eligibility: a NEW exchange must move cash -> cash. Narrower
+// than `isExchangeSourceType` / `isExchangeDestinationType` (the wider
+// convert-mode rule), which stay as-is so convert-mode keeps the original
+// card/crypto/term_deposit reach. Both sides
 // share the same rule today (cash only) but are kept as two named predicates
 // on the descriptor so the source and destination create-rules can diverge
 // later without a call-site change.

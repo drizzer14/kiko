@@ -2,7 +2,7 @@ import type { TFunction } from 'i18next';
 
 import { quantityAt } from '../../lots';
 import { makeEntry } from '../entry-parts';
-import { pricedBreakdown } from '../priced-parts';
+import { pricedDescriptor } from '../priced-parts';
 import { asMetalMeta } from '../../holding-metadata';
 import type { HoldingRow } from '../../../db/schema';
 import type { PricedHolding } from '../../priced-value';
@@ -99,7 +99,7 @@ const metalEntries = (holding: IdentifiedHolding, now: number, t: TFunction): De
   });
 };
 
-export const metalDescriptor: HoldingDescriptor = {
+export const metalDescriptor: HoldingDescriptor = pricedDescriptor(metalPricedSpec, {
   symbol: 'cube.fill',
   defaultColor: entityColorsDark.gray,
   side: 'asset',
@@ -112,7 +112,5 @@ export const metalDescriptor: HoldingDescriptor = {
     createSource: false,
     createDestination: false,
   },
-  priced: metalPricedSpec,
-  breakdown: (holding, now, book) => pricedBreakdown(metalPricedSpec, holding, now, book),
   entries: metalEntries,
-};
+});

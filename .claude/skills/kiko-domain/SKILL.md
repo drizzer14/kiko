@@ -617,8 +617,9 @@ BigInt decimal helper), `purchaseDate`, `purchasePriceMinorUnits`,
 'semiannually' | 'annually'`). `purchaseDate`/`maturityDate` are raw
 epoch-ms instants (often mid-day, e.g. `Date.now()`), read through
 `startOfLocalDay` wherever a day boundary matters
-(`holding-value.ts`), NOT through `dayKeyOf`'s "a local calendar date
-encoded as UTC midnight" convention — do not conflate the two.
+(`holding-descriptor/bond/bond.descriptor.ts`), NOT through
+`dayKeyOf`'s "a local calendar date encoded as UTC midnight"
+convention — do not conflate the two.
 
 `src/bonds/isin/` (T23) validates an ISIN with no side effects:
 `normalizeIsin` trims/uppercases; `validateIsin` checks the ISO 6166
@@ -793,7 +794,7 @@ entry for why a conditional NESTED inside the bond block's own
 in T26; the "Debts" net-worth/accounts-screen wiring is T27) and
 `holdings.type` gains `loan`, TS-only enum widenings (no migration,
 same as `property`/`metals` at T13/T17). `loan` is `isLedgerlessHoldingType`
-(`src/holdings/holding-type/`) — like `property_item`/`metal`, a loan
+(`src/holdings/holding-descriptor/holding-descriptors.ts`) — like `property_item`/`metal`, a loan
 holding writes NO `Transaction` ledger rows of its own; every payment
 lives on the LINKED bank holding instead (T29's `loanHoldingId`
 column). `debt` maps to `loan` alone in `holdingTypesForAccountKind`,

@@ -905,7 +905,10 @@ where they can drift. As of this writing the pipeline is:
 
 - `defaultAccountColor` / `defaultHoldingColor`
   (`src/holdings/entity-colors/entity-colors.ts`) — the kind/type-keyed default
-  swatch a newly-created entity gets before a user overrides it.
+  swatch a newly-created entity gets before a user overrides it. A holding
+  type's default color is set once, on its own descriptor
+  (`src/holdings/holding-descriptor/`); `defaultHoldingColor` is derived
+  from every type's descriptor, not a second hand-written map.
 - `resolveEntityColor` (`entity-tint.ts`) — the one function that
   picks an entity's EFFECTIVE color: the stored override if it is a
   valid hex, else the kind/type default if that resolves, else a safe

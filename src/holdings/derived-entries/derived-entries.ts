@@ -1,7 +1,6 @@
 import type { TFunction } from 'i18next';
 
-import type { ValuableHolding } from '../holding-value';
-import { holdingDescriptorOrUndefined } from '../holding-descriptor';
+import { type IdentifiedHolding, holdingDescriptorOrUndefined } from '../holding-descriptor';
 
 export type DerivedEntryKind =
   | 'contribution'
@@ -31,8 +30,6 @@ export type DerivedEntry = {
   isFuture: boolean;
   derived: true;
 };
-
-type IdentifiedHolding = ValuableHolding & { id: string };
 
 const entriesForType = (
   holding: IdentifiedHolding,

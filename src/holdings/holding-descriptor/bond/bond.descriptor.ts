@@ -43,7 +43,7 @@ const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreak
   // its nominal. A card->bond move debits the card the price PAID and credits
   // the bond the SAME price, so net worth is unchanged on the purchase day.
   // Valuing a premium bond at nominal instead left a permanent (price - nominal)
-  // dip from the purchase day onward (the R4 bug). The premium/discount is
+  // dip from the purchase day onward. The premium/discount is
   // realized only AT maturity, through the redemption ledger entry that returns
   // the nominal (see `bondEntries` below); the maturity guard above hands the
   // bond off to that entry. The bank pays each coupon out to a cash account on

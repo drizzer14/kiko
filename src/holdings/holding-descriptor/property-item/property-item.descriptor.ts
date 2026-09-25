@@ -1,5 +1,5 @@
 import { quantityAt } from '../../lots';
-import { pricedBreakdown } from '../priced-parts';
+import { pricedDescriptor } from '../priced-parts';
 import type { HoldingRow } from '../../../db/schema';
 import { asPropertyMeta } from '../../holding-metadata';
 import type { PricedHolding } from '../../priced-value';
@@ -39,7 +39,7 @@ const propertyItemPricedSpec: PricedSpec = {
   captionKey: 'holdingDetail.valueAsOf',
 };
 
-export const propertyItemDescriptor: HoldingDescriptor = {
+export const propertyItemDescriptor: HoldingDescriptor = pricedDescriptor(propertyItemPricedSpec, {
   symbol: 'house.fill',
   defaultColor: entityColorsDark.brown,
   side: 'asset',
@@ -52,7 +52,5 @@ export const propertyItemDescriptor: HoldingDescriptor = {
     createSource: false,
     createDestination: false,
   },
-  priced: propertyItemPricedSpec,
-  breakdown: (holding, now, book) => pricedBreakdown(propertyItemPricedSpec, holding, now, book),
   entries: () => [],
-};
+});

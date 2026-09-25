@@ -34,7 +34,7 @@ export type PricedHolding = Pick<HoldingRow, 'type' | 'currency' | 'metadata'> &
  * shared id guard (`pricedValueOrNull`, `holding-descriptor/priced-parts`).
  * `null` for a non-priced type, a holding missing its `id`, invalid metadata,
  * or no stored price point yet — the caller falls back to the lots' cost
- * basis, never 0 (Review Focus 5).
+ * basis, never 0.
  */
 export const pricedValueMinor = (
   holding: PricedHolding,
