@@ -1,8 +1,10 @@
 import { ratesRepo } from '@kiko/rates/repo';
-import { holdingsRepo } from '@kiko/holdings/repo';
 import either, { bifold, isLeft } from 'fnts/either';
-import { settingsRepo } from '@kiko/settings/settings.repo';
 
+import {
+  openCurrencies as defaultOpenCurrencies,
+  type OpenCurrencies,
+} from '../open-currencies-gate';
 import {
   isCrypto,
   currencyOptions,
@@ -34,14 +36,6 @@ type StoredRate = {
   fetchedAt: number;
 };
 
-/** `refreshRates`'s own data-presence gate result — see `openCurrencies` below. */
-export type OpenCurrencies = {
-  /** Some ACTIVE holding's currency differs from the base (display) currency. */
-  needsFiat: boolean;
-  /** The distinct crypto currencies (BTC/ETH/USDT) an ACTIVE holding holds. */
-  cryptoCurrencies: CryptoCurrency[];
-};
-
 export type RefreshDeps = {
   fetchFiatRates?: () => Promise<RateEntry[]>;
   /**
@@ -57,34 +51,11 @@ export type RefreshDeps = {
   /**
    * The data-presence gate (kiko-architecture: app-open/refresh work is
    * gated on data presence — no request or query for data the user does not
-   * have). Defaults to a real read of `settingsRepo` + `holdingsRepo`'s one
-   * cheap `openCurrenciesQuery`.
+   * have), shared with `runBackfill` (`history-backfill.ts`) — see
+   * `open-currencies-gate.ts`. Defaults to a real read of `settingsRepo` +
+   * `holdingsRepo`'s one cheap `openCurrenciesQuery`.
    */
   openCurrencies?: () => Promise<OpenCurrencies>;
-};
-
-/**
- * The default `openCurrencies` gate: one `settings` read plus ONE cheap
- * `SELECT DISTINCT currency` over active holdings — never a per-holding loop.
- * `needsFiat` covers BOTH a fiat holding in a different currency from the
- * base AND a held crypto currency (BTC/ETH/USDT is, in practice, never the
- * base currency), which is exactly the fiat leg's own USD:UAH anchor the
- * crypto leg's composed pairs depend on (`buildUahPrice` below) — so a
- * crypto-only holder still gets the fiat leg it needs, without either gate
- * hardcoding a dependency on the other.
- */
-const defaultOpenCurrencies = async (): Promise<OpenCurrencies> => {
-  const [settingsRows, currencyRows] = await Promise.all([
-    settingsRepo.getQuery(),
-    holdingsRepo.openCurrenciesQuery(),
-  ]);
-  const base = settingsRows.at(0)?.baseCurrency ?? 'UAH';
-  const currencies = currencyRows.map((row) => row.currency);
-
-  return {
-    needsFiat: currencies.some((currency) => currency !== base),
-    cryptoCurrencies: currencies.filter(isCrypto),
-  };
 };
 
 // Part B: a small, bounded backoff for a FAILED live fetch — two retries, so a
