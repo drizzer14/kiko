@@ -6,6 +6,8 @@ import { alertOnCatch } from './alert-on-catch';
 const fakeT = ((key: string) => key) as TFunction;
 
 describe('alertOnCatch', () => {
+  afterEach(() => jest.restoreAllMocks());
+
   it('shows a translated Alert with the given title and message keys', () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 
@@ -15,7 +17,5 @@ describe('alertOnCatch', () => {
       'forms.fields.saveErrorTitle',
       'forms.fields.saveErrorMessage',
     );
-
-    alertSpy.mockRestore();
   });
 });
