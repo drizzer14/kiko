@@ -28,6 +28,7 @@ import type { HoldingRow } from '../../../db/schema';
 import { parseAmount } from '../../../currency/parse';
 import Box from '../../../design-system/components/box';
 import { useLiveQuery } from '../../../db/use-live-query';
+import type { Currency } from '../../../currency/currency';
 import type { PriceBook } from '../../../prices/price-book';
 import HoldingIdentityField from '../holding-identity-field';
 import Button from '../../../design-system/components/button';
@@ -35,14 +36,11 @@ import Screen from '../../../design-system/components/screen';
 import { usePriceBook } from '../../../prices/use-price-book';
 import Divider from '../../../design-system/components/divider';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
-import TextField from '../../../design-system/components/text-field';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../../navigation/types';
-import { type Currency, currencySymbol } from '../../../currency/currency';
 import CurrencyField from '../../../design-system/components/currency-field';
-import { groupAmount, majorAmountText } from '../amount-format/amount-format';
 import { isSyncedAccount, isSyncedHolding } from '../../../holdings/deletable';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 
@@ -53,7 +51,9 @@ import {
 import LoanFormBlock from './loan/loan-form-block';
 import BondFormBlock from './bond/bond-form-block';
 import MetalFormBlock from './metal/metal-form-block';
+import BalanceFormBlock from './balance/balance-form-block';
 import PropertyFormBlock from './property/property-form-block';
+import { useBalanceFields } from './balance/use-balance-fields';
 import TermDepositFormBlock from './term-deposit/term-deposit-form-block';
 import { useLoanFields, type UseLoanFieldsResult } from './loan/use-loan-fields';
 import { useBondFields, type UseBondFieldsResult } from './bond/use-bond-fields';
@@ -451,7 +451,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // `automaticallyAdjustKeyboardInsets` reacts to any focus regardless
   // (see `screen.component.tsx`, `CurrencyField`'s `onOpenChange`).
   const [isCurrencySheetOpen, setIsCurrencySheetOpen] = useState(false);
-  const [openingBalance, setOpeningBalance] = useState('');
   // The icon is null until the user picks one ("not dirty"): while null, the
   // chip shows the selected type's default glyph (holdingTypeSymbol[type]) and
   // switching type re-derives it, so an untouched icon follows the type. Once
@@ -557,6 +556,14 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // a bag of module-level helpers.
   const loanFields = useLoanFields({ currency });
 
+  // balance state + create/edit payload (R3 Phase C) — the single
+  // opening-balance field shared by every ledgered type (card, cash,
+  // crypto_asset, jar). This hook stays mounted across every type, not only
+  // while a balance type is selected (mirrors deposit/bond/property/metal/
+  // loan), so its state — including a value typed before switching AWAY from
+  // a balance type — survives a type switch.
+  const balance = useBalanceFields({ currency });
+
   // A `metal` holding's value is hard-fixed to UAH regardless of currency
   // (NBU quotes precious metals only in UAH — kiko-pricing), so the currency
   // field is hidden for it (below) and this effect forces the state back to
@@ -608,9 +615,18 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       // literal types — a malformed or absent `type` falls back to reading
       // the plain balance instead of throwing.
       .otherwise((rest) => {
-        setOpeningBalance(groupAmount(majorAmountText(rest.currency, rest.balanceMinorUnits)));
+        balance.seed(rest);
       });
-  }, [isEdit, editingHolding, loanFields.seed, deposit.seed, bond.seed, property.seed, metal.seed]);
+  }, [
+    isEdit,
+    editingHolding,
+    loanFields.seed,
+    deposit.seed,
+    bond.seed,
+    property.seed,
+    metal.seed,
+    balance.seed,
+  ]);
 
   // The stack sets the static "Add Holding" title; in edit mode override it with
   // "Edit Holding" so the header reads correctly for the update flow.
@@ -680,7 +696,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           name,
           color,
           currency,
-          openingBalance,
+          openingBalance: balance.openingBalance,
           metadata,
           isSynced: isSyncedEdit,
           editingHolding,
@@ -713,7 +729,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         ...createPayloadFor({
           type,
           currency,
-          openingBalance,
+          openingBalance: balance.openingBalance,
           metadata,
           depositCreatePayload: deposit.createPayload,
           bondCreatePayload: bond.createPayload,
@@ -855,15 +871,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           />
         )}
 
-        {!isLedgerlessHoldingType(type) && !isSyncedEdit && (
-          <TextField
-            label={t('forms.holding.balance')}
-            value={openingBalance}
-            onChangeText={(text) => setOpeningBalance(groupAmount(text))}
-            keyboardType="decimal-pad"
-            placeholder={t('forms.holding.balancePlaceholder')}
-            suffix={currencySymbol[currency]}
-          />
+        {!isLedgerlessHoldingType(type) && (
+          <BalanceFormBlock fields={balance} isSyncedEdit={isSyncedEdit} />
         )}
 
         {match(type)
