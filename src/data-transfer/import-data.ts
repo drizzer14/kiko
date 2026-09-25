@@ -1,4 +1,5 @@
 import * as RNFS from 'react-native-fs';
+import { bifold, eitherSync, isLeft } from 'fnts/either';
 
 import {
   decryptEnvelope,
@@ -12,10 +13,7 @@ import { decodeBase64ToBytes } from './base64/base64';
 import { restoreExportSecrets } from './secrets/restore-secrets';
 import { restoreDataSnapshot } from './snapshot/restore-snapshot';
 
-// Not exported: nothing outside this file imports it yet (the Import Data
-// screen, Task 13, currently consumes only `importData`'s inferred return
-// type). Knip flags an exported type nothing imports as dead code.
-type ImportSummary = {
+export type ImportSummary = {
   accountsRestored: number;
   holdingsRestored: number;
   transactionsRestored: number;
@@ -72,6 +70,19 @@ const isExportPayload = (value: unknown): value is ExportPayload => {
 
 const INVALID_FILE_MESSAGE = 'data-transfer/import: not a valid Kiko export file';
 
+// Runs `action`, rethrowing `message` in its place on failure — the shared
+// shape `envelope.ts`'s `decryptEnvelope` already converts to, reused here so
+// the three parse-or-decode attempts below need no local mutable `let`.
+const attemptOrThrow = <Value>(action: () => Value, message: string): Value => {
+  const attempt = eitherSync<unknown, Value>(action);
+
+  if (isLeft(attempt)) {
+    throw new Error(message);
+  }
+
+  return bifold(attempt);
+};
+
 const FILE_URI_SCHEME = 'file://';
 
 // The document picker's `pick`/`keepLocalCopy` hand back a percent-encoded
@@ -113,32 +124,23 @@ export const importData = async (options: {
 }): Promise<ImportSummary> => {
   const fileText = await RNFS.readFile(toFilePath(options.fileUri), 'utf8');
 
-  let envelope: unknown;
-  try {
-    envelope = JSON.parse(fileText);
-  } catch {
-    throw new Error(INVALID_FILE_MESSAGE);
-  }
+  const envelope = attemptOrThrow<unknown>(() => JSON.parse(fileText), INVALID_FILE_MESSAGE);
 
   if (!isExportEnvelope(envelope)) {
     throw new Error(INVALID_FILE_MESSAGE);
   }
 
-  let key: Uint8Array;
-  try {
-    key = decodeBase64ToBytes(options.keyBase64);
-  } catch {
-    throw new Error('data-transfer/decrypt: wrong key or corrupted file');
-  }
+  const key = attemptOrThrow(
+    () => decodeBase64ToBytes(options.keyBase64),
+    'data-transfer/decrypt: wrong key or corrupted file',
+  );
 
   const plaintext = decryptEnvelope(envelope, key);
 
-  let payload: unknown;
-  try {
-    payload = JSON.parse(utf8Decode(plaintext));
-  } catch {
-    throw new Error(INVALID_FILE_MESSAGE);
-  }
+  const payload = attemptOrThrow<unknown>(
+    () => JSON.parse(utf8Decode(plaintext)),
+    INVALID_FILE_MESSAGE,
+  );
 
   if (!isExportPayload(payload)) {
     throw new Error(INVALID_FILE_MESSAGE);
