@@ -292,3 +292,43 @@ rules:
               - pattern: '<$COMPONENT placeholder="$VALUE" label="$VALUE" ... />'
               - pattern: '<$COMPONENT label="$VALUE" placeholder="$VALUE" ...></$COMPONENT>'
               - pattern: '<$COMPONENT label="$VALUE" placeholder="$VALUE" ... />'
+  # Known Nitro props whose native binding requires a non-null value and
+  # throws/serializes-to-null on `undefined`: `SFSymbolView.fallbackName`
+  # (see `symbol.availability.ts`'s `effectiveFallbackName` doc comment — a
+  # persistent native view's prop update, not just its initial mount, hits
+  # this path, since a changed prop that becomes `undefined` still
+  # serializes to native `null` on the very next Fabric update). Extend this
+  # list here as a new Nitro prop with the same non-null contract is found.
+  # Each of the four `undefined`-producing shapes gets its own arm (a bare
+  # `pattern: "... ? ... : ..."` ternary string MUST be quoted — an
+  # unquoted ternary is parsed as a truncated, silently-matching-nothing
+  # YAML value, see kiko-linter's "Semgrep facts"); the fifth arm is a bare
+  # optional-prop pass-through, matched on the LITERAL identifier
+  # `fallbackName` (not a metavariable) so it only fires when the JSX
+  # expression is exactly that name, never an unrelated local variable.
+  - id: kiko-no-undefined-nitro-prop
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `undefined` reaching a Nitro prop with a non-null native contract
+      (`SFSymbolView.fallbackName`) serializes to native `null` and crashes
+      Release, with no redbox to catch it there. Route the value through
+      `effectiveFallbackName(...)` (`symbol.availability.ts`), which never
+      returns `undefined`, instead of passing it, a nullish-coalesced/
+      ternary expression that can still be `undefined`, or a bare optional
+      prop straight through.
+    metadata:
+      fix: "Route the value through `effectiveFallbackName(...)` instead of passing a value that can still be `undefined`."
+      skill: "kiko-design-system › Component set (SymbolIcon)"
+    patterns:
+      - pattern-either:
+          - pattern: '<SFSymbolView ... fallbackName={undefined} ...></SFSymbolView>'
+          - pattern: '<SFSymbolView ... fallbackName={undefined} ... />'
+          - pattern: '<SFSymbolView ... fallbackName={$A ?? undefined} ...></SFSymbolView>'
+          - pattern: '<SFSymbolView ... fallbackName={$A ?? undefined} ... />'
+          - pattern: '<SFSymbolView ... fallbackName={$C ? $A : undefined} ...></SFSymbolView>'
+          - pattern: '<SFSymbolView ... fallbackName={$C ? $A : undefined} ... />'
+          - pattern: '<SFSymbolView ... fallbackName={$C ? undefined : $A} ...></SFSymbolView>'
+          - pattern: '<SFSymbolView ... fallbackName={$C ? undefined : $A} ... />'
+          - pattern: '<SFSymbolView ... fallbackName={fallbackName} ...></SFSymbolView>'
+          - pattern: '<SFSymbolView ... fallbackName={fallbackName} ... />'

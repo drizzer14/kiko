@@ -27,6 +27,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-raw-color-literal',
   'kiko-glass-surface-nav-layer-only',
   'kiko-no-placeholder-equal-to-label',
+  'kiko-no-undefined-nitro-prop',
 ] as const;
 
 // Most rules have no JSX shape, so their fixtures are plain `.ts`; a rule
