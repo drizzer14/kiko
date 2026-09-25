@@ -341,10 +341,10 @@ describe('restoreDataSnapshot', () => {
     expect(insertedRows.transactions?.[0]).not.toHaveProperty('loanHoldingId');
   });
 
-  // FIX-restore-backfill-brief.md: a build-25-shaped `.kiko` export (before
-  // `holdings.balance_set_at` existed) carries holdings rows with NO
-  // `balanceSetAt` key at all. Restoring one must backfill it the SAME way
-  // migration 0036 (`drizzle/migrations/0036_add_balance_set_at.sql`) did
+  // A build-25-shaped `.kiko` export (before `holdings.balance_set_at`
+  // existed) carries holdings rows with NO `balanceSetAt` key at all.
+  // Restoring one must backfill it the SAME way migration 0036
+  // (`drizzle/migrations/0036_add_balance_set_at.sql`) did
   // on-device, so a later statement import applies the real boundary rule
   // (`transactionsRepo.importRows`'s doc comment,
   // `transactions/repo/transactions.repo.ts`) instead of treating every row

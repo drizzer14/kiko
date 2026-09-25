@@ -1,6 +1,6 @@
 // src/data-transfer/snapshot/restore-legacy-balance-set-at.test.ts
 //
-// FIX-restore-backfill-brief.md's core scenario, end to end across BOTH
+// The legacy backfill's core scenario, end to end across BOTH
 // write paths that share `db/client`'s `write`: restoring a build-25-shaped
 // `.kiko` snapshot (exported before `holdings.balance_set_at` existed) must
 // leave a hand-set holding in exactly the state migration 0036
