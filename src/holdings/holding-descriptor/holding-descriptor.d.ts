@@ -14,12 +14,14 @@ export type IdentifiedHolding = ValuableHolding & { id: string };
 /** How a PriceBook-valued type is priced. */
 export type PricedSpec = {
   lots: (metadata: HoldingRow['metadata']) => readonly Lot[] | undefined;
-  /** Minor units at `instant`, or null without a price point; `id` is already checked. */
-  valueMinor: (
-    holding: PricedHolding & { id: string },
-    book: PriceBook,
-    instant: number,
-  ) => number | null;
+  /**
+   * Minor units at `instant`, or null without a price point. `id` is
+   * OPTIONAL here — only a spec that reads a per-holding `holding:<id>`
+   * instrument (`property_item`) needs to guard it itself; one that reads a
+   * SHARED instrument (`metal`'s `metal:<XAU|XAG|XPT|XPD>`) needs no id at
+   * all.
+   */
+  valueMinor: (holding: PricedHolding, book: PriceBook, instant: number) => number | null;
   /** The series the "as of" caption reads; null for unparsable metadata. */
   captionInstrument: (holding: HoldingRow) => string | null;
   captionKey: 'holdingDetail.priceAsOf' | 'holdingDetail.valueAsOf';

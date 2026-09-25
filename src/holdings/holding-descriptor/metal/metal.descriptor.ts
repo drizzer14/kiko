@@ -27,10 +27,10 @@ const TROY_OUNCE_GRAMS = '31.1034768';
 // A metal holding's value: `quantityAt(lots, instant)` times `purity` times
 // the price point for the metal's SHARED `metal:<XAU|XAG|XPT|XPD>` instrument
 // (not a per-holding one — every holding of the same metal reads the same
-// NBU-sourced points). Returns `null` for invalid metadata or a missing
-// price point.
+// NBU-sourced points, so this needs no `id` at all, unlike `property_item`).
+// Returns `null` for invalid metadata or a missing price point.
 const metalValueMinor = (
-  holding: PricedHolding & { id: string },
+  holding: PricedHolding,
   book: PriceBook,
   instant: number,
 ): number | null => {

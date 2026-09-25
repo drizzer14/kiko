@@ -195,4 +195,20 @@ describe('pricedValueMinor', () => {
 
     expect(pricedValueMinor(holding, book, day2024)).toBeNull();
   });
+
+  it('values a metal holding with no id — it reads the SHARED metal instrument, not a per-holding one', () => {
+    const holding = goldBar();
+    const { id: _id, ...withoutId } = holding;
+    const book = buildPriceBook([
+      {
+        instrument: metalInstrument('XAU'),
+        day: day2024,
+        price: '90000',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+    ]);
+
+    expect(pricedValueMinor(withoutId, book, day2024)).toBe(9_000_000);
+  });
 });

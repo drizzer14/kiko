@@ -11,12 +11,17 @@ import type { HoldingDescriptor, PricedSpec } from '../holding-descriptor.d';
 
 // `quantityAt(lots, instant)` times the price point for the holding's own
 // `holding:<id>` instrument at or before that day (`priceAt` — the local-day
-// convention). Returns `null` for invalid metadata or a missing price point.
+// convention). Returns `null` for invalid metadata, a missing price point, or
+// (unlike `metal`, which reads a SHARED instrument) a holding with no `id` —
+// it cannot resolve its own per-holding instrument key.
 const propertyItemValueMinor = (
-  holding: PricedHolding & { id: string },
+  holding: PricedHolding,
   book: PriceBook,
   instant: number,
 ): number | null => {
+  if (holding.id === undefined) {
+    return null;
+  }
   const meta = asPropertyMeta(holding.metadata);
   if (meta === null) {
     return null;

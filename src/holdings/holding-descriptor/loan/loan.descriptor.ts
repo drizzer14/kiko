@@ -1,3 +1,5 @@
+import maybe, { foldMap } from 'fnts/maybe';
+
 import { Money } from '../../../currency/money';
 import { asLoanMeta } from '../../holding-metadata';
 import type { ValuableHolding } from '../../holding-value';
@@ -33,7 +35,15 @@ const loanBreakdown = (
     return flat(holding.currency, 0);
   }
   const { currency } = holding;
-  const outstandingMinor = loanOutstandingMinorAt(meta, holding.id ?? '', book, now);
+  // An id-less holding (a synthetic fixture — see `ValuableHolding`'s own doc
+  // comment; never a real stored row) cannot resolve a `holding:<id>`
+  // instrument key, so it reads its own metadata principal directly, the
+  // same "no correction found" baseline `loanOutstandingMinorAt` uses for a
+  // real, freshly-taken loan — never a lookup on the empty id, which could
+  // in principle collide with a stray point actually stored under it.
+  const outstandingMinor =
+    foldMap(maybe(holding.id), (id) => loanOutstandingMinorAt(meta, id, book, now)) ??
+    meta.principalMinorUnits;
   // `outstandingMinor` is always clamped >= 0 (`loanOutstandingMinorAt`);
   // negating it directly would produce `-0` for a paid-off loan (`Object.is`
   // distinguishes `-0` from `0`, which a `toBe(0)` assertion catches), so the

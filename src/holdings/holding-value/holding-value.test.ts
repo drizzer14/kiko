@@ -614,6 +614,35 @@ describe('holdingValueBreakdown — loan', () => {
     expect(atStart.gross.minorUnits).toBe(-12_000_000);
   });
 
+  // An id-less loan (a synthetic fixture, never a real stored row — see
+  // `ValuableHolding`'s own doc comment) cannot resolve a `holding:<id>`
+  // instrument key, so it must not fall back to a bogus lookup on the EMPTY
+  // id: the book below stores a point under exactly that key, and the
+  // correct read ignores it, reading the loan's own metadata principal
+  // instead — the same "no correction found" baseline `loanOutstandingMinorAt`
+  // uses for a real, freshly-taken loan.
+  it('reads its metadata principal for an id-less "none" loan, never a lookup on the empty id', () => {
+    const { id: _id, ...withoutId } = loan({
+      schedule: 'none',
+      annualRatePct: undefined,
+      termMonths: undefined,
+    });
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument(''),
+        day: loanStart,
+        price: '999999.00',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+
+    const b = holdingValueBreakdown(withoutId, loanStart, book);
+
+    expect(b.gross.minorUnits).toBe(-120_000_000);
+    expect(b.net.minorUnits).toBe(-120_000_000);
+  });
+
   // Missing/malformed loan metadata must value the loan at 0, never
   // `+balanceMinorUnits` — a debt must never read as a positive asset.
   // Harmless in practice today (the form always writes balance 0), but the

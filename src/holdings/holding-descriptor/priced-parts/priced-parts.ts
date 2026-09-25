@@ -8,28 +8,21 @@ import type { PriceBook } from '../../../prices/price-book';
 import { flat, type HoldingValueBreakdown } from '../breakdown-parts';
 import type { HoldingDescriptor, PricedSpec } from '../holding-descriptor.d';
 
-const isIdentifiedPricedHolding = (
-  holding: PricedHolding,
-): holding is PricedHolding & { id: string } => holding.id !== undefined;
-
 /**
- * The id guard every PriceBook-valued type shares, ahead of its own
- * `valueMinor`: a holding with no `id` cannot resolve its own price-book
- * instrument key, so it reads as having no stored price point, the same as
- * one with invalid metadata. Kept in this ONE place so every priced type
- * runs the guard identically.
+ * Dispatches to the spec's own `valueMinor` with no id guard here: whether a
+ * missing `id` matters is per-spec — `property_item` reads its own
+ * `holding:<id>` instrument and must guard it itself, `metal` reads a SHARED
+ * instrument and needs no id at all. Guarding here unconditionally used to
+ * return null for an id-less metal holding too, even though metal never
+ * reads the id.
  */
 export const pricedValueOrNull = (
   spec: PricedSpec | null,
   holding: PricedHolding,
   book: PriceBook,
   instant: number,
-): number | null => {
-  if (!isIdentifiedPricedHolding(holding)) {
-    return null;
-  }
-  return foldMap(maybe(spec), (found) => found.valueMinor(holding, book, instant)) ?? null;
-};
+): number | null =>
+  foldMap(maybe(spec), (found) => found.valueMinor(holding, book, instant)) ?? null;
 
 // A priced holding's gross/net are its `pricedValueOrNull` (a `PriceBook`
 // lookup), falling back to its lots' cost basis when there is no stored price
