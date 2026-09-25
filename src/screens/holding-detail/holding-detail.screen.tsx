@@ -1,4 +1,4 @@
-import { match } from 'ts-pattern';
+import { P, match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import { ratesRepo } from '@kiko/rates/repo';
 import { useTranslation } from 'react-i18next';
@@ -197,7 +197,12 @@ const footerActionFor = (
     return 'none';
   }
 
-  if (holding.type === 'term_deposit') {
+  const isTermDeposit = match(holding.type)
+    .with('term_deposit', () => true)
+    .with(P.not('term_deposit'), () => false)
+    .exhaustive();
+
+  if (isTermDeposit) {
     return 'contribution';
   }
 
@@ -217,7 +222,12 @@ const footerActionFor = (
   // OWN label to "Update outstanding" for this type; the navigation target
   // is identical. Checked before the ledgerless fallback so a loan does not
   // fall through to `'none'`.
-  if (holding.type === 'loan') {
+  const isLoan = match(holding.type)
+    .with('loan', () => true)
+    .with(P.not('loan'), () => false)
+    .exhaustive();
+
+  if (isLoan) {
     return 'updateValue';
   }
 
@@ -309,7 +319,10 @@ type LedgerRow =
 // A stable key per row, reusing the exact identity the eager `.map` keyed on: a
 // derived entry's synthetic id, a stored row's transaction id.
 const ledgerKey = (row: LedgerRow): string =>
-  row.kind === 'derived' ? row.entry.id : row.transaction.id;
+  match(row)
+    .with({ kind: 'derived' }, (derivedRow) => derivedRow.entry.id)
+    .with({ kind: 'transaction' }, (transactionRow) => transactionRow.transaction.id)
+    .exhaustive();
 
 // A flattened ledger entry for the FlatList: the merged row plus, on the FIRST
 // row of each calendar day, that day's header title ("Today"/"Yesterday"/
@@ -357,124 +370,130 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
     onDuplicateTransaction,
   } = context;
 
-  if (row.kind === 'derived') {
-    // A computed lifecycle entry (opening/top-up, interest accrual, the
-    // 18%/5% withholding lines, capitalization, or a bond
-    // purchase/coupon/redemption): read-only — no delete gesture, not
-    // tappable — and marked "Computed" so it reads as derived, not a
-    // stored transaction. A projected (future-dated) entry — an
-    // upcoming accrual, coupon, or redemption — is dimmed and marked
-    // "Projected". The amount reads in its kind-derived tone (tax red,
-    // interest/coupon green, principal movements neutral/by-sign).
-    return (
+  return match(row)
+    .with({ kind: 'derived' }, (derivedRow) => (
+      // A computed lifecycle entry (opening/top-up, interest accrual, the
+      // 18%/5% withholding lines, capitalization, or a bond
+      // purchase/coupon/redemption): read-only — no delete gesture, not
+      // tappable — and marked "Computed" so it reads as derived, not a
+      // stored transaction. A projected (future-dated) entry — an
+      // upcoming accrual, coupon, or redemption — is dimmed and marked
+      // "Projected". The amount reads in its kind-derived tone (tax red,
+      // interest/coupon green, principal movements neutral/by-sign).
       <Card
         padding={3}
         testID="ledger-row"
-        style={row.entry.isFuture ? styles.futureRow : undefined}
+        style={derivedRow.entry.isFuture ? styles.futureRow : undefined}
       >
         <Box gap={1}>
           <Box direction="row" style={styles.rowMain}>
             <Box style={styles.rowDescription}>
-              <Text variant="body">{row.entry.label}</Text>
+              <Text variant="body">{derivedRow.entry.label}</Text>
             </Box>
             <Box style={styles.rowAmount}>
               <MoneyText
-                money={Money.of(currency, row.entry.amountMinorUnits)}
-                tone={ledgerTone(row.entry.tone, row.entry.amountMinorUnits)}
+                money={Money.of(currency, derivedRow.entry.amountMinorUnits)}
+                tone={ledgerTone(derivedRow.entry.tone, derivedRow.entry.amountMinorUnits)}
               />
             </Box>
           </Box>
           <Box style={styles.rowFooter}>
             <Text variant="caption" tone="textSecondary">
-              {row.entry.isFuture ? t('holdingDetail.projected') : t('holdingDetail.computed')}
-              {showTime ? ` · ${formatTime(row.entry.time)}` : ''}
+              {derivedRow.entry.isFuture
+                ? t('holdingDetail.projected')
+                : t('holdingDetail.computed')}
+              {showTime ? ` · ${formatTime(derivedRow.entry.time)}` : ''}
             </Text>
           </Box>
         </Box>
       </Card>
-    );
-  }
+    ))
+    .with({ kind: 'transaction' }, (transactionRow) => {
+      // The row's stored category resolves to its icon + title through the
+      // same shared mapping Home uses; a null/unknown category falls back
+      // to the neutral display.
+      const category = resolveCategoryDisplay(
+        transactionRow.transaction.category,
+        categoryByKey,
+        defaultCategoryKey,
+      );
 
-  // The row's stored category resolves to its icon + title through the
-  // same shared mapping Home uses; a null/unknown category falls back
-  // to the neutral display.
-  const category = resolveCategoryDisplay(
-    row.transaction.category,
-    categoryByKey,
-    defaultCategoryKey,
-  );
+      // The row's human-readable description, reused as both the row label and
+      // the name the delete confirmation spells out ("Delete <description>").
+      const description = transactionRowDescription({
+        transaction: transactionRow.transaction,
+        holdingName,
+        holdingNameById,
+        t,
+      });
 
-  // The row's human-readable description, reused as both the row label and
-  // the name the delete confirmation spells out ("Delete <description>").
-  const description = transactionRowDescription({
-    transaction: row.transaction,
-    holdingName,
-    holdingNameById,
-    t,
-  });
-
-  // Every real row is tappable: it opens the shared Transaction form
-  // for this id. A manual row edits; a synced (Monobank) row opens
-  // read-only — the form resolves which from the transaction's own
-  // `source`, so the row only needs to pass the id. Delete is a
-  // touch-and-hold that opens the shared card context menu (see
-  // `CardContextMenu`) with a single destructive Delete action — the
-  // same long-press pattern the account/holding cards use. A synced
-  // (Monobank) row is not deletable (its state is owned by the sync),
-  // so `CardContextMenu` renders it with no gesture at all.
-  return (
-    <CardContextMenu
-      name={description}
-      deletable={!isSyncedTransaction(row.transaction)}
-      onDelete={() => transactionsRepo.remove(row.transaction.id)}
-      // A synced row is not duplicable — pass no handler so its long-press keeps
-      // offering nothing (it already renders bare). A manual row's Duplicate
-      // opens the create form pre-filled from this row (D2).
-      onDuplicate={
-        isSyncedTransaction(row.transaction)
-          ? undefined
-          : () => onDuplicateTransaction(row.transaction.id)
-      }
-      liftOnHold
-    >
-      <Pressable accessibilityRole="button" onPress={() => onPressTransaction(row.transaction.id)}>
-        <Card padding={3} testID="ledger-row">
-          <Box gap={1}>
-            <Box direction="row" style={styles.rowMain}>
-              <Box direction="row" gap={2} style={styles.rowLead}>
-                <SymbolIcon
-                  name={category.icon}
-                  size={theme.iconSizes.body}
-                  tone="textSecondary"
-                  color={resolveCategoryColor(
-                    category.color,
-                    row.transaction.category?.toLowerCase() || defaultCategoryKey,
-                  )}
-                  accessibilityLabel={category.title}
-                />
-                <Box style={styles.rowDescription}>
-                  <Text variant="body">{description}</Text>
+      // Every real row is tappable: it opens the shared Transaction form
+      // for this id. A manual row edits; a synced (Monobank) row opens
+      // read-only — the form resolves which from the transaction's own
+      // `source`, so the row only needs to pass the id. Delete is a
+      // touch-and-hold that opens the shared card context menu (see
+      // `CardContextMenu`) with a single destructive Delete action — the
+      // same long-press pattern the account/holding cards use. A synced
+      // (Monobank) row is not deletable (its state is owned by the sync),
+      // so `CardContextMenu` renders it with no gesture at all.
+      return (
+        <CardContextMenu
+          name={description}
+          deletable={!isSyncedTransaction(transactionRow.transaction)}
+          onDelete={() => transactionsRepo.remove(transactionRow.transaction.id)}
+          // A synced row is not duplicable — pass no handler so its long-press keeps
+          // offering nothing (it already renders bare). A manual row's Duplicate
+          // opens the create form pre-filled from this row (D2).
+          onDuplicate={
+            isSyncedTransaction(transactionRow.transaction)
+              ? undefined
+              : () => onDuplicateTransaction(transactionRow.transaction.id)
+          }
+          liftOnHold
+        >
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => onPressTransaction(transactionRow.transaction.id)}
+          >
+            <Card padding={3} testID="ledger-row">
+              <Box gap={1}>
+                <Box direction="row" style={styles.rowMain}>
+                  <Box direction="row" gap={2} style={styles.rowLead}>
+                    <SymbolIcon
+                      name={category.icon}
+                      size={theme.iconSizes.body}
+                      tone="textSecondary"
+                      color={resolveCategoryColor(
+                        category.color,
+                        transactionRow.transaction.category?.toLowerCase() || defaultCategoryKey,
+                      )}
+                      accessibilityLabel={category.title}
+                    />
+                    <Box style={styles.rowDescription}>
+                      <Text variant="body">{description}</Text>
+                    </Box>
+                  </Box>
+                  <Box style={styles.rowAmount}>
+                    <MoneyText
+                      money={Money.of(currency, transactionRow.transaction.amountMinorUnits)}
+                      context="transaction"
+                    />
+                  </Box>
                 </Box>
+                {showTime && (
+                  <Box style={styles.rowFooter}>
+                    <Text variant="caption" tone="textSecondary">
+                      {formatTime(transactionRow.transaction.time)}
+                    </Text>
+                  </Box>
+                )}
               </Box>
-              <Box style={styles.rowAmount}>
-                <MoneyText
-                  money={Money.of(currency, row.transaction.amountMinorUnits)}
-                  context="transaction"
-                />
-              </Box>
-            </Box>
-            {showTime && (
-              <Box style={styles.rowFooter}>
-                <Text variant="caption" tone="textSecondary">
-                  {formatTime(row.transaction.time)}
-                </Text>
-              </Box>
-            )}
-          </Box>
-        </Card>
-      </Pressable>
-    </CardContextMenu>
-  );
+            </Card>
+          </Pressable>
+        </CardContextMenu>
+      );
+    })
+    .exhaustive();
 };
 
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
@@ -515,7 +534,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   ]);
   const account = accounts.at(0);
   // Bonds show a whole-life expected profit line (net coupons + nominal - price).
-  const bondMeta = holding?.type === 'bond' ? asBondMeta(holding.metadata) : null;
+  const bondMeta = match(holding?.type)
+    .with('bond', () => asBondMeta(holding?.metadata))
+    .with(P.not('bond'), () => null)
+    .exhaustive();
   const expectedProfit = bondMeta
     ? Money.of(currency, bondExpectedProfitMinor(bondMeta, currency))
     : null;
@@ -576,7 +598,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       ),
     [ledger, todayStart, t],
   );
-  const showBreakdown = holding?.type === 'term_deposit' || holding?.type === 'bond';
+  const showBreakdown = match(holding?.type)
+    .with('term_deposit', 'bond', () => true)
+    .with(P.not(P.union('term_deposit', 'bond')), () => false)
+    .exhaustive();
   // Which add action the footer offers — or none, for a bond or a synced
   // holding (see `footerActionFor`).
   const footerAction = footerActionFor(holding, account);
@@ -779,9 +804,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           .with('updateValue', () => (
             <Button onPress={() => navigation.navigate('PricePointForm', { holdingId })}>
               {t(
-                holding?.type === 'loan'
-                  ? 'holdingDetail.updateOutstanding'
-                  : 'holdingDetail.updateValue',
+                match(holding?.type)
+                  .with('loan', () => 'holdingDetail.updateOutstanding' as const)
+                  .with(P.not('loan'), () => 'holdingDetail.updateValue' as const)
+                  .exhaustive(),
               )}
             </Button>
           ))
