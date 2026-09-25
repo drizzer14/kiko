@@ -25,12 +25,14 @@ import HoldingTypeField from '../holding-type-field';
 import Box from '../../../design-system/components/box';
 import { useLiveQuery } from '../../../db/use-live-query';
 import type { Currency } from '../../../currency/currency';
+import { refreshRates } from '../../../rates/rates-refresh';
 import HoldingIdentityField from '../holding-identity-field';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import { usePriceBook } from '../../../prices/use-price-book';
 import Divider from '../../../design-system/components/divider';
 import { needsPriceBook } from '../../../holdings/priced-value';
+import { refreshMetalPrices } from '../../../prices/metal-refresh';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
@@ -382,6 +384,14 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       if (icon !== null) {
         await holdingsRepo.setIcon(newHoldingId, icon);
       }
+
+      // The FIRST metal, foreign-currency, or crypto holding needs its
+      // price/rate visible without an app restart — trigger the SAME gated
+      // refresh app-open runs. Both calls gate themselves on data presence
+      // (kiko-architecture), so this is a no-op for a type/currency that
+      // needs neither. `Promise.allSettled` never rejects, so a refresh
+      // failure here never turns a successful create into a shown error.
+      await Promise.allSettled([refreshRates(), refreshMetalPrices()]);
 
       // A `returnTo` route param (set only by the "Create new holding" entry
       // points on StatementImport/ColumnMapping) carries that screen's own

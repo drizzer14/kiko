@@ -11,6 +11,19 @@ jest.mock('./secrets/restore-secrets', () => ({
   restoreExportSecrets: (secrets: unknown) => mockRestoreExportSecrets(secrets),
 }));
 
+// The first-add refresh trigger (kiko-architecture): an import bulk-inserts
+// holdings directly, bypassing the sync fan-out that normally triggers a
+// rate/metal refresh — so a restored foreign-currency/metal/crypto holding
+// needs the SAME gated refresh triggered explicitly, right here.
+const mockRefreshRates = jest.fn().mockResolvedValue(undefined);
+const mockRefreshMetalPrices = jest.fn().mockResolvedValue(undefined);
+jest.mock('../rates/rates-refresh', () => ({
+  refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
+}));
+jest.mock('../prices/metal-refresh', () => ({
+  refreshMetalPrices: (...args: unknown[]) => mockRefreshMetalPrices(...args),
+}));
+
 import { utf8ToBytes } from '@noble/ciphers/utils.js';
 
 import { importData } from './import-data';
@@ -45,6 +58,8 @@ describe('importData', () => {
     mockReadFile.mockReset();
     mockRestoreDataSnapshot.mockReset().mockResolvedValue(undefined);
     mockRestoreExportSecrets.mockReset().mockResolvedValue(undefined);
+    mockRefreshRates.mockClear();
+    mockRefreshMetalPrices.mockClear();
   });
 
   it('decrypts a valid file, restores the snapshot and secrets, and returns row counts', async () => {
@@ -61,6 +76,19 @@ describe('importData', () => {
       transactionsRestored: 1,
       languageRestored: null,
     });
+  });
+
+  // kiko-architecture: a restored foreign-currency/metal/crypto holding needs
+  // its price/rate visible without an app restart — an import bulk-inserts
+  // directly, bypassing the sync fan-out that normally triggers this.
+  it('triggers the gated rate/metal refresh after a successful restore', async () => {
+    const { fileText, keyBase64 } = encryptedFixture();
+    mockReadFile.mockResolvedValue(fileText);
+
+    await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+
+    expect(mockRefreshRates).toHaveBeenCalled();
+    expect(mockRefreshMetalPrices).toHaveBeenCalled();
   });
 
   // The success alert is built from `t()` right after `importData` resolves

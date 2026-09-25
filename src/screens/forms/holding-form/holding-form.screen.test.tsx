@@ -138,6 +138,17 @@ jest.mock('../../../bonds/bond-register-repo', () => ({
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
+// The first-add refresh trigger (a create's own follow-up, kiko-architecture):
+// spied so a test can assert it runs after a CREATE and not after an EDIT,
+// without exercising the real gated repos.
+const mockRefreshRates = jest.fn().mockResolvedValue(undefined);
+const mockRefreshMetalPrices = jest.fn().mockResolvedValue(undefined);
+jest.mock('../../../rates/rates-refresh', () => ({
+  refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
+}));
+jest.mock('../../../prices/metal-refresh', () => ({
+  refreshMetalPrices: (...args: unknown[]) => mockRefreshMetalPrices(...args),
+}));
 // Auto-mocked so the scroll-order tests below can assert on WHICH field ref a
 // rejected Save targets, without a real ScrollView/measureLayout in the test
 // environment (mirrors contribution-form's and account-form's own mock).
@@ -3060,5 +3071,46 @@ describe('HoldingFormScreen — the price_points gate', () => {
 
     const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
     expect(priceCall?.[2]).toBe(true);
+  });
+});
+
+// kiko-architecture: the FIRST metal/foreign-currency/crypto holding needs
+// its price/rate visible without an app restart — a create triggers the
+// same gated refresh app-open runs; an edit (type/currency are immutable
+// once created) never needs to.
+describe('HoldingFormScreen — the first-add refresh trigger', () => {
+  beforeEach(() => {
+    mockRefreshRates.mockClear();
+    mockRefreshMetalPrices.mockClear();
+  });
+
+  it('triggers the gated rate/metal refresh after a successful create', async () => {
+    mockAccountKind = 'cash';
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'My cash');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(mockRefreshRates).toHaveBeenCalled();
+    expect(mockRefreshMetalPrices).toHaveBeenCalled();
+  });
+
+  it('does not trigger the refresh after an edit (type/currency cannot change)', async () => {
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Everyday card',
+      type: 'card',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+    });
+
+    await fill(screen, 'Name', 'Renamed card');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(mockRefreshRates).not.toHaveBeenCalled();
+    expect(mockRefreshMetalPrices).not.toHaveBeenCalled();
   });
 });
