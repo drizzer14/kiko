@@ -79,9 +79,8 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
 
       // The picker hands back a security-scoped external URI (iCloud / Files /
       // an AirDropped file) that `RNFS.readFile` cannot read directly — the
-      // read yields nothing and import fails as "invalid file"
-      // (device-feedback: an AirDropped demo `.kiko` would not import). Copy
-      // the file into the app's cache first and read that local copy; fall
+      // read yields nothing and import fails as "invalid file". Copy the
+      // file into the app's cache first and read that local copy; fall
       // back to the original uri only if the copy fails.
       const [copied] = await keepLocalCopy({
         files: [{ uri: picked.uri, fileName: name }],
@@ -140,11 +139,11 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
   const { onPress: handleConfirmedImport, isSubmitting } = useSubmitOnce(runImport);
 
   const handleImportPress = (): void => {
-    // BUG (device-feedback-round-4 item 7): pressing Import with no file
-    // and/or no key used to fail SILENTLY — an early `return` on a missing
-    // file skipped the key check entirely, so a combined "nothing picked,
-    // nothing pasted" press showed no error at all. Both are now validated
-    // independently on every press, each surfacing its own inline error.
+    // Pressing Import with no file and/or no key used to fail SILENTLY — an
+    // early `return` on a missing file skipped the key check entirely, so a
+    // combined "nothing picked, nothing pasted" press showed no error at
+    // all. Both are now validated independently on every press, each
+    // surfacing its own inline error.
     const missingFile = fileUri === undefined;
     const missingKey = keyBase64.length < MIN_KEY_LENGTH;
 

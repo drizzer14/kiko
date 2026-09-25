@@ -80,9 +80,9 @@ describe('ImportDataScreen', () => {
     expect(getByTestId('settings-button-import').props.accessibilityState.disabled).toBeFalsy();
   });
 
-  // BUG (device-feedback-round-4 item 7): pressing Import with neither a file
-  // nor a key used to fail SILENTLY — no confirm sheet, no error, nothing.
-  // Both must now surface their own inline error.
+  // Pressing Import with neither a file nor a key used to fail SILENTLY — no
+  // confirm sheet, no error, nothing. Both must now surface their own inline
+  // error.
   it('shows inline errors for BOTH a missing file and a missing key, not a silent no-op', async () => {
     const { getByTestId, findByText, queryByText } = await renderScreen();
 
@@ -223,8 +223,8 @@ describe('ImportDataScreen', () => {
     );
   });
 
-  // device feedback: the file button showed the whole path/URI. It must show
-  // only the file's own name, even when the picker returns no display name.
+  // The file button used to show the whole path/URI. It must show only the
+  // file's own name, even when the picker returns no display name.
   it('shows only the file name on the button, not the full path', async () => {
     mockPick.mockResolvedValue([
       { uri: 'file:///private/var/mobile/Containers/Shared/kiko-demo-uk.kiko', name: undefined },

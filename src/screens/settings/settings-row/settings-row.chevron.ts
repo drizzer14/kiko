@@ -4,8 +4,8 @@ import type { UnistylesThemes } from 'react-native-unistyles';
 // `disabled-field-style.ts`'s `AppTheme`.
 type AppTheme = UnistylesThemes[keyof UnistylesThemes];
 
-// The row's trailing chevron is sized to match its TITLE's font size exactly
-// (device-feedback round-7 item 2) — the row's own `label` Text renders at
+// The row's trailing chevron is sized to match its TITLE's font size
+// exactly — the row's own `label` Text renders at
 // `variant="body"`, so the chevron reads as a peer of the title rather than
 // the oversized default `iconSizes.body` (fontSize * 1.25) SymbolIcon falls
 // back to with no explicit `size`. Exported so the settings screen (the
@@ -19,9 +19,9 @@ export const chevronSize = (theme: AppTheme): number => theme.typography.body.fo
 // share its type-scale box. Apple's SF Symbols catalog draws `chevron.right`
 // (Regular weight) at roughly 55% of its frame's width, so ~45% of the frame
 // is empty, split evenly left/right of the glyph. This is a documented
-// approximation (device-feedback round-7 item 1), not a measured on-device
-// value — Fabric/Jest has no way to introspect the native glyph's rendered
-// path — chosen to be conservative rather than overshoot the glyph's real
+// approximation, not a measured on-device value — Fabric/Jest has no way to
+// introspect the native glyph's rendered path — chosen to be conservative
+// rather than overshoot the glyph's real
 // right edge.
 const CHEVRON_GLYPH_WIDTH_RATIO = 0.55;
 

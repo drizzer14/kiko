@@ -25,9 +25,9 @@ describe('SettingsRow', () => {
     expect(queryByTestId('settings-row-chevron', { includeHiddenElements: true })).toBeNull();
   });
 
-  // Round-7 device feedback item 2: the chevron previously fell back to
-  // SymbolIcon's default `iconSizes.body` (fontSize * 1.25), which renders
-  // LARGER than the row's own title. It must instead match the title's
+  // The chevron previously fell back to SymbolIcon's default
+  // `iconSizes.body` (fontSize * 1.25), which renders LARGER than the row's
+  // own title. It must instead match the title's
   // fontSize (the label's `variant="body"` Text) exactly.
   it("sizes the trailing chevron to match the row title's own fontSize, not the larger default icon size", async () => {
     const { root } = await render(<SettingsRow label="Categories" onPress={jest.fn()} />);
@@ -46,9 +46,9 @@ describe('SettingsRow', () => {
     expect(chevron.props.accessibilityElementsHidden).toBe(true);
   });
 
-  // Round-8 device feedback: the round-7 shrink left the (now title-sized,
-  // shorter) chevron top-aligned by the header's `flex-start`, so it rode
-  // ABOVE the title's center. Its own box now carries the row's first-line
+  // Shrinking the chevron to the title's font size left it (now shorter)
+  // top-aligned by the header's `flex-start`, so it rode ABOVE the title's
+  // center. Its own box now carries the row's first-line
   // height (the leading icon's size) and centers the glyph, so it lands on the
   // title's center while `flex-start` still keeps it on the first line on wrap.
   it("centers the trailing chevron on the title's first line, not top-aligned above it", async () => {
@@ -127,9 +127,9 @@ describe('SettingsRow', () => {
     expect(StyleSheet.flatten(header.props.style).alignItems).toBe('flex-start');
   });
 
-  // device-feedback-round-3 item 5: a toggle reads as ONE row with its label
-  // (label left, control right), not stacked below it the way a picker or
-  // segmented control's `children` is.
+  // A toggle reads as ONE row with its label (label left, control right),
+  // not stacked below it the way a picker or segmented control's
+  // `children` is.
   it('renders `trailing` inline on the same line as the label, not stacked below it', async () => {
     const { getByText, getByTestId } = await render(
       <SettingsRow

@@ -10,8 +10,8 @@ describe('settings-row.chevron', () => {
     });
 
     it('is smaller than the default SymbolIcon icon size the chevron used to fall back to', () => {
-      // The whole point of round-7 item 2: the chevron must shrink relative
-      // to its old (larger) default, not stay the same or grow.
+      // The chevron must shrink relative to its old (larger) default, not
+      // stay the same or grow.
       expect(chevronSize(darkTheme)).toBeLessThan(darkTheme.iconSizes.body);
     });
   });

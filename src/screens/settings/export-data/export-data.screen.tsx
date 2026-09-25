@@ -117,10 +117,10 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
     >
       <Box gap={4}>
         <Card testID="settings-card-export-secrets" padding={3}>
-          {/* The toggle sits INLINE with its own label (device-feedback-round-3
-              item 5), not stacked below it — `SettingsRow`'s `trailing` prop
-              puts it on the same header line as the leading icon + label; the
-              hint stays full-width `children` below, same as before. */}
+          {/* The toggle sits INLINE with its own label, not stacked below it —
+              `SettingsRow`'s `trailing` prop puts it on the same header line
+              as the leading icon + label; the hint stays full-width
+              `children` below, same as before. */}
           <SettingsRow
             icon="key"
             label={t('settings.dataExport.includeSecrets')}

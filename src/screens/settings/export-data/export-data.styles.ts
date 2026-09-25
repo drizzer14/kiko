@@ -10,9 +10,9 @@ export const styles = StyleSheet.create((theme) => ({
     marginBottom: theme.spacing(3),
   },
   // The Encryption-Key field's own bottom gutter before the Copy/Share
-  // buttons, matching `keyWarning`'s own 12pt rhythm above the field —
-  // device-feedback-round-3 item 4 (revisited post-Track-A-merge): `TextField`
-  // used to always reserve a fixed-height error slot below the input (whether
+  // buttons, matching `keyWarning`'s own 12pt rhythm above the field:
+  // `TextField` used to always reserve a fixed-height error slot below the
+  // input (whether
   // or not an error was showing), so this screen originally left NO gap of
   // its own here to avoid doubling up with that reserved slot. Track A's
   // reflow change (`text-field.component.tsx`) removed that reserved slot

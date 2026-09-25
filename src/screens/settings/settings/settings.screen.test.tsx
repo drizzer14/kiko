@@ -181,9 +181,8 @@ describe('SettingsScreen', () => {
     // way `GlassSurface` used to), but the filter is kept defensively so this
     // assertion only ever compares top-level card order.
     //
-    // device-feedback-round-4 item 9: the Import/Export group moves to sit
-    // directly BELOW System (round-2 asked for this and it had not landed —
-    // it previously rendered LAST, after Categories).
+    // The Import/Export group moves to sit directly BELOW System — it
+    // previously rendered LAST, after Categories.
     const cardOrder = getAllByTestId(/^settings-card-/)
       .map((node) => node.props.testID as string)
       .filter((testID) => !testID.endsWith('-base'));
@@ -238,11 +237,11 @@ describe('SettingsScreen', () => {
     // Lands on the label's first letter: it must clear the row's OWN left
     // padding, then the leading icon's width, then the icon-to-label gap — the
     // same three spans the row lays the label out behind. Omitting the row's
-    // own padding lands it on the icon's RIGHT EDGE instead (round-8 fix).
+    // own padding lands it on the icon's RIGHT EDGE instead.
     expect(marginLeft).toBe(darkTheme.spacing(3) + darkTheme.iconSizes.body + darkTheme.spacing(3));
   });
 
-  it("insets the Import/Export divider on the RIGHT to the chevron glyph's visible edge, not the row padding (round-7 device feedback item 1)", async () => {
+  it("insets the Import/Export divider on the RIGHT to the chevron glyph's visible edge, not the row padding", async () => {
     const { getByTestId } = await renderScreen();
 
     const divider = getByTestId('settings-divider-data-transfer');
@@ -250,10 +249,10 @@ describe('SettingsScreen', () => {
 
     // The card's own padding is 0 (each row carries its own
     // `paddingHorizontal`, see `dataTransferRowStyle`), so the row's padding
-    // alone (round-6 item 4) is no longer the whole story: the divider must
-    // also cross the trailing whitespace inside the (round-7 item 2 resized)
-    // chevron's own render frame, so it visually terminates at the ">"
-    // glyph's right edge rather than the frame's.
+    // alone is no longer the whole story: the divider must also cross the
+    // trailing whitespace inside the (resized) chevron's own render frame,
+    // so it visually terminates at the ">" glyph's right edge rather than
+    // the frame's.
     expect(marginRight).toBe(
       darkTheme.spacing(3) + chevronTrailingWhitespace(chevronSize(darkTheme), darkTheme),
     );

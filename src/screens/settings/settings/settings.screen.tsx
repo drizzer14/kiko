@@ -77,32 +77,31 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   // useLiveQuery consumer rule).
   const isReady = useDataReady(isLoading);
 
-  // Item 6 (device-feedback-round-4): the Import/Export card's per-row
-  // padding and leading-inset divider, both PLAIN objects built from the
-  // live theme rather than a `StyleSheet.create()` entry — `StyleSheet.create`
-  // styles are meant to be read directly on a component's OWN native element,
-  // not forwarded as a `style` prop into a DIFFERENT shared component
-  // (`SettingsRow`/`Divider`), where the unistyles runtime does not resolve
-  // them. `SettingsRow` gets its own explicit vertical+horizontal padding
-  // here (matching the `theme.spacing(3)` every OTHER single-row settings
-  // card gets for free from its own `Card` padding, since this card's own
-  // padding drops to 0 below) so each row reads as a normal native
-  // grouped-list row rather than a shorter one squeezed by an outer `Box`
-  // gap. The divider's LEFT inset lands on the row LABEL's first letter, so it
-  // must clear THREE spans, mirroring how the row itself lays the label out:
-  // the row's OWN left `paddingHorizontal` (`theme.spacing(3)`), the leading
-  // icon's width (`iconSizes.body`, the default `SettingsRow` icon size), and
-  // the icon-to-label gap (another `theme.spacing(3)`). Omitting the row's own
-  // padding lands the divider on the icon's RIGHT EDGE instead of the label
-  // (device-feedback round-8).
+  // The Import/Export card's per-row padding and leading-inset divider, both
+  // PLAIN objects built from the live theme rather than a
+  // `StyleSheet.create()` entry — `StyleSheet.create` styles are meant to be
+  // read directly on a component's OWN native element, not forwarded as a
+  // `style` prop into a DIFFERENT shared component (`SettingsRow`/`Divider`),
+  // where the unistyles runtime does not resolve them. `SettingsRow` gets its
+  // own explicit vertical+horizontal padding here (matching the
+  // `theme.spacing(3)` every OTHER single-row settings card gets for free
+  // from its own `Card` padding, since this card's own padding drops to 0
+  // below) so each row reads as a normal native grouped-list row rather than
+  // a shorter one squeezed by an outer `Box` gap. The divider's LEFT inset
+  // lands on the row LABEL's first letter, so it must clear THREE spans,
+  // mirroring how the row itself lays the label out: the row's OWN left
+  // `paddingHorizontal` (`theme.spacing(3)`), the leading icon's width
+  // (`iconSizes.body`, the default `SettingsRow` icon size), and the
+  // icon-to-label gap (another `theme.spacing(3)`). Omitting the row's own
+  // padding lands the divider on the icon's RIGHT EDGE instead of the label.
   //
-  // The RIGHT inset (round-7 item 1) terminates the divider at the visible
-  // right edge of the trailing ">" glyph, not the row's raw padding: it is
-  // the row's own `paddingHorizontal` above PLUS the trailing whitespace
-  // inside the (round-7 item 2 resized) chevron's own render frame — an SF
-  // Symbol glyph is centered in its square frame with visible space on both
-  // sides, so the frame's right edge sits past the glyph's own visible tip.
-  // Both the chevron's size and that whitespace are derived from the SAME
+  // The RIGHT inset terminates the divider at the visible right edge of the
+  // trailing ">" glyph, not the row's raw padding: it is the row's own
+  // `paddingHorizontal` above PLUS the trailing whitespace inside the
+  // chevron's own render frame — an SF Symbol glyph is centered in its
+  // square frame with visible space on both sides, so the frame's right
+  // edge sits past the glyph's own visible tip. Both the chevron's size and
+  // that whitespace are derived from the SAME
   // `settings-row.chevron.ts` helpers `SettingsRow` itself uses for the
   // glyph, so this stays in sync if that sizing ever changes.
   const dataTransferRowStyle = {
@@ -184,11 +183,10 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
         </Card>
 
         {/* Import and Export share one card as a single "data transfer" group,
-            positioned directly BELOW System (device-feedback-round-4 item 9 —
-            round-2 asked for this and it had not landed; it previously sat
-            LAST, after Categories). Import first (the more common entry point
-            — bringing existing data in) then Export.
-            Item 6: each row now carries its own explicit vertical padding
+            positioned directly BELOW System — it previously sat LAST, after
+            Categories. Import first (the more common entry point — bringing
+            existing data in) then Export.
+            Each row now carries its own explicit vertical padding
             (`dataTransferRowStyle`, matching the Card's own padding=3 the
             OTHER single-row cards get for free) with the Card's own padding
             dropped to 0 — an outer `Box gap` no longer supplies the
