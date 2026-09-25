@@ -36,6 +36,12 @@ NOT deployed: it carries 2 unapproved keys (maturity/purchase date required erro
 ~03:xx 2026-09-25: session 4 handed over at 1700c91 (R1, R1.d full-words, R2 ts-pattern done). ORCHESTRATOR SESSION 5 started
 in the feat worktree, terminal term_317ce1c6-0db4-4e59-893d-28c5e115f2fa (claude --model opus --permission-mode auto);
 next R3 descriptor refactor. New user rule: full words in identifiers (memory no-abbreviated-identifiers).
+2026-09-25 ~23:00: phase 2 DONE; phase 3 B1 (abb5055, INSTALLED on iPhone), bug 3 loading gate (8a60d8b), D7a (543d7b8,
+unreviewed). USER: handover threshold 50% (main 0ef9c67). Session 5 handed over; ORCHESTRATOR SESSION 6 in the feat worktree,
+terminal term_64b728cd-967c-47b3-9338-55d575630639. User answers: skills id sweep; week start = device region; cleanup
+migration for stray deposit/bond rows; term error names the max (new key). NEW WORK (coordinator, brainstorming): PreToolUse
+pre-write guard hook that BLOCKS common style/design/architecture mistakes; mined list of 17 candidates sent to the user for
+approval (tier 1 reuse feat checks, tier 2 new exact rules, tier 3 pinned sites); next: approaches -> spec -> plan.
 1. When the hotfix session sends the bump sha: `git -C ~/orca/workspaces/pff-ios/device-deploy checkout -q --detach <sha>`,
    then kiko:ops archives Release / KikoDistribution there: FORCE_BUNDLING=1, clean build (rm ios/build + pod install
    if needed), NON-beta Xcode (check DTXcodeBuild), move the .xcarchive to ~/Library/Developer/Xcode/Archives/<date>/,
