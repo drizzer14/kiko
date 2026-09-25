@@ -1347,6 +1347,68 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
     const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
     expect(reason).toContain('exited 3');
   });
+
+  it('denies when a Node checker crashes with exit 1, empty stdout, and stderr output', () => {
+    // A crashing checker (for example a syntax error introduced into
+    // blank-line-separation.js) can also exit 1 — the SAME code a real
+    // violation report uses — with empty stdout. Parsing that empty stdout
+    // to zero findings would silently allow the write instead of denying it,
+    // which is exactly what would let a broken checker disable its own rule
+    // unnoticed. Any stderr output on a Node-checker child is treated as a
+    // crash, never a clean run's exit 1.
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const nodeStubPath = join(project, 'node-stub.sh');
+    writeFileSync(nodeStubPath, '#!/usr/bin/env bash\necho "TypeError: boom" >&2\nexit 1\n');
+    chmodSync(nodeStubPath, 0o755);
+    const targetFile = join(project, 'src', 'example.ts');
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: 'export const value = 1;\n' }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        KIKO_PREWRITE_NODE_BIN: nodeStubPath,
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('boom');
+  });
+
+  it('denies when a Node checker exits 1 but its stdout parses to zero findings', () => {
+    // Exit 1 with stdout that never matches any parseOutput pattern is the
+    // OTHER shape a crash can take (no stderr, but no real violation line
+    // either) — the same fail-closed contract as the stderr case above, on
+    // the stdout side instead.
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const nodeStubPath = join(project, 'node-stub.sh');
+    writeFileSync(
+      nodeStubPath,
+      '#!/usr/bin/env bash\necho "unexpected output with no violation line"\nexit 1\n',
+    );
+    chmodSync(nodeStubPath, 0o755);
+    const targetFile = join(project, 'src', 'example.ts');
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: 'export const value = 1;\n' }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        KIKO_PREWRITE_NODE_BIN: nodeStubPath,
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('no findings');
+  });
 });
 
 // Rule 11: the REAL blank-line-separation.js checker against the mirrored

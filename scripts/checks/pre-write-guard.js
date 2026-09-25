@@ -305,9 +305,12 @@ function runSemgrep(temporaryRoot, relativePath, trees) {
 // below) against a single mirrored file. Mirrors runSemgrep's exit-code
 // contract: 0 is clean, 1 means `parseOutput` should read the checker's own
 // stdout; any other code (a crash, a stub standing in for one in a test)
-// throws, caught by the top-level fail-closed handler in `run`. `parseOutput`
-// is only ever called on a real (status 1) violation report, never on a
-// clean run's stdout, which for these two scripts is always empty anyway.
+// throws, caught by the top-level fail-closed handler in `run`. A crashing
+// checker (a syntax error, an uncaught exception) can ALSO exit 1 — the same
+// code a real violation report uses — so exit 1 alone is not proof of a real
+// finding: any stderr output, or an exit-1 stdout that `parseOutput` reads as
+// zero findings, throws too, instead of silently parsing to an empty
+// Finding[] that would let a broken checker disable its own rule unnoticed.
 function runSpawnedNodeChecker(scriptName, filePath, parseOutput) {
   const nodeBinary = process.env.KIKO_PREWRITE_NODE_BIN || 'node';
   const scriptPath = path.join(ROOT, 'scripts', 'checks', scriptName);
@@ -321,11 +324,19 @@ function runSpawnedNodeChecker(scriptName, filePath, parseOutput) {
   if (childResult.signal !== null) {
     throw new Error(`${scriptName} timed out (signal ${childResult.signal})`);
   }
+  if (childResult.stderr) {
+    throw new Error(`${scriptName} wrote to stderr: ${childResult.stderr}`);
+  }
   if (childResult.status !== 0 && childResult.status !== 1) {
     throw new Error(`${scriptName} exited ${childResult.status}`);
   }
+  if (childResult.status === 0) return [];
 
-  return childResult.status === 1 ? parseOutput(childResult.stdout) : [];
+  const findings = parseOutput(childResult.stdout);
+  if (findings.length === 0) {
+    throw new Error(`${scriptName} exited 1 but reported no findings`);
+  }
+  return findings;
 }
 
 // import-order.js's plain-checker output (no --write) is `${file}:\n` then
