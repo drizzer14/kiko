@@ -24,7 +24,6 @@ import {
   asLoanMeta,
   asMetalMeta,
   asPropertyMeta,
-  asTermDepositMeta,
   type BondKind,
   type BondMeta,
   type BondCouponFrequency,
@@ -33,8 +32,6 @@ import {
   type MetalForm,
   type MetalUnit,
   type PropertyCategory,
-  type CompoundingFrequency,
-  type TermDepositMeta,
 } from '../../../holdings/holding-metadata';
 import {
   useHeaderInset,
@@ -52,16 +49,13 @@ import Text from '../../../design-system/components/text';
 import HoldingIdentityField from '../holding-identity-field';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
-import Switch from '../../../design-system/components/switch';
 import { usePriceBook } from '../../../prices/use-price-book';
 import Divider from '../../../design-system/components/divider';
-import ChipRow from '../../../design-system/components/chip-row';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import TextField from '../../../design-system/components/text-field';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import { dayKeyOf, type PriceBook } from '../../../prices/price-book';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
-import FieldError from '../../../design-system/components/field-error';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../../navigation/types';
 import { loanOutstandingMinorAt } from '../../../holdings/loan-schedule';
@@ -77,24 +71,22 @@ import {
   type LoanReasonKey,
   type UseLoanFieldsResult,
 } from './loan/use-loan-fields';
+import {
+  useTermDepositFields,
+  type UseTermDepositFieldsResult,
+} from './term-deposit/use-term-deposit-fields';
 import MetalSection from './metal/metal-section';
 import LoanFormBlock from './loan/loan-form-block';
 import BondIsinSection from './bond/bond-isin-section';
 import ManualBondFields from './bond/manual-bond-fields';
 import PropertySection from './property/property-section';
 import { fieldErrorMessage } from './field-error-message';
+import type { ScrollTarget, CreatePayload } from './holding-type-form';
+import TermDepositFormBlock from './term-deposit/term-deposit-form-block';
 import { useBondIsinMode, type IsinReasonKey } from './bond/use-bond-isin-mode';
 import type { BondEntryMode } from './bond/bond-isin-section/bond-isin-section.props';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
-
-// The literal i18n keys `termDepositReasonKey` may return, so `t()` (typed
-// from src/i18n/locales/en.ts) accepts them.
-type TermDepositReasonKey =
-  | 'forms.holding.contributionsRequiredError'
-  | 'forms.holding.contributionIncompleteError'
-  | 'forms.holding.annualRateError'
-  | 'forms.holding.termMonthsError';
 
 // The literal i18n keys `bondReasonKey` may return, so `t()` (typed from
 // src/i18n/locales/en.ts) accepts them.
@@ -119,57 +111,6 @@ type MetalReasonKey =
   | 'forms.holding.quantityError'
   | 'forms.lot.totalCostError'
   | 'forms.holding.purityError';
-
-// `saved` marks a contribution that is already persisted in the holding's
-// stored metadata (an edit-mode hydrated row) versus one the user just added in
-// this session. Only unsaved rows may be removed — a persisted contribution is
-// part of the deposit's history, so its Remove control renders disabled. The
-// flag is explicit rather than inferred from id ordering: an explicit boolean is
-// clearer and does not break if the seeding/id scheme ever changes.
-type Contribution = { id: number; amount: string; date: number | null; saved: boolean };
-
-// Seed the repeatable contributions list from a stored deposit: each stored
-// amount is minor units, shown back in the field as a grouped major string the
-// user can edit (the inverse of the create form's parse-on-save). Every seeded
-// row is `saved: true` — it already exists in the database, so it cannot be
-// removed here.
-const seedContributions = (meta: TermDepositMeta, currency: Currency): Contribution[] =>
-  meta.contributions.map((contribution, index) => ({
-    id: index,
-    amount: groupAmount(majorAmountText(currency, contribution.amountMinorUnits)),
-    date: contribution.date,
-    saved: true,
-  }));
-
-// Seeds term_deposit's edit-mode fields from stored metadata. A no-op for
-// invalid/absent metadata. Extracted out of the seed effect below (the same
-// cognitive-complexity reason `seedPropertyFields`/`seedMetalFields` further
-// down are their own functions rather than an inline `if (meta) {...}`).
-const seedTermDepositFields = (
-  holding: HoldingRow,
-  setters: {
-    setContributions: (rows: Contribution[]) => void;
-    setNextContributionId: (id: number) => void;
-    setAnnualRate: (value: string) => void;
-    setTermMonths: (value: string) => void;
-    setRecap: (value: boolean) => void;
-    setCompounding: (value: CompoundingFrequency) => void;
-  },
-): void => {
-  const meta = asTermDepositMeta(holding.metadata);
-
-  if (meta === null) {
-    return;
-  }
-
-  const rows = seedContributions(meta, holding.currency);
-  setters.setContributions(rows);
-  setters.setNextContributionId(rows.length);
-  setters.setAnnualRate(String(meta.annualRatePct));
-  setters.setTermMonths(String(meta.termMonths));
-  setters.setRecap(meta.recapitalization);
-  setters.setCompounding(meta.compounding);
-};
 
 // Seed the bond number/date fields from stored metadata. Minor-unit money
 // fields (face value, purchase price) convert back to grouped major strings;
@@ -592,6 +533,95 @@ const saveEdit = async (params: {
   await holdingsRepo.setIcon(holdingId, icon);
 };
 
+// The EDIT-mode save for a term deposit (R3 Phase C's worked example) —
+// extracted out of `save` purely to keep that function's own branch count
+// under the cognitive-complexity budget, the same reason `saveLoanEdit` is.
+// Routed through the hook's own `saveEdit` rather than `buildHoldingPatch`/
+// the generic `saveEdit` above: it builds its metadata from the
+// contributions/rate/term state closed over inside the hook, which no
+// longer lives on this screen. That hook write carries no icon (its own doc
+// comment), so this helper writes it separately, same as every edit path.
+const saveDepositEdit = async (params: {
+  holdingId: string;
+  deposit: UseTermDepositFieldsResult;
+  name: string;
+  color: string | null;
+  currency: Currency;
+  isSynced: boolean;
+  editingHolding: HoldingRow | undefined;
+  book: PriceBook;
+  icon: string | null;
+}): Promise<void> => {
+  const { holdingId, deposit, name, color, currency, isSynced, editingHolding, book, icon } =
+    params;
+
+  await deposit.saveEdit({ holdingId, name, color, currency, isSynced, editingHolding, book });
+  await holdingsRepo.setIcon(holdingId, icon);
+};
+
+// The whole isEdit-mode write: `term_deposit` routes through
+// `saveDepositEdit` above; every other type builds its patch via
+// `buildHoldingPatch` and writes it through `saveEdit`. Extracted out of
+// `save` purely to keep that function's own branch count under the
+// cognitive-complexity budget — the type dispatch itself is what pushed
+// `save` over the limit.
+const performEditSave = (params: {
+  type: HoldingType;
+  holdingId: string;
+  deposit: UseTermDepositFieldsResult;
+  name: string;
+  color: string | null;
+  currency: Currency;
+  openingBalance: string;
+  metadata: Record<string, unknown> | undefined;
+  isSynced: boolean;
+  editingHolding: HoldingRow | undefined;
+  loanFields: LoanFieldsSnapshot;
+  book: PriceBook;
+  icon: string | null;
+}): Promise<void> => {
+  const {
+    type,
+    holdingId,
+    deposit,
+    name,
+    color,
+    currency,
+    openingBalance,
+    metadata,
+    isSynced,
+    editingHolding,
+    loanFields,
+    book,
+    icon,
+  } = params;
+
+  if (type === 'term_deposit') {
+    return saveDepositEdit({
+      holdingId,
+      deposit,
+      name,
+      color,
+      currency,
+      isSynced,
+      editingHolding,
+      book,
+      icon,
+    });
+  }
+
+  return saveEdit({
+    holdingId,
+    patch: buildHoldingPatch({ name, color, type, currency, openingBalance, metadata, isSynced }),
+    editingHolding,
+    loanFields,
+    type,
+    currency,
+    book,
+    icon,
+  });
+};
+
 // The type-specific CREATE payload: `property_item` and `metal` (T20) each
 // seed their own first lot (`buildPropertyCreatePayload`/
 // `buildMetalCreatePayload` above) instead of a plain opening balance +
@@ -613,12 +643,19 @@ const createPayloadFor = (params: {
   metalQuantity: string;
   metalCost: string;
   loanFields: LoanFieldsSnapshot;
-}): {
-  balanceMinorUnits: number;
-  metadata: Record<string, unknown> | undefined;
-  firstPricePoint?: { day: number; price: string };
-} => {
+  depositCreatePayload: (openingBalanceMinorUnits: number) => CreatePayload;
+}): CreatePayload => {
   const { type } = params;
+
+  if (type === 'term_deposit') {
+    // Keeps today's hidden-balance quirk (reported, not fixed, per R3 Phase
+    // C's Risks table): a deposit's opening-balance field is hidden by
+    // `isLedgerlessHoldingType`, but any value typed under another type
+    // before switching still parses through here.
+    return params.depositCreatePayload(
+      Money.fromMajor(params.currency, parseAmount(params.openingBalance) || 0).minorUnits,
+    );
+  }
 
   if (type === 'property_item') {
     return buildPropertyCreatePayload({
@@ -650,21 +687,14 @@ const createPayloadFor = (params: {
   };
 };
 
-const compoundingOptions: readonly CompoundingFrequency[] = [
-  'bi-weekly',
-  'monthly',
-  'quarterly',
-  'annually',
-];
-
 // The name-required reason, shown only after a failed Save press: gated on
 // `attemptedSave` so it renders nothing before the first press. The
 // type-specific per-field reasons (term deposit / bond) no longer flow
-// through this helper — each field now calls `termDepositReasonKey()` /
-// `bondReasonKey()` directly, since each field needs its OWN reason, not the
-// type's single first-failing one. Kept as a
-// module-level helper (rather than inline in the component) to mirror the
-// pattern the rest of this file already uses for save-time branching.
+// through this helper — each field now calls its own reason function
+// directly, since each field needs its OWN reason, not the type's single
+// first-failing one. Kept as a module-level helper (rather than inline in
+// the component) to mirror the pattern the rest of this file already uses
+// for save-time branching.
 const saveReasonsFor = (params: {
   attemptedSave: boolean;
   name: string;
@@ -673,24 +703,6 @@ const saveReasonsFor = (params: {
 
   return { showNameReason: attemptedSave && name.trim().length === 0 };
 };
-
-// The contributions group's two sub-reasons (missing vs incomplete) render as
-// TWO separate `<FieldError>`s though both come from the SAME
-// `contributionsFieldReasonKey` check — this narrows to the specific
-// sub-reason each one owns, so neither shows for the other's cause. Kept
-// module-level (rather than inline in the component) to stay out of
-// HoldingFormScreen's own cognitive-complexity budget.
-const contributionsSubReasonMessage = (
-  t: TFunction,
-  attemptedSave: boolean,
-  reasonKey:
-    | 'forms.holding.contributionsRequiredError'
-    | 'forms.holding.contributionIncompleteError'
-    | null,
-  expectedKey:
-    | 'forms.holding.contributionsRequiredError'
-    | 'forms.holding.contributionIncompleteError',
-): string | undefined => (attemptedSave && reasonKey === expectedKey ? t(expectedKey) : undefined);
 
 // The ISIN field's OWN inline error text — every `isinReasonKey` EXCEPT
 // `isinNotInRegister`, which `BondIsinSection` already surfaces as its own
@@ -741,7 +753,6 @@ const purchaseDateErrorMessage = (
 // refs.
 type ValidatedFieldRefs = {
   nameFieldRef: RefObject<FieldInstance | null>;
-  contributionsFieldRef: RefObject<FieldInstance | null>;
   annualRateFieldRef: RefObject<FieldInstance | null>;
   termMonthsFieldRef: RefObject<FieldInstance | null>;
   isinFieldRef: RefObject<FieldInstance | null>;
@@ -781,17 +792,17 @@ type ValidatedFieldFocus = {
 
 // The first still-invalid field's own wrapper ref (plus its FOCUS action,
 // when it has one — see `ValidatedFieldFocus` above), in the SAME priority
-// order `termDepositReasonKey`/`bondReasonKey` already check their fields
+// order `deposit.scrollTargets`/`bondReasonKey` already check their fields
 // in: the name field first (it always applies, independent of type), then
 // the active type's fields. `save`'s `!isValid` branch passes this straight
-// to `scrollToField`. Module-level and pure (given the already-computed
-// reason keys) so this branching stays out of `save`'s own
-// cognitive-complexity budget.
+// to `scrollTo`. Module-level and pure (given the already-computed reason
+// keys) so this branching stays out of `save`'s own cognitive-complexity
+// budget.
 const firstInvalidFieldRef = (params: {
   name: string;
   type: HoldingType;
   bondMode: BondEntryMode;
-  termDepositReasonKey: TermDepositReasonKey | null;
+  depositScrollTargets: readonly ScrollTarget[];
   bondReasonKey: BondReasonKey | null;
   isinReasonKey: IsinReasonKey | null;
   needsCouponFrequencyPick: boolean;
@@ -806,7 +817,7 @@ const firstInvalidFieldRef = (params: {
     name,
     type,
     bondMode,
-    termDepositReasonKey,
+    depositScrollTargets,
     bondReasonKey,
     isinReasonKey,
     needsCouponFrequencyPick,
@@ -820,26 +831,7 @@ const firstInvalidFieldRef = (params: {
 
   const order: { invalid: boolean; ref: RefObject<FieldInstance | null>; focus?: () => void }[] = [
     { invalid: name.trim().length === 0, ref: refs.nameFieldRef, focus: focus.name },
-    ...(type === 'term_deposit'
-      ? [
-          {
-            invalid:
-              termDepositReasonKey === 'forms.holding.contributionsRequiredError' ||
-              termDepositReasonKey === 'forms.holding.contributionIncompleteError',
-            ref: refs.contributionsFieldRef,
-          },
-          {
-            invalid: termDepositReasonKey === 'forms.holding.annualRateError',
-            ref: refs.annualRateFieldRef,
-            focus: focus.annualRate,
-          },
-          {
-            invalid: termDepositReasonKey === 'forms.holding.termMonthsError',
-            ref: refs.termMonthsFieldRef,
-            focus: focus.termMonths,
-          },
-        ]
-      : []),
+    ...(type === 'term_deposit' ? depositScrollTargets : []),
     ...(type === 'bond'
       ? [
           {
@@ -962,15 +954,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     property_item: t('forms.holding.propertyItem'),
     metal: t('forms.holding.metal'),
     loan: t('forms.holding.loan'),
-  };
-  // Coupon frequency additionally offers 'semiannually', which compounding
-  // does not; the shared vocabulary (monthly/quarterly/annually) resolves to
-  // the same catalog key either way.
-  const compoundingLabels: Record<CompoundingFrequency, string> = {
-    'bi-weekly': t('forms.holding.biWeekly'),
-    monthly: t('forms.holding.monthly'),
-    quarterly: t('forms.holding.quarterly'),
-    annually: t('forms.holding.annually'),
   };
   // A `holdingId` in the route params switches the form to EDIT mode: the same
   // fields, seeded from the existing holding, saving through the update path
@@ -1105,15 +1088,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // `FieldError` for the two group/relational reasons) sits right beside it,
   // so the scroll always lands on the same field the message is anchored to.
   const nameFieldRef = useRef<FieldInstance>(null);
-  const contributionsFieldRef = useRef<FieldInstance>(null);
-  // The LAST contribution row's own wrapper — a SEPARATE ref from
-  // `contributionsFieldRef` above (which always anchors row 0, for the
-  // Save-invalid scroll) — so `addContribution` below can scroll to whichever
-  // row is newest, via the SAME occlusion-aware `scrollToField` helper
-  // (round-6 device feedback item 3), rather than an unconditional
-  // `scrollToEnd` that used to fire even when the new row was already
-  // fully visible.
-  const lastContributionFieldRef = useRef<FieldInstance>(null);
+  // Shared with the Loan form's own annual-rate/term-months fields (the
+  // deposit hook owns its own separate pair) — only one of the two types
+  // renders at a time, so the same wrapper ref/input ref safely serves
+  // whichever one is mounted.
   const annualRateFieldRef = useRef<FieldInstance>(null);
   const termMonthsFieldRef = useRef<FieldInstance>(null);
   const isinFieldRef = useRef<FieldInstance>(null);
@@ -1149,15 +1127,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const metalCostInputRef = useRef<TextInputInstance>(null);
   const loanPrincipalInputRef = useRef<TextInputInstance>(null);
 
-  // term deposit state
-  const nextContributionId = useRef(1);
-  const [contributions, setContributions] = useState<Contribution[]>([
-    { id: 0, amount: '', date: null, saved: false },
-  ]);
-  const [annualRate, setAnnualRate] = useState('');
-  const [termMonths, setTermMonths] = useState('');
-  const [recapitalization, setRecap] = useState(false);
-  const [compounding, setCompounding] = useState<CompoundingFrequency>('bi-weekly');
+  // term_deposit state + validation + create/edit payloads (R3 Phase C's
+  // worked example) — every field, the per-field reasons, the edit-mode
+  // seed, and the create/edit payload builders live in the hook, the same
+  // way `useLoanFields` extracted the Loan form's own state.
+  const deposit = useTermDepositFields({ currency, scrollTo });
 
   // bond state
   const [quantity, setQuantity] = useState('');
@@ -1259,16 +1233,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
     match(holding)
       .with({ type: 'term_deposit' }, (termDepositHolding) => {
-        seedTermDepositFields(termDepositHolding, {
-          setContributions,
-          setNextContributionId: (id) => {
-            nextContributionId.current = id;
-          },
-          setAnnualRate,
-          setTermMonths,
-          setRecap,
-          setCompounding,
-        });
+        deposit.seed(termDepositHolding);
       })
       .with({ type: 'bond' }, (bondHolding) => {
         seedBondMetaFields(bondHolding, {
@@ -1306,7 +1271,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       .otherwise((rest) => {
         setOpeningBalance(groupAmount(majorAmountText(rest.currency, rest.balanceMinorUnits)));
       });
-  }, [isEdit, editingHolding, setBondMode, setIsin, loanFields.seed]);
+  }, [isEdit, editingHolding, setBondMode, setIsin, loanFields.seed, deposit.seed]);
 
   // The stack sets the static "Add Holding" title; in edit mode override it with
   // "Edit Holding" so the header reads correctly for the update flow.
@@ -1315,79 +1280,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       navigation.setOptions({ title: t('forms.holding.editTitle') });
     }
   }, [isEdit, navigation, t]);
-
-  const addContribution = (): void => {
-    const id = nextContributionId.current++;
-    setContributions((rows) => [...rows, { id, amount: '', date: null, saved: false }]);
-
-    // The new row's fields are only measured after this render commits, so
-    // defer the scroll to the next frame — otherwise `lastContributionFieldRef`
-    // would still measure the PRE-add (one row shorter) layout. Same
-    // deferred-RAF pattern as the categories screen's own
-    // `scrollToAddCategoryForm`. Routes through the SAME occlusion-aware
-    // `scrollToField` helper `save`'s own scroll-to-invalid uses below (round-6
-    // device feedback item 3) — an unconditional `scrollToEnd` used to fire
-    // even when the new row was already fully on screen.
-    requestAnimationFrame(() => {
-      scrollTo(lastContributionFieldRef);
-    });
-  };
-
-  const removeContribution = (index: number): void => {
-    setContributions((rows) => rows.filter((_, i) => i !== index));
-  };
-
-  const updateContributionAmount = (index: number, next: string): void => {
-    setContributions((rows) =>
-      rows.map((row, i) => {
-        return i === index ? { ...row, amount: next } : row;
-      }),
-    );
-  };
-
-  const updateContributionDate = (index: number, next: number): void => {
-    setContributions((rows) =>
-      rows.map((row, i) => {
-        return i === index ? { ...row, date: next } : row;
-      }),
-    );
-  };
-
-  // Drop blank/partial rows: keep only a positive amount paired with a picked date.
-  const parsedContributions = (): { amountMinorUnits: number; date: number }[] =>
-    contributions.flatMap(({ amount, date }) => {
-      const amountValue = parseAmount(amount);
-      if (!(amountValue > 0) || date === null) {
-        return [];
-      }
-
-      return [{ amountMinorUnits: Money.fromMajor(currency, amountValue).minorUnits, date }];
-    });
-
-  // A single contribution ROW's own validity: a positive amount paired with a
-  // picked date, the same pair `parsedContributions` requires to keep a row.
-  // Used to catch a row `parsedContributions` would otherwise silently DROP —
-  // a blank or partially-filled row (most often a fresh `addContribution`
-  // left unfilled) — while at least one OTHER row is already valid, so the
-  // overall `contributionsRequiredError` (below) never fires (round-4 device
-  // feedback item 10: saving used to drop that row without any indication it
-  // was ignored).
-  const isContributionRowValid = (contribution: Contribution): boolean =>
-    parseAmount(contribution.amount) > 0 && contribution.date !== null;
-
-  const buildDepositMetadata = (): Record<string, unknown> | undefined => {
-    const rows = parsedContributions();
-    if (rows.length === 0) {
-      return undefined;
-    }
-    return {
-      contributions: rows,
-      annualRatePct: parseAmount(annualRate) || 0,
-      termMonths: parseAmount(termMonths) || 0,
-      recapitalization,
-      compounding,
-    };
-  };
 
   const buildBondMetadata = (): Record<string, unknown> => {
     const quantityValue = parseAmount(quantity) || 0;
@@ -1420,9 +1312,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   };
 
   const buildMetadata = (): Record<string, unknown> | undefined => {
-    if (type === 'term_deposit') {
-      return buildDepositMetadata();
-    }
     if (type === 'bond') {
       return buildBondMetadata();
     }
@@ -1461,53 +1350,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     }
     return undefined;
   };
-
-  // The contributions group's OWN reason: at least one contribution with a
-  // positive amount and a picked date (`parsedContributions` already drops
-  // blank/partial rows), and EVERY row present either fully filled in or
-  // removed (never silently dropped — round-4 device feedback item 10).
-  const contributionsFieldReasonKey = ():
-    | 'forms.holding.contributionsRequiredError'
-    | 'forms.holding.contributionIncompleteError'
-    | null => {
-    if (parsedContributions().length === 0) {
-      return 'forms.holding.contributionsRequiredError';
-    }
-
-    if (contributions.some((contribution) => !isContributionRowValid(contribution))) {
-      return 'forms.holding.contributionIncompleteError';
-    }
-
-    return null;
-  };
-
-  // The annual-rate field's OWN reason, independent of the contributions/term
-  // fields around it.
-  const annualRateFieldReasonKey = (): 'forms.holding.annualRateError' | null => {
-    const rate = parseAmount(annualRate);
-
-    return annualRate.trim() === '' || !(rate >= 0) ? 'forms.holding.annualRateError' : null;
-  };
-
-  // The term-months field's OWN reason, independent of the fields above it.
-  const termMonthsFieldReasonKey = (): 'forms.holding.termMonthsError' | null => {
-    const months = parseAmount(termMonths);
-
-    return Number.isInteger(months) && months > 0 ? null : 'forms.holding.termMonthsError';
-  };
-
-  // A term deposit needs a valid contributions group, a non-negative annual
-  // rate that was actually entered, and a whole-month term greater than
-  // zero. Recapitalization and compounding always carry defaults. Not gated
-  // on whether the name is filled: the name's own required asterisk covers
-  // that separately. Derived from the three field functions above, in the
-  // SAME priority order, so this can never drift from what each field
-  // itself displays.
-  const termDepositReasonKey = (): TermDepositReasonKey | null =>
-    contributionsFieldReasonKey() ?? annualRateFieldReasonKey() ?? termMonthsFieldReasonKey();
-
-  // Valid exactly when there is no reason to reject.
-  const isTermDepositValid = (): boolean => termDepositReasonKey() === null;
 
   // The bond quantity field's OWN reason, independent of the fields below it.
   const bondQuantityFieldReasonKey = (): 'forms.holding.quantityError' | null =>
@@ -1635,7 +1477,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const isValid =
     name.trim().length > 0 &&
     match(type)
-      .with('term_deposit', isTermDepositValid)
+      .with('term_deposit', () => deposit.isValid)
       .with('bond', isBondValid)
       .with('property_item', isPropertyValid)
       .with('metal', isMetalValid)
@@ -1655,7 +1497,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         name,
         type,
         bondMode,
-        termDepositReasonKey: termDepositReasonKey(),
+        depositScrollTargets: deposit.scrollTargets,
         bondReasonKey: bondReasonKey(),
         isinReasonKey,
         needsCouponFrequencyPick,
@@ -1665,7 +1507,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         loanReasonKey: loanFields.reasonKey,
         refs: {
           nameFieldRef,
-          contributionsFieldRef,
           annualRateFieldRef,
           termMonthsFieldRef,
           isinFieldRef,
@@ -1708,25 +1549,22 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
     try {
       if (isEdit && holdingId !== undefined) {
-        // Update the editable fields (see buildHoldingPatch: deposit/bond write
-        // metadata, every other type writes its balance) plus the icon, all via
-        // `saveEdit` (extracted purely to keep THIS function's own branch count
-        // under the cognitive-complexity budget). Type/currency are read-only.
-        await saveEdit({
+        // The term-deposit/every-other-type dispatch, plus the whole write
+        // itself, lives in `performEditSave` (extracted purely to keep THIS
+        // function's own branch count under the cognitive-complexity
+        // budget). Type/currency are read-only.
+        await performEditSave({
+          type,
           holdingId,
-          patch: buildHoldingPatch({
-            name,
-            color,
-            type,
-            currency,
-            openingBalance,
-            metadata,
-            isSynced: isSyncedEdit,
-          }),
+          deposit,
+          name,
+          color,
+          currency,
+          openingBalance,
+          metadata,
+          isSynced: isSyncedEdit,
           editingHolding,
           loanFields,
-          type,
-          currency,
           book: priceBook,
           icon,
         });
@@ -1768,6 +1606,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           metalQuantity,
           metalCost,
           loanFields,
+          depositCreatePayload: deposit.createPayload,
         }),
       });
 
@@ -1829,22 +1668,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
-  // Computed once here (rather than inline at each render site below) so the
-  // group `<FieldError>`'s own `message` prop reuses this exact string
-  // instead of calling `t()` a second time for the same key.
-  const contributionsFieldReason = contributionsFieldReasonKey();
-  const contributionsRequiredMessage = contributionsSubReasonMessage(
-    t,
-    attemptedSave,
-    contributionsFieldReason,
-    'forms.holding.contributionsRequiredError',
-  );
-  const contributionIncompleteMessage = contributionsSubReasonMessage(
-    t,
-    attemptedSave,
-    contributionsFieldReason,
-    'forms.holding.contributionIncompleteError',
-  );
   const maturityDateErrorMessage = fieldErrorMessage(
     t,
     attemptedSave,
@@ -1941,152 +1764,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         )}
 
         {type === 'term_deposit' && (
-          <Box gap={4}>
-            <Divider testID="form-divider" />
-
-            <Text variant="heading">{t('forms.holding.contributions')}</Text>
-
-            {/* The mapped contributions and the inline Add button form ONE
-                group under a tighter inner gap (spacing(2) = 8pt), so the small
-                Add button hugs the list — ~8pt below the last contribution —
-                rather than sitting the section's full spacing(4) = 16pt below
-                it. That 16pt is the uniform outer-section gap between
-                full-height rows (headings, dividers, the balance group); above
-                a short `size="small"` button, and right after each
-                contribution's own tight 8pt internal rhythm, it read as a
-                disproportionate top gap (the Add button is NOT the shared
-                Screen footer, so last round's footer-padding fix never touched
-                it). The contributions keep their own spacing(4) = 16pt
-                separation from each other via the inner list Box, so distinct
-                contributions stay visually distinct. */}
-            <Box gap={2} testID="contributions-group">
-              <Box gap={4}>
-                {contributions.map((contribution, index) => (
-                  <View
-                    key={contribution.id}
-                    // Row 0 anchors `contributionsFieldRef` (the Save-invalid
-                    // scroll target, unchanged); the LAST row additionally
-                    // anchors `lastContributionFieldRef` (round-6 item 3's
-                    // add-row scroll target) — a callback ref, since a single
-                    // native element can only take one `ref` prop, and a
-                    // one-row list satisfies both conditions on the SAME node.
-                    ref={(node) => {
-                      if (index === 0) {
-                        contributionsFieldRef.current = node;
-                      }
-                      if (index === contributions.length - 1) {
-                        lastContributionFieldRef.current = node;
-                      }
-                    }}
-                  >
-                    <Box gap={2}>
-                      <TextField
-                        label={t('forms.holding.contributionAmount', { index: index + 1 })}
-                        value={contribution.amount}
-                        onChangeText={(next) => updateContributionAmount(index, groupAmount(next))}
-                        keyboardType="decimal-pad"
-                        placeholder={t('forms.holding.contributionPlaceholder')}
-                        suffix={currencySymbol[currency]}
-                        required
-                      />
-
-                      <DateField
-                        label={t('forms.holding.contributionDate', { index: index + 1 })}
-                        value={contribution.date}
-                        onChange={(next) => updateContributionDate(index, next)}
-                        placeholder={t('forms.fields.selectDatePlaceholder')}
-                        required
-                      />
-
-                      {index === 0 && contributionsRequiredMessage !== undefined && (
-                        <FieldError message={contributionsRequiredMessage} />
-                      )}
-
-                      {/* A row left blank or half-filled once at least one
-                        OTHER row is already valid — `contributionsRequiredMessage`
-                        above only fires when EVERY row is empty, so this
-                        catches the row `parsedContributions` would otherwise
-                        silently drop (round-4 device feedback item 10). */}
-                      {contributionIncompleteMessage !== undefined &&
-                        !isContributionRowValid(contribution) && (
-                          <FieldError message={contributionIncompleteMessage} />
-                        )}
-
-                      {contributions.length > 1 && (
-                        <Button
-                          variant="destructiveTonal"
-                          size="small"
-                          fullWidth={false}
-                          icon="trash"
-                          disabled={contribution.saved}
-                          accessibilityLabel={t('forms.holding.removeContribution', {
-                            index: index + 1,
-                          })}
-                          onPress={() => removeContribution(index)}
-                        >
-                          {t('forms.holding.remove')}
-                        </Button>
-                      )}
-                    </Box>
-                  </View>
-                ))}
-              </Box>
-
-              <Button
-                variant="secondaryTonal"
-                size="small"
-                fullWidth={false}
-                icon="plus"
-                onPress={addContribution}
-              >
-                {t('forms.holding.addContribution')}
-              </Button>
-            </Box>
-
-            <Divider testID="form-divider" />
-
-            <Text variant="heading">{t('forms.holding.terms')}</Text>
-
-            <View ref={annualRateFieldRef}>
-              <TextField
-                label={t('forms.holding.annualRatePct')}
-                value={annualRate}
-                onChangeText={setAnnualRate}
-                keyboardType="decimal-pad"
-                placeholder={t('forms.holding.annualRatePlaceholder')}
-                required
-                error={fieldErrorMessage(t, attemptedSave, annualRateFieldReasonKey())}
-                inputRef={annualRateInputRef}
-              />
-            </View>
-
-            <View ref={termMonthsFieldRef}>
-              <TextField
-                label={t('forms.holding.termMonths')}
-                value={termMonths}
-                onChangeText={setTermMonths}
-                keyboardType="number-pad"
-                placeholder={t('forms.holding.termMonthsPlaceholder')}
-                required
-                error={fieldErrorMessage(t, attemptedSave, termMonthsFieldReasonKey())}
-                inputRef={termMonthsInputRef}
-              />
-            </View>
-
-            <Switch
-              label={t('forms.holding.recapitalization')}
-              value={recapitalization}
-              onValueChange={setRecap}
-            />
-
-            <ChipRow
-              label={t('forms.holding.compounding')}
-              options={compoundingOptions}
-              selected={compounding}
-              onSelect={setCompounding}
-              labels={compoundingLabels}
-            />
-          </Box>
+          <TermDepositFormBlock fields={deposit} attemptedSave={attemptedSave} />
         )}
 
         {type === 'bond' && (
