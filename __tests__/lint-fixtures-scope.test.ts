@@ -8,9 +8,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 // from linting entirely (biome.json's files.includes: "!rules/fixtures") —
 // Biome reports "No files were processed in the specified paths." with a
 // non-zero exit for such a target, which is Biome saying "out of scope", not
-// "found a violation". Before this fix, lint.sh treated that message as a
-// lint failure, so editing ANY fixture under rules/fixtures/ tripped a false
-// "Biome (lint + format)" failure block on every save.
+// "found a violation"; a clean, ignored file must never trip a failure
+// block.
 //
 // Biome prints that EXACT SAME message for a path that does not exist at all
 // (internalError/io, swallowed underneath it) — so the check must not treat
@@ -55,13 +54,12 @@ describe('scripts/checks/lint.sh', () => {
     expect(result.stderr).toContain('noExplicitAny');
   });
 
-  // Regression: biome.json sets vcs.useIgnoreFile: true, so Biome itself
-  // reports "No files were processed…" for ANY real file .gitignore covers —
-  // not only the biome.json files.includes exclusions above. lint.sh's
-  // hand-copied case list (ios/, vendor/, coverage/, rules/fixtures/,
-  // *.jsbundle) doesn't cover a gitignored path like .claude/worktrees/, so a
-  // clean file edited inside a worktree there tripped a false failure on
-  // every save.
+  // biome.json sets vcs.useIgnoreFile: true, so Biome itself reports "No
+  // files were processed…" for ANY real file .gitignore covers — not only
+  // the biome.json files.includes exclusions above. lint.sh's hand-copied
+  // case list (ios/, vendor/, coverage/, rules/fixtures/, *.jsbundle) must
+  // also treat a gitignored path like .claude/worktrees/ as out of scope —
+  // a clean, ignored file must never fail.
   it('exits 0 for a clean file under a gitignored path outside the biome.json exclude list', () => {
     const directory = join(__dirname, '../.claude/worktrees/kiko-lint-gitignore-probe/src');
     mkdirSync(directory, { recursive: true });

@@ -407,11 +407,9 @@ describe('scripts/checks/import-order.js --write', () => {
     );
   });
 
-  // Regression: a group --write leaves untouched (a comment glued to a
-  // non-first import) can still hold a real, un-fixed sort violation — the
-  // old --write only ever reported a blocked MERGE, so this shape exited 0
-  // with no output even though the file still failed the plain (non-write)
-  // check.
+  // A group --write leaves untouched (a comment glued to a non-first
+  // import) can still hold a real, un-fixed sort violation — a leftover
+  // violation must never exit 0 with no output.
   it('reports a sort violation left behind in a group with an interior comment', () => {
     const source =
       "import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';\n" +
@@ -431,11 +429,11 @@ describe('scripts/checks/import-order.js --write', () => {
     expect(readFileSync(file, 'utf8')).toBe(source);
   });
 
-  // Regression: two adjacent same-kind groups where the SECOND group's own
-  // interior comment (not a prefix) blocks the merge — mergeAdjacentSameKindGroups
-  // never folds it (its kind reads as null while interiorComment is true), but
-  // the old --write's blockedByPrefix list only ever tracked the prefix-blocked
-  // case, so this shape exited 0 with the merge violation still in the file.
+  // Two adjacent same-kind groups where the SECOND group's own interior
+  // comment (not a prefix) blocks the merge — mergeAdjacentSameKindGroups
+  // never folds it (its kind reads as null while interiorComment is true).
+  // A leftover merge violation must never exit 0 with the violation still
+  // in the file.
   it('reports a merge blocked by a later group whose own interior comment prevents folding', () => {
     const source =
       "import { useTranslation } from 'react-i18next';\n" +
