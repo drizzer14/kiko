@@ -576,9 +576,10 @@ function overrideState(sourceLines, line, ruleId) {
 // from the BEFORE one. A pre-existing violation (present in both) is never
 // reported here — it stays visible to check:rules/check:all, which this
 // hook does not affect. The one exception is a BARE override (I1): a bare
-// nosemgrep/kiko-override comment never suppresses anything, so an edit that
-// adds one over an EXISTING finding must still deny — the finding itself
-// need not be new for the added bare comment to be the reason to block.
+// comment naming nosemgrep or kiko-override never suppresses anything, so an
+// edit that adds one over an EXISTING finding must still deny — the finding
+// itself need not be new for the added bare comment to be the reason to
+// block.
 function newFindings(beforeFindings, afterFindings) {
   const beforeKeys = findingKeys(beforeFindings);
   const afterKeys = findingKeys(afterFindings);

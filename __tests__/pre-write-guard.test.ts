@@ -1527,6 +1527,45 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
     expect(result.status).toBe(0);
   });
 
+  it('allows a new finding with a block-comment `/* nosemgrep: <id> OVERRIDE(...) */` override', () => {
+    // I2: the only comment form JSX allows (`{/* ... */}`) must justify a
+    // finding exactly like the `//` line-comment form does.
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeFindingsStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'new-file.ts');
+    const afterContent = [
+      '/* nosemgrep: kiko-no-switch OVERRIDE(reason) legacy fallthrough kept intentionally */',
+      'switch (x) {',
+      '};',
+      '',
+    ].join('\n');
+    const needle = 'switch (x) {';
+    const offsetStart = afterContent.indexOf(needle);
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: afterContent }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        STUB_RESULTS_AFTER: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'after/src/new-file.ts',
+            line: 2,
+            offsetStart,
+            offsetEnd: offsetStart + needle.length,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+        ]),
+      }),
+    );
+
+    expect(result.status).toBe(0);
+  });
+
   it('denies a new finding under a bare nosemgrep comment with no OVERRIDE(...)', () => {
     const project = createTempDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);

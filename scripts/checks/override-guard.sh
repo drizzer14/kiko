@@ -28,7 +28,7 @@ if [ "$#" -gt 0 ]; then
   fi
 fi
 
-hits="$(grep -nE 'biome-ignore|//\s*(nosemgrep|kiko-override):' \
+hits="$(grep -nE 'biome-ignore|(//|/\*)\s*nosemgrep\b|(//|/\*)\s*kiko-override:' \
   --include='*.ts' --include='*.tsx' --include='*.js' \
   --exclude-dir=node_modules --exclude-dir=ios --exclude-dir=vendor -r "${scan_targets[@]}" \
   | grep -v 'OVERRIDE(')"

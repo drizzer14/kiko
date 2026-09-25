@@ -58,6 +58,42 @@ describe('scripts/checks/override-guard.sh (npm run check:overrides)', () => {
     expect(result.stderr).toContain('kiko-override');
   });
 
+  it('fails a bare nosemgrep line comment with no colon (a blanket suppression)', () => {
+    // Split across `+`, same reason as bareOverrideComment above. No rule id
+    // and no colon at all — real Semgrep still honours this as "suppress
+    // every finding on this line", so it is exactly as unjustified as the
+    // rule-specific form above.
+    const bareBlanketComment = `${'// nosem'}grep`;
+    const filePath = writeTempFile(`switch (x) {\n};${bareBlanketComment}\n`);
+
+    const result = runGuard([filePath]);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('nosem');
+  });
+
+  it('fails a bare nosemgrep block comment with no OVERRIDE(...)', () => {
+    // The only comment form JSX allows (`{/* ... */}`) — a `//` line
+    // comment cannot appear inside a JSX expression container. Split across
+    // `+`, same reason as bareOverrideComment above.
+    const bareOverrideComment = `${'/* nosem'}grep: kiko-no-switch */`;
+    const filePath = writeTempFile(`${bareOverrideComment}\nswitch (x) {\n};\n`);
+
+    const result = runGuard([filePath]);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('nosem');
+  });
+
+  it('passes a justified nosemgrep block comment carrying OVERRIDE(...)', () => {
+    const justifiedBlockComment = `${'/* nosem'}grep: kiko-no-switch OVERRIDE(reason) legacy fallthrough kept intentionally */`;
+    const filePath = writeTempFile(`${justifiedBlockComment}\nswitch (x) {\n};\n`);
+
+    const result = runGuard([filePath]);
+
+    expect(result.status).toBe(0);
+  });
+
   it('passes both forms when OVERRIDE(...) is present', () => {
     const nosemgrepOverride = `${'// nosem'}grep: kiko-no-switch OVERRIDE(reason) legacy fallthrough kept intentionally`;
     const kikoOverride = `${'// kiko-over'}ride: kiko-import-order OVERRIDE(reason) legacy ordering kept intentionally`;
