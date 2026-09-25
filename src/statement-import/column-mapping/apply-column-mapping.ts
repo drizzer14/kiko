@@ -4,6 +4,7 @@
 // (`formatId: 'column-mapping'`), so the rest of the pipeline
 // (`importParsedStatement`, dedup, the preview screen) treats a mapped file
 // identically to a recognized bank export.
+import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 
 import { Money } from '../../currency/money';
@@ -57,10 +58,14 @@ const isEmptyCell = (cell: TableCell | undefined): boolean => cellText(cell).tri
 const mappedColumnsFor = (mapping: ColumnMapping): number[] => [
   mapping.dateColumn,
   mapping.descriptionColumn,
-  ...(mapping.amount.mode === 'single'
-    ? [mapping.amount.column]
-    : [mapping.amount.debitColumn, mapping.amount.creditColumn]),
-  ...(mapping.currency.mode === 'column' ? [mapping.currency.column] : []),
+  ...match(mapping.amount)
+    .with({ mode: 'single' }, (amount) => [amount.column])
+    .with({ mode: 'debitCredit' }, (amount) => [amount.debitColumn, amount.creditColumn])
+    .exhaustive(),
+  ...match(mapping.currency)
+    .with({ mode: 'column' }, (currency) => [currency.column])
+    .with({ mode: 'fixed' }, () => [])
+    .exhaustive(),
   ...(foldMap(maybe(mapping.counterpartyColumn), (column) => [column]) ?? []),
 ];
 
@@ -87,38 +92,40 @@ type AmountOutcome =
 // carried its own sign — a signed debit stays negative, never doubly negated.
 // Both sides filled is not a valid single-amount row at all (money-safety
 // review precedent) — reported as `'debitAndCredit'`, never guessed.
-const resolveRowAmountMajor = (row: TableCell[], mapping: ColumnMapping): AmountOutcome => {
-  if (mapping.amount.mode === 'single') {
-    const raw = row[mapping.amount.column];
-    const major = parseAmountCell(raw ?? '', mapping.decimalSeparator);
+const resolveRowAmountMajor = (row: TableCell[], mapping: ColumnMapping): AmountOutcome =>
+  match(mapping.amount)
+    .with({ mode: 'single' }, (amount): AmountOutcome => {
+      const raw = row[amount.column];
+      const major = parseAmountCell(raw ?? '', mapping.decimalSeparator);
 
-    return Number.isFinite(major)
-      ? { kind: 'resolved', major }
-      : { kind: 'error', reason: 'amount', value: cellText(raw) };
-  }
+      return Number.isFinite(major)
+        ? { kind: 'resolved', major }
+        : { kind: 'error', reason: 'amount', value: cellText(raw) };
+    })
+    .with({ mode: 'debitCredit' }, (amount): AmountOutcome => {
+      const debitRaw = row[amount.debitColumn];
+      const creditRaw = row[amount.creditColumn];
+      const debitFilled = !isEmptyCell(debitRaw);
+      const creditFilled = !isEmptyCell(creditRaw);
 
-  const debitRaw = row[mapping.amount.debitColumn];
-  const creditRaw = row[mapping.amount.creditColumn];
-  const debitFilled = !isEmptyCell(debitRaw);
-  const creditFilled = !isEmptyCell(creditRaw);
+      if (debitFilled && creditFilled) {
+        return {
+          kind: 'error',
+          reason: 'debitAndCredit',
+          value: `${cellText(debitRaw)} / ${cellText(creditRaw)}`,
+        };
+      }
 
-  if (debitFilled && creditFilled) {
-    return {
-      kind: 'error',
-      reason: 'debitAndCredit',
-      value: `${cellText(debitRaw)} / ${cellText(creditRaw)}`,
-    };
-  }
+      const raw = debitFilled ? debitRaw : creditRaw;
+      const major = parseAmountCell(raw ?? '', mapping.decimalSeparator);
 
-  const raw = debitFilled ? debitRaw : creditRaw;
-  const major = parseAmountCell(raw ?? '', mapping.decimalSeparator);
+      if (!Number.isFinite(major)) {
+        return { kind: 'error', reason: 'amount', value: cellText(raw) };
+      }
 
-  if (!Number.isFinite(major)) {
-    return { kind: 'error', reason: 'amount', value: cellText(raw) };
-  }
-
-  return { kind: 'resolved', major: debitFilled ? -Math.abs(major) : Math.abs(major) };
-};
+      return { kind: 'resolved', major: debitFilled ? -Math.abs(major) : Math.abs(major) };
+    })
+    .exhaustive();
 
 const resolveCounterparty = (
   row: TableCell[],
@@ -153,37 +160,46 @@ const resolveRow = (row: TableCell[], mapping: ColumnMapping, rowNumber: number)
 
   const amountOutcome = resolveRowAmountMajor(row, mapping);
 
-  if (amountOutcome.kind === 'error') {
-    return {
-      kind: 'error',
-      error: { rowNumber, reason: amountOutcome.reason, value: amountOutcome.value },
-    };
-  }
+  return match(amountOutcome)
+    .with(
+      { kind: 'error' },
+      (outcome): RowOutcome => ({
+        kind: 'error',
+        error: { rowNumber, reason: outcome.reason, value: outcome.value },
+      }),
+    )
+    .with({ kind: 'resolved' }, ({ major }): RowOutcome => {
+      const currency = match(mapping.currency)
+        .with({ mode: 'fixed' }, (currencyMapping) => currencyMapping.currency)
+        .with({ mode: 'column' }, (currencyMapping) =>
+          resolveCurrencyCell(cellText(row[currencyMapping.column]).trim()),
+        )
+        .exhaustive();
 
-  const currency =
-    mapping.currency.mode === 'fixed'
-      ? mapping.currency.currency
-      : resolveCurrencyCell(cellText(row[mapping.currency.column]).trim());
+      if (currency === undefined) {
+        const currencyColumn = match(mapping.currency)
+          .with({ mode: 'column' }, (currencyMapping) => currencyMapping.column)
+          .with({ mode: 'fixed' }, () => -1)
+          .exhaustive();
 
-  if (currency === undefined) {
-    const currencyColumn = mapping.currency.mode === 'column' ? mapping.currency.column : -1;
+        return {
+          kind: 'error',
+          error: { rowNumber, reason: 'currency', value: cellText(row[currencyColumn]) },
+        };
+      }
 
-    return {
-      kind: 'error',
-      error: { rowNumber, reason: 'currency', value: cellText(row[currencyColumn]) },
-    };
-  }
-
-  return {
-    kind: 'resolved',
-    transaction: {
-      currency,
-      amountMinorUnits: Money.fromMajor(currency, amountOutcome.major).minorUnits,
-      timeSeconds: dateSeconds,
-      description: cellText(row[mapping.descriptionColumn]),
-      ...resolveCounterparty(row, mapping),
-    },
-  };
+      return {
+        kind: 'resolved',
+        transaction: {
+          currency,
+          amountMinorUnits: Money.fromMajor(currency, major).minorUnits,
+          timeSeconds: dateSeconds,
+          description: cellText(row[mapping.descriptionColumn]),
+          ...resolveCounterparty(row, mapping),
+        },
+      };
+    })
+    .exhaustive();
 };
 
 // The account currency, resolved straight off the mapped currency COLUMN's
@@ -196,23 +212,21 @@ const resolveRow = (row: TableCell[], mapping: ColumnMapping, rowNumber: number)
 const resolveAccountCurrency = (
   dataRows: TableCell[][],
   mapping: ColumnMapping,
-): Currency | undefined => {
-  if (mapping.currency.mode === 'fixed') {
-    return mapping.currency.currency;
-  }
+): Currency | undefined =>
+  match(mapping.currency)
+    .with({ mode: 'fixed' }, (currencyMapping) => currencyMapping.currency)
+    .with({ mode: 'column' }, (currencyMapping) => {
+      for (const row of dataRows) {
+        const resolved = resolveCurrencyCell(cellText(row[currencyMapping.column]).trim());
 
-  const currencyColumn = mapping.currency.column;
+        if (resolved !== undefined) {
+          return resolved;
+        }
+      }
 
-  for (const row of dataRows) {
-    const resolved = resolveCurrencyCell(cellText(row[currencyColumn]).trim());
-
-    if (resolved !== undefined) {
-      return resolved;
-    }
-  }
-
-  return undefined;
-};
+      return undefined;
+    })
+    .exhaustive();
 
 type ClosingBalanceCandidate = { row: TableCell[]; timeSeconds: number; currency: Currency };
 
@@ -371,17 +385,19 @@ export const applyColumnMapping = (
     const rowNumber = mapping.headerRowIndex + index + 2;
     const outcome = resolveRow(row, mapping, rowNumber);
 
-    if (outcome.kind === 'error') {
-      rowErrors.push(outcome.error);
-      return;
-    }
-
-    transactions.push(outcome.transaction);
-    balanceCandidates.push({
-      row,
-      timeSeconds: outcome.transaction.timeSeconds,
-      currency: outcome.transaction.currency,
-    });
+    match(outcome)
+      .with({ kind: 'error' }, (rowOutcome) => {
+        rowErrors.push(rowOutcome.error);
+      })
+      .with({ kind: 'resolved' }, (rowOutcome) => {
+        transactions.push(rowOutcome.transaction);
+        balanceCandidates.push({
+          row,
+          timeSeconds: rowOutcome.transaction.timeSeconds,
+          currency: rowOutcome.transaction.currency,
+        });
+      })
+      .exhaustive();
   });
 
   const account: ParsedAccountHint = { currency: accountCurrency };

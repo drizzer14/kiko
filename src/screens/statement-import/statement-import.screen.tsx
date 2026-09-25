@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import * as RNFS from 'react-native-fs';
 import type { FC, RefObject } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
@@ -400,10 +401,14 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   }, [filePath]);
 
   const fileName = fileNameOf(filePath);
-  const input =
-    loadState.kind === 'ready'
-      ? { text: loadState.text, fileName, sheetRows: loadState.sheetRows }
-      : undefined;
+  const input = match(loadState)
+    .with({ kind: 'ready' }, (state) => ({
+      text: state.text,
+      fileName,
+      sheetRows: state.sheetRows,
+    }))
+    .with({ kind: 'loading' }, { kind: 'unreadable' }, () => undefined)
+    .exhaustive();
   const expectedFormat = expectedFormatOf(expectedFormatId);
   // Scoped recognition (device-feedback-round-1 item 5) — see `formatFor`'s
   // doc comment above for the full rule.
@@ -513,9 +518,12 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // the read itself failed, OR the read succeeded but no format recognized
   // it (and none was expected), OR a format matched and then failed to
   // parse a data row.
+  const isUnreadableLoad = match(loadState)
+    .with({ kind: 'unreadable' }, () => true)
+    .with({ kind: 'loading' }, { kind: 'ready' }, () => false)
+    .exhaustive();
   const showUnreadable =
-    !bankMismatch &&
-    (loadState.kind === 'unreadable' || (input !== undefined && stats === undefined));
+    !bankMismatch && (isUnreadableLoad || (input !== undefined && stats === undefined));
 
   // F4 audit 2: Import is ALWAYS enabled (`disabled={importing}` only, see
   // the footer below) — this validates on press instead of standing behind a
@@ -633,6 +641,11 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // itself renders null) as "has a footer" and reserves the clearance for
   // it — so this stays `undefined` rather than an always-defined element,
   // exactly mirroring the FORMER inline `input !== undefined` gate below.
+  const isLoadingFile = match(loadState)
+    .with({ kind: 'loading' }, () => true)
+    .with({ kind: 'ready' }, { kind: 'unreadable' }, () => false)
+    .exhaustive();
+
   const footer =
     stats !== undefined || input !== undefined ? (
       <StatementImportFooter
@@ -654,7 +667,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
       }}
     >
       <Box gap={4} testID="statement-import-content">
-        {loadState.kind === 'loading' && (
+        {isLoadingFile && (
           <Text variant="body" tone="textSecondary">
             {t('statementImport.reading')}
           </Text>

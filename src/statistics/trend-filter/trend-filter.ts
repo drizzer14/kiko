@@ -1,3 +1,5 @@
+import { match } from 'ts-pattern';
+
 import type { CategoryMeasure } from '../category-trend';
 
 /** The two trend-filter modes: an explicit manual pick, or a live "Top N". */
@@ -76,9 +78,18 @@ export const resolveTrendFilter = (
   if (stored === null) {
     return DEFAULT_TREND_FILTER;
   }
-  if (stored.mode === 'manual') {
-    return { mode: 'manual', keys: stored.keys.filter((key) => existingCategoryKeys.has(key)) };
-  }
 
-  return { mode: 'top', amount: clampAmount(stored.amount), by: stored.by };
+  return match(stored)
+    .with(
+      { mode: 'manual' },
+      (filter): TrendFilter => ({
+        mode: 'manual',
+        keys: filter.keys.filter((key) => existingCategoryKeys.has(key)),
+      }),
+    )
+    .with(
+      { mode: 'top' },
+      (filter): TrendFilter => ({ mode: 'top', amount: clampAmount(filter.amount), by: filter.by }),
+    )
+    .exhaustive();
 };
