@@ -4,7 +4,12 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "$DIR/_lib.sh"
 ROOT="$(cd "$DIR/../.." && pwd)"
-FIXTURES="$ROOT/rules/fixtures"
+# KIKO_RULES_FIXTURES is a test-only seam (__tests__/semgrep-rules-nested-fixtures.test.ts):
+# it points the scan at a throwaway directory instead of the real, much
+# larger rules/fixtures/ tree, so the nested-discovery mechanism below can be
+# proven in isolation. Unset in production; every real invocation still
+# scans $ROOT/rules/fixtures.
+FIXTURES="${KIKO_RULES_FIXTURES:-$ROOT/rules/fixtures}"
 
 # Proves each project Semgrep rule still fires, and still stays quiet, against
 # its own fixture pair: a rule that silently stops matching reads as a passing
@@ -12,6 +17,15 @@ FIXTURES="$ROOT/rules/fixtures"
 # one finding from that rule, `<rule-id>.good.<ext>` none from any rule, and a
 # standalone `// EXPECT-FINDING` (or `#`) comment pins a finding to the next
 # line. "Nothing was checked" fails the same way as a broken rule.
+#
+# A rule scoped by a path-prefixed `paths.include` (e.g.
+# `src/monobank/**`) draws NOTHING against a fixture placed directly in
+# rules/fixtures/ — kiko-linter's "Semgrep facts" gotcha — so that rule's
+# fixture pair instead lives NESTED, at
+# `rules/fixtures/<rule-id>/<mirrored path>/<name>.(bad|good).<ext>`, credited
+# to the rule id named by the fixture's OWN first directory segment rather
+# than by its filename. A flat, top-level fixture keeps working exactly as
+# before.
 
 fail_scanner() {
   # $1 what  $2 details
@@ -43,12 +57,12 @@ if [ ! -d "$FIXTURES" ]; then
 fi
 
 # Every rule is proven by a fixture pair, so no fixtures means nothing was
-# proven. The glob skips dotfiles, which are never fixtures.
+# proven. Recursive (a fixture may be nested — see above); dotfiles, which
+# are never fixtures, are skipped by basename at any depth.
 fixture_count=0
-for fixture in "$FIXTURES"/*; do
-  [ -f "$fixture" ] || continue
+while IFS= read -r -d '' fixture; do
   fixture_count=$((fixture_count + 1))
-done
+done < <(find "$FIXTURES" -type f ! -name '.*' -print0)
 if [ "$fixture_count" -eq 0 ]; then
   fail_scanner \
     "The fixture directory holds no fixture files." \
@@ -79,46 +93,82 @@ report="$(printf '%s' "$out" | FIXTURES="$FIXTURES" node -e '
 let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
   const fs=require("fs"), path=require("path");
   const dir=process.env.FIXTURES;
+  const toPosix=(p)=>p.split(path.sep).join("/");
   let j;
   try { j=JSON.parse(s); } catch {
     process.stdout.write("Semgrep did not return JSON:\n"+s);
     process.exitCode=1; return;
   }
   const results=j.results||[];
-  const scanned=new Set((((j.paths||{}).scanned)||[]).map(p=>path.basename(p)));
-  const files=fs.readdirSync(dir).filter(f=>!f.startsWith("."));
+  // Both the scanned list and every result path are normalized to a POSIX
+  // path RELATIVE to the fixtures dir, so a flat fixture (relative path with
+  // no separator) and a NESTED one (relative path whose first segment is the
+  // owning rule id) are matched the same way, whether semgrep reported an
+  // absolute path or one relative to this process'\''s own cwd.
+  const relativeTo = (p) => toPosix(path.relative(dir, path.resolve(p)));
+  const scanned=new Set((((j.paths||{}).scanned)||[]).map(relativeTo));
+  const walk=(base)=>{
+    const out=[];
+    for (const entry of fs.readdirSync(base,{recursive:true,withFileTypes:true})) {
+      if (!entry.isFile() || entry.name.startsWith(".")) continue;
+      out.push(toPosix(path.relative(base, path.join(entry.parentPath, entry.name))));
+    }
+    return out;
+  };
+  const files=walk(dir);
   const problems=[];
   if(!files.length) problems.push("the fixture directory holds no fixture files");
   for (const e of (j.errors||[]))
     problems.push(`semgrep reported an error: ${e.long_msg||e.message||JSON.stringify(e)}`);
-  for (const f of files) {
-    if(!scanned.has(f)) {
-      problems.push(`fixture ${f} was never scanned by semgrep (absent from paths.scanned), so the rule that owns it proved nothing`);
+  const resultsByRelativePath=new Map();
+  for (const r of results) {
+    const relative=relativeTo(r.path);
+    if(!resultsByRelativePath.has(relative)) resultsByRelativePath.set(relative, []);
+    resultsByRelativePath.get(relative).push(r);
+  }
+  // ruleId -> whether a positive/negative fixture was seen for it.
+  const ruleFixtures=new Map();
+  const noteFixture=(ruleId,kind)=>{
+    const entry=ruleFixtures.get(ruleId)||{hasBad:false,hasGood:false};
+    if(kind==="bad") entry.hasBad=true;
+    if(kind==="good") entry.hasGood=true;
+    ruleFixtures.set(ruleId,entry);
+  };
+  for (const relative of files) {
+    if(!scanned.has(relative)) {
+      problems.push(`fixture ${relative} was never scanned by semgrep (absent from paths.scanned), so the rule that owns it proved nothing`);
       continue;
     }
-    const m=/^(.+)\.(bad|good)\.[^.]+$/.exec(f);
-    if(!m) { problems.push(`fixture "${f}" does not follow <rule-id>.(bad|good).<ext>`); continue; }
-    const [,ruleId,kind]=m;
-    const hits=results.filter(r=>path.basename(r.path)===f);
+    const segments=relative.split("/");
+    const basename=segments[segments.length-1];
+    const nested=segments.length>1;
+    const m=/^(.+)\.(bad|good)\.[^.]+$/.exec(basename);
+    if(!m) { problems.push(`fixture "${relative}" does not follow <rule-id>.(bad|good).<ext>`); continue; }
+    const kind=m[2];
+    // A nested fixture is credited to its OWN first directory segment (the
+    // rule id a paths.include-scoped rule needs a mirrored path for), never
+    // to its basename'\''s own "name" part.
+    const ruleId=nested?segments[0]:m[1];
+    noteFixture(ruleId,kind);
+    const hits=resultsByRelativePath.get(relative)||[];
     if(kind==="bad") {
       const mine=hits.filter(r=>r.check_id.slice(r.check_id.lastIndexOf(".")+1)===ruleId);
       if(!mine.length)
-        problems.push(`rule "${ruleId}" reported NOTHING on its positive fixture ${f}`);
+        problems.push(`rule "${ruleId}" reported NOTHING on its positive fixture ${relative}`);
       const lines=new Set(mine.map(r=>(r.start||{}).line));
-      fs.readFileSync(path.join(dir,f),"utf8").split("\n").forEach((line,i)=>{
+      fs.readFileSync(path.join(dir,...segments),"utf8").split("\n").forEach((line,i)=>{
         if(!/^\s*(\/\/|#)\s*EXPECT-FINDING\s*$/.test(line)) return;
         const pinned=i+2;
         if(!lines.has(pinned))
-          problems.push(`rule "${ruleId}" reported nothing at ${f}:${pinned}, a line pinned by an EXPECT-FINDING comment`);
+          problems.push(`rule "${ruleId}" reported nothing at ${relative}:${pinned}, a line pinned by an EXPECT-FINDING comment`);
       });
     }
     if(kind==="good" && hits.length)
-      problems.push(`negative fixture ${f} matched: ${hits.map(r=>r.check_id).join(", ")}`);
+      problems.push(`negative fixture ${relative} matched: ${hits.map(r=>r.check_id).join(", ")}`);
   }
-  const ids=new Set(files.map(f=>(/^(.+)\.(bad|good)\./.exec(f)||[])[1]).filter(Boolean));
-  for (const id of ids) {
-    if(!files.some(f=>f.startsWith(id+".bad."))) problems.push(`rule "${id}" has no positive fixture`);
-    if(!files.some(f=>f.startsWith(id+".good."))) problems.push(`rule "${id}" has no negative fixture`);
+  for (const [ruleId,entry] of ruleFixtures) {
+    if(!entry.hasBad) problems.push(`rule "${ruleId}" has no positive fixture`);
+    if(!entry.hasGood) problems.push(`rule "${ruleId}" has no negative fixture`);
   }
   process.stdout.write(problems.join("\n"));
 })')"
