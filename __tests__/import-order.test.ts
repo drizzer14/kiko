@@ -52,6 +52,23 @@ describe('scripts/checks/import-order.sh', () => {
     expect(result.stderr).toContain('Import ordering');
   });
 
+  it('still flags an unsorted group when its first import carries a trailing line comment', () => {
+    // A trailing `// note` after the `;` used to make endsStatement's
+    // `/;\s*$/` anchor fail, so consumeStatement never stopped at this
+    // import — it kept reading forward looking for a later `;\s*$` line,
+    // which swallowed the second import into the same "statement" and hid
+    // the whole group from checking.
+    const result = runCheck(
+      "import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'; // note\n" +
+        "import { type FC, useEffect } from 'react';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('Import ordering');
+  });
+
   it('sorts an inline-`type`-modifier import by its own ending-line length, not as a value/type tiebreak', () => {
     // The real full-word-identifiers.test.ts shape: `node:fs`'s named-import
     // line is longer than `node:child_process`'s inline-`type` one, so the
