@@ -409,6 +409,35 @@ a repo-sweep tool, not part of the check-wrapper contract (see "The
 wrapper contract" above — a checker only checks) — it is invoked by
 hand, never from `import-order.sh`.
 
+## `kiko-no-switch` — a plain keyword-regex ban, no AST pattern needed
+
+`kiko-no-switch` (`rules/semgrep-mobile.yml`, Class A) mechanizes
+kiko-code-style's ts-pattern section: `switch` is banned outright, no
+exception — the prior per-file exception for `interest.ts`/
+`holding-value.ts` was withdrawn by user decision (R2, the behavior-free
+ts-pattern refactor) and every remaining `switch` in the tree was
+converted to `match(...).exhaustive()`/`.otherwise()`. Like
+`kiko-repo-no-class`'s `\bclass\s+\w`, this uses `pattern-regex`
+(`\bswitch\s*\(`) rather than an AST `switch ($X) { ... }` pattern — a
+bare keyword-plus-paren match is simpler and just as precise for a
+keyword ban, and this project already has that precedent. Fixture pair:
+`rules/fixtures/kiko-no-switch.{bad,good}.ts`.
+
+A closed-set mapping over a real, externally/persisted-sourced type
+(a DB row's `HoldingType`, for example) needs its catch-all arm to stay
+`.otherwise()`, not `.exhaustive()`, whenever the ORIGINAL `switch`'s
+`default` (or an if-chain's trailing, unconditional statement) tolerated
+ANY unmatched runtime value — not just the few other literal members
+named in the other arms. A fully literal `.exhaustive()` there silently
+turns "tolerate a stale/malformed value" into "crash on it", which is a
+real behavior change, not a mechanical rewrite — caught during R2 by two
+real Jest suites (`accounts.screen.test.tsx`, `home.screen.test.tsx`)
+whose holding fixtures omit `type` entirely, relying on exactly that
+tolerance. This risk is specific to a type read off persisted/external
+data; a purely LOCAL type this codebase's own code constructs (a
+`useState` literal, a pure helper's own return value, a caller-supplied
+op) has no such stale-data path and stays genuinely `.exhaustive()`.
+
 ## Full words in identifiers — exact-path exemption allowlist, not a suppression comment
 
 `scripts/checks/full-word-identifiers.js` (+ its wrapper `.sh`) mechanizes
