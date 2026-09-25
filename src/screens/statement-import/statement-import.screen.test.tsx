@@ -56,9 +56,9 @@ jest.mock('react-native-fs', () => ({
 }));
 
 // Not used by this screen directly (only `account-detail.screen.tsx`'s
-// `pickAndOpenStatement` opens the picker), mocked defensively per the task
-// brief so an accidental transitive import never pulls in the real native
-// binding under react-test-renderer.
+// `pickAndOpenStatement` opens the picker), mocked defensively anyway so an
+// accidental transitive import never pulls in the real native binding under
+// react-test-renderer.
 jest.mock('@react-native-documents/picker', () => ({
   pick: jest.fn(),
   types: { csv: 'text/csv', xlsx: 'application/xlsx', plainText: 'text/plain', allFiles: '*/*' },

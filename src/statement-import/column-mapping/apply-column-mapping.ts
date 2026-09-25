@@ -19,8 +19,8 @@ import type { TableCell } from './table-rows';
 import type { DateFormatId } from './date-formats';
 import { parseDateWithFormat } from './date-formats';
 
-// Matches the parity brief's own signature: 2 uppercase letters, 2 check
-// digits, then the BBAN (11-30 alphanumerics) — the same shape a
+// Matches the ISO 13616 IBAN shape: 2 uppercase letters (country code), 2
+// check digits, then the BBAN (11-30 alphanumerics) — the same shape a
 // `counterpartyColumn` value must have to be treated as an IBAN rather than a
 // free-text counterparty name (routed to `comment` instead).
 const IBAN_PATTERN = /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/;

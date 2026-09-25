@@ -43,10 +43,10 @@ const decodeBase64ToBytes = (base64: string): number[] => {
 
 // Decodes a UTF-8 byte sequence to a JS string, handling every 1/2/3/4-byte
 // form (the Monobank fixture's Cyrillic descriptions are 2-byte) — this is
-// the step a bare `atob()` skips, which is what corrupts multi-byte text
-// (see the task brief's base64-decode ruling): `atob` alone treats each BYTE
-// as one Latin-1 CHARACTER, so a 2-byte Cyrillic codepoint renders as two
-// mangled Latin-1 characters instead of being recombined into one.
+// the step a bare `atob()` skips, which is what corrupts multi-byte text:
+// `atob` alone treats each BYTE as one Latin-1 CHARACTER, so a 2-byte
+// Cyrillic codepoint renders as two mangled Latin-1 characters instead of
+// being recombined into one.
 const decodeUtf8Bytes = (bytes: number[]): string => {
   let result = '';
   let index = 0;
