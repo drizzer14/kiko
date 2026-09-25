@@ -575,13 +575,16 @@ function overrideState(sourceLines, line, ruleId) {
 // A finding the proposed edit ADDS: present in the AFTER key set, absent
 // from the BEFORE one. A pre-existing violation (present in both) is never
 // reported here — it stays visible to check:rules/check:all, which this
-// hook does not affect.
+// hook does not affect. The one exception is a BARE override (I1): a bare
+// nosemgrep/kiko-override comment never suppresses anything, so an edit that
+// adds one over an EXISTING finding must still deny — the finding itself
+// need not be new for the added bare comment to be the reason to block.
 function newFindings(beforeFindings, afterFindings) {
   const beforeKeys = findingKeys(beforeFindings);
   const afterKeys = findingKeys(afterFindings);
   const added = [];
   for (const [key, finding] of afterKeys) {
-    if (!beforeKeys.has(key)) added.push(finding);
+    if (!beforeKeys.has(key) || finding.overrideState === 'bare') added.push(finding);
   }
   return added;
 }

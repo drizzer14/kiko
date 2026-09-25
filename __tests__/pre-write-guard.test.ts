@@ -1723,4 +1723,64 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
 
     expect(result.status).toBe(2);
   });
+
+  it('denies when an edit adds a bare override above a pre-existing finding', () => {
+    // I1: the finding itself is NOT new (it exists in both before and
+    // after), but the bare override the edit adds above it never suppresses
+    // anything — check:security still honours it as a blanket comment, so
+    // leaving it un-flagged just because the underlying finding is old would
+    // let a bare override slip past this guard entirely.
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeFindingsStub(project);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'example.ts');
+    const bareOverrideComment = `${'// nosem'}grep: kiko-no-switch`;
+    const beforeContent = 'switch (x) {\n};\n';
+    const afterContent = `${bareOverrideComment}\nswitch (x) {\n};\n`;
+    writeFileSync(targetFile, beforeContent);
+    const needle = 'switch (x) {';
+    const beforeOffsetStart = beforeContent.indexOf(needle);
+    const afterOffsetStart = afterContent.indexOf(needle);
+
+    const result = runGuard(
+      payloadFor('Edit', {
+        file_path: targetFile,
+        old_string: 'switch (x) {',
+        new_string: `${bareOverrideComment}\nswitch (x) {`,
+      }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        STUB_RESULTS_BEFORE: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'before/src/example.ts',
+            line: 1,
+            offsetStart: beforeOffsetStart,
+            offsetEnd: beforeOffsetStart + needle.length,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+        ]),
+        STUB_RESULTS_AFTER: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'after/src/example.ts',
+            line: 2,
+            offsetStart: afterOffsetStart,
+            offsetEnd: afterOffsetStart + needle.length,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+        ]),
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('bare');
+    expect(reason).toContain('kiko-no-switch');
+  });
 });
