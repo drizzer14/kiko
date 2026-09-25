@@ -16,7 +16,19 @@ describe('usePriceBook', () => {
 
     await renderHook(() => usePriceBook());
 
-    expect(mockUseLiveQuery).toHaveBeenCalledWith(expect.anything(), ['price_points']);
+    expect(mockUseLiveQuery).toHaveBeenCalledWith(expect.anything(), ['price_points'], true);
+  });
+
+  // kiko-architecture: a screen showing no priced holding type never needs
+  // the price_points read — usePriceBook forwards its own `enabled` straight
+  // through to useLiveQuery's `enabled` argument (never a conditional hook
+  // call, which Rules of Hooks forbids).
+  it('forwards enabled=false straight through to useLiveQuery', async () => {
+    mockUseLiveQuery.mockReturnValue({ data: [], isLoading: false });
+
+    await renderHook(() => usePriceBook(false));
+
+    expect(mockUseLiveQuery).toHaveBeenCalledWith(expect.anything(), ['price_points'], false);
   });
 
   it('builds a PriceBook from the live rows', async () => {

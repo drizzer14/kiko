@@ -25,6 +25,15 @@ const toError = (caught: unknown): Error =>
 export function useLiveQuery<T>(
   query: SQLQuery<T>,
   tables: string[],
+  /**
+   * `false` skips the query AND the reactive subscription entirely — never a
+   * request or read for data a disabled caller does not need
+   * (kiko-architecture). `data` reads as `[]` and `isLoading` as `false`
+   * (ready, not stuck) while disabled; flipping back to `true` re-runs the
+   * effect below and starts the real query. Defaults to `true` so every
+   * existing call site is unaffected.
+   */
+  enabled = true,
 ): { data: T[]; error?: Error; isLoading: boolean } {
   const [data, setData] = useState<T[]>([]);
   const [error, setError] = useState<Error | undefined>();
@@ -51,10 +60,17 @@ export function useLiveQuery<T>(
   // accountsRepo.byIdQuery(holding?.accountId)), false for the whole
   // duration of a reactive re-run against the SAME key (`appliedKey` does
   // not change until a NEWER generation for that key settles).
-  const isLoading = appliedKey.current !== currentKey;
+  // `false` while disabled — never "not ready" forever (kiko-architecture): a
+  // caller gating a whole screen's readiness on this must see it flip, not
+  // spin, for a query it deliberately never ran.
+  const isLoading = enabled && appliedKey.current !== currentKey;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(content-keyed subscription) sql/params/tables/query are re-derived every render from stable serialized primitives (paramsKey/tablesKey) and a fireOn memoized on tablesKey; depending on their object/array *references* instead would re-subscribe on every render whenever a caller passes an inline literal (e.g. `useLiveQuery(q, ['accounts'])` in JSX) and — because the native callback can fire synchronously — infinite-loop.
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     let alive = true;
 
     const myKey = currentKey;
@@ -134,7 +150,7 @@ export function useLiveQuery<T>(
       alive = false;
       unsubscribe();
     };
-  }, [sql, paramsKey, fireOn]);
+  }, [sql, paramsKey, fireOn, enabled]);
 
-  return { data, error, isLoading };
+  return { data: enabled ? data : [], error, isLoading };
 }
