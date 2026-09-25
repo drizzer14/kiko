@@ -162,6 +162,91 @@ It:
 `fireOn`) — get this list wrong and the query either never refreshes
 or refreshes on unrelated writes.
 
+### op-sqlite's ONE worker thread — every query, whole-app, one queue
+
+op-sqlite runs every query for the WHOLE APP on a single worker thread
+per connection (`node_modules/@op-engineering/op-sqlite/cpp/OPThreadPool.cpp:14-20`;
+`OPDatabase.cpp:494`). A read queued behind a write is DELAYED, not
+rejected — there is no per-query timeout or failure, only queueing.
+This is why an app-open write burst (the sync fan-out, `refreshRates`,
+`refreshMetalPrices` — see `kiko-pricing`) can leave a screen's own
+first read queued behind it for a perceptible stretch: the screen is
+not broken, its read is just waiting its turn on the one thread. Two
+consequences follow directly:
+
+- A screen must never treat "my first read hasn't resolved yet" as
+  "the data is empty" — see the `useDataReady` consumer rule below.
+- Shrinking the app-open burst itself (fewer redundant reads/writes,
+  or running two independent refreshes concurrently instead of
+  sequentially) genuinely reduces how long a screen's own read sits
+  queued — see `kiko-pricing`'s "Refresh throttles" section for the
+  concrete `refreshRates` / `refreshMetalPrices` case.
+
+### `useLiveQuery` consumer rule: gate an empty state on `isLoading`, never on `data.length === 0` alone
+
+Every `useLiveQuery` (and `usePriceBook`, which wraps one) starts
+`isLoading: true` and clears it only once its FIRST read settles —
+never before. Because of the one-worker-thread queueing above, that
+first read can sit queued for real, perceptible time on a busy app
+open. A screen that renders its own empty state (empty list text, an
+empty chart, a `0` balance) whenever `data.length === 0` — without
+checking `isLoading` — cannot tell "genuinely no data yet" apart from
+"my read is still queued," and shows the wrong one: a real empty
+state for a screen whose data hasn't arrived yet, which self-corrects
+only on the NEXT reactive fire or a fresh mount (this shipped as a
+production bug, build 575f19a — every screen read `data`, none read
+`isLoading`).
+
+The fix is one shared mechanism, not a per-screen ad hoc guard:
+
+- `useDataReady(...isLoading)` (`src/db/use-data-ready.ts`) takes every
+  `isLoading` flag a screen's own `useLiveQuery`/`usePriceBook` calls
+  return and is `true` only once ALL of them have settled at least
+  once. It LATCHES: once ready, it stays ready even if a flag somehow
+  reports `true` again on a later render (defensive — `useLiveQuery`'s
+  own `isLoading` is already first-load-only in practice, since
+  nothing in the hook ever sets it back to `true` after its first
+  settle, verified in `use-live-query.test.ts`).
+- `LoadingState` (`src/design-system/components/loading-state/`) is
+  the shared "not ready yet" visual: a plain centered native
+  `ActivityIndicator`, no text at all — a spinner needs no i18n
+  string, so gating a screen on it never has to add one (see
+  `kiko-design-system`'s "No new user-facing string" framing for why
+  that mattered here).
+- A screen calls `useDataReady` on every query's `isLoading` (its own
+  `useLiveQuery` calls plus `usePriceBook`'s), and returns
+  `<Screen><LoadingState testID="<screen>-loading" /></Screen>` in
+  place of its normal content while `!isReady` — a plain `if
+  (!isReady) { return (...); }` right before the real `return`, AFTER
+  every hook call (Rules of Hooks: every `useLiveQuery`/`usePriceBook`
+  call still runs unconditionally on every render; only the JSX
+  branches). Current consumers: `account-detail`, `holding-detail`,
+  `home` (net-worth headline + transaction list), `statistics` (every
+  chart), `accounts` (the accounts-list empty state) — grep
+  `useDataReady` for the current call-site list rather than trusting
+  this restated one if it drifts.
+- An `isLoading` gate is a SEPARATE concern from a screen's own async
+  UI state (e.g. statistics's rate-history backfill `loading` prop on
+  `NetWorthLine`) — the backfill tracks a later, non-blocking network
+  fetch that only starts once the screen's OWN base queries have
+  already loaded; do not fold the two into one flag.
+- A rejected query still ends `isLoading` (`use-live-query.ts` sets it
+  `false` on both the success and the error path, verified in
+  `use-live-query.test.ts`'s "clears isLoading when the first query
+  fails" case) and now also LOGS the failure
+  (`console.warn('[useLiveQuery] query failed', sql, error)`, behind a
+  justified `noConsole` OVERRIDE) — previously a rejected query set
+  `error` with no diagnostic anywhere a device log could see, and no
+  screen read `error` at all. So a `useDataReady` gate never spins
+  forever on a genuinely failed query; it just never shows the raw
+  error either (no consumer reads `error` today).
+
+`usePriceBook()` (`src/prices/use-price-book/`) returns `{ book,
+isLoading }`, not a bare `PriceBook` — every consumer destructures
+`const { book: priceBook } = usePriceBook();` (or additionally
+`isLoading: priceBookLoading` when gating). See `kiko-pricing` for the
+full contract.
+
 ## Bulk insert: chunk when row count is caller- or API-controlled
 
 SQLite (op-sqlite's bundled SQLCipher) caps bound parameters at

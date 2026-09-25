@@ -91,21 +91,28 @@ place), `removeInstrument`.
 instant)` is a CARRY-FORWARD lookup: the nearest point at or before
 `instant`'s local day, falling back to the EARLIEST point when every
 stored point is later than the requested day (mirrors
-`rateTableAt`/`earliestRateTable` above). `usePriceBook()`
-(`src/prices/use-price-book/`) wraps `allQuery` in
-`useLiveQuery(..., ['price_points'])` and is the reactive entry point
-every value reader (`holdingValueBreakdown`, `holdingValueAt`,
-`buildNetWorthSeries`, `netWorth`, `guardedNetWorth`/
+`rateTableAt`/`earliestRateTable` above).
+
+**`usePriceBook()` contract: `{ book, isLoading }`, not a bare
+`PriceBook`.** (`src/prices/use-price-book/`) wraps `allQuery` in
+`useLiveQuery(..., ['price_points'])` and threads that call's own
+`isLoading` straight through — every consumer destructures `const {
+book: priceBook } = usePriceBook();`, and a screen that gates its own
+empty state additionally destructures `isLoading: priceBookLoading`
+and folds it into its `useDataReady(...)` call (see
+`kiko-architecture`'s useLiveQuery consumer rule). This is the
+reactive entry point every value reader (`holdingValueBreakdown`,
+`holdingValueAt`, `buildNetWorthSeries`, `netWorth`, `guardedNetWorth`/
 `guardedBreakdown`, `sumByCurrency`, `buildTypeBreakdown`,
 `buildAccountContribution`) and every screen that renders a value
 (`home`, `accounts`, `account-detail` + its `HoldingCard`,
-`holding-detail`, `statistics`) threads through, same pattern as the
-existing rate-table threading; `EMPTY_PRICE_BOOK` is the default for a
-caller with none available (e.g. a test fixture), so the default
-resolves to "no price," never a crash. A snapshot export/restore
-(`src/data-transfer/snapshot/`) includes `pricePoints` alongside the
-other tables; a legacy export with no `pricePoints` key restores with
-an EMPTY `price_points` table (`?? []` defensive read in
+`holding-detail`, `statistics`, `holding-form`) threads through, same
+pattern as the existing rate-table threading; `EMPTY_PRICE_BOOK` is
+the default for a caller with none available (e.g. a test fixture), so
+the default resolves to "no price," never a crash. A snapshot
+export/restore (`src/data-transfer/snapshot/`) includes `pricePoints`
+alongside the other tables; a legacy export with no `pricePoints` key
+restores with an EMPTY `price_points` table (`?? []` defensive read in
 `restore-snapshot.ts`), never an error.
 
 Any new consumer of `priceAt` (or a similarly-shaped "nearest point in
@@ -352,24 +359,38 @@ new pinning (kiko-compliance: this host stays keyless and unpinned).
   fallback. Returns `{ metal, day, price }[]`.
 
 `src/prices/metal-refresh/refreshMetalPrices({ now, fetchImpl, ... })`
-is the scheduler, called next to `refreshRates` from both
-`useAutoSync` and `useSyncAll` (failures swallowed the same way, via
-the SAME `either(...)` wrapper each hook already uses around
-`refreshRates`). It refreshes ONLY currently held metals — scanned
-from every `metal` holding's `asMetalMeta(...).metal`, never a metal
-nobody owns — at most once per LOCAL day per metal, resolved by
-comparing `dayKeyOf(now())` against the latest stored `metal:<X>`
-`price_points.day`. A metal with no stored point yet is backfilled in
-ONE `fetchNbuMetalHistory` call spanning its earliest lot day (the
-minimum `day` across that metal's holdings' `metadata.lots`) through
-today; an already-priced metal instead takes a single SHARED
-`fetchNbuMetalsCurrent` call for just today's point, regardless of how
-many metals need it that run. Every row is accumulated in memory
-first and written through exactly ONE final `pricePointsRepo.upsertMany`
-call — a fetch failure for any held metal rejects before that call is
-ever reached, so a failed run writes NOTHING (never a partial write),
-matching the "fails closed" convention `kiko-pricing`'s "Refresh
-throttles" section already documents for rates.
+is the scheduler, run CONCURRENTLY with `refreshRates` from both
+`useAutoSync` and `useSyncAll` — `await Promise.all([refreshRates(...),
+refreshMetalPrices()])`, inside the SAME `either(...)` wrapper each
+hook already used around `refreshRates` alone. The two share no data
+dependency (`refreshMetalPrices` reads/writes `price_points` only,
+`refreshRates` reads/writes `currency_rates` only), so running them
+concurrently — rather than strictly sequentially, `refreshMetalPrices`
+not even STARTING until `refreshRates` had settled — overlaps their
+network + DB work and shrinks the app-open DB-read burst's wall-clock
+span; see `kiko-architecture`'s "op-sqlite's ONE worker thread"
+section for why that burst matters to every OTHER screen's own reads.
+It refreshes ONLY currently held metals — scanned from every `metal`
+holding's `asMetalMeta(...).metal`, never a metal nobody owns — at
+most once per LOCAL day per metal, resolved by comparing
+`dayKeyOf(now())` against the latest stored `metal:<X>`
+`price_points.day`. This is already write-minimal, verified by test
+rather than changed: **zero network calls and zero writes** when there
+are no held metal holdings at all (the `earliestDays.size === 0` early
+return, before either fetch function is ever referenced) and equally
+when every held metal already has today's point stored (`planRefresh`
+drops it from both the `backfill` and `current` work lists). A metal
+with no stored point yet is backfilled in ONE `fetchNbuMetalHistory`
+call spanning its earliest lot day (the minimum `day` across that
+metal's holdings' `metadata.lots`) through today; an already-priced
+metal instead takes a single SHARED `fetchNbuMetalsCurrent` call for
+just today's point, regardless of how many metals need it that run.
+Every row is accumulated in memory first and written through exactly
+ONE final `pricePointsRepo.upsertMany` call — a fetch failure for any
+held metal rejects before that call is ever reached, so a failed run
+writes NOTHING (never a partial write), matching the "fails closed"
+convention `kiko-pricing`'s "Refresh throttles" section already
+documents for rates.
 
 ## Later (not built yet — do not invent detail)
 
