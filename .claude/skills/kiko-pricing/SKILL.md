@@ -132,7 +132,10 @@ trusting a member list restated here) is valued through the
 entry per buy/sell, `{ day, quantityDelta, costMinorUnits }` — to
 derive the quantity and cost basis held as of an instant; `quantityAt`
 never returns below `"0"`. `pricedValueMinor(holding, book, instant)`
-(`src/holdings/priced-value/`) branches on `holding.type`:
+(`src/holdings/priced-value/`) matches on `holding.type` and dispatches to
+that type's own descriptor (`src/holdings/holding-descriptor/property-item/`,
+`.../metal/`) through the shared `pricedValueOrNull` id guard
+(`src/holdings/holding-descriptor/priced-parts/`):
 
 - `property_item` multiplies `quantityAt(...)` by the price point for
   the holding's OWN `holding:<id>` instrument (`multiplyToMinorUnits`,
@@ -149,16 +152,18 @@ never returns below `"0"`. `pricedValueMinor(holding, book, instant)`
   with `currency: 'UAH'` to match; this is a documented assumption,
   not enforced by code.
 
-Either branch returns `null` when the holding has no `id`, no valid
-`lots`/metal metadata, or no stored price point yet.
+Either descriptor's `valueMinor` returns `null` when the holding has no
+`lots`/metal metadata or no stored price point yet; `pricedValueOrNull`'s id
+guard returns `null` ahead of both when the holding has no `id`.
 
 **A priced holding with no price point values at its lots' cost basis,
-never 0** — `holdingValueBreakdown`'s `pricedBreakdown` branch
-(`src/holdings/holding-value/`) falls back to `costBasisMinorAt`
-whenever `pricedValueMinor` returns `null`. `pricedLotsOf(holding)`
-picks `asMetalMeta` vs `asPropertyMeta` before this shared cost-basis
-logic runs, so a `metal` holding's differently-shaped metadata never
-silently mis-parses into the flat stored balance. For a priced type,
+never 0** — the generic `pricedBreakdown(spec, holding, now, book)`
+(`src/holdings/holding-descriptor/priced-parts/`), called from each priced
+type's own descriptor `breakdown`, falls back to `costBasisMinorAt`
+whenever `pricedValueOrNull` returns `null`. `spec.lots(metadata)` — each
+descriptor's own `asMetalMeta`/`asPropertyMeta` parse — runs before this
+shared cost-basis logic, so a `metal` holding's differently-shaped metadata
+never silently mis-parses into the flat stored balance. For a priced type,
 `gross = net =` the resolved value and `principalOrCost` is ALWAYS the
 cost basis (even when gross also equals the cost basis on the
 no-price-point path) — the holding-detail breakdown needs cost basis
@@ -219,10 +224,11 @@ rejected client-side before save (the `sellExceeds` check) and never
 written.
 
 A metal holding's lots also surface as ledger-display rows: `metalEntries`
-(`src/holdings/derived-entries/derived-entries.ts`) turns each lot into a
-`DerivedEntry`, reusing the `'purchase'`/`'sale'` `DerivedEntryKind`s
-previously bond-only (a buy lot → `'purchase'`, a sell lot →
-`'sale'`) — do not assume those kinds mean "bond" when reading that file.
+(`src/holdings/holding-descriptor/metal/metal.descriptor.ts`, wired as
+`metalDescriptor.entries`) turns each lot into a `DerivedEntry`, reusing the
+`'purchase'`/`'sale'` `DerivedEntryKind`s previously bond-only (a buy lot →
+`'purchase'`, a sell lot → `'sale'`) — do not assume those kinds mean "bond"
+when reading that file.
 
 ## Creating and clearing a priced holding's price series
 

@@ -1,14 +1,16 @@
 import { P, match } from 'ts-pattern';
 
-import { costBasisMinorAt } from '../lots';
 import { Money } from '../../currency/money';
+import { asLoanMeta } from '../holding-metadata';
 import type { HoldingRow } from '../../db/schema';
+import { isPricedHoldingType } from '../priced-value';
 import { loanOutstandingMinorAt } from '../loan-schedule';
 import { bondDescriptor } from '../holding-descriptor/bond';
-import { isPricedHoldingType, pricedValueMinor } from '../priced-value';
+import { metalPricedSpec } from '../holding-descriptor/metal';
+import { pricedBreakdown } from '../holding-descriptor/priced-parts';
 import { termDepositDescriptor } from '../holding-descriptor/term-deposit';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
-import { asLoanMeta, asMetalMeta, asPropertyMeta } from '../holding-metadata';
+import { propertyItemPricedSpec } from '../holding-descriptor/property-item';
 import { flat, type HoldingValueBreakdown } from '../holding-descriptor/breakdown-parts';
 
 /**
@@ -25,17 +27,6 @@ export type ValuableHolding = Pick<
 > & { id?: HoldingRow['id'] };
 
 export type { HoldingValueBreakdown };
-
-// A priced holding's (`property_item`, `metal` — `isPricedHoldingType`) own
-// `lots` array, whichever metadata shape its type carries (kiko-domain:
-// `PropertyMeta`/`MetalMeta` differ in every OTHER field, but both carry
-// `lots`). `undefined` for invalid/absent metadata, so `pricedBreakdown`
-// below falls back to the flat stored balance the same way an unparsed
-// property always has.
-const pricedLotsOf = (holding: ValuableHolding) =>
-  holding.type === 'metal'
-    ? asMetalMeta(holding.metadata)?.lots
-    : asPropertyMeta(holding.metadata)?.lots;
 
 // A loan's held value is NEGATIVE (spec 5, T27): it is debt, not an asset, so
 // `holdingValue`/net-worth subtract it by simply summing every holding's own
@@ -80,34 +71,12 @@ const loanBreakdown = (
   };
 };
 
-// A priced holding's gross/net are its `pricedValueMinor` (a `PriceBook`
-// lookup), falling back to its lots' cost basis when there is no stored price
-// point yet — Review Focus 5: never 0. `principalOrCost` is ALWAYS the cost
-// basis (not the priced value), so the holding-detail breakdown can show a
-// live gain/loss against it. It never accrues interest or withholds tax, so
-// both stay zero.
-const pricedBreakdown = (
-  holding: ValuableHolding,
-  now: number,
-  book: PriceBook,
-): HoldingValueBreakdown => {
-  const lots = pricedLotsOf(holding);
-  if (lots === undefined) {
-    return flat(holding.currency, holding.balanceMinorUnits);
-  }
-  const { currency } = holding;
-  const costBasisMinor = costBasisMinorAt(lots, now);
-  const valueMinor = pricedValueMinor(holding, book, now) ?? costBasisMinor;
-  const zero = Money.of(currency, 0);
-
-  return {
-    gross: Money.of(currency, valueMinor),
-    principalOrCost: Money.of(currency, costBasisMinor),
-    interest: zero,
-    tax: zero,
-    net: Money.of(currency, valueMinor),
-  };
-};
+// A priced type's own spec, keyed off `holding.type` directly rather than a
+// registry (B7 adds one): `metal` reads the shared `metal:<XAU|...>`
+// instrument; every OTHER priced type (today only `property_item`) reads its
+// own `holding:<id>` instrument, mirroring `pricedLotsOf`'s old fallback.
+const pricedSpecFor = (type: ValuableHolding['type']) =>
+  type === 'metal' ? metalPricedSpec : propertyItemPricedSpec;
 
 export const holdingValueBreakdown = (
   holding: ValuableHolding,
@@ -115,7 +84,9 @@ export const holdingValueBreakdown = (
   book: PriceBook = EMPTY_PRICE_BOOK,
 ): HoldingValueBreakdown =>
   match(holding.type)
-    .with(P.when(isPricedHoldingType), () => pricedBreakdown(holding, now, book))
+    .with(P.when(isPricedHoldingType), () =>
+      pricedBreakdown(pricedSpecFor(holding.type), holding, now, book),
+    )
     .with('term_deposit', () => termDepositDescriptor.breakdown(holding, now, book))
     .with('bond', () => bondDescriptor.breakdown(holding, now, book))
     .with('loan', () => loanBreakdown(holding, now, book))
