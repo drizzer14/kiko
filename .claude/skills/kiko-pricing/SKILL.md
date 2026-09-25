@@ -206,9 +206,10 @@ threaded through one of these narrowed read types.
 ## Recording a lot: LotForm and the sell cost rule
 
 `src/screens/forms/lot-form/lot-form.screen.tsx` records one buy/sell
-lot against a lot-form-eligible holding (`metal` only — see the
-paragraph closing `kiko-domain`'s "Sync-only holding types are not
-manually creatable" section for that single-type check), reached from
+lot against a lot-form-eligible holding (`metal` only — see
+`holdingDetailSpecs`, `holding-detail-spec/`, and the paragraph
+closing `kiko-domain`'s "Sync-only holding types are not manually
+creatable" section for that single-type entry), reached from
 holding-detail's `addLot` footer action. It writes NO `Transaction`
 row and NO `price_points` row for either
 direction — a buy/sell only appends to `holding.metadata.lots` via

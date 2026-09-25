@@ -263,8 +263,9 @@ differently for exactly this reason.
 Which holding types record their buy/sell history through the
 dedicated Lot form (`src/screens/forms/lot-form/`, reached from
 holding-detail's `addLot` footer action) rather than a fixed one-time
-lot or a sync is a single-type check (`holding.type === 'metal'`) in
-`footerActionFor` (`holding-detail.screen.tsx`) — only `metal` is
+lot or a sync is a single-type entry (`metal`'s `footerAction: () =>
+'addLot'`, checked ahead of the priced `updateValue` branch) in
+`holdingDetailSpecs` (`holding-detail-spec/`) — only `metal` is
 eligible today. See `kiko-pricing`'s "Recording a lot: LotForm and the
 sell cost rule" section for the form itself.
 
@@ -909,8 +910,8 @@ the user records a real correction. An `'annuity'`/`'differentiated'`
 CREATE writes none — its outstanding is computed at read time from
 principal + schedule.
 
-`holding-detail.screen.tsx`: `footerActionFor` returns `'updateValue'`
-for a loan too (checked before the ledgerless fallback) — it reuses
+`holding-detail.screen.tsx`: `loan`'s `holdingDetailSpecs` entry
+(`holding-detail-spec/`) gives `'updateValue'` too — it reuses
 `PricePointForm` to write a correction onto the SAME `holding:<id>`
 manual series every schedule reads a correction from (not just
 `'none'`), with the footer button's own label swapped to "Update
@@ -918,14 +919,14 @@ outstanding" (`holdingDetail.updateOutstanding`) for that type, and
 `PricePointFormScreen` itself overriding the stack's static "Update
 Value" title to "Update Outstanding" once the holding loads as a loan.
 An `'annuity'`/`'differentiated'` loan additionally shows a "Next
-installment (`<date>`)" panel (`nextLoanInstallment` — the first
-`loanInstallments` row due on or after today's local day) with its
-principal/interest split; a `'none'` schedule and every other holding
-type render nothing there. That panel is also hidden once
-`loanOutstandingMinorAt` reads 0 at `now` (`nextLoanInstallment`'s own
-`<= 0` guard) — a fully repaid, or overpaid/over-corrected, loan shows
-no next installment even while `loanInstallments` still has future
-rows on the loan's ORIGINAL schedule.
+installment (`<date>`)" panel (the loan entry's own `nextInstallment` —
+the first `loanInstallments` row due on or after today's local day)
+with its principal/interest split; a `'none'` schedule and every other
+holding type render nothing there. That panel is also hidden once
+`loanOutstandingMinorAt` reads 0 at `now` (that same `nextInstallment`'s
+own `<= 0` guard) — a fully repaid, or overpaid/over-corrected, loan
+shows no next installment even while `loanInstallments` still has
+future rows on the loan's ORIGINAL schedule.
 
 A loan correction (the "Update outstanding" `PricePointForm` write
 above) accepts **0**, unlike every other holding type's "Update

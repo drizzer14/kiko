@@ -1,9 +1,10 @@
 import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import {
-  isLedgerlessHoldingType,
+  holdingDescriptorOrUndefined,
   isTimeExemptHoldingType,
 } from '@kiko/holdings/holding-descriptor';
+import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
@@ -17,13 +18,7 @@ import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor/bond';
 
-import {
-  loanInstallments,
-  loanOutstandingMinorAt,
-  type LoanInstallment,
-} from '../../holdings/loan-schedule';
 import {
   buildCategoryDisplayMap,
   DEFAULT_CATEGORY_KEY,
@@ -40,25 +35,22 @@ import { startOfLocalDay } from '../../dates/local-day';
 import { activeLocale } from '../../i18n/active-locale';
 import type { Currency } from '../../currency/currency';
 import EntityAmountHeader from '../entity-amount-header';
-import type { PriceBook } from '../../prices/price-book';
 import { usePriceBook } from '../../prices/use-price-book';
 import Button from '../../design-system/components/button';
 import { formatDate, formatTime } from '../../dates/format';
 import { groupByDay } from '../../transactions/group-by-day';
 import SymbolIcon from '../../design-system/components/symbol';
 import { convert, type RateTable } from '../../rates/conversion';
-import { isPricedHoldingType } from '../../holdings/priced-value';
 import MoneyText from '../../design-system/components/money-text';
 import { holdingTypeSymbol } from '../../holdings/entity-symbols';
+import type { HoldingRow, TransactionRow } from '../../db/schema';
 import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { priceAsOfCaption } from '../../prices/price-as-of-caption';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../navigation/types';
 import SummaryTable from '../../design-system/components/summary-table';
 import { buildRateTable, canConvert } from '../../rates/net-worth-view';
-import { asBondMeta, asLoanMeta } from '../../holdings/holding-metadata';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
-import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
 import CardContextMenu from '../../design-system/components/card-context-menu';
 import { transactionRowDescription } from '../../transactions/row-description';
 import { isSyncedHolding, isSyncedTransaction } from '../../holdings/deletable';
@@ -67,6 +59,12 @@ import Screen, { resolveBottomClearance } from '../../design-system/components/s
 import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
 import { type HoldingValueBreakdown, holdingValueBreakdown } from '../../holdings/holding-value';
 import { type DerivedEntry, derivedEntries, type EntryTone } from '../../holdings/derived-entries';
+
+import {
+  balanceSpec,
+  type FooterAction,
+  holdingDetailSpecOrUndefined,
+} from './holding-detail-spec';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
 
@@ -101,12 +99,12 @@ const ledgerTone = (tone: EntryTone, minorUnits: number): MoneyTextTone =>
 // types render a flat value where gross == net and these would all read zero.
 const breakdownRows = (
   breakdown: HoldingValueBreakdown,
-  type: string,
+  principalLabelKey: 'holdingDetail.principal' | 'holdingDetail.cost',
   expectedProfit: Money | null,
   t: TFunction,
 ): { label: string; money: Money; tone?: MoneyTextTone }[] => [
   {
-    label: type === 'bond' ? t('holdingDetail.cost') : t('holdingDetail.principal'),
+    label: t(principalLabelKey),
     money: breakdown.principalOrCost,
   },
   { label: t('holdingDetail.grossValue'), money: breakdown.gross },
@@ -162,101 +160,6 @@ const convertedBaseValue = (
   }
 
   return convert(breakdown.net, baseCurrency, rateTable);
-};
-
-// Which add action the screen's footer offers.
-type FooterAction = 'contribution' | 'transaction' | 'updateValue' | 'addLot' | 'none';
-
-// A term_deposit takes contributions (its own deposit lifecycle); a plain
-// holding takes a manual transaction. `metal` opens the dedicated Lot form to
-// record a buy/sell instead — checked BEFORE the priced-value guard below,
-// since `metal` is ALSO a priced type (`isPricedHoldingType`) but must never offer
-// "Update value": a metal's price comes from the SHARED `metal:<XAU|...>`
-// instrument (kiko-pricing), never a per-holding manual price point the way
-// `property_item` uses. A priced type that is NOT lot-form-eligible
-// (`property_item`) takes neither ledger action: it opens the price-point
-// form instead. Every OTHER ledgerless type (bond — see
-// `isLedgerlessHoldingType`) carries no manual ledger at all — its value
-// derives from metadata (kiko-domain) — and a synced (Monobank) holding's
-// ledger is owned by the sync, so neither offers an add action.
-// `isSyncedHolding` requires BOTH a connected synced institution AND the sync
-// key in metadata, so a disconnected former-Monobank holding counts as manual
-// again and keeps its add action. Extracted to module scope so the branch
-// chain does not count against the screen component's cognitive-complexity
-// budget.
-const footerActionFor = (
-  holding: HoldingRow | undefined,
-  account: AccountRow | undefined,
-): FooterAction => {
-  if (holding === undefined) {
-    return 'none';
-  }
-
-  if (holding.type === 'term_deposit') {
-    return 'contribution';
-  }
-
-  if (holding.type === 'metal') {
-    return 'addLot';
-  }
-
-  if (isPricedHoldingType(holding.type)) {
-    return 'updateValue';
-  }
-
-  // A loan (T28) is ledgerless (checked below) but still takes the SAME
-  // `'updateValue'` action as a priced holding — it reuses `PricePointForm`
-  // to write a correction onto its own `holding:<id>` manual series
-  // (`loanOutstandingMinorAt` — every schedule, not just `'none'`, reads a
-  // correction there when one exists). The render below swaps the button's
-  // OWN label to "Update outstanding" for this type; the navigation target
-  // is identical. Checked before the ledgerless fallback so a loan does not
-  // fall through to `'none'`.
-  if (holding.type === 'loan') {
-    return 'updateValue';
-  }
-
-  if (isLedgerlessHoldingType(holding.type) || isSyncedHolding(holding, account)) {
-    return 'none';
-  }
-
-  return 'transaction';
-};
-
-// The next upcoming amortization row for an `'annuity'`/`'differentiated'`
-// loan (T28) — the one this holding's next scheduled payment falls on,
-// picked as the first installment whose due day is on or after `now`'s own
-// LOCAL day (mirrors `priceAsOfCaption`'s day-key convention). `undefined`
-// for every other holding, for an invalid/absent `LoanMeta`, for a `'none'`
-// schedule (no installments at all — `loanInstallments` already returns
-// `[]` for it), once every installment has already come due (a fully repaid
-// loan), and once an overpaid correction has already clamped the
-// outstanding to 0 (N10a), even while `loanInstallments` still has future
-// rows on the ORIGINAL schedule.
-// Extracted to module scope for the same cognitive-complexity reason
-// `footerActionFor`/`priceAsOfCaption` are.
-const nextLoanInstallment = (
-  holding: HoldingRow | undefined,
-  book: PriceBook,
-  now: number,
-): LoanInstallment | undefined => {
-  if (holding === undefined || holding.type !== 'loan') {
-    return undefined;
-  }
-
-  const meta = asLoanMeta(holding.metadata);
-
-  if (meta === null || meta.schedule === 'none') {
-    return undefined;
-  }
-
-  if (loanOutstandingMinorAt(meta, holding.id, book, now) <= 0) {
-    return undefined;
-  }
-
-  const todayStart = startOfLocalDay(now);
-
-  return loanInstallments(meta).find((row) => row.dueDate >= todayStart);
 };
 
 // The Value header's secondary caption slot (`EntityAmountHeader`'s
@@ -518,14 +421,30 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     'accounts',
   ]);
   const account = accounts.at(0);
-  // Bonds show a whole-life expected profit line (net coupons + nominal - price).
-  const bondMeta = holding?.type === 'bond' ? asBondMeta(holding.metadata) : null;
-  const expectedProfit = bondMeta
-    ? Money.of(currency, bondExpectedProfitMinor(bondMeta, currency))
-    : null;
+  // The breakdown display this holding's type carries (`HoldingDetailSpec`,
+  // `holding-detail-spec/`) — `undefined` for a type that hides the
+  // breakdown, or one this build's registry does not recognize.
+  const breakdownDisplay = foldMap(maybe(holding), (found) =>
+    foldMap(maybe(holdingDetailSpecOrUndefined(found.type)?.breakdown), (breakdownSpec) => ({
+      principalLabelKey: breakdownSpec.principalLabelKey,
+      // Bonds carry a whole-life expected profit line (net coupons + nominal
+      // - price); every other breakdown-showing type's `expectedProfit`
+      // returns `null`.
+      expectedProfit: breakdownSpec.expectedProfit(found),
+    })),
+  );
+  const showBreakdown = breakdownDisplay != null;
+  const principalLabelKey = breakdownDisplay?.principalLabelKey ?? 'holdingDetail.principal';
+  const expectedProfit = breakdownDisplay?.expectedProfit ?? null;
   // An annuity/differentiated loan's next upcoming installment (T28) — its
   // interest/principal split shown just below the Value header.
-  const nextInstallment = nextLoanInstallment(holding, priceBook, now);
+  const nextInstallment = foldMap(maybe(holding), (found) =>
+    (holdingDetailSpecOrUndefined(found.type) ?? balanceSpec).nextInstallment(
+      found,
+      priceBook,
+      now,
+    ),
+  );
 
   // The user's main currency, and the rate table that converts into it. A
   // holding in a different currency shows a smaller converted base-currency
@@ -580,10 +499,21 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       ),
     [ledger, todayStart, t],
   );
-  const showBreakdown = holding?.type === 'term_deposit' || holding?.type === 'bond';
-  // Which add action the footer offers — or none, for a bond or a synced
-  // holding (see `footerActionFor`).
-  const footerAction = footerActionFor(holding, account);
+  // Which add action the footer offers — or none, for a bond, a synced
+  // holding, or a type this build's registry does not recognize
+  // (`HoldingDetailSpec`, `holding-detail-spec/`).
+  const footerAction: FooterAction =
+    foldMap(maybe(holding), (found) =>
+      (holdingDetailSpecOrUndefined(found.type) ?? balanceSpec).footerAction(
+        isSyncedHolding(found, account),
+      ),
+    ) ?? 'none';
+  // The footer's own label for `'updateValue'`: a debt-side type (loan) reads
+  // "Update outstanding"; every other priced type reads "Update value". Reads
+  // the SAME descriptor `side` net-worth math keys off, so this label and the
+  // holding's own asset/debt classification can never diverge.
+  const isDebtHolding =
+    foldMap(maybe(holding?.type), holdingDescriptorOrUndefined)?.side === 'debt';
   // The ledger FlatList is a direct child of `Screen`'s SafeAreaView under
   // `bleedTop` (no `content` wrapper — that is what lets iOS track it for the
   // large-title collapse), so this screen owns the FlatList's bottom padding
@@ -663,11 +593,13 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                   result section now reuse the LAYOUT of, never these
                   value/percent/tax COLUMNS themselves. */}
               <SummaryTable
-                rows={breakdownRows(breakdown, holding.type, expectedProfit, t).map((detail) => ({
-                  key: detail.label,
-                  label: detail.label,
-                  value: <MoneyText money={detail.money} tone={detail.tone} />,
-                }))}
+                rows={breakdownRows(breakdown, principalLabelKey, expectedProfit, t).map(
+                  (detail) => ({
+                    key: detail.label,
+                    label: detail.label,
+                    value: <MoneyText money={detail.money} tone={detail.tone} />,
+                  }),
+                )}
               />
             </Box>
           )}
@@ -782,11 +714,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           ))
           .with('updateValue', () => (
             <Button onPress={() => navigation.navigate('PricePointForm', { holdingId })}>
-              {t(
-                holding?.type === 'loan'
-                  ? 'holdingDetail.updateOutstanding'
-                  : 'holdingDetail.updateValue',
-              )}
+              {t(isDebtHolding ? 'holdingDetail.updateOutstanding' : 'holdingDetail.updateValue')}
             </Button>
           ))
           .with('addLot', () => (
