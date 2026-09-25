@@ -47,6 +47,9 @@ orchestrator pre-write-guard-c7 (term_0d9b42d3-1821-46bd-9bc5-1d53c1d4e2ce). Rul
 Feat: B1b afaa178+ceed243 (migration 0040 cleanup). USER: P-NOWORK priority (no request/query without data; spinner 200 ms delay;
 device timing runs approved in upgrade order); REMOVE "price as of" caption, always today's rate, silent newest-rate fallback.
 USER SCOPE: P5 (broker/shares/EODHD) DEFERRED to a later release; LIGHTER REVIEWS (one per phase/group, Critical/Important only).
+2026-09-26 00:40: USER wants a FRESH BUILD on the iPhone at 09:30 (pending strings ALLOWED in this device build, review on phone).
+Feat session 6 sends the deployable sha by 08:45 (P-NOWORK fix round incl. C1 empty net-worth for UAH-only users + PROP-UX, one
+review). Coordinator one-shot cron 08:50 prepares device-deploy + kiko:ops install. Timing runs skipped (phone locked).
 1. When the hotfix session sends the bump sha: `git -C ~/orca/workspaces/pff-ios/device-deploy checkout -q --detach <sha>`,
    then kiko:ops archives Release / KikoDistribution there: FORCE_BUNDLING=1, clean build (rm ios/build + pod install
    if needed), NON-beta Xcode (check DTXcodeBuild), move the .xcarchive to ~/Library/Developer/Xcode/Archives/<date>/,
