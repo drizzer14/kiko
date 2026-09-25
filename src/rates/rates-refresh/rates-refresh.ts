@@ -1,4 +1,5 @@
 import { ratesRepo } from '@kiko/rates/repo';
+import either, { bifold, isLeft } from 'fnts/either';
 
 import type { RateEntry } from '../conversion';
 import { fetchCryptoPrices } from '../coingecko';
@@ -180,12 +181,14 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<void> => {
   // (`pairSource`/`buildPairs` above).
   let fiatSource: 'monobank' | 'nbu' = 'monobank';
   const loadFiatWithFallback = async (): Promise<RateEntry[]> => {
-    try {
-      return await withRetry(loadFiat, sleep);
-    } catch {
+    const attempt = await either<unknown, RateEntry[]>(() => withRetry(loadFiat, sleep));
+
+    if (isLeft(attempt)) {
       fiatSource = 'nbu';
       return loadNbuFiat();
     }
+
+    return bifold(attempt);
   };
 
   // Settle the fiat (with its NBU fallback) and crypto pipelines
