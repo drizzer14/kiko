@@ -279,18 +279,21 @@ const metalEntries = (holding: IdentifiedHolding, now: number, t: TFunction): De
   });
 };
 
-const entriesForType = (holding: IdentifiedHolding, now: number, t: TFunction): DerivedEntry[] => {
-  if (holding.type === 'term_deposit') {
-    return depositEntries(holding, now, t);
-  }
-  if (holding.type === 'bond') {
-    return bondEntries(holding, now, t);
-  }
-  if (holding.type === 'metal') {
-    return metalEntries(holding, now, t);
-  }
-  return [];
-};
+const entriesForType = (holding: IdentifiedHolding, now: number, t: TFunction): DerivedEntry[] =>
+  match(holding)
+    .with({ type: 'term_deposit' }, (deposit) => depositEntries(deposit, now, t))
+    .with({ type: 'bond' }, (bond) => bondEntries(bond, now, t))
+    .with({ type: 'metal' }, (metal) => metalEntries(metal, now, t))
+    .with(
+      { type: 'card' },
+      { type: 'cash' },
+      { type: 'crypto_asset' },
+      { type: 'jar' },
+      { type: 'property_item' },
+      { type: 'loan' },
+      () => [],
+    )
+    .exhaustive();
 
 // The derived lifecycle entries for a holding, sorted oldest-first. Entries that
 // share an instant (an accrual and its two withholding lines and any
