@@ -33,6 +33,13 @@ function createTempDirectory(prefix: string): string {
   return directory;
 }
 
+// The guard's own `runSemgrep` always sends the SAME 7 fixed flag/value
+// tokens before any target ('--metrics off --quiet --json --disable-nosem
+// --config <rulesPath>') — `shift 7` drops exactly those, leaving only the
+// requested targets in "$@", which every stub below reports back as
+// `paths.scanned` so the guard's own "target missing from paths.scanned"
+// fail-closed check never fires against a stub that never claimed to have
+// scanned anything.
 function writeSemgrepStub(directory: string): string {
   const stubPath = join(directory, 'semgrep-stub.sh');
   writeFileSync(
@@ -45,7 +52,12 @@ function writeSemgrepStub(directory: string): string {
       'if [ -n "$STUB_SLEEP" ]; then',
       '  sleep "$STUB_SLEEP"',
       'fi',
-      'printf \'%s\' \'{"results":[],"errors":[],"paths":{"scanned":[]}}\'',
+      'shift 7',
+      'scannedParts=""',
+      'for target in "$@"; do',
+      '  if [ -z "$scannedParts" ]; then scannedParts="\\"$target\\""; else scannedParts="$scannedParts,\\"$target\\""; fi',
+      'done',
+      'printf \'{"results":[],"errors":[],"paths":{"scanned":[%s]}}\' "$scannedParts"',
       'exitCode="$STUB_EXIT"',
       'if [ -z "$exitCode" ]; then',
       '  exitCode=0',
@@ -78,6 +90,7 @@ function writeCapturingSemgrepStub(directory: string, captureDirectory: string):
     stubPath,
     [
       '#!/usr/bin/env bash',
+      'shift 7',
       'for target in "$@"; do :; done',
       'pwd > "$KIKO_PREWRITE_TEST_CAPTURE_DIR/cwd.txt"',
       'printf \'%s\' "$target" > "$KIKO_PREWRITE_TEST_CAPTURE_DIR/argv.txt"',
@@ -90,7 +103,11 @@ function writeCapturingSemgrepStub(directory: string, captureDirectory: string):
       '  : > "$KIKO_PREWRITE_TEST_CAPTURE_DIR/before.txt"',
       '  printf \'no\' > "$KIKO_PREWRITE_TEST_CAPTURE_DIR/before-exists.txt"',
       'fi',
-      'printf \'%s\' \'{"results":[],"errors":[],"paths":{"scanned":[]}}\'',
+      'scannedParts=""',
+      'for target in "$@"; do',
+      '  if [ -z "$scannedParts" ]; then scannedParts="\\"$target\\""; else scannedParts="$scannedParts,\\"$target\\""; fi',
+      'done',
+      'printf \'{"results":[],"errors":[],"paths":{"scanned":[%s]}}\' "$scannedParts"',
       'exit 0',
       '',
     ].join('\n'),
@@ -98,6 +115,70 @@ function writeCapturingSemgrepStub(directory: string, captureDirectory: string):
   chmodSync(stubPath, 0o755);
   mkdirSync(captureDirectory, { recursive: true });
   return stubPath;
+}
+
+// A stub for the Semgrep-findings tests below: it combines the raw Semgrep
+// result objects supplied via the `STUB_RESULTS_BEFORE`/`STUB_RESULTS_AFTER`
+// env vars (JSON arrays), keeps only the ones whose own `path` was actually
+// among the requested targets (mirroring real Semgrep, which only ever
+// reports a result for a target it was pointed at), and reports those
+// targets back as `paths.scanned`. When `KIKO_PREWRITE_TEST_COUNTER_FILE`/
+// `KIKO_PREWRITE_TEST_ARGV_FILE` are set, it also records one call (an
+// appended line) and the exact target list the guard passed it, so a test
+// can assert the guard spent exactly ONE Semgrep process on a given edit.
+function writeFindingsStub(directory: string): string {
+  const stubPath = join(directory, 'semgrep-findings-stub.js');
+  writeFileSync(
+    stubPath,
+    [
+      '#!/usr/bin/env node',
+      'const fs = require("fs");',
+      'const targets = process.argv.slice(9);',
+      'const before = JSON.parse(process.env.STUB_RESULTS_BEFORE || "[]");',
+      'const after = JSON.parse(process.env.STUB_RESULTS_AFTER || "[]");',
+      'const results = before',
+      '  .concat(after)',
+      '  .filter((result) => targets.includes(result.path));',
+      'if (process.env.KIKO_PREWRITE_TEST_COUNTER_FILE) {',
+      '  fs.appendFileSync(process.env.KIKO_PREWRITE_TEST_COUNTER_FILE, "1\\n");',
+      '}',
+      'if (process.env.KIKO_PREWRITE_TEST_ARGV_FILE) {',
+      '  fs.writeFileSync(process.env.KIKO_PREWRITE_TEST_ARGV_FILE, JSON.stringify(targets));',
+      '}',
+      'process.stdout.write(JSON.stringify({ results, errors: [], paths: { scanned: targets } }));',
+      'process.exitCode = process.env.STUB_EXIT ? Number(process.env.STUB_EXIT) : 0;',
+      '',
+    ].join('\n'),
+  );
+  chmodSync(stubPath, 0o755);
+  return stubPath;
+}
+
+// Builds one raw Semgrep `results[]` entry the way this Semgrep version
+// actually shapes it: `check_id` carries the loaded config's own dotted
+// prefix (`rules.<rule-id>`), and `extra.lines` is always the fixed literal
+// "requires login" — never the real matched text — so a test that expects
+// the guard to slice the matched text from `start.offset`/`end.offset`
+// instead can rely on `extra.lines` never containing the right answer.
+function rawResult(options: {
+  checkId: string;
+  path: string;
+  line: number;
+  offsetStart: number;
+  offsetEnd: number;
+  fix?: string;
+  skill?: string;
+}): Record<string, unknown> {
+  const metadata: Record<string, string> = {};
+  if (options.fix !== undefined) metadata.fix = options.fix;
+  if (options.skill !== undefined) metadata.skill = options.skill;
+  return {
+    check_id: options.checkId,
+    path: options.path,
+    start: { line: options.line, offset: options.offsetStart },
+    end: { offset: options.offsetEnd },
+    extra: { lines: 'requires login', metadata },
+  };
 }
 
 function payloadFor(toolName: string, toolInput: Record<string, unknown>): string {
@@ -572,5 +653,369 @@ describe('rebuildContents (BEFORE/AFTER reconstruction for Write/Edit/MultiEdit)
     // mkdtemp scratch tree still exists — the guard removes it in its own
     // `finally` before this test process gets to run any assertion.
     expect(readFileSync(join(captureDirectory, 'before-exists.txt'), 'utf8')).toBe('yes');
+  });
+});
+
+describe('Semgrep pass + new-findings-only diff', () => {
+  it('allows when the only finding already existed on a shifted line', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeFindingsStub(project);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'example.ts');
+    const beforeContent = 'switch (x) {\n};\n';
+    const afterContent = '\n\n\n\nswitch (x) {\n};\n';
+    writeFileSync(targetFile, beforeContent);
+    const needle = 'switch (x) {';
+    const afterOffset = afterContent.indexOf(needle);
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: afterContent }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        STUB_RESULTS_BEFORE: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'before/src/example.ts',
+            line: 5,
+            offsetStart: 0,
+            offsetEnd: needle.length,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+        ]),
+        STUB_RESULTS_AFTER: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'after/src/example.ts',
+            line: 9,
+            offsetStart: afterOffset,
+            offsetEnd: afterOffset + needle.length,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+        ]),
+      }),
+    );
+
+    expect(result.status).toBe(0);
+  });
+
+  it('denies a second textually identical violation (occurrence index)', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeFindingsStub(project);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'example.ts');
+    const beforeContent = 'switch (x) {\n};\n';
+    const afterContent = 'switch (x) {\n};\nswitch (x) {\n};\n';
+    writeFileSync(targetFile, beforeContent);
+    const needle = 'switch (x) {';
+    const firstOffset = afterContent.indexOf(needle);
+    const secondOffset = afterContent.indexOf(needle, firstOffset + needle.length);
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: afterContent }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        STUB_RESULTS_BEFORE: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'before/src/example.ts',
+            line: 1,
+            offsetStart: 0,
+            offsetEnd: needle.length,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+        ]),
+        STUB_RESULTS_AFTER: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'after/src/example.ts',
+            line: 1,
+            offsetStart: firstOffset,
+            offsetEnd: firstOffset + needle.length,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'after/src/example.ts',
+            line: 3,
+            offsetStart: secondOffset,
+            offsetEnd: secondOffset + needle.length,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+        ]),
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('example.ts:3');
+    expect(reason).not.toContain('example.ts:1');
+  });
+
+  it('treats a whitespace-only reformat of a finding as pre-existing', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeFindingsStub(project);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'example.ts');
+    const beforeContent = 'switch (x)  {\n};\n';
+    const afterContent = 'switch (x) {\n};\n';
+    writeFileSync(targetFile, beforeContent);
+    const beforeNeedle = 'switch (x)  {';
+    const afterNeedle = 'switch (x) {';
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: afterContent }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        STUB_RESULTS_BEFORE: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'before/src/example.ts',
+            line: 1,
+            offsetStart: 0,
+            offsetEnd: beforeNeedle.length,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+        ]),
+        STUB_RESULTS_AFTER: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'after/src/example.ts',
+            line: 1,
+            offsetStart: 0,
+            offsetEnd: afterNeedle.length,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+        ]),
+      }),
+    );
+
+    expect(result.status).toBe(0);
+  });
+
+  it('strips the config-path prefix from check_id', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeFindingsStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'new-file.ts');
+    const afterContent = 'switch (x) {\n};\n';
+    const needle = 'switch (x) {';
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: afterContent }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        STUB_RESULTS_AFTER: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'after/src/new-file.ts',
+            line: 1,
+            offsetStart: 0,
+            offsetEnd: needle.length,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+        ]),
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-no-switch');
+    expect(reason).not.toContain('rules.kiko-no-switch');
+  });
+
+  it('slices matched text from offsets, not extra.lines', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeFindingsStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'new-file.ts');
+    const afterContent = 'const someActualCode = 1;\n';
+    const needle = 'someActualCode';
+    const offsetStart = afterContent.indexOf(needle);
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: afterContent }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        STUB_RESULTS_AFTER: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-history-id-comment',
+            path: 'after/src/new-file.ts',
+            line: 1,
+            offsetStart,
+            offsetEnd: offsetStart + needle.length,
+            fix: 'remove the task id from the comment',
+            skill: 'kiko-code-style › No history id comment',
+          }),
+        ]),
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('someActualCode');
+    expect(reason).not.toContain('requires login');
+  });
+
+  it('runs one semgrep process, AFTER only, when AFTER is clean', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const stub = writeFindingsStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'new-file.ts');
+    const counterFile = join(captureDirectory, 'counter.txt');
+    const argvFile = join(captureDirectory, 'argv.json');
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: 'export const value = 1;\n' }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        STUB_RESULTS_AFTER: '[]',
+        KIKO_PREWRITE_TEST_COUNTER_FILE: counterFile,
+        KIKO_PREWRITE_TEST_ARGV_FILE: argvFile,
+      }),
+    );
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(counterFile, 'utf8').trim().split('\n')).toEqual(['1']);
+    expect(JSON.parse(readFileSync(argvFile, 'utf8'))).toEqual(['after/src/new-file.ts']);
+  });
+
+  it('runs one semgrep process over both trees when AFTER has findings', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const stub = writeFindingsStub(project);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'example.ts');
+    writeFileSync(targetFile, 'const value = 0;\n');
+    const counterFile = join(captureDirectory, 'counter.txt');
+    const argvFile = join(captureDirectory, 'argv.json');
+    const afterContent = 'const someActualCode = 1;\n';
+    const needle = 'someActualCode';
+    const offsetStart = afterContent.indexOf(needle);
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: afterContent }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        STUB_RESULTS_BEFORE: '[]',
+        STUB_RESULTS_AFTER: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-history-id-comment',
+            path: 'after/src/example.ts',
+            line: 1,
+            offsetStart,
+            offsetEnd: offsetStart + needle.length,
+            fix: 'remove the task id from the comment',
+            skill: 'kiko-code-style › No history id comment',
+          }),
+        ]),
+        KIKO_PREWRITE_TEST_COUNTER_FILE: counterFile,
+        KIKO_PREWRITE_TEST_ARGV_FILE: argvFile,
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    expect(readFileSync(counterFile, 'utf8').trim().split('\n')).toEqual(['1']);
+    expect(JSON.parse(readFileSync(argvFile, 'utf8'))).toEqual([
+      'before/src/example.ts',
+      'after/src/example.ts',
+    ]);
+  });
+
+  it('deny reason lists rule id, AFTER line, matched text, fix and skill', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeFindingsStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'new-file.ts');
+    const afterContent = 'const someActualCode = 1;\n';
+    const needle = 'someActualCode';
+    const offsetStart = afterContent.indexOf(needle);
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: afterContent }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        STUB_RESULTS_AFTER: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-history-id-comment',
+            path: 'after/src/new-file.ts',
+            line: 42,
+            offsetStart,
+            offsetEnd: offsetStart + needle.length,
+            fix: 'remove the task id from the comment',
+            skill: 'kiko-code-style › No history id comment',
+          }),
+        ]),
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-no-history-id-comment');
+    expect(reason).toContain('42');
+    expect(reason).toContain('someActualCode');
+    expect(reason).toContain('remove the task id from the comment');
+    expect(reason).toContain('kiko-code-style › No history id comment');
+  });
+
+  it('denies when a finding lacks metadata.skill', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeFindingsStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'new-file.ts');
+    const afterContent = 'const someActualCode = 1;\n';
+    const needle = 'someActualCode';
+    const offsetStart = afterContent.indexOf(needle);
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: afterContent }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        STUB_RESULTS_AFTER: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-undocumented-rule',
+            path: 'after/src/new-file.ts',
+            line: 1,
+            offsetStart,
+            offsetEnd: offsetStart + needle.length,
+            fix: 'do the right thing',
+          }),
+        ]),
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('metadata.skill');
   });
 });

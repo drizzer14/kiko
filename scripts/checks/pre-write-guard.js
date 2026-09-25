@@ -9,16 +9,18 @@
 // docs/superpowers/specs/2026-09-25-pre-write-guard-design.md for the full
 // design this file implements incrementally.
 //
-// This first pass wires the shared shape every later task builds on: read
-// the payload, resolve `file_path` against CLAUDE_PROJECT_DIR (through a
-// symlink on either side), gate on file scope, mirror the before/after
-// content into a scratch tree, and run ONE Semgrep pass against it.
-// `rebuildContents` rebuilds Write/Edit/MultiEdit; real Semgrep finding
-// extraction (parsing `results` into Finding[]) and the new-findings-only
-// comparison remain stubs here and land in later tasks. Fail closed throughout:
-// the top-level try/catch below turns ANY throw — a malformed payload, a
-// missing/unreadable rules file, an unexpected Semgrep exit code, or an
-// internal timeout killing a child — into a deny, never a silent allow.
+// `rebuildContents` rebuilds Write/Edit/MultiEdit into the BEFORE/AFTER pair;
+// `runSemgrep` runs ONE Semgrep process over the trees that can possibly
+// matter (an empty BEFORE tree is skipped — it can have no findings, so
+// scanning it would only waste the one process this hook is allowed);
+// `findingKeys`/`newFindings` diff the two finding sets so only a finding the
+// edit ADDS ever blocks the write, never one already on disk. Override syntax
+// (a rule-specific `nosemgrep`/`kiko-override` comment that exempts a finding)
+// is a later task. Fail closed throughout: the top-level try/catch below
+// turns ANY throw — a malformed payload, a missing/unreadable rules file, an
+// unexpected Semgrep exit code, a finding whose rule is missing its required
+// `metadata.skill`, or an internal timeout killing a child — into a deny,
+// never a silent allow.
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -184,20 +186,60 @@ function writeMirroredTrees(relativePath, beforeText, afterText) {
   return { temporaryRoot, beforePath, afterPath };
 }
 
-// Runs Semgrep against the requested trees ('after', or ['before','after']
-// for a later task's new-findings comparison) with the pre-write rule set.
-// The child runs with cwd = temporaryRoot and is given targets RELATIVE to
-// it ('after/<rel>', not an absolute path) — this is what lets a
-// path-keyed rule (for example rule 9's nav-layer allowlist, or rule 12's
-// screen-folder rule) evaluate against the file's real repo-relative path
-// instead of a throwaway scratch path, and lets both trees stay reachable
-// from the SAME cwd even though this task only ever scans 'after'
-// (the BEFORE-tree pass is a later task's new-findings comparison). A
-// missing/unreadable rules file, a Semgrep exit code other than 0 (clean)
-// or 1 (findings), or a child killed by its own timeout all throw — caught
-// by the top-level fail-closed handler below. STUB: parsing `results` into
-// Finding[] lands in a later task; this pass only proves the child-process
-// contract (rules readability, exit-code handling, the timeout budget).
+// Strips the enclosing config's own path segments from a Semgrep
+// `check_id` — this Semgrep version reports a rule loaded from
+// `rules/semgrep-prewrite.yml` as `rules.<rule-id>` (a dotted prefix built
+// from the config file's own basename), not the bare rule id every other
+// place in this codebase names it (fixtures, `NODE_RULES`, the deny
+// message). Only the LAST dot-separated segment is ever the rule id itself,
+// since a rule id is hyphen-separated, never dotted.
+function stripConfigPathPrefix(checkId) {
+  const segments = checkId.split('.');
+  return segments[segments.length - 1];
+}
+
+// Builds one Finding from a raw Semgrep JSON result. `matchedText` is
+// ALWAYS sliced from the real mirrored source file by byte offset
+// (`start.offset`/`end.offset`) — this Semgrep version reports
+// `extra.lines` as the fixed literal string "requires login" regardless of
+// the actual match, so it can never be trusted as the matched text. Fails
+// closed (throws, caught by `run`'s top-level fail-closed handler) when a
+// result's metadata is missing the `skill` pointer every pre-write rule is
+// required to carry: a rule that would deny a write without pointing the
+// agent at the skill section explaining why is a guard bug, not a rule
+// this hook can safely enforce.
+function buildFinding(temporaryRoot, result) {
+  const tree = result.path.split('/')[0];
+  const sourceText = fs.readFileSync(path.join(temporaryRoot, result.path), 'utf8');
+  const matchedText = sourceText.slice(result.start.offset, result.end.offset);
+  const metadata = result.extra?.metadata || {};
+  if (!metadata.skill) {
+    throw new Error(`semgrep rule ${result.check_id} is missing metadata.skill`);
+  }
+  return {
+    ruleId: stripConfigPathPrefix(result.check_id),
+    tree,
+    line: result.start.line,
+    matchedText,
+    fix: metadata.fix,
+    skill: metadata.skill,
+  };
+}
+
+// Runs Semgrep against the requested trees ('after', or ['before','after'])
+// with the pre-write rule set. The child runs with cwd = temporaryRoot and
+// is given targets RELATIVE to it ('after/<rel>', not an absolute path) —
+// this is what lets a path-keyed rule (for example rule 9's nav-layer
+// allowlist, or rule 12's screen-folder rule) evaluate against the file's
+// real repo-relative path instead of a throwaway scratch path, and lets
+// both trees stay reachable from the SAME cwd in one process when both are
+// requested. A missing/unreadable rules file, a Semgrep exit code other
+// than 0 (clean) or 1 (findings), a non-empty `errors[]` (Semgrep's own
+// signal that it could not evaluate a rule), a target missing from
+// `paths.scanned` (Semgrep silently skipped a target — a `paths.exclude`
+// pattern or a `.semgrepignore` entry would otherwise let a violation
+// through unseen), or a child killed by its own timeout all throw — caught
+// by the top-level fail-closed handler below.
 function runSemgrep(temporaryRoot, relativePath, trees) {
   const rulesPath =
     process.env.KIKO_PREWRITE_RULES || path.join(ROOT, 'rules', 'semgrep-prewrite.yml');
@@ -207,11 +249,15 @@ function runSemgrep(temporaryRoot, relativePath, trees) {
   const posixRelativePath = relativePath.split(path.sep).join('/');
   const targets = trees.map((tree) => `${tree}/${posixRelativePath}`);
 
-  const childResult = spawnSync(semgrepBinary, ['--config', rulesPath, '--json', ...targets], {
-    cwd: temporaryRoot,
-    encoding: 'utf8',
-    timeout: remainingBudget(),
-  });
+  const childResult = spawnSync(
+    semgrepBinary,
+    ['--metrics', 'off', '--quiet', '--json', '--disable-nosem', '--config', rulesPath, ...targets],
+    {
+      cwd: temporaryRoot,
+      encoding: 'utf8',
+      timeout: remainingBudget(),
+    },
+  );
 
   if (childResult.error) throw childResult.error;
   if (childResult.signal !== null) {
@@ -221,7 +267,85 @@ function runSemgrep(temporaryRoot, relativePath, trees) {
     throw new Error(`semgrep exited ${childResult.status}`);
   }
 
-  return [];
+  const parsed = JSON.parse(childResult.stdout);
+  const errors = parsed.errors || [];
+  if (errors.length > 0) {
+    throw new Error(`semgrep reported ${errors.length} error(s): ${JSON.stringify(errors)}`);
+  }
+
+  const scannedTargets = new Set(parsed.paths?.scanned || []);
+  const unscannedTarget = targets.find((target) => !scannedTargets.has(target));
+  if (unscannedTarget) {
+    throw new Error(`semgrep did not scan ${unscannedTarget}`);
+  }
+
+  return (parsed.results || []).map((result) => buildFinding(temporaryRoot, result));
+}
+
+// Collapses every whitespace run in `text` to a single space and trims the
+// ends, so a whitespace-only reformat of an existing violation (for example
+// `switch (x)  {` becoming `switch (x) {`) never reads as a new one — see
+// `findingKeys`.
+function normalizeText(text) {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+// Keys every finding on (rule id, normalized matched text, occurrence), per
+// the design spec's "New-findings-only comparison" section: line number is
+// deliberately excluded, so an edit earlier in the file that shifts every
+// later line never turns an untouched violation into a "new" one, and
+// `occurrence` — the finding's 1-based rank among findings sharing the same
+// rule+text pair, in file order — is what still lets two textually
+// identical violations of the same rule match pairwise by position instead
+// of collapsing into a single key.
+function findingKeys(findings) {
+  const occurrenceCounts = new Map();
+  const keyedFindings = new Map();
+  for (const finding of findings) {
+    const baseKey = `${finding.ruleId}\u0000${normalizeText(finding.matchedText)}`;
+    const occurrence = (occurrenceCounts.get(baseKey) || 0) + 1;
+    occurrenceCounts.set(baseKey, occurrence);
+    keyedFindings.set(`${baseKey}\u0000${occurrence}`, finding);
+  }
+  return keyedFindings;
+}
+
+// A finding the proposed edit ADDS: present in the AFTER key set, absent
+// from the BEFORE one. A pre-existing violation (present in both) is never
+// reported here — it stays visible to check:rules/check:all, which this
+// hook does not affect.
+function newFindings(beforeFindings, afterFindings) {
+  const beforeKeys = findingKeys(beforeFindings);
+  const afterKeys = findingKeys(afterFindings);
+  const added = [];
+  for (const [key, finding] of afterKeys) {
+    if (!beforeKeys.has(key)) added.push(finding);
+  }
+  return added;
+}
+
+// One finding's contribution to the deny reason, in the same five-part
+// WHAT/DETAILS/WHY/HOW/DO-NOT shape `_lib.sh`'s `print_block` uses for
+// every other check wrapper's stderr output — adapted to plain text inside
+// a single JSON string field, since a PreToolUse deny reason is not a block
+// written to stderr.
+function buildFindingBlock(relativePath, finding) {
+  return [
+    `WHAT FAILED:    rule ${finding.ruleId} at ${relativePath}:${finding.line}`,
+    `DETAILS:        matched text: ${JSON.stringify(finding.matchedText)}`,
+    'WHY IT MATTERS: this is a NEW violation the edit would add; a pre-existing one is left for check:rules to catch',
+    `HOW TO FIX:     ${finding.fix}`,
+    `DO NOT:         suppress this without a justified override; see ${finding.skill}`,
+  ].join('\n');
+}
+
+// The full PreToolUse deny reason for every new finding the proposed edit
+// would add, in AFTER-file order.
+function denyReason(relativePath, findings) {
+  const header = `pre-write guard: ${relativePath} would add ${findings.length} new violation(s)`;
+  return [header, ...findings.map((finding) => buildFindingBlock(relativePath, finding))].join(
+    '\n\n',
+  );
 }
 
 function buildDenyPayload(reason) {
@@ -263,13 +387,21 @@ function run() {
     const mirrored = writeMirroredTrees(relativePath, beforeText, afterText);
     temporaryRoot = mirrored.temporaryRoot;
 
-    const findings = runSemgrep(temporaryRoot, relativePath, ['after']);
-    if (findings.length === 0) {
+    // An empty BEFORE tree can have no findings at all — skip scanning it
+    // and spend the ONE Semgrep process this hook budgets for on the AFTER
+    // tree alone, which is trivially every new finding there is.
+    const trees = beforeText === '' ? ['after'] : ['before', 'after'];
+    const rawFindings = runSemgrep(temporaryRoot, relativePath, trees);
+    const beforeFindings = rawFindings.filter((finding) => finding.tree === 'before');
+    const afterFindings = rawFindings.filter((finding) => finding.tree === 'after');
+    const addedFindings = newFindings(beforeFindings, afterFindings);
+
+    if (addedFindings.length === 0) {
       emitAllow();
       return;
     }
 
-    emitDeny(`pre-write guard found ${findings.length} new violation(s) in ${relativePath}`);
+    emitDeny(denyReason(relativePath, addedFindings));
   } catch (error) {
     emitDeny(`pre-write guard could not check this edit: ${error.message}`);
   } finally {
