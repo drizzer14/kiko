@@ -37,3 +37,14 @@ export const cryptoSymbolName = 'bitcoinsign.circle';
 // 7. A test id inside a STRING (not a comment) — this rule only reads
 // comment text, so a `testID` value is never in scope.
 export const rowTestId = 'transaction-row-T1';
+
+// 8. A `//` inside a STRING literal, not a real line comment — the
+// line-comment arm's leading same-line-string skip must not open a match on
+// a `//` still inside an unclosed quote.
+export const oddNote = 'foo // T12';
+
+// 9. A `/*` inside a STRING literal (a glob or a MIME wildcard), not a real
+// block-comment opener — the block-comment arm's same skip must not open a
+// match there either.
+export const globPattern = 'src/**/*.ts';
+export const mimeWildcard = '*/*';
