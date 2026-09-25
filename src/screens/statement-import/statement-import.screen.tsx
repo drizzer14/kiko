@@ -637,15 +637,15 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     }
   };
 
-  // `Screen`'s own `footer` prop treats ANY defined node (even one that
-  // itself renders null) as "has a footer" and reserves the clearance for
-  // it — so this stays `undefined` rather than an always-defined element,
-  // exactly mirroring the FORMER inline `input !== undefined` gate below.
   const isLoadingFile = match(loadState)
     .with({ kind: 'loading' }, () => true)
     .with({ kind: 'ready' }, { kind: 'unreadable' }, () => false)
     .exhaustive();
 
+  // `Screen`'s own `footer` prop treats ANY defined node (even one that
+  // itself renders null) as "has a footer" and reserves the clearance for
+  // it — so this stays `undefined` rather than an always-defined element,
+  // exactly mirroring the FORMER inline `input !== undefined` gate below.
   const footer =
     stats !== undefined || input !== undefined ? (
       <StatementImportFooter
