@@ -1345,58 +1345,58 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     setIcon(holding.icon);
     setColor(holding.color);
 
-    if (holding.type === 'term_deposit') {
-      seedTermDepositFields(holding, {
-        setContributions,
-        setNextContributionId: (id) => {
-          nextContributionId.current = id;
+    match(holding)
+      .with({ type: 'term_deposit' }, (termDepositHolding) => {
+        seedTermDepositFields(termDepositHolding, {
+          setContributions,
+          setNextContributionId: (id) => {
+            nextContributionId.current = id;
+          },
+          setAnnualRate,
+          setTermMonths,
+          setRecap,
+          setCompounding,
+        });
+      })
+      .with({ type: 'bond' }, (bondHolding) => {
+        seedBondMetaFields(bondHolding, {
+          setQuantity,
+          setFaceValue,
+          setCouponPct,
+          setPurchasePrice,
+          setPurchaseDate,
+          setMaturityDate,
+          setBondKind,
+          setCouponFrequency,
+          setIsin,
+          setBondMode,
+        });
+      })
+      .with({ type: 'property_item' }, (propertyHolding) => {
+        seedPropertyFields(propertyHolding, { setPropertyCategory, setPropertyLots });
+      })
+      .with({ type: 'metal' }, (metalHolding) => {
+        seedMetalFields(metalHolding, {
+          setMetalMetal,
+          setMetalForm,
+          setMetalUnit,
+          setMetalPurity,
+          setMetalLots,
+        });
+      })
+      .with({ type: 'loan' }, (loanHolding) => {
+        loanFields.seed(loanHolding);
+      })
+      .with(
+        { type: 'card' },
+        { type: 'cash' },
+        { type: 'crypto_asset' },
+        { type: 'jar' },
+        (rest) => {
+          setOpeningBalance(groupAmount(majorAmountText(rest.currency, rest.balanceMinorUnits)));
         },
-        setAnnualRate,
-        setTermMonths,
-        setRecap,
-        setCompounding,
-      });
-      return;
-    }
-
-    if (holding.type === 'bond') {
-      seedBondMetaFields(holding, {
-        setQuantity,
-        setFaceValue,
-        setCouponPct,
-        setPurchasePrice,
-        setPurchaseDate,
-        setMaturityDate,
-        setBondKind,
-        setCouponFrequency,
-        setIsin,
-        setBondMode,
-      });
-      return;
-    }
-
-    if (holding.type === 'property_item') {
-      seedPropertyFields(holding, { setPropertyCategory, setPropertyLots });
-      return;
-    }
-
-    if (holding.type === 'metal') {
-      seedMetalFields(holding, {
-        setMetalMetal,
-        setMetalForm,
-        setMetalUnit,
-        setMetalPurity,
-        setMetalLots,
-      });
-      return;
-    }
-
-    if (holding.type === 'loan') {
-      loanFields.seed(holding);
-      return;
-    }
-
-    setOpeningBalance(groupAmount(majorAmountText(holding.currency, holding.balanceMinorUnits)));
+      )
+      .exhaustive();
   }, [isEdit, editingHolding, setBondMode, setIsin, loanFields.seed]);
 
   // The stack sets the static "Add Holding" title; in edit mode override it with
