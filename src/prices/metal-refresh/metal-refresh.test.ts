@@ -145,6 +145,26 @@ describe('refreshMetalPrices', () => {
     expect(upserted).toEqual([]);
   });
 
+  // Zero-read, not just zero-network: with no metal held at all, the
+  // `price_points` read has nothing to gate against either — `listHoldings`
+  // must resolve and the `earliestDays.size === 0` gate must fire BEFORE
+  // `loadPoints` is ever called, not in parallel with it.
+  it('never reads price_points at all when there are no held metal holdings', async () => {
+    let pointsRead = false;
+    const { deps, upserted } = makeDeps({
+      listHoldings: async () => [{ type: 'property_item', metadata: null }],
+      loadPoints: async () => {
+        pointsRead = true;
+        return [];
+      },
+    });
+
+    await refreshMetalPrices(deps);
+
+    expect(pointsRead).toBe(false);
+    expect(upserted).toEqual([]);
+  });
+
   it('writes nothing and makes NO network call when every held metal already has today’s price point', async () => {
     // Measures the app-open write volume for the common steady-state case: a
     // metal refreshed earlier the same local day makes NEITHER a `listHoldings`-

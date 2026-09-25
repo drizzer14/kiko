@@ -183,13 +183,14 @@ export const refreshMetalPrices = async (deps: MetalRefreshDeps = {}): Promise<v
   const fetchHistory = deps.fetchHistory ?? fetchNbuMetalHistory;
   const upsertMany = deps.upsertMany ?? pricePointsRepo.upsertMany;
 
-  const [holdings, points] = await Promise.all([listHoldings(), loadPoints()]);
+  const holdings = await listHoldings();
   const earliestDays = earliestLotDayByMetal(holdings);
 
   if (earliestDays.size === 0) {
     return;
   }
 
+  const points = await loadPoints();
   const today = dayKeyOf(now());
   const plan = planRefresh(earliestDays, lastStoredDayByMetal(points), today);
   const rows = [
