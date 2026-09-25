@@ -386,12 +386,12 @@ rules:
   # no override path here. Extending the id-family list below (R\d/F\d/G\d/
   # C\d, `Task N`, `Phase N (Task`, `Review Focus N`, `Minor N`, `audit N`,
   # `RULING RN`, `fix round N`, `round-N`, `device[- ]feedback`, `on-device
-  # review`) reopened real hits across the tree, so this is WARNING again
-  # while that sweep is in progress — it moves back to ERROR once
-  # `semgrep --config rules/semgrep-mobile.yml src` reports 0 for it again.
+  # review`) reopened real hits across the tree, was WARNING again while
+  # that sweep was in progress, and is now back to ERROR:
+  # `semgrep --config rules/semgrep-mobile.yml src` reports 0 for it.
   - id: kiko-no-history-id-comment
     languages: [typescript]
-    severity: WARNING
+    severity: ERROR
     message: >
       A comment cites a task id, review-round id, spec/decision id, or a bug
       number. kiko-code-style's "Comments: WHY only, never history": that
