@@ -71,7 +71,7 @@ workspace clean.
 
 An orchestrator session cannot see its own context-usage gauge (it is
 in the terminal status line). The coordinator watches it from outside
-and hands over at about 70%: the session writes a handoff file in its
+and hands over at about 50%: the session writes a handoff file in its
 worktree, waits until its own in-process subagents finish (closing
 the terminal kills them mid-work), then the coordinator closes the
 old terminal and starts a new claude session in the same worktree
