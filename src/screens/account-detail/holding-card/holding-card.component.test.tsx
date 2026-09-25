@@ -202,7 +202,7 @@ describe('HoldingCard', () => {
       expect(queryByTestId('holding-card-value-as-of')).toBeNull();
     });
 
-    // F4 audit 13: divergent twins — this card's own copy of the caption
+    // Divergent twins — this card's own copy of the caption
     // helper used to lack the metal branch entirely, so a metal holding's
     // card showed NO caption at all (its `holding:<id>` instrument never
     // resolves for a metal — only the shared `metal:<slug>` one does). Now

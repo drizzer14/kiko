@@ -42,7 +42,7 @@ const disconnectMessage = (providerId: BalanceProviderId, t: TFunction): string 
 const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) => {
   const { t } = useTranslation();
   const { isSyncing, error, sync } = useCryptoSync();
-  // Multi-connection (Task 5.2): each crypto account connects independently, so
+  // Multi-connection: each crypto account connects independently, so
   // there is no "connected elsewhere" gate — another account holding this source
   // no longer blocks connecting it here.
   const connectedProvider = isBalanceProviderId(account.institution)

@@ -196,7 +196,7 @@ describe('CryptoSyncSection', () => {
   });
 
   it('still shows the wallet field (no "connected elsewhere" hint) when another account holds a wallet', async () => {
-    // Multi-connection (Task 5.2): each crypto account connects independently, so
+    // Multi-connection: each crypto account connects independently, so
     // another account already holding a wallet no longer blocks this one's field.
     setConnected({ btc_wallet: [account({ id: 'other', institution: 'btc_wallet' })] });
     const { getByLabelText, queryByText } = await render(

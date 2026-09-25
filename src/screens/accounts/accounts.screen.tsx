@@ -240,7 +240,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
               // manual card opens the deep-press (haptic) delete menu; a hold-and-move
               // drags to reorder — see `CardContextMenu` and `onGridDragEnd`. `scrollableRef`
               // + `autoScrollActivationOffset` let a drag near an edge scroll the
-              // parent list (F9).
+              // parent list.
               // `accountsRepo.reorder` rewrites `sortOrder`
               // for ONLY the ids it is given. Persisting just this grid's own
               // reordered ids would restart both sections at 0, so a later

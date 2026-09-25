@@ -130,7 +130,7 @@ describe('BankSyncSection — disconnected', () => {
     expect(view.getByText('monobank boom')).toBeTruthy();
   });
 
-  // Item 1 (F3): an account whose identity picker (BankTypeField, in the
+  // An account whose identity picker (BankTypeField, in the
   // account form) already identified it as Monobank must not re-ask via the
   // generic "Add a bank" picker (redundant when Monobank is the only
   // connectable provider) — it goes straight to the Connect field.

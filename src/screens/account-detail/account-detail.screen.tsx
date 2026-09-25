@@ -119,9 +119,9 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // Every bank account shows the connect/sync affordance independently — there
   // is no single-connection gate, so a second connection can connect
   // alongside the first (each binds its own per-account credential and cursor).
-  // Gated on the account's picked bank being CONNECTABLE (device-feedback-
-  // round-4 item 4 — the SAME `bankCatalog` capability BankTypeField's picker
-  // already reads): an import-only bank (e.g. PrivatBank) must show NO
+  // Gated on the account's picked bank being CONNECTABLE (the SAME
+  // `bankCatalog` capability BankTypeField's picker already reads): an
+  // import-only bank (e.g. PrivatBank) must show NO
   // sync/connect section, only the Import-statement footer button below. An
   // account with no bank picked yet (or one from before this feature)
   // defaults to connectable rather than guessing it is import-only.
@@ -130,8 +130,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // The document-picker statement-import entry point (docs/plans/statement-
   // import.md section B.1), same style as the create-form's `connectMonobank`
   // closure: open the picker, then — on a real pick, not a cancel — copy it
-  // to a LOCAL cache path (item 6, F3, BUG — see the `keepLocalCopy` comment
-  // below) and hand THAT stable path to `StatementImportScreen`, which owns
+  // to a LOCAL cache path (see the `keepLocalCopy` comment below) and hand
+  // THAT stable path to `StatementImportScreen`, which owns
   // the actual read/decode/detect/parse/preview. This handler does NOT
   // pre-read the file itself: an earlier revision read it here too (as a
   // validity check before navigating), but that made every pick pay for two
@@ -163,7 +163,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
       return;
     }
 
-    // Item 6 (F3, BUG): the picker hands back a security-scoped external URI
+    // The picker hands back a security-scoped external URI
     // (iCloud / Files / an AirDropped file) that `RNFS.readFile` cannot
     // reliably read more than once — both `StatementImportScreen` and
     // `ColumnMappingScreen` independently re-read THIS SAME `filePath` on
@@ -252,7 +252,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
               and `onGridDragEnd`. `overDrag="vertical"` keeps a dragged card on
               its vertical axis (a single column has no horizontal move to make).
               `scrollableRef` + `autoScrollActivationOffset` let a drag near an
-              edge scroll the parent list (F9). `sortEnabled` is off with a single
+              edge scroll the parent list. `sortEnabled` is off with a single
               holding, where there is nothing to reorder. */}
           <Box testID="holdings-grid">
             <Sortable.Grid

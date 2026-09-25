@@ -250,8 +250,8 @@ const account = (overrides: Partial<Account> = {}): Account => ({
   institution: null,
   // `bankId` defaults to `null` here, matching the real `AccountRow`'s
   // Drizzle-inferred type (a nullable column is `string | null`, never
-  // `undefined`) — `BankSyncSection`'s disconnected default now reads this
-  // field directly (item 1, F3), so a fixture that left it `undefined`
+  // `undefined`) — `BankSyncSection`'s disconnected default reads this
+  // field directly, so a fixture that left it `undefined`
   // crashed `isBankProviderId`'s `bankProviderIdOf` call on a real render.
   bankId: null,
   ...overrides,
@@ -606,7 +606,7 @@ describe('AccountDetailScreen', () => {
       hidden: ['Connect Monobank', 'Sync'],
     },
     {
-      // device-feedback-round-4 item 4: an import-only bank (bankCatalog's
+      // An import-only bank (bankCatalog's
       // `connectable: false`) must show NO sync/connect affordance at all —
       // not even the disconnected "Add a bank" trigger.
       description: 'a bank account whose picked bank is import-only (e.g. PrivatBank)',
@@ -615,7 +615,7 @@ describe('AccountDetailScreen', () => {
       hidden: ['Connect Monobank', 'Sync', 'Add a bank'],
     },
     {
-      // A bank account already identified as Monobank (item 1, F3) skips the
+      // A bank account already identified as Monobank skips the
       // "Add a bank" picker entirely and goes straight to Connect — only an
       // UNIDENTIFIED bank account shows the "Add a bank" trigger, and a
       // KNOWN import-only bank hides the section altogether.
@@ -641,7 +641,7 @@ describe('AccountDetailScreen', () => {
   );
 
   it('hides the whole Synchronization section (heading included) for an import-only bank account', async () => {
-    // device-feedback-round-4 item 4: a non-syncable (import-only) bank
+    // A non-syncable (import-only) bank
     // account must show NO trace of the sync section — not merely the
     // buttons the table above checks, but the "Synchronization" heading
     // itself, which `BankSyncSection` renders at its own top.
@@ -1131,7 +1131,7 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     expect(navigation.navigate).not.toHaveBeenCalledWith('StatementImport', expect.anything());
   });
 
-  // Item 6 (F3, BUG): a raw picked URI can be a transient/security-scoped
+  // A raw picked URI can be a transient/security-scoped
   // external one (iCloud/Files/AirDrop) that tolerates one or two reads but
   // not the THIRD `RNFS.readFile` the preview + two Map-Columns visits each
   // make — `keepLocalCopy` (the same pattern `import-data.screen.tsx`
