@@ -99,7 +99,7 @@ const CategoryField = ({
 
       {/* `scrollable={false}`: this sheet owns its OWN inner ScrollView (via
           `scrollRef`, to jump straight to the already-selected row on open) —
-          BottomSheet's shared ScrollView (F5 fix) would otherwise nest a
+          BottomSheet's shared ScrollView would otherwise nest a
           second same-axis ScrollView around it, and would also sweep the
           heading below into the scrollable region along with `scrollRef`'s
           own offsets. */}

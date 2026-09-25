@@ -53,7 +53,7 @@ type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Ac
 // already forces) accounts for the new kind. A crypto account is created
 // like a bank account — no initial holding/currency at creation; holdings are
 // added later — so only cash needs the currency + initial-value fields below;
-// property and metals have no extra creation fields yet.
+// property and metals have no extra creation fields.
 const kinds = Object.keys(accountKindSymbol) as AccountRow['kind'][];
 type Kind = (typeof kinds)[number];
 
@@ -101,8 +101,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     debt: t('forms.account.debt'),
   };
   // The one-line "which kind is this?" hint shown under each row in the
-  // AccountKindField sheet (device-feedback: a bare label does not say what
-  // belongs there) — see `forms.account.kindSubtitle` in en.ts/uk.ts.
+  // AccountKindField sheet (a bare label does not say what belongs there)
+  // — see `forms.account.kindSubtitle` in en.ts/uk.ts.
   const kindSubtitles: Record<Kind, string> = {
     bank: t('forms.account.kindSubtitle.bank'),
     cash: t('forms.account.kindSubtitle.cash'),
@@ -129,7 +129,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // The bank the user picked in the sync section's BankTypeField, tagging the
   // created row for later provider-specific handling (import, connect status).
   // null = no bank picked — a valid, plain bank account. Never auto-seeded on a
-  // fresh bank create (no auto-jump to Monobank, device-feedback-round-1 item 3).
+  // fresh bank create (no auto-jump to Monobank).
   const [bankId, setBankId] = useState<BankId | null>(null);
   // `resolveEntityColor` — not a bare nullish-coalesce onto the kind default —
   // because `color`/`kind` here are seeded straight from a stored row
@@ -334,9 +334,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     setKind(isSupportedKind(editingAccount.kind) ? editingAccount.kind : INITIAL_KIND);
     setIcon(editingAccount.icon);
     setColor(editingAccount.color);
-    // F2 fix: the edit form used to never seed `bankId` at all (the picker
-    // below simply didn't render), leaving no way to view or change an
-    // account's bank identity after create. `isBankId` guards against a
+    // The edit form seeds `bankId` too, so the picker below renders and the
+    // user can view or change an account's bank identity after create.
+    // `isBankId` guards against a
     // stored value from a since-removed catalog entry, mirroring
     // `isSupportedKind` above.
     setBankId(isBankId(editingAccount.bankId) ? editingAccount.bankId : null);
@@ -375,7 +375,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         // through setIcon (so a cleared icon persists an explicit null), the same
         // split the create path uses. Kind is read-only, and the cash currency +
         // initial value belong to the create-time initial holding, so neither is
-        // touched here. `bankId` (F2 fix) is now editable too — this patch never
+        // touched here. `bankId` is editable too — this patch never
         // carries `institution`, so a live-connected account's sync stays
         // untouched no matter what bank identity is picked here.
         await accountsRepo.update(editId, { name: trimmedName, color, bankId });
@@ -526,8 +526,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         )}
 
         {/* The "which bank does this account represent" identity picker
-            (Option A) — shown in BOTH create and edit mode (F2 fix: the edit
-            form used to have no way at all to view or change `bankId`). The
+            (Option A) — shown in BOTH create and edit mode, so the edit
+            form can view or change `bankId` too. The
             live-sync Connect field stays CREATE-ONLY — editing an already-
             connected account's real connection is BankSyncSection's job on
             the account-detail screen (Monobank-only, Guideline 5.6),

@@ -79,9 +79,9 @@ describe('ExchangeFields', () => {
     const { getByText } = await setup({ destinationError: 'Select a destination account.' });
 
     // FieldError's own root is the Text's immediate parent; the gap lives one
-    // level up, on the Box wrapping the picker + its error (round-4 device
-    // feedback item 1 — a select field lacked the gap TextField's own `Box
-    // gap={1}` already gives its error line).
+    // level up, on the Box wrapping the picker + its error — a select field
+    // needs the same gap TextField's own `Box gap={1}` already gives its
+    // error line.
     const errorGroup = getByText('Select a destination account.').parent?.parent;
     expect(StyleSheet.flatten(errorGroup?.props.style).gap).toBe(darkTheme.spacing(1));
   });

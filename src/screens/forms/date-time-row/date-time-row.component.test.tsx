@@ -17,8 +17,8 @@ describe('DateTimeRow', () => {
     expect(getByLabelText('Time')).toBeTruthy();
   });
 
-  // Round-6 device feedback item 1: Date and Time used to stack full-width;
-  // they now render SIDE BY SIDE in one row, each taking an equal share.
+  // Date and Time render SIDE BY SIDE in one row, each taking an equal
+  // share, rather than stacked full-width.
   it('lays the two fields out in a single row with a gap, not stacked', async () => {
     const { getByLabelText } = await render(<DateTimeRow time={0} onChangeTime={noop} />);
 

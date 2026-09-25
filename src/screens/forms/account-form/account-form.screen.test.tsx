@@ -817,8 +817,8 @@ describe('AccountFormScreen edit mode', () => {
     expect(getByTestId('account-bank-type-field')).toHaveTextContent('PrivatBank');
   });
 
-  // F4 audit item 22: the "Synchronization" heading above the bank picker
-  // used to be create-only, so an edit render's bank block sat under a bare
+  // The "Synchronization" heading renders above the bank picker in edit
+  // mode too, not just create — otherwise that block sits under a bare
   // divider with no section name at all.
   it('shows the Synchronization heading above the bank picker in edit mode too', async () => {
     mockAccounts = [
@@ -1118,7 +1118,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(mockMonobankSync).not.toHaveBeenCalled();
   });
 
-  // F4 item 3: "Free" (not a placeholder) is the default bank shown.
+  // "Free" (not a placeholder) is the default bank shown.
   it('does not auto-select any bank on a fresh bank create (no auto-jump to Monobank)', async () => {
     const view = await renderForm();
 

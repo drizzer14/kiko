@@ -15,7 +15,7 @@ describe('EntityAmountHeader', () => {
     expect(getByText(/150/)).toBeTruthy();
   });
 
-  // The whole point of extracting the shared header (round-2 design review):
+  // The whole point of extracting the shared header:
   // the holding-detail "Value" label must render through the exact same
   // component tree as account-detail's "Balance" label, not a parallel
   // hand-rolled block that can quietly drift from it.

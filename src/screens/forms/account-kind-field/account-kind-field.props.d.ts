@@ -25,8 +25,8 @@ export type AccountKindFieldProps = {
   // so the field stays translation-agnostic — mirrors ModeSelectField's own
   // `labels` prop.
   labels: Record<AccountKind, string>;
-  // A short second line rendered under each row's label (device-feedback:
-  // "which kind is this?" — a plain one-line hint, e.g. "For real estate,
+  // A short second line rendered under each row's label ("which kind is
+  // this?" — a plain one-line hint, e.g. "For real estate,
   // vehicles, or anything else you own or lent"), resolved by the screen the
   // same way `labels` is.
   subtitles: Record<AccountKind, string>;

@@ -9,8 +9,8 @@ import Box from '../../../design-system/components/box';
 import { styles } from './date-time-row.styles';
 import type { DateTimeRowProps } from './date-time-row.props';
 
-// The Дата + Час pair, rendered SIDE BY SIDE in one row (round-6 device
-// feedback item 1 — the two used to stack full-width). Both fields read and
+// The Дата + Час pair, rendered SIDE BY SIDE in one row, not stacked
+// full-width. Both fields read and
 // write the SAME `time`/`onChangeTime`: a date pick preserves the existing
 // time-of-day and a time pick preserves the existing day (DateField's and
 // TimeField's own onChange contracts), so either field can move

@@ -26,7 +26,7 @@ const renderOpenSheet = async () => {
 };
 
 describe('BankTypeField', () => {
-  // F4 item 3: "Free" is the DEFAULT option, shown as a real value the
+  // "Free" is the DEFAULT option, shown as a real value the
   // instant nothing else is picked — never a placeholder.
   it('shows "Free" as the default value before anything else is picked, and opens the sheet on press', async () => {
     const onSelect = jest.fn();
@@ -202,8 +202,8 @@ describe('BankTypeField', () => {
     );
   });
 
-  // F4 item 2 (ITEM 2 USER DECISION): column-mapping import is a capability
-  // shown on EVERY catalog bank — a sync-connectable bank, one with a
+  // Column-mapping import is a capability shown on EVERY catalog bank — a
+  // sync-connectable bank, one with a
   // dedicated statement format, and a column-mapping-only bank all get it.
   it.each(bankIds)('shows the column-mapping capability icon on %s', async (bankId) => {
     const { getByTestId } = await renderOpenSheet();

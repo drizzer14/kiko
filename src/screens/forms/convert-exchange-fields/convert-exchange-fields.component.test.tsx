@@ -99,7 +99,7 @@ describe('ConvertExchangeFields', () => {
       <ConvertExchangeFields {...baseProps} counterpartError="Select a counterpart account." />,
     );
 
-    // Round-4 device feedback item 1 — a select field's error lacked the same
+    // A select field's error lacked the same
     // gap TextField's own `Box gap={1}` already gives its error line.
     const errorGroup = getByText('Select a counterpart account.').parent?.parent;
     expect(StyleSheet.flatten(errorGroup?.props.style).gap).toBe(darkTheme.spacing(1));

@@ -36,8 +36,8 @@ const captionFor = (entry: (typeof bankCatalog)[number], t: TFunction): string =
   return t('forms.account.bankImportOnly');
 };
 
-// The Option A "which bank is this account" picker (device-feedback-round-1
-// item 3): a labeled trigger (FieldTrigger, the same family CurrencyField
+// The Option A "which bank is this account" picker: a labeled trigger
+// (FieldTrigger, the same family CurrencyField
 // and CategoryField use) that opens a BottomSheet listing every
 // `bankCatalog` entry — ALWAYS every entry, never conditionally hidden
 // (Guideline 5.6). Selecting a row reports the id and closes the sheet; the
@@ -90,7 +90,7 @@ const BankTypeField: FC<BankTypeFieldProps> = ({ label, selected, onSelect, test
           {t('forms.account.bankDisclaimer')}
         </Text>
 
-        {/* The explicit "no bank" row (F2 fix): a plain manual bank account
+        {/* The explicit "no bank" row: a plain manual bank account
             with no specific bank identity is a valid, tested state
             (kiko-domain: `bankId` is identity-only, independent of
             `institution`) — this is how a user PICKS that state on purpose,
@@ -111,12 +111,11 @@ const BankTypeField: FC<BankTypeFieldProps> = ({ label, selected, onSelect, test
           // NEVER renders it, so its description stays honestly
           // statements-only (Guideline 5.6 — no fake connect affordance).
           const descriptionTone = isSelected ? 'onAccent' : 'textSecondary';
-          // The capability icons now sit in `trailing` (device-feedback-round-3
-          // item 7: far right of the option, aligned with the title), so they
-          // reuse the TITLE's own tone. Round-3 sized them at `body` (paired
-          // with the label's `body` type step); device-feedback-round-4 item 3
-          // found that one step too big next to the title text, so they now
-          // step down to `caption` — one size smaller, while `titleRow`'s
+          // The capability icons sit in `trailing` (far right of the option,
+          // aligned with the title), so they reuse the TITLE's own tone,
+          // stepped down to `caption` — one size smaller than the label's
+          // `body` type step, so they never read as too big next to the
+          // title text — while `titleRow`'s
           // `alignItems: 'flex-start'` still keeps them top-aligned with the
           // title's first line.
           const titleTone = isSelected ? 'onAccent' : 'textPrimary';
@@ -172,7 +171,7 @@ const BankTypeField: FC<BankTypeFieldProps> = ({ label, selected, onSelect, test
                 </Box>
               }
               // No `numberOfLines`/truncation — a caption must wrap onto a
-              // second line rather than clip (device-feedback-round-3 item 7).
+              // second line rather than clip.
               description={
                 <Text variant="caption" tone={descriptionTone}>
                   {caption}

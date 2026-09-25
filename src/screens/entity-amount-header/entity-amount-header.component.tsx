@@ -14,7 +14,7 @@ import { styles } from './entity-amount-header.styles';
 // MoneyText amount. Both detail screens render through this so "Value" reads
 // IDENTICALLY to "Balance" — same typography, layout, and spacing — instead
 // of each screen hand-rolling its own label + MoneyText pair that quietly
-// drifts from the other's (the round-2 design review finding this fixes).
+// drifts from the other's.
 //
 // `icon` is an OPTIONAL trailing slot sharing a row with the "Balance"/"Value"
 // LABEL specifically — not the amount below it, and not the vertical midpoint
