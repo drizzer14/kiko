@@ -1055,10 +1055,10 @@ smaller chunk automatically.
 
 ## Adding a holding type
 
-R3 gathered every per-type decision into one descriptor per layer, each
-keyed by `HoldingType` through an exhaustive `Record`/`satisfies` or a
+Every per-type decision lives in one descriptor per layer, each keyed by
+`HoldingType` through an exhaustive `Record`/`satisfies` or a
 `match(...).exhaustive()` — a new type is a compile error at every site
-below until it is added there too. Six steps, in order:
+below until it is added there too. Seven steps, in order:
 
 1. Add the type to the `holdings.type` enum in `src/db/schema.ts` and to
    the `holdingTypes` tuple (`src/holdings/holding-type/holding-type.ts`)
@@ -1072,8 +1072,10 @@ below until it is added there too. Six steps, in order:
    does not assert every `HoldingType` appears somewhere; add that
    coverage yourself if the new type should be widely creatable.
 2. Add a `HoldingDescriptor` (`src/holdings/holding-descriptor/holding-descriptor.d.ts`)
-   in its own `src/holdings/holding-descriptor/<type>/` folder and
-   register it in `holdingDescriptors` (`holding-descriptors.ts`) — the
+   in its own `src/holdings/holding-descriptor/<type>/` folder — named for
+   the type but not always identical to the enum value (`property_item`'s
+   descriptor folder is `property-item/`, hyphenated) — and register it in
+   `holdingDescriptors` (`holding-descriptors.ts`) — the
    `satisfies Record<HoldingType, HoldingDescriptor>` there is the first
    compile error a missed type produces. Build a PriceBook-valued type
    (property_item/metal-shaped: its `breakdown` reads a stored price
@@ -1089,8 +1091,10 @@ below until it is added there too. Six steps, in order:
    every other (ledgered-with-history or ledgerless) type does.
 3. Add the form: a `use<Type>Fields` hook, a `<type>-section` presentational
    component, and a `<type>-form-block` leaf component, all under a new
-   `src/screens/forms/holding-form/<type>/` folder (mirror an existing
-   type, e.g. `term-deposit/` or `bond/`, for the folder shape). Wire the
+   `src/screens/forms/holding-form/<type>/` folder — again not always the
+   literal enum value (`property_item`'s form folder is `property/`, no
+   `-item` suffix; mirror an existing type, e.g. `term-deposit/` or
+   `bond/`, for the folder shape). Wire the
    hook into `HoldingFormScreen`'s own `forms: Record<HoldingType,
    HoldingTypeForm>` record and add a `.with('<type>', () => <...
    FormBlock .../>)` arm to its `match(type)...exhaustive()` form-block
@@ -1099,23 +1103,27 @@ below until it is added there too. Six steps, in order:
    balance-shaped type) can usually reuse the shared `useBalanceFields`/
    `BalanceFormBlock` instead of writing new ones — see how
    `card`/`cash`/`crypto_asset`/`jar` share one hook instance.
-4. Add an entry to `holdingDetailSpecs`
+4. Add en/uk `forms.holding.<type>` label keys (`src/i18n/`) for
+   `holding-form.screen.tsx`'s own `typeLabels: Record<HoldingType,
+   string>` — the user reviews new/changed translation keys before any
+   deploy that ships them (see `kiko-translator`).
+5. Add an entry to `holdingDetailSpecs`
    (`src/screens/holding-detail/holding-detail-spec/`): its footer add
    action, its value-breakdown display (or `null` to hide it), and its
    next-loan-installment panel (or `noInstallment` for every type but a
    scheduled loan). The `satisfies Record<HoldingType, HoldingDetailSpec>`
-   there is the third compile error a missed type produces.
-5. Fill in the new descriptor's own `exchange` row (`receivePath`,
+   there is the fourth compile error a missed type produces.
+6. Fill in the new descriptor's own `exchange` row (`receivePath`,
    `source`, `createSource`, `createDestination` — `HoldingDescriptor`'s
    own field, not a separate registry) so `exchange-destination.ts`'s
    predicates classify the type correctly as an Exchange/Convert leg (or
    exclude it, the way `loan` is excluded entirely).
-6. Run `npm run check:typecheck`. Between the three `Record<HoldingType,
-   ...>` checks above (descriptors, the form record, and detail specs)
-   and the form-block's own `match(type).exhaustive()` dispatch
-   (`holding-form.screen.tsx`) — the detail screen's OWN footer-button
-   `match` dispatches on the already-bounded `FooterAction` value, not on
-   `type`, so it never needs a new arm — tsc lists every remaining site
-   the new type still needs. The enum/tuple step (1) and the
+7. Run `npm run check:typecheck`. Between the four `Record<HoldingType,
+   ...>` checks above (descriptors, the form record, `typeLabels`, and
+   detail specs) and the form-block's own `match(type).exhaustive()`
+   dispatch (`holding-form.screen.tsx`) — the detail screen's OWN
+   footer-button `match` dispatches on the already-bounded `FooterAction`
+   value, not on `type`, so it never needs a new arm — tsc lists every
+   remaining site the new type still needs. The enum/tuple step (1) and the
    account-kind mapping caveat within it are the only steps it cannot
    catch for you.

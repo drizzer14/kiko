@@ -3,12 +3,12 @@ import { act, renderHook } from '@testing-library/react-native';
 let mockBondRegisterRows: { isin: string; terms: unknown; fetchedAt: number }[] = [];
 let mockFetchedAtRows: { value: number | null }[] = [{ value: 1 }];
 
-jest.mock('../../../../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (query: { __kind?: string }) =>
     query.__kind === 'fetchedAt' ? { data: mockFetchedAtRows } : { data: mockBondRegisterRows },
 }));
 
-jest.mock('../../../../../bonds/bond-register-repo', () => ({
+jest.mock('@kiko/bonds/bond-register-repo', () => ({
   bondRegisterRepo: {
     findByIsinQuery: () => ({ __kind: 'findByIsin', toSQL: () => ({ sql: '', params: [] }) }),
     fetchedAtQuery: () => ({ __kind: 'fetchedAt', toSQL: () => ({ sql: '', params: [] }) }),

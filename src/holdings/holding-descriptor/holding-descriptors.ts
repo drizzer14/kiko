@@ -57,9 +57,10 @@ export const isTimeExemptHoldingType = (type: HoldingType): boolean =>
 // their value derives entirely from `lots` in metadata (kiko-domain), priced
 // at read time. `isTransactionEligibleType` (transaction-form.screen.tsx)
 // gates on this predicate rather than re-deriving its own type list; the
-// detail footer's own `holdingDetailSpecs` (holding-detail-spec/) agrees on
-// which types are ledgerless by construction, held to it by the two
-// registries' own tests rather than by sharing this predicate.
+// detail footer's own `holdingDetailSpecs` (holding-detail-spec/) is a
+// SEPARATE registry that must independently agree on the same set — held to
+// it by `holding-detail-spec.test.ts`'s "agreement with
+// isLedgerlessHoldingType" invariant test, not by sharing this predicate.
 export const isLedgerlessHoldingType = (type: HoldingType): boolean =>
   holdingDescriptorOrUndefined(type)?.ledgerless ?? false;
 

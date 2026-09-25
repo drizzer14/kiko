@@ -16,8 +16,8 @@ import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor/bond'
 export type FooterAction = 'contribution' | 'transaction' | 'updateValue' | 'addLot' | 'none';
 
 // What the detail screen shows per holding type. Not exported: every
-// consumer reads a value of this shape through `holdingDetailSpecFor`/
-// `holdingDetailSpecOrUndefined` below rather than naming the type directly.
+// consumer reads a value of this shape through `holdingDetailSpecFor` below
+// rather than naming the type directly.
 type HoldingDetailSpec = {
   /** `synced` = `isSyncedHolding(holding, account)`. */
   footerAction: (synced: boolean) => FooterAction;
@@ -136,28 +136,17 @@ export const holdingDetailSpecs = {
 } as const satisfies Record<HoldingType, HoldingDetailSpec>;
 
 /**
- * A lookup safe for a `type` read straight off a stored row: the schema
- * types `holdings.type` as this exact enum, but SQLite enforces no such
- * constraint, so a corrupted row could hold any string — including an
+ * The tolerant lookup the detail screen reads for footer action, breakdown,
+ * and next-installment behavior in one place: `Object.hasOwn`-guarded — the
+ * schema types `holdings.type` as this exact enum, but SQLite enforces no
+ * such constraint, so a corrupted row could hold any string, including an
  * inherited `Object.prototype` key such as `'constructor'`, which a plain
  * index would resolve to a non-`HoldingDetailSpec` value despite never being
- * a real holding type. `Object.hasOwn` checks the object's OWN keys only, so
- * those resolve to `undefined` too — mirroring `holdingDescriptorOrUndefined`
- * (`src/holdings/holding-descriptor/`).
- */
-export const holdingDetailSpecOrUndefined = (type: HoldingType): HoldingDetailSpec | undefined => {
-  const specs = holdingDetailSpecs as Record<string, HoldingDetailSpec>;
-
-  return Object.hasOwn(specs, type) ? specs[type] : undefined;
-};
-
-/**
- * The tolerant lookup the detail screen reads for footer action, breakdown,
- * and next-installment behavior in one place: `Object.hasOwn`-guarded the
- * same way `holdingDetailSpecOrUndefined` above is, but falls back to
- * `balanceSpec` — the plain "add transaction" behavior — for a type it does
- * not recognize, or for `undefined`, so callers never need their own
- * `?? balanceSpec`.
+ * a real holding type; `Object.hasOwn` checks the object's OWN keys only, so
+ * those resolve to the fallback too (mirroring `holdingDescriptorOrUndefined`,
+ * `src/holdings/holding-descriptor/`) — and falls back to `balanceSpec` — the
+ * plain "add transaction" behavior — for a type it does not recognize, or
+ * for `undefined`, so callers never need their own `?? balanceSpec`.
  */
 export const holdingDetailSpecFor = (type: string | undefined): HoldingDetailSpec => {
   const specs = holdingDetailSpecs as Record<string, HoldingDetailSpec>;

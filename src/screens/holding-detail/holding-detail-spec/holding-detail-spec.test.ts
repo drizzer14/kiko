@@ -1,17 +1,12 @@
 import type { HoldingRow } from '@kiko/db/schema';
-import { startOfLocalDay } from '@kiko/dates/local-day';
+import { addMonths } from '@kiko/holdings/interest';
 import { EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
-import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { BondMeta, LoanMeta } from '@kiko/holdings/holding-metadata';
+import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { holdingTypes, type HoldingType } from '@kiko/holdings/holding-type';
 import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor/bond';
 
-import {
-  type FooterAction,
-  holdingDetailSpecFor,
-  holdingDetailSpecOrUndefined,
-  holdingDetailSpecs,
-} from './holding-detail-spec';
+import { type FooterAction, holdingDetailSpecFor, holdingDetailSpecs } from './holding-detail-spec';
 
 const holding = (overrides: Partial<HoldingRow> = {}): HoldingRow =>
   ({
@@ -135,8 +130,17 @@ describe('holdingDetailSpecs nextInstallment', () => {
   });
 
   it('returns the first installment due on/after today for a structured loan', () => {
-    const now = new Date();
-    const startDate = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 12, 1);
+    // A fixed `now`/`startDate` pair (rather than the real clock) makes the
+    // 13th installment an INDEPENDENTLY computable expectation — `startDate`
+    // is exactly 12 months before `now`, both anchored on the 1st, so the
+    // 12th installment's due date (`addMonths(startDate, 12)`, the 1st of
+    // `now`'s own month) always falls strictly before `now`'s mid-month
+    // instant, leaving the 13th as the next one due. Deriving `expectedDate`
+    // straight from `addMonths` — not from `loanInstallments(meta).find(...)`,
+    // the SUT's own search — means a bug in that search's predicate would
+    // still be caught here, unlike a test that mirrors the same expression.
+    const now = Date.UTC(2025, 6, 15);
+    const startDate = Date.UTC(2024, 6, 1);
     const meta: LoanMeta = {
       kind: 'car_loan',
       principalMinorUnits: 100_000_00,
@@ -146,22 +150,13 @@ describe('holdingDetailSpecs nextInstallment', () => {
       termMonths: 120,
     };
     const loanHolding = holding({ type: 'loan', metadata: meta });
-    const todayStart = startOfLocalDay(Date.now());
-    const expected = loanInstallments(meta).find((row) => row.dueDate >= todayStart);
+    const expectedDueDate = addMonths(startDate, 13);
 
-    const next = holdingDetailSpecs.loan.nextInstallment(loanHolding, EMPTY_PRICE_BOOK, Date.now());
+    const next = holdingDetailSpecs.loan.nextInstallment(loanHolding, EMPTY_PRICE_BOOK, now);
 
-    expect(next).toEqual(expected);
-  });
-});
-
-describe('holdingDetailSpecOrUndefined', () => {
-  it('returns undefined for a type the registry does not know', () => {
-    expect(holdingDetailSpecOrUndefined('not-a-real-type' as HoldingType)).toBeUndefined();
-  });
-
-  it("returns undefined for an inherited Object.prototype key, not that key's value", () => {
-    expect(holdingDetailSpecOrUndefined('constructor' as HoldingType)).toBeUndefined();
+    expect(next).toBeDefined();
+    expect(next?.index).toBe(13);
+    expect(next?.dueDate).toBe(expectedDueDate);
   });
 });
 
@@ -176,5 +171,29 @@ describe('holdingDetailSpecFor', () => {
 
   it('falls back to the balance spec for an undefined type', () => {
     expect(holdingDetailSpecFor(undefined).footerAction(false)).toBe('transaction');
+  });
+
+  it("falls back to the balance spec for an inherited Object.prototype key, not that key's value", () => {
+    expect(holdingDetailSpecFor('constructor').footerAction(false)).toBe('transaction');
+  });
+});
+
+// Grounds holding-descriptors.ts's claim that this registry agrees with
+// `isLedgerlessHoldingType` on which types write no manual ledger: a
+// ledgerless type must never offer the plain "add transaction" footer
+// action (synced or not), and every other type must offer it unsynced —
+// the same gate `isTransactionEligibleType` (transaction-form.screen.tsx)
+// re-derives from `isLedgerlessHoldingType` rather than importing this file.
+describe('holdingDetailSpecs agreement with isLedgerlessHoldingType', () => {
+  it.each(holdingTypes)('%s', (type) => {
+    const ledgerless = isLedgerlessHoldingType(type);
+    const spec = holdingDetailSpecs[type];
+
+    if (ledgerless) {
+      expect(spec.footerAction(false)).not.toBe('transaction');
+      expect(spec.footerAction(true)).not.toBe('transaction');
+    } else {
+      expect(spec.footerAction(false)).toBe('transaction');
+    }
   });
 });
