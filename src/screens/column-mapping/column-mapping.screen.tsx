@@ -507,11 +507,7 @@ type SavedFormState = {
 };
 
 const formStateFromSavedMapping = (mapping: SavedColumnMapping): SavedFormState => {
-  const amountFields: {
-    amountColumn: number | undefined;
-    debitColumn: number | undefined;
-    creditColumn: number | undefined;
-  } = match(mapping.amount)
+  const amountFields = match(mapping.amount)
     .with({ mode: 'single' }, (amount) => ({
       amountColumn: amount.column,
       debitColumn: undefined,
@@ -530,10 +526,7 @@ const formStateFromSavedMapping = (mapping: SavedColumnMapping): SavedFormState 
       debitColumn: undefined,
       creditColumn: undefined,
     }));
-  const currencyFields: {
-    currencyColumn: number | undefined;
-    explicitFixedCurrency: Currency | undefined;
-  } = match(mapping.currency)
+  const currencyFields = match(mapping.currency)
     .with({ mode: 'column' }, (currency) => ({
       currencyColumn: currency.column,
       explicitFixedCurrency: undefined,

@@ -28,6 +28,14 @@ const MODES: readonly TrendMode[] = ['top', 'manual'];
 const AMOUNTS: readonly number[] = [1, 2, 3, 4, 5];
 const MEASURES: readonly TrendMeasure[] = ['contribution', 'frequency', 'rising'];
 
+// The trigger glyph reflects the APPLIED filter mode (the same `filter.mode`
+// `buttonLabel` reads below): the categories `tag` in Manual mode, the
+// ranking `chart.bar.fill` in Top mode.
+const MODE_SYMBOL: Record<TrendMode, string> = {
+  manual: 'tag',
+  top: 'chart.bar.fill',
+};
+
 // The saved default is always a "top" filter, so its amount/by seed the top
 // controls when the sheet opens on a manual-mode filter.
 const DEFAULT_TOP = DEFAULT_TREND_FILTER as Extract<TrendFilter, { mode: 'top' }>;
@@ -230,17 +238,7 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
         testID={testID}
       >
         <Box direction="row" gap={2} style={styles.field}>
-          {/* The trigger glyph reflects the APPLIED filter mode (the same
-              `filter.mode` `buttonLabel` reads): the categories `tag` in
-              Manual mode, the ranking `chart.bar.fill` in Top mode. */}
-          <SymbolIcon
-            name={match(filter)
-              .with({ mode: 'manual' }, () => 'tag' as const)
-              .with({ mode: 'top' }, () => 'chart.bar.fill' as const)
-              .exhaustive()}
-            size={18}
-            tone="textPrimary"
-          />
+          <SymbolIcon name={MODE_SYMBOL[filter.mode]} size={18} tone="textPrimary" />
 
           <Text variant="body" tone="textPrimary">
             {buttonLabel}

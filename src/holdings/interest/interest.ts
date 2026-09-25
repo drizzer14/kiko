@@ -1,5 +1,3 @@
-import { match } from 'ts-pattern';
-
 import { splitInterestTaxMinor } from '../tax';
 import type { BondCouponFrequency, CompoundingFrequency } from '../holding-metadata';
 
@@ -12,21 +10,24 @@ const DAYS_PER_YEAR = 365;
 // feed the shared step-by-step `depositLedger` engine).
 type CalendarCompounding = Exclude<CompoundingFrequency, 'bi-weekly'>;
 
+const PERIODS_PER_YEAR: Record<CompoundingFrequency, number> = {
+  'bi-weekly': 24,
+  monthly: 12,
+  quarterly: 4,
+  annually: 1,
+};
+
 export const periodsPerYear = (frequency: CompoundingFrequency): number =>
-  match(frequency)
-    .with('bi-weekly', () => 24)
-    .with('monthly', () => 12)
-    .with('quarterly', () => 4)
-    .with('annually', () => 1)
-    .exhaustive();
+  PERIODS_PER_YEAR[frequency];
 
 // How many calendar months one compounding period spans.
-const monthsPerPeriod = (frequency: CalendarCompounding): number =>
-  match(frequency)
-    .with('monthly', () => 1)
-    .with('quarterly', () => 3)
-    .with('annually', () => 12)
-    .exhaustive();
+const MONTHS_PER_PERIOD: Record<CalendarCompounding, number> = {
+  monthly: 1,
+  quarterly: 3,
+  annually: 12,
+};
+
+const monthsPerPeriod = (frequency: CalendarCompounding): number => MONTHS_PER_PERIOD[frequency];
 
 // Add (or subtract) whole calendar months, CLAMPING the day to the target
 // month's length. A naive `setMonth(getMonth() + n)` overflows whenever the
@@ -358,13 +359,15 @@ export const depositAccruedMajor = (
 };
 
 // How many calendar months one bond coupon period spans.
+const MONTHS_PER_COUPON_PERIOD: Record<BondCouponFrequency, number> = {
+  monthly: 1,
+  quarterly: 3,
+  semiannually: 6,
+  annually: 12,
+};
+
 export const monthsPerCouponPeriod = (frequency: BondCouponFrequency): number =>
-  match(frequency)
-    .with('monthly', () => 1)
-    .with('quarterly', () => 3)
-    .with('semiannually', () => 6)
-    .with('annually', () => 12)
-    .exhaustive();
+  MONTHS_PER_COUPON_PERIOD[frequency];
 
 // The 15th ("middle") of the calendar month that `instant` falls in.
 const midMonth = (instant: number): number => {
