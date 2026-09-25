@@ -54,12 +54,15 @@ redefine or duplicate the rule's logic.
 
 ### Tier 2 — new exact rules, each shipped with a fixture pair
 
-Each of these is a NEW rule the implementation task adds, with a
-`<rule-id>.bad.<ext>` / `<rule-id>.good.<ext>` fixture pair under
-`rules/fixtures/` (or the pre-write-guard's own equivalent fixture
-location — see "Semgrep rule set" below), exactly as
+Each of these is a NEW rule the implementation task adds to
+`rules/semgrep-prewrite.yml` (see "Checks run" below for that file's
+existence and role), with a `<rule-id>.bad.<ext>` / `<rule-id>.good.<ext>`
+fixture pair under `rules/fixtures/`, exactly as
 `scripts/checks/semgrep-rules.sh` already requires for every
-`rules/semgrep-mobile.yml` rule.
+`rules/semgrep-mobile.yml` rule — once `semgrep-rules.sh` is updated
+(per "Checks run") to also load `rules/semgrep-prewrite.yml`, the same
+fixture-proof contract covers these new rules with no separate
+fixture directory needed.
 
 8. No raw hex or `rgba(...)` color literal outside
    `src/design-system/theme/`. A color value belongs in the theme
@@ -161,7 +164,10 @@ automate at deny-the-write granularity; they stay in
 ## Trigger and wiring
 
 A new `PreToolUse` entry is added to `harness/kiko/hooks/hooks.json`,
-matcher `Edit|Write|MultiEdit`:
+matcher `Edit|Write|MultiEdit`. The command itself guards the
+script's presence and passes the guard's own exit code through
+unchanged, rather than relying on Claude Code's handling of a command
+that fails to run:
 
 ```json
 {
@@ -169,7 +175,7 @@ matcher `Edit|Write|MultiEdit`:
   "hooks": [
     {
       "type": "command",
-      "command": "bash ${CLAUDE_PROJECT_DIR}/scripts/checks/pre-write-guard.sh",
+      "command": "f=\"${CLAUDE_PROJECT_DIR}/scripts/checks/pre-write-guard.sh\"; [ -f \"$f\" ] || exit 0; exec bash \"$f\"",
       "timeout": 30
     }
   ]
@@ -182,24 +188,23 @@ place of it — `PreToolUse` accepts multiple matcher entries, one per
 tool pattern, and Claude Code runs the one whose matcher matches the
 tool being called.
 
-This `hooks.json` entry lands on `main` immediately, in the same
-initial-wiring commit as `scripts/checks/pre-write-guard.sh` itself
-(see "Rollout" below) — it is never merged with the entry present but
-the script absent, because `hooks.json` is shared config every worktree
-reads and Claude Code invokes the hook COMMAND regardless of whether
-the referenced script exists in that particular worktree's checkout.
-`pre-write-guard.sh`'s own first lines therefore check for their own
-required tooling (Node, `semgrep`) and for their own required sibling
-files (the pre-write rule set — see "Semgrep rule set" below); when a
-worktree does not yet have the rule set (a worktree still on an older
-commit than the one that adds it), the script must recognize that
-specific "sibling file absent" case and exit 0 (no-op), the same way a
-missing `scripts/checks/pre-write-guard.sh` file itself would make the
-hook command fail to execute and Claude Code treats a failed-to-run
-hook command as non-blocking. This no-op path is DIFFERENT from every
-other failure path in this spec (see "Fail closed" below): the
-distinction is "this repo checkout predates the feature entirely" vs.
-"the feature exists here and something in it broke."
+This `hooks.json` entry lands on `main` at once, BEFORE
+`scripts/checks/pre-write-guard.sh` exists there — `hooks.json` is
+shared config every worktree reads, and a worktree without the script
+yet (any checkout older than the commit that adds it) must never see
+a hook error on every single edit just because the wiring landed
+first. The `[ -f "$f" ] || exit 0` guard inside the command itself is
+what makes that safe: when the script is absent, the command exits 0
+before ever trying to run it — a real no-op, not a "failed to run"
+condition Claude Code happens to treat as non-blocking. When the
+script IS present, `exec bash "$f"` replaces the guard command with
+the script's own process, so the script's exit code (0 pass, 2 deny)
+is exactly what Claude Code sees — nothing about the presence check
+weakens or alters the fail-closed behavior described below once the
+script exists and runs. This is the ONLY no-op path in this design;
+there is no second "rule set present but script missing" case to
+handle, because the script itself will not exist without its rule set
+in the same commit (see "Rollout").
 
 ## File scope
 
@@ -268,32 +273,38 @@ correct path.
 
 ## Checks run
 
-ONE Semgrep invocation, against the AFTER tree, using a dedicated
-pre-write rule set covering rules 1–3, 7–10, and 12–17 (every Tier
-1/2/3 rule that is a per-line/per-pattern match Semgrep can express).
-This dedicated rule set is EITHER a new file
-`rules/semgrep-prewrite.yml` that imports/duplicates the Tier-1 rule
-bodies from `rules/semgrep-mobile.yml` plus the new Tier 2/3 rule
-bodies, OR a shared `rules/semgrep-mobile.yml` with the Tier-1 rule
-ids added to a `metadata.prewrite: true` tag the guard filters on via
-`semgrep --config rules/semgrep-mobile.yml --severity ERROR
---include-metadata prewrite` (exact CLI flag to be confirmed against
-the installed Semgrep version at implementation time). Decision for
-implementation: a SEPARATE `rules/semgrep-prewrite.yml` is preferred
-over a tag/filter on the shared file, because a pre-write rule must
-run on a temp-mirrored tree with different path roots than the real
-`check:rules`/`check:security` scans, and mixing that path-shape
-concern into the single shared rule file risks a rule silently
-changing behavior for the FULL-TREE `check:rules` run too. A separate
-file keeps the two rule sets independently editable; the Tier-1 rule
-BODIES are still shared (the pre-write file references or copies the
-same rule body — never a redefinition that could drift from
-`rules/semgrep-mobile.yml`'s own version of the rule). The exact
-sharing mechanism (a YAML anchor/copy vs. Semgrep's own multi-file
-`--config` merging both files) is an implementation detail to resolve
-against the installed Semgrep version's capabilities; either is
-acceptable as long as a Tier-1 rule's body is never hand-duplicated in
-a way that could drift.
+ONE Semgrep invocation, against the AFTER tree, using a new file
+`rules/semgrep-prewrite.yml` that holds exactly the pre-write-eligible
+rules — 1–3 and 7 (the four Tier-1 rules) plus 8–10 and 12–17 (the
+Tier-2/3 rules that are a per-line/per-pattern match Semgrep can
+express). Decided mechanism, not left open: the four Tier-1 rule
+BODIES (`kiko-no-history-id-comment`, `kiko-no-nullable-map-ternary`,
+`kiko-no-switch`, `kiko-no-use-animated-keyboard`) MOVE out of
+`rules/semgrep-mobile.yml` into `rules/semgrep-prewrite.yml` — they
+are deleted from `rules/semgrep-mobile.yml`, not copied — so there is
+exactly one source of truth for each rule body and no way for the two
+files to drift against each other. Every full-tree Semgrep wrapper
+that today loads `rules/semgrep-mobile.yml` alone —
+`scripts/checks/security.sh` (`check:security`, three separate
+`semgrep ... --config` invocations in that file) and
+`scripts/checks/semgrep-rules.sh` (`check:rules`, one invocation) —
+is updated to load BOTH files, adding a second
+`--config "$ROOT/rules/semgrep-prewrite.yml"` alongside the existing
+`--config "$ROOT/rules/semgrep-mobile.yml"` (Semgrep's `--config` flag
+is already repeatable — `security.sh` already passes it four times in
+a row for `p/typescript`, `p/react`, `p/secrets`, and
+`rules/semgrep-mobile.yml`). Full-tree coverage of the four moved
+rules is therefore unchanged: `check:security` and `check:rules` still
+scan the whole tree for them, now via `rules/semgrep-prewrite.yml`
+instead of `rules/semgrep-mobile.yml`. Any other wrapper that loads
+`rules/semgrep-mobile.yml` at implementation time must be found (grep
+the tree for `semgrep-mobile.yml`) and updated the same way; this spec
+does not assume `security.sh` and `semgrep-rules.sh` are the only two.
+The pre-write guard itself loads ONLY `rules/semgrep-prewrite.yml` —
+never `rules/semgrep-mobile.yml` — since the rules that stay in
+`rules/semgrep-mobile.yml` (everything not in the 17, for example
+`kiko-disabled-tls`, `kiko-secret-in-db-or-log`) are intentionally out
+of this guard's scope.
 
 Then, in the SAME `pre-write-guard.sh` run, the Node checks — rule 4
 (`import-order.js`), rule 5 (`full-word-identifiers.js`), rule 6
@@ -403,12 +414,17 @@ DENIES the write and prints the error as the deny reason. It never
 allows a write it did not successfully check — "I could not check
 this" is treated the same as "I found a problem," not the same as "I
 found nothing." The ONE case that is a no-op rather than a deny is the
-one already described in "Trigger and wiring": the pre-write rule set
-or script itself is entirely ABSENT from this checkout (an older
-worktree that predates this feature) — that is not a runtime failure
-of an existing guard, it is the guard not existing yet in this
-checkout, and is detected by the wrapper script checking for its own
-required sibling files' presence before attempting anything else.
+one already described in "Trigger and wiring": `scripts/checks/pre-write-guard.sh`
+itself is entirely ABSENT from this checkout (an older worktree that
+predates this feature) — that is not a runtime failure of an existing
+guard, it is the guard not existing yet in this checkout, and is
+detected by the hooks.json command's own `[ -f "$f" ]` presence check
+before the script is ever invoked. Once the script exists and runs at
+all, every failure inside it — including `rules/semgrep-prewrite.yml`
+being unexpectedly missing or unreadable — is a real failure and
+denies, per the paragraph above; there is no separate "rule set
+missing" no-op, because the script and its rule set land in one
+commit (see "Rollout").
 
 ## Speed target
 
@@ -447,15 +463,16 @@ because the agent was denied from writing it.
 
 ## Tests
 
-- A fixture pair per NEW rule (8–17, ten rules) under whatever
-  location the "Semgrep rule set" decision above lands on
-  (`rules/fixtures/` if the rules are folded into
-  `rules/semgrep-mobile.yml`'s tag-filtered scheme, or a parallel
-  `rules/fixtures-prewrite/` if `rules/semgrep-prewrite.yml` is a
-  separate file — either way, `check:rules`-equivalent proof that each
-  new rule still fires on its bad fixture and stays quiet on its good
-  one is required before the rule is considered shipped, per
-  `scripts/checks/semgrep-rules.sh`'s existing contract).
+- A fixture pair per NEW Semgrep-checked rule (8–10, 12–17) under
+  `rules/fixtures/`, proven by `scripts/checks/semgrep-rules.sh` once
+  that script loads `rules/semgrep-prewrite.yml` alongside
+  `rules/semgrep-mobile.yml` (see "Checks run") — the same
+  `check:rules`-equivalent proof (fires on `.bad.`, silent on `.good.`)
+  it already requires for every `rules/semgrep-mobile.yml` rule,
+  applied unchanged to the moved and new pre-write rules. Rule 11
+  (the Node-checked blank-line rule) is proven the same way
+  `import-order.js`/`full-word-identifiers.js` already are: by that
+  script's own Jest test, not a Semgrep fixture.
 - Jest tests for the guard's own logic
   (`__tests__/pre-write-guard.test.ts` or co-located, naming to be
   fixed at implementation time), covering at minimum:
@@ -532,15 +549,20 @@ already uses.
   declaring the feature done (see "Speed target"), and cache the
   parsed Semgrep rule set between invocations rather than reparsing
   YAML on every single edit.
-- **Merge overlap with the feat track's own rules file.** This branch
-  and `feat/assets-debts` (and whatever else lands on
-  `rules/semgrep-mobile.yml` in between) can both edit that same file
-  concurrently; a Tier 1 rule id or a rule body could diverge or
-  conflict at merge time. Mitigation: keeping the pre-write-only rule
-  additions in a SEPARATE file (the preferred `rules/semgrep-prewrite.yml`
-  option under "Checks run" above) rather than growing
-  `rules/semgrep-mobile.yml` itself minimizes the surface a merge
-  conflict can touch; the coordinator still diffs
-  `rules/semgrep-mobile.yml` explicitly at merge time regardless, per
-  the standing "verify committed state" discipline for any shared-file
-  merge.
+- **Merge overlap with the feat track's own rules file.** This design
+  requires DELETING the four Tier-1 rule bodies from
+  `rules/semgrep-mobile.yml` (moving them to
+  `rules/semgrep-prewrite.yml`, per "Checks run" above), which touches
+  the exact file `feat/assets-debts` (and whatever else lands on
+  `rules/semgrep-mobile.yml` in between) may also be editing
+  concurrently — a real conflict surface, not just a hypothetical one,
+  since this is a structural edit to a shared file rather than a pure
+  addition. Mitigation: the move (the deletion from
+  `rules/semgrep-mobile.yml`, the addition to the new file, and the
+  `security.sh`/`semgrep-rules.sh` wrapper updates that load both
+  files) lands in ONE commit, so there is never a landed state where
+  the rule body is missing from both files or present in both; the
+  coordinator diffs `rules/semgrep-mobile.yml` explicitly at merge
+  time regardless, per the standing "verify committed state"
+  discipline for any shared-file merge, and resolves a real conflict
+  by keeping the move intact rather than reverting it.
