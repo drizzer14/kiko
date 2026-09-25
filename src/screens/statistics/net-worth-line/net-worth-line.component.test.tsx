@@ -25,7 +25,7 @@ const polylineYs = (raw: string): number[] =>
     .split(' ')
     .map((pair) => Number(pair.split(',')[1]));
 
-// R5-D split the stroke into one <Polyline> per sign-contiguous segment
+// The stroke splits into one <Polyline> per sign-contiguous segment
 // (testID `net-worth-line-polyline-<key>`) instead of a single polyline —
 // this flattens every segment's points into one Y array, the same shape
 // `polylineYs` used to return from the old single polyline, so the
@@ -121,7 +121,7 @@ describe('toAreaPath', () => {
   });
 });
 
-// R5-D: the stroke's per-sign segmentation. Reuses the exact same identity
+// The stroke's per-sign segmentation. Reuses the exact same identity
 // scale, `crossing` fixture, and `referenceY` as the `toAreaPath` suite
 // above — proving the STROKE's crossing x's (0.5, 1.625) are the FILL's own,
 // not independently re-derived.
@@ -308,7 +308,7 @@ describe('NetWorthLine', () => {
     expect(getByText('1 236 ₴')).toBeTruthy();
   });
 
-  // R5-D changed this from a single always-white polyline to sign-colored
+  // The stroke changed from a single always-white polyline to sign-colored
   // segments (see "colors the net-worth stroke by sign" below); this guard
   // now covers only the non-crossing case, where the segmentation collapses
   // back to exactly one polyline carrying one coordinate pair per point —
@@ -794,8 +794,8 @@ describe('NetWorthLine', () => {
     expect(queryByTestId('net-worth-line-gradient-negative')).toBeNull();
   });
 
-  // R5-D (exploratory — kept as one cohesive block in the component, so it
-  // reverts in a single edit if dropped): the stroke is no longer a single
+  // Exploratory — kept as one cohesive block in the component, so it
+  // reverts in a single edit if dropped: the stroke is no longer a single
   // fixed white polyline — it is sign-colored per contiguous segment,
   // matching the fill's own green-above/red-below convention.
   it('colors the net-worth stroke by sign per segment, not a fixed white', async () => {

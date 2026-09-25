@@ -331,8 +331,8 @@ export const toAreaPath = (
   return `M ${vertices.join(' L ')} L ${lastX},${referenceY} L ${firstX},${referenceY} Z`;
 };
 
-// R5-D (exploratory — the user wants to SEE this, may keep or drop it; kept
-// as one cohesive, self-contained block so it reverts in a single edit).
+// Exploratory — the user wants to SEE this, may keep or drop it; kept as
+// one cohesive, self-contained block so it reverts in a single edit.
 // Colors the net-worth STROKE by sign per segment — green where above the
 // dashed start reference, red where below — matching the FILL's own
 // crossing logic exactly rather than re-deriving it. Reuses the SAME
@@ -669,8 +669,8 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
               />
             ) : null}
 
-            {/* R5-D (exploratory, cleanly revertible as one block — see
-                buildLineSegments above): the stroke itself now reads sign at
+            {/* Exploratory, cleanly revertible as one block — see
+                buildLineSegments above: the stroke itself now reads sign at
                 a glance, green above / red below the dashed reference, split
                 at the SAME crossing x the fill above uses. A non-crossing
                 series still renders as exactly one segment/color. */}

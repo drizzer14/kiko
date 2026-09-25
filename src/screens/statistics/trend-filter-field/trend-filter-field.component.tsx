@@ -250,8 +250,8 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
           Clear/Save action row all stay FIXED. Only the manual-category list
           (below) owns a ScrollView, so a long category list scrolls while the
           header and the actions never leave the screen — the whole modal never
-          scrolls as one block (on-device review: the flat, all-scrolling sheet
-          read as almost unreadable). */}
+          scrolls as one block (a flat, all-scrolling sheet read as almost
+          unreadable). */}
       <BottomSheet
         visible={open}
         onDismiss={() => setOpen(false)}
