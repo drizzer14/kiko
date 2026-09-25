@@ -574,6 +574,21 @@ export const holdingsRepo = {
   upsertExchange: (holding: ExchangeHolding) =>
     write((databaseTransaction) => upsertByMetadataKey(databaseTransaction, holding)),
   /**
+   * Upsert EVERY balance-provider snapshot from ONE sync run in a SINGLE
+   * transaction, mirroring `upsertMonobankMany` — the per-balance
+   * `upsertExchange` loop the crypto sync used before fired N separate
+   * transactions in a tight burst (one per returned balance: a wallet writes
+   * one, but Binance's Spot/Funding/Earn split writes several), each its own
+   * reactive `holdings` fire. Atomic is also strictly better: a sync's whole
+   * balance snapshot lands all-or-nothing.
+   */
+  upsertExchangeMany: (holdingsList: ExchangeHolding[]) =>
+    write(async (databaseTransaction) => {
+      for (const holding of holdingsList) {
+        await upsertByMetadataKey(databaseTransaction, holding);
+      }
+    }),
+  /**
    * Persist a drag-and-drop reorder of one account's holdings grid.
    * `orderedIds` is the full new front-to-back order of that account's visible
    * holdings; each row's `sortOrder` is rewritten to its 0-based index in one

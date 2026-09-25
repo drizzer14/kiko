@@ -13,11 +13,15 @@ jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
   return {
     ...actual,
-    write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
+    // A jest.fn wrapper (not a bare function): `upsertExchangeMany`'s own test
+    // asserts on the CALL COUNT (one `write` per batch, not one per holding),
+    // which only a mock function tracks.
+    write: jest.fn((work: (db: unknown) => unknown) => work(mockDatabaseTransaction)),
   };
 });
 
 import maybe, { foldMap } from 'fnts/maybe';
+import { write } from '@kiko/db/client';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { captureSetDatabaseTransaction } from '@kiko/db/capture-set-tx';
 import { inArrayClauseFromCondition } from '@kiko/db/in-array-clause-test-helper';
@@ -621,6 +625,52 @@ describe('holdingsRepo.upsertExchange', () => {
     });
 
     expect(updates[0]).not.toHaveProperty('name');
+  });
+});
+
+describe('holdingsRepo.upsertExchangeMany', () => {
+  const balanceHolding = (metadataKey: string) => ({
+    accountId: 'acc-crypto',
+    name: 'BTC Wallet',
+    type: 'crypto_asset' as const,
+    currency: 'BTC' as const,
+    balanceMinorUnits: 1,
+    metadata: { syncedAt: 1_704_326_400_000 },
+    metadataField: 'walletAddress' as const,
+    metadataKey,
+  });
+
+  // The crypto sync used to call `upsertExchange` once per returned balance —
+  // N separate op-sqlite transactions in one run. `upsertExchangeMany` mirrors
+  // `upsertMonobankMany`: every balance upserts inside ONE transaction, so the
+  // reactive `holdings` callback fires once per sync, not once per balance.
+  it('upserts every balance in ONE write transaction, not one per balance', async () => {
+    (write as jest.Mock).mockClear();
+    const updates: Record<string, unknown>[] = [];
+    const databaseTransaction = {
+      select: () => ({
+        from: () => ({
+          where: () => {
+            const rows = [{ id: 'h-existing' }];
+            return Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
+          },
+        }),
+      }),
+      update: () => ({
+        set: (values: Record<string, unknown>) => ({
+          where: () => {
+            updates.push(values);
+            return Promise.resolve();
+          },
+        }),
+      }),
+    };
+    mockDatabaseTransaction = databaseTransaction;
+
+    await holdingsRepo.upsertExchangeMany([balanceHolding('addr-1'), balanceHolding('addr-2')]);
+
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(updates).toHaveLength(2);
   });
 });
 
