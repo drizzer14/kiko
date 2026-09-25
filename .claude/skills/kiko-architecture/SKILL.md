@@ -185,51 +185,98 @@ consequences follow directly:
 ### `useLiveQuery` consumer rule: gate an empty state on `isLoading`, never on `data.length === 0` alone
 
 Every `useLiveQuery` (and `usePriceBook`, which wraps one) starts
-`isLoading: true` and clears it only once its FIRST read settles —
-never before. Because of the one-worker-thread queueing above, that
-first read can sit queued for real, perceptible time on a busy app
-open. A screen that renders its own empty state (empty list text, an
-empty chart, a `0` balance) whenever `data.length === 0` — without
-checking `isLoading` — cannot tell "genuinely no data yet" apart from
-"my read is still queued," and shows the wrong one: a real empty
-state for a screen whose data hasn't arrived yet, which self-corrects
-only on the NEXT reactive fire or a fresh mount (this shipped as a
-production bug, build 575f19a — every screen read `data`, none read
-`isLoading`).
+`isLoading: true` and clears it only once its FIRST read for its
+CURRENT sql+paramsKey settles — never before. Because of the
+one-worker-thread queueing above, that first read can sit queued for
+real, perceptible time on a busy app open. A screen that renders its
+own empty state (empty list text, an empty chart, a `0` balance)
+whenever `data.length === 0` — without checking `isLoading` — cannot
+tell "genuinely no data yet" apart from "my read is still queued," and
+shows the wrong one: a real empty state for a screen whose data hasn't
+arrived yet, which self-corrects only on the NEXT reactive fire or a
+fresh mount (this shipped as a production bug — every screen read
+`data`, none read `isLoading`).
+
+**`isLoading` is per query KEY, not merely per hook instance.** It goes
+back to `true` the instant a query's `sql`/`paramsKey` changes — a
+DEPENDENT query re-keying off data that only just arrived (e.g.
+holding-detail's `accountsRepo.byIdQuery(holding?.accountId ?? '')`,
+which starts on the placeholder `''` key before `holdings` has loaded
+and re-keys to the real account id the moment it does) — but a
+reactive re-run against the SAME key never flips it back to `true`
+(verified in `use-live-query.test.ts`). `useLiveQuery` tracks this by
+comparing the CURRENT render's key against the key its last-applied
+result belongs to, not by a one-shot "have I ever loaded" flag. Under
+a dense write burst, a finished result is applied whenever it is newer
+than the last APPLIED generation — not only when it is the newest
+STARTED one — so a screen's spinner clears as soon as an in-order
+result lands instead of waiting for the whole burst to quiet down.
 
 The fix is one shared mechanism, not a per-screen ad hoc guard:
 
 - `useDataReady(...isLoading)` (`src/db/use-data-ready.ts`) takes every
   `isLoading` flag a screen's own `useLiveQuery`/`usePriceBook` calls
-  return and is `true` only once ALL of them have settled at least
-  once. It LATCHES: once ready, it stays ready even if a flag somehow
-  reports `true` again on a later render (defensive — `useLiveQuery`'s
-  own `isLoading` is already first-load-only in practice, since
-  nothing in the hook ever sets it back to `true` after its first
-  settle, verified in `use-live-query.test.ts`).
+  return and is `true` only once ALL of them are currently settled —
+  a plain `!loadingFlags.some(Boolean)`, no latch. An earlier revision
+  latched (stayed ready forever once every flag had settled once), as
+  a defensive backstop against `useLiveQuery`'s `isLoading` flipping
+  back to `true` after the gate had already opened; that never
+  actually happens for any current consumer, because a query's key
+  only ever changes while at least one of that SAME screen's OTHER
+  flags is still loading in that same render (the dependent-query case
+  above), so the latch was dead weight once the flip moved to the
+  right layer (`useLiveQuery` itself, per-key, above).
 - `LoadingState` (`src/design-system/components/loading-state/`) is
   the shared "not ready yet" visual: a plain centered native
   `ActivityIndicator`, no text at all — a spinner needs no i18n
-  string, so gating a screen on it never has to add one (see
-  `kiko-design-system`'s "No new user-facing string" framing for why
-  that mattered here).
+  string, so gating a screen on it never has to add one. See
+  `kiko-design-system`'s "Component set" section for its own entry.
 - A screen calls `useDataReady` on every query's `isLoading` (its own
-  `useLiveQuery` calls plus `usePriceBook`'s), and returns
-  `<Screen><LoadingState testID="<screen>-loading" /></Screen>` in
-  place of its normal content while `!isReady` — a plain `if
-  (!isReady) { return (...); }` right before the real `return`, AFTER
-  every hook call (Rules of Hooks: every `useLiveQuery`/`usePriceBook`
-  call still runs unconditionally on every render; only the JSX
-  branches). Current consumers: `account-detail`, `holding-detail`,
-  `home` (net-worth headline + transaction list), `statistics` (every
-  chart), `accounts` (the accounts-list empty state) — grep
-  `useDataReady` for the current call-site list rather than trusting
-  this restated one if it drifts.
+  `useLiveQuery` calls plus `usePriceBook`'s), and — AFTER every hook
+  call (Rules of Hooks: every `useLiveQuery`/`usePriceBook` call still
+  runs unconditionally on every render; only the JSX branches) —
+  returns `<LoadingState testID="<screen>-loading" />` in place of its
+  normal content while `!isReady`, wrapped in the exact SAME `Screen`
+  mode/props as its ready branch (same `scroll`/`bleedTop`/
+  `bleedBottom` and the same `scrollableRef` when one is passed) — NOT
+  a bare `<Screen>`. The first scroll view iOS walks to drive the
+  native large-title collapse must exist from the very first render,
+  or the collapse never engages once real content replaces the
+  spinner. A screen whose ready branch's own scrollable IS its content
+  (holding-detail's ledger `FlatList` under `bleedTop`) keeps that
+  same component MOUNTED throughout instead of swapping to a separate
+  loading branch, rendering `LoadingState` as its
+  `ListHeaderComponent` and suppressing `data`/`ListEmptyComponent`
+  until ready — home similarly keeps `SyncProgressBar` (it shows the
+  sync the screen's own first read is queued behind) and
+  pull-to-refresh available on the same scroll view while loading, not
+  only once ready. Current consumers: `account-detail`,
+  `holding-detail`, `home` (net-worth headline + transaction list),
+  `statistics` (every chart), `accounts` (the accounts-list empty
+  state), `settings/system`, `settings/settings`,
+  `settings/categories`, statement-import's `example-transaction` (a
+  single row inside an already-loaded parent, gated on its OWN
+  categories/settings queries rather than the whole parent screen) —
+  grep `useDataReady` for the current call-site list rather than
+  trusting this restated one if it drifts. A screen/component that
+  gates only ONE value (not its whole render) reads `isLoading`
+  straight off the one `useLiveQuery` call it depends on instead —
+  `bank-sync-section`'s "Last sync" status line is the example: it
+  hides just that line while `sync_state` loads, leaving the
+  Sync/Disconnect actions (which don't depend on that query)
+  unaffected.
 - An `isLoading` gate is a SEPARATE concern from a screen's own async
   UI state (e.g. statistics's rate-history backfill `loading` prop on
   `NetWorthLine`) — the backfill tracks a later, non-blocking network
   fetch that only starts once the screen's OWN base queries have
-  already loaded; do not fold the two into one flag.
+  already loaded; do not fold the two into one flag. That backfill
+  effect must ALSO gate on its own upstream query's `isLoading`
+  (`historyLoading`) in its dependency guard, not just on
+  `transactions.length` — an empty `historyRows` reads identically to
+  "nothing backfilled yet" for as long as `currency_rate_history`'s
+  own query is still on its first load, and re-fetching/re-writing the
+  whole span on that false-empty read adds to the same app-open DB
+  burst this whole rule exists to protect screens from.
 - A rejected query still ends `isLoading` (`use-live-query.ts` sets it
   `false` on both the success and the error path, verified in
   `use-live-query.test.ts`'s "clears isLoading when the first query

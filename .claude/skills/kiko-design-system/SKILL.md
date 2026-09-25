@@ -1,6 +1,6 @@
 ---
 name: kiko-design-system
-description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, CurrencyField, SummaryTable, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, SelectField, SelectableRow, SegmentedControl, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
+description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, LoadingState, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, CurrencyField, SummaryTable, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, SelectField, SelectableRow, SegmentedControl, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
 ---
 
 # Kiko design system
@@ -235,6 +235,15 @@ new component can land between reviews of this skill:
   — use the existing `footer` slot for that instead; read
   `screen.props.d.ts`'s `fillHeight` doc comment for the exact
   interaction with `footer` if both are ever passed together.
+- **LoadingState** (`src/design-system/components/loading-state/`) —
+  the shared "this screen's own data has not loaded yet" visual: a
+  plain centered native `ActivityIndicator`, no text at all — a
+  spinner needs no i18n string, so a `useDataReady` consumer
+  (`kiko-architecture`'s useLiveQuery consumer rule) gating its whole
+  render, or a single component gating one value inside an
+  already-loaded parent (e.g. statement-import's
+  `example-transaction`), never has to add one. Takes an optional
+  `testID`, conventionally `<screen>-loading`.
 - **Box** — a generic layout container reading spacing/color/direction
   tokens (padding, gap, background, `direction="row"`).
 - **Text** — the base text primitive reading the typography and tone
