@@ -105,7 +105,7 @@ describe('transactionsRepo', () => {
     expect(sql).toContain('"transactions"."source"');
   });
 
-  it('builds a DISTINCT manual-descriptions query ordered newest-first (D1 autocomplete)', () => {
+  it('builds a DISTINCT manual-descriptions query ordered newest-first (for the description-suggestion autocomplete)', () => {
     const { sql } = transactionsRepo.distinctDescriptionsQuery().toSQL();
     const lower = sql.toLowerCase();
 
@@ -647,7 +647,7 @@ describe('transactionsRepo.addManyDedup upsert', () => {
     expect(inserted).toBe(2);
   });
 
-  // T29: the loan-payment link is user/matcher state, not bank data — a
+  // The loan-payment link is user/matcher state, not bank data — a
   // re-sync must never refresh it, unlike `amountMinorUnits`/`description`/etc.
   it('never refreshes the loan-link columns on a re-sync', async () => {
     const { databaseTransaction, captured } = makeAddManyDatabaseTransaction([]);
@@ -661,11 +661,11 @@ describe('transactionsRepo.addManyDedup upsert', () => {
     expect(setKeys).not.toContain('loanLinkRejected');
   });
 
-  // M6 (T29 review round 1): a single unchunked insert bound one parameter
-  // per PRESENT key per row, and failed a whole statement-import file past
-  // ~2980 rows (or a Monobank sync past ~2731) once T29 widened
-  // `transactions` to 18 columns — the same `SQLITE_MAX_VARIABLE_NUMBER`
-  // ceiling C1 hit in `restoreDataSnapshot`. `insertDedupRowsDatabaseTransaction` now chunks
+  // A single unchunked insert bound one parameter per PRESENT key per row,
+  // and failed a whole statement-import file past ~2980 rows (or a Monobank
+  // sync past ~2731) once a migration widened `transactions` to 18 columns —
+  // the same `SQLITE_MAX_VARIABLE_NUMBER` ceiling `restoreDataSnapshot` hit
+  // too. `insertDedupRowsDatabaseTransaction` now chunks
   // through the SAME `chunkForTable` helper, sized off the table's own
   // (`getTableColumns`) column count — independent of how many keys any one
   // row actually carries, so this holds regardless of row shape.
@@ -1016,16 +1016,14 @@ describe('transactionsRepo.addManyDedup cross-provider externalId namespacing', 
   });
 });
 
-// The store-backed re-sync test that used to live here was a tautology (the
-// fake's `{ ...existing, ...row }` merge cannot overwrite keys the incoming
-// row lacks, so it passed whatever the real upsert `set` contains) — dropped
-// per T29 review round 1 (ponytail). The SQL-shape test above ("never
-// refreshes the loan-link columns") is the real guard.
+// A store-backed re-sync assertion would be a tautology here: the fake's
+// `{ ...existing, ...row }` merge cannot overwrite keys the incoming row
+// lacks, so it would pass whatever the real upsert `set` contains regardless.
+// The SQL-shape test above ("never refreshes the loan-link columns") is the
+// real guard.
 
-// T29 review round 1: shared by `setLoanPayment` and `undoAutoLoanLink`
-// below (both single-row updates on `transactions`), hoisted per the
-// ponytail note that the `undoAutoLoanLink` test used to inline its own
-// copy.
+// Shared by `setLoanPayment` and `undoAutoLoanLink` below (both single-row
+// updates on `transactions`), rather than each inlining its own copy.
 const captureUpdateDatabaseTransaction = (): {
   databaseTransaction: unknown;
   captured: { table?: unknown; set?: Record<string, unknown>; whereArg?: unknown };
@@ -1074,11 +1072,11 @@ const makeSetLoanPaymentDatabaseTransaction = (
   return { databaseTransaction, captured };
 };
 
-// T29, spec 5.4: `setLoanPayment` is the MANUAL write path (the user's own
-// picker) — no source gate on the TARGET row, unlike `update`/`remove`,
-// since the link is user state, not a mutation of bank-owned ledger data.
-// Split from the matcher's own path (`setAutoLoanLinks`, below) in T29
-// review round 1 (I2): only a manual action may move `loanLinkRejected`.
+// `setLoanPayment` is the MANUAL write path (the user's own picker) — no
+// source gate on the TARGET row, unlike `update`/`remove`, since the link is
+// user state, not a mutation of bank-owned ledger data. Split from the
+// matcher's own path (`setAutoLoanLinks`, below): only a manual action may
+// move `loanLinkRejected`.
 describe('transactionsRepo.setLoanPayment', () => {
   it('persists a manual link on a synced (monobank) row, with no source gate, clearing loanLinkRejected', async () => {
     const { databaseTransaction, captured } = makeSetLoanPaymentDatabaseTransaction([
@@ -1102,9 +1100,9 @@ describe('transactionsRepo.setLoanPayment', () => {
     });
   });
 
-  // I3 (T29 review round 1 ruling): a manual "None" SETS loanLinkRejected —
-  // the choice sticks, so the matcher never silently re-proposes a link the
-  // user explicitly rejected. This deviates from spec 5.4's literal text.
+  // A manual "None" SETS loanLinkRejected — the choice sticks, so the
+  // matcher never silently re-proposes a link the user explicitly rejected.
+  // This deviates from the original design note's literal text.
   it('clears the link source AND sets loanLinkRejected on a manual "None" (loanHoldingId: null)', async () => {
     const { databaseTransaction, captured } = captureUpdateDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;
@@ -1138,11 +1136,10 @@ describe('transactionsRepo.setLoanPayment', () => {
   });
 });
 
-// T32's auto-match write path — split from `setLoanPayment` in T29 review
-// round 1 (I2) because only a MANUAL action may ever move
-// `loanLinkRejected`. Every WHERE clause carries BOTH skip conditions
-// (M2-style exact-predicate assertions, not just "some where() was
-// called"): a candidate row already linked, or already rejected, is never
+// The auto-match write path — split from `setLoanPayment` because only a
+// MANUAL action may ever move `loanLinkRejected`. Every WHERE clause carries
+// BOTH skip conditions (exact-predicate assertions, not just "some where()
+// was called"): a candidate row already linked, or already rejected, is never
 // silently overwritten — SQLite itself enforces this (the WHERE simply
 // matches no row), so the test proves the PREDICATE carries both guards
 // rather than emulating SQLite's row filtering in JS.
@@ -1196,7 +1193,7 @@ describe('transactionsRepo.setAutoLoanLinks', () => {
   });
 });
 
-// T29, spec 5.4: undo clears the link and marks it rejected, so the matcher
+// Undo clears the link and marks it rejected, so the matcher
 // never re-proposes the same link on this row.
 describe('transactionsRepo.undoAutoLoanLink', () => {
   it('clears loanHoldingId and loanLinkSource, and sets loanLinkRejected, scoped to an auto-sourced link', async () => {
@@ -1211,8 +1208,8 @@ describe('transactionsRepo.undoAutoLoanLink', () => {
       loanLinkSource: null,
       loanLinkRejected: true,
     });
-    // M5 (T29 review round 1): scoped to `loanLinkSource = 'auto'` too — an
-    // Undo called on a MANUAL link must not reject it.
+    // Scoped to `loanLinkSource = 'auto'` too — an Undo called on a MANUAL
+    // link must not reject it.
     expect(renderCondition(captured.whereArg)).toEqual({
       sql: '("transactions"."id" = ? and "transactions"."loan_link_source" = ?)',
       params: ['txn-1', 'auto'],
@@ -1943,10 +1940,10 @@ const baseHolding = {
 const unsyncedAccount = { institution: null };
 
 describe('transactionsRepo.importRows', () => {
-  // Review follow-up (ponytail): a missing holding used to fall back to a
-  // plain dedup insert with no balance write — replaced with a throw, since
-  // the real caller (`importStatement`) already validates the holding
-  // exists before this ever runs.
+  // Throws rather than falling back to a plain dedup insert with no balance
+  // write: the real caller (`importStatement`) already validates the
+  // holding exists before this ever runs, so reaching here with a missing
+  // holding is a caller bug, not a case to tolerate silently.
   it('throws when the target holding cannot be found', async () => {
     const { databaseTransaction } = makeImportRowsDatabaseTransaction({ account: unsyncedAccount });
     mockDatabaseTransaction = databaseTransaction;
@@ -2137,10 +2134,10 @@ describe('transactionsRepo.importRows', () => {
     await transactionsRepo.importRows({
       holdingId: 'hold-1',
       rows: [{ holdingId: 'hold-1', amountMinorUnits: -1_000, time: 1, source: 'import' }],
-      // Review follow-up (M5): deliberately DIFFERENT from base + net
-      // (0 + -1_000 = -1_000) — the old fixture used -1_000 here too, so a
-      // regression that fell back to the net-delta rule would still have
-      // passed this assertion by coincidence.
+      // Deliberately DIFFERENT from base + net (0 + -1_000 = -1_000) — a
+      // regression that fell back to the net-delta rule would produce the
+      // SAME -1_000 result, so a value that only matches via the
+      // closing-balance path is what actually proves this test.
       closingBalance: { minorUnits: -5_000, currency: 'UAH', asOfSeconds: 1 },
     });
 
@@ -2150,10 +2147,10 @@ describe('transactionsRepo.importRows', () => {
     });
   });
 
-  // Review follow-up (M5): the eligibility check is `asOfSeconds * 1000 >=
-  // syncBoundaryTime` — an exact equality (the statement's own closing
-  // balance is as of precisely the holding's newest existing row) must still
-  // win, not just a strictly-newer statement.
+  // The eligibility check is `asOfSeconds * 1000 >= syncBoundaryTime` — an
+  // exact equality (the statement's own closing balance is as of precisely
+  // the holding's newest existing row) must still win, not just a
+  // strictly-newer statement.
   it('uses the closing balance when it is exactly as of the newest existing transaction (the >= boundary)', async () => {
     const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
       holding: { ...baseHolding, balanceMinorUnits: -5_000 },
@@ -2250,7 +2247,7 @@ describe('transactionsRepo.importRows', () => {
     });
   });
 
-  // User ruling (D-I2): `holdingsRepo.create` stamps `holdings.balanceSetAt`
+  // `holdingsRepo.create` stamps `holdings.balanceSetAt`
   // at create time for a non-zero typed opening balance, and
   // `holdingsRepo.updateWithBalanceDelta` stamps it at edit time for a
   // non-zero manual balance edit (both verified in `holdings.repo.test.ts`)
@@ -2367,7 +2364,8 @@ describe('transactionsRepo.importRows', () => {
 // against the SAME pair see each other's real effects, the way two real
 // statement imports into the same holding would. Needed by every describe
 // block below that spans more than one `importRows` call in a single test
-// (order independence, and the R1(b)/D-I1/D-I2 boundary-source tests);
+// (order independence, and the R1(b) and the disconnected-sync /
+// hand-set-balance boundary-source tests);
 // every OTHER `importRows` test needs just one static decision, per the
 // comment on `makeImportRowsDatabaseTransaction`.
 type OrderedStoreRow = { time: number; source: string; externalId: string | null };
@@ -2535,7 +2533,8 @@ describe('transactionsRepo.importRows order independence (an applied closing bal
 
 // User ruling (R1, "(b)"): an earlier PLAIN import's own rows are NEVER a
 // boundary source, whether or not a hand-set balance or a sync row exists
-// (D-I1/D-I2 have their own describe blocks below for those two sources).
+// (the disconnected-sync and hand-set-balance sources have their own
+// describe blocks below).
 // These three tests are the ruling's own pinned cases.
 describe('transactionsRepo.importRows boundary sources (R1 ruling b)', () => {
   const APRIL_TIME = Date.UTC(2024, 3, 15);
@@ -2594,10 +2593,10 @@ describe('transactionsRepo.importRows boundary sources (R1 ruling b)', () => {
     expect(orderOneHolding.balanceMinorUnits).toBe(-3_000);
   });
 
-  // M1 (review follow-up): rebuilt on the STATEFUL fake, with a NEWER plain
-  // `import` row already sitting in the ledger, so this actually discriminates
-  // — it proves the boundary is `balanceSetAt` alone, not "the newest row
-  // in the store" (which the newer import row would otherwise satisfy).
+  // Rebuilt on the STATEFUL fake, with a NEWER plain `import` row already
+  // sitting in the ledger, so this actually discriminates — it proves the
+  // boundary is `balanceSetAt` alone, not "the newest row in the store"
+  // (which the newer import row would otherwise satisfy).
   it('R1 test 2: a hand-set balance leaves an OLDER statement (every row before the hand-set time) unchanged, even with a newer plain import already in the ledger', async () => {
     const HAND_SET_TIME = 10_000;
     const holding = { ...baseHolding, balanceMinorUnits: 250_00, balanceSetAt: HAND_SET_TIME };
@@ -2661,11 +2660,11 @@ describe('transactionsRepo.importRows boundary sources (R1 ruling b)', () => {
   });
 });
 
-// User ruling (D-I1): a row from a SYNC source (`source` not in ('manual',
+// A row from a SYNC source (`source` not in ('manual',
 // 'import')) counts as a boundary again, as on `0e445ff` — a disconnected
 // Monobank holding keeps its synced balance when an older CSV is imported,
 // with or without that CSV's own closing balance.
-describe('transactionsRepo.importRows boundary sources (D-I1: a disconnected, formerly synced holding keeps its sync-set boundary)', () => {
+describe('transactionsRepo.importRows boundary sources (a disconnected, formerly synced holding keeps its sync-set boundary)', () => {
   const SEP_20 = Date.UTC(2024, 8, 20);
   const JULY_15 = Date.UTC(2024, 6, 15);
   const julyRows = [
@@ -2712,13 +2711,13 @@ describe('transactionsRepo.importRows boundary sources (D-I1: a disconnected, fo
   });
 });
 
-// User ruling (D-I2): ONLY a TRUE hand-set balance is a boundary —
+// ONLY a TRUE hand-set balance is a boundary —
 // `recordManual`, an exchange leg, or a change-return row all write a
 // `source: 'manual'` transaction but never stamp `holdings.balanceSetAt`,
 // so none of them is a boundary source. `holdings.repo.test.ts` pins that
 // `holdingsRepo.create`/`updateWithBalanceDelta` DO stamp it; this suite
 // pins `importRows`'s own read of it.
-describe('transactionsRepo.importRows boundary sources (D-I2: only a TRUE hand-set balance is a boundary)', () => {
+describe('transactionsRepo.importRows boundary sources (only a TRUE hand-set balance is a boundary)', () => {
   const APRIL_15 = Date.UTC(2024, 3, 15);
   const MAY_15 = Date.UTC(2024, 4, 15);
   const JUN_5 = Date.UTC(2024, 5, 5);
@@ -2764,15 +2763,15 @@ describe('transactionsRepo.importRows boundary sources (D-I2: only a TRUE hand-s
   });
 });
 
-// N1 (round-1 re-review): `accountsRepo.createCashAccount`'s typed starting
-// balance IS a hand-set balance, the same as `holdingsRepo.create`'s — it
+// `accountsRepo.createCashAccount`'s typed starting balance IS a hand-set
+// balance, the same as `holdingsRepo.create`'s — it
 // must stamp `balanceSetAt` too, or an import-only-looking holding (never
 // touched through `holdingsRepo`) loses its boundary. This is a real
 // cross-repo integration test — it drives BOTH real `accountsRepo` and
 // `transactionsRepo` functions against one shared, mutable store — rather
 // than simulating the pre-condition, because the bug was exactly that
 // `createCashAccount` DIDN'T do what its sibling create path does.
-describe('createCashAccount + importRows integration (N1)', () => {
+describe('createCashAccount + importRows integration', () => {
   type IntegrationStore = {
     accounts: Record<string, unknown>[];
     holdings: Record<string, unknown>[];
@@ -2799,7 +2798,7 @@ describe('createCashAccount + importRows integration (N1)', () => {
     return {
       select: (fields?: Record<string, unknown>) => ({
         from: (table: unknown) => {
-          // `nextSortOrder` (accounts.repo.ts, T30 — kind-aware): a bare,
+          // `nextSortOrder` (accounts.repo.ts, kind-aware): a bare,
           // un-`.where()`'d `select({ assetMax, debtMin, allMax }).from(accounts)`.
           // An empty store has no accounts of any kind yet, so every field
           // reads the same "nothing here" default `nextSortOrder` itself

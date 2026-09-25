@@ -145,19 +145,19 @@ export const transactions = sqliteTable(
     // not a reserved `category` value, for the same reason the exchange marker
     // is: the category picker rewrites `category` and would destroy it.
     changeGroupId: text('change_group_id'),
-    // The loan holding this payment counts against (D21, spec 5.4) — null for
-    // an ordinary transaction. A loan holding writes no ledger rows of its
-    // own (`isLedgerlessHoldingType`), so every payment lives on the LINKED
+    // The loan holding this payment counts against — null for an ordinary
+    // transaction. A loan holding writes no ledger rows of its own
+    // (`isLedgerlessHoldingType`), so every payment lives on the LINKED
     // bank holding's own row instead, tied back here. Set by the auto-matcher
-    // (`transactionsRepo.setAutoLoanLinks`, T32) or by the user
+    // (`transactionsRepo.setAutoLoanLinks`) or by the user
     // (`transactionsRepo.setLoanPayment`). Allowed on a synced (bank-owned)
     // row, EXACTLY LIKE `category`'s own override path — the link is
     // user/matcher state, not bank data, so `addManyDedup`'s upsert never
     // refreshes it. Cleared (along with `loanLinkSource`) in the SAME
     // transaction a linked loan holding is deleted, whether directly
-    // (`holdingsRepo.remove`, Review Focus 7) or via its owning account
-    // (`accountsRepo.remove`, T29 review round 1) — a dangling id is never
-    // left to rot; a cleared link counts as normal spending again.
+    // (`holdingsRepo.remove`) or via its owning account
+    // (`accountsRepo.remove`) — a dangling id is never left to rot; a
+    // cleared link counts as normal spending again.
     loanHoldingId: text('loan_holding_id'),
     // How `loanHoldingId` was set: 'auto' (the matcher) or 'manual' (the
     // user), null when there is no link — kept in sync with `loanHoldingId`
@@ -166,14 +166,14 @@ export const transactions = sqliteTable(
     loanLinkSource: text('loan_link_source', { enum: ['auto', 'manual'] }),
     // True once the user has explicitly rejected an auto-suggested link on
     // this row (`transactionsRepo.undoAutoLoanLink`), so the matcher never
-    // re-proposes it — spec 5.4's "False-positive handling". Only a MANUAL
-    // action ever moves this flag (T29 review round 1, I2/I3): a manual
-    // LINK clears it (a fresh pick always overrides an earlier Undo), but a
-    // manual "None" SETS it — the user's explicit "not a loan payment" must
-    // stick, or the very next sync would just auto-link the row again. This
-    // deviates from spec 5.4's literal text ("a manual None clears the
-    // flag"). `setAutoLoanLinks` (the matcher's path) never touches this
-    // column either way; its own WHERE clause just skips a rejected row.
+    // re-proposes it — false-positive handling. Only a MANUAL action ever
+    // moves this flag: a manual LINK clears it (a fresh pick always
+    // overrides an earlier Undo), but a manual "None" SETS it — the user's
+    // explicit "not a loan payment" must stick, or the very next sync would
+    // just auto-link the row again. This deviates from the original design
+    // note's literal text ("a manual None clears the flag"). `setAutoLoanLinks`
+    // (the matcher's path) never touches this column either way; its own
+    // WHERE clause just skips a rejected row.
     // NOT NULL default 0: every existing row (pre-migration and every
     // ordinary transaction) has never been rejected.
     loanLinkRejected: integer('loan_link_rejected', { mode: 'boolean' }).notNull().default(false),
@@ -361,8 +361,8 @@ export const settings = sqliteTable('settings', {
   // the balance-diff skip never engages again. Pruned to ids still present in
   // client-info. NULL means the empty set (no card is currently force-retried).
   failedSyncMonobankIds: text('failed_sync_monobank_ids', { mode: 'json' }).$type<string[]>(),
-  // The user's saved column-mapping imports (T5,
-  // `statement-import/column-mapping/saved-mapping.ts`): a map from
+  // The user's saved column-mapping imports
+  // (`statement-import/column-mapping/saved-mapping.ts`): a map from
   // `mappingKeyFor(bankId, fingerprint)` (`bank:<bankId>` for a catalog bank,
   // else `header:<fingerprint>` for "Other") to the `SavedColumnMapping` last
   // confirmed for that key. NULL means nothing saved yet. Written (read-
@@ -445,7 +445,7 @@ export const categoryOverrides = sqliteTable('category_overrides', {
 export type CategoryOverrideRow = typeof categoryOverrides.$inferSelect;
 
 /**
- * One priced point for a share/metal/holding on a given day (T11). Keyed the
+ * One priced point for a share/metal/holding on a given day. Keyed the
  * same way `currencyRateHistory` keys a rate: one row per (instrument, day),
  * carried forward across a gap by the reader (`src/prices/price-book/`), not
  * backfilled here.
@@ -478,7 +478,7 @@ export const pricePoints = sqliteTable(
 export type PricePointRow = typeof pricePoints.$inferSelect;
 
 /**
- * NBU securities-register cache (T24, spec 6.4) — one row per bond ISIN,
+ * NBU securities-register cache — one row per bond ISIN,
  * refreshed WHOLESALE (never patched field-by-field) at most once per
  * local day by `refreshBondRegisterIfStale`
  * (`src/bonds/bond-register-repo/`). `terms` stores the register's

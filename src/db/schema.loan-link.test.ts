@@ -9,8 +9,8 @@ const combinedSql = (): string =>
     .map((name) => readFileSync(join(migrationsDir, name), 'utf8'))
     .join('\n');
 
-// `loan_holding_id` / `loan_link_source` / `loan_link_rejected` (T29, spec
-// 5.4): the loan-payment link on a transaction — which loan holding a bank
+// `loan_holding_id` / `loan_link_source` / `loan_link_rejected`: the
+// loan-payment link on a transaction — which loan holding a bank
 // debit counts against, whether the matcher (`auto`) or the user (`manual`)
 // set it, and whether the user has explicitly rejected an auto-suggested
 // link on this row (so the matcher never re-links it). Migration 0038 adds

@@ -9,7 +9,7 @@ const combinedSql = (): string =>
     .map((name) => readFileSync(join(migrationsDir, name), 'utf8'))
     .join('\n');
 
-// `price_points` (T11): one row per (instrument, day) — the priced value for
+// `price_points`: one row per (instrument, day) — the priced value for
 // a share/metal/holding on a given UTC-midnight day, keyed the same way
 // `currency_rate_history` keys a rate. Migration 0035 creates the table.
 describe('price_points table migration', () => {

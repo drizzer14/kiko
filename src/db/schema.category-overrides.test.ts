@@ -205,11 +205,11 @@ const applyGuardedIconUpdate = (
   return matches ? nextIcon : row.icon;
 };
 
-// M1: the icon rework changes exactly ONE seeded category default — Health from
+// The icon rework changes exactly ONE seeded category default — Health from
 // `cross.case` to `cross`. Categories are seeded as DB rows (0002), so an
 // existing install stores `cross.case` and needs a guarded data migration to
 // converge, same class/shape as 0017's transport `car`->`bus` refinement.
-describe('health-category-icon migration (M1)', () => {
+describe('health-category-icon migration', () => {
   const sql = (): string =>
     readFileSync(join(migrationsDir, '0031_icon_health_category.sql'), 'utf8');
 
@@ -263,12 +263,12 @@ describe('health-category-icon migration (M1)', () => {
   });
 });
 
-// M2: the crypto ACCOUNT default changes from `bitcoinsign` to
+// The crypto ACCOUNT default changes from `bitcoinsign` to
 // `bitcoinsign.circle`. The account form PERSISTS the kind default at create
 // time (never null on create), so existing un-customized crypto accounts store
 // `bitcoinsign` and need a guarded data migration — unlike the holding defaults,
 // which are null-until-picked render-time fallbacks and need no migration.
-describe('crypto-account-icon migration (M2)', () => {
+describe('crypto-account-icon migration', () => {
   const sql = (): string =>
     readFileSync(join(migrationsDir, '0032_icon_crypto_account.sql'), 'utf8');
 

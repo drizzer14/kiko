@@ -308,8 +308,8 @@ const insertDedupRowsDatabaseTransaction = async (
   // and SQLite treats each NULL in a unique index as distinct, so two of
   // them never conflict.
   //
-  // Chunked per `chunkForTable` (T29 review round 1, M6): a single
-  // unchunked insert bound one parameter per PRESENT key per row and SQLite
+  // Chunked per `chunkForTable`: a single unchunked insert bound one
+  // parameter per PRESENT key per row and SQLite
   // rejects a statement over its 32766 bound-parameter ceiling — a whole
   // statement-import file failed past ~2980 rows, a Monobank sync past
   // ~2731. `dedupByConflictKey` already collapsed `withOverrides` to at
@@ -462,7 +462,7 @@ export const transactionsRepo = {
       .orderBy(desc(transactions.time)),
   /**
    * The DISTINCT, non-empty descriptions of the user's own MANUAL rows, newest
-   * first — the source of the create-form's inline description suggestions (D1).
+   * first — the source of the create-form's inline description suggestions.
    * The `source = 'manual'` filter EXCLUDES synced/bank descriptions (a Monobank
    * merchant name is not a manual entry the user re-types), and `<> ''` drops the
    * blank rows (a description-less exchange leg, a blank manual entry). Ordering
@@ -768,20 +768,19 @@ export const transactionsRepo = {
     ),
   /**
    * Link (or un-link) ONE transaction to a loan holding via the USER's own
-   * picker (D21, spec 5.4) — the MANUAL write path, inside a single
-   * op-sqlite transaction. The matcher's own path is `setAutoLoanLinks`
-   * (`source: 'auto'`, T32), a separate function since T29 review round 1
-   * (I2): only a manual action may ever move `loanLinkRejected`.
+   * picker — the MANUAL write path, inside a single op-sqlite transaction.
+   * The matcher's own path is `setAutoLoanLinks` (`source: 'auto'`), a
+   * separate function: only a manual action may ever move `loanLinkRejected`.
    *
    * - A manual LINK (`loanHoldingId` non-null) clears `loanLinkRejected`,
    *   un-rejecting a row the user had previously undone — a fresh manual
    *   pick always overrides an earlier Undo.
-   * - A manual "None" (`loanHoldingId: null`) SETS `loanLinkRejected`
-   *   (T29 review round 1 ruling, I3): the choice sticks, so the matcher
-   *   never re-proposes a link on a row the user has explicitly said is not
-   *   a loan payment. This deviates from spec 5.4's literal text ("a manual
-   *   None clears the flag"), which the orchestrator ruled would make
-   *   "None" not stick — the next sync would just auto-link it again.
+   * - A manual "None" (`loanHoldingId: null`) SETS `loanLinkRejected`: the
+   *   choice sticks, so the matcher never re-proposes a link on a row the
+   *   user has explicitly said is not a loan payment. This deviates from
+   *   the original design note's literal text ("a manual None clears the
+   *   flag"), which the orchestrator ruled would make "None" not stick —
+   *   the next sync would just auto-link it again.
    *
    * `loanLinkSource` is always cleared to null alongside a null
    * `loanHoldingId`, keeping the two columns in lockstep. There is NO
@@ -851,11 +850,11 @@ export const transactionsRepo = {
     }),
   /**
    * Batch-link the matcher's PROPOSED candidates to their loan holdings, in
-   * ONE op-sqlite transaction — T32's auto-match write path, and spec 5.4's
-   * "one db.transaction() writes the links". Added in T29 review round 1
-   * (I2), split out of `setLoanPayment` because only a MANUAL action may
-   * ever move `loanLinkRejected`: this function never sets or reads it into
-   * the write, and its own WHERE clause skips any row that is already
+   * ONE op-sqlite transaction — the auto-match write path, "one
+   * db.transaction() writes the links". Split out of `setLoanPayment`
+   * because only a MANUAL action may ever move `loanLinkRejected`: this
+   * function never sets or reads it into the write, and its own WHERE
+   * clause skips any row that is already
    * linked (`loanHoldingId` non-null) or already rejected, so a candidate
    * list that is stale, or a user Undo/manual-link that raced this batch,
    * can never be silently overwritten. A link whose row fails that WHERE is
@@ -878,8 +877,8 @@ export const transactionsRepo = {
       }
     }),
   /**
-   * Undo an auto-suggested loan-payment link (spec 5.4's "False-positive
-   * handling"): clears the link and sets `loanLinkRejected`, so the matcher
+   * Undo an auto-suggested loan-payment link (false-positive handling):
+   * clears the link and sets `loanLinkRejected`, so the matcher
    * never re-proposes the same link on this row again. A later MANUAL link
    * (or manual "None", via `setLoanPayment`) is the only thing that clears
    * the flag back.
@@ -909,11 +908,11 @@ export const transactionsRepo = {
    * "Statement import" section, `ParsedStatement.closingBalance`'s doc
    * comment (`parser.ts`), `importStatement`'s own doc comment, and
    * `resolveClosingBalance`'s doc comment (`monobank-csv.format.ts`) all
-   * point back here rather than restating it. This was a real, shipped
-   * production bug (App Store build 25): `importStatement` used to call only
-   * `addManyDedup`, which upserts `transactions` and never touches
-   * `holdings`, so an import-only holding's displayed balance stayed 0
-   * forever even though its transaction list showed the real imported rows.
+   * point back here rather than restating it. The two writes MUST stay
+   * atomic in one transaction: calling only `addManyDedup` (which upserts
+   * `transactions` and never touches `holdings`) leaves an import-only
+   * holding's displayed balance stuck at 0 forever, even though its
+   * transaction list shows the real imported rows.
    *
    * THE BOUNDARY: every decision below is relative to one "as-of" instant —
    * the LATER of (a) `holding.balanceSetAt` — set by `holdingsRepo.create`
@@ -1014,7 +1013,7 @@ export const transactionsRepo = {
    * they just don't move the display balance a second, competing way.
    *
    * NO MIGRATION was written for holdings a pre-fix build already wrote a
-   * wrong (0 or under-counted) balance into (user ruling, I3): `1.0.0` is
+   * wrong (0 or under-counted) balance into: `1.0.0` is
    * not published — build 25 was still in App Store review when this fix
    * landed — so no real user has broken data to repair; a corrected build
    * simply starts applying this rule to every import going forward. The

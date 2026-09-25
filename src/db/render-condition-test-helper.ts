@@ -6,8 +6,8 @@ import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
 // SAME `sqlToQuery` a real query builder uses internally for `.toSQL()` —
 // so a test can assert the EXACT predicate a repo function issues (which
 // columns, which values, `and`-ed how), not just that SOME `where(...)` was
-// called (the weakness M3, T29 review round 1, names in the existing
-// `setCategory`/`setLoanPayment` tests). One dialect instance is enough:
+// called — a weakness the `setCategory`/`setLoanPayment` tests had before
+// this helper existed. One dialect instance is enough:
 // rendering is pure and carries no connection state.
 const dialect = new SQLiteSyncDialect();
 

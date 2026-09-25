@@ -9,7 +9,7 @@ const combinedSql = (): string =>
     .map((name) => readFileSync(join(migrationsDir, name), 'utf8'))
     .join('\n');
 
-// `bond_register` (T24): the NBU securities-register cache — one row per
+// `bond_register`: the NBU securities-register cache — one row per
 // bond ISIN, `terms` the resolved `BondTerms` JSON, `fetched_at` the
 // cache-wide write-time stamp `refreshBondRegisterIfStale` compares against
 // to gate its once-per-local-day refresh. Migration 0037 creates the table.

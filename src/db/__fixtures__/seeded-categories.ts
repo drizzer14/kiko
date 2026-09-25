@@ -22,8 +22,8 @@ export const SEEDED_CATEGORIES: SeededCategory[] = [
   { key: 'other', title: 'Other', icon: 'square.grid.2x2' },
 ];
 
-// The ELEVENTH default category (T30, spec 5/D14 — "interest-only
-// spending"), seeded by its OWN later migration
+// The ELEVENTH default category ("interest-only spending"), seeded by its
+// OWN later migration
 // (0039_seed_loan_interest_category, not 0002), so it is a SEPARATE export
 // rather than a member of `SEEDED_CATEGORIES` above — every existing
 // `SEEDED_CATEGORIES` consumer (categories.repo.test.ts's 0002-seed-SQL

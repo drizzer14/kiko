@@ -129,8 +129,8 @@ const withLoanInterestReseeded = (snapshotCategories: CategoryRow[]): CategoryRo
  * (the same ordering `accountsRepo.remove` hand-codes for one account).
  *
  * `snapshot.pricePoints` is read defensively with `?? []`: `price_points`
- * (T11) postdates every other table here, so a `.kiko` file exported before
- * it existed carries no `pricePoints` key at all despite the `DataSnapshot`
+ * postdates every other table here, so a `.kiko` file exported before it
+ * existed carries no `pricePoints` key at all despite the `DataSnapshot`
  * type declaring it required — that JSON simply never had the field. Such a
  * legacy import must still restore cleanly, with an EMPTY `price_points`
  * table, rather than throw on the missing key.
@@ -198,16 +198,17 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
       for (const part of chunkForTable(settings, snapshot.settings)) {
         await databaseTransaction.insert(settings).values(part);
       }
-      // `?? []`: see the doc comment above — a pre-T11 export carries no
-      // `pricePoints` key at all.
+      // `?? []`: see the doc comment above — an export that predates
+      // `price_points` carries no `pricePoints` key at all.
       for (const part of chunkForTable(pricePoints, snapshot.pricePoints ?? [])) {
         await databaseTransaction.insert(pricePoints).values(part);
       }
     };
 
-    // `?? []`: `bond_register` (T24) postdates every other table here too —
-    // a pre-T24 export carries no `bondRegister` key at all, for the same
-    // reason a pre-T11 export carries no `pricePoints` key.
+    // `?? []`: `bond_register` postdates every other table here too — an
+    // export from before it existed carries no `bondRegister` key at all,
+    // for the same reason a pre-`price_points` export carries no
+    // `pricePoints` key.
     const insertBondRegister = async (): Promise<void> => {
       for (const part of chunkForTable(bondRegister, snapshot.bondRegister ?? [])) {
         await databaseTransaction.insert(bondRegister).values(part);

@@ -208,9 +208,9 @@ describe('restoreDataSnapshot', () => {
   it('restores an empty price_points table for a legacy snapshot with no pricePoints field', async () => {
     const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;
-    // Simulates a `.kiko` file exported before T11 — the JS object literally
-    // carries no `pricePoints` key, despite `DataSnapshot` declaring it
-    // required.
+    // Simulates a `.kiko` file exported before `price_points` existed — the
+    // JS object literally carries no `pricePoints` key, despite
+    // `DataSnapshot` declaring it required.
     const {
       accounts: legacyAccounts,
       holdings: legacyHoldings,
@@ -262,9 +262,9 @@ describe('restoreDataSnapshot', () => {
   it('restores an empty bond_register table for a legacy (pre-T24) snapshot with no bondRegister field', async () => {
     const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;
-    // Simulates a `.kiko` file exported before T24 — the JS object literally
-    // carries no `bondRegister` key, despite `DataSnapshot` declaring it
-    // required.
+    // Simulates a `.kiko` file exported before `bond_register` existed — the
+    // JS object literally carries no `bondRegister` key, despite
+    // `DataSnapshot` declaring it required.
     const legacySnapshot = { ...emptySnapshot } as unknown as Record<string, unknown>;
     delete legacySnapshot.bondRegister;
 
@@ -273,9 +273,9 @@ describe('restoreDataSnapshot', () => {
     expect(Object.keys(insertedRows)).not.toContain('bondRegister');
   });
 
-  // C1 (T29 review round 1): a chunk size fixed in rows (2000), rather than
-  // derived from a table's column count, broke silently the moment T29 added
-  // 3 columns to `transactions` (15 -> 18): 2000 rows x 18 columns = 36000
+  // A chunk size fixed in rows (2000), rather than derived from a table's
+  // column count, broke silently the moment a later migration added 3
+  // columns to `transactions` (15 -> 18): 2000 rows x 18 columns = 36000
   // bound parameters, over SQLite's 32766 ceiling, so a real backup with
   // >= 1821 transactions failed to restore. This test binds a FULL-SHAPED
   // transaction row (every column `transactions` actually declares, via
@@ -319,7 +319,7 @@ describe('restoreDataSnapshot', () => {
     expect(insertedChunkSizes.length).toBeGreaterThan(1);
   });
 
-  // T29: a `.kiko` exported before the loan-link columns existed carries
+  // A `.kiko` exported before the loan-link columns existed carries
   // transaction rows with NO `loanHoldingId`/`loanLinkSource`/`loanLinkRejected`
   // keys at all. `restoreDataSnapshot` inserts every transaction row verbatim
   // (unlike `holdings`, it applies no per-row backfill), so such a row must

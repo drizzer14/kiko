@@ -10,8 +10,8 @@ import type { TFunction } from 'i18next';
 // against the active language on every call rather than freezing to a
 // module-load-time language the way a bare English literal would.
 //
-// An empty `holdingName` (F3 fix round 3, N9 — the statement-import preview,
-// `ExampleTransaction`, before a target holding is chosen) falls back to the
+// An empty `holdingName` (the statement-import preview, `ExampleTransaction`,
+// before a target holding is chosen) falls back to the
 // PLAIN label with no name at all, rather than interpolating an empty string
 // into `defaultDescriptionExpense`/`Income` — that would leave a dangling
 // leading space in English ("expense") or a dangling colon in Ukrainian
