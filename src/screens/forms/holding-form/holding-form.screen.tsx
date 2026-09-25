@@ -1086,6 +1086,19 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // read only imperatively at Save-press time, never needs to re-render.
   const contentHeightRef = useRef(0);
 
+  // The one place this screen calls `scrollToField`, closing over the four
+  // geometry values above — every call site (a blocked Save, an added
+  // contribution) hands it just the target field and its optional focus
+  // follow-up, so the geometry can never drift between call sites.
+  const scrollTo = (ref: RefObject<FieldInstance | null>, focus?: () => void): void => {
+    scrollToField(
+      scrollableRef,
+      ref,
+      { currentOffset: scrollOffset.value, headerInset, contentHeight: contentHeightRef.current },
+      focus,
+    );
+  };
+
   // Per-field wrapper refs, one per validated field, passed to `scrollToField`
   // in `save`'s ordered first-invalid scroll below — each field's own inline
   // error (a `TextField`/`HoldingIdentityField` `error` prop, or a relocated
@@ -1316,11 +1329,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     // device feedback item 3) — an unconditional `scrollToEnd` used to fire
     // even when the new row was already fully on screen.
     requestAnimationFrame(() => {
-      scrollToField(scrollableRef, lastContributionFieldRef, {
-        currentOffset: scrollOffset.value,
-        headerInset,
-        contentHeight: contentHeightRef.current,
-      });
+      scrollTo(lastContributionFieldRef);
     });
   };
 
@@ -1689,16 +1698,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       });
 
       if (target) {
-        scrollToField(
-          scrollableRef,
-          target.ref,
-          {
-            currentOffset: scrollOffset.value,
-            headerInset,
-            contentHeight: contentHeightRef.current,
-          },
-          target.focus,
-        );
+        scrollTo(target.ref, target.focus);
       }
 
       return;
