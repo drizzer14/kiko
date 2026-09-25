@@ -1,10 +1,10 @@
 // src/i18n/locales/title-keys.ts
 //
 // The explicit set of every screen/nav title, section heading, and
-// sheet/modal title key — the Title Case role's own key list (CASE track),
-// now also reused by the full-stop-by-role invariant (F4 full-stop
-// DECISION): a title/heading/sheet-title key is one of the roles with NO
-// final "." either. Verified by call site (a nav `options.title`/
+// sheet/modal title key — the Title Case role's own key list, now also
+// reused by the full-stop-by-role invariant: a title/heading/sheet-title
+// key is one of the roles with NO final "." either. Verified by call site
+// (a nav `options.title`/
 // `navigation.setOptions`, a `variant="heading"` `Text`, or a
 // `BottomSheet`/`ConfirmSheet` title/header prop) against its own real
 // call site. Extracted out of `en.casing-by-role.test.ts`
@@ -15,8 +15,7 @@
 //
 // Add a new title/heading key HERE on purpose; it is not picked up by a
 // name pattern (a `Title`/`Heading`-suffixed key that is actually a button
-// or a field label would otherwise be silently exempted from BOTH checks —
-// CASE fix round 1/5).
+// or a field label would otherwise be silently exempted from BOTH checks).
 export const TITLE_KEYS = new Set([
   'accountDetail.addBankSheetTitle',
   'accountDetail.holdingsHeading',

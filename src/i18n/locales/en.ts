@@ -787,7 +787,7 @@ export const en = {
     importErrorTitle: 'Import failed',
     importErrorMessage: 'Please try again.',
     importedCount: 'Imported {{imported}} of {{total}}',
-    // The modal (item 15, F3) a successful Import shows, carrying the exact
+    // The modal a successful Import shows, carrying the exact
     // same result text `ImportOutcome` already rendered inline — its "Done"
     // button (`common.done`) navigates back to the account screen.
     importResultTitle: 'Import Complete',
@@ -806,7 +806,7 @@ export const en = {
     // than one currency (a multi-card PrivatBank export, section C.1) —
     // helps the user pick a holding that actually matches BEFORE importing,
     // since `importStatement` excludes any row whose currency doesn't match
-    // the target holding's (Task 3 review, CRITICAL fix).
+    // the target holding's.
     detectedCurrenciesLabel: 'This file contains multiple currencies:',
     // Rows excluded from the write because their currency didn't match the
     // target holding's — Kiko has no FX, so a mismatched row is excluded,
@@ -822,22 +822,22 @@ export const en = {
     // lines above, so no final "." (kiko-translator's full-stop rule).
     skippedWrongCurrencyCodes: 'Skipped currencies: {{currencies}}',
     // The picked file recognized as a DIFFERENT bank's format than the one
-    // scoped by `expectedFormatId` (device-feedback-round-1 item 5) — a more
-    // specific state than the generic `unrecognizedFormat`, so the user
-    // knows WHY (wrong bank's export), not just that the file failed.
+    // scoped by `expectedFormatId` — a more specific state than the generic
+    // `unrecognizedFormat`, so the user knows WHY (wrong bank's export), not
+    // just that the file failed.
     bankMismatch: "This doesn't look like a {{bank}} statement. Pick the matching file.",
     // The generic column-mapping import's own entry point: offered
     // under a recognized preview AND in the unrecognized/bank-mismatch
     // states, so a file no shipped parser recognizes can still be imported.
     mapColumnsManually: 'Map columns manually',
-    // The heading above the shared `ExampleTransaction` row (device-feedback-
-    // round-F1, items 9/14) — the first parsed row, shown under the summary
-    // table on both this screen and the column-mapping result section so the
-    // user sees what will actually be written before tapping Import.
+    // The heading above the shared `ExampleTransaction` row — the first
+    // parsed row, shown under the summary table on both this screen and the
+    // column-mapping result section so the user sees what will actually be
+    // written before tapping Import.
     exampleTransaction: 'Example transaction',
-    // The shared `SummaryTable`'s row labels (device-feedback-round-F1, item
-    // 3) — the statement's own summary rows, reusing the deposit table's
-    // LAYOUT only, never its value/percent/tax columns.
+    // The shared `SummaryTable`'s row labels — the statement's own summary
+    // rows, reusing the deposit table's LAYOUT only, never its
+    // value/percent/tax columns.
     transactionCountLabel: 'Transactions',
     currencyLabel: 'Currency',
     dateSpanLabel: 'Date range',
@@ -850,9 +850,9 @@ export const en = {
   columnMapping: {
     title: 'Map Columns',
     rawPreview: 'Tap the Row with the Column Names',
-    // Section headings (F3 items 12/13/14): every group on this screen shows
-    // its own heading now that the screen no longer duplicates the native
-    // stack header's own title (item 12).
+    // Section headings: every group on this screen shows its own heading
+    // now that the screen no longer duplicates the native stack header's
+    // own title.
     sectionFileFormat: 'File Format',
     sectionDates: 'Dates',
     sectionAmount: 'Amount Columns',
@@ -872,9 +872,9 @@ export const en = {
     descriptionColumn: 'Description',
     currencyColumn: 'Currency column',
     fixedCurrency: 'Currency for all rows',
-    // No longer suffixed "(optional)" (device-feedback-round-F1, item 11) —
-    // the field's own FieldTrigger/FieldLabel carries no `required` marker,
-    // which now reads as the one "this field is optional" signal, matching
+    // No longer suffixed "(optional)" — the field's own
+    // FieldTrigger/FieldLabel carries no `required` marker, which now reads
+    // as the one "this field is optional" signal, matching
     // every other optional field in the app.
     counterpartyColumn: 'Counterparty',
     // Optional, like counterpartyColumn.

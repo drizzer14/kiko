@@ -13,7 +13,7 @@
 // two buckets.
 //
 // The Title Case bucket is an EXPLICIT key list (`TITLE_KEYS`, now shared
-// via `./title-keys.ts` with `en.final-stop-by-role.test.ts` — the F4
+// via `./title-keys.ts` with `en.final-stop-by-role.test.ts` — the
 // full-stop invariant, since a title/heading/sheet-title key is ALSO one of
 // the no-final-"." roles), not a key-NAME pattern (`/Title$/`, `/Heading$/`,
 // etc.). A pattern is a blind spot in the direction
