@@ -107,15 +107,23 @@ const setLiveData = (data: {
   holdings?: Holding[];
   rates?: Rate[];
   settings?: Settings[];
+  // Per-table isLoading overrides, for the loading-gate tests only — every
+  // key defaults to `false` (an already-resolved query), so every existing
+  // call site above keeps behaving exactly as before.
+  isLoading?: Partial<Record<string, boolean>>;
 }): void => {
   const byTable: Record<string, unknown[]> = {
     accounts: data.accounts ?? [],
     holdings: data.holdings ?? [],
     currency_rates: data.rates ?? [],
     settings: data.settings ?? [{ baseCurrency: 'UAH' }],
+    price_points: [],
   };
+  const isLoadingByTable = data.isLoading ?? {};
+
   mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => ({
     data: byTable[tables[0]] ?? [],
+    isLoading: isLoadingByTable[tables[0]] ?? false,
   }));
 };
 
@@ -679,5 +687,55 @@ describe('AccountsScreen', () => {
       const { getByText } = await renderAccounts();
       expect(getByText('Ще немає рахунків')).toBeTruthy();
     });
+  });
+});
+
+describe('AccountsScreen — loading gate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('shows a loading spinner, not the empty-accounts text, while any of its own queries is on its first load', async () => {
+    setLiveData({ accounts: [], holdings: [], isLoading: { accounts: true } });
+
+    const { getByTestId, queryByTestId, queryByText } = await renderAccounts();
+
+    expect(getByTestId('accounts-loading')).toBeTruthy();
+    expect(queryByText(i18n.t('accounts.emptyState'))).toBeNull();
+    expect(queryByTestId('accounts-grid')).toBeNull();
+  });
+
+  it('renders the real content once every query has loaded', async () => {
+    setLiveData({ accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }], holdings: [] });
+
+    const { getByText, queryByTestId } = await renderAccounts();
+
+    expect(getByText('Monobank')).toBeTruthy();
+    expect(queryByTestId('accounts-loading')).toBeNull();
+  });
+
+  it('does not flash back to the loading spinner once loaded, on a later re-query', async () => {
+    setLiveData({ accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }], holdings: [] });
+    const view = await renderAccounts();
+    expect(view.getByText('Monobank')).toBeTruthy();
+
+    // A pull/reactive re-query that (even incorrectly) reported isLoading
+    // true again must not flip the screen back to the loading spinner.
+    setLiveData({
+      accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }],
+      holdings: [],
+      isLoading: { accounts: true },
+    });
+    await act(async () => {
+      view.rerender(
+        <AccountsScreen
+          navigation={asNavigationProp<AccountsProps['navigation']>(navigation)}
+          route={asRouteProp<AccountsProps['route']>('Accounts')}
+        />,
+      );
+    });
+
+    expect(view.queryByTestId('accounts-loading')).toBeNull();
+    expect(view.getByText('Monobank')).toBeTruthy();
   });
 });

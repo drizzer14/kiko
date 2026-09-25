@@ -12,12 +12,14 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import Box from '../../design-system/components/box';
 import Card from '../../design-system/components/card';
+import { useDataReady } from '../../db/use-data-ready';
 import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
 import type { Currency } from '../../currency/currency';
 import { usePriceBook } from '../../prices/use-price-book';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
+import LoadingState from '../../design-system/components/loading-state';
 import { isSyncedAccount } from '../../holdings/deletable';
 import Divider from '../../design-system/components/divider';
 import MoneyText from '../../design-system/components/money-text';
@@ -39,11 +41,29 @@ type AccountsScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Accou
 const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
-  const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
-  const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
-  const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
-  const { book: priceBook } = usePriceBook();
+  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(accountsRepo.listQuery(), [
+    'accounts',
+  ]);
+  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(holdingsRepo.allQuery(), [
+    'holdings',
+  ]);
+  const { data: rates, isLoading: ratesLoading } = useLiveQuery(ratesRepo.allQuery(), [
+    'currency_rates',
+  ]);
+  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(settingsRepo.getQuery(), [
+    'settings',
+  ]);
+  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook();
+  // The empty-accounts text must never render while any of this screen's own
+  // queries is still on its first load (kiko-architecture's useLiveQuery
+  // consumer rule) — gated below, right at the return.
+  const isReady = useDataReady(
+    accountsLoading,
+    holdingsLoading,
+    ratesLoading,
+    settingsLoading,
+    priceBookLoading,
+  );
 
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   const rateTable = useMemo(() => buildRateTable(rates), [rates]);
@@ -210,6 +230,14 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
       }
     />
   );
+
+  if (!isReady) {
+    return (
+      <Screen scroll scrollableRef={scrollableRef}>
+        <LoadingState testID="accounts-loading" />
+      </Screen>
+    );
+  }
 
   return (
     <Screen
