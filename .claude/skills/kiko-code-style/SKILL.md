@@ -413,12 +413,20 @@ reads worse than plain code — see the carve-outs below — but check
 `fnts` also owns network and error-handling code — reach for it
 instead of hand-rolled `try`/`catch` plus manual `Error` normalization:
 
-- `either(() => Promise<R>)` / `eitherSync(() => R)` capture a thrown
-  error as a `Left`; route the result with `isLeft` / `isRight` /
-  `bifold`. Normalize the left channel with the **two-argument**
-  `first(result, toError)` — the curried `first(toError)(result)` has
-  nothing to infer `RightValue` from and silently collapses the right
-  side to `unknown`.
+- `either(() => Promise<R>)` captures a **rejection** of the returned
+  promise as a `Left` — it calls the thunk OUTSIDE its own promise
+  chain (`value().then(right).catch(left)`), so a thunk that can throw
+  SYNCHRONOUSLY, before it returns a promise, must itself be `async`
+  (`either(async () => …)`); otherwise that throw escapes `either`
+  entirely instead of becoming a Left. `eitherSync(() => R)` has no
+  such gap — it wraps the call in a real `try`/`catch`, so a plain
+  synchronous thunk is fine. Unwrap the result with `bifoldr`/
+  `bifoldMap` first (see below); reach for `isLeft` + `bifold` only
+  once the Left branch itself throws or returns early. Normalize the
+  left channel with the **two-argument** `first(result, toError)` —
+  the curried `first(toError)(result)` has nothing to infer
+  `RightValue` from and silently collapses the right side to
+  `unknown`.
 - Reach for `guard` (a validator/executor pair) instead when the
   function's own contract is to throw — an HTTP ok-check, for
   example. Replace the `if (!ok) throw` chain with `guard` directly;
@@ -454,10 +462,12 @@ then translate the failure" site — see `decryptEnvelope`
 (`src/data-transfer/crypto/envelope.ts`, translate-and-rethrow a
 clearer error, not a fall-back), `loadFiatWithFallback`
 (`src/rates/rates-refresh/rates-refresh.ts`, falls back to the NBU
-source), and `parseFormatSafely`/`applyMappingSafely`
+source), `parseFormatSafely`/`applyMappingSafely`
 (`statement-import.screen.tsx`/`column-mapping.screen.tsx`, a fixed
-twin pair, falls back to `undefined`) for the converted shape. Four
-categories stay plain
+twin pair, falls back to `undefined`), and `accountEnsured`
+(`account-form.screen.tsx`, `isRight(await either(async () => …))` —
+a shared "did it succeed" boolean for three identical `try`/`catch`
+callers) for the converted shape. Five categories stay plain
 `try`/`catch` on purpose — a site that matches one of these is a
 KEEP, not an oversight:
 
@@ -476,10 +486,13 @@ KEEP, not an oversight:
   that shows an `Alert` on failure (routed through the shared
   `alertOnCatch` helper below), and a handler that instead returns a
   plain success boolean/status for the caller's own local state — see
-  `connectMonobank`/`connectWallet`/`connectBinance`
-  (`account-form.screen.tsx`, `bank-sync-section.component.tsx`) and
+  `connectMonobank` (`account-form.screen.tsx`,
+  `bank-sync-section.component.tsx`) and
   `binance-credentials-field`/`monobank-connect-field`'s own connect
-  handlers (a fixed twin pair, both kept).
+  handlers (a fixed twin pair, both kept). `account-form.screen.tsx`'s
+  sibling `connectWallet`/`connectBinance` no longer have their own
+  `try`/`catch` at all — they call the shared `accountEnsured` above
+  instead.
 - **Decode-or-fall-back-to-original.** A single `decodeURIComponent`
   attempt whose only failure path returns the pre-decode string
   unchanged already reads at its clearest as a two-line try/catch —
