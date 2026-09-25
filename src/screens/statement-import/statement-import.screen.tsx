@@ -3,9 +3,9 @@ import { match } from 'ts-pattern';
 import * as RNFS from 'react-native-fs';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
+import { bifoldr, eitherSync } from 'fnts/either';
 import { useRef, useEffect, useState } from 'react';
 import type { ScrollViewInstance } from 'react-native';
-import { bifold, eitherSync, isRight } from 'fnts/either';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -102,7 +102,7 @@ const parseFormatSafely = (
   // Any parse failure here — the documented `StatementParseError` a bad
   // data row throws, or anything else unexpected — degrades to the same
   // graceful state rather than crashing the screen.
-  return isRight(attempt) ? bifold(attempt) : undefined;
+  return bifoldr(attempt);
 };
 
 // Combines `parseFormatSafely` and `previewStats` into the one derivation

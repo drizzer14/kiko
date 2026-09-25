@@ -1,6 +1,6 @@
 import * as RNFS from 'react-native-fs';
+import either, { bifoldr } from 'fnts/either';
 import readXlsxFile from 'read-excel-file/browser';
-import either, { bifold, isRight } from 'fnts/either';
 import { decode as decodeWindows1251 } from 'windows-1251';
 
 import type { SpreadsheetCellValue } from '../parser';
@@ -125,7 +125,7 @@ export const readSheetRowsSafely = async (
   // recognize this file" state `previewStats` already shows for any other
   // format-level failure (no `sheetRows` means `detectFormat` recognizes
   // nothing), rather than a distinct crash/error path.
-  return isRight(attempt) ? bifold(attempt) : undefined;
+  return bifoldr(attempt);
 };
 
 // The one Hermes-safe base64 -> text decode path for a picked file's

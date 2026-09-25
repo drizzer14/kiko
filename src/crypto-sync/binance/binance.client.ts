@@ -1,6 +1,6 @@
 import { guard } from 'fnts';
 import { BINANCE_API_ENDPOINT } from '@env';
-import either, { bifold, isRight } from 'fnts/either';
+import either, { bifoldr } from 'fnts/either';
 
 import { signQuery } from './binance.hmac';
 
@@ -29,7 +29,7 @@ const RECV_WINDOW_MS = 5000;
  */
 const errorSuffix = async (response: Response): Promise<string> => {
   const body = await either<unknown, unknown>(() => response.json());
-  const parsed = isRight(body) ? bifold(body) : undefined;
+  const parsed = bifoldr(body);
   const message = (parsed as { msg?: unknown } | undefined)?.msg;
 
   return typeof message === 'string' ? `: ${message}` : '';

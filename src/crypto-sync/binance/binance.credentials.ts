@@ -1,5 +1,5 @@
 import * as Keychain from 'react-native-keychain';
-import { bifold, eitherSync, isRight } from 'fnts/either';
+import { bifoldr, eitherSync } from 'fnts/either';
 
 /**
  * The single GLOBAL Binance credentials service. Historically the app stored ONE
@@ -113,7 +113,7 @@ export const readCredentials = async (
   }
 
   const parsed = eitherSync<unknown, unknown>(() => JSON.parse(stored.password));
-  const value = isRight(parsed) ? bifold(parsed) : undefined;
+  const value = bifoldr(parsed);
 
   if (!isCredentials(value)) {
     return undefined;
