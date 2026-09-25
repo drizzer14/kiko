@@ -290,30 +290,56 @@ happening to notice it. Needs a `rules/fixtures/<rule-id>.bad.ts` /
 `.good.ts` pair per the fixture contract above before it can land;
 tracked as a backlog item in `docs/harness/review-to-biome-inventory.md`.
 
-## Backlog: F4 code-style mechanization candidates
+## F4 code-style mechanization candidates — all four now implemented
 
-One proposed but NOT YET IMPLEMENTED check remains (documentation
-only — do not implement without a dedicated pass; needs its own
-inventory row in `docs/harness/review-to-biome-inventory.md` when it
-lands):
-
-- A comment-history check (Semgrep `pattern-regex` or a grep wrapper)
-  over `src` comments for a task id (`\bT\d{1,3}\b`), a review-round id
-  (`[IMN]\d+` in review context, `"review round"`), or a spec section
-  number (`"spec \d"`, `\bD\d{1,2}\b`) — see kiko-code-style's
-  "Comments" section for the rule this mechanizes. Needs
-  false-positive tuning before it can be Class A.
-
-The other three candidates from this same backlog are now implemented:
-the nullable-ternary rule is
-`kiko-no-nullable-map-ternary` (Semgrep ERROR,
-`rules/semgrep-mobile.yml`) — see "Semgrep pattern strings need
+The nullable-ternary rule is `kiko-no-nullable-map-ternary` (Semgrep
+ERROR, `rules/semgrep-mobile.yml`) — see "Semgrep pattern strings need
 quoting" below for the one gotcha that cost the most time writing it.
 The one-exported-component-per-`.tsx` check is a Jest invariant, not
 Semgrep — see "One exported component per `.tsx` — a Jest invariant,
 not Semgrep" below. The import-length-sort check is a hand-rolled
 shell+JS checker/fixer at the fast tier — see "Import length-sort — a
-hand-rolled checker (and fixer)" below.
+hand-rolled checker (and fixer)" below. The comment-history check is
+`kiko-no-history-id-comment` (Semgrep, `rules/semgrep-mobile.yml`) —
+see "`kiko-no-history-id-comment` — WARNING pending a repo-wide sweep"
+below.
+
+## `kiko-no-history-id-comment` — WARNING pending a repo-wide sweep
+
+Mechanizes kiko-code-style's "Comments: WHY only, never history": no
+task id (`T28`), review-round id (`I1`/`M2`/`N3`/`U7`), spec/decision
+id (`spec 6.2`, `D14`), bug number, or `USER-DECISION` left behind in a
+`src/**` comment. Two `pattern-regex` arms, one per comment syntax —
+a single regex spanning both `//` and `/* */` would have to
+special-case where a line comment ends and a block comment does not.
+The block-comment arm's `(?:(?!\*/)[\s\S])*?` (not a bare `[\s\S]*?`)
+keeps a match from crossing a real `*/` into a LATER, unrelated block
+comment.
+
+`\b` word boundaries alone clear most of the false-positive shapes a
+real sweep found, with no extra tuning needed: `i18n`/`ISIN`/`UTF-8`/
+`ISO 4217` (the denylisted letter has no boundary before the digits
+that follow it), an ISO instant's `T` glued directly to the date
+before it (no boundary before the `T`), a hex color (the run of hex
+digits never lands a boundary at exactly one denylisted letter), and a
+denylisted letter+digit glued inside a larger camelCase domain word
+like `computeD1Delta` (no boundary on either side) — see
+`rules/fixtures/kiko-no-history-id-comment.good.ts` for a worked
+example of each. The line-comment arm also excludes a `:` immediately
+before the `//` (`(?<!:)`) — without it, the `//` inside an
+`http://`/`https://` URL string literal (not a comment at all) reads
+as a comment opener too.
+
+**Ships WARNING, not ERROR**, per progress.md's mechanization ruling
+(a rule lands TOGETHER with the sweep of its violations; an ERROR rule
+alone would break the gate): a real domain word CAN still collide with
+this shape as its OWN standalone token, not merely a substring — no
+regex fix closes that gap the way the boundary tricks above do (a
+short account-position label like a bare `D2` in a list is
+syntactically identical to a real decision id). That residual class is
+fixed by rewording the specific comment during the sweep, not by
+loosening the rule; the rule flips to ERROR only once a real `semgrep`
+run reports 0 findings for it.
 
 ## One exported component per `.tsx` — a Jest invariant, not Semgrep
 
