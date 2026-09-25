@@ -227,8 +227,9 @@ comment). Unlike `property_item`, `metal`'s create payload writes NO
 `firstPricePoint` — its price comes from the shared
 `metal:<XAU|XAG|XPT|XPD>` instrument, not a per-holding one (see
 `kiko-pricing`'s "Creating and clearing a priced holding's price
-series" section, and `holding-form.screen.tsx`'s own comment on the
-metal CREATE payload). The metal/form/unit/purity fields stay
+series" section, and `useMetalFields`'s own comment
+(`src/screens/forms/holding-form/metal/use-metal-fields/`, R3 Phase C)
+on the metal CREATE payload). The metal/form/unit/purity fields stay
 user-editable in EDIT mode (metadata patch), mirroring
 `property_item`'s category-editable pattern.
 
