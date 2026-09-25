@@ -111,6 +111,70 @@ describe('scripts/checks/full-word-identifiers.sh', () => {
     expect(result.status).toBe(0);
   });
 
+  const DOLLAR_BRACE = '$' + '{';
+
+  describe('checker gaps (R1d-round1-brief.md Minor item)', () => {
+    it('does not blank the rest of the file on an apostrophe inside JSX text', () => {
+      const result = runCheck(
+        'export const First = () => {\n' +
+          "  return <Text>Don't do that</Text>;\n" +
+          '};\n' +
+          'const tx = 1;\n' +
+          'export { First, tx };\n',
+        'fixture.tsx',
+      );
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('`tx`');
+    });
+
+    it('scans identifiers inside a template literal substitution', () => {
+      const result = runCheck(`const s = \`hello ${DOLLAR_BRACE}tx}\`;\nexport { s };\n`);
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('`tx`');
+    });
+
+    it('does not blank a template literal expression holding a nested string', () => {
+      const result = runCheck(
+        `const s = \`hello ${DOLLAR_BRACE}cond ? 'a' : 'b'}\`;\nexport { s };\n`,
+      );
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('`cond`');
+    });
+
+    it('does not flag a regex literal immediately after a return keyword', () => {
+      const result = runCheck(
+        'function f(value: string): boolean {\n' +
+          '  return /e/.test(value);\n' +
+          '}\n' +
+          'export { f };\n',
+      );
+
+      expect(result.status).toBe(0);
+    });
+
+    it('does not split an uppercase-digit-uppercase acronym run (isE2E)', () => {
+      const result = runCheck('const isE2E = true;\nexport { isE2E };\n');
+
+      expect(result.status).toBe(0);
+    });
+
+    it('still flags a denylisted word behind a $ prefix (the leading $ is not a word char, so \\b already skips it)', () => {
+      const result = runCheck('const $tx = 1;\nexport { $tx };\n');
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('`tx`');
+    });
+
+    it('does not flag Math.E as the denylisted word e', () => {
+      const result = runCheck('const value = Math.E;\nexport { value };\n');
+
+      expect(result.status).toBe(0);
+    });
+  });
+
   describe('.js/.mjs/.cjs under a scripts/ directory (fast-tier, per-file mode)', () => {
     it('fails a bare abbreviated identifier in a .js file under scripts/', () => {
       mkdirSync(join(dir, 'scripts'), { recursive: true });

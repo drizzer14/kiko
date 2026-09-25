@@ -198,11 +198,16 @@ const stringLiteralEnd = (source, at, quote) => {
 
 // A `/` starts a regex literal (rather than division) when the last
 // significant character emitted so far is a punctuation/operator context, an
-// opening bracket, or nothing (start of file) — a plain heuristic, not a full
-// parser, but sufficient for this codebase's style (see kiko-linter's
-// Semgrep gotchas for the same "good enough heuristic, not an AST parse"
-// convention already used by import-order.js and one-component-per-file.ts).
-const REGEX_START_CONTEXT = /[([{,;:=!&|?+\-*%^~<>]$|^$/;
+// opening bracket, nothing (start of file), or a keyword that only ever
+// precedes an EXPRESSION, never a value to divide (`return /e/.test(...)`,
+// `typeof /x/`) — a plain heuristic, not a full parser, but sufficient for
+// this codebase's style (see kiko-linter's Semgrep gotchas for the same
+// "good enough heuristic, not an AST parse" convention already used by
+// import-order.js and one-component-per-file.ts).
+const REGEX_START_CONTEXT =
+  /[([{,;:=!&|?+\-*%^~<>]$|^$|\b(?:return|typeof|instanceof|in|of|yield|throw|new|void|delete|case|do|else)$/;
+
+const isIdentifierChar = (char) => char !== undefined && /[A-Za-z0-9_$]/.test(char);
 
 const consumeRegexFlags = (source, at) => {
   let cursor = at;
@@ -244,46 +249,146 @@ const regexLiteralEnd = (source, at) => {
   return source.length;
 };
 
+// Tries to consume one noise span (a line/block comment, a string, a
+// template literal, or a regex literal) starting at `cursor`, given the
+// blanked-so-far `resultSoFar` (needed only to test REGEX_START_CONTEXT).
+// Returns null when `cursor` starts none of those — the shared stepper
+// blankNoise and substitutionSpan both drive, so a literal is blanked the
+// SAME way whether it appears at top level or inside a template
+// substitution's own code.
+const consumeNoiseSpan = (source, cursor, resultSoFar) => {
+  const two = source.slice(cursor, cursor + 2);
+
+  if (two === '//') {
+    const stop = lineCommentEnd(source, cursor);
+    return { text: blankSpan(source, cursor, stop), end: stop };
+  }
+
+  if (two === '/*') {
+    const stop = blockCommentEnd(source, cursor);
+    return { text: blankSpan(source, cursor, stop), end: stop };
+  }
+
+  const char = source[cursor];
+
+  // A `'`/`"` preceded by an identifier character (`n` in "don't") is a
+  // contraction or possessive inside JSX text, not a string opener — that
+  // syntax position is never valid TS/JS otherwise, so this is a safe
+  // heuristic, not a guess (ported from one-component-per-file.ts's
+  // blankNoise, which hit the same apostrophe-in-JSX-text miss — see commit
+  // c7efec5).
+  if ((char === '"' || char === "'") && !isIdentifierChar(source[cursor - 1])) {
+    const stop = stringLiteralEnd(source, cursor, char);
+    return { text: blankSpan(source, cursor, stop), end: stop };
+  }
+
+  if (char === '`') {
+    const template = templateLiteralSpan(source, cursor);
+    return { text: template.text, end: template.end };
+  }
+
+  if (char === '/' && REGEX_START_CONTEXT.test(resultSoFar.replace(/\s+$/, ''))) {
+    const stop = regexLiteralEnd(source, cursor);
+    return { text: blankSpan(source, cursor, stop), end: stop };
+  }
+
+  return null;
+};
+
+// Scans forward from just after a template substitution's opening `${` to
+// its matching `}`, tracking nested-brace depth so a `{` inside the
+// expression (an object literal, a block) never ends the scan early — the
+// substitution's own code stays visible to the identifier scanner (a bare
+// `${tx}` must still flag `tx`), while any literal INSIDE it is still
+// blanked via the shared consumeNoiseSpan stepper. Returns the blanked
+// replacement text (same length as the source span, closing `}` included)
+// and the index just past that `}`.
+const substitutionSpan = (source, at) => {
+  let result = '';
+  let cursor = at;
+  let depth = 0;
+
+  while (cursor < source.length) {
+    const span = consumeNoiseSpan(source, cursor, result);
+
+    if (span) {
+      result += span.text;
+      cursor = span.end;
+      continue;
+    }
+
+    const char = source[cursor];
+
+    if (char === '{') {
+      depth += 1;
+    } else if (char === '}') {
+      if (depth === 0) {
+        return { text: `${result}}`, end: cursor + 1 };
+      }
+      depth -= 1;
+    }
+
+    result += char;
+    cursor += 1;
+  }
+
+  return { text: result, end: source.length };
+};
+
+// Blanks a template literal's LITERAL text but keeps each `${...}`
+// substitution's own code visible (see substitutionSpan above) — unlike a
+// plain string, a template can hold real identifiers the scanner must still
+// see. `at` points at the opening backtick. Returns the full blanked
+// replacement text (same length as the source span) and the index just past
+// the closing backtick.
+const templateLiteralSpan = (source, at) => {
+  let result = '`';
+  let cursor = at + 1;
+
+  while (cursor < source.length) {
+    const char = source[cursor];
+
+    if (char === '\\' && cursor + 1 < source.length) {
+      result += blankSpan(source, cursor, cursor + 2);
+      cursor += 2;
+      continue;
+    }
+
+    if (char === '`') {
+      return { text: `${result}\``, end: cursor + 1 };
+    }
+
+    if (char === '$' && source[cursor + 1] === '{') {
+      const substitution = substitutionSpan(source, cursor + 2);
+      result += `\${${substitution.text}`;
+      cursor = substitution.end;
+      continue;
+    }
+
+    result += char === '\n' ? '\n' : ' ';
+    cursor += 1;
+  }
+
+  return { text: result, end: source.length };
+};
+
 // Blanks (space-fills, preserving length and newlines) every string,
 // template, comment, and regex-literal span, so a later identifier scan
 // never matches text that only LOOKS like an identifier inside a literal —
 // the same design as one-component-per-file.ts's blankNoise, extended with
 // regex-literal handling (a bare letter inside a regex, e.g. the `e` in
-// `/e([+-]\d+)/`, is not an identifier).
+// `/e([+-]\d+)/`, is not an identifier) and template-substitution handling
+// (see consumeNoiseSpan/templateLiteralSpan/substitutionSpan above).
 const blankNoise = (source) => {
   let result = '';
   let i = 0;
 
   while (i < source.length) {
-    const two = source.slice(i, i + 2);
+    const span = consumeNoiseSpan(source, i, result);
 
-    if (two === '//') {
-      const stop = lineCommentEnd(source, i);
-      result += blankSpan(source, i, stop);
-      i = stop;
-      continue;
-    }
-
-    if (two === '/*') {
-      const stop = blockCommentEnd(source, i);
-      result += blankSpan(source, i, stop);
-      i = stop;
-      continue;
-    }
-
-    const quote = source[i];
-
-    if (quote === '"' || quote === "'" || quote === '`') {
-      const stop = stringLiteralEnd(source, i, quote);
-      result += blankSpan(source, i, stop);
-      i = stop;
-      continue;
-    }
-
-    if (quote === '/' && REGEX_START_CONTEXT.test(result.replace(/\s+$/, ''))) {
-      const stop = regexLiteralEnd(source, i);
-      result += blankSpan(source, i, stop);
-      i = stop;
+    if (span) {
+      result += span.text;
+      i = span.end;
       continue;
     }
 
@@ -294,18 +399,29 @@ const blankNoise = (source) => {
   return result;
 };
 
-// Splits an identifier into lowercase word parts on snake_case underscores
-// and camelCase/PascalCase transitions, including the acronym-run boundary
-// (the "PAN" in "maskedPAN", the "BTC" in "isBTCEntry" — see kiko-code-style's
-// "Variable naming" acronym rule): a lowercase/digit followed by an
-// uppercase starts a new word, and an uppercase run followed by a
-// lowercase-starting word also starts a new word one character early (so
-// "BTCEntry" splits as "BTC" + "Entry", not "BTCE" + "ntry").
+// Splits an identifier into lowercase word parts on snake_case underscores,
+// a `$` prefix, and camelCase/PascalCase transitions, including the
+// acronym-run boundary (the "PAN" in "maskedPAN", the "BTC" in "isBTCEntry"
+// — see kiko-code-style's "Variable naming" acronym rule): a LETTER
+// followed by an uppercase starts a new word, and an uppercase run followed
+// by a lowercase-starting word also starts a new word one character early
+// (so "BTCEntry" splits as "BTC" + "Entry", not "BTCE" + "ntry"). A digit is
+// deliberately NOT a split trigger either side — an acronym-with-digit run
+// like "isE2E" stays ONE word ("e2e", not denylisted "e"), matching how a
+// digit behaves inside a plain word (no one reads "isE2E" as three words).
 const splitIdentifierWords = (name) =>
   name
-    .split(/(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|_/)
+    .split(/(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|[_$]/)
     .filter((part) => part.length > 0)
     .map((part) => part.toLowerCase());
+
+// A property access on the built-in `Math` namespace (`Math.E`, `Math.PI`,
+// ...) is never a name this codebase chose — JS/TS's own global, not an
+// abbreviation to spell out. Detected structurally (immediately preceded by
+// literal `Math.` in the line), not via the path-scoped EXEMPTIONS list
+// above, since this can appear at any path.
+const isMathConstant = (line, matchStart) =>
+  line.slice(Math.max(0, matchStart - 5), matchStart) === 'Math.';
 
 const IDENTIFIER = /\b[A-Za-z_$][A-Za-z0-9_$]*\b/g;
 
@@ -324,7 +440,7 @@ const findViolations = (source, targetPath) => {
 
     while (match !== null) {
       const name = match[0];
-      const words = splitIdentifierWords(name);
+      const words = isMathConstant(line, match.index) ? [] : splitIdentifierWords(name);
 
       for (const word of words) {
         if (DENYLIST.has(word) && !isExempt(targetPath, word, name)) {
