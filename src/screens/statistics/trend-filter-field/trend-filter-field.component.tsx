@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView } from 'react-native';
@@ -36,17 +37,34 @@ const DEFAULT_TOP = DEFAULT_TREND_FILTER as Extract<TrendFilter, { mode: 'top' }
 // other mode's choices until Save.
 type Draft = { mode: TrendMode; manualKeys: Set<string>; amount: number; by: TrendMeasure };
 
-const seedDraft = (filter: TrendFilter): Draft => ({
-  mode: filter.mode,
-  manualKeys: filter.mode === 'manual' ? new Set(filter.keys) : new Set<string>(),
-  amount: filter.mode === 'top' ? filter.amount : DEFAULT_TOP.amount,
-  by: filter.mode === 'top' ? filter.by : DEFAULT_TOP.by,
-});
+const seedDraft = (filter: TrendFilter): Draft => {
+  const derived: { manualKeys: Set<string>; amount: number; by: TrendMeasure } = match(filter)
+    .with({ mode: 'manual' }, (manualFilter) => ({
+      manualKeys: new Set(manualFilter.keys),
+      amount: DEFAULT_TOP.amount,
+      by: DEFAULT_TOP.by,
+    }))
+    .with({ mode: 'top' }, (topFilter) => ({
+      manualKeys: new Set<string>(),
+      amount: topFilter.amount,
+      by: topFilter.by,
+    }))
+    .exhaustive();
+
+  return { mode: filter.mode, ...derived };
+};
 
 const draftToFilter = (draft: Draft): TrendFilter =>
-  draft.mode === 'manual'
-    ? { mode: 'manual', keys: [...draft.manualKeys] }
-    : { mode: 'top', amount: draft.amount, by: draft.by };
+  match(draft)
+    .with(
+      { mode: 'manual' },
+      (manualDraft): TrendFilter => ({ mode: 'manual', keys: [...manualDraft.manualKeys] }),
+    )
+    .with(
+      { mode: 'top' },
+      (topDraft): TrendFilter => ({ mode: 'top', amount: topDraft.amount, by: topDraft.by }),
+    )
+    .exhaustive();
 
 // A grouped-list section header: the body type step in the PRIMARY (white)
 // tone — the iOS grouped-form header treatment, pulled up from the dim grey
@@ -100,14 +118,18 @@ const isDraftDirty = (draft: Draft, filter: TrendFilter): boolean => {
     return true;
   }
 
-  if (draft.mode === 'manual') {
-    return (
-      draft.manualKeys.size !== applied.manualKeys.size ||
-      [...draft.manualKeys].some((key) => !applied.manualKeys.has(key))
-    );
-  }
-
-  return draft.amount !== applied.amount || draft.by !== applied.by;
+  return match(draft)
+    .with(
+      { mode: 'manual' },
+      (manualDraft) =>
+        manualDraft.manualKeys.size !== applied.manualKeys.size ||
+        [...manualDraft.manualKeys].some((key) => !applied.manualKeys.has(key)),
+    )
+    .with(
+      { mode: 'top' },
+      (topDraft) => topDraft.amount !== applied.amount || topDraft.by !== applied.by,
+    )
+    .exhaustive();
 };
 
 // Toggle one category key in an immutable copy of the selection.
@@ -139,24 +161,25 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => seedDraft(filter));
 
-  // The applied-filter button label: the manual count (plural/all) or the live
-  // "Top N by <measure>" summary.
-  const buttonLabel = ((): string => {
-    if (filter.mode === 'manual') {
-      return filter.keys.length === 0
-        ? t('statistics.trendFilter.button.allCategories')
-        : t('statistics.trendFilter.button.manual', { count: filter.keys.length });
-    }
-
-    return t('statistics.trendFilter.button.top', {
-      count: filter.amount,
-      measure: measureLabel(filter.by),
-    });
-  })();
-
   function measureLabel(measure: TrendMeasure): string {
     return t(`statistics.trendFilter.measure.${measure}`);
   }
+
+  // The applied-filter button label: the manual count (plural/all) or the live
+  // "Top N by <measure>" summary.
+  const buttonLabel = match(filter)
+    .with({ mode: 'manual' }, (manualFilter) =>
+      manualFilter.keys.length === 0
+        ? t('statistics.trendFilter.button.allCategories')
+        : t('statistics.trendFilter.button.manual', { count: manualFilter.keys.length }),
+    )
+    .with({ mode: 'top' }, (topFilter) =>
+      t('statistics.trendFilter.button.top', {
+        count: topFilter.amount,
+        measure: measureLabel(topFilter.by),
+      }),
+    )
+    .exhaustive();
 
   const openSheet = (): void => {
     setDraft(seedDraft(filter));
@@ -208,10 +231,13 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
       >
         <Box direction="row" gap={2} style={styles.field}>
           {/* The trigger glyph reflects the APPLIED filter mode (the same
-              `filter.mode` the buttonLabel IIFE reads): the categories `tag` in
+              `filter.mode` `buttonLabel` reads): the categories `tag` in
               Manual mode, the ranking `chart.bar.fill` in Top mode. */}
           <SymbolIcon
-            name={filter.mode === 'manual' ? 'tag' : 'chart.bar.fill'}
+            name={match(filter)
+              .with({ mode: 'manual' }, () => 'tag' as const)
+              .with({ mode: 'top' }, () => 'chart.bar.fill' as const)
+              .exhaustive()}
             size={18}
             tone="textPrimary"
           />
@@ -272,70 +298,75 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
           />
         </Box>
 
-        {draft.mode === 'top' ? (
-          <>
-            <Box gap={2} testID={`${testID}-group-amount`}>
-              <SectionHeader>{t('statistics.trendFilter.amount')}</SectionHeader>
+        {match(draft.mode)
+          .with('top', () => (
+            <>
+              <Box gap={2} testID={`${testID}-group-amount`}>
+                <SectionHeader>{t('statistics.trendFilter.amount')}</SectionHeader>
 
-              <ChipRow<number>
-                options={AMOUNTS}
-                selected={draft.amount}
-                onSelect={setAmount}
-                labelVariant="caption"
-              />
+                <ChipRow<number>
+                  options={AMOUNTS}
+                  selected={draft.amount}
+                  onSelect={setAmount}
+                  labelVariant="caption"
+                />
+              </Box>
+
+              <Box gap={2} testID={`${testID}-group-by`}>
+                <SectionHeader>{t('statistics.trendFilter.by')}</SectionHeader>
+
+                <ChipRow<TrendMeasure>
+                  options={MEASURES}
+                  selected={draft.by}
+                  onSelect={setBy}
+                  labels={measureLabels}
+                  labelVariant="caption"
+                />
+              </Box>
+            </>
+          ))
+          .with('manual', () => (
+            <Box gap={2} style={styles.manualSection}>
+              <SectionHeader>{t('statistics.trendFilter.categories')}</SectionHeader>
+
+              {/* The list card carries NO `padding`: each `ManualCategoryRow`
+                  already self-insets, so an edge-to-edge scroll region inside the
+                  card is the iOS grouped-list row treatment (and avoids doubling
+                  the row's own inset). It shares the manual section's shrink so
+                  only the list scrolls under the sheet's height cap. This is a
+                  plain `Box`, not `GlassSurface` — no frosted gray fill behind
+                  the rows and no hairline border any more — it keeps only the one
+                  thing `GlassSurface` was still relied on for: the
+                  `overflow: hidden` corner clip on the scroll region
+                  (`styles.manualGroup`), so the list sits transparent on the
+                  sheet with just its rounded-corner clip. */}
+              <Box style={styles.manualGroup} testID={`${testID}-group-categories`}>
+                <ScrollView
+                  style={styles.scroll}
+                  contentContainerStyle={styles.scrollContent}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {manualRows.map((option) => (
+                    <ManualCategoryRow
+                      key={option.value}
+                      option={option}
+                      checked={isChecked(option.value)}
+                      label={
+                        option.value === FILTER_ALL
+                          ? t('common.all')
+                          : (option.label ?? option.value)
+                      }
+                      onPress={() =>
+                        option.value === FILTER_ALL ? clearManual() : toggleManual(option.value)
+                      }
+                      testID={`${testID}-option-${option.value}`}
+                    />
+                  ))}
+                </ScrollView>
+              </Box>
             </Box>
-
-            <Box gap={2} testID={`${testID}-group-by`}>
-              <SectionHeader>{t('statistics.trendFilter.by')}</SectionHeader>
-
-              <ChipRow<TrendMeasure>
-                options={MEASURES}
-                selected={draft.by}
-                onSelect={setBy}
-                labels={measureLabels}
-                labelVariant="caption"
-              />
-            </Box>
-          </>
-        ) : (
-          <Box gap={2} style={styles.manualSection}>
-            <SectionHeader>{t('statistics.trendFilter.categories')}</SectionHeader>
-
-            {/* The list card carries NO `padding`: each `ManualCategoryRow`
-                already self-insets, so an edge-to-edge scroll region inside the
-                card is the iOS grouped-list row treatment (and avoids doubling
-                the row's own inset). It shares the manual section's shrink so
-                only the list scrolls under the sheet's height cap. This is a
-                plain `Box`, not `GlassSurface` — no frosted gray fill behind
-                the rows and no hairline border any more — it keeps only the one
-                thing `GlassSurface` was still relied on for: the
-                `overflow: hidden` corner clip on the scroll region
-                (`styles.manualGroup`), so the list sits transparent on the
-                sheet with just its rounded-corner clip. */}
-            <Box style={styles.manualGroup} testID={`${testID}-group-categories`}>
-              <ScrollView
-                style={styles.scroll}
-                contentContainerStyle={styles.scrollContent}
-                showsVerticalScrollIndicator={false}
-              >
-                {manualRows.map((option) => (
-                  <ManualCategoryRow
-                    key={option.value}
-                    option={option}
-                    checked={isChecked(option.value)}
-                    label={
-                      option.value === FILTER_ALL ? t('common.all') : (option.label ?? option.value)
-                    }
-                    onPress={() =>
-                      option.value === FILTER_ALL ? clearManual() : toggleManual(option.value)
-                    }
-                    testID={`${testID}-option-${option.value}`}
-                  />
-                ))}
-              </ScrollView>
-            </Box>
-          </Box>
-        )}
+          ))
+          .exhaustive()}
 
         <SheetFooter>
           {/* Both actions are disabled while the draft equals the applied
