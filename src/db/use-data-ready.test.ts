@@ -21,7 +21,12 @@ describe('useDataReady', () => {
     expect(result.current).toBe(true);
   });
 
-  it('latches ready and never flips back once every flag has settled once', async () => {
+  it('re-opens the gate whenever a flag reports loading again (no latch)', async () => {
+    // No latch: `useLiveQuery`'s own `isLoading` is per-key (true again only
+    // on a genuine sql/paramsKey change, never on a same-key reactive
+    // re-run — see use-live-query.ts), so this gate simply follows its
+    // inputs rather than pinning itself open once every flag has settled
+    // once.
     const { result, rerender } = await renderHook(
       (props: { isLoading: boolean }) => useDataReady(props.isLoading),
       { initialProps: { isLoading: false } },
@@ -29,11 +34,9 @@ describe('useDataReady', () => {
 
     expect(result.current).toBe(true);
 
-    // A later re-query that (even incorrectly) reported isLoading true again
-    // must not flash the gate back closed.
     await rerender({ isLoading: true });
 
-    expect(result.current).toBe(true);
+    expect(result.current).toBe(false);
   });
 
   it('stays not-ready across a re-render until every flag has settled at least once', async () => {

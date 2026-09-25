@@ -113,6 +113,57 @@ describe('useLiveQuery', () => {
     expect(result.current.data).toEqual([{ id: 'newest' }]);
   });
 
+  it('keeps applying a finished result even when a newer run has already started but not settled (dense write burst)', async () => {
+    // Simulates a burst of writes where each fire starts a new runQuery
+    // before the previous one has finished: the generation guard must apply
+    // an in-order result the moment it settles rather than dropping it just
+    // because a newer generation has since STARTED (only a newer generation
+    // that has already been APPLIED should win).
+    const resolvers: Array<(rows: Array<{ id: string }>) => void> = [];
+    const burstQuery = {
+      toSQL: () => ({ sql: 'SELECT * FROM accounts', params: [] as unknown[] }),
+      // biome-ignore lint/suspicious/noThenProperty: OVERRIDE(intentional thenable double) same rationale as `fakeQuery` above.
+      then<TResult1 = Array<{ id: string }>, TResult2 = never>(
+        onfulfilled?: ((value: Array<{ id: string }>) => TResult1 | PromiseLike<TResult1>) | null,
+        onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+      ) {
+        return new Promise<Array<{ id: string }>>((resolve) => {
+          resolvers.push(resolve);
+        }).then(onfulfilled, onrejected);
+      },
+    };
+
+    const { result } = await renderHook(() => useLiveQuery(burstQuery, ['accounts']));
+    await act(async () => {
+      resolvers[0]([{ id: 'initial' }]);
+    });
+
+    // Fire #1 starts generation 2 (registers resolvers[1]).
+    await act(async () => {
+      mockReactiveCallback.current?.({ rows: [] });
+      await Promise.resolve();
+    });
+    // Fire #2 starts generation 3 (registers resolvers[2]) BEFORE generation 2
+    // has settled.
+    await act(async () => {
+      mockReactiveCallback.current?.({ rows: [] });
+      await Promise.resolve();
+    });
+
+    // Generation 2 settles first, even though generation 3 has already
+    // started — it must still apply, since nothing newer has been APPLIED yet.
+    await act(async () => {
+      resolvers[1]([{ id: 'gen-2' }]);
+    });
+    expect(result.current.data).toEqual([{ id: 'gen-2' }]);
+
+    // Generation 3 settles later and applies on top of it.
+    await act(async () => {
+      resolvers[2]([{ id: 'gen-3' }]);
+    });
+    expect(result.current.data).toEqual([{ id: 'gen-3' }]);
+  });
+
   it('reports isLoading until the first query settles', async () => {
     let resolveRows!: (rows: unknown[]) => void;
     const pending = new Promise<unknown[]>((resolve) => {
@@ -159,6 +210,70 @@ describe('useLiveQuery', () => {
 
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error?.message).toBe('boom');
+  });
+
+  it('flips isLoading back to true when the query key changes, until the new key settles', async () => {
+    let resolveFirst!: (rows: unknown[]) => void;
+    let resolveSecond!: (rows: unknown[]) => void;
+    const queryFor = (id: string, resolve: (settle: (rows: unknown[]) => void) => void) => ({
+      toSQL: () => ({ sql: 'SELECT * FROM accounts WHERE id = ?', params: [id] }),
+      // biome-ignore lint/suspicious/noThenProperty: OVERRIDE(intentional thenable double) same rationale as `fakeQuery` above.
+      then<TResult1 = unknown[], TResult2 = never>(
+        onfulfilled?: ((value: unknown[]) => TResult1 | PromiseLike<TResult1>) | null,
+        onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+      ) {
+        return new Promise<unknown[]>((settle) => resolve(settle)).then(onfulfilled, onrejected);
+      },
+    });
+
+    const { result, rerender } = await renderHook(
+      ({ id }: { id: string }) =>
+        useLiveQuery(
+          queryFor(id, (settle) => {
+            if (id === 'a') {
+              resolveFirst = settle;
+            } else {
+              resolveSecond = settle;
+            }
+          }),
+          ['accounts'],
+        ),
+      { initialProps: { id: 'a' } },
+    );
+
+    expect(result.current.isLoading).toBe(true);
+
+    await act(async () => {
+      resolveFirst([{ id: 'a' }]);
+    });
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.data).toEqual([{ id: 'a' }]);
+
+    // The key changes (a dependent query re-keying once its own upstream data
+    // arrives, e.g. holding-detail's accountsRepo.byIdQuery(holding?.accountId)):
+    // isLoading must report true again until the NEW key's own result lands —
+    // a stale render must never keep showing the OLD key's data as "loaded".
+    await rerender({ id: 'b' });
+    expect(result.current.isLoading).toBe(true);
+
+    await act(async () => {
+      resolveSecond([{ id: 'b' }]);
+    });
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.data).toEqual([{ id: 'b' }]);
+  });
+
+  it('keeps isLoading false across a same-key reactive re-run (never flips back to true)', async () => {
+    const { result } = await renderHook(() => useLiveQuery(fakeQuery, ['accounts']));
+    expect(result.current.isLoading).toBe(false);
+
+    mockRows.current = [{ id: 'b' }];
+    await act(async () => {
+      mockReactiveCallback.current?.({ rows: [] });
+    });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.data).toEqual([{ id: 'b' }]);
   });
 
   it('logs a rejected query instead of failing silently', async () => {

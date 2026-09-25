@@ -28,10 +28,10 @@ export function useLiveQuery<T>(
 ): { data: T[]; error?: Error; isLoading: boolean } {
   const [data, setData] = useState<T[]>([]);
   const [error, setError] = useState<Error | undefined>();
-  const [isLoading, setIsLoading] = useState(true);
   const { sql, params } = query.toSQL();
   const paramsKey = JSON.stringify(params);
   const tablesKey = tables.join(',');
+  const currentKey = `${sql}::${paramsKey}`;
   // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(content-keyed subscription) keyed on tablesKey (a stable serialized primitive), not the `tables` array reference itself — see the identical rationale on the effect below.
   const fireOn = useMemo(() => tables.map((table) => ({ table })), [tablesKey]);
   // Generation counter: `runQuery` runs on mount and again on every
@@ -39,23 +39,48 @@ export function useLiveQuery<T>(
   // overlapping calls settle out of order (e.g. two rapid writes), an
   // older call's result must not overwrite a newer one.
   const generation = useRef(0);
+  // The generation and sql+paramsKey a settled result was last APPLIED
+  // from — NOT the newest generation that has merely STARTED. A dense write
+  // burst starts a new generation before the previous one settles; comparing
+  // against the newest STARTED generation instead of the newest APPLIED one
+  // would drop every in-order result whose successor had already started,
+  // leaving the screen on the spinner until the burst stops entirely.
+  const appliedGeneration = useRef(0);
+  const appliedKey = useRef<string | undefined>(undefined);
+  // isLoading is derived, not stored: true whenever the CURRENT render's
+  // sql+paramsKey has no applied result yet — true on first mount and true
+  // again the instant the key changes (a dependent query re-keying off data
+  // that only just arrived, e.g. holding-detail's
+  // accountsRepo.byIdQuery(holding?.accountId)), false for the whole
+  // duration of a reactive re-run against the SAME key (`appliedKey` does
+  // not change until a NEWER generation for that key settles).
+  const isLoading = appliedKey.current !== currentKey;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(content-keyed subscription) sql/params/tables/query are re-derived every render from stable serialized primitives (paramsKey/tablesKey) and a fireOn memoized on tablesKey; depending on their object/array *references* instead would re-subscribe on every render whenever a caller passes an inline literal (e.g. `useLiveQuery(q, ['accounts'])` in JSX) and — because the native callback can fire synchronously — infinite-loop.
   useEffect(() => {
     let alive = true;
+
+    const myKey = currentKey;
 
     const runQuery = async (): Promise<void> => {
       const myGeneration = ++generation.current;
 
       const result = await either<unknown, T[]>(async () => query);
 
-      // Out-of-order / unmount guard: an older overlapping run must not win,
-      // and a settled run after unmount must not touch state.
-      if (!alive || myGeneration !== generation.current) {
+      // Unmount guard, and a monotonic-generation guard: apply a finished
+      // result only if it is NEWER than the last APPLIED one — not only if
+      // it is the newest STARTED one. Comparing against the newest started
+      // generation instead drops every in-order result under a dense write
+      // burst (a newer run always starts before the previous one settles),
+      // leaving the screen on the spinner until the burst stops; comparing
+      // against the newest APPLIED one still drops a result that finishes
+      // out of order behind one that already won.
+      if (!alive || myGeneration <= appliedGeneration.current) {
         return;
       }
 
-      setIsLoading(false);
+      appliedGeneration.current = myGeneration;
+      appliedKey.current = myKey;
 
       const settled = first(result, toError);
 
