@@ -49,7 +49,7 @@ type BankCatalogEntry = {
    * (`BankTypeField`'s `bankColumnMappingOnly` caption names this honestly). */
   statementFormatId?: StatementFormatId;
   /** Whether a `bank`-kind account at this bank may hold a `metal` holding
-   * (T17 — a bank-held precious-metal account, distinct from the standalone
+   * (a bank-held precious-metal account, distinct from the standalone
    * `metals` account kind, which never gates on this field). Always-rendered
    * DATA on this fully-rendered static array — never a build/runtime
    * visibility gate (Guideline 5.6): every row always renders regardless of
@@ -154,7 +154,7 @@ export const isConnectableBank = (bankId: string | null | undefined): boolean =>
   isBankId(bankId) ? (bankCatalog.find((entry) => entry.id === bankId)?.connectable ?? true) : true;
 
 /** Resolves a stored `accounts.bankId` to whether that bank sells precious
- * metals (T17's `metal` holding allow-list): `false` for an unset/
+ * metals (the `metal` holding allow-list): `false` for an unset/
  * unrecognized value — UNLIKE `isConnectableBank`'s permissive default, an
  * unknown bank must not silently unlock the `metal` holding type — and
  * otherwise the catalog entry's own `sellsMetals` field (see that field's

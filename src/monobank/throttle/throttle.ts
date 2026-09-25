@@ -3,11 +3,11 @@
  * thereafter only once `intervalMs` has elapsed since the previous resolution.
  *
  * WHY THIS EXISTS: Monobank's personal API allows at most one request per 60
- * seconds PER TOKEN, not per call site. The throttle used to be a local
- * `isFirstRequest` flag inside one `fetchAllStatements` invocation, so a
- * second card's first statement request fired with zero delay — a 429 that
- * propagated out of `runSync`, left `setLastSyncAt` unwritten, and stopped
- * every card after the first from importing at all. One gate, created once per
+ * seconds PER TOKEN, not per call site. A local `isFirstRequest` flag scoped
+ * to one `fetchAllStatements` invocation would let a second card's first
+ * statement request fire with zero delay — a 429 that would propagate out of
+ * `runSync`, leave `setLastSyncAt` unwritten, and stop every card after the
+ * first from importing at all. One gate, created once per
  * `runSync` and threaded through EVERY request in that invocation (including
  * `fetchClientInfo`), is the only shape that respects a per-token limit.
  *

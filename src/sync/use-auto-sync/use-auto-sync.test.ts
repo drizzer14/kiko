@@ -180,8 +180,8 @@ describe('useAutoSync', () => {
   });
 
   it('syncs a connected crypto account on open even with no Monobank account', async () => {
-    // The reported gap: an app-open sync used to be Monobank-only, so a crypto
-    // user who only OPENED the app never triggered the Binance import.
+    // An app-open sync must never be Monobank-only — a crypto
+    // user who only OPENS the app must still trigger the Binance import.
     mockListQuery.mockResolvedValue([binance]);
 
     await renderHook(() => useAutoSync());
@@ -221,11 +221,11 @@ describe('useAutoSync', () => {
     expect(mockCryptoRun).not.toHaveBeenCalled();
   });
 
-  // Item A (whole-branch review): the cross-open throttle used to read ONLY a
-  // Monobank account's cursor, so a non-Monobank-only user's `lastSyncAt`
-  // always resolved `null` and every cold open bypassed the throttle. The
+  // The cross-open throttle must never read ONLY a Monobank account's
+  // cursor — a non-Monobank-only user's `lastSyncAt` would then always
+  // resolve `null` and every cold open would bypass the throttle. The
   // cursor is read from ANY connected bank account (`bankAccountIdFor`),
-  // proven above by the Monobank cases — Guideline 5.6 remediation removed
-  // the other native providers this used to also cover (PrivatBank, bunq,
-  // Starling), so no cross-provider case remains to exercise here.
+  // proven above by the Monobank cases; Guideline 5.6 restricts the native
+  // provider set to Monobank alone, so no cross-provider case remains to
+  // exercise here.
 });

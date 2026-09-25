@@ -223,10 +223,10 @@ export const endProgressSession = (): void => {
  * settles. It marks the "balances have landed" moment, LONG before the per-card
  * statement loop finishes.
  *
- * The pull-to-refresh spinner ends on THIS signal, not on the whole run: the
- * native `RefreshControl` was previously bound to the whole-run `isSyncing`
- * flag, which fights iOS across navigation/detach/scroll (the spinner froze or
- * vanished). Decoupling the spinner from the whole run — ending it when the
+ * The pull-to-refresh spinner ends on THIS signal, not on the whole run:
+ * binding the native `RefreshControl` to the whole-run `isSyncing` flag
+ * fights iOS across navigation/detach/scroll (the spinner freezes or
+ * vanishes). Decoupling the spinner from the whole run — ending it when the
  * fast phase resolves — leaves the determinate progress bar (`useSyncProgress`)
  * as the whole-run indicator.
  *

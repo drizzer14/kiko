@@ -302,7 +302,7 @@ const makeInMemoryDeps = (
         // A synced row is never part of a split-change group — that marker is
         // written only by the manual `recordManualWithReturns` path.
         changeGroupId: null,
-        // A synced row has no loan-payment link yet — the matcher (T32) and
+        // A synced row has no loan-payment link yet — the matcher and
         // `transactionsRepo.setLoanPayment` are the only writers of these.
         loanHoldingId: null,
         loanLinkSource: null,
@@ -787,10 +787,10 @@ describe('runSync', () => {
   // account/jar must be
   // SILENTLY SKIPPED — excluded from
   // net worth — rather than aborting the entire sync: the mappers throw on an
-  // unrepresentable currency, and `upsertHoldings` used to call them inside its
-  // loop with no guard, so ONE foreign card threw before any card imported and
-  // before the cursor was written, stranding the user in a permanent "cannot
-  // sync". The whole run must now COMPLETE: the supported card imports, the
+  // unrepresentable currency, so `upsertHoldings` must never call them inside
+  // its loop with no guard — that would let ONE foreign card throw before any
+  // card imported and before the cursor was written, stranding the user in a
+  // permanent "cannot sync". The whole run must COMPLETE: the supported card imports, the
   // unsupported account and jar are never upserted, and the cursor advances.
   it('skips an unsupported-currency account and jar, completing the sync for the supported card', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
@@ -1302,8 +1302,8 @@ describe('runSync', () => {
   // A clean run that imported nothing (a re-sync with no new rows) is still a
   // real, successful sync: every card was reached, so the DISPLAY stamp moves
   // (the label means "Last sync", not "last import") AND the cursor advances
-  // (the window was fully covered). This is the BUG1 fix — the display used to
-  // freeze at the last IMPORT time and go stale on a no-new-rows re-sync.
+  // (the window was fully covered) — the display must never freeze at the
+  // last IMPORT time and go stale on a no-new-rows re-sync.
   it('stamps the display timestamp on a clean run that imported nothing', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
     const { deps } = makeInMemoryDeps(onlyFirstAccount, [connected]);
@@ -1535,7 +1535,7 @@ describe('runSync', () => {
     );
   });
 
-  // The balance-diff skip (round 4-D option (a)): a steady-state incremental
+  // The balance-diff skip: a steady-state incremental
   // sync SKIPS a card whose /client-info balance is unchanged since the last
   // sync, cutting the number of gated statement fetches (N cards ⇒ ~N×60s under
   // the per-token rate limit). A card is fetched when its balance CHANGED, when

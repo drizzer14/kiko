@@ -32,10 +32,10 @@ const isCredentials = (value: unknown): value is BinanceCredentials =>
  * Storage-at-rest policy for the read-only Binance key pair: readable only
  * while the device is unlocked, and bound to this device (never iCloud-synced
  * or restored onto another one from a backup). Deliberately NO `accessControl`
- * — this pair used to carry `BIOMETRY_CURRENT_SET`, which forced a Face ID /
+ * — an item carrying `BIOMETRY_CURRENT_SET` forces a Face ID /
  * Touch ID prompt on EVERY read, so a pull-to-refresh sync (`readCredentials`
- * -> `fetchAccount`) prompted the user each time. The app-wide biometric gate
- * is now `LockGate` (`src/auth`), which replaces the per-item prompt. The pair
+ * -> `fetchAccount`) would prompt the user each time. The app-wide biometric
+ * gate is `LockGate` (`src/auth`), which replaces the per-item prompt. The pair
  * is never written to SQLite, holding metadata, or a log. Only the `service`
  * differs between the global item and each per-account item; the hardening is
  * identical, so it is derived here from ONE place and reused verbatim by every
@@ -119,13 +119,13 @@ export const readCredentials = async (
     return undefined;
   }
 
-  // Repair an item written before the hardening shipped (it still carries the
-  // old per-read `BIOMETRY_CURRENT_SET` control). Gated so a READ stays a read:
-  // this used to run on every single call, turning every pull-to-refresh and
-  // every crypto sync into a full Keychain write of the API key and secret — a
-  // routine read path that could disturb stored credentials if a write failed
-  // partway. `readToken` and `readDbKey` are pure; this now matches them after
-  // the first call.
+  // Repair an item still carrying the old per-read `BIOMETRY_CURRENT_SET`
+  // control from before the hardening shipped. Gated so a READ stays a read
+  // after the first call: running the repair unconditionally on every call
+  // would turn every pull-to-refresh and every crypto sync into a full
+  // Keychain write of the API key and secret — a routine read path that
+  // could disturb stored credentials if a write failed partway. `readToken`
+  // and `readDbKey` are pure; this now matches them after the first call.
   if (!hasRepairedAccessPolicy) {
     await saveCredentials(accountId, value);
   }
