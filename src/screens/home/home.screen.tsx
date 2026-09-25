@@ -30,6 +30,7 @@ import type { Currency } from '../../currency/currency';
 import { usePriceBook } from '../../prices/use-price-book';
 import { defaultDateRange } from '../../dates/default-range';
 import { activeHoldings } from '../../rates/active-holdings';
+import { needsPriceBook } from '../../holdings/priced-value';
 import MoneyText from '../../design-system/components/money-text';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import { resolveEntityColor } from '../../design-system/entity-tint';
@@ -114,7 +115,12 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const { data: rates, isLoading: ratesLoading } = useLiveQuery(ratesRepo.allQuery(), [
     'currency_rates',
   ]);
-  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook();
+  // kiko-architecture: skip the price_points read while nothing rendered on
+  // this screen ever reads it — a holding whose type carries no priced spec
+  // and is not a loan (`needsPriceBook`) never touches `price_points`.
+  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
+    holdings.some((holding) => needsPriceBook(holding.type)),
+  );
   const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(settingsRepo.getQuery(), [
     'settings',
   ]);

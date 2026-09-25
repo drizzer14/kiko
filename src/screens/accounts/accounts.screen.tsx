@@ -20,6 +20,7 @@ import { usePriceBook } from '../../prices/use-price-book';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import { isSyncedAccount } from '../../holdings/deletable';
+import { needsPriceBook } from '../../holdings/priced-value';
 import Divider from '../../design-system/components/divider';
 import MoneyText from '../../design-system/components/money-text';
 import { accountKindSymbol } from '../../holdings/entity-symbols';
@@ -53,7 +54,12 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(settingsRepo.getQuery(), [
     'settings',
   ]);
-  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook();
+  // kiko-architecture: skip the price_points read while nothing rendered on
+  // this screen ever reads it — a holding whose type carries no priced spec
+  // and is not a loan (`needsPriceBook`) never touches `price_points`.
+  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
+    holdings.some((holding) => needsPriceBook(holding.type)),
+  );
   // The empty-accounts text must never render while any of this screen's own
   // queries is still on its first load (kiko-architecture's useLiveQuery
   // consumer rule) — gated below, right at the return.

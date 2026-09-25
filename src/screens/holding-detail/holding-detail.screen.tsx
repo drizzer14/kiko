@@ -40,6 +40,7 @@ import { usePriceBook } from '../../prices/use-price-book';
 import Button from '../../design-system/components/button';
 import { formatDate, formatTime } from '../../dates/format';
 import { groupByDay } from '../../transactions/group-by-day';
+import { needsPriceBook } from '../../holdings/priced-value';
 import SymbolIcon from '../../design-system/components/symbol';
 import { convert, type RateTable } from '../../rates/conversion';
 import MoneyText from '../../design-system/components/money-text';
@@ -479,7 +480,12 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const { data: rates, isLoading: ratesLoading } = useLiveQuery(ratesRepo.allQuery(), [
     'currency_rates',
   ]);
-  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook();
+  // kiko-architecture: skip the price_points read while this specific
+  // holding's type never reads it — a type carrying no priced spec and not
+  // a loan (`needsPriceBook`) never touches `price_points`.
+  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
+    holdings.some((candidate) => candidate.id === holdingId && needsPriceBook(candidate.type)),
+  );
 
   // Resolve each transaction row's stored category to its display (icon + title)
   // through the same shared mapping Home uses, so a rename flows through here too.

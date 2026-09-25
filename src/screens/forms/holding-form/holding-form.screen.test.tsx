@@ -88,14 +88,8 @@ let mockBondRegisterFetchedAtRows: { value: number | null }[] = [{ value: 1 }];
 // the (a)-case test below seeds a correction.
 let mockPricePoints: unknown[] = [];
 
-jest.mock('../../../db/use-live-query', () => ({
-  // Key on the subscribed table: the holdings query drives edit-mode hydration,
-  // the accounts query drives the allowed-type filter and the sync gate, and
-  // the bond_register query drives the ISIN-mode lookup. Both
-  // `findByIsinQuery` and `fetchedAtQuery` subscribe under the SAME
-  // 'bond_register' key, so the query object's own `__kind` (set by the
-  // mocked `bondRegisterRepo` below) tells them apart.
-  useLiveQuery: (query: { __kind?: string }, keys: string[]) => {
+const mockUseLiveQuery = jest.fn(
+  (query: { __kind?: string }, keys: string[], _enabled?: boolean) => {
     if (keys[0] === 'holdings') {
       return { data: mockEditHoldings };
     }
@@ -118,6 +112,16 @@ jest.mock('../../../db/use-live-query', () => ({
       ],
     };
   },
+);
+
+jest.mock('../../../db/use-live-query', () => ({
+  // Key on the subscribed table: the holdings query drives edit-mode hydration,
+  // the accounts query drives the allowed-type filter and the sync gate, and
+  // the bond_register query drives the ISIN-mode lookup. Both
+  // `findByIsinQuery` and `fetchedAtQuery` subscribe under the SAME
+  // 'bond_register' key, so the query object's own `__kind` (set by the
+  // mocked `bondRegisterRepo` below) tells them apart.
+  useLiveQuery: (...args: [{ __kind?: string }, string[], boolean?]) => mockUseLiveQuery(...args),
 }));
 // `findByIsinQuery`/`fetchedAtQuery`'s return values are opaque to the
 // mocked `useLiveQuery` above (it only reads `__kind`), so a bare stub is
@@ -2992,5 +2996,69 @@ describe('HoldingFormScreen — localization', () => {
     expect(getByText('Дата погашення')).toBeTruthy();
     expect(getByText('Тип облігації')).toBeTruthy();
     expect(getByText('Державна')).toBeTruthy();
+  });
+});
+
+// kiko-architecture: no request or query for data the user does not have —
+// usePriceBook's price_points read is disabled while the active type (the
+// row being edited, or the currently selected type in create mode) never
+// reads it.
+describe('HoldingFormScreen — the price_points gate', () => {
+  it('disables the price_points read for the create-mode default type (card is not priced)', async () => {
+    await renderScreen();
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(false);
+  });
+
+  it('enables the price_points read once the create-mode default type snaps to metal', async () => {
+    // A metals-kind account offers ONLY metal, so the create-mode default-type
+    // effect snaps straight to it (a LATER render than the initial 'card'
+    // default) — no bank to gate the allow-list on.
+    mockAccountKind = 'metals';
+    await renderScreen();
+
+    const priceCalls = mockUseLiveQuery.mock.calls.filter((call) => call[1][0] === 'price_points');
+    expect(priceCalls.at(-1)?.[2]).toBe(true);
+  });
+
+  it('enables the price_points read for a metal holding in edit mode', async () => {
+    await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Gold bar',
+      type: 'metal',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: { metal: 'XAU', form: 'bar', unit: 'g', purity: '0.9999', lots: [] },
+    });
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(true);
+  });
+
+  it('enables the price_points read for a loan holding in edit mode (not priced, but reads the same series)', async () => {
+    await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Car loan',
+      type: 'loan',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        principalMinorUnits: 100_000_00,
+        startDate: Date.now(),
+        annualRatePct: '10',
+        termMonths: 12,
+        schedule: 'none',
+      },
+    });
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(true);
   });
 });

@@ -1348,3 +1348,24 @@ describe('HoldingDetailScreen — localization', () => {
     expect(queryByText('Add transaction')).toBeNull();
   });
 });
+
+// kiko-architecture: no request or query for data the user does not have —
+// usePriceBook's price_points read is disabled while the displayed holding
+// never reads it.
+describe('HoldingDetailScreen — the price_points gate', () => {
+  it('disables the price_points read for a non-priced, non-loan holding', async () => {
+    seed(cardHolding);
+    await renderScreen();
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(false);
+  });
+
+  it('enables the price_points read for a priced holding', async () => {
+    seed(metalHolding);
+    await renderScreen();
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(true);
+  });
+});

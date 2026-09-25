@@ -30,6 +30,7 @@ import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import { usePriceBook } from '../../../prices/use-price-book';
 import Divider from '../../../design-system/components/divider';
+import { needsPriceBook } from '../../../holdings/priced-value';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
@@ -123,18 +124,22 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const isSyncedEdit =
     editingHolding !== undefined && isSyncedHolding(editingHolding, accounts.at(0));
 
-  // Reactive `PriceBook`, passed through `EditContext.book` to every hook's
-  // own `saveEdit`: a loan edit that changes its schedule INTO `'none'`
-  // needs the OLD schedule's outstanding, which may itself be anchored on an
-  // existing manual correction (see `useLoanFields`'s own `saveEdit`).
-  const { book: priceBook } = usePriceBook();
-
   const [name, setName] = useState('');
   // The selected type starts at `card`, then the effect below snaps it to the
   // first CREATABLE type for the account's kind once it loads — so a bank create
   // (where card/jar are sync-only and excluded) defaults to `term_deposit`, and
   // an edit seeds the real type from the row.
   const [type, setType] = useState<HoldingType>('card');
+
+  // Reactive `PriceBook`, passed through `EditContext.book` to every hook's
+  // own `saveEdit`: a loan edit that changes its schedule INTO `'none'`
+  // needs the OLD schedule's outstanding, which may itself be anchored on an
+  // existing manual correction (see `useLoanFields`'s own `saveEdit`).
+  // kiko-architecture: skip the price_points read while the active type
+  // (the row being edited, read straight off the query rather than waiting
+  // for the type-sync effect below; the currently selected type in create
+  // mode) never reads it (`needsPriceBook`).
+  const { book: priceBook } = usePriceBook(needsPriceBook(editingHolding?.type ?? type));
   const [currency, setCurrency] = useState<Currency>('UAH');
   // DEVICE BUG fix (root cause): while the currency sheet's search field can
   // be focused, this screen's background ScrollView must NOT react to the

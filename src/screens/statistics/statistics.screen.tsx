@@ -60,6 +60,7 @@ import { ibanOf } from '../../holdings/holding-metadata';
 import Screen from '../../design-system/components/screen';
 import { usePriceBook } from '../../prices/use-price-book';
 import { buildRateTable } from '../../rates/net-worth-view';
+import { needsPriceBook } from '../../holdings/priced-value';
 import { defaultDateRange } from '../../dates/default-range';
 import { bucketDaysForSpan } from '../../statistics/buckets';
 import MoneyText from '../../design-system/components/money-text';
@@ -244,7 +245,12 @@ const StatisticsScreen: FC = () => {
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
 
   const rateTable = useMemo(() => buildRateTable(rates), [rates]);
-  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook();
+  // kiko-architecture: skip the price_points read while nothing rendered on
+  // this screen ever reads it — a holding whose type carries no priced spec
+  // and is not a loan (`needsPriceBook`) never touches `price_points`.
+  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
+    holdings.some((holding) => needsPriceBook(holding.type)),
+  );
   // Every chart (bar/pie/trend) must never render an empty state while any of
   // this screen's own queries is still on its first load (kiko-architecture's
   // useLiveQuery consumer rule) — gated below, right at the return. This is

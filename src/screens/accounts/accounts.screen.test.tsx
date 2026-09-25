@@ -714,3 +714,34 @@ describe('AccountsScreen — loading gate', () => {
     expect(queryByTestId('accounts-loading')).toBeNull();
   });
 });
+
+// kiko-architecture: no request or query for data the user does not have —
+// usePriceBook's price_points read is disabled while nothing on this screen
+// is a priced type (property_item/metal) or a loan.
+describe('AccountsScreen — the price_points gate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('disables the price_points read when no holding needs it', async () => {
+    setLiveData({
+      accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }],
+      holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 0, type: 'card' }],
+    });
+    await renderAccounts();
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(false);
+  });
+
+  it('enables the price_points read once a priced holding is present', async () => {
+    setLiveData({
+      accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }],
+      holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 0, type: 'metal' }],
+    });
+    await renderAccounts();
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(true);
+  });
+});
