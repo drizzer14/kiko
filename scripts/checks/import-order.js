@@ -37,11 +37,15 @@
 //
 // `--write` also merges two adjacent groups of the same kind into one (the
 // violation above) — see mergeAdjacentSameKindGroups — unless a later group
-// in the run carries its own prefix comment, which would otherwise strand
-// mid-chain once the group boundary disappears; that shape is left for a
-// human to merge by hand instead, and `--write` prints
-// "left for hand merge: <file> group N (prefix comment)" and exits non-zero
-// so the leftover violation is never silently mistaken for a clean file.
+// in the run carries its own prefix comment, or has an interior comment of
+// its own, either of which would strand a comment mid-chain once the group
+// boundary disappears; that shape is left for a human to merge by hand
+// instead. `--write` re-runs the plain checker (checkImportOrder) against
+// its OWN rewritten output and prints "left for hand fix: <file> <reason>"
+// for anything still there, exiting non-zero — the general rule for ANY
+// violation `--write` cannot fix on its own (a merge it declined, or a group
+// left untouched because a comment is glued to a non-first import), so a
+// leftover violation is never silently mistaken for a clean file.
 
 const fs = require('node:fs');
 
@@ -497,20 +501,17 @@ function checkImportOrder(source) {
 // kind should be one group" rule checkGroupAdjacency flags above. A link
 // only extends the PREVIOUS link (never starts a new merge as the later
 // half) when it is itself safe to fold: no interior comment of its own, and
-// no prefix comment either — a prefix stranded mid-chain, once its group
-// boundary disappears, would have nowhere left to attach. The chain's own
-// leading prefix (if any) survives untouched, since only later links are
-// ever checked for one. Returns { chains, blockedByPrefix }: blockedByPrefix
-// is the list of (1-based) ORIGINAL group numbers whose own prefix comment
-// is the ONLY reason they were not folded into an otherwise-matching
-// previous group — the shape fixImportOrder cannot silently leave unreported,
-// since it would otherwise write the file's other, unrelated fixes and exit
-// as if nothing were left to do.
+// no prefix comment either — a prefix or an interior comment stranded
+// mid-chain, once its group boundary disappears, would have nowhere left to
+// attach. The chain's own leading prefix (if any) survives untouched, since
+// only later links are ever checked for one. A group left unmerged this way
+// still holds its original "consecutive, same kind" violation — that is
+// surfaced generically by writeFile's post-write re-check below, not tracked
+// here.
 function mergeAdjacentSameKindGroups(analyzedGroups) {
   const chains = [];
-  const blockedByPrefix = [];
 
-  analyzedGroups.forEach((group, index) => {
+  analyzedGroups.forEach((group) => {
     const kind = group.interiorComment ? null : groupKindOf(group.items);
     const previous = chains[chains.length - 1];
     const sameKindAsPrevious =
@@ -521,20 +522,15 @@ function mergeAdjacentSameKindGroups(analyzedGroups) {
       return;
     }
 
-    if (sameKindAsPrevious && !group.interiorComment && group.prefix !== null) {
-      blockedByPrefix.push(index + 1);
-    }
-
     chains.push({ ...group, kind });
   });
 
-  return { chains, blockedByPrefix };
+  return chains;
 }
 
 // Reorders every SAFE group's items (stable sort by sortKey, partitioned at
 // barriers) and reassembles the file. A group with an interior comment is
-// left completely untouched. Returns { text, changed, unsafeGroups,
-// blockedByPrefix }.
+// left completely untouched. Returns { text, changed }.
 function fixImportOrder(source) {
   const lines = source.split('\n');
   const start = skipPrelude(lines);
@@ -544,16 +540,13 @@ function fixImportOrder(source) {
     groupEntries,
     ...analyzeGroup(groupEntries),
   }));
-  const { chains, blockedByPrefix } = mergeAdjacentSameKindGroups(analyzedGroups);
-  let unsafeGroups = 0;
+  const chains = mergeAdjacentSameKindGroups(analyzedGroups);
   let changed = chains.length !== analyzedGroups.length;
 
   const rebuiltGroups = chains.map((group) => {
     const { groupEntries, prefix, items, interiorComment } = group;
 
     if (interiorComment) {
-      unsafeGroups += 1;
-
       return groupEntries.flatMap((entry) => entry.lines);
     }
 
@@ -589,25 +582,33 @@ function fixImportOrder(source) {
   const gap = Array(trailingBlankCount(entries)).fill('');
   const text = [...prelude, ...leadingGap, ...rebuiltHeader, ...gap, ...rest].join('\n');
 
-  return { text, changed, unsafeGroups, blockedByPrefix };
+  return { text, changed };
 }
 
-// Applies --write to one file, printing what it did. Returns true when a
-// violation is left behind for a human (a blocked merge) — the caller uses
-// this to fail the process instead of exiting 0 on a silent no-op.
+// Applies --write to one file, printing what it did. Re-runs the plain
+// checker against --write's OWN output afterward — the general rule for
+// ANY violation --write cannot fix on its own (a merge it declined because a
+// later group has its own prefix or interior comment, or a group left
+// completely untouched because a comment is glued to a non-first import):
+// print it and fail, rather than exit 0 on a silent no-op an agent (or a
+// repo-wide sweep) would read as "nothing to fix" while the violation is
+// still there. Returns true when anything remains, so the caller fails the
+// process for it.
 function writeFile(file, source) {
-  const { text, changed, blockedByPrefix } = fixImportOrder(source);
+  const { text, changed } = fixImportOrder(source);
 
   if (changed) {
     fs.writeFileSync(file, text);
     process.stdout.write(`fixed: ${file}\n`);
   }
 
-  for (const groupNumber of blockedByPrefix) {
-    process.stdout.write(`left for hand merge: ${file} group ${groupNumber} (prefix comment)\n`);
+  const remaining = checkImportOrder(text);
+
+  for (const reason of remaining) {
+    process.stdout.write(`left for hand fix: ${file} ${reason}\n`);
   }
 
-  return blockedByPrefix.length > 0;
+  return remaining.length > 0;
 }
 
 function runCli() {

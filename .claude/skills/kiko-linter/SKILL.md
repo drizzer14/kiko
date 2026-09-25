@@ -491,13 +491,24 @@ the result, so `--write` fixes this shape itself; it only leaves the
 merge for a human when the "comment glued to a non-first import"
 safety rule above marks one of the two groups unsafe to touch, OR
 when the LATER group has its own PREFIX comment (a comment run
-directly above that group's first import) — folding it would strand
-that prefix mid-chain once the group boundary disappears, with
-nowhere left to attach it. `mergeAdjacentSameKindGroups` returns this
-second case as `blockedByPrefix` (the 1-based ORIGINAL group number),
-and `--write` prints `left for hand merge: <file> group N (prefix
-comment)` and exits non-zero for it — never a silent no-op that reads
-as "nothing to fix" while the merge violation is still there.
+directly above that group's first import) or its own INTERIOR comment
+(glued to one of its non-first imports) — folding either would strand
+that comment mid-chain once the group boundary disappears, with
+nowhere left to attach it.
+
+**The general rule: `--write` re-checks its own output and reports
+ANYTHING it could not fix.** Rather than tracking each unfixable shape
+as its own bespoke reason, `writeFile` re-runs the plain checker
+(`checkImportOrder`) against the text it just wrote (or left
+unchanged) and prints `left for hand fix: <file> <reason>` — the exact
+same violation string the non-`--write` check would have printed —
+for every violation still present, exiting non-zero. This covers a
+blocked merge (prefix or interior comment on the later group) and a
+group `--write` left completely untouched (a comment glued to a
+non-first import) with the same mechanism, so a future unfixable shape
+is caught by construction instead of needing its own new tracking
+list — never a silent no-op that reads as "nothing to fix" while a
+violation is still there.
 
 ## `kiko-no-switch` — an AST `switch` pattern, not a keyword regex
 

@@ -13,7 +13,7 @@ fail() {
     "One or more leading import blocks are not sorted per kiko-code-style." \
     "$1" \
     "kiko-code-style's Import ordering rule: 3 blank-line-separated groups in this order (external, then ../**, then ./**), each holding only imports of its own kind, sorted ascending within the group by the ending physical line's length, value imports before import type only as an equal-length tiebreak, and a bare side-effect import as a barrier that is never reordered." \
-    "Run: node $DIR/import-order.js --write <file>   then re-check. A group with a comment glued to a non-first import is left untouched by --write; move it by hand. A merge blocked only by a later group's own prefix comment prints 'left for hand merge: <file> group N (prefix comment)' and exits non-zero; merge that group by hand too." \
+    "Run: node $DIR/import-order.js --write <file>   then re-check. --write re-checks its own output and prints 'left for hand fix: <file> <reason>' for anything it could not fix (a group with a comment glued to a non-first import, or a merge blocked by a later group's own prefix or interior comment) and exits non-zero; fix that by hand too." \
     "Do not reorder an import across a bare side-effect import — module-initialization order must be preserved."
   exit 2
 }

@@ -382,11 +382,12 @@ describe('scripts/checks/import-order.js --write', () => {
     expect(write(source)).toBe(source);
   });
 
-  // Before this fix, the shape above left the merge violation in place and
-  // --write still exited 0 with no output — a silent no-op an agent (or a
-  // repo-wide sweep) would read as "nothing to fix" instead of "needs a
-  // human". --write must surface the exact group left unmerged and its
-  // reason, and fail loud rather than pretend the file is clean.
+  // A --write that leaves a real violation in the file (a merge --write
+  // cannot safely perform, a group --write leaves untouched because a
+  // comment is glued to a non-first import) must never exit 0 with no
+  // output — that reads as "nothing to fix" to an agent or a repo-wide
+  // sweep, when the violation is still there. --write re-runs the same
+  // checker against its own output and surfaces whatever remains.
   it('reports the blocked merge and exits non-zero, instead of silently doing nothing', () => {
     const source =
       "import { useTranslation } from 'react-i18next';\n" +
@@ -401,7 +402,59 @@ describe('scripts/checks/import-order.js --write', () => {
     const result = spawnSync('node', [ANALYZER, '--write', file], { encoding: 'utf8' });
 
     expect(result.status).not.toBe(0);
-    expect(result.stdout).toContain(`left for hand merge: ${file} group 2 (prefix comment)`);
+    expect(result.stdout).toContain(
+      `left for hand fix: ${file} group 2: consecutive with group 1, both external — merge into one group`,
+    );
+  });
+
+  // Regression: a group --write leaves untouched (a comment glued to a
+  // non-first import) can still hold a real, un-fixed sort violation — the
+  // old --write only ever reported a blocked MERGE, so this shape exited 0
+  // with no output even though the file still failed the plain (non-write)
+  // check.
+  it('reports a sort violation left behind in a group with an interior comment', () => {
+    const source =
+      "import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';\n" +
+      '// explains the next import specifically\n' +
+      "import { type FC, useEffect } from 'react';\n" +
+      '\n' +
+      'export const Foo = 1;\n';
+    const file = join(directory, 'fixture.ts');
+    writeFileSync(file, source);
+
+    const result = spawnSync('node', [ANALYZER, '--write', file], { encoding: 'utf8' });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain(`left for hand fix: ${file} group 1: not sorted`);
+    // --write must not have silently rewritten the file when it reports a
+    // violation left behind.
+    expect(readFileSync(file, 'utf8')).toBe(source);
+  });
+
+  // Regression: two adjacent same-kind groups where the SECOND group's own
+  // interior comment (not a prefix) blocks the merge — mergeAdjacentSameKindGroups
+  // never folds it (its kind reads as null while interiorComment is true), but
+  // the old --write's blockedByPrefix list only ever tracked the prefix-blocked
+  // case, so this shape exited 0 with the merge violation still in the file.
+  it('reports a merge blocked by a later group whose own interior comment prevents folding', () => {
+    const source =
+      "import { useTranslation } from 'react-i18next';\n" +
+      '\n' +
+      "import Box from '@kiko/design-system/components/box';\n" +
+      '// explains the second import specifically\n' +
+      "import { ButtonProps } from '@kiko/design-system/components/button';\n" +
+      '\n' +
+      'export const Foo = 1;\n';
+    const file = join(directory, 'fixture.ts');
+    writeFileSync(file, source);
+
+    const result = spawnSync('node', [ANALYZER, '--write', file], { encoding: 'utf8' });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain(
+      `left for hand fix: ${file} group 2: consecutive with group 1, both external — merge into one group`,
+    );
+    expect(readFileSync(file, 'utf8')).toBe(source);
   });
 
   // Property: for every fixture above, --write only ever reorders lines — it
