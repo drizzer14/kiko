@@ -104,7 +104,7 @@ describe('HoldingCard', () => {
     expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
   });
 
-  it('draws the shared hairline card border on first render (matches the account card, G2)', async () => {
+  it('draws the shared hairline card border on first render (matches the account card)', async () => {
     const { getByTestId } = await renderCard();
 
     const cardStyle = StyleSheet.flatten(getByTestId('holding-card').props.style);

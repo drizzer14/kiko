@@ -341,7 +341,7 @@ describe('depositAccruedMajor — recap-off cumulative interest', () => {
     expect(accrued).toBeCloseTo(expected, 6);
   });
 
-  it('excludes a future-dated contribution (D2)', () => {
+  it('excludes a future-dated contribution', () => {
     const now = START + 200 * DAY;
     const past = { amountMajor: 10000, date: START };
     const future = { amountMajor: 5000, date: now + 10 * DAY };

@@ -149,7 +149,7 @@ describe('loanInterestEntries', () => {
     expect(entries).toEqual([]);
   });
 
-  it('Review Focus 7: a payment linked to a MISSING loan holding produces no interest entry', () => {
+  it('a payment linked to a MISSING loan holding produces no interest entry', () => {
     const dangling: LoanPaymentTransaction = {
       ...linkedPayment,
       id: 'tx-dangling',

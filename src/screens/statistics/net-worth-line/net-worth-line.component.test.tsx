@@ -489,7 +489,7 @@ describe('NetWorthLine', () => {
     expect(getByText('$0.2M')).toBeTruthy();
   });
 
-  it('offsets the X-axis label track past the Y-axis column so the dates line up with the plot (G5)', async () => {
+  it('offsets the X-axis label track past the Y-axis column so the dates line up with the plot', async () => {
     const { getByTestId } = await render(
       <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
     );
@@ -828,7 +828,7 @@ describe('NetWorthLine', () => {
     expect(lastVertexOf(segments[1].props.points)).toBe(firstVertexOf(segments[2].props.points));
   });
 
-  it('splits the stroke at the SAME crossing x the fill uses, so line and fill agree (R5-D)', async () => {
+  it('splits the stroke at the SAME crossing x the fill uses, so line and fill agree', async () => {
     const { getAllByTestId, getByTestId } = await render(
       <NetWorthLine points={crossingPoints} startReference={200} baseCurrency="USD" height={200} />,
     );

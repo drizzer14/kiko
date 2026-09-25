@@ -436,7 +436,7 @@ describe('HoldingFormScreen term deposit', () => {
   // through the SAME occlusion-aware `scrollToField` helper the Save-invalid
   // path already uses — never an unconditional `scrollToEnd`, which used to
   // scroll even when the newly added row was already fully visible.
-  it('scrolls to the newly added contribution through the occlusion-aware scrollToField helper, not an unconditional scrollToEnd (round-6 item 3)', async () => {
+  it('scrolls to the newly added contribution through the occlusion-aware scrollToField helper, not an unconditional scrollToEnd', async () => {
     const scrollToFieldMock = scrollToField as jest.Mock;
     const rafSpy = jest
       .spyOn(globalThis, 'requestAnimationFrame')
@@ -462,7 +462,7 @@ describe('HoldingFormScreen term deposit', () => {
     rafSpy.mockRestore();
   });
 
-  it('targets the newly appended row (not a fixed one) on each Add contribution press (round-6 item 3)', async () => {
+  it('targets the newly appended row (not a fixed one) on each Add contribution press', async () => {
     const scrollToFieldMock = scrollToField as jest.Mock;
     const rafSpy = jest
       .spyOn(globalThis, 'requestAnimationFrame')
@@ -491,7 +491,7 @@ describe('HoldingFormScreen term deposit', () => {
     rafSpy.mockRestore();
   });
 
-  it('blocks save and shows an inline error on a new contribution row left blank (round-4 device feedback item 10)', async () => {
+  it('blocks save and shows an inline error on a new contribution row left blank', async () => {
     const screen = await renderScreen();
 
     await selectHoldingType(screen, 'term_deposit');
@@ -516,7 +516,7 @@ describe('HoldingFormScreen term deposit', () => {
     ).toBeTruthy();
   });
 
-  it('blocks save on a new contribution row that has only an amount, no date (round-4 device feedback item 10)', async () => {
+  it('blocks save on a new contribution row that has only an amount, no date', async () => {
     const screen = await renderScreen();
 
     await selectHoldingType(screen, 'term_deposit');
@@ -698,7 +698,7 @@ describe('HoldingFormScreen term deposit', () => {
   });
 });
 
-describe('HoldingFormScreen bond ISIN mode (T25)', () => {
+describe('HoldingFormScreen bond ISIN mode', () => {
   beforeEach(() => {
     createMock.mockClear();
     (refreshBondRegisterIfStale as jest.Mock).mockClear();
@@ -1863,7 +1863,7 @@ describe('HoldingFormScreen metal', () => {
   });
 });
 
-describe('HoldingFormScreen loan (T28)', () => {
+describe('HoldingFormScreen loan', () => {
   beforeEach(() => {
     createMock.mockClear();
     setIconMock.mockClear();
@@ -2489,7 +2489,7 @@ describe('HoldingFormScreen type options are constrained by the account kind', (
     expect(screen.queryByTestId('holding-type-field-option-term_deposit')).toBeNull();
   });
 
-  it('drops metal from a bank account with no bankId (T17 allow-list)', async () => {
+  it('drops metal from a bank account with no bankId (the metal allow-list)', async () => {
     mockAccountKind = 'bank';
     mockAccountInstitution = null;
     mockAccountBankId = null;

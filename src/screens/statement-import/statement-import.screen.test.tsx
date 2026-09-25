@@ -640,7 +640,7 @@ describe('StatementImportScreen', () => {
   // the picked file's bytes as UTF-8 first (Monobank's existing path); if NO
   // format recognizes that text, it must retry decoding the SAME bytes as
   // cp1251 before giving up.
-  describe('cp1251 decode fallback (Sensebank, section C.2)', () => {
+  describe('cp1251 decode fallback (Sensebank)', () => {
     beforeEach(() => {
       sensebankDetectFormatCalls.length = 0;
     });
@@ -689,7 +689,7 @@ describe('StatementImportScreen', () => {
 // The "Map columns manually" entry point into the generic column-mapping
 // import screen, plus the auto-replace shortcut for a file that already has
 // an exact saved mapping under a DIFFERENT bank than the one recognized.
-describe('StatementImportScreen — column-mapping entry point (T7)', () => {
+describe('StatementImportScreen — column-mapping entry point', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     setLiveData({});
@@ -966,7 +966,7 @@ describe('StatementImportScreen — column-mapping entry point (T7)', () => {
 // sheet's `onClosed` fires (`BottomSheet`'s pass-through of RN `Modal`'s own
 // `onDismiss`, which only fires once the close ANIMATION has actually
 // finished), not from a guessed delay.
-describe('StatementImportScreen — Done closes the sheet before navigating (N4, R2-1)', () => {
+describe('StatementImportScreen — Done closes the sheet before navigating', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     setLiveData({});
@@ -1045,7 +1045,7 @@ describe('StatementImportScreen — Done closes the sheet before navigating (N4,
 // The local cache copy this screen's own fix
 // makes is deleted once THIS screen is removed from the stack — a genuine
 // unmount, not a mere push-on-top (Map Columns).
-describe('StatementImportScreen — local copy cleanup (M8)', () => {
+describe('StatementImportScreen — local copy cleanup', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     setLiveData({});
@@ -1082,7 +1082,7 @@ describe('StatementImportScreen — local copy cleanup (M8)', () => {
     expect(mockUnlink).not.toHaveBeenCalled();
   });
 
-  it('does NOT delete the local copy when T7 auto-replaces to ColumnMapping — that screen now owns the SAME file', async () => {
+  it('does NOT delete the local copy when this screen auto-replaces itself with ColumnMapping — that screen now owns the SAME file', async () => {
     mockReadFile.mockResolvedValue(fixtureBase64);
     setLiveData({
       account: { id: 'a', bankId: 'sensebank' },

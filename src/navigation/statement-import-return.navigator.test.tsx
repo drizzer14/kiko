@@ -287,7 +287,7 @@ const renderNavigator = () =>
 const routeNames = (): (keyof AccountsStackParamList)[] =>
   (navigationRef.getState()?.routes ?? []).map((r) => r.name as keyof AccountsStackParamList);
 
-describe('statement-import return-navigation (C1, real router)', () => {
+describe('statement-import return-navigation (real router)', () => {
   beforeEach(() => {
     savedMappingMatches = false;
   });

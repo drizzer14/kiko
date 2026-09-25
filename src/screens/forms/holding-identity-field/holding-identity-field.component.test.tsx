@@ -190,7 +190,7 @@ describe('HoldingIdentityField', () => {
     expect(getByText('This field is required.')).toBeTruthy();
   });
 
-  it('offsets the row-level error to align with the name input, not the icon (round-4 device feedback item 5)', async () => {
+  it('offsets the row-level error to align with the name input, not the icon', async () => {
     const { getByTestId } = await setup({
       error: 'This field is required.',
       testID: 'holding-identity-name-field',

@@ -160,7 +160,7 @@ describe('BondIsinSection', () => {
   // An unmapped-frequency
   // match shows its own picker, with NO chip pre-selected, and blocks Save
   // via the caller's own `couponFrequencyError` until one is picked.
-  describe('the coupon-frequency pick (N2)', () => {
+  describe('the coupon-frequency pick', () => {
     it('renders the picker with a "Select..." placeholder, no chip pre-highlighted, when needsCouponFrequencyPick is true', async () => {
       const { getByText, getByTestId } = await render(
         <BondIsinSection {...baseProps} needsCouponFrequencyPick />,

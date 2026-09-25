@@ -17,7 +17,7 @@ const fixtureText = readFileSync(
 const monobankInput = { text: fixtureText, fileName: 'uabean-monobank-sample.csv' };
 
 describe('statementFormats', () => {
-  it('registers exactly the Monobank CSV, PrivatBank XLSX, Sensebank CSV, and the three Phase 4 FOP/business CSV formats', () => {
+  it('registers exactly the Monobank CSV, PrivatBank XLSX, Sensebank CSV, and the three FOP/business CSV formats', () => {
     expect(statementFormats).toEqual([
       monobankCsvFormat,
       privatbankXlsxFormat,

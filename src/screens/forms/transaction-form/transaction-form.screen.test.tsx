@@ -719,7 +719,7 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
   });
 });
 
-describe('TransactionFormScreen — description suggestions (D1)', () => {
+describe('TransactionFormScreen — description suggestions', () => {
   // One name rule ("coffee" -> Dining) plus a pool of past MANUAL descriptions,
   // so a tapped suggestion can be shown to BOTH fill the field and re-seat A1's
   // rule category through the ONE shared description-handling surface.
@@ -850,7 +850,7 @@ describe('TransactionFormScreen — localization', () => {
   });
 });
 
-describe('TransactionFormScreen — duplicate mode (D2)', () => {
+describe('TransactionFormScreen — duplicate mode', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'cash' }], {
@@ -1356,7 +1356,7 @@ describe('TransactionFormScreen — read-only mode (monobank)', () => {
   });
 });
 
-describe('TransactionFormScreen — comment detail row (item 17, F3)', () => {
+describe('TransactionFormScreen — comment detail row', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -2824,7 +2824,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
     rafSpy.mockRestore();
   });
 
-  it('targets the newly appended return row (not a fixed one) on each Add return press (round-6 item 3)', async () => {
+  it('targets the newly appended return row (not a fixed one) on each Add return press', async () => {
     const scrollToFieldMock = scrollToField as jest.Mock;
     const rafSpy = jest
       .spyOn(globalThis, 'requestAnimationFrame')
@@ -2901,7 +2901,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
   // `Box gap={4}`'s own flex-item list — they used to be its direct children,
   // each getting that 16pt rhythm; now they are all ONE child, with nothing
   // supplying a gap between them. The wrapper must carry the SAME gap itself.
-  it('gives the split-returns wrapper its own gap matching the form rhythm, once split mode is selected (round-6 item 2)', async () => {
+  it('gives the split-returns wrapper its own gap matching the form rhythm, once split mode is selected', async () => {
     const utils = await renderAddFromHolding('payer');
     await pickType(utils, 'split');
 

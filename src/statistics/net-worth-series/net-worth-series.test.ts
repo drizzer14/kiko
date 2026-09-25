@@ -878,7 +878,7 @@ describe('buildNetWorthSeries', () => {
   // anchor it — the loan contributes exactly 0 before its own `startDate`,
   // the same rule `holding-value.test.ts` covers at the single-holding level,
   // now exercised through the full series builder.
-  it("contributes 0 to net worth before the loan's own start date (M4)", () => {
+  it("contributes 0 to net worth before the loan's own start date", () => {
     const loan = holding({
       id: 'loan',
       currency: 'UAH',

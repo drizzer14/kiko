@@ -591,7 +591,7 @@ describe('StatisticsScreen', () => {
     expect(getByTestId('pie-chart-arc-b')).toBeTruthy();
   });
 
-  describe('Debts total (T27)', () => {
+  describe('Debts total', () => {
     it('renders no Debts total under the account pie when there is no loan holding', async () => {
       const { queryByTestId } = await renderScreen();
       expect(queryByTestId('statistics-debts-total')).toBeNull();
@@ -1259,7 +1259,7 @@ describe('StatisticsScreen', () => {
     expect(getByText(`${formatDate(range.from)} – ${formatDate(range.to)}`)).toBeTruthy();
   });
 
-  describe('Loan interest (T30, spec 5/D14)', () => {
+  describe('Loan interest', () => {
     // A single-installment (termMonths: 1) annuity loan whose one due date
     // falls exactly on "now" (`addMonths(startDate, 1)` reconstructs today's
     // Y/M/D from a start one calendar month earlier), so a payment a couple
@@ -1380,7 +1380,7 @@ describe('StatisticsScreen', () => {
       expect(centerTotal.getByText('12,000.00 ₴')).toBeTruthy();
     });
 
-    it('Review Focus 7: a payment linked to a MISSING loan holding counts as normal spending', async () => {
+    it('a payment linked to a MISSING loan holding counts as normal spending', async () => {
       const danglingPayment: Transaction = {
         id: 'lp4',
         holdingId: 'h1',

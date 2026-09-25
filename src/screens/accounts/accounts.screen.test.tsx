@@ -302,7 +302,7 @@ describe('AccountsScreen', () => {
     expect(mockAccountRemove).not.toHaveBeenCalled();
   });
 
-  it('wires an auto-scroll ref and an edge activation offset to the grid (F9)', async () => {
+  it('wires an auto-scroll ref and an edge activation offset to the grid', async () => {
     setLiveData({
       accounts: [
         { id: 'a', name: 'Monobank', kind: 'bank' },
@@ -420,7 +420,7 @@ describe('AccountsScreen', () => {
     expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
   });
 
-  it('draws the shared hairline card border on first render (G2)', async () => {
+  it('draws the shared hairline card border on first render', async () => {
     setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
     const { getByTestId } = await renderAccounts();
 
@@ -456,7 +456,7 @@ describe('AccountsScreen', () => {
     expect(queryByText(/1,000\.00 ₴/)).toBeNull();
   });
 
-  describe('Debts section (T27)', () => {
+  describe('Debts section', () => {
     // A loan freshly started "now" (this test's own `Date.now()`, captured
     // just before render): no scheduled installment is due yet, so the
     // outstanding balance is deterministically the FULL principal — the

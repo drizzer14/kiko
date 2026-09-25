@@ -300,7 +300,7 @@ describe('HomeScreen', () => {
     expect(getByText('Coffee')).toBeTruthy();
   });
 
-  it('renders each transaction row as the shared solid Card surface (M2 in the HIG audit)', async () => {
+  it('renders each transaction row as the shared solid Card surface (per the HIG audit)', async () => {
     const { getAllByTestId } = await renderHome();
     // Each row is wrapped in the shared content-layer `Card`, matching every
     // other content card's language, rather than a plain bordered list row.

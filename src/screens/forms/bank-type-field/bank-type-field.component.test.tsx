@@ -188,7 +188,7 @@ describe('BankTypeField', () => {
     expect(tree).toContain('receipt');
   });
 
-  it("sizes the capability icons at the caption icon-size step (one step down from round-3's body)", async () => {
+  it("sizes the capability icons at the caption icon-size step (one step down from the row's own body text size)", async () => {
     const { getByTestId } = await renderOpenSheet();
 
     expect(getByTestId('bank-type-option-monobank-connect-icon').props.size).toBe(

@@ -228,7 +228,7 @@ describe('SettingsScreen', () => {
     ]);
   });
 
-  it("insets the Import/Export divider to the row LABEL's first letter, past the icon (device-feedback round-4 item 6, round-8)", async () => {
+  it("insets the Import/Export divider to the row LABEL's first letter, past the icon", async () => {
     const { getByTestId } = await renderScreen();
 
     const divider = getByTestId('settings-divider-data-transfer');
@@ -258,7 +258,7 @@ describe('SettingsScreen', () => {
     );
   });
 
-  it('gives the Import/Export card no padding of its own, letting each row carry consistent native row padding (device-feedback-round-4 item 6)', async () => {
+  it('gives the Import/Export card no padding of its own, letting each row carry consistent native row padding', async () => {
     const { getByTestId } = await renderScreen();
 
     const card = getByTestId('settings-card-data-transfer');

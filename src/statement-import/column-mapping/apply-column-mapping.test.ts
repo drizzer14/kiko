@@ -335,7 +335,7 @@ describe('applyColumnMapping (Balance column -> closingBalance)', () => {
 // and last share the same time), the tied rows' own balance cells decide:
 // equal -> use that value (order genuinely doesn't matter); different ->
 // no closingBalance at all (Rule B fallback) rather than guess.
-describe('applyColumnMapping (Balance column tie-break: file order, ruling I1)', () => {
+describe('applyColumnMapping (Balance column tie-break: file order)', () => {
   const BALANCE_HEADER: TableCell[] = ['Date', 'Description', 'Amount', 'Balance'];
 
   const mappingWithBalance: ColumnMapping = {

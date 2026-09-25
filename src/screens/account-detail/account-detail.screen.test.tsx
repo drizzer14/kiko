@@ -838,7 +838,7 @@ describe('AccountDetailScreen', () => {
     expect(mockRemove).toHaveBeenCalledWith('h1');
   });
 
-  it('wires an auto-scroll ref and an edge activation offset to the holdings grid (F9)', async () => {
+  it('wires an auto-scroll ref and an edge activation offset to the holdings grid', async () => {
     setLiveData({
       accounts: [account()],
       holdings: [

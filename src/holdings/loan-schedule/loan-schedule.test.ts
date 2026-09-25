@@ -202,7 +202,7 @@ describe('loanOutstandingMinorAt', () => {
     );
   });
 
-  it('I1: a correction dated AFTER the queried instant never anchors it — the pure schedule applies instead', () => {
+  it('a correction dated AFTER the queried instant never anchors it — the pure schedule applies instead', () => {
     // A correction recorded on installment 50's due date (~4 years in) must
     // not retroactively apply to a query from BEFORE that day — `priceAt`'s
     // own earliest-point fallback would otherwise hand back this later
@@ -224,7 +224,7 @@ describe('loanOutstandingMinorAt', () => {
     expect(loanOutstandingMinorAt(annuityMeta, HOLDING_ID, book, twelfthDueDate)).toBe(118_461_574);
   });
 
-  it('M4: is 0 before the loan start date, the none-schedule branch, even with a later correction', () => {
+  it('is 0 before the loan start date, the none-schedule branch, even with a later correction', () => {
     const point = { day: dayKeyOf(local(2021, 0, 1)), price: '30000.00', currency: 'UAH' as const };
     const book = buildPriceBook([
       { instrument: holdingInstrument(HOLDING_ID), ...point, source: 'manual' as const },
@@ -233,14 +233,14 @@ describe('loanOutstandingMinorAt', () => {
     expect(loanOutstandingMinorAt(noneMeta, HOLDING_ID, book, dayBeforeStart)).toBe(0);
   });
 
-  it('M4: is 0 before the loan start date, the SCHEDULED (annuity) branch — not the full principal', () => {
+  it('is 0 before the loan start date, the SCHEDULED (annuity) branch — not the full principal', () => {
     const dayBeforeStart = addDays(annuityMeta.startDate, -1);
     expect(loanOutstandingMinorAt(annuityMeta, HOLDING_ID, EMPTY_PRICE_BOOK, dayBeforeStart)).toBe(
       0,
     );
   });
 
-  it('M5: an overpaid correction clamps to 0 in the SCHEDULED (annuity/differentiated) branch too', () => {
+  it('an overpaid correction clamps to 0 in the SCHEDULED (annuity/differentiated) branch too', () => {
     const installments = loanInstallments(annuityMeta);
     const correctionDay = installments[234].dueDate;
     const book = buildPriceBook([
@@ -299,26 +299,26 @@ describe('loanInterestForPaymentMinor', () => {
   // (`addMonths(startDate, k)`): one period before the first installment is
   // `addMonths(startDate, 0)` (= `startDate` itself), one period after the
   // last is `addMonths(startDate, termMonths + 1)`.
-  it('M2: a payment more than one period before the first installment counts 0 interest', () => {
+  it('a payment more than one period before the first installment counts 0 interest', () => {
     const beforeLowerBound = addDays(annuityMeta.startDate, -1);
     expect(loanInterestForPaymentMinor(annuityMeta, beforeLowerBound, 10_000_000)).toBe(0);
   });
 
-  it('M2: a payment more than one period after the last installment counts 0 interest', () => {
+  it('a payment more than one period after the last installment counts 0 interest', () => {
     const installments = loanInstallments(annuityMeta);
     const upperBound = addMonths(annuityMeta.startDate, installments.length + 1);
     const afterUpperBound = addDays(upperBound, 1);
     expect(loanInterestForPaymentMinor(annuityMeta, afterUpperBound, 10_000_000)).toBe(0);
   });
 
-  it('M2: a payment exactly one period before the first installment still maps to it (boundary is inclusive)', () => {
+  it('a payment exactly one period before the first installment still maps to it (boundary is inclusive)', () => {
     const installments = loanInstallments(annuityMeta);
     expect(loanInterestForPaymentMinor(annuityMeta, annuityMeta.startDate, 10_000_000)).toBe(
       installments[0].interestMinorUnits,
     );
   });
 
-  it('M2: a payment exactly one period after the last installment still maps to it (boundary is inclusive)', () => {
+  it('a payment exactly one period after the last installment still maps to it (boundary is inclusive)', () => {
     const installments = loanInstallments(annuityMeta);
     const upperBound = addMonths(annuityMeta.startDate, installments.length + 1);
     expect(loanInterestForPaymentMinor(annuityMeta, upperBound, 10_000_000)).toBe(

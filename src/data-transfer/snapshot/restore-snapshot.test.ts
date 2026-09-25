@@ -259,7 +259,7 @@ describe('restoreDataSnapshot', () => {
     ]);
   });
 
-  it('restores an empty bond_register table for a legacy (pre-T24) snapshot with no bondRegister field', async () => {
+  it('restores an empty bond_register table for a legacy snapshot with no bondRegister field', async () => {
     const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;
     // Simulates a `.kiko` file exported before `bond_register` existed — the

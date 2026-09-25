@@ -523,7 +523,7 @@ describe('HoldingDetailScreen', () => {
     expect(getByText('Everyday card income')).toBeTruthy();
   });
 
-  it('renders each ledger row as a glass card (M2 in the HIG audit)', async () => {
+  it('renders each ledger row as a glass card (per the HIG audit)', async () => {
     seed(cardHolding, [
       { id: 'x1', amountMinorUnits: -5000, time: 1, description: 'Coffee', source: 'manual' },
     ]);
@@ -879,7 +879,7 @@ describe('HoldingDetailScreen', () => {
     expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-9');
   });
 
-  it('duplicates a manual transaction row to a pre-filled create form (D2)', async () => {
+  it('duplicates a manual transaction row to a pre-filled create form', async () => {
     seed(cardHolding, [
       { id: 'txn-9', amountMinorUnits: -5000, time: 1, description: 'Coffee', source: 'manual' },
     ]);

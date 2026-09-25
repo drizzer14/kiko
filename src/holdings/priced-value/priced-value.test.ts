@@ -69,7 +69,7 @@ describe('pricedValueMinor', () => {
     expect(pricedValueMinor(holding, book, day2026)).toBe(1_600_000);
   });
 
-  it('returns null when the instrument has no stored price point yet (Review Focus 5)', () => {
+  it('returns null when the instrument has no stored price point yet', () => {
     const holding = property();
 
     expect(pricedValueMinor(holding, EMPTY_PRICE_BOOK, day2024)).toBeNull();

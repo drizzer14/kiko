@@ -89,7 +89,7 @@ describe('TransactionRow', () => {
     expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-1');
   });
 
-  it('offers Duplicate on a manual row and routes it to onDuplicate with the row id (D2)', async () => {
+  it('offers Duplicate on a manual row and routes it to onDuplicate with the row id', async () => {
     const onDuplicate = jest.fn();
     const { getByTestId } = await renderRow(baseItem, jest.fn(), onDuplicate);
 

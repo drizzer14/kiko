@@ -495,7 +495,7 @@ describe('categories seed migration', () => {
     );
   });
 
-  it('seeds the eleventh, loan_interest category in its own, later, idempotent migration (T30, spec 5/D14)', () => {
+  it('seeds the eleventh, loan_interest category in its own, later, idempotent migration', () => {
     const files = migrationFiles();
     const seed = seedMigration();
 

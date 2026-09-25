@@ -148,7 +148,7 @@ describe('IconPickerModal', () => {
     expect(onRemove).toHaveBeenCalledTimes(1);
   });
 
-  it('renders the Remove/Cancel footer after the icon grid, not beside the title (task C2)', async () => {
+  it('renders the Remove/Cancel footer after the icon grid, not beside the title', async () => {
     const onRemove = jest.fn();
     const { getAllByRole } = await setup({ onRemove });
 

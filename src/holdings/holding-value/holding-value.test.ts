@@ -182,7 +182,7 @@ describe('holdingValue', () => {
     expect(value.minorUnits).toBe(0);
   });
 
-  it('excludes a future-dated deposit contribution from principal and value (D2)', () => {
+  it('excludes a future-dated deposit contribution from principal and value', () => {
     const holding: ValuableHolding = {
       ...base,
       type: 'term_deposit',
@@ -413,7 +413,7 @@ describe('holdingValueBreakdown — property_item (priced)', () => {
     expect(after.net.minorUnits).toBe(1_600_000);
   });
 
-  it('falls back to the lots cost basis when there is no price point yet (Review Focus 5)', () => {
+  it('falls back to the lots cost basis when there is no price point yet', () => {
     const holding = property();
 
     const breakdown = holdingValueBreakdown(holding, propertyDay2024, EMPTY_PRICE_BOOK);
@@ -471,7 +471,7 @@ const goldBar = (over: Record<string, unknown> = {}): ValuableHolding => ({
   },
 });
 
-describe('holdingValueBreakdown — metal (priced, T17)', () => {
+describe('holdingValueBreakdown — metal (priced)', () => {
   it('values a gold bar at its NBU point at-or-before now', () => {
     const book = buildPriceBook([
       {
@@ -490,7 +490,7 @@ describe('holdingValueBreakdown — metal (priced, T17)', () => {
     expect(breakdown.net.minorUnits).toBe(9_000_000);
   });
 
-  it('falls back to the lots cost basis when there is no price point yet (Review Focus 5)', () => {
+  it('falls back to the lots cost basis when there is no price point yet', () => {
     const holding = goldBar();
 
     const breakdown = holdingValueBreakdown(holding, propertyDay2024, EMPTY_PRICE_BOOK);
@@ -550,7 +550,7 @@ const loan = (over: Record<string, unknown> = {}): ValuableHolding => ({
   },
 });
 
-describe('holdingValueBreakdown — loan (T27)', () => {
+describe('holdingValueBreakdown — loan', () => {
   it('is negative — gross and net equal minus the outstanding balance, principalOrCost equals minus the principal', () => {
     const b = holdingValueBreakdown(loan(), loanStart, EMPTY_PRICE_BOOK);
     // At startDate itself, no installment is due yet: outstanding is the full principal.
@@ -574,7 +574,7 @@ describe('holdingValueBreakdown — loan (T27)', () => {
     expect(after.principalOrCost.minorUnits).toBe(-120_000_000);
   });
 
-  it('is 0 before the loan start date (M4 — a loan not yet taken out contributes nothing)', () => {
+  it('is 0 before the loan start date — a loan not yet taken out contributes nothing', () => {
     const dayBeforeStart = local(2020, 0, 14);
     const b = holdingValueBreakdown(loan(), dayBeforeStart, EMPTY_PRICE_BOOK);
     expect(b.gross.minorUnits).toBe(0);

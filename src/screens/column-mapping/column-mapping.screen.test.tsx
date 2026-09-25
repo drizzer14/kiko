@@ -345,7 +345,7 @@ describe('ColumnMappingScreen', () => {
     setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding] });
   });
 
-  it('maps the Monobank fixture with the T4 mapping and shows 4 transactions', async () => {
+  it('maps the Monobank fixture with the resolved column mapping and shows 4 transactions', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
 
     const view = await renderMonobankScreen();
@@ -896,7 +896,7 @@ describe('ColumnMappingScreen — local copy cleanup', () => {
     setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding] });
   });
 
-  it('deletes the local cache copy on unmount when it OWNS the file (the T7 auto-replace path)', async () => {
+  it('deletes the local cache copy on unmount when it OWNS the file (the auto-replace-to-ColumnMapping path)', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
 
     const view = await renderScreen({

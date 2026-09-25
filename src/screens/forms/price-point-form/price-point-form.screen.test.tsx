@@ -172,7 +172,7 @@ describe('PricePointFormScreen', () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
-  it('(I2) still blocks a non-loan holding at 0, with the generic error', async () => {
+  it('still blocks a non-loan holding at 0, with the generic error', async () => {
     seed({ id: 'h-1', currency: 'UAH', type: 'property_item' });
     const utils = await renderScreen();
 
