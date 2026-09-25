@@ -37,13 +37,23 @@ code=$?
 if [ "$code" -ne 0 ]; then
   # biome.json's files.includes deliberately excludes some paths (e.g.
   # rules/fixtures/**, ios/) from linting altogether — a fixture is allowed
-  # to hold code shapes that would otherwise fail lint. Biome reports this
-  # exact message with a non-zero exit for such a target: that is Biome
-  # saying "out of scope", not "found a violation", so it must not read as a
-  # lint failure here.
+  # to hold code shapes that would otherwise fail lint. Biome reports the
+  # exact same "No files were processed…" message with a non-zero exit for a
+  # target that is EXCLUDED and for a target that does not EXIST at all (an
+  # internalError/io swallowed above it) — so this must only read as
+  # "out of scope" when the target is a real file under one of biome.json's
+  # excluded roots; anything else (a typo'd or missing path) is a genuine
+  # failure, same as security.sh's own excluded-root check.
   if printf '%s' "$out" | grep -q 'No files were processed in the specified paths\.'; then
-    [ -n "$dkey" ] && harness_mark_pass "$ROOT" "$dkey" "$fp"
-    exit 0
+    case "$TARGET" in
+      "$ROOT/ios/"* | ios/* | "$ROOT/vendor/"* | vendor/* | "$ROOT/coverage/"* | coverage/* \
+        | "$ROOT/rules/fixtures/"* | rules/fixtures/* | *.jsbundle)
+        if [ -f "$TARGET" ]; then
+          [ -n "$dkey" ] && harness_mark_pass "$ROOT" "$dkey" "$fp"
+          exit 0
+        fi
+        ;;
+    esac
   fi
 
   print_block \
