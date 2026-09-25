@@ -69,8 +69,7 @@ describe('RawPreview', () => {
     expect(unselectedFill.backgroundColor).toBeUndefined();
   });
 
-  // F4 audit item 21: the header-row tap target was ~34pt, below the HIG
-  // 44pt floor.
+  // The header-row tap target must clear the HIG 44pt floor.
   it('gives each row at least the 44pt HIG tap-target height', async () => {
     const { getByTestId } = await render(
       <RawPreview rows={rows} headerRowIndex={0} onSelectHeaderRow={jest.fn()} />,
@@ -82,7 +81,7 @@ describe('RawPreview', () => {
     expect(fill.minHeight).toBeGreaterThanOrEqual(44);
   });
 
-  // F3 item 7: a wide export renders no more than 5 columns per row.
+  // A wide export renders no more than 5 columns per row.
   it('shows at most 5 columns per row', async () => {
     const wideRows: TableCell[][] = [
       ['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6'],

@@ -208,7 +208,7 @@ const renderMonobankScreen = async (
 
 // The date/date-format/description trio shared by EVERY test that needs some
 // (but not necessarily every) Monobank column picked — factored out so a
-// still-incomplete-mapping test (F4: no amount column mapped, say) shares
+// still-incomplete-mapping test (no amount column mapped, say) shares
 // this exact sequence with `mapMonobankColumns` below instead of a
 // hand-copied near-duplicate (jscpd). `dateFormatId` defaults to the real
 // Monobank format; a test that deliberately picks a MISMATCHING format
@@ -357,12 +357,12 @@ describe('ColumnMappingScreen', () => {
     );
   });
 
-  // F3 item 12: the screen body no longer duplicates the native stack
-  // header's own title — the header (`accounts.stack.tsx`'s `title:
+  // The screen body no longer duplicates the native stack header's own
+  // title — the header (`accounts.stack.tsx`'s `title:
   // t('columnMapping.title')`) is not itself rendered by this component
   // under test (it lives in the navigator), so this pins that the
   // screen's OWN body renders that exact string ZERO times.
-  it('does not render a second in-body title duplicating the screen header (F3 item 12)', async () => {
+  it('does not render a second in-body title duplicating the screen header', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
 
     const view = await renderMonobankScreen();
@@ -370,8 +370,8 @@ describe('ColumnMappingScreen', () => {
     expect(view.queryByText(i18n.t('columnMapping.title'))).toBeNull();
   });
 
-  // F3 item 14: every section on this screen shows its own heading.
-  it('shows a heading for every section (F3 item 14)', async () => {
+  // Every section on this screen shows its own heading.
+  it('shows a heading for every section', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
 
     const view = await renderMonobankScreen();
@@ -400,7 +400,7 @@ describe('ColumnMappingScreen', () => {
     expect(view.queryByText(i18n.t('columnMapping.incomplete'))).toBeNull();
   });
 
-  // F4 item 8: the date-format picker shows a worked example ("31.12.2026
+  // The date-format picker shows a worked example ("31.12.2026
   // 23:59:59") instead of the raw preset id — meaningless to a user who
   // doesn't already know date-format notation.
   it('shows a worked example date, not the raw preset id, in the date-format picker', async () => {
@@ -423,7 +423,7 @@ describe('ColumnMappingScreen', () => {
     ).toBeTruthy();
   });
 
-  // Item 2 (F3, BUG): same "Add new" holding return channel as
+  // Same "Add new" holding return channel as
   // `statement-import.screen.test.tsx` — see that test file's matching case
   // for the full explanation.
   it('navigates to HoldingForm with a returnTo, then selects the holding once holdingId arrives back', async () => {
@@ -470,7 +470,7 @@ describe('ColumnMappingScreen', () => {
     );
   });
 
-  // Item 11 (F3): a holding already chosen on the statement-import preview
+  // A holding already chosen on the statement-import preview
   // is passed through as `holdingId` and pre-fills this screen's own
   // target-holding field, instead of asking again.
   it('pre-fills the target-holding field from a holdingId carried over from the preview', async () => {
@@ -493,7 +493,7 @@ describe('ColumnMappingScreen', () => {
     expect(within(view.getByTestId('target-holding-field')).getByText('Savings jar')).toBeTruthy();
   });
 
-  // Item 11 (F3): the holding field carries the same required marker every
+  // The holding field carries the same required marker every
   // other required field on this screen already shows — date, date format,
   // the single-mode amount column, and description already mark 4; the
   // holding field adds a 5th.
@@ -513,7 +513,7 @@ describe('ColumnMappingScreen', () => {
 
     // Monobank's own amounts are plain '.'-decimal numbers (e.g. "-100.00")
     // — forcing the WRONG decimal separator (',') doesn't throw (every cell
-    // still parses to SOME finite number, per Review Focus 1), it silently
+    // still parses to SOME finite number), it silently
     // mangles the magnitude instead (`123.45` read with ',' becomes
     // `12345`), which is exactly what this test proves changed.
     await fireEvent.press(
@@ -678,7 +678,7 @@ describe('ColumnMappingScreen', () => {
     expect(view.queryByText(i18n.t('columnMapping.incomplete'))).toBeNull();
   });
 
-  // Item 15 (F3): a successful Import shows a MODAL with the result text.
+  // A successful Import shows a MODAL with the result text.
   it('shows the import result as a modal', async () => {
     const view = await renderMonobankImportSuccess();
 
@@ -723,8 +723,8 @@ describe('ColumnMappingScreen', () => {
       expect(view.getByTestId('column-mapping-transaction-count')).toHaveTextContent('4'),
     );
 
-    // Review Focus 3: the pre-filled preview must NOT have imported anything
-    // on its own — the user still has to pick a holding and tap Import.
+    // The pre-filled preview must NOT have imported anything on its own —
+    // the user still has to pick a holding and tap Import.
     expect(mockImportParsedStatement).not.toHaveBeenCalled();
 
     await fireEvent.press(view.getByTestId('mock-select-holding-h1'));

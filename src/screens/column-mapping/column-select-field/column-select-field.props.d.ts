@@ -13,9 +13,8 @@ export type ColumnSelectFieldProps<T extends string | number> = {
   // role, which always needs a real selection.
   allowNotUsed?: boolean;
   // Forwarded straight to the underlying `FieldTrigger` — shows the red
-  // asterisk required-field marker (device-feedback-round-F1, item 11).
-  // Defaults to false, matching an optional field like the counterparty
-  // column.
+  // asterisk required-field marker. Defaults to false, matching an
+  // optional field like the counterparty column.
   required?: boolean;
   // The "nothing picked yet" copy shown as the field's value — a per-role
   // string (e.g. "Select a date") the caller supplies, never the field's own

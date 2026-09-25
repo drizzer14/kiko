@@ -650,8 +650,8 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   const effectiveDelimiter = delimiterOverride ?? detectedDelimiter;
 
   // Runs exactly once, the first time `rows` resolves: pre-fills a saved
-  // mapping when one is found (Review Focus 3 — this only fills the FORM,
-  // it never imports), or falls back to guessing the header row. Later
+  // mapping when one is found (this only fills the FORM, it never
+  // imports), or falls back to guessing the header row. Later
   // `rows` recomputations (an encoding/delimiter switch) never re-run this,
   // so the user's own picks are never clobbered.
   const initializedRef = useRef(false);

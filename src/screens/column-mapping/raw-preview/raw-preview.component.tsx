@@ -9,26 +9,25 @@ import { computeColumnWidths } from './column-widths';
 import type { RawPreviewProps } from './raw-preview.props';
 
 const PREVIEW_ROW_COUNT = 10;
-// F3 item 7: the raw preview shows at most this many columns per row — every
+// The raw preview shows at most this many columns per row — every
 // `ColumnSelectField` option list still derives from the FULL header row.
 const PREVIEW_COLUMN_COUNT = 5;
 
 /**
  * The column-mapping screen's own raw-table preview: the first
  * `PREVIEW_ROW_COUNT` rows exactly as `readTableRows` parsed them, capped to
- * the first `PREVIEW_COLUMN_COUNT` columns (F3 item 7), rendered inside one
+ * the first `PREVIEW_COLUMN_COUNT` columns, rendered inside one
  * shared horizontal `ScrollView` so every row's cells stay column-aligned as
  * the user scrolls sideways. Tapping a row sets it as the header row — the
  * row whose cells become every `ColumnSelectField`'s own option list below.
- * Each column takes a CONSISTENT width across every row (device-feedback-
- * round-F1 item 6, `computeColumnWidths`) rather than a flat per-cell
- * minimum, so the grid reads as a real aligned table. The selected header
- * row paints the theme's accent BLUE (item 12, the same fill `SummaryTable`'s
- * sibling controls use for a selected state) with `onAccent` cell text,
- * replacing the former neutral `surfaceHigh` tint, and its cell text turns
- * SEMIBOLD (F3 item 8, `'600'` — the app's selected-label weight elsewhere,
- * not `'700'`) so the chosen header row reads as clearly distinct from every
- * other previewed row, not just differently colored.
+ * Each column takes a CONSISTENT width across every row (`computeColumnWidths`)
+ * rather than a flat per-cell minimum, so the grid reads as a real aligned
+ * table. The selected header row paints the theme's accent BLUE (the same
+ * fill `SummaryTable`'s sibling controls use for a selected state) with
+ * `onAccent` cell text, replacing the former neutral `surfaceHigh` tint, and
+ * its cell text turns SEMIBOLD (`'600'` — the app's selected-label weight
+ * elsewhere, not `'700'`) so the chosen header row reads as clearly distinct
+ * from every other previewed row, not just differently colored.
  */
 const RawPreview: FC<RawPreviewProps> = ({ rows, headerRowIndex, onSelectHeaderRow, testID }) => {
   const previewRows = rows
