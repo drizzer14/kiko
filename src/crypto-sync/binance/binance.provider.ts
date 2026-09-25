@@ -1,3 +1,5 @@
+import either, { bifoldMap } from 'fnts/either';
+
 import { Money } from '../../currency/money';
 import type { HoldingRow } from '../../db/schema';
 import type { BalanceProvider, ProviderBalance } from '../provider';
@@ -202,14 +204,18 @@ const walletSatoshis = async (
   wallet: string,
   satoshis: () => Promise<number>,
 ): Promise<number | null> => {
-  try {
-    return await satoshis();
-  } catch (error) {
-    // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) one wallet's failure (a missing API-key permission, a throttle) must skip only that wallet, not break the whole Binance sync; log which one so a device log shows what was dropped.
-    console.warn(`[binance sync] skipped the ${wallet} wallet`, error);
+  const attempt = await either<unknown, number>(satoshis);
 
-    return null;
-  }
+  return bifoldMap(
+    attempt,
+    (error) => {
+      // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) one wallet's failure (a missing API-key permission, a throttle) must skip only that wallet, not break the whole Binance sync; log which one so a device log shows what was dropped.
+      console.warn(`[binance sync] skipped the ${wallet} wallet`, error);
+
+      return null;
+    },
+    (value) => value,
+  );
 };
 
 /** The `binanceAsset` match keys already present among a target's holdings. */
