@@ -145,7 +145,7 @@ describe('useSyncAll', () => {
     });
   });
 
-  it('still runs refreshMetalPrices when refreshRates rejects (unaffected by the allSettled switch)', async () => {
+  it('now runs refreshMetalPrices even when refreshRates rejects (the old sequential code awaited refreshRates before even CALLING refreshMetalPrices, so it never ran)', async () => {
     mockRefreshRates.mockRejectedValue(new Error('rates fetch failed'));
 
     const { result } = await renderHook(() => useSyncAll([MANUAL]));
