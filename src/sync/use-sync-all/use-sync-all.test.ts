@@ -109,6 +109,54 @@ describe('useSyncAll', () => {
     });
   });
 
+  it('does not settle the fan-out until refreshRates settles, even when refreshMetalPrices rejects first', async () => {
+    // Production bug: Promise.all rejects (and the wrapping `either` resolves
+    // `fanOutAndRefresh`) the instant EITHER promise rejects, releasing the
+    // single-flight lock while the OTHER one — refreshRates, here still
+    // retrying — keeps running orphaned. A second pull then sees the lock
+    // already free and starts a SECOND fan-out. Promise.allSettled must wait
+    // for BOTH to settle before `syncAll()`'s own returned promise resolves.
+    let resolveRates!: () => void;
+    mockRefreshRates.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveRates = resolve;
+      }),
+    );
+    mockRefreshMetalPrices.mockRejectedValue(new Error('metal fetch failed'));
+
+    const { result } = await renderHook(() => useSyncAll([MONOBANK]));
+
+    let settled = false;
+    await act(async () => {
+      const firstCall = result.current.syncAll().then(() => {
+        settled = true;
+      });
+
+      await waitFor(() => expect(mockRefreshMetalPrices).toHaveBeenCalled());
+      // Flush every already-queued microtask (regardless of how many hops the
+      // rejection takes through `either`/`Promise.all`) without resolving
+      // `resolveRates`, so an early-release bug gets every chance to fire.
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(settled).toBe(false);
+
+      resolveRates();
+      await firstCall;
+      expect(settled).toBe(true);
+    });
+  });
+
+  it('still runs refreshMetalPrices when refreshRates rejects (unaffected by the allSettled switch)', async () => {
+    mockRefreshRates.mockRejectedValue(new Error('rates fetch failed'));
+
+    const { result } = await renderHook(() => useSyncAll([MANUAL]));
+
+    await act(async () => {
+      await result.current.syncAll();
+    });
+
+    expect(mockRefreshMetalPrices).toHaveBeenCalledTimes(1);
+  });
+
   it('fans out over EVERY connected Monobank account, each with its own targeted run', async () => {
     const monoA = account({ id: 'mono-a', name: 'Mono A', kind: 'bank', institution: 'monobank' });
     const monoB = account({ id: 'mono-b', name: 'Mono B', kind: 'bank', institution: 'monobank' });

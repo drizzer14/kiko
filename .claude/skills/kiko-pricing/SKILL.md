@@ -360,7 +360,7 @@ new pinning (kiko-compliance: this host stays keyless and unpinned).
 
 `src/prices/metal-refresh/refreshMetalPrices({ now, fetchImpl, ... })`
 is the scheduler, run CONCURRENTLY with `refreshRates` from both
-`useAutoSync` and `useSyncAll` — `await Promise.all([refreshRates(...),
+`useAutoSync` and `useSyncAll` — `await Promise.allSettled([refreshRates(...),
 refreshMetalPrices()])`, inside the SAME `either(...)` wrapper each
 hook already used around `refreshRates` alone. The two share no data
 dependency (`refreshMetalPrices` reads/writes `price_points` only,
@@ -370,6 +370,15 @@ not even STARTING until `refreshRates` had settled — overlaps their
 network + DB work and shrinks the app-open DB-read burst's wall-clock
 span; see `kiko-architecture`'s "op-sqlite's ONE worker thread"
 section for why that burst matters to every OTHER screen's own reads.
+`allSettled`, not `all`: `Promise.all` settles (rejects) the instant
+EITHER promise rejects, which would let the enclosing `either(...)`
+call — and, in `useSyncAll`, the single-flight lock around the whole
+fan-out — resolve/release while the OTHER promise keeps running
+orphaned; a pull that then arrives sees the lock already free and
+starts a SECOND fan-out (the production symptom this fixed).
+`allSettled` never rejects, so a rejected step is swallowed exactly as
+before by the same catch-all `either` — only the release TIMING
+changes, not which failures are silent.
 It refreshes ONLY currently held metals — scanned from every `metal`
 holding's `asMetalMeta(...).metal`, never a metal nobody owns — at
 most once per LOCAL day per metal, resolved by comparing

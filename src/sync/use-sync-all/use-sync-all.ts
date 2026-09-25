@@ -44,11 +44,18 @@ const fanOutAndRefresh = async (jobs: SyncJob[]): Promise<string[]> => {
   // `refreshRates` (currency_rates) and `refreshMetalPrices` (price_points)
   // read and write disjoint tables, so starting both at once shrinks the
   // pull's DB-read burst instead of making the metal fetch wait out the
-  // whole rates fetch first.
+  // whole rates fetch first. `Promise.allSettled`, not `Promise.all`: the
+  // latter settles (rejects) the instant EITHER promise rejects, which would
+  // resolve this whole function — and release the single-flight lock in
+  // `runSyncAllOnce` below — while the OTHER promise keeps running orphaned;
+  // a pull that then arrives sees the lock already free and starts a SECOND
+  // fan-out. `allSettled` never rejects, so a rejected step here is silently
+  // dropped exactly as it was before (the same catch-all `either` swallowed
+  // it either way) — only the release TIMING changes.
   await either(async () => {
     const lastRefreshAt = await ratesRepo.latestFetchedAt();
 
-    await Promise.all([refreshRates({ lastRefreshAt }), refreshMetalPrices()]);
+    await Promise.allSettled([refreshRates({ lastRefreshAt }), refreshMetalPrices()]);
   });
 
   return failed;

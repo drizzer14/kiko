@@ -147,7 +147,13 @@ export const useAutoSync = (): void => {
       // neither depends on the other's result — so starting both at once
       // shrinks the app-open DB-read burst's wall-clock span instead of
       // making the metal fetch wait out the whole rates fetch first.
-      await Promise.all([refreshRates({ lastRefreshAt }), refreshMetalPrices()]);
+      // `Promise.allSettled`, not `Promise.all` — twin of useSyncAll's
+      // identical fix: `Promise.all` settles (rejects) the instant EITHER
+      // promise rejects, leaving the other one running orphaned with nothing
+      // in this effect awaiting it further. `allSettled` never rejects, so a
+      // rejected step here is swallowed exactly as before by the enclosing
+      // `either` — only the wait-for-both timing changes.
+      await Promise.allSettled([refreshRates({ lastRefreshAt }), refreshMetalPrices()]);
     });
   }, []);
 };
