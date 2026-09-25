@@ -328,7 +328,19 @@ why this is the deliberate exception to functional-first). It holds
 - Any table column holding an amount is an integer minor-units
   column (`balanceMinorUnits`, `amountMinorUnits`), never a decimal
   or float column. Convert to/from `Money` at the repository
-  boundary.
+  boundary — a raw `row.balanceMinorUnits` read for a VALUE goes
+  through `holdingsRepo.balanceOf(row): Money` (D7b), never a direct
+  member read outside a repository (mechanized, Class B:
+  `kiko-balance-through-repo` in `rules/semgrep-mobile.yml`); a WRITE
+  input takes `Money` and converts inside the repo, throwing on a
+  currency mismatch — `holdingsRepo.create`'s optional
+  `openingBalance`, `updateWithBalanceDelta`'s patch `balance`,
+  `setSyncedBalance`'s `balance`, and `accountsRepo.createCashAccount`'s
+  `initialBalance`. The sync upserts (`upsertMonobank(Many)` /
+  `upsertExchange(Many)`) are the one exception: they write a raw
+  provider-given balance straight through every run, never a typed
+  opening balance, so their own input keeps a plain
+  `balanceMinorUnits: number`.
 
 ## Currencies
 

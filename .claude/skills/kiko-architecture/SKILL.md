@@ -407,7 +407,10 @@ plain module of exported functions, not a class.
   return once it's durable — every write function body is (or calls
   into) a `db.transaction()` call, per the hard rule above.
 - Repositories are the only place raw Drizzle rows are converted
-  to/from domain types (e.g. `balanceMinorUnits` -> `Money`,
+  to/from domain types (e.g. `balanceMinorUnits` -> `Money` via
+  `holdingsRepo.balanceOf`, and a write input's `Money` -> minor
+  units in `holdingsRepo.create`/`updateWithBalanceDelta`/
+  `setSyncedBalance` and `accountsRepo.createCashAccount`,
   see `kiko-domain`).
 - A full-list `sortOrder` rewrite (persisting a drag-and-drop reorder)
   is one `db.transaction()` wrapping a loop that updates every row's

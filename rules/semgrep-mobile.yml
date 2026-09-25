@@ -455,3 +455,31 @@ rules:
       - metavariable-regex:
           metavariable: $READ
           regex: ^(readToken|readCredentials|readDbKey)$
+  # kiko-domain "Money at the boundary" (D7b): a holding's raw
+  # `balanceMinorUnits` column is converted to `Money` in exactly one place,
+  # `holdingsRepo.balanceOf`. A `.balanceMinorUnits` member read anywhere else
+  # is either a repo/db/data-transfer boundary (excluded below) or a value
+  # read that should go through `balanceOf` instead. Class B: a screen-layer
+  # read of a field NAMED `balanceMinorUnits` on some other, unrelated object
+  # shape is possible in principle (Semgrep matches the member name
+  # syntactically, not by the object's inferred type), so this is
+  # override-eligible rather than a hard fail.
+  - id: kiko-balance-through-repo
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      A `.balanceMinorUnits` member read outside a repository. Convert the
+      raw stored balance to `Money` through `holdingsRepo.balanceOf(row)`
+      (kiko-domain "Money at the boundary") instead of reading the column
+      directly. If this is genuinely inside a repository boundary the
+      exclusions below don't yet cover, add an OVERRIDE noting why.
+    paths:
+      exclude:
+        - "src/**/repo/**"
+        - "src/accounts/accounts.repo.ts"
+        - "src/db/**"
+        - "src/data-transfer/**"
+        - "*.test.ts"
+        - "*.test.tsx"
+    patterns:
+      - pattern: $X.balanceMinorUnits

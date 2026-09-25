@@ -183,16 +183,16 @@ const runBalanceSyncInner = async <Deps>(
     // batch, `upsertMonobankMany`) rather than one op-sqlite transaction per
     // balance, so the reactive `holdings` callback fires once per sync.
     await deps.upsertHoldings(
-      balances.map((balance) => ({
+      balances.map(({ name, balanceMinorUnits, metadataKey, renameFromDefault }) => ({
         accountId,
-        name: balance.name,
+        name,
         type: 'crypto_asset',
         currency: 'BTC',
-        balanceMinorUnits: balance.balanceMinorUnits,
+        balanceMinorUnits,
         metadata: { syncedAt },
         metadataField: provider.metadataField,
-        metadataKey: balance.metadataKey,
-        renameFromDefault: balance.renameFromDefault,
+        metadataKey,
+        renameFromDefault,
       })),
     );
 
