@@ -1,4 +1,5 @@
 import { i18n } from '@kiko/i18n';
+import { match } from 'ts-pattern';
 import { initDatabase } from '@kiko/db/client';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
@@ -129,27 +130,23 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
     };
   }, []);
 
-  if (state.status === 'error') {
-    return (
+  return match(state)
+    .with({ status: 'error' }, (errorState) => (
       <Box testID="migrations-gate-error" style={styles.fill}>
         <Text variant="body" tone="textSecondary">
-          {t('migrations.error', { message: state.error.message })}
+          {t('migrations.error', { message: errorState.error.message })}
         </Text>
       </Box>
-    );
-  }
-
-  if (state.status === 'pending') {
-    return (
+    ))
+    .with({ status: 'pending' }, () => (
       <Box testID="migrations-gate-pending" style={styles.fill}>
         <Text variant="body" tone="textSecondary">
           {t('migrations.preparing')}
         </Text>
       </Box>
-    );
-  }
-
-  return <>{children}</>;
+    ))
+    .with({ status: 'success' }, () => <>{children}</>)
+    .exhaustive();
 };
 
 export default MigrationsGate;
