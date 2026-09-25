@@ -1,3 +1,5 @@
+import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
+
 import {
   termDepositFieldErrors,
   termDepositReasonKey,
@@ -103,6 +105,20 @@ describe('termDepositFieldErrors — term months', () => {
   it('accepts a whole positive term', () => {
     expect(
       termDepositFieldErrors({ ...baseParams(), termMonths: '12' }).termMonthsError,
+    ).toBeNull();
+  });
+
+  it('rejects a term beyond the shared MAX_TERM_MONTHS cap', () => {
+    expect(
+      termDepositFieldErrors({ ...baseParams(), termMonths: String(MAX_TERM_MONTHS + 1) })
+        .termMonthsError,
+    ).toBe('forms.holding.termMonthsError');
+  });
+
+  it('accepts a term of exactly MAX_TERM_MONTHS', () => {
+    expect(
+      termDepositFieldErrors({ ...baseParams(), termMonths: String(MAX_TERM_MONTHS) })
+        .termMonthsError,
     ).toBeNull();
   });
 });

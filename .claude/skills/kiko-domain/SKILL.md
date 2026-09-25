@@ -964,11 +964,13 @@ series against what the metadata edit just changed:
 
 A fresh holding (`oldMeta === null`) has nothing to reconcile.
 
-`termMonths` is capped at `MAX_LOAN_TERM_MONTHS` (`use-loan-fields.ts`,
+`termMonths` is capped at `MAX_TERM_MONTHS` (`src/holdings/term-limits/`,
 600 months / 50 years — comfortably above any real mortgage/car-loan
 term): an uncapped value would make `loanInstallments` build an
 unbounded row count for a degenerate but technically-valid positive
-integer.
+integer. A term deposit's own `termMonths` field is capped at the SAME
+shared constant (`term-deposit-reasons.ts`), for the identical reason
+on its compounding math; there is no separate deposit-specific cap.
 
 ### Loan-payment link column + repo (T29, revised by review round 1)
 

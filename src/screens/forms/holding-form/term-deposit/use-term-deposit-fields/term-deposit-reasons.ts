@@ -1,6 +1,7 @@
 import { Money } from '@kiko/currency/money';
 import { parseAmount } from '@kiko/currency/parse';
 import type { Currency } from '@kiko/currency/currency';
+import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 
 // `saved` marks a contribution that is already persisted in the holding's
 // stored metadata (an edit-mode hydrated row) versus one the user just added
@@ -91,12 +92,17 @@ const annualRateFieldReasonKey = (
 };
 
 // The term-months field's OWN reason, independent of the fields above it.
+// Capped at `MAX_TERM_MONTHS`, the same cap `loanFieldErrors` applies: an
+// uncapped value (e.g. "99999999", still a valid positive integer) makes the
+// compounding math build an unbounded number of periods, hanging the app.
 const termMonthsFieldReasonKey = (
   termMonths: string,
 ): TermDepositFieldErrors['termMonthsError'] => {
   const months = parseAmount(termMonths);
 
-  return Number.isInteger(months) && months > 0 ? null : 'forms.holding.termMonthsError';
+  return Number.isInteger(months) && months > 0 && months <= MAX_TERM_MONTHS
+    ? null
+    : 'forms.holding.termMonthsError';
 };
 
 // Every field's OWN blocking reason, each derived from ONLY that field's own

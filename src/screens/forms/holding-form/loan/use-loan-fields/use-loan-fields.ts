@@ -2,6 +2,7 @@ import type { RefObject } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useCallback, useRef, useState } from 'react';
 import type { TextInputInstance } from 'react-native';
+import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 import { holdingsRepo, type LoanPricePointOp } from '@kiko/holdings/repo';
 
 import {
@@ -29,10 +30,6 @@ export type LoanReasonKey =
   | 'forms.holding.loanStartDateError'
   | 'forms.holding.annualRateError'
   | 'forms.holding.termMonthsError';
-
-// 50 years — comfortably above any real mortgage/car-loan term, and the
-// upper bound `loanReasonKey` rejects.
-export const MAX_LOAN_TERM_MONTHS = 600;
 
 // The shared shape both `loanFieldErrors` and `loanReasonKey` validate —
 // kept as one type so the two can never drift apart on WHAT they read.
@@ -78,8 +75,7 @@ export const loanFieldErrors = (params: LoanValidationParams): LoanFieldErrors =
         ? 'forms.holding.annualRateError'
         : null,
     termMonthsError:
-      isStructuredSchedule &&
-      !(Number.isInteger(months) && months > 0 && months <= MAX_LOAN_TERM_MONTHS)
+      isStructuredSchedule && !(Number.isInteger(months) && months > 0 && months <= MAX_TERM_MONTHS)
         ? 'forms.holding.termMonthsError'
         : null,
   };

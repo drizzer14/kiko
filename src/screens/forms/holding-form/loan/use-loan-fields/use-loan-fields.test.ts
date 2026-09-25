@@ -1,11 +1,7 @@
+import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 import { act, renderHook } from '@testing-library/react-native';
 
-import {
-  loanFieldErrors,
-  loanReasonKey,
-  MAX_LOAN_TERM_MONTHS,
-  useLoanFields,
-} from './use-loan-fields';
+import { loanFieldErrors, loanReasonKey, useLoanFields } from './use-loan-fields';
 
 const renderLoanFields = () => renderHook(() => useLoanFields({ currency: 'UAH' }));
 
@@ -74,14 +70,14 @@ describe('loanReasonKey', () => {
   // An uncapped term makes loanInstallments
   // build ~1e8 rows on every render (a valid positive integer, e.g.
   // "99999999", still passed the old check).
-  it('rejects a term beyond MAX_LOAN_TERM_MONTHS', () => {
-    expect(loanReasonKey({ ...baseArgs(), termMonths: String(MAX_LOAN_TERM_MONTHS + 1) })).toBe(
+  it('rejects a term beyond the shared MAX_TERM_MONTHS cap', () => {
+    expect(loanReasonKey({ ...baseArgs(), termMonths: String(MAX_TERM_MONTHS + 1) })).toBe(
       'forms.holding.termMonthsError',
     );
   });
 
-  it('accepts a term of exactly MAX_LOAN_TERM_MONTHS', () => {
-    expect(loanReasonKey({ ...baseArgs(), termMonths: String(MAX_LOAN_TERM_MONTHS) })).toBeNull();
+  it('accepts a term of exactly MAX_TERM_MONTHS', () => {
+    expect(loanReasonKey({ ...baseArgs(), termMonths: String(MAX_TERM_MONTHS) })).toBeNull();
   });
 });
 
