@@ -205,10 +205,11 @@ mapping site that hasn't been updated, not a silent runtime gap.
 A single boolean guard used exactly once (an `if`/`else` with no
 closed-set enum behind it) may stay as-is. Every branch over a closed
 literal set uses `ts-pattern`'s `match(...).exhaustive()` (or a typed
-`Record` for a pure lookup) — no `switch`, with no exception; a prior
-switch-statement exception for `src/holdings/interest/interest.ts`
-and `src/holdings/holding-value/holding-value.ts` has been withdrawn
-(see `docs/harness/review-to-biome-inventory.md:51`).
+`Record` for a pure lookup) — no `switch`, with no exception; mechanized
+by the `kiko-no-switch` Semgrep rule (see kiko-linter's own
+`kiko-no-switch` section for the rule itself, and its
+`.otherwise()`-vs-`.exhaustive()` guidance for a closed set sourced from
+persisted or external data rather than constructed locally).
 
 The set itself needs exactly one source of truth. Derive the literal
 union type from a `const` tuple, instead of hand-maintaining a union
