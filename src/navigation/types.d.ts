@@ -52,17 +52,17 @@ export type AccountsStackParamList = {
   // `accountId` (its kind constrains the offered holding types) whether creating
   // a new holding or editing an existing one.
   AccountForm: { accountId?: string };
-  // `returnTo` (item 2, F3 device feedback) is the CREATE-only return channel
-  // for a "Create new holding" launched from the statement-import preview or
-  // Map Columns: the caller's OWN full route params (so a re-`popTo` never
-  // needs to reconstruct `filePath`/`accountId`/etc. from scratch), tagged
-  // with `screen` as a discriminant `save()` narrows with `ts-pattern`
-  // (kiko-code-style: exhaustive mapping over a closed literal set) to
+  // `returnTo` is the CREATE-only return channel for a "Create new holding"
+  // launched from the statement-import preview or Map Columns: the caller's
+  // OWN full route params (so a re-`popTo` never needs to reconstruct
+  // `filePath`/`accountId`/etc. from scratch), tagged with `screen` as a
+  // discriminant `save()` narrows with `ts-pattern` (kiko-code-style:
+  // exhaustive mapping over a closed literal set) to
   // `navigation.popTo(screen, { ...params, holdingId }, { merge: true })` —
   // NOT `navigation.navigate`, which on React Navigation 7 PUSHES a
-  // duplicate of a route already on the stack instead of reusing it (C1,
-  // F3 part 1 fix round 1 — `popTo` reuses the existing instance in place,
-  // keeping its own local state, and merges the fresh `holdingId` into its
+  // duplicate of a route already on the stack instead of reusing it —
+  // `popTo` reuses the existing instance in place, keeping its own local
+  // state, and merges the fresh `holdingId` into its
   // params); see `src/navigation/statement-import-return.navigator.test.tsx`
   // for the real-router proof. Instead of a bare `goBack()`, which hands
   // back no id at all. Absent for every other HoldingForm entry point
@@ -99,13 +99,12 @@ export type AccountsStackParamList = {
   // `pickAndOpenStatement`) with a resolved local `filePath` and the owning
   // `accountId`. A later entry point (the Share Extension) has no known target
   // account, hence `accountId` is optional here rather than required.
-  // `expectedFormatId` (device-feedback-round-1 item 5) scopes recognition
-  // to the account's own selected bank when one is known — see
-  // `statementFormatIdForBank` (`src/bank-sync/bank-catalog/`). Undefined
-  // falls back to the existing multi-format auto-detect (an account with no
-  // `bankId`, or the accountId-less Share Extension entry point).
-  // `holdingId` (items 2 and 11, F3 device feedback; merged into ONE field in
-  // fix round 1 per the ponytail review — a single field a fresh mount AND a
+  // `expectedFormatId` scopes recognition to the account's own selected
+  // bank when one is known — see `statementFormatIdForBank`
+  // (`src/bank-sync/bank-catalog/`). Undefined falls back to the existing
+  // multi-format auto-detect (an account with no `bankId`, or the
+  // accountId-less Share Extension entry point).
+  // `holdingId` (merged into ONE field so a single field a fresh mount AND a
   // later param change both feed into the SAME "select this holding" effect
   // covers both cases cleanly) is the holding this screen should have
   // selected: either the id `HoldingFormScreen`'s create-save path merges in

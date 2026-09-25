@@ -64,7 +64,7 @@ describe('RootNavigator', () => {
     expect(tabBar.props.tabBarStyle.backgroundColor).toBe(darkTheme.colors.background);
   });
 
-  // Task 6: the tab bar's colors must be read from `useUnistyles().theme` at
+  // The tab bar's colors must be read from `useUnistyles().theme` at
   // render time, not from a hardcoded `darkTheme` import. Under the global
   // Jest mock (`react-native-unistyles/mocks`), `useUnistyles().theme`
   // always resolves to the same `darkTheme` object as the static import (the

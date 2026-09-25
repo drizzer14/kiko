@@ -11,8 +11,8 @@ import '../design-system/unistyles';
 import type { AccountsStackParamList } from './types';
 
 /**
- * C1 (F3 part 1, fix round 1, Critical): `navigation.navigate(name, params)`
- * on React Navigation 7.3.17 PUSHES a new screen unless the target is
+ * `navigation.navigate(name, params)` on React Navigation 7.3.17 PUSHES a
+ * new screen unless the target is
  * already the CURRENT route, `getId` matches, or `{ pop: true }` is passed
  * (`node_modules/@react-navigation/routers/src/StackRouter.tsx`'s `NAVIGATE`
  * case) — it does NOT pop back to an earlier instance the way React

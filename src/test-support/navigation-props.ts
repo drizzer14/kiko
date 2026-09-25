@@ -11,9 +11,9 @@
  */
 export type NavigationSpy = {
   navigate: jest.Mock;
-  // `popTo` (C1, F3 part 1 fix round 1): the correct call for "return to a
-  // route already on the stack" under React Navigation 7 — plain `navigate`
-  // PUSHES a duplicate there instead of reusing the existing instance (see
+  // `popTo` is the correct call for "return to a route already on the
+  // stack" under React Navigation 7 — plain `navigate` PUSHES a duplicate
+  // there instead of reusing the existing instance (see
   // `statement-import-return.navigator.test.tsx` for the real-router proof).
   popTo: jest.Mock;
   replace: jest.Mock;
