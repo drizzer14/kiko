@@ -300,11 +300,10 @@ Semgrep — see "One exported component per `.tsx` — a Jest invariant,
 not Semgrep" below. The import-length-sort check is a hand-rolled
 shell+JS checker/fixer at the fast tier — see "Import length-sort — a
 hand-rolled checker (and fixer)" below. The comment-history check is
-`kiko-no-history-id-comment` (Semgrep, `rules/semgrep-mobile.yml`) —
-see "`kiko-no-history-id-comment` — WARNING pending a repo-wide sweep"
-below.
+`kiko-no-history-id-comment` (Semgrep ERROR, `rules/semgrep-mobile.yml`)
+— see "`kiko-no-history-id-comment`" below.
 
-## `kiko-no-history-id-comment` — WARNING pending a repo-wide sweep
+## `kiko-no-history-id-comment`
 
 Mechanizes kiko-code-style's "Comments: WHY only, never history": no
 task id (`T28`), review-round id (`I1`/`M2`/`N3`/`U7`), spec/decision
@@ -330,16 +329,23 @@ before the `//` (`(?<!:)`) — without it, the `//` inside an
 `http://`/`https://` URL string literal (not a comment at all) reads
 as a comment opener too.
 
-**Ships WARNING, not ERROR**, per progress.md's mechanization ruling
-(a rule lands TOGETHER with the sweep of its violations; an ERROR rule
+**Shipped WARNING first**, per progress.md's mechanization ruling (a
+rule lands TOGETHER with the sweep of its violations; an ERROR rule
 alone would break the gate): a real domain word CAN still collide with
 this shape as its OWN standalone token, not merely a substring — no
 regex fix closes that gap the way the boundary tricks above do (a
 short account-position label like a bare `D2` in a list is
-syntactically identical to a real decision id). That residual class is
-fixed by rewording the specific comment during the sweep, not by
-loosening the rule; the rule flips to ERROR only once a real `semgrep`
-run reports 0 findings for it.
+syntactically identical to a real decision id). A repo-wide sweep
+(429 findings across 123 files, plus every `.superpowers/` path
+citation and every `round \d`/`device review` history-word cousin the
+id regex alone does not catch) fixed that residual class by rewording
+the handful of real collisions rather than loosening the rule, and the
+rule is now **ERROR**: `semgrep --config rules/semgrep-mobile.yml src`
+reports 0 findings for it. A large, pervasive `device-feedback-round-N
+item M` citation convention remains across dozens of `src/screens/**`
+files — found by the history-word grep, not this rule's own id regex,
+and not counted in the sweep's own measurement — left as a separate,
+out-of-scope cleanup for a dedicated pass.
 
 ## One exported component per `.tsx` — a Jest invariant, not Semgrep
 

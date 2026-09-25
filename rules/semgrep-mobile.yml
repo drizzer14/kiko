@@ -356,6 +356,51 @@ rules:
       - pattern-either:
           - pattern: new TextDecoder(...)
           - pattern: new TextEncoder(...)
+  # kiko-linter's "F4 code-style mechanization candidates" backlog item,
+  # mechanizing kiko-code-style's "Comments: WHY only, never history". Two
+  # `pattern-regex` arms (one per comment syntax) rather than one, because a
+  # single regex spanning both would have to special-case where a `//` line
+  # ends and a `/* */` block does not. `(?<!:)` on the line-comment arm is
+  # the one gotcha found tuning this: a bare `//.*` also matches the `//` in
+  # an `http://`/`https://` URL string literal that is not a comment at all
+  # — excluding a `:` immediately before the `//` rules that out without
+  # needing full tokenization. The block-comment arm's `(?:(?!\*/)[\s\S])*?`
+  # (not a bare `[\s\S]*?`) keeps a match from crossing a `*/` into a LATER,
+  # unrelated block comment. `\b` boundaries alone already clear most of the
+  # false-positive shapes a real sweep found: `i18n`/`ISIN`/`UTF-8`/`ISO
+  # 4217` (no boundary breaks the denylisted letter from what follows it),
+  # an ISO instant's `T` glued to the date before it (no boundary before
+  # `T`), a hex color (no boundary lands on exactly one denylisted letter),
+  # and a denylisted letter+digit glued inside a larger camelCase domain
+  # word (no boundary on either side) — see
+  # rules/fixtures/kiko-no-history-id-comment.good.ts for a worked example
+  # of each. Landed as WARNING, swept every real hit down to 0 across `src/`,
+  # then flipped to ERROR here — a real domain word can still coincide with
+  # this shape as its own standalone token (not merely a substring) with no
+  # regex fix; reword the comment to avoid the shape, or add an OVERRIDE(...)
+  # noting why it is safe as-is.
+  - id: kiko-no-history-id-comment
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A comment cites a task id, review-round id, spec/decision id, or a bug
+      number. kiko-code-style's "Comments: WHY only, never history": that
+      belongs in the commit message that made the change, or the skill
+      section that owns the rule — never left behind in a comment. Drop the
+      id and keep the WHY; if nothing but history remains, delete the
+      comment. If this is a real domain word that only coincidentally reads
+      like one of these ids, reword the comment to avoid the shape, or add
+      an OVERRIDE(...) noting why it is safe as-is.
+    paths:
+      exclude:
+        - "__tests__/**"
+        - "e2e/**"
+        - "scripts/**"
+        - "harness/**"
+    patterns:
+      - pattern-either:
+          - pattern-regex: '(?<!:)//.*\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|bug\s\d+|spec\s\d|USER-DECISION)\b'
+          - pattern-regex: '/\*(?:(?!\*/)[\s\S])*?\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|bug\s\d+|spec\s\d|USER-DECISION)\b(?:(?!\*/)[\s\S])*?\*/'
   # ---- Class B: override-eligible finding (severity WARNING) ----
   - id: kiko-webview-injectedjs-dynamic
     languages: [typescript, javascript]
@@ -427,47 +472,3 @@ rules:
       - metavariable-regex:
           metavariable: $READ
           regex: ^(readToken|readCredentials|readDbKey)$
-  # kiko-linter's "F4 code-style mechanization candidates" backlog item,
-  # mechanizing kiko-code-style's "Comments: WHY only, never history". Two
-  # `pattern-regex` arms (one per comment syntax) rather than one, because a
-  # single regex spanning both would have to special-case where a `//` line
-  # ends and a `/* */` block does not. `(?<!:)` on the line-comment arm is
-  # the one gotcha found tuning this: a bare `//.*` also matches the `//` in
-  # an `http://`/`https://` URL string literal that is not a comment at all
-  # — excluding a `:` immediately before the `//` rules that out without
-  # needing full tokenization. The block-comment arm's `(?:(?!\*/)[\s\S])*?`
-  # (not a bare `[\s\S]*?`) keeps a match from crossing a `*/` into a LATER,
-  # unrelated block comment. `\b` boundaries alone already clear most of the
-  # false-positive shapes a real sweep found: `i18n`/`ISIN`/`UTF-8`/`ISO
-  # 4217` (no boundary breaks the denylisted letter from what follows it),
-  # an ISO instant's `T` glued to the date before it (no boundary before
-  # `T`), a hex color (no boundary lands on exactly one denylisted letter),
-  # and a denylisted letter+digit glued inside a larger camelCase domain
-  # word (no boundary on either side) — see
-  # rules/fixtures/kiko-no-history-id-comment.good.ts for a worked example
-  # of each. WARNING, not ERROR: a real domain word CAN still coincide with
-  # this shape as its own standalone token (not merely a substring) with no
-  # regex fix — ship as override-eligible, sweep the real hits, reword the
-  # rare standalone collision, THEN flip to ERROR once semgrep reports 0.
-  - id: kiko-no-history-id-comment
-    languages: [typescript]
-    severity: WARNING
-    message: >
-      A comment cites a task id, review-round id, spec/decision id, or a bug
-      number. kiko-code-style's "Comments: WHY only, never history": that
-      belongs in the commit message that made the change, or the skill
-      section that owns the rule — never left behind in a comment. Drop the
-      id and keep the WHY; if nothing but history remains, delete the
-      comment. If this is a real domain word that only coincidentally reads
-      like one of these ids, reword the comment to avoid the shape, or add
-      an OVERRIDE(...) noting why it is safe as-is.
-    paths:
-      exclude:
-        - "__tests__/**"
-        - "e2e/**"
-        - "scripts/**"
-        - "harness/**"
-    patterns:
-      - pattern-either:
-          - pattern-regex: '(?<!:)//.*\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|bug\s\d+|spec\s\d|USER-DECISION)\b'
-          - pattern-regex: '/\*(?:(?!\*/)[\s\S])*?\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|bug\s\d+|spec\s\d|USER-DECISION)\b(?:(?!\*/)[\s\S])*?\*/'
