@@ -1,5 +1,6 @@
 import { gcm } from '@noble/ciphers/aes.js';
 import { randomBytes } from '@noble/ciphers/utils.js';
+import { bifold, eitherSync, isLeft } from 'fnts/either';
 
 import { decodeBase64ToBytes, encodeBytesToBase64 } from '../base64/base64';
 
@@ -46,12 +47,16 @@ export const decryptEnvelope = (envelope: ExportEnvelope, key: Uint8Array): Uint
     throw new Error('data-transfer/decrypt: unrecognized export file header');
   }
 
-  try {
+  const attempt = eitherSync<unknown, Uint8Array>(() => {
     const nonce = decodeBase64ToBytes(envelope.nonce);
     const ciphertext = decodeBase64ToBytes(envelope.ciphertext);
 
     return gcm(key, nonce).decrypt(ciphertext);
-  } catch {
+  });
+
+  if (isLeft(attempt)) {
     throw new Error('data-transfer/decrypt: wrong key or corrupted file');
   }
+
+  return bifold(attempt);
 };
