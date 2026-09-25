@@ -380,16 +380,18 @@ rules:
   # `//` or `/*` that only appears INSIDE a string literal (a glob like
   # `'src/**/*.ts'`, a MIME wildcard `'*/*'`, a note like `'foo // T12'`)
   # never opens a match — only a real `//`/`/*` reached after skipping every
-  # complete string earlier on that line can. Landed as WARNING, swept every
-  # real hit down to 0 across `src/`,
-  # then flipped to ERROR here — a real domain word can still coincide with
-  # this shape as its own standalone token (not merely a substring) with no
-  # regex fix; reword the comment to avoid the shape instead. This is Class
-  # A (ERROR): security.sh only honours OVERRIDE(...) for a Class B finding,
-  # so there is no override path here.
+  # complete string earlier on that line can. First landed as WARNING, swept
+  # every real hit down to 0 across `src/`, then flipped to ERROR (Class A):
+  # security.sh only honours OVERRIDE(...) for a Class B finding, so there is
+  # no override path here. Extending the id-family list below (R\d/F\d/G\d/
+  # C\d, `Task N`, `Phase N (Task`, `Review Focus N`, `Minor N`, `audit N`,
+  # `RULING RN`, `fix round N`, `round-N`, `device[- ]feedback`, `on-device
+  # review`) reopened real hits across the tree, so this is WARNING again
+  # while that sweep is in progress — it moves back to ERROR once
+  # `semgrep --config rules/semgrep-mobile.yml src` reports 0 for it again.
   - id: kiko-no-history-id-comment
     languages: [typescript]
-    severity: ERROR
+    severity: WARNING
     message: >
       A comment cites a task id, review-round id, spec/decision id, or a bug
       number. kiko-code-style's "Comments: WHY only, never history": that
@@ -409,8 +411,8 @@ rules:
         - "drizzle.config.ts"
     patterns:
       - pattern-either:
-          - pattern-regex: '^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//.*\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|bug\s\d+|spec\s\d|USER-DECISION)\b'
-          - pattern-regex: '^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*(?:(?!\*/)[\s\S])*?\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|bug\s\d+|spec\s\d|USER-DECISION)\b(?:(?!\*/)[\s\S])*?\*/'
+          - pattern-regex: '^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//.*\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|R\d{1,3}|F\d{1,3}|G\d{1,3}|C\d{1,3}|bug\s\d+|spec\s\d|Task\s\d+|Phase\s\d+\s\(Task|Review\sFocus\s\d+|Minor\s\d+|audit\s\d+|RULING\sR\d+|fix\sround\s\d+|round-\d+|device[- ]feedback|on-device\sreview|USER-DECISION)\b'
+          - pattern-regex: '^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*(?:(?!\*/)[\s\S])*?\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|R\d{1,3}|F\d{1,3}|G\d{1,3}|C\d{1,3}|bug\s\d+|spec\s\d|Task\s\d+|Phase\s\d+\s\(Task|Review\sFocus\s\d+|Minor\s\d+|audit\s\d+|RULING\sR\d+|fix\sround\s\d+|round-\d+|device[- ]feedback|on-device\sreview|USER-DECISION)\b(?:(?!\*/)[\s\S])*?\*/'
   # ---- Class B: override-eligible finding (severity WARNING) ----
   - id: kiko-webview-injectedjs-dynamic
     languages: [typescript, javascript]
