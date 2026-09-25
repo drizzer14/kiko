@@ -24,3 +24,11 @@ export const keepManualOverride = true;
 // Filed as bug 42 — the chunk size must derive from the table's own column
 // count, not a fixed row constant.
 export const chunkSafetyMargin = 4;
+
+// A `// EXPECT-FINDING` pin only recognizes a `//`/`#` line directly above
+// it — a `* EXPECT-FINDING` line INSIDE a block comment (as above) is never
+// recognized, so it never actually proves the block-comment arm still
+// fires. This single-line block comment gives that arm a working pin.
+// EXPECT-FINDING
+/* T12: superseded by the shared retry helper. */
+export const blockCommentPinnedFinding = 1;
