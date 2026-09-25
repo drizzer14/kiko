@@ -1,4 +1,4 @@
-// T19 Step 1 live-probe result: see `nbu-metals.test.ts`'s header — the RANGE
+// See `nbu-metals.test.ts`'s header live-probe result — the RANGE
 // path applies, so `refreshMetalPrices`'s backfill branch calls
 // `fetchNbuMetalHistory` (one range call per metal), and its already-priced
 // branch calls `fetchNbuMetalsCurrent` (the shared current-exchange payload).

@@ -292,8 +292,8 @@ describe('loanInterestForPaymentMinor', () => {
     );
   });
 
-  // M2 (T26 review, carried to T30): a payment more than ONE PERIOD outside
-  // the schedule counts 0 interest, rather than mapping to the nearest
+  // A payment more than ONE PERIOD outside the schedule counts 0 interest,
+  // rather than mapping to the nearest
   // (first/last) installment regardless of distance. "One period" is the
   // same monthly cadence `loanInstallments` builds each due date from
   // (`addMonths(startDate, k)`): one period before the first installment is

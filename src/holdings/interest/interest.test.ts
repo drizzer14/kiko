@@ -300,13 +300,13 @@ describe('depositAccruedMajor — recap-off cumulative interest', () => {
     expect(accrued).toBeCloseTo((10000 * 0.1 * 364) / 365, 6);
   });
 
-  // BUG2 regression: recap-OFF used to accrue from the contribution DATE itself,
-  // one day more than the statement-validated recap-ON engine (`depositLedger`
-  // earns each tranche from `dayAfter` it lands). Pin that the two conventions
-  // now AGREE on the first-period accrual: a single 10,000 deposit at 10% over
-  // the first full year (now = maturity), annual compounding. Compared against
-  // recap-ON's pre-tax gross for that period. Before the fix recap-OFF counted
-  // 366 days (leap year) vs recap-ON's 365, diverging by a day's interest.
+  // Pins that recap-OFF and the statement-validated recap-ON engine
+  // (`depositLedger`, which earns each tranche from `dayAfter` it lands)
+  // AGREE on the first-period accrual: a single 10,000 deposit at 10% over
+  // the first full year (now = maturity), annual compounding, compared
+  // against recap-ON's pre-tax gross for that period. Accruing from the
+  // contribution DATE itself instead of `dayAfter` would count 366 days
+  // (leap year) vs recap-ON's 365, diverging by a day's interest.
   it("agrees with the recap-ON engine's first-period accrual (day-after convention)", () => {
     const rate = 10;
     const contributionMajor = 10000;

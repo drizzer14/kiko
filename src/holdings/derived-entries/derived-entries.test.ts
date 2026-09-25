@@ -385,7 +385,7 @@ describe('derivedEntries', () => {
   });
 
   describe('metal', () => {
-    // T18: a metal holding's lots (kiko-pricing) surface as ledger rows — a
+    // A metal holding's lots (kiko-pricing) surface as ledger rows — a
     // buy lot as a 'purchase' entry (money out, matching the bond purchase
     // entry's sign convention), a sell lot as a 'sale' entry (money in). Both
     // entries' `amountMinorUnits` is the NEGATION of the lot's own stored

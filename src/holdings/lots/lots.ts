@@ -10,7 +10,7 @@ import { addDecimal, compareDecimal } from '../../currency/decimal';
  * (see `dayKeyOf`, `src/prices/price-book/`) — not a raw instant, so a lot
  * dated the same calendar day as a later read is included regardless of
  * time-of-day. `quantityDelta` is a scaled decimal STRING (kiko-domain money
- * precision), never a `number` — added/subtracted only through the T10 BigInt
+ * precision), never a `number` — added/subtracted only through the BigInt
  * decimal helpers so an arbitrary-precision share/metal quantity never drifts
  * through float math. `costMinorUnits` is an integer minor-units amount, the
  * same convention as every other stored amount in this app.

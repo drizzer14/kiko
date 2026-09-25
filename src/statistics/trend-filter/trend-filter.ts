@@ -67,7 +67,7 @@ export const selectTopCategories = (input: {
 /**
  * Resolve the stored filter into the effective one the chart renders. A `null`
  * stored value falls back to `DEFAULT_TREND_FILTER`. A `manual` selection is
- * pruned to the categories that still exist (Decision D5) — a prune to empty
+ * pruned to the categories that still exist — a prune to empty
  * stays a valid empty manual (every category). A `top` amount is clamped into
  * 1..5.
  */

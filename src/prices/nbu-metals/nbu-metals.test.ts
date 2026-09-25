@@ -1,4 +1,4 @@
-// T19 Step 1 LIVE PROBE (2026-09-24): `GET
+// A live probe of `GET
 // https://bank.gov.ua/NBU_Exchange/exchange_site?start=20250101&end=20250110&valcode=xau&json`
 // returned 200 with one row PER DAY (weekend/holiday days carry forward the last
 // banking day's rate, e.g. 04.01/05.01.2025 both echo 03.01's 111145.17) — so the

@@ -142,7 +142,7 @@ describe('holdingValue', () => {
         compounding: 'daily',
       },
     };
-    // Daily compounding used to collapse to exactly 0; now it accrues.
+    // Daily compounding accrues even over a short span, never collapsing to 0.
     const value = holdingValue(holding, START + 200 * day);
     expect(value.minorUnits).toBeGreaterThan(1_000_000);
   });
@@ -562,8 +562,8 @@ describe('holdingValueBreakdown — loan (T27)', () => {
   });
 
   it('gross/net shrink toward 0 as the schedule pays the loan down, while principalOrCost stays at minus the ORIGINAL principal', () => {
-    // M8: renamed from `tenInstallmentsIn` — at `loanStart` itself, ZERO
-    // installments are due yet (the first is a month out), not ten.
+    // At `loanStart` itself, ZERO installments are due yet (the first is a
+    // month out), not ten.
     const atStart = loanStart;
     const laterDay = local(2021, 0, 15); // one year (12 installments) later
     const before = holdingValueBreakdown(loan(), atStart, EMPTY_PRICE_BOOK);
@@ -581,12 +581,12 @@ describe('holdingValueBreakdown — loan (T27)', () => {
     expect(b.net.minorUnits).toBe(0);
   });
 
-  // I2 (T28 review round 1/2): a 'none' loan's manual correction accepts 0
+  // A 'none' loan's manual correction accepts 0
   // (repaid) and, end to end, contributes 0 to net worth from that day
   // forward while its EARLIER history — valued as of an earlier day — still
   // reads its earlier, nonzero correction. A price-point write never
   // deletes prior points, so history survives the 0 correction.
-  it('a "none" loan set to 0 counts 0 in net worth and keeps its earlier history (I2)', () => {
+  it('a "none" loan set to 0 counts 0 in net worth and keeps its earlier history', () => {
     const paidOffDay = local(2020, 2, 1); // 1 Mar 2020
     const book = buildPriceBook([
       {
@@ -614,11 +614,10 @@ describe('holdingValueBreakdown — loan (T27)', () => {
     expect(atStart.gross.minorUnits).toBe(-12_000_000);
   });
 
-  // M1 (T27 round 1): missing/malformed loan metadata must value the loan at
-  // 0, never `+balanceMinorUnits` — a debt must never read as a positive
-  // asset (the T26 review's finding (c), carried forward). Harmless in
-  // practice today (the form always writes balance 0), but the fallback
-  // itself must have the right sign.
+  // Missing/malformed loan metadata must value the loan at 0, never
+  // `+balanceMinorUnits` — a debt must never read as a positive asset.
+  // Harmless in practice today (the form always writes balance 0), but the
+  // fallback itself must have the right sign.
   it('values a loan with missing/malformed metadata at 0, never the cached balance', () => {
     const holding: ValuableHolding = {
       id: 'loan-2',

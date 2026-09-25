@@ -38,11 +38,11 @@ export type BondMeta = {
   maturityDate: number;
   bondKind: BondKind;
   couponFrequency: BondCouponFrequency;
-  // The ISIN the bond was added under (T25's ISIN-mode form), or `undefined`
+  // The ISIN the bond was added under (the ISIN-mode form), or `undefined`
   // for a Manual-mode bond that never carried one (including every bond
-  // saved before T25). Once saved it never depends on the register again
-  // (spec 6.4 #5) — this is purely a record of how the holding was added,
-  // re-shown editable in edit mode's Manual view (spec 6.4 #6).
+  // saved before the ISIN-mode form existed). Once saved it never depends on
+  // the register again — this is purely a record of how the holding was
+  // added, re-shown editable in edit mode's Manual view.
   isin?: string;
 };
 
@@ -232,11 +232,11 @@ export const asBondMeta = (value: unknown): BondMeta | null => {
   };
 };
 
-// The closed set of `property_item` categories (T13). A `const` tuple, per
+// The closed set of `property_item` categories. A `const` tuple, per
 // kiko-code-style: the derived union type sits directly after it, and
 // membership is tested on the tuple itself rather than a parallel `Set` —
 // this set is small, so a second runtime structure would be redundant.
-// Exported (T16): the property-section form reads it directly to build its
+// Exported: the property-section form reads it directly to build its
 // category ChipRow's `options`.
 export const propertyCategories = [
   'real_estate',
@@ -272,10 +272,10 @@ export const asPropertyMeta = (value: unknown): PropertyMeta | null => {
   return { category, lots: parsedLots };
 };
 
-// The closed set of precious metals Kiko prices via NBU (T17), keyed by the
+// The closed set of precious metals Kiko prices via NBU, keyed by the
 // same slug `metalInstrument` namespaces its `price_points.instrument` under
-// (`metal:<XAU|XAG|XPT|XPD>` — `src/prices/instrument/`). Exported so a
-// future metal-section form (T20) can build its metal ChipRow's `options`
+// (`metal:<XAU|XAG|XPT|XPD>` — `src/prices/instrument/`). Exported so the
+// metal-section form can build its metal ChipRow's `options`
 // directly, mirroring `propertyCategories`.
 export const preciousMetals = ['XAU', 'XAG', 'XPT', 'XPD'] as const;
 
@@ -284,7 +284,7 @@ export type Metal = (typeof preciousMetals)[number];
 const isMetal = (value: unknown): value is Metal =>
   typeof value === 'string' && (preciousMetals as readonly string[]).includes(value);
 
-// How the metal is physically held. Exported for the same T20 ChipRow reason
+// How the metal is physically held. Exported for the same ChipRow reason
 // as `preciousMetals` above.
 export const metalForms = ['bar', 'coin', 'bank_account'] as const;
 
@@ -342,7 +342,7 @@ export const asMetalMeta = (value: unknown): MetalMeta | null => {
   return { metal, form, unit, purity, lots: parsedLots };
 };
 
-// The closed set of `loan` kinds (T26, spec 5.1): the last, `personal`, is
+// The closed set of `loan` kinds: the last, `personal`, is
 // "money the user owes a person" — an informal debt, typically `schedule:
 // 'none'`, but not enforced to be (a person-to-person loan can still carry
 // interest and a schedule).

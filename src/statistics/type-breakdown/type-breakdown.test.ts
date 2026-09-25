@@ -87,7 +87,7 @@ describe('buildTypeBreakdown', () => {
     expect(result.map((slice) => slice.type)).toEqual(['card', 'jar', 'cash']);
   });
 
-  // T14: threading a `PriceBook` through reaches a priced (property_item)
+  // Threading a `PriceBook` through reaches a priced (property_item)
   // holding's value; with no book it falls back to its lots cost basis.
   it('values a property_item holding via the PriceBook, falling back to cost basis with no book', () => {
     const holdings = [
@@ -124,9 +124,9 @@ describe('buildTypeBreakdown', () => {
     expect(withBook).toEqual([{ type: 'property_item', amount: 25_000 }]);
   });
 
-  // T27: debt is out of scope for the by-type ASSET bar (it has its own
+  // Debt is out of scope for the by-type ASSET bar (it has its own
   // "Debts" total elsewhere on Statistics — `buildDebtTotal`), and a loan's
-  // held value is negative (T27, `holding-value.ts`), which would otherwise
+  // held value is negative (`holding-value.ts`), which would otherwise
   // slip past the `amount !== 0` filter above as a negative bar.
   it('excludes a loan holding entirely — no loan bar, even though its value is negative', () => {
     const holdings = [
@@ -154,8 +154,8 @@ describe('buildTypeBreakdown', () => {
     expect(result.map((slice) => slice.type)).toEqual(['card']);
   });
 
-  // T27 re-review round 1, item 6: the bar is an ASSET breakdown (spec §5.3,
-  // same rule the account-contribution pie follows) — a NON-loan holding in
+  // The bar is an ASSET breakdown (same rule the account-contribution pie
+  // follows) — a NON-loan holding in
   // debit (e.g. a credit card balance) must not draw a negative bar either,
   // not just `loan` (already covered above).
   it('excludes a non-loan negative holding (e.g. a card in debit) from the bar entirely', () => {

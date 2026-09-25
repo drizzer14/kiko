@@ -66,7 +66,7 @@ export const isSyncOnlyHoldingType = (type: HoldingType): boolean =>
 // type to use at all, which was the bug. `cash`/`crypto` are unaffected by
 // `isSynced`: their single type is never sync-only.
 //
-// `metal` (T17) is allow-listed rather than sync-gated: `holdingTypesForAccountKind`
+// `metal` is allow-listed rather than sync-gated: `holdingTypesForAccountKind`
 // lists it under BOTH `bank` (a bank-held precious-metal account) and `metals`
 // (the standalone kind, always eligible — physical possession has no bank to
 // gate on). Under a `bank`-kind account it additionally requires

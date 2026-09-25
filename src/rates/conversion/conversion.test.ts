@@ -59,7 +59,7 @@ describe('netWorth', () => {
     expect(total.minorUnits).toBe(0);
   });
 
-  // T14: with no `book` argument, a priced holding (property_item) falls back
+  // With no `book` argument, a priced holding (property_item) falls back
   // to its lots cost basis rather than reading 0.
   it('values a property_item holding at its cost basis when no book is passed', () => {
     const holdings = [
@@ -78,7 +78,7 @@ describe('netWorth', () => {
     expect(total.minorUnits).toBe(500_000);
   });
 
-  // T14: threading a real `PriceBook` overrides the cost-basis fallback.
+  // Threading a real `PriceBook` overrides the cost-basis fallback.
   it('values a property_item holding at its priced value when a book is passed', () => {
     const holdings = [
       {

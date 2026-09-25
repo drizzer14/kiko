@@ -55,10 +55,10 @@ const convertibleValues = (
 
 /**
  * Build one pie slice per account for the "Account contribution" chart. The
- * pie is ASSETS ONLY (spec §5.2/§5.3, I2): an account's `amount` sums only
- * its POSITIVE holding values — a negative holding (a `loan`'s own value, or
- * a non-loan holding in debit, e.g. a credit card — spec §5.2) never reduces
- * it, so an account can never get a negative slice, and a debt-heavy account
+ * pie is ASSETS ONLY: an account's `amount` sums only its POSITIVE holding
+ * values — a negative holding (a `loan`'s own value, or a non-loan holding
+ * in debit, e.g. a credit card) never reduces it, so an account can never
+ * get a negative slice, and a debt-heavy account
  * with no positive holding at all contributes no slice rather than a
  * negative one. See `buildDebtTotal` below for where that debt goes instead.
  * Accounts that end up at zero — including those whose only holdings are
@@ -106,9 +106,9 @@ export const buildAccountContribution = (input: {
 };
 
 /**
- * The "Debts" total (T27, Statistics screen; I2 — spec §5.2: "Credit-card
- * negative balances count as debt too"): the sum of every holding whose own
- * held value is NEGATIVE, converted to the base currency — a NEGATIVE
+ * The "Debts" total (Statistics screen; "Credit-card negative balances count
+ * as debt too"): the sum of every holding whose own held value is NEGATIVE,
+ * converted to the base currency — a NEGATIVE
  * `Money`, read verbatim by `MoneyText` to render the minus sign. A `loan`
  * holding's own value is already minus its outstanding balance
  * (`holding-value.ts`), and a non-loan holding in debit (a credit card) is

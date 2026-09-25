@@ -185,7 +185,7 @@ describe('holdingsRepo', () => {
       category: null,
     });
     expect(typeof inserts[1].time).toBe('number');
-    // D-I2: a non-zero opening balance also stamps the holding's own
+    // A non-zero opening balance also stamps the holding's own
     // `balanceSetAt`, at the SAME instant as the ledger row's `time` —
     // `transactionsRepo.importRows`'s boundary reads it directly.
     expect(inserts[0].balanceSetAt).toBe(inserts[1].time);
@@ -250,7 +250,7 @@ describe('holdingsRepo', () => {
     expect(inserts[0]).toMatchObject({ sortOrder: 0 });
   });
 
-  // A priced holding (property_item, T16) writes its first `manual` price
+  // A priced holding (property_item) writes its first `manual` price
   // point on `holding:<id>` in the SAME transaction as the insert, so it
   // never reads as "no price yet" the moment it is created.
   it('create writes the first price point in the same transaction, keyed on the new holding id', async () => {
@@ -685,7 +685,7 @@ describe('holdings remove', () => {
     expect(store.transactions).toEqual([]);
   });
 
-  // A property_item (T16) has no transactions, but it does have a price
+  // A property_item has no transactions, but it does have a price
   // series keyed on `holding:<id>` — remove must clear that series too, in
   // the SAME transaction, or a deleted holding leaves an orphaned series
   // behind.
@@ -740,7 +740,7 @@ describe('holdings remove', () => {
   });
 });
 
-// Review Focus 7 / T29 (spec 5.4): a loan holding is `isLedgerlessHoldingType`
+// A loan holding is `isLedgerlessHoldingType`
 // (no transactions of its own), but OTHER holdings' payment rows can point
 // back at it via `loanHoldingId`. Deleting the loan must clear those links in
 // the SAME transaction, so a dangling id never survives the delete — a
@@ -749,9 +749,9 @@ describe('holdings remove', () => {
 // comment), so this intercepts the `transactions` update directly to prove
 // the exact payload issued, layered on top of `makeDatabaseTransaction`'s existing seeded
 // holding/account handling for everything else `remove` reads.
-// `inArrayClauseFromCondition` (asserting the exact WHERE predicate, M2) is
+// `inArrayClauseFromCondition` (asserting the exact WHERE predicate) is
 // shared with `accounts.repo.test.ts` via `@kiko/db/in-array-clause-test-helper`.
-describe('holdings remove — loan link cleanup (Review Focus 7)', () => {
+describe('holdings remove — loan link cleanup', () => {
   const makeRemoveTransactionWithLoanLinkCapture = (
     store: Store,
   ): {
@@ -796,8 +796,8 @@ describe('holdings remove — loan link cleanup (Review Focus 7)', () => {
     await holdingsRepo.remove('loan-1');
 
     expect(captured.linkClearSet).toEqual({ loanHoldingId: null, loanLinkSource: null });
-    // M2 (T29 review round 1): render the predicate, not just check the
-    // update was called — a mutant swapping the WHERE column
+    // Render the predicate, not just check the update was called — a
+    // mutant swapping the WHERE column
     // (`transactions.id` for `transactions.loanHoldingId`) must fail this.
     expect(inArrayClauseFromCondition(captured.linkClearWhereArg)).toEqual({
       column: 'loan_holding_id',
@@ -946,7 +946,7 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
       1_700_000_000_000,
     );
 
-    // D-I2: a non-zero delta also stamps `balanceSetAt` at this edit's own
+    // A non-zero delta also stamps `balanceSetAt` at this edit's own
     // `time`, in the SAME `.set(...)` as the balance patch.
     expect(captured.holdingSet).toEqual({
       balanceMinorUnits: 500_00,
@@ -1091,7 +1091,7 @@ describe('holdingsRepo.closeMany', () => {
 // A fake write-transaction handle for `updateLoan`. Captures the metadata
 // patch, whether `delete(pricePoints)` ran, and every `insert(pricePoints)`
 // payload — enough to prove the three `LoanPricePointOp` kinds each touch
-// exactly the tables I1's fix promises, all inside the SAME transaction
+// exactly the tables each op promises, all inside the SAME transaction
 // (`mockDatabaseTransaction` is shared by every call the function makes).
 const makeUpdateLoanDatabaseTransaction = (): {
   databaseTransaction: unknown;
@@ -1147,7 +1147,7 @@ describe('holdingsRepo.updateLoan', () => {
     expect(captured.inserts).toHaveLength(0);
   });
 
-  // I1(a): annuity/differentiated -> 'none' upserts today's outstanding so
+  // Annuity/differentiated -> 'none' upserts today's outstanding so
   // the debt never silently reads as 0.
   it("(a) upserts a point for an 'upsert' op, with no delete", async () => {
     const { databaseTransaction, captured } = makeUpdateLoanDatabaseTransaction();
@@ -1173,7 +1173,7 @@ describe('holdingsRepo.updateLoan', () => {
     ]);
   });
 
-  // I1(b): a 'none' loan's principal/start-date edit moves the start-day
+  // A 'none' loan's principal/start-date edit moves the start-day
   // point — delete the old day, insert the new one.
   it("(b) deletes the old day and inserts the new one for a 'move' op", async () => {
     const { databaseTransaction, captured } = makeUpdateLoanDatabaseTransaction();

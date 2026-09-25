@@ -178,7 +178,7 @@ describe('buildAccountContribution', () => {
     expect(slices.map((slice) => slice.accountId)).toEqual(['a']);
   });
 
-  // T27: a debt account's net worth is a loan's negative held value
+  // A debt account's net worth is a loan's negative held value
   // (`holding-value.ts`) — it must never surface as a pie slice (a negative
   // share would break the ring), same as the existing zero-net-worth filter.
   it('excludes a debt account (negative net worth) from the pie — never a negative slice', () => {
@@ -213,9 +213,9 @@ describe('buildAccountContribution', () => {
     expect(slices.every((slice) => slice.amount > 0)).toBe(true);
   });
 
-  // I2 (T27 round 1, spec §5.2/§5.3): the account pie is ASSETS ONLY — a
+  // The account pie is ASSETS ONLY — a
   // slice sums only its POSITIVE holding values; a negative holding (a
-  // credit-card debit balance, spec §5.2) never reduces it. An account whose
+  // credit-card debit balance) never reduces it. An account whose
   // only holding is negative therefore has nothing positive to show at all.
   it('excludes an account whose only holding is a negative (credit-card debt) balance from the pie', () => {
     const accounts = [account('a', 'Card')];
@@ -256,7 +256,7 @@ describe('buildAccountContribution', () => {
     ]);
   });
 
-  // T14: threading a `PriceBook` through reaches a priced (property_item)
+  // Threading a `PriceBook` through reaches a priced (property_item)
   // holding's value; with no book it falls back to its lots cost basis.
   it('values a property_item holding via the PriceBook, falling back to cost basis with no book', () => {
     const accounts = [account('a', 'Property')];
@@ -359,10 +359,10 @@ describe('buildDebtTotal', () => {
     expect(total.minorUnits).toBe(0);
   });
 
-  // I2 (T27 round 1, spec §5.2): "Credit-card negative balances count as
-  // debt too." A negative non-loan holding balance (a card in debit) is not
-  // a `loan` holding, but its own value is negative all the same, so it
-  // counts toward the Debts total exactly like a loan's negative outstanding.
+  // "Credit-card negative balances count as debt too." A negative non-loan
+  // holding balance (a card in debit) is not a `loan` holding, but its own
+  // value is negative all the same, so it counts toward the Debts total
+  // exactly like a loan's negative outstanding.
   it('counts a negative non-loan holding balance (credit-card debt) toward the Debts total', () => {
     const holdings = [
       holding({ accountId: 'a', type: 'card', currency: 'UAH', balanceMinorUnits: -300_000 }),

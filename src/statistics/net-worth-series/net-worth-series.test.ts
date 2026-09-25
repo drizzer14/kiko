@@ -108,7 +108,7 @@ describe('buildNetWorthSeries', () => {
       range: { from: D0, to: D1 },
     });
 
-    // D0: $100 + 4000*0.025=$100 -> $200. D1: $100 + 4000*0.05=$200 -> $300.
+    // day 0: $100 + 4000*0.025=$100 -> $200. day 1: $100 + 4000*0.05=$200 -> $300.
     expect(series.points).toEqual([
       { t: D0, amount: 200 },
       { t: D1, amount: 300 },
@@ -120,7 +120,8 @@ describe('buildNetWorthSeries', () => {
       holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 }), // $100.00
       holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 }), // 4000.00 UAH
     ];
-    // A rate on D0 and D2 but a GAP on D1: D1 must reuse D0's carried-forward rate.
+    // A rate on day 0 and day 2 but a GAP on day 1: day 1 must reuse day 0's
+    // carried-forward rate.
     const historyRows = [uahUsd(D0, '0.025'), uahUsd(D2, '0.05')];
 
     const series = buildNetWorthSeries({
@@ -151,9 +152,9 @@ describe('buildNetWorthSeries', () => {
   });
 
   it('carries the earliest stored rate backward to buckets before the first history day', () => {
-    // The UAH holding's only rate row starts on D1. Without carrying the earliest
-    // rate backward, the D0 bucket would omit UAH entirely and understate the
-    // start; instead D0 is priced at D1's (earliest) rate.
+    // The UAH holding's only rate row starts on day 1. Without carrying the
+    // earliest rate backward, the day 0 bucket would omit UAH entirely and
+    // understate the start; instead day 0 is priced at day 1's (earliest) rate.
     const holdings = [holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 })]; // 4000 UAH
     const historyRows = [uahUsd(D1, '0.05')];
 
@@ -165,7 +166,8 @@ describe('buildNetWorthSeries', () => {
       range: { from: D0, to: D1 },
     });
 
-    // D0 carries D1's 0.05 backward: 4000 * 0.05 = $200 (not $0 from a dropped holding).
+    // day 0 carries day 1's 0.05 backward: 4000 * 0.05 = $200 (not $0 from a
+    // dropped holding).
     expect(series.points.map((point) => point.amount)).toEqual([200, 200]);
     expect(series.startReference).toBe(200);
   });
@@ -187,8 +189,8 @@ describe('buildNetWorthSeries', () => {
       today: D1,
     });
 
-    // D0 (a past day) stays on the historical 0.025 -> $100; D1 (today) uses the
-    // live 0.05 -> $200.
+    // day 0 (a past day) stays on the historical 0.025 -> $100; day 1 (today)
+    // uses the live 0.05 -> $200.
     expect(series.points.map((point) => point.amount)).toEqual([100, 200]);
   });
 
@@ -207,7 +209,7 @@ describe('buildNetWorthSeries', () => {
     });
 
     // Both buckets sit 13h into their UTC day and pick up that day's rate:
-    // D0 -> 4000 * 0.025 = $100, D1 -> 4000 * 0.05 = $200.
+    // day 0 -> 4000 * 0.025 = $100, day 1 -> 4000 * 0.05 = $200.
     expect(series.points.map((point) => point.amount)).toEqual([100, 200]);
   });
 
@@ -421,12 +423,12 @@ describe('buildNetWorthSeries', () => {
     // A guard: a debit whose amount is NOWHERE near the bond's price (here 4× the
     // price) is not the bond's funding outflow. It must NOT be reconciled onto the
     // bond — neither its day nor its amount — so the bond falls back to the typed
-    // purchase day and typed price and STEPS net worth up there, and the day-D0
+    // purchase day and typed price and STEPS net worth up there, and the day-0
     // bucket (where the unrelated debit lands) is NOT inflated by a bond value.
-    const purchaseDate = D1 + 18 * HOUR; // typed mid-day timestamp on day D1
+    const purchaseDate = D1 + 18 * HOUR; // typed mid-day timestamp on day 1
 
     const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 20_000 }); // $200, untouched
-    // Card started with $400 and was debited $400 on D0 (unrelated spend), balance 0.
+    // Card started with $400 and was debited $400 on day 0 (unrelated spend), balance 0.
     const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
     const bond = bondFor({
       id: 'bond',
@@ -446,11 +448,11 @@ describe('buildNetWorthSeries', () => {
       range: { from: D0, to: D2 },
     });
 
-    // D0: only cash ($200) — the bond has NOT been mis-recognized onto the $400
+    // day 0: only cash ($200) — the bond has NOT been mis-recognized onto the $400
     // debit's day/amount (that would inflate this bucket to $600).
     expect(amountAt(series, D0)).toBe(200);
-    // D1 (typed purchase day) and D2: the bond turns on at its typed price and
-    // STEPS net worth up by $100, unaffected by the unrelated debit — $300.
+    // day 1 (typed purchase day) and day 2: the bond turns on at its typed price
+    // and STEPS net worth up by $100, unaffected by the unrelated debit — $300.
     expect(amountAt(series, D1)).toBe(300);
     expect(amountAt(series, D2)).toBe(300);
   });
@@ -482,7 +484,7 @@ describe('buildNetWorthSeries', () => {
       transactionsByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_787 }]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
-      range: { from: D0, to: D0 + 2 * DAY }, // buckets at D0, D1 (=dayD), D2 — all midnight
+      range: { from: D0, to: D0 + 2 * DAY }, // buckets at day 0, day 1 (=dayD), day 2 — all midnight
     });
 
     // Day-D midnight bucket (bond bought at cost, card debited the same price) must
@@ -579,7 +581,7 @@ describe('buildNetWorthSeries', () => {
     // falls back to the typed `purchaseDate`, so net worth should still STEP UP
     // there — proving the fix doesn't flatten a legitimately unfunded bond into
     // never showing its cost.
-    const purchaseDate = D1 + 18 * HOUR; // mid-day timestamp on day D1
+    const purchaseDate = D1 + 18 * HOUR; // mid-day timestamp on day 1
 
     const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 20_000 }); // $200, untouched
     const bond = bondFor({
@@ -598,9 +600,9 @@ describe('buildNetWorthSeries', () => {
       range: { from: D0, to: D2 },
     });
 
-    // D0 (before purchaseDate's local day): the bond has not turned on yet.
+    // day 0 (before purchaseDate's local day): the bond has not turned on yet.
     expect(amountAt(series, D0)).toBe(200);
-    // D1 (purchaseDate's local day) and D2 (after): the bond turns ON at its
+    // day 1 (purchaseDate's local day) and day 2 (after): the bond turns ON at its
     // typed day and STEPS net worth up, since there is no offsetting debit to
     // net it against — the manual-bond path is unchanged by the fix.
     expect(amountAt(series, D1)).toBe(300);
@@ -673,7 +675,7 @@ describe('buildNetWorthSeries', () => {
     expect(series).toEqual({ points: [], startReference: 0 });
   });
 
-  // T14: `property_item` is ledgerless — its value derives from its `lots`
+  // `property_item` is ledgerless — its value derives from its `lots`
   // metadata (priced at read time), never from `transactionsByHolding` — so the series
   // is flat across every bucket even with an EMPTY transaction map, and it is
   // valued at its cost basis (never 0) by default, without a `book`.
@@ -699,7 +701,7 @@ describe('buildNetWorthSeries', () => {
     expect(series.points.map((point) => point.amount)).toEqual([20_000, 20_000, 20_000]);
   });
 
-  // T14: threading a real `PriceBook` through overrides the cost-basis
+  // Threading a real `PriceBook` through overrides the cost-basis
   // fallback with the priced value — proving `book` reaches `holdingValueAt`
   // through the whole builder, not just its own default.
   it('values a property at its priced value when a PriceBook is supplied, not its cost basis', () => {
@@ -734,7 +736,7 @@ describe('buildNetWorthSeries', () => {
     expect(series.points[0]?.amount).toBe(25_000);
   });
 
-  // T21: a metal holding (T17/T20) is priced through the SHARED
+  // A metal holding is priced through the SHARED
   // `metal:<XAU|...>` instrument, not a per-holding `holding:<id>` series —
   // its series must FOLLOW that instrument's own day-to-day NBU points
   // (quantity * purity * price / troy-ounce-grams for 'g'), unlike
@@ -786,11 +788,10 @@ describe('buildNetWorthSeries', () => {
     expect(series.points.map((point) => point.amount)).toEqual([80_000, 81_000]);
   });
 
-  // T21: `quantityAt` reads 0 before a lot's own day, so a metal holding
+  // `quantityAt` reads 0 before a lot's own day, so a metal holding
   // contributes exactly 0 to net worth at any bucket before its first lot —
   // even though the shared metal:XAU instrument already carries a price
-  // point that far back (Review Focus 5 does not apply here: this is a
-  // REAL zero quantity, not "no price yet").
+  // point that far back (this is a REAL zero quantity, not "no price yet").
   it('contributes 0 to net worth before its first lot day', () => {
     const goldBar = holding({
       id: 'gold',
@@ -826,7 +827,7 @@ describe('buildNetWorthSeries', () => {
     expect(series.points[0]?.amount).toBe(0);
   });
 
-  // T27 (spec §5.2): net worth = assets − debt outstanding. A loan's own
+  // Net worth = assets − debt outstanding. A loan's own
   // value is negative (`holding-value.ts`), and `buildNetWorthSeries` needs
   // no debt-aware logic of its own — it already sums every holding's own
   // (possibly negative) value at each bucket, day by day, following manual
@@ -873,7 +874,7 @@ describe('buildNetWorthSeries', () => {
     expect(series.points.map((point) => point.amount)).toEqual([-100_000, -90_000]);
   });
 
-  // M4: a correction dated AFTER the queried instant must never retroactively
+  // A correction dated AFTER the queried instant must never retroactively
   // anchor it — the loan contributes exactly 0 before its own `startDate`,
   // the same rule `holding-value.test.ts` covers at the single-holding level,
   // now exercised through the full series builder.

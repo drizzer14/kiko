@@ -21,9 +21,9 @@ type AccountKind = AccountRow['kind'];
 // here. The crypto ACCOUNT default is persisted at create time, so its change
 // to `bitcoinsign.circle` ships alongside migration 0032_icon_crypto_account,
 // which refines un-customized existing rows. `cube.fill` (SF Symbols 1, safe
-// on the iOS-16 floor) is the T17 pick for `metals` — brief left icon choice
-// unspecified, as with `house.fill` for `property` at T13. `minus.circle.fill`
-// (SF Symbols 1) is the T26 pick for `debt` — same "negative amount owed"
+// on the iOS-16 floor) is the pick for `metals` — the brief left icon choice
+// unspecified, as with `house.fill` for `property`. `minus.circle.fill`
+// (SF Symbols 1) is the pick for `debt` — same "negative amount owed"
 // semantics as its sole holding type below, mirroring the property/metals
 // kind-and-type icon reuse.
 export const accountKindSymbol: Record<AccountKind, string> = {

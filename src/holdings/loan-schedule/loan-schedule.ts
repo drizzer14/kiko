@@ -21,8 +21,8 @@ export type LoanInstallment = {
 };
 
 /**
- * The monthly amortization schedule for an `annuity`/`differentiated` loan
- * (spec 5.1). `none` (an informal debt with no known rate/term) has no
+ * The monthly amortization schedule for an `annuity`/`differentiated` loan.
+ * `none` (an informal debt with no known rate/term) has no
  * schedule and returns an empty array — its outstanding balance is instead a
  * manual price-point series, read directly by `loanOutstandingMinorAt`
  * below.
@@ -93,7 +93,7 @@ export const loanInstallments = (meta: LoanMeta): LoanInstallment[] => {
 
 /**
  * `annuity`/`differentiated` outstanding is computed AT READ TIME from the
- * schedule (N10a): the latest manual correction point on the holding's own
+ * schedule: the latest manual correction point on the holding's own
  * `holding:<id>` instrument, WHEN ITS DAY IS ON OR BEFORE `instant`'s local
  * day, anchors a fresh baseline, and only the scheduled PRINCIPAL due
  * strictly AFTER that correction's day (and at or before `instant`) is
@@ -112,7 +112,7 @@ export const loanInstallments = (meta: LoanMeta): LoanInstallment[] => {
  * Both branches clamp the result to never go below 0 (an overpaid/
  * overcorrected loan reads as paid off, never negative).
  *
- * M4: an instant whose local day is BEFORE the loan's own `startDate` day
+ * An instant whose local day is BEFORE the loan's own `startDate` day
  * contributes 0, in either branch — mirroring the rule a priced holding
  * (`property_item`/`metal`) already follows for an instant before its first
  * lot (`kiko-pricing`). Without this guard the `none` branch could surface a
@@ -158,8 +158,8 @@ export const loanOutstandingMinorAt = (
 };
 
 /**
- * The interest portion of a bank payment linked to this loan (N10b, D14 —
- * "interest-only spending"): `none` (an informal debt has no schedule) never
+ * The interest portion of a bank payment linked to this loan
+ * ("interest-only spending"): `none` (an informal debt has no schedule) never
  * counts any interest — `loanInstallments` already returns `[]` for it, so
  * the length guard below covers that case with no separate `schedule` check.
  * Otherwise the payment maps to the installment whose due date is NEAREST to
@@ -169,8 +169,8 @@ export const loanOutstandingMinorAt = (
  * payment's own (absolute) amount — a partial payment can never count more
  * interest than it actually paid.
  *
- * M2 (T26 review, carried to T30): a payment MORE THAN ONE PERIOD outside the
- * schedule counts 0 interest, rather than mapping to the nearest (first/
+ * A payment MORE THAN ONE PERIOD outside the schedule counts 0 interest,
+ * rather than mapping to the nearest (first/
  * last) installment regardless of distance — a payment years before the loan
  * even started, or years after it was fully paid off, is not this loan's
  * interest. "One period" is the same monthly cadence every due date is built

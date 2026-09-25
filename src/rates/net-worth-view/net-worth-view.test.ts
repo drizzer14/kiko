@@ -141,7 +141,7 @@ describe('guardedNetWorth', () => {
     expect(total.minorUnits).toBe(0);
   });
 
-  // T14: threading a `PriceBook` through reaches a priced (property_item)
+  // Threading a `PriceBook` through reaches a priced (property_item)
   // holding's value, overriding its lots-cost-basis default.
   it('values a property_item holding at its priced value when a book is passed', () => {
     const holdings = [
@@ -170,7 +170,7 @@ describe('guardedNetWorth', () => {
     expect(guardedNetWorth(holdings, 'UAH', rates, NOW, book).minorUnits).toBe(700_000);
   });
 
-  // T21: a metal holding is priced through the SHARED `metal:<XAU|...>`
+  // A metal holding is priced through the SHARED `metal:<XAU|...>`
   // instrument (kiko-pricing), not a per-holding one — `guardedNetWorth`
   // reaches that value the same way it reaches property_item's above, end to
   // end from a real `PriceBook`.
@@ -204,7 +204,7 @@ describe('guardedNetWorth', () => {
     expect(guardedNetWorth(holdings, 'UAH', rates, NOW, book).minorUnits).toBe(900_000);
   });
 
-  // T27 (spec §5.2): net worth = assets − debt outstanding. A loan holding's
+  // Net worth = assets − debt outstanding. A loan holding's
   // own value is already NEGATIVE (`holding-value.ts`), so plainly summing
   // every holding — exactly what `guardedNetWorth`/`netWorth` already do —
   // subtracts the debt with no extra debt-aware logic here; a total can now

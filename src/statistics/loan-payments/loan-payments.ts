@@ -28,15 +28,15 @@ export type LoanHolding = Pick<HoldingRow, 'id' | 'metadata' | 'currency'>;
 
 /**
  * The ids of every transaction that is a LINKED loan payment whose loan
- * holding still exists AND is in the SAME currency as the payment (spec 5,
- * D14 — "interest-only spending"): the caller drops these from the raw
+ * holding still exists AND is in the SAME currency as the payment
+ * ("interest-only spending"): the caller drops these from the raw
  * spending pie/trend and replaces each one with its own `loanInterestEntries`
  * row (the interest portion only), so a linked loan payment's PRINCIPAL
  * never counts as spending and its INTEREST counts once, under its own
  * category.
  *
- * A dangling `loanHoldingId` (Review Focus 7, global-constraints.md) — or,
- * the same defensive shape, one whose loan holding exists but is in a
+ * A dangling `loanHoldingId` — or, the same defensive shape, one whose
+ * loan holding exists but is in a
  * DIFFERENT currency than the payment — is NOT excluded here:
  * `holdingsRepo.remove`/`accountsRepo.remove` clear a dangling link
  * transactionally the moment its loan holding is deleted, and
@@ -69,15 +69,15 @@ export const loanPaymentExcludedTransactionIds = (
 
 /**
  * One synthetic "Loan interest" entry per linked payment whose loan still
- * exists (N10b): the payment maps to the installment whose due date is
+ * exists: the payment maps to the installment whose due date is
  * NEAREST to its own local day, and the interest counted is that
  * installment's interest, capped at the payment's own absolute amount
  * (`loanInterestForPaymentMinor`). A payment with 0 counted interest (an
  * informal `'none'`-schedule loan, or a payment more than one period
- * outside the schedule — M2) produces NO entry: its whole amount was
+ * outside the schedule) produces NO entry: its whole amount was
  * already dropped by `loanPaymentExcludedTransactionIds` above, so it simply counts
  * as 0 spending rather than a stray zero-amount slice. A dangling
- * `loanHoldingId` (Review Focus 7) also produces no entry — that row was
+ * `loanHoldingId` also produces no entry — that row was
  * never excluded above, so it already counts in full under its own
  * category.
  *

@@ -14,10 +14,10 @@ type AccountKind = AccountRow['kind'];
 // bank -> white, cash -> khaki, crypto -> yellow, property -> brown,
 // metals -> gray, debt -> red. Typed over the full `AccountKind` union, so
 // adding an account kind is a compile error here until its default color is
-// supplied. `gray` (previously unused in either default map) is the T17 pick
-// for `metals` — thematically metallic, and brief left color choice
-// unspecified, as with `brown` for `property` at T13. `red` (also previously
-// unused in either map) is the T26 pick for `debt` — the conventional "money
+// supplied. `gray` (previously unused in either default map) is the pick
+// for `metals` — thematically metallic, and the brief left color choice
+// unspecified, as with `brown` for `property`. `red` (also previously
+// unused in either map) is the pick for `debt` — the conventional "money
 // owed" hue, matching its sole holding type below.
 export const defaultAccountColor: Record<AccountKind, string> = {
   bank: entityColorsDark.white,

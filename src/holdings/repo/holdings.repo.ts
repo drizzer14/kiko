@@ -33,7 +33,7 @@ const nextSortOrder = async (
 
 type NewHolding = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
   Partial<Pick<HoldingRow, 'balanceMinorUnits' | 'metadata' | 'sortOrder' | 'color'>> & {
-    // A priced holding's (property_item, T16) first manual price point,
+    // A priced holding's (property_item) first manual price point,
     // written on the holding's own `holding:<id>` instrument in the SAME
     // transaction as the insert (kiko-domain's PriceBook) — so it never reads
     // as "no price yet" the instant it is created. `day`/`price` follow the
@@ -67,7 +67,7 @@ export type ExchangeHolding = NewHolding & {
 
 /**
  * The price-point write a loan EDIT may need on its own `holding:<id>`
- * manual series, alongside the metadata patch (T28 review I1 — the two must
+ * manual series, alongside the metadata patch — the two must
  * commit in the SAME transaction or the series can drift from what the
  * detail screen reads). `'none'`: no write needed. `'upsert'`: a schedule
  * change into `'none'` writes today's outstanding so the debt never silently
@@ -178,9 +178,8 @@ export const appendDepositContributionDatabaseTransaction = async (
 };
 
 // Clears `loanHoldingId`/`loanLinkSource` on every transaction row that
-// still points at one of `holdingIds` — Review Focus 7 / spec 5.4 (T29).
-// A shared Tx helper (not private to `holdingsRepo.remove`) so
-// `accountsRepo.remove` (I1, T29 review round 1) runs the SAME cascade for
+// still points at one of `holdingIds`. A shared Tx helper (not private to
+// `holdingsRepo.remove`) so `accountsRepo.remove` runs the SAME cascade for
 // every holding a deleted debt account owned, in the SAME transaction as
 // the account delete — a loan holding removed either way never leaves a
 // dangling link on another holding's payment rows. A no-op when
@@ -374,7 +373,7 @@ export const holdingsRepo = {
     }),
   /**
    * A loan EDIT's metadata patch plus its `LoanPricePointOp`, in ONE
-   * transaction (T28 review I1) — a loan is ledgerless, so this never touches
+   * transaction — a loan is ledgerless, so this never touches
    * `balanceMinorUnits`/`transactions` the way `updateWithBalanceDelta` does;
    * it exists instead of reusing that function because a loan's manual
    * `holding:<id>` series has to stay consistent with the SAME edit that
@@ -485,14 +484,13 @@ export const holdingsRepo = {
         throw new Error('remove: cannot delete a synced holding');
       }
       await databaseTransaction.delete(transactions).where(eq(transactions.holdingId, holdingId));
-      // Review Focus 7 / spec 5.4 (T29): a loan holding is ledgerless, but
-      // OTHER holdings' payment rows can point back at it via
-      // `loanHoldingId`. Clear those links in the SAME transaction — never
-      // leaving a dangling id — so a previously-linked payment reverts to
-      // counting as normal spending. A no-op for every non-loan holding,
-      // since nothing ever points a `loanHoldingId` at one.
+      // A loan holding is ledgerless, but OTHER holdings' payment rows can
+      // point back at it via `loanHoldingId`. Clear those links in the SAME
+      // transaction — never leaving a dangling id — so a previously-linked
+      // payment reverts to counting as normal spending. A no-op for every
+      // non-loan holding, since nothing ever points a `loanHoldingId` at one.
       await clearLoanLinksForHoldingsDatabaseTransaction(databaseTransaction, [holdingId]);
-      // A priced holding (property_item, T16) has no transactions, but it may
+      // A priced holding (property_item) has no transactions, but it may
       // have its own price series on `holding:<id>` — cleared here, inline on
       // `tx` (not through `pricePointsRepo.removeInstrument`, which would open
       // its own transaction), so a deleted holding never leaves an orphaned

@@ -122,7 +122,7 @@ describe('creatableHoldingTypesForAccount', () => {
     expect(creatableHoldingTypesForAccount('bank', true, 'privatbank')).toContain('metal');
   });
 
-  // T22: PUMB, Oschadbank, and Ukrgasbank join the catalog's metal
+  // PUMB, Oschadbank, and Ukrgasbank join the catalog's metal
   // allow-list; Raiffeisen does not.
   it.each(['pumb', 'oschadbank', 'ukrgasbank'])(
     'offers metal on a bank account allow-listed to sell metals (%s)',
