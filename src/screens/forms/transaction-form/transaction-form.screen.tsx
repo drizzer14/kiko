@@ -128,12 +128,12 @@ const renderReadOnlyNotice = (
   );
 };
 
-// The counterparty->comment column (item 10) writes a real value no screen
-// ever surfaced (F3 device feedback item 17), shown whenever the loaded row
-// carries a non-blank comment. Not gated by `isReadOnly`:
+// The counterparty->comment column writes a real value no screen ever
+// surfaced, shown whenever the loaded row carries a non-blank comment.
+// Not gated by `isReadOnly`:
 // `mapParsedTransaction`/Monobank sync can write `comment` onto any
 // imported row regardless of `source`, and a Monobank-synced row is exactly
-// the read-only case the brief calls out by name — so this renders for
+// the read-only case this must still cover — so this renders for
 // both. Module-level for the same cognitive-complexity-budget reason as
 // `renderReadOnlyNotice` above.
 //
@@ -564,7 +564,7 @@ const buildReturnOptions = (
   );
 };
 
-// Order two holdings the way the Accounts screen shows them (F2): primary by
+// Order two holdings the way the Accounts screen shows them: primary by
 // the parent account's display rank (its 0-based index in the sortOrder-ordered
 // `accountsRepo.listQuery` list), then by the holding's own `sortOrder`, then
 // `createdAt`. A holding whose account is not in the rank map sorts last, so a
@@ -591,7 +591,7 @@ const compareByAccountThenHolding = (
 
 // Every OPEN, non-excluded holding except `excludeHoldingId`, projected to a
 // picker option carrying its parent account name (Requirement C), ordered to
-// match the Accounts screen (F2 — see `compareByAccountThenHolding`). The
+// match the Accounts screen (see `compareByAccountThenHolding`). The
 // eligible TYPE test is injected by the caller so one builder serves create-mode
 // (cash-only) and both convert-mode directions (the wider rules) without
 // duplicating the projection. A closed holding is excluded so an exchange can
@@ -987,7 +987,7 @@ type FieldGroupProps = {
   onChangeTime: (timestamp: number) => void;
   t: TFunction;
   // Per-field validation-failure messages and wrapper refs, threaded straight
-  // into `ExchangeFields`/`ConvertExchangeFields` (the Task 8 props) or onto
+  // into `ExchangeFields`/`ConvertExchangeFields`'s own props or onto
   // the plain Amount `TextField` — see `fieldError`/`fieldRefsByKey` in the
   // screen component. `undefined` everywhere on a read-only row, where no
   // field ever gates Save.
@@ -1137,10 +1137,10 @@ type SplitReturnsProps = {
   // The LAST return row's own wrapper ref — a SEPARATE ref from
   // `splitReturnsFieldRef` (the CALL SITE's own wrapper, anchoring the whole
   // section for scroll-to-invalid) — so `addReturn` can scroll to whichever
-  // row is newest, via the SAME occlusion-aware `scrollToField` helper
-  // (round-6 device feedback item 3), rather than an unconditional
-  // `scrollToEnd` that used to fire even when the new row was already fully
-  // visible. `undefined` is a valid value (never passed while not split).
+  // row is newest, via the SAME occlusion-aware `scrollToField` helper,
+  // rather than an unconditional `scrollToEnd` that would fire even when
+  // the new row was already fully visible. `undefined` is a valid value
+  // (never passed while not split).
   lastRowRef?: RefObject<FieldInstance | null>;
 };
 
@@ -1161,7 +1161,7 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
       {props.returns.map((row, index) => (
         <View
           key={row.id}
-          // Only the LAST row anchors `lastRowRef` (round-6 item 3's
+          // Only the LAST row anchors `lastRowRef` (the
           // add-row scroll target) — `undefined` on every earlier row, the
           // same single-target-ref shape `contributionsFieldRef`'s own
           // index-gated assignment uses in holding-form.
@@ -1388,7 +1388,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // `isSyncedHolding` whether a candidate's account is connected to a sync
   // (item 6) — the name/order maps above drop the `institution` that check needs.
   const accountById = new Map(accounts.map((account) => [account.id, account]));
-  // The account display rank (F2): `accountsRepo.listQuery` is already ordered
+  // The account display rank: `accountsRepo.listQuery` is already ordered
   // by the drag-and-drop `sortOrder`, so each account's index IS its rank on
   // the Accounts screen. The picker groups its holdings under their account in
   // this same order (see `compareByAccountThenHolding`).
@@ -1574,8 +1574,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // The LAST return row's own wrapper — a SEPARATE ref from
   // `splitReturnsFieldRef` above (which anchors the whole section for
   // scroll-to-invalid) — so `addReturn` below can scroll to whichever row is
-  // newest, via the SAME occlusion-aware `scrollToField` helper (round-6
-  // device feedback item 3), rather than an unconditional `scrollToEnd`.
+  // newest, via the SAME occlusion-aware `scrollToField` helper, rather
+  // than an unconditional `scrollToEnd`.
   const lastReturnFieldRef = useRef<FieldInstance>(null);
   const amountFieldRef = useRef<FieldInstance>(null);
   // The plain Amount field's own inner input, for a blocked Save's FOCUS
@@ -1965,9 +1965,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     // would still measure the PRE-add (one row shorter) layout. Same
     // deferred-RAF pattern as the categories screen's own
     // `scrollToAddCategoryForm`. Routes through the SAME occlusion-aware
-    // `scrollToField` helper `save`'s own scroll-to-invalid uses below
-    // (round-6 device feedback item 3) — an unconditional `scrollToEnd` used
-    // to fire even when the new row was already fully on screen.
+    // `scrollToField` helper `save`'s own scroll-to-invalid uses below —
+    // never an unconditional `scrollToEnd`, which would fire even when the
+    // new row was already fully on screen.
     requestAnimationFrame(() => {
       scrollToField(scrollableRef, lastReturnFieldRef, {
         currentOffset: scrollOffset.value,
@@ -2383,13 +2383,12 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             hidden wrapper out of that gap slot while the mode is not split,
             without unmounting it (so the ref stays usable the moment split
             mode is selected).
-            Round-6 device feedback item 2 (a regression this wrapper itself
-            introduced, back when it first replaced `renderSplitReturns`'s
-            Fragment as a DIRECT child of the parent `Box gap={4}`): its
-            divider/heading/rows/error/button used to be that Box's own direct
-            children, each getting the 16pt rhythm between them; wrapped in one
-            `View`, they became ONE child with nothing supplying a gap between
-            them. `styles.splitReturnsGap` gives this wrapper the SAME gap
+            This wrapper stands in place of `renderSplitReturns`'s Fragment as
+            a DIRECT child of the parent `Box gap={4}`: its
+            divider/heading/rows/error/button are wrapped in this one `View`
+            as ONE child, with nothing supplying a gap between them the way
+            the Box's own direct children would each get automatically.
+            `styles.splitReturnsGap` gives this wrapper the SAME gap
             itself, restoring the rhythm — it is harmless while hidden
             (`display: 'none'` still collapses the whole node). A plain `View`
             (not `Box`) is required here: `Box` is a non-forwarding function
@@ -2503,7 +2502,7 @@ const styles = StyleSheet.create((theme) => ({
   hidden: {
     display: 'none',
   },
-  // Round-6 device feedback item 2: the wrapper's own gap, matching the
+  // The wrapper's own gap, matching the
   // parent form `Box`'s `gap={4}` rhythm — see the CALL SITE comment above
   // for why this wrapper (not `renderSplitReturns` itself) owns it.
   splitReturnsGap: {

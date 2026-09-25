@@ -21,7 +21,7 @@ import TransactionFormScreen, { canSaveSplit } from './transaction-form.screen';
 const mockScrollToEnd = jest.fn();
 
 jest.mock('react-native-reanimated', () => mockReanimatedScrollToEnd(() => mockScrollToEnd));
-// Round-6 device feedback item 3: `addReturn` now routes through the SAME
+// `addReturn` routes through the SAME
 // occlusion-aware `scrollToField` helper the Save-invalid path already uses
 // (see holding-form.screen.test.tsx for the identical pattern), rather than
 // an unconditional `scrollToEnd` — auto-mocked here so the new-row tests
@@ -561,8 +561,8 @@ describe('TransactionFormScreen — add mode', () => {
     await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
     await fireEvent.press(utils.getByText('Save'));
 
-    // Round-4 device feedback item 1 — a select field's error lacked the same
-    // gap TextField's own `Box gap={1}` already gives its error line.
+    // A select field's error needs the same gap TextField's own `Box gap={1}`
+    // already gives its error line.
     const errorGroup = utils.getByText('Select a category.').parent?.parent;
     expect(StyleSheet.flatten(errorGroup?.props.style).gap).toBe(darkTheme.spacing(1));
   });
@@ -1345,7 +1345,7 @@ describe('TransactionFormScreen — read-only mode (monobank)', () => {
     expect(queryAllByText('*', { includeHiddenElements: true })).toHaveLength(0);
   });
 
-  // Item 17 (F3): the counterparty->comment mapping (item 10) writes a real
+  // The counterparty->comment mapping writes a real
   // column no screen ever displayed — show it here, the SummaryTable "label
   // left, value right" detail-row pattern the deposit/bond breakdown and the
   // statement-import preview already use.
@@ -2031,7 +2031,7 @@ describe('TransactionFormScreen — Exchange mode', () => {
 });
 
 // Fixtures for the cash-only create rule (Requirement B) plus account-name
-// threading (Requirement C, Task 2). `cash-1` and `cash-usd-1` sit under two
+// threading (Requirement C). `cash-1` and `cash-usd-1` sit under two
 // different accounts so the destination's account name is unambiguous;
 // `card-1`, `btc-1`, and `deposit-1` cover every non-cash type that create
 // mode must now exclude on the destination side.
@@ -2147,7 +2147,7 @@ describe('TransactionFormScreen — Exchange create (cash-only, account names)',
   });
 });
 
-// Fixtures for the picker-order rule (F2): two accounts whose display order
+// Fixtures for the picker-order rule: two accounts whose display order
 // (the sortOrder-driven `accountsRepo.listQuery` order) is Bravo before Alpha,
 // each holding one eligible cash destination. The raw `holdings.allQuery`
 // array below is deliberately NOT grouped by account, so a picker that
@@ -2214,7 +2214,7 @@ describe('TransactionFormScreen — From/To picker order', () => {
   });
 });
 
-// Fixtures for convert-mode (Task 7): `cash-1` is the existing row's own
+// Fixtures for convert-mode: `cash-1` is the existing row's own
 // holding for the expense/income-manual cases; `card-1` stands in for a
 // SYNCED row's holding. `cash-usd-1` and `card-eur-1` are eligible
 // counterparts under the WIDER convert predicates (cash/card, unlike the
@@ -2524,7 +2524,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
   });
 });
 
-// Fixtures for Split-change mode (Task 7): `payer` is the paying cash holding;
+// Fixtures for Split-change mode: `payer` is the paying cash holding;
 // `friend-a`/`friend-b` are two OTHER open UAH holdings the change can return
 // to; `usd-cash` is a same-liquidity holding in a DIFFERENT currency, which the
 // v1 return picker must exclude (returns are payer-currency only).
@@ -2789,12 +2789,12 @@ describe('TransactionFormScreen — Split-change mode', () => {
     expect(utils.getAllByText('Remove')).toHaveLength(2);
   });
 
-  // Round-6 device feedback item 3 (broadened): every scroll-on-add-row
-  // trigger, not only "Додати внесок" (add contribution), must route through
+  // Every scroll-on-add-row trigger, not only "Додати внесок" (add
+  // contribution), must route through
   // the SAME occlusion-aware `scrollToField` helper the Save-invalid path
-  // already uses — never an unconditional `scrollToEnd`, which used to scroll
+  // already uses — never an unconditional `scrollToEnd`, which would scroll
   // even when the newly added row was already fully visible.
-  it('scrolls to the newly added return through the occlusion-aware scrollToField helper, not an unconditional scrollToEnd (round-6 item 3)', async () => {
+  it('scrolls to the newly added return through the occlusion-aware scrollToField helper, not an unconditional scrollToEnd', async () => {
     const scrollToFieldMock = scrollToField as jest.Mock;
     // The scroll is deferred to the next frame so the just-added row is
     // measured first; run that frame synchronously to assert the effect (same
@@ -2896,9 +2896,8 @@ describe('TransactionFormScreen — Split-change mode', () => {
     expect(wrapperStyle?.display).toBeUndefined();
   });
 
-  // Round-6 device feedback item 2 (regression from round-4's 1cd2cf1, which
-  // first wrapped `renderSplitReturns`'s Fragment in this `View`): wrapping the
-  // divider/heading/rows/button in one `View` pulls them OUT of the parent
+  // Wrapping `renderSplitReturns`'s Fragment in this `View` (wrapping the
+  // divider/heading/rows/button in one `View`) pulls them OUT of the parent
   // `Box gap={4}`'s own flex-item list — they used to be its direct children,
   // each getting that 16pt rhythm; now they are all ONE child, with nothing
   // supplying a gap between them. The wrapper must carry the SAME gap itself.
@@ -3002,7 +3001,7 @@ describe('canSaveSplit', () => {
   });
 });
 
-// Fixtures for Feature 1 convert prefill (Task 8): a SYNCED monobank USD card
+// Fixtures for convert prefill: a SYNCED monobank USD card
 // withdrawal (`w1`, -20.00 USD) and a UAH cash destination to convert into.
 const PREFILL_HOLDINGS: Holding[] = [
   {

@@ -76,10 +76,9 @@ type FieldScrollGeometry = {
 // — and, when it is not, the exact content offset that lands its own top
 // edge just below the header. A field ABOVE the visible area and one BELOW
 // it (or under the keyboard) both resolve to the SAME landing rule: land the
-// field's top just below the header, never at content top — the round-3
-// device-feedback brief's explicit rule, rather than a "scroll the minimum
-// distance" rule that would leave a field's top flush against the header on
-// a downward scroll.
+// field's top just below the header, never at content top — never a
+// "scroll the minimum distance" rule that would leave a field's top flush
+// against the header on a downward scroll.
 export const resolveFieldScrollTarget = (
   geometry: FieldScrollGeometry,
 ): { shouldScroll: boolean; targetOffset: number } => {
@@ -102,8 +101,8 @@ export const resolveFieldScrollTarget = (
     return { shouldScroll: false, targetOffset: currentOffset };
   }
 
-  // THE LOWER BOUND — the POSITION-SCALING BUG (round-4 device feedback, item
-  // 2): the landing target used to floor at 0 — correct only for a plain,
+  // THE LOWER BOUND — the POSITION-SCALING BUG: the landing target must
+  // never floor at 0 — that is correct only for a plain,
   // non-inset ScrollView where "content top visible right below the header"
   // sits at offset 0. This app's scroll screens set
   // `contentInsetAdjustmentBehavior="automatic"` (screen.component.tsx), so

@@ -102,10 +102,10 @@ describe('resolveFieldScrollTarget', () => {
     expect(decision.targetOffset).toBe(-100);
   });
 
-  // THE POSITION-SCALING BUG (round-4 device feedback, item 2): the prior
-  // clamp floored a negative target at 0, which is only correct when
-  // `currentOffset` starts at 0. `contentInsetAdjustmentBehavior="automatic"`
-  // (screen.component.tsx) means the ScrollView's native resting offset for
+  // THE POSITION-SCALING BUG: a clamp that floors a negative target at 0 is
+  // only correct when `currentOffset` starts at 0.
+  // `contentInsetAdjustmentBehavior="automatic"` (screen.component.tsx)
+  // means the ScrollView's native resting offset for
   // "content top visible right below the header" is `-headerInset`, NOT 0 —
   // so flooring at 0 forces MORE scroll than a near-top field needs, landing
   // it back UNDER the header whenever the user was already scrolled down
@@ -113,9 +113,7 @@ describe('resolveFieldScrollTarget', () => {
   // scroll position — see holding-form's `footer` — so a field near the TOP
   // of a long form is very often invalid while `currentOffset` is deep into
   // the form). This is a pure reference-frame/floor bug, not a
-  // currentOffset-double-count bug: the previous reviewer's "not
-  // double-counting currentOffset" conclusion the round-4 brief cites was
-  // right about double-counting, but missed this wrong floor.
+  // currentOffset-double-count bug.
   it('lands a near-top field below the header regardless of how far down the current scroll position is (position-scaling repro)', () => {
     const geometry = {
       fieldTop: 24,
