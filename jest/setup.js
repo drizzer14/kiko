@@ -159,12 +159,13 @@ jest.mock('react-native-haptic-feedback', () => ({ trigger: jest.fn() }));
 
 // @sbaiahmed1/react-native-biometrics resolves its native TurboModule with
 // `TurboModuleRegistry.getEnforcing('ReactNativeBiometrics')` at module load,
-// which throws under react-test-renderer (no native binary). App code reaches it
-// only lazily, gated on `APP_LOCK_ENABLED` (default OFF), so no runtime test path
-// loads it today — but the wrapper's own test and any future LockGate/Settings
-// test import it, so it is stubbed globally. Defaults model a Face ID device with
-// a passcode; tests that exercise the wrapper's mapping override these with their
-// own `jest.mock` factory.
+// which throws under react-test-renderer (no native binary). App code reaches
+// it only lazily, from inside `authenticate()` (`src/auth/biometrics.ts`), so a
+// test that never exercises the real unlock flow never loads it — but the
+// wrapper's own test and any LockGate/Settings test that does import it, so it
+// is stubbed globally. Defaults model a Face ID device with a passcode; tests
+// that exercise the wrapper's mapping override these with their own
+// `jest.mock` factory.
 jest.mock('@sbaiahmed1/react-native-biometrics', () => ({
   isSensorAvailable: jest.fn(async () => ({
     available: true,

@@ -5,11 +5,6 @@ import '../i18n';
 
 import { useAppLock } from './use-app-lock';
 
-// The whole lock is gated OFF by default (`APP_LOCK_ENABLED`, src/db/db-config).
-// These tests exercise the locking LOGIC, so they run with the flag forced ON.
-// The OFF path (flag defaulted false) is covered by use-app-lock.disabled.test.ts.
-jest.mock('../db/db-config', () => ({ APP_LOCK_ENABLED: true }));
-
 const mockAuthenticate = jest.fn();
 jest.mock('./biometrics', () => ({
   authenticate: (...args: unknown[]) => mockAuthenticate(...args),

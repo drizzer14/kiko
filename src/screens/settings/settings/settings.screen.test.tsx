@@ -35,12 +35,6 @@ const renderScreen = (navigation: NavigationSpy = navigationSpy()) =>
     />,
   );
 
-// The App Lock card moved to the System sub-screen, so the main Settings screen
-// never renders it regardless of the flag. This suite pins APP_LOCK_ENABLED OFF
-// and asserts the card is absent here; the visible/hidden App Lock paths now
-// live in system.screen.test.tsx and system.screen.app-lock-off.test.tsx.
-jest.mock('../../../db/db-config', () => ({ APP_LOCK_ENABLED: false }));
-
 const mockSetBaseCurrency = jest.fn();
 let mockLiveQueryData: Array<{ baseCurrency: string }> = [{ baseCurrency: 'UAH' }];
 let mockLiveQueryIsLoading = false;

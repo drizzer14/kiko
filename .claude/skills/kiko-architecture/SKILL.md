@@ -883,22 +883,24 @@ re-imported. Kiko has no per-CARD cursor — that would need a schema
 change — so a partial failure does re-fetch the cards that already
 finished; the dedup layer keeps that correct, only slower.
 
-## DB encryption + app lock (always on)
+## DB encryption (always on)
 
-The SQLCipher database-encryption migration and the app-lock gate are
-**always on** — `DB_ENCRYPTION_ENABLED` and `APP_LOCK_ENABLED`
-(`src/db/db-config.ts`) are both `true` today, not a rollout flag a
-build can ship off. This is a security invariant, not a feature toggle
-(Guideline 5.6 sensitivity: a build/env flag that changes what a user's
-data protection looks like must never ship in the "off"/hidden state).
-Read these files directly rather than trusting a restated summary here,
-since the exact migration steps are the kind of thing that can still
-change:
+The SQLCipher database-encryption migration is **always on** —
+`DB_ENCRYPTION_ENABLED` (`src/db/db-config.ts`) is `true` today, not a
+rollout flag a build can ship off. This is a security invariant, not a
+feature toggle (Guideline 5.6 sensitivity: a build/env flag that
+changes what a user's data protection looks like must never ship in
+the "off"/hidden state). Read these files directly rather than
+trusting a restated summary here, since the exact migration steps are
+the kind of thing that can still change:
 
-- `src/db/db-config.ts` — `DB_ENCRYPTION_ENABLED` and
-  `APP_LOCK_ENABLED`, the two master switches; read the live values
-  there rather than trusting this line if it drifts. Read the comment
-  above each for what it gates.
+- `src/db/db-config.ts` — `DB_ENCRYPTION_ENABLED`, the master switch;
+  read the live value there rather than trusting this line if it
+  drifts. Read the comment above it for what it gates. The app lock
+  has no build-time switch of its own: it is a live `settings.lockEnabled`
+  toggle read by `useAppLock` (`src/auth/use-app-lock.ts`) and the
+  `AppLockSetting` settings card — see kiko-domain "App lock / security
+  settings".
 - `src/db/encrypted-database.ts` — `openEncryptedDatabase()`, the
   one-time plaintext -> SQLCipher export. Its crash-safety ordering is
   the load-bearing fact: export first, persist the key second, delete

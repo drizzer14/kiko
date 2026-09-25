@@ -34,9 +34,7 @@ const canOfferLock = (status: SensorStatus | undefined): boolean =>
 /**
  * The Settings App Lock card: a labeled switch that enables/disables the
  * biometric lock, plus a sensor-status hint. The lock is asked for only on a
- * fresh app open, so there is nothing else to configure. The screen mounts this
- * card only when `APP_LOCK_ENABLED` is on, so a safe build with the flag off
- * shows no non-functional toggle.
+ * fresh app open, so there is nothing else to configure.
  */
 const AppLockSetting: FC<AppLockSettingProps> = ({ lockEnabled, onToggle }) => {
   const { t } = useTranslation();
