@@ -243,7 +243,13 @@ new component can land between reviews of this skill:
   render, or a single component gating one value inside an
   already-loaded parent (e.g. statement-import's
   `example-transaction`), never has to add one. Takes an optional
-  `testID`, conventionally `<screen>-loading`.
+  `testID`, conventionally `<screen>-loading`. The spinner itself is
+  delayed by `SPINNER_DELAY_MS` (200ms): the container (the plain
+  background) renders immediately, but the `ActivityIndicator` only
+  mounts once the delay elapses, so a screen whose first read resolves
+  quickly (the common case, off the local op-sqlite worker) never
+  flashes a spinner at all — readiness (`useDataReady`) itself is
+  never delayed, only the visual spinner.
 - **Box** — a generic layout container reading spacing/color/direction
   tokens (padding, gap, background, `direction="row"`).
 - **Text** — the base text primitive reading the typography and tone

@@ -303,11 +303,65 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
   against the SAME key that was already applied keeps that previous
   data, matching what a same-key success does.
 
-`usePriceBook()` (`src/prices/use-price-book/`) returns `{ book,
+`usePriceBook(enabled?)` (`src/prices/use-price-book/`) returns `{ book,
 isLoading }`, not a bare `PriceBook` — every consumer destructures
 `const { book: priceBook } = usePriceBook();` (or additionally
 `isLoading: priceBookLoading` when gating). See `kiko-pricing` for the
-full contract.
+full contract, and the section below for its `enabled` argument.
+
+## App-open and refresh work is gated on data presence
+
+Standing rule: the app never performs a request or a query for data
+the user does not have. Every app-open/refresh step reads one cheap
+gate first — an `EXISTS`/`LIMIT 1` check or a small `SELECT DISTINCT`,
+never a per-holding loop — and skips its own work entirely when the
+gate says there is nothing to do.
+
+- **Rate/price refresh**: `openCurrencies()`
+  (`src/rates/open-currencies-gate/`) is the ONE gate implementation
+  `refreshRates` (`rates-refresh.ts`) and `runBackfill`
+  (`history-backfill.ts`) both read — the same gate pattern for every
+  refresh, not a per-call-site copy. It resolves `{ needsFiat,
+  cryptoCurrencies }` from a single `settings` read plus
+  `holdingsRepo.openCurrenciesQuery()` (a `SELECT DISTINCT currency`
+  over ACTIVE holdings — open, and whose account is not archived,
+  mirroring `activeHoldings`). The fiat leg (Monobank/NBU, or NBU
+  history) runs only when `needsFiat` — some active holding's currency
+  differs from the base (display) currency, which also covers the
+  crypto leg's own USD:UAH anchor need, since a held crypto currency
+  always differs from a fiat base. The crypto leg (CoinGecko current
+  price or history) runs only for `cryptoCurrencies`, and
+  `fetchCryptoPrices`/`fetchCryptoHistory` fetch only those currencies,
+  never the full supported set. `refreshMetalPrices`
+  (`src/prices/metal-refresh/`) is the original template this
+  generalizes: `earliestDays.size === 0` (no held metal) is a zero-
+  network, zero-write early return, verified by test.
+- **`usePriceBook`'s `enabled` argument**: `useLiveQuery`'s own
+  `enabled` parameter (default `true`) skips BOTH the query and the
+  reactive subscription while `false`, reporting `data: []` and
+  `isLoading: false` — ready, never stuck (a gated-off screen must
+  still flip its overall readiness, never spin forever on a query it
+  deliberately never ran). `usePriceBook(enabled)` forwards straight
+  through; a screen passes `holdings.some((holding) =>
+  needsPriceBook(holding.type))` (or the one displayed holding, for a
+  detail screen) — never a conditional call to the hook itself, which
+  Rules of Hooks forbids. `needsPriceBook` (`src/holdings/priced-value/`)
+  is true for a priced type (`property_item`/`metal`) OR `loan` (not
+  priced, but reads its own `holding:<id>` series the same way,
+  kiko-pricing) — the one predicate every call site uses.
+- **The first add triggers the gated refresh**: creating the FIRST
+  metal/foreign-currency/crypto holding (`holding-form.screen.tsx`'s
+  manual create) or restoring a `.kiko` export (`importData`,
+  `src/data-transfer/import-data.ts`) triggers
+  `Promise.allSettled([refreshRates(), refreshMetalPrices()])`
+  explicitly right after its own write commits, since neither path
+  runs through the sync fan-out that otherwise triggers this — so the
+  price/rate appears without an app restart. Both calls gate
+  themselves, so this is a no-op when neither is needed;
+  `Promise.allSettled` never rejects, so a refresh failure never turns
+  a successful create/import into a shown error. An EDIT never needs
+  this trigger — a holding's type and currency are immutable once
+  created.
 
 ## Bulk insert: chunk when row count is caller- or API-controlled
 
