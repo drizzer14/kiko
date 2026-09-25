@@ -212,10 +212,12 @@ rather than trusting a restated summary here.
 in both create and edit mode — too many long category names for a
 `ChipRow`) plus a Cost field (create-only). One lot
 plus one manual price point equal to that cost is what
-`holding-form.screen.tsx` builds from it on save, via
-`holdingsRepo.create`'s `firstPricePoint` param — see `kiko-pricing`'s
-"Creating and clearing a priced holding's price series" section for
-the create/remove symmetry.
+`usePropertyFields`'s own `createPayload`
+(`src/screens/forms/holding-form/property/use-property-fields/`, R3
+Phase C) builds from it on save, via `holdingsRepo.create`'s
+`firstPricePoint` param — see `kiko-pricing`'s "Creating and clearing
+a priced holding's price series" section for the create/remove
+symmetry.
 `src/screens/forms/holding-form/metal/metal-section/metal-section.component.tsx`
 is the `metal` create-form section (T20): a metal-element `ChipRow`, a
 physical-form `ChipRow`, a unit `ChipRow`, a Purity `TextField`
