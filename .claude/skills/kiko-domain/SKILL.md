@@ -405,8 +405,7 @@ dropped: the loan-payments module (`src/statistics/loan-payments/`)
 exports `loanPaymentExcludedTransactionIds(transactions, loanHoldings)`, which
 drops a row from the pie/trend the same way every other exclusion
 rule does, IF AND ONLY IF its `transactions.loanHoldingId` marker
-(T29) points at a holding present in `loanHoldings` — Review Focus 7
-(`global-constraints.md`): a dangling link (its loan holding was
+(T29) points at a holding present in `loanHoldings` — a dangling link (its loan holding was
 deleted — `holdingsRepo.remove`/`accountsRepo.remove` already clear
 the marker transactionally the moment that happens, T29) is NOT
 excluded, so it counts as ordinary spending under its own category,
@@ -1103,10 +1102,14 @@ below until it is added there too. Seven steps, in order:
    balance-shaped type) can usually reuse the shared `useBalanceFields`/
    `BalanceFormBlock` instead of writing new ones — see how
    `card`/`cash`/`crypto_asset`/`jar` share one hook instance.
-4. Add en/uk `forms.holding.<type>` label keys (`src/i18n/`) for
-   `holding-form.screen.tsx`'s own `typeLabels: Record<HoldingType,
-   string>` — the user reviews new/changed translation keys before any
-   deploy that ships them (see `kiko-translator`).
+4. Add en/uk label keys (`src/i18n/`) for `holding-form.screen.tsx`'s
+   own `typeLabels: Record<HoldingType, string>` — usually a new
+   `forms.holding.<type>` key, but `cash` reuses the account kind's own
+   `forms.account.cash` key instead (a `forms.holding.*` /
+   `forms.account.*` label key, not the enum value itself — see
+   `typeLabels`'s own literal object for the current per-type mapping).
+   The user reviews new/changed translation keys before any deploy that
+   ships them (see `kiko-translator`).
 5. Add an entry to `holdingDetailSpecs`
    (`src/screens/holding-detail/holding-detail-spec/`): its footer add
    action, its value-breakdown display (or `null` to hide it), and its
