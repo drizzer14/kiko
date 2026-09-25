@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { mkdtempSync, writeFileSync } from 'node:fs';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 
 // scripts/checks/lint.sh (the fast-tier Biome wrapper, run per-file on every
 // Edit/Write/MultiEdit) must not fail a file biome.json deliberately excludes
@@ -52,5 +52,34 @@ describe('scripts/checks/lint.sh', () => {
 
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('CHECK FAILED');
+    expect(result.stderr).toContain('noExplicitAny');
+  });
+
+  // Regression: biome.json sets vcs.useIgnoreFile: true, so Biome itself
+  // reports "No files were processed…" for ANY real file .gitignore covers —
+  // not only the biome.json files.includes exclusions above. lint.sh's
+  // hand-copied case list (ios/, vendor/, coverage/, rules/fixtures/,
+  // *.jsbundle) doesn't cover a gitignored path like .claude/worktrees/, so a
+  // clean file edited inside a worktree there tripped a false failure on
+  // every save.
+  it('exits 0 for a clean file under a gitignored path outside the biome.json exclude list', () => {
+    const directory = join(__dirname, '../.claude/worktrees/kiko-lint-gitignore-probe/src');
+    mkdirSync(directory, { recursive: true });
+    const target = join(directory, 'clean.ts');
+    writeFileSync(target, 'export const value = 1;\n');
+
+    try {
+      const result: SpawnSyncReturns<string> = spawnSync('bash', [SCRIPT, target], {
+        encoding: 'utf8',
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe('');
+    } finally {
+      rmSync(join(__dirname, '../.claude/worktrees/kiko-lint-gitignore-probe'), {
+        recursive: true,
+        force: true,
+      });
+    }
   });
 });
