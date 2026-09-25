@@ -403,6 +403,19 @@ base64-decode ruling`) while a "brief window"-style sentence never
 opens a match at all — see the fixture pair's `task brief`/`parity
 brief` positive shapes and the `brief window` negative probe.
 
+**A second, narrower member catches the same vocabulary without a
+"task"/"parity" qualifier: `per\sthe\sbrief|the\sbrief's`.** A residual
+gap left a bare "per the brief" or "the brief's own …" citation
+uncaught, since neither has a "task"/"parity" qualifier before
+"brief" for the member above to match. This member is deliberately
+narrower than the bare word "brief" itself — it only fires on the
+literal "per the" lead-in or a possessive "'s" directly after
+"brief" — so it still never opens a match on "the brief window" (no
+possessive, no "per the" lead-in) or "a brief native spinner" (plain
+adjective use, no "the"/"per the" at all). Fixture pair: the `.bad.ts`
+positive shapes ("per the brief, …", "the brief's residual gap …")
+and the `.good.ts` negative probe covering both adjective shapes.
+
 ## One exported component per `.tsx` — a Jest invariant, not Semgrep
 
 `scripts/checks/one-component-per-file.ts` mechanizes kiko-code-style's

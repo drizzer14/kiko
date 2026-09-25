@@ -87,3 +87,9 @@ export const taskBriefingNearMissNote = 'kept for realism; the comment above is 
 // reads as uninterrupted — no "task"/"parity" qualifier appears before
 // "brief", so the narrowed family never opens a match at all.
 export const briefWindowNote = 'kept for realism; the comment above is the real test';
+
+// 13. The new per-the-brief/the-brief's member must not match ordinary
+// adjective use of "brief" either: a brief native spinner covers the
+// fetch, and the modal stays open only a brief moment — neither "per the"
+// nor a possessive "'s" follows "brief" here, so the new member never
+// opens a match.

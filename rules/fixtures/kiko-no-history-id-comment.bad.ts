@@ -111,3 +111,11 @@ export const sharedRowStaysUnchanged = true;
 // EXPECT-FINDING
 // per the parity brief's own note, this table only ever grows.
 export const tableOnlyEverGrows = true;
+
+// EXPECT-FINDING
+// per the brief, this cache never evicts a warm entry early.
+export const cacheNeverEvictsWarmEntry = true;
+
+// EXPECT-FINDING
+// the brief's residual gap is what this member closes.
+export const residualGapClosedByThisMember = true;
