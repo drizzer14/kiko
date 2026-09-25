@@ -130,15 +130,9 @@ describe('holdingDetailSpecs nextInstallment', () => {
   });
 
   it('returns the first installment due on/after today for a structured loan', () => {
-    // A fixed `now`/`startDate` pair (rather than the real clock) makes the
-    // 13th installment an INDEPENDENTLY computable expectation — `startDate`
-    // is exactly 12 months before `now`, both anchored on the 1st, so the
-    // 12th installment's due date (`addMonths(startDate, 12)`, the 1st of
-    // `now`'s own month) always falls strictly before `now`'s mid-month
-    // instant, leaving the 13th as the next one due. Deriving `expectedDate`
-    // straight from `addMonths` — not from `loanInstallments(meta).find(...)`,
-    // the SUT's own search — means a bug in that search's predicate would
-    // still be caught here, unlike a test that mirrors the same expression.
+    // Deriving `expectedDueDate` straight from `addMonths` — not from
+    // `loanInstallments(meta).find(...)`, the SUT's own search — means a bug
+    // in that search's predicate would still be caught here.
     const now = Date.UTC(2025, 6, 15);
     const startDate = Date.UTC(2024, 6, 1);
     const meta: LoanMeta = {

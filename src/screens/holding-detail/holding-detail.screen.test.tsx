@@ -369,8 +369,8 @@ describe('HoldingDetailScreen', () => {
     // This screen sits under `AccountsStack`'s `headerLargeTitle: true`, and the
     // FlatList — not `Screen`'s ScrollView — owns the scrolling. Without this
     // prop the native large title has no scroll view to attach its content
-    // inset to and overlaps the list header at scroll-top (feedback round-2,
-    // item 2). `Screen bleedBottom`/`bleedTop` drop the double top inset; this
+    // inset to and overlaps the list header at scroll-top. `Screen
+    // bleedBottom`/`bleedTop` drop the double top inset; this
     // matches the working `account-detail` scroll ScrollView's own setting.
     expect(getByTestId('ledger-list').props.contentInsetAdjustmentBehavior).toBe('automatic');
   });
@@ -383,8 +383,8 @@ describe('HoldingDetailScreen', () => {
     // iOS collapses the native large title only when the scroll view it tracks
     // is reachable as a DIRECT child of the SafeAreaView, walking the first-child
     // chain — an intermediate padded wrapper `View` between them stops the
-    // collapse (the title stays stuck expanded — feedback round-3, item 1). So
-    // `Screen bleedTop` renders this FlatList directly, with NO `screen-content`
+    // collapse (the title stays stuck expanded). So `Screen bleedTop` renders
+    // this FlatList directly, with NO `screen-content`
     // wrapper (the wrapper the plain/`bleedBottom` branches still use). Its
     // absence is the structural contract that keeps the large title collapsing.
     expect(getByTestId('ledger-list')).toBeTruthy();
@@ -651,7 +651,7 @@ describe('HoldingDetailScreen', () => {
     expect(within(converted).getByText(/₴/)).toBeTruthy();
     // The caption sits INSIDE the shared value header (`holding-value-header`),
     // tucked directly under the amount — not as a detached line at the bottom of
-    // the summary block (feedback round-2, item 3). Scoping the query to the
+    // the summary block. Scoping the query to the
     // header node is what proves the grouping.
     expect(
       within(getByTestId('holding-value-header')).getByTestId('holding-detail-converted'),
@@ -1070,10 +1070,9 @@ describe('HoldingDetailScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('PricePointForm', { holdingId: 'h-1' });
   });
 
-  // F4 audit 14: a property_item (ledgerless, no derived lifecycle entries)
-  // with no real transactions used to leave a bare "Transactions" heading
-  // with nothing below it — the same ListEmptyComponent pattern
-  // `home.screen.tsx` uses.
+  // A property_item (ledgerless, no derived lifecycle entries) with no real
+  // transactions used to leave a bare "Transactions" heading with nothing
+  // below it — the same ListEmptyComponent pattern `home.screen.tsx` uses.
   it('shows the empty-transactions state for a property_item with no real transactions', async () => {
     seed(propertyHolding);
 
@@ -1166,7 +1165,7 @@ describe('HoldingDetailScreen', () => {
     }
 
     expect(getByText(`Next installment (${formatDate(next.dueDate)})`)).toBeTruthy();
-    // Scoped per row (Minor 3): a swapped principal/interest would fail here,
+    // Scoped per row: a swapped principal/interest would fail here,
     // unlike a bare `getByText` search over the whole screen.
     expect(getByTestId('next-installment-principal')).toHaveTextContent(
       formatMoney(Money.of('UAH', next.principalMinorUnits)),

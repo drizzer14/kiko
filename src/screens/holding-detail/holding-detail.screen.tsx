@@ -668,8 +668,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
             // hugging the value) and consistent across every holding type. It
             // used to render as a disconnected caption at the BOTTOM of the whole
             // summary block, which on a deposit/bond floated below the whole
-            // breakdown, detached from the value it converts (feedback round-2,
-            // item 3).
+            // breakdown, detached from the value it converts.
             secondary={
               <ValueHeaderSecondary convertedToBase={convertedToBase} valueAsOf={valueAsOf} />
             }
@@ -677,10 +676,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           {spec?.breakdown && (
             <Box style={styles.breakdown}>
               {/* The one shared "label left, value right" row layout
-                  (`SummaryTable`, device-feedback-round-F1 item 3) — this is
-                  the table the statement-import preview and column-mapping
-                  result section now reuse the LAYOUT of, never these
-                  value/percent/tax COLUMNS themselves. */}
+                  (`SummaryTable`) — this is the table the statement-import
+                  preview and column-mapping result section now reuse the
+                  LAYOUT of, never these value/percent/tax COLUMNS
+                  themselves. */}
               <SummaryTable
                 rows={breakdownRows(
                   breakdown,
@@ -779,11 +778,11 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       // Screen render the FlatList as a DIRECT child of its SafeAreaView — with
       // NO intermediate `content` wrapper — so iOS tracks the FlatList as the
       // scroll view that drives the large-title COLLAPSE (an interposed wrapper
-      // stops the collapse: the title stays stuck expanded — feedback round-3,
-      // item 1). `bleedTop` also drops Screen's top safe-area edge so the list
-      // reaches the top edge and iOS applies the large-title content inset to it
-      // (via the FlatList's own `contentInsetAdjustmentBehavior="automatic"`
-      // below) — keeping the no-float fix from feedback round-2, item 2. This
+      // stops the collapse: the title stays stuck expanded). `bleedTop` also
+      // drops Screen's top safe-area edge so the list reaches the top edge and
+      // iOS applies the large-title content inset to it (via the FlatList's
+      // own `contentInsetAdjustmentBehavior="automatic"` below) — keeping the
+      // caption from floating below the list. This
       // mirrors the working `account-detail` scroll ScrollView, a direct child
       // of its own SafeAreaView; this screen cannot use `scroll` because a
       // virtualized FlatList must not nest inside that branch's ScrollView.
@@ -899,7 +898,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingTop: theme.spacing(3),
     paddingBottom: theme.spacing(1),
   },
-  // The ledger's own empty state (F4 audit 14, `home.screen.tsx`'s
+  // The ledger's own empty state (`home.screen.tsx`'s
   // `ListEmptyComponent` pattern) — a plain centered caption below the
   // "Transactions" heading, replacing a bare heading with nothing beneath it
   // for a holding type (property_item, loan) with no real transactions yet.
