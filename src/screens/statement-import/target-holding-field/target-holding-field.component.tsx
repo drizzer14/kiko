@@ -7,9 +7,9 @@ import FieldTrigger from '../../../design-system/components/field-trigger';
 import type { TargetHoldingFieldProps } from './target-holding-field.props';
 
 /**
- * The statement-import "choose a holding" control as a labeled SELECT FIELD
- * (device-feedback-round-F1, item 2) — a `FieldTrigger` that opens the
- * existing `TargetHoldingSheet`, mirroring the app's shared "field-plus-
+ * The statement-import "choose a holding" control as a labeled SELECT
+ * FIELD — a `FieldTrigger` that opens the existing `TargetHoldingSheet`,
+ * mirroring the app's shared "field-plus-
  * sheet" picker family (`ModeSelectField`, `HoldingSelectField` — see
  * `kiko-design-system`'s "Component set" section) — rather than the former
  * plain `Button` that opened the same sheet. `TargetHoldingSheet` itself is

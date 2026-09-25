@@ -59,8 +59,8 @@ type StatementImportScreenProps = NativeStackScreenProps<AccountsStackParamList,
 const expectedFormatOf = (id: StatementFormatId | undefined): StatementFormat | undefined =>
   foldMap(maybe(id), (found) => statementFormats.find((format) => format.id === found));
 
-// The recognized format for a ready `input` (device-feedback-round-1 item
-// 5): scoped to `expectedFormat` when the account's bank is known — ONLY
+// The recognized format for a ready `input`: scoped to `expectedFormat`
+// when the account's bank is known — ONLY
 // that bank's own format may match, so a file that parses as a DIFFERENT
 // bank's format recognizes nothing here (the caller reports it as a
 // mismatch, not a silent auto-detect success) — or the original
@@ -174,7 +174,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   );
   const savedMappings = settingsRows.at(0)?.statementMappings;
 
-  // Item 2 (F3, BUG): a holding created via "Add new" (`handleCreateNewHolding`
+  // A holding created via "Add new" (`handleCreateNewHolding`
   // below) never got SELECTED — the live-queried option list already showed
   // it (`useTargetHoldingOptions` above), but nothing told the picker to
   // select it. `HoldingFormScreen`'s create-save path now hands the new id
@@ -254,8 +254,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     .with({ kind: 'loading' }, { kind: 'unreadable' }, () => undefined)
     .exhaustive();
   const expectedFormat = expectedFormatOf(expectedFormatId);
-  // Scoped recognition (device-feedback-round-1 item 5) — see `formatFor`'s
-  // doc comment above for the full rule.
+  // Scoped recognition — see `formatFor`'s doc comment above for the full rule.
   const format = formatFor(input, expectedFormat);
   const stats = statsFor(format, input);
   const bankMismatch = input !== undefined && expectedFormat !== undefined && format === undefined;
@@ -264,8 +263,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // mismatch) and an EXACT saved mapping exists for this account's own
   // bank, skip straight to the manual-mapping screen instead of showing the
   // "we don't recognize this file" state — `ColumnMapping` still requires
-  // its own Import tap (Review Focus 3), so this never imports anything on
-  // its own.
+  // its own Import tap, so this never imports anything on its own.
   const autoReplacedRef = useRef(false);
   // The user chose the manual-mapping path themselves (`handleMapColumnsManually`
   // below) — once that happens, the auto-replace check must never act for
@@ -369,7 +367,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   const showUnreadable =
     !bankMismatch && (isUnreadableLoad || (input !== undefined && stats === undefined));
 
-  // F4 audit 2: Import is ALWAYS enabled (`disabled={importing}` only, see
+  // Import is ALWAYS enabled (`disabled={importing}` only, see
   // the footer below) — this validates on press instead of standing behind a
   // `disabled={!canImport}` gate, mirroring `column-mapping.screen.tsx`'s own
   // `handleImport` for the SAME target-holding field.
@@ -459,8 +457,8 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   const handleMapColumnsManually = (): void => {
     if (accountId) {
       manualMapPushedRef.current = true;
-      // Item 11 (F3): carry the holding already chosen on THIS preview
-      // through to Map Columns, so it pre-fills instead of asking again.
+      // Carry the holding already chosen on THIS preview through to Map
+      // Columns, so it pre-fills instead of asking again.
       navigation.navigate('ColumnMapping', { filePath, accountId, holdingId: selectedHoldingId });
     }
   };

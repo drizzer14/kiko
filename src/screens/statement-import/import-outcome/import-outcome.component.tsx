@@ -7,9 +7,9 @@ import type { ImportOutcomeProps } from './import-outcome.props';
 
 /**
  * The `importStatement` action's own SUCCESS result block — the imported/
- * total count, and (Task 3 review, CRITICAL fix) an honest "N rows in a
- * different currency were skipped" line, naming WHICH currencies (F4 item 9)
- * whenever `result.skippedWrongCurrency` is non-zero. A caught failure is no
+ * total count, and an honest "N rows in a different currency were skipped"
+ * line, naming WHICH currencies, whenever `result.skippedWrongCurrency` is
+ * non-zero. A caught failure is no
  * longer rendered here — see this component's own props doc comment.
  * Extracted out of `statement-import.screen.tsx` to keep that screen's own
  * cognitive complexity under the project's Biome cap, not because this block

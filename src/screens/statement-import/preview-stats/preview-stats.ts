@@ -15,16 +15,16 @@ export type PreviewStats = {
   // currency word) — excluded from `transactionCount` above, but surfaced
   // here rather than silently dropped (controller ruling 2).
   unresolvedRowCount: number;
-  // Distinct currencies across every parsed row, in first-seen order (Task 3
-  // review, CRITICAL fix) — a multi-card PrivatBank export can mix
-  // currencies per row, and `importStatement` excludes any row whose
+  // Distinct currencies across every parsed row, in first-seen order — a
+  // multi-card PrivatBank export can mix currencies per row, and
+  // `importStatement` excludes any row whose
   // currency doesn't match the target holding's, so the user needs this
   // BEFORE picking a holding to pick one that actually matches.
   detectedCurrencies: string[];
   // The FIRST parsed row (on-file order, not chronological) — powers the
-  // shared `ExampleTransaction` component (device-feedback-round-F1, items
-  // 9/14), so the user sees a real example of what this statement/mapping
-  // will actually write BEFORE tapping Import. Optional (rather than a
+  // shared `ExampleTransaction` component, so the user sees a real example
+  // of what this statement/mapping will actually write BEFORE tapping
+  // Import. Optional (rather than a
   // required `| undefined` field) so an existing test object literal built
   // before this field existed still type-checks; absent for an empty parse
   // (0 transactions), which renders nothing.

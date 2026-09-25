@@ -9,8 +9,7 @@ export type TargetHoldingFieldProps = {
   onSelect: (holdingId: string) => void;
   onCreateNew: () => void;
   // The "nothing picked yet" copy shown as the trigger's value — distinct
-  // from `label` (F4 audit 16: a placeholder must never repeat the label
-  // text verbatim).
+  // from `label`: a placeholder must never repeat the label text verbatim.
   placeholder: string;
   // The validation-failure message for this field, or `undefined` when it's
   // currently valid — forwarded straight to the underlying `FieldTrigger`.

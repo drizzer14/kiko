@@ -21,8 +21,8 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
 
 import { useTargetHoldingOptions } from './use-target-holding-options';
 
-// Every mock holding row carries a `type` (F3 item 3: the picker now resolves
-// each row's own icon/color) so `defaultHoldingColor`/`holdingTypeSymbol`
+// Every mock holding row carries a `type` (the picker resolves each row's
+// own icon/color) so `defaultHoldingColor`/`holdingTypeSymbol`
 // have something to key off — `card` resolves to `'creditcard'` /
 // `entityColorsDark.white` (`entity-symbols.ts`/`entity-colors.ts`), asserted
 // below rather than restated as a magic literal.

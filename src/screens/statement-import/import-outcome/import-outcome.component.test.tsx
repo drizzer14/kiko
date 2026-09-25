@@ -62,7 +62,7 @@ describe('ImportOutcome', () => {
     expect(getByText(i18n.t('statementImport.skippedWrongCurrency', { count: 1 }))).toBeTruthy();
   });
 
-  // F4 item 9: the result names WHICH currencies were skipped.
+  // The result names WHICH currencies were skipped.
   it('renders the skipped currency codes when the import skipped a different currency', async () => {
     const { getByText } = await render(
       <ImportOutcome

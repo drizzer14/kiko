@@ -12,8 +12,8 @@ import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support
 
 import StatementImportScreen from './statement-import.screen';
 
-// The real uabean fixture (already committed by Task 1) — read as raw text
-// then re-encoded as base64, the exact shape `RNFS.readFile(uri, 'base64')`
+// The real uabean fixture — read as raw text then re-encoded as base64, the
+// exact shape `RNFS.readFile(uri, 'base64')`
 // hands the screen. Exercising the REAL `detectFormat`/`monobankCsvFormat`
 // against a REAL base64-round-tripped payload (not a mocked parse result)
 // proves the screen actually decodes base64 back to the original UTF-8 text
@@ -99,13 +99,12 @@ jest.mock('../../statement-import/import-statement', () => ({
 
 // A multi-card PrivatBank export can span MULTIPLE distinct masked cards
 // (docs/plans/statement-import.md section C.1) — the preview must surface
-// EACH row's own hint. `privatbank-xlsx.format.ts` is still a throwing stub
-// at this point in the task split (Task 3 report), so this test drives the
-// screen against a hand-built `ParsedStatement` through a wrapped
-// `detectFormat`, keyed on one sentinel `fileName` — every OTHER test in this
-// file keeps using the REAL `detectFormat`/`monobankCsvFormat` pipeline
-// unchanged (`jest.requireActual` below), so this addition cannot affect any
-// existing assertion.
+// EACH row's own hint. No real fixture file covers this multi-card shape, so
+// this test drives the screen against a hand-built `ParsedStatement` through
+// a wrapped `detectFormat`, keyed on one sentinel `fileName` — every OTHER
+// test in this file keeps using the REAL `detectFormat`/`monobankCsvFormat`
+// pipeline unchanged (`jest.requireActual` below), so this addition cannot
+// affect any existing assertion.
 const MULTI_CARD_FILE_NAME = 'multi-card-privatbank-trigger.xlsx';
 const multiCardParsedStatement: ParsedStatement = {
   formatId: 'privatbank-xlsx',
@@ -121,7 +120,7 @@ const multiCardParsedStatement: ParsedStatement = {
     {
       // A different currency than row 1 — this file is BOTH multi-card AND
       // multi-currency, exercising the preview's "detected currencies" list
-      // (Task 3 review, CRITICAL fix) as well as the masked-card hint.
+      // as well as the masked-card hint.
       currency: 'USD',
       amountMinorUnits: 5_000,
       timeSeconds: 1_751_455_845,
@@ -317,10 +316,9 @@ describe('StatementImportScreen', () => {
     const dateSpan = getByTestId('statement-import-date-span');
     expect(dateSpan).toHaveTextContent(/2022/);
     expect(dateSpan).toHaveTextContent(/2023/);
-    // "Choose a holding" is now a SELECT FIELD (device-feedback-round-F1,
-    // item 2) — its caption AND its unselected placeholder value both show
-    // this text, so two matches are expected; the field itself is asserted
-    // by testID.
+    // "Choose a holding" is a SELECT FIELD — its caption AND its unselected
+    // placeholder value both show this text, so two matches are expected;
+    // the field itself is asserted by testID.
     expect(getByTestId('target-holding-field')).toBeTruthy();
   });
 
@@ -340,7 +338,7 @@ describe('StatementImportScreen', () => {
     await waitFor(() => expect(getAllByText('Monobank (CSV)')).toHaveLength(1));
   });
 
-  // F2 fix regression guard: `account-detail.screen.tsx` resolves this
+  // Regression guard: `account-detail.screen.tsx` resolves this
   // route's `expectedFormatId` via `statementFormatIdForBank(account.bankId)`,
   // which is `undefined` for a bank-less Bank account (`bankId: null` — a
   // valid, tested state the account-form edit picker can now return an
@@ -495,8 +493,8 @@ describe('StatementImportScreen', () => {
     );
   });
 
-  // Item 2 (F3, BUG): "Add new" holding must end up SELECTED once created,
-  // not just present in the live-queried option list.
+  // "Add new" holding must end up SELECTED once created, not just present
+  // in the live-queried option list.
   it('navigates to HoldingForm with a returnTo, then selects the holding once holdingId arrives back', async () => {
     mockReadFile.mockResolvedValue(fixtureBase64);
     setLiveData({
@@ -572,7 +570,7 @@ describe('StatementImportScreen', () => {
 
     await waitFor(() => expect(getByText('PrivatBank (XLSX)')).toBeTruthy());
 
-    // F4 audit 2: Import is ALWAYS enabled (never `disabled={!canImport}`) —
+    // Import is ALWAYS enabled (never `disabled={!canImport}`) —
     // no holding picked yet: pressing it must NOT auto-route by either card
     // hint shown above (the masked-card hint is a display suggestion only,
     // never a silent target pick, section C.1), and validates on press
@@ -589,8 +587,8 @@ describe('StatementImportScreen', () => {
     expect(mockImportStatement).toHaveBeenCalledWith(expect.anything(), 'h1');
   });
 
-  // Task 3 review, CRITICAL fix: a multi-currency file's preview must
-  // surface EVERY detected currency BEFORE the user picks a holding, so they
+  // A multi-currency file's preview must surface EVERY detected currency
+  // BEFORE the user picks a holding, so they
   // can pick one that actually matches (`importStatement` excludes any row
   // whose currency doesn't).
   it("surfaces the file's multiple detected currencies in the preview", async () => {
@@ -616,7 +614,7 @@ describe('StatementImportScreen', () => {
       imported: 1,
       total: 2,
       skippedWrongCurrency: 1,
-      // F4 item 9: the result names WHICH currency was skipped.
+      // The result names WHICH currency was skipped.
       skippedWrongCurrencyCodes: ['USD'],
     });
 
@@ -637,8 +635,8 @@ describe('StatementImportScreen', () => {
     ).toBeTruthy();
   });
 
-  // Phase 3 (Task 4), section C.2's KEY DESIGN: Sensebank (and, later, Phase
-  // 4's FOP CSVs) is cp1251-encoded, not UTF-8. The screen must try decoding
+  // Section C.2's KEY DESIGN: Sensebank (and, later, the FOP CSVs) is
+  // cp1251-encoded, not UTF-8. The screen must try decoding
   // the picked file's bytes as UTF-8 first (Monobank's existing path); if NO
   // format recognizes that text, it must retry decoding the SAME bytes as
   // cp1251 before giving up.
@@ -1019,7 +1017,7 @@ describe('StatementImportScreen — Done closes the sheet before navigating (N4,
 
     await fireEvent(view.getByTestId('import-result-sheet-modal'), 'dismiss');
 
-    // `popTo`, not `navigate` (C1) — reusing the existing `AccountDetail`
+    // `popTo`, not `navigate` — reusing the existing `AccountDetail`
     // instance.
     expect(view.navigation.popTo).toHaveBeenCalledWith(
       'AccountDetail',
@@ -1029,7 +1027,7 @@ describe('StatementImportScreen — Done closes the sheet before navigating (N4,
     expect(view.navigation.navigate).not.toHaveBeenCalledWith('AccountDetail', expect.anything());
   });
 
-  // R2-1: ignores a repeated close signal (e.g. a double Done tap under real
+  // Ignores a repeated close signal (e.g. a double Done tap under real
   // animation timing firing `onClosed` more than once) — navigates AT MOST
   // once.
   it('a repeated onClosed (a double Done tap) navigates once', async () => {

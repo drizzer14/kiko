@@ -112,8 +112,8 @@ describe('TargetHoldingSheet', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'a' });
   });
 
-  // F3 item 3: the sheet shows each holding's own icon, like every other
-  // holding picker.
+  // The sheet shows each holding's own icon, like every other holding
+  // picker.
   it('shows each holding’s own icon', async () => {
     const view = await render(
       <TargetHoldingSheet

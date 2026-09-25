@@ -40,8 +40,8 @@ describe('TargetHoldingField', () => {
     );
 
     // The FieldLabel caption ("Choose a holding") and the trigger's own
-    // value ("Select a holding") must read as two DIFFERENT strings (F4
-    // audit 16) — a placeholder never repeats the label text verbatim.
+    // value ("Select a holding") must read as two DIFFERENT strings — a
+    // placeholder never repeats the label text verbatim.
     expect(getByText('Choose a holding')).toBeTruthy();
     expect(getByText('Select a holding')).toBeTruthy();
   });
@@ -62,7 +62,7 @@ describe('TargetHoldingField', () => {
     expect(getByText('Dollar jar')).toBeTruthy();
   });
 
-  // F3 item 3: the trigger shows the SELECTED holding's own icon.
+  // The trigger shows the SELECTED holding's own icon.
   it('shows the selected holding’s own icon on the trigger', async () => {
     const { toJSON } = await render(
       <TargetHoldingField
