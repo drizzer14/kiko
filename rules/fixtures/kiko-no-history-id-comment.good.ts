@@ -48,3 +48,11 @@ export const oddNote = 'foo // T12';
 // match there either.
 export const globPattern = 'src/**/*.ts';
 export const mimeWildcard = '*/*';
+
+// 10. "round"/"Phase" prose with no trailing digit — the `round-N` and
+// `Phase N (Task` families anchor on the digit that follows, so ordinary
+// English never collides with them, unlike a bare letter-plus-digit
+// standalone token from one of the review-id families (kiko-linter's own
+// note on that accepted, undodged gap).
+export const roundTripNote = 'send it on a round trip through the API';
+export const finalPhaseNote = 'this is the final phase of testing';

@@ -343,6 +343,18 @@ class by rewording the handful of real collisions rather than
 loosening the rule, and the rule is now **ERROR**: `semgrep --config
 rules/semgrep-mobile.yml src` reports 0 findings for it.
 
+The same standalone-token collision applies to the `R\d`/`F\d`/`G\d`/
+`C\d` families (added for review-round/audit ids like `R2-1`, `F3`,
+`G2`, `C1`): a genuine prose sentence that happens to name "room R2"
+or "gate G1" as its OWN standalone token is syntactically identical to
+a real id and is accepted, not narrowed, the same way `D2` is above
+— there is no regex that tells "room R2" apart from a real review id
+without reading the surrounding English. `round-N` and `Phase N`
+DON'T have this problem: the digit is part of the id shape itself
+(`round-3`, `Phase 2 (Task ...`), so ordinary prose that says "a round
+trip" or "the final phase" (no trailing digit) never matches at all —
+see `rules/fixtures/kiko-no-history-id-comment.good.ts` for both.
+
 ## One exported component per `.tsx` — a Jest invariant, not Semgrep
 
 `scripts/checks/one-component-per-file.ts` mechanizes kiko-code-style's
