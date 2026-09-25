@@ -42,6 +42,11 @@ terminal term_64b728cd-967c-47b3-9338-55d575630639. User answers: skills id swee
 migration for stray deposit/bond rows; term error names the max (new key). NEW WORK (coordinator, brainstorming): PreToolUse
 pre-write guard hook that BLOCKS common style/design/architecture mistakes; mined list of 17 candidates sent to the user for
 approval (tier 1 reuse feat checks, tier 2 new exact rules, tier 3 pinned sites); next: approaches -> spec -> plan.
+~23:20: pre-write guard spec 51f05e8 + plan d4262b4 (25 tasks) APPROVED; track worktree pre-write-guard (from feat 543d7b8),
+orchestrator pre-write-guard-c7 (term_0d9b42d3-1821-46bd-9bc5-1d53c1d4e2ce). Rule 16 = decision 20 (secondaryTonal; feat skips it).
+Feat: B1b afaa178+ceed243 (migration 0040 cleanup). USER: P-NOWORK priority (no request/query without data; spinner 200 ms delay;
+device timing runs approved in upgrade order); REMOVE "price as of" caption, always today's rate, silent newest-rate fallback.
+USER SCOPE: P5 (broker/shares/EODHD) DEFERRED to a later release; LIGHTER REVIEWS (one per phase/group, Critical/Important only).
 1. When the hotfix session sends the bump sha: `git -C ~/orca/workspaces/pff-ios/device-deploy checkout -q --detach <sha>`,
    then kiko:ops archives Release / KikoDistribution there: FORCE_BUNDLING=1, clean build (rm ios/build + pod install
    if needed), NON-beta Xcode (check DTXcodeBuild), move the .xcarchive to ~/Library/Developer/Xcode/Archives/<date>/,
