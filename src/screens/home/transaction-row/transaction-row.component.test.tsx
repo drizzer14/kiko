@@ -19,9 +19,8 @@ import {
 } from '../../../design-system/components/card-context-menu';
 import GestureRootWrapper from '../../../test-support/gesture-root-wrapper';
 
-import type { HomeTransactionRow } from './transaction-row.props';
-
 import TransactionRow from './transaction-row.component';
+import type { HomeTransactionRow } from './transaction-row.props';
 
 jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: { remove: jest.fn() },

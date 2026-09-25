@@ -1,13 +1,12 @@
 import type { RefObject } from 'react';
-import { useCallback, useRef, useState } from 'react';
-import type { TextInputInstance } from 'react-native';
-
 import { Money } from '@kiko/currency/money';
 import type { Lot } from '@kiko/holdings/lots';
 import type { HoldingRow } from '@kiko/db/schema';
 import { parseAmount } from '@kiko/currency/parse';
 import { dayKeyOf } from '@kiko/prices/price-book';
+import { useCallback, useRef, useState } from 'react';
 import { shiftDecimal } from '@kiko/currency/decimal';
+import type { TextInputInstance } from 'react-native';
 import { currencyScale, type Currency } from '@kiko/currency/currency';
 import { asPropertyMeta, type PropertyCategory } from '@kiko/holdings/holding-metadata';
 

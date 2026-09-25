@@ -10,21 +10,20 @@ import {
   isBankProviderId,
   type BankProviderId,
 } from '../../../bank-sync/provider';
+import { styles } from '../account-detail.styles';
 import { saveToken } from '../../../monobank/token';
+import AddBankProviderSheet from '../add-bank-sheet';
 import type { AccountRow } from '../../../db/schema';
+import { formatLastSyncAt } from '../format-last-sync';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import { useLiveQuery } from '../../../db/use-live-query';
+import MonobankConnectField from '../monobank-connect-field';
 import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
 import { bankProviderRegistry } from '../../../bank-sync/registry';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import ConfirmSheet from '../../../design-system/components/confirm-sheet';
-
-import { styles } from '../account-detail.styles';
-import AddBankProviderSheet from '../add-bank-sheet';
-import { formatLastSyncAt } from '../format-last-sync';
-import MonobankConnectField from '../monobank-connect-field';
 
 type BankSyncSectionProps = {
   account: AccountRow;

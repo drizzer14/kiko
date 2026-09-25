@@ -4,7 +4,6 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import '../../../i18n';
 import { darkTheme } from '../../../design-system/theme';
-
 import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 
 import ConvertExchangeFields from './convert-exchange-fields.component';

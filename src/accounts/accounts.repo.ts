@@ -1,6 +1,5 @@
 import { asc, eq, sql } from 'drizzle-orm';
 import type { Repository } from '@kiko/db/repository';
-
 import { clearLoanLinksForHoldingsDatabaseTransaction } from '@kiko/holdings/repo';
 
 import { id } from '../db/id';

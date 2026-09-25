@@ -2,7 +2,6 @@ import type { FC } from 'react';
 import { View } from 'react-native';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
-
 import { formatDate } from '@kiko/dates/format';
 import { validateIsin } from '@kiko/bonds/isin';
 import Box from '@kiko/design-system/components/box';

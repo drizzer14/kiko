@@ -105,6 +105,30 @@ describe('scripts/checks/import-order.sh', () => {
     expect(result.stderr).toContain('Import ordering');
   });
 
+  it('fails two adjacent groups of the same kind — a path-alias package split from the rest of the external group', () => {
+    const result = runCheck(
+      "import { useTranslation } from 'react-i18next';\n" +
+        '\n' +
+        "import Box from '@kiko/design-system/components/box';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('Import ordering');
+  });
+
+  it('passes a single merged external group holding both a package and a path-alias import', () => {
+    const result = runCheck(
+      "import { useTranslation } from 'react-i18next';\n" +
+        "import Box from '@kiko/design-system/components/box';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+    );
+
+    expect(result.status).toBe(0);
+  });
+
   it('passes a leading side-effect-only group ahead of the external group', () => {
     // App.tsx's own shape: two sibling-relative side-effect imports that
     // must run before anything else is imported, ahead of the external

@@ -1,7 +1,6 @@
+import type { ExportSecrets } from '../payload';
 import { saveToken } from '../../monobank/token';
 import { saveCredentials } from '../../crypto-sync/binance/binance.credentials';
-
-import type { ExportSecrets } from '../payload';
 
 /**
  * Restores ONLY the Monobank tokens and Binance credentials from an imported

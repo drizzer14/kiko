@@ -1,7 +1,4 @@
 import type { RefObject } from 'react';
-import { useCallback, useRef, useState } from 'react';
-import type { TextInputInstance } from 'react-native';
-
 import {
   asTermDepositMeta,
   type CompoundingFrequency,
@@ -9,6 +6,8 @@ import {
 } from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db/schema';
 import { parseAmount } from '@kiko/currency/parse';
+import { useCallback, useRef, useState } from 'react';
+import type { TextInputInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
 
 import { saveMetadataEdit } from '../../save-metadata-edit';

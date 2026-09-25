@@ -1,7 +1,6 @@
 import type { TableCell } from './table-rows';
 import type { SavedColumnMapping } from './saved-mapping';
 import type { ColumnMapping } from './apply-column-mapping';
-
 import { findSavedMapping, headerFingerprint, mappingKeyFor } from './saved-mapping';
 
 const baseMapping: ColumnMapping = {

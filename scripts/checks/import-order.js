@@ -7,8 +7,9 @@
 // this order and each separated by a blank line — external (including a
 // path alias like '@kiko/...'), then '../**' parent-relative, then './**'
 // sibling-relative — each holding only imports of its own kind (a group
-// mixing two kinds, or a group of one kind appearing before an
-// earlier-ranked kind, is a violation), sorted ASCENDING within the group by
+// mixing two kinds, a group of one kind appearing before an earlier-ranked
+// kind, or two adjacent groups of the SAME kind that should have been one
+// group, is a violation), sorted ASCENDING within the group by
 // the length of the statement's ENDING physical line (the whole line for a
 // single-line import, the `} from '...';` closing line for a wrapped one),
 // value imports before `import type` only as an equal-length tiebreaker,
@@ -421,15 +422,32 @@ function checkPartition(groupIndex, partition, previousRank, violations) {
   return Math.max(previousRank, rank);
 }
 
+// Two adjacent (blank-separated) groups of the very same single kind belong
+// to ONE group per kiko-code-style — this is the "@kiko/* left as its own
+// block after the external group" shape a repo-wide sweep found in 14 files.
+// A group whose kind is ambiguous (mixed, already flagged by checkPartition
+// above, or empty) never counts as a match on either side of the boundary.
+function checkGroupAdjacency(groupIndex, groupKind, previousGroupKind, violations) {
+  if (groupKind !== null && groupKind === previousGroupKind) {
+    violations.push(
+      `group ${groupIndex + 1}: consecutive with group ${groupIndex}, both ${groupKind} — merge into one group`,
+    );
+  }
+
+  return groupKind;
+}
+
 function checkImportOrder(source) {
   const lines = source.split('\n');
   const { entries } = parseHeaderEntries(lines, skipPrelude(lines));
   const groups = splitIntoGroups(entries);
   const violations = [];
   let previousRank = -1;
+  let previousGroupKind = null;
 
   groups.forEach((groupEntries, groupIndex) => {
     const { items } = analyzeGroup(groupEntries);
+    const groupKinds = new Set();
 
     for (const partition of partitionAtBarriers(items)) {
       if (partition.kind === 'barrier') {
@@ -437,7 +455,14 @@ function checkImportOrder(source) {
       }
 
       previousRank = checkPartition(groupIndex, partition, previousRank, violations);
+
+      for (const kind of partitionKinds(partition.items)) {
+        groupKinds.add(kind);
+      }
     }
+
+    const groupKind = groupKinds.size === 1 ? [...groupKinds][0] : null;
+    previousGroupKind = checkGroupAdjacency(groupIndex, groupKind, previousGroupKind, violations);
   });
 
   return violations;

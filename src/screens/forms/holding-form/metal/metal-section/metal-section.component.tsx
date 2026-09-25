@@ -1,7 +1,5 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
-import { useTranslation } from 'react-i18next';
-
 import {
   preciousMetals,
   metalForms,
@@ -10,6 +8,7 @@ import {
   type MetalForm,
   type MetalUnit,
 } from '@kiko/holdings/holding-metadata';
+import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import ChipRow from '@kiko/design-system/components/chip-row';
 import TextField from '@kiko/design-system/components/text-field';

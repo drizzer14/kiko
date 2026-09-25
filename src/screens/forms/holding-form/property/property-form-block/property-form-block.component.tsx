@@ -1,6 +1,5 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import { currencySymbol } from '@kiko/currency/currency';

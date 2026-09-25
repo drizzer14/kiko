@@ -8,17 +8,28 @@ import { View, type ScrollViewInstance, type TextInputInstance } from 'react-nat
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { id } from '../../../db/id';
+import ColorPicker from '../color-picker';
+import {
+  useHeaderInset,
+  scrollToField,
+  type FieldInstance,
+} from '../scroll-to-field/scroll-to-field';
+import BankTypeField from '../bank-type-field';
 import { Money } from '../../../currency/money';
 import { saveToken } from '../../../monobank/token';
+import AccountKindField from '../account-kind-field';
 import type { AccountRow } from '../../../db/schema';
 import { parseAmount } from '../../../currency/parse';
 import Box from '../../../design-system/components/box';
 import { useLiveQuery } from '../../../db/use-live-query';
 import Text from '../../../design-system/components/text';
+import { groupAmount } from '../amount-format/amount-format';
+import HoldingIdentityField from '../holding-identity-field';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import Divider from '../../../design-system/components/divider';
 import CryptoSyncForm from '../../account-detail/crypto-sync-form';
+import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import TextField from '../../../design-system/components/text-field';
 import { defaultAccountColor } from '../../../holdings/entity-colors';
@@ -30,18 +41,6 @@ import MonobankConnectField from '../../account-detail/monobank-connect-field';
 import { accountKindSymbol, genericEntitySymbol } from '../../../holdings/entity-symbols';
 import { type Currency, currencySymbol, fiatCurrencyOptions } from '../../../currency/currency';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
-
-import ColorPicker from '../color-picker';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '../scroll-to-field/scroll-to-field';
-import BankTypeField from '../bank-type-field';
-import AccountKindField from '../account-kind-field';
-import { groupAmount } from '../amount-format/amount-format';
-import HoldingIdentityField from '../holding-identity-field';
-import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 
 type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
 

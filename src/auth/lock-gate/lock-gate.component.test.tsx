@@ -2,7 +2,6 @@ import { Text } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import '../../i18n';
-
 import MigrationsGate from '@kiko/migration/migrations-gate';
 
 import LockGate from './lock-gate.component';

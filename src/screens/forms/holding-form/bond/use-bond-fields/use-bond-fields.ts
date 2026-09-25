@@ -1,7 +1,4 @@
 import type { RefObject } from 'react';
-import { useCallback, useRef, useState } from 'react';
-import type { TextInputInstance } from 'react-native';
-
 import {
   asBondMeta,
   type BondKind,
@@ -11,6 +8,8 @@ import {
 import { Money } from '@kiko/currency/money';
 import type { HoldingRow } from '@kiko/db/schema';
 import { parseAmount } from '@kiko/currency/parse';
+import { useCallback, useRef, useState } from 'react';
+import type { TextInputInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
 import type { BondTerms } from '@kiko/bonds/nbu-register';
 import type { HoldingType } from '@kiko/holdings/holding-type';

@@ -11,7 +11,6 @@ import type {
   SettingsRow,
   TransactionRow,
 } from '../../../src/db/schema';
-
 import { SETTINGS_ID } from '../../../src/settings/settings.repo';
 import { ANCHOR, type ScreenshotDataset } from '../seed/screenshot-seed';
 import { SEEDED_CATEGORIES } from '../../../src/db/__fixtures__/seeded-categories';

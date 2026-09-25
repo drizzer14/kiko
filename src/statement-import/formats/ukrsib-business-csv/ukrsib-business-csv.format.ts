@@ -8,7 +8,6 @@
 // convention the other hand-authored fixtures in this plan use (see
 // task-5-report.md).
 import type { StatementFormat } from '../../parser';
-
 import { createColumnarBusinessCsvFormat, FOP_BUSINESS_COLUMN_BASE } from '../business-csv';
 
 // Section C.3: "Detect signature — file content matches the FULL literal

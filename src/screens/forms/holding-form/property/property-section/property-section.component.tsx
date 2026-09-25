@@ -1,7 +1,6 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
-
 import Box from '@kiko/design-system/components/box';
 import TextField from '@kiko/design-system/components/text-field';
 import SelectField from '@kiko/design-system/components/select-field';

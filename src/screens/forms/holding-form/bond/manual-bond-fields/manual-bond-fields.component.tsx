@@ -2,7 +2,6 @@ import type { FC } from 'react';
 import { View } from 'react-native';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
-
 import ChipRow from '@kiko/design-system/components/chip-row';
 import TextField from '@kiko/design-system/components/text-field';
 import SelectField from '@kiko/design-system/components/select-field';

@@ -7,6 +7,7 @@ import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { Linking, Pressable, type ScrollViewInstance } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
+import SettingsRow from '../settings-row';
 import pkg from '../../../../package.json';
 import Box from '../../../design-system/components/box';
 import { useLiveQuery } from '../../../db/use-live-query';
@@ -18,8 +19,6 @@ import type { SettingsStackParamList } from '../../../navigation/types';
 import CurrencyField from '../../../design-system/components/currency-field';
 import { type Currency, fiatCurrencyOptions } from '../../../currency/currency';
 import { useScrollToTopOnTabPress } from '../../../navigation/use-scroll-to-top-on-tab-press';
-
-import SettingsRow from '../settings-row';
 import { chevronSize, chevronTrailingWhitespace } from '../settings-row/settings-row.chevron';
 
 type SettingsScreenProps = NativeStackScreenProps<SettingsStackParamList, 'Settings'>;

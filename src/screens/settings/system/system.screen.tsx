@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
+import SettingsRow from '../settings-row';
 import Box from '../../../design-system/components/box';
 import { APP_LOCK_ENABLED } from '../../../db/db-config';
 import { useLiveQuery } from '../../../db/use-live-query';
@@ -11,8 +12,6 @@ import Screen from '../../../design-system/components/screen';
 import { type AppLanguage, deviceLanguage } from '../../../i18n';
 import type { SettingsStackParamList } from '../../../navigation/types';
 import LanguageSwitch from '../../../design-system/components/language-switch';
-
-import SettingsRow from '../settings-row';
 
 import AppLockSetting from './app-lock-setting/app-lock-setting.component';
 

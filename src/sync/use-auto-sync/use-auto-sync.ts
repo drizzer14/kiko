@@ -8,10 +8,9 @@ import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 import { refreshRates } from '../../rates/rates-refresh';
 import { refreshMetalPrices } from '../../prices/metal-refresh';
 import { bankProviderRegistry } from '../../bank-sync/registry';
-import { bankProviderIdOf, isBankProviderId } from '../../bank-sync/provider';
-
 import { type SyncableAccount, syncJobsFor } from '../sync-jobs';
 import { SYNC_CONCURRENCY_LIMIT, settleAllLimited } from '../settle-limited';
+import { bankProviderIdOf, isBankProviderId } from '../../bank-sync/provider';
 
 /**
  * Throttle window for the automatic on-open sync. Matches the rates cache
