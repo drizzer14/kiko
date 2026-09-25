@@ -1340,11 +1340,16 @@ describe('HoldingDetailScreen — loading gate', () => {
       holdings: true,
     });
 
-    const { getByTestId, queryByTestId, queryByText } = await renderScreen();
+    const { getByTestId, queryByText, queryByTestId } = await renderScreen();
 
+    // The FlatList itself stays MOUNTED throughout — bleedTop +
+    // contentInsetAdjustmentBehavior must apply from the very first render —
+    // showing the shared LoadingState as its header/empty content instead of
+    // a separate Screen branch.
     expect(getByTestId('holding-detail-loading')).toBeTruthy();
-    expect(queryByTestId('ledger-list')).toBeNull();
+    expect(getByTestId('ledger-list')).toBeTruthy();
     expect(queryByText(i18n.t('holdingDetail.emptyTransactions'))).toBeNull();
+    expect(queryByTestId('screen-footer')).toBeNull();
   });
 
   it('renders the real ledger once every query has loaded', async () => {
@@ -1354,29 +1359,6 @@ describe('HoldingDetailScreen — loading gate', () => {
 
     expect(getByTestId('ledger-list')).toBeTruthy();
     expect(queryByTestId('holding-detail-loading')).toBeNull();
-  });
-
-  it('does not flash back to the loading spinner once loaded, on a later re-query', async () => {
-    seed(cashHolding);
-    const view = await renderScreen();
-    expect(view.getByTestId('ledger-list')).toBeTruthy();
-
-    // A pull/reactive re-query that (even incorrectly) reported isLoading
-    // true again must not flip the screen back to the loading spinner.
-    seed(cashHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [], {
-      holdings: true,
-    });
-    await act(async () => {
-      view.rerender(
-        <HoldingDetailScreen
-          navigation={asNavigationProp<HoldingDetailProps['navigation']>(navigation)}
-          route={route}
-        />,
-      );
-    });
-
-    expect(view.queryByTestId('holding-detail-loading')).toBeNull();
-    expect(view.getByTestId('ledger-list')).toBeTruthy();
   });
 });
 

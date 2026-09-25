@@ -210,8 +210,12 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   };
 
   if (!isReady) {
+    // The SAME Screen mode/props as the ready branch below (`scroll` +
+    // `scrollableRef`) — not a bare `<Screen>` — so the first scroll view iOS
+    // walks to drive the native large-title collapse exists from the very
+    // first render, not only once data has loaded.
     return (
-      <Screen>
+      <Screen scroll scrollableRef={scrollableRef}>
         <LoadingState testID="account-detail-loading" />
       </Screen>
     );

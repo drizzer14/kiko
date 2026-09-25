@@ -10,7 +10,6 @@ import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { FlatList, Pressable } from 'react-native';
 import { categoriesRepo } from '@kiko/categories/repo';
-import { type FC, useLayoutEffect, useMemo } from 'react';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
@@ -18,6 +17,7 @@ import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { type FC, type ReactElement, type ReactNode, useLayoutEffect, useMemo } from 'react';
 
 import {
   buildCategoryDisplayMap,
@@ -382,6 +382,91 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
     .exhaustive();
 };
 
+// The footer's per-type primary action, extracted to module scope (mirroring
+// `resolveLedgerReadyView` below) so the `match` branching does not count
+// against the screen component's own cognitive-complexity budget. `undefined`
+// while `!isReady` (overriding every case) — a synced holding must never show
+// the "Add transaction" action before its own account row has loaded
+// (kiko-architecture's useLiveQuery consumer rule) — and for every type that
+// takes no footer action of its own (a bond, a synced holding).
+const holdingDetailFooterAction = (
+  isReady: boolean,
+  footerAction: FooterAction,
+  holdingId: string,
+  isDebtHolding: boolean,
+  navigation: HoldingDetailScreenProps['navigation'],
+  t: TFunction,
+): ReactNode => {
+  if (!isReady) {
+    return undefined;
+  }
+
+  return match(footerAction)
+    .with('contribution', () => (
+      <Button onPress={() => navigation.navigate('ContributionForm', { holdingId })}>
+        {t('forms.holding.addContribution')}
+      </Button>
+    ))
+    .with('transaction', () => (
+      <Button onPress={() => navigation.navigate('TransactionForm', { holdingId })}>
+        {t('holdingDetail.addTransaction')}
+      </Button>
+    ))
+    .with('updateValue', () => (
+      <Button onPress={() => navigation.navigate('PricePointForm', { holdingId })}>
+        {t(isDebtHolding ? 'holdingDetail.updateOutstanding' : 'holdingDetail.updateValue')}
+      </Button>
+    ))
+    .with('addLot', () => (
+      <Button onPress={() => navigation.navigate('LotForm', { holdingId })}>
+        {t('holdingDetail.addLot')}
+      </Button>
+    ))
+    .with('none', () => undefined)
+    .exhaustive();
+};
+
+type LedgerReadyView = {
+  data: LedgerListItem[];
+  headerComponent: ReactElement;
+  emptyComponent: ReactElement | undefined;
+};
+
+// Resolves the ledger FlatList's own loading-vs-ready content in one place —
+// module scope, mirroring `ValueHeaderSecondary`/`breakdownRows` above — so
+// branching on `isReady` does not count against the screen component's own
+// cognitive-complexity budget. The FlatList itself stays MOUNTED either way
+// (`bleedTop` + `contentInsetAdjustmentBehavior` must apply from the very
+// first render — kiko-architecture's useLiveQuery consumer rule): while
+// `!isReady` it shows no ledger rows, no "no transactions" empty text, and no
+// loaded summary header — only the shared `LoadingState` in the header slot,
+// so nothing renders as a final (empty or partial) state while this screen's
+// own queries are still loading.
+const resolveLedgerReadyView = (
+  isReady: boolean,
+  listData: LedgerListItem[],
+  listHeader: ReactElement,
+  emptyText: string,
+): LedgerReadyView => {
+  if (!isReady) {
+    return {
+      data: [],
+      headerComponent: <LoadingState testID="holding-detail-loading" />,
+      emptyComponent: undefined,
+    };
+  }
+
+  return {
+    data: listData,
+    headerComponent: listHeader,
+    emptyComponent: (
+      <Box style={styles.empty}>
+        <Text tone="textSecondary">{emptyText}</Text>
+      </Box>
+    ),
+  };
+};
+
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
   const { holdingId, name: initialName } = route.params;
@@ -680,13 +765,12 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       navigation.navigate('TransactionForm', { duplicateOfTransactionId: transactionId }),
   };
 
-  if (!isReady) {
-    return (
-      <Screen bleedTop>
-        <LoadingState testID="holding-detail-loading" />
-      </Screen>
-    );
-  }
+  const ledgerReadyView = resolveLedgerReadyView(
+    isReady,
+    listData,
+    listHeader,
+    t('holdingDetail.emptyTransactions'),
+  );
 
   return (
     <Screen
@@ -706,40 +790,17 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       // Because there is no wrapper, the FlatList owns its own horizontal and
       // bottom padding (see `styles.listContent` / `listBottomClearance`).
       bleedTop
-      footer={
-        // A large, full-width primary action, shown for the holdings that take
-        // one. A term_deposit opens the dedicated Contribution form ("Add
-        // contribution"); a plain holding opens the shared Transaction form
-        // ("Add transaction"); a priced holding (property_item) opens the
-        // dedicated price-point form ("Update value") to record a
-        // revaluation; a lot-form-eligible holding (`metal`) opens
-        // the dedicated Lot form ("Add lot") to record a buy/sell instead. A
-        // bond and a synced holding take no manual add action, so they
-        // render no footer at all.
-        match(footerAction)
-          .with('contribution', () => (
-            <Button onPress={() => navigation.navigate('ContributionForm', { holdingId })}>
-              {t('forms.holding.addContribution')}
-            </Button>
-          ))
-          .with('transaction', () => (
-            <Button onPress={() => navigation.navigate('TransactionForm', { holdingId })}>
-              {t('holdingDetail.addTransaction')}
-            </Button>
-          ))
-          .with('updateValue', () => (
-            <Button onPress={() => navigation.navigate('PricePointForm', { holdingId })}>
-              {t(isDebtHolding ? 'holdingDetail.updateOutstanding' : 'holdingDetail.updateValue')}
-            </Button>
-          ))
-          .with('addLot', () => (
-            <Button onPress={() => navigation.navigate('LotForm', { holdingId })}>
-              {t('holdingDetail.addLot')}
-            </Button>
-          ))
-          .with('none', () => undefined)
-          .exhaustive()
-      }
+      // A large, full-width primary action, shown for the holdings that take
+      // one — see `holdingDetailFooterAction`'s own doc comment for the
+      // per-type mapping and the `!isReady` gate.
+      footer={holdingDetailFooterAction(
+        isReady,
+        footerAction,
+        holdingId,
+        isDebtHolding,
+        navigation,
+        t,
+      )}
     >
       {/* The ledger is a virtualized FlatList that OWNS this screen's scrolling
           (under `bleedTop` Screen renders it directly inside its SafeAreaView,
@@ -759,7 +820,16 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           and between rows alike. */}
       <FlatList
         testID="ledger-list"
-        data={listData}
+        // Kept mounted while `!isReady` (never unmounted for a separate
+        // loading branch) so `bleedTop` + `contentInsetAdjustmentBehavior`
+        // still apply from the very first render — the same FlatList iOS
+        // tracks to drive the large-title collapse throughout.
+        // `resolveLedgerReadyView` resolves `data`/`ListHeaderComponent`/
+        // `ListEmptyComponent` together: no stale/partial ledger or the
+        // genuine "no transactions" text ever renders as final while any of
+        // this screen's own queries is still loading — only the shared
+        // LoadingState in the header slot.
+        data={ledgerReadyView.data}
         keyExtractor={(item) => ledgerKey(item.row)}
         renderItem={({ item }) => (
           <>
@@ -774,12 +844,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
             <LedgerRowItem row={item.row} context={rowContext} />
           </>
         )}
-        ListHeaderComponent={listHeader}
-        ListEmptyComponent={
-          <Box style={styles.empty}>
-            <Text tone="textSecondary">{t('holdingDetail.emptyTransactions')}</Text>
-          </Box>
-        }
+        ListHeaderComponent={ledgerReadyView.headerComponent}
+        ListEmptyComponent={ledgerReadyView.emptyComponent}
         // The list owns the scrolling under the native large title, so it — not
         // Screen's ScrollView — must carry the automatic content-inset
         // adjustment that seats content below the expanded large title (Screen

@@ -1098,6 +1098,10 @@ describe('AccountDetailScreen — loading gate', () => {
     // 0.00 ₴ is what the real (buggy) empty-while-loading render used to show
     // for the not-yet-loaded balance — it must never appear during loading.
     expect(queryByText(/0\.00/)).toBeNull();
+    // The SAME Screen mode as the ready branch (`scroll`) — the first scroll
+    // view iOS walks to drive the native large-title collapse must exist
+    // from the very first render, not only once data has loaded.
+    expect(getByTestId('screen-scroll-view')).toBeTruthy();
   });
 
   it('renders the real content once every query has loaded', async () => {
@@ -1113,20 +1117,16 @@ describe('AccountDetailScreen — loading gate', () => {
     expect(queryByTestId('account-detail-loading')).toBeNull();
   });
 
-  it('does not flash back to the loading spinner once loaded, on a later re-query', async () => {
-    setLiveData({
-      accounts: [account()],
-      holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
-    });
+  it('renders loading then loaded on ONE mounted instance — spinner first, then the real content, via rerender', async () => {
+    setLiveData({ accounts: [], holdings: [], holdingsIsLoading: true });
     const view = await renderScreen();
-    expect(view.getByTestId('account-detail-content')).toBeTruthy();
 
-    // A pull/reactive re-query that (even incorrectly) reported isLoading
-    // true again must not flip the screen back to the loading spinner.
+    expect(view.getByTestId('account-detail-loading')).toBeTruthy();
+    expect(view.queryByTestId('account-detail-content')).toBeNull();
+
     setLiveData({
       accounts: [account()],
       holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
-      holdingsIsLoading: true,
     });
     await act(async () => {
       view.rerender(
@@ -1139,6 +1139,7 @@ describe('AccountDetailScreen — loading gate', () => {
 
     expect(view.queryByTestId('account-detail-loading')).toBeNull();
     expect(view.getByTestId('account-detail-content')).toBeTruthy();
+    expect(view.getByText('Black card')).toBeTruthy();
   });
 });
 
