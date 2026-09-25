@@ -48,10 +48,10 @@ export const Circle = SvgElement;
 
 export const Text = SvgTextElement;
 
-// Added for GlassSurface's 45deg entity-color gradient wash (design system
-// item F3): `Defs`/`LinearGradient`/`Stop` render as the same passthrough
-// View, so a test can still query a `<Stop testID="..." stopColor="..." />`
-// by its testID and read back the resolved color, the same pattern the chart
+// GlassSurface's 45deg entity-color gradient wash uses `Defs`/
+// `LinearGradient`/`Stop`. They render as the same passthrough View, so a
+// test can still query a `<Stop testID="..." stopColor="..." />` by its
+// testID and read back the resolved color, the same pattern the chart
 // components above already use for their own geometry props.
 export const Defs = SvgElement;
 

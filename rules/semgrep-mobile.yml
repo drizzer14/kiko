@@ -406,7 +406,6 @@ rules:
         - "e2e/**"
         - "scripts/**"
         - "harness/**"
-        - "__mocks__/**"
         - "App.tsx"
         - "drizzle.config.ts"
     patterns:
