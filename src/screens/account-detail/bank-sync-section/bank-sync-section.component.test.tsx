@@ -141,26 +141,24 @@ describe('BankSyncSection — disconnected', () => {
     expect(view.getByText('monobank field')).toBeTruthy();
   });
 
-  // N3 (F3 part 1 fix round 2, Minor — Guideline 2.1, a button that does
-  // nothing): when `bankId` already identifies Monobank, `selectedProviderId`
+  // When `bankId` already identifies Monobank, `selectedProviderId`
   // is always undefined and `shownProviderId` falls straight back to
-  // `bankIdProviderId` — pressing "Change bank" visibly changed nothing (the
-  // fix round 1 DEFAULT this replaces). The bank is changed on the account
+  // `bankIdProviderId` — pressing "Change bank" would visibly change nothing.
+  // The bank is changed on the account
   // form instead, so the button is hidden here rather than left as a no-op.
-  it('N3: hides "Change bank" when bankId already identifies Monobank (it would do nothing)', async () => {
+  it('hides "Change bank" when bankId already identifies Monobank (it would do nothing)', async () => {
     const view = await render(<BankSyncSection account={bankAccount({ bankId: 'monobank' })} />);
 
     expect(view.getByText('monobank field')).toBeTruthy();
     expect(view.queryByText('Change bank')).toBeNull();
   });
 
-  // I1 (F3 part 1 fix round 1, Important): the mount-once `useState` seed
-  // only read `bankId` once — editing the bank to Monobank AFTER this
-  // component already mounted (AccountForm pops, the live-queried `account`
-  // prop updates with the SAME component instance still mounted) left the
-  // section showing "Add a bank" forever, the exact label item 1 says must
-  // not appear. The shown provider must follow `account.bankId` LIVE, not
-  // just at mount.
+  // A mount-once `useState` seed that only read `bankId` once would leave
+  // the section showing "Add a bank" forever the moment the bank is edited
+  // to Monobank AFTER this component already mounted (AccountForm pops, the
+  // live-queried `account` prop updates with the SAME component instance
+  // still mounted). The shown provider must follow `account.bankId` LIVE,
+  // not just at mount.
   it('follows bankId LIVE: editing an unidentified bank account to Monobank switches "Add a bank" to Connect, with no remount', async () => {
     const view = await render(<BankSyncSection account={bankAccount({ bankId: null })} />);
 
@@ -174,7 +172,7 @@ describe('BankSyncSection — disconnected', () => {
     expect(view.getByText('monobank field')).toBeTruthy();
   });
 
-  // I1's second transition: Disconnect does not clear `bankId` (only
+  // A second transition: Disconnect does not clear `bankId` (only
   // `institution` — see `kiko-architecture`'s "bankId is identity-only,
   // independent of institution"), so a just-disconnected account is STILL
   // Monobank and must show Connect again, not "Add a bank".

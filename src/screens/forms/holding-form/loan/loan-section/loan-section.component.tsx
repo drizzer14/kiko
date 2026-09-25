@@ -31,7 +31,7 @@ const loanScheduleLabels = (t: TFunction): Record<LoanSchedule, string> => ({
   none: t('forms.holding.loanSchedule.none'),
 });
 
-// The `loan` create/edit-form section (spec 5.1): a kind select field
+// The `loan` create/edit-form section: a kind select field
 // (a `ChipRow` read oversized for 4 long kind names, converted to the
 // `FieldTrigger`+`BottomSheet`+`SelectableRow` family), the
 // principal + start-date fields, the schedule SegmentedControl (one
@@ -40,7 +40,7 @@ const loanScheduleLabels = (t: TFunction): Record<LoanSchedule, string> => ({
 // a SegmentedControl — the same reason the Bond form's ISIN/Manual toggle
 // uses one), and the
 // rate/term fields — hidden while `schedule` is `'none'` (an informal debt
-// has no known rate/term, spec 5.1). Unlike `PropertySection`/
+// has no known rate/term). Unlike `PropertySection`/
 // `MetalSection`, every field here is editable in BOTH create and edit mode
 // (mirrors the term-deposit/bond forms, not the create-only-lot pattern) —
 // there is no separate "first lot" this section seeds once and never

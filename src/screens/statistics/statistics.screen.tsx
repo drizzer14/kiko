@@ -402,10 +402,10 @@ const StatisticsScreen: FC = () => {
     [filtered, rateTable, baseCurrency, now, priceBook],
   );
 
-  // T27 (I2, T27 re-review round 1): the "Debts" total under the account pie
+  // The "Debts" total under the account pie
   // — every NEGATIVE holding value (a loan's own value, or a non-loan
   // holding in debit, e.g. a credit card), summed independently of the pie
-  // (which shows only POSITIVE values — spec §5.3).
+  // (which shows only POSITIVE values).
   const debtTotal = useMemo(
     () =>
       buildDebtTotal({
@@ -514,7 +514,7 @@ const StatisticsScreen: FC = () => {
   // rendered above them. The exclusion sets above are computed over the
   // FULL, unfiltered ledger (see `transactionsWithCurrency`'s comment); only
   // the rows actually SHOWN are scoped to the range here. `loanInterestRows`
-  // is range-filtered the SAME way as the real rows (T30) — each derived
+  // is range-filtered the SAME way as the real rows — each derived
   // entry replaces the raw row `loanPaymentExcludedIds` drops above, so it
   // must obey the same window that row would have.
   const rangeFilteredBreakdownTransactions = useMemo<BreakdownTransaction[]>(
@@ -541,7 +541,7 @@ const StatisticsScreen: FC = () => {
   // row's `time`, so it can bucket the expense into the active
   // rangeFrom/rangeTo window the same way the net-worth line does. Built
   // separately from `breakdownTransactions` (which carries no time) so neither
-  // memo has to change shape for the other. `loanInterestRows` (T30) is
+  // memo has to change shape for the other. `loanInterestRows` is
   // appended UNFILTERED, same as the real rows here — `buildCategoryTrend`/
   // `buildCategoryMeasures` do their own range bucketing internally.
   const trendTransactions = useMemo<TrendTransaction[]>(
@@ -605,7 +605,7 @@ const StatisticsScreen: FC = () => {
 
   // The union of every exclusion rule: the mcc/IBAN rule, the description rule,
   // the exchange-marker rule, the cheap secondary matched-pair matcher, and
-  // the linked-loan-payment rule (T30 — its own derived interest entry,
+  // the linked-loan-payment rule (its own derived interest entry,
   // `loanInterestRows` above, replaces the raw row this drops). A row is
   // dropped from the spending pie if ANY rule catches it.
   const excludedTransactionIds = useMemo(
@@ -731,7 +731,7 @@ const StatisticsScreen: FC = () => {
   );
 
   // The APPLIED trend filter: the saved config resolved against the categories
-  // that still exist (manual keys pruned per D5; top amount clamped), falling
+  // that still exist (manual keys pruned, top amount clamped), falling
   // back to the default (top 3 by contribution) when nothing is saved. Save
   // persists it and the value flows back through the settings live query — there
   // is no seed effect any more.

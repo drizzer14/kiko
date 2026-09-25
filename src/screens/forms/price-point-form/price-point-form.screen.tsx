@@ -41,7 +41,7 @@ const startOfToday = (): number => {
 };
 
 // Records a new `manual` price point for a priced holding (property_item,
-// T16 — `isPricedHoldingType`), reached from holding-detail's "Update value"
+// metal — `isPricedHoldingType`), reached from holding-detail's "Update value"
 // footer action. Mirrors contribution-form's shape: a grouped-amount TextField
 // plus the shared calendar DateField, writing through the same
 // `pricePointsRepo.upsertMany` the PriceBook itself reads.
@@ -90,7 +90,7 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
       return;
     }
     const majorValue = parseAmount(value);
-    // I2: a loan's outstanding can reach exactly 0 (repaid) — every other
+    // A loan's outstanding can reach exactly 0 (repaid) — every other
     // priced holding's value must stay strictly positive.
     const isValidValue = isDebt ? majorValue >= 0 : majorValue > 0;
     if (!isValidValue) {

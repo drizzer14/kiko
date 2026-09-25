@@ -96,8 +96,9 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // statement-import-only bank has no sync to own a card, so card is offered —
   // jar stays excluded regardless (see `creatableHoldingTypesForAccount`'s
   // comment). `account?.bankId` additionally gates `metal` under a `bank`
-  // account (T17's allow-list; undefined for a `metals`-kind account, which
-  // never gates on it). The create form offers only these; edit mode keeps
+  // account (the sellsMetals allow-list; undefined for a `metals`-kind
+  // account, which never gates on it). The create form offers only these;
+  // edit mode keeps
   // the full set (above).
   const creatableTypes = accountKind
     ? creatableHoldingTypesForAccount(accountKind, isSynced, account?.bankId)

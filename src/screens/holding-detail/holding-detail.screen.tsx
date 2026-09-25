@@ -229,7 +229,7 @@ type LedgerRowContext = {
   holdingName: string;
   holdingNameById: Map<string, string>;
   onPressTransaction: (transactionId: string) => void;
-  // Duplicate this ledger row into a pre-filled create form (D2). Passed for
+  // Duplicate this ledger row into a pre-filled create form. Passed for
   // manual rows only (a synced row is not duplicable), stateless via the
   // `duplicateOfTransactionId` route param.
   onDuplicateTransaction: (transactionId: string) => void;
@@ -327,7 +327,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
           onDelete={() => transactionsRepo.remove(transactionRow.transaction.id)}
           // A synced row is not duplicable — pass no handler so its long-press keeps
           // offering nothing (it already renders bare). A manual row's Duplicate
-          // opens the create form pre-filled from this row (D2).
+          // opens the create form pre-filled from this row.
           onDuplicate={
             isSyncedTransaction(transactionRow.transaction)
               ? undefined
@@ -678,7 +678,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         // contribution"); a plain holding opens the shared Transaction form
         // ("Add transaction"); a priced holding (property_item) opens the
         // dedicated price-point form ("Update value") to record a
-        // revaluation; a lot-form-eligible holding (`metal` as of T18) opens
+        // revaluation; a lot-form-eligible holding (`metal`) opens
         // the dedicated Lot form ("Add lot") to record a buy/sell instead. A
         // bond and a synced holding take no manual add action, so they
         // render no footer at all.

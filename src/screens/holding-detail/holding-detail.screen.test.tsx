@@ -117,8 +117,8 @@ const metalHolding = {
 };
 
 // A long-running structured loan, well underway by any real test-run date, so
-// its schedule always has an upcoming installment to show (T28). The start
-// date is derived from `Date.now()` (T28 review round 1, Minor 2), not a
+// its schedule always has an upcoming installment to show. The start
+// date is derived from `Date.now()`, not a
 // fixed past year — a fixed 2020 start plus a 120-month term stops having any
 // upcoming installment past 2030, which would make this fixture throw.
 const startMonthsAgo = (monthsAgo: number): number => {
@@ -145,7 +145,7 @@ const annuityLoanHolding = {
   metadata: annuityLoanMeta,
 };
 
-// An informal debt (spec 5.1) — its own outstanding is a manual price-point
+// An informal debt — its own outstanding is a manual price-point
 // series, never a computed schedule (loanInstallments returns [] for it).
 const noneLoanHolding = {
   id: 'h-1',
@@ -706,7 +706,7 @@ describe('HoldingDetailScreen', () => {
   });
 
   it('shows a "Value as of <date>" caption for a priced holding with a stored price point', async () => {
-    // property_item (T16) is a priced holding (isPricedHoldingType) — its
+    // property_item is a priced holding (isPricedHoldingType) — its
     // Value header shows the LATEST stored price point's own day, so the user
     // sees how current the figure is.
     const day = Date.UTC(2026, 5, 1);
@@ -732,7 +732,7 @@ describe('HoldingDetailScreen', () => {
   });
 
   it('shows a "Price as of <date>" caption for a metal holding, reading the SHARED metal:XAU instrument', async () => {
-    // metal (T17/T20) is priced through the shared metal:<XAU|...> instrument,
+    // metal is priced through the shared metal:<XAU|...> instrument,
     // never a per-holding one (kiko-pricing) — so its caption reads the
     // LATEST point on `metal:XAU`, not `holding:h-1`, and uses its own wording
     // ("Price as of") distinct from property_item's "Value as of".
@@ -1050,7 +1050,7 @@ describe('HoldingDetailScreen', () => {
 
   it('offers "Update value" instead of a manual add action for a property_item', async () => {
     // property_item is ledgerless (isLedgerlessHoldingType) AND priced
-    // (isPricedHoldingType, T16) — it takes neither the generic "Add
+    // (isPricedHoldingType) — it takes neither the generic "Add
     // transaction" nor a deposit "Add contribution"; instead its footer opens
     // the dedicated price-point form to record a revaluation.
     seed(propertyHolding);
@@ -1115,7 +1115,7 @@ describe('HoldingDetailScreen', () => {
   it('offers "Update outstanding" instead of a manual add action for a loan', async () => {
     // A loan is ledgerless, but — unlike a plain ledgerless type (bond) —
     // still takes an "Update outstanding" footer action: it writes a
-    // correction onto its own manual outstanding series (T28).
+    // correction onto its own manual outstanding series.
     seed(annuityLoanHolding);
 
     const { getByTestId, queryByText } = await renderScreen();
@@ -1139,7 +1139,7 @@ describe('HoldingDetailScreen', () => {
 
   it('shows the loan outstanding amount as negative in the Value header', async () => {
     // A 'none' (informal) loan's outstanding reads directly from its manual
-    // holding:<id> price-point series (spec 5.1) — seeding one gives a
+    // holding:<id> price-point series — seeding one gives a
     // deterministic figure, independent of the real test-run date.
     seed(noneLoanHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [
       {
@@ -1195,8 +1195,8 @@ describe('HoldingDetailScreen', () => {
     expect(queryByText(/Next installment/)).toBeNull();
   });
 
-  // Minor 11 (T28 review round 1): an overpaid correction clamps the
-  // outstanding to 0 (N10a) even though `loanInstallments` still has future
+  // An overpaid correction clamps the
+  // outstanding to 0 even though `loanInstallments` still has future
   // rows on the schedule — the panel must not keep showing a "next" payment
   // once the debt is actually paid off.
   it('shows no next-installment panel once a correction clamps the outstanding to 0', async () => {

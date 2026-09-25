@@ -20,7 +20,7 @@ export type LoanSectionProps = {
   schedule: LoanSchedule;
   onSelectSchedule: (schedule: LoanSchedule) => void;
   // The rate/term fields only apply while `schedule` is
-  // `'annuity'`/`'differentiated'` — `'none'` (an informal debt, spec 5.1)
+  // `'annuity'`/`'differentiated'` — `'none'` (an informal debt)
   // hides them entirely, mirroring `PropertySection`'s `showCost`/
   // `MetalSection`'s `showFirstLot` conditional-field convention.
   annualRatePct: string;

@@ -76,15 +76,15 @@ jest.mock('@kiko/transactions/repo', () => ({
       toSQL: () => ({ sql: '', params: [transactionId] }),
     }),
     // Tagged so the `useLiveQuery` mock can tell this `['transactions']`-keyed
-    // subscription apart from the by-id one and serve the D1 past-descriptions
-    // list to it.
+    // subscription apart from the by-id one and serve the past-description
+    // suggestion list to it.
     distinctDescriptionsQuery: () => ({
       __kind: 'distinctDescriptions',
       toSQL: () => ({ sql: '', params: [] }),
     }),
-    // Tagged for the same reason: the B empty-create default-holding seam reads
+    // Tagged for the same reason: the empty-create default-holding seam reads
     // the newest manual row's holding through this `['transactions']`-keyed
-    // subscription, disambiguated from the by-id and D1 ones.
+    // subscription, disambiguated from the by-id and past-description-suggestion ones.
     latestManualHoldingQuery: () => ({
       __kind: 'latestManualHolding',
       toSQL: () => ({ sql: '', params: [] }),
@@ -174,7 +174,7 @@ const setLiveData = (
 
   mockUseLiveQuery.mockImplementation((query: unknown, tables: string[]) => {
     const kind = (query as { __kind?: string })?.__kind;
-    // The D1 distinct-descriptions subscription shares the `['transactions']`
+    // The distinct-descriptions subscription shares the `['transactions']`
     // key with the by-id lookup, so it is disambiguated by the tagged query
     // object the mocked repo returns.
     if (kind === 'distinctDescriptions') {
@@ -1411,10 +1411,8 @@ describe('TransactionFormScreen — comment detail row (item 17, F3)', () => {
     expect(queryByText('Comment')).toBeNull();
   });
 
-  // M1 DEFAULT (F3 part 1 fix round 1): the comment row renders AFTER the
-  // description/category rows, not at the very top of the form (the
-  // original item-17 placement, flagged as an undocumented default in
-  // review).
+  // The comment row renders AFTER the description/category rows, not at
+  // the very top of the form.
   it('DEFAULT: renders the comment row AFTER the Category field, not at the top of the form', async () => {
     setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
       id: 'txn-9',

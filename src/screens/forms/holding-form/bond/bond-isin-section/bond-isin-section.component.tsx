@@ -23,9 +23,8 @@ const modeLabels = (t: TFunction): Record<BondEntryMode, string> => ({
 });
 
 // Exported (not local to this file) since `ManualBondFields` needs the exact
-// same map for its OWN coupon-frequency `ChipRow` — T25 review round 2,
-// Minor 6: this used to be written out twice; keeping one avoids the two
-// ever drifting apart.
+// same map for its OWN coupon-frequency `ChipRow` — one shared source keeps
+// the two from ever drifting apart.
 export const couponFrequencyLabels = (t: TFunction): Record<BondCouponFrequency, string> => ({
   monthly: t('forms.holding.monthly'),
   quarterly: t('forms.holding.quarterly'),
@@ -34,17 +33,17 @@ export const couponFrequencyLabels = (t: TFunction): Record<BondCouponFrequency,
 });
 
 /**
- * The Bond form's ISIN/Manual mode section (spec 6.3/6.4): the shared
- * design-system `SegmentedControl` (F3/T24 ruling — one control type per
- * kind of mode choice, not a `ChipRow`), the ISIN text field itself (always
- * shown — required in ISIN mode, optional but still validated in Manual
- * mode, see `useBondIsinMode`'s own `isinReasonKey`), a read-only summary
- * once the register finds a match (plus, when that match left
- * `couponFrequency` unmapped, a picker with no default — spec 6.2 forbids
- * guessing one), a not-in-register/not-loaded hint with a Switch-to-manual
- * button when a validly-shaped ISIN has no match, and the Diia hint (spec
- * 7.1), which renders in every mode since Diia bonds land under a partner
- * institution regardless of how THIS holding gets added.
+ * The Bond form's ISIN/Manual mode section: the shared design-system
+ * `SegmentedControl` (one control type per kind of mode choice, not a
+ * `ChipRow`), the ISIN text field itself (always shown — required in ISIN
+ * mode, optional but still validated in Manual mode, see
+ * `useBondIsinMode`'s own `isinReasonKey`), a read-only summary once the
+ * register finds a match (plus, when that match left `couponFrequency`
+ * unmapped, a picker with no default — never guess one), a
+ * not-in-register/not-loaded hint with a Switch-to-manual button when a
+ * validly-shaped ISIN has no match, and the Diia hint, which renders in
+ * every mode since Diia bonds land under a partner institution regardless
+ * of how THIS holding gets added.
  *
  * Purely presentational, like `MetalSection`/`PropertySection`: the NBU
  * register lookup and every auto-fill/validation decision live in
@@ -144,8 +143,8 @@ const BondIsinSection: FC<BondIsinSectionProps> = ({
 
       {needsCouponFrequencyPick && (
         // A `ChipRow` with no chip selected read as a picker nobody had
-        // touched yet, not a deliberately blank "no default" (spec 6.2
-        // forbids guessing one). `SelectField` supports `selected: null`
+        // touched yet, not a deliberately blank "no default" (never guess
+        // one). `SelectField` supports `selected: null`
         // directly (no more widening the option type to fake an empty
         // string match) and shows a "Select..." placeholder in the trigger
         // instead.

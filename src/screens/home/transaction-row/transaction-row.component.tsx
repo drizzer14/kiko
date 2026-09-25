@@ -66,7 +66,7 @@ const TransactionRow: FC<TransactionRowProps> = ({
       onDelete={() => transactionsRepo.remove(item.id)}
       // A synced row is not duplicable — pass no handler so its long-press keeps
       // offering nothing (it already renders bare). A manual row's Duplicate
-      // opens the create form pre-filled from this row (D2).
+      // opens the create form pre-filled from this row.
       onDuplicate={isSynced ? undefined : () => onDuplicate(item.id)}
       liftOnHold
     >

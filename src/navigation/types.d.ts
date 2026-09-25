@@ -81,7 +81,7 @@ export type AccountsStackParamList = {
   // instead; only deposits take a dedicated contribution form.
   ContributionForm: { holdingId: string };
   // Record a new `manual` price point for a priced holding (property_item,
-  // T16 — `isPricedHoldingType`), reached from the holding-detail screen's
+  // metal — `isPricedHoldingType`), reached from the holding-detail screen's
   // "Update value" footer action. A dedicated form, mirroring
   // ContributionForm's shape, rather than a plain TransactionForm entry: a
   // revaluation moves no ledger balance, only the holding's `price_points`
@@ -126,8 +126,8 @@ export type AccountsStackParamList = {
     expectedFormatId?: StatementFormatId;
     holdingId?: string;
   };
-  // The generic column-mapping import screen (T6), reached from
-  // `StatementImportScreen`'s "Map columns manually" entry point (T7) — or
+  // The generic column-mapping import screen, reached from
+  // `StatementImportScreen`'s "Map columns manually" entry point — or
   // navigated to directly when an exact saved mapping is found for a file no
   // shipped parser recognized. `accountId` is required here (unlike
   // `StatementImport` above): a column mapping always saves under this
@@ -135,8 +135,8 @@ export type AccountsStackParamList = {
   // for this screen. `holdingId` is the SAME merged field `StatementImport`
   // carries above — still just a PRE-FILL/reselect, not a lock (the field
   // stays editable, and required, like every other required field on this
-  // screen). `ownsFile` (N2, F3 part 1 fix round 2) is true ONLY when this
-  // screen was reached via the T7 auto-`replace` (no `StatementImport`
+  // screen). `ownsFile` is true ONLY when this
+  // screen was reached via the auto-`replace` (no `StatementImport`
   // route left below it on the stack, so THIS screen is the file's sole
   // owner from then on); absent (falsy) on the "Map columns manually"
   // PUSH, where `StatementImport` stays mounted underneath and still owns

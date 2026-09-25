@@ -23,8 +23,8 @@ const baseProps = {
   isin: '',
   onChangeIsin: jest.fn(),
   foundTerms: null,
-  // Non-null cache by default (a real "not found") — the M6 tests below
-  // override this to exercise the "never loaded" wording.
+  // Non-null cache by default (a real "not found") — the never-loaded
+  // tests below override this to exercise that wording.
   registerLoaded: true,
   onSwitchToManual: jest.fn(),
   needsCouponFrequencyPick: false,
@@ -94,7 +94,7 @@ describe('BondIsinSection', () => {
     expect(getByText('Switch to manual')).toBeTruthy();
   });
 
-  // M6 (T25 review round 2): "no cache yet" reads a neutral message instead
+  // "No cache yet" reads a neutral message instead
   // of a confident "not found" — same Switch-to-Manual button either way.
   it('shows a neutral "register not loaded" hint instead, when the cache has never been populated', async () => {
     const { getByText, queryByText } = await render(
@@ -157,7 +157,7 @@ describe('BondIsinSection', () => {
     ).toBeTruthy();
   });
 
-  // N2 (T25 review round 2, orchestrator ruling): an unmapped-frequency
+  // An unmapped-frequency
   // match shows its own picker, with NO chip pre-selected, and blocks Save
   // via the caller's own `couponFrequencyError` until one is picked.
   describe('the coupon-frequency pick (N2)', () => {

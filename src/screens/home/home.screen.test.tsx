@@ -530,7 +530,7 @@ describe('HomeScreen', () => {
     expect(queryByTestId('net-worth-wash-svg')).toBeNull();
   });
 
-  // T27 (spec §5.2/5.3): net worth = assets − debt outstanding, so a debt
+  // Net worth = assets − debt outstanding, so a debt
   // large enough goes the headline negative — MoneyText renders it with a
   // minus sign, colored `negative` (never `textPrimary`, the positive/zero
   // tone the two tests above assert).

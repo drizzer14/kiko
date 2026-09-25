@@ -11,7 +11,7 @@ export type TransactionCardProps = {
   // Always rendered with `MoneyText`'s `"transaction"` context (a positive
   // amount reads green) — every consumer (Home's real row, the
   // statement-import/column-mapping preview) wants exactly that, so this is
-  // not a caller-configurable prop (F3 fix round 2, N5 ponytail).
+  // not a caller-configurable prop.
   money: Money;
   // The footer's left caption (Home: "account · category") and right caption
   // (Home: the transaction time). Both optional — omitted footer content

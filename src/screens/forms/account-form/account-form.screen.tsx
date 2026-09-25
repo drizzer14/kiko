@@ -52,8 +52,7 @@ type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Ac
 // already forces) accounts for the new kind. A crypto account is created
 // like a bank account — no initial holding/currency at creation; holdings are
 // added later — so only cash needs the currency + initial-value fields below;
-// property and metals have no extra creation fields yet (the property
-// holding section is T16; the metal one is T20).
+// property and metals have no extra creation fields yet.
 const kinds = Object.keys(accountKindSymbol) as AccountRow['kind'][];
 type Kind = (typeof kinds)[number];
 

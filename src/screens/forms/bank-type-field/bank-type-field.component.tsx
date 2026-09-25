@@ -14,7 +14,7 @@ import SelectableRow from '../../../design-system/components/selectable-row';
 
 import type { BankTypeFieldProps } from './bank-type-field.props';
 
-// The caption a bank's row shows in the picker (T22): a live-sync bank shows
+// The caption a bank's row shows in the picker: a live-sync bank shows
 // `bankConnectable`; an import-only bank with its own dedicated
 // `statement-import` parser shows `bankImportOnly`; an import-only bank with
 // NO dedicated parser (PUMB, Oschadbank, Ukrgasbank) shows

@@ -48,7 +48,7 @@ type LoanValidationParams = {
 // input (plus the schedule gate rate/term already share). A loan needs a
 // positive principal and a picked start date UNCONDITIONALLY;
 // `annualRatePct`/`termMonths` are required ONLY while `schedule` is
-// `'annuity'`/`'differentiated'` — `'none'` (an informal debt, spec 5.1)
+// `'annuity'`/`'differentiated'` — `'none'` (an informal debt)
 // carries no schedule at all, so Save never blocks on them there.
 // `termMonths` must be a WHOLE number >= 1: a degenerate term (0, negative,
 // fractional) would give `loanInstallments` a schedule that never reduces
@@ -144,7 +144,7 @@ type LoanFieldsSnapshot = Pick<
   'kind' | 'principal' | 'startDate' | 'schedule' | 'annualRatePct' | 'termMonths'
 >;
 
-// A loan's `LoanMeta` (spec 5.1) — shared by the EDIT-mode `saveEdit` below
+// A loan's `LoanMeta` — shared by the EDIT-mode `saveEdit` below
 // and `buildLoanCreatePayload`, so the two can never build a differently
 // shaped `LoanMeta` for the same field values.
 const buildLoanMeta = (fields: LoanFieldsSnapshot, currency: Currency): LoanMeta => ({
@@ -256,7 +256,7 @@ const buildLoanPricePointOp = (params: {
 };
 
 /**
- * Owns every Loan form field (spec 5.1) — the six pieces of state, the
+ * Owns every Loan form field — the six pieces of state, the
  * per-schedule validation reason, the edit-mode seed, and the create/edit
  * payload builders — extracted out of `HoldingFormScreen` the same way
  * `useBondFields`/`useMetalFields` did for their own forms. Unlike

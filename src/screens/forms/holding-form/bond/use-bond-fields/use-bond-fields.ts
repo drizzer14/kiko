@@ -40,7 +40,7 @@ const seedBondFields = (meta: BondMeta, currency: Currency) => ({
   maturityDate: meta.maturityDate,
   bondKind: meta.bondKind,
   couponFrequency: meta.couponFrequency,
-  // Edit mode always opens Manual (spec 6.4 #6), with the stored ISIN (or ''
+  // Edit mode always opens Manual, with the stored ISIN (or ''
   // for a bond saved before this field existed) shown and still editable.
   isin: meta.isin ?? '',
 });
@@ -129,7 +129,7 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
   const faceValueInputRef = useRef<TextInputInstance>(null);
   const couponPctInputRef = useRef<TextInputInstance>(null);
 
-  // The Bond form's "ISIN / Manual" mode (spec 6.3/6.4) — its own state,
+  // The Bond form's "ISIN / Manual" mode — its own state,
   // register lookup, and side effects all live in `useBondIsinMode`.
   const {
     bondMode,
@@ -176,7 +176,7 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
       maturityDate: maturityDate ?? Date.now(),
       bondKind,
       couponFrequency,
-      // Stored as a record of how the holding was added (spec 6.4 #6); the
+      // Stored as a record of how the holding was added; the
       // save is blocked by `isinReasonKey` while Manual mode's own ISIN is
       // non-empty but invalid, so a saved value is always well-formed. Left
       // out entirely for a blank Manual-mode ISIN, rather than an empty
@@ -198,8 +198,8 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
   const reasonKey = bondReasonKey({ quantity, faceValue, couponPct, purchaseDate, maturityDate });
 
   // A bond ALSO needs a valid ISIN and, while `needsCouponFrequencyPick` (an
-  // unmapped-frequency ISIN-mode match), a picked coupon frequency — spec 6.2
-  // forbids guessing one, so Save stays blocked until `pickedCouponFrequency`
+  // unmapped-frequency ISIN-mode match), a picked coupon frequency — never
+  // guess one, so Save stays blocked until `pickedCouponFrequency`
   // is set. Everything else is `reasonKey` alone, so the two can never
   // disagree.
   const isValid =
@@ -225,8 +225,8 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
       setBondKind(fields.bondKind);
       setCouponFrequency(fields.couponFrequency);
       setIsin(fields.isin);
-      // Edit always opens Manual (spec 6.4 #6) — the register is never
-      // consulted again once a holding is saved (spec 6.4 #5).
+      // Edit always opens Manual — the register is never
+      // consulted again once a holding is saved.
       setBondMode('manual');
     },
     [setIsin, setBondMode],

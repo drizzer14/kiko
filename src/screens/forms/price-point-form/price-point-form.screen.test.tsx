@@ -135,7 +135,7 @@ describe('PricePointFormScreen', () => {
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
 
-  // T28: a loan's correction targets its own manual outstanding series
+  // A loan's correction targets its own manual outstanding series
   // through this SAME form (PricePointForm never changes for a loan — see
   // holding-detail's own holdingDetailSpecs doc comment), but the stack's
   // static "Update Value" title reads wrong for a debt, so the screen
@@ -156,10 +156,10 @@ describe('PricePointFormScreen', () => {
     expect(navigation.setOptions).not.toHaveBeenCalled();
   });
 
-  // I2 (T28 review round 1): a loan can be recorded as fully repaid — its
+  // A loan can be recorded as fully repaid — its
   // outstanding series must be able to reach exactly 0, unlike every other
   // priced holding type.
-  it('(I2) saves a loan outstanding of 0, writing 0.00 on its own holding:<id> series', async () => {
+  it('saves a loan outstanding of 0, writing 0.00 on its own holding:<id> series', async () => {
     seed({ id: 'h-1', currency: 'UAH', type: 'loan' });
     const utils = await renderScreen();
 

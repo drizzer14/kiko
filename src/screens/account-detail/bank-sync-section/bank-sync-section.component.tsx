@@ -109,11 +109,11 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   const [selectedProviderId, setSelectedProviderId] = useState<BankProviderId | undefined>(
     undefined,
   );
-  // The account's own `bankId` (item 1, F3), resolved to a connectable
+  // The account's own `bankId`, resolved to a connectable
   // provider id EVERY RENDER, live off the current `account` prop — NOT
-  // seeded once into `selectedProviderId`'s initial state (I1, F3 part 1
-  // fix round 1): a `useState` initializer only runs at MOUNT, so it never
-  // reacted to the account's OWN `bankId` changing after this component was
+  // seeded once into `selectedProviderId`'s initial state: a `useState`
+  // initializer only runs at MOUNT, so it would never react to the
+  // account's OWN `bankId` changing after this component was
   // already mounted (the account form editing the bank to Monobank, or a
   // Disconnect — which clears `institution` but never `bankId`, see
   // `kiko-domain`'s "bankId is identity-only, independent of institution")
@@ -293,7 +293,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
         <Box gap={2}>
           {connectFieldByProviderId[shownProviderId]}
 
-          {/* N3 (F3 part 1 fix round 2, Minor — Guideline 2.1): hidden when
+          {/* Hidden when
               `bankId` itself already identifies Monobank — pressing it would
               clear `selectedProviderId`, but `shownProviderId` falls
               straight back to the live `bankIdProviderId` on the very next

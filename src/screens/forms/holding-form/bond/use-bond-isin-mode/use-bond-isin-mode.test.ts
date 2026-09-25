@@ -2,8 +2,8 @@ import { act, renderHook } from '@testing-library/react-native';
 
 let mockBondRegisterRows: { isin: string; terms: unknown; fetchedAt: number }[] = [];
 // Non-null by default (a cache exists) — most tests care about a FOUND vs.
-// NOT-FOUND match, not the "never loaded" M6 distinction; the dedicated M6
-// tests override this to `null`.
+// NOT-FOUND match, not the "never loaded" distinction; the dedicated
+// never-loaded tests override this to `null`.
 let mockFetchedAtRows: { value: number | null }[] = [{ value: 1 }];
 
 jest.mock('@kiko/db/use-live-query', () => ({
@@ -25,9 +25,9 @@ import { useBondIsinMode, type UseBondIsinModeParams } from './use-bond-isin-mod
 
 const refreshMock = refreshBondRegisterIfStale as jest.Mock;
 
-// UA4000234215 (T23/T24 fixture): a real register ISIN, checksum-valid.
+// A real register ISIN, checksum-valid.
 const VALID_ISIN = 'UA4000234215';
-// UA4000227046 (T23 fixture): valid-shaped, wrong check digit.
+// Valid-shaped, wrong check digit.
 const INVALID_CHECKDIGIT_ISIN = 'UA4000227046';
 
 const foundRow = (overrides: { currency?: string; couponFrequency?: string | null } = {}) => ({
@@ -89,7 +89,7 @@ describe('useBondIsinMode', () => {
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
-  // M5: a macrotask flush (not a spy on jest's sandboxed `process`, which
+  // A macrotask flush (not a spy on jest's sandboxed `process`, which
   // can never observe a real unhandledRejection) lets jest-circus's own
   // real-process handler catch a reverted bare fire-and-forget call.
   it('never produces an unhandled rejection when the refresh rejects (a caught fire-and-forget)', async () => {
@@ -103,7 +103,7 @@ describe('useBondIsinMode', () => {
     await act(() => new Promise<void>((resolve) => setImmediate(resolve)));
   });
 
-  // I1 (T25 review round 1): the found-terms apply must fire ONCE per
+  // The found-terms apply must fire ONCE per
   // matched ISIN, never on an unrelated change (a picked date) that shares
   // the effect's dependency array.
   it('applies the found terms exactly once per matched ISIN, never again on an unrelated purchaseDate change', async () => {
@@ -129,7 +129,7 @@ describe('useBondIsinMode', () => {
     expect(params.setCurrency).toHaveBeenCalledTimes(1);
   });
 
-  // N1 (T25 review round 2): a match that resolves while the user is in
+  // A match that resolves while the user is in
   // MANUAL mode must still apply the first time they switch to ISIN — the
   // lookup itself never depended on `bondMode`, only the APPLY did.
   it('applies a match resolved in Manual mode once the user switches to ISIN', async () => {
@@ -154,7 +154,7 @@ describe('useBondIsinMode', () => {
     expect(params.setFaceValue).toHaveBeenCalledTimes(1);
   });
 
-  // N1's own named variant: not-in-register -> Switch to manual -> the
+  // A named variant: not-in-register -> Switch to manual -> the
   // refresh lands (the isin becomes a match while still in Manual) -> the
   // user taps ISIN again. The match must apply then, not stay dead.
   it('applies a match that only resolves AFTER switching to Manual, once ISIN is tapped again', async () => {
@@ -186,10 +186,10 @@ describe('useBondIsinMode', () => {
     expect(params.setName).toHaveBeenCalledWith('Register Bond');
   });
 
-  // I3: an unmapped `pay_period` (couponFrequency: null) auto-switches to
+  // An unmapped `pay_period` (couponFrequency: null) auto-switches to
   // Manual once — but re-tapping "ISIN" afterward must not loop straight
   // back to Manual, since the effect is keyed on the isin string, not mode.
-  // Minor 9 (T25 review round 2): also assert the OTHER found fields (face
+  // Also assert the OTHER found fields (face
   // value, coupon, maturity, name) still applied, not just the frequency
   // that was skipped.
   it('auto-switches to Manual once for an unmapped coupon frequency, pre-fills every OTHER field, and stays in ISIN mode on a re-tap', async () => {
@@ -218,7 +218,7 @@ describe('useBondIsinMode', () => {
     expect(result.current.bondMode).toBe('isin');
   });
 
-  // N2 (T25 review round 2, orchestrator ruling): re-entering ISIN mode for
+  // Re-entering ISIN mode for
   // an unmapped-frequency match must ask the user to pick a frequency —
   // never silently keep whatever `couponFrequency` already happened to be
   // in state (the untouched initial default).
@@ -262,7 +262,7 @@ describe('useBondIsinMode', () => {
     expect(result.current.needsCouponFrequencyPick).toBe(false);
   });
 
-  // I5: in edit mode, a found ISIN whose currency differs from the
+  // In edit mode, a found ISIN whose currency differs from the
   // (locked) holding currency must not apply at all, and must block save
   // with its own reason.
   it('does not apply a found ISIN whose currency differs from the holding currency in edit mode, and blocks save', async () => {
@@ -304,7 +304,7 @@ describe('useBondIsinMode', () => {
     expect(result.current.isinReasonKey).toBe('forms.holding.isinCheckDigitError');
   });
 
-  // M3: a stale row from the PREVIOUS query (useLiveQuery keeps old `data`
+  // A stale row from the PREVIOUS query (useLiveQuery keeps old `data`
   // until the new query settles) must never be read as a match for a
   // DIFFERENT, currently-typed isin.
   it('ignores a register row whose own isin does not match the currently typed ISIN (a stale query result)', async () => {
@@ -319,7 +319,7 @@ describe('useBondIsinMode', () => {
     expect(result.current.registerTerms).toBeNull();
   });
 
-  // M6 (T25 review round 2): "no cache yet" (never fetched) reads a
+  // "No cache yet" (never fetched) reads a
   // different, neutral reason than a confident "not in the register".
   it('reports a neutral "register not loaded" reason when the cache has never been populated', async () => {
     mockBondRegisterRows = [];

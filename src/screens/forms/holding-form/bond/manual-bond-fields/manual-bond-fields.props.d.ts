@@ -6,8 +6,8 @@ import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
 import type { BondEntryMode } from '../bond-isin-section/bond-isin-section.props';
 
 export type ManualBondFieldsProps = {
-  // Renders nothing outside Manual mode (spec 6.3 hides these five fields
-  // in ISIN mode — they are register-sourced there instead).
+  // Renders nothing outside Manual mode — these five fields
+  // are hidden in ISIN mode, where they are register-sourced instead.
   bondMode: BondEntryMode;
   faceValue: string;
   onChangeFaceValue: (text: string) => void;

@@ -491,14 +491,13 @@ describe('AccountsScreen', () => {
 
       expect(getByText('Debts')).toBeTruthy();
       expect(getByText('Mortgage')).toBeTruthy();
-      // The card's own negative balance AND the section total (M2, one debt
+      // The card's own negative balance AND the section total (one debt
       // account -> the same figure) both read -5,000.00 ₴.
       expect(getAllByText(/-5,000\.00 ₴/).length).toBe(2);
     });
 
-    // M2 (T27 round 1 ruling): the Debts section shows a SECTION total
-    // (negative), not only each card's own negative balance — the spec's
-    // "a 'Debts' section with totals shown as negative" (§5.3).
+    // The Debts section shows a SECTION total
+    // (negative), not only each card's own negative balance.
     it('shows a Debts section total next to the heading, summing every debt account', async () => {
       setLiveData({
         accounts: [debtAccount(), debtAccount({ id: 'e', name: 'Car loan' })],
@@ -530,7 +529,7 @@ describe('AccountsScreen', () => {
       expect(within(debtsGrid).getByText('Mortgage')).toBeTruthy();
     });
 
-    // I1 (T27 round 1): a Debts-section drag must persist the FULL account
+    // A Debts-section drag must persist the FULL account
     // order (main accounts first, then the debts section), never just its
     // own section's ids starting back at 0 — otherwise every OTHER screen
     // that lists all accounts (Statistics' account filter, the

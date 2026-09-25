@@ -137,7 +137,7 @@ const renderReadOnlyNotice = (
 // both. Module-level for the same cognitive-complexity-budget reason as
 // `renderReadOnlyNotice` above.
 //
-// I2 (F3 part 1 fix round 1, Important): this does NOT reuse `SummaryTable`
+// This does NOT reuse `SummaryTable`
 // (the app's shared "label left, value right" ROW layout) — `SummaryTable`
 // was built for short values (money, counts, dates); Comment is free text
 // that can run to a full sentence. `SummaryTable` wraps a row's `value` in
@@ -739,7 +739,7 @@ const toAmountFields = (
 // The three mutually-exclusive entry ids read once from the route params, so
 // the component body spends no `in`-check branch on any of them (the union
 // keeps at most one non-null). `holdingParamId` is the plain-add holding;
-// `duplicateOfId` seeds a CREATE pre-filled from an existing manual row (D2).
+// `duplicateOfId` seeds a CREATE pre-filled from an existing manual row.
 const readRouteEntry = (
   params: TransactionFormParams,
 ): {
@@ -977,7 +977,7 @@ type FieldGroupProps = {
   // (which stays a bare setter) so the lookup never runs on a keystroke.
   onBlurDescription: () => void;
   descriptionPlaceholder: string;
-  // The D1 inline suggestion row, rendered directly under the description field.
+  // The inline description-suggestion row, rendered directly under the description field.
   // Null on an edit (an edit already has its description) or whenever there is
   // nothing to suggest — the component hides itself, so this is `ReactElement |
   // null` rather than a boolean gate here.
@@ -1090,7 +1090,7 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         placeholder={props.descriptionPlaceholder}
       />
 
-      {/* D1: the inline tap-to-fill suggestion row, directly under the
+      {/* The inline tap-to-fill suggestion row, directly under the
         description field. It hides itself when there is nothing to offer, so it
         is rendered unconditionally here. */}
       {props.descriptionSuggestions}
@@ -1396,7 +1396,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
   // Three entry points: `holdingId` = add a new manual row; `transactionId` =
   // open an existing one (edit/read-only); `duplicateOfTransactionId` = open the
-  // CREATE form pre-filled FROM an existing manual row (D2). Read once by a pure
+  // CREATE form pre-filled FROM an existing manual row. Read once by a pure
   // helper so the component body spends no `in`-check branch on any of them. In
   // add mode the by-id query runs against an empty id and returns nothing,
   // keeping the hook order stable without a conditional call.
@@ -1430,14 +1430,14 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     () => new Map(overrideRules.map((rule) => [rule.normalizedName, rule.category])),
     [overrideRules],
   );
-  // D1: the distinct past MANUAL descriptions (newest-first), reduced to a plain
+  // The distinct past MANUAL descriptions (newest-first), reduced to a plain
   // string list the inline suggestion row matches against as the user types.
   // Reactive on `'transactions'`, so a freshly saved manual row feeds the next
   // create's suggestions.
   const { data: pastDescriptionRows } = useLiveQuery(transactionsRepo.distinctDescriptionsQuery(), [
     'transactions',
   ]);
-  // Create-only (D1-Q3): an edit already has its description, so the pool is
+  // Create-only: an edit already has its description, so the pool is
   // emptied on an edit and the suggestion row hides itself. Gating here (in this
   // memo's own scope) rather than with a ternary at the render site keeps the
   // screen component's cognitive-complexity budget intact.
@@ -1459,8 +1459,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const rateTable = buildRateTable(rateRows);
 
   // The primary-holding seam: the SINGLE holding-from-state variable both the
-  // duplicate path (D2) and the empty-create picker (B) drive. D2 seeds it from
-  // the source row on mount; B seeds it from the most-recent-manual default and
+  // duplicate path and the empty-create picker drive. The duplicate path seeds
+  // it from the source row on mount; the empty-create picker seeds it from the
+  // most-recent-manual default and
   // then lets the user re-point it through the picker below. Every
   // holding-derived value (currency, amount suffix, category eligibility,
   // exchange rules) reads through it. Null on a plain add/edit, where
@@ -1794,7 +1795,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   };
 
   // A1's category auto-pick, factored into ONE surface both the description
-  // blur AND the D1 suggestion tap route through, so the two never stack a
+  // blur AND the suggestion tap route through, so the two never stack a
   // second independent description effect. Given a settled name and no explicit
   // user pick, pre-select the category the existing name rules map that name to;
   // a name matching no rule yields null, which clears any prior auto-pick so
@@ -1817,7 +1818,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     reseatCategoryFromName(description);
   };
 
-  // D1: tapping an inline suggestion fills the description verbatim AND re-fires
+  // Tapping an inline suggestion fills the description verbatim AND re-fires
   // A1's rule lookup on that same value, so picking a known merchant name seats
   // its category exactly as a blur would — ONE coherent description-handling
   // surface, not two competing effects.
@@ -2339,7 +2340,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             description,
             onChangeDescription: setDescription,
             onBlurDescription: onDescriptionBlur,
-            // D1: the inline suggestion row. Its pool is already empty on an
+            // The inline suggestion row. Its pool is already empty on an
             // edit (see the `pastDescriptions` memo), and the component itself
             // hides when there is no match or the field already equals a
             // suggestion, so it is passed unconditionally here.
@@ -2434,11 +2435,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             categoryFieldRef,
           })}
 
-          {/* DEFAULT (M1, F3 part 1 fix round 1): after description AND
-              category — the brief said "existing detail row pattern" but
-              gave no position; the top of the form (above holding/type/
-              amount) read wrong for a supplementary, often-empty field, so
-              it moved here, at the end. */}
+          {/* After description AND category — the top of the form (above
+              holding/type/amount) reads wrong for a supplementary,
+              often-empty field. */}
           {renderCommentRow(existing?.comment, t('forms.transaction.comment'))}
         </Box>
       </Screen>

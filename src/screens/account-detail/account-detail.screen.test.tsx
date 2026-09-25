@@ -1205,8 +1205,8 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     });
   });
 
-  // T22: Oschadbank has no dedicated `statement-import` parser — its import
-  // routes through the generic column-mapping screen (T7), which
+  // Oschadbank has no dedicated `statement-import` parser — its import
+  // routes through the generic column-mapping screen, which
   // `StatementImportScreen` reaches whenever `expectedFormatId` is undefined
   // and nothing auto-detects. `pickAndOpenStatement` must not invent a format
   // id for a bank the catalog has none for.
@@ -1242,8 +1242,8 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     expect(queryByText('Import statement')).toBeNull();
   });
 
-  // T7: `canImportStatement` became `isBankAccount` — EVERY bank account
-  // offers the entry point now, with or without a known statement format,
+  // `isBankAccount` gates the entry point — EVERY bank account
+  // offers it, with or without a known statement format,
   // since an unrecognized/mismatched file still routes through the generic
   // column-mapping screen (`statement-import.screen.tsx`'s own "Map columns
   // manually" button) rather than dead-ending.

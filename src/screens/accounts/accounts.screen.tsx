@@ -59,7 +59,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     [accounts],
   );
 
-  // T27 (spec §5.3): a debt account gets its OWN "Debts" section, in its own
+  // A debt account gets its OWN "Debts" section, in its own
   // drag-and-drop grid below the main one — never mixed into it, so a drag
   // reorder in either grid can only ever reorder within that same section
   // (`Sortable.Grid`'s `data` is scoped per grid). Both stay in the query's
@@ -101,9 +101,8 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     return byAccount;
   }, [holdings]);
 
-  // M2 (T27 round 1 ruling): the Debts section shows a SECTION total
-  // (negative), not just each card's own balance (spec §5.3 — "a 'Debts'
-  // section with totals shown as negative"). Every debt-kind account holds
+  // The Debts section shows a SECTION total
+  // (negative), not just each card's own balance. Every debt-kind account holds
   // only `loan` holdings (`holdingTypesForAccountKind`), so summing them all
   // through `guardedNetWorth` gives the same negative total the section's
   // cards already individually show, added together.
@@ -242,7 +241,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
               // drags to reorder — see `CardContextMenu` and `onGridDragEnd`. `scrollableRef`
               // + `autoScrollActivationOffset` let a drag near an edge scroll the
               // parent list (F9).
-              // I1 (T27 round 1): `accountsRepo.reorder` rewrites `sortOrder`
+              // `accountsRepo.reorder` rewrites `sortOrder`
               // for ONLY the ids it is given. Persisting just this grid's own
               // reordered ids would restart both sections at 0, so a later
               // read of the FULL account list (Statistics' account filter,
@@ -259,7 +258,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
             )}
 
             {debtAccounts.length > 0 && (
-              // T27 (spec §5.3): the "Debts" section — its own heading + its
+              // The "Debts" section — its own heading + its
               // own grid, so a drag reorder here can never move a debt account
               // into the main grid above (or vice versa). Rendered only when
               // the user actually has a debt account (data-driven, not a

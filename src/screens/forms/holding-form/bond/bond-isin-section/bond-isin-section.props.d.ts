@@ -6,9 +6,9 @@ import type { BondCouponFrequency } from '@kiko/holdings/holding-metadata';
 import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
 
 // "ISIN" pre-fills a found bond's terms from the NBU register; "Manual" is
-// the classic hand-entered form (spec 6.3/6.4). A CREATE defaults to
+// the classic hand-entered form. A CREATE defaults to
 // 'isin'; an EDIT always opens 'manual', with the stored ISIN shown and
-// still editable (spec 6.4 #6) — `useBondFields` owns that seeding, this
+// still editable — `useBondFields` owns that seeding, this
 // type is just the shared vocabulary.
 export type BondEntryMode = 'isin' | 'manual';
 
@@ -31,17 +31,15 @@ export type BondIsinSectionProps = {
   // (the same split `MetalSection`/`PropertySection` already establish).
   foundTerms: BondTerms | null;
   // Whether the `bond_register` cache has EVER been populated — tells "no
-  // cache yet" from a confident "not in the register" (T25 review round 2,
-  // M6): both still offer the same Switch-to-Manual path (spec 6.4 #3),
-  // only the message differs.
+  // cache yet" from a confident "not in the register": both still offer
+  // the same Switch-to-Manual path, only the message differs.
   registerLoaded: boolean;
-  // "Not in the NBU register" → Switch to Manual (spec 6.4 #3). Keeps the
+  // "Not in the NBU register" → Switch to Manual. Keeps the
   // typed ISIN — the caller's mode state is the only thing that changes.
   onSwitchToManual: () => void;
   // True while ISIN mode has a found match whose register `couponFrequency`
-  // is unmapped (spec 6.2's own fallback) — the picker below is shown with
-  // NO default, and Save is blocked until picked (T25 review round 2, N2,
-  // orchestrator ruling).
+  // is unmapped — the picker below is shown with
+  // NO default, and Save is blocked until picked.
   needsCouponFrequencyPick: boolean;
   pickedCouponFrequency: BondCouponFrequency | null;
   onPickCouponFrequency: (frequency: BondCouponFrequency) => void;

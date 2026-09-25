@@ -77,7 +77,7 @@ describe('BankTypeField', () => {
     expect(getAllByText('Connect and import statements.')).toHaveLength(1);
     expect(getAllByText('Statement import only — no live connection.')).toHaveLength(5);
     // PUMB, Oschadbank, Raiffeisen, and Ukrgasbank have no dedicated
-    // `statement-import` parser (T22) — they import only through the generic
+    // `statement-import` parser — they import only through the generic
     // column-mapping screen, and say so honestly instead of implying a
     // format-specific preview that doesn't exist for them.
     expect(getAllByText('Import with column mapping')).toHaveLength(4);

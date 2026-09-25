@@ -20,7 +20,7 @@ const bondKindLabels = (t: TFunction) => ({
 /**
  * The Manual-mode-only bond fields (face value, coupon %, maturity date,
  * bond kind, coupon frequency) — hidden in ISIN mode, where these five are
- * register-sourced instead (spec 6.3). Renders nothing outside Manual mode.
+ * register-sourced instead. Renders nothing outside Manual mode.
  */
 const ManualBondFields: FC<ManualBondFieldsProps> = ({
   bondMode,

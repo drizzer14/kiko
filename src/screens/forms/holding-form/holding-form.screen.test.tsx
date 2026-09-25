@@ -65,7 +65,7 @@ let mockAccountKind = 'bank';
 // behavior; only the tests exercising the non-synced (statement-import-only)
 // path override this to null.
 let mockAccountInstitution: string | null = 'monobank';
-// The account's `bankId` (T17): gates the `metal` holding type under a
+// The account's `bankId`: gates the `metal` holding type under a
 // `bank`-kind account (see `creatableHoldingTypesForAccount`'s allow-list).
 // `null` by default (no bank picked); only the metal-allow-list tests below
 // override it.
@@ -73,15 +73,15 @@ let mockAccountBankId: string | null = null;
 // The holding the edit-mode form loads through useLiveQuery. Empty by default
 // (create mode); edit-mode tests seed it before rendering.
 let mockEditHoldings: unknown[] = [];
-// The `bond_register` cache rows the ISIN-mode section's lookup reads
-// (T25). Empty by default — the "no match" / "offline with no cache" path
-// (spec 6.4) — so a test only sets this when it needs a found bond.
+// The `bond_register` cache rows the ISIN-mode section's lookup reads.
+// Empty by default — the "no match" / "offline with no cache" path — so a
+// test only sets this when it needs a found bond.
 let mockBondRegisterRows: unknown[] = [];
-// The `fetchedAtQuery` cache-populated marker (T25 review round 2, M6).
+// The `fetchedAtQuery` cache-populated marker.
 // Non-null by default (a cache exists) — most tests care about a FOUND vs.
 // NOT-FOUND match, not the "never loaded" distinction.
 let mockBondRegisterFetchedAtRows: { value: number | null }[] = [{ value: 1 }];
-// The `price_points` rows `usePriceBook()` reads (T28 review round 1, I1) —
+// The `price_points` rows `usePriceBook()` reads —
 // a loan edit's `buildLoanPricePointOp` (a) case needs an existing manual
 // correction to anchor the outstanding it preserves. Empty by default; only
 // the (a)-case test below seeds a correction.
@@ -121,7 +121,7 @@ jest.mock('../../../db/use-live-query', () => ({
 // `findByIsinQuery`/`fetchedAtQuery`'s return values are opaque to the
 // mocked `useLiveQuery` above (it only reads `__kind`), so a bare stub is
 // enough — the same pattern `accountsRepo.byIdQuery` uses below.
-// `refreshBondRegisterIfStale` (T25, spec 6.4 #4) is mocked so no test hits
+// `refreshBondRegisterIfStale` is mocked so no test hits
 // a real network `fetch`; each relevant test can assert it was invoked.
 jest.mock('../../../bonds/bond-register-repo', () => ({
   bondRegisterRepo: {
@@ -149,7 +149,7 @@ const updateMock = holdingsRepo.update as jest.Mock;
 // holdings.repo.ts). `update`'s bare `set(patch)` is kept mocked so a test can
 // prove the form never falls back to it for a balance edit.
 const updateDeltaMock = holdingsRepo.updateWithBalanceDelta as jest.Mock;
-// A loan edit saves through `updateLoan` instead (T28 review round 1, I1) —
+// A loan edit saves through `updateLoan` instead —
 // the metadata patch AND the manual `holding:<id>` price-point op commit in
 // the SAME transaction, so the series can never drift from the edit.
 const updateLoanMock = holdingsRepo.updateLoan as jest.Mock;
@@ -223,7 +223,7 @@ const pickDate = async (
   });
 };
 
-// A bond CREATE defaults to ISIN mode (T25); every test here exercises the
+// A bond CREATE defaults to ISIN mode; every test here exercises the
 // classic Manual-mode fields, so it switches over first.
 const fillBondFields = async (screen: Screen): Promise<void> => {
   await selectHoldingType(screen, 'bond');
@@ -358,7 +358,7 @@ describe('HoldingFormScreen term deposit', () => {
 
     await selectHoldingType(screen, 'bond');
 
-    // ISIN mode (the CREATE default, T25) shows quantity/purchase date —
+    // ISIN mode (the CREATE default) shows quantity/purchase date —
     // always visible — plus the mode toggle and the ISIN field itself.
     for (const label of ['Quantity', 'Purchase date', 'Purchase price (total paid)']) {
       expect(screen.getByText(label)).toBeTruthy();
@@ -792,7 +792,7 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
     await selectHoldingType(screen, 'bond');
     await fill(screen, 'Name', 'My bond');
     await fill(screen, 'Quantity', '10');
-    // A valid-shaped ISIN with a wrong check digit (T23 fixture).
+    // A valid-shaped ISIN with a wrong check digit.
     await fireEvent.changeText(isinInput(screen), 'UA4000227046');
 
     await fireEvent.press(screen.getByText('Save'));
@@ -835,7 +835,7 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
     expect(patch.metadata.isin).toBe('XS2895055981');
   });
 
-  // I1 (T25 review round 1): the found-terms apply must not re-fire on an
+  // The found-terms apply must not re-fire on an
   // unrelated change — renaming the holding after a match, then picking a
   // date, must save the TYPED name, not the register's.
   it('keeps a renamed holding name after a found ISIN, even after a later purchase-date pick', async () => {
@@ -857,7 +857,7 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
     expect(createMock.mock.calls[0][0].name).toBe('War bond 2029');
   });
 
-  // N1 (T25 review round 2): a match resolved while the user is in MANUAL
+  // A match resolved while the user is in MANUAL
   // mode must still apply the first time they later switch to ISIN — the
   // register lookup itself never depended on `bondMode`, only the apply did.
   it('applies a match found while in Manual mode once the user switches to ISIN', async () => {
@@ -890,7 +890,7 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
     );
   });
 
-  // N2 (T25 review round 2, orchestrator ruling): an unmapped `pay_period`
+  // An unmapped `pay_period`
   // auto-switches to Manual once; re-tapping ISIN for that SAME match shows
   // its own coupon-frequency picker with NO default and blocks Save until
   // one is picked — never a frequency the user never chose.
@@ -923,8 +923,8 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
     expect(createMock.mock.calls[0][0].metadata.couponFrequency).toBe('quarterly');
   });
 
-  // I2 (T25 review round 1): a matured-still-registered bond (spec 6.1
-  // counts 2) must block Save with a VISIBLE reason in ISIN mode — the
+  // A matured-still-registered bond
+  // must block Save with a VISIBLE reason in ISIN mode — the
   // maturity DateField itself is unmounted there.
   it('shows a visible maturity-after-purchase error in ISIN mode for a matured-still-registered bond', async () => {
     mockBondRegisterRows = [
@@ -963,7 +963,7 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
   });
 
-  // I5 (T25 review round 1): in edit mode, a found ISIN in a DIFFERENT
+  // In edit mode, a found ISIN in a DIFFERENT
   // currency than the (locked) holding currency must not silently apply,
   // and must block save with its own visible reason.
   it('does not apply a found ISIN in a different currency in edit mode, and blocks save', async () => {
@@ -2008,7 +2008,7 @@ describe('HoldingFormScreen loan (T28)', () => {
     expect(screen.queryByText('No start date selected.')).toBeNull();
   });
 
-  // T26 review M1 (carried into T28): a degenerate term must not silently pass.
+  // A degenerate term must not silently pass.
   it('shows the term reason for a zero term on an annuity loan', async () => {
     const screen = await renderScreen();
 
@@ -2059,10 +2059,11 @@ describe('HoldingFormScreen loan (T28)', () => {
     await fill(screen, 'Principal', '600000');
     await fireEvent.press(screen.getByText('Save'));
 
-    // Staying `annuity` end to end (I1's (a)/(b)/(c) don't apply): a
-    // scheduled loan's principal edit takes effect through the metadata
-    // itself at read time, so no price-point write is needed — `updateLoan`
-    // still runs (in place of `updateWithBalanceDelta`), with a 'none' op.
+    // Staying `annuity` end to end (none of the schedule-change cases below
+    // apply): a scheduled loan's principal edit takes effect through the
+    // metadata itself at read time, so no price-point write is needed —
+    // `updateLoan` still runs (in place of `updateWithBalanceDelta`), with a
+    // 'none' op.
     expect(updateLoanMock).toHaveBeenCalledWith(
       'h1',
       expect.objectContaining({
@@ -2120,7 +2121,7 @@ describe('HoldingFormScreen loan (T28)', () => {
     );
   });
 
-  // I1(a): annuity/differentiated -> 'none' preserves the OLD schedule's
+  // annuity/differentiated -> 'none' preserves the OLD schedule's
   // current outstanding as a manual point dated today, so the debt never
   // silently reads as 0 the instant the schedule is cleared. Seeds a
   // correction dated today so the anchored outstanding is an exact, known
@@ -2169,8 +2170,8 @@ describe('HoldingFormScreen loan (T28)', () => {
     );
   });
 
-  // N1 (T28 review round 2): case (a) on a loan whose start date is still in
-  // the FUTURE must never write today's (0) outstanding as a permanent
+  // The case (a) conversion above, on a loan whose start date is still in
+  // the FUTURE, must never write today's (0) outstanding as a permanent
   // point — `loanOutstandingMinorAt` reads 0 for any instant before
   // `startDate`, so that 0 would outlive the start date once it arrives and
   // the debt would silently read as 0 forever. It must write the principal
@@ -2211,7 +2212,7 @@ describe('HoldingFormScreen loan (T28)', () => {
     );
   });
 
-  // I1(b): a 'none' loan's principal/start-date edit moves the start-day
+  // A 'none' loan's principal/start-date edit moves the start-day
   // point — delete the old day, insert the new principal at the new day.
   // Later correction points stay untouched.
   it('(b) editing a "none" loan\'s principal moves its start-day point', async () => {
@@ -2250,8 +2251,8 @@ describe('HoldingFormScreen loan (T28)', () => {
     );
   });
 
-  // I1(c): 'none' -> a schedule leaves the manual series untouched — a
-  // correction point is still valid for a scheduled loan (N10a).
+  // 'none' -> a schedule leaves the manual series untouched — a
+  // correction point is still valid for a scheduled loan.
   it('(c) switching a "none" loan to annuity keeps the manual series untouched', async () => {
     const screen = await renderEdit({
       id: 'h1',

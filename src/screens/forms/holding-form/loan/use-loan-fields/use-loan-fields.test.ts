@@ -55,7 +55,7 @@ describe('loanReasonKey', () => {
     expect(loanReasonKey({ ...baseArgs(), annualRatePct: '0' })).toBeNull();
   });
 
-  // T26 review, M1 (carried into T28): a degenerate term must not silently
+  // A degenerate term must not silently
   // pass — the schedule it produces would never reduce the balance to 0.
   it('rejects a zero, negative, or fractional term for a structured schedule', () => {
     expect(loanReasonKey({ ...baseArgs(), termMonths: '0' })).toBe('forms.holding.termMonthsError');
@@ -71,7 +71,7 @@ describe('loanReasonKey', () => {
     expect(loanReasonKey(baseArgs())).toBeNull();
   });
 
-  // Minor 10 (T28 review round 1): an uncapped term makes loanInstallments
+  // An uncapped term makes loanInstallments
   // build ~1e8 rows on every render (a valid positive integer, e.g.
   // "99999999", still passed the old check).
   it('rejects a term beyond MAX_LOAN_TERM_MONTHS', () => {

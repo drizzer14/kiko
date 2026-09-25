@@ -36,10 +36,9 @@ const selectedSwatchHex = (
   return undefined;
 };
 
-// Opens the AccountKindField sheet and picks the given kind — the field
-// replaced the former inline ChipRow (T15), so every kind switch now goes
-// through this trigger-press -> option-press pair instead of a single chip
-// press.
+// Opens the AccountKindField sheet and picks the given kind — every kind
+// switch goes through this trigger-press -> option-press pair, matching
+// the field's own sheet-based interaction.
 const selectKind = async (
   getByTestId: Awaited<ReturnType<typeof render>>['getByTestId'],
   kind: 'bank' | 'cash' | 'crypto' | 'property' | 'metals',
@@ -311,8 +310,8 @@ describe('AccountFormScreen', () => {
   });
 
   it('creates a property account with the property kind (no bank/crypto section rendered)', async () => {
-    // Property has no extra creation fields yet (the holding section is T16),
-    // so it shares the generic create path with bank/crypto: the row inserts
+    // Property has no extra creation fields yet, so it shares the generic
+    // create path with bank/crypto: the row inserts
     // with just name/kind/color/icon, and neither the cash currency fields nor
     // the bank/crypto sync sections render for it.
     const { getByLabelText, getByTestId, getByText, navigation, queryByText, queryByTestId } =
@@ -334,8 +333,8 @@ describe('AccountFormScreen', () => {
   });
 
   it('creates a metals account with the metals kind (no bank/crypto section rendered)', async () => {
-    // Metals has no extra creation fields yet (the metal-section form is T20),
-    // so it shares the generic create path with bank/crypto/property: the row
+    // Metals has no extra creation fields yet, so it shares the generic
+    // create path with bank/crypto/property: the row
     // inserts with just name/kind/color/icon, and neither the cash currency
     // fields nor the bank/crypto sync sections render for it.
     const { getByLabelText, getByTestId, getByText, navigation, queryByText, queryByTestId } =

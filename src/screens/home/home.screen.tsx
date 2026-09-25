@@ -352,7 +352,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     [navigation],
   );
 
-  // Duplicating a row opens the create form pre-filled from it (D2), stateless
+  // Duplicating a row opens the create form pre-filled from it, stateless
   // via the `duplicateOfTransactionId` route param. Stable across renders (it
   // closes over `navigation` alone), like `handleRowPress`, so the memoized
   // rows never re-render on a new handler identity.
