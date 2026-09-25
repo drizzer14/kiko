@@ -76,7 +76,7 @@ const migratePerAccountMonobankToken = async (): Promise<void> => {
  * exact counterpart of `migratePerAccountMonobankToken` above: it runs in the boot
  * chain AFTER that Monobank migration and BEFORE any per-account credential read.
  * There is at most one connected Binance account today (the one-connection
- * invariant relaxes in Task 5.2), so the first row's id is the binding target;
+ * invariant relaxes for multi-account), so the first row's id is the binding target;
  * when none is connected the migration is a no-op that leaves the global item for a
  * later Connect to adopt — see `migrateBinanceCredentialToPerAccount`.
  */

@@ -1204,8 +1204,8 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
     await deps.syncStateRepo.setFailedSyncMonobankIds(accountId, failedIdsToPersist(newFailedIds));
   }
 
-  // GRADUATE the full-fetch marker EVEN ON A PARTIAL FAILURE — the key R6-1
-  // change. This now runs BEFORE the throw below, so a full fetch where one card
+  // GRADUATE the full-fetch marker EVEN ON A PARTIAL FAILURE. This runs
+  // BEFORE the throw below, so a full fetch where one card
   // failed still advances `lastFullSyncAt` and does NOT get stuck re-running a
   // slow N×60s full fetch every time (which starved the balance-diff skip once
   // the marker aged past `FULL_FETCH_INTERVAL_MS`). Nothing is lost: the failed

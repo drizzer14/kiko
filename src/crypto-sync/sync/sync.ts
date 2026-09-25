@@ -47,8 +47,8 @@ const defaultDeps: BalanceSyncDeps = {
  * Resolve the account this sync writes into, mirroring
  * `resolveMonobankAccountId` (`src/monobank/sync.ts`). A `targetAccountId` sync
  * validates only that the target exists — MULTIPLE `binance` and multiple
- * `btc_wallet` connections are allowed (Task 5.2), each an independent account
- * with its own per-account secret/address and its own single-flight key.
+ * `btc_wallet` connections are allowed, each an independent account with its
+ * own per-account secret/address and its own single-flight key.
  * Re-connecting the SAME account is an idempotent re-sync. This only reads —
  * marking happens after a successful fetch, so a failed fetch never leaves a
  * half-connected account behind.
@@ -76,7 +76,7 @@ const resolveTargetAccount = async (
       throw new Error(i18n.t('accountDetail.noConnectionFound', { name }));
     }
 
-    // Multi-connection (Task 5.2): a second `binance` or `btc_wallet` account may
+    // Multi-connection: a second `binance` or `btc_wallet` account may
     // connect while another already holds that provider. Each account keys its own
     // secret (Binance credentials) / public address (wallet, per-holding), and the
     // per-account `inFlightBalanceSyncs` join keys by `targetAccountId`, so distinct

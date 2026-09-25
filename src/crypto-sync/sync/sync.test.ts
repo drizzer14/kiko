@@ -233,7 +233,7 @@ describe('runBalanceSync', () => {
     await runBalanceSync(provider, { balances: [walletBalance(7)] }, deps);
 
     // The second wallet resolves to its OWN account and writes its own holding —
-    // the one-connection-per-institution gate is gone (Task 5.2).
+    // the one-connection-per-institution gate is gone.
     expect(accountsStore.find((account) => account.id === 'acc-b')?.institution).toBe('btc_wallet');
     expect(holdingsStore).toHaveLength(1);
     expect(holdingsStore[0].accountId).toBe('acc-b');

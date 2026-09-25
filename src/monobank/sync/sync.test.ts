@@ -1367,7 +1367,7 @@ describe('runSync', () => {
     expect(isSyncingSnapshot()).toBe(false);
   });
 
-  // R7 (reverting the R6-3 fast/background split): the signal that drives the
+  // Reverting the fast/background split: the signal that drives the
   // native spinner tracks the WHOLE run, not just the fast phase. It stays ON
   // across the gated per-card statement loop — at the FIRST gated fetch and
   // after the LAST card — and clears ONLY once `runSync`'s returned promise
@@ -1685,7 +1685,7 @@ describe('runSync', () => {
       expect(fromSecondsForA).not.toBe(Math.floor(recentCursor / 1000));
     });
 
-    // R6-1: a full fetch where one card fails now GRADUATES `lastFullSyncAt`
+    // A full fetch where one card fails now GRADUATES `lastFullSyncAt`
     // even though it re-throws — the fix for the "permanent full-fetch" trap
     // where a partial failure never advanced the marker, so once it aged past
     // the 24h interval every sync became a slow N×60s full fetch and the
