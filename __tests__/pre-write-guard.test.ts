@@ -1383,3 +1383,275 @@ describe('runNodeChecks (rule 11: blank-line-separation)', () => {
     expect(reason).toContain('return doubled;');
   });
 });
+
+// The override protocol: a rule-id-specific `// nosemgrep: <id>
+// OVERRIDE(reason) why` (Semgrep rules) or `// kiko-override: <id>
+// OVERRIDE(reason) why` (Node-checked rules) on the finding's own line or the
+// line directly above it. Semgrep runs with --disable-nosem (see runSemgrep),
+// so the guard alone decides; a bare comment with no OVERRIDE(...) is exactly
+// as invalid as a bare biome-ignore and never suppresses a finding.
+describe('override protocol (nosemgrep / kiko-override)', () => {
+  it('allows a new finding with `// nosemgrep: <id> OVERRIDE(reason) why` on the line above', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeFindingsStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'new-file.ts');
+    const afterContent = [
+      '// nosemgrep: kiko-no-switch OVERRIDE(reason) legacy fallthrough kept intentionally',
+      'switch (x) {',
+      '};',
+      '',
+    ].join('\n');
+    const needle = 'switch (x) {';
+    const offsetStart = afterContent.indexOf(needle);
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: afterContent }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        STUB_RESULTS_AFTER: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'after/src/new-file.ts',
+            line: 2,
+            offsetStart,
+            offsetEnd: offsetStart + needle.length,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+        ]),
+      }),
+    );
+
+    expect(result.status).toBe(0);
+  });
+
+  it('allows a new finding with the override on the same line', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeFindingsStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'new-file.ts');
+    const afterContent = [
+      'switch (x) { // nosemgrep: kiko-no-switch OVERRIDE(reason) legacy fallthrough kept intentionally',
+      '};',
+      '',
+    ].join('\n');
+    const needle = 'switch (x) {';
+    const offsetStart = afterContent.indexOf(needle);
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: afterContent }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        STUB_RESULTS_AFTER: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'after/src/new-file.ts',
+            line: 1,
+            offsetStart,
+            offsetEnd: offsetStart + needle.length,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+        ]),
+      }),
+    );
+
+    expect(result.status).toBe(0);
+  });
+
+  it('denies a new finding under a bare `// nosemgrep: <id>`', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeFindingsStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'new-file.ts');
+    const afterContent = ['// nosemgrep: kiko-no-switch', 'switch (x) {', '};', ''].join('\n');
+    const needle = 'switch (x) {';
+    const offsetStart = afterContent.indexOf(needle);
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: afterContent }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        STUB_RESULTS_AFTER: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'after/src/new-file.ts',
+            line: 2,
+            offsetStart,
+            offsetEnd: offsetStart + needle.length,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+        ]),
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('bare');
+    expect(reason).toContain('kiko-no-switch');
+  });
+
+  it('denies an override naming a different rule id', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeFindingsStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'new-file.ts');
+    const afterContent = [
+      '// nosemgrep: kiko-other-rule OVERRIDE(reason) unrelated justification',
+      'switch (x) {',
+      '};',
+      '',
+    ].join('\n');
+    const needle = 'switch (x) {';
+    const offsetStart = afterContent.indexOf(needle);
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: afterContent }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        STUB_RESULTS_AFTER: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'after/src/new-file.ts',
+            line: 2,
+            offsetStart,
+            offsetEnd: offsetStart + needle.length,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+        ]),
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-no-switch');
+  });
+
+  it('allows a Node-rule finding with `// kiko-override: kiko-import-order OVERRIDE(...) why`', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'example.ts');
+
+    // import-order.js's own finding is always pinned to line 1 (it flags the
+    // leading header as a whole, not one statement — see
+    // parseImportOrderCheckerOutput), and a comment TRAILING an import
+    // statement breaks that checker's own statement-end parsing, so the
+    // override comment has to be its own line ABOVE the import block, which
+    // import-order.js already treats as a pinned "block prefix" of the first
+    // group rather than part of any import statement.
+    const result = runGuard(
+      payloadFor('Write', {
+        file_path: targetFile,
+        content: [
+          '// kiko-override: kiko-import-order OVERRIDE(reason) legacy ordering kept intentionally',
+          "import { local } from './local';",
+          '',
+          "import React from 'react';",
+          '',
+          'export const value = 1;',
+          '',
+        ].join('\n'),
+      }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+      }),
+    );
+
+    expect(result.status).toBe(0);
+  });
+
+  it('denies a bare `// kiko-override: <id>`', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'example.ts');
+
+    const result = runGuard(
+      payloadFor('Write', {
+        file_path: targetFile,
+        content: [
+          '// kiko-override: kiko-import-order',
+          "import { local } from './local';",
+          '',
+          "import React from 'react';",
+          '',
+          'export const value = 1;',
+          '',
+        ].join('\n'),
+      }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-import-order');
+    expect(reason).toContain('bare');
+  });
+
+  it('denies when an edit deletes a justified override that suppressed a BEFORE finding', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeFindingsStub(project);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'example.ts');
+    const overrideLine =
+      '// nosemgrep: kiko-no-switch OVERRIDE(reason) legacy fallthrough kept intentionally\n';
+    const beforeContent = `${overrideLine}switch (x) {\n};\n`;
+    const afterContent = 'switch (x) {\n};\n';
+    writeFileSync(targetFile, beforeContent);
+    const needle = 'switch (x) {';
+    const beforeOffsetStart = beforeContent.indexOf(needle);
+    const afterOffsetStart = afterContent.indexOf(needle);
+
+    const result = runGuard(
+      payloadFor('Edit', { file_path: targetFile, old_string: overrideLine, new_string: '' }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        STUB_RESULTS_BEFORE: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'before/src/example.ts',
+            line: 2,
+            offsetStart: beforeOffsetStart,
+            offsetEnd: beforeOffsetStart + needle.length,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+        ]),
+        STUB_RESULTS_AFTER: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'after/src/example.ts',
+            line: 1,
+            offsetStart: afterOffsetStart,
+            offsetEnd: afterOffsetStart + needle.length,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+        ]),
+      }),
+    );
+
+    expect(result.status).toBe(2);
+  });
+});

@@ -19,9 +19,13 @@
 // AFTER-first, BEFORE-only-if-AFTER-has-findings staging; `findingKeys`/
 // `newFindings` diff the two finding sets — Semgrep's and the Node
 // checkers' combined — so only a finding the edit ADDS ever blocks the
-// write, never one already on disk. Override syntax (a rule-specific
-// `nosemgrep`/`kiko-override` comment that exempts a finding) is a later
-// task. Fail closed throughout: the top-level try/catch below turns ANY
+// write, never one already on disk. `overrideState` recognizes a rule-
+// specific `nosemgrep`/`kiko-override` comment that exempts a finding: a
+// justified one (carrying `OVERRIDE(...)`) drops the finding from BOTH
+// trees before the diff, and a bare one (naming the rule with no
+// `OVERRIDE(...)`) never suppresses anything — Semgrep itself runs with
+// `--disable-nosem`, so this file is the only place a suppression is ever
+// honored. Fail closed throughout: the top-level try/catch below turns ANY
 // throw — a malformed payload, a missing/unreadable rules file, an
 // unexpected Semgrep or Node-checker exit code, a finding whose rule is
 // missing its required `metadata.skill`, or an internal timeout killing a
@@ -532,6 +536,31 @@ function findingKeys(findings) {
   return keyedFindings;
 }
 
+// The override protocol (design spec's "Override protocol" section): a
+// `// nosemgrep: <rule-id> OVERRIDE(<reason>) <justification>` comment (or,
+// for a Node-checked rule, the same shape spelled `kiko-override:`) placed on
+// the finding's own line or the line directly above it — Semgrep line
+// numbers are 1-based, so `line - 1` indexes "this line" and `line - 2`
+// indexes "the line above" in a 0-based `sourceLines` array. Returns
+// 'justified' when a candidate line names `ruleId` and carries `OVERRIDE(`,
+// 'bare' when a candidate line names `ruleId` with no `OVERRIDE(`, and 'none'
+// otherwise — including when a candidate line names a DIFFERENT rule id,
+// which never suppresses THIS finding, per the "denies an override naming a
+// different rule id" case.
+const OVERRIDE_COMMENT_PATTERN = /(?:nosemgrep|kiko-override):\s*([\w-]+)/;
+
+function overrideState(sourceLines, line, ruleId) {
+  const candidateLines = [sourceLines[line - 1], sourceLines[line - 2]];
+  for (const candidateLine of candidateLines) {
+    if (typeof candidateLine !== 'string') continue;
+    const match = OVERRIDE_COMMENT_PATTERN.exec(candidateLine);
+    if (match && match[1] === ruleId) {
+      return candidateLine.includes('OVERRIDE(') ? 'justified' : 'bare';
+    }
+  }
+  return 'none';
+}
+
 // A finding the proposed edit ADDS: present in the AFTER key set, absent
 // from the BEFORE one. A pre-existing violation (present in both) is never
 // reported here — it stays visible to check:rules/check:all, which this
@@ -552,13 +581,19 @@ function newFindings(beforeFindings, afterFindings) {
 // a single JSON string field, since a PreToolUse deny reason is not a block
 // written to stderr.
 function buildFindingBlock(relativePath, finding) {
-  return [
+  const lines = [
     `WHAT FAILED:    rule ${finding.ruleId} at ${relativePath}:${finding.line}`,
     `DETAILS:        matched text: ${JSON.stringify(finding.matchedText)}`,
     'WHY IT MATTERS: this is a NEW violation the edit would add; a pre-existing one is left for check:rules to catch',
     `HOW TO FIX:     ${finding.fix}`,
     `DO NOT:         suppress this without a justified override; see ${finding.skill}`,
-  ].join('\n');
+  ];
+  if (finding.overrideState === 'bare') {
+    lines.push(
+      `OVERRIDE:       a bare nosemgrep/kiko-override comment names rule ${finding.ruleId} with no OVERRIDE(...) justification, so it does not suppress this finding`,
+    );
+  }
+  return lines.join('\n');
 }
 
 // The full PreToolUse deny reason for every new finding the proposed edit
@@ -626,10 +661,33 @@ async function run() {
         ? await runNodeChecks(temporaryRoot, relativePath, 'before')
         : [];
 
-    const addedFindings = newFindings(
-      beforeFindings.concat(beforeNodeFindings),
-      afterFindings.concat(afterNodeFindings),
+    // Annotate every finding with its override state against the tree it
+    // belongs to (BEFORE findings against beforeText's own lines, AFTER
+    // findings against afterText's own lines — Review Focus 5), then drop
+    // every JUSTIFIED finding from both trees before diffing: this is what
+    // both lets an added justified override suppress a new finding, and
+    // makes deleting a justified override that suppressed a BEFORE finding
+    // turn that finding "new" again (it is dropped from the AFTER set only
+    // when it is STILL justified there). A 'bare' override is left in place
+    // — it never suppresses anything — so `buildFindingBlock` can still name
+    // it when the finding it decorates ends up in the diff.
+    const beforeLines = beforeText.split('\n');
+    const afterLines = afterText.split('\n');
+    const annotate = (findings, sourceLines) =>
+      findings.map((finding) => ({
+        ...finding,
+        overrideState: overrideState(sourceLines, finding.line, finding.ruleId),
+      }));
+    const annotatedBefore = annotate(beforeFindings.concat(beforeNodeFindings), beforeLines);
+    const annotatedAfter = annotate(afterFindings.concat(afterNodeFindings), afterLines);
+    const nonJustifiedBefore = annotatedBefore.filter(
+      (finding) => finding.overrideState !== 'justified',
     );
+    const nonJustifiedAfter = annotatedAfter.filter(
+      (finding) => finding.overrideState !== 'justified',
+    );
+
+    const addedFindings = newFindings(nonJustifiedBefore, nonJustifiedAfter);
 
     if (addedFindings.length === 0) {
       emitAllow();
