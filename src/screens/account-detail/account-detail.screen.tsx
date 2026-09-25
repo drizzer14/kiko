@@ -16,6 +16,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { AccountRow } from '../../db/schema';
 import Box from '../../design-system/components/box';
 import EntityHeaderIcon from '../entity-header-icon';
+import { useDataReady } from '../../db/use-data-ready';
 import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
 import type { Currency } from '../../currency/currency';
@@ -23,6 +24,7 @@ import EntityAmountHeader from '../entity-amount-header';
 import { usePriceBook } from '../../prices/use-price-book';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
+import LoadingState from '../../design-system/components/loading-state';
 import { isSyncedHolding } from '../../holdings/deletable';
 import { sumByCurrency } from '../../rates/currency-totals';
 import { accountKindSymbol } from '../../holdings/entity-symbols';
@@ -64,11 +66,31 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const { accountId, name: initialName } = route.params;
   const { theme } = useUnistyles();
   const { t } = useTranslation();
-  const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts']);
-  const { data: holdings } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings']);
-  const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
-  const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
-  const { book: priceBook } = usePriceBook();
+  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
+    accountsRepo.byIdQuery(accountId),
+    ['accounts'],
+  );
+  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
+    holdingsRepo.listByAccountQuery(accountId),
+    ['holdings'],
+  );
+  const { data: rates, isLoading: ratesLoading } = useLiveQuery(ratesRepo.allQuery(), [
+    'currency_rates',
+  ]);
+  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(settingsRepo.getQuery(), [
+    'settings',
+  ]);
+  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook();
+  // Empty holding list / zero balance must never render while any of this
+  // screen's own queries is still on its first load (kiko-architecture's
+  // useLiveQuery consumer rule) — gated below, right at the return.
+  const isReady = useDataReady(
+    accountsLoading,
+    holdingsLoading,
+    ratesLoading,
+    settingsLoading,
+    priceBookLoading,
+  );
   const account = accounts.at(0);
 
   // The nav title shows the account NAME only — the native large title, the
@@ -186,6 +208,14 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
       expectedFormatId: statementFormatIdForBank(account?.bankId),
     });
   };
+
+  if (!isReady) {
+    return (
+      <Screen>
+        <LoadingState testID="account-detail-loading" />
+      </Screen>
+    );
+  }
 
   return (
     <Screen

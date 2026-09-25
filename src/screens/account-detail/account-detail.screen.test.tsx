@@ -220,26 +220,41 @@ const setLiveData = (data: {
   rates?: Rate[];
   settings?: Settings[];
   syncState?: SyncState[];
+  // Every flag below defaults to `false` (an already-resolved query), so
+  // every existing call site keeps behaving exactly as before; a test that
+  // cares about the loading gate passes one or more explicitly.
+  accountsIsLoading?: boolean;
+  holdingsIsLoading?: boolean;
+  ratesIsLoading?: boolean;
+  settingsIsLoading?: boolean;
+  pricePointsIsLoading?: boolean;
 }): void => {
   const accounts = data.accounts ?? [];
+  // A per-table result map, keyed the same way the old if-chain branched —
+  // a lookup instead of a chain keeps this well under the cognitive-
+  // complexity budget (kiko-code-style).
+  const resultByTable: Record<string, { data: unknown[]; isLoading?: boolean }> = {
+    // A real holding row always carries a `type`; default it here so a
+    // fixture that only cares about name/currency/balance still yields a
+    // valid type for the card's color/icon derivation (an undefined type
+    // has no default color and would throw in the tint helper).
+    holdings: {
+      data: (data.holdings ?? []).map((holding) => ({ type: 'card', ...holding })),
+      isLoading: data.holdingsIsLoading ?? false,
+    },
+    currency_rates: { data: data.rates ?? [], isLoading: data.ratesIsLoading ?? false },
+    settings: {
+      data: data.settings ?? [{ baseCurrency: 'UAH' }],
+      isLoading: data.settingsIsLoading ?? false,
+    },
+    sync_state: { data: data.syncState ?? [] },
+    price_points: { data: [], isLoading: data.pricePointsIsLoading ?? false },
+  };
+
   mockUseLiveQuery.mockImplementation((_query: { __kind?: string }, tables: string[]) => {
-    if (tables[0] === 'holdings') {
-      // A real holding row always carries a `type`; default it here so a fixture
-      // that only cares about name/currency/balance still yields a valid type
-      // for the card's color/icon derivation (an undefined type has no default
-      // color and would throw in the tint helper).
-      return { data: (data.holdings ?? []).map((holding) => ({ type: 'card', ...holding })) };
-    }
-    if (tables[0] === 'currency_rates') {
-      return { data: data.rates ?? [] };
-    }
-    if (tables[0] === 'settings') {
-      return { data: data.settings ?? [{ baseCurrency: 'UAH' }] };
-    }
-    if (tables[0] === 'sync_state') {
-      return { data: data.syncState ?? [] };
-    }
-    return { data: accounts };
+    return (
+      resultByTable[tables[0]] ?? { data: accounts, isLoading: data.accountsIsLoading ?? false }
+    );
   });
 };
 
@@ -1062,6 +1077,68 @@ describe('AccountDetailScreen', () => {
     // the grown valuation the breakdown would instead show 1,000.00 ₴, leaving
     // only the single headline match.
     expect(getAllByText(/1,077\.00 ₴/).length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('AccountDetailScreen — loading gate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockButtonProps.length = 0;
+    mockSync.mockResolvedValue(undefined);
+    mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+  });
+
+  it('shows a loading spinner, not the zero-balance content, while any of its own queries is on its first load', async () => {
+    setLiveData({ accounts: [], holdings: [], holdingsIsLoading: true });
+
+    const { getByTestId, queryByTestId, queryByText } = await renderScreen();
+
+    expect(getByTestId('account-detail-loading')).toBeTruthy();
+    expect(queryByTestId('account-detail-content')).toBeNull();
+    // 0.00 ₴ is what the real (buggy) empty-while-loading render used to show
+    // for the not-yet-loaded balance — it must never appear during loading.
+    expect(queryByText(/0\.00/)).toBeNull();
+  });
+
+  it('renders the real content once every query has loaded', async () => {
+    setLiveData({
+      accounts: [account()],
+      holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
+    });
+
+    const { getByTestId, getByText, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('account-detail-content')).toBeTruthy();
+    expect(getByText('Black card')).toBeTruthy();
+    expect(queryByTestId('account-detail-loading')).toBeNull();
+  });
+
+  it('does not flash back to the loading spinner once loaded, on a later re-query', async () => {
+    setLiveData({
+      accounts: [account()],
+      holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
+    });
+    const view = await renderScreen();
+    expect(view.getByTestId('account-detail-content')).toBeTruthy();
+
+    // A pull/reactive re-query that (even incorrectly) reported isLoading
+    // true again must not flip the screen back to the loading spinner.
+    setLiveData({
+      accounts: [account()],
+      holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
+      holdingsIsLoading: true,
+    });
+    await act(async () => {
+      view.rerender(
+        <AccountDetailScreen
+          route={route}
+          navigation={asNavigationProp<AccountDetailProps['navigation']>(view.navigation)}
+        />,
+      );
+    });
+
+    expect(view.queryByTestId('account-detail-loading')).toBeNull();
+    expect(view.getByTestId('account-detail-content')).toBeTruthy();
   });
 });
 
