@@ -329,23 +329,19 @@ before the `//` (`(?<!:)`) — without it, the `//` inside an
 `http://`/`https://` URL string literal (not a comment at all) reads
 as a comment opener too.
 
-**Shipped WARNING first**, per progress.md's mechanization ruling (a
-rule lands TOGETHER with the sweep of its violations; an ERROR rule
-alone would break the gate): a real domain word CAN still collide with
-this shape as its OWN standalone token, not merely a substring — no
-regex fix closes that gap the way the boundary tricks above do (a
-short account-position label like a bare `D2` in a list is
-syntactically identical to a real decision id). A repo-wide sweep
-(429 findings across 123 files, plus every `.superpowers/` path
-citation and every `round \d`/`device review` history-word cousin the
-id regex alone does not catch) fixed that residual class by rewording
-the handful of real collisions rather than loosening the rule, and the
-rule is now **ERROR**: `semgrep --config rules/semgrep-mobile.yml src`
-reports 0 findings for it. A large, pervasive `device-feedback-round-N
-item M` citation convention remains across dozens of `src/screens/**`
-files — found by the history-word grep, not this rule's own id regex,
-and not counted in the sweep's own measurement — left as a separate,
-out-of-scope cleanup for a dedicated pass.
+**A new check lands together with the fix of its own existing
+violations** — an ERROR rule alone, with no fix, would break the gate
+on landing. This one **shipped WARNING first**: a real domain word CAN
+still collide with the id shape as its OWN standalone token, not
+merely a substring — no regex fix closes that gap the way the
+boundary tricks above do (a short account-position label like a bare
+`D2` in a list is syntactically identical to a real decision id). A
+repo-wide sweep (every id-family hit, every `.superpowers/` path
+citation, and every `round-N`/`device[- ]feedback`/`on-device review`
+history-word cousin the id regex family covers) fixed that residual
+class by rewording the handful of real collisions rather than
+loosening the rule, and the rule is now **ERROR**: `semgrep --config
+rules/semgrep-mobile.yml src` reports 0 findings for it.
 
 ## One exported component per `.tsx` — a Jest invariant, not Semgrep
 
@@ -447,6 +443,13 @@ applying in the same file at once).
 a repo-sweep tool, not part of the check-wrapper contract (see "The
 wrapper contract" above — a checker only checks) — it is invoked by
 hand, never from `import-order.sh`.
+
+Two adjacent groups of the SAME kind (no other-kind group or
+side-effect barrier between them) is also a checked violation —
+`mergeAdjacentSameKindGroups` folds them into one group and re-sorts
+the result, so `--write` fixes this shape itself; it only leaves the
+merge for a human when the "comment glued to a non-first import"
+safety rule above marks one of the two groups unsafe to touch.
 
 ## `kiko-no-switch` — an AST `switch` pattern, not a keyword regex
 

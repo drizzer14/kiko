@@ -143,7 +143,9 @@ No history in a comment: no task id (`T28`), no review-round id (`I1`,
 `M2`, `N3`), no spec section number (`spec 6.2`, `D14`), and no
 "changed because …" narrative. That belongs in the commit message that
 made the change, or in the skill section that owns the rule — never
-in a comment left behind in the code.
+in a comment left behind in the code. Mechanized in `src/**` by the
+`kiko-no-history-id-comment` Semgrep rule (ERROR) — see the
+kiko-linter skill's own section on it for the rule's design.
 
 Documented exception: the data-provenance date comment in
 `src/rates/fiat-rate-seed/fiat-rate-seed.ts` stays — it records WHEN
@@ -563,6 +565,12 @@ The convention (handwritten, Prettier-only exemplar:
   `import '../../design-system/unistyles';`) is an ordering BARRIER:
   never move an import across it — module-initialization order must
   be preserved.
+- Two adjacent groups of the SAME kind (e.g. two `../**` groups back
+  to back, with no other-kind group or side-effect barrier between
+  them) is also a violation — they must merge into one group. The
+  checker's `--write` mode does this merge itself (see the kiko-linter
+  skill's "Import length-sort" section); it only asks a human to merge
+  by hand when a comment glued to a non-first import blocks the fixer.
 
 Use `import type` when the entire import is types:
 
