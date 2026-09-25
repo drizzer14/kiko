@@ -6,7 +6,9 @@
 // (`missingDays`, `deriveLastBackfilledDay`) real, but stub `runBackfill` with a
 // never-resolving promise so the screen's mount effect leaves the line in its
 // `loading` state without hitting NBU/CoinGecko.
-const mockRunBackfill = jest.fn((..._args: unknown[]) => new Promise<never>(() => {}));
+const mockRunBackfill = jest.fn(
+  (..._args: unknown[]): Promise<BackfillStatus> => new Promise<never>(() => {}),
+);
 
 jest.mock('../../rates/history-backfill', () => {
   const actual = jest.requireActual('../../rates/history-backfill');
@@ -22,6 +24,7 @@ import { startOfLocalDay } from '../../dates/local-day';
 import { toUtcMidnight } from '../../rates/history-entry';
 import { defaultDateRange } from '../../dates/default-range';
 import type { TrendFilter } from '../../statistics/trend-filter';
+import type { BackfillStatus } from '../../rates/history-backfill';
 import { categoryColor } from '../../statistics/category-breakdown';
 import '../../design-system/unistyles';
 import { FILTER_ALL } from '../home/filter-menu';
@@ -791,6 +794,174 @@ describe('StatisticsScreen', () => {
     });
 
     nowSpy.mockRestore();
+  });
+
+  it('leaves loading and retries the same span when runBackfill itself resolves failed', async () => {
+    // Both providers rejected inside `runBackfill`, which resolves a Right
+    // `'failed'` status rather than rejecting its own promise — a distinct
+    // path from the rejected-promise case above, and must be handled the
+    // same way: never reported complete, and retried on the next focus.
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+    });
+    mockRunBackfill.mockResolvedValueOnce({ state: 'failed', lastDay: null });
+
+    const focusModule = jest.requireMock('./use-focus-refreshed-now') as {
+      useFocusRefreshedNow: () => number;
+    };
+    const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
+
+    const { getByTestId, queryByTestId, rerender } = await renderScreen();
+
+    await waitFor(() => expect(queryByTestId('net-worth-line-loading')).toBeNull());
+    expect(getByTestId('net-worth-line-empty')).toBeTruthy();
+    expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+
+    const firstSpan = mockRunBackfill.mock.calls[0]?.[0] as { earliestDay: number };
+    nowSpy.mockReturnValue(now + DAY);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(2);
+    expect(mockRunBackfill.mock.calls[1]?.[0]).toMatchObject({
+      earliestDay: firstSpan.earliestDay,
+    });
+
+    nowSpy.mockRestore();
+  });
+
+  it("ignores a stale run's rejection once a later run has claimed a newly-extended span", async () => {
+    // An older transaction extends `spanStart` EARLIER while run A is still
+    // pending, so run B starts for the wider span before A ever settles. A's
+    // eventual rejection must not undo run B's own claim on the span ref —
+    // otherwise the next plain refocus would wrongly look "never run" again.
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+    });
+
+    const focusModule = jest.requireMock('./use-focus-refreshed-now') as {
+      useFocusRefreshedNow: () => number;
+    };
+    const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
+
+    let rejectFirstRun: (error: Error) => void = () => {};
+    const firstRun = new Promise<never>((_resolve, reject) => {
+      rejectFirstRun = reject;
+    });
+    mockRunBackfill.mockReturnValueOnce(firstRun);
+
+    const { getByTestId, rerender } = await renderScreen();
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+
+    const secondRun = new Promise<never>(() => {});
+    mockRunBackfill.mockReturnValueOnce(secondRun);
+
+    const olderTransaction: Transaction = {
+      id: 't-older',
+      holdingId: 'h1',
+      time: TRANSACTIONS[0].time - 10 * DAY,
+      amountMinorUnits: 10_000,
+    };
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: [olderTransaction, ...TRANSACTIONS],
+      history: [],
+    });
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      rejectFirstRun(new Error('stale'));
+      await firstRun.catch(() => {});
+    });
+
+    // Still loading run B — the stale rejection changed neither the status
+    // nor (see the refocus below) the span ref run B already claimed.
+    expect(getByTestId('net-worth-line-loading')).toBeTruthy();
+
+    nowSpy.mockReturnValue(now + DAY);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(2);
+
+    nowSpy.mockRestore();
+  });
+
+  it("ignores a stale run's completion once a later run has claimed a newly-extended span, and applies that later run's own settle", async () => {
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+    });
+
+    let resolveFirstRun: (status: BackfillStatus) => void = () => {};
+    const firstRun = new Promise<BackfillStatus>((resolve) => {
+      resolveFirstRun = resolve;
+    });
+    mockRunBackfill.mockReturnValueOnce(firstRun);
+
+    const { getByTestId, queryByTestId, rerender } = await renderScreen();
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+
+    let resolveSecondRun: (status: BackfillStatus) => void = () => {};
+    const secondRun = new Promise<BackfillStatus>((resolve) => {
+      resolveSecondRun = resolve;
+    });
+    mockRunBackfill.mockReturnValueOnce(secondRun);
+
+    const olderTransaction: Transaction = {
+      id: 't-older',
+      holdingId: 'h1',
+      time: TRANSACTIONS[0].time - 10 * DAY,
+      amountMinorUnits: 10_000,
+    };
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: [olderTransaction, ...TRANSACTIONS],
+      history: [],
+    });
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(2);
+
+    // Run A resolves 'complete' AFTER run B already started for the wider
+    // span — a stale completion must not end run B's own loading state.
+    await act(async () => {
+      resolveFirstRun({ state: 'complete', lastDay: now });
+      await firstRun;
+    });
+    expect(getByTestId('net-worth-line-loading')).toBeTruthy();
+
+    // Run B's own settle IS applied.
+    await act(async () => {
+      resolveSecondRun({ state: 'complete', lastDay: now });
+      await secondRun;
+    });
+    expect(queryByTestId('net-worth-line-loading')).toBeNull();
   });
 
   it('drops the deselected account from both the bar and the pie when the filter narrows', async () => {

@@ -207,7 +207,10 @@ export const composeHistoryRows = (
  * from NBU and every crypto's series from CoinGecko for that span, compose every
  * cross pair per day, and upsert them. Idempotent (upsert on the pair-day index) and
  * resumable — a fresh call picks up wherever `lastBackfilledDay` leaves off.
- * Returns a terminal `complete` status the screen can render.
+ * Returns a terminal `BackfillStatus`: `complete` once the pass has upserted
+ * (or had nothing new to upsert for) the missing span, or `failed` when every
+ * provider rejected for it (see the guard just below) — never `complete` on
+ * a network failure.
  */
 export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> => {
   const today = toUtcMidnight(deps.today ?? Date.now());

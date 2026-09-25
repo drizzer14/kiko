@@ -80,7 +80,17 @@ effect must guard its async settle against a REAL unmount only (an
 dep-change cleanup (a refocus advancing `now`, the same trigger that
 drives the retry above) fires the identical cleanup lifecycle event and
 must not drop a still-pending run's eventual settle, or the line gets
-stuck on "loading" with no retry at all.
+stuck on "loading" with no retry at all. A settle needs a SECOND,
+independent guard against a run SUPERSEDED by a later one, not merely
+against an unmount: an older transaction extending `spanStart` earlier
+can start a new run before an already-in-flight run's own settle
+arrives, and that stale settle must not overwrite the newer run's
+state or reset its span ref out from under it. A run-token ref, bumped
+only when the effect actually starts a run (never on a plain refocus,
+which the span-ref check above already turns into a no-op) and
+captured locally for that run's own `.then`, tells the two apart: a
+settle applies only when its captured token still matches the ref's
+current value.
 
 ## `price_points` table and `PriceBook`
 

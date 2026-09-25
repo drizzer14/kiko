@@ -341,12 +341,22 @@ const StatisticsScreen: FC = () => {
   // settle on every refocus, leaving the line stuck on "loading" forever.
   // This ref only ever flips inside its own unmount-only effect (`[]` deps).
   const isMountedRef = useRef(true);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
       isMountedRef.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
+
+  // Guards a settle against a SUPERSEDED run, not just a real unmount: a span
+  // extension while still mounted (an older transaction arriving mid-session)
+  // can start run B before run A's own settle arrives. Bumped only when this
+  // effect actually starts a run (never on a plain refocus, which the
+  // `backfillRanForSpanRef` check below already turns into a no-op), so a
+  // stale run's `.then` can compare its captured token against the current
+  // one and drop its settle instead of overwriting run B's state or ref.
+  const runTokenRef = useRef(0);
 
   useEffect(() => {
     // `historyLoading` guards against the exact same "empty reads as no data
@@ -374,6 +384,8 @@ const StatisticsScreen: FC = () => {
     // Mark this span covered BEFORE the async run so the write's own re-render
     // (which advances lastBackfilledDay) does not re-enter for the same span.
     backfillRanForSpanRef.current = spanStart;
+    runTokenRef.current += 1;
+    const token = runTokenRef.current;
 
     if (missingDays(spanStart, resumeFrom, now).length === 0) {
       setBackfillStatus({ state: 'complete', lastDay: lastBackfilledDay });
@@ -385,7 +397,7 @@ const StatisticsScreen: FC = () => {
     either<unknown, BackfillStatus>(() =>
       runBackfill({ earliestDay: spanStart, lastBackfilledDay: resumeFrom, today: now }),
     ).then((result) => {
-      if (!isMountedRef.current) {
+      if (!isMountedRef.current || token !== runTokenRef.current) {
         return;
       }
 
