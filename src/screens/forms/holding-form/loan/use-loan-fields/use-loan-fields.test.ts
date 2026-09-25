@@ -222,4 +222,79 @@ describe('useLoanFields', () => {
     expect(result.current.principal).toBe('');
     expect(result.current.startDate).toBeNull();
   });
+
+  describe('scrollTargets', () => {
+    it('orders scrollTargets principal, start date, annual rate, term months, each on its own ref', async () => {
+      const { result } = await renderLoanFields();
+      const { refs } = result.current;
+
+      expect(result.current.scrollTargets.map((target) => target.ref)).toEqual([
+        refs.principalFieldRef,
+        refs.startDateFieldRef,
+        refs.annualRateFieldRef,
+        refs.termMonthsFieldRef,
+      ]);
+    });
+
+    it('blocks on the principal field first when every field is blank', async () => {
+      const { result } = await renderLoanFields();
+
+      const firstInvalid = result.current.scrollTargets.find((target) => target.invalid);
+
+      expect(firstInvalid?.ref).toBe(result.current.refs.principalFieldRef);
+    });
+
+    it('blocks on the start-date field once principal is fixed', async () => {
+      const { result } = await renderLoanFields();
+
+      await act(async () => {
+        result.current.setPrincipal('1000');
+      });
+
+      const firstInvalid = result.current.scrollTargets.find((target) => target.invalid);
+
+      expect(firstInvalid?.ref).toBe(result.current.refs.startDateFieldRef);
+    });
+
+    it('blocks on the annual-rate field once principal and start date are fixed, for a structured schedule', async () => {
+      const { result } = await renderLoanFields();
+
+      await act(async () => {
+        result.current.setPrincipal('1000');
+        result.current.setStartDate(1_700_000_000_000);
+      });
+
+      const firstInvalid = result.current.scrollTargets.find((target) => target.invalid);
+
+      expect(firstInvalid?.ref).toBe(result.current.refs.annualRateFieldRef);
+    });
+
+    it('blocks on the term-months field once every earlier field is fixed', async () => {
+      const { result } = await renderLoanFields();
+
+      await act(async () => {
+        result.current.setPrincipal('1000');
+        result.current.setStartDate(1_700_000_000_000);
+        result.current.setAnnualRatePct('12');
+      });
+
+      const firstInvalid = result.current.scrollTargets.find((target) => target.invalid);
+
+      expect(firstInvalid?.ref).toBe(result.current.refs.termMonthsFieldRef);
+    });
+
+    it('finds no invalid target for a fully valid "none" schedule (rate/term never block)', async () => {
+      const { result } = await renderLoanFields();
+
+      await act(async () => {
+        result.current.setPrincipal('1000');
+        result.current.setStartDate(1_700_000_000_000);
+      });
+      await act(async () => {
+        result.current.setSchedule('none');
+      });
+
+      expect(result.current.scrollTargets.find((target) => target.invalid)).toBeUndefined();
+    });
+  });
 });
