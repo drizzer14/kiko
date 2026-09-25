@@ -1,7 +1,7 @@
 import { StyleSheet } from 'react-native';
 import maybe, { foldMap } from 'fnts/maybe';
-import type { ComponentProps, ReactNode } from 'react';
-import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
+import type { ComponentProps } from 'react';
+import { State } from 'react-native-gesture-handler';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
@@ -22,19 +22,13 @@ import {
 } from '../../design-system/components/card-context-menu';
 import { loanInstallments } from '../../holdings/loan-schedule';
 import type { LoanMeta } from '../../holdings/holding-metadata';
+import GestureRootWrapper from '../../test-support/gesture-root-wrapper';
 import { ancestorWithStyle } from '../../test-support/ancestor-with-style';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import HoldingDetailScreen from './holding-detail.screen';
 
 type HoldingDetailProps = ComponentProps<typeof HoldingDetailScreen>;
-
-// A row's delete menu is a react-native-gesture-handler long-press (via the
-// shared CardContextMenu), so the screen must mount under a
-// GestureHandlerRootView (the app supplies one at its root in production).
-const gestureRootWrapper = ({ children }: { children: ReactNode }) => (
-  <GestureHandlerRootView>{children}</GestureHandlerRootView>
-);
 
 // The Text primitive's tone -> color mapping lives inside a unistyles variant
 // that the project Jest mock strips before a test can inspect it, so a money
@@ -329,7 +323,7 @@ const renderScreen = () =>
       navigation={asNavigationProp<HoldingDetailProps['navigation']>(navigation)}
       route={route}
     />,
-    { wrapper: gestureRootWrapper },
+    { wrapper: GestureRootWrapper },
   );
 
 describe('HoldingDetailScreen', () => {

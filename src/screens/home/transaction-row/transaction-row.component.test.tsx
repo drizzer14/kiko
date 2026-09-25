@@ -1,12 +1,11 @@
-import type { ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
 import {
   createGestureController,
   fireGestureHandler,
   getByGestureTestId,
 } from 'react-native-gesture-handler/jest-utils';
+import { State } from 'react-native-gesture-handler';
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import '../../../design-system/unistyles';
 // Initialize i18next so the row's and CardContextMenu's `t()` labels resolve
 // to the real catalogue instead of the raw key.
@@ -18,6 +17,7 @@ import {
   DUPLICATE_ACTION_TEST_ID,
   HOLD_GESTURE_TEST_ID,
 } from '../../../design-system/components/card-context-menu';
+import GestureRootWrapper from '../../../test-support/gesture-root-wrapper';
 
 import type { HomeTransactionRow } from './transaction-row.props';
 
@@ -28,13 +28,6 @@ jest.mock('@kiko/transactions/repo', () => ({
 }));
 
 import { transactionsRepo } from '@kiko/transactions/repo';
-
-// A row's delete menu is a react-native-gesture-handler long-press (via the
-// shared CardContextMenu), so it must mount under a GestureHandlerRootView
-// (the app supplies one at its root in production).
-const wrapper = ({ children }: { children: ReactNode }) => (
-  <GestureHandlerRootView>{children}</GestureHandlerRootView>
-);
 
 const baseItem: HomeTransactionRow = {
   id: 'txn-1',
@@ -63,7 +56,7 @@ const renderRow = (item: HomeTransactionRow, onPress = jest.fn(), onDuplicate = 
       onPress={onPress}
       onDuplicate={onDuplicate}
     />,
-    { wrapper },
+    { wrapper: GestureRootWrapper },
   );
 
 describe('TransactionRow', () => {

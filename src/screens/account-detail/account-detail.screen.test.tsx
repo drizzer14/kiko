@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native';
+import { State } from 'react-native-gesture-handler';
 import type { ComponentProps, ReactNode } from 'react';
-import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
@@ -12,16 +12,10 @@ import {
   DELETE_CONFIRM_TEST_ID,
   HOLD_GESTURE_TEST_ID,
 } from '../../design-system/components/card-context-menu';
+import GestureRootWrapper from '../../test-support/gesture-root-wrapper';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import AccountDetailScreen from './account-detail.screen';
-
-// A grid card's delete menu is a react-native-gesture-handler long-press, so
-// the screen must mount under a GestureHandlerRootView (the app supplies one at
-// its root in production).
-const gestureRootWrapper = ({ children }: { children: ReactNode }) => (
-  <GestureHandlerRootView>{children}</GestureHandlerRootView>
-);
 
 // The Text primitive's tone -> color mapping lives in a react-native-unistyles
 // variant that the project's Jest mock strips before a test can inspect it.
@@ -291,7 +285,7 @@ const renderScreen = async () => {
       route={route}
       navigation={asNavigationProp<AccountDetailProps['navigation']>(navigation)}
     />,
-    { wrapper: gestureRootWrapper },
+    { wrapper: GestureRootWrapper },
   );
   return { ...view, navigation };
 };

@@ -1,7 +1,7 @@
 import { StyleSheet } from 'react-native';
-import type { ComponentProps, ReactNode } from 'react';
+import type { ComponentProps } from 'react';
+import { State } from 'react-native-gesture-handler';
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
-import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
@@ -13,18 +13,12 @@ import {
   HOLD_GESTURE_TEST_ID,
 } from '../../design-system/components/card-context-menu';
 import { entityIconTileGradient } from '../../design-system/entity-tint';
+import GestureRootWrapper from '../../test-support/gesture-root-wrapper';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import AccountsScreen from './accounts.screen';
 
 type AccountsProps = ComponentProps<typeof AccountsScreen>;
-
-// A grid card's delete menu is a react-native-gesture-handler long-press, so
-// the screen must mount under a GestureHandlerRootView (the app supplies one at
-// its root in production).
-const gestureRootWrapper = ({ children }: { children: ReactNode }) => (
-  <GestureHandlerRootView>{children}</GestureHandlerRootView>
-);
 
 // 2024-01-01 (leap year) — anchor date for the recapitalizing-deposit case.
 const START = Date.UTC(2024, 0, 1);
@@ -133,7 +127,7 @@ const renderAccounts = (): ReturnType<typeof render> =>
       navigation={asNavigationProp<AccountsProps['navigation']>(navigation)}
       route={asRouteProp<AccountsProps['route']>('Accounts')}
     />,
-    { wrapper: gestureRootWrapper },
+    { wrapper: GestureRootWrapper },
   );
 
 describe('AccountsScreen', () => {
@@ -631,7 +625,7 @@ describe('AccountsScreen', () => {
         />
       );
       const { getByTestId, rerender } = await render(buildElement(), {
-        wrapper: gestureRootWrapper,
+        wrapper: GestureRootWrapper,
       });
       const firstTotal = within(getByTestId('accounts-debts-total')).getByText(/₴/).props.children;
 

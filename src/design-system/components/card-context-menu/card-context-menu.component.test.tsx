@@ -1,13 +1,12 @@
-import type { ReactNode } from 'react';
 import {
   createGestureController,
   fireGestureHandler,
   getByGestureTestId,
 } from 'react-native-gesture-handler/jest-utils';
+import { State } from 'react-native-gesture-handler';
 import { trigger } from 'react-native-haptic-feedback';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import '../../unistyles';
 // Real i18n init (side effect), same as App.tsx. Previously reached only by
 // accident through GlassSurface -> screenshot-mode -> i18n before the 5.6
@@ -16,18 +15,14 @@ import '../../unistyles';
 // the same way they do at runtime.
 import '../../../i18n';
 
+import GestureRootWrapper from '../../../test-support/gesture-root-wrapper';
+
 import CardContextMenu, {
   DELETE_ACTION_TEST_ID,
   DELETE_CONFIRM_TEST_ID,
   DUPLICATE_ACTION_TEST_ID,
   HOLD_GESTURE_TEST_ID,
 } from './card-context-menu.component';
-
-// A GestureDetector must mount under a GestureHandlerRootView, so every render
-// goes through it (the app supplies one at its root in production).
-const wrapper = ({ children }: { children: ReactNode }) => (
-  <GestureHandlerRootView>{children}</GestureHandlerRootView>
-);
 
 describe('CardContextMenu', () => {
   beforeEach(() => {
@@ -40,7 +35,7 @@ describe('CardContextMenu', () => {
       <CardContextMenu name="Black card" deletable onDelete={onDelete}>
         <Text>card</Text>
       </CardContextMenu>,
-      { wrapper },
+      { wrapper: GestureRootWrapper },
     );
 
     // A hold that reaches ACTIVE (stayed still past the min duration, under the
@@ -73,7 +68,7 @@ describe('CardContextMenu', () => {
           <Text>card</Text>
         </Pressable>
       </CardContextMenu>,
-      { wrapper },
+      { wrapper: GestureRootWrapper },
     );
 
     fireEvent.press(getByText('card'));
@@ -90,7 +85,7 @@ describe('CardContextMenu', () => {
       <CardContextMenu name="Coffee" deletable onDelete={onDelete} onDuplicate={onDuplicate}>
         <Text>card</Text>
       </CardContextMenu>,
-      { wrapper },
+      { wrapper: GestureRootWrapper },
     );
 
     await act(async () => {
@@ -121,7 +116,7 @@ describe('CardContextMenu', () => {
       <CardContextMenu name="Coffee" deletable onDelete={onDelete} onDuplicate={onDuplicate}>
         <Text>card</Text>
       </CardContextMenu>,
-      { wrapper },
+      { wrapper: GestureRootWrapper },
     );
 
     await act(async () => {
@@ -152,7 +147,7 @@ describe('CardContextMenu', () => {
       <CardContextMenu name="Synced" deletable={false} onDelete={jest.fn()}>
         <Text>card</Text>
       </CardContextMenu>,
-      { wrapper },
+      { wrapper: GestureRootWrapper },
     );
 
     expect(queryByTestId('card-context-menu')).toBeNull();
@@ -164,7 +159,7 @@ describe('CardContextMenu', () => {
       <CardContextMenu name="Coffee" deletable onDelete={jest.fn()} liftOnHold>
         <Text>card</Text>
       </CardContextMenu>,
-      { wrapper },
+      { wrapper: GestureRootWrapper },
     );
     const scaleOf = (): number | undefined =>
       StyleSheet.flatten(getByTestId('card-context-menu').props.style).transform?.[0]?.scale;
@@ -205,7 +200,7 @@ describe('CardContextMenu', () => {
       <CardContextMenu name="Black card" deletable onDelete={jest.fn()}>
         <Text>card</Text>
       </CardContextMenu>,
-      { wrapper },
+      { wrapper: GestureRootWrapper },
     );
 
     // No `liftOnHold` means the plain (non-`Animated`) `View` renders, with no
