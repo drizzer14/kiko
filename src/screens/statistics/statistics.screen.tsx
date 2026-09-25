@@ -16,7 +16,7 @@ import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor'
 import {
   type BackfillStatus,
   deriveLastBackfilledDay,
-  missingDays,
+  derivePresentCurrencies,
   planBackfillRun,
   runBackfill,
 } from '../../rates/history-backfill';
@@ -323,6 +323,11 @@ const StatisticsScreen: FC = () => {
   // The resume point for the backfill: the newest day already stored, derived
   // from the history table itself (no extra persistence). Null when empty.
   const lastBackfilledDay = useMemo(() => deriveLastBackfilledDay(historyRows), [historyRows]);
+  // Every currency with at least one stored row — `runBackfill`'s own gap
+  // check against a currency held NOW but never itself backfilled (a new
+  // coin, or fiat conversion needed for the first time), derived from this
+  // SAME already-loaded `historyRows` read, no new query.
+  const presentCurrencies = useMemo(() => derivePresentCurrencies(historyRows), [historyRows]);
 
   // Drive the incremental, non-blocking backfill and surface its status to the
   // line. It runs when there is a bounded span (transactions exist) with days
@@ -393,15 +398,18 @@ const StatisticsScreen: FC = () => {
     runTokenRef.current += 1;
     const token = runTokenRef.current;
 
-    if (missingDays(spanStart, resumeFrom, now).length === 0) {
-      setBackfillStatus({ state: 'complete', lastDay: lastBackfilledDay });
-
-      return;
-    }
-
+    // No local "nothing missing" shortcut here any more: `runBackfill` itself
+    // owns that decision now, since it also has to check a newly-held
+    // currency against `presentCurrencies` — a check this screen cannot
+    // replicate without `openCurrencies`'s own async read.
     setBackfillStatus({ state: 'loading', lastDay: lastBackfilledDay });
     either<unknown, BackfillStatus>(() =>
-      runBackfill({ earliestDay: spanStart, lastBackfilledDay: resumeFrom, today: now }),
+      runBackfill({
+        earliestDay: spanStart,
+        lastBackfilledDay: resumeFrom,
+        today: now,
+        presentCurrencies,
+      }),
     ).then((result) => {
       if (!isMountedRef.current || token !== runTokenRef.current) {
         return;
@@ -426,7 +434,7 @@ const StatisticsScreen: FC = () => {
       }
       setBackfillStatus(settled);
     });
-  }, [transactions.length, spanStart, lastBackfilledDay, now, historyLoading]);
+  }, [transactions.length, spanStart, lastBackfilledDay, now, historyLoading, presentCurrencies]);
 
   // Bar + pie value "now" on the current rate table; the line values each day on
   // the historical table. All three are memoized on their real inputs so they no

@@ -61,6 +61,29 @@ export type BackfillDeps = {
    * `holdingsRepo`'s one cheap `openCurrenciesQuery`.
    */
   openCurrencies?: () => Promise<OpenCurrencies>;
+  /**
+   * Every currency that already has at least one stored history row —
+   * `derivePresentCurrencies(historyRows)`, the SAME `historyRows` the caller
+   * already reads for `lastBackfilledDay`, so this needs no new query. The
+   * global `lastBackfilledDay` is one max(day) across ALL stored pairs; once
+   * it reaches `today`, a currency newly held afterward (a coin nobody held
+   * during that earlier run, or a base-currency-only user's first foreign
+   * holding) has NO row of its own at all, and the day-based gate alone would
+   * skip it forever. Defaults to `[]` (nothing known present).
+   */
+  presentCurrencies?: Currency[];
+};
+
+/** Every currency that appears as either `base` or `quote` in at least one stored row. */
+export const derivePresentCurrencies = (
+  rows: Pick<CurrencyRateHistoryRow, 'base' | 'quote'>[],
+): Currency[] => {
+  const present = new Set<Currency>();
+  for (const row of rows) {
+    present.add(row.base);
+    present.add(row.quote);
+  }
+  return [...present];
 };
 
 /** The maximum stored `day`, i.e. the resume point — null when there is none. */
@@ -236,6 +259,27 @@ const runCryptoLeg = (
   cryptoCurrencies.length > 0 ? loadCrypto(cryptoDays, cryptoCurrencies) : Promise.resolve([]);
 
 /**
+ * The global `lastBackfilledDay` cursor can already sit at `today` from a
+ * PRIOR run's currently-held set, while a currency held NOW has never itself
+ * been backfilled — a coin first added after that run, or fiat conversion
+ * needed for the first time. This resolves the cursor to use for THIS run:
+ * `null` (recompute the whole span) whenever that gap exists, so `missingDays`
+ * never silently skips the new currency forever; unchanged otherwise.
+ */
+const resolveResumeCursor = (
+  lastBackfilledDay: number | null,
+  needsFiat: boolean,
+  cryptoCurrencies: CryptoCurrency[],
+  presentCurrencies: Currency[] | undefined,
+): number | null => {
+  const present = new Set(presentCurrencies ?? []);
+  const hasNewCrypto = cryptoCurrencies.some((currency) => !present.has(currency));
+  const hasNewFiat = needsFiat && !present.has('USD');
+
+  return hasNewCrypto || hasNewFiat ? null : lastBackfilledDay;
+};
+
+/**
  * Run one incremental pass: compute the still-missing days, fetch the fiat range
  * from NBU and every crypto's series from CoinGecko for that span, compose every
  * cross pair per day, and upsert them. Idempotent (upsert on the pair-day index) and
@@ -248,10 +292,6 @@ const runCryptoLeg = (
 export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> => {
   const today = toUtcMidnight(deps.today ?? Date.now());
   const lastBackfilledDay = deps.lastBackfilledDay ?? null;
-  const days = missingDays(deps.earliestDay, lastBackfilledDay, today);
-  if (days.length === 0) {
-    return { state: 'complete', lastDay: lastBackfilledDay };
-  }
 
   const openCurrencies = deps.openCurrencies ?? defaultOpenCurrencies;
   const { needsFiat, cryptoCurrencies } = await openCurrencies();
@@ -260,6 +300,18 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
   // nothing active that differs from the base currency, and no crypto held,
   // means neither leg has anything to fetch this run.
   if (!needsFiat && cryptoCurrencies.length === 0) {
+    return { state: 'complete', lastDay: lastBackfilledDay };
+  }
+
+  const effectiveLastBackfilledDay = resolveResumeCursor(
+    lastBackfilledDay,
+    needsFiat,
+    cryptoCurrencies,
+    deps.presentCurrencies,
+  );
+
+  const days = missingDays(deps.earliestDay, effectiveLastBackfilledDay, today);
+  if (days.length === 0) {
     return { state: 'complete', lastDay: lastBackfilledDay };
   }
 

@@ -192,6 +192,11 @@ describe('runBackfill', () => {
       // as needed; the "data-presence gate" describe block overrides this to
       // exercise the skip paths.
       openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC'] }),
+      // Every existing test below models a world where USD/EUR/BTC have
+      // already been backfilled together up to `lastBackfilledDay` — the
+      // "a newly-held currency" describe block overrides this to exercise the
+      // per-currency gap the default here would otherwise mask.
+      presentCurrencies: ['USD', 'EUR', 'BTC'],
       ...overrides,
     };
     return { deps, captured, nbuCalls, btcCalls };
@@ -317,6 +322,81 @@ describe('runBackfill', () => {
       [day(0), day(0)],
       [day(0), day(0)],
     ]);
+  });
+});
+
+// A regression on the global resume cursor: it is one max(day) across ALL
+// stored pairs, so once it reaches `today` (from whatever was held before), a
+// currency that becomes newly held afterward — a coin nobody held during that
+// earlier run, or the first foreign holding for a base-currency-only user —
+// has NO stored row of its own at all, yet the day-based gate alone would
+// still report the whole run "nothing missing" and skip it forever.
+describe('runBackfill — a newly-held currency with no stored history yet', () => {
+  const nbu: HistoryRateEntry[] = [
+    { base: 'USD', quote: 'UAH', day: day(0), rate: 40, source: 'nbu' },
+    { base: 'EUR', quote: 'UAH', day: day(0), rate: 43, source: 'nbu' },
+  ];
+  const crypto: HistoryRateEntry[] = [
+    { base: 'BTC', quote: 'USD', day: day(0), rate: 65_000, source: 'coingecko' },
+    { base: 'ETH', quote: 'USD', day: day(0), rate: 3_500, source: 'coingecko' },
+  ];
+
+  it('still backfills a coin held now but absent from the already-fully-backfilled history', async () => {
+    const nbuCalls: [number, number][] = [];
+    const captured: StoredRow[][] = [];
+    // The global cursor already sits at `today` (BTC's own prior run reached
+    // it), but ETH itself was never held before and has no stored row.
+    const deps: BackfillDeps = {
+      earliestDay: day(0),
+      lastBackfilledDay: day(2),
+      today: day(2),
+      fetchNbuHistory: async (start, end) => {
+        nbuCalls.push([start, end]);
+        return nbu;
+      },
+      fetchCryptoHistory: async () => crypto,
+      upsertMany: async (rows: StoredRow[]) => {
+        captured.push(rows);
+      },
+      openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC', 'ETH'] }),
+      presentCurrencies: ['USD', 'EUR', 'BTC'],
+    };
+
+    const status = await runBackfill(deps);
+
+    expect(nbuCalls).toEqual([[day(0), day(2)]]);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].some((row) => row.base === 'ETH' || row.quote === 'ETH')).toBe(true);
+    expect(status).toEqual({ state: 'complete', lastDay: day(2) });
+  });
+
+  it('still backfills fiat conversion needed for the first time after the cursor already reached today', async () => {
+    // The symmetric fiat gap: the global cursor sits at `today` (from some
+    // OTHER now-removed currency's earlier run), but no fiat anchor has ever
+    // been stored, and a holding now needs fiat conversion for the first time.
+    const nbuCalls: [number, number][] = [];
+    const captured: StoredRow[][] = [];
+    const deps: BackfillDeps = {
+      earliestDay: day(0),
+      lastBackfilledDay: day(2),
+      today: day(2),
+      fetchNbuHistory: async (start, end) => {
+        nbuCalls.push([start, end]);
+        return nbu;
+      },
+      fetchCryptoHistory: async () => [],
+      upsertMany: async (rows: StoredRow[]) => {
+        captured.push(rows);
+      },
+      openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: [] }),
+      presentCurrencies: [],
+    };
+
+    const status = await runBackfill(deps);
+
+    expect(nbuCalls).toEqual([[day(0), day(2)]]);
+    expect(captured).toHaveLength(1);
+    expect(status).toEqual({ state: 'complete', lastDay: day(2) });
   });
 });
 
