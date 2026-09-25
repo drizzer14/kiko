@@ -452,8 +452,9 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
       // determinate sync progress bar (it shows the sync this screen's own
       // first read is queued behind — see kiko-architecture's op-sqlite
       // one-worker-thread section), and pull-to-refresh on the same scroll
-      // view the ready branch offers, so a user can still trigger a fresh
-      // sync while this screen's own queries are still loading.
+      // view the ready branch offers, once the accounts query has loaded, so
+      // a user can still trigger a fresh sync while this screen's own
+      // queries are still loading.
       <Screen bleedBottom>
         <Box gap={4} style={styles.content}>
           <SyncProgressBar />
