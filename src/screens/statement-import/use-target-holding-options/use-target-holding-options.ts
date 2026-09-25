@@ -7,7 +7,7 @@ import { accountsRepo } from '../../../accounts/accounts.repo';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import type { TargetHoldingOption } from '../target-holding-sheet/target-holding-sheet.props';
 
-export type TargetHoldingOptions = {
+type TargetHoldingOptions = {
   options: TargetHoldingOption[];
   isLoading: boolean;
 };

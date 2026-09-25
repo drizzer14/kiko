@@ -17,9 +17,9 @@ import { useDataReady } from '../../../db/use-data-ready';
 import { useLiveQuery } from '../../../db/use-live-query';
 import { settingsRepo } from '../../../settings/settings.repo';
 import Divider from '../../../design-system/components/divider';
-import LoadingState from '../../../design-system/components/loading-state';
 import { categoryForMcc } from '../../../monobank/mcc-category';
 import TransactionCard from '../../home/transaction-row/transaction-card';
+import LoadingState from '../../../design-system/components/loading-state';
 import { resolveCategoryColor } from '../../../statistics/category-breakdown';
 import { transactionRowDescription } from '../../../transactions/row-description';
 
