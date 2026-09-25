@@ -16,7 +16,7 @@ const transaction: ParsedTransaction = {
   description: 'Coffee shop',
 };
 
-// F3 fix round 1, C1: ExampleTransaction renders through the SAME
+// ExampleTransaction renders through the SAME
 // TransactionCard Home's own TransactionRow uses. Mock it to inspect
 // exactly what ExampleTransaction hands it, rather than re-deriving the
 // category resolution pipeline (already covered by category-display's own
@@ -47,9 +47,9 @@ describe('ExampleTransaction', () => {
     expect(getByText('Coffee shop')).toBeTruthy();
   });
 
-  // Item 4: the example transaction uses the existing TRANSACTION CARD
+  // The example transaction uses the existing TRANSACTION CARD
   // component (no `moneyContext` prop any more — TransactionCard always
-  // renders the "transaction" context itself, F3 fix round 2, N5).
+  // renders the "transaction" context itself).
   it('renders through TransactionCard with a resolved category icon/color', async () => {
     await render(<ExampleTransaction transaction={transaction} />);
 
@@ -62,7 +62,7 @@ describe('ExampleTransaction', () => {
     );
   });
 
-  // F3 fix round 2, N3: the footer shows the category and the row's own
+  // The footer shows the category and the row's own
   // date — the user's only per-row check of the chosen date format/column.
   it('shows the category and the row date in the footer', async () => {
     await render(<ExampleTransaction transaction={transaction} />);
@@ -72,7 +72,7 @@ describe('ExampleTransaction', () => {
     expect(props.footerTrailing).toBe(formatDate(transaction.timeSeconds * 1000));
   });
 
-  // F3 fix round 2, N3: an empty mapped description falls back to the same
+  // An empty mapped description falls back to the same
   // income/expense default label Home falls back to — never a blank title.
   it('falls back to the income/expense default title when the description is empty', async () => {
     const blankDescription: ParsedTransaction = { ...transaction, description: '' };
@@ -87,7 +87,7 @@ describe('ExampleTransaction', () => {
     );
   });
 
-  // F3 fix round 3, N9: an empty description with NO holding chosen yet
+  // An empty description with NO holding chosen yet
   // (the common state on first render, before the user picks a target
   // holding) falls back to the PLAIN income/expense label — never a
   // dangling leading space (en) or dangling colon (uk). Test both locales.

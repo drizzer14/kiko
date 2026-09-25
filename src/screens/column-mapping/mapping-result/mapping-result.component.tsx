@@ -15,12 +15,12 @@ const ROW_ERROR_PREVIEW_COUNT = 20;
 /**
  * The column-mapping screen's own "Result" block: the incomplete hint while
  * a required field is still unmapped, or the SAME summary table item 3 shows
- * (device-feedback-round-F1, item 9) plus the shared `ExampleTransaction`,
+ * plus the shared `ExampleTransaction`,
  * then the first `ROW_ERROR_PREVIEW_COUNT` row errors (then a count of the
  * rest) once the mapping is structurally complete — extracted out of the
  * screen so its own branching doesn't count against that component's
  * cognitive-complexity budget. Renders its OWN `columnMapping.result`
- * heading in BOTH branches (F3 fix round 1, I2) — `SummaryTable` gets no
+ * heading in BOTH branches — `SummaryTable` gets no
  * `title` — so the heading sits at the exact same spot and spacing whether
  * the mapping is complete or not, instead of jumping when the last required
  * column gets mapped.

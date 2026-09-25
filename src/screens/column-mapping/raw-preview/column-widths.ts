@@ -10,11 +10,10 @@ const MIN_CELL_WIDTH = 64;
 const MAX_CELL_WIDTH = 220;
 
 /**
- * One consistent width PER COLUMN across every previewed row (device-
- * feedback-round-F1, item 6) — the raw preview used to give every cell the
- * SAME fixed `minWidth`, which does not actually align a table: a longer
- * value in one row's date column, say, never widened that same column in
- * every OTHER row, since each row only ever measured its own cells. This
+ * One consistent width PER COLUMN across every previewed row — a SAME fixed
+ * `minWidth` on every cell would not actually align a table: a longer value
+ * in one row's date column, say, would never widen that same column in
+ * every OTHER row, since each row would only ever measure its own cells. This
  * computes column index -> width from the LONGEST cell text seen in that
  * column across `rows`, clamped to a sane visible range, so every column
  * reads as a real aligned table column while the whole grid still scrolls

@@ -13,7 +13,7 @@ import { COLUMN, DETECT_PREFIX, procreditBusinessCsvFormat } from '.';
 
 // The REAL uabean fixture (C.4, NOTICE.md) — confirmed ANONYMIZED via
 // uabean's own `anonymize.py` script — reused byte for byte, cp1251-encoded,
-// exactly as committed (task-5-report.md confirms the copy's checksum
+// exactly as committed (a checksum confirms the copy
 // matches the clone it came from). Decoded via the REAL `windows-1251`
 // library (see `../format-test-fixtures`), the SAME decode step the
 // screen's cp1251 fallback performs before handing text to this format —
@@ -22,7 +22,7 @@ import { COLUMN, DETECT_PREFIX, procreditBusinessCsvFormat } from '.';
 const fixtureInput = procreditBusinessFixtureInput;
 const fixtureText = fixtureInput.text;
 
-// The real fixture's own header, byte-verified (task-5-report.md) — used to
+// The real fixture's own header, byte-verified — used to
 // hand-assemble minimal malformed-row inputs, same convention as
 // Monobank/Sensebank's own malformed-row fixtures.
 const REAL_HEADER =
@@ -61,12 +61,12 @@ const bothDebitAndCreditPopulatedInput = {
 
 // The exported constants ARE the real contract a kiko:developer implements
 // `detect`/`parse` against (section C.3) — pinned here, verified against the
-// REAL fixture's bytes (task-5-report.md), so a future edit that silently
+// REAL fixture's bytes, so a future edit that silently
 // drifts the 59-char detect prefix or the column order is caught by a real
 // assertion. `COLUMN`'s 16 shared indices come from
 // `FOP_BUSINESS_COLUMN_BASE` (also used by `ukrsib-business-csv`'s own
 // `COLUMN`, cross-verified against BOTH real/hand-authored fixtures at
-// authoring time, task-5-report.md); only this format's OWN divergent
+// authoring time); only this format's OWN divergent
 // column (`nbuCode`, index 1) is asserted independently here.
 describe('procredit-business-csv format constants', () => {
   it('anchors the 59-character detect prefix exactly, matching the real fixture header', () => {

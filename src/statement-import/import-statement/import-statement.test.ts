@@ -300,12 +300,12 @@ describe('importStatement', () => {
     expect(store.transactions).toHaveLength(4);
   });
 
-  // Regression test: `seenKeys` used to key on `JSON.stringify(transaction)`
-  // (the whole row), but `computeDedupKey` folds only on (holding, time,
-  // amount, normalized description) — it ignores `mcc`. Two rows identical
-  // on that tuple but differing only on `mcc` each got occurrenceIndex 0
-  // under the old code, so `computeDedupKey` produced the SAME externalId
-  // for both and the second silently overwrote the first.
+  // `seenKeys` must key on `computeDedupKey`'s own (holding, time, amount,
+  // normalized description) fold, never on `JSON.stringify(transaction)`
+  // (the whole row) — `computeDedupKey` ignores `mcc`, so two rows identical
+  // on that tuple but differing only on `mcc` would both land at
+  // occurrenceIndex 0 and produce the SAME externalId, the second silently
+  // overwriting the first, if `seenKeys` folded on anything finer-grained.
   it('keeps two rows identical on (holding, time, amount, description) but differing only on mcc as distinct rows', async () => {
     const store: { transactions: StoredRow[] } = { transactions: [] };
     mockDatabaseTransaction = makeImportDatabaseTransaction({
@@ -422,7 +422,7 @@ describe('importStatement', () => {
       const result = await importParsedStatement(statement, 'holding-1');
 
       expect(result.imported).toBe(2);
-      // A virgin holding has no boundary at all (I2), so the mapped closing
+      // A virgin holding has no boundary at all, so the mapped closing
       // balance (5,900.00 UAH -> 590_000 minor units, as of the newest row's
       // own time) applies outright, over the plain net-delta fallback.
       expect(captured.holdingSet).toEqual({
@@ -626,8 +626,8 @@ describe('importStatement', () => {
 
     it('sets the balance to the closing balance when the statement is at or after the hand-set boundary', async () => {
       const store: { transactions: StoredRow[] } = { transactions: [] };
-      // A hand-set balance well before the fixture's own dates (D-I2:
-      // `balanceSetAt`, not a seeded ledger row — see `holdings.repo.test.ts`
+      // A hand-set balance well before the fixture's own dates
+      // (`balanceSetAt`, not a seeded ledger row — see `holdings.repo.test.ts`
       // for `holdingsRepo.create`/`updateWithBalanceDelta` writing it for real).
       const holding = defaultHolding({ balanceMinorUnits: -999_999, balanceSetAt: 1 });
       const { databaseTransaction, captured } = makeImportDatabaseTransaction({

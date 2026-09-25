@@ -166,7 +166,7 @@ const renderScreen = async (params: {
 const monobankAccount: Account = { id: 'a', name: 'Monobank', kind: 'bank', bankId: 'monobank' };
 const monobankHolding: Holding = { id: 'h1', name: 'Black card', accountId: 'a', currency: 'UAH' };
 
-// The saved T4-Monobank mapping fixture the exact-match/prefill tests share
+// The saved Monobank mapping fixture the exact-match/prefill tests share
 // — an optional `balanceColumn` lets the Balance-field test add its own
 // extra property without hand-duplicating every other one (jscpd).
 const savedMonobankMapping = (overrides: { balanceColumn?: number } = {}) => ({
@@ -210,7 +210,7 @@ const renderMonobankScreen = async (
 // (but not necessarily every) Monobank column picked — factored out so a
 // still-incomplete-mapping test (F4: no amount column mapped, say) shares
 // this exact sequence with `mapMonobankColumns` below instead of a
-// hand-copied near-duplicate (jscpd). `dateFormatId` defaults to the T4
+// hand-copied near-duplicate (jscpd). `dateFormatId` defaults to the real
 // Monobank format; a test that deliberately picks a MISMATCHING format
 // (to force every row's own date check to fail) passes its own instead.
 const mapDateFormatAndDescription = async (
@@ -259,7 +259,7 @@ const switchToColumnCurrencyMode = async (
   await fireEvent.press(view.getByTestId(`column-mapping-currency-column-option-${columnIndex}`));
 };
 
-// Drives the screen through the exact T4 Monobank mapping: header row 0
+// Drives the screen through the exact Monobank mapping: header row 0
 // (already the auto-guess), date column 0 + 'DD.MM.YYYY HH:MM:SS', amount
 // column 3 (single mode, the default), description column 1 — fixed UAH
 // currency (the default, matching the seeded holding's own currency).
@@ -269,7 +269,7 @@ const mapMonobankColumns = async (view: Awaited<ReturnType<typeof renderScreen>>
     amountColumn: 3,
   });
 
-// Every field required for a T4 Monobank import: the columns above, plus
+// Every field required for a Monobank import: the columns above, plus
 // picking the one seeded holding — shared by every test that goes on to
 // press Import, so the "map, then pick holding h1" pair is written once.
 const mapMonobankColumnsAndSelectHolding = async (
@@ -733,7 +733,7 @@ describe('ColumnMappingScreen', () => {
     await waitFor(() => expect(mockImportParsedStatement).toHaveBeenCalledTimes(1));
   });
 
-  // M5 (review round 1): the optional Balance column role renders as a
+  // The optional Balance column role renders as a
   // field, and a saved mapping's `balanceColumn` pre-fills it — same
   // pattern as the exact-saved-mapping test above, plus this one field.
   it('renders the Balance field and pre-fills it from a saved mapping', async () => {
@@ -838,12 +838,12 @@ describe('ColumnMappingScreen', () => {
   });
 });
 
-// N4 (F3 part 1 fix round 2) + R2-1 (fix round 3): on Done, the sheet
+// On Done, the sheet
 // closes FIRST, and only navigates once the sheet's `onClosed` fires
 // (`BottomSheet`'s pass-through of RN `Modal`'s own `onDismiss`) — see the
 // matching describe block in statement-import.screen.test.tsx for the full
 // rationale.
-describe('ColumnMappingScreen — Done closes the sheet before navigating (N4, R2-1)', () => {
+describe('ColumnMappingScreen — Done closes the sheet before navigating', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding] });
@@ -884,15 +884,13 @@ describe('ColumnMappingScreen — Done closes the sheet before navigating (N4, R
   });
 });
 
-// M8 (F3 part 1 fix round 1, Important) + N2 (fix round 2, Important): the
-// local cache copy item 6's fix makes is deleted once this screen is
-// removed from the stack, but ONLY when this screen OWNS the file
-// (ownsFile, set exclusively by StatementImportScreen's T7 auto-replace).
+// The local cache copy this screen's own fix makes is deleted once this
+// screen is removed from the stack, but ONLY when this screen OWNS the
+// file (ownsFile, set exclusively by StatementImportScreen's auto-replace).
 // Reached instead by "Map columns manually" (a PUSH), StatementImport
 // stays mounted underneath and still owns the file — deleting it here on a
-// plain Back would strand that still-reachable preview (item 6's exact bug
-// again).
-describe('ColumnMappingScreen — local copy cleanup (M8, N2)', () => {
+// plain Back would strand that still-reachable preview.
+describe('ColumnMappingScreen — local copy cleanup', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding] });
@@ -915,10 +913,10 @@ describe('ColumnMappingScreen — local copy cleanup (M8, N2)', () => {
     expect(mockUnlink).toHaveBeenCalledWith('/mock/caches/statement-123.csv');
   });
 
-  // N2: the "Map columns manually" push — no ownsFile — must NOT delete on
+  // The "Map columns manually" push — no ownsFile — must NOT delete on
   // Back, since the preview screen underneath still owns and reads the
-  // SAME file. This is the literal "preview -> Map columns -> Back -> Map
-  // columns again" scenario the review asked to be proven.
+  // SAME file: "preview -> Map columns -> Back -> Map columns again" must
+  // still work.
   it('does NOT delete the local cache copy on unmount when it does NOT own the file (pushed from the preview)', async () => {
     mockReadFile.mockResolvedValue(monobankFixtureBase64);
 
@@ -935,7 +933,7 @@ describe('ColumnMappingScreen — local copy cleanup (M8, N2)', () => {
     expect(mockUnlink).not.toHaveBeenCalled();
   });
 
-  // N2's literal repro scenario: preview -> Map columns -> Back -> the file
+  // preview -> Map columns -> Back -> the file
   // survives -> Map columns again still reads it successfully. Simulated
   // here as a non-owning ColumnMapping instance unmounting (the Back),
   // then a FRESH instance for the SAME filePath mounting again (the second

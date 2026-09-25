@@ -31,7 +31,7 @@ const malformedAmountInput = {
   fileName: 'malformed-amount.csv',
 };
 
-// Review follow-up (I1): the last row's balance-after cell can be missing
+// The last row's balance-after cell can be missing
 // (a truncated 9-column export) or non-numeric ("—", the same absent-column
 // marker every other optional column uses) — `resolveClosingBalance` must
 // fall back to no closing balance (Rule B) instead of throwing a `TypeError`
@@ -48,11 +48,11 @@ const dashBalanceCellInput = {
   fileName: 'dash-balance-cell.csv',
 };
 
-// Review follow-up (M2): `resolveClosingBalance` used to assume the file's
-// rows are oldest-first (`dataRows.at(-1)`), which is true of every real
-// Monobank export seen so far but not guaranteed — the closing balance must
-// come from whichever row has the LARGEST parsed time, regardless of its
-// position in the file.
+// `resolveClosingBalance` must never simply assume the file's rows are
+// oldest-first (`dataRows.at(-1)`) — true of every real Monobank export
+// seen so far, but not guaranteed. The closing balance must come from
+// whichever row has the LARGEST parsed time, regardless of its position
+// in the file.
 const newestFirstInput = {
   text: [
     MONOBANK_HEADER,
@@ -142,7 +142,7 @@ describe('monobankCsvFormat.parse', () => {
     expect(() => monobankCsvFormat.parse(malformedAmountInput)).toThrow(StatementParseError);
   });
 
-  // Review follow-up (I1): a missing balance-after cell must not throw —
+  // A missing balance-after cell must not throw —
   // `resolveClosingBalance` falls back to no closing balance (Rule B takes
   // over), the transactions themselves still parse.
   it('returns no closing balance and still parses the row when the balance-after cell is missing', () => {
@@ -152,7 +152,7 @@ describe('monobankCsvFormat.parse', () => {
     expect(parsed.transactions).toHaveLength(1);
   });
 
-  // Review follow-up (I1): a "—" balance-after cell (the format's own
+  // A "—" balance-after cell (the format's own
   // absent-column marker) must not become a `NaN` closing balance.
   it('returns no closing balance when the balance-after cell is "—"', () => {
     const parsed = monobankCsvFormat.parse(dashBalanceCellInput);
@@ -160,7 +160,7 @@ describe('monobankCsvFormat.parse', () => {
     expect(parsed.closingBalance).toBeUndefined();
   });
 
-  // Review follow-up (M2): the closing balance must come from the row with
+  // The closing balance must come from the row with
   // the largest parsed time, not simply the last row in file order.
   it('uses the row with the largest parsed time as the closing balance, not just the last row in the file', () => {
     const parsed = monobankCsvFormat.parse(newestFirstInput);

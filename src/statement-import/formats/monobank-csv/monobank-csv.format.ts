@@ -100,13 +100,13 @@ const resolveAccountCurrency = (headerRow: string[] | undefined): Currency => {
 // The fixture's own "Залишок після операції" (balance after transaction)
 // column — a genuine running balance, unlike every other format shipped so
 // far. Monobank's own export is single-card/single-account per file, so the
-// row with the LARGEST parsed time (last one on a tie — review follow-up
-// M2: a file is not guaranteed oldest-first, only unambiguous by time) is
+// row with the LARGEST parsed time (last one on a tie — a file is not
+// guaranteed oldest-first, only unambiguous by time) is
 // the closing balance of the whole statement, as of that row's own time
 // (see `ClosingBalance`'s doc comment in `parser.ts` for why `asOfSeconds`
 // is that row's time, not "now"). Returns `undefined` when there are no data
 // rows, or when the chosen row's balance-after cell is missing or
-// non-numeric (review follow-up I1: a truncated export or the format's own
+// non-numeric (a truncated export or the format's own
 // "—" absent-column marker must fall back to Rule B, never a `TypeError` or
 // a `NaN` written to the ledger).
 const resolveClosingBalance = (

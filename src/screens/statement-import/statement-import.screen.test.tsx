@@ -27,7 +27,7 @@ const fixtureText = readFileSync(
 );
 const fixtureBase64 = Buffer.from(fixtureText, 'utf-8').toString('base64');
 // The fixture's own real header row — used to build a saved mapping whose
-// `fingerprint` genuinely matches this file (T7's auto-replace check).
+// `fingerprint` genuinely matches this file (the auto-replace check).
 const fixtureHeaderRow = fixtureText.split('\n')[0].split(',');
 
 const unrelatedBase64 = Buffer.from(
@@ -137,9 +137,8 @@ const multiCardFormatStub: StatementFormat = {
   parse: () => multiCardParsedStatement,
 };
 
-// Phase 3 (Task 4) — the screen's cp1251 decode FALLBACK, isolated from
-// `sensebank-csv.format.ts`'s own CSV-shape logic (still a throwing stub at
-// this point in the task split, task-4-report.md). This sentinel format's
+// The screen's cp1251 decode FALLBACK, isolated from
+// `sensebank-csv.format.ts`'s own CSV-shape logic. This sentinel format's
 // `detect` checks for the CORRECTLY cp1251-decoded literal Sensebank
 // preamble text — it never imports the real `sensebank-csv` module — so
 // these tests prove ONLY that the screen itself retries with a cp1251 decode
@@ -154,8 +153,8 @@ const SENSEBANK_DECODED_PREAMBLE = 'Виписка за рахунком;;;;;;;'
 // The SAME preamble line, cp1251-ENCODED then base64-encoded — exactly the
 // shape `RNFS.readFile(uri, 'base64')` would hand the screen for a real
 // Sensebank export. Computed via the REAL `windows-1251` library's own
-// `encode()` at authoring time and verified via a roundtrip `decode()`
-// (task-4-report.md); NOT derived from any decode call this test file makes
+// `encode()` at authoring time and verified via a roundtrip `decode()`;
+// NOT derived from any decode call this test file makes
 // itself, so this is a genuine fixed-bytes input, not a tautology.
 const sensebankPreambleCp1251Base64 = 'wujv6PHq4CDn4CDw4PXz7eru7Ds7Ozs7Ozs=';
 const sensebankParsedStatement: ParsedStatement = {
@@ -258,9 +257,9 @@ const renderScreen = async (params: {
 // Drives the `useLiveQuery` calls this screen (plus the shared
 // `useTargetHoldingOptions` hook it renders through) makes, keyed on the
 // query's own `__kind` — the account-by-id and settings queries need their
-// own shapes (T7's auto-replace-to-ColumnMapping check), everything else
+// own shapes (the auto-replace-to-ColumnMapping check), everything else
 // (the holdings/accounts-list pair `useTargetHoldingOptions` reads) keeps
-// the same single-holding default every pre-T7 test in this file relies on.
+// the same single-holding default every other test in this file relies on.
 // `accountIsLoading`/`settingsIsLoading` default to `false` (an already-
 // resolved query) so every existing call site keeps behaving exactly as
 // before; a test that cares about the cold-start ordering passes one or
@@ -325,7 +324,7 @@ describe('StatementImportScreen', () => {
     expect(getByTestId('target-holding-field')).toBeTruthy();
   });
 
-  // F3 fix round 2, I1/I2: the preview heading (the format's own
+  // The preview heading (the format's own
   // displayName) renders exactly once, through this screen's own `Text`
   // rather than `SummaryTable`'s `title` row — so it sits at the same 12pt
   // gap-driven spacing every column-mapping section heading uses, not
@@ -471,8 +470,8 @@ describe('StatementImportScreen', () => {
     ).toBeTruthy();
   });
 
-  // Item 15 (F3): a successful Import shows a MODAL with the result text —
-  // the same text the screen bottom used to show inline.
+  // A successful Import shows a MODAL with the result text — the same
+  // text `ImportOutcome` renders inline for an error.
   it('shows the import result as a modal', async () => {
     mockReadFile.mockResolvedValue(fixtureBase64);
     mockImportStatement.mockResolvedValue({
@@ -689,7 +688,7 @@ describe('StatementImportScreen', () => {
   });
 });
 
-// T7: the "Map columns manually" entry point into the generic column-mapping
+// The "Map columns manually" entry point into the generic column-mapping
 // import screen, plus the auto-replace shortcut for a file that already has
 // an exact saved mapping under a DIFFERENT bank than the one recognized.
 describe('StatementImportScreen — column-mapping entry point (T7)', () => {
@@ -787,7 +786,7 @@ describe('StatementImportScreen — column-mapping entry point (T7)', () => {
       expectedFormatId: 'sensebank-csv',
     });
 
-    // N2 (fix round 2): `ownsFile: true` — the auto-replace hands
+    // `ownsFile: true` — the auto-replace hands
     // ColumnMapping sole ownership of the file (no StatementImport route
     // left below it on the stack).
     await waitFor(() =>
@@ -963,7 +962,7 @@ describe('StatementImportScreen — column-mapping entry point (T7)', () => {
   });
 });
 
-// N4 (F3 part 1 fix round 2) + R2-1 (fix round 3): on Done, the sheet closes
+// On Done, the sheet closes
 // FIRST — popping the underlying native-stack screen while its RN Modal is
 // still mid-close is a known iOS rough edge — and only navigates once the
 // sheet's `onClosed` fires (`BottomSheet`'s pass-through of RN `Modal`'s own
@@ -1045,7 +1044,7 @@ describe('StatementImportScreen — Done closes the sheet before navigating (N4,
   });
 });
 
-// M8 (F3 part 1 fix round 1, Important): the local cache copy item 6's fix
+// The local cache copy this screen's own fix
 // makes is deleted once THIS screen is removed from the stack — a genuine
 // unmount, not a mere push-on-top (Map Columns).
 describe('StatementImportScreen — local copy cleanup (M8)', () => {

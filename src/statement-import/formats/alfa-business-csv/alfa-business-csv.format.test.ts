@@ -19,7 +19,7 @@ import {
 // The REAL uabean fixture (C.4, NOTICE.md) — confirmed SYNTHETIC (`XYZ
 // COMPANY`/`JOHN DOE` placeholders, all-1s IBANs/EDRPOU, literal
 // `[REDACTED]` markers) — reused byte for byte, cp1251-encoded, exactly as
-// committed (task-5-report.md confirms the copy's checksum matches the
+// committed (a checksum confirms the copy matches the
 // clone it came from). Decoded via the REAL `windows-1251` library (see
 // `../format-test-fixtures`), the SAME decode step the screen's cp1251
 // fallback performs before handing text to this format.
@@ -62,7 +62,7 @@ const unknownOperationWordInput = {
 
 // The exported constants ARE the real contract a kiko:developer implements
 // `detect`/`parse` against (section C.3), pinned here — verified against
-// the REAL fixture's bytes (task-5-report.md). Alfa's 19-column layout is
+// the REAL fixture's bytes. Alfa's 19-column layout is
 // genuinely unique in this plan (no shared base with ProCredit/Ukrsib
 // business, unlike those two), so instead of a hand-typed literal
 // duplicating the plain object below, every index is independently derived

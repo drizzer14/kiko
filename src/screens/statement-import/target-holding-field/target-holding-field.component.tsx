@@ -16,7 +16,7 @@ import type { TargetHoldingFieldProps } from './target-holding-field.props';
  * unchanged: it already calls `onDismiss` after a row is picked (or "Create
  * new holding" is pressed), so this component's own `onDismiss` only needs
  * to close ITS trigger state. Shared by `statement-import.screen.tsx` and
- * `column-mapping.screen.tsx`, which both used to duplicate the identical
+ * `column-mapping.screen.tsx`, rather than each duplicating the identical
  * Button-plus-sheet pair.
  */
 const TargetHoldingField: FC<TargetHoldingFieldProps> = ({

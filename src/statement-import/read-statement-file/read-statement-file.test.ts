@@ -78,8 +78,8 @@ describe('isLegacyXlsFile', () => {
   });
 });
 
-// M8 (F3 part 1 fix round 1, Important): the local cache copy item 6's fix
-// makes (`keepLocalCopy`) is a plaintext bank-statement copy outside the
+// The local cache copy `keepLocalCopy` makes is a plaintext
+// bank-statement copy outside the
 // SQLCipher-encrypted database — best-effort deleted once the flow that
 // owns it ends.
 describe('deleteLocalStatementCopy', () => {
@@ -107,7 +107,7 @@ describe('deleteLocalStatementCopy', () => {
     ).resolves.toBeUndefined();
   });
 
-  // N1 (F3 part 1 fix round 2, Important): `keepLocalCopy`'s real iOS
+  // `keepLocalCopy`'s real iOS
   // `localUri` is a percent-encoded `file://` URL
   // (`destinationUrl.absoluteString`), not the plain path
   // `RNFS.CachesDirectoryPath` is — a bare `startsWith` comparison against

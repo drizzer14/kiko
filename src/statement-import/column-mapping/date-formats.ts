@@ -87,10 +87,10 @@ const presets: Record<DateFormatId, DatePreset> = {
   },
 };
 
-// F4 item 8: the column-mapping date-format picker used to show the RAW
-// preset id ("DD.MM.YYYY HH:MM:SS") as its own option label — meaningless to
-// a user who doesn't already know date-format notation. Shows a real WORKED
-// example instead, all rendered off the SAME instant (31 Dec 2026,
+// The column-mapping date-format picker shows a real WORKED example as each
+// option's label, not the RAW preset id ("DD.MM.YYYY HH:MM:SS") — meaningless
+// to a user who doesn't already know date-format notation. Every example
+// renders off the SAME instant (31 Dec 2026,
 // 23:59:59 UTC — an unambiguous day > 12, so DD-first vs MM-first reads
 // correctly at a glance) so every option is directly comparable.
 export const dateFormatExamples: Record<DateFormatId, string> = {

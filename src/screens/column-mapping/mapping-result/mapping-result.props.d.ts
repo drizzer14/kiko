@@ -28,7 +28,7 @@ export type MappingResultProps = {
   // `undefined` renders nothing.
   noRowsResolvedError?: string;
   // The chosen target holding's name, forwarded to `ExampleTransaction`'s
-  // own `holdingName` prop (F3 fix round 2, N3) — feeds its income/expense
+  // own `holdingName` prop — feeds its income/expense
   // default-title fallback. `undefined` before a holding is chosen.
   holdingName?: string;
 };

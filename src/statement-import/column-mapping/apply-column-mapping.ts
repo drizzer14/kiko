@@ -231,7 +231,7 @@ const resolveAccountCurrency = (
 type ClosingBalanceCandidate = { row: TableCell[]; timeSeconds: number; currency: Currency };
 
 /** File orientation, from the RESOLVED rows' own first vs. last parsed
- * time — used only to break a tie on the newest `timeSeconds` (ruling I1):
+ * time — used only to break a tie on the newest `timeSeconds`:
  * most bank exports (Monobank included) list the newest row FIRST, so on a
  * tie the FIRST tied row in file order is really the latest transaction of
  * that instant; an oldest-first file's LAST tied row is. `'undeterminable'`
@@ -260,7 +260,7 @@ type ClosingBalancePick = { candidate: ClosingBalanceCandidate; balanceMajor: nu
 
 /**
  * The one candidate `resolveMappedClosingBalance` reads the closing-balance
- * cell off (ruling I1), together with that cell's already-parsed value (so
+ * cell off, together with that cell's already-parsed value (so
  * the caller never re-parses the same cell). Finds every row tied on the
  * NEWEST `timeSeconds` among `candidates` (already RESOLVED rows only, in
  * file order); a lone newest row wins outright, a tied set is broken by
@@ -311,10 +311,10 @@ const pickClosingBalanceRow = (
  * The mapped statement's `closingBalance` (import-balance commit B,
  * "Balance" column role) — same rule as Monobank CSV's own
  * `resolveClosingBalance` (`formats/monobank-csv/monobank-csv.format.ts`),
- * plus a file-order tie-break `pickClosingBalanceRow` handles (ruling I1).
+ * plus a file-order tie-break `pickClosingBalanceRow` handles.
  * `undefined` when no Balance column is mapped, no row resolved, or the
- * chosen row's balance cell is missing or non-numeric (review follow-up
- * I1's original guard) — never a `NaN` written to the ledger. The cell is
+ * chosen row's balance cell is missing or non-numeric — never a `NaN`
+ * written to the ledger. The cell is
  * parsed with the mapping's OWN `decimalSeparator` (`parseAmountCell`),
  * matching every other amount cell this mapping reads — `pickClosingBalanceRow`
  * does that parse once and hands the value back, so it is never re-parsed here.
@@ -367,7 +367,7 @@ export const applyColumnMapping = (
   const accountCurrency = resolveAccountCurrency(dataRows, mapping);
   // Every RESOLVED row, in file order — `resolveMappedClosingBalance` needs
   // the whole ordered list, not just a running "newest so far", so a tie on
-  // the newest time can be broken by file order (ruling I1) rather than by
+  // the newest time can be broken by file order rather than by
   // whichever tied row happens to be visited last.
   const balanceCandidates: ClosingBalanceCandidate[] = [];
 

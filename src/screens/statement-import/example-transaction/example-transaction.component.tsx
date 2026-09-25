@@ -24,8 +24,8 @@ import { transactionRowDescription } from '../../../transactions/row-description
 import type { ExampleTransactionProps } from './example-transaction.props';
 
 /**
- * ONE shared row previewing the first parsed transaction — device-feedback-
- * round-F1 items 9/14, F3 item 4/5: shown under the summary table on both
+ * ONE shared row previewing the first parsed transaction — shown under the
+ * summary table on both
  * `statement-import.screen.tsx` and the column-mapping result section, so
  * the user sees a real example of what will actually be written BEFORE
  * tapping Import, rendered through the SAME `TransactionCard` Home's own
@@ -34,7 +34,7 @@ import type { ExampleTransactionProps } from './example-transaction.props';
  * writes), resolved through the live categories table exactly as Home
  * resolves a real row's category, so an income preview row shows the same
  * icon and income color a Home row would. The title resolves through the
- * SAME `transactionRowDescription` Home uses (F3 fix round 2, N3) — an
+ * SAME `transactionRowDescription` Home uses — an
  * empty mapped description falls back to the income/expense default label
  * instead of rendering blank; `exchangeCounterpartHoldingId` is always
  * `null` here (an import never creates an exchange-marked row). The footer
@@ -42,7 +42,7 @@ import type { ExampleTransactionProps } from './example-transaction.props';
  * user's only per-row check that the chosen date format/column is right —
  * reusing `TransactionCard`'s existing optional `footerMeta`/
  * `footerTrailing` props, so Home (which passes its own footer content) is
- * unaffected. Owns its own `Divider`s above and below (F3 item 5), so a
+ * unaffected. Owns its own `Divider`s above and below, so a
  * caller renders just `<ExampleTransaction ... />`.
  */
 const ExampleTransaction: FC<ExampleTransactionProps> = ({ transaction, holdingName, testID }) => {

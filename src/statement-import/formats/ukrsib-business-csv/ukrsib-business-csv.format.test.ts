@@ -13,7 +13,7 @@ import { COLUMN, FULL_HEADER_LINE, OPERATSII_WORD, ukrsibBusinessCsvFormat } fro
 
 // HAND-AUTHORED synthetic fixture (no uabean fixture exists for this
 // format, C.4) — cp1251-encoded, all-fake account/EDRPOU numbers, "Test
-// Merchant" descriptions (task-5-report.md). Decoded via the REAL
+// Merchant" descriptions. Decoded via the REAL
 // `windows-1251` library (see `../format-test-fixtures`), the SAME decode
 // step the screen's cp1251 fallback performs before handing text to this
 // format.
@@ -46,7 +46,7 @@ const malformedDateInput = {
 // authored fixture rather than a reused one. `COLUMN`'s 16 shared indices
 // come from `FOP_BUSINESS_COLUMN_BASE` (also used by
 // `procredit-business-csv`'s own `COLUMN`, cross-verified against BOTH
-// real/hand-authored fixtures at authoring time, task-5-report.md); only
+// real/hand-authored fixtures at authoring time); only
 // this format's OWN divergent column (`mfo`, index 1) is asserted
 // independently here.
 describe('ukrsib-business-csv format constants', () => {

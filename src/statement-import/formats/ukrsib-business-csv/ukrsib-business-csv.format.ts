@@ -5,8 +5,7 @@
 // `__fixtures__/synthetic-ukrsib-business-sample.csv` is HAND-AUTHORED
 // synthetic data (all-fake account/EDRPOU numbers, "Test Merchant"
 // descriptions), written as real cp1251 bytes, same placeholder-style
-// convention the other hand-authored fixtures in this plan use (see
-// task-5-report.md).
+// convention the other hand-authored fixtures in this plan use.
 import type { StatementFormat } from '../../parser';
 import { createColumnarBusinessCsvFormat, FOP_BUSINESS_COLUMN_BASE } from '../business-csv';
 
@@ -21,7 +20,7 @@ import { createColumnarBusinessCsvFormat, FOP_BUSINESS_COLUMN_BASE } from '../bu
 // ⚠️ The bank's own header spells "операцiї" (both occurrences, "Дата
 // операцiї" and "Код операцiї") with a LATIN small `i` (U+0069), NOT the
 // Cyrillic `і` (U+0456) ProCredit/Monobank use — a byte-level detect trap.
-// Verified by codepoint, not by eye (task-5-report.md).
+// Verified by codepoint, not by eye.
 export const FULL_HEADER_LINE =
   '"ЄДРПОУ";"МФО";"Рахунок";"Валюта";"Дата операцiї";"Код операцiї";"МФО банка";"Назва банка";"Рахунок кореспондента";"ЄДРПОУ кореспондента";"Кореспондент";"Номер документа";"Дата документа";"Дебет";"Кредит";"Призначення платежу";"Гривневе покриття";';
 

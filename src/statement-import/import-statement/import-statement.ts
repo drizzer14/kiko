@@ -40,8 +40,8 @@ export type ImportResult = {
  * import" section, for the exact balance rule). See
  * `docs/plans/statement-import.md` section A.4 for the row-mapping shape.
  * Takes an already-parsed `ParsedStatement` — shared by `importStatement`
- * (a shipped bank format) and the generic column-mapping import path
- * (T1-T2 brief), which builds its own `ParsedStatement` with
+ * (a shipped bank format) and the generic column-mapping import path, which
+ * builds its own `ParsedStatement` with
  * `formatId: 'column-mapping'` and has no dedicated `StatementFormat` to
  * detect/parse through.
  */

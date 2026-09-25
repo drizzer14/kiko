@@ -40,12 +40,11 @@ export const styles = StyleSheet.create((theme) => ({
   cell: {
     paddingRight: theme.spacing(2),
   },
-  // The selected header row's own cell text (F3 item 8): bolder than the
+  // The selected header row's own cell text: bolder than the
   // caption step's own regular 400 weight, so the chosen row reads as
   // clearly distinct at a glance, not only by its accent fill. `'600'`
   // (semibold) — the app's own selected-label weight everywhere else
-  // (ChipRow, SelectableRow, FieldTrigger), not `'700'` (F3 fix round
-  // 1, M3).
+  // (ChipRow, SelectableRow, FieldTrigger), not `'700'`.
   selectedCellText: {
     fontWeight: '600',
   },

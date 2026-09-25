@@ -103,9 +103,9 @@ export type ParsedStatement = {
    * path (import-balance commit B) also sets this, from an OPTIONAL
    * user-mapped Balance column (`ColumnMapping.balanceColumn`,
    * `column-mapping/apply-column-mapping.ts`'s `resolveMappedClosingBalance`)
-   * — same "newest row wins" rule as Monobank, PLUS a file-order tie-break
-   * (ruling I1). Review follow-up M1: "Map columns manually" accepts ANY
-   * file, including a multi-card PrivatBank export — column mapping has no
+   * — same "newest row wins" rule as Monobank, PLUS a file-order tie-break.
+   * "Map columns manually" accepts ANY file, including a multi-card
+   * PrivatBank export — column mapping has no
    * `maskedCardHint` concept, so a mapped Balance column on such a file can
    * genuinely mix cards (the newest row's balance may belong to a
    * DIFFERENT card than the one the user is importing into). Mapping

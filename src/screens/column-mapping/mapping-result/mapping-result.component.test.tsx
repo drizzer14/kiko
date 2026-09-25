@@ -50,9 +50,8 @@ describe('MappingResult', () => {
   });
 
   // A stable testID for the Result block's own error, mirroring every other
-  // field-level `FieldError` on this screen — round 2's Ruling A switched
-  // this message to the shared `FieldError` component but left it without
-  // one.
+  // field-level `FieldError` on this screen — this message was switched to
+  // the shared `FieldError` component but left without one.
   it('gives the noRowsResolvedError a stable testID', async () => {
     const { getByTestId } = await render(
       <MappingResult

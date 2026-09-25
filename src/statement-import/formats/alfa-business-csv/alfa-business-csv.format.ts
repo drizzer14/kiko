@@ -1,7 +1,7 @@
 // Column layout verified against docs/plans/statement-import.md section C.3
 // (Alfa business/FOP) — grounded in OSadovy/uabean's importer facts,
-// cross-checked against the REAL fixture bytes this task copied (see
-// src/statement-import/NOTICE.md, task-5-report.md for the exact per-line
+// cross-checked against the REAL fixture bytes (see
+// src/statement-import/NOTICE.md for the exact per-line
 // facts). No uabean source is reused; this is an independent TypeScript
 // implementation. The fixture this format is tested against
 // (`__fixtures__/uabean-alfa-business-sample.csv`) IS uabean's own real
@@ -25,7 +25,7 @@ import { parseDateTimeSeconds } from '../../parse-date-time';
 
 // Section C.3: "Detect signature — file content matches the FULL literal
 // header line" (unquoted, unlike Ukrsib business — verified against the real
-// fixture's own first line, task-5-report.md).
+// fixture's own first line).
 export const FULL_HEADER_LINE =
   'Наш рахунок;Наш IBAN;Операція;Рахунок;IBAN;МФО банку контрагента;Найменування контрагента;Код контрагента;Призначення платежу;Дата проведення;Номер документа;Сума;Валюта;Час проведення;Дата документа;Дата архівування;Ід.код;Найменування;МФО';
 

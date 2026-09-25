@@ -141,13 +141,13 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   const [selectedHoldingId, setSelectedHoldingId] = useState<string | undefined>(undefined);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | undefined>(undefined);
-  // N4 (F3 part 1 fix round 2): decoupled from `importResult` itself — see
+  // Decoupled from `importResult` itself — see
   // `handleImportDone` below for why.
   const [resultSheetVisible, setResultSheetVisible] = useState(false);
-  // R2-1 (F3 part 1 fix round 3): guards `handleSheetClosed` against running
+  // Guards `handleSheetClosed` against running
   // its navigation more than once — see that function's own comment.
   const navigatedAwayRef = useRef(false);
-  // F4 audit 2: Import is ALWAYS enabled — this flips true on the FIRST
+  // Import is ALWAYS enabled — this flips true on the FIRST
   // Import press and stays true, the same "validate on press" contract every
   // other Kiko form uses (`kiko-code-style`'s "Form validation model").
   const [attemptedImport, setAttemptedImport] = useState(false);
@@ -158,7 +158,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   const contentHeightRef = useRef(0);
   const holdingOptions = useTargetHoldingOptions(accountId);
 
-  // T7's auto-replace check: an account's own `bankId` and its saved
+  // The auto-replace check: an account's own `bankId` and its saved
   // column-mapping entries. `accountId` is optional on this route (the
   // Share Extension entry point has none) — an empty-string id query simply
   // returns no rows rather than being skipped, so every render still calls
@@ -181,7 +181,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // back through this same route's own `holdingId` param, merged in via
   // `navigation.popTo(..., { merge: true })` — NOT `navigate`, which on
   // React Navigation 7 pushes a duplicate of this already-on-stack route
-  // instead of reusing it (C1, F3 part 1 fix round 1; see `returnTo` on
+  // instead of reusing it; see `returnTo` on
   // `HoldingForm`'s route type, and
   // `src/navigation/statement-import-return.navigator.test.tsx` for the
   // real-router proof). This effect selects it the moment it arrives.
@@ -260,7 +260,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   const stats = statsFor(format, input);
   const bankMismatch = input !== undefined && expectedFormat !== undefined && format === undefined;
 
-  // T7: when this file matched NO format (unrecognized, or a bank
+  // When this file matched NO format (unrecognized, or a bank
   // mismatch) and an EXACT saved mapping exists for this account's own
   // bank, skip straight to the manual-mapping screen instead of showing the
   // "we don't recognize this file" state — `ColumnMapping` still requires
@@ -282,9 +282,9 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // still be seen), but once the decision is made it refuses to revisit
   // it: a `savedMappings` write that lands LATER — the pushed ColumnMapping
   // screen this effect is unaware of saving its own mapping while this
-  // screen sits blurred underneath it — used to flip the match from false to
-  // true and call `navigation.replace` from a screen the user had already
-  // navigated away from; the router's REPLACE carries no target and falls
+  // screen sits blurred underneath it — would otherwise flip the match from
+  // false to true and call `navigation.replace` from a screen the user had
+  // already navigated away from; the router's REPLACE carries no target and falls
   // back to the FOCUSED route, silently swapping out the live ColumnMapping
   // instance (and its open success sheet) for a brand-new one.
   const evaluatedRef = useRef(false);
@@ -315,7 +315,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
 
     if (saved?.exact) {
       autoReplacedRef.current = true;
-      // N2 (F3 part 1 fix round 2): `ownsFile: true` — this REPLACES
+      // `ownsFile: true` — this REPLACES
       // StatementImport (no `StatementImport` route left below it on the
       // stack), so ColumnMapping becomes the file's sole owner from here.
       // The OTHER ColumnMapping entry point ("Map columns manually",
@@ -335,20 +335,20 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     settingsIsLoading,
   ]);
 
-  // M8 (F3 part 1 fix round 1, Important): `filePath` is a plaintext local
-  // cache copy (item 6's `keepLocalCopy` fix) outside the encrypted
+  // `filePath` is a plaintext local
+  // cache copy (`keepLocalCopy`'s own fix) outside the encrypted
   // database — deleted once this screen is REMOVED from the stack (a
   // successful import's `popTo`, or the user backing all the way out),
   // never left behind in `Library/Caches`. `useEffect`'s cleanup fires
   // exactly on unmount — which native-stack only does when a screen is
   // actually popped, NOT when merely backgrounded by a push on top (Map
   // Columns stays reachable, this screen's own `RNFS.readFile` calls keep
-  // working, its column-mapping state is preserved — see C1's real-router
-  // test). Guarded on `autoReplacedRef`: the T7 auto-replace above ALSO
+  // working, its column-mapping state is preserved — see the real-router
+  // test). Guarded on `autoReplacedRef`: the auto-replace above ALSO
   // unmounts this screen (`navigation.replace`), but hands the SAME
   // `filePath` to the ColumnMapping screen that replaces it — that screen
   // owns the file from then on (its own matching cleanup effect, gated on
-  // the `ownsFile` param this screen just set — N2), so this one must NOT
+  // the `ownsFile` param this screen just set), so this one must NOT
   // delete out from under it.
   useEffect(() => {
     return () => {
@@ -403,28 +403,27 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     }
   };
 
-  // Item 15 (F3): closes the successful-import modal. Does NOT navigate —
-  // see `handleSheetClosed` below (R2-1, fix round 3): a native-stack pop
+  // Closes the successful-import modal. Does NOT navigate —
+  // see `handleSheetClosed` below: a native-stack pop
   // must wait for the sheet to ACTUALLY finish closing, which `onDone` (a
   // Done press or a scrim tap) cannot promise on its own — only `onClosed`
   // (the sheet's real completion signal) can. `importResult` itself is
-  // NEVER cleared (M4, fix round 1), so the sheet's last content stays
+  // NEVER cleared, so the sheet's last content stays
   // correct for the whole close animation, independent of `visible`.
   const handleImportDone = (): void => {
     setResultSheetVisible(false);
   };
 
-  // R2-1 (F3 part 1 fix round 3): runs once `ImportResultSheet`'s `onClosed`
+  // Runs once `ImportResultSheet`'s `onClosed`
   // fires — `BottomSheet`'s pass-through of RN `Modal`'s own `onDismiss`,
-  // which only fires once the close ANIMATION has actually finished (round
-  // 2 re-review: a guessed `setTimeout` delay was "not tied to the real
-  // animation" — this removes the guess entirely). `navigatedAwayRef`
+  // which only fires once the close ANIMATION has actually finished — never
+  // a guessed `setTimeout` delay, which is not tied to the real animation.
+  // `navigatedAwayRef`
   // ignores a repeated call (a double Done tap, or `onClosed` somehow
   // firing more than once) so this navigates at most ONCE.
   //
   // `navigation.popTo` — NOT `navigate`, which on React Navigation 7 pushes
-  // a DUPLICATE of an already-on-stack route instead of reusing it (C1, F3
-  // part 1 fix round 1 — see
+  // a DUPLICATE of an already-on-stack route instead of reusing it — see
   // `src/navigation/statement-import-return.navigator.test.tsx` for the
   // real-router proof) — finds the existing `AccountDetail` instance
   // already on the stack (this screen, and Map Columns before it, were both
@@ -451,7 +450,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     navigation.goBack();
   };
 
-  // T7's manual entry point into the generic column-mapping screen. Only
+  // The manual entry point into the generic column-mapping screen. Only
   // navigates when `accountId` is known — the Share Extension entry point
   // (no `accountId`) has no defined "map for which account" behavior yet,
   // same carve-out `TargetHoldingField`'s own `onCreateNew` below already
@@ -467,8 +466,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   };
 
   // Entry point 2 (the Share Extension, no known `accountId`) has no defined
-  // "create a holding for which account" behavior yet — see
-  // `.superpowers/sdd/statement-import/task-2-report.md` concern 1/2 — so
+  // "create a holding for which account" behavior yet — so
   // "Create new holding" only navigates in the scoped (entry point 1) case;
   // it stays a harmless no-op otherwise rather than crashing on a missing
   // required `accountId`.

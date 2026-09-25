@@ -1,7 +1,7 @@
 // Column layout verified against docs/plans/statement-import.md section C.2
 // (grounded in OSadovy/uabean's Sensebank CSV importer facts, cross-checked
-// against the REAL fixture bytes this task copied — see
-// src/statement-import/NOTICE.md) — see task-4-report.md for the exact
+// against the REAL fixture bytes — see
+// src/statement-import/NOTICE.md for the exact
 // per-line facts recorded from reading the fixture. No uabean source is
 // reused; this is an independent TypeScript implementation. The fixture this
 // format is tested against
@@ -24,7 +24,7 @@ import type { Currency } from '../../../currency/currency';
 
 // Section C.2: "Detect signature — file content starts with the literal
 // preamble line `Виписка за рахунком;;;;;;;`". Verified byte-for-byte
-// against the real fixture's first line (task-4-report.md).
+// against the real fixture's first line.
 export const SENSEBANK_PREAMBLE = 'Виписка за рахунком;;;;;;;';
 
 // Section C.2: "an account line matching `Рахунок (\w+) \((\w+)\)` → IBAN +
@@ -33,7 +33,7 @@ export const SENSEBANK_PREAMBLE = 'Виписка за рахунком;;;;;;;';
 export const ACCOUNT_LINE_PATTERN = /Рахунок (\w+) \((\w+)\)/;
 
 // The repeated per-block header row, verified EXACTLY against the real
-// fixture's bytes (task-4-report.md) — note the FIRST "Cума" cell starts
+// fixture's bytes — note the FIRST "Cума" cell starts
 // with a LATIN capital "C" (U+0043), not the visually-identical Cyrillic
 // "С" (U+0421), in BOTH amount column headers. A naive hand-typed Cyrillic
 // "С" would silently never match a real Sensebank export.

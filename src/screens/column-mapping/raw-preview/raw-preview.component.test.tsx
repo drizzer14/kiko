@@ -99,7 +99,7 @@ describe('RawPreview', () => {
     expect(queryByText('c6')).toBeNull();
   });
 
-  // F3 item 8 / fix round 1 M3: the selected header row's own cell text
+  // The selected header row's own cell text
   // turns semibold (600) — the app's selected-label weight everywhere else.
   it('renders the selected header row’s cell text semibold', async () => {
     const { getByText } = await render(

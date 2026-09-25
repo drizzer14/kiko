@@ -502,15 +502,15 @@ const formStateFromSavedMapping = (mapping: SavedColumnMapping): SavedFormState 
 };
 
 /**
- * The generic column-mapping import screen (T6, docs/plans/statement-import.md
- * — see the shares-property-metals-debts P0 brief): lets a user map an
- * unrecognized (or bank-mismatched) statement's own columns onto the fields
- * every import needs, sharing `previewStats`/`useTargetHoldingOptions`/
- * `TargetHoldingSheet`/`ImportOutcome` with `statement-import.screen.tsx`.
- * Reads the file ONCE (`.xls` stops at `columnMapping.xlsNotSupported` and
- * renders nothing else); `findSavedMapping` pre-fills a known mapping on
- * load but NEVER imports on its own — the user always taps Import (Review
- * Focus 3), and a successful import saves the confirmed mapping back under
+ * The generic column-mapping import screen (see `docs/plans/statement-import.md`):
+ * lets a user map an unrecognized (or bank-mismatched) statement's own
+ * columns onto the fields every import needs, sharing
+ * `previewStats`/`useTargetHoldingOptions`/`TargetHoldingSheet`/
+ * `ImportOutcome` with `statement-import.screen.tsx`. Reads the file ONCE
+ * (`.xls` stops at `columnMapping.xlsNotSupported` and renders nothing
+ * else); `findSavedMapping` pre-fills a known mapping on load but NEVER
+ * imports on its own — the user always taps Import, and a successful
+ * import saves the confirmed mapping back under
  * `mappingKeyFor(account.bankId, fingerprint)`.
  */
 const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }) => {
@@ -541,10 +541,10 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   const [selectedHoldingId, setSelectedHoldingId] = useState<string | undefined>(undefined);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | undefined>(undefined);
-  // N4 (F3 part 1 fix round 2): decoupled from `importResult` itself — see
+  // Decoupled from `importResult` itself — see
   // `handleImportDone` below for why.
   const [resultSheetVisible, setResultSheetVisible] = useState(false);
-  // R2-1 (F3 part 1 fix round 3): guards `handleSheetClosed` against running
+  // Guards `handleSheetClosed` against running
   // its navigation more than once — see that function's own comment.
   const navigatedAwayRef = useRef(false);
   // Import is ALWAYS enabled — this flips true on the FIRST Import press
@@ -575,11 +575,10 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   const savedMappings = settingsRows.at(0)?.statementMappings;
   const holdingOptions = useTargetHoldingOptions(accountId);
 
-  // Items 2 + 11 (F3), merged into one field in fix round 1 (ponytail
-  // review): `holdingId` covers BOTH the preview's prefill (item 11) and
-  // the "Add new" holding return channel (item 2, via
+  // `holdingId` covers BOTH the preview's prefill and
+  // the "Add new" holding return channel, via
   // `navigation.popTo(..., { merge: true })` — see `statement-import.screen.tsx`'s
-  // matching effect and C1 for why `popTo`, not `navigate`). This ONE effect
+  // matching effect for why `popTo`, not `navigate`. This ONE effect
   // handles both: it runs on mount (the prefill case) and again whenever
   // `holdingId` changes later (the create-and-return case).
   useEffect(() => {
@@ -622,11 +621,10 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
         }
       });
 
-    // M8 (F3 part 1 fix round 1, Important) + N2 (fix round 2, Important):
-    // `filePath` is a plaintext local cache copy (item 6's `keepLocalCopy`
+    // `filePath` is a plaintext local cache copy (`keepLocalCopy`'s own
     // fix) outside the encrypted database — deleted once this screen is
     // REMOVED from the stack, but ONLY when this screen actually OWNS the
-    // file (`ownsFile`, set by `StatementImportScreen`'s T7 auto-`replace`
+    // file (`ownsFile`, set by `StatementImportScreen`'s auto-`replace`
     // ONLY — see `navigation/types.d.ts`'s `ColumnMapping.ownsFile` doc
     // comment). When this screen was reached instead by "Map columns
     // manually" (a PUSH), `StatementImportScreen` stays mounted underneath
@@ -819,22 +817,20 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     }
   };
 
-  // Item 15 (F3): closes the successful-import modal. Does NOT navigate —
-  // see `handleSheetClosed` below (R2-1, fix round 3) and its matching
+  // Closes the successful-import modal. Does NOT navigate —
+  // see `handleSheetClosed` below and its matching
   // comment on `statement-import.screen.tsx`'s own pair of handlers for the
-  // full rationale. `importResult` itself is still never cleared (M4, fix
-  // round 1).
+  // full rationale. `importResult` itself is still never cleared.
   const handleImportDone = (): void => {
     setResultSheetVisible(false);
   };
 
-  // R2-1 (F3 part 1 fix round 3): same shape as `statement-import.screen.tsx`'s
+  // Same shape as `statement-import.screen.tsx`'s
   // own `handleSheetClosed` — runs once `ImportResultSheet`'s `onClosed`
   // fires (the sheet's close animation actually finished), guarded by
   // `navigatedAwayRef` so a repeated call navigates at most once.
   // `navigation.popTo` — NOT `navigate`, which on React Navigation 7 pushes
-  // a DUPLICATE of an already-on-stack route instead of reusing it (C1, F3
-  // part 1 fix round 1 — see
+  // a DUPLICATE of an already-on-stack route instead of reusing it — see
   // `src/navigation/statement-import-return.navigator.test.tsx` for the
   // real-router proof) — finds the existing `AccountDetail` instance
   // already on the stack (this screen was pushed from StatementImport,

@@ -14,7 +14,7 @@ const RESULT = {
 };
 
 describe('ImportResultSheet', () => {
-  // N4 (fix round 2): `visible` and `result` are decoupled props again — a
+  // `visible` and `result` are decoupled props — a
   // caller can close the sheet (visible=false) while still holding the
   // last `result`.
   it('renders nothing while not visible, even with a result', async () => {
@@ -58,7 +58,7 @@ describe('ImportResultSheet', () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
-  // R2-1 (fix round 3): `onClosed` is BottomSheet's pass-through of RN
+  // `onClosed` is BottomSheet's pass-through of RN
   // Modal's real onDismiss — distinct from onDone (a mere close request).
   it('calls onClosed when the underlying sheet reports it has actually finished closing', async () => {
     const onClosed = jest.fn();

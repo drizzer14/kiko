@@ -1,7 +1,7 @@
 // Column layout verified against docs/plans/statement-import.md section C.3
 // (ProCredit business/FOP) — grounded in OSadovy/uabean's importer facts,
-// cross-checked against the REAL fixture bytes this task copied (see
-// src/statement-import/NOTICE.md, task-5-report.md for the exact per-line
+// cross-checked against the REAL fixture bytes (see
+// src/statement-import/NOTICE.md for the exact per-line
 // facts). No uabean source is reused; this is an independent TypeScript
 // implementation. The fixture this format is tested against
 // (`__fixtures__/uabean-procredit-business-sample.csv`) IS uabean's own real
@@ -14,8 +14,8 @@ import { createColumnarBusinessCsvFormat, FOP_BUSINESS_COLUMN_BASE } from '../bu
 // Section C.3: "Detect signature — file content starts with the first 59
 // characters of the header line (uabean's own truncation point, chosen to
 // match BOTH of its two accepted header variants, which diverge after that
-// point)". Verified byte-for-byte against the real fixture's own header line
-// (task-5-report.md) — the real fixture carries "variant 1"
+// point)". Verified byte-for-byte against the real fixture's own header
+// line — the real fixture carries "variant 1"
 // (`Код ID НБУ` as column 2); variant 2 (`Надавач платіжних послуг`) is
 // UNVERIFIED against any real fixture bytes, but this 59-char prefix matches
 // both, per the plan.

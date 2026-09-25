@@ -141,7 +141,7 @@ export const decodeStatementText = (base64: string, encoding: 'utf-8' | 'windows
   return encoding === 'utf-8' ? decodeUtf8Bytes(bytes) : decodeWindows1251(new Uint8Array(bytes));
 };
 
-// N1 (F3 part 1 fix round 2, Important): `keepLocalCopy`'s `localUri` on iOS
+// `keepLocalCopy`'s `localUri` on iOS
 // is `destinationUrl.absoluteString` — a `file:///var/mobile/.../Library/
 // Caches/<uuid>/<name>` URL, percent-encoded (a space becomes `%20`) — NOT
 // the plain filesystem path `RNFS.CachesDirectoryPath` is. Comparing the raw
@@ -170,8 +170,8 @@ const normalizeFilePathForDelete = (filePath: string): string => {
   }
 };
 
-// M8 (F3 part 1 fix round 1, Important): the local cache copy item 6's fix
-// makes (`account-detail.screen.tsx`'s `pickAndOpenStatement`, via
+// The local cache copy
+// `account-detail.screen.tsx`'s `pickAndOpenStatement` makes (via
 // `keepLocalCopy`) is a PLAINTEXT copy of a bank statement in
 // `Library/Caches`, outside the app's SQLCipher-encrypted database — this
 // deletes it once the import flow that owns it ends (a successful import,
