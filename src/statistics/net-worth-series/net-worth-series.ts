@@ -45,10 +45,9 @@ export type NetWorthSeries = { points: NetWorthPoint[]; startReference: number }
  * Holdings with no rate for their currency at `t` are skipped (guarded), never
  * crashing the sum.
  *
- * With no history stored yet (backfill pending, or a base-currency-only user
- * who never needs one), a same-currency holding still converts trivially and
- * a foreign-currency one is dropped by the same rate-availability guard as
- * always — the series is never gated on `historyRows` being non-empty.
+ * With no history stored yet, only a base-currency-only user (no holding
+ * ever needs a cross-rate) still gets points; any other holder returns an
+ * empty series rather than a partial line missing its foreign holdings.
  */
 export const buildNetWorthSeries = (input: {
   holdings: SeriesHolding[];
@@ -73,22 +72,13 @@ export const buildNetWorthSeries = (input: {
     book = EMPTY_PRICE_BOOK,
   } = input;
 
-  // No early return on an empty `historyRows`: a base-currency-only user (no
-  // foreign holding, ever) never gets a `currency_rate_history` row at all —
-  // the backfill gate has nothing cross-currency to fetch — so gating the
-  // whole series on `historyRows.length` left that user's line empty forever.
-  // `earliestRateTable`/`rateTableAt` both return `{}` for an empty row set,
-  // and `canConvert` already returns true whenever a holding's own currency
-  // equals `baseCurrency` regardless of the table, so a same-currency holding
-  // still converts trivially below; a foreign-currency holding with no rate
-  // at all is still dropped by the same `canConvert` filter as always.
-  //
-  // A SEPARATE, orthogonal guard: `bucketTimes` below produces a bucket for
-  // every instant in `range` regardless of whether any holding exists, so
-  // with zero holdings the per-bucket reduce would otherwise sum to a real
-  // (if zero) point at every bucket — a spurious flat-zero line — instead of
-  // reporting nothing to plot for a holding-less user.
-  if (holdings.length === 0) {
+  // Empty with no holdings (nothing to plot), or with no history rows yet
+  // while some holding is foreign (a misleading partial line otherwise); a
+  // base-currency-only user still gets points with no history rows.
+  if (
+    holdings.length === 0 ||
+    (historyRows.length === 0 && holdings.some((holding) => holding.currency !== baseCurrency))
+  ) {
     return { points: [], startReference: 0 };
   }
 

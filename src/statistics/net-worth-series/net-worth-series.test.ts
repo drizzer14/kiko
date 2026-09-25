@@ -697,10 +697,16 @@ describe('buildNetWorthSeries', () => {
     expect(series.startReference).toBe(100);
   });
 
-  it('with no history rows, a mixed-currency case still drops only what cannot convert', () => {
+  // With no history rows yet (the backfill still running or offline), a
+  // mixed-currency user's foreign holding would otherwise just drop out of
+  // every past point while today's point (valued at the live rate table)
+  // keeps it — a misleading jump, not the loading/empty state the user saw
+  // before. Only a base-currency-only user (no holding ever needs a
+  // cross-rate) still gets points with no history rows.
+  it('returns an empty series for mixed holdings with no history rows, even though one holding shares the base currency', () => {
     const holdings = [
-      holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 }), // $100.00, base -> kept
-      holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 }), // no rate at all -> dropped
+      holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 }), // $100.00, base
+      holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 }), // foreign, no rate yet
     ];
 
     const series: NetWorthSeries = buildNetWorthSeries({
@@ -711,7 +717,7 @@ describe('buildNetWorthSeries', () => {
       range: { from: D0, to: D0 },
     });
 
-    expect(series.points.map((point) => point.amount)).toEqual([100]);
+    expect(series).toEqual({ points: [], startReference: 0 });
   });
 
   // A holding-less user (no accounts at all yet) must still see the genuine

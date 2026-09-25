@@ -640,15 +640,10 @@ describe('StatisticsScreen', () => {
   });
 
   it('shows the net-worth line loading state while history is empty and the backfill runs', async () => {
-    // No holdings at all: a same-currency (or live-rate) holding now converts
-    // trivially even with an empty `historyRows` (the base-currency-only
-    // user's own fix), so the loading placeholder is only observable here —
-    // through a genuinely empty holding set — while the `transactions` table
-    // (a separate, unrelated read) still bounds a span and drives the effect.
     setLiveData({
       accounts: [CASH, BANK],
-      holdings: [],
-      rates: [],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
       transactions: TRANSACTIONS,
       history: [],
     });
@@ -708,12 +703,10 @@ describe('StatisticsScreen', () => {
   });
 
   it('does not report the backfill complete after a failed run, and retries the same span once now advances', async () => {
-    // No holdings: see the loading-state test above for why the loading/empty
-    // testids need a genuinely empty holding set to stay observable.
     setLiveData({
       accounts: [CASH, BANK],
-      holdings: [],
-      rates: [],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
       transactions: TRANSACTIONS,
       history: [],
     });
@@ -745,11 +738,10 @@ describe('StatisticsScreen', () => {
   });
 
   it('leaves loading once a run rejects even when a refocus interleaved first, and still retries the same span', async () => {
-    // No holdings: see the loading-state test above.
     setLiveData({
       accounts: [CASH, BANK],
-      holdings: [],
-      rates: [],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
       transactions: TRANSACTIONS,
       history: [],
     });
@@ -809,11 +801,10 @@ describe('StatisticsScreen', () => {
     // `'failed'` status rather than rejecting its own promise — a distinct
     // path from the rejected-promise case above, and must be handled the
     // same way: never reported complete, and retried on the next focus.
-    // No holdings: see the loading-state test above.
     setLiveData({
       accounts: [CASH, BANK],
-      holdings: [],
-      rates: [],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
       transactions: TRANSACTIONS,
       history: [],
     });
@@ -849,11 +840,10 @@ describe('StatisticsScreen', () => {
     // pending, so run B starts for the wider span before A ever settles. A's
     // eventual rejection must not undo run B's own claim on the span ref —
     // otherwise the next plain refocus would wrongly look "never run" again.
-    // No holdings: see the loading-state test above.
     setLiveData({
       accounts: [CASH, BANK],
-      holdings: [],
-      rates: [],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
       transactions: TRANSACTIONS,
       history: [],
     });
@@ -884,8 +874,8 @@ describe('StatisticsScreen', () => {
     };
     setLiveData({
       accounts: [CASH, BANK],
-      holdings: [],
-      rates: [],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
       transactions: [olderTransaction, ...TRANSACTIONS],
       history: [],
     });
@@ -915,11 +905,10 @@ describe('StatisticsScreen', () => {
   });
 
   it("ignores a stale run's completion once a later run has claimed a newly-extended span, and applies that later run's own settle", async () => {
-    // No holdings: see the loading-state test above.
     setLiveData({
       accounts: [CASH, BANK],
-      holdings: [],
-      rates: [],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
       transactions: TRANSACTIONS,
       history: [],
     });
@@ -948,8 +937,8 @@ describe('StatisticsScreen', () => {
     };
     setLiveData({
       accounts: [CASH, BANK],
-      holdings: [],
-      rates: [],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
       transactions: [olderTransaction, ...TRANSACTIONS],
       history: [],
     });
