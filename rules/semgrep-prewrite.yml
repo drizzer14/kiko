@@ -232,3 +232,63 @@ rules:
         - "src/screens/home/add-transaction-fab/**"
     patterns:
       - pattern-regex: "import\\s[^;]*from\\s*['\"][^'\"]*glass-surface['\"]"
+  # kiko-design-system's "Field placeholder and error copy" — a placeholder
+  # never repeats its own field's label. Each object-literal arm binds $VALUE
+  # to a QUOTED string literal at both key positions (`'$VALUE'`, the same
+  # binding shape `kiko-no-raw-color-literal` uses), never a bare $VALUE —
+  # verified empirically: a bare (unquoted) metavariable also binds an
+  # identical VARIABLE reused for both keys (`label: sharedCopy,
+  # placeholder: sharedCopy`), which is not a copy duplication at all, so the
+  # quoted form is required to restrict the match to two literal strings.
+  # Both key orders get their own arm — Semgrep's object-pattern `...` does
+  # not require the pattern's own key order to match the source's, but the
+  # brief calls for both explicitly, so both are spelled out rather than
+  # relied upon implicitly. The JSX arms use the same quoted-attribute shape
+  # (`label="$VALUE"`, never `label=$VALUE`) for the same reason — a bare
+  # form also matches `label={sharedValue} placeholder={sharedValue}`,
+  # verified empirically against a throwaway probe rule before writing this
+  # one.
+  - id: kiko-no-placeholder-equal-to-label
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A placeholder repeats its own field's label. Write distinct placeholder
+      copy (the established form is "Select a …" for a picker/select field)
+      — see kiko-design-system's "Field placeholder and error copy".
+    metadata:
+      fix: "Write distinct placeholder copy — never the same string as the field's own label."
+      skill: "kiko-design-system › Field placeholder and error copy"
+    patterns:
+      - pattern-either:
+          # The object-literal shape needs the `metavariable-regex` filter
+          # (only a `*Placeholder`-suffixed key counts); the JSX shape does
+          # not, since `placeholder`/`label` there are literal attribute
+          # names, not metavariables — a single flat `patterns:` AND-ing the
+          # filter across BOTH shapes fails the JSX arms outright, since
+          # `metavariable-regex` on a metavariable a given arm never binds
+          # is an unsatisfiable condition, not a no-op (verified empirically:
+          # the flat form matched neither JSX arm). Nesting each shape in its
+          # own `patterns:` block scopes the filter to only the arms that
+          # bind $PLACEHOLDER.
+          - patterns:
+              - pattern-either:
+                  - pattern: "{ ..., $LABEL: '$VALUE', ..., $PLACEHOLDER: '$VALUE', ... }"
+                  - pattern: "{ ..., $PLACEHOLDER: '$VALUE', ..., $LABEL: '$VALUE', ... }"
+              - metavariable-regex:
+                  metavariable: $PLACEHOLDER
+                  regex: ".*Placeholder$"
+              # $LABEL is scoped to a `*Label`-suffixed key too, not any
+              # sibling — a repo sweep without this filter matched
+              # `categories.groceries: 'Groceries'` against the UNRELATED
+              # `categories.namePlaceholder: 'Groceries'` (an example seed
+              # value for the "add category" field, coincidentally sharing
+              # the English word for a default category), which is not a
+              # field repeating its own label at all.
+              - metavariable-regex:
+                  metavariable: $LABEL
+                  regex: ".*Label$"
+          - pattern-either:
+              - pattern: '<$COMPONENT placeholder="$VALUE" label="$VALUE" ...></$COMPONENT>'
+              - pattern: '<$COMPONENT placeholder="$VALUE" label="$VALUE" ... />'
+              - pattern: '<$COMPONENT label="$VALUE" placeholder="$VALUE" ...></$COMPONENT>'
+              - pattern: '<$COMPONENT label="$VALUE" placeholder="$VALUE" ... />'

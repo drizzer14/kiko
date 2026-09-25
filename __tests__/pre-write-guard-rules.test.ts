@@ -1,7 +1,7 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 
 // Every other pre-write-guard test stubs semgrep entirely (see
 // pre-write-guard.test.ts), so nothing else in the suite proves
@@ -26,7 +26,17 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-history-id-comment',
   'kiko-no-raw-color-literal',
   'kiko-glass-surface-nav-layer-only',
+  'kiko-no-placeholder-equal-to-label',
 ] as const;
+
+// Most rules have no JSX shape, so their fixtures are plain `.ts`; a rule
+// whose pattern needs a real JSX element (e.g. `kiko-no-placeholder-equal-
+// to-label`) needs `.tsx` instead, both for the fixture file itself and for
+// the probe target the guard scans it as, so the guard's TypeScript parser
+// picks the JSX-aware grammar.
+function fixtureExtension(ruleId: string): 'ts' | 'tsx' {
+  return existsSync(join(FIXTURES, `${ruleId}.bad.tsx`)) ? 'tsx' : 'ts';
+}
 
 function payloadFor(filePath: string, content: string): string {
   return JSON.stringify({
@@ -57,15 +67,16 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
       try {
         const probeDirectory = join(project, 'src', 'probe');
         mkdirSync(probeDirectory, { recursive: true });
-        const targetFile = join(probeDirectory, `${ruleId}.ts`);
+        const extension = fixtureExtension(ruleId);
+        const targetFile = join(probeDirectory, `${ruleId}.${extension}`);
 
-        const badContent = readFileSync(join(FIXTURES, `${ruleId}.bad.ts`), 'utf8');
+        const badContent = readFileSync(join(FIXTURES, `${ruleId}.bad.${extension}`), 'utf8');
         const badResult = runGuard(payloadFor(targetFile, badContent), project);
         expect(badResult.status).toBe(2);
         const reason = JSON.parse(badResult.stdout).hookSpecificOutput.permissionDecisionReason;
         expect(reason).toContain(ruleId);
 
-        const goodContent = readFileSync(join(FIXTURES, `${ruleId}.good.ts`), 'utf8');
+        const goodContent = readFileSync(join(FIXTURES, `${ruleId}.good.${extension}`), 'utf8');
         const goodResult = runGuard(payloadFor(targetFile, goodContent), project);
         expect(goodResult.status).toBe(0);
       } finally {
