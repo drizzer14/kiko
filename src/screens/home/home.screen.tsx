@@ -461,7 +461,15 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             testID="home-loading-scroll"
             style={styles.list}
             contentContainerStyle={styles.listContent(listBottomClearance)}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            // `syncAll` fans a job out over the `accounts` query's own data
+            // (`useSyncAll(accounts)` above) — pulling before that query has
+            // loaded would fan out over an empty list, syncing nothing while
+            // still holding the fan-out's single-flight lock.
+            refreshControl={
+              accountsLoading ? undefined : (
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+              )
+            }
           >
             <LoadingState testID="home-loading" />
           </ScrollView>

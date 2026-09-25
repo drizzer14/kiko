@@ -1090,6 +1090,14 @@ describe('HomeScreen — loading gate', () => {
     expect(getByText('Coffee')).toBeTruthy();
     expect(queryByTestId('home-loading')).toBeNull();
   });
+
+  it('withholds pull-to-refresh in the loading branch while the accounts query itself is still loading (syncAll would fan out over zero accounts)', async () => {
+    seed({ transactions: [], isLoading: { accounts: true } });
+
+    const { getByTestId } = await renderHome();
+
+    expect(getByTestId('home-loading-scroll').props.refreshControl).toBeFalsy();
+  });
 });
 
 describe('HomeScreen — localization', () => {
