@@ -11,11 +11,13 @@ export const encodingNote = 'UTF-8 only; Hermes has no TextDecoder';
 export const currencyStandardNote = 'currency codes follow ISO 4217';
 
 // 2. A `T` glued directly to the date before it (an ISO instant), with no
-// boundary between the date's own digits and the `T` — never a task id.
+// boundary between the date's own digits and the `T` — never a task id:
+// 2026-09-25T10:00:00.000Z is a plain timestamp.
 export const sampleInstant = '2026-09-25T10:00:00.000Z';
 
 // 3. A hex color, where the run of hex digits never leaves a boundary at
-// exactly one of the denylisted letters.
+// exactly one of the denylisted letters — #3366FF reads as one continuous
+// hex run, not F as a standalone id.
 export const brandColor = '#3366FF';
 
 // 4. A short identifier shaped like a denylisted id, but only ever written
@@ -49,20 +51,39 @@ export const oddNote = 'foo // T12';
 export const globPattern = 'src/**/*.ts';
 export const mimeWildcard = '*/*';
 
-// 10. "round"/"Phase" prose with no trailing digit — the `round-N` and
-// `Phase N (Task` families anchor on the digit that follows, so ordinary
-// English never collides with them, unlike a bare letter-plus-digit
-// standalone token from one of the review-id families (kiko-linter's own
-// note on that accepted, undodged gap).
-export const roundTripNote = 'send it on a round trip through the API';
-export const finalPhaseNote = 'this is the final phase of testing';
+// 10. "round"/"Phase" prose with no id shape behind it: sending a value on
+// a round trip through the API, or a comment that reads Phase 1 copies the
+// rows; Phase 2 deletes the source only after commit — round-N anchors on
+// its own hyphen+digit shape, and a bare "Phase N" is not a family member
+// at all (a real "Phase N (Task M)" citation is still caught by the
+// existing Task-N family member instead — see the .bad.ts fixture), so
+// plain English "round"/"phase" prose never collides with either.
+export const roundTripAndPhaseNote = 'kept for realism; the comment above is the real test';
 
-// 11. Near-misses for the id families added alongside `Phase N`: a real
-// capitalized word after "Requirement" (not a single bare letter), a
-// "controller" mention with no trailing "ruling N", a "section" mention
-// with no trailing "capital-letter.digit", and "the briefing" (not "the
-// brief") — each fails the trailing `\b` boundary the real id shape needs.
-export const requirementDetailsNote = 'Requirement Details are provided at checkout';
-export const paymentsControllerNote = 'the payments controller routes requests directly';
-export const settingsSectionNote = 'the settings section groups items by category';
-export const briefingNote = 'the briefing covers every account before go-live';
+// 11a. Requirement Details are provided at checkout. A real word follows
+// "Requirement", not a single bare letter — the regex only ever captures
+// ONE letter, so this fails the trailing `\b` boundary: more letters
+// (`etails`) follow the captured `D`, so word meets word, not a boundary.
+export const requirementNearMissNote = 'kept for realism; the comment above is the real test';
+
+// 11b. The payments controller routes requests directly. The literal word
+// "ruling" never appears at all here, so this fails the literal-text match
+// itself, before any boundary check would even run.
+export const controllerNearMissNote = 'kept for realism; the comment above is the real test';
+
+// 11c. The settings section groups items by category. The literal
+// capital-letter-dot-digit shape after "section" never appears either —
+// same reason as 11b, a literal-text miss, not a boundary check.
+export const sectionNearMissNote = 'kept for realism; the comment above is the real test';
+
+// 11d. The task briefing covered every account before go-live. The
+// narrowed task/parity-brief family's own trailing `\b` fails the same way
+// an ordinary "-ing" continuation always does — see item 5's
+// `computeD1Delta` for the same word-boundary trick.
+export const taskBriefingNearMissNote = 'kept for realism; the comment above is the real test';
+
+// 12. A real sweep's false positive for the narrowed task/parity-brief
+// family: hide the header during the brief window so the sheet reads as
+// uninterrupted — no "task"/"parity" qualifier appears before "brief", so
+// the narrowed family never opens a match at all.
+export const briefWindowNote = 'kept for realism; the comment above is the real test';

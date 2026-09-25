@@ -306,12 +306,13 @@ hand-rolled checker (and fixer)" below. The comment-history check is
 ## `kiko-no-history-id-comment`
 
 Mechanizes kiko-code-style's "Comments: WHY only, never history": no
-task id (`T28`), review-round id (`I1`/`M2`/`N3`/`U7`), spec/decision
-id (`spec 6.2`, `D14`), bug number, `USER-DECISION`, `Phase N`,
-`Requirement X`, `controller ruling N`, `section X.N`, `the brief`,
-`Review Focus N`, `Minor N`, `audit N`, `RULING RN`, `fix round N`,
-`round-N`, `device[- ]feedback`, or `on-device review` left behind in a
-`src/**` comment. Two `pattern-regex` arms, one per comment syntax —
+task id (`T28`), `Task N`, review-round id (`I1`/`M2`/`N3`/`U7`),
+spec/decision id (`spec 6.2`, `D14`), bug number, `USER-DECISION`,
+`Requirement X`, `controller ruling N`, `section X.N`, `task brief`/
+`parity brief` (with an optional `'s`), `Review Focus N`, `Minor N`,
+`audit N`, `RULING RN`, `fix round N`, `round-N`, `device[- ]feedback`,
+or `on-device review` left behind in a `src/**` comment. Two
+`pattern-regex` arms, one per comment syntax —
 a single regex spanning both `//` and `/* */` would have to
 special-case where a line comment ends and a block comment does not.
 The block-comment arm's `(?:(?!\*/)[\s\S])*?` (not a bare `[\s\S]*?`)
@@ -338,10 +339,9 @@ tooling, not shipped app comments — some of these are covered by their
 own dedicated harness checks instead), plus the two root files
 `App.tsx` and `drizzle.config.ts` individually (root-level files
 outside any `src/**`-style prefix an include could have named).
-`__mocks__/**` was excluded too until a round-2 review caught 3 real
-hits it was hiding — the exclude was dropped and the hits fixed
-instead, since a test mock's comments are exactly the kind of file
-this rule should hold to the same standard as any other.
+`__mocks__/**` is NOT excluded — a test mock's comments are exactly
+the kind of file this rule should hold to the same standard as any
+other, and excluding it would hide real hits.
 
 `\b` word boundaries alone clear most of the false-positive shapes a
 real sweep found, with no extra tuning needed: `i18n`/`ISIN`/`UTF-8`/
@@ -377,11 +377,30 @@ The same standalone-token collision applies to the `R\d`/`F\d`/`G\d`/
 or "gate G1" as its OWN standalone token is syntactically identical to
 a real id and is accepted, not narrowed, the same way `D2` is above
 — there is no regex that tells "room R2" apart from a real review id
-without reading the surrounding English. `round-N` and `Phase N`
-DON'T have this problem: the digit is part of the id shape itself
-(`round-3`, `Phase 2 (Task ...`), so ordinary prose that says "a round
-trip" or "the final phase" (no trailing digit) never matches at all —
-see `rules/fixtures/kiko-no-history-id-comment.good.ts` for both.
+without reading the surrounding English. `round-N` DOESN'T have this
+problem: the digit is part of the id shape itself (`round-3`), so
+ordinary prose that says "a round trip" (no hyphenated digit) never
+matches at all — see `rules/fixtures/kiko-no-history-id-comment.good.ts`.
+
+**`Phase N` is not a family member at all** — a bare `Phase\s\d+`
+collides with ordinary engineering prose no digit-anchoring can fix
+("Phase 1 copies the rows; Phase 2 deletes the source only after
+commit" is a real false positive a sweep found, not a review-round
+id). A "Phase N (Task M)" citation is still caught without it: the
+existing `Task\s\d+` family member fires on the "Task M" half of that
+exact shape, which is the only pattern this codebase's real "Phase N"
+citations ever actually needed — see the `.bad.ts`/`.good.ts` fixture
+pair for both the still-caught shape and the now-excluded prose.
+
+**`the brief` is narrowed to `(?:task|parity)\sbrief(?:'s)?`** — the
+bare word "brief" collides with ordinary English on its own ("brief"
+as an adjective: "a brief window", "a brief moment"), which no
+boundary trick fixes either. Requiring the specific "task"/"parity"
+qualifier this codebase's own SDD vocabulary uses keeps every real
+citation (`task brief's own signature`, `per the task brief`) while a
+"brief window"-style sentence never opens a match at all — see the
+fixture pair's `task brief`/`parity brief` positive shapes and the
+`brief window` negative probe.
 
 ## One exported component per `.tsx` — a Jest invariant, not Semgrep
 

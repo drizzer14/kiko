@@ -105,5 +105,9 @@ export const unresolvedRowsSurfaced = true;
 export const noMccMapsToNull = true;
 
 // EXPECT-FINDING
-// the brief is explicit: do not change the shared row for one caller.
+// the task brief is explicit: do not change the shared row for one caller.
 export const sharedRowStaysUnchanged = true;
+
+// EXPECT-FINDING
+// per the parity brief's own note, this table only ever grows.
+export const tableOnlyEverGrows = true;
