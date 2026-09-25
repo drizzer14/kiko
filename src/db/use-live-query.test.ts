@@ -319,6 +319,51 @@ describe('useLiveQuery', () => {
     warnSpy.mockRestore();
   });
 
+  it('keeps the previous data when a SAME-key reactive re-run rejects, unlike a re-keyed rejection', async () => {
+    let resolveFirst!: (rows: unknown[]) => void;
+    let rejectSecond!: (reason: unknown) => void;
+    let callCount = 0;
+    const sameKeyQuery = {
+      toSQL: () => ({ sql: 'SELECT * FROM accounts', params: [] as unknown[] }),
+      // biome-ignore lint/suspicious/noThenProperty: OVERRIDE(intentional thenable double) same rationale as `fakeQuery` above.
+      then<TResult1 = unknown[], TResult2 = never>(
+        onfulfilled?: ((value: unknown[]) => TResult1 | PromiseLike<TResult1>) | null,
+        onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+      ) {
+        callCount += 1;
+        const isFirstCall = callCount === 1;
+
+        return new Promise<unknown[]>((settle, reject) => {
+          if (isFirstCall) {
+            resolveFirst = settle;
+          } else {
+            rejectSecond = reject;
+          }
+        }).then(onfulfilled, onrejected);
+      },
+    };
+
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const { result } = await renderHook(() => useLiveQuery(sameKeyQuery, ['accounts']));
+
+    await act(async () => {
+      resolveFirst([{ id: 'a' }]);
+    });
+    expect(result.current.data).toEqual([{ id: 'a' }]);
+
+    await act(async () => {
+      mockReactiveCallback.current?.({ rows: [] });
+    });
+    await act(async () => {
+      rejectSecond(new Error('boom'));
+    });
+
+    expect(result.current.data).toEqual([{ id: 'a' }]);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.error?.message).toBe('boom');
+    warnSpy.mockRestore();
+  });
+
   it('logs a rejected query instead of failing silently', async () => {
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const failingQuery = {
