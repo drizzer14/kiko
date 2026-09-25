@@ -10,6 +10,8 @@
 
 **Spec:** This document is the spec. It is grounded in the current code on branch `next-manual-tx-plan` (based on `next` @ 6b3bca7). Every `file:line` anchor was re-read on 2026-09-14; re-anchor before editing, since the round-3 track will shift line numbers in the three shared files.
 
+Superseded for per-holding-type sites by the kiko-domain "Adding a holding type" checklist (`footerActionFor` is now `holdingDetailSpecs`).
+
 ## Global Constraints
 
 - **This document is a plan; product decisions are now LOCKED** (see the "Open decisions summary (ALL LOCKED)" table). No app source has been written yet — implementation begins only after round-3 lands.

@@ -421,7 +421,7 @@ instead of hand-rolled `try`/`catch` plus manual `Error` normalization:
   entirely instead of becoming a Left. `eitherSync(() => R)` has no
   such gap — it wraps the call in a real `try`/`catch`, so a plain
   synchronous thunk is fine. Unwrap the result with `bifoldr`/
-  `bifoldMap` first (see below); reach for `isLeft` + `bifold` only
+  `bifoldMap` first (see above); reach for `isLeft` + `bifold` only
   once the Left branch itself throws or returns early. Normalize the
   left channel with the **two-argument** `first(result, toError)` —
   the curried `first(toError)(result)` has nothing to infer
@@ -466,8 +466,8 @@ source), `parseFormatSafely`/`applyMappingSafely`
 (`statement-import.screen.tsx`/`column-mapping.screen.tsx`, a fixed
 twin pair, falls back to `undefined`), and `accountEnsured`
 (`account-form.screen.tsx`, `isRight(await either(async () => …))` —
-a shared "did it succeed" boolean for three identical `try`/`catch`
-callers) for the converted shape. Five categories stay plain
+a shared "did it succeed" boolean, replacing three identical `try`/`catch`
+blocks) for the converted shape. Five categories stay plain
 `try`/`catch` on purpose — a site that matches one of these is a
 KEEP, not an oversight:
 
