@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import type { Repository } from '@kiko/db/repository';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 
@@ -384,25 +385,26 @@ export const holdingsRepo = {
     write(async (databaseTransaction) => {
       await databaseTransaction.update(holdings).set(patch).where(eq(holdings.id, holdingId));
 
-      if (pricePointOp.kind === 'none') {
+      const point = await match(pricePointOp)
+        .with({ kind: 'none' }, () => null)
+        .with({ kind: 'upsert' }, (op) => ({ day: op.day, price: op.price, currency: op.currency }))
+        .with({ kind: 'move' }, async (op) => {
+          await databaseTransaction
+            .delete(pricePoints)
+            .where(
+              and(
+                eq(pricePoints.instrument, holdingInstrument(holdingId)),
+                eq(pricePoints.day, op.oldDay),
+              ),
+            );
+
+          return { day: op.newDay, price: op.price, currency: op.currency };
+        })
+        .exhaustive();
+
+      if (point === null) {
         return;
       }
-
-      if (pricePointOp.kind === 'move') {
-        await databaseTransaction
-          .delete(pricePoints)
-          .where(
-            and(
-              eq(pricePoints.instrument, holdingInstrument(holdingId)),
-              eq(pricePoints.day, pricePointOp.oldDay),
-            ),
-          );
-      }
-
-      const point =
-        pricePointOp.kind === 'move'
-          ? { day: pricePointOp.newDay, price: pricePointOp.price, currency: pricePointOp.currency }
-          : pricePointOp;
 
       await databaseTransaction
         .insert(pricePoints)
