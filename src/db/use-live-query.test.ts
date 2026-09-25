@@ -160,4 +160,27 @@ describe('useLiveQuery', () => {
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error?.message).toBe('boom');
   });
+
+  it('logs a rejected query instead of failing silently', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const failingQuery = {
+      toSQL: fakeQuery.toSQL,
+      // biome-ignore lint/suspicious/noThenProperty: OVERRIDE(intentional thenable double) same rationale as `fakeQuery`.
+      then<TResult1 = unknown[], TResult2 = never>(
+        onfulfilled?: ((value: unknown[]) => TResult1 | PromiseLike<TResult1>) | null,
+        onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+      ) {
+        return Promise.reject(new Error('boom')).then(onfulfilled, onrejected);
+      },
+    };
+
+    await renderHook(() => useLiveQuery(failingQuery, ['accounts']));
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[useLiveQuery]'),
+      expect.anything(),
+      expect.objectContaining({ message: 'boom' }),
+    );
+    warnSpy.mockRestore();
+  });
 });
