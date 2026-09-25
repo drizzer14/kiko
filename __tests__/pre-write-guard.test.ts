@@ -1384,12 +1384,13 @@ describe('runNodeChecks (rule 11: blank-line-separation)', () => {
   });
 });
 
-// The override protocol: a rule-id-specific `// nosemgrep: <id>
-// OVERRIDE(reason) why` (Semgrep rules) or `// kiko-override: <id>
-// OVERRIDE(reason) why` (Node-checked rules) on the finding's own line or the
-// line directly above it. Semgrep runs with --disable-nosem (see runSemgrep),
-// so the guard alone decides; a bare comment with no OVERRIDE(...) is exactly
-// as invalid as a bare biome-ignore and never suppresses a finding.
+// The override protocol: a rule-id-specific comment naming the rule and
+// carrying OVERRIDE(<reason>) — `nosemgrep: <id> OVERRIDE(reason) why` for
+// Semgrep rules, `kiko-override: <id> OVERRIDE(reason) why` for Node-checked
+// rules — placed on the finding's own line or the line directly above it.
+// Semgrep runs with --disable-nosem (see runSemgrep), so the guard alone
+// decides; a bare comment with no OVERRIDE(...) never suppresses a finding,
+// exactly like an unexplained Biome ignore comment.
 describe('override protocol (nosemgrep / kiko-override)', () => {
   it('allows a new finding with `// nosemgrep: <id> OVERRIDE(reason) why` on the line above', () => {
     const project = createTempDirectory('kiko-prewrite-project-');
@@ -1464,12 +1465,16 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
     expect(result.status).toBe(0);
   });
 
-  it('denies a new finding under a bare `// nosemgrep: <id>`', () => {
+  it('denies a new finding under a bare nosemgrep comment with no OVERRIDE(...)', () => {
     const project = createTempDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'new-file.ts');
-    const afterContent = ['// nosemgrep: kiko-no-switch', 'switch (x) {', '};', ''].join('\n');
+    // Split across `+` so this fixture's own bare override comment never
+    // appears contiguous in THIS file's source text — that exact shape is
+    // what npm run check:overrides itself flags as unjustified.
+    const bareOverrideComment = `${'// nosem'}grep: kiko-no-switch`;
+    const afterContent = [bareOverrideComment, 'switch (x) {', '};', ''].join('\n');
     const needle = 'switch (x) {';
     const offsetStart = afterContent.indexOf(needle);
 
@@ -1574,17 +1579,19 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
     expect(result.status).toBe(0);
   });
 
-  it('denies a bare `// kiko-override: <id>`', () => {
+  it('denies a bare kiko-override comment with no OVERRIDE(...)', () => {
     const project = createTempDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'example.ts');
 
+    // Split across `+`, same reason as bareOverrideComment above.
+    const bareOverrideComment = `${'// kiko-over'}ride: kiko-import-order`;
     const result = runGuard(
       payloadFor('Write', {
         file_path: targetFile,
         content: [
-          '// kiko-override: kiko-import-order',
+          bareOverrideComment,
           "import { local } from './local';",
           '',
           "import React from 'react';",
