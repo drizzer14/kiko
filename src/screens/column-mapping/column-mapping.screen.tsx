@@ -1,4 +1,4 @@
-import { P, match } from 'ts-pattern';
+import { match } from 'ts-pattern';
 import * as RNFS from 'react-native-fs';
 import type { TFunction } from 'i18next';
 import type { FC, RefObject } from 'react';
@@ -424,10 +424,7 @@ const resolutionStateFor = (
     currencyColumnUnresolved:
       mapping !== undefined &&
       applyResult === undefined &&
-      match(mapping.currency.mode)
-        .with('column', () => true)
-        .with(P.not('column'), () => false)
-        .exhaustive() &&
+      mapping.currency.mode === 'column' &&
       !noDataRows,
     noRowsResolved: noRowsResolvedFor(applyResult) || noDataRows,
   };
@@ -1249,17 +1246,15 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     navigation.goBack();
   };
 
-  const footer = match(loadState)
-    .with({ kind: 'ready' }, () => (
+  const footer =
+    loadState.kind === 'ready' ? (
       // Import is ALWAYS enabled — `disabled={importing}` only, never a
       // standing `disabled={!canImport}` gate. See `handleImport`'s own doc
       // comment.
       <Button variant="primary" onPress={handleImport} disabled={importing}>
         {t('statementImport.importButton')}
       </Button>
-    ))
-    .with(P.not({ kind: 'ready' }), () => undefined)
-    .exhaustive();
+    ) : undefined;
 
   return (
     <Screen
@@ -1277,65 +1272,62 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
           </Text>
         )}
 
-        {match(loadState)
-          .with({ kind: 'ready' }, (readyState) => (
-            <ColumnMappingForm
-              isXlsx={readyState.isXlsx}
-              savedApplied={savedApplied}
-              rows={rows}
-              headerRowIndex={headerRowIndex}
-              onSelectHeaderRow={setHeaderRowIndex}
-              encoding={encoding}
-              onEncodingChange={setEncoding}
-              effectiveDelimiter={effectiveDelimiter}
-              onDelimiterChange={setDelimiterOverride}
-              decimalSeparator={decimalSeparator}
-              onDecimalSeparatorChange={setDecimalSeparator}
-              columnOptions={columnOptions}
-              dateColumn={dateColumn}
-              onDateColumnChange={setDateColumn}
-              dateFormatOptions={dateFormatOptions}
-              dateFormat={dateFormat}
-              onDateFormatChange={setDateFormat}
-              amountMode={amountMode}
-              onAmountModeChange={setAmountMode}
-              amountColumn={amountColumn}
-              onAmountColumnChange={setAmountColumn}
-              debitColumn={debitColumn}
-              onDebitColumnChange={setDebitColumn}
-              creditColumn={creditColumn}
-              onCreditColumnChange={setCreditColumn}
-              currencyMode={currencyMode}
-              onCurrencyModeChange={setCurrencyMode}
-              currencyColumn={currencyColumn}
-              onCurrencyColumnChange={setCurrencyColumn}
-              fixedCurrency={fixedCurrency}
-              onFixedCurrencyChange={setExplicitFixedCurrency}
-              descriptionColumn={descriptionColumn}
-              onDescriptionColumnChange={setDescriptionColumn}
-              counterpartyColumn={counterpartyColumn}
-              onCounterpartyColumnChange={setCounterpartyColumn}
-              balanceColumn={balanceColumn}
-              onBalanceColumnChange={setBalanceColumn}
-              stats={stats}
-              rowErrors={applyResult?.rowErrors ?? []}
-              mappingIncomplete={mappingIncomplete}
-              holdingOptions={holdingOptions}
-              accountId={accountId}
-              selectedHoldingId={selectedHoldingId}
-              onSelectHolding={setSelectedHoldingId}
-              onCreateNewHolding={() =>
-                navigation.navigate('HoldingForm', {
-                  accountId,
-                  returnTo: { screen: 'ColumnMapping', params: route.params },
-                })
-              }
-              validation={validation}
-              fieldRefs={fieldRefs}
-            />
-          ))
-          .with(P.not({ kind: 'ready' }), () => undefined)
-          .exhaustive()}
+        {loadState.kind === 'ready' && (
+          <ColumnMappingForm
+            isXlsx={loadState.isXlsx}
+            savedApplied={savedApplied}
+            rows={rows}
+            headerRowIndex={headerRowIndex}
+            onSelectHeaderRow={setHeaderRowIndex}
+            encoding={encoding}
+            onEncodingChange={setEncoding}
+            effectiveDelimiter={effectiveDelimiter}
+            onDelimiterChange={setDelimiterOverride}
+            decimalSeparator={decimalSeparator}
+            onDecimalSeparatorChange={setDecimalSeparator}
+            columnOptions={columnOptions}
+            dateColumn={dateColumn}
+            onDateColumnChange={setDateColumn}
+            dateFormatOptions={dateFormatOptions}
+            dateFormat={dateFormat}
+            onDateFormatChange={setDateFormat}
+            amountMode={amountMode}
+            onAmountModeChange={setAmountMode}
+            amountColumn={amountColumn}
+            onAmountColumnChange={setAmountColumn}
+            debitColumn={debitColumn}
+            onDebitColumnChange={setDebitColumn}
+            creditColumn={creditColumn}
+            onCreditColumnChange={setCreditColumn}
+            currencyMode={currencyMode}
+            onCurrencyModeChange={setCurrencyMode}
+            currencyColumn={currencyColumn}
+            onCurrencyColumnChange={setCurrencyColumn}
+            fixedCurrency={fixedCurrency}
+            onFixedCurrencyChange={setExplicitFixedCurrency}
+            descriptionColumn={descriptionColumn}
+            onDescriptionColumnChange={setDescriptionColumn}
+            counterpartyColumn={counterpartyColumn}
+            onCounterpartyColumnChange={setCounterpartyColumn}
+            balanceColumn={balanceColumn}
+            onBalanceColumnChange={setBalanceColumn}
+            stats={stats}
+            rowErrors={applyResult?.rowErrors ?? []}
+            mappingIncomplete={mappingIncomplete}
+            holdingOptions={holdingOptions}
+            accountId={accountId}
+            selectedHoldingId={selectedHoldingId}
+            onSelectHolding={setSelectedHoldingId}
+            onCreateNewHolding={() =>
+              navigation.navigate('HoldingForm', {
+                accountId,
+                returnTo: { screen: 'ColumnMapping', params: route.params },
+              })
+            }
+            validation={validation}
+            fieldRefs={fieldRefs}
+          />
+        )}
       </Box>
 
       <ImportResultSheet

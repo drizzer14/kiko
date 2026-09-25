@@ -1,4 +1,4 @@
-import { P, match } from 'ts-pattern';
+import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import { ratesRepo } from '@kiko/rates/repo';
 import { useTranslation } from 'react-i18next';
@@ -197,12 +197,7 @@ const footerActionFor = (
     return 'none';
   }
 
-  const isTermDeposit = match(holding.type)
-    .with('term_deposit', () => true)
-    .with(P.not('term_deposit'), () => false)
-    .exhaustive();
-
-  if (isTermDeposit) {
+  if (holding.type === 'term_deposit') {
     return 'contribution';
   }
 
@@ -222,12 +217,7 @@ const footerActionFor = (
   // OWN label to "Update outstanding" for this type; the navigation target
   // is identical. Checked before the ledgerless fallback so a loan does not
   // fall through to `'none'`.
-  const isLoan = match(holding.type)
-    .with('loan', () => true)
-    .with(P.not('loan'), () => false)
-    .exhaustive();
-
-  if (isLoan) {
+  if (holding.type === 'loan') {
     return 'updateValue';
   }
 
@@ -534,10 +524,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   ]);
   const account = accounts.at(0);
   // Bonds show a whole-life expected profit line (net coupons + nominal - price).
-  const bondMeta = match(holding?.type)
-    .with('bond', () => asBondMeta(holding?.metadata))
-    .with(P.not('bond'), () => null)
-    .exhaustive();
+  const bondMeta = holding?.type === 'bond' ? asBondMeta(holding.metadata) : null;
   const expectedProfit = bondMeta
     ? Money.of(currency, bondExpectedProfitMinor(bondMeta, currency))
     : null;
@@ -598,10 +585,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       ),
     [ledger, todayStart, t],
   );
-  const showBreakdown = match(holding?.type)
-    .with('term_deposit', 'bond', () => true)
-    .with(P.not(P.union('term_deposit', 'bond')), () => false)
-    .exhaustive();
+  const showBreakdown = holding?.type === 'term_deposit' || holding?.type === 'bond';
   // Which add action the footer offers — or none, for a bond or a synced
   // holding (see `footerActionFor`).
   const footerAction = footerActionFor(holding, account);
@@ -804,10 +788,9 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           .with('updateValue', () => (
             <Button onPress={() => navigation.navigate('PricePointForm', { holdingId })}>
               {t(
-                match(holding?.type)
-                  .with('loan', () => 'holdingDetail.updateOutstanding' as const)
-                  .with(P.not('loan'), () => 'holdingDetail.updateValue' as const)
-                  .exhaustive(),
+                holding?.type === 'loan'
+                  ? 'holdingDetail.updateOutstanding'
+                  : 'holdingDetail.updateValue',
               )}
             </Button>
           ))
