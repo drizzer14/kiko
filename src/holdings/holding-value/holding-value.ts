@@ -5,23 +5,19 @@ import {
   asLoanMeta,
   asMetalMeta,
   asPropertyMeta,
-  asTermDepositMeta,
   type BondMeta,
 } from '../holding-metadata';
 import { costBasisMinorAt } from '../lots';
 import { taxOnInterestMinor } from '../tax';
-import {
-  flat,
-  makeBreakdown,
-  type HoldingValueBreakdown,
-} from '../holding-descriptor/breakdown-parts';
 import type { HoldingRow } from '../../db/schema';
 import { Money, toMajor } from '../../currency/money';
 import { startOfLocalDay } from '../../dates/local-day';
 import { loanOutstandingMinorAt } from '../loan-schedule';
+import { bondCouponDates, bondCouponMajor } from '../interest';
 import { isPricedHoldingType, pricedValueMinor } from '../priced-value';
+import { termDepositDescriptor } from '../holding-descriptor/term-deposit';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
-import { bondCouponDates, bondCouponMajor, depositAccruedMajor, depositLedger } from '../interest';
+import { flat, type HoldingValueBreakdown } from '../holding-descriptor/breakdown-parts';
 
 /**
  * `id` is optional — mirroring `PricedHolding` (`src/holdings/priced-value/`)
@@ -37,62 +33,6 @@ export type ValuableHolding = Pick<
 > & { id?: HoldingRow['id'] };
 
 export type { HoldingValueBreakdown };
-
-const depositBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreakdown => {
-  const meta = asTermDepositMeta(holding.metadata);
-  if (meta === null) {
-    return flat(holding.currency, holding.balanceMinorUnits);
-  }
-  const { currency } = holding;
-  // A contribution dated after `now` is not yet credited: exclude it from both
-  // the principal and the compounded/accrued value so a future top-up never
-  // shows in the present balance.
-  const active = meta.contributions.filter((c) => c.date <= now);
-  if (active.length === 0) {
-    return flat(currency, 0);
-  }
-
-  if (!meta.recapitalization) {
-    // Interest is paid out each period rather than compounded. We surface the
-    // CUMULATIVE simple interest accrued to date, net of tax, and count it in
-    // the deposit's value/net worth (principal + net interest).
-    const contributionsMajor = active.map((c) => ({
-      amountMajor: toMajor(c.amountMinorUnits, currency),
-      date: c.date,
-    }));
-    const principalMinor = active.reduce((sum, c) => sum + c.amountMinorUnits, 0);
-    const accruedMajorValue = depositAccruedMajor(
-      contributionsMajor,
-      meta.annualRatePct,
-      meta.termMonths,
-      now,
-    );
-    const interestMinor = Money.fromMajor(currency, accruedMajorValue).minorUnits;
-    const taxMinor = taxOnInterestMinor(interestMinor);
-    return makeBreakdown(currency, principalMinor, interestMinor, taxMinor);
-  }
-
-  // Recapitalizing deposits iterate the step-by-step engine (no closed form):
-  // per-period interest on the last capitalized balance, withheld net of the
-  // 18%+5% tax and capitalized on each anniversary (bi-weekly capitalizes once a
-  // month). The value is the last capitalized balance plus landed contributions
-  // — the in-progress accrual is excluded, which is the fix for the old
-  // overvaluation. `capitalizedGross`/`capitalizedTax` are the realized totals,
-  // so principal + gross - tax reconciles exactly to the net current value.
-  const ledger = depositLedger(
-    meta.contributions.map((c) => ({ amountMinor: c.amountMinorUnits, date: c.date })),
-    meta.annualRatePct,
-    meta.compounding,
-    meta.termMonths,
-    now,
-  );
-  return makeBreakdown(
-    currency,
-    ledger.principalMinor,
-    ledger.capitalizedGrossMinor,
-    ledger.capitalizedTaxMinor,
-  );
-};
 
 const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreakdown => {
   const meta = asBondMeta(holding.metadata);
@@ -254,7 +194,7 @@ export const holdingValueBreakdown = (
 ): HoldingValueBreakdown =>
   match(holding.type)
     .with(P.when(isPricedHoldingType), () => pricedBreakdown(holding, now, book))
-    .with('term_deposit', () => depositBreakdown(holding, now))
+    .with('term_deposit', () => termDepositDescriptor.breakdown(holding, now, book))
     .with('bond', () => bondBreakdown(holding, now))
     .with('loan', () => loanBreakdown(holding, now, book))
     // Not `.exhaustive()`: the original `switch`'s `default` branch tolerated
