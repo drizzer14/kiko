@@ -194,6 +194,13 @@ describe('scripts/checks/blank-line-separation.sh', () => {
     expect(result.status).toBe(0);
   });
 
+  it('obeys its own rule — the checker cannot enforce a standard its own source breaks', () => {
+    const result = spawnSync('node', [ANALYZER, ANALYZER], { encoding: 'utf8' });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe('');
+  });
+
   describe('project-wide mode (no file argument)', () => {
     it('exits 0 when BLANK_LINE_SOURCE_ROOT holds no violation', () => {
       writeFileSync(join(directory, 'clean.ts'), 'function foo() {\n' + '  return 1;\n' + '}\n');

@@ -136,11 +136,13 @@ const consumeNoiseSpan = (source, cursor, resultSoFar) => {
 
   if (two === '//') {
     const stop = lineCommentEnd(source, cursor);
+
     return { text: blankSpan(source, cursor, stop), end: stop };
   }
 
   if (two === '/*') {
     const stop = blockCommentEnd(source, cursor);
+
     return { text: blankSpan(source, cursor, stop), end: stop };
   }
 
@@ -153,16 +155,19 @@ const consumeNoiseSpan = (source, cursor, resultSoFar) => {
   // here for the same reason: this scanner also reads JSX text content).
   if ((character === '"' || character === "'") && !isIdentifierChar(source[cursor - 1])) {
     const stop = stringLiteralEnd(source, cursor, character);
+
     return { text: blankSpan(source, cursor, stop), end: stop };
   }
 
   if (character === '`') {
     const template = templateLiteralSpan(source, cursor);
+
     return { text: template.text, end: template.end };
   }
 
   if (character === '/' && REGEX_START_CONTEXT.test(resultSoFar.replace(/\s+$/, ''))) {
     const stop = regexLiteralEnd(source, cursor);
+
     return { text: blankSpan(source, cursor, stop), end: stop };
   }
 
@@ -280,7 +285,9 @@ const STATEMENT_KEYWORD = /^(return\b|if\s*\(|for\s*\(|while\s*\()/;
 
 const statementKind = (trimmed) => {
   if (trimmed.startsWith('return')) return 'return';
+
   if (trimmed.startsWith('if')) return 'if';
+
   if (trimmed.startsWith('for')) return 'for';
 
   return 'while';
@@ -383,6 +390,7 @@ const findJsxSiblingViolations = (blankedLines, originalLines) => {
     const indentation = leadingWhitespaceLength(line);
 
     if (leadingWhitespaceLength(nextLine) !== indentation) continue;
+
     if (siblingCountAtBoundary(blankedLines, index, indentation) === 2) continue;
 
     violations.push({
@@ -484,6 +492,7 @@ function runCli() {
 
     if (violations.length > 0) {
       anyViolation = true;
+
       for (const violation of violations) {
         process.stdout.write(
           `${file}:${violation.line}: ${violation.kind}: ${violation.matchedText}\n`,
