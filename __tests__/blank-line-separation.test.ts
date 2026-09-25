@@ -130,6 +130,61 @@ describe('scripts/checks/blank-line-separation.sh', () => {
     expect(commentSeparated.status).toBe(0);
   });
 
+  it('flags an if preceded by a non-blank line even when an earlier regex literal contains a quote', () => {
+    // src/db/schema.category-overrides.test.ts's real shape: a regex literal
+    // holding `'`s (matched against `'([^']+)'` groups) used to flip the
+    // scanner's string-quote parity, and the flipped parity swallowed this
+    // `if` clean out of the scan — so the missing blank line above it was
+    // never reported.
+    const result = runCheck(
+      'function applyGuardedIconUpdate(sql) {\n' +
+        '  const match = sql.match(\n' +
+        "    /UPDATE `[a-z_]+` SET `icon` = '([^']+)' WHERE `([a-z_]+)` = '([^']+)' AND `icon` = '([^']+)'/,\n" +
+        '  );\n' +
+        '  if (match === null) {\n' +
+        "    throw new Error('none');\n" +
+        '  }\n' +
+        '}\n',
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('Blank line separation');
+  });
+
+  it('never inserts a blank line inside a template literal when an earlier regex literal contains a quote', () => {
+    // The exact probe from the review finding: `/'/g` used to flip the
+    // scanner's quote parity, running a fake "string" across the following
+    // template literal until it hit the apostrophe in "it's" — leaving
+    // "return window.x;" read as ordinary code and (mis)flagged, which
+    // --write would then have corrupted by inserting a blank line INSIDE
+    // the template.
+    const file = join(directory, 'fixture.ts');
+    const source =
+      "const cleaned = value.replace(/'/g, '');\n" +
+      'const message = `\n' +
+      "  it's a template\n" +
+      '  return window.x;\n' +
+      '`;\n';
+    writeFileSync(file, source);
+
+    const writeResult = spawnSync('node', [ANALYZER, '--write', file], { encoding: 'utf8' });
+
+    expect(writeResult.status).toBe(0);
+    expect(readFileSync(file, 'utf8')).toBe(source);
+  });
+
+  it('does not flag the first statement of a block when a regex literal above it contains `//`', () => {
+    const result = runCheck(
+      'function foo(url) {\n' +
+        '  if (/^https?:\\/\\//.test(url)) {\n' +
+        '    return true;\n' +
+        '  }\n' +
+        '}\n',
+    );
+
+    expect(result.status).toBe(0);
+  });
+
   it('exits 0 on a non-.ts/.tsx file', () => {
     const file = join(directory, 'fixture.md');
     writeFileSync(file, '# not typescript\n');

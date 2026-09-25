@@ -38,11 +38,21 @@ const blockCommentEnd = (source, at) => {
   return end === -1 ? source.length : end + 2;
 };
 
+// Stops at an unescaped closing `quote` OR a bare `\n` — a plain single/
+// double-quoted string can never legitimately contain a literal newline in
+// this codebase's Biome-formatted style, so capping the search there is what
+// keeps a stray/mismatched quote (for example one inside an unblanked regex
+// literal — see the regex handling below) from running the "string" past the
+// end of its own line and swallowing a LATER line's leading keyword.
 const stringLiteralEnd = (source, at, quote) => {
   let cursor = at + 1;
 
-  while (cursor < source.length && source[cursor] !== quote) {
+  while (cursor < source.length && source[cursor] !== quote && source[cursor] !== '\n') {
     cursor += source[cursor] === '\\' ? 2 : 1;
+  }
+
+  if (source[cursor] === '\n') {
+    return cursor;
   }
 
   return Math.min(cursor + 1, source.length);
@@ -50,17 +60,78 @@ const stringLiteralEnd = (source, at, quote) => {
 
 const isIdentifierChar = (character) => character !== undefined && /[A-Za-z0-9_$]/.test(character);
 
-// Tries to consume one noise span (a line/block comment, a string, or a
-// template literal) starting at `cursor`. Returns null when `cursor` starts
-// none of those — the shared stepper blankNoise and substitutionSpan both
-// drive, so a literal is blanked the same way whether it appears at top
-// level or inside a template substitution's own code. Ported from
-// full-word-identifiers.js's blankNoise (minus regex-literal handling,
-// which that scanner needs for identifier-inside-a-regex false positives
-// but this one does not: a regex literal can never span a line, so it can
-// never make a LATER line start with a keyword the way a multi-line comment
-// or template can).
-const consumeNoiseSpan = (source, cursor) => {
+// A `/` starts a regex literal (rather than division) when the last
+// significant character emitted so far is a punctuation/operator context, an
+// opening bracket, nothing (start of file), or a keyword that only ever
+// precedes an EXPRESSION, never a value to divide (`return /e/.test(...)`,
+// `typeof /x/`) — ported from full-word-identifiers.js's REGEX_START_CONTEXT,
+// MINUS `<`/`>`: this scanner (unlike that one) reads JSX, where a `/`
+// almost always follows a bare `<` as a closing tag's own `</Tag>` syntax,
+// not an operator context — treating that `/` as a regex start would run
+// regexLiteralEnd over the rest of the closing tag and blank it out, which
+// breaks isJsxElementEndLine's own text match on the very tag this scanner
+// exists to recognize.
+const REGEX_START_CONTEXT =
+  /[([{,;:=!&|?+\-*%^~]$|^$|\b(?:return|typeof|instanceof|in|of|yield|throw|new|void|delete|case|do|else)$/;
+
+const consumeRegexFlags = (source, at) => {
+  let cursor = at;
+
+  while (cursor < source.length && /[a-z]/i.test(source[cursor])) {
+    cursor += 1;
+  }
+
+  return cursor;
+};
+
+// Ported from full-word-identifiers.js's regexLiteralEnd: a regex literal
+// can never span a line, so a bare `\n` before the closing `/` always ends
+// the scan (an unterminated regex is a syntax error this checker never needs
+// to recover from).
+const regexLiteralEnd = (source, at) => {
+  let cursor = at + 1;
+  let inClass = false;
+
+  while (cursor < source.length) {
+    const character = source[cursor];
+
+    if (character === '\\') {
+      cursor += 2;
+      continue;
+    }
+
+    if (character === '\n') {
+      return cursor;
+    }
+
+    if (character === '[') {
+      inClass = true;
+    } else if (character === ']') {
+      inClass = false;
+    } else if (character === '/' && !inClass) {
+      return consumeRegexFlags(source, cursor + 1);
+    }
+
+    cursor += 1;
+  }
+
+  return source.length;
+};
+
+// Tries to consume one noise span (a line/block comment, a string, a
+// template literal, or a regex literal) starting at `cursor`, given the
+// blanked-so-far `resultSoFar` (needed only to test REGEX_START_CONTEXT).
+// Returns null when `cursor` starts none of those — the shared stepper
+// blankNoise and substitutionSpan both drive, so a literal is blanked the
+// same way whether it appears at top level or inside a template
+// substitution's own code. Ported from full-word-identifiers.js's blankNoise,
+// including its regex-literal handling: a regex literal can never itself
+// span a line, but a QUOTE CHARACTER inside one (`/'([^']+)'/`, the real
+// src/db/schema.category-overrides.test.ts shape) still needs blanking here
+// — left unblanked, that quote is misread as a string opener whose
+// stringLiteralEnd search for a matching quote can run past the regex and
+// swallow a LATER line's leading keyword.
+const consumeNoiseSpan = (source, cursor, resultSoFar) => {
   const two = source.slice(cursor, cursor + 2);
 
   if (two === '//') {
@@ -90,6 +161,11 @@ const consumeNoiseSpan = (source, cursor) => {
     return { text: template.text, end: template.end };
   }
 
+  if (character === '/' && REGEX_START_CONTEXT.test(resultSoFar.replace(/\s+$/, ''))) {
+    const stop = regexLiteralEnd(source, cursor);
+    return { text: blankSpan(source, cursor, stop), end: stop };
+  }
+
   return null;
 };
 
@@ -104,7 +180,7 @@ const substitutionSpan = (source, at) => {
   let depth = 0;
 
   while (cursor < source.length) {
-    const span = consumeNoiseSpan(source, cursor);
+    const span = consumeNoiseSpan(source, cursor, result);
 
     if (span) {
       result += span.text;
@@ -166,14 +242,15 @@ const templateLiteralSpan = (source, at) => {
 };
 
 // Blanks (space-fills, preserving length and newlines) every string,
-// template, and comment span, so the line-start scanners below never read a
-// keyword or a JSX tag that only appears inside one of those.
+// template, comment, and regex-literal span, so the line-start scanners
+// below never read a keyword or a JSX tag that only appears inside one of
+// those.
 const blankNoise = (source) => {
   let result = '';
   let cursor = 0;
 
   while (cursor < source.length) {
-    const span = consumeNoiseSpan(source, cursor);
+    const span = consumeNoiseSpan(source, cursor, result);
 
     if (span) {
       result += span.text;
