@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import { ratesRepo } from '@kiko/rates/repo';
 import { useTranslation } from 'react-i18next';
@@ -1658,42 +1659,45 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       defaultPrimaryHoldingId,
     });
 
-    if (plan.kind === 'seedHolding') {
-      setPrimaryHoldingId(plan.holdingId);
-      // Close the latch only for a FINAL seed (empty-create): `false` is a
-      // no-op on the duplicate step (the latch is already open), so this stays
-      // a single flat statement rather than another branch.
-      setHydrated(plan.final);
+    match(plan)
+      .with({ kind: 'seedHolding' }, (seedHoldingPlan) => {
+        setPrimaryHoldingId(seedHoldingPlan.holdingId);
+        // Close the latch only for a FINAL seed (empty-create): `false` is a
+        // no-op on the duplicate step (the latch is already open), so this stays
+        // a single flat statement rather than another branch.
+        setHydrated(seedHoldingPlan.final);
+      })
+      .with({ kind: 'seedFields' }, (seedFieldsPlan) => {
+        setAmount(seedFieldsPlan.amount);
+        setMode(seedFieldsPlan.sign);
+        setDescription(seedFieldsPlan.description);
+        setSelectedCategory(seedFieldsPlan.category);
+        // A seeded non-null category counts as a user pick, so a later
+        // description blur (A1's `reseatCategoryFromName`) can never clobber it.
+        // This matters for the DUPLICATE path (`isEditing` is false there): the
+        // "duplicate a row, tweak the note" flow must keep the copied category
+        // when the retyped description matches no name rule. The edit path already
+        // guards its stored category via `isEditing`, so this is a harmless no-op
+        // there; the empty-create/fixed-holding paths seed a null category, so
+        // `userPickedCategory` stays false and A1's normal create-blur auto-seat
+        // is unaffected.
+        if (seedFieldsPlan.category !== null) {
+          setUserPickedCategory(true);
+        }
 
-      return;
-    }
+        // A null `time` keeps the field at NOW — the duplicate never copies the
+        // source timestamp; the edit path carries the stored time.
+        if (seedFieldsPlan.time !== null) {
+          setTime(seedFieldsPlan.time);
+        }
 
-    if (plan.kind === 'seedFields') {
-      setAmount(plan.amount);
-      setMode(plan.sign);
-      setDescription(plan.description);
-      setSelectedCategory(plan.category);
-      // A seeded non-null category counts as a user pick, so a later
-      // description blur (A1's `reseatCategoryFromName`) can never clobber it.
-      // This matters for the DUPLICATE path (`isEditing` is false there): the
-      // "duplicate a row, tweak the note" flow must keep the copied category
-      // when the retyped description matches no name rule. The edit path already
-      // guards its stored category via `isEditing`, so this is a harmless no-op
-      // there; the empty-create/fixed-holding paths seed a null category, so
-      // `userPickedCategory` stays false and A1's normal create-blur auto-seat
-      // is unaffected.
-      if (plan.category !== null) {
-        setUserPickedCategory(true);
-      }
-
-      // A null `time` keeps the field at NOW — the duplicate never copies the
-      // source timestamp; the edit path carries the stored time.
-      if (plan.time !== null) {
-        setTime(plan.time);
-      }
-
-      setHydrated(true);
-    }
+        setHydrated(true);
+      })
+      // Neither the source row's holding nor a default primary holding has
+      // resolved yet — nothing to seed this render; the effect re-runs once one
+      // of its dependencies (e.g. `holding`) resolves.
+      .with({ kind: 'wait' }, () => {})
+      .exhaustive();
   }, [
     existing,
     duplicateSource,
