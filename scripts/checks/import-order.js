@@ -40,12 +40,9 @@
 // in the run carries its own prefix comment, or has an interior comment of
 // its own, either of which would strand a comment mid-chain once the group
 // boundary disappears; that shape is left for a human to merge by hand
-// instead. `--write` re-runs the plain checker (checkImportOrder) against
-// its OWN rewritten output and prints "left for hand fix: <file> <reason>"
-// for anything still there, exiting non-zero — the general rule for ANY
-// violation `--write` cannot fix on its own (a merge it declined, or a group
-// left untouched because a comment is glued to a non-first import), so a
-// leftover violation is never silently mistaken for a clean file.
+// instead. See kiko-linter's "Import length-sort" section for the general
+// re-check rule `--write` (writeFile, below) applies to this and every
+// other unfixable shape.
 
 const fs = require('node:fs');
 
@@ -585,15 +582,11 @@ function fixImportOrder(source) {
   return { text, changed };
 }
 
-// Applies --write to one file, printing what it did. Re-runs the plain
-// checker against --write's OWN output afterward — the general rule for
-// ANY violation --write cannot fix on its own (a merge it declined because a
-// later group has its own prefix or interior comment, or a group left
-// completely untouched because a comment is glued to a non-first import):
-// print it and fail, rather than exit 0 on a silent no-op an agent (or a
-// repo-wide sweep) would read as "nothing to fix" while the violation is
-// still there. Returns true when anything remains, so the caller fails the
-// process for it.
+// Applies --write to one file, printing what it did, then re-runs the plain
+// checker against --write's OWN output and prints any violation still
+// present — see kiko-linter's "Import length-sort" section for the general
+// rule this implements. Returns true when anything remains, so the caller
+// fails the process for it.
 function writeFile(file, source) {
   const { text, changed } = fixImportOrder(source);
 

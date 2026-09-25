@@ -58,35 +58,29 @@ export const mimeWildcard = '*/*';
 // at all (a real "Phase N (Task M)" citation is still caught by the
 // existing Task-N family member instead — see the .bad.ts fixture), so
 // plain English "round"/"phase" prose never collides with either.
-export const roundTripAndPhaseNote = 'kept for realism; the comment above is the real test';
 
 // 11a. Requirement Details are provided at checkout. A real word follows
 // "Requirement", not a single bare letter — the regex only ever captures
 // ONE letter, so this fails the trailing `\b` boundary: more letters
 // (`etails`) follow the captured `D`, so word meets word, not a boundary.
-export const requirementNearMissNote = 'kept for realism; the comment above is the real test';
 
 // 11b. The payments controller routes requests directly. The literal word
 // "ruling" never appears at all here, so this fails the literal-text match
 // itself, before any boundary check would even run.
-export const controllerNearMissNote = 'kept for realism; the comment above is the real test';
 
 // 11c. The settings section groups items by category. The literal
 // capital-letter-dot-digit shape after "section" never appears either —
 // same reason as 11b, a literal-text miss, not a boundary check.
-export const sectionNearMissNote = 'kept for realism; the comment above is the real test';
 
 // 11d. The task briefing covered every account before go-live. The
 // narrowed task/parity-brief family's own trailing `\b` fails the same way
 // an ordinary "-ing" continuation always does — see item 5's
 // `computeD1Delta` for the same word-boundary trick.
-export const taskBriefingNearMissNote = 'kept for realism; the comment above is the real test';
 
 // 12. The narrowed task/parity-brief family must not match this ordinary
 // prose collision: hide the header during the brief window so the sheet
 // reads as uninterrupted — no "task"/"parity" qualifier appears before
 // "brief", so the narrowed family never opens a match at all.
-export const briefWindowNote = 'kept for realism; the comment above is the real test';
 
 // 13. The new per-the-brief/the-brief's member must not match ordinary
 // adjective use of "brief" either: a brief native spinner covers the
