@@ -251,13 +251,6 @@ export const accountsRepo = {
     write((databaseTransaction) =>
       databaseTransaction.update(accounts).set({ icon }).where(eq(accounts.id, accountId)),
     ),
-  archive: (accountId: string) =>
-    write((databaseTransaction) =>
-      databaseTransaction
-        .update(accounts)
-        .set({ archivedAt: Date.now() })
-        .where(eq(accounts.id, accountId)),
-    ),
   /**
    * Persist a drag-and-drop reorder of the accounts grid. `orderedIds` is the
    * full new front-to-back order of the visible accounts; each row's
