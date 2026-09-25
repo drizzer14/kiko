@@ -2380,6 +2380,47 @@ describe('HoldingFormScreen icon', () => {
   });
 });
 
+describe('HoldingFormScreen create-mode hidden opening balance', () => {
+  beforeEach(() => {
+    // A non-synced bank offers Card alongside term_deposit/bond (test above),
+    // and `type` starts at `card` (its own doc comment), so these tests can
+    // type a balance on the visible Card field before switching type without
+    // an extra type-select step.
+    mockAccountKind = 'bank';
+    mockAccountInstitution = null;
+  });
+
+  it('writes a zero balance for a term deposit created after typing a balance on Card', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Balance', '100');
+    await fillTermDepositFields(screen);
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ balanceMinorUnits: 0 }));
+  });
+
+  it('writes a zero balance for a bond created after typing a balance on Card', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Balance', '100');
+    await fillBondFields(screen);
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ balanceMinorUnits: 0 }));
+  });
+
+  it('still writes the typed balance for a card-only create', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'My card');
+    await fill(screen, 'Balance', '100');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ balanceMinorUnits: 100_00 }));
+  });
+});
+
 describe('HoldingFormScreen icon follows type until dirty', () => {
   it("shows the default type's icon before any pick (bank -> term_deposit -> calendar)", async () => {
     // A bank create defaults to a term deposit, so the not-dirty icon follows its

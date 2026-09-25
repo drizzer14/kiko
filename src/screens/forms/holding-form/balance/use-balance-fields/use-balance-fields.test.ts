@@ -62,14 +62,14 @@ describe('useBalanceFields', () => {
     expect(result.current.openingBalance).toBe('25 000');
   });
 
-  it('writes the passed-in minor units through createPayload, ignoring its own live field', async () => {
+  it('writes the live opening-balance field through createPayload', async () => {
     const { result } = await renderBalanceFields();
 
     await act(async () => {
-      result.current.setOpeningBalance('999');
+      result.current.setOpeningBalance('500');
     });
 
-    expect(result.current.createPayload(500_00)).toEqual({
+    expect(result.current.createPayload()).toEqual({
       balanceMinorUnits: 500_00,
       metadata: undefined,
     });

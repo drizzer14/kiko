@@ -356,12 +356,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         return;
       }
 
-      // `balance.openingBalanceMinorUnits()` reads the LIVE opening-balance
-      // field regardless of which type is active (that hook's own doc
-      // comment) — a deposit/bond create writes that value even though the
-      // balance field is hidden for those types; property/metal/loan ignore
-      // it, always writing a zero stored balance instead (their value
-      // derives entirely from their own lots/schedule).
+      // Every ledgerless type (property/metal/loan/deposit/bond)'s
+      // `createPayload` writes a zero stored balance — its value derives
+      // entirely from its own lots/schedule. Only `useBalanceFields`
+      // (card/cash/crypto_asset/jar) reads its own live opening-balance field.
       const newHoldingId = await holdingsRepo.create({
         accountId,
         name,
@@ -371,7 +369,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         // row follows its type's default at display time — the same fallback the
         // icon uses — so a type-default color is not frozen onto the row.
         color,
-        ...active.createPayload(balance.openingBalanceMinorUnits()),
+        ...active.createPayload(),
       });
 
       // Persist the chosen icon on the freshly-created row, using the id the

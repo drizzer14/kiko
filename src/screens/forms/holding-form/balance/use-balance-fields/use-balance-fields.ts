@@ -16,11 +16,10 @@ export type UseBalanceFieldsResult = HoldingTypeForm & {
   currency: Currency;
   openingBalance: string;
   setOpeningBalance: (value: string) => void;
-  // Reads the LIVE opening-balance field, in minor units — the screen's own
-  // create call passes this into whichever type is ACTUALLY active
-  // (`active.createPayload(balance.openingBalanceMinorUnits())`), since this
-  // hook stays mounted (and its state persists) across a type switch even
-  // while a different type's form block is shown.
+  // Reads the LIVE opening-balance field, in minor units. `createPayload`
+  // reads it directly, and `saveEdit` reads it for a non-synced edit; exposed
+  // here too so a consumer (and this hook's own test) can read the live value
+  // without a create/edit round trip.
   openingBalanceMinorUnits: () => number;
 };
 
@@ -44,8 +43,8 @@ export const useBalanceFields = (params: UseBalanceFieldsParams): UseBalanceFiel
     setOpeningBalance(groupAmount(majorAmountText(holding.currency, holding.balanceMinorUnits)));
   }, []);
 
-  const createPayload = (openingBalanceMinorUnitsArgument: number): CreatePayload => ({
-    balanceMinorUnits: openingBalanceMinorUnitsArgument,
+  const createPayload = (): CreatePayload => ({
+    balanceMinorUnits: openingBalanceMinorUnits(),
     metadata: undefined,
   });
 

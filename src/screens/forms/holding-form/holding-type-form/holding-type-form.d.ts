@@ -36,8 +36,13 @@ export type HoldingTypeForm = {
   isValid: boolean;
   /** Top to bottom; the screen prepends the name field. Built from per-field errors. */
   scrollTargets: readonly ScrollTarget[];
-  /** The create write. `openingBalanceMinorUnits` keeps today's hidden-balance quirk for deposit/bond. */
-  createPayload: (openingBalanceMinorUnits: number) => CreatePayload;
+  /**
+   * The create write. A ledgerless type (property/metal/loan/deposit/bond)
+   * always writes `balanceMinorUnits: 0` — its value derives entirely from its
+   * own lots/schedule, never a typed opening balance. Only `useBalanceFields`
+   * (card/cash/crypto_asset/jar) reads its own live opening-balance field.
+   */
+  createPayload: () => CreatePayload;
   /** The edit write, without the icon (the screen writes the icon). */
   saveEdit: (context: EditContext) => Promise<void>;
 };

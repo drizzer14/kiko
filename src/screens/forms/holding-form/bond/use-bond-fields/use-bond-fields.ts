@@ -232,8 +232,11 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
     [setIsin, setBondMode],
   );
 
-  const createPayload = (openingBalanceMinorUnits: number): CreatePayload => ({
-    balanceMinorUnits: openingBalanceMinorUnits,
+  // Ledgerless: a bond's value derives entirely from its lots/schedule, never
+  // a typed opening balance — the stored balance is always 0, the same as
+  // property/metal/loan.
+  const createPayload = (): CreatePayload => ({
+    balanceMinorUnits: 0,
     metadata: buildBondMetadata(),
   });
 

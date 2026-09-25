@@ -1101,7 +1101,12 @@ below until it is added there too. Seven steps, in order:
    missed type. A ledgered type with no history of its own (a
    balance-shaped type) can usually reuse the shared `useBalanceFields`/
    `BalanceFormBlock` instead of writing new ones — see how
-   `card`/`cash`/`crypto_asset`/`jar` share one hook instance.
+   `card`/`cash`/`crypto_asset`/`jar` share one hook instance. Every OTHER
+   (ledgerless) type's own `createPayload` must write
+   `balanceMinorUnits: 0` unconditionally — its value derives entirely
+   from its own lots/schedule, never a typed opening balance. Only
+   `useBalanceFields.createPayload` reads its own live opening-balance
+   field; the screen calls `active.createPayload()` with no argument.
 4. Add en/uk label keys (`src/i18n/`) for `holding-form.screen.tsx`'s
    own `typeLabels: Record<HoldingType, string>` — usually a new
    `forms.holding.<type>` key, but `cash` reuses the account kind's own
