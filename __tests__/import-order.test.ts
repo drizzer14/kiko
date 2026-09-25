@@ -353,6 +353,35 @@ describe('scripts/checks/import-order.js --write', () => {
     expect(fixed).toContain('/** JSDoc for X */');
   });
 
+  it('merges two adjacent groups of the same kind and re-sorts them as one group', () => {
+    const fixed = write(
+      "import Box from '@kiko/design-system/components/box';\n" +
+        '\n' +
+        "import { useTranslation } from 'react-i18next';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+    );
+
+    expect(fixed).toBe(
+      "import { useTranslation } from 'react-i18next';\n" +
+        "import Box from '@kiko/design-system/components/box';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+    );
+  });
+
+  it('does not merge into a later group whose own prefix comment would be stranded mid-chain', () => {
+    const source =
+      "import { useTranslation } from 'react-i18next';\n" +
+      '\n' +
+      '// explains this package specifically\n' +
+      "import Box from '@kiko/design-system/components/box';\n" +
+      '\n' +
+      'export const Foo = 1;\n';
+
+    expect(write(source)).toBe(source);
+  });
+
   // Property: for every fixture above, --write only ever reorders lines — it
   // never loses or invents one. Sorting a multiset-equal line array proves
   // nothing was dropped or duplicated, independent of what order they land in.

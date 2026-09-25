@@ -34,6 +34,12 @@
 // closed over by a `jest.mock(...)` factory, then the mock call itself) —
 // skipPrelude below looks past it for the header, rather than concluding
 // there is nothing to check.
+//
+// `--write` also merges two adjacent groups of the same kind into one (the
+// violation above) — see mergeAdjacentSameKindGroups — unless a later group
+// in the run carries its own prefix comment, which would otherwise strand
+// mid-chain once the group boundary disappears; that shape is left for a
+// human to merge by hand instead.
 
 const fs = require('node:fs');
 
@@ -423,9 +429,9 @@ function checkPartition(groupIndex, partition, previousRank, violations) {
 }
 
 // Two adjacent (blank-separated) groups of the very same single kind belong
-// to ONE group per kiko-code-style — this is the "@kiko/* left as its own
-// block after the external group" shape a repo-wide sweep found in 14 files.
-// A group whose kind is ambiguous (mixed, already flagged by checkPartition
+// to ONE group per kiko-code-style — for example, a `@kiko/*` path-alias
+// import left in its own block after the rest of the external group. A
+// group whose kind is ambiguous (mixed, already flagged by checkPartition
 // above, or empty) never counts as a match on either side of the boundary.
 function checkGroupAdjacency(groupIndex, groupKind, previousGroupKind, violations) {
   if (groupKind !== null && groupKind === previousGroupKind) {
@@ -435,6 +441,27 @@ function checkGroupAdjacency(groupIndex, groupKind, previousGroupKind, violation
   }
 
   return groupKind;
+}
+
+// The single kind shared by every non-barrier partition in a group's items,
+// or null when the group is empty or mixes kinds — the same "should this
+// group merge with its neighbor" question checkGroupAdjacency asks, and the
+// same question fixImportOrder's merge step below asks before folding two
+// adjacent groups into one.
+function groupKindOf(items) {
+  const kinds = new Set();
+
+  for (const partition of partitionAtBarriers(items)) {
+    if (partition.kind === 'barrier') {
+      continue;
+    }
+
+    for (const kind of partitionKinds(partition.items)) {
+      kinds.add(kind);
+    }
+  }
+
+  return kinds.size === 1 ? [...kinds][0] : null;
 }
 
 function checkImportOrder(source) {
@@ -447,7 +474,6 @@ function checkImportOrder(source) {
 
   groups.forEach((groupEntries, groupIndex) => {
     const { items } = analyzeGroup(groupEntries);
-    const groupKinds = new Set();
 
     for (const partition of partitionAtBarriers(items)) {
       if (partition.kind === 'barrier') {
@@ -455,13 +481,9 @@ function checkImportOrder(source) {
       }
 
       previousRank = checkPartition(groupIndex, partition, previousRank, violations);
-
-      for (const kind of partitionKinds(partition.items)) {
-        groupKinds.add(kind);
-      }
     }
 
-    const groupKind = groupKinds.size === 1 ? [...groupKinds][0] : null;
+    const groupKind = groupKindOf(items);
     previousGroupKind = checkGroupAdjacency(groupIndex, groupKind, previousGroupKind, violations);
   });
 
@@ -471,17 +493,55 @@ function checkImportOrder(source) {
 // Reorders every SAFE group's items (stable sort by sortKey, partitioned at
 // barriers) and reassembles the file. A group with an interior comment is
 // left completely untouched. Returns { text, changed, unsafeGroups }.
+// Folds each run of adjacent groups sharing the same single kind into one
+// chain link — the fixer's side of the "two adjacent groups of the same
+// kind should be one group" rule checkGroupAdjacency flags above. A link
+// only extends the PREVIOUS link (never starts a new merge as the later
+// half) when it is itself safe to fold: no interior comment of its own, and
+// no prefix comment either — a prefix stranded mid-chain, once its group
+// boundary disappears, would have nowhere left to attach. The chain's own
+// leading prefix (if any) survives untouched, since only later links are
+// ever checked for one.
+function mergeAdjacentSameKindGroups(analyzedGroups) {
+  const chains = [];
+
+  for (const group of analyzedGroups) {
+    const kind = group.interiorComment ? null : groupKindOf(group.items);
+    const previous = chains[chains.length - 1];
+
+    if (
+      previous &&
+      previous.kind !== null &&
+      previous.kind === kind &&
+      !previous.interiorComment &&
+      !group.interiorComment &&
+      group.prefix === null
+    ) {
+      previous.items = previous.items.concat(group.items);
+      continue;
+    }
+
+    chains.push({ ...group, kind });
+  }
+
+  return chains;
+}
+
 function fixImportOrder(source) {
   const lines = source.split('\n');
   const start = skipPrelude(lines);
   const prelude = lines.slice(0, start);
   const { entries, headerEnd } = parseHeaderEntries(lines, start);
-  const groups = splitIntoGroups(entries);
+  const analyzedGroups = splitIntoGroups(entries).map((groupEntries) => ({
+    groupEntries,
+    ...analyzeGroup(groupEntries),
+  }));
+  const chains = mergeAdjacentSameKindGroups(analyzedGroups);
   let unsafeGroups = 0;
-  let changed = false;
+  let changed = chains.length !== analyzedGroups.length;
 
-  const rebuiltGroups = groups.map((groupEntries) => {
-    const { prefix, items, interiorComment } = analyzeGroup(groupEntries);
+  const rebuiltGroups = chains.map((group) => {
+    const { groupEntries, prefix, items, interiorComment } = group;
 
     if (interiorComment) {
       unsafeGroups += 1;
