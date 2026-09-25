@@ -16,7 +16,7 @@ import { categoryOverrides, transactions } from '../../db/schema';
 
 import { categoryOverridesRepo } from './category-overrides.repo';
 
-// Fake tx: the rule upsert (insert->values->onConflictDoUpdate), the
+// Fake transaction: the rule upsert (insert->values->onConflictDoUpdate), the
 // full-scan select of transactions, and the id-filtered category update.
 const makeDatabaseTransaction = (allTransactions: { id: string; description: string }[]) => {
   const captured: {

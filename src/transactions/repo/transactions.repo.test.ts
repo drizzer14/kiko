@@ -1051,7 +1051,7 @@ const captureUpdateDatabaseTransaction = (): {
 
 // A LINK (non-null `loanHoldingId`) now reads two currencies first — the
 // payment's own holding, then the target loan holding — before writing, so a
-// fake tx here answers those two selects (FIFO, in call order) ahead of the
+// fake transaction here answers those two selects (FIFO, in call order) ahead of the
 // `update` capture `captureUpdateDatabaseTransaction` alone provides. "None" (`loanHoldingId:
 // null`) skips both reads, so `captureUpdateDatabaseTransaction` (no `select` at all) still
 // serves that case unchanged.
@@ -1329,7 +1329,7 @@ const depositMeta = {
   compounding: 'monthly',
 };
 
-// Build a fake tx for `recordExchange`. `select(...).from(...).where(...)`
+// Build a fake transaction for `recordExchange`. `select(...).from(...).where(...)`
 // resolves the next queued row set in call order — the source balance read,
 // then the destination read (a balance row for a plain leg, or the deposit
 // row `appendDepositContributionDatabaseTransaction` reads for a term_deposit leg). The

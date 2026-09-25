@@ -210,7 +210,7 @@ describe('categoriesRepo.reorder', () => {
 });
 
 describe('categoriesRepo.delete', () => {
-  // Fake tx: read the single settings row (for the current default key), then
+  // Fake transaction: read the single settings row (for the current default key), then
   // the two category reassign updates (transactions + overrides) and the
   // category-row delete, each captured so the test can assert the whole
   // transaction without a real database.

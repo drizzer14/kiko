@@ -151,8 +151,8 @@ describe('ratesRepo', () => {
 
       await ratesRepo.upsertMany(rates);
 
-      // Every chunk stayed under the bound-parameter ceiling (the fake tx
-      // above throws otherwise), more than one chunk was needed, and no
+      // Every chunk stayed under the bound-parameter ceiling (the fake
+      // transaction above throws otherwise), more than one chunk was needed, and no
       // row was lost or duplicated across the chunk boundaries.
       expect(chunkSizes.length).toBeGreaterThan(1);
       for (const size of chunkSizes) {
