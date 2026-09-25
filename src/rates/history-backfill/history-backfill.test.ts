@@ -285,4 +285,32 @@ describe('runBackfill', () => {
     expect(btcCalls).toHaveLength(0);
     expect(status).toEqual({ state: 'complete', lastDay: day(0) });
   });
+
+  it('reports failed, never complete, when both providers reject the same span', async () => {
+    const nbuCalls: [number, number][] = [];
+    const { deps, captured } = makeDeps({
+      fetchNbuHistory: async (start, end) => {
+        nbuCalls.push([start, end]);
+        throw new Error('NBU request failed: 500');
+      },
+      fetchCryptoHistory: async () => {
+        throw new Error('CoinGecko request failed: 401');
+      },
+    });
+
+    const status: BackfillStatus = await runBackfill(deps);
+
+    expect(captured).toHaveLength(0);
+    expect(status).toEqual({ state: 'failed', lastDay: null });
+
+    // Nothing was persisted, so the caller's own resume point
+    // (`deriveLastBackfilledDay`) is unchanged — a resumed pass (the same
+    // `deps`, mirroring the screen's own retry) re-fetches the IDENTICAL span
+    // rather than a shifted one.
+    await runBackfill(deps);
+    expect(nbuCalls).toEqual([
+      [day(0), day(0)],
+      [day(0), day(0)],
+    ]);
+  });
 });

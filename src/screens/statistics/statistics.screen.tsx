@@ -333,6 +333,21 @@ const StatisticsScreen: FC = () => {
     lastDay: null,
   });
 
+  // Guards the backfill effect's own async settle against a REAL unmount
+  // only. A re-render whose deps changed (a refocus advancing `now`, for
+  // example) fires the SAME cleanup lifecycle event as an unmount, so a
+  // per-effect `cancelled` flag set in that effect's own returned cleanup
+  // cannot tell the two apart — it would drop a still-pending run's eventual
+  // settle on every refocus, leaving the line stuck on "loading" forever.
+  // This ref only ever flips inside its own unmount-only effect (`[]` deps).
+  const isMountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      isMountedRef.current = false;
+    },
+    [],
+  );
+
   useEffect(() => {
     // `historyLoading` guards against the exact same "empty reads as no data
     // yet" trap kiko-architecture's useLiveQuery consumer rule covers for a
@@ -367,30 +382,32 @@ const StatisticsScreen: FC = () => {
     }
 
     setBackfillStatus({ state: 'loading', lastDay: lastBackfilledDay });
-    let cancelled = false;
     either<unknown, BackfillStatus>(() =>
       runBackfill({ earliestDay: spanStart, lastBackfilledDay: resumeFrom, today: now }),
     ).then((result) => {
-      if (cancelled) {
+      if (!isMountedRef.current) {
         return;
       }
 
       if (isLeft(result)) {
-        // A failed run must retry on the next focus refresh instead of being
-        // reported as done: clear the span ref so `planBackfillRun` treats
-        // this span as never-run once `now` next advances.
+        // A rejected run must retry on the next focus refresh instead of
+        // being reported as done: clear the span ref so `planBackfillRun`
+        // treats this span as never-run once `now` next advances.
         backfillRanForSpanRef.current = null;
         setBackfillStatus({ state: 'failed', lastDay: lastBackfilledDay });
 
         return;
       }
 
-      setBackfillStatus(bifold(result));
+      // `runBackfill` itself resolves a Right `'failed'` status (rather than
+      // rejecting) when every provider failed for the span — treated
+      // identically to the `isLeft` arm above: retry on the next focus.
+      const settled: BackfillStatus = bifold(result);
+      if (settled.state === 'failed') {
+        backfillRanForSpanRef.current = null;
+      }
+      setBackfillStatus(settled);
     });
-
-    return () => {
-      cancelled = true;
-    };
   }, [transactions.length, spanStart, lastBackfilledDay, now, historyLoading]);
 
   // Bar + pie value "now" on the current rate table; the line values each day on

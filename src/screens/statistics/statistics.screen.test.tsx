@@ -734,6 +734,65 @@ describe('StatisticsScreen', () => {
     nowSpy.mockRestore();
   });
 
+  it('leaves loading once a run rejects even when a refocus interleaved first, and still retries the same span', async () => {
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+    });
+
+    let rejectFirstRun: (error: Error) => void = () => {};
+    const firstRun = new Promise<never>((_resolve, reject) => {
+      rejectFirstRun = reject;
+    });
+    mockRunBackfill.mockReturnValueOnce(firstRun);
+
+    const focusModule = jest.requireMock('./use-focus-refreshed-now') as {
+      useFocusRefreshedNow: () => number;
+    };
+    const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
+
+    const { getByTestId, queryByTestId, rerender } = await renderScreen();
+
+    expect(getByTestId('net-worth-line-loading')).toBeTruthy();
+    expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+
+    // A refocus (a dep-change re-render, `now` advancing) arrives BEFORE the
+    // in-flight run settles. `backfillRanForSpanRef` already covers this
+    // span, so this re-render starts no second run of its own — the first
+    // run is still the only one pending.
+    nowSpy.mockReturnValue(now + DAY);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+    expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      rejectFirstRun(new Error('network down'));
+      await firstRun.catch(() => {});
+    });
+
+    // A dep-change cleanup must not drop this settle: the line leaves
+    // loading instead of staying stuck on it.
+    expect(queryByTestId('net-worth-line-loading')).toBeNull();
+
+    // The next focus retries the SAME span (the ref was reset on the reject).
+    const firstSpan = mockRunBackfill.mock.calls[0]?.[0] as { earliestDay: number };
+    nowSpy.mockReturnValue(now + 2 * DAY);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(2);
+    expect(mockRunBackfill.mock.calls[1]?.[0]).toMatchObject({
+      earliestDay: firstSpan.earliestDay,
+    });
+
+    nowSpy.mockRestore();
+  });
+
   it('drops the deselected account from both the bar and the pie when the filter narrows', async () => {
     const { getByTestId, queryByTestId } = await renderScreen();
 

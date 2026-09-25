@@ -17,9 +17,11 @@ type NewHistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'ra
 
 /**
  * Progress the Statistics screen can surface for the historical line chart.
- * `runBackfill` itself only ever resolves to `idle`/`loading`/`complete` — a
- * rejected run stays a rejected promise. `'failed'` is set by the screen's own
- * catch arm, so a network failure is never mistaken for a finished backfill.
+ * `runBackfill` resolves `'failed'` itself when EVERY provider rejected for
+ * the span (see its own doc below); a rejected PROMISE instead stays a
+ * rejected promise, caught into the same `'failed'` state by the screen's own
+ * catch arm. Either path, a network failure is never mistaken for a finished
+ * backfill.
  */
 export type BackfillStatus = {
   state: 'idle' | 'loading' | 'complete' | 'failed';
@@ -228,6 +230,17 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
     loadNbu(spanStart, today),
     loadCrypto(cryptoDays),
   ]);
+
+  if (nbuResult.status === 'rejected' && cryptoResult.status === 'rejected') {
+    // Every provider failed for this span (e.g. fully offline): report
+    // `'failed'`, never `'complete'` — the caller's `lastBackfilledDay`
+    // resume point is left exactly where it was, so a later pass re-fetches
+    // this same span rather than skipping it as already done. Only ONE
+    // provider rejecting instead keeps composing from whichever succeeded,
+    // the existing partial-history behavior below.
+    return { state: 'failed', lastDay: lastBackfilledDay };
+  }
+
   const nbu = nbuResult.status === 'fulfilled' ? nbuResult.value : [];
   const crypto = cryptoResult.status === 'fulfilled' ? cryptoResult.value : [];
 

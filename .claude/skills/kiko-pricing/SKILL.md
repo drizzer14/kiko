@@ -64,12 +64,23 @@ The Statistics screen drives an incremental, non-blocking backfill of
 `planBackfillRun` decides whether a mount/focus needs a run for the
 current transaction span, `missingDays` lists the still-uncovered UTC
 days, and `runBackfill` fetches, composes and upserts them, returning
-a `BackfillStatus`. A failed run (a rejected `runBackfill`, e.g. a
-network error) must NEVER be reported as `'complete'` — the screen
-catches it into its own `'failed'` state and resets its span ref, so
-`planBackfillRun` treats the span as never-run and retries it on the
-next focus refresh, instead of leaving the line permanently stuck on
-stale/partial history.
+a `BackfillStatus`. A failed run must NEVER be reported as `'complete'`,
+in either of the two ways it can fail: `runBackfill` settles NBU and
+CoinGecko independently (`Promise.allSettled`) and resolves `'failed'`
+itself (a Right value, `lastDay` unchanged) when BOTH reject for the
+span — only one provider rejecting still composes from whichever
+succeeded, the existing partial-history behavior; a rejected
+`runBackfill` PROMISE (any other failure) is instead caught by the
+screen's own catch arm into the same `'failed'` state. Either way the
+screen resets its span ref, so `planBackfillRun` treats the span as
+never-run and retries it on the next focus refresh, instead of leaving
+the line permanently stuck on stale/partial history. The screen's own
+effect must guard its async settle against a REAL unmount only (an
+`isMounted`-style ref flipped inside its own unmount-only effect) — a
+dep-change cleanup (a refocus advancing `now`, the same trigger that
+drives the retry above) fires the identical cleanup lifecycle event and
+must not drop a still-pending run's eventual settle, or the line gets
+stuck on "loading" with no retry at all.
 
 ## `price_points` table and `PriceBook`
 
