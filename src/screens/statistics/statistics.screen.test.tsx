@@ -14,7 +14,7 @@ jest.mock('../../rates/history-backfill', () => {
   return { ...actual, runBackfill: (...args: unknown[]) => mockRunBackfill(...args) };
 });
 
-import { act, fireEvent, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 
 import { i18n } from '../../i18n';
 import { formatDate } from '../../dates/format';
@@ -697,6 +697,41 @@ describe('StatisticsScreen', () => {
     });
 
     expect(mockRunBackfill).toHaveBeenCalled();
+  });
+
+  it('does not report the backfill complete after a failed run, and retries the same span once now advances', async () => {
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+    });
+    mockRunBackfill.mockRejectedValueOnce(new Error('network down'));
+
+    // `useFocusRefreshedNow` is mocked to a stable per-instance value at the
+    // top of this file; a real focus re-entry advances it, so drive that
+    // here with a spy the test controls directly instead of a fake navigation
+    // focus event.
+    const focusModule = jest.requireMock('./use-focus-refreshed-now') as {
+      useFocusRefreshedNow: () => number;
+    };
+    const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
+
+    const { getByTestId, queryByTestId, rerender } = await renderScreen();
+
+    await waitFor(() => expect(queryByTestId('net-worth-line-loading')).toBeNull());
+    expect(getByTestId('net-worth-line-empty')).toBeTruthy();
+    expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+
+    nowSpy.mockReturnValue(now + DAY);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(2);
+
+    nowSpy.mockRestore();
   });
 
   it('drops the deselected account from both the bar and the pie when the filter narrows', async () => {

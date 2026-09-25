@@ -15,9 +15,14 @@ const allCurrencies: Currency[] = ['USD', 'EUR', 'UAH', ...currencyOptions.filte
 /** A row ready for `rateHistoryRepo.upsertMany` (rate stored as text). */
 type NewHistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate' | 'source'>;
 
-/** Progress the Statistics screen can surface for the historical line chart. */
+/**
+ * Progress the Statistics screen can surface for the historical line chart.
+ * `runBackfill` itself only ever resolves to `idle`/`loading`/`complete` — a
+ * rejected run stays a rejected promise. `'failed'` is set by the screen's own
+ * catch arm, so a network failure is never mistaken for a finished backfill.
+ */
 export type BackfillStatus = {
-  state: 'idle' | 'loading' | 'complete';
+  state: 'idle' | 'loading' | 'complete' | 'failed';
   lastDay: number | null;
 };
 

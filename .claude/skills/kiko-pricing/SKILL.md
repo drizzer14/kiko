@@ -57,6 +57,20 @@ a bucket before a pair's first history row still prices that holding
 leading buckets. `price_points`' own `priceAt` (below) mirrors this
 same nearest-at-or-before / earliest-fallback shape.
 
+### History backfill
+
+The Statistics screen drives an incremental, non-blocking backfill of
+`currency_rate_history` (`src/rates/history-backfill/history-backfill.ts`):
+`planBackfillRun` decides whether a mount/focus needs a run for the
+current transaction span, `missingDays` lists the still-uncovered UTC
+days, and `runBackfill` fetches, composes and upserts them, returning
+a `BackfillStatus`. A failed run (a rejected `runBackfill`, e.g. a
+network error) must NEVER be reported as `'complete'` — the screen
+catches it into its own `'failed'` state and resets its span ref, so
+`planBackfillRun` treats the span as never-run and retries it on the
+next focus refresh, instead of leaving the line permanently stuck on
+stale/partial history.
+
 ## `price_points` table and `PriceBook`
 
 `price_points` (migration `0035`) is a SEPARATE, non-currency price

@@ -2,6 +2,7 @@ import { match } from 'ts-pattern';
 import { ratesRepo } from '@kiko/rates/repo';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import either, { bifold, isLeft } from 'fnts/either';
 import { categoriesRepo } from '@kiko/categories/repo';
 import type { ScrollViewInstance } from 'react-native';
 import { transactionsRepo } from '@kiko/transactions/repo';
@@ -367,17 +368,25 @@ const StatisticsScreen: FC = () => {
 
     setBackfillStatus({ state: 'loading', lastDay: lastBackfilledDay });
     let cancelled = false;
-    runBackfill({ earliestDay: spanStart, lastBackfilledDay: resumeFrom, today: now })
-      .then((status) => {
-        if (!cancelled) {
-          setBackfillStatus(status);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setBackfillStatus({ state: 'complete', lastDay: lastBackfilledDay });
-        }
-      });
+    either<unknown, BackfillStatus>(() =>
+      runBackfill({ earliestDay: spanStart, lastBackfilledDay: resumeFrom, today: now }),
+    ).then((result) => {
+      if (cancelled) {
+        return;
+      }
+
+      if (isLeft(result)) {
+        // A failed run must retry on the next focus refresh instead of being
+        // reported as done: clear the span ref so `planBackfillRun` treats
+        // this span as never-run once `now` next advances.
+        backfillRanForSpanRef.current = null;
+        setBackfillStatus({ state: 'failed', lastDay: lastBackfilledDay });
+
+        return;
+      }
+
+      setBackfillStatus(bifold(result));
+    });
 
     return () => {
       cancelled = true;
