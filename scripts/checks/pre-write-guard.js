@@ -376,6 +376,12 @@ function parseFullWordIdentifiersCheckerOutput(stdout) {
 // is always one bare lowercase word (`return`/`if`/`for`/`while`/`jsx`), so
 // the pattern anchors on the LAST `:<digits>: <word>: ` run for the same
 // path-can-contain-colons reason as the full-word-identifiers pattern above.
+// `matchedText` is the KIND alone (M1): the new-findings-only diff keys on
+// (ruleId, matchedText, occurrence), so keying it on the full statement text
+// would read editing the TEXT of an already-unseparated statement (renaming
+// a variable it returns, say) as a brand-new violation. The full statement
+// text is kept separately as `detailText`, purely for the deny reason a
+// human reads.
 const BLANK_LINE_SEPARATION_VIOLATION_LINE = /:(\d+): (\w+): (.*)$/;
 
 function parseBlankLineSeparationCheckerOutput(stdout) {
@@ -383,7 +389,7 @@ function parseBlankLineSeparationCheckerOutput(stdout) {
   for (const line of stdout.split('\n')) {
     const match = BLANK_LINE_SEPARATION_VIOLATION_LINE.exec(line);
     if (match) {
-      findings.push({ line: Number(match[1]), matchedText: match[3] });
+      findings.push({ line: Number(match[1]), matchedText: match[2], detailText: match[3] });
     }
   }
   return findings;
@@ -510,6 +516,7 @@ async function runNodeChecks(temporaryRoot, relativePath, tree) {
         tree,
         line: finding.line,
         matchedText: finding.matchedText,
+        detailText: finding.detailText,
         fix: rule.fix,
         skill: rule.skill,
       });
@@ -594,11 +601,14 @@ function newFindings(beforeFindings, afterFindings) {
 // WHAT/DETAILS/WHY/HOW/DO-NOT shape `_lib.sh`'s `print_block` uses for
 // every other check wrapper's stderr output — adapted to plain text inside
 // a single JSON string field, since a PreToolUse deny reason is not a block
-// written to stderr.
+// written to stderr. `detailText`, when present (rule 11's kind/statement
+// split — see parseBlankLineSeparationCheckerOutput), is the full statement
+// text a human reads here; `matchedText` itself stays the diff key.
 function buildFindingBlock(relativePath, finding) {
+  const displayText = finding.detailText ?? finding.matchedText;
   const lines = [
     `WHAT FAILED:    rule ${finding.ruleId} at ${relativePath}:${finding.line}`,
-    `DETAILS:        matched text: ${JSON.stringify(finding.matchedText)}`,
+    `DETAILS:        matched text: ${JSON.stringify(displayText)}`,
     'WHY IT MATTERS: this is a NEW violation the edit would add; a pre-existing one is left for check:rules to catch',
     `HOW TO FIX:     ${finding.fix}`,
     `DO NOT:         suppress this without a justified override; see ${finding.skill}`,

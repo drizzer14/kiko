@@ -1444,6 +1444,44 @@ describe('runNodeChecks (rule 11: blank-line-separation)', () => {
     expect(reason).toContain('kiko-blank-line-separation');
     expect(reason).toContain('return doubled;');
   });
+
+  it('allows renaming an identifier inside an already-unseparated return (M1)', () => {
+    // M1: the diff key must be the violation's KIND (return/if/for/while/
+    // jsx), not the statement text itself — otherwise editing the text of an
+    // EXISTING unseparated statement (renaming a variable it returns) reads
+    // as a brand-new violation and denies an edit that changes nothing about
+    // the separation the rule enforces.
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'example.ts');
+    writeFileSync(
+      targetFile,
+      [
+        'export function foo(value: number): number {',
+        '  const total = value * 2;',
+        '  return total;',
+        '}',
+        '',
+      ].join('\n'),
+    );
+
+    const result = runGuard(
+      payloadFor('Edit', {
+        file_path: targetFile,
+        old_string: 'return total;',
+        new_string: 'return sum;',
+      }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+      }),
+    );
+
+    expect(result.status).toBe(0);
+  });
 });
 
 // The override protocol: a rule-id-specific comment naming the rule and
