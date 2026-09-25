@@ -50,6 +50,7 @@ import {
 } from '../../statistics/account-contribution';
 import Box from '../../design-system/components/box';
 import DateRangeField from '../home/date-range-field';
+import { useDataReady } from '../../db/use-data-ready';
 import { useLiveQuery } from '../../db/use-live-query';
 import Card from '../../design-system/components/card';
 import Text from '../../design-system/components/text';
@@ -57,6 +58,7 @@ import type { Currency } from '../../currency/currency';
 import { ibanOf } from '../../holdings/holding-metadata';
 import Screen from '../../design-system/components/screen';
 import { usePriceBook } from '../../prices/use-price-book';
+import LoadingState from '../../design-system/components/loading-state';
 import { buildRateTable } from '../../rates/net-worth-view';
 import { defaultDateRange } from '../../dates/default-range';
 import { bucketDaysForSpan } from '../../statistics/buckets';
@@ -176,15 +178,30 @@ const StatisticsScreen: FC = () => {
   const scrollOffset = useScrollOffset(scrollRef);
   useScrollToTopOnTabPress(scrollRef, scrollOffset);
 
-  const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
-  const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
-  const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
-  const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
-  const { data: transactions } = useLiveQuery(transactionsRepo.listAllQuery(), ['transactions']);
-  const { data: historyRows } = useLiveQuery(rateHistoryRepo.historyRowsQuery(), [
-    'currency_rate_history',
+  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(accountsRepo.listQuery(), [
+    'accounts',
   ]);
-  const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
+  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(holdingsRepo.allQuery(), [
+    'holdings',
+  ]);
+  const { data: rates, isLoading: ratesLoading } = useLiveQuery(ratesRepo.allQuery(), [
+    'currency_rates',
+  ]);
+  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(settingsRepo.getQuery(), [
+    'settings',
+  ]);
+  const { data: transactions, isLoading: transactionsLoading } = useLiveQuery(
+    transactionsRepo.listAllQuery(),
+    ['transactions'],
+  );
+  const { data: historyRows, isLoading: historyLoading } = useLiveQuery(
+    rateHistoryRepo.historyRowsQuery(),
+    ['currency_rate_history'],
+  );
+  const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
+    categoriesRepo.allQuery(),
+    ['categories'],
+  );
 
   // An empty set means "all accounts"; any names in it narrow all three charts.
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
@@ -226,7 +243,23 @@ const StatisticsScreen: FC = () => {
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
 
   const rateTable = useMemo(() => buildRateTable(rates), [rates]);
-  const { book: priceBook } = usePriceBook();
+  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook();
+  // Every chart (bar/pie/trend) must never render an empty state while any of
+  // this screen's own queries is still on its first load (kiko-architecture's
+  // useLiveQuery consumer rule) — gated below, right at the return. This is
+  // SEPARATE from the net-worth line's own `loading` prop below, which tracks
+  // the incremental rate-history backfill (a later, non-blocking concern once
+  // this base data has already loaded).
+  const isReady = useDataReady(
+    accountsLoading,
+    holdingsLoading,
+    ratesLoading,
+    settingsLoading,
+    transactionsLoading,
+    historyLoading,
+    categoriesLoading,
+    priceBookLoading,
+  );
 
   // Only non-archived accounts are ever shown; the account filter narrows within
   // those, and a holding then feeds the charts only when it is open AND its
@@ -849,6 +882,14 @@ const StatisticsScreen: FC = () => {
     icon: account.icon ?? undefined,
     color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
   }));
+
+  if (!isReady) {
+    return (
+      <Screen scroll scrollableRef={scrollRef}>
+        <LoadingState testID="statistics-loading" />
+      </Screen>
+    );
+  }
 
   return (
     <Screen scroll scrollableRef={scrollRef}>

@@ -116,6 +116,10 @@ type LiveData = {
   transactions?: Transaction[];
   history?: HistoryRow[];
   categories?: CategoryRow[];
+  // Per-table isLoading overrides, for the loading-gate tests only — every
+  // key defaults to `false` (an already-resolved query), so every existing
+  // call site above keeps behaving exactly as before.
+  isLoading?: Partial<Record<string, boolean>>;
 };
 
 // Feed each `useLiveQuery` call by the first table name it watches — the screen's
@@ -136,9 +140,13 @@ const setLiveData = (data: LiveData): void => {
     })),
     currency_rate_history: data.history ?? [],
     categories: data.categories ?? [],
+    price_points: [],
   };
+  const isLoadingByTable = data.isLoading ?? {};
+
   mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => ({
     data: byTable[tables[0]] ?? [],
+    isLoading: isLoadingByTable[tables[0]] ?? false,
   }));
 };
 
@@ -1376,6 +1384,66 @@ describe('StatisticsScreen', () => {
 
       expect(getByTestId('category-trend-line-line-loan_interest')).toBeTruthy();
     });
+  });
+});
+
+describe('StatisticsScreen — loading gate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('shows a loading spinner, not an empty chart, while any of its own queries is on its first load', async () => {
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: HISTORY,
+      isLoading: { transactions: true },
+    });
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('statistics-loading')).toBeTruthy();
+    expect(queryByTestId('statistics-blocks')).toBeNull();
+    // The net-worth line's own EXISTING empty-state testID (never its real
+    // "no data" state) must not render while the screen's own queries are
+    // still on their first load — that bug renders as a real chart, not
+    // this loading spinner.
+    expect(queryByTestId('net-worth-line-empty')).toBeNull();
+    expect(queryByTestId('bar-chart-empty')).toBeNull();
+  });
+
+  it('renders the real charts once every query has loaded', async () => {
+    seedFull();
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('statistics-blocks')).toBeTruthy();
+    expect(queryByTestId('statistics-loading')).toBeNull();
+  });
+
+  it('does not flash back to the loading spinner once loaded, on a later re-query', async () => {
+    seedFull();
+    const view = await renderScreen();
+    expect(view.getByTestId('statistics-blocks')).toBeTruthy();
+
+    // A pull/reactive re-query that (even incorrectly) reported isLoading
+    // true again must not flip the screen back to the loading spinner.
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: HISTORY,
+      isLoading: { transactions: true },
+    });
+    await act(async () => {
+      view.rerender(<StatisticsScreen />);
+    });
+
+    expect(view.queryByTestId('statistics-loading')).toBeNull();
+    expect(view.getByTestId('statistics-blocks')).toBeTruthy();
   });
 });
 
