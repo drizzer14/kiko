@@ -35,7 +35,13 @@ if [ "$exitCode" -eq 2 ]; then
 fi
 
 reason="$(printf 'pre-write guard crashed (exit %s): %s' "$exitCode" "$(tail -c 2000 "$stderrFile")")"
-escapedReason="$(printf '%s' "$reason" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
+# A crashing node (or its own multi-line stack trace) can put raw newlines,
+# tabs, or carriage returns into $reason. Those are illegal unescaped inside
+# a JSON string, so collapse them to spaces for the JSON copy BEFORE
+# backslash/quote-escaping it below — $reason itself stays untouched (raw
+# newlines and all) for the plain-text copy printed to stderr afterward.
+jsonReason="$(printf '%s' "$reason" | tr '\n\r\t' '   ')"
+escapedReason="$(printf '%s' "$jsonReason" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
 denyJSON="$(cat <<JSON
 {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"$escapedReason"}}
 JSON

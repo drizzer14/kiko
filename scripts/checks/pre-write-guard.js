@@ -87,22 +87,23 @@ function resolveNearestExisting(candidate) {
 // Resolves both `filePath` and `projectDirectory` with realpath (Review
 // Focus 2: a symlinked project directory, or a file_path reached through
 // one, must not be mistaken for "outside the project") before relativizing.
-// Returns null when `filePath` sits outside `projectDirectory`, or either
-// side cannot be resolved at all.
+// Returns null when `filePath` sits outside `projectDirectory`. Fails
+// closed on any OTHER realpath failure (an unresolvable
+// `CLAUDE_PROJECT_DIR`, or EACCES/ELOOP/ENOTDIR on `filePath`) by letting it
+// throw — `resolveNearestExisting` already swallows the one benign case
+// (ENOENT on a not-yet-created file, resolved through its nearest existing
+// parent instead), so anything that still reaches here is a real error, not
+// "outside the project", and the caller's fail-closed try/catch turns it
+// into a deny.
 function relativeInProject(filePath, projectDirectory) {
   if (typeof filePath !== 'string' || filePath.length === 0) return null;
 
-  let resolvedProjectDirectory;
-  let resolvedFilePath;
-  try {
-    resolvedProjectDirectory = fs.realpathSync(projectDirectory);
-    resolvedFilePath = resolveNearestExisting(path.resolve(filePath));
-  } catch {
-    return null;
-  }
+  const resolvedProjectDirectory = fs.realpathSync(projectDirectory);
+  const resolvedFilePath = resolveNearestExisting(path.resolve(filePath));
 
   const relative = path.relative(resolvedProjectDirectory, resolvedFilePath);
-  if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) return null;
+  const isOutsideProjectDirectory = relative === '..' || relative.startsWith(`..${path.sep}`);
+  if (relative === '' || isOutsideProjectDirectory) return null;
   return relative;
 }
 
@@ -170,7 +171,7 @@ function rebuildContents(toolName, toolInput, beforeText) {
       beforeText,
     );
   }
-  return beforeText;
+  throw new RebuildError(`unsupported tool_name: ${toolName}`);
 }
 
 // Mirrors BEFORE and AFTER into one mkdtemp root, each under its own
@@ -208,16 +209,23 @@ function stripConfigPathPrefix(checkId) {
 // ALWAYS sliced from the real mirrored source file by byte offset
 // (`start.offset`/`end.offset`) — this Semgrep version reports
 // `extra.lines` as the fixed literal string "requires login" regardless of
-// the actual match, so it can never be trusted as the matched text. Fails
-// closed (throws, caught by `run`'s top-level fail-closed handler) when a
-// result's metadata is missing the `skill` pointer every pre-write rule is
-// required to carry: a rule that would deny a write without pointing the
-// agent at the skill section explaining why is a guard bug, not a rule
-// this hook can safely enforce.
+// the actual match, so it can never be trusted as the matched text.
+// `start.offset`/`end.offset` are UTF-8 BYTE offsets, not UTF-16 code-unit
+// indices, so the source is read as a raw Buffer and sliced there — slicing
+// a decoded JS string with them would misalign on any non-ASCII byte
+// earlier in the file (a Cyrillic comment, an em dash) and read the wrong
+// span, or a pre-existing finding's span, as new. Fails closed (throws,
+// caught by `run`'s top-level fail-closed handler) when a result's metadata
+// is missing the `skill` pointer every pre-write rule is required to carry:
+// a rule that would deny a write without pointing the agent at the skill
+// section explaining why is a guard bug, not a rule this hook can safely
+// enforce.
 function buildFinding(temporaryRoot, result) {
   const tree = result.path.split('/')[0];
-  const sourceText = fs.readFileSync(path.join(temporaryRoot, result.path), 'utf8');
-  const matchedText = sourceText.slice(result.start.offset, result.end.offset);
+  const sourceBuffer = fs.readFileSync(path.join(temporaryRoot, result.path));
+  const matchedText = sourceBuffer
+    .subarray(result.start.offset, result.end.offset)
+    .toString('utf8');
   const metadata = result.extra?.metadata || {};
   if (!metadata.skill) {
     throw new Error(`semgrep rule ${result.check_id} is missing metadata.skill`);

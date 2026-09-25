@@ -341,6 +341,81 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
     expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
   });
 
+  it('denies when CLAUDE_PROJECT_DIR cannot be resolved', () => {
+    const missingProjectDirectory = join(
+      tmpdir(),
+      `kiko-prewrite-missing-project-${process.pid}-${Date.now()}`,
+    );
+    const targetFile = join(missingProjectDirectory, 'src', 'example.ts');
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: 'export const value = 1;\n' }),
+      baseEnv({ CLAUDE_PROJECT_DIR: missingProjectDirectory }),
+    );
+
+    expect(result.status).toBe(2);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
+  });
+
+  it('denies on a non-ENOENT realpath error (a symlink loop) instead of allowing unchecked', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const loopPath = join(project, 'loop.ts');
+    symlinkSync(loopPath, loopPath);
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: loopPath, content: 'export const value = 1;\n' }),
+      baseEnv({ CLAUDE_PROJECT_DIR: project }),
+    );
+
+    expect(result.status).toBe(2);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
+  });
+
+  it('treats a file name starting with ".." as inside the project, not outside', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const marker = join(project, 'marker.txt');
+    const targetFile = join(project, '..env-shim.ts');
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: 'export const value = 1;\n' }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        KIKO_PREWRITE_TEST_MARKER: marker,
+      }),
+    );
+
+    expect(result.status).toBe(0);
+    expect(existsSync(marker)).toBe(true);
+  });
+
+  it('denies an unknown tool_name instead of treating BEFORE as AFTER', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'example.ts');
+    writeFileSync(targetFile, 'export const value = 0;\n');
+
+    const result = runGuard(
+      payloadFor('NotebookEdit', { file_path: targetFile, content: 'export const value = 1;\n' }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
+  });
+
   it('denies on internal timeout and leaves no temp root', () => {
     const scratchTemporaryDirectory = createTempDirectory('kiko-prewrite-scratch-');
     const project = createTempDirectory('kiko-prewrite-project-');
@@ -426,12 +501,15 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
   // fail-closed wrapper contract (Step 3: "Any other code, or node missing,
   // means the wrapper prints its own deny JSON") — left untested, this
   // branch of pre-write-guard.sh would ship unverified.
-  it("denies via the wrapper's own JSON when node exits with an unexpected code", () => {
+  it("denies via the wrapper's own JSON when node exits with an unexpected code, even with a multi-line stderr", () => {
     const project = createTempDirectory('kiko-prewrite-project-');
     const fakeBinDirectory = join(project, 'fake-bin');
     mkdirSync(fakeBinDirectory);
     const fakeNodePath = join(fakeBinDirectory, 'node');
-    writeFileSync(fakeNodePath, "#!/usr/bin/env bash\nprintf 'boom' >&2\nexit 42\n");
+    writeFileSync(
+      fakeNodePath,
+      "#!/usr/bin/env bash\nprintf 'boom\\n    at first (stack.js:1)\\n    at second (stack.js:2)\\n' >&2\nexit 42\n",
+    );
     chmodSync(fakeNodePath, 0o755);
 
     const result = runGuard(
@@ -443,6 +521,7 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
     const parsed = JSON.parse(result.stdout);
     expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
     expect(parsed.hookSpecificOutput.permissionDecisionReason).toContain('exit 42');
+    expect(parsed.hookSpecificOutput.permissionDecisionReason).toContain('boom');
     expect(result.stderr).toContain('boom');
   });
 });
@@ -875,6 +954,55 @@ describe('Semgrep pass + new-findings-only diff', () => {
     const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
     expect(reason).toContain('someActualCode');
     expect(reason).not.toContain('requires login');
+  });
+
+  it('slices matched text by UTF-8 byte offset, not UTF-16 code unit, for non-ASCII source', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeFindingsStub(project);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'example.ts');
+    const beforeContent = 'switch (x) {\n};\n';
+    const afterContent = `// Кіко — гривня\n${beforeContent}`;
+    writeFileSync(targetFile, beforeContent);
+    const needle = 'switch (x) {';
+    const beforeOffsetStart = beforeContent.indexOf(needle);
+    const afterPrefix = afterContent.slice(0, afterContent.indexOf(needle));
+    const afterOffsetStart = Buffer.byteLength(afterPrefix, 'utf8');
+    const afterOffsetEnd = afterOffsetStart + Buffer.byteLength(needle, 'utf8');
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: afterContent }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        STUB_RESULTS_BEFORE: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'before/src/example.ts',
+            line: 1,
+            offsetStart: beforeOffsetStart,
+            offsetEnd: beforeOffsetStart + needle.length,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+        ]),
+        STUB_RESULTS_AFTER: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'after/src/example.ts',
+            line: 2,
+            offsetStart: afterOffsetStart,
+            offsetEnd: afterOffsetEnd,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+        ]),
+      }),
+    );
+
+    expect(result.status).toBe(0);
   });
 
   it('runs one semgrep process, AFTER only, when AFTER is clean', () => {
