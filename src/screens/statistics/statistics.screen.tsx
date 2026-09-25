@@ -8,9 +8,9 @@ import { transactionsRepo } from '@kiko/transactions/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
-import { holdingDescriptor } from '@kiko/holdings/holding-descriptor';
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
 
 import {
   type BackfillStatus,
@@ -473,7 +473,7 @@ const StatisticsScreen: FC = () => {
   // clears its links), so neither should change whether its payment's
   // interest counts.
   const loanHoldings = useMemo(
-    () => holdings.filter((holding) => holdingDescriptor(holding.type).side === 'debt'),
+    () => holdings.filter((holding) => holdingDescriptorOrUndefined(holding.type)?.side === 'debt'),
     [holdings],
   );
 

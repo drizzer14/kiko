@@ -1,8 +1,11 @@
+import { derivedEntries } from '../derived-entries';
 import { holdingTypes, type HoldingType } from '../holding-type';
+import { holdingValueBreakdown, type ValuableHolding } from '../holding-value';
 
 import {
   holdingDescriptor,
   holdingDescriptors,
+  holdingDescriptorOrUndefined,
   isLedgerlessHoldingType,
   isTimeExemptHoldingType,
 } from './holding-descriptors';
@@ -46,10 +49,48 @@ describe('ledgerless holding types', () => {
   });
 });
 
-// The flag table every per-type descriptor was built from
-// (`.superpowers/sdd/shares-property-metals-debts/R3-plan.md`, Phase B):
-// pinning it here catches a descriptor silently drifting from the table a
-// future edit no longer reads.
+describe('holdingDescriptorOrUndefined', () => {
+  it('returns undefined for a type the registry does not know', () => {
+    expect(holdingDescriptorOrUndefined('not-a-real-type' as HoldingType)).toBeUndefined();
+  });
+
+  it("returns undefined for an inherited Object.prototype key, not that key's value", () => {
+    expect(holdingDescriptorOrUndefined('constructor' as HoldingType)).toBeUndefined();
+  });
+});
+
+// A malformed/absent stored `type` must degrade to the same tolerant fallback
+// every facade gave before the registry existed, never throw — pins the
+// tolerance `holdingValueBreakdown` and `derivedEntries` claim for a row a
+// later app build's holding type this build does not know.
+describe('the facades tolerate an unknown stored type', () => {
+  it('holdingValueBreakdown falls back to the flat stored balance', () => {
+    const holding: ValuableHolding = {
+      type: 'not-a-real-type' as HoldingType,
+      currency: 'UAH',
+      balanceMinorUnits: 12_345,
+      metadata: null,
+    };
+
+    expect(holdingValueBreakdown(holding, Date.now()).net.minorUnits).toBe(12_345);
+  });
+
+  it('derivedEntries returns no entries', () => {
+    const holding: ValuableHolding & { id: string } = {
+      id: 'h1',
+      type: 'not-a-real-type' as HoldingType,
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      metadata: null,
+    };
+
+    expect(derivedEntries(holding, Date.now(), ((key: string) => key) as never)).toEqual([]);
+  });
+});
+
+// The flag table every per-type descriptor was built from: pinning it here
+// catches a descriptor silently drifting from the table a future edit no
+// longer reads.
 const flagTable: ReadonlyArray<{
   type: HoldingType;
   ledgerless: boolean;

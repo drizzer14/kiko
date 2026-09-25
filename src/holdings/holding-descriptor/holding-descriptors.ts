@@ -30,12 +30,19 @@ export const holdingDescriptor = (type: HoldingType): HoldingDescriptor => holdi
 /**
  * A lookup safe for a `type` read straight off a stored row: the schema types
  * `holdings.type` as this exact enum, but SQLite enforces no such constraint,
- * so a corrupted row could hold any string. Returns `undefined` instead of
- * throwing, matching the pre-registry `ts-pattern` dispatches' `.otherwise()`
- * tolerance for a malformed/absent type.
+ * so a corrupted row could hold any string — including an inherited
+ * `Object.prototype` key such as `'constructor'` or `'toString'`, which a
+ * plain index would resolve to a non-undefined value despite never being a
+ * real holding type. `Object.hasOwn` checks the object's OWN keys only, so
+ * those resolve to `undefined` too. Returns `undefined` instead of throwing,
+ * matching the pre-registry `ts-pattern` dispatches' `.otherwise()` tolerance
+ * for a malformed/absent type.
  */
-export const holdingDescriptorOrUndefined = (type: HoldingType): HoldingDescriptor | undefined =>
-  (holdingDescriptors as Record<string, HoldingDescriptor>)[type];
+export const holdingDescriptorOrUndefined = (type: HoldingType): HoldingDescriptor | undefined => {
+  const descriptors = holdingDescriptors as Record<string, HoldingDescriptor>;
+
+  return Object.hasOwn(descriptors, type) ? descriptors[type] : undefined;
+};
 
 // A transaction row must NOT stamp a term_deposit contribution or a bond
 // purchase/coupon/redemption with a time-of-day: both are day-granular events,
