@@ -11,9 +11,9 @@ import type { SummaryTableProps } from './summary-table.props';
  * heading row, then a `gap`-spaced stack of rows, each split by
  * `space-between` — the deposit/bond value breakdown's own layout
  * (`HoldingDetailScreen`), extracted here so the statement-import preview
- * and column-mapping result section (device-feedback-round-F1, items 3 and
- * 9) reuse the SAME row layout/alignment/styling without copying the
- * deposit table's own COLUMNS (value/percent/tax) — a caller supplies
+ * and column-mapping result section reuse the SAME row
+ * layout/alignment/styling without copying the deposit table's own COLUMNS
+ * (value/percent/tax) — a caller supplies
  * whatever `rows` make sense for its own domain.
  */
 const SummaryTable: FC<SummaryTableProps> = ({ title, rows, testID }) => {

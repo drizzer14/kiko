@@ -122,7 +122,7 @@ export const darkTheme = {
     // so a control on the sheet (an ChipRow selected chip, at `surfaceHigh`)
     // reads as raised instead of blending into the sheet. Before this, the sheet
     // used `surfaceHigh` itself, the SAME tone as a selected pill, so the two
-    // blended (on-device review). This is `#1C1C1E` — kept a DISTINCT
+    // blended. This is `#1C1C1E` — kept a DISTINCT
     // semantic token from `surface` (like `onAccent` vs `textPrimary`)
     // because its role is the sheet's grouped base, not a card surface, and
     // the two were always meant to be free to diverge: `surface` was later

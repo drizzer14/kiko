@@ -62,8 +62,8 @@ export const styles = StyleSheet.create((theme) => ({
     flex: 1,
   },
   // The title line: the label on the left, an optional `trailing` node
-  // (device-feedback-round-3 item 7 — the bank picker's capability icons)
-  // pinned to the far right. Top-aligned so a `trailing` icon lines up with
+  // (the bank picker's capability icons) pinned to the far right.
+  // Top-aligned so a `trailing` icon lines up with
   // the label's FIRST line rather than the full label+description height —
   // the same `alignItems: 'flex-start'` reasoning as `SettingsRow`'s own
   // header row.

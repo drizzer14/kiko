@@ -90,13 +90,12 @@ describe('BottomSheet', () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
-  // R2-1 (F3 part 1 fix round 3, Minor): a real completion signal for "the
-  // sheet has actually finished closing" — RN `Modal`'s own `onDismiss`
-  // (iOS only; fires once the dismiss ANIMATION has finished, unlike
-  // `onDismiss`/`onRequestClose` above, which mean "a dismiss was
-  // requested"). Passed through as its own optional prop so a caller that
-  // needs to run something ONLY after the close animation completes (e.g.
-  // navigating away) doesn't have to guess a delay.
+  // A real completion signal for "the sheet has actually finished closing" —
+  // RN `Modal`'s own `onDismiss` (iOS only; fires once the dismiss ANIMATION
+  // has finished, unlike `onDismiss`/`onRequestClose` above, which mean "a
+  // dismiss was requested"). Passed through as its own optional prop so a
+  // caller that needs to run something ONLY after the close animation
+  // completes (e.g. navigating away) doesn't have to guess a delay.
   it('calls onClosed when the underlying Modal reports its own dismiss (the close animation finished)', async () => {
     const onClosed = jest.fn();
     const { getByTestId } = await render(
@@ -350,7 +349,7 @@ describe('BottomSheet', () => {
     expect(childStyle.backgroundColor).not.toBe(darkTheme.colors.background);
   });
 
-  // F5 device bug: the 66% cap above was forced on every sheet, but the
+  // The 66% cap above was forced on every sheet, but the
   // primitive rendered no scroll container of its own, so a plain-Box sheet
   // (filter-menu, date-field, the transaction-form category-override
   // confirm) whose content ran taller than the cap simply got CLIPPED, with

@@ -15,7 +15,7 @@ jest.mock('../../db/client', () => {
 });
 
 // CANONICAL_SEED is the canonical seed the migration must insert: one stable
-// slug per MCC category (src/monobank/mcc-category.ts) plus `other`. Task 14's
+// slug per MCC category (src/monobank/mcc-category.ts) plus `other`. The
 // MCC -> display-key mapping must produce these exact keys. Shared with the
 // screen tests via one fixture so the canonical list lives in a single place.
 import type { SQL } from 'drizzle-orm';

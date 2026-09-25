@@ -50,7 +50,7 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
     //
     // `scrollable={false}`: the Remove/Cancel footer below must stay pinned at
     // the body end regardless of scroll position — BottomSheet's shared
-    // ScrollView (F5 fix) would otherwise sweep it into the same scrollable
+    // ScrollView would otherwise sweep it into the same scrollable
     // region as the grid above it, along with nesting a second same-axis
     // ScrollView around this component's own. The title renders through the
     // shared `header` prop instead (see below); the actions used to sit in a

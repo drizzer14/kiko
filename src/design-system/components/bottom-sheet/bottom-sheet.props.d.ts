@@ -17,8 +17,7 @@ export type BottomSheetProps = {
    * only needs the request signal (the vast majority) never passes it, and
    * every existing `BottomSheet` caller is unaffected. Use this for
    * anything that must not run until the sheet is visually gone — e.g.
-   * navigating the screen away, which would otherwise pop mid-animation
-   * (F3 part 1 fix round 3, R2-1).
+   * navigating the screen away, which would otherwise pop mid-animation.
    */
   onClosed?: () => void;
   /** The sheet's content, laid out in a bottom-anchored column. */

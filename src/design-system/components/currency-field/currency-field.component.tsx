@@ -171,7 +171,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
       />
 
       {/* `scrollable={false}`: this sheet pins a search TextField above its OWN
-          virtualized FlatList — BottomSheet's shared ScrollView (F5 fix) would
+          virtualized FlatList — BottomSheet's shared ScrollView would
           otherwise wrap the search field into the same scrollable region as
           the rows, instead of keeping it pinned at the top like the heading.
           A FlatList inside the sheet's `Box` body (not a ScrollView) also

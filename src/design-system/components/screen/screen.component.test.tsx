@@ -271,7 +271,7 @@ describe('Screen', () => {
     // intermediate padded wrapper `View` between the SafeAreaView and the child
     // scrollable stops that collapse — the working `account-detail` scroll
     // branch proves a scrollable rendered as a DIRECT child of the SafeAreaView
-    // both collapses AND does not float (feedback round-3, item 1). So under
+    // both collapses AND does not float. So under
     // `bleedTop` Screen renders the child directly, with NO `screen-content`
     // wrapper, exactly like the scroll branch's ScrollView: the child (a
     // FlatList) becomes the tracked scroll view. The render helper's plain

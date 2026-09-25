@@ -168,9 +168,9 @@ describe('IconPickerModal', () => {
     const { getByText } = await setup({ onRemove });
 
     // Per the button-hierarchy spec, a sheet-row action MATCHES its primary
-    // sibling's size rather than shrinking to `compact` — this pins the C2 fix
-    // (the icon picker's actions used to be `size="compact"`, the app's one
-    // outlier footer at a different size than every other sheet's footer).
+    // sibling's size rather than shrinking to `compact` — the icon picker's
+    // actions used to be `size="compact"`, the app's one outlier footer at a
+    // different size than every other sheet's footer.
     const remove = ancestorWithStyle(getByText('Remove'), 'minHeight');
     const cancel = ancestorWithStyle(getByText('Cancel'), 'minHeight');
 

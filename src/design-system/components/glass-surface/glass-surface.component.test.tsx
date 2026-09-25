@@ -111,7 +111,7 @@ describe('GlassSurface', () => {
   // The border must land on the very first render for the same reason as the
   // tint: it flows through a Unistyles-managed style member, so its width/color
   // are written to the native ShadowNode on the first frame rather than only
-  // after a re-render (the intermittently-bordered card bug, G2).
+  // after a re-render, which used to leave the border intermittently missing.
   it('draws the hairline separator border on first render when bordered', async () => {
     const { getByTestId } = await render(
       <GlassSurface testID="bordered-surface" bordered>

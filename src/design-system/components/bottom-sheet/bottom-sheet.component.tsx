@@ -41,7 +41,7 @@ const MAX_HEIGHT_RATIO = 0.66;
 // (`resolveKeyboardLift`), the keyboard's own corner curve exposes a small
 // triangular sliver of whatever sits BEHIND both of them at the top-left/
 // top-right corners — the dark modal scrim, not the sheet's glass, reading as
-// two small black notches (device bug, on-device review). Folding this extra
+// two small black notches. Folding this extra
 // distance into the SAME "accessory height" both `resolveKeyboardLift` and
 // `resolveKeyboardAwareBottomPadding` already take (see `sheetAnimatedStyle`
 // below) lifts the sheet LESS (its bottom edge now extends this far PAST the
@@ -112,7 +112,7 @@ export const SHEET_DRAG_GESTURE_TEST_ID = 'bottom-sheet-drag';
  * `glass-surface.props.d.ts`'s `material` doc for the full distinction; this
  * was `transparent` before, which painted a translucent `surfaceTranslucent`
  * backdrop UNDER the glass and muted the live sample into a near-solid dark
- * panel — device feedback). It also takes `bloom` (part of the app-wide
+ * panel). It also takes `bloom` (part of the app-wide
  * bloom rollout — see `glass-surface.props.d.ts`'s `bloom` doc): since
  * `material` already renders no backdrop on the glass path, the only change
  * `bloom` adds here is switching the native `UIGlassEffect` style from
@@ -292,7 +292,7 @@ const BottomSheet: FC<BottomSheetProps> = ({
         translateY.value = withSpring(0, SHEET_SPRING);
       }
     });
-  // F5 device bug fix: the 66% cap above is forced on every sheet, but a
+  // The 66% cap above is forced on every sheet, but a
   // plain-Box sheet rendered no scroll container of its own, so content
   // taller than the cap was simply CLIPPED rather than scrollable. The
   // default path wraps `children` in a `ScrollView` so every sheet scrolls

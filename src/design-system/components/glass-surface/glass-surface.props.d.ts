@@ -23,7 +23,7 @@ export type GlassSurfaceProps = ViewProps & {
   // there is no ShadowNode-reconciliation gap to route around: it paints on
   // the first frame the same way `children` always has (the
   // first-paint-transparent bug an inline style on the parent node used to
-  // hit). Opaque by design (F4 device bug fix): the wash fully covers
+  // hit). Opaque by design: the wash fully covers
   // whichever base sits under it (the flat themed surface on the fallback
   // path, the Liquid Glass material on the glass path), so the visible
   // result is identical on both paths and can no longer be diluted by
@@ -189,6 +189,6 @@ export type GlassSurfaceProps = ViewProps & {
   // ShadowNode-reconciliation reason as `tint`: a foreign inline border is not
   // written to the native node until the next React commit, so it appears only
   // intermittently on the first paint. Routing it through the managed style
-  // makes the border land on the first frame every time (G2).
+  // makes the border land on the first frame every time.
   bordered?: boolean;
 };
