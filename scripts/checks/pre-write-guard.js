@@ -356,6 +356,24 @@ function parseFullWordIdentifiersCheckerOutput(stdout) {
   return findings;
 }
 
+// blank-line-separation.js's output is one `<path>:<line>: <kind>:
+// <statement>` line per violation — see its own `findViolations`. `<kind>`
+// is always one bare lowercase word (`return`/`if`/`for`/`while`/`jsx`), so
+// the pattern anchors on the LAST `:<digits>: <word>: ` run for the same
+// path-can-contain-colons reason as the full-word-identifiers pattern above.
+const BLANK_LINE_SEPARATION_VIOLATION_LINE = /:(\d+): (\w+): (.*)$/;
+
+function parseBlankLineSeparationCheckerOutput(stdout) {
+  const findings = [];
+  for (const line of stdout.split('\n')) {
+    const match = BLANK_LINE_SEPARATION_VIOLATION_LINE.exec(line);
+    if (match) {
+      findings.push({ line: Number(match[1]), matchedText: match[3] });
+    }
+  }
+  return findings;
+}
+
 // Finds the 1-based line of the `export` declaration that introduces
 // `name` — tried, in order, against every shape
 // one-component-per-file.ts's own `classifySlice` recognizes an EXPORTED
@@ -439,6 +457,19 @@ const NODE_RULES = [
     fix: 'move every exported component but the first into its own file',
     skill: 'kiko-code-style › One component per file, each in its own folder',
     run: (filePath) => runOneComponentPerFileChecker(filePath),
+  },
+  {
+    ruleId: 'kiko-blank-line-separation',
+    extensions: ['.ts', '.tsx'],
+    fix: 'run `node scripts/checks/blank-line-separation.js --write <file>`, or insert a blank line by hand above the return/if/for/while statement (or JSX sibling), unless it is the first statement of its block or already preceded by a comment',
+    skill:
+      'kiko-code-style › Blank lines before statement blocks / Blank line between adjacent JSX sibling nodes',
+    run: (filePath) =>
+      runSpawnedNodeChecker(
+        'blank-line-separation.js',
+        filePath,
+        parseBlankLineSeparationCheckerOutput,
+      ),
   },
 ];
 

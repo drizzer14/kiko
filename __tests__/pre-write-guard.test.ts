@@ -1348,3 +1348,38 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
     expect(reason).toContain('exited 3');
   });
 });
+
+// Rule 11: the REAL blank-line-separation.js checker against the mirrored
+// tree — only Semgrep is stubbed clean here, the same convention as the
+// rules 4/5/6 describe block above.
+describe('runNodeChecks (rule 11: blank-line-separation)', () => {
+  it('denies an edit that adds a return with no blank line above (kiko-blank-line-separation)', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'example.ts');
+
+    const result = runGuard(
+      payloadFor('Write', {
+        file_path: targetFile,
+        content: [
+          'export function foo(value: number): number {',
+          '  const doubled = value * 2;',
+          '  return doubled;',
+          '}',
+          '',
+        ].join('\n'),
+      }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-blank-line-separation');
+    expect(reason).toContain('return doubled;');
+  });
+});

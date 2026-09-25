@@ -7,6 +7,7 @@
     "scripts/checks/kill-guard.js",
     "scripts/checks/import-order.js",
     "scripts/checks/full-word-identifiers.js",
+    "scripts/checks/blank-line-separation.js",
     "scripts/checks/pre-write-guard.js"
   ],
   "ignoreDependencies": [

@@ -195,6 +195,26 @@ verified usage, not dead weight:
   `full-word-identifiers.sh` (and so `full-word-identifiers.js`) as a
   subprocess — not an import, so Jest's coverage does not make Knip see it
   as reachable either.
+- **`knip.json` `ignore`**: `scripts/checks/blank-line-separation.js` — the
+  same shape as `import-order.js`/`full-word-identifiers.js`/
+  `kill-guard.js` above. `scripts/checks/blank-line-separation.sh` reaches
+  it only via a `node` invocation (both its per-file mode and its
+  project-wide mode), and `scripts/checks/pre-write-guard.js` reaches it
+  only via `runSpawnedNodeChecker`'s own `spawnSync` — never a static
+  `import`/`require`, and never a package.json script Knip's static scan
+  can see (it mechanizes kiko-code-style's "Blank lines before statement
+  blocks" and "Blank line between adjacent JSX sibling nodes" rules, wired
+  into the pre-write guard's `NODE_RULES` as `kiko-blank-line-separation`;
+  it is guard-mode only for now — not yet in `check:all`, so its
+  project-wide mode has no package.json script either), so Knip's
+  reachability graph reports it as unused. Exercised directly by
+  `__tests__/blank-line-separation.test.ts`, which spawns
+  `blank-line-separation.sh` (and so `blank-line-separation.js`) as a
+  subprocess, and by a direct `node blank-line-separation.js [--write]`
+  invocation in the same test file, and by
+  `__tests__/pre-write-guard.test.ts`'s `kiko-blank-line-separation` case
+  (via `pre-write-guard.sh`) — none of which Jest's static import graph
+  makes Knip see as reachable.
 - **`scripts/checks/full-word-identifiers.js`'s own `EXEMPTIONS` list**: an
   exact `(file path suffix, denylisted word, EXACT identifier name)`
   allowlist mechanizing kiko-code-style's "Full words in identifiers"
