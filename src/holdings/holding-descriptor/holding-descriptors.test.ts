@@ -61,8 +61,8 @@ describe('holdingDescriptorOrUndefined', () => {
 
 // A malformed/absent stored `type` must degrade to the same tolerant fallback
 // every facade gave before the registry existed, never throw — pins the
-// tolerance `holdingValueBreakdown` and `derivedEntries` claim for a row a
-// later app build's holding type this build does not know.
+// tolerance `holdingValueBreakdown` and `derivedEntries` claim for a row
+// written by a later app build with a holding type this build does not know.
 describe('the facades tolerate an unknown stored type', () => {
   it('holdingValueBreakdown falls back to the flat stored balance', () => {
     const holding: ValuableHolding = {

@@ -210,7 +210,9 @@ for the current full set), Monobank statement kinds, ISO 4217 numeric
 codes — uses `ts-pattern`'s `match(...).exhaustive()` rather than a
 `switch` or an `if`/`else` chain. Exhaustiveness checking means adding
 a new currency or a new holding type is a compile error at every
-mapping site that hasn't been updated, not a silent runtime gap.
+mapping site that hasn't been updated, not a silent runtime gap. See
+`kiko-domain`'s "Adding a holding type" section for the full
+descriptor/form/detail-spec checklist a new holding type needs.
 
 A single boolean guard used exactly once (an `if`/`else` with no
 closed-set enum behind it) may stay as-is. Every branch over a closed

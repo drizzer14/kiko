@@ -160,13 +160,17 @@ Either descriptor's `valueMinor` returns `null` when the holding has no
 guard returns `null` ahead of both when the holding has no `id`.
 
 **A priced holding with no price point values at its lots' cost basis,
-never 0** — the generic `pricedBreakdown(spec, holding, now, book)`
-(`src/holdings/holding-descriptor/priced-parts/`), called from each priced
-type's own descriptor `breakdown`, falls back to `costBasisMinorAt`
-whenever `pricedValueOrNull` returns `null`. `spec.lots(metadata)` — each
-descriptor's own `asMetalMeta`/`asPropertyMeta` parse — runs before this
-shared cost-basis logic, so a `metal` holding's differently-shaped metadata
-never silently mis-parses into the flat stored balance. For a priced type,
+never 0** — `pricedDescriptor(spec, rest)`
+(`src/holdings/holding-descriptor/priced-parts/`), which every priced
+type's own descriptor is built through, wires its `breakdown` to that
+SAME `spec` internally (the private `pricedBreakdown` helper), so a
+per-type file can never pass a `priced` spec its `breakdown` reads a
+different one from. That shared breakdown falls back to
+`costBasisMinorAt` whenever `pricedValueOrNull` returns `null`.
+`spec.lots(metadata)` — each descriptor's own `asMetalMeta`/`asPropertyMeta`
+parse — runs before this shared cost-basis logic, so a `metal` holding's
+differently-shaped metadata never silently mis-parses into the flat
+stored balance. For a priced type,
 `gross = net =` the resolved value and `principalOrCost` is ALWAYS the
 cost basis (even when gross also equals the cost basis on the
 no-price-point path) — the holding-detail breakdown needs cost basis
