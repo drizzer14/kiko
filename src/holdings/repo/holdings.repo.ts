@@ -387,18 +387,22 @@ export const holdingsRepo = {
 
       const point = await match(pricePointOp)
         .with({ kind: 'none' }, () => null)
-        .with({ kind: 'upsert' }, (op) => ({ day: op.day, price: op.price, currency: op.currency }))
-        .with({ kind: 'move' }, async (op) => {
+        .with({ kind: 'upsert' }, (operation) => ({
+          day: operation.day,
+          price: operation.price,
+          currency: operation.currency,
+        }))
+        .with({ kind: 'move' }, async (operation) => {
           await databaseTransaction
             .delete(pricePoints)
             .where(
               and(
                 eq(pricePoints.instrument, holdingInstrument(holdingId)),
-                eq(pricePoints.day, op.oldDay),
+                eq(pricePoints.day, operation.oldDay),
               ),
             );
 
-          return { day: op.newDay, price: op.price, currency: op.currency };
+          return { day: operation.newDay, price: operation.price, currency: operation.currency };
         })
         .exhaustive();
 
