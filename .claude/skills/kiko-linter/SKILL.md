@@ -449,7 +449,15 @@ side-effect barrier between them) is also a checked violation —
 `mergeAdjacentSameKindGroups` folds them into one group and re-sorts
 the result, so `--write` fixes this shape itself; it only leaves the
 merge for a human when the "comment glued to a non-first import"
-safety rule above marks one of the two groups unsafe to touch.
+safety rule above marks one of the two groups unsafe to touch, OR
+when the LATER group has its own PREFIX comment (a comment run
+directly above that group's first import) — folding it would strand
+that prefix mid-chain once the group boundary disappears, with
+nowhere left to attach it. `mergeAdjacentSameKindGroups` returns this
+second case as `blockedByPrefix` (the 1-based ORIGINAL group number),
+and `--write` prints `left for hand merge: <file> group N (prefix
+comment)` and exits non-zero for it — never a silent no-op that reads
+as "nothing to fix" while the merge violation is still there.
 
 ## `kiko-no-switch` — an AST `switch` pattern, not a keyword regex
 

@@ -39,7 +39,9 @@
 // violation above) — see mergeAdjacentSameKindGroups — unless a later group
 // in the run carries its own prefix comment, which would otherwise strand
 // mid-chain once the group boundary disappears; that shape is left for a
-// human to merge by hand instead.
+// human to merge by hand instead, and `--write` prints
+// "left for hand merge: <file> group N (prefix comment)" and exits non-zero
+// so the leftover violation is never silently mistaken for a clean file.
 
 const fs = require('node:fs');
 
@@ -490,9 +492,6 @@ function checkImportOrder(source) {
   return violations;
 }
 
-// Reorders every SAFE group's items (stable sort by sortKey, partitioned at
-// barriers) and reassembles the file. A group with an interior comment is
-// left completely untouched. Returns { text, changed, unsafeGroups }.
 // Folds each run of adjacent groups sharing the same single kind into one
 // chain link — the fixer's side of the "two adjacent groups of the same
 // kind should be one group" rule checkGroupAdjacency flags above. A link
@@ -501,32 +500,41 @@ function checkImportOrder(source) {
 // no prefix comment either — a prefix stranded mid-chain, once its group
 // boundary disappears, would have nowhere left to attach. The chain's own
 // leading prefix (if any) survives untouched, since only later links are
-// ever checked for one.
+// ever checked for one. Returns { chains, blockedByPrefix }: blockedByPrefix
+// is the list of (1-based) ORIGINAL group numbers whose own prefix comment
+// is the ONLY reason they were not folded into an otherwise-matching
+// previous group — the shape fixImportOrder cannot silently leave unreported,
+// since it would otherwise write the file's other, unrelated fixes and exit
+// as if nothing were left to do.
 function mergeAdjacentSameKindGroups(analyzedGroups) {
   const chains = [];
+  const blockedByPrefix = [];
 
-  for (const group of analyzedGroups) {
+  analyzedGroups.forEach((group, index) => {
     const kind = group.interiorComment ? null : groupKindOf(group.items);
     const previous = chains[chains.length - 1];
+    const sameKindAsPrevious =
+      previous && previous.kind !== null && previous.kind === kind && !previous.interiorComment;
 
-    if (
-      previous &&
-      previous.kind !== null &&
-      previous.kind === kind &&
-      !previous.interiorComment &&
-      !group.interiorComment &&
-      group.prefix === null
-    ) {
+    if (sameKindAsPrevious && !group.interiorComment && group.prefix === null) {
       previous.items = previous.items.concat(group.items);
-      continue;
+      return;
+    }
+
+    if (sameKindAsPrevious && !group.interiorComment && group.prefix !== null) {
+      blockedByPrefix.push(index + 1);
     }
 
     chains.push({ ...group, kind });
-  }
+  });
 
-  return chains;
+  return { chains, blockedByPrefix };
 }
 
+// Reorders every SAFE group's items (stable sort by sortKey, partitioned at
+// barriers) and reassembles the file. A group with an interior comment is
+// left completely untouched. Returns { text, changed, unsafeGroups,
+// blockedByPrefix }.
 function fixImportOrder(source) {
   const lines = source.split('\n');
   const start = skipPrelude(lines);
@@ -536,7 +544,7 @@ function fixImportOrder(source) {
     groupEntries,
     ...analyzeGroup(groupEntries),
   }));
-  const chains = mergeAdjacentSameKindGroups(analyzedGroups);
+  const { chains, blockedByPrefix } = mergeAdjacentSameKindGroups(analyzedGroups);
   let unsafeGroups = 0;
   let changed = chains.length !== analyzedGroups.length;
 
@@ -581,7 +589,25 @@ function fixImportOrder(source) {
   const gap = Array(trailingBlankCount(entries)).fill('');
   const text = [...prelude, ...leadingGap, ...rebuiltHeader, ...gap, ...rest].join('\n');
 
-  return { text, changed, unsafeGroups };
+  return { text, changed, unsafeGroups, blockedByPrefix };
+}
+
+// Applies --write to one file, printing what it did. Returns true when a
+// violation is left behind for a human (a blocked merge) — the caller uses
+// this to fail the process instead of exiting 0 on a silent no-op.
+function writeFile(file, source) {
+  const { text, changed, blockedByPrefix } = fixImportOrder(source);
+
+  if (changed) {
+    fs.writeFileSync(file, text);
+    process.stdout.write(`fixed: ${file}\n`);
+  }
+
+  for (const groupNumber of blockedByPrefix) {
+    process.stdout.write(`left for hand merge: ${file} group ${groupNumber} (prefix comment)\n`);
+  }
+
+  return blockedByPrefix.length > 0;
 }
 
 function runCli() {
@@ -599,10 +625,8 @@ function runCli() {
     const source = fs.readFileSync(file, 'utf8');
 
     if (write) {
-      const { text, changed } = fixImportOrder(source);
-      if (changed) {
-        fs.writeFileSync(file, text);
-        process.stdout.write(`fixed: ${file}\n`);
+      if (writeFile(file, source)) {
+        anyViolation = true;
       }
       continue;
     }

@@ -382,6 +382,28 @@ describe('scripts/checks/import-order.js --write', () => {
     expect(write(source)).toBe(source);
   });
 
+  // Before this fix, the shape above left the merge violation in place and
+  // --write still exited 0 with no output — a silent no-op an agent (or a
+  // repo-wide sweep) would read as "nothing to fix" instead of "needs a
+  // human". --write must surface the exact group left unmerged and its
+  // reason, and fail loud rather than pretend the file is clean.
+  it('reports the blocked merge and exits non-zero, instead of silently doing nothing', () => {
+    const source =
+      "import { useTranslation } from 'react-i18next';\n" +
+      '\n' +
+      '// explains this package specifically\n' +
+      "import Box from '@kiko/design-system/components/box';\n" +
+      '\n' +
+      'export const Foo = 1;\n';
+    const file = join(directory, 'fixture.ts');
+    writeFileSync(file, source);
+
+    const result = spawnSync('node', [ANALYZER, '--write', file], { encoding: 'utf8' });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain(`left for hand merge: ${file} group 2 (prefix comment)`);
+  });
+
   // Property: for every fixture above, --write only ever reorders lines — it
   // never loses or invents one. Sorting a multiset-equal line array proves
   // nothing was dropped or duplicated, independent of what order they land in.

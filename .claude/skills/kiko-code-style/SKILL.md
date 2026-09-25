@@ -583,7 +583,10 @@ The convention (handwritten, Prettier-only exemplar:
   them) is also a violation — they must merge into one group. The
   checker's `--write` mode does this merge itself (see the kiko-linter
   skill's "Import length-sort" section); it only asks a human to merge
-  by hand when a comment glued to a non-first import blocks the fixer.
+  by hand when a comment glued to a non-first import blocks the fixer,
+  or when the LATER group carries its own prefix comment (`--write`
+  prints "left for hand merge: <file> group N (prefix comment)" and
+  exits non-zero rather than leave the violation unreported).
 
 Use `import type` when the entire import is types:
 
