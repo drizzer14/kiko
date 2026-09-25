@@ -106,7 +106,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
   const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
   const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
-  const priceBook = usePriceBook();
+  const { book: priceBook } = usePriceBook();
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const { data: transactions } = useLiveQuery(transactionsRepo.listAllWithContextQuery(), [
     'transactions',

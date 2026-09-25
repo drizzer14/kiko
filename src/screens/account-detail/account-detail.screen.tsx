@@ -68,7 +68,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const { data: holdings } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings']);
   const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
-  const priceBook = usePriceBook();
+  const { book: priceBook } = usePriceBook();
   const account = accounts.at(0);
 
   // The nav title shows the account NAME only — the native large title, the

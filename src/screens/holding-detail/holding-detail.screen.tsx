@@ -396,7 +396,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // converted base-currency caption beneath it — the same second line the
   // holding card shows for a holding in a non-base currency.
   const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
-  const priceBook = usePriceBook();
+  const { book: priceBook } = usePriceBook();
 
   // Resolve each transaction row's stored category to its display (icon + title)
   // through the same shared mapping Home uses, so a rename flows through here too.

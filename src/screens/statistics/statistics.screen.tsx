@@ -226,7 +226,7 @@ const StatisticsScreen: FC = () => {
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
 
   const rateTable = useMemo(() => buildRateTable(rates), [rates]);
-  const priceBook = usePriceBook();
+  const { book: priceBook } = usePriceBook();
 
   // Only non-archived accounts are ever shown; the account filter narrows within
   // those, and a holding then feeds the charts only when it is open AND its

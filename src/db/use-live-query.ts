@@ -60,7 +60,7 @@ export function useLiveQuery<T>(
       const settled = first(result, toError);
 
       if (isLeft(settled)) {
-        const caughtError = bifold(settled);
+        const caughtError: Error = bifold(settled);
 
         // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) a rejected reactive query would otherwise fail silently — the screen only sees `error` if it happens to read it — so log the failing query's SQL and the error itself here, the one place every consumer's failure passes through.
         console.warn('[useLiveQuery] query failed', sql, caughtError);

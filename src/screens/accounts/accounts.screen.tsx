@@ -43,7 +43,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
   const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
-  const priceBook = usePriceBook();
+  const { book: priceBook } = usePriceBook();
 
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   const rateTable = useMemo(() => buildRateTable(rates), [rates]);

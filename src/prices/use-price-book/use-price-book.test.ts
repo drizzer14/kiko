@@ -12,7 +12,7 @@ import { usePriceBook } from './use-price-book';
 
 describe('usePriceBook', () => {
   it('subscribes to the price_points table', async () => {
-    mockUseLiveQuery.mockReturnValue({ data: [] });
+    mockUseLiveQuery.mockReturnValue({ data: [], isLoading: false });
 
     await renderHook(() => usePriceBook());
 
@@ -24,18 +24,27 @@ describe('usePriceBook', () => {
       data: [
         { instrument: 'share:AAPL', day: 1, price: '190.00', currency: 'USD', source: 'eodhd' },
       ],
+      isLoading: false,
     });
 
     const { result } = await renderHook(() => usePriceBook());
 
-    expect(result.current.get('share:AAPL')?.[0].price).toBe('190.00');
+    expect(result.current.book.get('share:AAPL')?.[0].price).toBe('190.00');
   });
 
   it('returns an empty PriceBook before any row has loaded', async () => {
-    mockUseLiveQuery.mockReturnValue({ data: [] });
+    mockUseLiveQuery.mockReturnValue({ data: [], isLoading: true });
 
     const { result } = await renderHook(() => usePriceBook());
 
-    expect(result.current.size).toBe(0);
+    expect(result.current.book.size).toBe(0);
+  });
+
+  it('threads isLoading straight through from the underlying live query', async () => {
+    mockUseLiveQuery.mockReturnValue({ data: [], isLoading: true });
+
+    const { result } = await renderHook(() => usePriceBook());
+
+    expect(result.current.isLoading).toBe(true);
   });
 });

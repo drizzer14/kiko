@@ -127,7 +127,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // own `saveEdit`: a loan edit that changes its schedule INTO `'none'`
   // needs the OLD schedule's outstanding, which may itself be anchored on an
   // existing manual correction (see `useLoanFields`'s own `saveEdit`).
-  const priceBook = usePriceBook();
+  const { book: priceBook } = usePriceBook();
 
   const [name, setName] = useState('');
   // The selected type starts at `card`, then the effect below snaps it to the
