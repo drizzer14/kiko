@@ -781,8 +781,9 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       // stops the collapse: the title stays stuck expanded). `bleedTop` also
       // drops Screen's top safe-area edge so the list reaches the top edge and
       // iOS applies the large-title content inset to it (via the FlatList's
-      // own `contentInsetAdjustmentBehavior="automatic"` below) — keeping the
-      // caption from floating below the list. This
+      // own `contentInsetAdjustmentBehavior="automatic"` below) — without it,
+      // the native large title has no scroll view to attach its content
+      // inset to and overlaps the list header at scroll-top. This
       // mirrors the working `account-detail` scroll ScrollView, a direct child
       // of its own SafeAreaView; this screen cannot use `scroll` because a
       // virtualized FlatList must not nest inside that branch's ScrollView.

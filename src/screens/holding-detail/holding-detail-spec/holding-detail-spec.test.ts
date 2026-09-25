@@ -144,6 +144,8 @@ describe('holdingDetailSpecs nextInstallment', () => {
       termMonths: 120,
     };
     const loanHolding = holding({ type: 'loan', metadata: meta });
+    // Installment 12 falls due 2025-07-01, before `now` (2025-07-15); installment
+    // 13 falls due 2025-08-01, the first still on/after `now` — hence index 13.
     const expectedDueDate = addMonths(startDate, 13);
 
     const next = holdingDetailSpecs.loan.nextInstallment(loanHolding, EMPTY_PRICE_BOOK, now);
