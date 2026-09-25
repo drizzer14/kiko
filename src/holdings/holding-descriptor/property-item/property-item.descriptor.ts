@@ -1,4 +1,5 @@
 import { quantityAt } from '../../lots';
+import { Money } from '../../../currency/money';
 import { pricedDescriptor } from '../priced-parts';
 import type { HoldingRow } from '../../../db/schema';
 import { asPropertyMeta } from '../../holding-metadata';
@@ -11,14 +12,16 @@ import type { HoldingDescriptor, PricedSpec } from '../holding-descriptor.d';
 
 // `quantityAt(lots, instant)` times the price point for the holding's own
 // `holding:<id>` instrument at or before that day (`priceAt` — the local-day
-// convention). Returns `null` for invalid metadata, a missing price point, or
-// (unlike `metal`, which reads a SHARED instrument) a holding with no `id` —
-// it cannot resolve its own per-holding instrument key.
-const propertyItemValueMinor = (
+// convention), as Money in the holding's OWN currency (a per-holding manual
+// revaluation, always entered in that currency). Returns `null` for invalid
+// metadata, a missing price point, or (unlike `metal`, which reads a SHARED
+// instrument) a holding with no `id` — it cannot resolve its own per-holding
+// instrument key.
+const propertyItemValue = (
   holding: PricedHolding,
   book: PriceBook,
   instant: number,
-): number | null => {
+): Money | null => {
   if (holding.id === undefined) {
     return null;
   }
@@ -31,7 +34,9 @@ const propertyItemValueMinor = (
     return null;
   }
   const quantity = quantityAt(meta.lots, instant);
-  return multiplyToMinorUnits([quantity, point.price], holding.currency);
+  const minorUnits = multiplyToMinorUnits([quantity, point.price], holding.currency);
+
+  return Money.of(holding.currency, minorUnits);
 };
 
 // `captionInstrument` reads this holding's OWN `holding:<id>` series (never a
@@ -39,7 +44,7 @@ const propertyItemValueMinor = (
 // per-holding manual revaluation, not a market price).
 const propertyItemPricedSpec: PricedSpec = {
   lots: (metadata) => asPropertyMeta(metadata)?.lots,
-  valueMinor: propertyItemValueMinor,
+  value: propertyItemValue,
   captionInstrument: (holding: HoldingRow) => holdingInstrument(holding.id),
   captionKey: 'holdingDetail.valueAsOf',
 };

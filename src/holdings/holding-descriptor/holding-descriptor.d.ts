@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next';
 
 import type { Lot } from '../lots';
+import type { Money } from '../../currency/money';
 import type { HoldingRow } from '../../db/schema';
 import type { PricedHolding } from '../priced-value';
 import type { DerivedEntry } from '../derived-entries';
@@ -15,13 +16,16 @@ export type IdentifiedHolding = ValuableHolding & { id: string };
 export type PricedSpec = {
   lots: (metadata: HoldingRow['metadata']) => readonly Lot[] | undefined;
   /**
-   * Minor units at `instant`, or null without a price point. `id` is
+   * The Money value at `instant`, in the spec's own currency — NOT
+   * necessarily `holding.currency` (`property_item` returns the holding
+   * currency; `metal` returns the price point row's own currency, which
+   * NBU always stores as UAH) — or null without a price point. `id` is
    * OPTIONAL here — only a spec that reads a per-holding `holding:<id>`
    * instrument (`property_item`) needs to guard it itself; one that reads a
    * SHARED instrument (`metal`'s `metal:<XAU|XAG|XPT|XPD>`) needs no id at
    * all.
    */
-  valueMinor: (holding: PricedHolding, book: PriceBook, instant: number) => number | null;
+  value: (holding: PricedHolding, book: PriceBook, instant: number) => Money | null;
   /** The series the "as of" caption reads; null for unparsable metadata. */
   captionInstrument: (holding: HoldingRow) => string | null;
   captionKey: 'holdingDetail.priceAsOf' | 'holdingDetail.valueAsOf';

@@ -175,33 +175,37 @@ and `costBasisMinorAt(lots, instant)` (`src/holdings/lots/`) read the
 holding's `metadata.lots` array — one entry per buy/sell, `{ day,
 quantityDelta, costMinorUnits }` — to derive the quantity and cost
 basis held as of an instant; `quantityAt` never returns below `"0"`.
-`pricedValueMinor(holding, book, instant)` (`src/holdings/priced-value/`)
+`pricedValue(holding, book, instant)` (`src/holdings/priced-value/`)
 reads the holding's own descriptor off the registry
 (`holdingDescriptorOrUndefined`, `src/holdings/holding-descriptor/`) and
 dispatches to its `priced` spec (`src/holdings/holding-descriptor/property-item/`,
 `.../metal/`) through `pricedValueOrNull`
 (`src/holdings/holding-descriptor/priced-parts/`), which runs NO id guard
-of its own — whether a missing `id` matters is per-spec:
+of its own — whether a missing `id` matters is per-spec. Each spec's
+`value` returns a `Money`, not a bare number, in the spec's OWN
+currency — not necessarily `holding.currency`:
 
 - `property_item` multiplies `quantityAt(...)` by the price point for
   the holding's OWN `holding:<id>` instrument (`multiplyToMinorUnits`,
   the BigInt-backed decimal helper in `src/currency/decimal/` — never
-  a float multiply). Its OWN `valueMinor` guards a missing `id` first
-  (returns `null`) — it cannot resolve a per-holding instrument key
-  without one.
+  a float multiply), returned as Money in the HOLDING's currency (a
+  per-holding manual revaluation, always entered in that currency).
+  Its OWN `value` guards a missing `id` first (returns `null`) — it
+  cannot resolve a per-holding instrument key without one.
 - `metal` multiplies `quantityAt(...)` by `purity` by the price point
   for the metal's SHARED `metal:<XAU|XAG|XPT|XPD>` instrument — NOT a
   per-holding instrument; every holding of the same metal reads the
-  same NBU points, so `metal`'s `valueMinor` needs no `id` at all and
+  same NBU points, so `metal`'s `value` needs no `id` at all and
   prices an id-less holding exactly the same as an identified one.
   `unit === 'g'` additionally divides by 31.1034768 (one troy ounce in
-  grams — NBU quotes precious metals per troy ounce). The value is
-  hard-fixed to UAH regardless of `holding.currency`, since NBU quotes
-  precious metals only in UAH — the metal create-form is expected to
-  always create a `metal` holding with `currency: 'UAH'` to match;
-  this is a documented assumption, not enforced by code.
+  grams — NBU quotes precious metals per troy ounce). The returned
+  Money carries the PRICE POINT ROW's own stored `currency` (always
+  UAH in practice — NBU quotes precious metals only in UAH), NOT
+  `holding.currency`; the two can disagree for an invalid/restore-only
+  row, and `pricedBreakdown` below is the one place that decides
+  whether such a mismatch is safe to surface.
 
-Either descriptor's `valueMinor` returns `null` when the holding has no
+Either descriptor's `value` returns `null` when the holding has no
 `lots`/metal metadata or no stored price point yet; only
 `property_item`'s also returns `null` for a missing `id`. A `loan`
 holding (not priced, `priced: null`) reads its own `holding:<id>`

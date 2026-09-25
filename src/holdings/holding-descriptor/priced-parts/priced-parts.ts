@@ -9,7 +9,7 @@ import { flat, type HoldingValueBreakdown } from '../breakdown-parts';
 import type { HoldingDescriptor, PricedSpec } from '../holding-descriptor.d';
 
 /**
- * Dispatches to the spec's own `valueMinor` with no id guard here: whether a
+ * Dispatches to the spec's own `value` with no id guard here: whether a
  * missing `id` matters is per-spec — `property_item` reads its own
  * `holding:<id>` instrument and must guard it itself, `metal` reads a SHARED
  * instrument and needs no id at all.
@@ -19,8 +19,7 @@ export const pricedValueOrNull = (
   holding: PricedHolding,
   book: PriceBook,
   instant: number,
-): number | null =>
-  foldMap(maybe(spec), (found) => found.valueMinor(holding, book, instant)) ?? null;
+): Money | null => foldMap(maybe(spec), (found) => found.value(holding, book, instant)) ?? null;
 
 // A priced holding's gross/net are its `pricedValueOrNull` (a `PriceBook`
 // lookup), falling back to its lots' cost basis when there is no stored price
@@ -39,7 +38,7 @@ const pricedBreakdown = (
   }
   const { currency } = holding;
   const costBasisMinor = costBasisMinorAt(lots, now);
-  const valueMinor = pricedValueOrNull(spec, holding, book, now) ?? costBasisMinor;
+  const valueMinor = pricedValueOrNull(spec, holding, book, now)?.minorUnits ?? costBasisMinor;
   const zero = Money.of(currency, 0);
 
   return {

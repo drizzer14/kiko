@@ -1,7 +1,7 @@
 import { buildPriceBook, EMPTY_PRICE_BOOK } from '../../prices/price-book';
 import { holdingInstrument, metalInstrument } from '../../prices/instrument';
 
-import { isPricedHoldingType, pricedValueMinor, type PricedHolding } from './priced-value';
+import { isPricedHoldingType, pricedValue, type PricedHolding } from './priced-value';
 
 const DAY = 24 * 60 * 60 * 1000;
 const day2024 = Date.UTC(2024, 0, 1);
@@ -43,7 +43,7 @@ describe('isPricedHoldingType', () => {
   });
 });
 
-describe('pricedValueMinor', () => {
+describe('pricedValue', () => {
   it('values a property at its earlier price point, then the later one once its day arrives', () => {
     const book = buildPriceBook([
       {
@@ -64,15 +64,15 @@ describe('pricedValueMinor', () => {
     const holding = property();
 
     // Between the two points (mid-2025): the 2024 point carries forward.
-    expect(pricedValueMinor(holding, book, day2024 + 200 * DAY)).toBe(2_000_000);
+    expect(pricedValue(holding, book, day2024 + 200 * DAY)?.minorUnits).toBe(2_000_000);
     // On/after the 2026 point.
-    expect(pricedValueMinor(holding, book, day2026)).toBe(1_600_000);
+    expect(pricedValue(holding, book, day2026)?.minorUnits).toBe(1_600_000);
   });
 
   it('returns null when the instrument has no stored price point yet', () => {
     const holding = property();
 
-    expect(pricedValueMinor(holding, EMPTY_PRICE_BOOK, day2024)).toBeNull();
+    expect(pricedValue(holding, EMPTY_PRICE_BOOK, day2024)).toBeNull();
   });
 
   it('returns null for a holding with no valid lots metadata', () => {
@@ -87,7 +87,7 @@ describe('pricedValueMinor', () => {
       },
     ]);
 
-    expect(pricedValueMinor(holding, book, day2024)).toBeNull();
+    expect(pricedValue(holding, book, day2024)).toBeNull();
   });
 
   it('returns null for a holding with no id — it cannot resolve its own instrument key', () => {
@@ -103,7 +103,7 @@ describe('pricedValueMinor', () => {
       },
     ]);
 
-    expect(pricedValueMinor(withoutId, book, day2024)).toBeNull();
+    expect(pricedValue(withoutId, book, day2024)).toBeNull();
   });
 
   it('values a gram-denominated metal lot by converting to troy ounces (31.1034768g at purity 1 = 1oz x price)', () => {
@@ -118,9 +118,9 @@ describe('pricedValueMinor', () => {
     ]);
     const holding = goldBar();
 
-    // 31.1034768g at purity 1 is exactly 1 troy ounce, so the value is exactly
-    // one unit of the per-ounce NBU price.
-    expect(pricedValueMinor(holding, book, day2024)).toBe(9_000_000);
+    // 31.1034768g at purity 1 is exactly one troy ounce, so the value is
+    // exactly one unit of the per-ounce NBU price.
+    expect(pricedValue(holding, book, day2024)?.minorUnits).toBe(9_000_000);
   });
 
   it('values an ounce-denominated metal lot with no unit conversion', () => {
@@ -139,7 +139,7 @@ describe('pricedValueMinor', () => {
       lots: [{ day: day2024, quantityDelta: '2', costMinorUnits: 200_000 }],
     });
 
-    expect(pricedValueMinor(holding, book, day2024)).toBe(200_000);
+    expect(pricedValue(holding, book, day2024)?.minorUnits).toBe(200_000);
   });
 
   it('scales a metal value by purity below 1', () => {
@@ -154,10 +154,10 @@ describe('pricedValueMinor', () => {
     ]);
     const holding = goldBar({ purity: '0.5' });
 
-    expect(pricedValueMinor(holding, book, day2024)).toBe(4_500_000);
+    expect(pricedValue(holding, book, day2024)?.minorUnits).toBe(4_500_000);
   });
 
-  it('fixes a metal value to UAH regardless of the holding currency field', () => {
+  it('reads its currency off the price point row, fixed to UAH regardless of the holding currency field', () => {
     const book = buildPriceBook([
       {
         instrument: metalInstrument('XAU'),
@@ -170,15 +170,17 @@ describe('pricedValueMinor', () => {
     const holding = goldBar();
     const usdHolding: PricedHolding = { ...holding, currency: 'USD' };
 
-    expect(pricedValueMinor(usdHolding, book, day2024)).toBe(
-      pricedValueMinor(holding, book, day2024),
-    );
+    const uahMoney = pricedValue(holding, book, day2024);
+    const usdHoldingMoney = pricedValue(usdHolding, book, day2024);
+
+    expect(usdHoldingMoney?.currency).toBe('UAH');
+    expect(usdHoldingMoney?.minorUnits).toBe(uahMoney?.minorUnits);
   });
 
   it('returns null for a metal holding with no stored price point yet', () => {
     const holding = goldBar();
 
-    expect(pricedValueMinor(holding, EMPTY_PRICE_BOOK, day2024)).toBeNull();
+    expect(pricedValue(holding, EMPTY_PRICE_BOOK, day2024)).toBeNull();
   });
 
   it('returns null for a metal holding with no valid metal metadata', () => {
@@ -193,7 +195,7 @@ describe('pricedValueMinor', () => {
       },
     ]);
 
-    expect(pricedValueMinor(holding, book, day2024)).toBeNull();
+    expect(pricedValue(holding, book, day2024)).toBeNull();
   });
 
   it('values a metal holding with no id — it reads the SHARED metal instrument, not a per-holding one', () => {
@@ -209,6 +211,6 @@ describe('pricedValueMinor', () => {
       },
     ]);
 
-    expect(pricedValueMinor(withoutId, book, day2024)).toBe(9_000_000);
+    expect(pricedValue(withoutId, book, day2024)?.minorUnits).toBe(9_000_000);
   });
 });

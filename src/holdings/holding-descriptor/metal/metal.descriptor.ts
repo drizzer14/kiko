@@ -2,6 +2,7 @@ import type { TFunction } from 'i18next';
 
 import { quantityAt } from '../../lots';
 import { makeEntry } from '../entry-parts';
+import { Money } from '../../../currency/money';
 import { pricedDescriptor } from '../priced-parts';
 import { asMetalMeta } from '../../holding-metadata';
 import type { HoldingRow } from '../../../db/schema';
@@ -28,12 +29,13 @@ const TROY_OUNCE_GRAMS = '31.1034768';
 // the price point for the metal's SHARED `metal:<XAU|XAG|XPT|XPD>` instrument
 // (not a per-holding one — every holding of the same metal reads the same
 // NBU-sourced points, so this needs no `id` at all, unlike `property_item`).
-// Returns `null` for invalid metadata or a missing price point.
-const metalValueMinor = (
-  holding: PricedHolding,
-  book: PriceBook,
-  instant: number,
-): number | null => {
+// The Money carries the PRICE POINT's own stored `currency` (always UAH in
+// practice, since NBU quotes precious metals only in UAH) rather than
+// `holding.currency` — the two can disagree for an invalid/restore-only row,
+// and `pricedBreakdown` (`../priced-parts`) is the one place that decides
+// whether a mismatch is safe to surface. Returns `null` for invalid metadata
+// or a missing price point.
+const metalValue = (holding: PricedHolding, book: PriceBook, instant: number): Money | null => {
   const meta = asMetalMeta(holding.metadata);
   if (meta === null) {
     return null;
@@ -43,11 +45,13 @@ const metalValueMinor = (
     return null;
   }
   const quantity = quantityAt(meta.lots, instant);
-  return multiplyToMinorUnits(
+  const minorUnits = multiplyToMinorUnits(
     [quantity, meta.purity, point.price],
-    METAL_FIXED_CURRENCY,
+    point.currency,
     meta.unit === 'g' ? TROY_OUNCE_GRAMS : undefined,
   );
+
+  return Money.of(point.currency, minorUnits);
 };
 
 const metalCaptionInstrument = (holding: HoldingRow): string | null => {
@@ -62,7 +66,7 @@ const metalCaptionInstrument = (holding: HoldingRow): string | null => {
 // the metal's own market price, not a per-holding manual revaluation.
 const metalPricedSpec: PricedSpec = {
   lots: (metadata) => asMetalMeta(metadata)?.lots,
-  valueMinor: metalValueMinor,
+  value: metalValue,
   captionInstrument: metalCaptionInstrument,
   captionKey: 'holdingDetail.priceAsOf',
 };
