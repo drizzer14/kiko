@@ -457,8 +457,6 @@ const findViolations = (source, targetPath) => {
   return violations;
 };
 
-module.exports = { DENYLIST, findViolations, isExempt, splitIdentifierWords };
-
 function runCli() {
   const files = process.argv.slice(2);
 
