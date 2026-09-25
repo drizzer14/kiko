@@ -503,16 +503,14 @@ export const en = {
     title: 'Accounts',
   },
   // The "add a bank" catalog copy (src/bank-sync/provider-catalog/): one
-  // about/dataProvided/eligibility triple per native provider, shown on the
-  // picker before any credential is entered. Guideline 5.6 remediation:
-  // PrivatBank, bunq, and Starling entries were removed — Monobank is the
-  // sole shipped provider.
+  // about/eligibility pair per native provider, shown on the picker before
+  // any credential is entered. Guideline 5.6 remediation: PrivatBank, bunq,
+  // and Starling entries were removed — Monobank is the sole shipped
+  // provider.
   addBank: {
     monobank: {
       about:
         'Monobank is a Ukrainian mobile-only bank. Kiko connects with a personal API token you generate in the Monobank app.',
-      dataProvided:
-        'Balances, jars, and transaction history, refreshed automatically and on pull-to-refresh. Read-only — Kiko cannot move money.',
       eligibility: 'Works with any personal Monobank account. No business or FOP account needed.',
     },
   },
