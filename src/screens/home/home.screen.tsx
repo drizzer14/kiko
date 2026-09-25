@@ -22,6 +22,7 @@ import {
   resolveCategoryKey,
 } from '../../categories/category-display';
 import Box from '../../design-system/components/box';
+import { useDataReady } from '../../db/use-data-ready';
 import { useLiveQuery } from '../../db/use-live-query';
 import Card from '../../design-system/components/card';
 import Text from '../../design-system/components/text';
@@ -38,6 +39,7 @@ import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import { type DaySection, groupByDay } from '../../transactions/group-by-day';
 import type { HomeStackParamList, TabParamList } from '../../navigation/types';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
+import LoadingState from '../../design-system/components/loading-state';
 import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
 import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 import { buildRateTable, guardedBreakdown, guardedNetWorth } from '../../rates/net-worth-view';
@@ -103,17 +105,40 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const listRef = useRef<SectionList<HomeTransactionRow, DaySection<HomeTransactionRow>>>(null);
   useScrollToTopOnTabPress(listRef);
 
-  const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
-  const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
-  const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
-  const { book: priceBook } = usePriceBook();
-  const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
-  const { data: transactions } = useLiveQuery(transactionsRepo.listAllWithContextQuery(), [
-    'transactions',
-    'holdings',
+  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(accountsRepo.listQuery(), [
     'accounts',
   ]);
-  const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
+  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(holdingsRepo.allQuery(), [
+    'holdings',
+  ]);
+  const { data: rates, isLoading: ratesLoading } = useLiveQuery(ratesRepo.allQuery(), [
+    'currency_rates',
+  ]);
+  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook();
+  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(settingsRepo.getQuery(), [
+    'settings',
+  ]);
+  const { data: transactions, isLoading: transactionsLoading } = useLiveQuery(
+    transactionsRepo.listAllWithContextQuery(),
+    ['transactions', 'holdings', 'accounts'],
+  );
+  const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
+    categoriesRepo.allQuery(),
+    ['categories'],
+  );
+  // The net-worth headline (it would otherwise read 0 while still loading)
+  // and the empty-transactions text must never render while any of this
+  // screen's own queries is still on its first load (kiko-architecture's
+  // useLiveQuery consumer rule) — gated below, right at the return.
+  const isReady = useDataReady(
+    accountsLoading,
+    holdingsLoading,
+    ratesLoading,
+    priceBookLoading,
+    settingsLoading,
+    transactionsLoading,
+    categoriesLoading,
+  );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(localized label) `buildCategoryDisplayMap` resolves each default category's title through i18n (`resolveDefaultCategoryTitle`) INTERNALLY, so `i18n.language` is a real dependency Biome cannot see — without it a live language switch leaves the resolved titles in the previous language.
   const categoryByKey = useMemo(
@@ -420,6 +445,14 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     },
     [sections],
   );
+
+  if (!isReady) {
+    return (
+      <Screen bleedBottom>
+        <LoadingState testID="home-loading" />
+      </Screen>
+    );
+  }
 
   return (
     // The SectionList below is this screen's own scrollable surface and applies
