@@ -82,6 +82,15 @@ export const buildNetWorthSeries = (input: {
   // equals `baseCurrency` regardless of the table, so a same-currency holding
   // still converts trivially below; a foreign-currency holding with no rate
   // at all is still dropped by the same `canConvert` filter as always.
+  //
+  // A SEPARATE, orthogonal guard: `bucketTimes` below produces a bucket for
+  // every instant in `range` regardless of whether any holding exists, so
+  // with zero holdings the per-bucket reduce would otherwise sum to a real
+  // (if zero) point at every bucket — a spurious flat-zero line — instead of
+  // reporting nothing to plot for a holding-less user.
+  if (holdings.length === 0) {
+    return { points: [], startReference: 0 };
+  }
 
   // Align each bond's held-cost recognition to the funding money that actually
   // left — on BOTH axes: the DAY the debit landed and the AMOUNT it debited (Q) —

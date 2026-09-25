@@ -714,6 +714,23 @@ describe('buildNetWorthSeries', () => {
     expect(series.points.map((point) => point.amount)).toEqual([100]);
   });
 
+  // A holding-less user (no accounts at all yet) must still see the genuine
+  // empty state, never a spurious flat-zero line: `bucketTimes` produces a
+  // bucket regardless of whether any holding exists, so with zero holdings
+  // the reduce below would otherwise sum to a real (if zero) point for every
+  // bucket instead of reporting nothing to plot.
+  it('returns an empty series when there are no holdings at all', () => {
+    const series: NetWorthSeries = buildNetWorthSeries({
+      holdings: [],
+      transactionsByHolding: new Map(),
+      historyRows: [],
+      baseCurrency: 'USD',
+      range: { from: D0, to: D2 },
+    });
+
+    expect(series).toEqual({ points: [], startReference: 0 });
+  });
+
   // `property_item` is ledgerless — its value derives from its `lots`
   // metadata (priced at read time), never from `transactionsByHolding` — so the series
   // is flat across every bucket even with an EMPTY transaction map, and it is
