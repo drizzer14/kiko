@@ -33,10 +33,13 @@ describe('useTargetHoldingOptions', () => {
   it('scopes to one account and joins in that account’s own name', async () => {
     mockUseLiveQuery.mockImplementation((query: { __kind?: string }) => {
       if (query.__kind === 'holdings-by-account') {
-        return { data: [{ id: 'h1', name: 'Black card', accountId: 'a', type: 'card' }] };
+        return {
+          data: [{ id: 'h1', name: 'Black card', accountId: 'a', type: 'card' }],
+          isLoading: false,
+        };
       }
 
-      return { data: [{ id: 'a', name: 'Monobank' }] };
+      return { data: [{ id: 'a', name: 'Monobank' }], isLoading: false };
     });
 
     const { result } = await renderHook(() => useTargetHoldingOptions('a'));
@@ -62,6 +65,7 @@ describe('useTargetHoldingOptions', () => {
             { id: 'h1', name: 'Black card', accountId: 'a', type: 'card' },
             { id: 'h2', name: 'Cold storage', accountId: 'b', type: 'card' },
           ],
+          isLoading: false,
         };
       }
 
@@ -70,6 +74,7 @@ describe('useTargetHoldingOptions', () => {
           { id: 'a', name: 'Monobank' },
           { id: 'b', name: 'Ledger' },
         ],
+        isLoading: false,
       };
     });
 
@@ -98,10 +103,13 @@ describe('useTargetHoldingOptions', () => {
   it('falls back to an empty account name when the joining account row has not loaded yet', async () => {
     mockUseLiveQuery.mockImplementation((query: { __kind?: string }) => {
       if (query.__kind === 'holdings-by-account') {
-        return { data: [{ id: 'h1', name: 'Black card', accountId: 'a', type: 'card' }] };
+        return {
+          data: [{ id: 'h1', name: 'Black card', accountId: 'a', type: 'card' }],
+          isLoading: false,
+        };
       }
 
-      return { data: [] };
+      return { data: [], isLoading: false };
     });
 
     const { result } = await renderHook(() => useTargetHoldingOptions('a'));
@@ -132,10 +140,11 @@ describe('useTargetHoldingOptions', () => {
               color: '#ABCDEF',
             },
           ],
+          isLoading: false,
         };
       }
 
-      return { data: [{ id: 'a', name: 'Monobank' }] };
+      return { data: [{ id: 'a', name: 'Monobank' }], isLoading: false };
     });
 
     const { result } = await renderHook(() => useTargetHoldingOptions('a'));

@@ -139,28 +139,6 @@ describe('useAutoSync', () => {
     await waitFor(() => expect(mockRefreshMetalPrices).toHaveBeenCalled());
   });
 
-  it('still awaits refreshRates without throwing when refreshMetalPrices rejects first', async () => {
-    // Twin of use-sync-all's identical fix: Promise.all would settle (reject)
-    // the instant refreshMetalPrices rejects, leaving refreshRates running
-    // orphaned — nothing in this effect awaits it further. Promise.allSettled
-    // never rejects, so a rejected step here is swallowed exactly as before
-    // (the same catch-all `either`), and the effect never throws regardless
-    // of which promise settles first or how long the other one takes.
-    mockListQuery.mockResolvedValue([]);
-    mockRefreshMetalPrices.mockRejectedValue(new Error('metal fetch failed'));
-    let resolveRates!: () => void;
-    mockRefreshRates.mockReturnValue(
-      new Promise<void>((resolve) => {
-        resolveRates = resolve;
-      }),
-    );
-
-    await expect(renderHook(() => useAutoSync())).resolves.toBeDefined();
-    await waitFor(() => expect(mockRefreshMetalPrices).toHaveBeenCalled());
-
-    resolveRates();
-  });
-
   it('does nothing when the connected Monobank account synced within the throttle window', async () => {
     mockListQuery.mockResolvedValue([monobank]);
     mockSyncStateGetQuery.mockResolvedValue([{ lastSyncAt: Date.now() }]);

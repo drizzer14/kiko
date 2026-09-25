@@ -45,5 +45,5 @@ export const useTargetHoldingOptions = (accountId: string | undefined): TargetHo
     color: resolveEntityColor(holding.color, defaultHoldingColor[holding.type]),
   }));
 
-  return { options, isLoading: Boolean(holdingsLoading) || Boolean(accountsLoading) };
+  return { options, isLoading: holdingsLoading || accountsLoading };
 };

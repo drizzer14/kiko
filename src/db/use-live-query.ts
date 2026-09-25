@@ -40,11 +40,8 @@ export function useLiveQuery<T>(
   // older call's result must not overwrite a newer one.
   const generation = useRef(0);
   // The generation and sql+paramsKey a settled result was last APPLIED
-  // from — NOT the newest generation that has merely STARTED. A dense write
-  // burst starts a new generation before the previous one settles; comparing
-  // against the newest STARTED generation instead of the newest APPLIED one
-  // would drop every in-order result whose successor had already started,
-  // leaving the screen on the spinner until the burst stops entirely.
+  // from — NOT the newest generation that has merely STARTED (see the guard
+  // below, where that distinction matters).
   const appliedGeneration = useRef(0);
   const appliedKey = useRef<string | undefined>(undefined);
   // isLoading is derived, not stored: true whenever the CURRENT render's
