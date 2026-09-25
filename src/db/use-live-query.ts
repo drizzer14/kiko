@@ -79,6 +79,8 @@ export function useLiveQuery<T>(
         return;
       }
 
+      const previousAppliedKey = appliedKey.current;
+
       appliedGeneration.current = myGeneration;
       appliedKey.current = myKey;
 
@@ -90,6 +92,13 @@ export function useLiveQuery<T>(
         // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) a rejected reactive query would otherwise fail silently — the screen only sees `error` if it happens to read it — so log the failing query's SQL and the error itself here, the one place every consumer's failure passes through.
         console.warn('[useLiveQuery] query failed', sql, caughtError);
         setError(caughtError);
+
+        // A re-keyed query's rejection must not keep showing the OLD key's
+        // data as this key's result; a same-key rejection keeps it, matching
+        // a same-key success.
+        if (previousAppliedKey !== myKey) {
+          setData([]);
+        }
 
         return;
       }
