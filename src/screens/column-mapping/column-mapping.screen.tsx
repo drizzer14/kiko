@@ -522,7 +522,14 @@ const formStateFromSavedMapping = (mapping: SavedColumnMapping): SavedFormState 
       debitColumn: amount.debitColumn,
       creditColumn: amount.creditColumn,
     }))
-    .exhaustive();
+    // Not `.exhaustive()`: the original code read each field off its own
+    // independent `mode === '…' ? … : undefined` ternary — an unrecognized
+    // stored mode left every field undefined instead of throwing.
+    .otherwise(() => ({
+      amountColumn: undefined,
+      debitColumn: undefined,
+      creditColumn: undefined,
+    }));
   const currencyFields: {
     currencyColumn: number | undefined;
     explicitFixedCurrency: Currency | undefined;
@@ -535,7 +542,9 @@ const formStateFromSavedMapping = (mapping: SavedColumnMapping): SavedFormState 
       currencyColumn: undefined,
       explicitFixedCurrency: currency.currency,
     }))
-    .exhaustive();
+    // Not `.exhaustive()`: same reasoning as `amountFields` above — an
+    // unrecognized stored mode leaves both fields undefined.
+    .otherwise(() => ({ currencyColumn: undefined, explicitFixedCurrency: undefined }));
 
   return {
     headerRowIndex: mapping.headerRowIndex,

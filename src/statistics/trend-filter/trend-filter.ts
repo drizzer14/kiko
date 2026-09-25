@@ -79,17 +79,24 @@ export const resolveTrendFilter = (
     return DEFAULT_TREND_FILTER;
   }
 
-  return match(stored)
-    .with(
-      { mode: 'manual' },
-      (filter): TrendFilter => ({
-        mode: 'manual',
-        keys: filter.keys.filter((key) => existingCategoryKeys.has(key)),
-      }),
-    )
-    .with(
-      { mode: 'top' },
-      (filter): TrendFilter => ({ mode: 'top', amount: clampAmount(filter.amount), by: filter.by }),
-    )
-    .exhaustive();
+  return (
+    match(stored)
+      .with(
+        { mode: 'manual' },
+        (filter): TrendFilter => ({
+          mode: 'manual',
+          keys: filter.keys.filter((key) => existingCategoryKeys.has(key)),
+        }),
+      )
+      // Not `.exhaustive()`: the original if/else's implicit else treated any
+      // non-'manual' stored value as 'top' — a malformed stored mode falls back
+      // to top handling instead of throwing.
+      .otherwise(
+        (filter): TrendFilter => ({
+          mode: 'top',
+          amount: clampAmount(filter.amount),
+          by: filter.by,
+        }),
+      )
+  );
 };

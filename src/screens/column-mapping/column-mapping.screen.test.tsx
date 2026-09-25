@@ -756,6 +756,27 @@ describe('ColumnMappingScreen', () => {
     ).toBeTruthy();
   });
 
+  it('pre-fills a saved mapping with an unrecognized amount/currency mode without throwing', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    setLiveData({
+      accounts: [monobankAccount],
+      holdings: [monobankHolding],
+      statementMappings: {
+        'bank:monobank': {
+          ...savedMonobankMapping(),
+          amount: { mode: 'unrecognized', column: 3 },
+          currency: { mode: 'unrecognized', currency: 'UAH' },
+        },
+      },
+    });
+
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+
+    // The pre-fill effect must still complete (setting `savedApplied`)
+    // instead of throwing before reaching its later setters.
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.savedApplied'))).toBeTruthy());
+  });
+
   describe('Sensebank cp1251 decoding', () => {
     const mapSensebankColumns = async (
       view: Awaited<ReturnType<typeof renderScreen>>,
