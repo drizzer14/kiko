@@ -11,13 +11,12 @@ import { type AccountRow, accounts, holdings, transactions } from '../db/schema'
 
 // The next free grid slot for a new account, read inside the same write
 // transaction as the insert so a concurrent create cannot observe a stale
-// maximum. A new DEBT account appends after every account (`allMax + 1`). A
-// new ASSET account must sort before every debt account's `listQuery`
-// position (`accountsRepo.reorder` normally keeps assets first, but only
-// rewrites ACTIVE ids, so an archived row can leave `assetMax` tied with or
-// past `debtMin`): when the candidate slot would collide, every debt
-// account is shifted up by exactly enough room — `candidate - debtMin + 1`,
-// not a flat `+ 1` — to clear the WHOLE gap, not just a contiguous one.
+// maximum. A DEBT account appends after every account; an ASSET account
+// must sort before every debt account, but an archived row can leave
+// `assetMax` tied with or past `debtMin` (`reorder` only rewrites ACTIVE
+// ids) — when the candidate slot would collide, every debt account shifts
+// up by exactly `candidate - debtMin + 1`, not a flat `+ 1`, to clear the
+// WHOLE gap, not just a contiguous one.
 const nextSortOrder = async (
   databaseTransaction: typeof database,
   kind: AccountRow['kind'],
@@ -275,12 +274,12 @@ export const accountsRepo = {
    * account is owned by the bank connection and is refused with a typed error; a
    * missing id is a no-op rather than an error.
    *
-   * I1 (T29 review round 1): a debt account can hold a loan, and OTHER
+   * A debt account can hold a loan, and OTHER
    * holdings' payment rows can point back at that loan via `loanHoldingId`.
    * Deleting the account deletes the loan holding too, so this cascade
    * clears those links in the SAME transaction — the same
    * `clearLoanLinksForHoldingsDatabaseTransaction` cascade `holdingsRepo.remove` runs for a
-   * single loan holding (Review Focus 7), applied here to every holding the
+   * single loan holding, applied here to every holding the
    * deleted account owned. A no-op when none of them was a loan.
    */
   remove: (accountId: string) =>

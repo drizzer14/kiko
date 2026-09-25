@@ -1,8 +1,7 @@
 // src/i18n/locales/uk.casing.test.ts
 //
-// Invariant: uk is sentence case EVERYWHERE (CASE track, 2026-09-24 —
-// .superpowers/sdd/shares-property-metals-debts/case-measure.md's DECISION
-// section) — unlike en, Ukrainian UI copy never switches to Title Case for a
+// Invariant: uk is sentence case EVERYWHERE —
+// unlike en, Ukrainian UI copy never switches to Title Case for a
 // screen/nav title or a section heading. Walked at RUNTIME over the nested
 // `uk` object (not the source text), so a violation buried in a template
 // literal or a computed value is caught the same as a plain literal, the

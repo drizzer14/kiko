@@ -256,9 +256,10 @@ describe('accountsRepo', () => {
     });
 
     it('lands strictly before the debt block even with an archived account interleaved at the same sortOrder', async () => {
-      // B0, A1, D2 (debt), X2 (archived asset, tied with D — never rewritten
-      // by `reorder`): exactly the shape a real archive-then-reorder flow
-      // leaves behind.
+      // Account B at sortOrder 0, A at sortOrder 1, debt account D at
+      // sortOrder 2, and archived asset X tied with D at sortOrder 2 (never
+      // rewritten by `reorder`): exactly the shape a real
+      // archive-then-reorder flow leaves behind.
       const store: StoreAccount[] = [
         { id: 'B', kind: 'bank', sortOrder: 0, archived: false },
         { id: 'A', kind: 'bank', sortOrder: 1, archived: false },
@@ -394,7 +395,7 @@ describe('accountsRepo', () => {
       category: null,
     });
     expect(typeof openingRow.time).toBe('number');
-    // N1 (round-1 re-review): a typed starting balance IS a hand-set
+    // A typed starting balance IS a hand-set
     // balance — it must stamp `balanceSetAt`, at the SAME instant as the
     // opening ledger row's `time`, or `transactionsRepo.importRows` never
     // sees this holding as ever hand-set.
@@ -463,8 +464,8 @@ describe('accountsRepo.setIcon', () => {
 // holdings); each `delete(table)` records the table it targeted, in order, so a
 // test can prove the cascade deletes transactions, then holdings, then the account
 // itself — all inside the single transaction the `write` mock runs the work in.
-// `update(transactions).set(...).where(...)` (I1, T29 review round 1:
-// `clearLoanLinksForHoldingsDatabaseTransaction`) records its `set` payload and `where` arg the
+// `update(transactions).set(...).where(...)` (`clearLoanLinksForHoldingsDatabaseTransaction`)
+// records its `set` payload and `where` arg the
 // same way, so a test can prove the loan-link cascade ran, and with which ids.
 const makeRemoveDatabaseTransaction = (options: {
   account: Record<string, unknown> | null;
@@ -699,7 +700,7 @@ describe('accountsRepo.remove', () => {
     expect(captured.deletedFrom).toEqual([transactions, transactions, holdings, accounts]);
   });
 
-  // I1 (T29 review round 1): a debt account can hold a loan among its
+  // A debt account can hold a loan among its
   // holdings, and OTHER holdings' payment rows (possibly on a different
   // account entirely) can point back at that loan via `loanHoldingId`.
   // `remove` must clear those links, for every holding the deleted account

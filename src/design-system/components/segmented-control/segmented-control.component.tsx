@@ -13,14 +13,14 @@ import type { SegmentedControlProps } from './segmented-control.props';
  * (https://developer.apple.com/design/human-interface-guidelines/segmented-controls)
  * — no segmented-control native library is a dependency of this app.
  *
- * Touch target (F3 fix rounds 3-4): each segment `Pressable` is a REAL
+ * Touch target: each segment `Pressable` is a REAL
  * layout box at least 44pt tall, with no `hitSlop`. The native-matching
  * 32pt track and 24pt selected pill are absolutely-positioned decorative
  * layers inset from it, and a negative vertical margin keeps the control's
  * layout footprint at the 32pt track. `segmented-control.styles.ts` holds
  * the exact geometry and the RN 0.87 Fabric hit-test reasoning.
  *
- * Accessibility (F3 fix round 2, M4): each segment keeps
+ * Accessibility: each segment keeps
  * `accessibilityRole="button"` with `accessibilityState={{ selected }}` —
  * NOT `"tab"`/`"tablist"`, which RN 0.87 maps to no accessibility trait on
  * iOS (`RCTViewManager`/Fabric's `accessibilityPropsConversions` only map

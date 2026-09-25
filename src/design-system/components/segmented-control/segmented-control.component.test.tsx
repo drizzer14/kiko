@@ -44,7 +44,7 @@ describe('SegmentedControl', () => {
     expect(onSelect).toHaveBeenCalledWith('debitCredit');
   });
 
-  // F3 fix round 2, M4: each segment keeps the "button" trait (RN 0.87 maps
+  // Each segment keeps the "button" trait (RN 0.87 maps
   // "tab"/"tablist" to no trait on iOS — see the component's own doc
   // comment), carries its own accessibilityLabel and selected state, and
   // folds the group name + a TRANSLATED "N of M" position into its hint.
@@ -74,7 +74,7 @@ describe('SegmentedControl', () => {
     );
   });
 
-  // F3 fix round 1, I3: the selected segment's fill against the track meets
+  // The selected segment's fill against the track meets
   // the WCAG 1.4.11 3:1 non-text contrast floor.
   it('gives the selected segment >= 3:1 contrast against the track', () => {
     const ratio = wcagContrastRatio(darkTheme.colors.segmentSelected, darkTheme.colors.surface);
@@ -82,7 +82,7 @@ describe('SegmentedControl', () => {
     expect(ratio).toBeGreaterThanOrEqual(3);
   });
 
-  // F3 fix round 3, N6 + fix round 4, N10/N11: each segment is a REAL
+  // Each segment is a REAL
   // layout box at least 44pt tall (no `hitSlop`; `minHeight`, so Dynamic
   // Type can grow it). The visible 32pt track and the 24pt selected pill
   // (a 4pt ring of track around it) are decorative insets. The container's
@@ -119,7 +119,7 @@ describe('SegmentedControl', () => {
     expect(pill.top - trackFill.top).toBe(4);
   });
 
-  // F3 fix round 1, M2: a long label stays on one line (shrinking to fit
+  // A long label stays on one line (shrinking to fit
   // rather than wrapping), centered in its segment.
   it('keeps a long label on one line, centered', async () => {
     const { getByText } = await render(
@@ -138,7 +138,7 @@ describe('SegmentedControl', () => {
     expect(StyleSheet.flatten(label.props.style).textAlign).toBe('center');
   });
 
-  // F3 fix round 2, N5 ponytail: the selected label's style composes ON TOP
+  // The selected label's style composes ON TOP
   // of the base `label` style (never a duplicate `textAlign`).
   it('keeps the selected label centered too, alongside its semibold weight', async () => {
     const { getByText } = await render(

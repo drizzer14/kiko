@@ -1,7 +1,6 @@
 // src/i18n/locales/en.final-stop-by-role.test.ts
 //
-// One final-"." rule per UI role (the binding measure + decision lives in
-// .superpowers/sdd/shares-property-metals-debts/fullstop-measure.md):
+// One final-"." rule per UI role:
 //
 //   No final "." — titles, headings, sheet titles, buttons, chips/options,
 //   menu items, field labels, placeholders, empty states, alert titles,

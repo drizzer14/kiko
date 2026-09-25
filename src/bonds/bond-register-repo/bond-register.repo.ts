@@ -54,19 +54,19 @@ const defaultFetchedAt = async (): Promise<number | null> => {
 
 /**
  * Refreshes `bond_register` from the NBU securities register, at most once
- * per LOCAL day (spec 6.4's offline rule #4) — the ISIN-mode form opens far
- * more often than the register actually changes, so re-fetching every open
- * would just hammer a public host for identical data. Compares the cache's
- * `fetchedAt` high-water mark's LOCAL calendar day against `now`'s, through
- * the same `dayKeyOf` convention `price_points` uses (`kiko-pricing`) — a
- * device-local day, not a UTC one, so a refresh just after local midnight is
- * never mistaken for "already run today" against a stamp from the previous
- * evening. Every fetched row is written through ONE `replaceAll` call. An
- * empty fetch result (0 rows — a malformed/empty response body, never
- * observed from the live register, see the T24 review) is NOT written: it
- * would wipe a good cache via `replaceAll([])`, and an offline form open
- * needs that cache (spec 6.4 #4). The stale cache is left in place, and
- * `fetchedAt` does not advance, so the next open retries the fetch.
+ * per LOCAL day — the ISIN-mode form opens far more often than the register
+ * actually changes, so re-fetching every open would just hammer a public
+ * host for identical data. Compares the cache's `fetchedAt` high-water
+ * mark's LOCAL calendar day against `now`'s, through the same `dayKeyOf`
+ * convention `price_points` uses (`kiko-pricing`) — a device-local day, not
+ * a UTC one, so a refresh just after local midnight is never mistaken for
+ * "already run today" against a stamp from the previous evening. Every
+ * fetched row is written through ONE `replaceAll` call. An empty fetch
+ * result (0 rows — a malformed/empty response body, never observed from the
+ * live register) is NOT written: it would wipe a good cache via
+ * `replaceAll([])`, and an offline form open needs that cache. The stale
+ * cache is left in place, and `fetchedAt` does not advance, so the next
+ * open retries the fetch.
  */
 export const refreshBondRegisterIfStale = async (
   deps: RefreshBondRegisterDeps = {},

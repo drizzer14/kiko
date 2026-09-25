@@ -1,8 +1,8 @@
-// T24 LIVE FETCH (2026-09-24): `GET https://bank.gov.ua/depo_securities?json`
+// A live `GET https://bank.gov.ua/depo_securities?json` fetch
 // returned 200 with 196 records (187 DCP domestic OVDP, 9 OZDP Eurobonds) —
 // `__fixtures__/depo-securities-sample.json` is 3 of those real records,
 // trimmed to the fields `fetchNbuRegister` reads plus enough `payments[]` to
-// stay realistic (spec 6.1/6.2). `UA4000234215`/`UA4000237077` are real DCP
+// stay realistic. `UA4000234215`/`UA4000237077` are real DCP
 // ISINs; `XS2895055981` is a real OZDP (Eurobond) ISIN with `nominal: 1`.
 import depoSecuritiesSample from './__fixtures__/depo-securities-sample.json';
 import { couponFrequencyFromPayPeriod, fetchNbuRegister } from './nbu-register';

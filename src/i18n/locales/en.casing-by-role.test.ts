@@ -1,7 +1,6 @@
 // src/i18n/locales/en.casing-by-role.test.ts
 //
-// One casing rule per UI role (CASE track, 2026-09-24 — the binding brief
-// lives in .superpowers/sdd/shares-property-metals-debts/case-measure.md):
+// One casing rule per UI role:
 //
 //   Title Case — screen/navigation titles, section headings, sheet/modal
 //   titles.
@@ -17,7 +16,7 @@
 // via `./title-keys.ts` with `en.final-stop-by-role.test.ts` — the F4
 // full-stop invariant, since a title/heading/sheet-title key is ALSO one of
 // the no-final-"." roles), not a key-NAME pattern (`/Title$/`, `/Heading$/`,
-// etc.) — CASE fix round 1/5. A pattern is a blind spot in the direction
+// etc.). A pattern is a blind spot in the direction
 // that matters: a future BUTTON or LABEL key that happens to end in
 // `Title`/`Heading` would silently land in the Title bucket and never get
 // checked for sentence case (this file already needed one `ErrorTitle`
@@ -28,9 +27,8 @@
 // this test the moment it renders wrong, until it is added to `TITLE_KEYS`
 // on purpose. Every entry in `TITLE_KEYS` is verified by call site (a nav
 // `options.title`/`navigation.setOptions`, a `variant="heading"` `Text`, or
-// a `BottomSheet`/`ConfirmSheet` title/header prop) — see
-// `.superpowers/sdd/shares-property-metals-debts/CASE-report.md` for the
-// per-key call-site citations.
+// a `BottomSheet`/`ConfirmSheet` title/header prop) against its own real
+// call site.
 //
 // `columnMapping.rawPreview` and `forms.transaction.applyCategoryToAll`
 // look like ordinary sentence-case keys by name, but both render through

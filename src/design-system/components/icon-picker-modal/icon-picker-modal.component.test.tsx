@@ -46,10 +46,10 @@ describe('icon pools', () => {
     }
   });
 
-  // T30 (spec 5/D14): the eleventh default category (`loan_interest`, seeded
+  // The eleventh default category (`loan_interest`, seeded
   // by 0039 — not part of SEEDED_CATEGORIES, see that fixture's own comment)
   // still needs its `percent` icon selectable, same as the original ten.
-  it('includes percent, the loan_interest default icon (T30, seeded by 0039)', () => {
+  it('includes percent, the loan_interest default icon (seeded by 0039)', () => {
     expect(KIKO_CATEGORIES_ICONS).toContain('percent');
   });
 

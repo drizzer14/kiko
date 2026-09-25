@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-// The REAL touch target (F3 fix round 3, N6; fix round 4, N10/N11): every
+// The REAL touch target: every
 // segment `Pressable` is itself at least `SEGMENT_MIN_HEIGHT` (44pt) tall
 // in real layout, with no `hitSlop`. The shorter, native-matching visible
 // track (32pt) and selected pill (24pt, a 4pt ring of track around it) are
@@ -35,10 +35,11 @@ export const styles = StyleSheet.create((theme) => ({
     marginVertical: -TRACK_INSET,
   },
   // The real, 44pt-tall row of segment `Pressable`s — see `segment` below.
-  // `paddingHorizontal` reproduces the OLD track's own `padding` (the gap
+  // `paddingHorizontal` reproduces the track's own `padding` (the gap
   // between the track's outer edge and its segments cluster) as REAL
-  // layout, which shrinks the row's usable width but never drops a touch
-  // (unlike `hitSlop`, which tries to grow BEYOND real bounds).
+  // layout, so every segment's actual touchable box matches its visible
+  // position exactly — `hitSlop` extends touch BEYOND a view's real
+  // bounds instead, which is not what this inset needs.
   row: {
     flexDirection: 'row',
     paddingHorizontal: theme.spacing(1),
@@ -89,9 +90,8 @@ export const styles = StyleSheet.create((theme) => ({
     textAlign: 'center',
   },
   // UIKit renders a segmented control's selected label semibold. Composed
-  // ALONGSIDE `label` (never alone — F3 fix round 2, N5 ponytail dropped
-  // the duplicate `textAlign: 'center'` this used to repeat), adding only
-  // the weight.
+  // ALONGSIDE `label` (never alone — never a duplicate `textAlign:
+  // 'center'`), adding only the weight.
   selectedLabel: {
     fontWeight: '600',
   },

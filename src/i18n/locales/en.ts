@@ -40,9 +40,9 @@ export const en = {
     iconLabel: 'Icon {{name}}',
     noDataForRange: 'No data for this range',
     // A segment's position within its SegmentedControl group, e.g.
-    // "1 of 2" — folded into each segment's accessibilityHint (F3 fix
-    // round 2, M4), since React Native's own tab/tablist accessibility
-    // roles map to no trait on iOS (RN 0.87).
+    // "1 of 2" — folded into each segment's accessibilityHint, since
+    // React Native's own tab/tablist accessibility roles map to no trait
+    // on iOS (RN 0.87).
     segmentPosition: '{{index}} of {{count}}',
   },
   settings: {
@@ -154,7 +154,7 @@ export const en = {
     cash: 'Cash',
     transfers: 'Transfers',
     other: 'Other',
-    // T30 (spec 5/D14): the eleventh default category, seeded by its own
+    // The eleventh default category, seeded by its own
     // later migration (0039) — the interest portion of a linked loan
     // payment (never its principal) files under this key.
     loan_interest: 'Loan interest',
@@ -304,7 +304,7 @@ export const en = {
       cryptoAsset: 'Crypto asset',
       deposit: 'Deposit',
       details: 'Details',
-      // T25 — the Bond form's ISIN-mode hint (spec 7.1): Diia itself sells no
+      // The Bond form's ISIN-mode hint: Diia itself sells no
       // bonds, it is a storefront for a partner bank/broker, so the bond is
       // added under whichever institution the user actually picked there.
       diiaHint: 'Bought in Diia? Add the bond under the bank or broker you chose there.',
@@ -343,7 +343,7 @@ export const en = {
       loanPrincipal: 'Principal',
       loanPrincipalError: 'Principal must be greater than 0.',
       loanPrincipalPlaceholder: '1000.00',
-      // The Loan form's own schedule SegmentedControl option map (T28).
+      // The Loan form's own schedule SegmentedControl option map.
       loanSchedule: {
         annuity: 'Annuity',
         differentiated: 'Differentiated',
@@ -501,8 +501,8 @@ export const en = {
   },
   accounts: {
     addAccount: 'Add account',
-    // T27: the accounts list's own "Debts" section heading, above the debt
-    // accounts' own drag-and-drop grid (spec §5.3).
+    // The accounts list's own "Debts" section heading, above the debt
+    // accounts' own drag-and-drop grid.
     debtsSection: 'Debts',
     emptyState: 'No accounts yet',
     icon: '{{name}} icon',
@@ -668,8 +668,8 @@ export const en = {
   statistics: {
     accountContribution: 'Account Contribution',
     byType: 'By Type',
-    // T27: the "Debts" total shown under the account pie — a debt's own
-    // negative held value (spec §5.3), rendered through MoneyText.
+    // The "Debts" total shown under the account pie — a debt's own
+    // negative held value, rendered through MoneyText.
     debtsTotal: 'Debts',
     expensesByCategory: 'Expenses by Category',
     filterAccounts: 'Accounts',
@@ -719,8 +719,8 @@ export const en = {
   transactions: {
     defaultDescriptionExpense: '{{name}} expense',
     defaultDescriptionIncome: '{{name}} income',
-    // The plain fallback with no holding name at all (F3 fix round 3,
-    // N9) — used only when the caller has no holding name yet (the
+    // The plain fallback with no holding name at all — used only when
+    // the caller has no holding name yet (the
     // statement-import preview before a target holding is chosen), so an
     // empty name never interpolates into a dangling "{{name}} expense".
     defaultDescriptionExpensePlain: 'Expense',
@@ -826,7 +826,7 @@ export const en = {
     // specific state than the generic `unrecognizedFormat`, so the user
     // knows WHY (wrong bank's export), not just that the file failed.
     bankMismatch: "This doesn't look like a {{bank}} statement. Pick the matching file.",
-    // The generic column-mapping import's own entry point (T7): offered
+    // The generic column-mapping import's own entry point: offered
     // under a recognized preview AND in the unrecognized/bank-mismatch
     // states, so a file no shipped parser recognizes can still be imported.
     mapColumnsManually: 'Map columns manually',
@@ -842,8 +842,8 @@ export const en = {
     currencyLabel: 'Currency',
     dateSpanLabel: 'Date range',
   },
-  // The generic column-mapping import screen (T6,
-  // src/screens/column-mapping/column-mapping.screen.tsx): lets a user map
+  // The generic column-mapping import screen
+  // (src/screens/column-mapping/column-mapping.screen.tsx): lets a user map
   // an unrecognized (or bank-mismatched) statement's own columns onto the
   // fields every import needs, rather than being limited to a shipped
   // dedicated bank format.

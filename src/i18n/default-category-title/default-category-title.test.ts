@@ -26,9 +26,9 @@ describe('resolveDefaultCategoryTitle', () => {
     expect(resolveDefaultCategoryTitle('custom-key', 'My Category')).toBe('My Category');
   });
 
-  // T30 (spec 5/D14): the eleventh default category, seeded by its own
+  // The eleventh default category, seeded by its own
   // later migration (0039) — must translate exactly like the original ten.
-  it('translates the loan_interest seeded category (T30, seeded by 0039)', async () => {
+  it('translates the loan_interest seeded category (seeded by 0039)', async () => {
     await i18n.changeLanguage('uk');
     expect(resolveDefaultCategoryTitle('loan_interest', 'Loan interest')).toBe(
       'Відсотки за кредитом',

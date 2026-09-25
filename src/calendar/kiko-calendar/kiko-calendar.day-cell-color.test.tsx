@@ -52,7 +52,7 @@ const dayTextColor = async (
 describe('buildCalendarTheme — transparent over the glass sheet', () => {
   // The calendar sits inside a glass BottomSheet. An opaque background would
   // paint a flat card over the glass; a transparent background lets the sheet's
-  // material show through (M1 in the iOS HIG audit).
+  // material show through, per the iOS HIG materials guidance.
   it('paints no opaque background, so the glass sheet shows through', () => {
     const built = buildCalendarTheme(darkTheme);
 

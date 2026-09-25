@@ -138,7 +138,7 @@ export const uk: typeof en = {
     cash: 'Готівка',
     transfers: 'Перекази',
     other: 'Інше',
-    // T30 (spec 5/D14): the eleventh default category, seeded by its own
+    // The eleventh default category, seeded by its own
     // later migration (0039) — the interest portion of a linked loan
     // payment (never its principal) files under this key.
     loan_interest: 'Відсотки за кредитом',

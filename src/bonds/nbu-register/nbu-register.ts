@@ -5,7 +5,7 @@ import { type Currency, currencyOptions } from '../../currency/currency';
 import type { BondCouponFrequency } from '../../holdings/holding-metadata';
 
 /**
- * NBU's public, tokenless securities-register endpoint (spec 6.1) — the
+ * NBU's public, tokenless securities-register endpoint — the
  * same `bank.gov.ua` host `nbu-metals.ts`/`nbu-rates.ts`/`nbu-history.ts`
  * already read. Deliberately UNPINNED (`ios/Kiko/Info.plist`'s
  * `NSPinnedDomains`), keyless, public: it carries no credential.
@@ -14,7 +14,7 @@ const REGISTER_ENDPOINT = 'https://bank.gov.ua/depo_securities?json';
 
 /**
  * One record of the register payload, trimmed to the fields
- * `toBondTerms` reads (spec 6.2's field-mapping table). The fixture keeps a
+ * `toBondTerms` reads. The fixture keeps a
  * real `payments[]` array for realism, but this type does not declare it: a
  * later phase that reads exact coupon dates instead of the frequency
  * approximation adds its own type for that field then.
@@ -29,7 +29,7 @@ type NbuRegisterRow = {
   pay_period: number;
 };
 
-/** The register's resolved terms for one bond ISIN — the ISIN-mode form's read shape (spec 6.3). */
+/** The register's resolved terms for one bond ISIN — the ISIN-mode form's read shape. */
 export type BondTerms = {
   isin: string;
   currency: Currency;
@@ -44,7 +44,7 @@ const isCurrency = (value: string): value is Currency =>
   (currencyOptions as readonly string[]).includes(value);
 
 // [canonicalPayPeriodDays, frequency] — the register's observed `pay_period`
-// values cluster around these four periods (spec 6.2); `couponFrequencyFromPayPeriod`
+// values cluster around these four periods; `couponFrequencyFromPayPeriod`
 // tolerates a ±5-day slack around each, the same way a banking-day-adjusted
 // coupon date never lands on an exact calendar multiple.
 const COUPON_BANDS: readonly [number, BondCouponFrequency][] = [
@@ -60,7 +60,7 @@ const COUPON_BAND_SLACK_DAYS = 5;
  * coarse `BondCouponFrequency` enum, or `null` when it falls outside every
  * known band — an irregular/one-off schedule the ISIN-mode form cannot
  * approximate, so it falls back to Manual mode with the known fields
- * pre-filled instead of guessing (spec 6.2).
+ * pre-filled instead of guessing.
  */
 export const couponFrequencyFromPayPeriod = (days: number): BondCouponFrequency | null => {
   const band = COUPON_BANDS.find(([period]) => Math.abs(days - period) <= COUPON_BAND_SLACK_DAYS);
@@ -110,7 +110,7 @@ const readRegister = guard(
 );
 
 /**
- * Maps one register row to `BondTerms` (spec 6.2's field-mapping table):
+ * Maps one register row to `BondTerms`:
  * `nominal` -> `faceValueMinorUnits` through `Money.fromMajor` (an amount,
  * not a scaled decimal-string price/quantity, so no `decimalFromJsonNumber`
  * step is needed — the same parity every other P0 amount conversion
@@ -143,7 +143,7 @@ const toBondTerms = (row: NbuRegisterRow): BondTerms[] => {
 };
 
 /**
- * Fetch NBU's full securities register (spec 6.1) and map every record to
+ * Fetch NBU's full securities register and map every record to
  * `BondTerms`. `bondRegisterRepo.replaceAll` (`src/bonds/bond-register-repo/`)
  * writes the result into the `bond_register` cache wholesale.
  */

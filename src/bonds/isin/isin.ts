@@ -1,5 +1,5 @@
 /**
- * ISIN (ISO 6166) validation — T23. A pure module with no side effects.
+ * ISIN (ISO 6166) validation. A pure module with no side effects.
  * `normalizeIsin` trims and uppercases a raw candidate; `validateIsin`
  * checks its shape (`^[A-Z]{2}[A-Z0-9]{9}[0-9]$` — a 2-letter country/issuer
  * prefix, 9 more alphanumerics, then a numeric check digit) and its ISO 6166

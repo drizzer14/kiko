@@ -89,8 +89,8 @@ export const KIKO_ENTITIES_ICONS = [
 // §3.0.2 Kiko Categories pool (77) — the category picker pool. Every seeded
 // category default IS a member of this pool, so each of the 10 default icons
 // (e.g. Utilities `bolt`, Other `square.grid.2x2`, Transfers
-// `arrow.left.arrow.right`) is selectable in the picker. `percent` (T30,
-// spec 5/D14) is the eleventh default's icon (`loan_interest`, seeded by its
+// `arrow.left.arrow.right`) is selectable in the picker. `percent`
+// is the eleventh default's icon (`loan_interest`, seeded by its
 // own LATER migration, 0039 — not part of `SEEDED_CATEGORIES`, see that
 // fixture's own comment), added here for the same reason.
 export const KIKO_CATEGORIES_ICONS = [

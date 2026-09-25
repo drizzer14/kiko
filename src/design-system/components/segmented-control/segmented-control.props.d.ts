@@ -16,7 +16,7 @@ export type SegmentedControlProps<Option extends string> = {
   // mode toggle) passes `'caption'` so the control stays visually
   // subordinate to that label, the same hierarchy rule `ChipRow` follows.
   labelVariant?: TextVariant;
-  // The group's own accessible name (F3 fix round 1, M4) — required, not
+  // The group's own accessible name — required, not
   // optional, so a caller can never ship a control VoiceOver reads with no
   // group context.
   accessibilityLabel: string;

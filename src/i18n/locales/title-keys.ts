@@ -6,9 +6,8 @@
 // DECISION): a title/heading/sheet-title key is one of the roles with NO
 // final "." either. Verified by call site (a nav `options.title`/
 // `navigation.setOptions`, a `variant="heading"` `Text`, or a
-// `BottomSheet`/`ConfirmSheet` title/header prop) — see
-// `.superpowers/sdd/shares-property-metals-debts/CASE-report.md` for the
-// per-key call-site citations. Extracted out of `en.casing-by-role.test.ts`
+// `BottomSheet`/`ConfirmSheet` title/header prop) against its own real
+// call site. Extracted out of `en.casing-by-role.test.ts`
 // into its own module (not a `.test.ts` file, so a non-test consumer — or a
 // second test file — can import it without pulling in Jest globals) so the
 // casing test and the full-stop test share ONE list rather than two

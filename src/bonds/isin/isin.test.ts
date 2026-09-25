@@ -1,12 +1,11 @@
 import { normalizeIsin, validateIsin } from '.';
 
 // Real NBU-register ISINs used as fixtures, all three confirmed against a
-// live `GET https://bank.gov.ua/depo_securities?json` fetch (T24, 2026-09-24
+// live `GET https://bank.gov.ua/depo_securities?json` fetch
 // — see `src/bonds/nbu-register/__fixtures__/depo-securities-sample.json`):
 // `UA4000227045` and `UA4000234215` are real domestic OVDP (DCP) ISINs;
-// `XS2895055981` is a real Eurobond (OZDP) ISIN. T23 originally shipped
-// `UA4000215008`/`XS2100000004` here with COMPUTED (not register-sourced)
-// check digits — replaced by these three once the register was fetched.
+// `XS2895055981` is a real Eurobond (OZDP) ISIN — register-sourced check
+// digits, not computed placeholders.
 describe('normalizeIsin', () => {
   it('trims surrounding whitespace and uppercases the value', () => {
     expect(normalizeIsin(' ua4000227045 ')).toBe('UA4000227045');

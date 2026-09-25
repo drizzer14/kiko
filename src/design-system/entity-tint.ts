@@ -184,7 +184,7 @@ export const isLightEntityColor = (colorHex: string): boolean =>
 
 // The general-purpose WCAG contrast ratio between two `#RRGGBB` hex colors —
 // exported so a NON-entity contrast check (e.g. `SegmentedControl`'s
-// selected-segment-vs-track ratio, F3 fix round 1, I3) reuses this module's
+// selected-segment-vs-track ratio) reuses this module's
 // one `relativeLuminance`/`contrastRatio` pair instead of a second hand-
 // rolled luminance implementation. `isLightEntityColor` above is the
 // entity-specific glyph-on-fill case; this is the same math for any other
