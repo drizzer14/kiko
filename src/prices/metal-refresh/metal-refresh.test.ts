@@ -129,9 +129,44 @@ describe('refreshMetalPrices', () => {
     expect(upserted).toEqual([]);
   });
 
-  it('writes nothing when there are no held metal holdings at all', async () => {
+  it('writes nothing and makes NO network call when there are no held metal holdings at all', async () => {
     const { deps, upserted } = makeDeps({
       listHoldings: async () => [{ type: 'property_item', metadata: null }],
+      fetchCurrent: async (): Promise<NbuMetalRate[]> => {
+        throw new Error('fetchCurrent should not be called with no metal holdings');
+      },
+      fetchHistory: async (): Promise<NbuMetalHistoryPoint[]> => {
+        throw new Error('fetchHistory should not be called with no metal holdings');
+      },
+    });
+
+    await refreshMetalPrices(deps);
+
+    expect(upserted).toEqual([]);
+  });
+
+  it('writes nothing and makes NO network call when every held metal already has today’s price point', async () => {
+    // Measures the app-open write volume for the common steady-state case: a
+    // metal refreshed earlier the same local day makes NEITHER a `listHoldings`-
+    // driven backfill NOR a `fetchCurrent` call, and the final `upsertMany`
+    // never runs at all — the two unconditional reads (`listHoldings`,
+    // `loadPoints`) are the only per-app-open cost this run pays.
+    const existingPoints: PointRow[] = [
+      { instrument: 'metal:XAU', day: today },
+      { instrument: 'metal:XAG', day: today },
+    ];
+    const { deps, upserted } = makeDeps({
+      listHoldings: async () => [
+        metalHolding('XAU', [earliestLotDay]),
+        metalHolding('XAG', [earliestLotDay]),
+      ],
+      loadPoints: async () => existingPoints,
+      fetchCurrent: async (): Promise<NbuMetalRate[]> => {
+        throw new Error('fetchCurrent should not be called — every metal already priced today');
+      },
+      fetchHistory: async (): Promise<NbuMetalHistoryPoint[]> => {
+        throw new Error('fetchHistory should not be called — every metal already priced today');
+      },
     });
 
     await refreshMetalPrices(deps);

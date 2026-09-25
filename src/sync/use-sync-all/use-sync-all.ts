@@ -40,10 +40,15 @@ const fanOutAndRefresh = async (jobs: SyncJob[]): Promise<string[]> => {
   // One rate refresh for the whole fan-out (not per account), mirroring the
   // single refresh a lone sync does. Wrapped so a rate-refresh failure — not
   // tied to any one account — never throws out of pull-to-refresh.
+  // Concurrent, not sequential — mirrors useAutoSync's identical fix:
+  // `refreshRates` (currency_rates) and `refreshMetalPrices` (price_points)
+  // read and write disjoint tables, so starting both at once shrinks the
+  // pull's DB-read burst instead of making the metal fetch wait out the
+  // whole rates fetch first.
   await either(async () => {
     const lastRefreshAt = await ratesRepo.latestFetchedAt();
-    await refreshRates({ lastRefreshAt });
-    await refreshMetalPrices();
+
+    await Promise.all([refreshRates({ lastRefreshAt }), refreshMetalPrices()]);
   });
 
   return failed;

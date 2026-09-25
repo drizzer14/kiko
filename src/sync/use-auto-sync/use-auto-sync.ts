@@ -141,8 +141,13 @@ export const useAutoSync = (): void => {
         );
       }
       const lastRefreshAt = await ratesRepo.latestFetchedAt();
-      await refreshRates({ lastRefreshAt });
-      await refreshMetalPrices();
+
+      // Concurrent, not sequential: `refreshRates` (currency_rates) and
+      // `refreshMetalPrices` (price_points) read and write disjoint tables —
+      // neither depends on the other's result — so starting both at once
+      // shrinks the app-open DB-read burst's wall-clock span instead of
+      // making the metal fetch wait out the whole rates fetch first.
+      await Promise.all([refreshRates({ lastRefreshAt }), refreshMetalPrices()]);
     });
   }, []);
 };

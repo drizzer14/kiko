@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import type { AccountRow } from '../../db/schema';
 
@@ -83,6 +83,30 @@ describe('useSyncAll', () => {
     expect(mockRefreshRates).toHaveBeenCalledWith({ lastRefreshAt: 1_700_000_000_000 });
     expect(mockRefreshMetalPrices).toHaveBeenCalledTimes(1);
     expect(result.current.failures).toEqual([]);
+  });
+
+  it('runs refreshRates and refreshMetalPrices CONCURRENTLY — the metal call fires before rates settles', async () => {
+    // Twin of useAutoSync's identical concurrency fix: the two share no data
+    // dependency (refreshMetalPrices reads/writes price_points only,
+    // refreshRates reads/writes currency_rates only), so starting both at
+    // once — rather than awaiting rates before even CALLING
+    // refreshMetalPrices — shrinks the pull-to-refresh DB-read burst's
+    // wall-clock span the same way the app-open one shrinks.
+    let resolveRates!: () => void;
+    mockRefreshRates.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveRates = resolve;
+      }),
+    );
+    const { result } = await renderHook(() => useSyncAll([MANUAL]));
+
+    await act(async () => {
+      const syncAllPromise = result.current.syncAll();
+
+      await waitFor(() => expect(mockRefreshMetalPrices).toHaveBeenCalled());
+      resolveRates();
+      await syncAllPromise;
+    });
   });
 
   it('fans out over EVERY connected Monobank account, each with its own targeted run', async () => {

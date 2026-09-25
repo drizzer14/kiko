@@ -107,6 +107,29 @@ describe('useAutoSync', () => {
     await waitFor(() => expect(mockRefreshMetalPrices).toHaveBeenCalled());
   });
 
+  it('runs refreshRates and refreshMetalPrices CONCURRENTLY — the metal call fires before rates settles', async () => {
+    // They share no data dependency (refreshMetalPrices reads/writes
+    // price_points only; refreshRates reads/writes currency_rates only), so
+    // starting both at once — rather than awaiting rates before even
+    // CALLING refreshMetalPrices — shrinks the app-open DB burst's wall-clock
+    // span. A controllable rates promise proves this: if the two ran
+    // sequentially, refreshMetalPrices would not be called until AFTER
+    // rates resolves.
+    mockListQuery.mockResolvedValue([]);
+    let resolveRates!: () => void;
+    mockRefreshRates.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveRates = resolve;
+      }),
+    );
+
+    renderHook(() => useAutoSync());
+
+    await waitFor(() => expect(mockRefreshMetalPrices).toHaveBeenCalled());
+
+    resolveRates();
+  });
+
   it('does nothing when the connected Monobank account synced within the throttle window', async () => {
     mockListQuery.mockResolvedValue([monobank]);
     mockSyncStateGetQuery.mockResolvedValue([{ lastSyncAt: Date.now() }]);
