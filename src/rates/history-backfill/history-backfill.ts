@@ -1,10 +1,19 @@
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 
+import {
+  openCurrencies as defaultOpenCurrencies,
+  type OpenCurrencies,
+} from '../open-currencies-gate';
+import {
+  isCrypto,
+  currencyOptions,
+  type Currency,
+  type CryptoCurrency,
+} from '../../currency/currency';
 import { fetchNbuHistory } from '../nbu-history';
 import { fetchCryptoHistory } from '../coingecko-history';
 import type { CurrencyRateHistoryRow } from '../../db/schema';
 import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
-import { type Currency, currencyOptions, isCrypto } from '../../currency/currency';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -42,8 +51,16 @@ export type BackfillDeps = {
   /** Today, defaulting to the current UTC day. */
   today?: number;
   fetchNbuHistory?: (start: number, end: number) => Promise<HistoryRateEntry[]>;
-  fetchCryptoHistory?: (days: number) => Promise<HistoryRateEntry[]>;
+  fetchCryptoHistory?: (days: number, currencies: CryptoCurrency[]) => Promise<HistoryRateEntry[]>;
   upsertMany?: (rows: NewHistoryRow[]) => Promise<void>;
+  /**
+   * The data-presence gate (kiko-architecture: app-open/refresh work is
+   * gated on data presence — no request or query for data the user does not
+   * have), shared with `refreshRates` (`rates-refresh.ts`) — see
+   * `open-currencies-gate.ts`. Defaults to a real read of `settingsRepo` +
+   * `holdingsRepo`'s one cheap `openCurrenciesQuery`.
+   */
+  openCurrencies?: () => Promise<OpenCurrencies>;
 };
 
 /** The maximum stored `day`, i.e. the resume point — null when there is none. */
@@ -202,6 +219,22 @@ export const composeHistoryRows = (
   return rows;
 };
 
+/** The NBU leg, gated on `needsFiat` — `[]` without ever calling `loadNbu`. */
+const runNbuLeg = (
+  needsFiat: boolean,
+  loadNbu: (start: number, end: number) => Promise<HistoryRateEntry[]>,
+  spanStart: number,
+  today: number,
+): Promise<HistoryRateEntry[]> => (needsFiat ? loadNbu(spanStart, today) : Promise.resolve([]));
+
+/** The CoinGecko leg, gated on a non-empty held set — `[]` without ever calling `loadCrypto`. */
+const runCryptoLeg = (
+  cryptoCurrencies: CryptoCurrency[],
+  loadCrypto: (days: number, currencies: CryptoCurrency[]) => Promise<HistoryRateEntry[]>,
+  cryptoDays: number,
+): Promise<HistoryRateEntry[]> =>
+  cryptoCurrencies.length > 0 ? loadCrypto(cryptoDays, cryptoCurrencies) : Promise.resolve([]);
+
 /**
  * Run one incremental pass: compute the still-missing days, fetch the fiat range
  * from NBU and every crypto's series from CoinGecko for that span, compose every
@@ -220,8 +253,20 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
     return { state: 'complete', lastDay: lastBackfilledDay };
   }
 
+  const openCurrencies = deps.openCurrencies ?? defaultOpenCurrencies;
+  const { needsFiat, cryptoCurrencies } = await openCurrencies();
+
+  // kiko-architecture: no request or query for data the user does not have —
+  // nothing active that differs from the base currency, and no crypto held,
+  // means neither leg has anything to fetch this run.
+  if (!needsFiat && cryptoCurrencies.length === 0) {
+    return { state: 'complete', lastDay: lastBackfilledDay };
+  }
+
   const loadNbu = deps.fetchNbuHistory ?? ((start, end) => fetchNbuHistory(start, end));
-  const loadCrypto = deps.fetchCryptoHistory ?? ((count) => fetchCryptoHistory(count));
+  const loadCrypto =
+    deps.fetchCryptoHistory ??
+    ((count, currencies) => fetchCryptoHistory(count, fetch, currencies));
   const upsertMany = deps.upsertMany ?? rateHistoryRepo.upsertMany;
 
   const spanStart = days[0];
@@ -229,9 +274,12 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
   // Settle the two providers independently: CoinGecko's free tier can 401 a
   // long crypto span, and an all-or-nothing `Promise.all` would then discard the
   // NBU fiat rates too. Whichever source succeeds still contributes its anchors.
+  // Each leg is ALSO gated individually on `openCurrencies`'s own verdict: a
+  // leg with nothing to convert/hold resolves to `[]` without ever calling
+  // its fetch function.
   const [nbuResult, cryptoResult] = await Promise.allSettled([
-    loadNbu(spanStart, today),
-    loadCrypto(cryptoDays),
+    runNbuLeg(needsFiat, loadNbu, spanStart, today),
+    runCryptoLeg(cryptoCurrencies, loadCrypto, cryptoDays),
   ]);
 
   if (nbuResult.status === 'rejected' && cryptoResult.status === 'rejected') {
