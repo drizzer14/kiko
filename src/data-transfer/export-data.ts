@@ -11,8 +11,8 @@ import { readExportSecrets } from './secrets/read-secrets';
 import { readDataSnapshot } from './snapshot/read-snapshot';
 
 // Not exported: nothing outside this file imports it yet (the Export Data
-// screen, Task 12, currently consumes only `exportData`'s inferred return
-// type). Knip flags an exported type nothing imports as dead code.
+// screen consumes only `exportData`'s inferred return type). Knip flags an
+// exported type nothing imports as dead code.
 type ExportResult = { fileUri: string; keyBase64: string };
 
 const exportFileName = (): string => `kiko-export-${Date.now()}.kiko`;

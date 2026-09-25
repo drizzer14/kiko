@@ -388,8 +388,8 @@ describe('exchange-marker migration', () => {
   });
 });
 
-// C1: the `transactions` table only carried `transactions_source_external`
-// (the dedup unique index). Every `where(eq(transactions.holdingId, …))` did a
+// The `transactions` table only carried `transactions_source_external` (the
+// dedup unique index). Every `where(eq(transactions.holdingId, …))` did a
 // full table scan and every `orderBy(desc(transactions.time))` a full sort, so
 // a migration adds a plain index on each of those two columns.
 describe('transactions performance indexes migration', () => {
@@ -408,13 +408,13 @@ describe('transactions performance indexes migration', () => {
   });
 
   it('adds the two indexes and nothing that rebuilds or drops the table', () => {
-    // The migration that introduces the holding_id index is the C1 one; it must
-    // not carry an accidental table rebuild or column drop alongside the indexes.
-    const c1 = sqlFiles().find((sql) => sql.includes('`transactions_holding_id`'));
+    // The migration that introduces the holding_id index must not carry an
+    // accidental table rebuild or column drop alongside the indexes.
+    const migrationSql = sqlFiles().find((sql) => sql.includes('`transactions_holding_id`'));
 
-    expect(c1).toBeDefined();
-    expect(c1).not.toContain('DROP TABLE');
-    expect(c1).not.toContain('DROP COLUMN');
-    expect(c1).not.toContain('CREATE TABLE');
+    expect(migrationSql).toBeDefined();
+    expect(migrationSql).not.toContain('DROP TABLE');
+    expect(migrationSql).not.toContain('DROP COLUMN');
+    expect(migrationSql).not.toContain('CREATE TABLE');
   });
 });

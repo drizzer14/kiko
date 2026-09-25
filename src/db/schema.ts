@@ -19,8 +19,8 @@ export const accounts = sqliteTable('accounts', {
     enum: ['bank', 'cash', 'crypto', 'property', 'metals', 'debt'],
   }).notNull(),
   institution: text('institution'),
-  // The bank this account REPRESENTS (device-feedback-round-1 item 3,
-  // `src/bank-sync/bank-catalog/`), independent of `institution`
+  // The bank this account REPRESENTS (`src/bank-sync/bank-catalog/`),
+  // independent of `institution`
   // (which marks a LIVE sync connection). Set from the account-form's bank
   // picker at create time; import-only for 5 of the 6 catalog entries.
   // Deliberately NEVER read by `isSyncedAccount`/`isSyncedHolding`
@@ -368,8 +368,7 @@ export const settings = sqliteTable('settings', {
   // confirmed for that key. NULL means nothing saved yet. Written (read-
   // modify-write) by `settingsRepo.saveStatementMapping`; looked up by
   // `findSavedMapping` to PRE-FILL the mapping form on a later import — the
-  // user still taps Import (Review Focus 3), a saved mapping never applies
-  // itself silently.
+  // user still taps Import, a saved mapping never applies itself silently.
   statementMappings: text('statement_mappings', { mode: 'json' }).$type<
     Record<string, SavedColumnMapping>
   >(),
@@ -384,11 +383,11 @@ export type SettingsRow = typeof settings.$inferSelect;
  * a second connected Monobank account would have shared and corrupted the one
  * cursor. Each connected Monobank account now owns its own row here, keyed by its
  * `accounts.id`. The old `settings` columns are retained-but-dead — pinned as
- * reader-less in `src/db/settings-columns.test.ts` per the 2026-09-11
- * multi-account plan (Task 1.3), same additive-only class as `appearance` /
- * `lockGraceSeconds`. Each column mirrors the identically-named `settings` one;
- * read the comments on those columns above for the load-bearing semantics
- * (balance-diff skip, robust `lastFullSyncAt` graduation, the display stamp).
+ * reader-less in `src/db/settings-columns.test.ts`, same additive-only class
+ * as `appearance` / `lockGraceSeconds`. Each column mirrors the
+ * identically-named `settings` one; read the comments on those columns above
+ * for the load-bearing semantics (balance-diff skip, robust
+ * `lastFullSyncAt` graduation, the display stamp).
  */
 export const syncState = sqliteTable('sync_state', {
   accountId: text('account_id')

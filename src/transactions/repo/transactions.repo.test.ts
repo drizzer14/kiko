@@ -2364,8 +2364,8 @@ describe('transactionsRepo.importRows', () => {
 // against the SAME pair see each other's real effects, the way two real
 // statement imports into the same holding would. Needed by every describe
 // block below that spans more than one `importRows` call in a single test
-// (order independence, and the R1(b) and the disconnected-sync /
-// hand-set-balance boundary-source tests);
+// (order independence, and the plain-import-boundary-ruling and the
+// disconnected-sync / hand-set-balance boundary-source tests);
 // every OTHER `importRows` test needs just one static decision, per the
 // comment on `makeImportRowsDatabaseTransaction`.
 type OrderedStoreRow = { time: number; source: string; externalId: string | null };
@@ -2531,16 +2531,15 @@ describe('transactionsRepo.importRows order independence (an applied closing bal
   });
 });
 
-// User ruling (R1, "(b)"): an earlier PLAIN import's own rows are NEVER a
-// boundary source, whether or not a hand-set balance or a sync row exists
-// (the disconnected-sync and hand-set-balance sources have their own
-// describe blocks below).
-// These three tests are the ruling's own pinned cases.
-describe('transactionsRepo.importRows boundary sources (R1 ruling b)', () => {
+// An earlier PLAIN import's own rows are NEVER a boundary source, whether or
+// not a hand-set balance or a sync row exists (the disconnected-sync and
+// hand-set-balance sources have their own describe blocks below).
+// These three tests are that ruling's own pinned cases.
+describe('transactionsRepo.importRows boundary sources (a plain import is never a boundary)', () => {
   const APRIL_TIME = Date.UTC(2024, 3, 15);
   const MAY_TIME = Date.UTC(2024, 4, 15);
 
-  it('R1 test 1: an import-only holding (never hand-set, no closing balance) reaches the same final balance whether May or April imports first', async () => {
+  it('an import-only holding (never hand-set, no closing balance) reaches the same final balance whether May or April imports first', async () => {
     const mayRows = [
       { holdingId: 'hold-1', amountMinorUnits: -1_000, time: MAY_TIME, source: 'import' as const },
     ];
@@ -2586,8 +2585,8 @@ describe('transactionsRepo.importRows boundary sources (R1 ruling b)', () => {
     await transactionsRepo.importRows({ holdingId: 'hold-1', rows: mayRows });
 
     // Neither import ever hand-sets a balance or carries a closing balance,
-    // so R1(b) leaves this holding with NO boundary at all, ever — every
-    // row counts in both orders, converging on net_April + net_May
+    // so this holding has NO boundary at all, ever — every row counts in
+    // both orders, converging on net_April + net_May
     // (-2_000 + -1_000 = -3_000) regardless of which statement lands first.
     expect(orderOneHolding.balanceMinorUnits).toBe(orderTwoHolding.balanceMinorUnits);
     expect(orderOneHolding.balanceMinorUnits).toBe(-3_000);
@@ -2597,7 +2596,7 @@ describe('transactionsRepo.importRows boundary sources (R1 ruling b)', () => {
   // sitting in the ledger, so this actually discriminates — it proves the
   // boundary is `balanceSetAt` alone, not "the newest row in the store"
   // (which the newer import row would otherwise satisfy).
-  it('R1 test 2: a hand-set balance leaves an OLDER statement (every row before the hand-set time) unchanged, even with a newer plain import already in the ledger', async () => {
+  it('a hand-set balance leaves an OLDER statement (every row before the hand-set time) unchanged, even with a newer plain import already in the ledger', async () => {
     const HAND_SET_TIME = 10_000;
     const holding = { ...baseHolding, balanceMinorUnits: 250_00, balanceSetAt: HAND_SET_TIME };
     const store: OrderedStoreRow[] = [
@@ -2625,7 +2624,7 @@ describe('transactionsRepo.importRows boundary sources (R1 ruling b)', () => {
     expect(holding.balanceMinorUnits).toBe(250_00);
   });
 
-  it('R1 test 3: an applied closing balance (which writes no ledger row of its own) leaves an OLDER non-closing statement unchanged', async () => {
+  it('an applied closing balance (which writes no ledger row of its own) leaves an OLDER non-closing statement unchanged', async () => {
     const holding = { ...baseHolding };
     const store: OrderedStoreRow[] = [];
 
