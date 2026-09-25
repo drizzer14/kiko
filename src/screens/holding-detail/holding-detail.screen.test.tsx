@@ -703,9 +703,9 @@ describe('HoldingDetailScreen', () => {
   });
 
   it('shows a "Value as of <date>" caption for a priced holding with a stored price point', async () => {
-    // property_item is a priced holding (isPricedHoldingType) — its
-    // Value header shows the LATEST stored price point's own day, so the user
-    // sees how current the figure is.
+    // property_item is a priced holding — its Value header shows the LATEST
+    // stored price point's own day, so the user sees how current the figure
+    // is.
     const day = Date.UTC(2026, 5, 1);
     seed(propertyHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [
       { instrument: 'holding:h-1', day, price: '2500000.00', currency: 'UAH', source: 'manual' },
@@ -1046,10 +1046,10 @@ describe('HoldingDetailScreen', () => {
   });
 
   it('offers "Update value" instead of a manual add action for a property_item', async () => {
-    // property_item is ledgerless (isLedgerlessHoldingType) AND priced
-    // (isPricedHoldingType) — it takes neither the generic "Add
-    // transaction" nor a deposit "Add contribution"; instead its footer opens
-    // the dedicated price-point form to record a revaluation.
+    // property_item is ledgerless (isLedgerlessHoldingType) AND priced — it
+    // takes neither the generic "Add transaction" nor a deposit "Add
+    // contribution"; instead its footer opens the dedicated price-point form
+    // to record a revaluation.
     seed(propertyHolding);
 
     const { getByTestId, queryByText } = await renderScreen();

@@ -5,9 +5,9 @@ import { Money, toMajor } from '../../../currency/money';
 import type { DerivedEntry } from '../../derived-entries';
 import { asTermDepositMeta } from '../../holding-metadata';
 import type { ValuableHolding } from '../../holding-value';
+import type { HoldingDescriptor } from '../holding-descriptor.d';
 import { entityColorsDark } from '../../../design-system/palette';
 import { depositAccruedMajor, depositLedger } from '../../interest';
-import type { HoldingDescriptor, IdentifiedHolding } from '../holding-descriptor.d';
 import { flat, makeBreakdown, type HoldingValueBreakdown } from '../breakdown-parts';
 import { INCOME_TAX_RATE_PCT, MILITARY_LEVY_RATE_PCT, taxOnInterestMinor } from '../../tax';
 
@@ -70,7 +70,7 @@ const depositBreakdown = (holding: ValuableHolding, now: number): HoldingValueBr
 // The opening deposit and each top-up as contribution entries (opening first,
 // the rest labelled "Top-up").
 const contributionEntries = (
-  holding: IdentifiedHolding,
+  holding: ValuableHolding,
   now: number,
   t: TFunction,
 ): DerivedEntry[] => {
@@ -97,7 +97,7 @@ const contributionEntries = (
 // instant — the bank statement's line structure. Amounts come from the
 // step-by-step ledger, so past lines are settled and future ones project.
 const recapAccrualEntries = (
-  holding: IdentifiedHolding,
+  holding: ValuableHolding,
   meta: NonNullable<ReturnType<typeof asTermDepositMeta>>,
   now: number,
   t: TFunction,
@@ -151,7 +151,7 @@ const recapAccrualEntries = (
 // to the opening/top-ups plus the per-accrual interest/tax/capitalization lines;
 // a recap-OFF deposit pays interest out instead of compounding, so it surfaces a
 // single cumulative interest/tax pair at `now`.
-const depositEntries = (holding: IdentifiedHolding, now: number, t: TFunction): DerivedEntry[] => {
+const depositEntries = (holding: ValuableHolding, now: number, t: TFunction): DerivedEntry[] => {
   const meta = asTermDepositMeta(holding.metadata);
   if (meta === null) {
     return [];

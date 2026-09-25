@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next';
 
-import { type IdentifiedHolding, holdingDescriptorOrUndefined } from '../holding-descriptor';
+import type { ValuableHolding } from '../holding-value';
+import { holdingDescriptorOrUndefined } from '../holding-descriptor';
 
 export type DerivedEntryKind =
   | 'contribution'
@@ -32,7 +33,7 @@ export type DerivedEntry = {
 };
 
 const entriesForType = (
-  holding: IdentifiedHolding,
+  holding: ValuableHolding,
   now: number,
   t: TFunction,
 ): readonly DerivedEntry[] => {
@@ -56,7 +57,7 @@ const entriesForType = (
 // active language on every call rather than freezing to a module-load-time
 // language.
 export const derivedEntries = (
-  holding: IdentifiedHolding,
+  holding: ValuableHolding,
   now: number,
   t: TFunction,
 ): DerivedEntry[] => [...entriesForType(holding, now, t)].sort((a, b) => a.time - b.time);

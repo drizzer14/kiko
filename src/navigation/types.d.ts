@@ -81,7 +81,7 @@ export type AccountsStackParamList = {
   // instead; only deposits take a dedicated contribution form.
   ContributionForm: { holdingId: string };
   // Record a new `manual` price point for a priced holding (property_item,
-  // metal — `isPricedHoldingType`), reached from the holding-detail screen's
+  // metal), reached from the holding-detail screen's
   // "Update value" footer action. A dedicated form, mirroring
   // ContributionForm's shape, rather than a plain TransactionForm entry: a
   // revaluation moves no ledger balance, only the holding's `price_points`

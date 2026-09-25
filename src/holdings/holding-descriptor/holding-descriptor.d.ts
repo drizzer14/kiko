@@ -10,20 +10,14 @@ import type { PriceBook } from '../../prices/price-book';
 import type { ExchangeReceivePath } from '../exchange-destination';
 import type { HoldingValueBreakdown, ValuableHolding } from '../holding-value';
 
-export type IdentifiedHolding = ValuableHolding & { id: string };
-
 /** How a PriceBook-valued type is priced. */
 export type PricedSpec = {
   lots: (metadata: HoldingRow['metadata']) => readonly Lot[] | undefined;
   /**
    * The Money value at `instant`, in the spec's own currency — NOT
    * necessarily `holding.currency` (`property_item` returns the holding
-   * currency; `metal` returns the price point row's own currency, which
-   * NBU always stores as UAH) — or null without a price point. `id` is
-   * OPTIONAL here — only a spec that reads a per-holding `holding:<id>`
-   * instrument (`property_item`) needs to guard it itself; one that reads a
-   * SHARED instrument (`metal`'s `metal:<XAU|XAG|XPT|XPD>`) needs no id at
-   * all.
+   * currency; `metal` returns the price point row's own currency, which NBU
+   * always stores as UAH) — or null without a price point.
    */
   value: (holding: PricedHolding, book: PriceBook, instant: number) => Money | null;
   /** The series the "as of" caption reads; null for unparsable metadata. */
@@ -51,5 +45,5 @@ export type HoldingDescriptor = {
   };
   priced: PricedSpec | null;
   breakdown: (holding: ValuableHolding, now: number, book: PriceBook) => HoldingValueBreakdown;
-  entries: (holding: IdentifiedHolding, now: number, t: TFunction) => readonly DerivedEntry[];
+  entries: (holding: ValuableHolding, now: number, t: TFunction) => readonly DerivedEntry[];
 };

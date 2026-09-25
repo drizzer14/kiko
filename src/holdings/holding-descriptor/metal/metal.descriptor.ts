@@ -8,15 +8,16 @@ import { asMetalMeta } from '../../holding-metadata';
 import type { HoldingRow } from '../../../db/schema';
 import type { PricedHolding } from '../../priced-value';
 import type { DerivedEntry } from '../../derived-entries';
+import type { ValuableHolding } from '../../holding-value';
 import type { Currency } from '../../../currency/currency';
 import { metalInstrument } from '../../../prices/instrument';
 import { entityColorsDark } from '../../../design-system/palette';
 import { priceAt, type PriceBook } from '../../../prices/price-book';
+import type { HoldingDescriptor, PricedSpec } from '../holding-descriptor.d';
 import { compareDecimal, multiplyToMinorUnits } from '../../../currency/decimal';
-import type { HoldingDescriptor, IdentifiedHolding, PricedSpec } from '../holding-descriptor.d';
 
-// NBU quotes precious metals in UAH, so a metal holding's priced value is
-// always a UAH amount regardless of `holding.currency`.
+// The create form's fixed currency for a metal holding — UAH, matching NBU's
+// own metal quotes.
 const METAL_FIXED_CURRENCY: Currency = 'UAH';
 
 // One troy ounce in grams (NBU quotes precious metals per troy ounce). A
@@ -82,7 +83,7 @@ const metalPricedSpec: PricedSpec = {
 // sell's negative (cost basis removed), so negating it once here yields the
 // money-out/money-in sign the bond purchase/redemption entries already use,
 // with no separate branch per direction needed.
-const metalEntries = (holding: IdentifiedHolding, now: number, t: TFunction): DerivedEntry[] => {
+const metalEntries = (holding: ValuableHolding, now: number, t: TFunction): DerivedEntry[] => {
   const meta = asMetalMeta(holding.metadata);
   if (meta === null) {
     return [];

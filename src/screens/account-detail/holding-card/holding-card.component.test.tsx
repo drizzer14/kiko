@@ -160,7 +160,7 @@ describe('HoldingCard', () => {
     });
   });
 
-  // A priced holding (property_item — isPricedHoldingType) shows the
+  // A priced holding (property_item) shows the
   // LATEST stored price point's own day beneath its value, so the user sees
   // how current its revaluation is — the same caption holding-detail renders.
   describe('the "Value as of" caption', () => {

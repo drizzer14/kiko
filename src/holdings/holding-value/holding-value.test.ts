@@ -496,6 +496,33 @@ describe('holdingValueBreakdown — metal (priced)', () => {
     expect(breakdown.net.minorUnits).toBe(9_000_000);
   });
 
+  it('values an ounce-denominated metal lot with no unit conversion', () => {
+    const book = buildPriceBook([
+      {
+        instrument: metalInstrument('XAG'),
+        day: propertyDay2024,
+        price: '1000',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+    ]);
+    const holding = goldBar({
+      metal: 'XAG',
+      unit: 'oz',
+      lots: [{ day: propertyDay2024, quantityDelta: '2', costMinorUnits: 200_000 }],
+    });
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, book);
+    expect(breakdown.gross.minorUnits).toBe(200_000);
+  });
+
+  it('scales a metal value by purity below 1', () => {
+    const holding = goldBar({ purity: '0.5' });
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, xauBookAt90000());
+    expect(breakdown.gross.minorUnits).toBe(4_500_000);
+  });
+
   it('falls back to the lots cost basis when there is no price point yet', () => {
     const holding = goldBar();
 
@@ -625,72 +652,6 @@ describe('holdingValueBreakdown — loan', () => {
 
     const atStart = holdingValueBreakdown(noneLoan, loanStart, book);
     expect(atStart.gross.minorUnits).toBe(-12_000_000);
-  });
-
-  // An id-less loan (never a real stored row — every real HoldingRow has an
-  // id — but a value read through a source looser than one, e.g. a partial
-  // object built by hand) cannot resolve a `holding:<id>` instrument key, so
-  // it reads through an EMPTY price book instead of the real one: the book
-  // below stores a point under exactly that key, and the correct read
-  // ignores it. A 'none' loan with no correction found reads 0 — the same
-  // baseline `loanOutstandingMinorAt` gives a real, identified loan with no
-  // correction — not the principal. `withoutId` is cast back to
-  // `ValuableHolding` (its `id` is genuinely absent at runtime, only the type
-  // widens) so this runtime-defensive path stays covered even though every
-  // WELL-TYPED caller always has an id.
-  it('reads 0 for an id-less "none" loan with no correction, never a lookup on the empty id', () => {
-    const { id: _id, ...withoutId } = loan({
-      schedule: 'none',
-      annualRatePct: undefined,
-      termMonths: undefined,
-    });
-    const book = buildPriceBook([
-      {
-        instrument: holdingInstrument(''),
-        day: loanStart,
-        price: '999999.00',
-        currency: 'UAH',
-        source: 'manual',
-      },
-    ]);
-
-    const b = holdingValueBreakdown(withoutId as ValuableHolding, loanStart, book);
-
-    expect(b.gross.minorUnits).toBe(0);
-    expect(b.net.minorUnits).toBe(0);
-  });
-
-  // An id-less annuity loan must still apply the amortization schedule
-  // (never the flat, un-amortized principal): it reads exactly like an
-  // identified loan queried against an empty book (no correction found),
-  // since the id-less path can only ever read through an empty book too.
-  it('applies the amortization schedule for an id-less annuity loan, matching an identified loan with no correction', () => {
-    const sixMonthsIn = local(2020, 6, 15); // loanStart (15 Jan 2020) + 6 months
-    const { id: _id, ...withoutId } = loan();
-
-    const identified = holdingValueBreakdown(loan(), sixMonthsIn, EMPTY_PRICE_BOOK);
-    const idLess = holdingValueBreakdown(
-      withoutId as ValuableHolding,
-      sixMonthsIn,
-      EMPTY_PRICE_BOOK,
-    );
-
-    expect(idLess.gross.minorUnits).toBe(identified.gross.minorUnits);
-    expect(idLess.gross.minorUnits).toBeGreaterThan(-120_000_000);
-    expect(idLess.gross.minorUnits).toBeLessThan(0);
-  });
-
-  // The pre-`startDate` guard must still apply for an id-less loan: reading
-  // through an empty book must never surface the flat, un-amortized
-  // principal for an instant before the loan was even taken out.
-  it('is 0 before the loan start date for an id-less loan too', () => {
-    const dayBeforeStart = local(2020, 0, 14);
-    const { id: _id, ...withoutId } = loan();
-
-    const b = holdingValueBreakdown(withoutId as ValuableHolding, dayBeforeStart, EMPTY_PRICE_BOOK);
-
-    expect(b.gross.minorUnits).toBe(0);
-    expect(b.net.minorUnits).toBe(0);
   });
 
   // Missing/malformed loan metadata must value the loan at 0, never

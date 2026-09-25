@@ -1,13 +1,11 @@
-import maybe, { foldMap } from 'fnts/maybe';
-
 import { Money } from '../../../currency/money';
 import { asLoanMeta } from '../../holding-metadata';
 import type { ValuableHolding } from '../../holding-value';
+import type { PriceBook } from '../../../prices/price-book';
 import { loanOutstandingMinorAt } from '../../loan-schedule';
 import type { HoldingDescriptor } from '../holding-descriptor.d';
 import { entityColorsDark } from '../../../design-system/palette';
 import { flat, type HoldingValueBreakdown } from '../breakdown-parts';
-import { EMPTY_PRICE_BOOK, type PriceBook } from '../../../prices/price-book';
 
 // A loan's held value is NEGATIVE: it is debt, not an asset, so
 // `holdingValue`/net-worth subtract it by simply summing every holding's own
@@ -35,18 +33,7 @@ const loanBreakdown = (
     return flat(holding.currency, 0);
   }
   const { currency } = holding;
-  // An id-less holding (a synthetic fixture — see `ValuableHolding`'s own doc
-  // comment; never a real stored row) cannot resolve a `holding:<id>`
-  // instrument key, so it reads through an EMPTY price book instead of the
-  // real one — never a lookup on the empty id, which could in principle
-  // collide with a stray point actually stored under it. Passing
-  // `EMPTY_PRICE_BOOK` (rather than skipping straight to the principal)
-  // keeps every downstream rule applying exactly as it does for an
-  // identified loan with no correction found: the pre-`startDate` guard, the
-  // amortization schedule, and `'none'`'s own "no correction" baseline.
-  const outstandingMinor =
-    foldMap(maybe(holding.id), (id) => loanOutstandingMinorAt(meta, id, book, now)) ??
-    loanOutstandingMinorAt(meta, '', EMPTY_PRICE_BOOK, now);
+  const outstandingMinor = loanOutstandingMinorAt(meta, holding.id, book, now);
   // `outstandingMinor` is always clamped >= 0 (`loanOutstandingMinorAt`);
   // negating it directly would produce `-0` for a paid-off loan (`Object.is`
   // distinguishes `-0` from `0`, which a `toBe(0)` assertion catches), so the
