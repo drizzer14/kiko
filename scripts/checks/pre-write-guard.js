@@ -13,18 +13,24 @@
 // `runSemgrep` runs ONE Semgrep process over the trees that can possibly
 // matter (an empty BEFORE tree is skipped — it can have no findings, so
 // scanning it would only waste the one process this hook is allowed);
-// `findingKeys`/`newFindings` diff the two finding sets so only a finding the
-// edit ADDS ever blocks the write, never one already on disk. Override syntax
-// (a rule-specific `nosemgrep`/`kiko-override` comment that exempts a finding)
-// is a later task. Fail closed throughout: the top-level try/catch below
-// turns ANY throw — a malformed payload, a missing/unreadable rules file, an
-// unexpected Semgrep exit code, a finding whose rule is missing its required
-// `metadata.skill`, or an internal timeout killing a child — into a deny,
-// never a silent allow.
+// `runNodeChecks` runs the hand-rolled checkers Semgrep cannot express
+// (import-order.js, full-word-identifiers.js, and, `.tsx` only,
+// one-component-per-file.ts's `exportedComponentNames`) via the same
+// AFTER-first, BEFORE-only-if-AFTER-has-findings staging; `findingKeys`/
+// `newFindings` diff the two finding sets — Semgrep's and the Node
+// checkers' combined — so only a finding the edit ADDS ever blocks the
+// write, never one already on disk. Override syntax (a rule-specific
+// `nosemgrep`/`kiko-override` comment that exempts a finding) is a later
+// task. Fail closed throughout: the top-level try/catch below turns ANY
+// throw — a malformed payload, a missing/unreadable rules file, an
+// unexpected Semgrep or Node-checker exit code, a finding whose rule is
+// missing its required `metadata.skill`, or an internal timeout killing a
+// child — into a deny, never a silent allow.
 
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const { spawnSync } = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '..', '..');
@@ -282,6 +288,183 @@ function runSemgrep(temporaryRoot, relativePath, trees) {
   return (parsed.results || []).map((result) => buildFinding(temporaryRoot, result));
 }
 
+// Spawns one Node checker script (import-order.js or full-word-
+// identifiers.js — never one-component-per-file.ts, which runs in-process
+// below) against a single mirrored file. Mirrors runSemgrep's exit-code
+// contract: 0 is clean, 1 means `parseOutput` should read the checker's own
+// stdout; any other code (a crash, a stub standing in for one in a test)
+// throws, caught by the top-level fail-closed handler in `run`. `parseOutput`
+// is only ever called on a real (status 1) violation report, never on a
+// clean run's stdout, which for these two scripts is always empty anyway.
+function runSpawnedNodeChecker(scriptName, filePath, parseOutput) {
+  const nodeBinary = process.env.KIKO_PREWRITE_NODE_BIN || 'node';
+  const scriptPath = path.join(ROOT, 'scripts', 'checks', scriptName);
+
+  const childResult = spawnSync(nodeBinary, [scriptPath, filePath], {
+    encoding: 'utf8',
+    timeout: remainingBudget(),
+  });
+
+  if (childResult.error) throw childResult.error;
+  if (childResult.signal !== null) {
+    throw new Error(`${scriptName} timed out (signal ${childResult.signal})`);
+  }
+  if (childResult.status !== 0 && childResult.status !== 1) {
+    throw new Error(`${scriptName} exited ${childResult.status}`);
+  }
+
+  return childResult.status === 1 ? parseOutput(childResult.stdout) : [];
+}
+
+// import-order.js's plain-checker output (no --write) is `${file}:\n` then
+// one `  ${violation}\n` line per violation — see its own `runCli`. The
+// checker reports no line number of its own (it flags the leading import
+// HEADER as a whole, not one statement), so every finding here is pinned to
+// line 1; the violation text itself (with the 2-space indent stripped) is
+// the finding's matched text.
+function parseImportOrderCheckerOutput(stdout) {
+  return stdout
+    .split('\n')
+    .filter((line) => line.startsWith('  '))
+    .map((line) => ({ line: 1, matchedText: line.slice(2) }));
+}
+
+// full-word-identifiers.js's output is one `<path>:<line>: \`<name>\` —
+// abbreviated word \`<word>\` (write the full word)` line per violation —
+// see its own `findViolations`. `<path>` is whatever argv this call passed
+// (the mirrored temp path here), which can itself contain colons on some
+// systems, so the pattern anchors on the LAST `:<digits>: \`` run rather than
+// splitting on the first colon.
+const FULL_WORD_IDENTIFIER_VIOLATION_LINE = /:(\d+): `([^`]+)`/;
+
+function parseFullWordIdentifiersCheckerOutput(stdout) {
+  const findings = [];
+  for (const line of stdout.split('\n')) {
+    const match = FULL_WORD_IDENTIFIER_VIOLATION_LINE.exec(line);
+    if (match) {
+      findings.push({ line: Number(match[1]), matchedText: match[2] });
+    }
+  }
+  return findings;
+}
+
+// Finds the 1-based line of the `export` declaration that introduces
+// `name` — tried, in order, against every shape
+// one-component-per-file.ts's own `classifySlice` recognizes an EXPORTED
+// component under (`export [default] function/const Name`, `export default
+// memo(Name);`, `export default Name;`, a named export list containing
+// Name), falling back to the first line mentioning `name` as a whole word,
+// then to line 1 — so a finding always has a real, reproducible line even
+// for a shape this best-effort search does not special-case.
+function exportDeclarationLine(source, name) {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const declarationPatterns = [
+    new RegExp(`^export\\s+(?:default\\s+)?(?:function|const)\\s+${escapedName}\\b`),
+    new RegExp(`^export\\s+default\\s+memo\\(\\s*${escapedName}\\s*\\)\\s*;`),
+    new RegExp(`^export\\s+default\\s+${escapedName}\\s*;`),
+    new RegExp(`^export\\s*\\{[^}]*\\b${escapedName}\\b[^}]*\\}\\s*;`),
+  ];
+  const lines = source.split('\n');
+
+  for (let index = 0; index < lines.length; index += 1) {
+    if (declarationPatterns.some((pattern) => pattern.test(lines[index]))) {
+      return index + 1;
+    }
+  }
+
+  const wordBoundaryPattern = new RegExp(`\\b${escapedName}\\b`);
+  const fallbackIndex = lines.findIndex((line) => wordBoundaryPattern.test(line));
+  return fallbackIndex === -1 ? 1 : fallbackIndex + 1;
+}
+
+// Loads one-component-per-file.ts's `exportedComponentNames` in-process
+// (never spawned — it is a `.ts` module, not a standalone CLI, and this is
+// the same checker the "one exported component per .tsx" Jest invariant
+// calls directly) and reports one finding per exported component name AFTER
+// the first, at that name's own export declaration line. `pathToFileURL` is
+// required here: a bare absolute path is not a valid ES module specifier on
+// every platform this could run on.
+async function runOneComponentPerFileChecker(filePath) {
+  const moduleUrl = pathToFileURL(
+    path.join(ROOT, 'scripts', 'checks', 'one-component-per-file.ts'),
+  ).href;
+  const { exportedComponentNames } = await import(moduleUrl);
+  const source = fs.readFileSync(filePath, 'utf8');
+  const names = exportedComponentNames(source);
+
+  return names
+    .slice(1)
+    .map((name) => ({ line: exportDeclarationLine(source, name), matchedText: name }));
+}
+
+// One row per Node-checker rule id: which `.ts`/`.tsx` extension(s) it
+// applies to, how to run it against one mirrored file, and the fix/skill
+// pair the deny reason cites (see buildFindingBlock below) — the Node-check
+// analog of a Semgrep rule's own `metadata.fix`/`metadata.skill`. A new
+// checker (rule 11's blank-line-separation, rule 12's no-cross-screen-
+// import) is one more row here plus, for a spawned script, one more
+// `parseOutput` function above.
+const NODE_RULES = [
+  {
+    ruleId: 'kiko-import-order',
+    extensions: ['.ts', '.tsx'],
+    fix: 'run `node scripts/checks/import-order.js --write <file>`, or reorder the groups by hand: external, then ../**, then ./**, each ascending by ending-line length',
+    skill: 'kiko-code-style › Import ordering',
+    run: (filePath) =>
+      runSpawnedNodeChecker('import-order.js', filePath, parseImportOrderCheckerOutput),
+  },
+  {
+    ruleId: 'kiko-full-word-identifiers',
+    extensions: ['.ts', '.tsx'],
+    fix: 'spell out the abbreviated word in full',
+    skill: 'kiko-code-style › Full words in identifiers',
+    run: (filePath) =>
+      runSpawnedNodeChecker(
+        'full-word-identifiers.js',
+        filePath,
+        parseFullWordIdentifiersCheckerOutput,
+      ),
+  },
+  {
+    ruleId: 'kiko-one-component-per-file',
+    extensions: ['.tsx'],
+    fix: 'move every exported component but the first into its own file',
+    skill: 'kiko-code-style › One component per file, each in its own folder',
+    run: (filePath) => runOneComponentPerFileChecker(filePath),
+  },
+];
+
+// Runs every NODE_RULES row whose `extensions` covers `relativePath`'s own
+// extension against the ONE requested tree ('before' or 'after'), returning
+// their combined Finding[] — the Node-checker analog of runSemgrep, called
+// twice by `run` below (AFTER first; BEFORE only when AFTER already has a
+// finding, so a clean edit never pays for a BEFORE pass it cannot possibly
+// need — see the "New-findings-only comparison" section normalizeText/
+// findingKeys implement for Semgrep, applied the same way here).
+async function runNodeChecks(temporaryRoot, relativePath, tree) {
+  const filePath = path.join(temporaryRoot, tree, relativePath);
+  const extension = path.extname(relativePath);
+  const findings = [];
+
+  for (const rule of NODE_RULES) {
+    if (!rule.extensions.includes(extension)) continue;
+
+    const ruleFindings = await rule.run(filePath);
+    for (const finding of ruleFindings) {
+      findings.push({
+        ruleId: rule.ruleId,
+        tree,
+        line: finding.line,
+        matchedText: finding.matchedText,
+        fix: rule.fix,
+        skill: rule.skill,
+      });
+    }
+  }
+
+  return findings;
+}
+
 // Collapses every whitespace run in `text` to a single space and trims the
 // ends, so a whitespace-only reformat of an existing violation (for example
 // `switch (x)  {` becoming `switch (x) {`) never reads as a new one — see
@@ -368,7 +551,7 @@ function emitAllow() {
   process.exitCode = 0;
 }
 
-function run() {
+async function run() {
   let temporaryRoot = null;
   try {
     const rawInput = fs.readFileSync(0, 'utf8');
@@ -394,7 +577,20 @@ function run() {
     const rawFindings = runSemgrep(temporaryRoot, relativePath, trees);
     const beforeFindings = rawFindings.filter((finding) => finding.tree === 'before');
     const afterFindings = rawFindings.filter((finding) => finding.tree === 'after');
-    const addedFindings = newFindings(beforeFindings, afterFindings);
+
+    // The Node checkers (rules 4, 5, 6) run AFTER first; a clean AFTER can
+    // have no new finding, so BEFORE is only worth the extra process when
+    // AFTER already found something to diff against.
+    const afterNodeFindings = await runNodeChecks(temporaryRoot, relativePath, 'after');
+    const beforeNodeFindings =
+      afterNodeFindings.length > 0
+        ? await runNodeChecks(temporaryRoot, relativePath, 'before')
+        : [];
+
+    const addedFindings = newFindings(
+      beforeFindings.concat(beforeNodeFindings),
+      afterFindings.concat(afterNodeFindings),
+    );
 
     if (addedFindings.length === 0) {
       emitAllow();

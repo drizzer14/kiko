@@ -1019,3 +1019,204 @@ describe('Semgrep pass + new-findings-only diff', () => {
     expect(reason).toContain('metadata.skill');
   });
 });
+
+// Rules 4, 5, 6 run the REAL checker scripts (scripts/checks/import-order.js,
+// full-word-identifiers.js, one-component-per-file.ts) against the mirrored
+// tree — only Semgrep is stubbed clean here (writeSemgrepStub/writeRulesStub),
+// per the brief's "use real checkers, stub Semgrep clean". The
+// new-findings-only diff (allow when a pre-existing violation survives
+// unchanged) mirrors the Semgrep describe block above, proven here against a
+// Node-checker finding instead of a Semgrep one.
+describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one-component-per-file)', () => {
+  it('denies an edit that breaks import order (kiko-import-order)', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'example.ts');
+
+    const result = runGuard(
+      payloadFor('Write', {
+        file_path: targetFile,
+        content: [
+          "import { local } from './local';",
+          '',
+          "import React from 'react';",
+          '',
+          'export const value = 1;',
+          '',
+        ].join('\n'),
+      }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-import-order');
+    expect(reason).toContain('out of order');
+  });
+
+  it('allows an unrelated edit in a file whose import order was already broken', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'example.ts');
+    writeFileSync(
+      targetFile,
+      [
+        "import { local } from './local';",
+        '',
+        "import React from 'react';",
+        '',
+        'export const value = 1;',
+        '',
+      ].join('\n'),
+    );
+
+    const result = runGuard(
+      payloadFor('Edit', {
+        file_path: targetFile,
+        old_string: 'export const value = 1;',
+        new_string: 'export const value = 2;',
+      }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+      }),
+    );
+
+    expect(result.status).toBe(0);
+  });
+
+  it('denies a new abbreviated identifier (kiko-full-word-identifiers)', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'example.ts');
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: "export const msg = 'hi';\n" }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-full-word-identifiers');
+    expect(reason).toContain('msg');
+  });
+
+  it('honors full-word-identifiers EXEMPTIONS by path suffix', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src', 'db'), { recursive: true });
+    const targetFile = join(project, 'src', 'db', 'run-migrations.ts');
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: 'export const idx = 1;\n' }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+      }),
+    );
+
+    expect(result.status).toBe(0);
+  });
+
+  it('denies a second exported component in a .tsx (kiko-one-component-per-file)', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'example.screen.tsx');
+
+    const result = runGuard(
+      payloadFor('Write', {
+        file_path: targetFile,
+        content: [
+          'export function Foo() {',
+          '  return <View />;',
+          '}',
+          '',
+          'export function Bar() {',
+          '  return <View />;',
+          '}',
+          '',
+        ].join('\n'),
+      }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-one-component-per-file');
+    expect(reason).toContain('Bar');
+  });
+
+  it('does not run the component check on a .ts file', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'example.ts');
+
+    const result = runGuard(
+      payloadFor('Write', {
+        file_path: targetFile,
+        content: [
+          'export function Foo() {',
+          '  return <View />;',
+          '}',
+          '',
+          'export function Bar() {',
+          '  return <View />;',
+          '}',
+          '',
+        ].join('\n'),
+      }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+      }),
+    );
+
+    expect(result.status).toBe(0);
+  });
+
+  it('denies when a Node checker exits with a code other than 0 or 1', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const nodeStubPath = join(project, 'node-stub.sh');
+    writeFileSync(nodeStubPath, '#!/usr/bin/env bash\nexit 3\n');
+    chmodSync(nodeStubPath, 0o755);
+    const targetFile = join(project, 'src', 'example.ts');
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: 'export const value = 1;\n' }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        KIKO_PREWRITE_NODE_BIN: nodeStubPath,
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('exited 3');
+  });
+});
