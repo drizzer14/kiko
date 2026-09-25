@@ -44,7 +44,7 @@ describe('useBalanceFields', () => {
       result.current.setOpeningBalance('250');
     });
 
-    expect(result.current.openingBalanceMinorUnits()).toBe(250_00);
+    expect(result.current.createPayload().balanceMinorUnits).toBe(250_00);
   });
 
   it('seeds the opening balance as a grouped major string from a stored holding', async () => {

@@ -16,11 +16,6 @@ export type UseBalanceFieldsResult = HoldingTypeForm & {
   currency: Currency;
   openingBalance: string;
   setOpeningBalance: (value: string) => void;
-  // Reads the LIVE opening-balance field, in minor units. `createPayload`
-  // reads it directly, and `saveEdit` reads it for a non-synced edit; exposed
-  // here too so a consumer (and this hook's own test) can read the live value
-  // without a create/edit round trip.
-  openingBalanceMinorUnits: () => number;
 };
 
 /**
@@ -66,7 +61,6 @@ export const useBalanceFields = (params: UseBalanceFieldsParams): UseBalanceFiel
     currency,
     openingBalance,
     setOpeningBalance,
-    openingBalanceMinorUnits,
     isValid: true,
     scrollTargets: [],
     createPayload,
