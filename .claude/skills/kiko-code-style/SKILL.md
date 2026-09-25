@@ -335,17 +335,17 @@ reads worse than plain code — see the carve-outs below — but check
   ```
 
 - **`either`/`eitherSync` + `bifold`** — for a throwable operation's
-  error channel:
+  error channel. `bifold` (verified against the installed `fnts`
+  3.0.5) takes ONE argument and unwraps whichever side the `Either`
+  actually holds — it does not take left/right handler callbacks, so
+  check `isLeft`/`isRight` first and unwrap with `bifold` inside that
+  branch:
 
   ```ts
-  import either, { bifold } from 'fnts/either';
+  import either, { bifold, isRight } from 'fnts/either';
 
   const result = await either<Error, Rates>(() => fetchRates());
-  const rates: Rates | undefined = bifold(
-    result,
-    () => undefined,
-    (value: Rates) => value,
-  );
+  const rates: Rates | undefined = isRight(result) ? bifold(result) : undefined;
   ```
 
 - **`guard`** — for a function whose own contract is to throw (an
@@ -403,6 +403,57 @@ instead of hand-rolled `try`/`catch` plus manual `Error` normalization:
 - Inference gotcha: annotate a `bifold` result's type explicitly
   wherever a narrowed `Right` value leaves nothing for TypeScript to
   infer `LeftValue` from.
+
+### When to convert a `try`/`catch` to `either`/`eitherSync` + `bifold`
+
+R4's triage of every `try`/`catch` in the app settled on a short rule,
+rather than converting on sight: convert a data-layer "attempt this,
+fall back on failure" site — see `decryptEnvelope`
+(`src/data-transfer/crypto/envelope.ts`), `loadFiatWithFallback`
+(`src/rates/rates-refresh/rates-refresh.ts`), and
+`parseFormatSafely`/`applyMappingSafely`
+(`statement-import.screen.tsx`/`column-mapping.screen.tsx`, a fixed
+twin pair) for the converted shape. Four categories stay plain
+`try`/`catch` on purpose — a site that matches one of these is a
+KEEP, not an oversight:
+
+- **Rethrow-after-cleanup.** A `finally` (or an inline reset) that
+  must run before the error propagates reads worse once hoisted out
+  of `try`/`finally` into a bare post-`await` call — see
+  `requestOnce` (`src/monobank/client/monobank.client.ts`, a timeout
+  classification tied to a `finally`-cleared abort timer) and
+  `account-form.screen.tsx`'s `accountCreate.current` insert
+  (`.catch((error) => { <reset the latch>; throw error; })`).
+- **Loop control/retry.** A retry loop's own `try`/`catch` decides
+  whether to `continue`/retry or give up — see `withRetry`
+  (`rates-refresh.ts`) and the Monobank sync's per-card `try`/`catch`
+  (`src/monobank/sync/sync.ts`) and `binance.provider.ts`'s
+  `walletSatoshis` (catch-log-skip-one-wallet, the same per-item
+  continue shape).
+- **The async-UI-handler carve-out**, now in two shapes: a handler
+  that shows an `Alert` on failure (routed through the shared
+  `alertOnCatch` helper below), and a handler that instead returns a
+  plain success boolean/status for the caller's own local state — see
+  `connectMonobank`/`connectWallet`/`connectBinance`
+  (`account-form.screen.tsx`, `bank-sync-section.component.tsx`) and
+  `binance-credentials-field`/`monobank-connect-field`'s own connect
+  handlers (a fixed twin pair, both kept).
+- **Documented carve-outs already decided** — `import-data.ts`'s
+  decrypt/parse-then-rethrow chain and `db/client.ts` +
+  `run-migrations.ts`'s reset-then-rethrow.
+
+### The shared catch-and-Alert helper
+
+`alertOnCatch(t, titleKey, messageKey)`
+(`src/design-system/alert-on-catch/`) is the one place every
+"translated `Alert`, no dynamic content, no custom buttons" catch
+body calls into — `Alert.alert(t(titleKey), t(messageKey))` — instead
+of repeating that shape at every write-failure `catch` across the
+forms and sync screens. Reach for it first; hand-write `Alert.alert`
+directly only when the copy needs a dynamic value the two static keys
+can't express (see `settings/import-data.screen.tsx`'s
+`runImport`, which folds the caught error into one of two DIFFERENT
+message keys before calling `Alert.alert` itself).
 
 ## Form validation model
 
