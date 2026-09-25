@@ -1,4 +1,4 @@
-import { match } from 'ts-pattern';
+import { P, match } from 'ts-pattern';
 
 import {
   asBondMeta,
@@ -11,10 +11,10 @@ import {
 import { costBasisMinorAt } from '../lots';
 import { taxOnInterestMinor } from '../tax';
 import type { HoldingRow } from '../../db/schema';
-import { pricedValueMinor } from '../priced-value';
 import { Money, toMajor } from '../../currency/money';
 import { startOfLocalDay } from '../../dates/local-day';
 import { loanOutstandingMinorAt } from '../loan-schedule';
+import { isPricedHoldingType, pricedValueMinor } from '../priced-value';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
 import { bondCouponDates, bondCouponMajor, depositAccruedMajor, depositLedger } from '../interest';
 
@@ -279,15 +279,14 @@ export const holdingValueBreakdown = (
   book: PriceBook = EMPTY_PRICE_BOOK,
 ): HoldingValueBreakdown =>
   match(holding.type)
-    .with('property_item', 'metal', () => pricedBreakdown(holding, now, book))
+    .with(P.when(isPricedHoldingType), () => pricedBreakdown(holding, now, book))
     .with('term_deposit', () => depositBreakdown(holding, now))
     .with('bond', () => bondBreakdown(holding, now))
     .with('loan', () => loanBreakdown(holding, now, book))
     // Not `.exhaustive()`: the original `switch`'s `default` branch tolerated
-    // ANY unmatched value, not only the 4 remaining literal types — a
-    // malformed/absent `type` at runtime (a partial test fixture, or stale
-    // data pre-dating a schema change) falls back to the flat stored balance
-    // the same way it always has, rather than throwing.
+    // any unmatched value, not only the 3 other named literal types — a
+    // malformed or absent `type` falls back to the flat stored balance
+    // instead of throwing.
     .otherwise(() => flat(holding.currency, holding.balanceMinorUnits));
 
 export const holdingValue = (
