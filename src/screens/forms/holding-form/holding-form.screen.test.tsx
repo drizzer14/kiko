@@ -3,6 +3,7 @@ import { Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 
 import { i18n } from '../../../i18n';
 import {
@@ -1075,6 +1076,22 @@ describe('HoldingFormScreen save validation', () => {
     expect(flatStyle.borderColor).not.toBe('#FF453A');
   });
 
+  it('names the maximum once the term deposit term exceeds MAX_TERM_MONTHS', async () => {
+    const screen = await renderScreen();
+
+    await selectHoldingType(screen, 'term_deposit');
+    await fill(screen, 'Name', 'My deposit');
+    await fill(screen, 'Contribution 1 amount', '1000');
+    await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
+    await fill(screen, 'Annual rate %', '12');
+    await fill(screen, 'Term (months)', String(MAX_TERM_MONTHS + 1));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(
+      screen.getByText(`Enter a whole number of months from 1 to ${MAX_TERM_MONTHS}.`),
+    ).toBeTruthy();
+  });
+
   it('shows the contributions-required reason inside the contributions group, anchored to the first row', async () => {
     const screen = await renderScreen();
 
@@ -2018,6 +2035,20 @@ describe('HoldingFormScreen loan', () => {
     await fireEvent.press(screen.getByText('Save'));
 
     expect(screen.getByText('Enter a whole number of months greater than 0.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('names the maximum once the loan term exceeds MAX_TERM_MONTHS', async () => {
+    const screen = await renderScreen();
+
+    await fillLoanFields(screen);
+    await fill(screen, 'Annual rate %', '12');
+    await fill(screen, 'Term (months)', String(MAX_TERM_MONTHS + 1));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(
+      screen.getByText(`Enter a whole number of months from 1 to ${MAX_TERM_MONTHS}.`),
+    ).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
   });
 

@@ -344,6 +344,7 @@ export const uk: typeof en = {
       switchToManual: 'Ввести вручну',
       termMonths: 'Термін (місяців)',
       termMonthsError: 'Введіть цілу кількість місяців більше 0.',
+      termMonthsMaxError: 'Введіть цілу кількість місяців від 1 до {{max}}.',
       termMonthsPlaceholder: '12',
       terms: 'Умови',
       type: 'Тип',

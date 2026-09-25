@@ -28,7 +28,8 @@ export type TermDepositReasonKey =
   | 'forms.holding.contributionsRequiredError'
   | 'forms.holding.contributionIncompleteError'
   | 'forms.holding.annualRateError'
-  | 'forms.holding.termMonthsError';
+  | 'forms.holding.termMonthsError'
+  | 'forms.holding.termMonthsMaxError';
 
 export type TermDepositFieldErrors = {
   contributionsError:
@@ -36,7 +37,7 @@ export type TermDepositFieldErrors = {
     | 'forms.holding.contributionIncompleteError'
     | null;
   annualRateError: 'forms.holding.annualRateError' | null;
-  termMonthsError: 'forms.holding.termMonthsError' | null;
+  termMonthsError: 'forms.holding.termMonthsError' | 'forms.holding.termMonthsMaxError' | null;
 };
 
 // Drop blank/partial rows: keep only a positive amount paired with a picked date.
@@ -94,15 +95,20 @@ const annualRateFieldReasonKey = (
 // The term-months field's OWN reason, independent of the fields above it.
 // Capped at `MAX_TERM_MONTHS`, the same cap `loanFieldErrors` applies: an
 // uncapped value (e.g. "99999999", still a valid positive integer) makes the
-// compounding math build an unbounded number of periods, hanging the app.
+// compounding math build an unbounded number of periods, hanging the app. A
+// term above the cap gets its OWN key (naming the maximum) rather than the
+// same generic key a non-integer/non-positive term shows — see
+// `loanFieldErrors`'s twin check for the same split.
 const termMonthsFieldReasonKey = (
   termMonths: string,
 ): TermDepositFieldErrors['termMonthsError'] => {
   const months = parseAmount(termMonths);
 
-  return Number.isInteger(months) && months > 0 && months <= MAX_TERM_MONTHS
-    ? null
-    : 'forms.holding.termMonthsError';
+  if (!(Number.isInteger(months) && months > 0)) {
+    return 'forms.holding.termMonthsError';
+  }
+
+  return months > MAX_TERM_MONTHS ? 'forms.holding.termMonthsMaxError' : null;
 };
 
 // Every field's OWN blocking reason, each derived from ONLY that field's own

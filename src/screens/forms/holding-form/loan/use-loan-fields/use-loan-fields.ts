@@ -29,7 +29,8 @@ export type LoanReasonKey =
   | 'forms.holding.loanPrincipalError'
   | 'forms.holding.loanStartDateError'
   | 'forms.holding.annualRateError'
-  | 'forms.holding.termMonthsError';
+  | 'forms.holding.termMonthsError'
+  | 'forms.holding.termMonthsMaxError';
 
 // The shared shape both `loanFieldErrors` and `loanReasonKey` validate —
 // kept as one type so the two can never drift apart on WHAT they read.
@@ -56,7 +57,29 @@ export type LoanFieldErrors = {
   principalError: 'forms.holding.loanPrincipalError' | null;
   startDateError: 'forms.holding.loanStartDateError' | null;
   annualRateError: 'forms.holding.annualRateError' | null;
-  termMonthsError: 'forms.holding.termMonthsError' | null;
+  termMonthsError: 'forms.holding.termMonthsError' | 'forms.holding.termMonthsMaxError' | null;
+};
+
+// The term-months field's OWN reason, gated the same way the schedule check
+// above gates rate/term — 'none' never blocks Save on either. A term above
+// `MAX_TERM_MONTHS` gets its OWN key (naming the maximum) rather than the
+// same generic key a non-integer/non-positive term shows — the twin split
+// `termDepositFieldErrors`'s own `termMonthsFieldReasonKey` makes.
+const termMonthsFieldReasonKey = (
+  isStructuredSchedule: boolean,
+  termMonths: string,
+): LoanFieldErrors['termMonthsError'] => {
+  if (!isStructuredSchedule) {
+    return null;
+  }
+
+  const months = parseAmount(termMonths);
+
+  if (!(Number.isInteger(months) && months > 0)) {
+    return 'forms.holding.termMonthsError';
+  }
+
+  return months > MAX_TERM_MONTHS ? 'forms.holding.termMonthsMaxError' : null;
 };
 
 export const loanFieldErrors = (params: LoanValidationParams): LoanFieldErrors => {
@@ -65,7 +88,6 @@ export const loanFieldErrors = (params: LoanValidationParams): LoanFieldErrors =
   // block Save there — the same gate `loanReasonKey` applies.
   const isStructuredSchedule = schedule !== 'none';
   const rate = parseAmount(annualRatePct);
-  const months = parseAmount(termMonths);
 
   return {
     principalError: parseAmount(principal) > 0 ? null : 'forms.holding.loanPrincipalError',
@@ -74,10 +96,7 @@ export const loanFieldErrors = (params: LoanValidationParams): LoanFieldErrors =
       isStructuredSchedule && (annualRatePct.trim() === '' || !(rate >= 0))
         ? 'forms.holding.annualRateError'
         : null,
-    termMonthsError:
-      isStructuredSchedule && !(Number.isInteger(months) && months > 0 && months <= MAX_TERM_MONTHS)
-        ? 'forms.holding.termMonthsError'
-        : null,
+    termMonthsError: termMonthsFieldReasonKey(isStructuredSchedule, termMonths),
   };
 };
 

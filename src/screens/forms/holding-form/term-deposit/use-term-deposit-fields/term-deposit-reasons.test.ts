@@ -108,16 +108,25 @@ describe('termDepositFieldErrors — term months', () => {
     ).toBeNull();
   });
 
-  it('rejects a term beyond the shared MAX_TERM_MONTHS cap', () => {
+  it('names the maximum once a term exceeds the shared MAX_TERM_MONTHS cap', () => {
     expect(
       termDepositFieldErrors({ ...baseParams(), termMonths: String(MAX_TERM_MONTHS + 1) })
         .termMonthsError,
-    ).toBe('forms.holding.termMonthsError');
+    ).toBe('forms.holding.termMonthsMaxError');
   });
 
   it('accepts a term of exactly MAX_TERM_MONTHS', () => {
     expect(
       termDepositFieldErrors({ ...baseParams(), termMonths: String(MAX_TERM_MONTHS) })
+        .termMonthsError,
+    ).toBeNull();
+  });
+});
+
+describe('termDepositFieldErrors — term months, just below the cap', () => {
+  it('accepts a term one below the shared MAX_TERM_MONTHS cap', () => {
+    expect(
+      termDepositFieldErrors({ ...baseParams(), termMonths: String(MAX_TERM_MONTHS - 1) })
         .termMonthsError,
     ).toBeNull();
   });

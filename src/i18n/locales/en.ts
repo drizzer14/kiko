@@ -406,6 +406,7 @@ export const en = {
       switchToManual: 'Switch to manual',
       termMonths: 'Term (months)',
       termMonthsError: 'Enter a whole number of months greater than 0.',
+      termMonthsMaxError: 'Enter a whole number of months from 1 to {{max}}.',
       termMonthsPlaceholder: '12',
       terms: 'Terms',
       type: 'Type',
