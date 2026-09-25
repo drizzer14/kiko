@@ -20,7 +20,14 @@ fi
 # `rules/fixtures/` holds the positive/negative fixture pair for each project
 # rule. A positive fixture is deliberately vulnerable code, so it must not fail
 # the real scan; `scripts/checks/semgrep-rules.sh` is what scans it on purpose.
-#
+# `--exclude 'fixtures'` below only prunes that directory while WALKING a
+# tree — semgrep still scans a fixture file passed as a direct, single-file
+# TARGET (the fast-tier hook's own shape), so a single-file target under
+# rules/fixtures/ is skipped here explicitly instead.
+case "$TARGET" in
+  "$ROOT/rules/fixtures/"* | rules/fixtures/*) exit 0 ;;
+esac
+
 # Dedup a single-file target on its content plus the mobile rules file. The
 # external p/ rulesets are pinned to the installed semgrep and do not change
 # within a session, so they are not part of the fingerprint. A whole-repo or
