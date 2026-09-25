@@ -334,18 +334,53 @@ reads worse than plain code — see the carve-outs below — but check
   );
   ```
 
-- **`either`/`eitherSync` + `bifold`** — for a throwable operation's
-  error channel. `bifold` (verified against the installed `fnts`
-  3.0.5) takes ONE argument and unwraps whichever side the `Either`
-  actually holds — it does not take left/right handler callbacks, so
-  check `isLeft`/`isRight` first and unwrap with `bifold` inside that
-  branch:
+- **`either`/`eitherSync` + `bifoldr`/`bifoldMap`/`bifold`** — for a
+  throwable operation's error channel (verified against the installed
+  `fnts` 3.0.5). Reach for `bifoldr` or `bifoldMap` first; `bifold`
+  itself takes ONE argument and unwraps whichever side the `Either`
+  actually holds, with no left/right handler of its own, so it is only
+  the right tool once the Left side has already been ruled out by an
+  `isLeft` early return (see below) — checking `isLeft`/`isRight`
+  around every `bifold` call is not the general pattern.
+
+  `bifoldr(result)` returns the Right value, or `undefined` when the
+  `Either` is a Left — the common "value or undefined" shape:
 
   ```ts
-  import either, { bifold, isRight } from 'fnts/either';
+  import either, { bifoldr } from 'fnts/either';
 
   const result = await either<Error, Rates>(() => fetchRates());
-  const rates: Rates | undefined = isRight(result) ? bifold(result) : undefined;
+  const rates: Rates | undefined = bifoldr(result);
+  ```
+
+  `bifoldMap(result, onLeft, onRight)` folds BOTH sides, each through
+  its own handler, in one call — reach for this when the Left and
+  Right sides need their own transform, not just a fallback:
+
+  ```ts
+  import { bifoldMap } from 'fnts/either';
+
+  const message = bifoldMap(
+    result,
+    (error) => `failed: ${error.message}`,
+    (rates) => `ok: ${rates.usd}`,
+  );
+  ```
+
+  `isLeft` + an early return, then `bifold` for the remaining Right
+  value, is for the one case above: the Left branch itself throws or
+  returns early, not merely "give me the Right value or undefined"
+  (`bifoldr`'s job) — see `decryptEnvelope`
+  (`src/data-transfer/crypto/envelope.ts`):
+
+  ```ts
+  import { bifold, isLeft } from 'fnts/either';
+
+  if (isLeft(attempt)) {
+    throw new Error('data-transfer/decrypt: wrong key or corrupted file');
+  }
+
+  return bifold(attempt);
   ```
 
 - **`guard`** — for a function whose own contract is to throw (an
@@ -400,20 +435,27 @@ instead of hand-rolled `try`/`catch` plus manual `Error` normalization:
   `try`/`catch` (see `contribution-form.screen.tsx`,
   `account-detail.screen.tsx`); `either`/`guard` is for the data
   layer, not for a handler whose job is UI feedback.
-- Inference gotcha: annotate a `bifold` result's type explicitly
-  wherever a narrowed `Right` value leaves nothing for TypeScript to
-  infer `LeftValue` from.
+- Inference gotcha: `bifoldr` and `bifoldMap` both infer their result
+  type from the full `Either<LeftValue, RightValue>` with no
+  annotation needed (verified with `tsc`). `bifold` is the one
+  exception — called on a value TypeScript has already narrowed down
+  to just `Right<RightValue>` (after an `isLeft` early return, for
+  example), there is no `LeftValue` left in the type for `bifold`'s
+  generic to infer, and it silently collapses to `unknown`; annotate
+  that call site's result type explicitly.
 
 ### When to convert a `try`/`catch` to `either`/`eitherSync` + `bifold`
 
-R4's triage of every `try`/`catch` in the app settled on a short rule,
+A triage of every `try`/`catch` in the app settled on a short rule,
 rather than converting on sight: convert a data-layer "attempt this,
-fall back on failure" site — see `decryptEnvelope`
-(`src/data-transfer/crypto/envelope.ts`), `loadFiatWithFallback`
-(`src/rates/rates-refresh/rates-refresh.ts`), and
-`parseFormatSafely`/`applyMappingSafely`
+then translate the failure" site — see `decryptEnvelope`
+(`src/data-transfer/crypto/envelope.ts`, translate-and-rethrow a
+clearer error, not a fall-back), `loadFiatWithFallback`
+(`src/rates/rates-refresh/rates-refresh.ts`, falls back to the NBU
+source), and `parseFormatSafely`/`applyMappingSafely`
 (`statement-import.screen.tsx`/`column-mapping.screen.tsx`, a fixed
-twin pair) for the converted shape. Four categories stay plain
+twin pair, falls back to `undefined`) for the converted shape. Four
+categories stay plain
 `try`/`catch` on purpose — a site that matches one of these is a
 KEEP, not an oversight:
 
@@ -427,9 +469,7 @@ KEEP, not an oversight:
 - **Loop control/retry.** A retry loop's own `try`/`catch` decides
   whether to `continue`/retry or give up — see `withRetry`
   (`rates-refresh.ts`) and the Monobank sync's per-card `try`/`catch`
-  (`src/monobank/sync/sync.ts`) and `binance.provider.ts`'s
-  `walletSatoshis` (catch-log-skip-one-wallet, the same per-item
-  continue shape).
+  (`src/monobank/sync/sync.ts`).
 - **The async-UI-handler carve-out**, now in two shapes: a handler
   that shows an `Alert` on failure (routed through the shared
   `alertOnCatch` helper below), and a handler that instead returns a
@@ -438,8 +478,14 @@ KEEP, not an oversight:
   (`account-form.screen.tsx`, `bank-sync-section.component.tsx`) and
   `binance-credentials-field`/`monobank-connect-field`'s own connect
   handlers (a fixed twin pair, both kept).
-- **Documented carve-outs already decided** — `import-data.ts`'s
-  decrypt/parse-then-rethrow chain and `db/client.ts` +
+- **Decode-or-fall-back-to-original.** A single `decodeURIComponent`
+  attempt whose only failure path returns the pre-decode string
+  unchanged already reads at its clearest as a two-line try/catch —
+  wrapping it in `eitherSync`/`bifoldMap` adds ceremony with no error
+  inspection to justify it. See `normalizeFilePathForDelete`
+  (`read-statement-file.ts`), `fileNameFrom`
+  (`import-data.screen.tsx`), and `toFilePath` (`import-data.ts`).
+- **Documented carve-outs already decided** — `db/client.ts` +
   `run-migrations.ts`'s reset-then-rethrow.
 
 ### The shared catch-and-Alert helper
