@@ -1,30 +1,24 @@
 import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
+import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
 
 import { formatDate } from '../../dates/format';
 import type { HoldingRow } from '../../db/schema';
 import { type PriceBook, latestPoint } from '../price-book';
-import { asMetalMeta } from '../../holdings/holding-metadata';
-import { isPricedHoldingType } from '../../holdings/priced-value';
-import { metalInstrument, holdingInstrument } from '../instrument';
 
 /**
  * The "Value as of <date>" / "Price as of <date>" caption for a priced
- * holding (`isPricedHoldingType`): the LATEST stored price point's own day,
- * so the user sees how current the figure is. `undefined` for a non-priced
- * holding, or a priced one with no stored point yet (its value still falls
- * back to cost basis — `kiko-domain`). `point.day` is a UTC-midnight epoch
- * standing for a LOCAL calendar day (`dayKeyOf`'s convention), so it is
- * formatted with the matching `{ timeZone: 'UTC' }` option — reading it with
- * the LOCAL getters could land on the previous calendar day in a
- * negative-UTC-offset timezone.
- *
- * `metal` reads a DIFFERENT instrument than every other priced type: it
- * shares `metal:<XAU|...>` across every holding of that metal (kiko-pricing),
- * never a per-holding `holding:<id>` series the way `property_item` uses —
- * and carries its own wording ("Price as of") since it is the metal's market
- * price, not a per-holding manual revaluation. An invalid/absent MetalMeta
- * resolves no instrument, matching the "no stored point yet" case below.
+ * holding (a non-null `priced` spec on its own descriptor —
+ * `src/holdings/holding-descriptor/`): the LATEST stored price point's own
+ * day, so the user sees how current the figure is. `undefined` for a
+ * non-priced holding, or a priced one with no stored point yet (its value
+ * still falls back to cost basis — `kiko-domain`). `point.day` is a
+ * UTC-midnight epoch standing for a LOCAL calendar day (`dayKeyOf`'s
+ * convention), so it is formatted with the matching `{ timeZone: 'UTC' }`
+ * option — reading it with the LOCAL getters could land on the previous
+ * calendar day in a negative-UTC-offset timezone. The wording itself
+ * (`captionKey`) and which instrument it reads (`captionInstrument`) are each
+ * type's own choice, kept on its descriptor's `priced` spec.
  *
  * The ONE shared implementation `holding-detail.screen.tsx` and
  * `holding-card.component.tsx` both import — a per-call-site copy of this
@@ -37,24 +31,19 @@ export const priceAsOfCaption = (
   priceBook: PriceBook,
   t: TFunction,
 ): string | undefined => {
-  if (holding === undefined || !isPricedHoldingType(holding.type)) {
+  if (holding === undefined) {
     return undefined;
   }
 
-  if (holding.type === 'metal') {
-    const meta = asMetalMeta(holding.metadata);
-    const point = foldMap(maybe(meta), (found) =>
-      latestPoint(priceBook, metalInstrument(found.metal)),
-    );
-
-    return foldMap(maybe(point), (found) =>
-      t('holdingDetail.priceAsOf', { date: formatDate(found.day, { timeZone: 'UTC' }) }),
-    );
+  const priced = holdingDescriptorOrUndefined(holding.type)?.priced;
+  if (priced === undefined || priced === null) {
+    return undefined;
   }
 
-  const point = latestPoint(priceBook, holdingInstrument(holding.id));
+  const instrument = priced.captionInstrument(holding);
+  const point = foldMap(maybe(instrument), (found) => latestPoint(priceBook, found));
 
   return foldMap(maybe(point), (found) =>
-    t('holdingDetail.valueAsOf', { date: formatDate(found.day, { timeZone: 'UTC' }) }),
+    t(priced.captionKey, { date: formatDate(found.day, { timeZone: 'UTC' }) }),
   );
 };

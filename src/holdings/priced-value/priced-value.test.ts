@@ -1,12 +1,7 @@
 import { buildPriceBook, EMPTY_PRICE_BOOK } from '../../prices/price-book';
 import { holdingInstrument, metalInstrument } from '../../prices/instrument';
 
-import {
-  isPricedHoldingType,
-  pricedHoldingTypes,
-  pricedValueMinor,
-  type PricedHolding,
-} from './priced-value';
+import { isPricedHoldingType, pricedValueMinor, type PricedHolding } from './priced-value';
 
 const DAY = 24 * 60 * 60 * 1000;
 const day2024 = Date.UTC(2024, 0, 1);
@@ -37,10 +32,8 @@ const goldBar = (over: Record<string, unknown> = {}): PricedHolding => ({
   },
 });
 
-describe('pricedHoldingTypes / isPricedHoldingType', () => {
+describe('isPricedHoldingType', () => {
   it('includes property_item and metal', () => {
-    expect(pricedHoldingTypes).toContain('property_item');
-    expect(pricedHoldingTypes).toContain('metal');
     expect(isPricedHoldingType('property_item')).toBe(true);
     expect(isPricedHoldingType('metal')).toBe(true);
   });

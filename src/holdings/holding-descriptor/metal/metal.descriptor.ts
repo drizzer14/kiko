@@ -58,7 +58,9 @@ const metalCaptionInstrument = (holding: HoldingRow): string | null => {
   return metalInstrument(meta.metal);
 };
 
-export const metalPricedSpec: PricedSpec = {
+// `captionKey` reads "Price as of" (not property_item's "Value as of"): this is
+// the metal's own market price, not a per-holding manual revaluation.
+const metalPricedSpec: PricedSpec = {
   lots: (metadata) => asMetalMeta(metadata)?.lots,
   valueMinor: metalValueMinor,
   captionInstrument: metalCaptionInstrument,

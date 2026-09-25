@@ -1,10 +1,7 @@
-import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 
 import type { ValuableHolding } from '../holding-value';
-import { bondDescriptor } from '../holding-descriptor/bond';
-import { metalDescriptor } from '../holding-descriptor/metal';
-import { termDepositDescriptor } from '../holding-descriptor/term-deposit';
+import { holdingDescriptorOrUndefined } from '../holding-descriptor';
 
 export type DerivedEntryKind =
   | 'contribution'
@@ -41,16 +38,18 @@ const entriesForType = (
   holding: IdentifiedHolding,
   now: number,
   t: TFunction,
-): readonly DerivedEntry[] =>
-  match(holding)
-    .with({ type: 'term_deposit' }, (deposit) => termDepositDescriptor.entries(deposit, now, t))
-    .with({ type: 'bond' }, (bond) => bondDescriptor.entries(bond, now, t))
-    .with({ type: 'metal' }, (metal) => metalDescriptor.entries(metal, now, t))
-    // Not `.exhaustive()`: the original if-chain's trailing, unconditional
-    // `return []` tolerated any unmatched `type`, not only the other 6
-    // literal types — a malformed or absent `type` derives no lifecycle
-    // entries instead of throwing.
-    .otherwise(() => []);
+): readonly DerivedEntry[] => {
+  const descriptor = holdingDescriptorOrUndefined(holding.type);
+
+  // A malformed or absent `type` derives no lifecycle entries, the same
+  // tolerance the original if-chain's trailing, unconditional `return []`
+  // gave.
+  if (descriptor === undefined) {
+    return [];
+  }
+
+  return descriptor.entries(holding, now, t);
+};
 
 // The derived lifecycle entries for a holding, sorted oldest-first. Entries that
 // share an instant (an accrual and its two withholding lines and any

@@ -2,7 +2,6 @@ import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor/bond'
 
 import { Money } from '../../currency/money';
 import { asBondMeta } from '../holding-metadata';
-import { pricedHoldingTypes } from '../priced-value';
 import { buildPriceBook, EMPTY_PRICE_BOOK } from '../../prices/price-book';
 import { holdingInstrument, metalInstrument } from '../../prices/instrument';
 
@@ -452,32 +451,6 @@ describe('holdingValueBreakdown — property_item (priced)', () => {
     const breakdown = holdingValueBreakdown(holding, propertyDay2024, EMPTY_PRICE_BOOK);
     expect(breakdown.interest.minorUnits).toBe(0);
     expect(breakdown.tax.minorUnits).toBe(0);
-  });
-
-  // The dispatch to `pricedBreakdown` must read `isPricedHoldingType`, not
-  // restate its own literal list — otherwise a type added to the priced set
-  // silently keeps falling through to its non-priced breakdown. Proven here
-  // by widening the real priced set at runtime rather than hardcoding a
-  // second, parallel list of literals in the test itself.
-  it('prices any type isPricedHoldingType recognizes, not a hardcoded list of literals', () => {
-    const bond = screenshotBond();
-    // A live-window instant (after purchase, before maturity), where the
-    // bond's normal breakdown is its non-zero purchase cost — so a switch to
-    // the priced dispatch's flat-zero-balance fallback is visible.
-    const before = holdingValueBreakdown(bond, START);
-
-    (pricedHoldingTypes as unknown as string[]).push('bond');
-    try {
-      const after = holdingValueBreakdown(bond, START);
-
-      // Bond metadata has no `lots`, so once 'bond' is priced it falls
-      // through `pricedBreakdown`'s own no-lots fallback (the flat stored
-      // balance) instead of the bond's normal cost-based value.
-      expect(after.gross.minorUnits).toBe(bond.balanceMinorUnits);
-      expect(after.gross.minorUnits).not.toBe(before.gross.minorUnits);
-    } finally {
-      (pricedHoldingTypes as unknown as string[]).pop();
-    }
   });
 });
 

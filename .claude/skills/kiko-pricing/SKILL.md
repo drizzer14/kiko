@@ -122,18 +122,21 @@ review I1, fixed `9cf5791`→`6901d27`) — read
 
 ## Priced holdings
 
-A **priced holding type** (`isPricedHoldingType`, `pricedHoldingTypes`
-— `src/holdings/priced-value/`; `property_item` and `metal` are
-members as of T17, more land later — read that file rather than
-trusting a member list restated here) is valued through the
-`PriceBook`, not through an interest engine or its raw stored balance.
-`quantityAt(lots, instant)` and `costBasisMinorAt(lots, instant)`
-(`src/holdings/lots/`) read the holding's `metadata.lots` array — one
-entry per buy/sell, `{ day, quantityDelta, costMinorUnits }` — to
-derive the quantity and cost basis held as of an instant; `quantityAt`
-never returns below `"0"`. `pricedValueMinor(holding, book, instant)`
-(`src/holdings/priced-value/`) matches on `holding.type` and dispatches to
-that type's own descriptor (`src/holdings/holding-descriptor/property-item/`,
+A **priced holding type** (`isPricedHoldingType` —
+`src/holdings/priced-value/`; `property_item` and `metal` are members
+today, more land later — a type is priced when its own descriptor's
+`priced` spec is non-null; read the flag-table test in
+`holding-descriptors.test.ts` rather than trusting a member list
+restated here) is valued through the `PriceBook`, not through an
+interest engine or its raw stored balance. `quantityAt(lots, instant)`
+and `costBasisMinorAt(lots, instant)` (`src/holdings/lots/`) read the
+holding's `metadata.lots` array — one entry per buy/sell, `{ day,
+quantityDelta, costMinorUnits }` — to derive the quantity and cost
+basis held as of an instant; `quantityAt` never returns below `"0"`.
+`pricedValueMinor(holding, book, instant)` (`src/holdings/priced-value/`)
+reads the holding's own descriptor off the registry
+(`holdingDescriptorOrUndefined`, `src/holdings/holding-descriptor/`) and
+dispatches to its `priced` spec (`src/holdings/holding-descriptor/property-item/`,
 `.../metal/`) through the shared `pricedValueOrNull` id guard
 (`src/holdings/holding-descriptor/priced-parts/`):
 
@@ -260,12 +263,15 @@ always writes `firstPricePoint` equal to its entered cost. See
 `holding-form.screen.tsx`'s own comment on the metal CREATE payload
 for the current rationale.
 
-`holding-detail.screen.tsx`'s `priceAsOfCaption` splits its "Value as
-of" / "Price as of" caption on holding type: a `metal` holding reads
-`latestPoint(priceBook, metalInstrument(meta.metal))` and renders the
-`holdingDetail.priceAsOf` wording (distinct from the generic "Value as
-of" caption every other priced holding type uses), since it is showing
-the metal's shared market price, not a holding-specific value.
+`priceAsOfCaption` (`src/prices/price-as-of-caption/`) reads its
+"Value as of" / "Price as of" wording off the holding's own
+descriptor: `captionInstrument` resolves the series to read the
+latest point from, and `captionKey` picks the wording. `metal`'s spec
+sets `captionInstrument` to the SHARED `metal:<XAU|...>` series and
+`captionKey` to `holdingDetail.priceAsOf` (distinct from the generic
+`holdingDetail.valueAsOf` every other priced holding type uses), since
+it is showing the metal's shared market price, not a holding-specific
+value.
 
 ## `PricePointForm` — "Update value"
 

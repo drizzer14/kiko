@@ -29,7 +29,10 @@ const propertyItemValueMinor = (
   return multiplyToMinorUnits([quantity, point.price], holding.currency);
 };
 
-export const propertyItemPricedSpec: PricedSpec = {
+// `captionInstrument` reads this holding's OWN `holding:<id>` series (never a
+// shared one — unlike `metal`'s), so `captionKey` reads "Value as of" (a
+// per-holding manual revaluation, not a market price).
+const propertyItemPricedSpec: PricedSpec = {
   lots: (metadata) => asPropertyMeta(metadata)?.lots,
   valueMinor: propertyItemValueMinor,
   captionInstrument: (holding: HoldingRow) => holdingInstrument(holding.id),

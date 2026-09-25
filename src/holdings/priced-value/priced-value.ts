@@ -1,28 +1,19 @@
-import { match } from 'ts-pattern';
-
 import type { HoldingRow } from '../../db/schema';
 import type { HoldingType } from '../holding-type';
 import type { PriceBook } from '../../prices/price-book';
-import { metalDescriptor } from '../holding-descriptor/metal';
+import { holdingDescriptorOrUndefined } from '../holding-descriptor';
 import { pricedValueOrNull } from '../holding-descriptor/priced-parts';
-import { propertyItemDescriptor } from '../holding-descriptor/property-item';
 
 /**
- * The holding types valued through the `PriceBook` rather than an interest
- * engine or a raw stored balance: `property_item` (its value is
- * `quantityAt(lots, instant)` times the latest price point for its OWN
- * `holding:<id>` instrument) and `metal` (T17 — its value is priced through
- * the shared `metal:<XAU|XAG|XPT|XPD>` instrument, not a per-holding one —
- * kiko-domain). T26/T35 extend this set as shares land their own priced
- * instrument namespace.
+ * A type valued through the `PriceBook` rather than an interest engine or a
+ * raw stored balance — one whose own descriptor carries a non-null `priced`
+ * spec (`src/holdings/holding-descriptor/`).
  */
-export const pricedHoldingTypes = [
-  'property_item',
-  'metal',
-] as const satisfies readonly HoldingType[];
+export const isPricedHoldingType = (type: HoldingType): boolean => {
+  const priced = holdingDescriptorOrUndefined(type)?.priced;
 
-export const isPricedHoldingType = (type: HoldingType): boolean =>
-  (pricedHoldingTypes as readonly HoldingType[]).includes(type);
+  return priced !== undefined && priced !== null;
+};
 
 /**
  * A holding as `pricedValueMinor` needs it. `id` is optional (mirroring
@@ -50,9 +41,9 @@ export const pricedValueMinor = (
   book: PriceBook,
   instant: number,
 ): number | null =>
-  match(holding.type)
-    .with('property_item', () =>
-      pricedValueOrNull(propertyItemDescriptor.priced, holding, book, instant),
-    )
-    .with('metal', () => pricedValueOrNull(metalDescriptor.priced, holding, book, instant))
-    .otherwise(() => null);
+  pricedValueOrNull(
+    holdingDescriptorOrUndefined(holding.type)?.priced ?? null,
+    holding,
+    book,
+    instant,
+  );
