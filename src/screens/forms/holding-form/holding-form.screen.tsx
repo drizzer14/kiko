@@ -72,11 +72,12 @@ import { type Currency, currencyScale, currencySymbol } from '../../../currency/
 import { compareDecimal, normalizeDecimal, shiftDecimal } from '../../../currency/decimal';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 
-import LoanSection from './loan-section';
 import MetalSection from './metal-section';
+import LoanFormBlock from './loan-form-block';
 import PropertySection from './property-section';
 import BondIsinSection from './bond-isin-section';
 import ManualBondFields from './manual-bond-fields';
+import { fieldErrorMessage } from './field-error-message';
 import { useBondIsinMode, type IsinReasonKey } from './use-bond-isin-mode';
 import type { BondEntryMode } from './bond-isin-section/bond-isin-section.props';
 import { useLoanFields, type LoanReasonKey, type UseLoanFieldsResult } from './use-loan-fields';
@@ -669,30 +670,6 @@ const saveReasonsFor = (params: {
   return { showNameReason: attemptedSave && name.trim().length === 0 };
 };
 
-// The active error message for a field's OWN independent reason (each of
-// `contributionsFieldReasonKey`/`annualRateFieldReasonKey`/`bondQuantityFieldReasonKey`
-// and their siblings below), or `undefined` while that field's own check
-// still passes (or before the first failed Save press). Every field computes
-// its reason from ONLY its own inputs, so fixing one field never changes
-// what a DIFFERENT field renders — the shared `TermDepositReasonKey`/
-// `BondReasonKey`/etc. chains stay in use only for `firstInvalidFieldRef`'s
-// scroll target and each type's own `isValid` gate. Kept module-level and
-// pure so its branch stays out of HoldingFormScreen's own
-// cognitive-complexity budget (the same reason transaction-form's
-// `resolveDescriptionPlaceholder` is a module-level helper).
-const fieldErrorMessage = (
-  t: TFunction,
-  attemptedSave: boolean,
-  reasonKey:
-    | TermDepositReasonKey
-    | BondReasonKey
-    | IsinReasonKey
-    | PropertyReasonKey
-    | MetalReasonKey
-    | LoanReasonKey
-    | null,
-): string | undefined => (attemptedSave ? foldMap(maybe(reasonKey), (key) => t(key)) : undefined);
-
 // The contributions group's two sub-reasons (missing vs incomplete) render as
 // TWO separate `<FieldError>`s though both come from the SAME
 // `contributionsFieldReasonKey` check — this narrows to the specific
@@ -963,87 +940,6 @@ const firstInvalidFieldRef = (params: {
   const entry = order.find((candidate) => candidate.invalid);
 
   return foldMap(maybe(entry), (found) => ({ ref: found.ref, focus: found.focus })) ?? null;
-};
-
-// The `type === 'loan'` details block as its own leaf component (T28),
-// keeping its own cognitive-complexity budget instead of adding another
-// branch to the already-at-the-ceiling screen. Renders null outside
-// `type === 'loan'`, the same as the `&&` it replaces.
-type LoanFormBlockProps = {
-  type: HoldingType;
-  t: TFunction;
-  attemptedSave: boolean;
-  currency: Currency;
-  loanFields: UseLoanFieldsResult;
-  loanPrincipalFieldRef: RefObject<FieldInstance | null>;
-  loanPrincipalInputRef: RefObject<TextInputInstance | null>;
-  loanStartDateFieldRef: RefObject<FieldInstance | null>;
-  annualRateFieldRef: RefObject<FieldInstance | null>;
-  annualRateInputRef: RefObject<TextInputInstance | null>;
-  termMonthsFieldRef: RefObject<FieldInstance | null>;
-  termMonthsInputRef: RefObject<TextInputInstance | null>;
-};
-
-const LoanFormBlock: FC<LoanFormBlockProps> = ({
-  type,
-  t,
-  attemptedSave,
-  currency,
-  loanFields,
-  loanPrincipalFieldRef,
-  loanPrincipalInputRef,
-  loanStartDateFieldRef,
-  annualRateFieldRef,
-  annualRateInputRef,
-  termMonthsFieldRef,
-  termMonthsInputRef,
-}) => {
-  if (type !== 'loan') {
-    return null;
-  }
-
-  return (
-    <Box gap={4}>
-      <Divider testID="form-divider" />
-
-      <Text variant="heading">{t('forms.holding.details')}</Text>
-
-      <LoanSection
-        kind={loanFields.kind}
-        onSelectKind={loanFields.setKind}
-        principal={loanFields.principal}
-        onChangePrincipal={(text) => loanFields.setPrincipal(groupAmount(text))}
-        principalError={fieldErrorMessage(t, attemptedSave, loanFields.fieldErrors.principalError)}
-        principalFieldRef={loanPrincipalFieldRef}
-        principalInputRef={loanPrincipalInputRef}
-        currencySuffix={currencySymbol[currency]}
-        startDate={loanFields.startDate}
-        onChangeStartDate={loanFields.setStartDate}
-        startDateError={fieldErrorMessage(t, attemptedSave, loanFields.fieldErrors.startDateError)}
-        startDateFieldRef={loanStartDateFieldRef}
-        schedule={loanFields.schedule}
-        onSelectSchedule={loanFields.setSchedule}
-        annualRatePct={loanFields.annualRatePct}
-        onChangeAnnualRatePct={loanFields.setAnnualRatePct}
-        annualRatePctError={fieldErrorMessage(
-          t,
-          attemptedSave,
-          loanFields.fieldErrors.annualRateError,
-        )}
-        annualRatePctFieldRef={annualRateFieldRef}
-        annualRatePctInputRef={annualRateInputRef}
-        termMonths={loanFields.termMonths}
-        onChangeTermMonths={loanFields.setTermMonths}
-        termMonthsError={fieldErrorMessage(
-          t,
-          attemptedSave,
-          loanFields.fieldErrors.termMonthsError,
-        )}
-        termMonthsFieldRef={termMonthsFieldRef}
-        termMonthsInputRef={termMonthsInputRef}
-      />
-    </Box>
-  );
 };
 
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {

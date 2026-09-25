@@ -882,9 +882,9 @@ fields, EVERY loan field stays editable in both create and edit mode
 (mirrors term_deposit/bond) — there is no fixed-at-creation "first
 lot" a loan's principal/dates/schedule freeze against. The
 `type === 'loan'` render block is its own leaf component
-(`LoanFormBlock`, module-scope in `holding-form.screen.tsx`) rather
-than an inline `{type === 'loan' && (...)}` conditional, for the same
-complexity-budget reason. A `'none'`-schedule CREATE additionally
+(`LoanFormBlock`, `src/screens/forms/holding-form/loan-form-block/`)
+rather than an inline `{type === 'loan' && (...)}` conditional, for
+the same complexity-budget reason. A `'none'`-schedule CREATE additionally
 writes a first `manual` price point on the new holding's own
 `holding:<id>` series, equal to the principal at the start date
 (`buildLoanCreatePayload`) — mirroring `PropertySection`'s own
