@@ -1,1 +1,1 @@
-export { useMetalFields, type UseMetalFieldsResult } from './use-metal-fields';
+export { useMetalFields } from './use-metal-fields';

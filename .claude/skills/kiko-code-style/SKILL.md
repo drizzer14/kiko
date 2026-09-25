@@ -118,7 +118,16 @@ From `biome.json`'s `linter.rules`:
   (`MetalSection`/`PropertySection`/`BondIsinSection`/
   `ManualBondFields`) is the right fix for a screen that is exhausting
   its budget: pull the state/effects/JSX that belong to one concern
-  into their own file, not just their own local variable.
+  into their own file, not just their own local variable. When the
+  budget is exhausted by several independent JSX `{cond && <X />}`
+  gates rather than by one concern's own state — each `&&` is its own
+  binary-logical-operator increment — a `match(type).with(a, () =>
+  <A />).with(b, () => <B />)…exhaustive()` chain does not add to the
+  score at all (Biome only counts if/else, ternary, `&&`/`||`,
+  switch/case and loops; a chained method call is none of those), so
+  collapsing the gates into one match is the fix instead of another
+  extraction (`holding-form.screen.tsx`'s own per-type form-block
+  dispatch).
 - `complexity.noVoid` is an error — never use the `void` operator. To
   fire-and-forget a promise that already captures its own errors (an
   `either(...)` call), call it as a plain expression statement; do

@@ -1,1 +1,1 @@
-export { useBondFields, type UseBondFieldsResult } from './use-bond-fields';
+export { useBondFields } from './use-bond-fields';

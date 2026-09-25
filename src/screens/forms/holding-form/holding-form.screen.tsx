@@ -1,14 +1,21 @@
+import {
+  type FC,
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { match } from 'ts-pattern';
 import { Alert, View } from 'react-native';
-import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { holdingDescriptor } from '@kiko/holdings/holding-descriptor';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { ScrollViewInstance, TextInputInstance } from 'react-native';
-import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import {
   creatableHoldingTypesForAccount,
@@ -22,14 +29,10 @@ import {
   scrollToField,
   type FieldInstance,
 } from '../scroll-to-field/scroll-to-field';
-import { Money } from '../../../currency/money';
 import HoldingTypeField from '../holding-type-field';
-import type { HoldingRow } from '../../../db/schema';
-import { parseAmount } from '../../../currency/parse';
 import Box from '../../../design-system/components/box';
 import { useLiveQuery } from '../../../db/use-live-query';
 import type { Currency } from '../../../currency/currency';
-import type { PriceBook } from '../../../prices/price-book';
 import HoldingIdentityField from '../holding-identity-field';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
@@ -44,248 +47,21 @@ import CurrencyField from '../../../design-system/components/currency-field';
 import { isSyncedAccount, isSyncedHolding } from '../../../holdings/deletable';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 
-import {
-  useTermDepositFields,
-  type UseTermDepositFieldsResult,
-} from './term-deposit/use-term-deposit-fields';
 import LoanFormBlock from './loan/loan-form-block';
 import BondFormBlock from './bond/bond-form-block';
 import MetalFormBlock from './metal/metal-form-block';
+import { useLoanFields } from './loan/use-loan-fields';
+import { useBondFields } from './bond/use-bond-fields';
+import { useMetalFields } from './metal/use-metal-fields';
 import BalanceFormBlock from './balance/balance-form-block';
 import PropertyFormBlock from './property/property-form-block';
 import { useBalanceFields } from './balance/use-balance-fields';
+import { usePropertyFields } from './property/use-property-fields';
+import type { ScrollTarget, HoldingTypeForm } from './holding-type-form';
 import TermDepositFormBlock from './term-deposit/term-deposit-form-block';
-import { useLoanFields, type UseLoanFieldsResult } from './loan/use-loan-fields';
-import { useBondFields, type UseBondFieldsResult } from './bond/use-bond-fields';
-import { useMetalFields, type UseMetalFieldsResult } from './metal/use-metal-fields';
-import type { ScrollTarget, CreatePayload, HoldingTypeForm } from './holding-type-form';
-import { usePropertyFields, type UsePropertyFieldsResult } from './property/use-property-fields';
+import { useTermDepositFields } from './term-deposit/use-term-deposit-fields';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
-
-// The partial row an edit-mode save writes: always the editable identity fields
-// (name, color), plus the one value field that belongs to the type — a
-// deposit/bond's value derives from its metadata (its balance is not stored), so
-// those write metadata; every other type writes its edited balance. A synced
-// (Monobank) holding is the exception: its balance is owned by the sync, so the
-// patch omits balanceMinorUnits entirely and only touches the identity fields.
-const buildHoldingPatch = (params: {
-  name: string;
-  color: string | null;
-  type: HoldingType;
-  currency: Currency;
-  openingBalance: string;
-  metadata: Record<string, unknown> | undefined;
-  isSynced: boolean;
-}): Partial<HoldingRow> => {
-  const { name, color, type, currency, openingBalance, metadata, isSynced } = params;
-
-  // A ledgerless type (term_deposit, bond, property_item — see kiko-domain)
-  // never writes a balance here: its value derives from its own metadata, not
-  // a raw stored balance. A property's `metadata` on this edit path is always
-  // `{ category, lots }` with the ORIGINAL (hydrated) lots preserved verbatim
-  // — see `buildMetadata`'s own `property_item` branch — so an edit never
-  // rewrites cost/quantity history; only category is user-editable here.
-  if (isLedgerlessHoldingType(type)) {
-    return { name, color, metadata };
-  }
-
-  if (isSynced) {
-    return { name, color };
-  }
-
-  return {
-    name,
-    color,
-    balanceMinorUnits: Money.fromMajor(currency, parseAmount(openingBalance) || 0).minorUnits,
-  };
-};
-
-// The whole EDIT-mode write (balance + icon), extracted out of `save` purely
-// to keep that function's own branch count under the cognitive-complexity
-// budget. By the time this runs, `type` is always a balance type (card,
-// cash, crypto_asset, jar) — every hook-owned type (term_deposit, bond,
-// property_item, metal, loan) routes through `saveHookEdit` below instead —
-// so this always writes through the ledger (`updateWithBalanceDelta`, not
-// `update` — a patch with no balance in it, a synced holding, writes no
-// ledger row).
-const saveEdit = async (params: {
-  holdingId: string;
-  patch: Partial<HoldingRow>;
-  icon: string | null;
-}): Promise<void> => {
-  const { holdingId, patch, icon } = params;
-
-  await holdingsRepo.updateWithBalanceDelta(holdingId, patch, Date.now());
-
-  // Write the icon unconditionally in edit mode so clearing a custom icon
-  // (icon === null) persists the removal rather than leaving the old glyph.
-  await holdingsRepo.setIcon(holdingId, icon);
-};
-
-// The EDIT-mode save for a hook-owned type (term_deposit, bond,
-// property_item, metal, loan — R3 Phase C) — extracted out of `save` purely
-// to keep that function's own branch count under the cognitive-complexity
-// budget. Routed through the hook's own `saveEdit` rather than
-// `buildHoldingPatch`/the generic `saveEdit` above: it builds its metadata
-// from state closed over inside the hook, which no longer lives on this
-// screen. That hook write carries no icon (its own doc comment), so this
-// helper writes it separately, same as every edit path.
-const saveHookEdit = async (params: {
-  holdingId: string;
-  fields: HoldingTypeForm;
-  name: string;
-  color: string | null;
-  currency: Currency;
-  isSynced: boolean;
-  editingHolding: HoldingRow | undefined;
-  book: PriceBook;
-  icon: string | null;
-}): Promise<void> => {
-  const { holdingId, fields, name, color, currency, isSynced, editingHolding, book, icon } = params;
-
-  await fields.saveEdit({ holdingId, name, color, currency, isSynced, editingHolding, book });
-  await holdingsRepo.setIcon(holdingId, icon);
-};
-
-// The whole isEdit-mode write: `term_deposit`/`bond`/`property_item` route
-// through `saveHookEdit` above; every other type builds its patch via
-// `buildHoldingPatch` and writes it through `saveEdit`. Extracted out of
-// `save` purely to keep that function's own branch count under the
-// cognitive-complexity budget — the type dispatch itself is what pushed
-// `save` over the limit.
-const performEditSave = (params: {
-  type: HoldingType;
-  holdingId: string;
-  deposit: UseTermDepositFieldsResult;
-  bond: UseBondFieldsResult;
-  property: UsePropertyFieldsResult;
-  metal: UseMetalFieldsResult;
-  loanFields: UseLoanFieldsResult;
-  name: string;
-  color: string | null;
-  currency: Currency;
-  openingBalance: string;
-  metadata: Record<string, unknown> | undefined;
-  isSynced: boolean;
-  editingHolding: HoldingRow | undefined;
-  book: PriceBook;
-  icon: string | null;
-}): Promise<void> => {
-  const {
-    type,
-    holdingId,
-    deposit,
-    bond,
-    property,
-    metal,
-    loanFields,
-    name,
-    color,
-    currency,
-    openingBalance,
-    metadata,
-    isSynced,
-    editingHolding,
-    book,
-    icon,
-  } = params;
-
-  const hookFields: HoldingTypeForm | null = match(type)
-    .with('term_deposit', () => deposit)
-    .with('bond', () => bond)
-    .with('property_item', () => property)
-    .with('metal', () => metal)
-    .with('loan', () => loanFields)
-    .otherwise(() => null);
-
-  if (hookFields !== null) {
-    return saveHookEdit({
-      holdingId,
-      fields: hookFields,
-      name,
-      color,
-      currency,
-      isSynced,
-      editingHolding,
-      book,
-      icon,
-    });
-  }
-
-  return saveEdit({
-    holdingId,
-    patch: buildHoldingPatch({ name, color, type, currency, openingBalance, metadata, isSynced }),
-    icon,
-  });
-};
-
-// The type-specific CREATE payload: `property_item` and `metal` (T20) each
-// seed their own first lot (`buildPropertyCreatePayload`/
-// `buildMetalCreatePayload` above) instead of a plain opening balance +
-// generic metadata; `loan` (T28) seeds its `LoanMeta` (and, for a `'none'`
-// schedule, its first manual correction point) the same way. Grouped here —
-// rather than a nested ternary in `save`'s create call, which the project's
-// `noNestedTernary` lint rule forbids — so `save` keeps a single flat spread.
-const createPayloadFor = (params: {
-  type: HoldingType;
-  currency: Currency;
-  openingBalance: string;
-  metadata: Record<string, unknown> | undefined;
-  depositCreatePayload: (openingBalanceMinorUnits: number) => CreatePayload;
-  bondCreatePayload: (openingBalanceMinorUnits: number) => CreatePayload;
-  propertyCreatePayload: (openingBalanceMinorUnits: number) => CreatePayload;
-  metalCreatePayload: (openingBalanceMinorUnits: number) => CreatePayload;
-  loanCreatePayload: (openingBalanceMinorUnits: number) => CreatePayload;
-}): CreatePayload => {
-  const { type } = params;
-
-  // Keeps today's hidden-balance quirk (reported, not fixed, per R3 Phase
-  // C's Risks table): a deposit's/bond's opening-balance field is hidden by
-  // `isLedgerlessHoldingType`, but any value typed under another type before
-  // switching still parses through here.
-  if (type === 'term_deposit') {
-    return params.depositCreatePayload(
-      Money.fromMajor(params.currency, parseAmount(params.openingBalance) || 0).minorUnits,
-    );
-  }
-
-  if (type === 'bond') {
-    return params.bondCreatePayload(
-      Money.fromMajor(params.currency, parseAmount(params.openingBalance) || 0).minorUnits,
-    );
-  }
-
-  if (type === 'property_item') {
-    // Unlike deposit/bond, a property's create payload never reads
-    // `openingBalance` at all — its own `cost` field (hidden alongside it by
-    // `isLedgerlessHoldingType`) is what the hook's `createPayload` actually
-    // uses, so this passes 0 rather than parsing a field property ignores.
-    return params.propertyCreatePayload(0);
-  }
-
-  if (type === 'metal') {
-    // Like property, a metal's create payload never reads `openingBalance`
-    // at all — its own quantity/cost fields are what the hook's
-    // `createPayload` actually uses, so this passes 0 rather than parsing a
-    // field metal ignores.
-    return params.metalCreatePayload(0);
-  }
-
-  if (type === 'loan') {
-    // Like property/metal, a loan's create payload never reads
-    // `openingBalance` at all — it always writes a zero stored balance (its
-    // value derives entirely from its own schedule/metadata), so this passes
-    // 0 rather than parsing a field loan ignores.
-    return params.loanCreatePayload(0);
-  }
-
-  return {
-    balanceMinorUnits: Money.fromMajor(params.currency, parseAmount(params.openingBalance) || 0)
-      .minorUnits,
-    metadata: params.metadata,
-  };
-};
 
 // The name-required reason, shown only after a failed Save press: gated on
 // `attemptedSave` so it renders nothing before the first press. The
@@ -302,68 +78,6 @@ const saveReasonsFor = (params: {
   const { attemptedSave, name } = params;
 
   return { showNameReason: attemptedSave && name.trim().length === 0 };
-};
-
-// The wrapper refs `firstInvalidFieldRef` (below) picks a scroll target from —
-// grouped into its own type so that function's own signature reads as one
-// param per concern (the reasons, then the refs) rather than eight positional
-// refs.
-type ValidatedFieldRefs = {
-  nameFieldRef: RefObject<FieldInstance | null>;
-};
-
-// A blocked Save's FOCUS action for the name field — called once
-// `scrollToField` has positioned it on screen (see `save`'s own `onSettled`
-// callback below). Every other type's own fields carry their FOCUS action
-// alongside their `scrollTargets` entry instead (see each `use<Type>Fields`
-// hook).
-type ValidatedFieldFocus = {
-  name: () => void;
-};
-
-// The first still-invalid field's own wrapper ref (plus its FOCUS action,
-// when it has one), in the SAME priority order `deposit.scrollTargets`/
-// `bond.scrollTargets`/`loanFields.scrollTargets` already check their fields
-// in: the name field first (it always applies, independent of type), then
-// the active type's fields. `save`'s `!isValid` branch passes this straight
-// to `scrollTo`. Module-level and pure (given the already-computed scroll
-// targets) so this branching stays out of `save`'s own cognitive-complexity
-// budget.
-const firstInvalidFieldRef = (params: {
-  name: string;
-  type: HoldingType;
-  depositScrollTargets: readonly ScrollTarget[];
-  bondScrollTargets: readonly ScrollTarget[];
-  propertyScrollTargets: readonly ScrollTarget[];
-  metalScrollTargets: readonly ScrollTarget[];
-  loanScrollTargets: readonly ScrollTarget[];
-  refs: ValidatedFieldRefs;
-  focus: ValidatedFieldFocus;
-}): { ref: RefObject<FieldInstance | null>; focus?: () => void } | null => {
-  const {
-    name,
-    type,
-    depositScrollTargets,
-    bondScrollTargets,
-    propertyScrollTargets,
-    metalScrollTargets,
-    loanScrollTargets,
-    refs,
-    focus,
-  } = params;
-
-  const order: { invalid: boolean; ref: RefObject<FieldInstance | null>; focus?: () => void }[] = [
-    { invalid: name.trim().length === 0, ref: refs.nameFieldRef, focus: focus.name },
-    ...(type === 'term_deposit' ? depositScrollTargets : []),
-    ...(type === 'bond' ? bondScrollTargets : []),
-    ...(type === 'property_item' ? propertyScrollTargets : []),
-    ...(type === 'metal' ? metalScrollTargets : []),
-    ...(type === 'loan' ? loanScrollTargets : []),
-  ];
-
-  const entry = order.find((candidate) => candidate.invalid);
-
-  return foldMap(maybe(entry), (found) => ({ ref: found.ref, focus: found.focus })) ?? null;
 };
 
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
@@ -432,10 +146,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const isSyncedEdit =
     editingHolding !== undefined && isSyncedHolding(editingHolding, accounts.at(0));
 
-  // Reactive `PriceBook` (T28 review round 1, I1): a loan edit that changes
-  // its schedule INTO `'none'` needs the OLD schedule's outstanding, which
-  // may itself be anchored on an existing manual correction — see
-  // `buildLoanPricePointOp`.
+  // Reactive `PriceBook`, passed through `EditContext.book` to every hook's
+  // own `saveEdit`: a loan edit that changes its schedule INTO `'none'`
+  // needs the OLD schedule's outstanding, which may itself be anchored on an
+  // existing manual correction (see `useLoanFields`'s own `saveEdit`).
   const priceBook = usePriceBook();
 
   const [name, setName] = useState('');
@@ -564,15 +278,38 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // a balance type — survives a type switch.
   const balance = useBalanceFields({ currency });
 
-  // A `metal` holding's value is hard-fixed to UAH regardless of currency
-  // (NBU quotes precious metals only in UAH — kiko-pricing), so the currency
-  // field is hidden for it (below) and this effect forces the state back to
-  // UAH whenever the type is (or becomes) `metal` — covering a user who
-  // picked a different currency before switching the type chip to Precious
-  // metal.
+  // The one place every holding type's own form behaviour is looked up —
+  // `active` is what `isValid`, the blocked-Save scroll, and the create/edit
+  // writes below all read through, so none of them need their own
+  // `match(type)` dispatch. Each of the four ledgered types shares the SAME
+  // `balance` hook instance (it stays mounted regardless of which type is
+  // selected — see that hook's own doc comment).
+  const forms: Record<HoldingType, HoldingTypeForm> = useMemo(
+    () => ({
+      term_deposit: deposit,
+      bond,
+      property_item: property,
+      metal,
+      loan: loanFields,
+      card: balance,
+      cash: balance,
+      crypto_asset: balance,
+      jar: balance,
+    }),
+    [deposit, bond, property, metal, loanFields, balance],
+  );
+  const active = forms[type];
+
+  // A holding type with a fixed currency (today, only `metal` — NBU quotes
+  // precious metals only in UAH, kiko-pricing) offers no currency picker at
+  // all (below) and this effect forces the state back to that fixed currency
+  // whenever the type is (or becomes) one — covering a user who picked a
+  // different currency before switching the type chip.
   useEffect(() => {
-    if (type === 'metal' && currency !== 'UAH') {
-      setCurrency('UAH');
+    const fixedCurrency = holdingDescriptor(type).fixedCurrency;
+
+    if (fixedCurrency !== null && currency !== fixedCurrency) {
+      setCurrency(fixedCurrency);
     }
   }, [type, currency]);
 
@@ -594,39 +331,17 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     setIcon(holding.icon);
     setColor(holding.color);
 
-    match(holding)
-      .with({ type: 'term_deposit' }, (termDepositHolding) => {
-        deposit.seed(termDepositHolding);
-      })
-      .with({ type: 'bond' }, (bondHolding) => {
-        bond.seed(bondHolding);
-      })
-      .with({ type: 'property_item' }, (propertyHolding) => {
-        property.seed(propertyHolding);
-      })
-      .with({ type: 'metal' }, (metalHolding) => {
-        metal.seed(metalHolding);
-      })
-      .with({ type: 'loan' }, (loanHolding) => {
-        loanFields.seed(loanHolding);
-      })
-      // Not `.exhaustive()`: the original if-chain's trailing, unconditional
-      // statement tolerated any unmatched `type`, not only the other 4
-      // literal types — a malformed or absent `type` falls back to reading
-      // the plain balance instead of throwing.
-      .otherwise((rest) => {
-        balance.seed(rest);
-      });
-  }, [
-    isEdit,
-    editingHolding,
-    loanFields.seed,
-    deposit.seed,
-    bond.seed,
-    property.seed,
-    metal.seed,
-    balance.seed,
-  ]);
+    // `forms` is declared `Record<HoldingType, HoldingTypeForm>`, but SQLite
+    // enforces no such constraint on the stored column (`holdingDescriptor`'s
+    // own doc comment) — a corrupted row's `type` could be any string. The
+    // `Object.hasOwn` guard (mirroring `holdingDescriptorOrUndefined`) falls
+    // back to reading the plain balance for that case, rather than throwing.
+    const formsUnsafe = forms as Record<string, HoldingTypeForm>;
+    const seedTarget = Object.hasOwn(formsUnsafe, holding.type)
+      ? formsUnsafe[holding.type]
+      : balance;
+    seedTarget.seed(holding);
+  }, [isEdit, editingHolding, forms, balance]);
 
   // The stack sets the static "Add Holding" title; in edit mode override it with
   // "Edit Holding" so the header reads correctly for the update flow.
@@ -636,16 +351,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     }
   }, [isEdit, navigation, t]);
 
-  const isValid =
-    name.trim().length > 0 &&
-    match(type)
-      .with('term_deposit', () => deposit.isValid)
-      .with('bond', () => bond.isValid)
-      .with('property_item', () => property.isValid)
-      .with('metal', () => metal.isValid)
-      .with('loan', () => loanFields.isValid)
-      .with('card', 'cash', 'crypto_asset', 'jar', () => true)
-      .exhaustive();
+  const isValid = name.trim().length > 0 && active.isValid;
 
   const [attemptedSave, setAttemptedSave] = useState(false);
 
@@ -655,17 +361,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     if (!isValid) {
       setAttemptedSave(true);
 
-      const target = firstInvalidFieldRef({
-        name,
-        type,
-        depositScrollTargets: deposit.scrollTargets,
-        bondScrollTargets: bond.scrollTargets,
-        propertyScrollTargets: property.scrollTargets,
-        metalScrollTargets: metal.scrollTargets,
-        loanScrollTargets: loanFields.scrollTargets,
-        refs: { nameFieldRef },
-        focus: { name: () => nameInputRef.current?.focus() },
-      });
+      const nameTarget: ScrollTarget = {
+        invalid: name.trim().length === 0,
+        ref: nameFieldRef,
+        focus: () => nameInputRef.current?.focus(),
+      };
+      const target = [nameTarget, ...active.scrollTargets].find((candidate) => candidate.invalid);
 
       if (target) {
         scrollTo(target.ref, target.focus);
@@ -674,49 +375,35 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       return;
     }
 
-    // Every hook-owned type (term_deposit, bond, property_item, metal, loan)
-    // builds its own metadata inside its hook's `createPayload`/`saveEdit`;
-    // this stays `undefined` for the remaining balance types, which carry no
-    // metadata of their own.
-    const metadata: Record<string, unknown> | undefined = undefined;
-
     try {
       if (isEdit && holdingId !== undefined) {
-        // The term-deposit/every-other-type dispatch, plus the whole write
-        // itself, lives in `performEditSave` (extracted purely to keep THIS
-        // function's own branch count under the cognitive-complexity
-        // budget). Type/currency are read-only.
-        await performEditSave({
-          type,
+        // Type/currency are read-only in edit mode. The hook write carries no
+        // icon (each `saveEdit`'s own doc comment), so it is written here
+        // separately, unconditionally, so clearing a custom icon
+        // (icon === null) persists the removal rather than leaving the old
+        // glyph.
+        await active.saveEdit({
           holdingId,
-          deposit,
-          bond,
-          property,
-          metal,
           name,
           color,
           currency,
-          openingBalance: balance.openingBalance,
-          metadata,
           isSynced: isSyncedEdit,
           editingHolding,
-          loanFields,
           book: priceBook,
-          icon,
         });
+        await holdingsRepo.setIcon(holdingId, icon);
 
         navigation.goBack();
 
         return;
       }
 
-      // Every hook-owned type's create payload is built separately
-      // (`createPayloadFor`, delegating to each hook's own `createPayload`):
-      // property additionally writes a first manual price point equal to the
-      // entered cost, in the SAME transaction (`holdingsRepo.create`'s
-      // `firstPricePoint` param); metal writes none (kiko-pricing: its price
-      // comes from the SHARED metal instrument, never a per-holding one).
-      // Every other type writes its entered opening balance and no metadata.
+      // `balance.openingBalanceMinorUnits()` reads the LIVE opening-balance
+      // field regardless of which type is active (that hook's own doc
+      // comment) — a deposit/bond's own `createPayload` reads it too (T's
+      // hidden-balance quirk, R3 Phase C's Risks table); property/metal/loan
+      // ignore it, always writing a zero stored balance instead (their
+      // value derives entirely from their own lots/schedule).
       const newHoldingId = await holdingsRepo.create({
         accountId,
         name,
@@ -726,17 +413,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         // row follows its type's default at display time — the same fallback the
         // icon uses — so a type-default color is not frozen onto the row.
         color,
-        ...createPayloadFor({
-          type,
-          currency,
-          openingBalance: balance.openingBalance,
-          metadata,
-          depositCreatePayload: deposit.createPayload,
-          bondCreatePayload: bond.createPayload,
-          propertyCreatePayload: property.createPayload,
-          metalCreatePayload: metal.createPayload,
-          loanCreatePayload: loanFields.createPayload,
-        }),
+        ...active.createPayload(balance.openingBalanceMinorUnits()),
       });
 
       // Persist the chosen icon on the freshly-created row, using the id the
@@ -856,11 +533,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           testID="holding-type-field"
         />
 
-        {/* A metal holding's value is hard-fixed to UAH (NBU quotes precious
-            metals only in UAH — kiko-pricing), so it offers no currency
-            picker at all — the state effect above keeps `currency` at 'UAH'
-            underneath regardless of what this field would otherwise show. */}
-        {type !== 'metal' && (
+        {/* A holding type with a fixed currency (today, only `metal` — NBU
+            quotes precious metals only in UAH, kiko-pricing) offers no
+            currency picker at all — the effect above keeps `currency` at
+            that fixed value underneath regardless of what this field would
+            otherwise show. */}
+        {holdingDescriptor(type).fixedCurrency === null && (
           <CurrencyField
             label={t('forms.fields.currency')}
             selected={currency}
@@ -869,10 +547,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             onOpenChange={setIsCurrencySheetOpen}
             testID="holding-currency-field"
           />
-        )}
-
-        {!isLedgerlessHoldingType(type) && (
-          <BalanceFormBlock fields={balance} isSyncedEdit={isSyncedEdit} />
         )}
 
         {match(type)
@@ -887,7 +561,9 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             <MetalFormBlock fields={metal} attemptedSave={attemptedSave} isEdit={isEdit} />
           ))
           .with('loan', () => <LoanFormBlock fields={loanFields} attemptedSave={attemptedSave} />)
-          .with('card', 'cash', 'crypto_asset', 'jar', () => null)
+          .with('card', 'cash', 'crypto_asset', 'jar', () => (
+            <BalanceFormBlock fields={balance} isSyncedEdit={isSyncedEdit} />
+          ))
           .exhaustive()}
       </Box>
     </Screen>

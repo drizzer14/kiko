@@ -255,14 +255,14 @@ added).
 
 A `metal` holding's create payload is the one documented exception
 that never sets `firstPricePoint`: `buildMetalCreatePayload`
-(`holding-form.screen.tsx`) writes a zero stored balance and one lot,
-but no manual price point — a metal's price comes from the shared
-`metal:<XAU|XAG|XPT|XPD>` instrument, priced separately by
-`refreshMetalPrices` (see "NBU metal prices — current and history
-(T19)" below), never a per-holding one. `property_item`, by contrast,
-always writes `firstPricePoint` equal to its entered cost. See
-`holding-form.screen.tsx`'s own comment on the metal CREATE payload
-for the current rationale.
+(`src/screens/forms/holding-form/metal/use-metal-fields/`, R3 Phase C)
+writes a zero stored balance and one lot, but no manual price point — a
+metal's price comes from the shared `metal:<XAU|XAG|XPT|XPD>`
+instrument, priced separately by `refreshMetalPrices` (see "NBU metal
+prices — current and history (T19)" below), never a per-holding one.
+`property_item`, by contrast, always writes `firstPricePoint` equal to
+its entered cost. See that hook's own comment on the metal CREATE
+payload for the current rationale.
 
 `priceAsOfCaption` (`src/prices/price-as-of-caption/`) reads its
 "Value as of" / "Price as of" wording off the holding's own

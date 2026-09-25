@@ -883,26 +883,31 @@ assuming that works.
 
 `src/screens/forms/holding-form/loan/loan-section/` (kind `SelectField`,
 principal, start date, schedule SegmentedControl, rate/term hidden for
-`'none'`) and its own `use-loan-fields/` hook (state + per-schedule
-`loanReasonKey` validation + edit-mode `seed`) mirror T25's
-`useBondIsinMode` extraction — the hook exists so the loan section's
-state/validation carries its own cognitive-complexity budget instead
-of borrowing `HoldingFormScreen`'s (already at the ceiling before this
-task). Unlike `PropertySection`/`MetalSection`'s create-only-lot
-fields, EVERY loan field stays editable in both create and edit mode
-(mirrors term_deposit/bond) — there is no fixed-at-creation "first
-lot" a loan's principal/dates/schedule freeze against. The
-`type === 'loan'` render block is its own leaf component
-(`LoanFormBlock`, `src/screens/forms/holding-form/loan/loan-form-block/`)
-rather than an inline `{type === 'loan' && (...)}` conditional, for
-the same complexity-budget reason. A `'none'`-schedule CREATE additionally
-writes a first `manual` price point on the new holding's own
+`'none'`) and its own `use-loan-fields/` hook — a full `HoldingTypeForm`
+(`src/screens/forms/holding-form/holding-type-form/`, R3 Phase C): state,
+per-schedule `loanReasonKey` validation, edit-mode `seed`,
+`createPayload`, and `saveEdit` — mirror T25's `useBondIsinMode`
+extraction, the same way every other holding type's own `use<Type>Fields`
+hook does (R3 Phase C). Unlike `PropertySection`/`MetalSection`'s
+create-only-lot fields, EVERY loan field stays editable in both create and
+edit mode (mirrors term_deposit/bond) — there is no fixed-at-creation
+"first lot" a loan's principal/dates/schedule freeze against. Its own leaf
+component (`LoanFormBlock`,
+`src/screens/forms/holding-form/loan/loan-form-block/`) renders from one
+arm of `HoldingFormScreen`'s single `match(type)…exhaustive()` — the same
+dispatch every holding type's own form block renders from (R3 Phase C);
+collapsing what used to be five independent `{type === '…' && (...)}`
+JSX gates into one match is itself what keeps the screen under its
+cognitive-complexity budget (kiko-code-style). A `'none'`-schedule CREATE
+additionally writes a first `manual` price point on the new holding's own
 `holding:<id>` series, equal to the principal at the start date
-(`buildLoanCreatePayload`) — mirroring `PropertySection`'s own
-first-point convention, so `loanOutstandingMinorAt`'s manual-series
-read never comes up empty before the user records a real correction.
-An `'annuity'`/`'differentiated'` CREATE writes none — its outstanding
-is computed at read time from principal + schedule.
+(`buildLoanCreatePayload`,
+`src/screens/forms/holding-form/loan/use-loan-fields/`) — mirroring
+`PropertySection`'s own first-point convention, so
+`loanOutstandingMinorAt`'s manual-series read never comes up empty before
+the user records a real correction. An `'annuity'`/`'differentiated'`
+CREATE writes none — its outstanding is computed at read time from
+principal + schedule.
 
 `holding-detail.screen.tsx`: `footerActionFor` returns `'updateValue'`
 for a loan too (checked before the ledgerless fallback) — it reuses
@@ -931,9 +936,10 @@ while an earlier day still reads its own, earlier correction.
 
 **Loan EDIT reconciliation** — `holdingsRepo.updateLoan` writes the
 metadata patch and a `LoanPricePointOp` in ONE transaction
-(`buildLoanPricePointOp`, `holding-form.screen.tsx`), reconciling the
-loan's manual `holding:<id>` series against what the metadata edit
-just changed:
+(`buildLoanPricePointOp`,
+`src/screens/forms/holding-form/loan/use-loan-fields/`, called from that
+hook's own `saveEdit`), reconciling the loan's manual `holding:<id>`
+series against what the metadata edit just changed:
 
 - (a) a schedule change INTO `'none'` (from `'annuity'`/
   `'differentiated'`) preserves the OLD schedule's current outstanding

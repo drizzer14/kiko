@@ -1,1 +1,1 @@
-export { usePropertyFields, type UsePropertyFieldsResult } from './use-property-fields';
+export { usePropertyFields } from './use-property-fields';
