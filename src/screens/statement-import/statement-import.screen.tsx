@@ -156,7 +156,8 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   const scrollOffset = useScrollOffset(scrollableRef);
   const headerInset = useHeaderInset();
   const contentHeightRef = useRef(0);
-  const holdingOptions = useTargetHoldingOptions(accountId);
+  const { options: holdingOptions, isLoading: holdingOptionsLoading } =
+    useTargetHoldingOptions(accountId);
 
   // The auto-replace check: an account's own `bankId` and its saved
   // column-mapping entries. `accountId` is optional on this route (the
@@ -529,6 +530,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
           <StatementPreviewBlock
             stats={stats}
             holdingOptions={holdingOptions}
+            holdingOptionsLoading={holdingOptionsLoading}
             accountId={accountId}
             selectedHoldingId={selectedHoldingId}
             onSelectHolding={setSelectedHoldingId}

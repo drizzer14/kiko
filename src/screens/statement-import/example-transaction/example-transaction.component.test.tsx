@@ -32,6 +32,19 @@ jest.mock('../../home/transaction-row/transaction-card', () => ({
   },
 }));
 
+// Controllable per-table isLoading, for the loading-gate tests only — both
+// default to false (already-resolved, matching the empty `data: []` the
+// unmocked hook resolved to before this mock existed), so every other test
+// below keeps behaving exactly as before.
+let mockCategoriesLoading = false;
+let mockSettingsLoading = false;
+jest.mock('../../../db/use-live-query', () => ({
+  useLiveQuery: (_query: unknown, tables: string[]) =>
+    tables[0] === 'settings'
+      ? { data: [], isLoading: mockSettingsLoading }
+      : { data: [], isLoading: mockCategoriesLoading },
+}));
+
 describe('ExampleTransaction', () => {
   // A uk test switches the language; reset here so a failed assertion in
   // it cannot leave later tests running in uk.
@@ -39,6 +52,11 @@ describe('ExampleTransaction', () => {
     await act(async () => {
       await i18n.changeLanguage('en');
     });
+  });
+
+  beforeEach(() => {
+    mockCategoriesLoading = false;
+    mockSettingsLoading = false;
   });
 
   it('renders the description and the formatted amount', async () => {
@@ -117,5 +135,28 @@ describe('ExampleTransaction', () => {
     const { getAllByTestId } = await render(<ExampleTransaction transaction={transaction} />);
 
     expect(getAllByTestId('example-transaction-divider').length).toBe(2);
+  });
+
+  it('shows a loading placeholder, not a default-category card, while categories/settings is on its first load', async () => {
+    mockCategoriesLoading = true;
+
+    const { getByTestId, queryByText } = await render(
+      <ExampleTransaction transaction={transaction} />,
+    );
+
+    expect(getByTestId('example-transaction-loading')).toBeTruthy();
+    // The row's own title never renders as the (possibly wrong) default-
+    // category fallback while categories has not loaded yet.
+    expect(queryByText('Coffee shop')).toBeNull();
+    expect(mockTransactionCard).not.toHaveBeenCalled();
+  });
+
+  it('renders the real card once categories/settings has loaded', async () => {
+    const { getByText, queryByTestId } = await render(
+      <ExampleTransaction transaction={transaction} />,
+    );
+
+    expect(getByText('Coffee shop')).toBeTruthy();
+    expect(queryByTestId('example-transaction-loading')).toBeNull();
   });
 });

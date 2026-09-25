@@ -14,5 +14,10 @@ export type TargetHoldingFieldProps = {
   // The validation-failure message for this field, or `undefined` when it's
   // currently valid — forwarded straight to the underlying `FieldTrigger`.
   error?: string;
+  // Read-only: forwarded straight to `FieldTrigger`'s own `disabled` — used
+  // by a caller whose `holdings` list is still loading, so the picker cannot
+  // be opened on an incomplete/empty list (kiko-architecture's useLiveQuery
+  // consumer rule). Defaults to false.
+  disabled?: boolean;
   testID?: string;
 };

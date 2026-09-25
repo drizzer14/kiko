@@ -13,9 +13,11 @@ import { formatDate } from '../../../dates/format';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import { categoriesRepo } from '../../../categories/repo';
+import { useDataReady } from '../../../db/use-data-ready';
 import { useLiveQuery } from '../../../db/use-live-query';
 import { settingsRepo } from '../../../settings/settings.repo';
 import Divider from '../../../design-system/components/divider';
+import LoadingState from '../../../design-system/components/loading-state';
 import { categoryForMcc } from '../../../monobank/mcc-category';
 import TransactionCard from '../../home/transaction-row/transaction-card';
 import { resolveCategoryColor } from '../../../statistics/category-breakdown';
@@ -47,8 +49,20 @@ import type { ExampleTransactionProps } from './example-transaction.props';
  */
 const ExampleTransaction: FC<ExampleTransactionProps> = ({ transaction, holdingName, testID }) => {
   const { t } = useTranslation();
-  const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
-  const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
+    categoriesRepo.allQuery(),
+    ['categories'],
+  );
+  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(settingsRepo.getQuery(), [
+    'settings',
+  ]);
+  // The category icon/title this row shows must never render the (possibly
+  // wrong) default-category fallback while categories/settings is still on
+  // its own first load (kiko-architecture's useLiveQuery consumer rule) — a
+  // single row inside an already-loaded parent screen, so it shows the
+  // shared LoadingState in place of the card rather than gating the whole
+  // parent.
+  const isReady = useDataReady(categoriesLoading, settingsLoading);
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
   const categoryByKey = buildCategoryDisplayMap(categories);
   const rawCategory = foldMap(maybe(transaction.mcc), categoryForMcc) ?? null;
@@ -74,15 +88,19 @@ const ExampleTransaction: FC<ExampleTransactionProps> = ({ transaction, holdingN
           {t('statementImport.exampleTransaction')}
         </Text>
 
-        <TransactionCard
-          title={title}
-          categoryIcon={category.icon}
-          categoryIconColor={resolveCategoryColor(category.color, categoryKey)}
-          categoryAccessibilityLabel={category.title}
-          money={Money.of(transaction.currency, transaction.amountMinorUnits)}
-          footerMeta={category.title}
-          footerTrailing={formatDate(transaction.timeSeconds * 1000)}
-        />
+        {isReady ? (
+          <TransactionCard
+            title={title}
+            categoryIcon={category.icon}
+            categoryIconColor={resolveCategoryColor(category.color, categoryKey)}
+            categoryAccessibilityLabel={category.title}
+            money={Money.of(transaction.currency, transaction.amountMinorUnits)}
+            footerMeta={category.title}
+            footerTrailing={formatDate(transaction.timeSeconds * 1000)}
+          />
+        ) : (
+          <LoadingState testID="example-transaction-loading" />
+        )}
       </Box>
 
       <Divider testID="example-transaction-divider" />

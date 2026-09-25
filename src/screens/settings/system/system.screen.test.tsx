@@ -36,6 +36,7 @@ let mockLiveQueryData: Array<{
   language?: 'en' | 'uk' | null;
   lockEnabled?: boolean;
 }> = [{ baseCurrency: 'UAH', lockEnabled: false }];
+let mockLiveQueryIsLoading = false;
 
 jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: {
@@ -45,13 +46,14 @@ jest.mock('@kiko/settings/settings.repo', () => ({
   },
 }));
 jest.mock('../../../db/use-live-query', () => ({
-  useLiveQuery: () => ({ data: mockLiveQueryData }),
+  useLiveQuery: () => ({ data: mockLiveQueryData, isLoading: mockLiveQueryIsLoading }),
 }));
 
 describe('SystemScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLiveQueryData = [{ baseCurrency: 'UAH', lockEnabled: false }];
+    mockLiveQueryIsLoading = false;
   });
 
   it('renders the Language card', async () => {
@@ -108,6 +110,33 @@ describe('SystemScreen', () => {
     await fireEvent(getByTestId('settings-switch-app-lock'), 'valueChange', true);
 
     expect(mockSetLockEnabled).toHaveBeenCalledWith(true);
+  });
+});
+
+describe('SystemScreen — loading gate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockLiveQueryData = [];
+    mockLiveQueryIsLoading = true;
+  });
+
+  it('shows a loading spinner, not App Lock off or the device-default language, while settings is on its first load', async () => {
+    const { getByTestId, queryByTestId, queryByText } = await renderScreen();
+
+    expect(getByTestId('system-loading')).toBeTruthy();
+    expect(queryByTestId('settings-card-language')).toBeNull();
+    expect(queryByTestId('settings-card-app-lock')).toBeNull();
+    expect(queryByText('🇺🇦 Українська')).toBeNull();
+  });
+
+  it('renders the real content once settings has loaded', async () => {
+    mockLiveQueryIsLoading = false;
+    mockLiveQueryData = [{ baseCurrency: 'UAH', lockEnabled: false }];
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('settings-card-language')).toBeTruthy();
+    expect(queryByTestId('system-loading')).toBeNull();
   });
 });
 

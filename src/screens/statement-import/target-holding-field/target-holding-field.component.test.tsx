@@ -102,6 +102,30 @@ describe('TargetHoldingField', () => {
     expect(onSelect).toHaveBeenCalledWith('h1');
   });
 
+  it('never opens the sheet while disabled — a caller with a still-loading holdings list', async () => {
+    // The picker must never open on an incomplete/empty `holdings` list
+    // while the caller's own query is still loading (kiko-architecture's
+    // useLiveQuery consumer rule) — forwarded straight to FieldTrigger's own
+    // `disabled`, which makes the trigger Pressable inert.
+    const view = await render(
+      <TargetHoldingField
+        label="Choose a holding"
+        holdings={[]}
+        accountId="a"
+        selectedId={undefined}
+        onSelect={jest.fn()}
+        onCreateNew={jest.fn()}
+        placeholder="Select a holding"
+        disabled
+        testID="target-holding-field"
+      />,
+    );
+
+    await fireEvent.press(view.getByTestId('target-holding-field'));
+
+    expect(view.queryByTestId('target-holding-sheet')).toBeNull();
+  });
+
   it('shows the FieldError message and tints the label negative when `error` is set', async () => {
     const { getByText, getByTestId } = await render(
       <TargetHoldingField

@@ -8,7 +8,7 @@ import type {
 import type { Currency } from '@kiko/currency/currency';
 import type { FieldInstance } from '@kiko/screens/forms/scroll-to-field/scroll-to-field';
 import type { PreviewStats } from '@kiko/screens/statement-import/preview-stats/preview-stats';
-import type { useTargetHoldingOptions } from '@kiko/screens/statement-import/use-target-holding-options/use-target-holding-options';
+import type { TargetHoldingOption } from '@kiko/screens/statement-import/target-holding-sheet/target-holding-sheet.props';
 
 import type { AmountMode } from '../amount-fields/amount-fields.props';
 import type { CurrencyMode } from '../currency-fields/currency-fields.props';
@@ -101,7 +101,12 @@ export type ColumnMappingFormProps = {
   // Forwarded to `MappingResult` — see that component's own `stats` doc
   // comment for why this gates the generic incomplete hint.
   mappingIncomplete: boolean;
-  holdingOptions: ReturnType<typeof useTargetHoldingOptions>;
+  holdingOptions: TargetHoldingOption[];
+  // Whether `holdingOptions` is still on its own first load — forwarded to
+  // `TargetHoldingField` so the picker never opens on an incomplete/empty
+  // list while its own queries are loading (kiko-architecture's
+  // useLiveQuery consumer rule).
+  holdingOptionsLoading: boolean;
   accountId: string;
   selectedHoldingId: string | undefined;
   onSelectHolding: (holdingId: string) => void;

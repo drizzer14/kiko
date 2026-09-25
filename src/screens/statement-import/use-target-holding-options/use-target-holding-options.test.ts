@@ -41,7 +41,8 @@ describe('useTargetHoldingOptions', () => {
 
     const { result } = await renderHook(() => useTargetHoldingOptions('a'));
 
-    expect(result.current).toEqual([
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.options).toEqual([
       {
         id: 'h1',
         name: 'Black card',
@@ -74,7 +75,7 @@ describe('useTargetHoldingOptions', () => {
 
     const { result } = await renderHook(() => useTargetHoldingOptions(undefined));
 
-    expect(result.current).toEqual([
+    expect(result.current.options).toEqual([
       {
         id: 'h1',
         name: 'Black card',
@@ -105,7 +106,7 @@ describe('useTargetHoldingOptions', () => {
 
     const { result } = await renderHook(() => useTargetHoldingOptions('a'));
 
-    expect(result.current).toEqual([
+    expect(result.current.options).toEqual([
       {
         id: 'h1',
         name: 'Black card',
@@ -139,7 +140,7 @@ describe('useTargetHoldingOptions', () => {
 
     const { result } = await renderHook(() => useTargetHoldingOptions('a'));
 
-    expect(result.current).toEqual([
+    expect(result.current.options).toEqual([
       {
         id: 'h1',
         name: 'Black card',
@@ -149,5 +150,23 @@ describe('useTargetHoldingOptions', () => {
         color: '#ABCDEF',
       },
     ]);
+  });
+
+  it('reports isLoading while either its holdings or its accounts query is still on its first load', async () => {
+    mockUseLiveQuery.mockImplementation((query: { __kind?: string }) => {
+      if (query.__kind === 'holdings-by-account') {
+        return { data: [], isLoading: true };
+      }
+
+      return { data: [], isLoading: false };
+    });
+
+    const { result } = await renderHook(() => useTargetHoldingOptions('a'));
+
+    expect(result.current.isLoading).toBe(true);
+    // Empty must never be handed to the picker as "no holdings" while a
+    // query is still on its first load — the caller reads `isLoading`
+    // instead of trusting an empty `options` array.
+    expect(result.current.options).toEqual([]);
   });
 });

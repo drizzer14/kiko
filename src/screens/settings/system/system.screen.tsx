@@ -6,11 +6,13 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import SettingsRow from '../settings-row';
 import Box from '../../../design-system/components/box';
 import { APP_LOCK_ENABLED } from '../../../db/db-config';
+import { useDataReady } from '../../../db/use-data-ready';
 import { useLiveQuery } from '../../../db/use-live-query';
 import Card from '../../../design-system/components/card';
 import Screen from '../../../design-system/components/screen';
 import { type AppLanguage, deviceLanguage } from '../../../i18n';
 import type { SettingsStackParamList } from '../../../navigation/types';
+import LoadingState from '../../../design-system/components/loading-state';
 import LanguageSwitch from '../../../design-system/components/language-switch';
 
 import AppLockSetting from './app-lock-setting/app-lock-setting.component';
@@ -25,8 +27,12 @@ type SystemScreenProps = NativeStackScreenProps<SettingsStackParamList, 'System'
 const SystemScreen: FC<SystemScreenProps> = () => {
   const { t } = useTranslation();
 
-  const { data } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  const { data, isLoading } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const settings = data.at(0);
+  // The App Lock toggle and the selected language must never render their
+  // own defaults (off, device-default) while settings is still on its own
+  // first load (kiko-architecture's useLiveQuery consumer rule).
+  const isReady = useDataReady(isLoading);
 
   const handleSelectLanguage = (language: AppLanguage): void => {
     settingsRepo.setLanguage(language);
@@ -39,6 +45,14 @@ const SystemScreen: FC<SystemScreenProps> = () => {
   // The effective language shown as selected: the explicit choice if set,
   // otherwise the device-detected default. null in the DB means "follow device".
   const effectiveLanguage = settings?.language ?? deviceLanguage();
+
+  if (!isReady) {
+    return (
+      <Screen scroll>
+        <LoadingState testID="system-loading" />
+      </Screen>
+    );
+  }
 
   return (
     <Screen scroll>

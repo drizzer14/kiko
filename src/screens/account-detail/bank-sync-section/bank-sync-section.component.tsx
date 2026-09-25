@@ -95,7 +95,10 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   // per-connection `sync_state` table (de-globalized from `settings` — see
   // the `syncState` table comment in `db/schema.ts`), so a second connection
   // never shows another's time.
-  const { data: syncStateRows } = useLiveQuery(syncStateRepo.getQuery(account.id), ['sync_state']);
+  const { data: syncStateRows, isLoading: syncStateLoading } = useLiveQuery(
+    syncStateRepo.getQuery(account.id),
+    ['sync_state'],
+  );
 
   const connectedProviderId = resolveConnectedProviderId(account.institution);
   const connectedEntry = foldMap(maybe(connectedProviderId), (id) => bankProviderRegistry[id]);
@@ -197,21 +200,30 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
             Sync and Disconnect buttons themselves sit SIDE BY SIDE in the
             single actions row below, not stacked. */}
         <Box gap={4} testID="bank-sync-status-actions">
-          <Box direction="row" gap={2} style={styles.statusLine}>
-            <SymbolIcon name="clock" tone="textSecondary" />
-            <Text variant="body" tone="textSecondary">
-              {t('accountDetail.lastSync', {
-                // The DISPLAY stamp (moves on any run that imported rows,
-                // including a partial failure), falling back to the pure
-                // statement cursor for installs that predate the display
-                // column (it reads null there).
-                time: formatLastSyncAt(
-                  syncStateRows.at(0)?.lastSyncDisplayAt ?? syncStateRows.at(0)?.lastSyncAt ?? null,
-                  t,
-                ),
-              })}
-            </Text>
-          </Box>
+          {/* The "Last sync" line reads this section's OWN sync_state query,
+              gated on its own isLoading — never the "Never" default while
+              that query is still on its first load (kiko-architecture's
+              useLiveQuery consumer rule). Sync/Disconnect below do not
+              depend on this query, so they stay available regardless. */}
+          {!syncStateLoading && (
+            <Box direction="row" gap={2} style={styles.statusLine}>
+              <SymbolIcon name="clock" tone="textSecondary" />
+              <Text variant="body" tone="textSecondary">
+                {t('accountDetail.lastSync', {
+                  // The DISPLAY stamp (moves on any run that imported rows,
+                  // including a partial failure), falling back to the pure
+                  // statement cursor for installs that predate the display
+                  // column (it reads null there).
+                  time: formatLastSyncAt(
+                    syncStateRows.at(0)?.lastSyncDisplayAt ??
+                      syncStateRows.at(0)?.lastSyncAt ??
+                      null,
+                    t,
+                  ),
+                })}
+              </Text>
+            </Box>
+          )}
 
           {/* Sync and Disconnect share a single row. Sync is the affirmative
               blue `primary` re-import CTA; Disconnect stays a neutral tonal

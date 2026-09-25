@@ -43,6 +43,7 @@ jest.mock('../../../db/db-config', () => ({ APP_LOCK_ENABLED: false }));
 
 const mockSetBaseCurrency = jest.fn();
 let mockLiveQueryData: Array<{ baseCurrency: string }> = [{ baseCurrency: 'UAH' }];
+let mockLiveQueryIsLoading = false;
 
 jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: {
@@ -51,7 +52,7 @@ jest.mock('@kiko/settings/settings.repo', () => ({
   },
 }));
 jest.mock('../../../db/use-live-query', () => ({
-  useLiveQuery: () => ({ data: mockLiveQueryData }),
+  useLiveQuery: () => ({ data: mockLiveQueryData, isLoading: mockLiveQueryIsLoading }),
 }));
 
 // The active-tab re-tap → scroll-to-top hook reads the navigation context, which
@@ -67,6 +68,7 @@ describe('SettingsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLiveQueryData = [{ baseCurrency: 'UAH' }];
+    mockLiveQueryIsLoading = false;
   });
 
   it('wires its scroll view to scroll to top on an active-tab re-tap', async () => {
@@ -470,5 +472,30 @@ describe('SettingsScreen — localization', () => {
     await fireEvent.press(getByText('Політика конфіденційності'));
 
     expect(mockOpenURL).toHaveBeenCalledWith('https://drizzer14.github.io/kiko');
+  });
+});
+
+describe('SettingsScreen — loading gate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockLiveQueryData = [];
+    mockLiveQueryIsLoading = true;
+  });
+
+  it('shows a loading spinner, not an unselected base currency, while settings is on its first load', async () => {
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('settings-loading')).toBeTruthy();
+    expect(queryByTestId('settings-card-base-currency')).toBeNull();
+  });
+
+  it('renders the real content once settings has loaded', async () => {
+    mockLiveQueryIsLoading = false;
+    mockLiveQueryData = [{ baseCurrency: 'UAH' }];
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('settings-card-base-currency')).toBeTruthy();
+    expect(queryByTestId('settings-loading')).toBeNull();
   });
 });

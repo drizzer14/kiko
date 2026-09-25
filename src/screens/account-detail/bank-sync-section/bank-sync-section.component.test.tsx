@@ -199,6 +199,23 @@ describe('BankSyncSection — disconnected', () => {
 });
 
 describe('BankSyncSection — connected', () => {
+  it('gates the "Last sync" status line on its own sync_state isLoading, without hiding Sync/Disconnect', async () => {
+    // The status line must never render its own "Never" default while
+    // sync_state is still on its first load — kiko-architecture's
+    // useLiveQuery consumer rule — but the Sync/Disconnect actions
+    // themselves do not depend on that query, so they stay available.
+    mockUseLiveQuery.mockReturnValue({ data: [], isLoading: true });
+
+    const view = await render(
+      <BankSyncSection account={bankAccount({ institution: 'monobank' })} />,
+    );
+
+    expect(view.getByTestId('bank-sync-status-actions')).toBeTruthy();
+    expect(view.queryByText(/Last sync/)).toBeNull();
+    expect(view.getByText('Sync')).toBeTruthy();
+    expect(view.getByText('Disconnect')).toBeTruthy();
+  });
+
   it('shows Sync + Disconnect for a Monobank-connected account, syncing through the Monobank action', async () => {
     const view = await render(
       <BankSyncSection account={bankAccount({ institution: 'monobank' })} />,

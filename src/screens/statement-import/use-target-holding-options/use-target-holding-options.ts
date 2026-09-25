@@ -7,6 +7,11 @@ import { accountsRepo } from '../../../accounts/accounts.repo';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import type { TargetHoldingOption } from '../target-holding-sheet/target-holding-sheet.props';
 
+export type TargetHoldingOptions = {
+  options: TargetHoldingOption[];
+  isLoading: boolean;
+};
+
 /**
  * Joins the holding rows this screen is scoped to (per `accountId`, or every
  * holding when absent) against the account rows this device knows about, so
@@ -14,16 +19,24 @@ import type { TargetHoldingOption } from '../target-holding-sheet/target-holding
  * owning any repo dependency of its own. Extracted out of
  * `statement-import.screen.tsx` so `column-mapping.screen.tsx` can share it
  * rather than reimplementing the same join.
+ *
+ * `isLoading` is true while either query is still on its own first load
+ * (kiko-architecture's useLiveQuery consumer rule) — a caller must not treat
+ * an empty `options` list as "no holdings" while it is still true, or the
+ * target-holding picker briefly shows only "Create new holding" for an
+ * account that genuinely has holdings not yet loaded.
  */
-export const useTargetHoldingOptions = (accountId: string | undefined): TargetHoldingOption[] => {
-  const { data: holdingRows } = useLiveQuery(
+export const useTargetHoldingOptions = (accountId: string | undefined): TargetHoldingOptions => {
+  const { data: holdingRows, isLoading: holdingsLoading } = useLiveQuery(
     accountId ? holdingsRepo.listByAccountQuery(accountId) : holdingsRepo.allQuery(),
     ['holdings'],
   );
-  const { data: accountRows } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
+  const { data: accountRows, isLoading: accountsLoading } = useLiveQuery(accountsRepo.listQuery(), [
+    'accounts',
+  ]);
   const accountNameById = new Map(accountRows.map((row) => [row.id, row.name] as const));
 
-  return holdingRows.map((holding) => ({
+  const options = holdingRows.map((holding) => ({
     id: holding.id,
     name: holding.name,
     accountId: holding.accountId,
@@ -31,4 +44,6 @@ export const useTargetHoldingOptions = (accountId: string | undefined): TargetHo
     icon: holding.icon ?? holdingTypeSymbol[holding.type],
     color: resolveEntityColor(holding.color, defaultHoldingColor[holding.type]),
   }));
+
+  return { options, isLoading: Boolean(holdingsLoading) || Boolean(accountsLoading) };
 };

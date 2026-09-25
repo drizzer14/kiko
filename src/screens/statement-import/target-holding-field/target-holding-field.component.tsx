@@ -29,6 +29,7 @@ const TargetHoldingField: FC<TargetHoldingFieldProps> = ({
   onCreateNew,
   placeholder,
   error,
+  disabled,
   testID,
 }) => {
   const [open, setOpen] = useState(false);
@@ -45,6 +46,7 @@ const TargetHoldingField: FC<TargetHoldingFieldProps> = ({
         value={selected?.name ?? placeholder}
         valueTone={selected ? 'textPrimary' : 'textSecondary'}
         error={error}
+        disabled={disabled}
         testID={testID}
       />
 

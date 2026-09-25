@@ -10,12 +10,14 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import SettingsRow from '../settings-row';
 import pkg from '../../../../package.json';
 import Box from '../../../design-system/components/box';
+import { useDataReady } from '../../../db/use-data-ready';
 import { useLiveQuery } from '../../../db/use-live-query';
 import Text from '../../../design-system/components/text';
 import Card from '../../../design-system/components/card';
 import Screen from '../../../design-system/components/screen';
 import Divider from '../../../design-system/components/divider';
 import type { SettingsStackParamList } from '../../../navigation/types';
+import LoadingState from '../../../design-system/components/loading-state';
 import CurrencyField from '../../../design-system/components/currency-field';
 import { type Currency, fiatCurrencyOptions } from '../../../currency/currency';
 import { useScrollToTopOnTabPress } from '../../../navigation/use-scroll-to-top-on-tab-press';
@@ -68,8 +70,12 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   const { t, i18n } = useTranslation();
   const { theme } = useUnistyles();
 
-  const { data } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  const { data, isLoading } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const settings = data.at(0);
+  // The base-currency field must never render as "none selected" while
+  // settings is still on its own first load (kiko-architecture's
+  // useLiveQuery consumer rule).
+  const isReady = useDataReady(isLoading);
 
   // Item 6 (device-feedback-round-4): the Import/Export card's per-row
   // padding and leading-inset divider, both PLAIN objects built from the
@@ -116,6 +122,17 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   const handleOpenPrivacyPolicy = (): void => {
     Linking.openURL(resolvePrivacyPolicyUrl(i18n.language));
   };
+
+  if (!isReady) {
+    // The SAME Screen mode/props as the ready branch below — the first
+    // scroll view iOS walks to drive the large-title collapse exists from
+    // the very first render.
+    return (
+      <Screen scroll scrollableRef={scrollRef}>
+        <LoadingState testID="settings-loading" />
+      </Screen>
+    );
+  }
 
   return (
     <Screen

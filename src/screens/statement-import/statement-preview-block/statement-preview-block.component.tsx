@@ -21,6 +21,7 @@ import type { StatementPreviewBlockProps } from './statement-preview-block.props
 const StatementPreviewBlock: FC<StatementPreviewBlockProps> = ({
   stats,
   holdingOptions,
+  holdingOptionsLoading,
   accountId,
   selectedHoldingId,
   onSelectHolding,
@@ -95,6 +96,11 @@ const StatementPreviewBlock: FC<StatementPreviewBlockProps> = ({
           label={t('statementImport.chooseHolding')}
           required
           holdings={holdingOptions}
+          // The picker must never open on an incomplete/empty list while its
+          // own holdings/accounts queries are still loading (kiko-
+          // architecture's useLiveQuery consumer rule) — see
+          // `useTargetHoldingOptions`'s own `isLoading` doc comment.
+          disabled={holdingOptionsLoading}
           accountId={accountId}
           selectedId={selectedHoldingId}
           onSelect={onSelectHolding}

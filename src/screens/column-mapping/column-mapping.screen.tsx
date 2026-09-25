@@ -573,7 +573,8 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   const { data: holdings } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings']);
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const savedMappings = settingsRows.at(0)?.statementMappings;
-  const holdingOptions = useTargetHoldingOptions(accountId);
+  const { options: holdingOptions, isLoading: holdingOptionsLoading } =
+    useTargetHoldingOptions(accountId);
 
   // `holdingId` covers BOTH the preview's prefill and
   // the "Add new" holding return channel, via
@@ -920,6 +921,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
             rowErrors={applyResult?.rowErrors ?? []}
             mappingIncomplete={mappingIncomplete}
             holdingOptions={holdingOptions}
+            holdingOptionsLoading={holdingOptionsLoading}
             accountId={accountId}
             selectedHoldingId={selectedHoldingId}
             onSelectHolding={setSelectedHoldingId}
