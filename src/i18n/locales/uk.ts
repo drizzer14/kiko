@@ -432,6 +432,7 @@ export const uk: typeof en = {
     debtsSection: 'Борги',
     emptyState: 'Ще немає рахунків',
     icon: 'Іконка {{name}}',
+    propertySection: 'Майно',
     title: 'Рахунки',
   },
   addBank: {

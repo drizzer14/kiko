@@ -507,6 +507,9 @@ export const en = {
     debtsSection: 'Debts',
     emptyState: 'No accounts yet',
     icon: '{{name}} icon',
+    // The accounts list's own "Property" section heading, above the
+    // property accounts' own drag-and-drop grid — mirrors `debtsSection`.
+    propertySection: 'Property',
     title: 'Accounts',
   },
   // The "add a bank" catalog copy (src/bank-sync/provider-catalog/): one
