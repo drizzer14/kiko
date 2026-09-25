@@ -1,3 +1,4 @@
+import { Alert } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import { i18n } from '../../../i18n';
@@ -265,6 +266,7 @@ describe('ImportDataScreen', () => {
     mockImportData.mockRejectedValue(
       new Error('data-transfer/decrypt: wrong key or corrupted file'),
     );
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
 
     const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
 
@@ -274,6 +276,34 @@ describe('ImportDataScreen', () => {
     await fireEvent.press(getByTestId('settings-button-import'));
     await fireEvent.press(await findByText('Replace data'));
 
-    await waitFor(() => expect(mockImportData).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith(
+        'Import failed',
+        'The key is wrong, or the file is corrupted.',
+      ),
+    );
+    alertSpy.mockRestore();
+  });
+
+  it('shows the generic invalid-file error when importData throws anything else', async () => {
+    mockPick.mockResolvedValue([{ uri: 'file:///picked.kiko', name: 'picked.kiko' }]);
+    mockImportData.mockRejectedValue(new Error('unexpected JSON shape'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+
+    const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
+
+    await fireEvent.press(getByTestId('settings-button-pick-file'));
+    await waitFor(() => expect(mockPick).toHaveBeenCalled());
+    await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), VALID_KEY);
+    await fireEvent.press(getByTestId('settings-button-import'));
+    await fireEvent.press(await findByText('Replace data'));
+
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith(
+        'Import failed',
+        'This does not look like a valid Kiko export file.',
+      ),
+    );
+    alertSpy.mockRestore();
   });
 });
