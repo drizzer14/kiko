@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import { ratesRepo } from '@kiko/rates/repo';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
@@ -767,13 +768,12 @@ const StatisticsScreen: FC = () => {
   // top-N picked from the measures by the chosen measure.
   const trendSelectedKeys = useMemo(
     () =>
-      appliedTrendFilter.mode === 'manual'
-        ? new Set(appliedTrendFilter.keys)
-        : selectTopCategories({
-            measures: trendMeasures,
-            amount: appliedTrendFilter.amount,
-            by: appliedTrendFilter.by,
-          }),
+      match(appliedTrendFilter)
+        .with({ mode: 'manual' }, (filter) => new Set(filter.keys))
+        .with({ mode: 'top' }, (filter) =>
+          selectTopCategories({ measures: trendMeasures, amount: filter.amount, by: filter.by }),
+        )
+        .exhaustive(),
     [appliedTrendFilter, trendMeasures],
   );
 
