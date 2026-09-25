@@ -164,60 +164,51 @@ review I1, fixed `9cf5791`→`6901d27`) — read
 
 ## Priced holdings
 
-A **priced holding type** (`isPricedHoldingType` —
-`src/holdings/priced-value/`; `property_item` and `metal` are members
-today, more land later — a type is priced when its own descriptor's
-`priced` spec is non-null; read the flag-table test in
-`holding-descriptors.test.ts` rather than trusting a member list
-restated here) is valued through the `PriceBook`, not through an
-interest engine or its raw stored balance. `quantityAt(lots, instant)`
-and `costBasisMinorAt(lots, instant)` (`src/holdings/lots/`) read the
-holding's `metadata.lots` array — one entry per buy/sell, `{ day,
-quantityDelta, costMinorUnits }` — to derive the quantity and cost
-basis held as of an instant; `quantityAt` never returns below `"0"`.
-`pricedValue(holding, book, instant)` (`src/holdings/priced-value/`)
-reads the holding's own descriptor off the registry
-(`holdingDescriptorOrUndefined`, `src/holdings/holding-descriptor/`) and
-dispatches to its `priced` spec (`src/holdings/holding-descriptor/property-item/`,
-`.../metal/`) through `pricedValueOrNull`
-(`src/holdings/holding-descriptor/priced-parts/`), which runs NO id guard
-of its own — whether a missing `id` matters is per-spec. Each spec's
-`value` returns a `Money`, not a bare number, in the spec's OWN
-currency — not necessarily `holding.currency`:
+A **priced holding type** — `property_item` and `metal` are members
+today, more land later — is one whose own descriptor's `priced` spec
+is non-null; read the flag-table test in `holding-descriptors.test.ts`
+rather than trusting a member list restated here. It is valued through
+the `PriceBook`, not through an interest engine or its raw stored
+balance. `quantityAt(lots, instant)` and `costBasisMinorAt(lots,
+instant)` (`src/holdings/lots/`) read the holding's `metadata.lots`
+array — one entry per buy/sell, `{ day, quantityDelta, costMinorUnits
+}` — to derive the quantity and cost basis held as of an instant;
+`quantityAt` never returns below `"0"`. Each priced type's own
+descriptor (`src/holdings/holding-descriptor/property-item/`,
+`.../metal/`) is built through `pricedDescriptor`
+(`src/holdings/holding-descriptor/priced-parts/`), which wires the
+type's own `priced` spec to its `breakdown`. `PricedHolding`
+(`src/holdings/priced-value/`) always carries an `id` — every real
+caller already has a full row (see "`id` is required on the value
+read types" below) — but only `property_item`'s `value` reads it;
+`metal`'s reads a SHARED instrument and never touches `holding.id` at
+all. Each spec's `value` returns a `Money`, not a bare number, in the
+spec's OWN currency — not necessarily `holding.currency`:
 
 - `property_item` multiplies `quantityAt(...)` by the price point for
   the holding's OWN `holding:<id>` instrument (`multiplyToMinorUnits`,
   the BigInt-backed decimal helper in `src/currency/decimal/` — never
   a float multiply), returned as Money in the HOLDING's currency (a
   per-holding manual revaluation, always entered in that currency).
-  Its OWN `value` guards a missing `id` first (returns `null`) — it
-  cannot resolve a per-holding instrument key without one.
 - `metal` multiplies `quantityAt(...)` by `purity` by the price point
   for the metal's SHARED `metal:<XAU|XAG|XPT|XPD>` instrument — NOT a
   per-holding instrument; every holding of the same metal reads the
-  same NBU points, so `metal`'s `value` needs no `id` at all and
-  prices an id-less holding exactly the same as an identified one.
-  `unit === 'g'` additionally divides by 31.1034768 (one troy ounce in
-  grams — NBU quotes precious metals per troy ounce). The returned
-  Money carries the PRICE POINT ROW's own stored `currency` (always
-  UAH in practice — NBU quotes precious metals only in UAH), NOT
-  `holding.currency`; the two can disagree for an invalid/restore-only
+  same NBU points, so `metal`'s `value` never reads `holding.id` at
+  all. `unit === 'g'` additionally divides by 31.1034768 (one troy
+  ounce in grams — NBU quotes precious metals per troy ounce). The
+  returned Money carries the PRICE POINT ROW's own stored `currency`
+  (always UAH in practice — NBU quotes precious metals only in UAH),
+  NOT `holding.currency`; the two can disagree for an invalid/restore-only
   row, and `pricedBreakdown` below is the one place that decides
   whether such a mismatch is safe to surface.
 
 Either descriptor's `value` returns `null` when the holding has no
-`lots`/metal metadata or no stored price point yet; only
-`property_item`'s also returns `null` for a missing `id`. A `loan`
-holding (not priced, `priced: null`) reads its own `holding:<id>`
-manual-correction series the same "id matters" way `property_item`
-does — `loan.descriptor.ts`'s `loanBreakdown` reads the id through
-`foldMap(maybe(holding.id), ...)`, falling back to
-`loanOutstandingMinorAt(meta, '', EMPTY_PRICE_BOOK, now)` (never a
-lookup on the real `book` under an empty/fabricated id) when there is
-none — an empty book, not the bare principal, so the pre-`startDate`
-guard, the amortization schedule and `'none'`'s own "no correction
-found" baseline all still apply to an id-less loan exactly as they do
-for an identified one with no correction found.
+`lots`/metal metadata or no stored price point yet. A `loan` holding
+(not priced, `priced: null`) reads its own `holding:<id>`
+manual-correction series the same way `property_item` does —
+`loan.descriptor.ts`'s `loanBreakdown` calls
+`loanOutstandingMinorAt(meta, holding.id, book, now)` directly, since
+`ValuableHolding` guarantees an `id` too.
 
 **A priced holding with no price point — or an invalid one — values at
 its lots' cost basis, never 0** — `pricedDescriptor(spec, rest)`
@@ -264,16 +255,14 @@ ledger reconstruction.
 (`src/statistics/type-breakdown/`), and `ContributionHolding`
 (`src/statistics/account-contribution/`) all include `id` as a plain
 required member of their `Pick<HoldingRow, ...>` — every real caller
-already has a full row. `property_item`'s own `value` no longer guards
-a missing `id` (that branch was dead once the type required one); a
-test that needs to exercise an id-less object at runtime (never a real
-stored row) builds it and casts it back to the read type, rather than
-widening the type back to optional — see the loan case next.
-`loan.descriptor.ts`'s `loanBreakdown` is the one place that still
-reads `holding.id` defensively (`foldMap(maybe(...))`) despite the
-type now guaranteeing it, precisely because a value built from a
-source looser than a real `HoldingRow` can still omit it at runtime;
-that guard stays.
+already has a full row. Neither `property_item`'s nor `loan`'s own
+value reader guards a missing `id` any longer (both branches were dead
+once the type required one) — `loan.descriptor.ts`'s `loanBreakdown`
+calls `loanOutstandingMinorAt(meta, holding.id, book, now)` directly. A
+test that needs to exercise a runtime shape looser than a real
+`HoldingRow` (never a real stored row) builds an id-less object and
+casts it back to the read type, rather than widening the type back to
+optional.
 
 ## Recording a lot: LotForm and the sell cost rule
 
@@ -351,9 +340,10 @@ value.
 
 `src/screens/forms/price-point-form/price-point-form.screen.tsx`,
 reached from `holding-detail.screen.tsx`'s `updateValue` footer action
-(gated by `isPricedHoldingType`/`isLedgerlessHoldingType` — a priced
-holding takes neither the `contribution` nor `transaction` footer
-action, an entirely separate branch), writes a new `manual` price
+(`property_item`/`metal`'s own `holdingDetailSpecs` entry,
+`holding-detail-spec/` — a priced holding takes neither the
+`contribution` nor `transaction` footer action, an entirely separate
+branch), writes a new `manual` price
 point through `pricePointsRepo.upsertMany` directly on the holding's
 own `holding:<id>` instrument — it does not go through
 `holdingsRepo`. It mirrors `contribution-form`'s shape: a grouped-
