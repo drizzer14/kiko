@@ -1,5 +1,6 @@
 import * as RNFS from 'react-native-fs';
 import readXlsxFile from 'read-excel-file/browser';
+import either, { bifold, isRight } from 'fnts/either';
 import { decode as decodeWindows1251 } from 'windows-1251';
 
 import type { SpreadsheetCellValue } from '../parser';
@@ -114,18 +115,17 @@ export const readSheetRowsSafely = async (
   base64: string,
 ): Promise<SpreadsheetCellValue[][] | undefined> => {
   const arrayBuffer = new Uint8Array(decodeBase64ToBytes(base64)).buffer;
-
-  try {
+  const attempt = await either<unknown, SpreadsheetCellValue[][] | undefined>(async () => {
     const sheets = await readXlsxFile(arrayBuffer);
 
     return sheets[0]?.data as SpreadsheetCellValue[][] | undefined;
-  } catch {
-    // A genuinely invalid/corrupted `.xlsx` — degrades to the same "we don't
-    // recognize this file" state `previewStats` already shows for any other
-    // format-level failure (no `sheetRows` means `detectFormat` recognizes
-    // nothing), rather than a distinct crash/error path.
-    return undefined;
-  }
+  });
+
+  // A genuinely invalid/corrupted `.xlsx` — degrades to the same "we don't
+  // recognize this file" state `previewStats` already shows for any other
+  // format-level failure (no `sheetRows` means `detectFormat` recognizes
+  // nothing), rather than a distinct crash/error path.
+  return isRight(attempt) ? bifold(attempt) : undefined;
 };
 
 // The one Hermes-safe base64 -> text decode path for a picked file's

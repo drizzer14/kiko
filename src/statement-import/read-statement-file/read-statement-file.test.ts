@@ -12,6 +12,7 @@ jest.mock('react-native-fs', () => ({
 import {
   isLegacyXlsFile,
   decodeStatementText,
+  readSheetRowsSafely,
   deleteLocalStatementCopy,
 } from './read-statement-file';
 
@@ -44,6 +45,26 @@ describe('decodeStatementText', () => {
     expect(
       decodeStatementText(sensebankBase64, 'windows-1251').startsWith(SENSEBANK_PREAMBLE),
     ).toBe(true);
+  });
+});
+
+const privatbankXlsxFixturePath = path.join(
+  __dirname,
+  '../formats/privatbank-xlsx/__fixtures__/synthetic-privatbank-sample.xlsx',
+);
+const privatbankXlsxBase64 = readFileSync(privatbankXlsxFixturePath).toString('base64');
+
+describe('readSheetRowsSafely', () => {
+  it('returns the parsed sheet rows for a genuinely valid .xlsx file', async () => {
+    const rows = await readSheetRowsSafely(privatbankXlsxBase64);
+
+    expect(rows?.length).toBeGreaterThan(0);
+  });
+
+  it('returns undefined for a corrupted/unparseable .xlsx file, rather than throwing', async () => {
+    const notAnXlsxFile = Buffer.from('not a real xlsx file').toString('base64');
+
+    await expect(readSheetRowsSafely(notAnXlsxFile)).resolves.toBeUndefined();
   });
 });
 

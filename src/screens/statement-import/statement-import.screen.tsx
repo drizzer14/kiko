@@ -5,6 +5,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { useRef, useEffect, useState } from 'react';
 import type { ScrollViewInstance } from 'react-native';
+import { bifold, eitherSync, isRight } from 'fnts/either';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -96,14 +97,12 @@ const parseFormatSafely = (
   format: StatementFormat,
   input: StatementFormatInput,
 ): ParsedStatement | undefined => {
-  try {
-    return format.parse(input);
-  } catch {
-    // Any parse failure here — the documented `StatementParseError` a bad
-    // data row throws, or anything else unexpected — degrades to the same
-    // graceful state rather than crashing the screen.
-    return undefined;
-  }
+  const attempt = eitherSync<unknown, ParsedStatement>(() => format.parse(input));
+
+  // Any parse failure here — the documented `StatementParseError` a bad
+  // data row throws, or anything else unexpected — degrades to the same
+  // graceful state rather than crashing the screen.
+  return isRight(attempt) ? bifold(attempt) : undefined;
 };
 
 // Combines `parseFormatSafely` and `previewStats` into the one derivation

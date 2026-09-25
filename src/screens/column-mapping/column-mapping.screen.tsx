@@ -6,6 +6,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useRef, useState } from 'react';
 import type { ScrollViewInstance } from 'react-native';
+import { bifold, eitherSync, isRight } from 'fnts/either';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -322,11 +323,9 @@ const applyMappingSafely = (
   rows: TableCell[][],
   mapping: ColumnMapping,
 ): MappedResult | undefined => {
-  try {
-    return applyColumnMapping(rows, mapping);
-  } catch {
-    return undefined;
-  }
+  const attempt = eitherSync<unknown, MappedResult>(() => applyColumnMapping(rows, mapping));
+
+  return isRight(attempt) ? bifold(attempt) : undefined;
 };
 
 // True once the mapping applied without throwing but literally zero rows
