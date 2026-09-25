@@ -8,9 +8,8 @@ import TextField from '../../../../../design-system/components/text-field';
 import type { BalanceFormBlockProps } from './balance-form-block.props';
 
 // The opening-balance field shared by every ledgered type (card, cash,
-// crypto_asset, jar — R3 Phase C). A synced (Monobank) holding's balance is
-// owned by the sync, so this renders nothing in that case — mirrors the
-// `!isSyncedEdit` guard the inline field this replaces used to carry.
+// crypto_asset, jar). A synced (Monobank) holding's balance is owned by the
+// sync, so this renders nothing in that case.
 const BalanceFormBlock: FC<BalanceFormBlockProps> = ({ fields, isSyncedEdit }) => {
   const { t } = useTranslation();
 

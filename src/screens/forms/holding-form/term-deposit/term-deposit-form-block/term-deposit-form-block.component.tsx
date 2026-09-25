@@ -9,10 +9,7 @@ import Divider from '../../../../../design-system/components/divider';
 import type { TermDepositFormBlockProps } from './term-deposit-form-block.props';
 
 // The `type === 'term_deposit'` details block as its own leaf component,
-// mirroring `LoanFormBlock`'s own extraction — kept out of the
-// already-at-the-ceiling screen's own cognitive-complexity budget. The
-// screen itself still gates this on `type === 'term_deposit'`, so this
-// component always renders once mounted.
+// keeping its own cognitive-complexity budget separate from the screen's.
 const TermDepositFormBlock: FC<TermDepositFormBlockProps> = ({ fields, attemptedSave }) => {
   const { t } = useTranslation();
 

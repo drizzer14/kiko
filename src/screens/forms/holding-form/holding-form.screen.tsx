@@ -1,12 +1,3 @@
-import {
-  type FC,
-  type RefObject,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
 import { match } from 'ts-pattern';
 import { Alert, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -16,6 +7,7 @@ import { holdingDescriptor } from '@kiko/holdings/holding-descriptor';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { ScrollViewInstance, TextInputInstance } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import {
   creatableHoldingTypesForAccount,
@@ -62,23 +54,6 @@ import TermDepositFormBlock from './term-deposit/term-deposit-form-block';
 import { useTermDepositFields } from './term-deposit/use-term-deposit-fields';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
-
-// The name-required reason, shown only after a failed Save press: gated on
-// `attemptedSave` so it renders nothing before the first press. The
-// type-specific per-field reasons (term deposit / bond) no longer flow
-// through this helper — each field now calls its own reason function
-// directly, since each field needs its OWN reason, not the type's single
-// first-failing one. Kept as a module-level helper (rather than inline in
-// the component) to mirror the pattern the rest of this file already uses
-// for save-time branching.
-const saveReasonsFor = (params: {
-  attemptedSave: boolean;
-  name: string;
-}): { showNameReason: boolean } => {
-  const { attemptedSave, name } = params;
-
-  return { showNameReason: attemptedSave && name.trim().length === 0 };
-};
 
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
   const { accountId, holdingId, returnTo } = route.params;
@@ -237,45 +212,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // entry instead (see each `use<Type>Fields` hook).
   const nameInputRef = useRef<TextInputInstance>(null);
 
-  // term_deposit state + validation + create/edit payloads (R3 Phase C's
-  // worked example) — every field, the per-field reasons, the edit-mode
-  // seed, and the create/edit payload builders live in the hook, the same
-  // way `useLoanFields` extracted the Loan form's own state.
   const deposit = useTermDepositFields({ currency, scrollTo });
-
-  // bond state + validation + create/edit payloads (R3 Phase C) — every
-  // field, the ISIN/Manual mode, the per-field reasons, the edit-mode seed,
-  // and the create/edit payload builders live in the hook, the same way
-  // `useTermDepositFields` extracted the deposit form's own state.
   const bond = useBondFields({ type, isEdit, currency, setCurrency, setName });
-
-  // property_item state + validation + create/edit payload (R3 Phase C) —
-  // the category/cost state, the ORIGINAL (hydrated) lots carried unchanged
-  // through an edit, the per-field reason, the edit-mode seed, and the
-  // create/edit payload builders live in the hook, the same way
-  // `useBondFields` extracted the bond form's own state.
   const property = usePropertyFields({ isEdit, currency });
-
-  // metal state + validation + create/edit payload (R3 Phase C) — the
-  // element/form/unit/purity/first-lot state, the ORIGINAL (hydrated) lots
-  // carried unchanged through an edit, the per-field reason, the edit-mode
-  // seed, and the create/edit payload builders live in the hook, the same
-  // way `usePropertyFields` extracted the property form's own state.
   const metal = useMetalFields({ isEdit });
-
-  // loan state + validation + create/edit payloads (T28, R3 Phase C). Unlike
-  // property/metal, every field here is editable in BOTH create and edit mode
-  // (mirrors term_deposit/bond) — see `useLoanFields`'s own doc comment for
-  // why this hook owns the full state + per-schedule validation rather than
-  // a bag of module-level helpers.
   const loanFields = useLoanFields({ currency });
-
-  // balance state + create/edit payload (R3 Phase C) — the single
-  // opening-balance field shared by every ledgered type (card, cash,
-  // crypto_asset, jar). This hook stays mounted across every type, not only
-  // while a balance type is selected (mirrors deposit/bond/property/metal/
-  // loan), so its state — including a value typed before switching AWAY from
-  // a balance type — survives a type switch.
+  // Stays mounted across every type, not only while a balance type is
+  // selected, so a value typed before switching away survives the switch.
   const balance = useBalanceFields({ currency });
 
   // The one place every holding type's own form behaviour is looked up —
@@ -284,20 +227,17 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // `match(type)` dispatch. Each of the four ledgered types shares the SAME
   // `balance` hook instance (it stays mounted regardless of which type is
   // selected — see that hook's own doc comment).
-  const forms: Record<HoldingType, HoldingTypeForm> = useMemo(
-    () => ({
-      term_deposit: deposit,
-      bond,
-      property_item: property,
-      metal,
-      loan: loanFields,
-      card: balance,
-      cash: balance,
-      crypto_asset: balance,
-      jar: balance,
-    }),
-    [deposit, bond, property, metal, loanFields, balance],
-  );
+  const forms: Record<HoldingType, HoldingTypeForm> = {
+    term_deposit: deposit,
+    bond,
+    property_item: property,
+    metal,
+    loan: loanFields,
+    card: balance,
+    cash: balance,
+    crypto_asset: balance,
+    jar: balance,
+  };
   const active = forms[type];
 
   // A holding type with a fixed currency (today, only `metal` — NBU quotes
@@ -331,17 +271,30 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     setIcon(holding.icon);
     setColor(holding.color);
 
-    // `forms` is declared `Record<HoldingType, HoldingTypeForm>`, but SQLite
-    // enforces no such constraint on the stored column (`holdingDescriptor`'s
-    // own doc comment) — a corrupted row's `type` could be any string. The
-    // `Object.hasOwn` guard (mirroring `holdingDescriptorOrUndefined`) falls
-    // back to reading the plain balance for that case, rather than throwing.
-    const formsUnsafe = forms as Record<string, HoldingTypeForm>;
-    const seedTarget = Object.hasOwn(formsUnsafe, holding.type)
-      ? formsUnsafe[holding.type]
-      : balance;
-    seedTarget.seed(holding);
-  }, [isEdit, editingHolding, forms, balance]);
+    // SQLite enforces no constraint on the stored `type` column
+    // (`holdingDescriptor`'s own doc comment) — a corrupted row's `type`
+    // could be any string. The `Object.hasOwn` guard (mirroring
+    // `holdingDescriptorOrUndefined`) falls back to the balance seed for
+    // that case.
+    const seeds: Record<string, HoldingTypeForm['seed']> = {
+      term_deposit: deposit.seed,
+      bond: bond.seed,
+      property_item: property.seed,
+      metal: metal.seed,
+      loan: loanFields.seed,
+    };
+    const seed = Object.hasOwn(seeds, holding.type) ? seeds[holding.type] : balance.seed;
+    seed(holding);
+  }, [
+    isEdit,
+    editingHolding,
+    deposit.seed,
+    bond.seed,
+    property.seed,
+    metal.seed,
+    loanFields.seed,
+    balance.seed,
+  ]);
 
   // The stack sets the static "Add Holding" title; in edit mode override it with
   // "Edit Holding" so the header reads correctly for the update flow.
@@ -355,7 +308,9 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
   const [attemptedSave, setAttemptedSave] = useState(false);
 
-  const { showNameReason } = saveReasonsFor({ attemptedSave, name });
+  // Shown only after a failed Save press: gated on `attemptedSave` so it
+  // renders nothing before the first press.
+  const showNameReason = attemptedSave && name.trim().length === 0;
 
   const save = async (): Promise<void> => {
     if (!isValid) {
@@ -400,10 +355,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
       // `balance.openingBalanceMinorUnits()` reads the LIVE opening-balance
       // field regardless of which type is active (that hook's own doc
-      // comment) — a deposit/bond's own `createPayload` reads it too (T's
-      // hidden-balance quirk, R3 Phase C's Risks table); property/metal/loan
-      // ignore it, always writing a zero stored balance instead (their
-      // value derives entirely from their own lots/schedule).
+      // comment) — a deposit/bond create writes that value even though the
+      // balance field is hidden for those types; property/metal/loan ignore
+      // it, always writing a zero stored balance instead (their value
+      // derives entirely from their own lots/schedule).
       const newHoldingId = await holdingsRepo.create({
         accountId,
         name,

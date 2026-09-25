@@ -34,10 +34,9 @@ const isinFieldErrorMessage = (
     ? undefined
     : fieldErrorMessage(t, attemptedSave, reasonKey);
 
-// The ISIN-mode-only coupon-frequency picker's OWN blocking error (T25
-// review round 2, N2, orchestrator ruling): only once a Save attempt was
-// made, only for the one match that left `couponFrequency` unmapped, and
-// only until the user picks one.
+// The ISIN-mode-only coupon-frequency picker's OWN blocking error: only
+// once a Save attempt was made, only for the one match that left
+// `couponFrequency` unmapped, and only until the user picks one.
 const couponFrequencyErrorMessage = (
   t: TFunction,
   attemptedSave: boolean,
@@ -49,22 +48,19 @@ const couponFrequencyErrorMessage = (
     : undefined;
 
 // ISIN mode never mounts the maturity DateField (its terms are
-// register-sourced) — a matured-still-registered bond's reason (or a
+// register-sourced) — a matured-still-registered bond's reason (or
 // register terms with no maturity date at all) is shown on the purchase
-// date instead (T25 review round 1, I2), the one date the user actually
-// controls there. The purchase field's OWN missing-date reason (`ownError`)
-// always takes priority over a redirected maturity reason, in both modes.
+// date instead, the one date the user actually controls there. The
+// purchase field's OWN missing-date reason (`ownError`) always takes
+// priority over a redirected maturity reason, in both modes.
 const purchaseDateErrorMessage = (
   bondMode: BondEntryMode,
   ownError: string | undefined,
   maturityDateErrorMessage: string | undefined,
 ): string | undefined => ownError ?? (bondMode === 'isin' ? maturityDateErrorMessage : undefined);
 
-// The `type === 'bond'` details block as its own leaf component, mirroring
-// `TermDepositFormBlock`'s own extraction — kept out of the
-// already-at-the-ceiling screen's own cognitive-complexity budget. The
-// screen itself still gates this on `type === 'bond'`, so this component
-// always renders once mounted.
+// The `type === 'bond'` details block as its own leaf component, keeping
+// its own cognitive-complexity budget separate from the screen's.
 const BondFormBlock: FC<BondFormBlockProps> = ({ fields, attemptedSave }) => {
   const { t } = useTranslation();
   const { fieldErrors, refs } = fields;
@@ -130,7 +126,7 @@ const BondFormBlock: FC<BondFormBlockProps> = ({ fields, attemptedSave }) => {
         suffix={currencySymbol[fields.currency]}
       />
 
-      {/* See `purchaseDateErrorMessage`'s own doc comment (I2). */}
+      {/* See `purchaseDateErrorMessage`'s own doc comment. */}
       <View ref={refs.purchaseDateFieldRef}>
         <DateField
           label={t('forms.holding.purchaseDate')}

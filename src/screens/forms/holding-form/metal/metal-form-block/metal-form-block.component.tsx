@@ -11,11 +11,8 @@ import Divider from '../../../../../design-system/components/divider';
 
 import type { MetalFormBlockProps } from './metal-form-block.props';
 
-// The `type === 'metal'` details block as its own leaf component, mirroring
-// `PropertyFormBlock`'s own extraction — kept out of the
-// already-at-the-ceiling screen's own cognitive-complexity budget. The
-// screen itself still gates this on `type === 'metal'`, so this component
-// always renders once mounted.
+// The `type === 'metal'` details block as its own leaf component, keeping
+// its own cognitive-complexity budget separate from the screen's.
 const MetalFormBlock: FC<MetalFormBlockProps> = ({ fields, attemptedSave, isEdit }) => {
   const { t } = useTranslation();
   const { fieldErrors, refs } = fields;

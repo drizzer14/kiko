@@ -18,8 +18,8 @@ import type { PropertySectionProps } from './property-section.props';
 // `FieldTrigger`+`BottomSheet`+`SelectableRow` family, same shape as
 // `AccountKindField`) and a Cost field (create-only — see
 // `PropertySectionProps.showCost`'s own doc comment). One lot + one manual
-// price point equal to this cost is what `holding-form.screen.tsx` builds
-// from it on save; this component only collects and reports the two fields.
+// price point equal to this cost is what `usePropertyFields` builds from
+// it on save; this component only collects and reports the two fields.
 const PropertySection: FC<PropertySectionProps> = ({
   category,
   onSelectCategory,

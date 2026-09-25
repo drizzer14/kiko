@@ -21,7 +21,7 @@ import {
   type PropertyReasonKey,
 } from './property-reasons';
 
-// The property CREATE payload (T16): a `property_item` writes a zero stored
+// The property CREATE payload: a `property_item` writes a zero stored
 // balance (its value lives entirely in `metadata.lots` / `price_points` —
 // kiko-domain), one lot dated today for a quantity of "1" at the entered
 // cost, and a first `manual` price point equal to that same cost, so the
@@ -74,7 +74,7 @@ export type UsePropertyFieldsResult = HoldingTypeForm & {
  * (hydrated) lots carried unchanged through an edit, the per-field
  * validation reason, the edit-mode seed, and the create/edit payload
  * builders — extracted out of `HoldingFormScreen` the same way
- * `useBondFields` did for the bond form (R3 Phase C).
+ * `useBondFields` did for the bond form.
  */
 export const usePropertyFields = (params: UsePropertyFieldsParams): UsePropertyFieldsResult => {
   const { isEdit, currency } = params;

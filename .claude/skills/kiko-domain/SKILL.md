@@ -689,7 +689,7 @@ Manual-mode bond. Once saved, the holding never depends on the
 register again (spec 6.4 #5) — nothing re-validates a stored ISIN
 against a later register state.
 
-`holding-form.screen.tsx`'s bond section has an "ISIN / Manual"
+`BondFormBlock`'s bond section has an "ISIN / Manual"
 `BondEntryMode` mode, the design-system `SegmentedControl` (not
 `ChipRow` — F3/T24 ruling: one control type per kind of mode choice),
 rendered by `BondIsinSection`
@@ -780,9 +780,9 @@ A maturity-before-purchase reason (`bondReasonKey`, unrelated to the
 ISIN reason above) still applies unchanged in ISIN mode — a
 matured-still-registered bond (spec 6.1 counts 2 in the live register)
 can pass every ISIN check yet still fail this — but ISIN mode never
-mounts the maturity `DateField`, so `holding-form.screen.tsx` shows and
-scrolls to that reason on the purchase date `DateField` instead (T25
-review round 1, I2), the one date the user actually controls there.
+mounts the maturity `DateField`, so `BondFormBlock` shows that reason
+on the purchase date `DateField` instead, and `useBondFields.scrollTargets`
+scrolls there, the one date the user actually controls there.
 
 The five Manual-only fields (face value, coupon %, maturity date, bond
 kind, coupon frequency) are their own component,

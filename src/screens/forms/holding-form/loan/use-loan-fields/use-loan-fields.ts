@@ -1,4 +1,5 @@
 import type { RefObject } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useCallback, useRef, useState } from 'react';
 import type { TextInputInstance } from 'react-native';
 import { holdingsRepo, type LoanPricePointOp } from '@kiko/holdings/repo';
@@ -22,7 +23,7 @@ import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-
 
 // The literal i18n keys `loanReasonKey` below may return, so `t()` (typed
 // from src/i18n/locales/en.ts) accepts them — mirrors `PropertyReasonKey`/
-// `MetalReasonKey` in holding-form.screen.tsx.
+// `MetalReasonKey` in their own `<type>-reasons.ts`.
 export type LoanReasonKey =
   | 'forms.holding.loanPrincipalError'
   | 'forms.holding.loanStartDateError'
@@ -30,7 +31,7 @@ export type LoanReasonKey =
   | 'forms.holding.termMonthsError';
 
 // 50 years — comfortably above any real mortgage/car-loan term, and the
-// upper bound `loanReasonKey` rejects (Minor 10).
+// upper bound `loanReasonKey` rejects.
 export const MAX_LOAN_TERM_MONTHS = 600;
 
 // The shared shape both `loanFieldErrors` and `loanReasonKey` validate —
@@ -45,16 +46,15 @@ type LoanValidationParams = {
 
 // Every field's OWN blocking reason, each derived from ONLY that field's own
 // input (plus the schedule gate rate/term already share). A loan needs a
-// positive principal and a picked start date UNCONDITIONALLY (M1, T28
-// brief); `annualRatePct`/`termMonths` are required ONLY while `schedule` is
+// positive principal and a picked start date UNCONDITIONALLY;
+// `annualRatePct`/`termMonths` are required ONLY while `schedule` is
 // `'annuity'`/`'differentiated'` — `'none'` (an informal debt, spec 5.1)
 // carries no schedule at all, so Save never blocks on them there.
-// `termMonths` must be a WHOLE number >= 1 (T26 review, M1): a degenerate
-// term (0, negative, fractional) would give `loanInstallments` a schedule
-// that never reduces the balance to exactly 0. Capped at `MAX_TERM_MONTHS`
-// (T28 review round 1, Minor 10): an uncapped value (e.g. "99999999", still
-// a valid positive integer) makes `loanInstallments` build ~1e8 rows on
-// every render, hanging the app.
+// `termMonths` must be a WHOLE number >= 1: a degenerate term (0, negative,
+// fractional) would give `loanInstallments` a schedule that never reduces
+// the balance to exactly 0. Capped at `MAX_TERM_MONTHS`: an uncapped value
+// (e.g. "99999999", still a valid positive integer) makes `loanInstallments`
+// build ~1e8 rows on every render, hanging the app.
 export type LoanFieldErrors = {
   principalError: 'forms.holding.loanPrincipalError' | null;
   startDateError: 'forms.holding.loanStartDateError' | null;
@@ -144,9 +144,9 @@ type LoanFieldsSnapshot = Pick<
   'kind' | 'principal' | 'startDate' | 'schedule' | 'annualRatePct' | 'termMonths'
 >;
 
-// A loan's `LoanMeta` (T26/T28, spec 5.1) — shared by the EDIT-mode
-// `saveEdit` below and `buildLoanCreatePayload`, so the two can never build a
-// differently shaped `LoanMeta` for the same field values.
+// A loan's `LoanMeta` (spec 5.1) — shared by the EDIT-mode `saveEdit` below
+// and `buildLoanCreatePayload`, so the two can never build a differently
+// shaped `LoanMeta` for the same field values.
 const buildLoanMeta = (fields: LoanFieldsSnapshot, currency: Currency): LoanMeta => ({
   kind: fields.kind,
   principalMinorUnits: Money.fromMajor(currency, parseAmount(fields.principal) || 0).minorUnits,
@@ -160,7 +160,7 @@ const buildLoanMeta = (fields: LoanFieldsSnapshot, currency: Currency): LoanMeta
       }),
 });
 
-// The loan CREATE payload (T28): a zero stored balance (ledgerless — its
+// The loan CREATE payload: a zero stored balance (ledgerless — its
 // value derives entirely from the schedule math / its own manual series,
 // kiko-domain) plus the `LoanMeta` above. A `'none'` schedule (an informal
 // debt) ADDITIONALLY writes a first `manual` price point on the holding's
@@ -198,9 +198,9 @@ const buildLoanCreatePayload = (fields: LoanFieldsSnapshot, currency: Currency):
  * instant the schedule is cleared; (b) a `'none'` loan's principal/start-date
  * edit moves its start-day point (any later correction stays); (c) every
  * other transition (including `'none'` OUT to a schedule) leaves the manual
- * series untouched — a correction point is still valid for a scheduled loan
- * (N10a). `oldMeta === null` (a fresh holding, or unparsed metadata) has
- * nothing to reconcile.
+ * series untouched — a correction point is still valid for a scheduled loan.
+ * `oldMeta === null` (a fresh holding, or unparsed metadata) has nothing to
+ * reconcile.
  */
 const buildLoanPricePointOp = (params: {
   oldMeta: LoanMeta | null;
@@ -256,12 +256,12 @@ const buildLoanPricePointOp = (params: {
 };
 
 /**
- * Owns every Loan form field (T28, spec 5.1) — the six pieces of state, the
+ * Owns every Loan form field (spec 5.1) — the six pieces of state, the
  * per-schedule validation reason, the edit-mode seed, and the create/edit
  * payload builders — extracted out of `HoldingFormScreen` the same way
- * `useBondFields`/`useMetalFields` did for their own forms (R3 Phase C).
- * Unlike property/metal, every field here is editable in BOTH create and
- * edit mode (mirrors term_deposit/bond).
+ * `useBondFields`/`useMetalFields` did for their own forms. Unlike
+ * property/metal, every field here is editable in BOTH create and edit mode
+ * (mirrors term_deposit/bond).
  */
 export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult => {
   const { currency } = params;
@@ -315,14 +315,15 @@ export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult 
     );
 
   // The EDIT-mode write: a loan's manual `holding:<id>` series is reconciled
-  // in the SAME transaction as its metadata patch (T28 review round 1, I1) —
-  // see `buildLoanPricePointOp`'s own doc comment for the three-case ruling.
+  // in the SAME transaction as its metadata patch — see
+  // `buildLoanPricePointOp`'s own doc comment for the three-case ruling.
   // `oldMeta` reads the STILL-STORED (pre-edit) metadata off the live-queried
   // `editingHolding`, so `buildLoanPricePointOp` can tell what actually
   // changed.
   const saveEdit = (context: EditContext): Promise<void> => {
     const { holdingId, name, color, editingHolding, book } = context;
-    const oldMeta = editingHolding ? asLoanMeta(editingHolding.metadata) : null;
+    const oldMeta =
+      foldMap(maybe(editingHolding), (holding) => asLoanMeta(holding.metadata)) ?? null;
     const newMeta = buildLoanMeta(
       { kind, principal, startDate, schedule, annualRatePct, termMonths },
       currency,

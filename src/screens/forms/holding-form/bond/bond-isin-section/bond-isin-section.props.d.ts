@@ -8,8 +8,8 @@ import type { BondCouponFrequency } from '../../../../../holdings/holding-metada
 // "ISIN" pre-fills a found bond's terms from the NBU register; "Manual" is
 // the classic hand-entered form (spec 6.3/6.4). A CREATE defaults to
 // 'isin'; an EDIT always opens 'manual', with the stored ISIN shown and
-// still editable (spec 6.4 #6) — `holding-form.screen.tsx` owns that
-// seeding, this type is just the shared vocabulary.
+// still editable (spec 6.4 #6) — `useBondFields` owns that seeding, this
+// type is just the shared vocabulary.
 export type BondEntryMode = 'isin' | 'manual';
 
 export type BondIsinSectionProps = {

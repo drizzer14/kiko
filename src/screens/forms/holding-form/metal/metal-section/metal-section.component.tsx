@@ -21,9 +21,9 @@ import type { MetalSectionProps } from './metal-section.props';
 // standard bar/coin fineness, validated on Save as 0 < purity <= 1 in both
 // create and edit mode), and the first-lot Quantity/Total cost
 // fields (create-only — see `MetalSectionProps.showFirstLot`'s own doc
-// comment). One lot is what `holding-form.screen.tsx` builds from those two
-// fields on save; this component only collects and reports the fields,
-// mirroring PropertySection's shape.
+// comment). One lot is what `useMetalFields` builds from those two fields
+// on save; this component only collects and reports the fields, mirroring
+// PropertySection's shape.
 const MetalSection: FC<MetalSectionProps> = ({
   metal,
   onSelectMetal,

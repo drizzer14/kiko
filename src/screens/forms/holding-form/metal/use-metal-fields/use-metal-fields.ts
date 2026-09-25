@@ -53,7 +53,7 @@ type MetalFields = {
   cost: string;
 };
 
-// The metal CREATE payload (T20): a `metal` holding writes a zero stored
+// The metal CREATE payload: a `metal` holding writes a zero stored
 // balance (its value lives entirely in `metadata.lots` / the SHARED
 // `metal:<XAU|XAG|XPT|XPD>` price series — kiko-pricing) and one lot dated
 // today for the entered quantity/cost. Unlike a property's create payload,
@@ -117,10 +117,10 @@ export type UseMetalFieldsResult = HoldingTypeForm & {
  * state, the ORIGINAL (hydrated) lots carried unchanged through an edit,
  * the per-field validation reason, the edit-mode seed, and the create/edit
  * payload builders — extracted out of `HoldingFormScreen` the same way
- * `usePropertyFields` did for the property form (R3 Phase C). Unlike
- * bond/property/deposit, a metal holding's value is hard-fixed to UAH
- * (NBU quotes precious metals only in UAH — kiko-pricing), so this hook
- * takes no `currency` param.
+ * `usePropertyFields` did for the property form. Unlike bond/property/
+ * deposit, a metal holding's value is hard-fixed to UAH (NBU quotes
+ * precious metals only in UAH — kiko-pricing), so this hook takes no
+ * `currency` param.
  */
 export const useMetalFields = (params: UseMetalFieldsParams): UseMetalFieldsResult => {
   const { isEdit } = params;

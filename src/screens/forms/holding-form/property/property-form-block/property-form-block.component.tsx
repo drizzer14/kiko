@@ -12,10 +12,7 @@ import Divider from '../../../../../design-system/components/divider';
 import type { PropertyFormBlockProps } from './property-form-block.props';
 
 // The `type === 'property_item'` details block as its own leaf component,
-// mirroring `BondFormBlock`'s own extraction — kept out of the
-// already-at-the-ceiling screen's own cognitive-complexity budget. The
-// screen itself still gates this on `type === 'property_item'`, so this
-// component always renders once mounted.
+// keeping its own cognitive-complexity budget separate from the screen's.
 const PropertyFormBlock: FC<PropertyFormBlockProps> = ({ fields, attemptedSave, isEdit }) => {
   const { t } = useTranslation();
   const { fieldErrors, refs } = fields;

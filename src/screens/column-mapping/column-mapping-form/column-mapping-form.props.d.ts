@@ -18,8 +18,7 @@ export type Encoding = 'utf-8' | 'windows-1251';
 
 // The wrapper refs `firstInvalidColumnMappingFieldRef` (`column-mapping.screen.tsx`)
 // picks a scroll target from — grouped into its own type so that function's own signature
-// reads as one param per concern, mirroring `holding-form.screen.tsx`'s own
-// `ValidatedFieldRefs`. `amountGroupFieldRef`/`currencyGroupFieldRef` each
+// reads as one param per concern. `amountGroupFieldRef`/`currencyGroupFieldRef` each
 // wrap their WHOLE field group (single-vs-debit/credit, column-vs-fixed) —
 // there are up to 3 fields inside one group depending on the picked mode, and
 // landing the scroll on the group reads just as well as a fourth ref per

@@ -1,20 +1,18 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import { currencySymbol } from '@kiko/currency/currency';
+import Divider from '@kiko/design-system/components/divider';
 
 import LoanSection from '../loan-section';
-import Box from '../../../../../design-system/components/box';
 import { fieldErrorMessage } from '../../field-error-message';
-import Text from '../../../../../design-system/components/text';
-import { currencySymbol } from '../../../../../currency/currency';
 import { groupAmount } from '../../../amount-format/amount-format';
-import Divider from '../../../../../design-system/components/divider';
 
 import type { LoanFormBlockProps } from './loan-form-block.props';
 
-// The `type === 'loan'` details block as its own leaf component, keeping its
-// own cognitive-complexity budget instead of adding another branch to the
-// already-at-the-ceiling screen. The screen itself gates this on
-// `type === 'loan'`, so this component always renders once mounted.
+// The `type === 'loan'` details block as its own leaf component, keeping
+// its own cognitive-complexity budget separate from the screen's.
 const LoanFormBlock: FC<LoanFormBlockProps> = ({ fields, attemptedSave }) => {
   const { t } = useTranslation();
   const { fieldErrors, refs } = fields;

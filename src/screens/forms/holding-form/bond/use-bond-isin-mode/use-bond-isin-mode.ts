@@ -140,9 +140,9 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
     setName,
   } = params;
 
-  // A CREATE defaults to 'isin'; `holding-form.screen.tsx`'s own edit-mode
-  // hydration effect calls `setBondMode('manual')` once the stored holding
-  // loads (spec 6.4 #6 — the stored ISIN is shown there, still editable).
+  // A CREATE defaults to 'isin'; `useBondFields`'s own `seed` calls
+  // `setBondMode('manual')` once the stored holding loads (spec 6.4 #6 —
+  // the stored ISIN is shown there, still editable).
   const [bondMode, setBondMode] = useState<BondEntryMode>('isin');
   const [isin, setIsin] = useState('');
 
@@ -297,9 +297,9 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
 
   // Wrapped in `useCallback` (a stable identity across renders, matching
   // `setBondMode`'s own `useState` setter) rather than a fresh closure each
-  // render — a caller's own effect that depends on this (e.g. the
-  // edit-mode hydration effect in `holding-form.screen.tsx`) must not
-  // re-run on every unrelated render just because this identity changed.
+  // render — a caller's own effect that depends on this (e.g.
+  // `useBondFields`'s own `seed`) must not re-run on every unrelated
+  // render just because this identity changed.
   const setNormalizedIsin = useCallback((value: string): void => {
     setIsin(normalizeIsin(value));
   }, []);

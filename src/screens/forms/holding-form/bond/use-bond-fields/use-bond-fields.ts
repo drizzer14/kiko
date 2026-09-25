@@ -41,7 +41,7 @@ const seedBondFields = (meta: BondMeta, currency: Currency) => ({
   bondKind: meta.bondKind,
   couponFrequency: meta.couponFrequency,
   // Edit mode always opens Manual (spec 6.4 #6), with the stored ISIN (or ''
-  // for a bond saved before T25) shown and still editable.
+  // for a bond saved before this field existed) shown and still editable.
   isin: meta.isin ?? '',
 });
 
@@ -102,7 +102,7 @@ export type UseBondFieldsResult = HoldingTypeForm & {
  * (via `useBondIsinMode`), the per-field validation reasons, the edit-mode
  * seed, and the create/edit payload builders — extracted out of
  * `HoldingFormScreen` the same way `useTermDepositFields` did for the
- * term-deposit form (R3 Phase C).
+ * term-deposit form.
  */
 export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult => {
   const { type, isEdit, currency, setCurrency, setName } = params;
@@ -183,7 +183,7 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
       // string, so `asBondMeta`'s optional field round-trips as `undefined`.
       // `isin` itself is already normalized (`useBondIsinMode`'s own
       // `setIsin` wrapper) — a second `normalizeIsin` call here was a
-      // redundant third normalization (T25 review round 2, Minor 9).
+      // redundant third normalization.
       ...(isin.trim() === '' ? {} : { isin }),
     };
   };
@@ -278,7 +278,7 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
         focus: () => isinInputRef.current?.focus(),
       },
       {
-        // The ISIN-mode-only coupon-frequency picker (N2) renders inside
+        // The ISIN-mode-only coupon-frequency picker renders inside
         // `BondIsinSection`, just below the ISIN field — reusing its ref
         // lands the scroll close enough with no separate wrapper needed.
         invalid: needsCouponFrequencyPick && pickedCouponFrequency === null,

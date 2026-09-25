@@ -74,8 +74,7 @@ export type UseTermDepositFieldsResult = HoldingTypeForm & {
  * rate/term/recapitalization/compounding state, the per-field validation
  * reasons, the edit-mode seed, and the create/edit payload builders —
  * extracted out of `HoldingFormScreen` the same way `useLoanFields` extracted
- * the Loan form's own state (R3 Phase C's worked example for the
- * `HoldingTypeForm` shape every other type follows next).
+ * the Loan form's own state.
  */
 export const useTermDepositFields = (
   params: UseTermDepositFieldsParams,

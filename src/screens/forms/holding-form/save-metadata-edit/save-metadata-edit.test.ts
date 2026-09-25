@@ -32,7 +32,7 @@ describe('saveMetadataEdit', () => {
     );
   });
 
-  it('passes through an undefined metadata unchanged (an empty contributions list, T28)', async () => {
+  it('passes through an undefined metadata unchanged (an empty contributions list)', async () => {
     await saveMetadataEdit(baseContext(), undefined);
 
     expect(mockUpdateWithBalanceDelta).toHaveBeenCalledWith(
