@@ -166,3 +166,40 @@ rules:
       - pattern-either:
           - pattern-regex: '^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//.*\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|R\d{1,3}|F\d{1,3}|G\d{1,3}|C\d{1,3}|bug\s\d+|spec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\sruling\s\d+|section\s[A-Z]\.\d|(?:task|parity)\sbrief(?:''s)?|per\sthe\sbrief|the\sbrief''s|Review\sFocus\s\d+|Minor\s\d+|audit\s\d+|RULING\sR\d+|fix\sround\s\d+|round-\d+|device[- ]feedback|on-device\sreview|USER-DECISION)\b'
           - pattern-regex: '^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*(?:(?!\*/)[\s\S])*?\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|R\d{1,3}|F\d{1,3}|G\d{1,3}|C\d{1,3}|bug\s\d+|spec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\sruling\s\d+|section\s[A-Z]\.\d|(?:task|parity)\sbrief(?:''s)?|per\sthe\sbrief|the\sbrief''s|Review\sFocus\s\d+|Minor\s\d+|audit\s\d+|RULING\sR\d+|fix\sround\s\d+|round-\d+|device[- ]feedback|on-device\sreview|USER-DECISION)\b(?:(?!\*/)[\s\S])*?\*/'
+  # kiko-design-system's "Token categories" — a component reads a color TOKEN
+  # (theme.colors.*/palette.ts), never a raw hex/rgba() string literal. The
+  # pattern anchors on the AST shape of a quoted string literal itself
+  # (`pattern: "'$COLOR'"` binds $COLOR to the literal's own content, with no
+  # surrounding quote characters, whether the source used single or double
+  # quotes — verified empirically), then filters its content with
+  # `metavariable-regex` — so a comment merely mentioning a hex value (several
+  # exist explaining a token's own value in theme.ts/palette.ts) never
+  # matches, since Semgrep patterns match the parsed syntax tree, not raw
+  # comment text. The regex is anchored (`^...$`) so a too-short (`#12`) or
+  # too-long (`#1234567890`) hex-shaped string, neither a real hex color,
+  # stays silent — verified empirically. `palette.ts`/`theme.ts` define the
+  # tokens themselves, and a `.test.ts`/`.test.tsx` fixture routinely needs a
+  # literal color to assert against, so both are excluded.
+  - id: kiko-no-raw-color-literal
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Raw color literal. A component or module reads a color TOKEN
+      (`theme.colors.*` or a `palette.ts` swatch), never a hardcoded hex or
+      rgba()/rgb() string — see kiko-design-system's "Token categories".
+      Reference the matching token instead, adding one to `palette.ts` only
+      when no existing token fits.
+    metadata:
+      fix: "Reference the matching theme/palette token (`theme.colors.*` or a `palette.ts` swatch) instead of the raw literal."
+      skill: "kiko-design-system › Token categories"
+    paths:
+      exclude:
+        - "src/design-system/palette.ts"
+        - "src/design-system/theme.ts"
+        - "*.test.ts"
+        - "*.test.tsx"
+    patterns:
+      - pattern: "'$COLOR'"
+      - metavariable-regex:
+          metavariable: $COLOR
+          regex: "^#[0-9A-Fa-f]{3,8}$|^rgba?\\("

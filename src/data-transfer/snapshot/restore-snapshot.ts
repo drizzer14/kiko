@@ -17,6 +17,7 @@ import {
 } from '../../db/schema';
 import { write } from '../../db/client';
 import { chunkForTable } from '../../db/chunk-for-table';
+import { entityColorsDark } from '../../design-system/palette';
 
 import type { DataSnapshot } from './data-snapshot';
 
@@ -104,7 +105,7 @@ const withLoanInterestReseeded = (snapshotCategories: CategoryRow[]): CategoryRo
       key: LOAN_INTEREST_CATEGORY_KEY,
       title: 'Loan interest',
       icon: 'percent',
-      color: '#5E5CE6',
+      color: entityColorsDark.indigo,
       sortOrder,
     },
   ];

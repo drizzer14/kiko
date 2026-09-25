@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 // pre-write-guard.test.ts), so nothing else in the suite proves
 // rules/semgrep-prewrite.yml itself — the file the hook loads by default —
 // actually catches what it claims to. This file runs the REAL semgrep
-// binary against the REAL rules file, feeding it each moved rule's own
+// binary against the REAL rules file, feeding it each covered rule's own
 // fixture pair from rules/fixtures/ (targeted at a throwaway
 // src/probe/<rule-id>.ts inside a temp CLAUDE_PROJECT_DIR, never at
 // rules/fixtures/ itself, which the guard's own scope excludes). Skips with
@@ -16,11 +16,15 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 const SCRIPT = join(__dirname, '../scripts/checks/pre-write-guard.sh');
 const FIXTURES = join(__dirname, '../rules/fixtures');
 
-const MOVED_RULE_IDS = [
+// The first four were moved into rules/semgrep-prewrite.yml from
+// rules/semgrep-mobile.yml as part of the guard's own consolidation; every
+// prewrite-only rule added since (rule 8 on) lands in this same list.
+const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-switch',
   'kiko-no-nullable-map-ternary',
   'kiko-no-use-animated-keyboard',
   'kiko-no-history-id-comment',
+  'kiko-no-raw-color-literal',
 ] as const;
 
 function payloadFor(filePath: string, content: string): string {
@@ -45,7 +49,7 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     expect(which.status).toBe(0);
   });
 
-  it.each(MOVED_RULE_IDS)(
+  it.each(RULE_IDS_WITH_FIXTURES)(
     'denies the %s positive fixture and allows the negative one',
     (ruleId) => {
       const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-rules-'));

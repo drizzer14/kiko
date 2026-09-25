@@ -52,7 +52,7 @@ mechanize well; keep in the skill).
 | `guard` over `if (!ok) throw` | kiko-code-style | Semgrep (Class B) | Judgment (broad) |
 | No hand-rolled `try/catch` + Error normalization; use `fnts` either | kiko-code-style | Semgrep (Class B) | Judgment (broad; documented exceptions) |
 | Hardcoded URL/config literals must live in `@env` | kiko-code-style | Semgrep | Cleanup-first (false positives in tests/config) |
-| Components never hardcode raw color/spacing/radius; read theme tokens | kiko-design-system | Semgrep | Cleanup-first (false-positive-prone) |
+| Components never hardcode raw spacing/radius; read theme tokens | kiko-design-system | Semgrep | Cleanup-first (false-positive-prone); the color half is now enforced — see `kiko-no-raw-color-literal` below |
 | Full unabbreviated variable names | kiko-code-style | ~~Semgrep blocklist~~ superseded — see "Enforced — 2026-09-25 R1.d" below | Now enforced (hand-rolled shell+JS check, not Semgrep — Semgrep cannot split an identifier into camelCase/snake_case parts across every identifier-bearing syntax position) |
 
 ### Candidates — currency-fix round (2026-09-21, not yet enforced)
@@ -150,6 +150,12 @@ because it can compare against the actual pinned set.
 | Rule id | Finding | Enforce via | Notes |
 |---|---|---|---|
 | `kiko-no-history-id-comment` | kiko-linter's "F4 code-style mechanization candidates" backlog item, mechanizing kiko-code-style's "Comments: WHY only, never history" (no task id, review-round id, spec/decision id, bug number, `Phase N`, `Requirement X`, `controller ruling N`, `section X.N`, or `the brief` left in a comment) | Semgrep (TS, ERROR) | `paths.exclude` scopes this to app code: `__tests__/`, `e2e/`, `scripts/`, `harness/`, plus root config files `App.tsx`/`drizzle.config.ts` (verified — none of these hides a real hit today). `__mocks__/**` was excluded too until a later round found 3 real hits it was hiding; the exclude was dropped and the hits fixed instead, so `__mocks__/` is now in scope like any other file. Landed as WARNING first, per the "a new check lands together with the fix of its own violations" rule; a repo-wide sweep, including two later extensions of the id-family list, dropped every hit to 0 each time, then it flipped to ERROR. See the kiko-linter skill's "`kiko-no-history-id-comment`" section for the rule's regex design, the string-skip anchor, the scope reasoning, and the full sweep history. |
+
+### Enforced — 2026-09-25 pre-write guard rule 8
+
+| Rule id | Finding | Enforce via | Notes |
+|---|---|---|---|
+| `kiko-no-raw-color-literal` | The color half of the "components never hardcode raw color/spacing/radius" candidate above, now mechanized as part of the pre-write guard's own rule set (`rules/semgrep-prewrite.yml`) | Semgrep (TS, ERROR) | `pattern: "'$COLOR'"` binds an AST string literal's own content (no surrounding quotes, either quote style) and `metavariable-regex` filters it against an anchored `^#[0-9A-Fa-f]{3,8}$|^rgba?\(` — so a comment merely mentioning a hex value (several exist in `theme.ts`/`palette.ts` documenting a token's own hex) never matches, and neither does a too-short/too-long hex-shaped string. `paths.exclude`: `src/design-system/palette.ts`, `src/design-system/theme.ts` (the tokens are defined there), `*.test.ts`/`*.test.tsx` (a test routinely asserts against a literal color value). Sweep fixed 2 real files: `src/navigation/dark-theme.ts` (5 literals now read `darkTheme.colors.*`) and `src/data-transfer/snapshot/restore-snapshot.ts:107` (`'#5E5CE6'` now reads `entityColorsDark.indigo`, the existing palette token with that exact hex — no rendered value changed). |
 
 ## Go-forward process (to wire into the retrospect/scribe loop)
 
