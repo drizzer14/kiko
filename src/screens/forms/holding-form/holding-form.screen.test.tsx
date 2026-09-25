@@ -431,8 +431,8 @@ describe('HoldingFormScreen term deposit', () => {
     ]);
   });
 
-  // Round-6 device feedback item 3 (broadened): every scroll-on-add-row
-  // trigger, not only "Додати внесок" (add contribution) itself, must route
+  // Every scroll-on-add-row trigger, not only "Додати внесок" (add
+  // contribution) itself, must route
   // through the SAME occlusion-aware `scrollToField` helper the Save-invalid
   // path already uses — never an unconditional `scrollToEnd`, which used to
   // scroll even when the newly added row was already fully visible.
@@ -1462,9 +1462,9 @@ describe('HoldingFormScreen property', () => {
   });
 });
 
-// Item 2 (F3, BUG): "Add new" holding launched from the statement-import
+// "Add new" holding launched from the statement-import
 // preview or Map Columns must end up SELECTED back there, not just created.
-describe('HoldingFormScreen create-and-return (item 2, F3)', () => {
+describe('HoldingFormScreen create-and-return', () => {
   beforeEach(() => {
     createMock.mockClear();
     setIconMock.mockClear();
@@ -1475,7 +1475,7 @@ describe('HoldingFormScreen create-and-return (item 2, F3)', () => {
     mockAccountInstitution = null;
   });
 
-  // C1 (F3 part 1 fix round 1, Critical): `popTo`, not `navigate` — React
+  // `popTo`, not `navigate` — React
   // Navigation 7's `navigate(name, params)` PUSHES a duplicate of a route
   // already on the stack instead of reusing it
   // (`node_modules/@react-navigation/routers/src/StackRouter.tsx`'s
@@ -1654,10 +1654,10 @@ describe('HoldingFormScreen metal', () => {
     expect(screen.queryByText('Total cost must be greater than 0.')).toBeNull();
   });
 
-  // F4 audit 8: a garbled purity (e.g. the comma-decimal "999,9", parsed as
-  // 999.9) used to silently fall back to the standard 0.9999 fineness
-  // default, so a create wrote a valid-looking but WRONG MetalMeta with no
-  // sign anything was off. Save now blocks on it instead.
+  // A garbled purity (e.g. the comma-decimal "999,9", parsed as
+  // 999.9) must never silently fall back to the standard 0.9999 fineness
+  // default — that would write a valid-looking but WRONG MetalMeta with no
+  // sign anything was off. Save blocks on it instead.
   it('blocks save and shows an error for a garbled purity, instead of silently defaulting it', async () => {
     const screen = await renderScreen();
 
@@ -1799,7 +1799,7 @@ describe('HoldingFormScreen metal', () => {
     );
   });
 
-  // F4 audit 8: purity stays user-editable in edit mode (unlike
+  // Purity stays user-editable in edit mode (unlike
   // Quantity/Total cost, which are create-only), so it must validate there
   // too.
   it('blocks save for a garbled purity in EDIT mode too, leaving the stored MetalMeta untouched', async () => {

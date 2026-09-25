@@ -141,7 +141,7 @@ describe('MetalSection', () => {
     expect(getByText('Total cost must be greater than 0.')).toBeTruthy();
   });
 
-  // F4 audit 8: purity is validated on Save (0 < purity <= 1) — a required
+  // Purity is validated on Save (0 < purity <= 1) — a required
   // field with its own placeholder and inline error, like every other
   // validated field.
   it('renders purityError directly after the field', async () => {

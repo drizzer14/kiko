@@ -182,9 +182,9 @@ describe('PricePointFormScreen', () => {
     expect(pricePointsRepo.upsertMany).not.toHaveBeenCalled();
   });
 
-  // Minor 6: a loan's field label, Save button, and error string all read
+  // A loan's field label, Save button, and error string all read
   // correctly for a debt too, not just the screen title.
-  it('(Minor 6) shows the loan-specific field label, button, and error', async () => {
+  it('shows the loan-specific field label, button, and error', async () => {
     seed({ id: 'h-1', currency: 'UAH', type: 'loan' });
     const utils = await renderScreen();
 

@@ -83,7 +83,7 @@ const quantityErrorFor = (params: {
 // not a per-holding series —
 // this screen only appends to the holding's own `metadata.lots` array
 // through `holdingsRepo.update`. No `Transaction` row is ever written, for
-// either direction (Review Focus 8): the holding is ledgerless
+// either direction: the holding is ledgerless
 // (`isLedgerlessHoldingType`), so its value derives entirely from its lots,
 // never from a manual ledger.
 const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
@@ -116,7 +116,7 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
   const quantity = normalizeDecimal(quantityText);
   const quantityValid = quantity !== null && compareDecimal(quantity, '0') > 0;
   // The quantity currently held as of the picked day, from the holding's own
-  // lots — Review Focus 8: a sell delta larger than this is rejected, never
+  // lots — a sell delta larger than this is rejected, never
   // written, and `quantityAt` itself never returns below "0".
   const heldQuantity = quantityAt(existingLots, date);
   const sellExceeds =

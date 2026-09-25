@@ -57,8 +57,8 @@ export const parsedContributions = (
 // Used to catch a row `parsedContributions` would otherwise silently DROP —
 // a blank or partially-filled row (most often a fresh add-contribution left
 // unfilled) — while at least one OTHER row is already valid, so the overall
-// `contributionsRequiredError` never fires (round-4 device feedback item 10:
-// saving used to drop that row without any indication it was ignored).
+// `contributionsRequiredError` never fires: saving must never silently drop
+// that row without any indication it was ignored.
 export const isContributionRowValid = (contribution: Contribution): boolean =>
   parseAmount(contribution.amount) > 0 && contribution.date !== null;
 

@@ -177,7 +177,7 @@ describe('LotFormScreen', () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
-  // Review Focus 8: the lot form rejects a sell delta larger than
+  // The lot form rejects a sell delta larger than
   // `quantityAt(sellDay)` — no metadata write, no navigation, and (since this
   // screen never imports transactionsRepo at all) structurally no
   // Transaction row either.

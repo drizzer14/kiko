@@ -18,8 +18,8 @@ export const styles = StyleSheet.create((theme) => ({
   nameBlock: {
     flex: 1,
   },
-  // The row-level error's own left offset (round-4 device feedback item 5):
-  // the icon chip's fixed `theme.spacing(11)` width (icon-editor.styles.ts's
+  // The row-level error's own left offset: the icon chip's fixed
+  // `theme.spacing(11)` width (icon-editor.styles.ts's
   // `iconChip`) plus the row's own `gap={3}` before the name column — so the
   // message aligns under the NAME INPUT it actually describes, not flush-left
   // under the icon beside it.
