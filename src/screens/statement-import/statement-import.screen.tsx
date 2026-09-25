@@ -1,10 +1,10 @@
+import type { FC } from 'react';
 import { match } from 'ts-pattern';
 import * as RNFS from 'react-native-fs';
-import type { FC, RefObject } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { useRef, useEffect, useState } from 'react';
-import { View, Alert, type ScrollViewInstance } from 'react-native';
+import { Alert, type ScrollViewInstance } from 'react-native';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -35,21 +35,17 @@ import {
 import Box from '../../design-system/components/box';
 import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
-import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import { accountsRepo } from '../../accounts/accounts.repo';
 import { settingsRepo } from '../../settings/settings.repo';
 import type { AccountsStackParamList } from '../../navigation/types';
-import SummaryTable from '../../design-system/components/summary-table';
 import { readTableRows, findSavedMapping } from '../../statement-import/column-mapping';
 import { importStatement, type ImportResult } from '../../statement-import/import-statement';
 
-import { styles } from './statement-import.styles';
 import ImportResultSheet from './import-result-sheet';
-import PreviewDetailList from './preview-detail-list';
-import ExampleTransaction from './example-transaction';
-import TargetHoldingField from './target-holding-field';
 import { previewStats } from './preview-stats/preview-stats';
+import StatementImportFooter from './statement-import-footer';
+import StatementPreviewBlock from './statement-preview-block';
 import { useTargetHoldingOptions } from './use-target-holding-options/use-target-holding-options';
 
 type StatementImportScreenProps = NativeStackScreenProps<AccountsStackParamList, 'StatementImport'>;
@@ -129,158 +125,6 @@ type LoadState =
   | { kind: 'loading' }
   | { kind: 'unreadable' }
   | { kind: 'ready'; text: string; sheetRows?: SpreadsheetCellValue[][] };
-
-// The screen's shared footer slot content (device-feedback-round-F1, items
-// 1/4): Import and "Map columns manually" both moved out of the scrolling
-// body into `Screen`'s own `footer`, the same slot every other main-action
-// button in the app uses. Import only shows once a recognized preview
-// (`hasStats`) exists; Map-columns-manually shows anywhere `input` resolved
-// at all (mirroring its former inline gate). Renders `null` when NEITHER
-// applies, so the caller passes `undefined` to `Screen` instead of an empty
-// footer — a module-scope component (mirroring `ValueHeaderSecondary` in
-// `holding-detail.screen.tsx`) so this branching doesn't count against the
-// screen component's own cognitive-complexity budget.
-const StatementImportFooter: FC<{
-  hasStats: boolean;
-  hasInput: boolean;
-  // F4 audit 2: Import is ALWAYS enabled — this disables it ONLY while an
-  // import is actually in flight, never behind a `!canImport` gate. See
-  // `handleImport`'s own doc comment.
-  importing: boolean;
-  onImport: () => void;
-  onMapColumnsManually: () => void;
-}> = ({ hasStats, hasInput, importing, onImport, onMapColumnsManually }) => {
-  const { t } = useTranslation();
-
-  if (!hasStats && !hasInput) {
-    return null;
-  }
-
-  return (
-    <Box gap={2}>
-      {hasStats && (
-        <Button variant="primary" onPress={onImport} disabled={importing}>
-          {t('statementImport.importButton')}
-        </Button>
-      )}
-
-      {hasInput && (
-        <Button variant="secondaryTonal" onPress={onMapColumnsManually}>
-          {t('statementImport.mapColumnsManually')}
-        </Button>
-      )}
-    </Box>
-  );
-};
-
-// The recognized-preview block (device-feedback-round-F1, items 2/3/14): the
-// shared `SummaryTable` (the deposit/bond value-breakdown table's own
-// layout, never its columns), the shared `ExampleTransaction`, the optional
-// masked-card/unresolved-row/multi-currency details, the holding SELECT
-// field, and the import outcome — a module-scope component (mirroring
-// `StatementImportFooter` above) so this branching doesn't count against the
-// screen component's own cognitive-complexity budget.
-const StatementPreviewBlock: FC<{
-  stats: ReturnType<typeof previewStats>;
-  holdingOptions: ReturnType<typeof useTargetHoldingOptions>;
-  accountId: string | undefined;
-  selectedHoldingId: string | undefined;
-  onSelectHolding: (holdingId: string) => void;
-  onCreateNewHolding: () => void;
-  // F4 audit 2/15: Import-press field-level error, `undefined` before the
-  // first press — mirrors `column-mapping.screen.tsx`'s own validation
-  // model for the SAME target-holding field.
-  targetHoldingError: string | undefined;
-  targetHoldingFieldRef: RefObject<FieldInstance | null>;
-}> = ({
-  stats,
-  holdingOptions,
-  accountId,
-  selectedHoldingId,
-  onSelectHolding,
-  onCreateNewHolding,
-  targetHoldingError,
-  targetHoldingFieldRef,
-}) => {
-  const { t } = useTranslation();
-  const selectedHoldingName = holdingOptions.find(
-    (holding) => holding.id === selectedHoldingId,
-  )?.name;
-
-  return (
-    <Box gap={3} style={styles.previewBlock}>
-      {/* F3 fix round 2, I1/I2: the same plain-first-child-of-gap={3} heading
-          pattern `column-mapping.screen.tsx`'s sections use — `SummaryTable`
-          gets no `title` here either, so this screen's preview heading sits
-          at the SAME 12pt spacing every column-mapping section heading does,
-          not `SummaryTable`'s own `gap={1}` (4pt) internal spacing. */}
-      <Text variant="heading">{stats.displayName}</Text>
-
-      <SummaryTable
-        rows={[
-          {
-            key: 'transactionCount',
-            label: t('statementImport.transactionCountLabel'),
-            value: <Text variant="body">{stats.transactionCount}</Text>,
-            testID: 'statement-import-transaction-count',
-          },
-          {
-            key: 'currency',
-            label: t('statementImport.currencyLabel'),
-            value: <Text variant="body">{stats.currency}</Text>,
-            testID: 'statement-import-currency',
-          },
-          {
-            key: 'dateSpan',
-            label: t('statementImport.dateSpanLabel'),
-            value: <Text variant="body">{stats.dateSpan}</Text>,
-            testID: 'statement-import-date-span',
-          },
-        ]}
-      />
-
-      {stats.firstTransaction && (
-        <ExampleTransaction
-          transaction={stats.firstTransaction}
-          holdingName={selectedHoldingName}
-        />
-      )}
-
-      {stats.maskedCardHints.length > 0 && (
-        <PreviewDetailList items={stats.maskedCardHints} testID="statement-import-masked-cards" />
-      )}
-
-      {stats.unresolvedRowCount > 0 && (
-        <Text variant="body" tone="textSecondary">
-          {t('statementImport.unresolvedRowsSkipped', { count: stats.unresolvedRowCount })}
-        </Text>
-      )}
-
-      {stats.detectedCurrencies.length > 1 && (
-        <PreviewDetailList
-          items={stats.detectedCurrencies}
-          label={t('statementImport.detectedCurrenciesLabel')}
-          testID="statement-import-detected-currencies"
-        />
-      )}
-
-      <View ref={targetHoldingFieldRef}>
-        <TargetHoldingField
-          label={t('statementImport.chooseHolding')}
-          required
-          holdings={holdingOptions}
-          accountId={accountId}
-          selectedId={selectedHoldingId}
-          onSelect={onSelectHolding}
-          onCreateNew={onCreateNewHolding}
-          placeholder={t('statementImport.chooseHoldingPlaceholder')}
-          error={targetHoldingError}
-          testID="target-holding-field"
-        />
-      </View>
-    </Box>
-  );
-};
 
 /**
  * The shared preview + target-holding screen both statement-import entry

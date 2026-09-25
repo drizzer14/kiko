@@ -234,8 +234,9 @@ a P0 UI fix round driven by device feedback:
 - **Import (and, on the statement-import screen, "Map columns
   manually") live in `Screen`'s own `footer` slot**, not inline in the
   scrolling body — the same footer slot every other screen's main
-  action uses. `statement-import.screen.tsx` extracts a module-scope
-  `StatementImportFooter` for this (gated on `hasStats`/`hasInput`,
+  action uses. `statement-import.screen.tsx` extracts its own
+  `StatementImportFooter` (`statement-import-footer/`) for this
+  (gated on `hasStats`/`hasInput`,
   `undefined` — not an always-defined element that renders `null` —
   when neither applies, since `Screen.footer` reserves clearance for
   ANY defined node); `column-mapping.screen.tsx` gates its own footer
@@ -361,8 +362,8 @@ a P0 UI fix round driven by device feedback:
   `title` to `SummaryTable` in the complete branch — before this fix the
   complete branch's heading was `SummaryTable`'s own `title` row (a
   `gap={1}` Box, 4pt below it), so the heading visibly jumped position the
-  moment the last required column got mapped. `statement-import.screen.tsx`'s
-  `StatementPreviewBlock` gets the SAME fix (F3 fix round 2): it renders
+  moment the last required column got mapped. The statement-import screen's
+  `StatementPreviewBlock` (`statement-preview-block/`) gets the SAME fix (F3 fix round 2): it renders
   its own `<Text variant="heading">{stats.displayName}</Text>` as the
   plain first child of its own `gap={3}` `previewBlock` Box, passing NO
   `title` to ITS `SummaryTable` either — before this fix that screen's

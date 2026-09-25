@@ -691,7 +691,7 @@ new component can land between reviews of this skill:
   principal/gross/interest/tax/expected-profit rows through this, passing
   `<MoneyText money={...} tone={...} />` as each row's `value`, with NO
   visual change from before the extraction. The statement-import preview
-  (`StatementPreviewBlock`, `statement-import.screen.tsx`) and the
+  (`StatementPreviewBlock`, `statement-import/statement-preview-block/`) and the
   column-mapping result section (`MappingResult`) reuse the SAME row
   layout/alignment/styling for their own summary rows (transaction count,
   currency, date span) — never the deposit table's value/percent/tax
