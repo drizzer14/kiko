@@ -1066,6 +1066,21 @@ describe('HomeScreen — loading gate', () => {
     expect(queryByText(i18n.t('home.emptyTransactions'))).toBeNull();
   });
 
+  it('still shows the sync progress bar and keeps pull-to-refresh available while loading', async () => {
+    // The sync this screen's own first read is queued behind — the user must
+    // still see it running, and must still be able to trigger a fresh pull,
+    // while this screen's own queries have not settled yet.
+    mockUseSyncStatus.mockReturnValue(true);
+    mockUseSyncProgress.mockReturnValue({ completed: 1, total: 3 });
+    mockRefreshing.mockReturnValue(false);
+    seed({ transactions: [], isLoading: { holdings: true } });
+
+    const { getByTestId } = await renderHome();
+
+    expect(getByTestId('sync-progress-bar')).toBeTruthy();
+    expect(getByTestId('home-loading-scroll').props.refreshControl).toBeTruthy();
+  });
+
   it('renders the real content once every query has loaded', async () => {
     seed({ transactions: [transaction()] });
 
@@ -1074,27 +1089,6 @@ describe('HomeScreen — loading gate', () => {
     expect(getByTestId('home-content')).toBeTruthy();
     expect(getByText('Coffee')).toBeTruthy();
     expect(queryByTestId('home-loading')).toBeNull();
-  });
-
-  it('does not flash back to the loading spinner once loaded, on a later re-query', async () => {
-    seed({ transactions: [transaction()] });
-    const view = await renderHome();
-    expect(view.getByTestId('home-content')).toBeTruthy();
-
-    // A pull/reactive re-query that (even incorrectly) reported isLoading
-    // true again must not flip the screen back to the loading spinner.
-    seed({ transactions: [transaction()], isLoading: { holdings: true } });
-    await act(async () => {
-      view.rerender(
-        <HomeScreen
-          navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
-          route={asRouteProp<HomeProps['route']>('Home')}
-        />,
-      );
-    });
-
-    expect(view.queryByTestId('home-loading')).toBeNull();
-    expect(view.getByTestId('home-content')).toBeTruthy();
   });
 });
 

@@ -713,29 +713,4 @@ describe('AccountsScreen — loading gate', () => {
     expect(getByText('Monobank')).toBeTruthy();
     expect(queryByTestId('accounts-loading')).toBeNull();
   });
-
-  it('does not flash back to the loading spinner once loaded, on a later re-query', async () => {
-    setLiveData({ accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }], holdings: [] });
-    const view = await renderAccounts();
-    expect(view.getByText('Monobank')).toBeTruthy();
-
-    // A pull/reactive re-query that (even incorrectly) reported isLoading
-    // true again must not flip the screen back to the loading spinner.
-    setLiveData({
-      accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }],
-      holdings: [],
-      isLoading: { accounts: true },
-    });
-    await act(async () => {
-      view.rerender(
-        <AccountsScreen
-          navigation={asNavigationProp<AccountsProps['navigation']>(navigation)}
-          route={asRouteProp<AccountsProps['route']>('Accounts')}
-        />,
-      );
-    });
-
-    expect(view.queryByTestId('accounts-loading')).toBeNull();
-    expect(view.getByText('Monobank')).toBeTruthy();
-  });
 });

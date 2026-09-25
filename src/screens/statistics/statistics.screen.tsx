@@ -333,7 +333,15 @@ const StatisticsScreen: FC = () => {
   });
 
   useEffect(() => {
-    if (transactions.length === 0) {
+    // `historyLoading` guards against the exact same "empty reads as no data
+    // yet" trap kiko-architecture's useLiveQuery consumer rule covers for a
+    // rendered empty state: `historyRows` is `[]` — indistinguishable from
+    // "genuinely nothing backfilled yet" — for as long as its OWN query is
+    // still on its first load, even after `transactions` has already
+    // settled. Without this guard the effect re-fetches and re-writes the
+    // whole span on first open, adding to the app-open DB-read burst, then
+    // runs a SECOND time once history's real (possibly non-empty) rows land.
+    if (transactions.length === 0 || historyLoading) {
       return;
     }
 
@@ -374,7 +382,7 @@ const StatisticsScreen: FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [transactions.length, spanStart, lastBackfilledDay, now]);
+  }, [transactions.length, spanStart, lastBackfilledDay, now, historyLoading]);
 
   // Bar + pie value "now" on the current rate table; the line values each day on
   // the historical table. All three are memoized on their real inputs so they no

@@ -5,13 +5,13 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import { useSyncAll } from '@kiko/sync/use-sync-all';
 import { categoriesRepo } from '@kiko/categories/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import { RefreshControl, SectionList } from 'react-native';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { CompositeScreenProps } from '@react-navigation/native';
+import { RefreshControl, ScrollView, SectionList } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
 
@@ -448,8 +448,24 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
 
   if (!isReady) {
     return (
+      // The SAME Screen mode as the ready branch below (`bleedBottom`), the
+      // determinate sync progress bar (it shows the sync this screen's own
+      // first read is queued behind — see kiko-architecture's op-sqlite
+      // one-worker-thread section), and pull-to-refresh on the same scroll
+      // view the ready branch offers, so a user can still trigger a fresh
+      // sync while this screen's own queries are still loading.
       <Screen bleedBottom>
-        <LoadingState testID="home-loading" />
+        <Box gap={4} style={styles.content}>
+          <SyncProgressBar />
+          <ScrollView
+            testID="home-loading-scroll"
+            style={styles.list}
+            contentContainerStyle={styles.listContent(listBottomClearance)}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          >
+            <LoadingState testID="home-loading" />
+          </ScrollView>
+        </Box>
       </Screen>
     );
   }

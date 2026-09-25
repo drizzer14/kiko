@@ -652,6 +652,53 @@ describe('StatisticsScreen', () => {
     expect(queryByTestId(/^net-worth-line-polyline-/)).toBeNull();
   });
 
+  it('does not run the backfill while history is still on its own first load (only transactions have settled)', async () => {
+    // Once `transactions` has loaded but `currency_rate_history` has not, an
+    // empty `historyRows` reads identically to "nothing backfilled yet" —
+    // without the `historyLoading` guard the effect would re-fetch and
+    // re-write the whole span on first open, adding to the app-open DB burst.
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+      isLoading: { currency_rate_history: true },
+    });
+
+    await renderScreen();
+
+    expect(mockRunBackfill).not.toHaveBeenCalled();
+  });
+
+  it('runs the backfill once history finishes its own first load', async () => {
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+      isLoading: { currency_rate_history: true },
+    });
+
+    const { rerender } = await renderScreen();
+
+    expect(mockRunBackfill).not.toHaveBeenCalled();
+
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+    });
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalled();
+  });
+
   it('drops the deselected account from both the bar and the pie when the filter narrows', async () => {
     const { getByTestId, queryByTestId } = await renderScreen();
 
@@ -1423,13 +1470,7 @@ describe('StatisticsScreen — loading gate', () => {
     expect(queryByTestId('statistics-loading')).toBeNull();
   });
 
-  it('does not flash back to the loading spinner once loaded, on a later re-query', async () => {
-    seedFull();
-    const view = await renderScreen();
-    expect(view.getByTestId('statistics-blocks')).toBeTruthy();
-
-    // A pull/reactive re-query that (even incorrectly) reported isLoading
-    // true again must not flip the screen back to the loading spinner.
+  it('renders loading then loaded on ONE mounted instance — spinner first, then the real charts, via rerender', async () => {
     setLiveData({
       accounts: [CASH, BANK],
       holdings: [UAH_HOLDING, USD_HOLDING],
@@ -1438,12 +1479,19 @@ describe('StatisticsScreen — loading gate', () => {
       history: HISTORY,
       isLoading: { transactions: true },
     });
+    const view = await renderScreen();
+
+    expect(view.getByTestId('statistics-loading')).toBeTruthy();
+    expect(view.queryByTestId('statistics-blocks')).toBeNull();
+
+    seedFull();
     await act(async () => {
       view.rerender(<StatisticsScreen />);
     });
 
     expect(view.queryByTestId('statistics-loading')).toBeNull();
     expect(view.getByTestId('statistics-blocks')).toBeTruthy();
+    expect(view.getByTestId('bar-chart-bar-cash')).toBeTruthy();
   });
 });
 

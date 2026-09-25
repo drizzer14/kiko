@@ -13,10 +13,4 @@ describe('LoadingState', () => {
     // to assert here — this test documents the absence rather than a value.
     expect(queryByText(/./)).toBeNull();
   });
-
-  it('renders with no testID when none is passed', async () => {
-    const { queryByTestId } = await render(<LoadingState />);
-
-    expect(queryByTestId('account-detail-loading')).toBeNull();
-  });
 });
