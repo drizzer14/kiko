@@ -661,8 +661,29 @@ describe('buildNetWorthSeries', () => {
     });
   });
 
-  it('returns an empty series when no history has been backfilled yet', () => {
-    const holdings = [holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 })];
+  // A base-currency-only user (no foreign holding, ever) never gets a
+  // `currency_rate_history` row at all — the backfill gate has nothing
+  // cross-currency to fetch — so gating the whole series on `historyRows.length`
+  // left that user's "Net worth over time" line empty forever. A same-currency
+  // holding needs no cross-rate conversion (`canConvert` returns true whenever
+  // `currency === base`), so it must still produce points with zero history rows.
+  it('produces points for a base-currency-only (UAH) user with no history rows', () => {
+    const holdings = [holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 })]; // 4000.00 UAH
+
+    const series: NetWorthSeries = buildNetWorthSeries({
+      holdings,
+      transactionsByHolding: new Map(),
+      historyRows: [],
+      baseCurrency: 'UAH',
+      range: { from: D0, to: D2 },
+    });
+
+    expect(series.points.map((point) => point.amount)).toEqual([4000, 4000, 4000]);
+    expect(series.startReference).toBe(4000);
+  });
+
+  it('produces points for a base-currency-only (USD) user with no history rows', () => {
+    const holdings = [holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 })]; // $100.00
 
     const series: NetWorthSeries = buildNetWorthSeries({
       holdings,
@@ -672,7 +693,25 @@ describe('buildNetWorthSeries', () => {
       range: { from: D0, to: D2 },
     });
 
-    expect(series).toEqual({ points: [], startReference: 0 });
+    expect(series.points.map((point) => point.amount)).toEqual([100, 100, 100]);
+    expect(series.startReference).toBe(100);
+  });
+
+  it('with no history rows, a mixed-currency case still drops only what cannot convert', () => {
+    const holdings = [
+      holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 }), // $100.00, base -> kept
+      holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 }), // no rate at all -> dropped
+    ];
+
+    const series: NetWorthSeries = buildNetWorthSeries({
+      holdings,
+      transactionsByHolding: new Map(),
+      historyRows: [],
+      baseCurrency: 'USD',
+      range: { from: D0, to: D0 },
+    });
+
+    expect(series.points.map((point) => point.amount)).toEqual([100]);
   });
 
   // `property_item` is ledgerless — its value derives from its `lots`

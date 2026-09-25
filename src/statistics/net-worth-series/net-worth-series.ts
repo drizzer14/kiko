@@ -45,9 +45,10 @@ export type NetWorthSeries = { points: NetWorthPoint[]; startReference: number }
  * Holdings with no rate for their currency at `t` are skipped (guarded), never
  * crashing the sum.
  *
- * With no history stored yet (backfill pending) there is nothing accurate to
- * draw, so an empty series is returned for the screen to show as a loading /
- * empty state.
+ * With no history stored yet (backfill pending, or a base-currency-only user
+ * who never needs one), a same-currency holding still converts trivially and
+ * a foreign-currency one is dropped by the same rate-availability guard as
+ * always — the series is never gated on `historyRows` being non-empty.
  */
 export const buildNetWorthSeries = (input: {
   holdings: SeriesHolding[];
@@ -72,9 +73,15 @@ export const buildNetWorthSeries = (input: {
     book = EMPTY_PRICE_BOOK,
   } = input;
 
-  if (historyRows.length === 0) {
-    return { points: [], startReference: 0 };
-  }
+  // No early return on an empty `historyRows`: a base-currency-only user (no
+  // foreign holding, ever) never gets a `currency_rate_history` row at all —
+  // the backfill gate has nothing cross-currency to fetch — so gating the
+  // whole series on `historyRows.length` left that user's line empty forever.
+  // `earliestRateTable`/`rateTableAt` both return `{}` for an empty row set,
+  // and `canConvert` already returns true whenever a holding's own currency
+  // equals `baseCurrency` regardless of the table, so a same-currency holding
+  // still converts trivially below; a foreign-currency holding with no rate
+  // at all is still dropped by the same `canConvert` filter as always.
 
   // Align each bond's held-cost recognition to the funding money that actually
   // left — on BOTH axes: the DAY the debit landed and the AMOUNT it debited (Q) —
