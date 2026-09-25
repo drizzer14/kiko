@@ -28,6 +28,7 @@ import { Money } from '../../currency/money';
 import { formatMoney } from '../../currency/format';
 import Box from '../../design-system/components/box';
 import EntityHeaderIcon from '../entity-header-icon';
+import { useDataReady } from '../../db/use-data-ready';
 import { useLiveQuery } from '../../db/use-live-query';
 import Card from '../../design-system/components/card';
 import Text from '../../design-system/components/text';
@@ -55,6 +56,7 @@ import CardContextMenu from '../../design-system/components/card-context-menu';
 import { transactionRowDescription } from '../../transactions/row-description';
 import { isSyncedHolding, isSyncedTransaction } from '../../holdings/deletable';
 import EditHeaderButton from '../../design-system/components/edit-header-button';
+import LoadingState from '../../design-system/components/loading-state';
 import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
 import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
 import { type HoldingValueBreakdown, holdingValueBreakdown } from '../../holdings/holding-value';
@@ -386,17 +388,27 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // `holdingsRepo` exposes no single-row lookup, so the holding's own
   // currency (needed to render each transaction's signed MoneyText) comes
   // from filtering the full holdings list for this id.
-  const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
-  const { data: transactions } = useLiveQuery(transactionsRepo.listByHoldingQuery(holdingId), [
-    'transactions',
+  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(holdingsRepo.allQuery(), [
+    'holdings',
   ]);
-  const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
-  const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  const { data: transactions, isLoading: transactionsLoading } = useLiveQuery(
+    transactionsRepo.listByHoldingQuery(holdingId),
+    ['transactions'],
+  );
+  const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
+    categoriesRepo.allQuery(),
+    ['categories'],
+  );
+  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(settingsRepo.getQuery(), [
+    'settings',
+  ]);
   // The cached conversion rates, so the Value amount can carry a smaller
   // converted base-currency caption beneath it — the same second line the
   // holding card shows for a holding in a non-base currency.
-  const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
-  const { book: priceBook } = usePriceBook();
+  const { data: rates, isLoading: ratesLoading } = useLiveQuery(ratesRepo.allQuery(), [
+    'currency_rates',
+  ]);
+  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook();
 
   // Resolve each transaction row's stored category to its display (icon + title)
   // through the same shared mapping Home uses, so a rename flows through here too.
@@ -413,10 +425,24 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // `isSyncedHolding` requires BOTH a connected synced institution AND a sync
   // key in metadata, so a disconnected former-Monobank holding counts as manual
   // again and keeps its add action.
-  const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(holding?.accountId ?? ''), [
-    'accounts',
-  ]);
+  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
+    accountsRepo.byIdQuery(holding?.accountId ?? ''),
+    ['accounts'],
+  );
   const account = accounts.at(0);
+  // The empty-transactions text, the footer add action, and the Value header
+  // must never render while any of this screen's own queries is still on its
+  // first load (kiko-architecture's useLiveQuery consumer rule) — gated below,
+  // right at the return.
+  const isReady = useDataReady(
+    holdingsLoading,
+    transactionsLoading,
+    categoriesLoading,
+    settingsLoading,
+    ratesLoading,
+    priceBookLoading,
+    accountsLoading,
+  );
   // This holding's detail-screen behavior (`HoldingDetailSpec`,
   // `holding-detail-spec/`) — `undefined` when there is no real holding
   // (`holdingDetailSpecFor` itself always tolerates an unrecognized type).
@@ -653,6 +679,14 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     onDuplicateTransaction: (transactionId) =>
       navigation.navigate('TransactionForm', { duplicateOfTransactionId: transactionId }),
   };
+
+  if (!isReady) {
+    return (
+      <Screen bleedTop>
+        <LoadingState testID="holding-detail-loading" />
+      </Screen>
+    );
+  }
 
   return (
     <Screen

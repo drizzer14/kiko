@@ -279,42 +279,39 @@ const seed = (
   // from these. Default to none, so an existing test that doesn't care stays
   // unaffected (a priced holding with no points falls back to cost basis).
   pricePoints: unknown[] = [],
+  // Per-table isLoading overrides, for the loading-gate tests only — every
+  // key defaults to `false` (an already-resolved query), so every existing
+  // call site above keeps behaving exactly as before.
+  isLoading: Partial<Record<string, boolean>> = {},
 ): void => {
-  mockUseLiveQuery.mockImplementation((_query: unknown, keys: string[]) => {
-    if (keys[0] === 'holdings') {
-      return { data: [holding, ...otherHoldings] };
-    }
-
-    if (keys[0] === 'categories') {
-      return { data: categories };
-    }
-
-    if (keys[0] === 'currency_rates') {
-      return { data: rates };
-    }
-
-    if (keys[0] === 'settings') {
-      return { data: settings };
-    }
-
-    if (keys[0] === 'accounts') {
-      return { data: foldMap(maybe(account), (found) => [found]) ?? [] };
-    }
-
-    if (keys[0] === 'price_points') {
-      return { data: pricePoints };
-    }
-
-    // SQLite returns NULL, never undefined, for a column a row does not set, so
-    // default every nullable marker the screen reads the same way — an
-    // `undefined` here would be a fixture artefact the device never produces.
-    return {
+  // A per-table result map, keyed the same way the old if-chain branched — a
+  // lookup instead of a chain keeps this well under the cognitive-complexity
+  // budget (kiko-code-style). SQLite returns NULL, never undefined, for a
+  // column a row does not set, so the transactions default normalizes every
+  // nullable marker the screen reads the same way — an `undefined` here
+  // would be a fixture artefact the device never produces.
+  const resultByTable: Record<string, { data: unknown[]; isLoading: boolean }> = {
+    holdings: { data: [holding, ...otherHoldings], isLoading: isLoading.holdings ?? false },
+    categories: { data: categories, isLoading: isLoading.categories ?? false },
+    currency_rates: { data: rates, isLoading: isLoading.currency_rates ?? false },
+    settings: { data: settings, isLoading: isLoading.settings ?? false },
+    accounts: {
+      data: foldMap(maybe(account), (found) => [found]) ?? [],
+      isLoading: isLoading.accounts ?? false,
+    },
+    price_points: { data: pricePoints, isLoading: isLoading.price_points ?? false },
+    transactions: {
       data: transactions.map((row) => ({
         exchangeCounterpartHoldingId: null,
         ...(row as Record<string, unknown>),
       })),
-    };
-  });
+      isLoading: isLoading.transactions ?? false,
+    },
+  };
+
+  mockUseLiveQuery.mockImplementation(
+    (_query: unknown, keys: string[]) => resultByTable[keys[0]] ?? resultByTable.transactions,
+  );
 };
 
 const renderScreen = () =>
@@ -1330,6 +1327,56 @@ describe('HoldingDetailScreen', () => {
 
     const footer = getByTestId('screen-footer');
     expect(within(footer).getByText('Add transaction')).toBeTruthy();
+  });
+});
+
+describe('HoldingDetailScreen — loading gate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('shows a loading spinner, not the empty-transactions text, while any of its own queries is on its first load', async () => {
+    seed(cashHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [], {
+      holdings: true,
+    });
+
+    const { getByTestId, queryByTestId, queryByText } = await renderScreen();
+
+    expect(getByTestId('holding-detail-loading')).toBeTruthy();
+    expect(queryByTestId('ledger-list')).toBeNull();
+    expect(queryByText(i18n.t('holdingDetail.emptyTransactions'))).toBeNull();
+  });
+
+  it('renders the real ledger once every query has loaded', async () => {
+    seed(cashHolding);
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('ledger-list')).toBeTruthy();
+    expect(queryByTestId('holding-detail-loading')).toBeNull();
+  });
+
+  it('does not flash back to the loading spinner once loaded, on a later re-query', async () => {
+    seed(cashHolding);
+    const view = await renderScreen();
+    expect(view.getByTestId('ledger-list')).toBeTruthy();
+
+    // A pull/reactive re-query that (even incorrectly) reported isLoading
+    // true again must not flip the screen back to the loading spinner.
+    seed(cashHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [], {
+      holdings: true,
+    });
+    await act(async () => {
+      view.rerender(
+        <HoldingDetailScreen
+          navigation={asNavigationProp<HoldingDetailProps['navigation']>(navigation)}
+          route={route}
+        />,
+      );
+    });
+
+    expect(view.queryByTestId('holding-detail-loading')).toBeNull();
+    expect(view.getByTestId('ledger-list')).toBeTruthy();
   });
 });
 
