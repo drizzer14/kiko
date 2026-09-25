@@ -12,7 +12,7 @@ export type StatementPreviewBlockProps = {
   // so the picker never opens on an incomplete/empty list while its own
   // queries are loading (kiko-architecture's useLiveQuery consumer rule).
   holdingOptionsLoading: boolean;
-  accountId: string | undefined;
+  accountId: string;
   selectedHoldingId: string | undefined;
   onSelectHolding: (holdingId: string) => void;
   onCreateNewHolding: () => void;

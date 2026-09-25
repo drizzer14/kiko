@@ -28,14 +28,9 @@ export type TargetHoldingSheetProps = {
   /** The full holding candidate set; the sheet itself applies the `accountId`
    * scope filter below — the caller does not pre-filter. */
   holdings: TargetHoldingOption[];
-  /**
-   * Scopes the listed rows to one account (entry point 1: the document picker
-   * on `AccountDetailScreen`, which always knows its own account). Left
-   * `undefined` for the cross-account picker (entry point 2, the Share
-   * Extension has no known target) — every holding then renders, grouped by
-   * `accountName`.
-   */
-  accountId?: string;
+  /** Scopes the listed rows to one account — the document picker on
+   * `AccountDetailScreen`, which always knows its own account. */
+  accountId: string;
   /** Called with the chosen holding's id; the caller closes the sheet. */
   onSelect: (holdingId: string) => void;
   /**

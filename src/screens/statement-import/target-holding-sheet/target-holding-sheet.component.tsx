@@ -1,47 +1,18 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import SelectableRow from '../../../design-system/components/selectable-row';
 
-import { styles } from './target-holding-sheet.styles';
 import type { TargetHoldingOption, TargetHoldingSheetProps } from './target-holding-sheet.props';
-
-// One account's holdings, grouped for the unscoped (cross-account) list.
-type HoldingGroup = { accountId: string; accountName: string; holdings: TargetHoldingOption[] };
-
-// Groups `holdings` by `accountId`, preserving the FIRST-SEEN order of each
-// account (not a re-sort) — the unscoped picker's own display order. A
-// `Map` keyed by `accountId` keeps this O(n) — the prior `groups.find(...)`
-// per holding was O(n^2) over the holding list.
-const groupByAccount = (holdings: TargetHoldingOption[]): HoldingGroup[] => {
-  const groupsByAccountId = new Map<string, HoldingGroup>();
-
-  for (const holding of holdings) {
-    const existing = groupsByAccountId.get(holding.accountId);
-
-    if (existing) {
-      existing.holdings.push(holding);
-    } else {
-      groupsByAccountId.set(holding.accountId, {
-        accountId: holding.accountId,
-        accountName: holding.accountName,
-        holdings: [holding],
-      });
-    }
-  }
-
-  return [...groupsByAccountId.values()];
-};
 
 /**
  * The `BottomSheet` + `SelectableRow` holding picker (docs/plans/statement-
  * import.md section B), mirroring `AddBankProviderSheet`'s shape: a plain
  * `onSelect`/`onCreateNew` callback pair, no navigation of its own. Scoped to
- * one account's holdings when `accountId` is given (entry point 1); lists
- * every holding grouped by account name otherwise (entry point 2).
+ * `accountId`'s own holdings — the document-picker entry point always knows
+ * its own account.
  */
 const TargetHoldingSheet: FC<TargetHoldingSheetProps> = ({
   visible,
@@ -82,18 +53,7 @@ const TargetHoldingSheet: FC<TargetHoldingSheetProps> = ({
       header={<Text variant="heading">{t('statementImport.chooseHoldingSheetTitle')}</Text>}
       testID="target-holding-sheet"
     >
-      {accountId
-        ? holdings.filter((holding) => holding.accountId === accountId).map(row)
-        : groupByAccount(holdings).map((group) => (
-            <Box key={group.accountId} gap={1}>
-              <Box style={styles.groupHeader}>
-                <Text variant="caption" tone="textSecondary">
-                  {group.accountName}
-                </Text>
-              </Box>
-              {group.holdings.map(row)}
-            </Box>
-          ))}
+      {holdings.filter((holding) => holding.accountId === accountId).map(row)}
 
       <SelectableRow
         selected={false}

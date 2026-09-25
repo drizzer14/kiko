@@ -53,9 +53,8 @@ import { useTargetHoldingOptions } from './use-target-holding-options/use-target
 type StatementImportScreenProps = NativeStackScreenProps<AccountsStackParamList, 'StatementImport'>;
 
 // The one format `expectedFormatId` names, or `undefined` when the route
-// carries none (an account with no `bankId`, or the accountId-less Share
-// Extension entry point) — the caller then falls back to the existing
-// multi-format `detectFormat` auto-detect below.
+// carries none (an account with no `bankId`) — the caller then falls back
+// to the existing multi-format `detectFormat` auto-detect below.
 const expectedFormatOf = (id: StatementFormatId | undefined): StatementFormat | undefined =>
   foldMap(maybe(id), (found) => statementFormats.find((format) => format.id === found));
 
@@ -160,12 +159,9 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     useTargetHoldingOptions(accountId);
 
   // The auto-replace check: an account's own `bankId` and its saved
-  // column-mapping entries. `accountId` is optional on this route (the
-  // Share Extension entry point has none) — an empty-string id query simply
-  // returns no rows rather than being skipped, so every render still calls
-  // the SAME hooks (React's rules of hooks).
+  // column-mapping entries.
   const { data: accountRows, isLoading: accountIsLoading } = useLiveQuery(
-    accountsRepo.byIdQuery(accountId ?? ''),
+    accountsRepo.byIdQuery(accountId),
     ['accounts'],
   );
   const bankId = accountRows.at(0)?.bankId;
@@ -292,7 +288,6 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     if (
       evaluatedRef.current ||
       manualMapPushedRef.current ||
-      !accountId ||
       input === undefined ||
       format !== undefined ||
       accountIsLoading ||
@@ -428,9 +423,9 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // already on the stack (this screen, and Map Columns before it, were both
   // pushed FROM there) and pops back to it in place, regardless of how many
   // screens deep this import happened. Falls back to a plain `goBack()`
-  // when the account isn't resolvable (the accountId-less Share Extension
-  // entry point) — NEVER `popTo` in that branch, which would ADD an
-  // `AccountDetail` that was never on this stack.
+  // when the account row hasn't loaded yet (a fresh mount, before its
+  // `useLiveQuery` above resolves) — NEVER `popTo` in that branch, which
+  // would ADD an `AccountDetail` that was never on this stack.
   const handleSheetClosed = (): void => {
     if (navigatedAwayRef.current) {
       return;
@@ -440,7 +435,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
 
     const account = accountRows.at(0);
 
-    if (accountId && account) {
+    if (account) {
       navigation.popTo('AccountDetail', { accountId, name: account.name }, { merge: true });
 
       return;
@@ -449,33 +444,19 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     navigation.goBack();
   };
 
-  // The manual entry point into the generic column-mapping screen. Only
-  // navigates when `accountId` is known — the Share Extension entry point
-  // (no `accountId`) has no defined "map for which account" behavior yet,
-  // same carve-out `TargetHoldingField`'s own `onCreateNew` below already
-  // makes, so this stays a harmless no-op rather than crashing on a missing
-  // required `accountId`.
+  // The manual entry point into the generic column-mapping screen.
   const handleMapColumnsManually = (): void => {
-    if (accountId) {
-      manualMapPushedRef.current = true;
-      // Carry the holding already chosen on THIS preview through to Map
-      // Columns, so it pre-fills instead of asking again.
-      navigation.navigate('ColumnMapping', { filePath, accountId, holdingId: selectedHoldingId });
-    }
+    manualMapPushedRef.current = true;
+    // Carry the holding already chosen on THIS preview through to Map
+    // Columns, so it pre-fills instead of asking again.
+    navigation.navigate('ColumnMapping', { filePath, accountId, holdingId: selectedHoldingId });
   };
 
-  // Entry point 2 (the Share Extension, no known `accountId`) has no defined
-  // "create a holding for which account" behavior yet — so
-  // "Create new holding" only navigates in the scoped (entry point 1) case;
-  // it stays a harmless no-op otherwise rather than crashing on a missing
-  // required `accountId`.
   const handleCreateNewHolding = (): void => {
-    if (accountId) {
-      navigation.navigate('HoldingForm', {
-        accountId,
-        returnTo: { screen: 'StatementImport', params: route.params },
-      });
-    }
+    navigation.navigate('HoldingForm', {
+      accountId,
+      returnTo: { screen: 'StatementImport', params: route.params },
+    });
   };
 
   const isLoadingFile = match(loadState)

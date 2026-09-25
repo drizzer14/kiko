@@ -97,13 +97,11 @@ export type AccountsStackParamList = {
   // The shared statement-import preview + target-holding screen, reached
   // from the in-app document-picker entry point (`account-detail.screen.tsx`'s
   // `pickAndOpenStatement`) with a resolved local `filePath` and the owning
-  // `accountId`. A later entry point (the Share Extension) has no known target
-  // account, hence `accountId` is optional here rather than required.
+  // `accountId`.
   // `expectedFormatId` scopes recognition to the account's own selected
   // bank when one is known — see `statementFormatIdForBank`
   // (`src/bank-sync/bank-catalog/`). Undefined falls back to the existing
-  // multi-format auto-detect (an account with no `bankId`, or the
-  // accountId-less Share Extension entry point).
+  // multi-format auto-detect (an account with no `bankId`).
   // `holdingId` (merged into ONE field so a single field a fresh mount AND a
   // later param change both feed into the SAME "select this holding" effect
   // covers both cases cleanly) is the holding this screen should have
@@ -121,17 +119,16 @@ export type AccountsStackParamList = {
   // even though it already appears in the list.
   StatementImport: {
     filePath: string;
-    accountId?: string;
+    accountId: string;
     expectedFormatId?: StatementFormatId;
     holdingId?: string;
   };
   // The generic column-mapping import screen, reached from
   // `StatementImportScreen`'s "Map columns manually" entry point — or
   // navigated to directly when an exact saved mapping is found for a file no
-  // shipped parser recognized. `accountId` is required here (unlike
-  // `StatementImport` above): a column mapping always saves under this
-  // account's own bank/header key, so there is no accountId-less entry point
-  // for this screen. `holdingId` is the SAME merged field `StatementImport`
+  // shipped parser recognized. `accountId` is required here, same as
+  // `StatementImport` above: a column mapping always saves under this
+  // account's own bank/header key. `holdingId` is the SAME merged field `StatementImport`
   // carries above — still just a PRE-FILL/reselect, not a lock (the field
   // stays editable, and required, like every other required field on this
   // screen). `ownsFile` is true ONLY when this
