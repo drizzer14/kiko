@@ -159,6 +159,20 @@ verified usage, not dead weight:
   directly by `__tests__/kill-guard.test.ts`, which spawns
   `kill-guard.sh` (and so `kill-guard.js`) as a subprocess, not an import,
   so Jest's coverage does not make Knip see it as reachable either.
+- **`knip.json` `ignore`**: `scripts/checks/pre-write-guard.js` — the
+  PreToolUse hook script that `scripts/checks/pre-write-guard.sh` invokes
+  (`node --experimental-strip-types --no-warnings pre-write-guard.js`) to
+  rebuild an Edit/Write/MultiEdit's proposed file content and deny the
+  write when it introduces a known violation (see CLAUDE.md's "Automatic
+  wiring" and `.claude/skills/kiko-linter/SKILL.md`), the same reason as
+  `kill-guard.js` above. It is reached only from a sibling `.sh` wrapper's
+  `node` invocation — never a static `import`/`require` from any
+  TypeScript/JavaScript source, and never a package.json script Knip's
+  static scan can see — so Knip's reachability graph reports it as an
+  unused file. It is exercised directly by
+  `__tests__/pre-write-guard.test.ts`, which spawns `pre-write-guard.sh`
+  (and so `pre-write-guard.js`) as a subprocess, not an import, so Jest's
+  coverage does not make Knip see it as reachable either.
 - **`knip.json` `ignore`**: `scripts/checks/import-order.js` — the same
   shape as `kill-guard.js` above. `scripts/checks/import-order.sh`
   reaches it only via a `node` invocation (both the fast-tier per-file
