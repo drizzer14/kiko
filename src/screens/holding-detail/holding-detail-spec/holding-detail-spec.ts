@@ -50,7 +50,7 @@ const balanceSpec: HoldingDetailSpec = {
 // The next upcoming amortization row for an `'annuity'`/`'differentiated'`
 // loan — the one this holding's next scheduled payment falls on, picked
 // as the first installment whose due day is on or after `now`'s own LOCAL day
-// (mirrors `priceAsOfCaption`'s day-key convention). `undefined` for an
+// (mirrors `price_points`' `dayKeyOf` day-key convention). `undefined` for an
 // invalid/absent `LoanMeta`, a `'none'` schedule (no installments at all —
 // `loanInstallments` already returns `[]` for it), once every installment has
 // already come due (a fully repaid loan), and once an overpaid correction has

@@ -240,7 +240,6 @@ const facades = [
   '../exchange-destination',
   '../entity-symbols',
   '../entity-colors',
-  '../../prices/price-as-of-caption',
 ];
 
 describe.each(startingPoints)('an import order starting at %s', (startingPoint) => {

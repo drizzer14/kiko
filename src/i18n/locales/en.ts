@@ -619,7 +619,6 @@ export const en = {
     // labels below.
     nextInstallment: 'Next installment ({{date}})',
     openingDeposit: 'Opening deposit',
-    priceAsOf: 'Price as of {{date}}',
     principal: 'Principal',
     projected: 'Projected',
     purchase: 'Purchase',
@@ -634,7 +633,6 @@ export const en = {
     // `updateValue` below, for a priced holding).
     updateOutstanding: 'Update outstanding',
     updateValue: 'Update value',
-    valueAsOf: 'Value as of {{date}}',
     valueLabel: 'Value',
   },
   home: {

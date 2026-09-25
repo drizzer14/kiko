@@ -326,15 +326,17 @@ prices — current and history (T19)" below), never a per-holding one.
 its entered cost. See that hook's own comment on the metal CREATE
 payload for the current rationale.
 
-`priceAsOfCaption` (`src/prices/price-as-of-caption/`) reads its
-"Value as of" / "Price as of" wording off the holding's own
-descriptor: `captionInstrument` resolves the series to read the
-latest point from, and `captionKey` picks the wording. `metal`'s spec
-sets `captionInstrument` to the SHARED `metal:<XAU|...>` series and
-`captionKey` to `holdingDetail.priceAsOf` (distinct from the generic
-`holdingDetail.valueAsOf` every other priced holding type uses), since
-it is showing the metal's shared market price, not a holding-specific
-value.
+**No "price as of" / "value as of" caption anywhere (user decision,
+PNOWORK Part 2).** A priced holding's card and detail screen show only
+its computed value, never a caption naming the date of the underlying
+price point — this was removed from the holding card, the holding
+detail Value header, and `property_item`'s (which has no feed — a
+user-entered price) descriptor alike; `PricedSpec` carries no
+`captionInstrument`/`captionKey` any longer. Behavior instead: each
+refresh fetches today's price/rate for the held set only (see
+kiko-architecture's gate rule); if today's value cannot be fetched,
+the newest known value is used silently, with no caption surfacing
+how stale it is, and the next refresh tries again.
 
 ## `PricePointForm` — "Update value"
 

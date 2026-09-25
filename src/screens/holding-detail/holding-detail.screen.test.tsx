@@ -702,59 +702,6 @@ describe('HoldingDetailScreen', () => {
     expect(queryByTestId('holding-detail-converted')).toBeNull();
   });
 
-  it('shows a "Value as of <date>" caption for a priced holding with a stored price point', async () => {
-    // property_item is a priced holding — its Value header shows the LATEST
-    // stored price point's own day, so the user sees how current the figure
-    // is.
-    const day = Date.UTC(2026, 5, 1);
-    seed(propertyHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [
-      { instrument: 'holding:h-1', day, price: '2500000.00', currency: 'UAH', source: 'manual' },
-    ]);
-
-    const { getByTestId, getByText } = await renderScreen();
-
-    const expectedCaption = `Value as of ${formatDate(day, { timeZone: 'UTC' })}`;
-    expect(getByText(expectedCaption)).toBeTruthy();
-    expect(
-      within(getByTestId('holding-value-header')).getByTestId('holding-detail-value-as-of'),
-    ).toBeTruthy();
-  });
-
-  it('shows no "Value as of" caption for a priced holding with no stored price point yet', async () => {
-    seed(propertyHolding);
-
-    const { queryByTestId } = await renderScreen();
-
-    expect(queryByTestId('holding-detail-value-as-of')).toBeNull();
-  });
-
-  it('shows a "Price as of <date>" caption for a metal holding, reading the SHARED metal:XAU instrument', async () => {
-    // metal is priced through the shared metal:<XAU|...> instrument,
-    // never a per-holding one (kiko-pricing) — so its caption reads the
-    // LATEST point on `metal:XAU`, not `holding:h-1`, and uses its own wording
-    // ("Price as of") distinct from property_item's "Value as of".
-    const day = Date.UTC(2026, 5, 1);
-    seed(metalHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [
-      { instrument: 'metal:XAU', day, price: '2500000.00', currency: 'UAH', source: 'nbu' },
-    ]);
-
-    const { getByTestId, getByText } = await renderScreen();
-
-    const expectedCaption = `Price as of ${formatDate(day, { timeZone: 'UTC' })}`;
-    expect(getByText(expectedCaption)).toBeTruthy();
-    expect(
-      within(getByTestId('holding-value-header')).getByTestId('holding-detail-value-as-of'),
-    ).toBeTruthy();
-  });
-
-  it('shows no "Price as of" caption for a metal holding with no stored metal:XAU price point yet', async () => {
-    seed(metalHolding);
-
-    const { queryByTestId } = await renderScreen();
-
-    expect(queryByTestId('holding-detail-value-as-of')).toBeNull();
-  });
-
   it('renders a metal holding at its priced value once a metal:XAU price point exists, not its lots’ cost basis', async () => {
     // metalHolding holds 10g at purity 0.999; the priced value (quantity *
     // purity * price / troy-ounce-grams) must override the cost-basis

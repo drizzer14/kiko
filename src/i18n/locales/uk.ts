@@ -525,7 +525,6 @@ export const uk: typeof en = {
     militaryLevy: 'Військовий збір {{pct}}%',
     nextInstallment: 'Наступний платіж ({{date}})',
     openingDeposit: 'Відкриття депозиту',
-    priceAsOf: 'Ціна станом на {{date}}',
     principal: 'Основна сума',
     projected: 'Прогноз',
     purchase: 'Купівля',
@@ -537,7 +536,6 @@ export const uk: typeof en = {
     transactionsHeading: 'Транзакції',
     updateOutstanding: 'Оновити залишок',
     updateValue: 'Оновити вартість',
-    valueAsOf: 'Вартість станом на {{date}}',
     valueLabel: 'Вартість',
   },
   home: {

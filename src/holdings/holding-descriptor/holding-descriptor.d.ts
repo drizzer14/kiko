@@ -20,9 +20,6 @@ export type PricedSpec = {
    * always stores as UAH) — or null without a price point.
    */
   value: (holding: PricedHolding, book: PriceBook, instant: number) => Money | null;
-  /** The series the "as of" caption reads; null for unparsable metadata. */
-  captionInstrument: (holding: HoldingRow) => string | null;
-  captionKey: 'holdingDetail.priceAsOf' | 'holdingDetail.valueAsOf';
 };
 
 /** Everything the domain decides per holding type. */

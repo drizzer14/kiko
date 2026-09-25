@@ -46,7 +46,6 @@ import MoneyText from '../../design-system/components/money-text';
 import { holdingTypeSymbol } from '../../holdings/entity-symbols';
 import type { HoldingRow, TransactionRow } from '../../db/schema';
 import { defaultHoldingColor } from '../../holdings/entity-colors';
-import { priceAsOfCaption } from '../../prices/price-as-of-caption';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../navigation/types';
 import SummaryTable from '../../design-system/components/summary-table';
@@ -161,36 +160,23 @@ const convertedBaseValue = (
 };
 
 // The Value header's secondary caption slot (`EntityAmountHeader`'s
-// `secondary` prop): the converted-to-base line, the "Value as of <date>"
-// line, or both stacked — a module-scope component (mirroring `LedgerRowItem`
-// below) so the conditional JSX does not count against the screen component's
-// own cognitive-complexity budget. Renders nothing (null) when neither
-// applies, the same as the screen previously passing `secondary={undefined}`.
+// `secondary` prop): the converted-to-base line — a module-scope component
+// (mirroring `LedgerRowItem` below) so the conditional JSX does not count
+// against the screen component's own cognitive-complexity budget. Renders
+// nothing (null) without a converted value, the same as the screen
+// previously passing `secondary={undefined}`.
 const ValueHeaderSecondary: FC<{
   convertedToBase: Money | null;
-  valueAsOf: string | undefined;
-}> = ({ convertedToBase, valueAsOf }) => {
-  if (!convertedToBase && !valueAsOf) {
+}> = ({ convertedToBase }) => {
+  if (!convertedToBase) {
     return null;
   }
 
   return (
-    <Box gap={1}>
-      {convertedToBase && (
-        <Box testID="holding-detail-converted">
-          <Text variant="caption" tone="textSecondary">
-            {formatMoney(convertedToBase, activeLocale())}
-          </Text>
-        </Box>
-      )}
-
-      {valueAsOf && (
-        <Box testID="holding-detail-value-as-of">
-          <Text variant="caption" tone="textSecondary">
-            {valueAsOf}
-          </Text>
-        </Box>
-      )}
+    <Box testID="holding-detail-converted">
+      <Text variant="caption" tone="textSecondary">
+        {formatMoney(convertedToBase, activeLocale())}
+      </Text>
     </Box>
   );
 };
@@ -546,10 +532,6 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   const rateTable = buildRateTable(rates);
   const convertedToBase = convertedBaseValue(holding, breakdown, baseCurrency, rateTable);
-  // A priced holding's (property_item) "Value as of <date>" caption, from its
-  // latest stored price point — undefined for every other type, or a priced
-  // one with no point yet.
-  const valueAsOf = priceAsOfCaption(holding, priceBook, t);
 
   // The transaction ledger merges the holding's real (stored) transactions with
   // the computed entries a deposit/bond accrues (contributions, interest, tax,
@@ -669,9 +651,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
             // used to render as a disconnected caption at the BOTTOM of the whole
             // summary block, which on a deposit/bond floated below the whole
             // breakdown, detached from the value it converts.
-            secondary={
-              <ValueHeaderSecondary convertedToBase={convertedToBase} valueAsOf={valueAsOf} />
-            }
+            secondary={<ValueHeaderSecondary convertedToBase={convertedToBase} />}
           />
           {spec?.breakdown && (
             <Box style={styles.breakdown}>

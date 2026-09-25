@@ -5,7 +5,6 @@ import { makeEntry } from '../entry-parts';
 import { Money } from '../../../currency/money';
 import { pricedDescriptor } from '../priced-parts';
 import { asMetalMeta } from '../../holding-metadata';
-import type { HoldingRow } from '../../../db/schema';
 import type { PricedHolding } from '../../priced-value';
 import type { DerivedEntry } from '../../derived-entries';
 import type { ValuableHolding } from '../../holding-value';
@@ -55,21 +54,9 @@ const metalValue = (holding: PricedHolding, book: PriceBook, instant: number): M
   return Money.of(point.currency, minorUnits);
 };
 
-const metalCaptionInstrument = (holding: HoldingRow): string | null => {
-  const meta = asMetalMeta(holding.metadata);
-  if (meta === null) {
-    return null;
-  }
-  return metalInstrument(meta.metal);
-};
-
-// `captionKey` reads "Price as of" (not property_item's "Value as of"): this is
-// the metal's own market price, not a per-holding manual revaluation.
 const metalPricedSpec: PricedSpec = {
   lots: (metadata) => asMetalMeta(metadata)?.lots,
   value: metalValue,
-  captionInstrument: metalCaptionInstrument,
-  captionKey: 'holdingDetail.priceAsOf',
 };
 
 // A metal holding's buy/sell history as ledger rows: one per stored lot,
