@@ -35,6 +35,17 @@ fi
 out="$("$BIN" check "$TARGET" 2>&1)"
 code=$?
 if [ "$code" -ne 0 ]; then
+  # biome.json's files.includes deliberately excludes some paths (e.g.
+  # rules/fixtures/**, ios/) from linting altogether — a fixture is allowed
+  # to hold code shapes that would otherwise fail lint. Biome reports this
+  # exact message with a non-zero exit for such a target: that is Biome
+  # saying "out of scope", not "found a violation", so it must not read as a
+  # lint failure here.
+  if printf '%s' "$out" | grep -q 'No files were processed in the specified paths\.'; then
+    [ -n "$dkey" ] && harness_mark_pass "$ROOT" "$dkey" "$fp"
+    exit 0
+  fi
+
   print_block \
     "Biome (lint + format)" \
     "Biome found lint or format violations in $TARGET." \
