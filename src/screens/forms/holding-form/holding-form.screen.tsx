@@ -1387,16 +1387,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       .with({ type: 'loan' }, (loanHolding) => {
         loanFields.seed(loanHolding);
       })
-      .with(
-        { type: 'card' },
-        { type: 'cash' },
-        { type: 'crypto_asset' },
-        { type: 'jar' },
-        (rest) => {
-          setOpeningBalance(groupAmount(majorAmountText(rest.currency, rest.balanceMinorUnits)));
-        },
-      )
-      .exhaustive();
+      // Not `.exhaustive()`: the original if-chain's trailing, unconditional
+      // statement below tolerated ANY unmatched `type` (not only the 4 remaining
+      // literal types) — a stale/malformed stored value falls back to reading
+      // the plain balance the same way it always has, rather than throwing.
+      .otherwise((rest) => {
+        setOpeningBalance(groupAmount(majorAmountText(rest.currency, rest.balanceMinorUnits)));
+      });
   }, [isEdit, editingHolding, setBondMode, setIsin, loanFields.seed]);
 
   // The stack sets the static "Add Holding" title; in edit mode override it with
