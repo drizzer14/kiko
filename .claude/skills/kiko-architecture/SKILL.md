@@ -1114,6 +1114,31 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   and the restore/import path (`restoreDataSnapshot`) — never only one.
   Follow the `balanceSetAt` / `loan_interest` re-seed precedent above for the
   next such column.
+- **A data-only cleanup migration follows the SAME two-path rule.**
+  Migration `0040_cleanup_stray_deposit_bond_balance.sql` removes a
+  pre-existing stray create-time artifact (a term_deposit/bond holding whose
+  hidden Card balance field was carried into `balanceMinorUnits` before
+  63f9073's fix, plus its matching `'manual'` opening transaction and
+  `balanceSetAt` stamp) — data-only, no schema change, so it carries no
+  `meta/NNNN_snapshot.json` (same as `0039_seed_loan_interest_category.sql`).
+  It snapshots the qualifying set into a `CREATE TEMP TABLE ... AS SELECT`
+  first so neither of the two mutating statements (the holding reset, the
+  transaction delete) needs the ORIGINAL, about-to-be-mutated columns to
+  still match — read the migration's own doc comment for the exact
+  predicate and why it can only ever match the pre-fix bug, never a real
+  balance (term_deposit/bond are ledgerless; every current write path either
+  writes 0 unconditionally or never touches `balanceMinorUnits` at all).
+  `restoreDataSnapshot`'s `withStrayDepositBondBalanceCleaned` mirrors the
+  identical predicate in JS, applied AFTER `withLegacyBalanceSetAtBackfilled`
+  so a legacy (pre-0036) snapshot's freshly-backfilled boundary still gets
+  cleaned. Proven against the ACTUAL shipped SQL (not a restated predicate)
+  by `drizzle/migrations/0040-cleanup-stray-deposit-bond-balance.test.ts`,
+  which runs the real migration statements through `node:sqlite`
+  (`DatabaseSync`, built into the Node 22 runtime this project already
+  requires) — the strongest available evidence for a migration that
+  deletes real rows, since op-sqlite itself is a native module unavailable
+  under Jest; every other migration's test coverage here stays at the
+  plumbing level (`run-migrations.test.ts`) or the restore-side JS mirror.
 - **No `TextDecoder`/`TextEncoder`.** Hermes has no working `TextDecoder`
   (confirmed on device — see `utf8/utf8.ts`'s header comment); use the
   hand-rolled `utf8Encode`/`utf8Decode` and `encodeBytesToBase64`/

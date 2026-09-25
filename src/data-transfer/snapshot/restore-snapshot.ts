@@ -75,6 +75,99 @@ const withLegacyBalanceSetAtBackfilled = (
   return { ...holding, balanceSetAt: boundaries.get(holding.id) ?? null };
 };
 
+// Migration 0040's own predicate (`drizzle/migrations/0040_cleanup_stray_
+// deposit_bond_balance.sql`'s doc comment is the full statement of WHY this
+// can only ever match the pre-fix create-time bug, fixed in 63f9073, never a
+// real balance): term_deposit/bond are ledgerless (their value derives
+// entirely from metadata), and every current write path either writes 0
+// unconditionally (create) or never touches `balanceMinorUnits` at all
+// (`saveMetadataEdit`, every edit) — the SAME literal pair the SQL's own
+// `IN (...)` names, not the wider `isLedgerlessHoldingType` set (property_item/
+// metal/loan never had this create-time bug at all).
+const STRAY_DEPOSIT_BOND_TYPES = new Set(['term_deposit', 'bond']);
+
+/**
+ * The one transaction a stray create wrote, if `transactionsForHolding` is
+ * EXACTLY that one row and nothing else — conservative on purpose: a holding
+ * with zero, two, or a differently-shaped transaction returns `undefined`
+ * (left alone), since none of those can be this exact create-time artifact.
+ */
+const strayOpeningTransactionFor = (
+  holding: HoldingRow,
+  transactionsForHolding: TransactionRow[],
+): TransactionRow | undefined => {
+  if (!STRAY_DEPOSIT_BOND_TYPES.has(holding.type)) {
+    return undefined;
+  }
+  if (holding.balanceMinorUnits === 0 || holding.balanceSetAt === null) {
+    return undefined;
+  }
+  if (transactionsForHolding.length !== 1) {
+    return undefined;
+  }
+
+  const [candidate] = transactionsForHolding;
+  if (
+    candidate === undefined ||
+    !isBalanceSetShapedRow(candidate) ||
+    candidate.amountMinorUnits !== holding.balanceMinorUnits ||
+    candidate.time !== holding.balanceSetAt
+  ) {
+    return undefined;
+  }
+
+  return candidate;
+};
+
+/** Buckets a flat transaction list by `holdingId`, for a single pass over
+ * `snapshot.transactions` rather than re-filtering it per holding. */
+const transactionsByHoldingId = (
+  allTransactions: TransactionRow[],
+): Map<string, TransactionRow[]> => {
+  const buckets = new Map<string, TransactionRow[]>();
+
+  for (const row of allTransactions) {
+    const bucket = buckets.get(row.holdingId);
+    if (bucket === undefined) {
+      buckets.set(row.holdingId, [row]);
+      continue;
+    }
+    bucket.push(row);
+  }
+
+  return buckets;
+};
+
+/**
+ * Migration 0040's cleanup, mirrored here for a `.kiko` restore, applied
+ * AFTER `withLegacyBalanceSetAtBackfilled` above so a legacy (pre-0036)
+ * snapshot's freshly-backfilled `balanceSetAt` still gets the same cleanup a
+ * live device would apply on upgrade. Zeroes a matching holding's
+ * `balanceMinorUnits`/`balanceSetAt` and drops its one matching transaction.
+ */
+const withStrayDepositBondBalanceCleaned = (
+  snapshotHoldings: HoldingRow[],
+  snapshotTransactions: TransactionRow[],
+): { holdings: HoldingRow[]; transactions: TransactionRow[] } => {
+  const buckets = transactionsByHoldingId(snapshotTransactions);
+  const strayTransactionIds = new Set<string>();
+
+  const cleanedHoldings = snapshotHoldings.map((holding) => {
+    const stray = strayOpeningTransactionFor(holding, buckets.get(holding.id) ?? []);
+    if (stray === undefined) {
+      return holding;
+    }
+
+    strayTransactionIds.add(stray.id);
+    return { ...holding, balanceMinorUnits: 0, balanceSetAt: null };
+  });
+
+  return {
+    holdings: cleanedHoldings,
+    transactions: snapshotTransactions.filter((row) => !strayTransactionIds.has(row.id)),
+  };
+};
+
 // Migration 0039's own seed values (`drizzle/migrations/0039_seed_loan_interest_category.sql`),
 // duplicated here rather than imported: that migration's SQL runs only on a
 // LIVE device upgrade, never against a restored snapshot's own categories.
@@ -157,6 +250,17 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
       await databaseTransaction.delete(bondRegister);
     };
 
+    // Legacy backfill runs first (it may turn a legacy null `balanceSetAt`
+    // into the exact stray shape migration 0040 cleans), then the stray
+    // cleanup — computed ONCE, ahead of both insert groups below, since it
+    // decides what BOTH `holdings` and `transactions` actually insert.
+    const boundaries = balanceSetAtBoundariesByHoldingId(snapshot.transactions);
+    const holdingsAfterLegacyBackfill = snapshot.holdings.map((holding) =>
+      withLegacyBalanceSetAtBackfilled(holding, boundaries),
+    );
+    const { holdings: holdingsToInsert, transactions: transactionsToInsert } =
+      withStrayDepositBondBalanceCleaned(holdingsAfterLegacyBackfill, snapshot.transactions);
+
     // Split into four sequential groups (rather than one 10-loop function) to
     // stay under the cognitive-complexity ceiling; overall parent-before-child
     // insert order is unchanged because the groups themselves run in order.
@@ -164,10 +268,6 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
       for (const part of chunkForTable(accounts, snapshot.accounts)) {
         await databaseTransaction.insert(accounts).values(part);
       }
-      const boundaries = balanceSetAtBoundariesByHoldingId(snapshot.transactions);
-      const holdingsToInsert = snapshot.holdings.map((holding) =>
-        withLegacyBalanceSetAtBackfilled(holding, boundaries),
-      );
       for (const part of chunkForTable(holdings, holdingsToInsert)) {
         await databaseTransaction.insert(holdings).values(part);
       }
@@ -180,7 +280,7 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
       for (const part of chunkForTable(categoryOverrides, snapshot.categoryOverrides)) {
         await databaseTransaction.insert(categoryOverrides).values(part);
       }
-      for (const part of chunkForTable(transactions, snapshot.transactions)) {
+      for (const part of chunkForTable(transactions, transactionsToInsert)) {
         await databaseTransaction.insert(transactions).values(part);
       }
       for (const part of chunkForTable(syncState, snapshot.syncState)) {

@@ -281,6 +281,13 @@
       "when": 1790250690000,
       "tag": "0039_seed_loan_interest_category",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1790267000000,
+      "tag": "0040_cleanup_stray_deposit_bond_balance",
+      "breakpoints": true
     }
   ]
 }
