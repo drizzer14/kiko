@@ -7,6 +7,7 @@ import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { holdingsRepo, type LoanPricePointOp } from '@kiko/holdings/repo';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { ScrollViewInstance, TextInputInstance } from 'react-native';
+import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
@@ -15,7 +16,6 @@ import {
   creatableHoldingTypesForAccount,
   type HoldingType,
   holdingTypes,
-  isLedgerlessHoldingType,
   holdingTypesForAccountKind,
 } from '../../../holdings/holding-type';
 import ColorPicker from '../color-picker';

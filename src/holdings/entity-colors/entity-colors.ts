@@ -1,5 +1,6 @@
 import type { AccountRow } from '../../db/schema';
 import type { HoldingType } from '../holding-type';
+import { recordByType } from '../holding-descriptor';
 import { entityColorsDark } from '../../design-system/palette';
 
 // The default swatch shown for a newly-created account or holding, keyed by its
@@ -29,17 +30,11 @@ export const defaultAccountColor: Record<AccountKind, string> = {
 
 // card -> white, term_deposit -> blue, bond -> green, jar -> violet,
 // cash -> khaki, crypto_asset -> yellow, property_item -> brown,
-// metal -> gray, loan -> red. Typed over the full `HoldingType` union for
-// the same exhaustiveness guarantee as the account map above. `loan` shares
-// its `debt` kind's color, the same reuse `property_item`/`metal` follow.
-export const defaultHoldingColor: Record<HoldingType, string> = {
-  card: entityColorsDark.white,
-  term_deposit: entityColorsDark.blue,
-  bond: entityColorsDark.green,
-  jar: entityColorsDark.violet,
-  cash: entityColorsDark.khaki,
-  crypto_asset: entityColorsDark.yellow,
-  property_item: entityColorsDark.brown,
-  metal: entityColorsDark.gray,
-  loan: entityColorsDark.red,
-};
+// metal -> gray, loan -> red — each type's own descriptor
+// (`src/holdings/holding-descriptor/`) is the source, read through
+// `recordByType` for the same per-type exhaustiveness guarantee as the
+// account map above. `loan` shares its `debt` kind's color, the same reuse
+// `property_item`/`metal` follow.
+export const defaultHoldingColor: Record<HoldingType, string> = recordByType(
+  (descriptor) => descriptor.defaultColor,
+);

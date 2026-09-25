@@ -1,3 +1,5 @@
+import { holdingDescriptor } from '@kiko/holdings/holding-descriptor';
+
 import { Money } from '../../currency/money';
 import type { HoldingRow } from '../../db/schema';
 import { canConvert } from '../../rates/net-worth-view';
@@ -28,8 +30,9 @@ export type TypeSlice = { type: HoldingType; amount: number };
  * Types that total zero — including those whose only holdings are unconvertible —
  * are excluded, and the remaining entries are sorted by amount descending.
  *
- * `loan` is excluded outright (T27): this bar is an ASSET breakdown, and a
- * loan's own held value is NEGATIVE (`holding-value.ts`), so it has its own
+ * A debt-side type (only `loan` today — `holdingDescriptor(type).side`) is
+ * excluded outright: this bar is an ASSET breakdown, and a debt's own held
+ * value is NEGATIVE (`holding-value.ts`), so it has its own
  * "Debts" total elsewhere on Statistics (`buildDebtTotal`,
  * `account-contribution.ts`) rather than showing up here as a negative bar.
  * The bar is assets-only PER HOLDING, the same rule `buildAccountContribution`'s
@@ -47,7 +50,7 @@ export const buildTypeBreakdown = (input: {
   const { holdings, rateTable, baseCurrency, now, book = EMPTY_PRICE_BOOK } = input;
 
   return holdingTypes
-    .filter((type) => type !== 'loan')
+    .filter((type) => holdingDescriptor(type).side === 'asset')
     .map((type) => {
       const total = holdings
         .filter(

@@ -48,41 +48,6 @@ export const syncOnlyHoldingTypes = ['card', 'jar'] as const satisfies readonly 
 export const isSyncOnlyHoldingType = (type: HoldingType): boolean =>
   (syncOnlyHoldingTypes as readonly HoldingType[]).includes(type);
 
-// The holding types a transaction row must NOT stamp with a time-of-day: a
-// term_deposit contribution and a bond purchase/coupon/redemption are
-// day-granular events, not moment-in-time movements, so their rows show the
-// date only (Home drops the HH:MM entirely; Holding Detail renders the date
-// without the trailing time). Every other type keeps its HH:MM stamp.
-export const isTimeExemptHoldingType = (type: HoldingType): boolean =>
-  type === 'term_deposit' || type === 'bond';
-
-// The holding types that write no manual ledger (transaction) rows at all —
-// their value derives entirely from `lots` in metadata (kiko-domain), priced
-// at read time. `term_deposit` and `bond` already work this way; `property_item`
-// (T13) is the same shape. `footerActionFor` (holding-detail.screen.tsx) and
-// `isTransactionEligibleType` (transaction-form.screen.tsx) both gate on this
-// predicate rather than re-deriving their own type list, so the two can never
-// disagree on which types are ledgerless. T17, T26, and T35 extend this set as
-// metals, loans, and shares land.
-export const isLedgerlessHoldingType = (type: HoldingType): boolean =>
-  type === 'term_deposit' ||
-  type === 'bond' ||
-  type === 'property_item' ||
-  type === 'metal' ||
-  type === 'loan';
-
-// The holding types whose buy/sell history is recorded through the dedicated
-// Lot form (T18 — holding-detail's `addLot` footer action, see
-// `footerActionFor` in holding-detail.screen.tsx), rather than fixed once at
-// creation (`property_item`'s single lot, written by `PropertySection` and
-// never edited again) or owned by a sync. Only `metal` is eligible today; P5
-// is expected to add `share` to this SAME list once that type exists — do
-// NOT add a `'share'` literal until then (kiko-pricing's "Later" section).
-export const lotFormHoldingTypes = ['metal'] as const satisfies readonly HoldingType[];
-
-export const isLotFormHoldingType = (type: HoldingType): boolean =>
-  (lotFormHoldingTypes as readonly HoldingType[]).includes(type);
-
 // The holding types a user may MANUALLY CREATE under a given account kind AND
 // synced state: the kind's full set minus whichever sync-only types that
 // PARTICULAR account has a sync owning.

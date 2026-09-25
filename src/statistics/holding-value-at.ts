@@ -1,7 +1,8 @@
+import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
+
 import type { HoldingRow } from '../db/schema';
 import { startOfLocalDay } from '../dates/local-day';
 import { holdingValueBreakdown } from '../holdings/holding-value';
-import { isLedgerlessHoldingType } from '../holdings/holding-type';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '../prices/price-book';
 
 /** A holding as the series builders need it: identity, currency, and value inputs. */

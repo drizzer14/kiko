@@ -1,5 +1,6 @@
 import type { AccountRow } from '../../db/schema';
 import type { HoldingType } from '../holding-type';
+import { recordByType } from '../holding-descriptor';
 
 // The default SF Symbol shown for an account/holding icon, keyed by its
 // kind/type. Mirrors src/holdings/entity-colors.ts: fixed UI symbols (not
@@ -36,25 +37,18 @@ export const accountKindSymbol: Record<AccountKind, string> = {
 
 // card -> creditcard, term_deposit -> calendar, bond -> receipt, jar ->
 // rectangle.portrait, cash -> banknote, crypto_asset -> bitcoinsign.circle,
-// property_item -> house.fill, metal -> cube.fill, loan -> minus.circle.fill.
-// Typed over the full `HoldingType` union for the same exhaustiveness
+// property_item -> house.fill, metal -> cube.fill, loan -> minus.circle.fill —
+// each type's own descriptor (`src/holdings/holding-descriptor/`) is the
+// source, read through `recordByType` for the same per-type exhaustiveness
 // guarantee as the account map above. The `jar` and `crypto_asset` HOLDING
 // defaults are pure render-time fallbacks (holdings persist a null icon
 // until the user picks one), so these changes update every un-customized
 // holding with NO data migration — unlike the crypto ACCOUNT default above.
 // `loan` shares its `debt` kind's icon, the same reuse `property_item`/
 // `metal` already follow for their own standalone kinds.
-export const holdingTypeSymbol: Record<HoldingType, string> = {
-  card: 'creditcard',
-  term_deposit: 'calendar',
-  bond: 'receipt',
-  jar: 'rectangle.portrait',
-  cash: 'banknote',
-  crypto_asset: 'bitcoinsign.circle',
-  property_item: 'house.fill',
-  metal: 'cube.fill',
-  loan: 'minus.circle.fill',
-};
+export const holdingTypeSymbol: Record<HoldingType, string> = recordByType(
+  (descriptor) => descriptor.symbol,
+);
 
 // The GENERIC entity glyphs — TYPE-agnostic references used for headings, empty
 // states, and section labels, NOT a per-entity user-chosen icon and NOT the

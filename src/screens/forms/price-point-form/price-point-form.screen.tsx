@@ -3,6 +3,7 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import { type FC, useLayoutEffect, useRef, useState } from 'react';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
 import { Alert, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
 import DateField from '../date-field';
@@ -52,12 +53,13 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
   const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
   const holding = holdings.find((candidate) => candidate.id === holdingId);
   const currency: Currency = holding?.currency ?? 'UAH';
-  // A loan's correction targets its manual OUTSTANDING series through this
-  // SAME form (T28 review round 1, Minor 6) — the title, field label, Save
-  // label, and the 0-vs-greater-than-0 validation (I2: a loan can be repaid
-  // to exactly 0) all switch on this flag, so no wording still says "Value"
-  // once the holding has loaded as a loan.
-  const isLoan = holding?.type === 'loan';
+  // A debt's (only `loan` today) correction targets its manual OUTSTANDING
+  // series through this SAME form — the title, field label, Save label, and
+  // the 0-vs-greater-than-0 validation (a loan can be repaid to exactly 0)
+  // all switch on this flag, so no wording still says "Value" once the
+  // holding has loaded as a debt.
+  const isDebt =
+    holding !== undefined && holdingDescriptorOrUndefined(holding.type)?.side === 'debt';
 
   const { t } = useTranslation();
   const [value, setValue] = useState('');
@@ -77,10 +79,10 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
   // loan rather than minting a separate action). Mirrors HoldingFormScreen's
   // own edit-mode title override.
   useLayoutEffect(() => {
-    if (isLoan) {
+    if (isDebt) {
       navigation.setOptions({ title: t('forms.pricePoint.loanTitle') });
     }
-  }, [isLoan, navigation, t]);
+  }, [isDebt, navigation, t]);
 
   const save = async (): Promise<void> => {
     if (!holding) {
@@ -89,7 +91,7 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
     const majorValue = parseAmount(value);
     // I2: a loan's outstanding can reach exactly 0 (repaid) — every other
     // priced holding's value must stay strictly positive.
-    const isValidValue = isLoan ? majorValue >= 0 : majorValue > 0;
+    const isValidValue = isDebt ? majorValue >= 0 : majorValue > 0;
     if (!isValidValue) {
       setAttemptedSave(true);
       scrollToField(
@@ -133,14 +135,14 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
       }}
       footer={
         <Button onPress={onSave} disabled={isSubmitting}>
-          {t(isLoan ? 'forms.pricePoint.loanSave' : 'forms.pricePoint.save')}
+          {t(isDebt ? 'forms.pricePoint.loanSave' : 'forms.pricePoint.save')}
         </Button>
       }
     >
       <Box gap={4}>
         <View ref={valueFieldRef}>
           <TextField
-            label={t(isLoan ? 'forms.pricePoint.loanValue' : 'forms.pricePoint.value')}
+            label={t(isDebt ? 'forms.pricePoint.loanValue' : 'forms.pricePoint.value')}
             value={value}
             onChangeText={(text) => setValue(groupAmount(text))}
             keyboardType="decimal-pad"
@@ -148,8 +150,8 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
             suffix={currencySymbol[currency]}
             required
             error={
-              attemptedSave && !(isLoan ? parseAmount(value) >= 0 : parseAmount(value) > 0)
-                ? t(isLoan ? 'forms.pricePoint.loanValueError' : 'forms.pricePoint.valueError')
+              attemptedSave && !(isDebt ? parseAmount(value) >= 0 : parseAmount(value) > 0)
+                ? t(isDebt ? 'forms.pricePoint.loanValueError' : 'forms.pricePoint.valueError')
                 : undefined
             }
             inputRef={valueInputRef}

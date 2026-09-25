@@ -5,9 +5,9 @@ import { useTranslation } from 'react-i18next';
 import { formatTime } from '@kiko/dates/format';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { isSyncedTransaction } from '@kiko/holdings/deletable';
-import { isTimeExemptHoldingType } from '@kiko/holdings/holding-type';
 import { resolveCategoryDisplay } from '@kiko/categories/category-display';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import { isTimeExemptHoldingType } from '@kiko/holdings/holding-descriptor';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
 

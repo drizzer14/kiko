@@ -75,11 +75,11 @@ const quantityErrorFor = (params: {
   return sellExceeds ? t('forms.lot.sellExceedsError') : undefined;
 };
 
-// Records one buy or sell lot against a lot-form-eligible holding (`metal` as
-// of T18 — `isLotFormHoldingType`, kiko-pricing), reached from
-// holding-detail's "Add lot" footer action. Unlike ContributionForm/
-// PricePointForm it never writes a `price_points` row: a metal's price comes
-// from the SHARED `metal:<XAU|...>` instrument, not a per-holding series —
+// Records one buy or sell lot against a lot-form-eligible holding (`metal` —
+// kiko-pricing), reached from holding-detail's "Add lot" footer action.
+// Unlike ContributionForm/PricePointForm it never writes a `price_points`
+// row: a metal's price comes from the SHARED `metal:<XAU|...>` instrument,
+// not a per-holding series —
 // this screen only appends to the holding's own `metadata.lots` array
 // through `holdingsRepo.update`. No `Transaction` row is ever written, for
 // either direction (Review Focus 8): the holding is ledgerless

@@ -18,6 +18,7 @@ import { transactionsRepo } from '@kiko/transactions/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
 import { Alert, type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
 
@@ -54,7 +55,6 @@ import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import FieldError from '../../../design-system/components/field-error';
 import type { TransactionFormParams } from '../../../navigation/types';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
-import { isLedgerlessHoldingType } from '../../../holdings/holding-type';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import { type Currency, currencySymbol } from '../../../currency/currency';
 import { resolveCategoryColor } from '../../../statistics/category-breakdown';

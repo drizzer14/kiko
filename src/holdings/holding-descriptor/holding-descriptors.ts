@@ -1,4 +1,4 @@
-import type { HoldingType } from '../holding-type';
+import { holdingTypes, type HoldingType } from '../holding-type';
 
 import { loanDescriptor } from './loan';
 import { bondDescriptor } from './bond';
@@ -36,3 +36,35 @@ export const holdingDescriptor = (type: HoldingType): HoldingDescriptor => holdi
  */
 export const holdingDescriptorOrUndefined = (type: HoldingType): HoldingDescriptor | undefined =>
   (holdingDescriptors as Record<string, HoldingDescriptor>)[type];
+
+// A transaction row must NOT stamp a term_deposit contribution or a bond
+// purchase/coupon/redemption with a time-of-day: both are day-granular events,
+// not moment-in-time movements (Home drops the HH:MM entirely; Holding Detail
+// renders the date without the trailing time). Every other type keeps its
+// HH:MM stamp. `holdingDescriptorOrUndefined`'s `?? false` keeps this safe for
+// a malformed/absent type, mirroring the old direct `===` chain.
+export const isTimeExemptHoldingType = (type: HoldingType): boolean =>
+  holdingDescriptorOrUndefined(type)?.timeExempt ?? false;
+
+// The holding types that write no manual ledger (transaction) rows at all —
+// their value derives entirely from `lots` in metadata (kiko-domain), priced
+// at read time. `footerActionFor` (holding-detail.screen.tsx) and
+// `isTransactionEligibleType` (transaction-form.screen.tsx) both gate on this
+// predicate rather than re-deriving their own type list, so the two can never
+// disagree on which types are ledgerless.
+export const isLedgerlessHoldingType = (type: HoldingType): boolean =>
+  holdingDescriptorOrUndefined(type)?.ledgerless ?? false;
+
+// Reads one field off every type's descriptor into a `Record<HoldingType,
+// Value>` — the shape `holdingTypeSymbol`/`defaultHoldingColor` publish today
+// — built from the `holdingTypes` tuple rather than a second hand-written
+// map, so those two stay in sync with the descriptors by construction. The
+// cast is needed because `Object.fromEntries` widens its return type to
+// `Record<string, Value>`; the object built here IS a `Record<HoldingType,
+// Value>` because `holdingTypes` enumerates every member exactly once.
+export const recordByType = <Value>(
+  select: (descriptor: HoldingDescriptor) => Value,
+): Record<HoldingType, Value> =>
+  Object.fromEntries(
+    holdingTypes.map((type) => [type, select(holdingDescriptors[type])]),
+  ) as Record<HoldingType, Value>;

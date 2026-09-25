@@ -1,11 +1,48 @@
 import { holdingTypes, type HoldingType } from '../holding-type';
 
-import { holdingDescriptor, holdingDescriptors } from './holding-descriptors';
+import {
+  holdingDescriptor,
+  holdingDescriptors,
+  isLedgerlessHoldingType,
+  isTimeExemptHoldingType,
+} from './holding-descriptors';
 
 describe('holdingDescriptors', () => {
   it.each(holdingTypes)('has a descriptor for %s', (type) => {
     expect(holdingDescriptors[type]).toBeDefined();
     expect(holdingDescriptor(type)).toBe(holdingDescriptors[type]);
+  });
+});
+
+describe('time-exempt holding types', () => {
+  it('marks a term_deposit and a bond as time-exempt (they are not time-specific)', () => {
+    expect(isTimeExemptHoldingType('term_deposit')).toBe(true);
+    expect(isTimeExemptHoldingType('bond')).toBe(true);
+  });
+
+  it('does not mark time-specific holding types as time-exempt', () => {
+    expect(isTimeExemptHoldingType('card')).toBe(false);
+    expect(isTimeExemptHoldingType('cash')).toBe(false);
+    expect(isTimeExemptHoldingType('crypto_asset')).toBe(false);
+    expect(isTimeExemptHoldingType('jar')).toBe(false);
+    expect(isTimeExemptHoldingType('property_item')).toBe(false);
+  });
+});
+
+describe('ledgerless holding types', () => {
+  it('marks term_deposit, bond, property_item, metal, and loan as ledgerless', () => {
+    expect(isLedgerlessHoldingType('term_deposit')).toBe(true);
+    expect(isLedgerlessHoldingType('bond')).toBe(true);
+    expect(isLedgerlessHoldingType('property_item')).toBe(true);
+    expect(isLedgerlessHoldingType('metal')).toBe(true);
+    expect(isLedgerlessHoldingType('loan')).toBe(true);
+  });
+
+  it('does not mark a ledger-backed holding type as ledgerless', () => {
+    expect(isLedgerlessHoldingType('card')).toBe(false);
+    expect(isLedgerlessHoldingType('cash')).toBe(false);
+    expect(isLedgerlessHoldingType('crypto_asset')).toBe(false);
+    expect(isLedgerlessHoldingType('jar')).toBe(false);
   });
 });
 

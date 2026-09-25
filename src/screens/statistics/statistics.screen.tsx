@@ -8,6 +8,7 @@ import { transactionsRepo } from '@kiko/transactions/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
+import { holdingDescriptor } from '@kiko/holdings/holding-descriptor';
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 
@@ -466,12 +467,13 @@ const StatisticsScreen: FC = () => {
     [transactionsWithCurrency],
   );
 
-  // Every LOAN holding in the raw, unfiltered ledger: a payment's linked
-  // loan can live under an account filtered out of the other charts, and a
-  // closed/paid-off loan still EXISTS (only a delete clears its links), so
-  // neither should change whether its payment's interest counts.
+  // Every DEBT-side holding in the raw, unfiltered ledger (only `loan` today):
+  // a payment's linked loan can live under an account filtered out of the
+  // other charts, and a closed/paid-off loan still EXISTS (only a delete
+  // clears its links), so neither should change whether its payment's
+  // interest counts.
   const loanHoldings = useMemo(
-    () => holdings.filter((holding) => holding.type === 'loan'),
+    () => holdings.filter((holding) => holdingDescriptor(holding.type).side === 'debt'),
     [holdings],
   );
 

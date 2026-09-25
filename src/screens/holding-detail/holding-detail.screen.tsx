@@ -1,5 +1,9 @@
 import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
+import {
+  isLedgerlessHoldingType,
+  isTimeExemptHoldingType,
+} from '@kiko/holdings/holding-descriptor';
 import { ratesRepo } from '@kiko/rates/repo';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
@@ -15,11 +19,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor/bond';
 
-import {
-  isLedgerlessHoldingType,
-  isLotFormHoldingType,
-  isTimeExemptHoldingType,
-} from '../../holdings/holding-type';
 import {
   loanInstallments,
   loanOutstandingMinorAt,
@@ -169,10 +168,9 @@ const convertedBaseValue = (
 type FooterAction = 'contribution' | 'transaction' | 'updateValue' | 'addLot' | 'none';
 
 // A term_deposit takes contributions (its own deposit lifecycle); a plain
-// holding takes a manual transaction. A LOT-FORM-eligible type (`metal` as of
-// T18 — `isLotFormHoldingType`) opens the dedicated Lot form to record a
-// buy/sell instead — checked BEFORE the priced-value guard below, since
-// `metal` is ALSO a priced type (`isPricedHoldingType`) but must never offer
+// holding takes a manual transaction. `metal` opens the dedicated Lot form to
+// record a buy/sell instead — checked BEFORE the priced-value guard below,
+// since `metal` is ALSO a priced type (`isPricedHoldingType`) but must never offer
 // "Update value": a metal's price comes from the SHARED `metal:<XAU|...>`
 // instrument (kiko-pricing), never a per-holding manual price point the way
 // `property_item` uses. A priced type that is NOT lot-form-eligible
@@ -198,7 +196,7 @@ const footerActionFor = (
     return 'contribution';
   }
 
-  if (isLotFormHoldingType(holding.type)) {
+  if (holding.type === 'metal') {
     return 'addLot';
   }
 

@@ -1087,10 +1087,10 @@ describe('HoldingDetailScreen', () => {
   });
 
   it('offers "Add lot" instead of a manual add action for a metal holding', async () => {
-    // metal is ledgerless (isLedgerlessHoldingType) AND lot-form-eligible
-    // (isLotFormHoldingType, T18) — unlike property_item it does NOT take
-    // "Update value": its price comes from the shared metal:<XAU|...>
-    // instrument (kiko-pricing), never a per-holding manual price point.
+    // metal is ledgerless (isLedgerlessHoldingType) AND lot-form-eligible —
+    // unlike property_item it does NOT take "Update value": its price comes
+    // from the shared metal:<XAU|...> instrument (kiko-pricing), never a
+    // per-holding manual price point.
     seed(metalHolding);
 
     const { getByTestId, queryByText } = await renderScreen();

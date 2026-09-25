@@ -257,26 +257,31 @@ already owning one for it. Do not assume "sync-only type" means
 "excluded regardless of `isSynced`" — `jar` and `card` behave
 differently for exactly this reason.
 
-A separate, unrelated grouping in the same file — `lotFormHoldingTypes`/
-`isLotFormHoldingType` (T18) — marks which holding types record their
-buy/sell history through the dedicated Lot form
-(`src/screens/forms/lot-form/`, reached from holding-detail's `addLot`
-footer action) rather than a fixed one-time lot or a sync. Only `metal`
-is a member today; read `holding-type.ts` directly rather than trusting
-that as a restated list. See `kiko-pricing`'s "Recording a lot: LotForm
-and the sell cost rule" section for the form itself.
+Which holding types record their buy/sell history through the
+dedicated Lot form (`src/screens/forms/lot-form/`, reached from
+holding-detail's `addLot` footer action) rather than a fixed one-time
+lot or a sync is a single-type check (`holding.type === 'metal'`) in
+`footerActionFor` (`holding-detail.screen.tsx`) — only `metal` is
+eligible today. See `kiko-pricing`'s "Recording a lot: LotForm and the
+sell cost rule" section for the form itself.
 
 ## Entity glyphs: one source of truth
 
-The default SF Symbol for an `Account.kind` and for a `Holding.type`
-each has exactly one source of truth: `src/holdings/`
-(`accountKindSymbol`, `holdingTypeSymbol`). Every reader — the account
-card, the account-detail header, the Kind select, the holding card,
-the holding-detail header, the holding-form icon-chip fallback, the
-Type select — calls that same function; never add a second kind/type
--> glyph map in a screen module. A past `holding-icon.ts` plus a
-screen-exported `KIND_ICON` drifted from this file, so the icon a user
-picked in a select differed from the card glyph.
+The default SF Symbol/color for an `Account.kind` has one source of
+truth: `accountKindSymbol`/`defaultAccountColor`
+(`src/holdings/entity-symbols/`, `entity-colors/`). For a
+`Holding.type`, each type's own descriptor
+(`src/holdings/holding-descriptor/`) carries its `symbol`/
+`defaultColor` — the descriptor IS the source; `holdingTypeSymbol`/
+`defaultHoldingColor` are thin `recordByType` facades derived from it,
+never a second place to set a type's icon/color. Every reader — the
+account card, the account-detail header, the Kind select, the holding
+card, the holding-detail header, the holding-form icon-chip fallback,
+the Type select — calls one of these four functions; never add a
+second kind/type -> glyph map in a screen module. A past
+`holding-icon.ts` plus a screen-exported `KIND_ICON` drifted from
+this file, so the icon a user picked in a select differed from the
+card glyph.
 
 ## The `Money` value object
 
