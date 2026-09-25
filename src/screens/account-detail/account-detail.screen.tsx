@@ -1,4 +1,5 @@
 import type { FC } from 'react';
+import { P, match } from 'ts-pattern';
 import { useLayoutEffect } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
@@ -113,8 +114,14 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // inside this Screen's ScrollView, so it cannot scroll it without the ref).
   const scrollableRef = useAnimatedRef<ScrollViewInstance>();
 
-  const isBankAccount = account?.kind === 'bank';
-  const isCryptoAccount = account?.kind === 'crypto';
+  const isBankAccount = match(account?.kind)
+    .with('bank', () => true)
+    .with(P.not('bank'), () => false)
+    .exhaustive();
+  const isCryptoAccount = match(account?.kind)
+    .with('crypto', () => true)
+    .with(P.not('crypto'), () => false)
+    .exhaustive();
 
   // Every bank account shows the connect/sync affordance independently — there
   // is no single-connection gate, so a second connection can connect

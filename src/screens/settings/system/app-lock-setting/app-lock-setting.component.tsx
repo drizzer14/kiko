@@ -26,7 +26,10 @@ const sensorHint = (status: SensorStatus | undefined, t: TFunction): string | un
 // biometrics, or (passcodeOnly) the device passcode. A device with no passcode
 // gets a disabled switch and a hint instead of a lock that would fail at runtime.
 const canOfferLock = (status: SensorStatus | undefined): boolean =>
-  status?.kind === 'available' || status?.kind === 'passcodeOnly';
+  match(status?.kind)
+    .with('available', 'passcodeOnly', () => true)
+    .with(undefined, 'passcodeNotSet', 'unavailable', () => false)
+    .exhaustive();
 
 /**
  * The Settings App Lock card: a labeled switch that enables/disables the
