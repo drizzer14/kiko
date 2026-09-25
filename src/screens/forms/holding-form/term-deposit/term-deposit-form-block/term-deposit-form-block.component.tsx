@@ -1,10 +1,10 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import Divider from '@kiko/design-system/components/divider';
 
 import TermDepositSection from '../term-deposit-section';
-import Box from '../../../../../design-system/components/box';
-import Text from '../../../../../design-system/components/text';
-import Divider from '../../../../../design-system/components/divider';
 
 import type { TermDepositFormBlockProps } from './term-deposit-form-block.props';
 

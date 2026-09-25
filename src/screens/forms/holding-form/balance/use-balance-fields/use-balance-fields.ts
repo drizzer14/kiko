@@ -1,10 +1,10 @@
+import { Money } from '@kiko/currency/money';
 import { useCallback, useState } from 'react';
+import type { HoldingRow } from '@kiko/db/schema';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import { parseAmount } from '@kiko/currency/parse';
+import type { Currency } from '@kiko/currency/currency';
 
-import { Money } from '../../../../../currency/money';
-import type { HoldingRow } from '../../../../../db/schema';
-import { parseAmount } from '../../../../../currency/parse';
-import type { Currency } from '../../../../../currency/currency';
 import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
 

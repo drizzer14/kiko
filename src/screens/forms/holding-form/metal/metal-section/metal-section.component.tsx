@@ -9,10 +9,10 @@ import {
   type Metal,
   type MetalForm,
   type MetalUnit,
-} from '../../../../../holdings/holding-metadata';
-import Box from '../../../../../design-system/components/box';
-import ChipRow from '../../../../../design-system/components/chip-row';
-import TextField from '../../../../../design-system/components/text-field';
+} from '@kiko/holdings/holding-metadata';
+import Box from '@kiko/design-system/components/box';
+import ChipRow from '@kiko/design-system/components/chip-row';
+import TextField from '@kiko/design-system/components/text-field';
 
 import type { MetalSectionProps } from './metal-section.props';
 

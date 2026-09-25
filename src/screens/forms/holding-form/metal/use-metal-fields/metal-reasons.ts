@@ -1,5 +1,5 @@
-import { parseAmount } from '../../../../../currency/parse';
-import { compareDecimal, normalizeDecimal } from '../../../../../currency/decimal';
+import { parseAmount } from '@kiko/currency/parse';
+import { compareDecimal, normalizeDecimal } from '@kiko/currency/decimal';
 
 // The shape every metal field function validates — kept as one type so
 // `metalFieldErrors` and `metalReasonKey` can never drift apart on WHAT they

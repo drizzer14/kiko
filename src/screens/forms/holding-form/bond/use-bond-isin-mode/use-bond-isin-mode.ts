@@ -1,17 +1,14 @@
 import either from 'fnts/either';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import {
-  bondRegisterRepo,
-  refreshBondRegisterIfStale,
-} from '../../../../../bonds/bond-register-repo';
-import { useLiveQuery } from '../../../../../db/use-live-query';
-import { startOfLocalDay } from '../../../../../dates/local-day';
-import type { Currency } from '../../../../../currency/currency';
-import type { BondTerms } from '../../../../../bonds/nbu-register';
-import { normalizeIsin, validateIsin } from '../../../../../bonds/isin';
-import type { HoldingType } from '../../../../../holdings/holding-type';
-import type { BondKind, BondCouponFrequency } from '../../../../../holdings/holding-metadata';
+import { useLiveQuery } from '@kiko/db/use-live-query';
+import { startOfLocalDay } from '@kiko/dates/local-day';
+import type { Currency } from '@kiko/currency/currency';
+import type { BondTerms } from '@kiko/bonds/nbu-register';
+import { normalizeIsin, validateIsin } from '@kiko/bonds/isin';
+import type { HoldingType } from '@kiko/holdings/holding-type';
+import type { BondKind, BondCouponFrequency } from '@kiko/holdings/holding-metadata';
+import { bondRegisterRepo, refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
 
 import type { BondEntryMode } from '../bond-isin-section/bond-isin-section.props';
 import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';

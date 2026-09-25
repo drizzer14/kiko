@@ -6,11 +6,12 @@ import {
   asTermDepositMeta,
   type CompoundingFrequency,
   type TermDepositMeta,
-} from '../../../../../holdings/holding-metadata';
-import type { HoldingRow } from '../../../../../db/schema';
-import { parseAmount } from '../../../../../currency/parse';
+} from '@kiko/holdings/holding-metadata';
+import type { HoldingRow } from '@kiko/db/schema';
+import { parseAmount } from '@kiko/currency/parse';
+import type { Currency } from '@kiko/currency/currency';
+
 import { saveMetadataEdit } from '../../save-metadata-edit';
-import type { Currency } from '../../../../../currency/currency';
 import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
 import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';

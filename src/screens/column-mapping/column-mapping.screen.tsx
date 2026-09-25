@@ -552,9 +552,10 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   // form uses (`kiko-code-style`'s "Form validation model").
   const [attemptedImport, setAttemptedImport] = useState(false);
 
-  // The scroll-to-first-invalid-field infrastructure (mirrors
-  // `holding-form.screen.tsx`): a ref per required field/field-group, plus
-  // the ScrollView geometry `scrollToField` needs.
+  // The scroll-to-first-invalid-field infrastructure (mirrors the
+  // per-type `scrollTargets` each holding-form hook builds,
+  // `holding-form/holding-type-form`): a ref per required field/field-group,
+  // plus the ScrollView geometry `scrollToField` needs.
   const dateColumnFieldRef = useRef<FieldInstance>(null);
   const dateFormatFieldRef = useRef<FieldInstance>(null);
   const amountGroupFieldRef = useRef<FieldInstance>(null);
@@ -773,8 +774,8 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   // below) — this validates on press instead of standing behind a
   // `disabled={!canImport}` gate, the shared form-validation model
   // (`kiko-code-style`). A blocked press flags every invalid field and
-  // scrolls to the first one, exactly like `holding-form.screen.tsx`'s own
-  // `save`.
+  // scrolls to the first one, the same `scrollTargets` pattern each
+  // holding-form hook's own `save` uses.
   const handleImport = async (): Promise<void> => {
     if (importing) {
       return;

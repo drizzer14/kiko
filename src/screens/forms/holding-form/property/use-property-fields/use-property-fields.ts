@@ -2,17 +2,18 @@ import type { RefObject } from 'react';
 import { useCallback, useRef, useState } from 'react';
 import type { TextInputInstance } from 'react-native';
 
-import { Money } from '../../../../../currency/money';
-import type { Lot } from '../../../../../holdings/lots';
-import type { HoldingRow } from '../../../../../db/schema';
-import { parseAmount } from '../../../../../currency/parse';
+import { Money } from '@kiko/currency/money';
+import type { Lot } from '@kiko/holdings/lots';
+import type { HoldingRow } from '@kiko/db/schema';
+import { parseAmount } from '@kiko/currency/parse';
+import { dayKeyOf } from '@kiko/prices/price-book';
+import { shiftDecimal } from '@kiko/currency/decimal';
+import { currencyScale, type Currency } from '@kiko/currency/currency';
+import { asPropertyMeta, type PropertyCategory } from '@kiko/holdings/holding-metadata';
+
 import { saveMetadataEdit } from '../../save-metadata-edit';
-import { dayKeyOf } from '../../../../../prices/price-book';
-import { shiftDecimal } from '../../../../../currency/decimal';
 import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
-import { currencyScale, type Currency } from '../../../../../currency/currency';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
-import { asPropertyMeta, type PropertyCategory } from '../../../../../holdings/holding-metadata';
 
 import {
   propertyFieldErrors,

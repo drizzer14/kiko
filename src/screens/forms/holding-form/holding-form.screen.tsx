@@ -377,11 +377,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         await holdingsRepo.setIcon(newHoldingId, icon);
       }
 
-      // Item 2 (F3, BUG) + C1 (F3 part 1 fix round 1, Critical): a `returnTo`
-      // route param (set only by the "Create new holding" entry points on
-      // StatementImport/ColumnMapping) carries that screen's own full params
-      // plus a `screen` discriminant — this create was launched from THAT
-      // screen's own target-holding picker, so pop back to it with
+      // A `returnTo` route param (set only by the "Create new holding" entry
+      // points on StatementImport/ColumnMapping) carries that screen's own
+      // full params plus a `screen` discriminant — this create was launched
+      // from THAT screen's own target-holding picker, so pop back to it with
       // `holdingId` merged in, rather than a bare `goBack()`, which handed
       // back no id and left the just-created holding unselected even though
       // it already showed in the list. This is `popTo`, NOT `navigate`:

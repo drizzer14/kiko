@@ -1,6 +1,6 @@
-import { Money } from '../../../../../currency/money';
-import { parseAmount } from '../../../../../currency/parse';
-import type { Currency } from '../../../../../currency/currency';
+import { Money } from '@kiko/currency/money';
+import { parseAmount } from '@kiko/currency/parse';
+import type { Currency } from '@kiko/currency/currency';
 
 // `saved` marks a contribution that is already persisted in the holding's
 // stored metadata (an edit-mode hydrated row) versus one the user just added

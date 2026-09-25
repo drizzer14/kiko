@@ -6,12 +6,12 @@ let mockBondRegisterRows: { isin: string; terms: unknown; fetchedAt: number }[] 
 // tests override this to `null`.
 let mockFetchedAtRows: { value: number | null }[] = [{ value: 1 }];
 
-jest.mock('../../../../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (query: { __kind?: string }) =>
     query.__kind === 'fetchedAt' ? { data: mockFetchedAtRows } : { data: mockBondRegisterRows },
 }));
 
-jest.mock('../../../../../bonds/bond-register-repo', () => ({
+jest.mock('@kiko/bonds/bond-register-repo', () => ({
   bondRegisterRepo: {
     findByIsinQuery: () => ({ __kind: 'findByIsin', toSQL: () => ({ sql: '', params: [] }) }),
     fetchedAtQuery: () => ({ __kind: 'fetchedAt', toSQL: () => ({ sql: '', params: [] }) }),
@@ -19,7 +19,7 @@ jest.mock('../../../../../bonds/bond-register-repo', () => ({
   refreshBondRegisterIfStale: jest.fn().mockResolvedValue(undefined),
 }));
 
-import { refreshBondRegisterIfStale } from '../../../../../bonds/bond-register-repo';
+import { refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
 
 import { useBondIsinMode, type UseBondIsinModeParams } from './use-bond-isin-mode';
 

@@ -7,14 +7,15 @@ import {
   type Metal,
   type MetalForm,
   type MetalUnit,
-} from '../../../../../holdings/holding-metadata';
-import { Money } from '../../../../../currency/money';
-import type { Lot } from '../../../../../holdings/lots';
-import type { HoldingRow } from '../../../../../db/schema';
-import { parseAmount } from '../../../../../currency/parse';
+} from '@kiko/holdings/holding-metadata';
+import { Money } from '@kiko/currency/money';
+import type { Lot } from '@kiko/holdings/lots';
+import type { HoldingRow } from '@kiko/db/schema';
+import { parseAmount } from '@kiko/currency/parse';
+import { dayKeyOf } from '@kiko/prices/price-book';
+import { normalizeDecimal } from '@kiko/currency/decimal';
+
 import { saveMetadataEdit } from '../../save-metadata-edit';
-import { dayKeyOf } from '../../../../../prices/price-book';
-import { normalizeDecimal } from '../../../../../currency/decimal';
 import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
 

@@ -1,4 +1,4 @@
-import { parseAmount } from '../../../../../currency/parse';
+import { parseAmount } from '@kiko/currency/parse';
 
 // The shape the property field function validates — kept as one type so
 // `propertyFieldErrors` and `propertyReasonKey` can never drift apart on

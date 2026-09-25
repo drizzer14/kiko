@@ -7,14 +7,15 @@ import {
   type BondKind,
   type BondMeta,
   type BondCouponFrequency,
-} from '../../../../../holdings/holding-metadata';
-import { Money } from '../../../../../currency/money';
-import type { HoldingRow } from '../../../../../db/schema';
-import { parseAmount } from '../../../../../currency/parse';
+} from '@kiko/holdings/holding-metadata';
+import { Money } from '@kiko/currency/money';
+import type { HoldingRow } from '@kiko/db/schema';
+import { parseAmount } from '@kiko/currency/parse';
+import type { Currency } from '@kiko/currency/currency';
+import type { BondTerms } from '@kiko/bonds/nbu-register';
+import type { HoldingType } from '@kiko/holdings/holding-type';
+
 import { saveMetadataEdit } from '../../save-metadata-edit';
-import type { Currency } from '../../../../../currency/currency';
-import type { BondTerms } from '../../../../../bonds/nbu-register';
-import type { HoldingType } from '../../../../../holdings/holding-type';
 import { useBondIsinMode, type IsinReasonKey } from '../use-bond-isin-mode';
 import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
 import type { BondEntryMode } from '../bond-isin-section/bond-isin-section.props';

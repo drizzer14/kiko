@@ -1,9 +1,9 @@
 import { fireEvent, render } from '@testing-library/react-native';
 
-import '../../../../../design-system/unistyles';
-import '../../../../../i18n';
+import '@kiko/design-system/unistyles';
+import '@kiko/i18n';
 
-import type { BondTerms } from '../../../../../bonds/nbu-register';
+import type { BondTerms } from '@kiko/bonds/nbu-register';
 
 import BondIsinSection from './bond-isin-section.component';
 

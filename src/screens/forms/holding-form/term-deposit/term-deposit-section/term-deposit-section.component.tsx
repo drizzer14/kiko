@@ -3,23 +3,24 @@ import { View } from 'react-native';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import { currencySymbol } from '@kiko/currency/currency';
+import Button from '@kiko/design-system/components/button';
+import Switch from '@kiko/design-system/components/switch';
+import Divider from '@kiko/design-system/components/divider';
+import ChipRow from '@kiko/design-system/components/chip-row';
+import TextField from '@kiko/design-system/components/text-field';
+import FieldError from '@kiko/design-system/components/field-error';
+import type { CompoundingFrequency } from '@kiko/holdings/holding-metadata';
+
 import DateField from '../../../date-field';
 import {
   isContributionRowValid,
   type TermDepositFieldErrors,
 } from '../use-term-deposit-fields/term-deposit-reasons';
-import Box from '../../../../../design-system/components/box';
 import { fieldErrorMessage } from '../../field-error-message';
-import Text from '../../../../../design-system/components/text';
-import { currencySymbol } from '../../../../../currency/currency';
 import { groupAmount } from '../../../amount-format/amount-format';
-import Button from '../../../../../design-system/components/button';
-import Switch from '../../../../../design-system/components/switch';
-import Divider from '../../../../../design-system/components/divider';
-import ChipRow from '../../../../../design-system/components/chip-row';
-import TextField from '../../../../../design-system/components/text-field';
-import FieldError from '../../../../../design-system/components/field-error';
-import type { CompoundingFrequency } from '../../../../../holdings/holding-metadata';
 
 import type { TermDepositSectionProps } from './term-deposit-section.props';
 

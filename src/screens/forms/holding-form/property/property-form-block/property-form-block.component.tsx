@@ -1,13 +1,14 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import { currencySymbol } from '@kiko/currency/currency';
+import Divider from '@kiko/design-system/components/divider';
+
 import PropertySection from '../property-section';
-import Box from '../../../../../design-system/components/box';
 import { fieldErrorMessage } from '../../field-error-message';
-import Text from '../../../../../design-system/components/text';
-import { currencySymbol } from '../../../../../currency/currency';
 import { groupAmount } from '../../../amount-format/amount-format';
-import Divider from '../../../../../design-system/components/divider';
 
 import type { PropertyFormBlockProps } from './property-form-block.props';
 

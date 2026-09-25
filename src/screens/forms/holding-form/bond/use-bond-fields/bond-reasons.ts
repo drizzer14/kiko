@@ -1,4 +1,4 @@
-import { parseAmount } from '../../../../../currency/parse';
+import { parseAmount } from '@kiko/currency/parse';
 
 // The shape every bond field function validates — kept as one type so
 // `bondFieldErrors` and `bondReasonKey` can never drift apart on WHAT they

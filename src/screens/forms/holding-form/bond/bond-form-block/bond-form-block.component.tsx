@@ -3,19 +3,20 @@ import { View } from 'react-native';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import { currencySymbol } from '@kiko/currency/currency';
+import Divider from '@kiko/design-system/components/divider';
+import TextField from '@kiko/design-system/components/text-field';
+import type { BondCouponFrequency } from '@kiko/holdings/holding-metadata';
+
 import DateField from '../../../date-field';
 import BondIsinSection from '../bond-isin-section';
 import ManualBondFields from '../manual-bond-fields';
-import Box from '../../../../../design-system/components/box';
 import { fieldErrorMessage } from '../../field-error-message';
-import Text from '../../../../../design-system/components/text';
-import { currencySymbol } from '../../../../../currency/currency';
 import { groupAmount } from '../../../amount-format/amount-format';
-import Divider from '../../../../../design-system/components/divider';
-import TextField from '../../../../../design-system/components/text-field';
 import type { IsinReasonKey } from '../use-bond-isin-mode/use-bond-isin-mode';
 import type { BondEntryMode } from '../bond-isin-section/bond-isin-section.props';
-import type { BondCouponFrequency } from '../../../../../holdings/holding-metadata';
 
 import type { BondFormBlockProps } from './bond-form-block.props';
 

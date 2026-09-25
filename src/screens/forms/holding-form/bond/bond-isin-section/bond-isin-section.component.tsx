@@ -3,21 +3,18 @@ import { View } from 'react-native';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
-import {
-  bondCouponFrequencies,
-  type BondCouponFrequency,
-} from '../../../../../holdings/holding-metadata';
-import { formatDate } from '../../../../../dates/format';
-import { validateIsin } from '../../../../../bonds/isin';
-import Box from '../../../../../design-system/components/box';
-import Text from '../../../../../design-system/components/text';
-import { activeLocale } from '../../../../../i18n/active-locale';
-import Button from '../../../../../design-system/components/button';
-import TextField from '../../../../../design-system/components/text-field';
-import FieldLabel from '../../../../../design-system/components/field-label';
-import SelectField from '../../../../../design-system/components/select-field';
-import SummaryTable from '../../../../../design-system/components/summary-table';
-import SegmentedControl from '../../../../../design-system/components/segmented-control';
+import { formatDate } from '@kiko/dates/format';
+import { validateIsin } from '@kiko/bonds/isin';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import { activeLocale } from '@kiko/i18n/active-locale';
+import Button from '@kiko/design-system/components/button';
+import TextField from '@kiko/design-system/components/text-field';
+import FieldLabel from '@kiko/design-system/components/field-label';
+import SelectField from '@kiko/design-system/components/select-field';
+import SummaryTable from '@kiko/design-system/components/summary-table';
+import SegmentedControl from '@kiko/design-system/components/segmented-control';
+import { bondCouponFrequencies, type BondCouponFrequency } from '@kiko/holdings/holding-metadata';
 
 import type { BondEntryMode, BondIsinSectionProps } from './bond-isin-section.props';
 
