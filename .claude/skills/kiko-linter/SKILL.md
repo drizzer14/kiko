@@ -307,13 +307,41 @@ hand-rolled checker (and fixer)" below. The comment-history check is
 
 Mechanizes kiko-code-style's "Comments: WHY only, never history": no
 task id (`T28`), review-round id (`I1`/`M2`/`N3`/`U7`), spec/decision
-id (`spec 6.2`, `D14`), bug number, or `USER-DECISION` left behind in a
+id (`spec 6.2`, `D14`), bug number, `USER-DECISION`, `Phase N`,
+`Requirement X`, `controller ruling N`, `section X.N`, `the brief`,
+`Review Focus N`, `Minor N`, `audit N`, `RULING RN`, `fix round N`,
+`round-N`, `device[- ]feedback`, or `on-device review` left behind in a
 `src/**` comment. Two `pattern-regex` arms, one per comment syntax —
 a single regex spanning both `//` and `/* */` would have to
 special-case where a line comment ends and a block comment does not.
 The block-comment arm's `(?:(?!\*/)[\s\S])*?` (not a bare `[\s\S]*?`)
 keeps a match from crossing a real `*/` into a LATER, unrelated block
 comment.
+
+Both arms are additionally anchored at line start with
+`^(?:[^'"`\n]|'[^'\n]*'|"[^"\n]*"|`[^`\n]*`)*` — a char-by-char walk
+that treats any COMPLETE same-line quoted string as one atomic skip,
+so a `//` or `/*` that only appears INSIDE a string literal (a glob
+like `'src/**/*.ts'`, a MIME wildcard `'*/*'`, a note like `'foo //
+T12'`) never opens a match — only a real `//`/`/*` reached after
+skipping every complete string earlier on that line can.
+
+**Scope: `paths.exclude`, not `paths.include: ["src/**"]`.** A
+path-prefixed `paths.include` would silently draw ZERO findings when
+`semgrep-rules.sh` scans `rules/fixtures/` directly for this rule's
+own positive fixture — the exact `paths.include` gotcha documented
+above (a fixture isn't under a `src/**`-prefixed include, so it fails
+CLOSED, invisibly). `paths.exclude` has no such failure mode (see
+"Semgrep facts verified on 1.175" above), so the rule instead excludes
+`__tests__/**`, `e2e/**`, `scripts/**`, and `harness/**` (harness/test
+tooling, not shipped app comments — some of these are covered by their
+own dedicated harness checks instead), plus the two root files
+`App.tsx` and `drizzle.config.ts` individually (root-level files
+outside any `src/**`-style prefix an include could have named).
+`__mocks__/**` was excluded too until a round-2 review caught 3 real
+hits it was hiding — the exclude was dropped and the hits fixed
+instead, since a test mock's comments are exactly the kind of file
+this rule should hold to the same standard as any other.
 
 `\b` word boundaries alone clear most of the false-positive shapes a
 real sweep found, with no extra tuning needed: `i18n`/`ISIN`/`UTF-8`/
