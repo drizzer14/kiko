@@ -3,18 +3,18 @@ import { View } from 'react-native';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
-import DateField from '../../date-field';
+import DateField from '../../../date-field';
 import {
   loanKinds,
   loanSchedules,
   type LoanKind,
   type LoanSchedule,
-} from '../../../../holdings/holding-metadata';
-import Box from '../../../../design-system/components/box';
-import TextField from '../../../../design-system/components/text-field';
-import FieldLabel from '../../../../design-system/components/field-label';
-import SelectField from '../../../../design-system/components/select-field';
-import SegmentedControl from '../../../../design-system/components/segmented-control';
+} from '../../../../../holdings/holding-metadata';
+import Box from '../../../../../design-system/components/box';
+import TextField from '../../../../../design-system/components/text-field';
+import FieldLabel from '../../../../../design-system/components/field-label';
+import SelectField from '../../../../../design-system/components/select-field';
+import SegmentedControl from '../../../../../design-system/components/segmented-control';
 
 import type { LoanSectionProps } from './loan-section.props';
 

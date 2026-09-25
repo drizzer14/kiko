@@ -206,7 +206,7 @@ rather than trusting a restated summary here.
 
 ## `property_item` / `metal` create-form sections
 
-`src/screens/forms/holding-form/property-section/` is the
+`src/screens/forms/holding-form/property/property-section/` is the
 `property_item` create-form section: a category `SelectField`
 (`propertyCategories` from `src/holdings/holding-metadata`, editable
 in both create and edit mode — too many long category names for a
@@ -216,7 +216,7 @@ plus one manual price point equal to that cost is what
 `holdingsRepo.create`'s `firstPricePoint` param — see `kiko-pricing`'s
 "Creating and clearing a priced holding's price series" section for
 the create/remove symmetry.
-`src/screens/forms/holding-form/metal-section/metal-section.component.tsx`
+`src/screens/forms/holding-form/metal/metal-section/metal-section.component.tsx`
 is the `metal` create-form section (T20): a metal-element `ChipRow`, a
 physical-form `ChipRow`, a unit `ChipRow`, a Purity `TextField`
 (pre-filled `"0.9999"`), and the first-lot Quantity/Total-cost fields
@@ -689,10 +689,10 @@ against a later register state.
 `BondEntryMode` mode, the design-system `SegmentedControl` (not
 `ChipRow` — F3/T24 ruling: one control type per kind of mode choice),
 rendered by `BondIsinSection`
-(`src/screens/forms/holding-form/bond-isin-section/`) — purely
+(`src/screens/forms/holding-form/bond/bond-isin-section/`) — purely
 presentational, the same `MetalSection`/`PropertySection` split.
 
-**`useBondIsinMode`** (`src/screens/forms/holding-form/use-bond-isin-mode/`)
+**`useBondIsinMode`** (`src/screens/forms/holding-form/bond/use-bond-isin-mode/`)
 owns ALL of the ISIN-mode state, the `useLiveQuery` lookup
 (`bondRegisterRepo.findByIsinQuery`, keyed on the normalized ISIN when
 `validateIsin` passes, else an empty string that matches no row), and
@@ -780,7 +780,7 @@ review round 1, I2), the one date the user actually controls there.
 
 The five Manual-only fields (face value, coupon %, maturity date, bond
 kind, coupon frequency) are their own component,
-`ManualBondFields` (`src/screens/forms/holding-form/manual-bond-fields/`):
+`ManualBondFields` (`src/screens/forms/holding-form/bond/manual-bond-fields/`):
 it takes `bondMode` as a prop and returns `null` outside Manual mode,
 rather than the caller gating `{bondMode === 'manual' && (...)}`
 around its JSX — see `kiko-code-style`'s `noExcessiveCognitiveComplexity`
@@ -876,7 +876,7 @@ assuming that works.
 
 ### Loan form + detail (T28)
 
-`src/screens/forms/holding-form/loan-section/` (kind `SelectField`,
+`src/screens/forms/holding-form/loan/loan-section/` (kind `SelectField`,
 principal, start date, schedule SegmentedControl, rate/term hidden for
 `'none'`) and its own `use-loan-fields/` hook (state + per-schedule
 `loanReasonKey` validation + edit-mode `seed`) mirror T25's
@@ -888,7 +888,7 @@ fields, EVERY loan field stays editable in both create and edit mode
 (mirrors term_deposit/bond) — there is no fixed-at-creation "first
 lot" a loan's principal/dates/schedule freeze against. The
 `type === 'loan'` render block is its own leaf component
-(`LoanFormBlock`, `src/screens/forms/holding-form/loan-form-block/`)
+(`LoanFormBlock`, `src/screens/forms/holding-form/loan/loan-form-block/`)
 rather than an inline `{type === 'loan' && (...)}` conditional, for
 the same complexity-budget reason. A `'none'`-schedule CREATE additionally
 writes a first `manual` price point on the new holding's own

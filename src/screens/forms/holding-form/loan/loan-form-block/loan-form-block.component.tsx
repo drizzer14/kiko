@@ -5,8 +5,8 @@ import { currencySymbol } from '@kiko/currency/currency';
 import Divider from '@kiko/design-system/components/divider';
 
 import LoanSection from '../loan-section';
-import { fieldErrorMessage } from '../field-error-message';
-import { groupAmount } from '../../amount-format/amount-format';
+import { fieldErrorMessage } from '../../field-error-message';
+import { groupAmount } from '../../../amount-format/amount-format';
 
 import type { LoanFormBlockProps } from './loan-form-block.props';
 

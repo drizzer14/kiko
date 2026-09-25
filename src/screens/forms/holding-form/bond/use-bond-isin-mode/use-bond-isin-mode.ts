@@ -1,17 +1,20 @@
 import either from 'fnts/either';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { useLiveQuery } from '../../../../db/use-live-query';
-import { startOfLocalDay } from '../../../../dates/local-day';
-import type { Currency } from '../../../../currency/currency';
-import type { BondTerms } from '../../../../bonds/nbu-register';
-import { normalizeIsin, validateIsin } from '../../../../bonds/isin';
-import type { HoldingType } from '../../../../holdings/holding-type';
-import type { BondKind, BondCouponFrequency } from '../../../../holdings/holding-metadata';
-import { bondRegisterRepo, refreshBondRegisterIfStale } from '../../../../bonds/bond-register-repo';
+import {
+  bondRegisterRepo,
+  refreshBondRegisterIfStale,
+} from '../../../../../bonds/bond-register-repo';
+import { useLiveQuery } from '../../../../../db/use-live-query';
+import { startOfLocalDay } from '../../../../../dates/local-day';
+import type { Currency } from '../../../../../currency/currency';
+import type { BondTerms } from '../../../../../bonds/nbu-register';
+import { normalizeIsin, validateIsin } from '../../../../../bonds/isin';
+import type { HoldingType } from '../../../../../holdings/holding-type';
+import type { BondKind, BondCouponFrequency } from '../../../../../holdings/holding-metadata';
 
-import { groupAmount, majorAmountText } from '../../amount-format/amount-format';
 import type { BondEntryMode } from '../bond-isin-section/bond-isin-section.props';
+import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 
 // The literal i18n keys this hook's own `isinReasonKey` may return (spec
 // 6.4; `isinCurrencyMismatchError` added at T25 review round 1, I5;

@@ -821,7 +821,7 @@ new component can land between reviews of this skill:
   - `SegmentedControl` (changes fields): the column-mapping screen's
     amount-mode/currency-mode selectors (`AmountFields`/`CurrencyFields`);
     the Bond form's ISIN/Manual mode (`BondIsinSection`,
-    `src/screens/forms/holding-form/bond-isin-section/`); the Loan
+    `src/screens/forms/holding-form/bond/bond-isin-section/`); the Loan
     form's schedule selector (`LoanSection` — `none` hides the
     rate/term fields); the Lot form's Buy/Sell toggle (`LotFormScreen`
     — Buy alone shows the Total-cost field); the account-detail crypto

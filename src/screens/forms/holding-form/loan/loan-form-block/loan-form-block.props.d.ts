@@ -4,7 +4,7 @@ import type { TextInputInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 
-import type { FieldInstance } from '../../scroll-to-field/scroll-to-field';
+import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
 import type { UseLoanFieldsResult } from '../use-loan-fields/use-loan-fields';
 
 export type LoanFormBlockProps = {

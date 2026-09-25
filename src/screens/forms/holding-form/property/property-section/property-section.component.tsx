@@ -2,10 +2,13 @@ import type { FC } from 'react';
 import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import Box from '../../../../design-system/components/box';
-import TextField from '../../../../design-system/components/text-field';
-import SelectField from '../../../../design-system/components/select-field';
-import { propertyCategories, type PropertyCategory } from '../../../../holdings/holding-metadata';
+import {
+  propertyCategories,
+  type PropertyCategory,
+} from '../../../../../holdings/holding-metadata';
+import Box from '../../../../../design-system/components/box';
+import TextField from '../../../../../design-system/components/text-field';
+import SelectField from '../../../../../design-system/components/select-field';
 
 import type { PropertySectionProps } from './property-section.props';
 

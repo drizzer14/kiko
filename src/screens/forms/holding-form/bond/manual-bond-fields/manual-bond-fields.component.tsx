@@ -3,12 +3,12 @@ import { View } from 'react-native';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
-import DateField from '../../date-field';
+import DateField from '../../../date-field';
 import { couponFrequencyLabels } from '../bond-isin-section';
-import ChipRow from '../../../../design-system/components/chip-row';
-import TextField from '../../../../design-system/components/text-field';
-import SelectField from '../../../../design-system/components/select-field';
-import { bondKinds, bondCouponFrequencies } from '../../../../holdings/holding-metadata';
+import ChipRow from '../../../../../design-system/components/chip-row';
+import TextField from '../../../../../design-system/components/text-field';
+import SelectField from '../../../../../design-system/components/select-field';
+import { bondKinds, bondCouponFrequencies } from '../../../../../holdings/holding-metadata';
 
 import type { ManualBondFieldsProps } from './manual-bond-fields.props';
 

@@ -4,10 +4,10 @@ import {
   asLoanMeta,
   type LoanKind,
   type LoanSchedule,
-} from '../../../../holdings/holding-metadata';
-import type { HoldingRow } from '../../../../db/schema';
-import { parseAmount } from '../../../../currency/parse';
-import { groupAmount, majorAmountText } from '../../amount-format/amount-format';
+} from '../../../../../holdings/holding-metadata';
+import type { HoldingRow } from '../../../../../db/schema';
+import { parseAmount } from '../../../../../currency/parse';
+import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 
 // The literal i18n keys `loanReasonKey` below may return, so `t()` (typed
 // from src/i18n/locales/en.ts) accepts them — mirrors `PropertyReasonKey`/

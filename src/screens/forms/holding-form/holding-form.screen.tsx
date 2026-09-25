@@ -72,15 +72,19 @@ import { type Currency, currencyScale, currencySymbol } from '../../../currency/
 import { compareDecimal, normalizeDecimal, shiftDecimal } from '../../../currency/decimal';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 
-import MetalSection from './metal-section';
-import LoanFormBlock from './loan-form-block';
-import PropertySection from './property-section';
-import BondIsinSection from './bond-isin-section';
-import ManualBondFields from './manual-bond-fields';
+import {
+  useLoanFields,
+  type LoanReasonKey,
+  type UseLoanFieldsResult,
+} from './loan/use-loan-fields';
+import MetalSection from './metal/metal-section';
+import LoanFormBlock from './loan/loan-form-block';
+import BondIsinSection from './bond/bond-isin-section';
+import ManualBondFields from './bond/manual-bond-fields';
+import PropertySection from './property/property-section';
 import { fieldErrorMessage } from './field-error-message';
-import { useBondIsinMode, type IsinReasonKey } from './use-bond-isin-mode';
-import type { BondEntryMode } from './bond-isin-section/bond-isin-section.props';
-import { useLoanFields, type LoanReasonKey, type UseLoanFieldsResult } from './use-loan-fields';
+import { useBondIsinMode, type IsinReasonKey } from './bond/use-bond-isin-mode';
+import type { BondEntryMode } from './bond/bond-isin-section/bond-isin-section.props';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 

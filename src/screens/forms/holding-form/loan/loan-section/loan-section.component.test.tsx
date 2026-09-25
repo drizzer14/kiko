@@ -1,7 +1,7 @@
 import { fireEvent, render } from '@testing-library/react-native';
 
-import '../../../../design-system/unistyles';
-import '../../../../i18n';
+import '../../../../../design-system/unistyles';
+import '../../../../../i18n';
 
 import LoanSection from './loan-section.component';
 

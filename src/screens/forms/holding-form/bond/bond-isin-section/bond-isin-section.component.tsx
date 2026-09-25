@@ -6,18 +6,18 @@ import { useTranslation } from 'react-i18next';
 import {
   bondCouponFrequencies,
   type BondCouponFrequency,
-} from '../../../../holdings/holding-metadata';
-import { formatDate } from '../../../../dates/format';
-import { validateIsin } from '../../../../bonds/isin';
-import Box from '../../../../design-system/components/box';
-import Text from '../../../../design-system/components/text';
-import { activeLocale } from '../../../../i18n/active-locale';
-import Button from '../../../../design-system/components/button';
-import TextField from '../../../../design-system/components/text-field';
-import FieldLabel from '../../../../design-system/components/field-label';
-import SelectField from '../../../../design-system/components/select-field';
-import SummaryTable from '../../../../design-system/components/summary-table';
-import SegmentedControl from '../../../../design-system/components/segmented-control';
+} from '../../../../../holdings/holding-metadata';
+import { formatDate } from '../../../../../dates/format';
+import { validateIsin } from '../../../../../bonds/isin';
+import Box from '../../../../../design-system/components/box';
+import Text from '../../../../../design-system/components/text';
+import { activeLocale } from '../../../../../i18n/active-locale';
+import Button from '../../../../../design-system/components/button';
+import TextField from '../../../../../design-system/components/text-field';
+import FieldLabel from '../../../../../design-system/components/field-label';
+import SelectField from '../../../../../design-system/components/select-field';
+import SummaryTable from '../../../../../design-system/components/summary-table';
+import SegmentedControl from '../../../../../design-system/components/segmented-control';
 
 import type { BondEntryMode, BondIsinSectionProps } from './bond-isin-section.props';
 
