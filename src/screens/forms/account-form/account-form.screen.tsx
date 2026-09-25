@@ -1,4 +1,5 @@
 import { useSync } from '@kiko/sync/use-sync';
+import either, { isRight } from 'fnts/either';
 import { useTranslation } from 'react-i18next';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
@@ -255,6 +256,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     return accountCreate.current;
   };
 
+  // Shared by every field's Connect handler below: `true` once the account row
+  // exists (creating it on first call), `false` on any failure — a name-missing
+  // rejection or a failed insert — so each caller returns its own "could not
+  // connect" `false` without repeating the same try/catch three times.
+  const accountEnsured = async (): Promise<boolean> => isRight(await either(() => ensureAccount()));
+
   // The bank field creates the row FIRST (Option A), then stores the validated
   // token to the Keychain keyed by the pre-generated id, then runs the first
   // Monobank sync against it (the write-only-secret order — Global Constraint 2).
@@ -263,14 +270,18 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // above lets the next Connect retry. The token goes ONLY to the Keychain —
   // never to the database or a log.
   const connectMonobank = async (token: string): Promise<boolean> => {
+    if (!(await accountEnsured())) {
+      return false;
+    }
+
     try {
-      await ensureAccount();
       // The token binds to the pre-generated account id (a per-account Keychain
       // item), so it can never clobber another account's secret.
       await saveToken(pendingAccountId, token);
     } catch {
       return false;
     }
+
     return syncMonobank(pendingAccountId);
   };
 
@@ -278,17 +289,16 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // against it. `CryptoSyncForm`/`BinanceCredentialsField` validate the
   // credential and write the Binance secret to the Keychain themselves, keyed by
   // the pre-generated id, before calling these — the secret never reaches this
-  // screen, the DB, or a log. A create failure is caught here and surfaced to
-  // the field as a `false` (not-connected) result, so the field shows its
-  // "could not connect" status instead of an unhandled rejection that would
-  // leave it stuck on "checking" (C-2); the ref reset above lets the next
-  // Connect retry.
+  // screen, the DB, or a log. A create failure is caught here (via
+  // `accountEnsured`) and surfaced to the field as a `false` (not-connected)
+  // result, so the field shows its "could not connect" status instead of an
+  // unhandled rejection that would leave it stuck on "checking" (C-2); the ref
+  // reset above lets the next Connect retry.
   const connectWallet = async (address: string): Promise<boolean> => {
-    try {
-      await ensureAccount();
-    } catch {
+    if (!(await accountEnsured())) {
       return false;
     }
+
     return syncCrypto({
       providerId: 'btc_wallet',
       targetAccountId: pendingAccountId,
@@ -297,11 +307,10 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   };
 
   const connectBinance = async (): Promise<boolean> => {
-    try {
-      await ensureAccount();
-    } catch {
+    if (!(await accountEnsured())) {
       return false;
     }
+
     return syncCrypto({ providerId: 'binance', targetAccountId: pendingAccountId });
   };
 
