@@ -4,7 +4,7 @@ import { useLiveQuery } from '../../db/use-live-query';
 import { pricePointsRepo } from '../price-points-repo';
 import { buildPriceBook, type PriceBook } from '../price-book';
 
-export type UsePriceBookResult = { book: PriceBook; isLoading: boolean };
+type UsePriceBookResult = { book: PriceBook; isLoading: boolean };
 
 /**
  * Reactive `PriceBook`, subscribed to the whole `price_points` table. Rebuilt
