@@ -1,3 +1,4 @@
+import { identity } from 'fnts';
 import either, { bifoldMap } from 'fnts/either';
 
 import { Money } from '../../currency/money';
@@ -214,7 +215,7 @@ const walletSatoshis = async (
 
       return null;
     },
-    (value) => value,
+    identity,
   );
 };
 

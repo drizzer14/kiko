@@ -3,9 +3,9 @@ import { useState } from 'react';
 import { i18n } from '@kiko/i18n';
 import { Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { importData } from '@kiko/data-transfer/import-data';
 import { keepLocalCopy, pick, types } from '@react-native-documents/picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { importData, type ImportSummary } from '@kiko/data-transfer/import-data';
 
 import Box from '../../../design-system/components/box';
 import Card from '../../../design-system/components/card';
@@ -108,7 +108,7 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
     }
 
     try {
-      const summary: ImportSummary = await importData({ fileUri, keyBase64 });
+      const summary = await importData({ fileUri, keyBase64 });
 
       // The imported settings row can carry a different language than the
       // one currently active. Apply it BEFORE resolving the success

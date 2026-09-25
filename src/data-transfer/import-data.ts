@@ -13,7 +13,7 @@ import { decodeBase64ToBytes } from './base64/base64';
 import { restoreExportSecrets } from './secrets/restore-secrets';
 import { restoreDataSnapshot } from './snapshot/restore-snapshot';
 
-export type ImportSummary = {
+type ImportSummary = {
   accountsRestored: number;
   holdingsRestored: number;
   transactionsRestored: number;
@@ -70,9 +70,9 @@ const isExportPayload = (value: unknown): value is ExportPayload => {
 
 const INVALID_FILE_MESSAGE = 'data-transfer/import: not a valid Kiko export file';
 
-// Runs `action`, rethrowing `message` in its place on failure — the shared
-// shape `envelope.ts`'s `decryptEnvelope` already converts to, reused here so
-// the three parse-or-decode attempts below need no local mutable `let`.
+// Runs `action`, throwing `message` in its place instead of the original
+// error on any failure — the same rethrow shape `decryptEnvelope`
+// (`envelope.ts`) uses.
 const attemptOrThrow = <Value>(action: () => Value, message: string): Value => {
   const attempt = eitherSync<unknown, Value>(action);
 
