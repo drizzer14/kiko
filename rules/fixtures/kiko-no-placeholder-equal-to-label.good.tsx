@@ -1,3 +1,5 @@
+import TextField from '../../src/design-system/components/text-field';
+
 // Semgrep fixture (NEGATIVE): every placeholder below reads DIFFERENT copy
 // than its own field's label, in both key/attribute orders, plus a value
 // shared between both positions through a FUNCTION PARAMETER (never a
@@ -24,12 +26,19 @@ export const buildFieldCopy = (value: string) => ({
   categoryPlaceholder: value,
 });
 
-export const jsxDifferentCopy = <TextField label="Category" placeholder="Select a category" />;
+export const jsxDifferentCopy = (
+  <TextField
+    label="Category"
+    placeholder="Select a category"
+    value=""
+    onChangeText={() => undefined}
+  />
+);
 
 export const jsxDifferentCopySwapped = (
-  <TextField placeholder="Groceries" label="Name" />
+  <TextField placeholder="Groceries" label="Name" value="" onChangeText={() => undefined} />
 );
 
 export const jsxSharedParameter = (value: string) => (
-  <TextField label={value} placeholder={value} />
+  <TextField label={value} placeholder={value} value={value} onChangeText={() => undefined} />
 );

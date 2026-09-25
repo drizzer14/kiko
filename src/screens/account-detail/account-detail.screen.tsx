@@ -26,6 +26,7 @@ import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import { isSyncedHolding } from '../../holdings/deletable';
 import { sumByCurrency } from '../../rates/currency-totals';
+import Divider from '../../design-system/components/divider';
 import { accountKindSymbol } from '../../holdings/entity-symbols';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import { resolveEntityColor } from '../../design-system/entity-tint';
@@ -262,19 +263,19 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
         {isCryptoAccount && account && (
           <>
-            <Box style={styles.divider} />
+            <Divider spacing={2} />
             <CryptoSyncSection account={account} holdings={activeHoldings} />
           </>
         )}
 
         {showActionButton && account && (
           <>
-            <Box style={styles.divider} />
+            <Divider spacing={2} />
             <BankSyncSection account={account} />
           </>
         )}
 
-        <Box style={styles.divider} />
+        <Divider spacing={2} />
 
         <Box gap={3}>
           <Text variant="heading">{t('accountDetail.holdingsHeading')}</Text>

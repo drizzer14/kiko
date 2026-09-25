@@ -39,6 +39,7 @@ import EntityAmountHeader from '../entity-amount-header';
 import { usePriceBook } from '../../prices/use-price-book';
 import Button from '../../design-system/components/button';
 import { formatDate, formatTime } from '../../dates/format';
+import Divider from '../../design-system/components/divider';
 import { groupByDay } from '../../transactions/group-by-day';
 import SymbolIcon from '../../design-system/components/symbol';
 import { convert, type RateTable } from '../../rates/conversion';
@@ -727,7 +728,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         </Box>
       )}
 
-      <Box style={styles.divider} />
+      <Divider spacing={2} />
 
       <Text variant="heading">{t('holdingDetail.transactionsHeading')}</Text>
     </Box>
@@ -917,15 +918,6 @@ const styles = StyleSheet.create((theme) => ({
   // layout itself now lives in the shared `SummaryTable`.
   breakdown: {
     marginTop: theme.spacing(3),
-  },
-  // A hairline rule separating the Value block from the Transactions list — the
-  // same standard hairline treatment the account-detail sections use
-  // (account-detail.styles.ts `divider`), drawn in the theme's separator color
-  // with vertical margin so each section has room to breathe.
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginVertical: theme.spacing(2),
-    backgroundColor: theme.colors.border,
   },
   // The primary line of a transaction row: description on the left, amount on
   // the right, split by space-between.

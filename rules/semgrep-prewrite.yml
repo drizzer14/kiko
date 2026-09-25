@@ -332,3 +332,97 @@ rules:
           - pattern: '<SFSymbolView ... fallbackName={$C ? undefined : $A} ... />'
           - pattern: '<SFSymbolView ... fallbackName={fallbackName} ...></SFSymbolView>'
           - pattern: '<SFSymbolView ... fallbackName={fallbackName} ... />'
+  # kiko-design-system's `Divider` component owns the ONE hairline-rule
+  # style. The pattern anchors on the LITERAL `height` key, never a bare
+  # `$KEY: StyleSheet.hairlineWidth` — a BORDERED field/card
+  # (`borderWidth: StyleSheet.hairlineWidth`) is a stroke around a box, a
+  # different visual from a horizontal rule, and must stay silent (verified
+  # empirically against the five real `borderWidth: StyleSheet.hairlineWidth`
+  # sites in the repo — none matched). `src/design-system/components/divider/**`
+  # is excluded: that is the real implementation, not a copy of it.
+  - id: kiko-no-hand-built-divider
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Hand-built hairline rule. `height: StyleSheet.hairlineWidth` in a style
+      object duplicates the shared `Divider` component — render `<Divider />`
+      (optionally with a `spacing` prop) instead of a bespoke style.
+    metadata:
+      fix: "Render `<Divider />` (optionally with a `spacing` prop) instead of a bespoke `height: StyleSheet.hairlineWidth` style."
+      skill: "kiko-design-system › Component set"
+    paths:
+      exclude:
+        - "src/design-system/components/divider/**"
+    patterns:
+      - pattern: "height: StyleSheet.hairlineWidth"
+  # kiko-design-system's `FieldError` component owns the ONE inline
+  # validation-failure caption (`Text variant="caption" tone="negative"`).
+  # Both attribute orders get their own arm — a JSX attribute order is not
+  # normalized by Semgrep's matcher, the same reason
+  # `kiko-no-placeholder-equal-to-label` spells out both orders for its own
+  # JSX arms. `field-error/**` is excluded (the real implementation);
+  # `field-label/**` is excluded too — its own required-field asterisk
+  # renders in the SAME caption/negative tone (see
+  # `field-label.component.tsx`'s own doc comment), a label decoration, not a
+  # validation-failure message. A `variant="body"` status line (a different
+  # variant) never matches.
+  - id: kiko-no-raw-field-error-text
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Hand-built validation-failure caption. `<Text variant="caption"
+      tone="negative">` duplicates the shared `FieldError` component — render
+      `<FieldError message={...} />` instead.
+    metadata:
+      fix: 'Render `<FieldError message={...} />` instead of a bespoke `Text variant="caption" tone="negative"`.'
+      skill: "kiko-design-system › Component set"
+    paths:
+      exclude:
+        - "src/design-system/components/field-error/**"
+        - "src/design-system/components/field-label/**"
+    patterns:
+      - pattern-either:
+          - pattern: '<Text variant="caption" tone="negative" ...></Text>'
+          - pattern: '<Text tone="negative" variant="caption" ...></Text>'
+  # kiko-design-system's `SelectableRow` component owns the ONE single-select
+  # list row (leading checkmark, optional icon/leadingText, label, optional
+  # description/trailing). A hand-built `Pressable` reproducing its
+  # selection semantics — `accessibilityState={{ selected: $S }}` or
+  # `accessibilityRole="checkbox"` — duplicates it. Excluded:
+  # `selectable-row/**` (the real implementation); `chip-row/**` and
+  # `segmented-control/**` (each its own established selection primitive — a
+  # pill row and a JS `UISegmentedControl` clone, per kiko-design-system's
+  # "Component set" — not a copy of SelectableRow's row layout);
+  # `icon-picker-modal/**` (a square icon-only grid tile with no label at
+  # all — SelectableRow's row layout does not fit). `src/screens/forms/
+  # color-picker/**` (a circular color-swatch grid, no label) and
+  # `src/screens/column-mapping/raw-preview/**` (a multi-column table row
+  # with per-column cell widths) are real, distinct layouts SelectableRow
+  # cannot reproduce, checked against their own component files rather than
+  # forced to fit.
+  - id: kiko-no-hand-built-selectable-row
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Hand-built selectable-row Pressable. A `Pressable` carrying
+      `accessibilityState={{ selected: ... }}` or
+      `accessibilityRole="checkbox"` duplicates the shared `SelectableRow`
+      component — render `<SelectableRow ... />` instead when the row is a
+      labeled single-select list item.
+    metadata:
+      fix: "Render `<SelectableRow ... />` instead of a bespoke selection Pressable, when the row is a labeled single-select list item."
+      skill: "kiko-design-system › Component set"
+    paths:
+      exclude:
+        - "src/design-system/components/selectable-row/**"
+        - "src/design-system/components/chip-row/**"
+        - "src/design-system/components/segmented-control/**"
+        - "src/design-system/components/icon-picker-modal/**"
+        - "src/screens/forms/color-picker/**"
+        - "src/screens/column-mapping/raw-preview/**"
+    patterns:
+      - pattern-either:
+          - pattern: '<Pressable ... accessibilityState={{ selected: $S }} ...></Pressable>'
+          - pattern: '<Pressable ... accessibilityState={{ selected: $S }} ... />'
+          - pattern: '<Pressable ... accessibilityRole="checkbox" ...></Pressable>'
+          - pattern: '<Pressable ... accessibilityRole="checkbox" ... />'

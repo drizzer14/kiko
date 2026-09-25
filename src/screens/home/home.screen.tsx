@@ -28,6 +28,7 @@ import Card from '../../design-system/components/card';
 import Text from '../../design-system/components/text';
 import type { Currency } from '../../currency/currency';
 import { usePriceBook } from '../../prices/use-price-book';
+import Divider from '../../design-system/components/divider';
 import { defaultDateRange } from '../../dates/default-range';
 import { activeHoldings } from '../../rates/active-holdings';
 import MoneyText from '../../design-system/components/money-text';
@@ -510,7 +511,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             divider → filters spacing — splitting the existing card-to-filter band
             evenly around the rule instead of stacking a second, doubled gap. */}
         <Box>
-          <Box style={styles.divider} />
+          <Divider />
           <Box style={styles.filterBar}>
             <TransactionFilterBar
               accounts={accountOptions}

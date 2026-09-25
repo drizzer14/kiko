@@ -1,3 +1,5 @@
+import TextField from '../../src/design-system/components/text-field';
+
 // Semgrep fixture (POSITIVE): kiko-design-system's "Field placeholder and
 // error copy" — a placeholder never repeats its own field's label.
 // `kiko-no-placeholder-equal-to-label` MUST report a finding on each pinned
@@ -19,7 +21,11 @@ export const placeholderBeforeLabel = {
 };
 
 // EXPECT-FINDING
-export const jsxPlaceholderThenLabel = <TextField placeholder="Groceries" label="Groceries" />;
+export const jsxPlaceholderThenLabel = (
+  <TextField placeholder="Groceries" label="Groceries" value="" onChangeText={() => undefined} />
+);
 
 // EXPECT-FINDING
-export const jsxLabelThenPlaceholder = <TextField label="Groceries" placeholder="Groceries" />;
+export const jsxLabelThenPlaceholder = (
+  <TextField label="Groceries" placeholder="Groceries" value="" onChangeText={() => undefined} />
+);

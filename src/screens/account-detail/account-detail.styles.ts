@@ -18,14 +18,6 @@ export const styles = StyleSheet.create((theme) => ({
   breakdown: {
     marginTop: theme.spacing(3),
   },
-  // A hairline rule separating the Balance / Synchronization / Holdings
-  // sections, drawn in the theme's separator color. Vertical margin gives each
-  // section room to breathe rather than crowding the rule against its neighbors.
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginVertical: theme.spacing(2),
-    backgroundColor: theme.colors.border,
-  },
   // The token field's column: grows to fill the row beside the trailing paste
   // icon button, so the shared TextField stretches to the available width.
   tokenFieldColumn: {
