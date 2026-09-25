@@ -36,7 +36,8 @@ dkey=""; fp=""
 if [ -f "$TARGET" ]; then
   dkey="security:$(printf '%s' "$TARGET" | harness_hash)"
   fp="$( { shasum "$TARGET" 2>/dev/null
-          shasum "$ROOT/rules/semgrep-mobile.yml" 2>/dev/null; } | harness_hash )"
+          shasum "$ROOT/rules/semgrep-mobile.yml" 2>/dev/null
+          shasum "$ROOT/rules/semgrep-prewrite.yml" 2>/dev/null; } | harness_hash )"
   if harness_unchanged "$ROOT" "$dkey" "$fp"; then
     exit 0
   fi
@@ -45,6 +46,7 @@ fi
 out="$(semgrep --quiet --error --json \
   --config p/typescript --config p/react --config p/secrets \
   --config "$ROOT/rules/semgrep-mobile.yml" \
+  --config "$ROOT/rules/semgrep-prewrite.yml" \
   --exclude 'fixtures' \
   "$TARGET" 2>/tmp/kiko-security-stderr.$$)"
 semgrep_code=$?
@@ -85,6 +87,7 @@ if [ "${error_count:-0}" -gt 0 ]; then
   readable="$(semgrep --quiet \
     --config p/typescript --config p/react --config p/secrets \
     --config "$ROOT/rules/semgrep-mobile.yml" \
+    --config "$ROOT/rules/semgrep-prewrite.yml" \
     --exclude 'fixtures' \
     "$TARGET" 2>&1)"
   print_block \
@@ -101,6 +104,7 @@ if [ "${warning_count:-0}" -gt 0 ]; then
   readable="$(semgrep --quiet \
     --config p/typescript --config p/react --config p/secrets \
     --config "$ROOT/rules/semgrep-mobile.yml" \
+    --config "$ROOT/rules/semgrep-prewrite.yml" \
     --exclude 'fixtures' \
     "$TARGET" 2>&1)"
   {

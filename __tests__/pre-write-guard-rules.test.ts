@@ -1,0 +1,71 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+
+// Every other pre-write-guard test stubs semgrep entirely (see
+// pre-write-guard.test.ts), so nothing else in the suite proves
+// rules/semgrep-prewrite.yml itself — the file the hook loads by default —
+// actually catches what it claims to. This file runs the REAL semgrep
+// binary against the REAL rules file, feeding it each moved rule's own
+// fixture pair from rules/fixtures/ (targeted at a throwaway
+// src/probe/<rule-id>.ts inside a temp CLAUDE_PROJECT_DIR, never at
+// rules/fixtures/ itself, which the guard's own scope excludes). Skips with
+// a clear failure — never a silent pass — when semgrep is missing, the same
+// convention scripts/checks/security.sh and semgrep-rules.sh use.
+const SCRIPT = join(__dirname, '../scripts/checks/pre-write-guard.sh');
+const FIXTURES = join(__dirname, '../rules/fixtures');
+
+const MOVED_RULE_IDS = [
+  'kiko-no-switch',
+  'kiko-no-nullable-map-ternary',
+  'kiko-no-use-animated-keyboard',
+  'kiko-no-history-id-comment',
+] as const;
+
+function payloadFor(filePath: string, content: string): string {
+  return JSON.stringify({
+    tool_name: 'Write',
+    tool_input: { file_path: filePath, content },
+  });
+}
+
+function runGuard(input: string, projectDirectory: string): SpawnSyncReturns<string> {
+  return spawnSync('bash', [SCRIPT], {
+    input,
+    encoding: 'utf8',
+    env: { ...process.env, CLAUDE_PROJECT_DIR: projectDirectory },
+  });
+}
+
+describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (real semgrep)', () => {
+  it('has semgrep available on PATH', () => {
+    const which = spawnSync('which', ['semgrep'], { encoding: 'utf8' });
+
+    expect(which.status).toBe(0);
+  });
+
+  it.each(MOVED_RULE_IDS)(
+    'denies the %s positive fixture and allows the negative one',
+    (ruleId) => {
+      const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-rules-'));
+      try {
+        const probeDirectory = join(project, 'src', 'probe');
+        mkdirSync(probeDirectory, { recursive: true });
+        const targetFile = join(probeDirectory, `${ruleId}.ts`);
+
+        const badContent = readFileSync(join(FIXTURES, `${ruleId}.bad.ts`), 'utf8');
+        const badResult = runGuard(payloadFor(targetFile, badContent), project);
+        expect(badResult.status).toBe(2);
+        const reason = JSON.parse(badResult.stdout).hookSpecificOutput.permissionDecisionReason;
+        expect(reason).toContain(ruleId);
+
+        const goodContent = readFileSync(join(FIXTURES, `${ruleId}.good.ts`), 'utf8');
+        const goodResult = runGuard(payloadFor(targetFile, goodContent), project);
+        expect(goodResult.status).toBe(0);
+      } finally {
+        rmSync(project, { recursive: true, force: true });
+      }
+    },
+  );
+});

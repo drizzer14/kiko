@@ -52,14 +52,17 @@ done
 if [ "$fixture_count" -eq 0 ]; then
   fail_scanner \
     "The fixture directory holds no fixture files." \
-    "$FIXTURES contains no regular file (dotfiles do not count). Every rule in rules/semgrep-mobile.yml is supposed to have a <rule-id>.bad.<ext> / <rule-id>.good.<ext> pair here."
+    "$FIXTURES contains no regular file (dotfiles do not count). Every rule in rules/semgrep-mobile.yml or rules/semgrep-prewrite.yml is supposed to have a <rule-id>.bad.<ext> / <rule-id>.good.<ext> pair here."
 fi
 
 stderr_file="$(mktemp -t kiko-rules-stderr)" || fail_scanner \
   "Could not create a temporary file for semgrep's stderr." \
   "mktemp failed."
 
-out="$(semgrep --quiet --json --config "$ROOT/rules/semgrep-mobile.yml" "$FIXTURES" 2>"$stderr_file")"
+out="$(semgrep --quiet --json \
+  --config "$ROOT/rules/semgrep-mobile.yml" \
+  --config "$ROOT/rules/semgrep-prewrite.yml" \
+  "$FIXTURES" 2>"$stderr_file")"
 semgrep_code=$?
 stderr_out="$(cat "$stderr_file" 2>/dev/null)"
 rm -f "$stderr_file"
@@ -135,7 +138,7 @@ if [ -n "$report" ]; then
     "A project Semgrep rule no longer behaves as specified against its fixtures." \
     "$report" \
     "A rule that stopped matching still reports success, so the finding it was written for silently comes back. The fixture pair is the rule's own test." \
-    "Fix the rule in rules/semgrep-mobile.yml until its positive fixture matches (including every EXPECT-FINDING line) and its negative fixture does not. Re-run: npm run check:rules" \
+    "Fix the rule in rules/semgrep-mobile.yml or rules/semgrep-prewrite.yml until its positive fixture matches (including every EXPECT-FINDING line) and its negative fixture does not. Re-run: npm run check:rules" \
     "Do not delete or edit a fixture to make the check pass, and do not add nosemgrep. Fix the rule."
   exit 2
 fi
