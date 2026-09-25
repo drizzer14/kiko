@@ -385,6 +385,14 @@ a P0 UI fix round driven by device feedback:
   — `useTargetHoldingOptions` (shared by both statement-import screens)
   now resolves `icon`/`color` onto every `TargetHoldingOption` it
   returns.
+- **`useTargetHoldingOptions` returns `{ options, isLoading }`**, not a
+  bare list (kiko-architecture's useLiveQuery consumer rule: an empty
+  `options` while either its holdings or its accounts query is still on
+  its first load is not "no holdings"). Both call sites
+  (`statement-import.screen.tsx`, `column-mapping.screen.tsx`) forward
+  `isLoading` straight to `TargetHoldingField`'s `disabled` prop, so the
+  picker cannot be opened onto an incomplete list while it is still
+  loading.
 - **Required fields show the red asterisk marker** (`FieldLabel`'s
   `required` prop, forwarded through `ColumnSelectField` and
   `FieldTrigger`) — date, date format, amount/debit/credit column(s),

@@ -224,8 +224,17 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
   actually happens for any current consumer, because a query's key
   only ever changes while at least one of that SAME screen's OTHER
   flags is still loading in that same render (the dependent-query case
-  above), so the latch was dead weight once the flip moved to the
-  right layer (`useLiveQuery` itself, per-key, above).
+  above) — concretely, in holding-detail the ACCOUNT query's own
+  `isLoading` flips back to `true` the instant it re-keys off the
+  just-loaded holding, so `useDataReady`'s overall gate is already
+  not-ready for that render without any latch — so the latch was dead
+  weight once the flip moved to the right layer (`useLiveQuery` itself,
+  per-key, above). A future parameter-keyed query must keep the same
+  contract: keep the previous key's data visible through a later key
+  change and never show the EMPTY state for the new key before its own
+  result lands — the screen's first load per mount is what gates the
+  whole screen from ever showing empty on real data, not a per-key
+  reset in between.
 - `LoadingState` (`src/design-system/components/loading-state/`) is
   the shared "not ready yet" visual: a plain centered native
   `ActivityIndicator`, no text at all — a spinner needs no i18n
@@ -277,16 +286,22 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
   own query is still on its first load, and re-fetching/re-writing the
   whole span on that false-empty read adds to the same app-open DB
   burst this whole rule exists to protect screens from.
-- A rejected query still ends `isLoading` (`use-live-query.ts` sets it
-  `false` on both the success and the error path, verified in
-  `use-live-query.test.ts`'s "clears isLoading when the first query
-  fails" case) and now also LOGS the failure
-  (`console.warn('[useLiveQuery] query failed', sql, error)`, behind a
-  justified `noConsole` OVERRIDE) — previously a rejected query set
-  `error` with no diagnostic anywhere a device log could see, and no
-  screen read `error` at all. So a `useDataReady` gate never spins
-  forever on a genuinely failed query; it just never shows the raw
-  error either (no consumer reads `error` today).
+- A rejected query still ends `isLoading` — `isLoading` derives from
+  whether the CURRENT key has an applied result at all, and the error
+  path marks the key applied (`appliedKey.current = myKey`) exactly
+  like the success path does, verified in `use-live-query.test.ts`'s
+  "clears isLoading when the first query fails" case — and now also
+  LOGS the failure (`console.warn('[useLiveQuery] query failed', sql,
+  error)`, behind a justified `noConsole` OVERRIDE) — previously a
+  rejected query set `error` with no diagnostic anywhere a device log
+  could see, and no screen read `error` at all. So a `useDataReady`
+  gate never spins forever on a genuinely failed query; it just never
+  shows the raw error either (no consumer reads `error` today). A
+  rejection for a KEY THAT JUST CHANGED (the previously applied key
+  differs from this render's) also resets `data` to `[]` — it must not
+  keep showing the OLD key's rows as this key's result; a rejection
+  against the SAME key that was already applied keeps that previous
+  data, matching what a same-key success does.
 
 `usePriceBook()` (`src/prices/use-price-book/`) returns `{ book,
 isLoading }`, not a bare `PriceBook` — every consumer destructures

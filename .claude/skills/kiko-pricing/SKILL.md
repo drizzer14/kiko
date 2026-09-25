@@ -375,7 +375,7 @@ EITHER promise rejects, which would let the enclosing `either(...)`
 call — and, in `useSyncAll`, the single-flight lock around the whole
 fan-out — resolve/release while the OTHER promise keeps running
 orphaned; a pull that then arrives sees the lock already free and
-starts a SECOND fan-out (the production symptom this fixed).
+starts a SECOND fan-out (caught in review, not a shipped production bug).
 `allSettled` never rejects, so a rejected step is swallowed exactly as
 before by the same catch-all `either` — only the release TIMING
 changes, not which failures are silent.
