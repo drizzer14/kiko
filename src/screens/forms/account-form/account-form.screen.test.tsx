@@ -1080,6 +1080,26 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(isKindFieldDisabled(view.getByTestId)).toBe(true);
   });
 
+  it('resolves connectMonobank to false, not a rejection, when ensureAccount throws synchronously', async () => {
+    // Provokes the synchronous throw ensureAccount's name-required branch can
+    // raise (here, a scrollToField layout failure) BEFORE it reaches its own
+    // `return Promise.reject(...)` — proving `accountEnsured` still resolves
+    // false instead of leaving `connectMonobank` a rejected promise.
+    (scrollToField as jest.Mock).mockImplementationOnce(() => {
+      throw new Error('layout not ready');
+    });
+    const view = await renderForm();
+
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
+    await fireEvent.press(view.getByLabelText('monobank-field'));
+
+    await waitFor(() =>
+      expect(view.getByTestId('monobank-connect-result')).toHaveTextContent('false'),
+    );
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
   it('connect then Save updates the same row — never a duplicate account', async () => {
     // Option A: the field's Connect already inserted the row. A later Save must
     // UPDATE that same row (persisting any name edit after connecting), never

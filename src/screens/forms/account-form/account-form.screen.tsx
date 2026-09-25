@@ -260,7 +260,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // exists (creating it on first call), `false` on any failure — a name-missing
   // rejection or a failed insert — so each caller returns its own "could not
   // connect" `false` without repeating the same try/catch three times.
-  const accountEnsured = async (): Promise<boolean> => isRight(await either(() => ensureAccount()));
+  // The thunk must itself be `async`: fnts `either` calls it OUTSIDE the
+  // promise chain, so a plain `() => ensureAccount()` lets a synchronous
+  // throw (e.g. `scrollToField` failing before the name-required reject)
+  // escape `either` entirely instead of becoming a Left.
+  const accountEnsured = async (): Promise<boolean> =>
+    isRight(await either(async () => ensureAccount()));
 
   // The bank field creates the row FIRST (Option A), then stores the validated
   // token to the Keychain keyed by the pre-generated id, then runs the first
