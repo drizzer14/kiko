@@ -197,9 +197,13 @@ Either descriptor's `valueMinor` returns `null` when the holding has no
 holding (not priced, `priced: null`) reads its own `holding:<id>`
 manual-correction series the same "id matters" way `property_item`
 does — `loan.descriptor.ts`'s `loanBreakdown` reads the id through
-`foldMap(maybe(holding.id), ...)`, falling back to the loan's own
-metadata principal (never a lookup on an empty/fabricated id) when
-there is none.
+`foldMap(maybe(holding.id), ...)`, falling back to
+`loanOutstandingMinorAt(meta, '', EMPTY_PRICE_BOOK, now)` (never a
+lookup on the real `book` under an empty/fabricated id) when there is
+none — an empty book, not the bare principal, so the pre-`startDate`
+guard, the amortization schedule and `'none'`'s own "no correction
+found" baseline all still apply to an id-less loan exactly as they do
+for an identified one with no correction found.
 
 **A priced holding with no price point values at its lots' cost basis,
 never 0** — `pricedDescriptor(spec, rest)`

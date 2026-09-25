@@ -616,12 +616,12 @@ describe('holdingValueBreakdown — loan', () => {
 
   // An id-less loan (a synthetic fixture, never a real stored row — see
   // `ValuableHolding`'s own doc comment) cannot resolve a `holding:<id>`
-  // instrument key, so it must not fall back to a bogus lookup on the EMPTY
-  // id: the book below stores a point under exactly that key, and the
-  // correct read ignores it, reading the loan's own metadata principal
-  // instead — the same "no correction found" baseline `loanOutstandingMinorAt`
-  // uses for a real, freshly-taken loan.
-  it('reads its metadata principal for an id-less "none" loan, never a lookup on the empty id', () => {
+  // instrument key, so it reads through an EMPTY price book instead of the
+  // real one: the book below stores a point under exactly that key, and the
+  // correct read ignores it. A 'none' loan with no correction found reads 0
+  // — the same baseline `loanOutstandingMinorAt` gives a real, identified
+  // loan with no correction — not the principal.
+  it('reads 0 for an id-less "none" loan with no correction, never a lookup on the empty id', () => {
     const { id: _id, ...withoutId } = loan({
       schedule: 'none',
       annualRatePct: undefined,
@@ -639,8 +639,37 @@ describe('holdingValueBreakdown — loan', () => {
 
     const b = holdingValueBreakdown(withoutId, loanStart, book);
 
-    expect(b.gross.minorUnits).toBe(-120_000_000);
-    expect(b.net.minorUnits).toBe(-120_000_000);
+    expect(b.gross.minorUnits).toBe(0);
+    expect(b.net.minorUnits).toBe(0);
+  });
+
+  // An id-less annuity loan must still apply the amortization schedule
+  // (never the flat, un-amortized principal): it reads exactly like an
+  // identified loan queried against an empty book (no correction found),
+  // since the id-less path can only ever read through an empty book too.
+  it('applies the amortization schedule for an id-less annuity loan, matching an identified loan with no correction', () => {
+    const sixMonthsIn = local(2020, 6, 15); // loanStart (15 Jan 2020) + 6 months
+    const { id: _id, ...withoutId } = loan();
+
+    const identified = holdingValueBreakdown(loan(), sixMonthsIn, EMPTY_PRICE_BOOK);
+    const idLess = holdingValueBreakdown(withoutId, sixMonthsIn, EMPTY_PRICE_BOOK);
+
+    expect(idLess.gross.minorUnits).toBe(identified.gross.minorUnits);
+    expect(idLess.gross.minorUnits).toBeGreaterThan(-120_000_000);
+    expect(idLess.gross.minorUnits).toBeLessThan(0);
+  });
+
+  // The pre-`startDate` guard must still apply for an id-less loan: reading
+  // through an empty book must never surface the flat, un-amortized
+  // principal for an instant before the loan was even taken out.
+  it('is 0 before the loan start date for an id-less loan too', () => {
+    const dayBeforeStart = local(2020, 0, 14);
+    const { id: _id, ...withoutId } = loan();
+
+    const b = holdingValueBreakdown(withoutId, dayBeforeStart, EMPTY_PRICE_BOOK);
+
+    expect(b.gross.minorUnits).toBe(0);
+    expect(b.net.minorUnits).toBe(0);
   });
 
   // Missing/malformed loan metadata must value the loan at 0, never
