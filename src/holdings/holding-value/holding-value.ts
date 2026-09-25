@@ -10,6 +10,11 @@ import {
 } from '../holding-metadata';
 import { costBasisMinorAt } from '../lots';
 import { taxOnInterestMinor } from '../tax';
+import {
+  flat,
+  makeBreakdown,
+  type HoldingValueBreakdown,
+} from '../holding-descriptor/breakdown-parts';
 import type { HoldingRow } from '../../db/schema';
 import { Money, toMajor } from '../../currency/money';
 import { startOfLocalDay } from '../../dates/local-day';
@@ -31,38 +36,7 @@ export type ValuableHolding = Pick<
   'type' | 'currency' | 'balanceMinorUnits' | 'metadata'
 > & { id?: HoldingRow['id'] };
 
-export type HoldingValueBreakdown = {
-  gross: Money;
-  principalOrCost: Money;
-  interest: Money;
-  tax: Money;
-  net: Money;
-};
-
-const flat = (currency: ValuableHolding['currency'], minorUnits: number): HoldingValueBreakdown => {
-  const money = Money.of(currency, minorUnits);
-  const zero = Money.of(currency, 0);
-  return { gross: money, principalOrCost: money, interest: zero, tax: zero, net: money };
-};
-
-// Assembles a value breakdown from its minor-unit parts: gross = principal +
-// interest, net = gross - tax. Shared by all three deposit branches so the
-// gross/net arithmetic lives in exactly one place.
-const makeBreakdown = (
-  currency: ValuableHolding['currency'],
-  principalMinor: number,
-  interestMinor: number,
-  taxMinor: number,
-): HoldingValueBreakdown => {
-  const grossMinor = principalMinor + interestMinor;
-  return {
-    gross: Money.of(currency, grossMinor),
-    principalOrCost: Money.of(currency, principalMinor),
-    interest: Money.of(currency, interestMinor),
-    tax: Money.of(currency, taxMinor),
-    net: Money.of(currency, grossMinor - taxMinor),
-  };
-};
+export type { HoldingValueBreakdown };
 
 const depositBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreakdown => {
   const meta = asTermDepositMeta(holding.metadata);

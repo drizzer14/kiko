@@ -3,6 +3,7 @@ import type { TFunction } from 'i18next';
 
 import { Money, toMajor } from '../../currency/money';
 import { compareDecimal } from '../../currency/decimal';
+import { makeEntry } from '../holding-descriptor/entry-parts';
 import { bondCouponDates, bondCouponMajor, depositLedger } from '../interest';
 import { holdingValueBreakdown, type ValuableHolding } from '../holding-value';
 import { asBondMeta, asMetalMeta, asTermDepositMeta } from '../holding-metadata';
@@ -21,19 +22,7 @@ export type DerivedEntryKind =
   | 'redemption'
   | 'sale';
 
-// The ledger tone a derived entry reads in: withholding lines are `negative`
-// (red), interest/coupon accruals are `positive` (green), and the principal
-// movements (a deposit contribution, a bond purchase/redemption) stay `neutral`
-// so only genuine gains and taxes carry color. Classified by KIND, not by the
-// sign of the amount, so an entry always reads the same regardless of sign.
 export type EntryTone = 'positive' | 'negative' | 'neutral';
-
-const toneForKind = (kind: DerivedEntryKind): EntryTone =>
-  match(kind)
-    .with('income-tax', 'military-levy', 'tax', (): EntryTone => 'negative')
-    .with('accrual', 'interest', 'capitalization', 'coupon', (): EntryTone => 'positive')
-    .with('contribution', 'purchase', 'redemption', 'sale', (): EntryTone => 'neutral')
-    .exhaustive();
 
 export type DerivedEntry = {
   id: string;
@@ -50,25 +39,6 @@ export type DerivedEntry = {
 };
 
 type IdentifiedHolding = ValuableHolding & { id: string };
-
-const makeEntry = (
-  holdingId: string,
-  kind: DerivedEntryKind,
-  index: number,
-  time: number,
-  amountMinorUnits: number,
-  label: string,
-  now: number,
-): DerivedEntry => ({
-  id: `derived:${holdingId}:${kind}:${index}`,
-  time,
-  amountMinorUnits,
-  label,
-  kind,
-  tone: toneForKind(kind),
-  isFuture: time > now,
-  derived: true,
-});
 
 // The opening deposit and each top-up as contribution entries (opening first,
 // the rest labelled "Top-up").

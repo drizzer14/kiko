@@ -7,7 +7,7 @@ import type { HoldingType } from '../holding-type';
 // type is a compile error here until this mapping is updated. This is the ONE
 // source of truth for both `recordExchange`'s dispatch and the form's
 // destination filter, so the two can never disagree on what is eligible.
-type ExchangeReceivePath = 'plain' | 'contribution' | 'excluded';
+export type ExchangeReceivePath = 'plain' | 'contribution' | 'excluded';
 
 export const exchangeReceivePath = (type: HoldingType): ExchangeReceivePath =>
   match(type)
