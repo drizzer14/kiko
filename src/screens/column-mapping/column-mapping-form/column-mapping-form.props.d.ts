@@ -1,0 +1,121 @@
+import type { RefObject } from 'react';
+
+import type {
+  TableCell,
+  DateFormatId,
+  TableDelimiter,
+  ColumnMappingRowError,
+} from '../../../statement-import/column-mapping';
+import type { Currency } from '../../../currency/currency';
+import type { AmountMode } from '../amount-fields/amount-fields.props';
+import type { CurrencyMode } from '../currency-fields/currency-fields.props';
+import type { FieldInstance } from '../../forms/scroll-to-field/scroll-to-field';
+import type { PreviewStats } from '../../statement-import/preview-stats/preview-stats';
+import type { ColumnSelectFieldOption } from '../column-select-field/column-select-field.props';
+import type { useTargetHoldingOptions } from '../../statement-import/use-target-holding-options/use-target-holding-options';
+
+export type Encoding = 'utf-8' | 'windows-1251';
+
+// The wrapper refs `firstInvalidColumnMappingFieldRef` below picks a scroll
+// target from — grouped into its own type so that function's own signature
+// reads as one param per concern, mirroring `holding-form.screen.tsx`'s own
+// `ValidatedFieldRefs`. `amountGroupFieldRef`/`currencyGroupFieldRef` each
+// wrap their WHOLE field group (single-vs-debit/credit, column-vs-fixed) —
+// there are up to 3 fields inside one group depending on the picked mode, and
+// landing the scroll on the group reads just as well as a fourth ref per
+// sub-field.
+export type ColumnMappingFieldRefs = {
+  dateColumnFieldRef: RefObject<FieldInstance | null>;
+  dateFormatFieldRef: RefObject<FieldInstance | null>;
+  amountGroupFieldRef: RefObject<FieldInstance | null>;
+  currencyGroupFieldRef: RefObject<FieldInstance | null>;
+  descriptionColumnFieldRef: RefObject<FieldInstance | null>;
+  // Wraps the Result block itself — the scroll target whenever zero rows
+  // survived (`noRowsResolved`, see `ColumnMappingResolutionState`'s own doc
+  // comment), whether the apply succeeded with an empty result or threw on
+  // a genuinely empty file — no single INPUT field is at fault either way.
+  resultFieldRef: RefObject<FieldInstance | null>;
+  targetHoldingFieldRef: RefObject<FieldInstance | null>;
+};
+
+// Every field-level Import-press validation message — module-level and
+// pure, the same reason `firstInvalidFieldRef` in
+// `holding-form.screen.tsx` is, so this branching stays out of the screen
+// component's own cognitive-complexity budget. Computed FRESH on every
+// render AND read directly inside `handleImport` (never gated on
+// `attemptedImport` itself, mirroring `holding-form.screen.tsx`'s own
+// `termDepositReasonKey()`/`bondReasonKey()`) — the screen component decides
+// whether to DISPLAY these messages (`attemptedImport ? errors :
+// NO_COLUMN_MAPPING_ERRORS`), matching the shared "validate on press" form
+// model (`kiko-code-style`).
+export type ColumnMappingFieldErrors = {
+  dateColumnError: string | undefined;
+  dateFormatError: string | undefined;
+  amountColumnError: string | undefined;
+  debitColumnError: string | undefined;
+  creditColumnError: string | undefined;
+  currencyColumnError: string | undefined;
+  descriptionColumnError: string | undefined;
+  // Every required field IS mapped, but literally zero rows resolved to a
+  // transaction — whether every row failed its own per-row check, the apply
+  // succeeded with nothing to show, or the apply threw on a genuinely empty
+  // file — no single INPUT field is at fault, so this is the Result block's
+  // own error instead of one of the fields above.
+  noRowsResolvedError: string | undefined;
+  targetHoldingError: string | undefined;
+};
+
+export type ColumnMappingFormProps = {
+  isXlsx: boolean;
+  savedApplied: boolean;
+  rows: TableCell[][];
+  headerRowIndex: number | undefined;
+  onSelectHeaderRow: (rowIndex: number) => void;
+  encoding: Encoding;
+  onEncodingChange: (encoding: Encoding) => void;
+  effectiveDelimiter: TableDelimiter | undefined;
+  onDelimiterChange: (delimiter: TableDelimiter) => void;
+  decimalSeparator: ',' | '.';
+  onDecimalSeparatorChange: (separator: ',' | '.') => void;
+  columnOptions: ColumnSelectFieldOption<number>[];
+  dateColumn: number | undefined;
+  onDateColumnChange: (value: number | undefined) => void;
+  dateFormatOptions: ColumnSelectFieldOption<DateFormatId>[];
+  dateFormat: DateFormatId | undefined;
+  onDateFormatChange: (value: DateFormatId | undefined) => void;
+  amountMode: AmountMode;
+  onAmountModeChange: (mode: AmountMode) => void;
+  amountColumn: number | undefined;
+  onAmountColumnChange: (value: number | undefined) => void;
+  debitColumn: number | undefined;
+  onDebitColumnChange: (value: number | undefined) => void;
+  creditColumn: number | undefined;
+  onCreditColumnChange: (value: number | undefined) => void;
+  currencyMode: CurrencyMode;
+  onCurrencyModeChange: (mode: CurrencyMode) => void;
+  currencyColumn: number | undefined;
+  onCurrencyColumnChange: (value: number | undefined) => void;
+  fixedCurrency: Currency;
+  onFixedCurrencyChange: (currency: Currency) => void;
+  descriptionColumn: number | undefined;
+  onDescriptionColumnChange: (value: number | undefined) => void;
+  counterpartyColumn: number | undefined;
+  onCounterpartyColumnChange: (value: number | undefined) => void;
+  balanceColumn: number | undefined;
+  onBalanceColumnChange: (value: number | undefined) => void;
+  stats: PreviewStats | undefined;
+  rowErrors: ColumnMappingRowError[];
+  // Forwarded to `MappingResult` — see that component's own `stats` doc
+  // comment for why this gates the generic incomplete hint.
+  mappingIncomplete: boolean;
+  holdingOptions: ReturnType<typeof useTargetHoldingOptions>;
+  accountId: string;
+  selectedHoldingId: string | undefined;
+  onSelectHolding: (holdingId: string) => void;
+  onCreateNewHolding: () => void;
+  // Import-press field-level errors — every field is `undefined` before the
+  // first press, hence `Partial` rather than `ColumnMappingFieldErrors`
+  // itself (see `NO_COLUMN_MAPPING_ERRORS`'s own doc comment).
+  validation: Partial<ColumnMappingFieldErrors>;
+  fieldRefs: ColumnMappingFieldRefs;
+};

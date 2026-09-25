@@ -355,8 +355,9 @@ a P0 UI fix round driven by device feedback:
   parent's `gap`, same as CSS flexbox — actually produced 24pt below most
   headings, 12pt below the raw-preview one (no `gap` sibling), and 20pt
   below `MappingResult`'s "incomplete" heading (`gap={2}`), not the
-  uniform spacing the comment claimed; `column-mapping.styles.ts` no
-  longer has a `sectionHeading` style at all. `MappingResult` renders its
+  uniform spacing the comment claimed; `column-mapping-form.styles.ts`
+  (`column-mapping-form/`) no longer has a `sectionHeading` style at
+  all. `MappingResult` renders its
   own `columnMapping.result` heading UNCONDITIONALLY, in BOTH the
   `stats === undefined` and `stats !== undefined` branches, passing NO
   `title` to `SummaryTable` in the complete branch — before this fix the

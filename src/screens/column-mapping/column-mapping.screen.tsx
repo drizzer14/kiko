@@ -5,7 +5,7 @@ import type { FC, RefObject } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useRef, useState } from 'react';
-import { View, Alert, type ScrollViewInstance } from 'react-native';
+import { Alert, type ScrollViewInstance } from 'react-native';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -47,30 +47,25 @@ import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import { accountsRepo } from '../../accounts/accounts.repo';
 import { settingsRepo } from '../../settings/settings.repo';
-import Divider from '../../design-system/components/divider';
-import ChipRow from '../../design-system/components/chip-row';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { supportedFormatNames } from '../../statement-import/registry';
 import ImportResultSheet from '../statement-import/import-result-sheet';
-import TargetHoldingField from '../statement-import/target-holding-field';
 import type { SpreadsheetCellValue, StatementFormatInput } from '../../statement-import/parser';
 import { previewStats, type PreviewStats } from '../statement-import/preview-stats/preview-stats';
 import { importParsedStatement, type ImportResult } from '../../statement-import/import-statement';
 import { useTargetHoldingOptions } from '../statement-import/use-target-holding-options/use-target-holding-options';
 
-import RawPreview from './raw-preview';
-import AmountFields from './amount-fields';
-import MappingResult from './mapping-result';
-import CurrencyFields from './currency-fields';
-import { styles } from './column-mapping.styles';
-import ColumnSelectField from './column-select-field';
+import ColumnMappingForm from './column-mapping-form';
+import type {
+  Encoding,
+  ColumnMappingFieldRefs,
+  ColumnMappingFieldErrors,
+} from './column-mapping-form/column-mapping-form.props';
 import type { AmountMode } from './amount-fields/amount-fields.props';
 import type { CurrencyMode } from './currency-fields/currency-fields.props';
 import type { ColumnSelectFieldOption } from './column-select-field/column-select-field.props';
 
 type ColumnMappingScreenProps = NativeStackScreenProps<AccountsStackParamList, 'ColumnMapping'>;
-
-type Encoding = 'utf-8' | 'windows-1251';
 
 // The file-read pipeline's own state — kept separate from the derived
 // mapping/preview below, mirroring `statement-import.screen.tsx`'s own
@@ -178,55 +173,6 @@ const buildColumnMapping = (fields: MappingFormFields): ColumnMapping | undefine
     counterpartyColumn: fields.counterpartyColumn,
     balanceColumn: fields.balanceColumn,
   };
-};
-
-// The wrapper refs `firstInvalidColumnMappingFieldRef` below picks a scroll
-// target from — grouped into its own type so that function's own signature
-// reads as one param per concern, mirroring `holding-form.screen.tsx`'s own
-// `ValidatedFieldRefs`. `amountGroupFieldRef`/`currencyGroupFieldRef` each
-// wrap their WHOLE field group (single-vs-debit/credit, column-vs-fixed) —
-// there are up to 3 fields inside one group depending on the picked mode, and
-// landing the scroll on the group reads just as well as a fourth ref per
-// sub-field.
-type ColumnMappingFieldRefs = {
-  dateColumnFieldRef: RefObject<FieldInstance | null>;
-  dateFormatFieldRef: RefObject<FieldInstance | null>;
-  amountGroupFieldRef: RefObject<FieldInstance | null>;
-  currencyGroupFieldRef: RefObject<FieldInstance | null>;
-  descriptionColumnFieldRef: RefObject<FieldInstance | null>;
-  // Wraps the Result block itself — the scroll target whenever zero rows
-  // survived (`noRowsResolved`, see `ColumnMappingResolutionState`'s own doc
-  // comment), whether the apply succeeded with an empty result or threw on
-  // a genuinely empty file — no single INPUT field is at fault either way.
-  resultFieldRef: RefObject<FieldInstance | null>;
-  targetHoldingFieldRef: RefObject<FieldInstance | null>;
-};
-
-// Every field-level Import-press validation message — module-level and
-// pure, the same reason `firstInvalidFieldRef` in
-// `holding-form.screen.tsx` is, so this branching stays out of the screen
-// component's own cognitive-complexity budget. Computed FRESH on every
-// render AND read directly inside `handleImport` (never gated on
-// `attemptedImport` itself, mirroring `holding-form.screen.tsx`'s own
-// `termDepositReasonKey()`/`bondReasonKey()`) — the screen component decides
-// whether to DISPLAY these messages (`attemptedImport ? errors :
-// NO_COLUMN_MAPPING_ERRORS`), matching the shared "validate on press" form
-// model (`kiko-code-style`).
-type ColumnMappingFieldErrors = {
-  dateColumnError: string | undefined;
-  dateFormatError: string | undefined;
-  amountColumnError: string | undefined;
-  debitColumnError: string | undefined;
-  creditColumnError: string | undefined;
-  currencyColumnError: string | undefined;
-  descriptionColumnError: string | undefined;
-  // Every required field IS mapped, but literally zero rows resolved to a
-  // transaction — whether every row failed its own per-row check, the apply
-  // succeeded with nothing to show, or the apply threw on a genuinely empty
-  // file — no single INPUT field is at fault, so this is the Result block's
-  // own error instead of one of the fields above.
-  noRowsResolvedError: string | undefined;
-  targetHoldingError: string | undefined;
 };
 
 // Every field pre-press, all unset — `Partial` + `{}` rather than 8 hand-
@@ -445,15 +391,6 @@ const dateFormatOptions: ColumnSelectFieldOption<DateFormatId>[] = dateFormatIds
   label: dateFormatExamples[id],
 }));
 
-// Literal technical labels, not translated — the same treatment the
-// delimiter pills give a bare "," / ";" (only "Tab", which has no visible
-// symbol, gets a translated label).
-const encodingLabel = (encoding: Encoding): string =>
-  encoding === 'utf-8' ? 'UTF-8' : 'Windows-1251';
-
-const delimiterLabel = (translate: TFunction, delimiter: TableDelimiter): string =>
-  delimiter === '\t' ? translate('columnMapping.delimiterTab') : delimiter;
-
 // The literal set of every key `loadStateMessageKey` can return, so `t()`
 // still resolves a real, typed catalogue key (never a widened `string`) at
 // the one call site that reads this.
@@ -554,345 +491,6 @@ const formStateFromSavedMapping = (mapping: SavedColumnMapping): SavedFormState 
     counterpartyColumn: mapping.counterpartyColumn,
     balanceColumn: mapping.balanceColumn,
   };
-};
-
-// Every prop the `ready`-state form needs — a module-scope component
-// (mirroring `statement-import.screen.tsx`'s own `StatementPreviewBlock`) so
-// this large, mostly-static form tree doesn't count against the screen
-// component's own cognitive-complexity budget. Groups sections with the
-// shared `Divider` (device-feedback-round-F1, item 8): encoding/separators,
-// dates, amounts/currency, description/counterparty (moved to the bottom,
-// item 10), then the result.
-type ColumnMappingFormProps = {
-  isXlsx: boolean;
-  savedApplied: boolean;
-  rows: TableCell[][];
-  headerRowIndex: number | undefined;
-  onSelectHeaderRow: (rowIndex: number) => void;
-  encoding: Encoding;
-  onEncodingChange: (encoding: Encoding) => void;
-  effectiveDelimiter: TableDelimiter | undefined;
-  onDelimiterChange: (delimiter: TableDelimiter) => void;
-  decimalSeparator: ',' | '.';
-  onDecimalSeparatorChange: (separator: ',' | '.') => void;
-  columnOptions: ColumnSelectFieldOption<number>[];
-  dateColumn: number | undefined;
-  onDateColumnChange: (value: number | undefined) => void;
-  dateFormatOptions: ColumnSelectFieldOption<DateFormatId>[];
-  dateFormat: DateFormatId | undefined;
-  onDateFormatChange: (value: DateFormatId | undefined) => void;
-  amountMode: AmountMode;
-  onAmountModeChange: (mode: AmountMode) => void;
-  amountColumn: number | undefined;
-  onAmountColumnChange: (value: number | undefined) => void;
-  debitColumn: number | undefined;
-  onDebitColumnChange: (value: number | undefined) => void;
-  creditColumn: number | undefined;
-  onCreditColumnChange: (value: number | undefined) => void;
-  currencyMode: CurrencyMode;
-  onCurrencyModeChange: (mode: CurrencyMode) => void;
-  currencyColumn: number | undefined;
-  onCurrencyColumnChange: (value: number | undefined) => void;
-  fixedCurrency: Currency;
-  onFixedCurrencyChange: (currency: Currency) => void;
-  descriptionColumn: number | undefined;
-  onDescriptionColumnChange: (value: number | undefined) => void;
-  counterpartyColumn: number | undefined;
-  onCounterpartyColumnChange: (value: number | undefined) => void;
-  balanceColumn: number | undefined;
-  onBalanceColumnChange: (value: number | undefined) => void;
-  stats: PreviewStats | undefined;
-  rowErrors: ColumnMappingRowError[];
-  // Forwarded to `MappingResult` — see that component's own `stats` doc
-  // comment for why this gates the generic incomplete hint.
-  mappingIncomplete: boolean;
-  holdingOptions: ReturnType<typeof useTargetHoldingOptions>;
-  accountId: string;
-  selectedHoldingId: string | undefined;
-  onSelectHolding: (holdingId: string) => void;
-  onCreateNewHolding: () => void;
-  // Import-press field-level errors — every field is `undefined` before the
-  // first press, hence `Partial` rather than `ColumnMappingFieldErrors`
-  // itself (see `NO_COLUMN_MAPPING_ERRORS`'s own doc comment).
-  validation: Partial<ColumnMappingFieldErrors>;
-  fieldRefs: ColumnMappingFieldRefs;
-};
-
-const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
-  isXlsx,
-  savedApplied,
-  rows,
-  headerRowIndex,
-  onSelectHeaderRow,
-  encoding,
-  onEncodingChange,
-  effectiveDelimiter,
-  onDelimiterChange,
-  decimalSeparator,
-  onDecimalSeparatorChange,
-  columnOptions,
-  dateColumn,
-  onDateColumnChange,
-  dateFormatOptions,
-  dateFormat,
-  onDateFormatChange,
-  amountMode,
-  onAmountModeChange,
-  amountColumn,
-  onAmountColumnChange,
-  debitColumn,
-  onDebitColumnChange,
-  creditColumn,
-  onCreditColumnChange,
-  currencyMode,
-  onCurrencyModeChange,
-  currencyColumn,
-  onCurrencyColumnChange,
-  fixedCurrency,
-  onFixedCurrencyChange,
-  descriptionColumn,
-  onDescriptionColumnChange,
-  counterpartyColumn,
-  onCounterpartyColumnChange,
-  balanceColumn,
-  onBalanceColumnChange,
-  stats,
-  rowErrors,
-  mappingIncomplete,
-  holdingOptions,
-  accountId,
-  selectedHoldingId,
-  onSelectHolding,
-  onCreateNewHolding,
-  validation,
-  fieldRefs,
-}) => {
-  const { t } = useTranslation();
-  const encodingLabels: Partial<Record<Encoding, string>> = {
-    'utf-8': encodingLabel('utf-8'),
-    'windows-1251': encodingLabel('windows-1251'),
-  };
-  const delimiterLabels: Partial<Record<TableDelimiter, string>> = {
-    ',': ',',
-    ';': ';',
-    '\t': delimiterLabel(t, '\t'),
-  };
-
-  return (
-    <Box gap={3}>
-      {savedApplied && (
-        <Text variant="body" tone="textSecondary">
-          {t('columnMapping.savedApplied')}
-        </Text>
-      )}
-
-      <Box gap={3}>
-        {/* A stronger, more visible hint (device-feedback-round-F1 item 12) —
-            `heading` instead of the former muted `body`/`textSecondary`
-            caption; this line doubles as the raw-preview section's own
-            heading. */}
-        <Text variant="heading">{t('columnMapping.rawPreview')}</Text>
-
-        <RawPreview
-          rows={rows}
-          headerRowIndex={headerRowIndex}
-          onSelectHeaderRow={onSelectHeaderRow}
-        />
-      </Box>
-
-      <Divider testID="column-mapping-divider-encoding" />
-
-      {/* Group (a): encoding/separators. The tabs-vs-chips rule: none of
-          encoding, delimiter, or decimal separator changes which fields the
-          form shows — picking a value just re-parses the same preview with
-          the same fields — so all three are `ChipRow`, never
-          `SegmentedControl` (that control is reserved for a choice that
-          swaps the visible form, e.g. the amount/currency mode selectors
-          below). */}
-      <Box gap={3}>
-        <Text variant="heading">{t('columnMapping.sectionFileFormat')}</Text>
-
-        {!isXlsx && (
-          <>
-            <Box testID="column-mapping-encoding">
-              <ChipRow<Encoding>
-                label={t('columnMapping.encoding')}
-                options={['utf-8', 'windows-1251']}
-                selected={encoding}
-                onSelect={onEncodingChange}
-                labels={encodingLabels}
-              />
-            </Box>
-
-            <Box testID="column-mapping-delimiter">
-              <ChipRow<TableDelimiter>
-                label={t('columnMapping.delimiter')}
-                options={[',', ';', '\t']}
-                selected={effectiveDelimiter ?? ','}
-                onSelect={onDelimiterChange}
-                labels={delimiterLabels}
-              />
-            </Box>
-          </>
-        )}
-
-        <Box testID="column-mapping-decimal-separator">
-          <ChipRow<',' | '.'>
-            label={t('columnMapping.decimalSeparator')}
-            options={[',', '.']}
-            selected={decimalSeparator}
-            onSelect={onDecimalSeparatorChange}
-          />
-        </Box>
-      </Box>
-
-      <Divider testID="column-mapping-divider-dates" />
-
-      {/* Group (b): dates. */}
-      <Box gap={3} style={styles.fieldGroup}>
-        <Text variant="heading">{t('columnMapping.sectionDates')}</Text>
-
-        <View ref={fieldRefs.dateColumnFieldRef}>
-          <ColumnSelectField
-            label={t('columnMapping.dateColumn')}
-            options={columnOptions}
-            selected={dateColumn}
-            onSelect={onDateColumnChange}
-            required
-            placeholder={t('columnMapping.dateColumnPlaceholder')}
-            error={validation.dateColumnError}
-            testID="column-mapping-date-column"
-          />
-        </View>
-
-        <View ref={fieldRefs.dateFormatFieldRef}>
-          <ColumnSelectField
-            label={t('columnMapping.dateFormat')}
-            options={dateFormatOptions}
-            selected={dateFormat}
-            onSelect={onDateFormatChange}
-            required
-            placeholder={t('columnMapping.dateFormatPlaceholder')}
-            error={validation.dateFormatError}
-            testID="column-mapping-date-format"
-          />
-        </View>
-      </Box>
-
-      <Divider testID="column-mapping-divider-amounts" />
-
-      {/* Group (c): amounts/currency. */}
-      <View ref={fieldRefs.amountGroupFieldRef}>
-        <Box gap={3} testID="column-mapping-amount-mode" style={styles.fieldGroup}>
-          <Text variant="heading">{t('columnMapping.sectionAmount')}</Text>
-
-          <AmountFields
-            columnOptions={columnOptions}
-            mode={amountMode}
-            onModeChange={onAmountModeChange}
-            amountColumn={amountColumn}
-            onAmountColumnChange={onAmountColumnChange}
-            debitColumn={debitColumn}
-            onDebitColumnChange={onDebitColumnChange}
-            creditColumn={creditColumn}
-            onCreditColumnChange={onCreditColumnChange}
-            amountColumnError={validation.amountColumnError}
-            debitColumnError={validation.debitColumnError}
-            creditColumnError={validation.creditColumnError}
-          />
-        </Box>
-      </View>
-
-      <View ref={fieldRefs.currencyGroupFieldRef}>
-        <Box gap={3} testID="column-mapping-currency-mode" style={styles.fieldGroup}>
-          <Text variant="heading">{t('columnMapping.sectionCurrency')}</Text>
-
-          <CurrencyFields
-            columnOptions={columnOptions}
-            mode={currencyMode}
-            onModeChange={onCurrencyModeChange}
-            currencyColumn={currencyColumn}
-            onCurrencyColumnChange={onCurrencyColumnChange}
-            fixedCurrency={fixedCurrency}
-            onFixedCurrencyChange={onFixedCurrencyChange}
-            currencyColumnError={validation.currencyColumnError}
-          />
-        </Box>
-      </View>
-
-      <Divider testID="column-mapping-divider-description" />
-
-      {/* Group (d): description/counterparty/balance — moved to the bottom,
-          in their own divided group (device-feedback-round-F1 item 10),
-          now sharing ONE section heading (F3 item 14). */}
-      <Box gap={3} style={styles.fieldGroup}>
-        <Text variant="heading">{t('columnMapping.sectionDetails')}</Text>
-
-        <View ref={fieldRefs.descriptionColumnFieldRef}>
-          <ColumnSelectField
-            label={t('columnMapping.descriptionColumn')}
-            options={columnOptions}
-            selected={descriptionColumn}
-            onSelect={onDescriptionColumnChange}
-            required
-            placeholder={t('columnMapping.descriptionColumnPlaceholder')}
-            error={validation.descriptionColumnError}
-            testID="column-mapping-description-column"
-          />
-        </View>
-
-        <ColumnSelectField
-          label={t('columnMapping.counterpartyColumn')}
-          options={columnOptions}
-          selected={counterpartyColumn}
-          onSelect={onCounterpartyColumnChange}
-          allowNotUsed
-          placeholder={t('columnMapping.counterpartyColumnPlaceholder')}
-          testID="column-mapping-counterparty-column"
-        />
-
-        <ColumnSelectField
-          label={t('columnMapping.balanceColumn')}
-          options={columnOptions}
-          selected={balanceColumn}
-          onSelect={onBalanceColumnChange}
-          allowNotUsed
-          placeholder={t('columnMapping.balanceColumnPlaceholder')}
-          testID="column-mapping-balance-column"
-        />
-      </Box>
-
-      <Divider testID="column-mapping-divider-result" />
-
-      {/* Group (e): result — MappingResult renders its OWN heading
-          (`columnMapping.result`) in both its complete and incomplete
-          states, at the same gap-driven spacing every other section uses. */}
-      <View ref={fieldRefs.resultFieldRef}>
-        <MappingResult
-          stats={stats}
-          rowErrors={rowErrors}
-          holdingName={holdingOptions.find((holding) => holding.id === selectedHoldingId)?.name}
-          noRowsResolvedError={validation.noRowsResolvedError}
-          mappingIncomplete={mappingIncomplete}
-        />
-      </View>
-
-      <View ref={fieldRefs.targetHoldingFieldRef}>
-        <TargetHoldingField
-          label={t('statementImport.chooseHolding')}
-          required
-          holdings={holdingOptions}
-          accountId={accountId}
-          selectedId={selectedHoldingId}
-          onSelect={onSelectHolding}
-          onCreateNew={onCreateNewHolding}
-          placeholder={t('statementImport.chooseHoldingPlaceholder')}
-          error={validation.targetHoldingError}
-          testID="target-holding-field"
-        />
-      </View>
-    </Box>
-  );
 };
 
 /**
