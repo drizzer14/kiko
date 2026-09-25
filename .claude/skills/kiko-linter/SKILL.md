@@ -216,6 +216,13 @@ A Semgrep rule that mechanizes a finding needs a fixture pair, run by
   findings on a trivial `true ? 1 : 2` fixture; the quoted form gave 1.
   Quote every ternary/object/type-annotation pattern string from the
   start, rather than debugging a mysteriously-empty result set.
+- A bare `switch ($X) { ... }` pattern matches NO real `switch` statement
+  — a switch's body is a case-clause list, not a generic statement block,
+  so the block-ellipsis operator does not generalize to it the way it
+  does for a function/if body. Anchor on a real clause instead:
+  `switch ($X) { case $C: ... }` (`kiko-no-switch`) — verified
+  empirically: the bare form gave 0 findings against a real `switch`
+  fixture with three `case` arms; the clause-anchored form matched.
 
 ## Class A vs Class B
 
@@ -409,34 +416,50 @@ a repo-sweep tool, not part of the check-wrapper contract (see "The
 wrapper contract" above — a checker only checks) — it is invoked by
 hand, never from `import-order.sh`.
 
-## `kiko-no-switch` — a plain keyword-regex ban, no AST pattern needed
+## `kiko-no-switch` — an AST `switch` pattern, not a keyword regex
 
 `kiko-no-switch` (`rules/semgrep-mobile.yml`, Class A) mechanizes
 kiko-code-style's ts-pattern section: `switch` is banned outright, no
-exception — the prior per-file exception for `interest.ts`/
-`holding-value.ts` was withdrawn by user decision (R2, the behavior-free
-ts-pattern refactor) and every remaining `switch` in the tree was
-converted to `match(...).exhaustive()`/`.otherwise()`. Like
-`kiko-repo-no-class`'s `\bclass\s+\w`, this uses `pattern-regex`
-(`\bswitch\s*\(`) rather than an AST `switch ($X) { ... }` pattern — a
-bare keyword-plus-paren match is simpler and just as precise for a
-keyword ban, and this project already has that precedent. Fixture pair:
-`rules/fixtures/kiko-no-switch.{bad,good}.ts`.
+exception. It matches the AST shape of a real `switch` statement rather
+than a bare keyword-plus-paren regex — unlike `kiko-repo-no-class`'s
+`\bclass\s+\w`, a keyword regex over `switch` has real false-positive
+shapes worth avoiding: a comment or string/template literal that merely
+*mentions* `switch(`, and a `.switch(...)` method call (an
+RxJS-observable-style chain, for example) — none of these are a `switch`
+STATEMENT, and the AST pattern naturally ignores all of them. A bare
+`switch ($X) { ... }` pattern does NOT match a switch's case-clause list
+(verified empirically — 0 findings against the bad fixture's real
+`switch`), so the rule is a `pattern-either` of two arms, each anchored
+on a real clause label: `switch ($X) { case $C: ... }` and
+`switch ($X) { default: ... }`. The `case`-anchored arm draws one finding
+per case label in a given switch (ellipsis-after-metavariable matches
+once per possible starting clause) — harmless duplication for a keyword
+ban, and the fixture's own `EXPECT-FINDING` line only needs at least one
+match to start there. Fixture pair:
+`rules/fixtures/kiko-no-switch.{bad,good}.ts`, the `.good.ts` one
+covering all four false-positive shapes plus the genuine
+`match(...).exhaustive()` conversion.
 
-A closed-set mapping over a real, externally/persisted-sourced type
-(a DB row's `HoldingType`, for example) needs its catch-all arm to stay
-`.otherwise()`, not `.exhaustive()`, whenever the ORIGINAL `switch`'s
-`default` (or an if-chain's trailing, unconditional statement) tolerated
-ANY unmatched runtime value — not just the few other literal members
-named in the other arms. A fully literal `.exhaustive()` there silently
-turns "tolerate a stale/malformed value" into "crash on it", which is a
-real behavior change, not a mechanical rewrite — caught during R2 by two
-real Jest suites (`accounts.screen.test.tsx`, `home.screen.test.tsx`)
-whose holding fixtures omit `type` entirely, relying on exactly that
-tolerance. This risk is specific to a type read off persisted/external
-data; a purely LOCAL type this codebase's own code constructs (a
-`useState` literal, a pure helper's own return value, a caller-supplied
-op) has no such stale-data path and stays genuinely `.exhaustive()`.
+A closed-set mapping over a discriminant read from storage or network —
+a DB row's `HoldingType`, a settings-JSON field's own `mode`/`kind` —
+needs its catch-all arm to stay `.otherwise()`, not `.exhaustive()`,
+whenever the ORIGINAL `switch`/if-chain/ternary-chain tolerated ANY
+unmatched runtime value (a trailing `default`, an unconditional trailing
+statement, or an implicit "anything else" ternary/if-else branch) — not
+just the few other literal members named in the other arms. A fully
+literal `.exhaustive()` there silently turns "tolerate a stale or
+malformed value" into "crash on it", which is a real behavior change,
+not a mechanical rewrite — caught by real Jest suites whose fixtures
+either omit the discriminant field entirely or deliberately store an
+unrecognized one, relying on exactly that tolerance (`holdingValueBreakdown`'s
+`HoldingType` dispatch — two suites with `type`-less holding fixtures;
+`resolveTrendFilter`'s stored `trend_filter` JSON `mode`; the
+column-mapping screen's stored `statement_mappings` JSON `amount`/
+`currency` `mode`). This risk is specific to a discriminant read off
+persisted/external data; a purely LOCAL type this codebase's own code
+constructs (a `useState` literal, a pure helper's own return value, a
+caller-supplied op) has no such stale-data path and stays genuinely
+`.exhaustive()`.
 
 ## Full words in identifiers — exact-path exemption allowlist, not a suppression comment
 

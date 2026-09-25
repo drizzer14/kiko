@@ -217,15 +217,13 @@ rules:
       - pattern-either:
           - pattern: const pipe = $F
           - pattern: const compose = $F
-  # kiko-code-style's ts-pattern section: `switch` is banned with NO exception
-  # any more (the R2 refactor withdrew the prior per-file switch exception for
-  # `interest.ts`/`holding-value.ts` — see docs/harness/review-to-biome-inventory.md).
+  # kiko-code-style's ts-pattern section: `switch` is banned with no exception.
   # Every closed-set branch uses `ts-pattern`'s `match(...).exhaustive()` (or a
-  # typed `Record<Literal, X>` for a pure value lookup) instead. `pattern-regex`,
-  # not an AST `pattern`, for the same reason `kiko-repo-no-class` is: a bare
-  # keyword-plus-paren match is simpler and just as precise here than getting a
-  # `switch ($X) { ... }` AST pattern exactly right, and this project already
-  # uses `pattern-regex` for an equally simple keyword ban.
+  # typed `Record<Literal, X>` for a pure value lookup) instead. AST patterns,
+  # not a keyword-regex, so a comment, a string literal, or a `.switch(...)`
+  # method call never false-positives — a bare `switch ($X) { ... }` does not
+  # match a switch's case-clause list, so the two arms below anchor on a real
+  # `case`/`default` label instead.
   - id: kiko-no-switch
     languages: [typescript]
     severity: ERROR
@@ -235,7 +233,9 @@ rules:
       value lookup) instead — see kiko-code-style's "ts-pattern for
       exhaustive mapping".
     patterns:
-      - pattern-regex: \bswitch\s*\(
+      - pattern-either:
+          - pattern: "switch ($X) { case $C: ... }"
+          - pattern: "switch ($X) { default: ... }"
   # kiko-code-style's "Banned: the nullable-map ternary" —
   # `x === undefined ? undefined : f(x)` (and the `null`/`== null`/
   # list-or-empty variants) hand-rolls exactly what `fnts`'s `maybe` + `foldMap`
