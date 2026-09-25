@@ -761,7 +761,9 @@ the ISIN changes to a new found bond.
 
 A CREATE defaults to `'isin'`; EDIT always seeds `'manual'` (spec 6.4
 #6 — the stored ISIN is shown there, still editable) via
-`seedBondMetaFields`, which also calls the hook's own `setBondMode`.
+`useBondFields`'s own `seed`
+(`src/screens/forms/holding-form/bond/use-bond-fields/`, R3 Phase C),
+which also calls the hook's own `setBondMode`.
 
 Validation (`isinReasonKey`, returned by the hook, backed by a
 module-level pure `bondIsinReasonKey`): required and blocking in ISIN

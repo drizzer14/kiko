@@ -1,5 +1,4 @@
 import { match } from 'ts-pattern';
-import type { TFunction } from 'i18next';
 import { Alert, View } from 'react-native';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
@@ -11,7 +10,6 @@ import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-import DateField from '../date-field';
 import {
   creatableHoldingTypesForAccount,
   type HoldingType,
@@ -20,13 +18,9 @@ import {
 } from '../../../holdings/holding-type';
 import ColorPicker from '../color-picker';
 import {
-  asBondMeta,
   asLoanMeta,
   asMetalMeta,
   asPropertyMeta,
-  type BondKind,
-  type BondMeta,
-  type BondCouponFrequency,
   type LoanMeta,
   type Metal,
   type MetalForm,
@@ -77,26 +71,14 @@ import {
 } from './term-deposit/use-term-deposit-fields';
 import MetalSection from './metal/metal-section';
 import LoanFormBlock from './loan/loan-form-block';
-import BondIsinSection from './bond/bond-isin-section';
-import ManualBondFields from './bond/manual-bond-fields';
+import BondFormBlock from './bond/bond-form-block';
 import PropertySection from './property/property-section';
 import { fieldErrorMessage } from './field-error-message';
-import type { ScrollTarget, CreatePayload } from './holding-type-form';
 import TermDepositFormBlock from './term-deposit/term-deposit-form-block';
-import { useBondIsinMode, type IsinReasonKey } from './bond/use-bond-isin-mode';
-import type { BondEntryMode } from './bond/bond-isin-section/bond-isin-section.props';
+import { useBondFields, type UseBondFieldsResult } from './bond/use-bond-fields';
+import type { ScrollTarget, CreatePayload, HoldingTypeForm } from './holding-type-form';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
-
-// The literal i18n keys `bondReasonKey` may return, so `t()` (typed from
-// src/i18n/locales/en.ts) accepts them.
-type BondReasonKey =
-  | 'forms.holding.quantityError'
-  | 'forms.holding.faceValueError'
-  | 'forms.holding.couponPctError'
-  | 'forms.holding.purchaseDateRequiredError'
-  | 'forms.holding.maturityDateRequiredError'
-  | 'forms.holding.maturityDateError';
 
 // The literal i18n key `propertyReasonKey` may return, so `t()` (typed from
 // src/i18n/locales/en.ts) accepts it.
@@ -111,61 +93,6 @@ type MetalReasonKey =
   | 'forms.holding.quantityError'
   | 'forms.lot.totalCostError'
   | 'forms.holding.purityError';
-
-// Seed the bond number/date fields from stored metadata. Minor-unit money
-// fields (face value, purchase price) convert back to grouped major strings;
-// plain-number fields (quantity, coupon %) render verbatim.
-const seedBondFields = (meta: BondMeta, currency: Currency) => ({
-  quantity: groupAmount(String(meta.quantity)),
-  faceValue: groupAmount(majorAmountText(currency, meta.faceValueMinorUnits)),
-  couponPct: String(meta.couponPct),
-  purchasePrice: groupAmount(majorAmountText(currency, meta.purchasePriceMinorUnits)),
-  purchaseDate: meta.purchaseDate,
-  maturityDate: meta.maturityDate,
-  bondKind: meta.bondKind,
-  couponFrequency: meta.couponFrequency,
-  // Edit mode always opens Manual (spec 6.4 #6), with the stored ISIN (or ''
-  // for a bond saved before T25) shown and still editable.
-  isin: meta.isin ?? '',
-});
-
-// Seeds bond's edit-mode fields from stored metadata, the same extraction
-// reason as `seedTermDepositFields` above.
-const seedBondMetaFields = (
-  holding: HoldingRow,
-  setters: {
-    setQuantity: (value: string) => void;
-    setFaceValue: (value: string) => void;
-    setCouponPct: (value: string) => void;
-    setPurchasePrice: (value: string) => void;
-    setPurchaseDate: (value: number) => void;
-    setMaturityDate: (value: number) => void;
-    setBondKind: (value: BondKind) => void;
-    setCouponFrequency: (value: BondMeta['couponFrequency']) => void;
-    setIsin: (value: string) => void;
-    setBondMode: (value: BondEntryMode) => void;
-  },
-): void => {
-  const meta = asBondMeta(holding.metadata);
-
-  if (meta === null) {
-    return;
-  }
-
-  const fields = seedBondFields(meta, holding.currency);
-  setters.setQuantity(fields.quantity);
-  setters.setFaceValue(fields.faceValue);
-  setters.setCouponPct(fields.couponPct);
-  setters.setPurchasePrice(fields.purchasePrice);
-  setters.setPurchaseDate(fields.purchaseDate);
-  setters.setMaturityDate(fields.maturityDate);
-  setters.setBondKind(fields.bondKind);
-  setters.setCouponFrequency(fields.couponFrequency);
-  setters.setIsin(fields.isin);
-  // Edit always opens Manual (spec 6.4 #6) — the register is never consulted
-  // again once a holding is saved (spec 6.4 #5).
-  setters.setBondMode('manual');
-};
 
 // Seeds property_item's two edit-mode fields (category + the ORIGINAL lots,
 // carried through unchanged on save — cost/quantity history is fixed at
@@ -533,17 +460,17 @@ const saveEdit = async (params: {
   await holdingsRepo.setIcon(holdingId, icon);
 };
 
-// The EDIT-mode save for a term deposit (R3 Phase C's worked example) —
-// extracted out of `save` purely to keep that function's own branch count
-// under the cognitive-complexity budget, the same reason `saveLoanEdit` is.
-// Routed through the hook's own `saveEdit` rather than `buildHoldingPatch`/
-// the generic `saveEdit` above: it builds its metadata from the
-// contributions/rate/term state closed over inside the hook, which no
-// longer lives on this screen. That hook write carries no icon (its own doc
-// comment), so this helper writes it separately, same as every edit path.
-const saveDepositEdit = async (params: {
+// The EDIT-mode save for a hook-owned ledgerless type (term_deposit, bond —
+// R3 Phase C) — extracted out of `save` purely to keep that function's own
+// branch count under the cognitive-complexity budget, the same reason
+// `saveLoanEdit` is. Routed through the hook's own `saveEdit` rather than
+// `buildHoldingPatch`/the generic `saveEdit` above: it builds its metadata
+// from state closed over inside the hook, which no longer lives on this
+// screen. That hook write carries no icon (its own doc comment), so this
+// helper writes it separately, same as every edit path.
+const saveHookEdit = async (params: {
   holdingId: string;
-  deposit: UseTermDepositFieldsResult;
+  fields: HoldingTypeForm;
   name: string;
   color: string | null;
   currency: Currency;
@@ -552,15 +479,14 @@ const saveDepositEdit = async (params: {
   book: PriceBook;
   icon: string | null;
 }): Promise<void> => {
-  const { holdingId, deposit, name, color, currency, isSynced, editingHolding, book, icon } =
-    params;
+  const { holdingId, fields, name, color, currency, isSynced, editingHolding, book, icon } = params;
 
-  await deposit.saveEdit({ holdingId, name, color, currency, isSynced, editingHolding, book });
+  await fields.saveEdit({ holdingId, name, color, currency, isSynced, editingHolding, book });
   await holdingsRepo.setIcon(holdingId, icon);
 };
 
-// The whole isEdit-mode write: `term_deposit` routes through
-// `saveDepositEdit` above; every other type builds its patch via
+// The whole isEdit-mode write: `term_deposit`/`bond` route through
+// `saveHookEdit` above; every other type builds its patch via
 // `buildHoldingPatch` and writes it through `saveEdit`. Extracted out of
 // `save` purely to keep that function's own branch count under the
 // cognitive-complexity budget — the type dispatch itself is what pushed
@@ -569,6 +495,7 @@ const performEditSave = (params: {
   type: HoldingType;
   holdingId: string;
   deposit: UseTermDepositFieldsResult;
+  bond: UseBondFieldsResult;
   name: string;
   color: string | null;
   currency: Currency;
@@ -584,6 +511,7 @@ const performEditSave = (params: {
     type,
     holdingId,
     deposit,
+    bond,
     name,
     color,
     currency,
@@ -596,10 +524,15 @@ const performEditSave = (params: {
     icon,
   } = params;
 
-  if (type === 'term_deposit') {
-    return saveDepositEdit({
+  const hookFields: HoldingTypeForm | null = match(type)
+    .with('term_deposit', () => deposit)
+    .with('bond', () => bond)
+    .otherwise(() => null);
+
+  if (hookFields !== null) {
+    return saveHookEdit({
       holdingId,
-      deposit,
+      fields: hookFields,
       name,
       color,
       currency,
@@ -644,15 +577,22 @@ const createPayloadFor = (params: {
   metalCost: string;
   loanFields: LoanFieldsSnapshot;
   depositCreatePayload: (openingBalanceMinorUnits: number) => CreatePayload;
+  bondCreatePayload: (openingBalanceMinorUnits: number) => CreatePayload;
 }): CreatePayload => {
   const { type } = params;
 
+  // Keeps today's hidden-balance quirk (reported, not fixed, per R3 Phase
+  // C's Risks table): a deposit's/bond's opening-balance field is hidden by
+  // `isLedgerlessHoldingType`, but any value typed under another type before
+  // switching still parses through here.
   if (type === 'term_deposit') {
-    // Keeps today's hidden-balance quirk (reported, not fixed, per R3 Phase
-    // C's Risks table): a deposit's opening-balance field is hidden by
-    // `isLedgerlessHoldingType`, but any value typed under another type
-    // before switching still parses through here.
     return params.depositCreatePayload(
+      Money.fromMajor(params.currency, parseAmount(params.openingBalance) || 0).minorUnits,
+    );
+  }
+
+  if (type === 'bond') {
+    return params.bondCreatePayload(
       Money.fromMajor(params.currency, parseAmount(params.openingBalance) || 0).minorUnits,
     );
   }
@@ -704,49 +644,6 @@ const saveReasonsFor = (params: {
   return { showNameReason: attemptedSave && name.trim().length === 0 };
 };
 
-// The ISIN field's OWN inline error text — every `isinReasonKey` EXCEPT
-// `isinNotInRegister`, which `BondIsinSection` already surfaces as its own
-// always-visible hint (not gated on Save), so showing it here too would
-// duplicate that message.
-const isinFieldErrorMessage = (
-  t: TFunction,
-  attemptedSave: boolean,
-  reasonKey: IsinReasonKey | null,
-): string | undefined =>
-  reasonKey === null ||
-  reasonKey === 'forms.holding.isinNotInRegister' ||
-  reasonKey === 'forms.holding.isinRegisterNotLoaded'
-    ? undefined
-    : fieldErrorMessage(t, attemptedSave, reasonKey);
-
-// The ISIN-mode-only coupon-frequency picker's OWN blocking error (T25
-// review round 2, N2, orchestrator ruling): only once a Save attempt was
-// made, only for the one match that left `couponFrequency` unmapped, and
-// only until the user picks one. Module-level and pure, the same reason
-// `isinFieldErrorMessage` above is, rather than an inline ternary in the
-// component's own JSX.
-const couponFrequencyErrorMessage = (
-  t: TFunction,
-  attemptedSave: boolean,
-  needsCouponFrequencyPick: boolean,
-  pickedCouponFrequency: BondCouponFrequency | null,
-): string | undefined =>
-  attemptedSave && needsCouponFrequencyPick && pickedCouponFrequency === null
-    ? t('forms.holding.couponFrequencyRequiredError')
-    : undefined;
-
-// ISIN mode never mounts the maturity DateField (its terms are
-// register-sourced) — a matured-still-registered bond's reason (or a
-// register terms with no maturity date at all) is shown on the purchase
-// date instead (T25 review round 1, I2), the one date the user actually
-// controls there. The purchase field's OWN missing-date reason (`ownError`)
-// always takes priority over a redirected maturity reason, in both modes.
-const purchaseDateErrorMessage = (
-  bondMode: BondEntryMode,
-  ownError: string | undefined,
-  maturityDateErrorMessage: string | undefined,
-): string | undefined => ownError ?? (bondMode === 'isin' ? maturityDateErrorMessage : undefined);
-
 // The wrapper refs `firstInvalidFieldRef` (below) picks a scroll target from —
 // grouped into its own type so that function's own signature reads as one
 // param per concern (the reasons, then the refs) rather than eight positional
@@ -755,12 +652,6 @@ type ValidatedFieldRefs = {
   nameFieldRef: RefObject<FieldInstance | null>;
   annualRateFieldRef: RefObject<FieldInstance | null>;
   termMonthsFieldRef: RefObject<FieldInstance | null>;
-  isinFieldRef: RefObject<FieldInstance | null>;
-  quantityFieldRef: RefObject<FieldInstance | null>;
-  faceValueFieldRef: RefObject<FieldInstance | null>;
-  couponPctFieldRef: RefObject<FieldInstance | null>;
-  purchaseDateFieldRef: RefObject<FieldInstance | null>;
-  maturityDateFieldRef: RefObject<FieldInstance | null>;
   propertyCostFieldRef: RefObject<FieldInstance | null>;
   metalPurityFieldRef: RefObject<FieldInstance | null>;
   metalQuantityFieldRef: RefObject<FieldInstance | null>;
@@ -779,10 +670,6 @@ type ValidatedFieldFocus = {
   name: () => void;
   annualRate: () => void;
   termMonths: () => void;
-  isin: () => void;
-  quantity: () => void;
-  faceValue: () => void;
-  couponPct: () => void;
   propertyCost: () => void;
   metalPurity: () => void;
   metalQuantity: () => void;
@@ -792,21 +679,17 @@ type ValidatedFieldFocus = {
 
 // The first still-invalid field's own wrapper ref (plus its FOCUS action,
 // when it has one — see `ValidatedFieldFocus` above), in the SAME priority
-// order `deposit.scrollTargets`/`bondReasonKey` already check their fields
-// in: the name field first (it always applies, independent of type), then
-// the active type's fields. `save`'s `!isValid` branch passes this straight
-// to `scrollTo`. Module-level and pure (given the already-computed reason
-// keys) so this branching stays out of `save`'s own cognitive-complexity
-// budget.
+// order `deposit.scrollTargets`/`bond.scrollTargets` already check their
+// fields in: the name field first (it always applies, independent of type),
+// then the active type's fields. `save`'s `!isValid` branch passes this
+// straight to `scrollTo`. Module-level and pure (given the already-computed
+// reason keys) so this branching stays out of `save`'s own
+// cognitive-complexity budget.
 const firstInvalidFieldRef = (params: {
   name: string;
   type: HoldingType;
-  bondMode: BondEntryMode;
   depositScrollTargets: readonly ScrollTarget[];
-  bondReasonKey: BondReasonKey | null;
-  isinReasonKey: IsinReasonKey | null;
-  needsCouponFrequencyPick: boolean;
-  pickedCouponFrequency: BondCouponFrequency | null;
+  bondScrollTargets: readonly ScrollTarget[];
   propertyReasonKey: PropertyReasonKey | null;
   metalReasonKey: MetalReasonKey | null;
   loanReasonKey: LoanReasonKey | null;
@@ -816,12 +699,8 @@ const firstInvalidFieldRef = (params: {
   const {
     name,
     type,
-    bondMode,
     depositScrollTargets,
-    bondReasonKey,
-    isinReasonKey,
-    needsCouponFrequencyPick,
-    pickedCouponFrequency,
+    bondScrollTargets,
     propertyReasonKey,
     metalReasonKey,
     loanReasonKey,
@@ -832,51 +711,7 @@ const firstInvalidFieldRef = (params: {
   const order: { invalid: boolean; ref: RefObject<FieldInstance | null>; focus?: () => void }[] = [
     { invalid: name.trim().length === 0, ref: refs.nameFieldRef, focus: focus.name },
     ...(type === 'term_deposit' ? depositScrollTargets : []),
-    ...(type === 'bond'
-      ? [
-          {
-            invalid: isinReasonKey !== null,
-            ref: refs.isinFieldRef,
-            focus: focus.isin,
-          },
-          {
-            // The ISIN-mode-only coupon-frequency picker (N2) renders inside
-            // `BondIsinSection`, just below the ISIN field — reusing its ref
-            // lands the scroll close enough with no separate wrapper needed.
-            invalid: needsCouponFrequencyPick && pickedCouponFrequency === null,
-            ref: refs.isinFieldRef,
-          },
-          {
-            invalid: bondReasonKey === 'forms.holding.quantityError',
-            ref: refs.quantityFieldRef,
-            focus: focus.quantity,
-          },
-          {
-            invalid: bondReasonKey === 'forms.holding.faceValueError',
-            ref: refs.faceValueFieldRef,
-            focus: focus.faceValue,
-          },
-          {
-            invalid: bondReasonKey === 'forms.holding.couponPctError',
-            ref: refs.couponPctFieldRef,
-            focus: focus.couponPct,
-          },
-          {
-            invalid: bondReasonKey === 'forms.holding.purchaseDateRequiredError',
-            ref: refs.purchaseDateFieldRef,
-          },
-          {
-            // See `purchaseDateErrorMessage`'s own doc comment for why ISIN
-            // mode's scroll target is the purchase date, not maturity.
-            invalid: bondReasonKey === 'forms.holding.maturityDateRequiredError',
-            ref: bondMode === 'isin' ? refs.purchaseDateFieldRef : refs.maturityDateFieldRef,
-          },
-          {
-            invalid: bondReasonKey === 'forms.holding.maturityDateError',
-            ref: bondMode === 'isin' ? refs.purchaseDateFieldRef : refs.maturityDateFieldRef,
-          },
-        ]
-      : []),
+    ...(type === 'bond' ? bondScrollTargets : []),
     ...(type === 'property_item'
       ? [
           {
@@ -1094,12 +929,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // whichever one is mounted.
   const annualRateFieldRef = useRef<FieldInstance>(null);
   const termMonthsFieldRef = useRef<FieldInstance>(null);
-  const isinFieldRef = useRef<FieldInstance>(null);
-  const quantityFieldRef = useRef<FieldInstance>(null);
-  const faceValueFieldRef = useRef<FieldInstance>(null);
-  const couponPctFieldRef = useRef<FieldInstance>(null);
-  const purchaseDateFieldRef = useRef<FieldInstance>(null);
-  const maturityDateFieldRef = useRef<FieldInstance>(null);
   const propertyCostFieldRef = useRef<FieldInstance>(null);
   const metalPurityFieldRef = useRef<FieldInstance>(null);
   const metalQuantityFieldRef = useRef<FieldInstance>(null);
@@ -1117,10 +946,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const nameInputRef = useRef<TextInputInstance>(null);
   const annualRateInputRef = useRef<TextInputInstance>(null);
   const termMonthsInputRef = useRef<TextInputInstance>(null);
-  const isinInputRef = useRef<TextInputInstance>(null);
-  const quantityInputRef = useRef<TextInputInstance>(null);
-  const faceValueInputRef = useRef<TextInputInstance>(null);
-  const couponPctInputRef = useRef<TextInputInstance>(null);
   const propertyCostInputRef = useRef<TextInputInstance>(null);
   const metalPurityInputRef = useRef<TextInputInstance>(null);
   const metalQuantityInputRef = useRef<TextInputInstance>(null);
@@ -1133,44 +958,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // way `useLoanFields` extracted the Loan form's own state.
   const deposit = useTermDepositFields({ currency, scrollTo });
 
-  // bond state
-  const [quantity, setQuantity] = useState('');
-  const [faceValue, setFaceValue] = useState('');
-  const [couponPct, setCouponPct] = useState('');
-  const [purchasePrice, setPurchasePrice] = useState('');
-  const [purchaseDate, setPurchaseDate] = useState<number | null>(null);
-  const [maturityDate, setMaturityDate] = useState<number | null>(null);
-  const [bondKind, setBondKind] = useState<BondKind>('government');
-  // Semiannual coupons are the common case for the government/corporate bonds
-  // this tracks (the Monobank statement default), so the picker starts there.
-  const [couponFrequency, setCouponFrequency] = useState<BondCouponFrequency>('semiannually');
-  // The Bond form's "ISIN / Manual" mode (spec 6.3/6.4) — its own state,
-  // register lookup, and side effects all live in `useBondIsinMode`.
-  const {
-    bondMode,
-    setBondMode,
-    isin,
-    setIsin,
-    registerTerms,
-    registerLoaded,
-    isinReasonKey,
-    needsCouponFrequencyPick,
-    pickedCouponFrequency,
-    setPickedCouponFrequency,
-  } = useBondIsinMode({
-    type,
-    isEdit,
-    currency,
-    purchaseDate,
-    setPurchaseDate,
-    setFaceValue,
-    setCouponPct,
-    setMaturityDate,
-    setBondKind,
-    setCouponFrequency,
-    setCurrency,
-    setName,
-  });
+  // bond state + validation + create/edit payloads (R3 Phase C) — every
+  // field, the ISIN/Manual mode, the per-field reasons, the edit-mode seed,
+  // and the create/edit payload builders live in the hook, the same way
+  // `useTermDepositFields` extracted the deposit form's own state.
+  const bond = useBondFields({ type, isEdit, currency, setCurrency, setName });
 
   // property_item state. `propertyCost` is CREATE-only (PropertySection hides
   // its field in edit mode — cost/quantity history is fixed at creation; a
@@ -1236,18 +1028,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         deposit.seed(termDepositHolding);
       })
       .with({ type: 'bond' }, (bondHolding) => {
-        seedBondMetaFields(bondHolding, {
-          setQuantity,
-          setFaceValue,
-          setCouponPct,
-          setPurchasePrice,
-          setPurchaseDate,
-          setMaturityDate,
-          setBondKind,
-          setCouponFrequency,
-          setIsin,
-          setBondMode,
-        });
+        bond.seed(bondHolding);
       })
       .with({ type: 'property_item' }, (propertyHolding) => {
         seedPropertyFields(propertyHolding, { setPropertyCategory, setPropertyLots });
@@ -1271,7 +1052,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       .otherwise((rest) => {
         setOpeningBalance(groupAmount(majorAmountText(rest.currency, rest.balanceMinorUnits)));
       });
-  }, [isEdit, editingHolding, setBondMode, setIsin, loanFields.seed, deposit.seed]);
+  }, [isEdit, editingHolding, loanFields.seed, deposit.seed, bond.seed]);
 
   // The stack sets the static "Add Holding" title; in edit mode override it with
   // "Edit Holding" so the header reads correctly for the update flow.
@@ -1281,40 +1062,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     }
   }, [isEdit, navigation, t]);
 
-  const buildBondMetadata = (): Record<string, unknown> => {
-    const quantityValue = parseAmount(quantity) || 0;
-    const faceValueMinorUnits = Money.fromMajor(currency, parseAmount(faceValue) || 0).minorUnits;
-    const priceValue = parseAmount(purchasePrice);
-    return {
-      quantity: quantityValue,
-      faceValueMinorUnits,
-      couponPct: parseAmount(couponPct) || 0,
-      // The total actually paid. If left blank, fall back to nominal (par), so
-      // the purchase entry and expected profit read as break-even.
-      purchasePriceMinorUnits:
-        priceValue > 0
-          ? Money.fromMajor(currency, priceValue).minorUnits
-          : quantityValue * faceValueMinorUnits,
-      purchaseDate: purchaseDate ?? Date.now(),
-      maturityDate: maturityDate ?? Date.now(),
-      bondKind,
-      couponFrequency,
-      // Stored as a record of how the holding was added (spec 6.4 #6); the
-      // save is blocked by `isinReasonKey` while Manual mode's own ISIN is
-      // non-empty but invalid, so a saved value is always well-formed. Left
-      // out entirely for a blank Manual-mode ISIN, rather than an empty
-      // string, so `asBondMeta`'s optional field round-trips as `undefined`.
-      // `isin` itself is already normalized (`useBondIsinMode`'s own
-      // `setIsin` wrapper) — a second `normalizeIsin` call here was a
-      // redundant third normalization (T25 review round 2, Minor 9).
-      ...(isin.trim() === '' ? {} : { isin }),
-    };
-  };
-
   const buildMetadata = (): Record<string, unknown> | undefined => {
-    if (type === 'bond') {
-      return buildBondMetadata();
-    }
     // A property's CREATE metadata is built separately (see `save`'s create
     // branch, `buildPropertyCreatePayload`) — this branch covers EDIT mode
     // only: category is user-editable, but the ORIGINAL (hydrated) lots are
@@ -1350,70 +1098,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     }
     return undefined;
   };
-
-  // The bond quantity field's OWN reason, independent of the fields below it.
-  const bondQuantityFieldReasonKey = (): 'forms.holding.quantityError' | null =>
-    parseAmount(quantity) > 0 ? null : 'forms.holding.quantityError';
-
-  // The face-value field's OWN reason, independent of quantity/coupon/dates.
-  const faceValueFieldReasonKey = (): 'forms.holding.faceValueError' | null =>
-    parseAmount(faceValue) > 0 ? null : 'forms.holding.faceValueError';
-
-  // The coupon field's OWN reason, independent of the other bond fields.
-  const couponPctFieldReasonKey = (): 'forms.holding.couponPctError' | null =>
-    couponPct.trim() === '' || !(parseAmount(couponPct) >= 0)
-      ? 'forms.holding.couponPctError'
-      : null;
-
-  // The purchase-date field's OWN reason: missing entirely, independent of
-  // the fields around it. This is the ONE bond field rendered in BOTH modes
-  // (see `purchaseDateErrorMessage`'s own doc comment for how ISIN mode ALSO
-  // redirects the maturity-date reason here, since ISIN mode never mounts
-  // its own maturity DateField). `useBondIsinMode`'s own effect already
-  // defaults this field to today the instant the bond section opens, in
-  // EITHER mode, so this stays defensive against a silent, unreadable Save
-  // block if that default ever stops applying before Save is reachable.
-  const purchaseDateFieldReasonKey = (): 'forms.holding.purchaseDateRequiredError' | null =>
-    purchaseDate === null ? 'forms.holding.purchaseDateRequiredError' : null;
-
-  // The maturity-date field's OWN reason: missing (Manual mode only — ISIN
-  // mode's date is register-sourced and applied automatically once an ISIN
-  // matches) or, once both dates are picked, out of order — independent of
-  // quantity/faceValue/coupon.
-  const maturityDateFieldReasonKey = ():
-    | 'forms.holding.maturityDateRequiredError'
-    | 'forms.holding.maturityDateError'
-    | null => {
-    if (maturityDate === null) {
-      return 'forms.holding.maturityDateRequiredError';
-    }
-
-    if (purchaseDate !== null && maturityDate <= purchaseDate) {
-      return 'forms.holding.maturityDateError';
-    }
-
-    return null;
-  };
-
-  // The bond's own reason, derived from the five field functions above, in
-  // the SAME priority order each field itself displays — this can never
-  // drift from what any one field shows, unlike a hand-duplicated chain.
-  const bondReasonKey = (): BondReasonKey | null =>
-    bondQuantityFieldReasonKey() ??
-    faceValueFieldReasonKey() ??
-    couponPctFieldReasonKey() ??
-    purchaseDateFieldReasonKey() ??
-    maturityDateFieldReasonKey();
-
-  // A bond ALSO needs a valid ISIN (`isinReasonKey`, from `useBondIsinMode`)
-  // and, while `needsCouponFrequencyPick` (an unmapped-frequency ISIN-mode
-  // match), a picked coupon frequency — spec 6.2 forbids guessing one, so
-  // Save stays blocked until `pickedCouponFrequency` is set. Everything
-  // else is `bondReasonKey` alone, so the two can never disagree.
-  const isBondValid = (): boolean =>
-    isinReasonKey === null &&
-    !(needsCouponFrequencyPick && pickedCouponFrequency === null) &&
-    bondReasonKey() === null;
 
   // The cost field only applies at CREATE time (PropertySection hides it in
   // edit mode: cost/quantity history is fixed at creation, a later
@@ -1478,7 +1162,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     name.trim().length > 0 &&
     match(type)
       .with('term_deposit', () => deposit.isValid)
-      .with('bond', isBondValid)
+      .with('bond', () => bond.isValid)
       .with('property_item', isPropertyValid)
       .with('metal', isMetalValid)
       .with('loan', () => loanFields.isValid)
@@ -1496,12 +1180,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       const target = firstInvalidFieldRef({
         name,
         type,
-        bondMode,
         depositScrollTargets: deposit.scrollTargets,
-        bondReasonKey: bondReasonKey(),
-        isinReasonKey,
-        needsCouponFrequencyPick,
-        pickedCouponFrequency,
+        bondScrollTargets: bond.scrollTargets,
         propertyReasonKey: propertyReasonKey(),
         metalReasonKey: metalReasonKey(),
         loanReasonKey: loanFields.reasonKey,
@@ -1509,12 +1189,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           nameFieldRef,
           annualRateFieldRef,
           termMonthsFieldRef,
-          isinFieldRef,
-          quantityFieldRef,
-          faceValueFieldRef,
-          couponPctFieldRef,
-          purchaseDateFieldRef,
-          maturityDateFieldRef,
           propertyCostFieldRef,
           metalPurityFieldRef,
           metalQuantityFieldRef,
@@ -1526,10 +1200,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           name: () => nameInputRef.current?.focus(),
           annualRate: () => annualRateInputRef.current?.focus(),
           termMonths: () => termMonthsInputRef.current?.focus(),
-          isin: () => isinInputRef.current?.focus(),
-          quantity: () => quantityInputRef.current?.focus(),
-          faceValue: () => faceValueInputRef.current?.focus(),
-          couponPct: () => couponPctInputRef.current?.focus(),
           propertyCost: () => propertyCostInputRef.current?.focus(),
           metalPurity: () => metalPurityInputRef.current?.focus(),
           metalQuantity: () => metalQuantityInputRef.current?.focus(),
@@ -1557,6 +1227,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           type,
           holdingId,
           deposit,
+          bond,
           name,
           color,
           currency,
@@ -1607,6 +1278,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           metalCost,
           loanFields,
           depositCreatePayload: deposit.createPayload,
+          bondCreatePayload: bond.createPayload,
         }),
       });
 
@@ -1668,16 +1340,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
-  const maturityDateErrorMessage = fieldErrorMessage(
-    t,
-    attemptedSave,
-    maturityDateFieldReasonKey(),
-  );
-  const purchaseDateOwnErrorMessage = fieldErrorMessage(
-    t,
-    attemptedSave,
-    purchaseDateFieldReasonKey(),
-  );
   return (
     <Screen
       scroll
@@ -1767,96 +1429,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           <TermDepositFormBlock fields={deposit} attemptedSave={attemptedSave} />
         )}
 
-        {type === 'bond' && (
-          <Box gap={4}>
-            <Divider testID="form-divider" />
-
-            <Text variant="heading">{t('forms.holding.details')}</Text>
-
-            <BondIsinSection
-              mode={bondMode}
-              onSelectMode={setBondMode}
-              isin={isin}
-              onChangeIsin={setIsin}
-              isinError={isinFieldErrorMessage(t, attemptedSave, isinReasonKey)}
-              isinFieldRef={isinFieldRef}
-              isinInputRef={isinInputRef}
-              foundTerms={registerTerms}
-              registerLoaded={registerLoaded}
-              onSwitchToManual={() => setBondMode('manual')}
-              needsCouponFrequencyPick={needsCouponFrequencyPick}
-              pickedCouponFrequency={pickedCouponFrequency}
-              onPickCouponFrequency={setPickedCouponFrequency}
-              couponFrequencyError={couponFrequencyErrorMessage(
-                t,
-                attemptedSave,
-                needsCouponFrequencyPick,
-                pickedCouponFrequency,
-              )}
-            />
-
-            <View ref={quantityFieldRef}>
-              <TextField
-                label={t('forms.holding.quantity')}
-                value={quantity}
-                onChangeText={(text) => setQuantity(groupAmount(text))}
-                keyboardType="number-pad"
-                placeholder={t('forms.holding.quantityPlaceholder')}
-                required
-                error={fieldErrorMessage(t, attemptedSave, bondQuantityFieldReasonKey())}
-                inputRef={quantityInputRef}
-              />
-            </View>
-
-            <TextField
-              label={t('forms.holding.purchasePrice')}
-              value={purchasePrice}
-              onChangeText={(text) => setPurchasePrice(groupAmount(text))}
-              keyboardType="decimal-pad"
-              placeholder={t('forms.holding.purchasePricePlaceholder')}
-              suffix={currencySymbol[currency]}
-            />
-
-            {/* See `purchaseDateErrorMessage`'s own doc comment (I2). */}
-            <View ref={purchaseDateFieldRef}>
-              <DateField
-                label={t('forms.holding.purchaseDate')}
-                value={purchaseDate}
-                onChange={setPurchaseDate}
-                placeholder={t('forms.fields.selectDatePlaceholder')}
-                required
-                error={purchaseDateErrorMessage(
-                  bondMode,
-                  purchaseDateOwnErrorMessage,
-                  maturityDateErrorMessage,
-                )}
-              />
-            </View>
-
-            <ManualBondFields
-              bondMode={bondMode}
-              faceValue={faceValue}
-              onChangeFaceValue={(text) => setFaceValue(groupAmount(text))}
-              faceValueError={fieldErrorMessage(t, attemptedSave, faceValueFieldReasonKey())}
-              faceValueFieldRef={faceValueFieldRef}
-              faceValueInputRef={faceValueInputRef}
-              couponPct={couponPct}
-              onChangeCouponPct={setCouponPct}
-              couponPctError={fieldErrorMessage(t, attemptedSave, couponPctFieldReasonKey())}
-              couponPctFieldRef={couponPctFieldRef}
-              couponPctInputRef={couponPctInputRef}
-              maturityDate={maturityDate}
-              onChangeMaturityDate={setMaturityDate}
-              maturityDateError={maturityDateErrorMessage}
-              maturityDateFieldRef={maturityDateFieldRef}
-              bondKind={bondKind}
-              onSelectBondKind={setBondKind}
-              couponFrequency={couponFrequency}
-              onSelectCouponFrequency={setCouponFrequency}
-              currencySuffix={currencySymbol[currency]}
-            />
-          </Box>
-        )}
+        {type === 'bond' && <BondFormBlock fields={bond} attemptedSave={attemptedSave} />}
 
         {type === 'property_item' && (
           <Box gap={4}>

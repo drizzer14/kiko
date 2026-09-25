@@ -112,8 +112,9 @@ From `biome.json`'s `linter.rules`:
   ... = (...) => {...}` binding) removes that code from the caller's
   score entirely, because Biome measures each declared function
   independently and does not walk into what it CALLS.** This is why a
-  custom hook (`useBondIsinMode`, `src/screens/forms/holding-form/`,
-  T25 review round 1, I4) or a sibling section component
+  custom hook (`useBondIsinMode`,
+  `src/screens/forms/holding-form/bond/use-bond-isin-mode/`, T25
+  review round 1, I4) or a sibling section component
   (`MetalSection`/`PropertySection`/`BondIsinSection`/
   `ManualBondFields`) is the right fix for a screen that is exhausting
   its budget: pull the state/effects/JSX that belong to one concern
@@ -146,7 +147,7 @@ A single `useEffect` combining two or more unrelated "when X changes,
 do Y" rules under one shared dependency array lets an unrelated
 dependency change re-fire the whole effect and cross-talk into
 another rule's side effect. `useBondIsinMode`
-(`src/screens/forms/holding-form/`) originally merged found-ISIN-terms
+(`src/screens/forms/holding-form/bond/use-bond-isin-mode/`) originally merged found-ISIN-terms
 apply + purchase-date default + register refresh into one effect: a
 picked date or a mode flip re-ran the whole thing, silently
 overwriting a typed name/currency, and the same re-fire put the form
