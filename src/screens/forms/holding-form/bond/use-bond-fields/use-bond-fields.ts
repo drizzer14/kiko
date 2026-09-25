@@ -15,12 +15,12 @@ import { saveMetadataEdit } from '../../save-metadata-edit';
 import type { Currency } from '../../../../../currency/currency';
 import type { BondTerms } from '../../../../../bonds/nbu-register';
 import type { HoldingType } from '../../../../../holdings/holding-type';
+import { useBondIsinMode, type IsinReasonKey } from '../use-bond-isin-mode';
 import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
+import type { BondEntryMode } from '../bond-isin-section/bond-isin-section.props';
 import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
 
-import { useBondIsinMode, type IsinReasonKey } from '../use-bond-isin-mode';
-import type { BondEntryMode } from '../bond-isin-section/bond-isin-section.props';
 import {
   bondFieldErrors,
   bondReasonKey,
