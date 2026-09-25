@@ -213,21 +213,25 @@ export const holdingsRepo = {
       .where(eq(holdings.accountId, accountId))
       .orderBy(asc(holdings.sortOrder), asc(holdings.createdAt)),
   /**
-   * The DISTINCT currencies among OPEN (non-closed) holdings — the one cheap
-   * gate query a rate/price refresh reads before deciding whether it needs to
-   * run at all (kiko-architecture: app-open and refresh work is gated on data
-   * presence). A caller derives BOTH gates from this single read: the fiat
-   * leg needs a live rate only when some currency here differs from the base
-   * (display) currency; the crypto leg needs CoinGecko only when the result,
-   * filtered to `cryptoCurrencyOptions`, is non-empty (and, filtered further,
-   * names exactly which coins to fetch — never one nobody holds). One
-   * `SELECT DISTINCT`, never a per-holding loop.
+   * The DISTINCT currencies among ACTIVE holdings — open (no `closedAt`) AND
+   * whose parent account is not archived, the same "counts toward net worth"
+   * definition `activeHoldings` (`src/rates/active-holdings/`) applies
+   * elsewhere. The one cheap gate query a rate/price refresh reads before
+   * deciding whether it needs to run at all (kiko-architecture: app-open and
+   * refresh work is gated on data presence). A caller derives BOTH gates from
+   * this single read: the fiat leg needs a live rate only when some currency
+   * here differs from the base (display) currency; the crypto leg needs
+   * CoinGecko only when the result, filtered to `cryptoCurrencyOptions`, is
+   * non-empty (and, filtered further, names exactly which coins to fetch —
+   * never one nobody holds). One `SELECT DISTINCT` with a join, never a
+   * per-holding loop.
    */
   openCurrenciesQuery: () =>
     database
       .selectDistinct({ currency: holdings.currency })
       .from(holdings)
-      .where(isNull(holdings.closedAt)),
+      .innerJoin(accounts, eq(holdings.accountId, accounts.id))
+      .where(and(isNull(holdings.closedAt), isNull(accounts.archivedAt))),
   /**
    * Insert a new holding and resolve to its generated app id (the text UUID),
    * so a caller can immediately act on the new row (e.g. set its icon). The

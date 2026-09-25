@@ -21,6 +21,11 @@ const makeDeps = (overrides: Partial<RefreshDeps> = {}) => {
     // test that overrides `fetchFiatRates` to fail exercises this.
     fetchNbuRates: async () => [],
     fetchCryptoPrices: async () => btc,
+    // The data-presence gate (kiko-architecture): every existing test below
+    // exercises a run that DOES need both legs, so the default reports both
+    // as needed; the "data-presence gate" describe block below overrides this
+    // to exercise the skip paths.
+    openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC'] }),
     upsertMany: async (rates: StoredRate[]) => {
       captured.push(rates);
     },
@@ -343,5 +348,86 @@ describe('refreshRates — NBU fallback when Monobank is unreachable', () => {
       source: 'coingecko',
       fetchedAt: 1000,
     });
+  });
+});
+
+// kiko-architecture: app-open and refresh work is gated on data presence —
+// no request or query for data the user does not have. `openCurrencies`
+// reports whether any held currency differs from the base (needsFiat) and
+// which crypto currencies are held; each leg fetches only when its own
+// gate says so.
+describe('refreshRates — the data-presence gate', () => {
+  it('fetches and writes nothing when nothing needs converting and no crypto is held', async () => {
+    let fiatCalled = false;
+    let cryptoCalled = false;
+    const { deps, captured } = makeDeps({
+      fetchFiatRates: async () => {
+        fiatCalled = true;
+        return fiat;
+      },
+      fetchCryptoPrices: async () => {
+        cryptoCalled = true;
+        return btc;
+      },
+      openCurrencies: async () => ({ needsFiat: false, cryptoCurrencies: [] }),
+    });
+
+    await refreshRates(deps);
+
+    expect(fiatCalled).toBe(false);
+    expect(cryptoCalled).toBe(false);
+    expect(captured).toHaveLength(0);
+  });
+
+  it('fetches only the fiat leg when nothing crypto is held', async () => {
+    let cryptoCalled = false;
+    const { deps, captured } = makeDeps({
+      fetchCryptoPrices: async () => {
+        cryptoCalled = true;
+        return btc;
+      },
+      openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: [] }),
+    });
+
+    await refreshRates(deps);
+
+    expect(cryptoCalled).toBe(false);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].some((pair) => pair.base === 'BTC')).toBe(false);
+    expect(captured[0].some((pair) => pair.base === 'USD' && pair.quote === 'UAH')).toBe(true);
+  });
+
+  it('fetches only the crypto leg when every held currency already matches the base', async () => {
+    let fiatCalled = false;
+    const { deps, captured } = makeDeps({
+      fetchFiatRates: async () => {
+        fiatCalled = true;
+        return fiat;
+      },
+      openCurrencies: async () => ({ needsFiat: false, cryptoCurrencies: ['BTC'] }),
+    });
+
+    await refreshRates(deps);
+
+    expect(fiatCalled).toBe(false);
+    // No fiat leg means no USD anchor, so the crypto leg's own fetch still ran
+    // (asserted below) but composed no pair — the existing "no USD anchor"
+    // behavior (see the describe block above), not a bug in the gate itself.
+    expect(captured).toHaveLength(0);
+  });
+
+  it('passes only the held crypto currencies to fetchCryptoPrices, never the full supported set', async () => {
+    let receivedCurrencies: string[] = [];
+    const { deps } = makeDeps({
+      fetchCryptoPrices: async (currencies) => {
+        receivedCurrencies = currencies;
+        return btc;
+      },
+      openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC'] }),
+    });
+
+    await refreshRates(deps);
+
+    expect(receivedCurrencies).toEqual(['BTC']);
   });
 });

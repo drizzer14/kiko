@@ -148,11 +148,13 @@ describe('holdingsRepo', () => {
     expect(sql).toContain('sort_order');
   });
 
-  it('builds a distinct-open-currencies query, excluding closed holdings', () => {
+  it('builds a distinct-open-currencies query, excluding closed holdings and archived accounts', () => {
     const { sql } = holdingsRepo.openCurrenciesQuery().toSQL();
     expect(sql.toLowerCase()).toContain('distinct');
     expect(sql).toContain('holdings');
     expect(sql.toLowerCase()).toContain('closed_at');
+    expect(sql).toContain('accounts');
+    expect(sql.toLowerCase()).toContain('archived_at');
   });
 
   it('create inserts the holding and resolves to the generated id', async () => {
