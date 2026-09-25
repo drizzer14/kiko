@@ -329,7 +329,7 @@ why this is the deliberate exception to functional-first). It holds
   column (`balanceMinorUnits`, `amountMinorUnits`), never a decimal
   or float column. Convert to/from `Money` at the repository
   boundary — a raw `row.balanceMinorUnits` read for a VALUE goes
-  through `holdingsRepo.balanceOf(row): Money` (D7b), never a direct
+  through `holdingsRepo.balanceOf(row): Money`, never a direct
   member read outside a repository (mechanized, Class B:
   `kiko-balance-through-repo` in `rules/semgrep-mobile.yml`); a WRITE
   input takes `Money` and converts inside the repo, throwing on a

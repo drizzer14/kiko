@@ -335,7 +335,20 @@ gate says there is nothing to do.
   never the full supported set. `refreshMetalPrices`
   (`src/prices/metal-refresh/`) is the original template this
   generalizes: `earliestDays.size === 0` (no held metal) is a zero-
-  network, zero-write early return, verified by test.
+  network, zero-write early return, verified by test. It also reads
+  the cheap presence input first and returns before any heavier read
+  — `holdings` before `price_points` — the same order every gated
+  refresh follows.
+  `shouldThrottle` (`src/rates/rates-refresh/rates-refresh.ts`) skips
+  its own throttle window when a held currency has no rate row yet —
+  a "never fetched" escape so the data-presence gate can never hide a
+  currency's rate entirely.
+  The history backfill resumes per currency: a newly held currency
+  with no history rows forces a run from the earliest day
+  (`src/rates/history-backfill/history-backfill.ts`). A create/restore
+  that may add the first holding of a new currency or type triggers
+  these gated refreshes WITHOUT awaiting them, so Save never blocks on
+  the network.
 - **`usePriceBook`'s `enabled` argument**: `useLiveQuery`'s own
   `enabled` parameter (default `true`) skips BOTH the query and the
   reactive subscription while `false`, reporting `data: []` and

@@ -326,8 +326,7 @@ prices — current and history (T19)" below), never a per-holding one.
 its entered cost. See that hook's own comment on the metal CREATE
 payload for the current rationale.
 
-**No "price as of" / "value as of" caption anywhere (user decision,
-PNOWORK Part 2).** A priced holding's card and detail screen show only
+**No "price as of" / "value as of" caption anywhere (user decision).** A priced holding's card and detail screen show only
 its computed value, never a caption naming the date of the underlying
 price point — this was removed from the holding card, the holding
 detail Value header, and `property_item`'s (which has no feed — a

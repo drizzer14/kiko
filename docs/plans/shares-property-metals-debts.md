@@ -409,6 +409,9 @@ Flow: Account detail → Import statement → pick CSV or XLSX → (dedicated fo
 
 ## P5 — Broker / Брокер, manual shares, EODHD BYOK
 
+**Deferred (user decision 2026-09-25): P5 (broker / shares / EODHD)
+moves to a later release; release 1.1 ships without it.**
+
 ### Task T34: Widen `plist.sh` credential detection for EODHD (developer, scribe)
 
 **Files:** Modify `scripts/checks/plist.sh` (the client-file grep adds `\bapi_token\b`). Create `__tests__/plist-credential-detect.test.ts` (copies `plist.sh` + `_lib.sh` into a temp root with a stub `ios/Kiko/Info.plist`, `ios/Kiko.xcodeproj/project.pbxproj` (with the Debug-ATS phase name), `.env`, and `src/` clients; the harness style of `__tests__/mutation-lock.test.ts`). Modify `docs/harness/review-to-biome-inventory.md` (a row), `.claude/skills/kiko-linter/SKILL.md` "Plist assertions", `.claude/skills/kiko-compliance/SKILL.md` "ATS".
