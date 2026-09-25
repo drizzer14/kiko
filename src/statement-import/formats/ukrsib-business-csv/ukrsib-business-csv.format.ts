@@ -1,4 +1,4 @@
-// Column layout verified against docs/plans/statement-import.md section C.3
+// Column layout verified against docs/plans/statement-import.md
 // (Ukrsibbank business/FOP) — grounded in OSadovy/uabean's importer facts.
 // No uabean source is reused; this is an independent TypeScript
 // implementation. **No uabean fixture exists for this format** —
@@ -30,7 +30,7 @@ export const FULL_HEADER_LINE =
 export const OPERATSII_WORD = 'операцiї';
 
 // 0-based column indices against a `;`-delimited, double-quoted data row
-// (section C.3's 17 named columns; an 18th always-empty trailing column
+// (17 named columns; an 18th always-empty trailing column
 // exists too, from the header/rows' shared trailing `;`, but is never read).
 // Column 1 (`mfo`, Ukrsib's own "МФО") is this format's ONE index that
 // diverges from ProCredit business's otherwise-identical layout — see

@@ -28,7 +28,7 @@ const monobankFixturePath = path.join(
 const monobankBase64 = readFileSync(monobankFixturePath).toString('base64');
 const monobankUtf8Text = readFileSync(monobankFixturePath, 'utf-8');
 
-// The real Sensebank fixture (cp1251-encoded, section C.2) — base64-encoded
+// The real Sensebank fixture (cp1251-encoded) — base64-encoded
 // the same way, then decoded through the 'windows-1251' branch.
 const sensebankFixturePath = path.join(
   __dirname,

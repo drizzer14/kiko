@@ -4,8 +4,8 @@ const DATE_TIME_PATTERN = /^(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2}):(\d{2})$/;
 
 /**
  * Parses a `DD.MM.YYYY HH:MM:SS` combined wall-clock string — the shared
- * convention Monobank CSV and PrivatBank XLSX both use (section C.1:
- * "consistency") — into UTC seconds since epoch, deterministic and
+ * convention Monobank CSV and PrivatBank XLSX both use — into UTC seconds
+ * since epoch, deterministic and
  * host-timezone-independent. `formatLabel` (e.g. `'Monobank'`,
  * `'PrivatBank'`) names the source format in the thrown message only, so an
  * unrecognized value still points at which format's row failed to parse.

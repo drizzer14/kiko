@@ -93,7 +93,7 @@ describe('syncBinanceTransactions', () => {
         amountMinorUnits: 50_000_000, // +0.5 BTC in satoshis
         time: NOW - DAY,
         source: 'binance',
-        // Phase 6: the synced external id is namespaced by the target account id
+        // The synced external id is namespaced by the target account id
         // (`${accountId}:deposit:<id>`), so two Binance connections cannot collide
         // on the GLOBAL (source, external_id) index — Binance record ids are only
         // per-account unique.
@@ -306,7 +306,7 @@ describe('syncBinanceTransactions', () => {
     expect(secondRun[0].externalId).toBe('acc-1:deposit:42');
   });
 
-  // Phase 6 / Risk R-1: Binance deposit/withdrawal record ids are only
+  // Binance deposit/withdrawal record ids are only
   // per-account unique, so two connections can each emit `deposit:<id>` with the
   // SAME raw id. Namespacing by the target account id keeps their external ids
   // distinct, so the global (source, external_id) upsert cannot refresh the wrong

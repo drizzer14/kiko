@@ -56,3 +56,13 @@ export const mimeWildcard = '*/*';
 // note on that accepted, undodged gap).
 export const roundTripNote = 'send it on a round trip through the API';
 export const finalPhaseNote = 'this is the final phase of testing';
+
+// 11. Near-misses for the id families added alongside `Phase N`: a real
+// capitalized word after "Requirement" (not a single bare letter), a
+// "controller" mention with no trailing "ruling N", a "section" mention
+// with no trailing "capital-letter.digit", and "the briefing" (not "the
+// brief") — each fails the trailing `\b` boundary the real id shape needs.
+export const requirementDetailsNote = 'Requirement Details are provided at checkout';
+export const paymentsControllerNote = 'the payments controller routes requests directly';
+export const settingsSectionNote = 'the settings section groups items by category';
+export const briefingNote = 'the briefing covers every account before go-live';

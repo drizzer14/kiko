@@ -15,8 +15,8 @@ export type ImportResult = {
   formatId: ParsedStatementSource;
   imported: number;
   total: number;
-  /** Parsed rows excluded because their OWN currency (section C.1's per-row
-   * `currency`) didn't match the target holding's — Kiko has no FX, so a
+  /** Parsed rows excluded because their OWN currency (a multi-card export's
+   * per-row `currency`) didn't match the target holding's — Kiko has no FX, so a
    * mismatched row is excluded rather than converted or written verbatim
    * (a PrivatBank multi-card export can mix currencies per row; writing
    * e.g. a $50.00 row's raw minor units into a UAH holding would silently
@@ -38,7 +38,7 @@ export type ImportResult = {
  * moves the target holding's `balanceMinorUnits` in a SINGLE db transaction
  * (see that function's own doc comment, and `kiko-domain`'s "Statement
  * import" section, for the exact balance rule). See
- * `docs/plans/statement-import.md` section A.4 for the row-mapping shape.
+ * `docs/plans/statement-import.md` for the row-mapping shape.
  * Takes an already-parsed `ParsedStatement` — shared by `importStatement`
  * (a shipped bank format) and the generic column-mapping import path, which
  * builds its own `ParsedStatement` with

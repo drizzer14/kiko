@@ -38,9 +38,8 @@ import ExportDataScreen from './export-data.screen';
 
 // The installed @testing-library/react-native (14.0.1) ships an ASYNC
 // `render` and an ASYNC `fireEvent` (both return Promises, confirmed against
-// node_modules/@testing-library/react-native/dist/{render,fire-event}.js) —
-// unlike the brief's Step 1 snippet, which assumes the older sync API. Every
-// call site here awaits both, matching the working convention already used
+// node_modules/@testing-library/react-native/dist/{render,fire-event}.js).
+// Every call site here awaits both, matching the working convention already used
 // by src/screens/settings/settings/settings.screen.test.tsx.
 const renderScreen = () =>
   render(

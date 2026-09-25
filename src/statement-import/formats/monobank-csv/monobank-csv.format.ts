@@ -25,7 +25,7 @@ const DATE_HEADER = 'Дата i час операції';
 
 // The account currency is not a separate column — it is embedded in the
 // card-currency amount column's OWN header text, e.g. "Сума в валюті картки
-// (UAH)" (section C.1).
+// (UAH)".
 const AMOUNT_HEADER_PATTERN = /^Сума в валюті картки \((\w+)\)$/;
 
 const COLUMN = {

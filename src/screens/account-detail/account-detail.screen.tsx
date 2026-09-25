@@ -149,8 +149,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // defaults to connectable rather than guessing it is import-only.
   const showActionButton = isBankAccount && isConnectableBank(account?.bankId);
 
-  // The document-picker statement-import entry point (docs/plans/statement-
-  // import.md section B.1), same style as the create-form's `connectMonobank`
+  // The document-picker statement-import entry point,
+  // same style as the create-form's `connectMonobank`
   // closure: open the picker, then — on a real pick, not a cancel — copy it
   // to a LOCAL cache path (see the `keepLocalCopy` comment below) and hand
   // THAT stable path to `StatementImportScreen`, which owns
@@ -162,8 +162,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // unhandled right here — the single read now lives entirely in
   // `StatementImportScreen`, which already guards it and renders a graceful
   // error state on failure. The accepted-type list includes xlsx from the
-  // start even though Phase 1 only ships the Monobank CSV format (PrivatBank
-  // XLSX lands in a later phase and must not need this list revisited). A
+  // start even though only the Monobank CSV format ships today (PrivatBank
+  // XLSX lands later and must not need this list revisited). A
   // cancelled picker rejects with `OPERATION_CANCELED` — caught and
   // swallowed here, not surfaced as an error.
   const pickAndOpenStatement = async (): Promise<void> => {

@@ -747,9 +747,9 @@ export const en = {
     error: 'Migration error: {{message}}',
     preparing: 'Preparing database…',
   },
-  // The shared preview + target-holding screen (Phase 1b,
-  // src/screens/statement-import/statement-import.screen.tsx) that both statement-
-  // import entry points converge on — see docs/plans/statement-import.md section B.
+  // The shared preview + target-holding screen
+  // (src/screens/statement-import/statement-import.screen.tsx) that both statement-
+  // import entry points converge on.
   statementImport: {
     previewHeading: 'Statement Preview',
     reading: 'Reading the file…',
@@ -792,7 +792,7 @@ export const en = {
     // button (`common.done`) navigates back to the account screen.
     importResultTitle: 'Import Complete',
     // A row a format's parse could not resolve (e.g. a PrivatBank currency
-    // word its abbreviation map doesn't cover yet, section C.1) — excluded
+    // word its abbreviation map doesn't cover yet) — excluded
     // from the import, but surfaced honestly rather than silently dropped
     // (see `ParsedStatement.unresolvedRows` in parser.ts). English selects
     // _one/_other; the _few/_many forms exist only to mirror Ukrainian's
@@ -803,7 +803,7 @@ export const en = {
     unresolvedRowsSkipped_many: '{{count}} rows skipped: unrecognized currency',
     unresolvedRowsSkipped_other: '{{count}} rows skipped: unrecognized currency',
     // Shown above the preview's currency list ONLY when a file mixes more
-    // than one currency (a multi-card PrivatBank export, section C.1) —
+    // than one currency (a multi-card PrivatBank export) —
     // helps the user pick a holding that actually matches BEFORE importing,
     // since `importStatement` excludes any row whose currency doesn't match
     // the target holding's.

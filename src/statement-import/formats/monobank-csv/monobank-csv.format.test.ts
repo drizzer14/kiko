@@ -120,7 +120,7 @@ describe('monobankCsvFormat.parse', () => {
   });
 
   // The fixture's own "Залишок після операції" (balance after transaction)
-  // column, section C.4 — Monobank is the one format that carries a genuine
+  // column — Monobank is the one format that carries a genuine
   // running balance per row, verified against the real uabean fixture bytes.
   // Its last row is "…,9,100000", so the closing balance is the LAST row's
   // balance-after, not the first — a single-card/single-account export keeps

@@ -60,7 +60,7 @@ const unknownOperationWordInput = {
 };
 
 // The exported constants ARE the real contract a kiko:developer implements
-// `detect`/`parse` against (section C.3), pinned here — verified against
+// `detect`/`parse` against, pinned here — verified against
 // the REAL fixture's bytes. Alfa's 19-column layout is
 // genuinely unique in this plan (no shared base with ProCredit/Ukrsib
 // business, unlike those two), so instead of a hand-typed literal
@@ -194,7 +194,7 @@ describe('alfaBusinessCsvFormat.parse', () => {
   });
 
   // The real fixture's `Наш IBAN` column spans TWO distinct accounts (rows
-  // 1-5 carry one IBAN, rows 6-7 a different one) — Controller ruling 3:
+  // 1-5 carry one IBAN, rows 6-7 a different one), so
   // `account.iban` must be undefined rather than silently picking the first
   // row's IBAN. Behavior already existed; this locks it in with a real
   // assertion.

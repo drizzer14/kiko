@@ -146,8 +146,8 @@ const renderReadOnlyNotice = (
 // flex-row layout — a `flexShrink`/`textAlign` set on the VALUE node I pass
 // in (a grandchild of the row, not a direct flex child of it) has no effect
 // on that row's own layout pass in Yoga; only the WRAPPING `Box` itself
-// (which `SummaryTable` owns, not a caller) would need `flexShrink`, and
-// the brief is explicit: do not change `SummaryTable`'s shared row for one
+// (which `SummaryTable` owns, not a caller) would need `flexShrink` — and
+// `SummaryTable`'s shared row must not change for one
 // caller. Stacking the label ABOVE the value instead — a plain `Box`
 // column, not a flex row — sidesteps the problem entirely: the value
 // `Text` gets the row's FULL width to itself and wraps normally, with no
@@ -439,7 +439,7 @@ const resolveCategoryOverrideRequest = (
 };
 
 // The mode row's options: Exchange is a CREATE-ONLY mode, offered only from a
-// cash source on create (`isExchangeCreateSourceType` — Requirement B,
+// cash source on create (`isExchangeCreateSourceType`,
 // narrower than the wider `isExchangeSourceType`/`isExchangeDestinationType`
 // pair in `holdings/exchange-destination`, reserved for convert-mode) — an
 // edit always opens on `income` or `expense` (no editing an already-recorded
@@ -590,7 +590,7 @@ const compareByAccountThenHolding = (
 };
 
 // Every OPEN, non-excluded holding except `excludeHoldingId`, projected to a
-// picker option carrying its parent account name (Requirement C), ordered to
+// picker option carrying its parent account name, ordered to
 // match the Accounts screen (see `compareByAccountThenHolding`). The
 // eligible TYPE test is injected by the caller so one builder serves create-mode
 // (cash-only) and both convert-mode directions (the wider rules) without
@@ -894,7 +894,7 @@ const resolveConvertView = (
   t: TFunction,
 ): ConvertView => {
   // Convert-mode eligibility uses the WIDER (cash/card) rule, unchanged from
-  // the current create source rule — Requirement B's cash-only restriction
+  // the current create source rule — the create-only cash-source restriction
   // applies to CREATE only. Both manual and synced rows qualify; the action
   // never mutates the existing row, so a synced row stays safe.
   const eligible =
@@ -905,8 +905,7 @@ const resolveConvertView = (
   const direction = existing ? exchangeConvertDirection(existing.amountMinorUnits) : null;
   // An expense-sourced convert picks a DESTINATION (wider: excludes bond/jar);
   // an income-sourced convert picks a SOURCE (wider: cash/card only). Excludes
-  // the existing holding and closed holdings, and carries account names
-  // (Requirement C).
+  // the existing holding and closed holdings, and carries account names.
   const options = buildExchangeOptions(
     holdings,
     accountNameById,
@@ -1378,7 +1377,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // (needed to convert the entered major amount to minor units) comes from
   // filtering the full holdings list — the same approach the detail screen uses.
   const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
-  // The Exchange destination picker's account-name caption (Requirement C):
+  // The Exchange destination picker's account-name caption:
   // every account, reduced to an id -> name map so `buildExchangeOptions` can
   // thread a plain string onto each holding option without a per-row lookup
   // query.

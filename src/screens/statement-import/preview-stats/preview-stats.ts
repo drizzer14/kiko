@@ -7,13 +7,13 @@ export type PreviewStats = {
   currency: string;
   dateSpan: string;
   // Distinct masked-card hints across every parsed row, in first-seen order.
-  // PrivatBank XLSX is the only format that ever produces one (section C.1,
-  // a multi-card export) — every other shipped format's rows carry none, so
+  // PrivatBank XLSX is the only format that ever produces one (a multi-card
+  // export) — every other shipped format's rows carry none, so
   // this is always `[]` for them.
   maskedCardHints: string[];
   // Rows this format's parse could not resolve (e.g. an unmapped PrivatBank
   // currency word) — excluded from `transactionCount` above, but surfaced
-  // here rather than silently dropped (controller ruling 2).
+  // here rather than silently dropped.
   unresolvedRowCount: number;
   // Distinct currencies across every parsed row, in first-seen order — a
   // multi-card PrivatBank export can mix currencies per row, and

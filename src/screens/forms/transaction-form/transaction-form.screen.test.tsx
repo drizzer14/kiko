@@ -1795,7 +1795,7 @@ describe('TransactionFormScreen — category editing', () => {
 // (cash-only source, non-source/non-closed/cash-only destination) can each be
 // exercised against a fixture built for that exact case. A second cash holding
 // (`cash-usd-1`) stands in for "an eligible destination" now that card is no
-// longer create-eligible on either side (Requirement B).
+// longer create-eligible on either side.
 const EXCHANGE_HOLDINGS: Holding[] = [
   { id: 'cash-1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash', name: 'Cash UAH' },
   { id: 'cash-usd-1', currency: 'USD', balanceMinorUnits: 0, type: 'cash', name: 'Cash USD' },
@@ -2030,8 +2030,8 @@ describe('TransactionFormScreen — Exchange mode', () => {
   });
 });
 
-// Fixtures for the cash-only create rule (Requirement B) plus account-name
-// threading (Requirement C). `cash-1` and `cash-usd-1` sit under two
+// Fixtures for the cash-only create rule plus account-name
+// threading. `cash-1` and `cash-usd-1` sit under two
 // different accounts so the destination's account name is unambiguous;
 // `card-1`, `btc-1`, and `deposit-1` cover every non-cash type that create
 // mode must now exclude on the destination side.

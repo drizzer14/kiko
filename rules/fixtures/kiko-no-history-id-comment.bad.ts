@@ -91,3 +91,19 @@ export const groupSitsBelowSystem = true;
 // EXPECT-FINDING
 // on-device review: the flat, all-scrolling sheet read as unreadable.
 export const sheetKeepsFixedHeader = true;
+
+// EXPECT-FINDING
+// Requirement B: only a cash source is create-eligible for Exchange.
+export const onlyCashCreateEligible = true;
+
+// EXPECT-FINDING
+// controller ruling 2: an unresolved row is surfaced, never silently dropped.
+export const unresolvedRowsSurfaced = true;
+
+// EXPECT-FINDING
+// PrivatBank's export carries no MCC (section C.1) — every row maps to null.
+export const noMccMapsToNull = true;
+
+// EXPECT-FINDING
+// the brief is explicit: do not change the shared row for one caller.
+export const sharedRowStaysUnchanged = true;

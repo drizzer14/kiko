@@ -60,7 +60,7 @@ const bothDebitAndCreditPopulatedInput = {
 };
 
 // The exported constants ARE the real contract a kiko:developer implements
-// `detect`/`parse` against (section C.3) — pinned here, verified against the
+// `detect`/`parse` against — pinned here, verified against the
 // REAL fixture's bytes, so a future edit that silently
 // drifts the 59-char detect prefix or the column order is caught by a real
 // assertion. `COLUMN`'s 16 shared indices come from
@@ -171,7 +171,7 @@ describe('procreditBusinessCsvFormat.parse', () => {
   // The real fixture's `Рахунок` column spans TWO distinct accounts
   // (`UA00000001` on rows 1-3 & 6, `UA00000007` on rows 4-5) — a single
   // account export concatenated from more than one underlying account, the
-  // same shape Alfa business's own real fixture has (Controller ruling 3).
+  // same shape Alfa business's own real fixture has.
   // `account.iban` must be undefined rather than silently picking the first
   // row's account, unifying ProCredit/Ukrsib's shared core with Alfa's own
   // behavior.

@@ -2,8 +2,8 @@ import { decode as decodeWindows1251 } from 'windows-1251';
 
 // A cp1251-decode unit test, DELIBERATELY independent of the CSV parser
 // (`sensebank-csv.format.test.ts`) — so a bug in the byte-decode step (the
-// screen's forthcoming UTF-8-then-cp1251 fallback, section C.2's KEY DESIGN)
-// and a bug in the CSV/row-shape logic never look like the same failure.
+// screen's forthcoming UTF-8-then-cp1251 fallback) and a bug in the
+// CSV/row-shape logic never look like the same failure.
 //
 // The byte values below are NOT copied from any decode call this suite
 // makes elsewhere — they are the standard windows-1251 codepage's own
@@ -37,7 +37,7 @@ describe('windows-1251 (cp1251) decode — the building block the screen fallbac
   // A UTF-8 byte sequence run through the cp1251 table must NOT accidentally
   // decode to valid-looking Ukrainian text — proves the two encodings are
   // genuinely distinguishable, which is the whole premise the screen's
-  // "try UTF-8 first, then cp1251" fallback (section C.2) relies on.
+  // "try UTF-8 first, then cp1251" fallback relies on.
   it('does not decode a real UTF-8-encoded Ukrainian phrase to itself', () => {
     const utf8Bytes = new Uint8Array(Buffer.from('Виписка', 'utf-8'));
 

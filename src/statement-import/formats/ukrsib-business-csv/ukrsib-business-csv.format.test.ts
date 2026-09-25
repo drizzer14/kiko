@@ -41,7 +41,7 @@ const malformedDateInput = {
 };
 
 // The exported constants ARE the real contract a kiko:developer implements
-// `detect`/`parse` against (section C.3), pinned here — including the
+// `detect`/`parse` against, pinned here — including the
 // byte-level Latin-`i` trap, the reason this format needed its own hand-
 // authored fixture rather than a reused one. `COLUMN`'s 16 shared indices
 // come from `FOP_BUSINESS_COLUMN_BASE` (also used by

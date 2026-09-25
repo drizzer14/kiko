@@ -97,10 +97,10 @@ jest.mock('../../statement-import/import-statement', () => ({
   importStatement: (...args: unknown[]) => mockImportStatement(...args),
 }));
 
-// A multi-card PrivatBank export can span MULTIPLE distinct masked cards
-// (docs/plans/statement-import.md section C.1) — the preview must surface
-// EACH row's own hint. No real fixture file covers this multi-card shape, so
-// this test drives the screen against a hand-built `ParsedStatement` through
+// A multi-card PrivatBank export can span MULTIPLE distinct masked cards —
+// the preview must surface EACH row's own hint. No real fixture file covers
+// this multi-card shape, so this test drives the screen against a hand-built
+// `ParsedStatement` through
 // a wrapped `detectFormat`, keyed on one sentinel `fileName` — every OTHER
 // test in this file keeps using the REAL `detectFormat`/`monobankCsvFormat`
 // pipeline unchanged (`jest.requireActual` below), so this addition cannot
@@ -143,7 +143,7 @@ const multiCardFormatStub: StatementFormat = {
 // these tests prove ONLY that the screen itself retries with a cp1251 decode
 // when the UTF-8 pass finds no match, not that the real format module works.
 const SENSEBANK_TRIGGER_FILE_NAME = 'sensebank-decode-trigger.csv';
-// The literal preamble line (section C.2) `sensebankCsvFormat.detect` will
+// The literal preamble line `sensebankCsvFormat.detect` will
 // eventually check for too — matches `SENSEBANK_PREAMBLE` in
 // `sensebank-csv.format.ts` exactly (not imported from there, kept as an
 // independent literal here on purpose, so this test's pass/fail is never
@@ -573,7 +573,7 @@ describe('StatementImportScreen', () => {
     // Import is ALWAYS enabled (never `disabled={!canImport}`) —
     // no holding picked yet: pressing it must NOT auto-route by either card
     // hint shown above (the masked-card hint is a display suggestion only,
-    // never a silent target pick, section C.1), and validates on press
+    // never a silent target pick), and validates on press
     // instead, showing the field's own inline error.
     expect(getByText(i18n.t('statementImport.importButton')).props.disabled).toBeFalsy();
     await fireEvent.press(getByText(i18n.t('statementImport.importButton')));

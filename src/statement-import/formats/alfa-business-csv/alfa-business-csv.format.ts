@@ -1,4 +1,4 @@
-// Column layout verified against docs/plans/statement-import.md section C.3
+// Column layout verified against docs/plans/statement-import.md
 // (Alfa business/FOP) — grounded in OSadovy/uabean's importer facts,
 // cross-checked against the REAL fixture bytes (see
 // src/statement-import/NOTICE.md for the exact per-line
@@ -35,10 +35,10 @@ export const FULL_HEADER_LINE =
 export const OPERATION_DEBIT_WORD = 'Дебет';
 export const OPERATION_CREDIT_WORD = 'Кредит';
 
-// 0-based column indices against a `;`-delimited data row (section C.3's 19
+// 0-based column indices against a `;`-delimited data row (19
 // columns, verified against the real fixture's header). FOP fields:
 // `ownEdrpou` (**`Ід.код`**, column index 16 — NOTE: the header does NOT
-// literally say `ЄДРПОУ` the way ProCredit/Ukrsib do, section C.3) and
+// literally say `ЄДРПОУ` the way ProCredit/Ukrsib do) and
 // `correspondentCode` (**`Код контрагента`**, column index 7) — both read
 // only to skip, per the plan's EDRPOU disposition (no
 // ParsedTransaction/ParsedAccountHint field exists for it). Date is SPLIT
@@ -123,7 +123,7 @@ const parse = (input: StatementFormatInput): ParsedStatement => {
     formatId: 'alfa-business-csv',
     account: {
       currency: resolveRowCurrency(dataRows[0][COLUMN.currency], FORMAT_LABEL),
-      // Controller ruling 3: `account.iban` is undefined when the file spans
+      // `account.iban` is undefined when the file spans
       // MULTIPLE distinct "Наш IBAN" values (the real fixture's own shape —
       // rows 1-5 carry one IBAN, rows 6-7 a different one, concatenated from
       // two accounts into one export). The account hint is only a

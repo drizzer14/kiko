@@ -1,4 +1,4 @@
-// Column layout verified against docs/plans/statement-import.md section C.3
+// Column layout verified against docs/plans/statement-import.md
 // (ProCredit business/FOP) — grounded in OSadovy/uabean's importer facts,
 // cross-checked against the REAL fixture bytes (see
 // src/statement-import/NOTICE.md for the exact per-line
@@ -21,7 +21,7 @@ import { createColumnarBusinessCsvFormat, FOP_BUSINESS_COLUMN_BASE } from '../bu
 // both, per the plan.
 export const DETECT_PREFIX = 'ЄДРПОУ;Код ID НБУ;Рахунок;Валюта;Дата операції;Код операції';
 
-// 0-based column indices against a `;`-delimited data row (section C.3's 17
+// 0-based column indices against a `;`-delimited data row (17
 // columns, "variant 1" header — the real fixture's own shape). Column 1
 // (`nbuCode`, ProCredit's own "Код ID НБУ") is this format's ONE index that
 // diverges from Ukrsibbank business's otherwise-identical layout — see

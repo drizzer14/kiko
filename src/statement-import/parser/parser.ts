@@ -30,7 +30,7 @@ export type ParsedTransaction = {
   counterIban?: string;
   comment?: string;
   /** The masked card/account hint THIS ROW belongs to (PrivatBank's own
-   * `Картка` column, section C.1) — distinct from `ParsedAccountHint.maskedPan`
+   * `Картка` column) — distinct from `ParsedAccountHint.maskedPan`
    * below, which is only ever a single suggestion for the whole file. A
    * multi-card PrivatBank export needs this per row so the screen can show
    * which card each previewed row came from; the user's target-holding pick
@@ -43,7 +43,7 @@ export type ParsedAccountHint = {
   currency: Currency;
   /** A display name suggestion for a newly created holding (e.g. a masked
    * PAN or the export's own account label), never used to MATCH an existing
-   * holding — matching is always the user's explicit pick (section C.3). */
+   * holding — matching is always the user's explicit pick. */
   suggestedName?: string;
   iban?: string;
   maskedPan?: string;
@@ -54,7 +54,7 @@ export type ParsedAccountHint = {
  * being thrown (which would abort the whole file) or silently dropped
  * without a trace. Two reasons, both from PrivatBank XLSX today:
  * - `unmapped-currency` — a currency word this format's abbreviation map
- *   doesn't cover yet (section C.1, tagged `[VERIFY LIVE]` — the 4-word map
+ *   doesn't cover yet (tagged `[VERIFY LIVE]` — the 4-word map
  *   is known incomplete).
  * - `invalid-amount` — the amount cell didn't parse to a finite number (an
  *   empty or malformed cell) — guards against ever computing a `NaN`
@@ -92,7 +92,7 @@ export type ParsedStatement = {
    * after transaction) qualifies: it is single-account, single-card per
    * file, so the row with the largest parsed time is unambiguous (see
    * `resolveClosingBalance`, `monobank-csv.format.ts`). PrivatBank XLSX also
-   * has a `balance` column (section C.1), but a PrivatBank export can mix
+   * has a `balance` column, but a PrivatBank export can mix
    * MULTIPLE cards per file (`maskedCardHint` differs per row, see that
    * format's own test), so a single closing balance cannot be attributed to
    * one target holding without also matching on which card each row belongs
@@ -151,7 +151,7 @@ export type StatementFormatInput = {
    * entry point exists anywhere in the package), which cannot run inside a
    * `StatementFormat`'s synchronous `detect`/`parse` (`registry.ts`'s
    * `Array.prototype.find` and this screen's render path are both
-   * synchronous, and changing that would ripple through Phase 1's already
+   * synchronous, and changing that would ripple through this format's already
    * shipped, tested code). So the file-read layer (the screen) runs the
    * async `read-excel-file` call ONCE, ahead of time, and hands the already
    * resolved rows through here — `detect`/`parse` for a spreadsheet format

@@ -90,7 +90,7 @@ const decodeUtf8Bytes = (bytes: number[]): string => {
 // a real (if inert) value is passed rather than an empty string.
 export const fileNameOf = (filePath: string): string => filePath.split('/').pop() ?? filePath;
 
-// PrivatBank XLSX is the only spreadsheet format in scope (section C.5) —
+// PrivatBank XLSX is the only spreadsheet format in scope —
 // an honest, visible extension check decides the text-vs-spreadsheet branch
 // below, not a hidden flag. Every other picked file (every CSV format
 // shipped so far) takes the existing UTF-8 text path.
@@ -132,7 +132,7 @@ export const readSheetRowsSafely = async (
 // content — see `decodeBase64ToBytes`/`decodeUtf8Bytes` above for why the
 // 'utf-8' branch does not reach for `Buffer` or `atob`. The 'windows-1251'
 // branch reuses the SAME byte array through the `windows-1251` npm library
-// (section C.2's KEY DESIGN — Sensebank and the FOP/business CSVs are
+// (Sensebank and the FOP/business CSVs are
 // cp1251-encoded, not UTF-8), so both encodings share one base64 decode
 // step and only diverge on how the resulting bytes are turned into text.
 export const decodeStatementText = (base64: string, encoding: 'utf-8' | 'windows-1251'): string => {

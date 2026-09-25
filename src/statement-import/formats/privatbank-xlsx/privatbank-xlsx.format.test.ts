@@ -92,7 +92,7 @@ const invalidAmountInput: StatementFormatInput = {
 };
 
 // The exported constants ARE the real contract a kiko:developer implements
-// `detect`/`parse` against (section C.1) — pinned here so a future edit that
+// `detect`/`parse` against — pinned here so a future edit that
 // silently drifts the title prefix, the row indices, the column order, or
 // the currency-word map is caught by a real assertion, not just documented
 // in a comment nothing enforces.

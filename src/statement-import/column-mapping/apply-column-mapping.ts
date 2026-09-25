@@ -87,7 +87,7 @@ type AmountOutcome =
   | { kind: 'resolved'; major: number }
   | { kind: 'error'; reason: 'amount' | 'debitAndCredit'; value: string };
 
-// Debit -> `-abs`, credit -> `+abs` (Controller ruling 1, same as the
+// Debit -> `-abs`, credit -> `+abs` (same as the
 // dedicated business-CSV formats), regardless of whether the raw cell already
 // carried its own sign — a signed debit stays negative, never doubly negated.
 // Both sides filled is not a valid single-amount row at all (money-safety

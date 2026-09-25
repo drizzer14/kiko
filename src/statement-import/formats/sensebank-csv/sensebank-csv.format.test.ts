@@ -22,8 +22,7 @@ import {
 // matches the clone it came from). Decoded here via the REAL
 // `windows-1251` library, the SAME decode step the screen's cp1251 fallback
 // will perform before handing text to this format — `sensebankCsvFormat`
-// itself stays text-based (section C.2's KEY DESIGN), never touching raw
-// bytes.
+// itself stays text-based, never touching raw bytes.
 const fixtureBytes = readFileSync(path.join(__dirname, '__fixtures__/uabean-sensebank-sample.csv'));
 const fixtureText = decodeWindows1251(fixtureBytes);
 const fixtureInput = { text: fixtureText, fileName: 'uabean-sensebank-sample.csv' };
@@ -89,7 +88,7 @@ const noAccountLineInput = {
 };
 
 // The exported constants ARE the real contract a kiko:developer implements
-// `detect`/`parse` against (section C.2) — pinned here, verified against the
+// `detect`/`parse` against — pinned here, verified against the
 // REAL fixture's bytes, so a future edit that silently
 // drifts the preamble, the account-line regex, the header row (note the
 // LATIN "C" in "Cума"), the skip prefixes, the column order, or the date

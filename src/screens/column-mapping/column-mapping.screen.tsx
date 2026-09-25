@@ -72,7 +72,7 @@ type ColumnMappingScreenProps = NativeStackScreenProps<AccountsStackParamList, '
 // The file-read pipeline's own state — kept separate from the derived
 // mapping/preview below, mirroring `statement-import.screen.tsx`'s own
 // `LoadState`, plus the `.xls`-specific terminal state this screen alone
-// needs (the brief: "and nothing else" once that state is reached).
+// needs (and nothing else, once that state is reached).
 type LoadState =
   | { kind: 'loading' }
   | { kind: 'unreadable' }

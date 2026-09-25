@@ -218,8 +218,8 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
         const utf8Text = decodeStatementText(base64, 'utf-8');
         const utf8Input = { text: utf8Text, fileName: fileNameOf(filePath) };
 
-        // Sensebank (and Phase 4's FOP CSVs) are cp1251-encoded, not UTF-8 —
-        // section C.2's KEY DESIGN. A UTF-8 decode of cp1251 bytes never
+        // Sensebank (and the FOP CSVs) are cp1251-encoded, not UTF-8 — the
+        // KEY DESIGN this fallback relies on. A UTF-8 decode of cp1251 bytes never
         // matches a cp1251 format's own Cyrillic detect signature, so this is
         // an honest, visible second decode attempt of the SAME bytes — no
         // flag, no per-format bytes field — that runs only when the first

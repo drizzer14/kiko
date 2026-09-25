@@ -27,7 +27,7 @@ describe('mapStatementItem', () => {
     const item = statement[0];
     const transaction = mapStatementItem(item, 'holding-1', 'acc-1');
     expect(transaction.source).toBe('monobank');
-    // Phase 6: the synced external id is `${accountId}:${statementId}`, so the
+    // The synced external id is `${accountId}:${statementId}`, so the
     // GLOBAL `(source, external_id)` unique index can never let a second Monobank
     // (or Binance) connection refresh another connection's row on a shared raw id.
     expect(transaction.externalId).toBe(`acc-1:${item.id}`);
@@ -502,7 +502,7 @@ describe('runSync', () => {
     expect(result.importedTransactions).toBe(statement.length);
   });
 
-  // Phase 6 / Risk R-1: two Monobank connections that each fetch a statement item
+  // Two Monobank connections that each fetch a statement item
   // carrying the SAME raw id must import TWO distinct rows, one per account —
   // never let the second connection's upsert refresh the first's row on the
   // GLOBAL `(source, external_id)` index. The account-id namespace is what keeps
@@ -1001,7 +1001,7 @@ describe('runSync', () => {
     expect(persisted).toBe((statementTo as number) * 1000);
   });
 
-  // Phase 1: the Monobank cursor is per-connection in `sync_state`, keyed by the
+  // The Monobank cursor is per-connection in `sync_state`, keyed by the
   // resolved account id — the row is ensured to exist, read, and written all by
   // that id, so a second connection can never share or corrupt this one's cursor.
   it('ensures, reads, and writes the sync_state cursor keyed by the resolved account id', async () => {

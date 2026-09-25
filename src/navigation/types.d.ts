@@ -94,7 +94,7 @@ export type AccountsStackParamList = {
   // `holding:<id>` price series — a metal's price comes from the SHARED
   // `metal:<XAU|...>` instrument (kiko-pricing).
   LotForm: { holdingId: string };
-  // The shared statement-import preview + target-holding screen (Phase 1b), reached
+  // The shared statement-import preview + target-holding screen, reached
   // from the in-app document-picker entry point (`account-detail.screen.tsx`'s
   // `pickAndOpenStatement`) with a resolved local `filePath` and the owning
   // `accountId`. A later entry point (the Share Extension) has no known target

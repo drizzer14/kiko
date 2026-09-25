@@ -11,8 +11,7 @@ import {
 // A single-installment (termMonths: 1) annuity loan: its whole schedule is
 // one installment, so `loanInterestForPaymentMinor` never has to pick among
 // several — the payment maps to it directly. `principalMinorUnits: 900_000`
-// at 12% annual (1% monthly) gives `round(900_000 * 0.01) = 9_000` interest,
-// matching the brief's own illustrative numbers.
+// at 12% annual (1% monthly) gives `round(900_000 * 0.01) = 9_000` interest.
 const scheduledMeta: LoanMeta = {
   kind: 'personal',
   principalMinorUnits: 900_000,

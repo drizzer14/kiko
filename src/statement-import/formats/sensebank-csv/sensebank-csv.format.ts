@@ -1,4 +1,4 @@
-// Column layout verified against docs/plans/statement-import.md section C.2
+// Column layout verified against docs/plans/statement-import.md
 // (grounded in OSadovy/uabean's Sensebank CSV importer facts, cross-checked
 // against the REAL fixture bytes — see
 // src/statement-import/NOTICE.md for the exact
@@ -84,7 +84,7 @@ const detect = (input: StatementFormatInput): boolean => input.text.startsWith(S
 const isHeaderRow = (row: string[]): boolean =>
   row.length === HEADER_ROW.length && HEADER_ROW.every((cell, index) => row[index] === cell);
 
-// Scans every row for the account preamble line (section C.2) — resolves the
+// Scans every row for the account preamble line — resolves the
 // file's single account currency (and IBAN) once, up front, rather than
 // re-deriving it per row. Throws when no such line is present at all, or the
 // captured currency word isn't one Kiko recognizes — a Sensebank file with no

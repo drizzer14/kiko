@@ -1,7 +1,7 @@
 // Shared parse core for the "columnar business CSV" shape ProCredit business
-// and Ukrsibbank business both use (section C.3): a `;`-delimited cp1251
+// and Ukrsibbank business both use: a `;`-delimited cp1251
 // export, one header row, then one data row per transaction, a Дебет XOR
-// Кредит column pair whose cell text is UNSIGNED (Controller ruling 1 —
+// Кредит column pair whose cell text is UNSIGNED —
 // different from Sensebank, whose debit cell already carries its own minus,
 // so `parse` negates the debit side manually here), and a DD.MM.YYYY
 // HH:MM:SS single-field date reusing the shared `parseDateTimeSeconds`
@@ -57,7 +57,7 @@ type ColumnarBusinessCsvConfig = {
   column: ColumnarBusinessCsvColumn;
 };
 
-// Controller ruling 1: the Дебет cell's raw text is UNSIGNED — negate it
+// The Дебет cell's raw text is UNSIGNED — negate it
 // manually; the Кредит cell is unsigned positive, no negation. Guards
 // against ever computing a NaN `amountMinorUnits` when both cells are
 // empty/malformed. A row carrying BOTH a debit AND a

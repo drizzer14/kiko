@@ -6,7 +6,7 @@ export type HoldingSelectOption = {
   icon: string;
   color: string;
   currency: Currency;
-  accountName: string; // the parent account's display name (Requirement C)
+  accountName: string; // the parent account's display name
 };
 
 export type HoldingSelectFieldProps = {

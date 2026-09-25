@@ -247,7 +247,7 @@ export const mapStatementItem = (
   category: categoryForMcc(item.mcc),
   comment: item.comment ?? null,
   source: 'monobank',
-  // NAMESPACED per connection (Phase 6): `${accountId}:${statementId}`. Monobank
+  // NAMESPACED per connection: `${accountId}:${statementId}`. Monobank
   // statement ids are globally unique, but the GLOBAL `(source, external_id)`
   // unique index (schema.ts) is shared with Binance, whose deposit/withdrawal
   // ids are only PER-ACCOUNT unique — so once more than one connection per
@@ -308,7 +308,7 @@ const monobankIdOf = (metadata: unknown): string | undefined =>
  * `sync_state` cursor, and its holdings match per account (`upsertByMetadataKey`
  * scopes by `accountId`), so a second connection can never import another's
  * cards or corrupt its cursor — the one-connection-per-institution invariant is
- * therefore retired here (multi-account plan, Phase 3). Without a
+ * therefore retired here. Without a
  * `targetAccountId` (the legacy no-target path), reuse the FIRST connected
  * Monobank account; the fan-out always passes a target now, so this path only
  * serves an already-single-connection legacy caller. If neither is available
@@ -984,7 +984,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   const accountId = await resolveMonobankAccountId(deps);
   // Ensure this connection's `sync_state` cursor row exists before any read or
   // setter below. Idempotent (`onConflictDoNothing`): an already-connected
-  // account (row created by the Phase 1 backfill migration, or a prior run) is
+  // account (row created by an earlier backfill migration, or a prior run) is
   // left untouched, so its cursor is preserved.
   await deps.syncStateRepo.ensure(accountId);
 

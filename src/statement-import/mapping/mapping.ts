@@ -10,8 +10,8 @@ import { normalizeTransactionName } from '../../transactions/normalize-name';
  * (`src/monobank/sync/sync.ts`) writes, minus `hold` — an exported statement
  * row is always settled, there is no pending-authorization concept in a file
  * export, so this type carries no `hold` field at all. Not exported (matches
- * `docs/plans/statement-import.md` section A.3 verbatim, and `transactions.repo.ts`'s
- * own identically-shaped local `NewTransaction`) — nothing outside this
+ * `transactions.repo.ts`'s own identically-shaped local `NewTransaction`) —
+ * nothing outside this
  * module needs the type name, only the function it shapes.
  */
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
