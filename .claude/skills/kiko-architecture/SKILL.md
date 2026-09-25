@@ -1149,7 +1149,7 @@ in memory for the crash history this fixed.
   Keychain call (see memory `biometric-keychain-needs-nsfaceidusagedescription`).
 - **`useAnimatedKeyboard()` is banned** — see `kiko-gestures`'s "`useAnimatedKeyboard()`
   is banned" section for why, and the Semgrep ERROR rule
-  `kiko-no-use-animated-keyboard` (`rules/semgrep-mobile.yml`) that enforces it.
+  `kiko-no-use-animated-keyboard` (`rules/semgrep-prewrite.yml`) that enforces it.
 - **Release-only crash classes.** Some crashes reproduce ONLY in a Release
   build, not Debug: a plain function used inside a worklet without the
   `'worklet'` directive (Debug swallows the mismatch, Release SIGABRTs — see

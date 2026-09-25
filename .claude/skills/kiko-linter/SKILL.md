@@ -293,14 +293,14 @@ tracked as a backlog item in `docs/harness/review-to-biome-inventory.md`.
 ## F4 code-style mechanization candidates — all four now implemented
 
 The nullable-ternary rule is `kiko-no-nullable-map-ternary` (Semgrep
-ERROR, `rules/semgrep-mobile.yml`) — see "Semgrep pattern strings need
+ERROR, `rules/semgrep-prewrite.yml`) — see "Semgrep pattern strings need
 quoting" below for the one gotcha that cost the most time writing it.
 The one-exported-component-per-`.tsx` check is a Jest invariant, not
 Semgrep — see "One exported component per `.tsx` — a Jest invariant,
 not Semgrep" below. The import-length-sort check is a hand-rolled
 shell+JS checker/fixer at the fast tier — see "Import length-sort — a
 hand-rolled checker (and fixer)" below. The comment-history check is
-`kiko-no-history-id-comment` (Semgrep ERROR, `rules/semgrep-mobile.yml`)
+`kiko-no-history-id-comment` (Semgrep ERROR, `rules/semgrep-prewrite.yml`)
 — see "`kiko-no-history-id-comment`" below.
 
 ## `kiko-no-history-id-comment`
@@ -545,7 +545,7 @@ violation is still there.
 
 ## `kiko-no-switch` — an AST `switch` pattern, not a keyword regex
 
-`kiko-no-switch` (`rules/semgrep-mobile.yml`, Class A) mechanizes
+`kiko-no-switch` (`rules/semgrep-prewrite.yml`, Class A) mechanizes
 kiko-code-style's ts-pattern section: `switch` is banned outright, no
 exception. It matches the AST shape of a real `switch` statement rather
 than a bare keyword-plus-paren regex — unlike `kiko-repo-no-class`'s
