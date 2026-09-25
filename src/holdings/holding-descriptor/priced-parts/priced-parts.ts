@@ -23,9 +23,13 @@ export const pricedValueOrNull = (
 
 // A priced holding's gross/net are its `pricedValueOrNull` (a `PriceBook`
 // lookup), falling back to its lots' cost basis when there is no stored price
-// point yet — never 0. `principalOrCost` is ALWAYS the cost basis (not the
-// priced value), so the holding-detail breakdown can show a live gain/loss
-// against it. It never accrues interest or withholds tax, so both stay zero.
+// point yet — never 0 — OR when the priced Money's own currency disagrees
+// with the holding's (an invalid/restore-only row): a mismatch is never
+// surfaced under the holding's currency label, since that would silently
+// relabel the amount rather than convert it. `principalOrCost` is ALWAYS the
+// cost basis (not the priced value), so the holding-detail breakdown can show
+// a live gain/loss against it. It never accrues interest or withholds tax, so
+// both stay zero.
 const pricedBreakdown = (
   spec: PricedSpec,
   holding: ValuableHolding,
@@ -38,15 +42,17 @@ const pricedBreakdown = (
   }
   const { currency } = holding;
   const costBasisMinor = costBasisMinorAt(lots, now);
-  const valueMinor = pricedValueOrNull(spec, holding, book, now)?.minorUnits ?? costBasisMinor;
+  const pricedMoney = pricedValueOrNull(spec, holding, book, now);
+  const usesPricedMoney = pricedMoney !== null && pricedMoney.currency === currency;
+  const value = usesPricedMoney ? pricedMoney : Money.of(currency, costBasisMinor);
   const zero = Money.of(currency, 0);
 
   return {
-    gross: Money.of(currency, valueMinor),
+    gross: value,
     principalOrCost: Money.of(currency, costBasisMinor),
     interest: zero,
     tax: zero,
-    net: Money.of(currency, valueMinor),
+    net: value,
   };
 };
 

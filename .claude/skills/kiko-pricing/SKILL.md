@@ -219,18 +219,25 @@ guard, the amortization schedule and `'none'`'s own "no correction
 found" baseline all still apply to an id-less loan exactly as they do
 for an identified one with no correction found.
 
-**A priced holding with no price point values at its lots' cost basis,
-never 0** — `pricedDescriptor(spec, rest)`
+**A priced holding with no price point — or an invalid one — values at
+its lots' cost basis, never 0** — `pricedDescriptor(spec, rest)`
 (`src/holdings/holding-descriptor/priced-parts/`), which every priced
 type's own descriptor is built through, wires its `breakdown` to that
 SAME `spec` internally (the private `pricedBreakdown` helper), so a
 per-type file can never pass a `priced` spec its `breakdown` reads a
 different one from. That shared breakdown falls back to
-`costBasisMinorAt` whenever `pricedValueOrNull` returns `null`.
-`spec.lots(metadata)` — each descriptor's own `asMetalMeta`/`asPropertyMeta`
-parse — runs before this shared cost-basis logic, so a `metal` holding's
-differently-shaped metadata never silently mis-parses into the flat
-stored balance. For a priced type,
+`costBasisMinorAt` whenever `pricedValueOrNull` returns `null`, OR when
+the returned Money's own `currency` disagrees with `holding.currency`
+— a metal row is priced in the price point's stored currency (always
+UAH), so an invalid/restore-only row whose OWN `currency` column reads
+something else (e.g. `USD`) would otherwise have that UAH amount
+displayed under the wrong currency label, not converted. The guard
+treats that exactly like "no price point yet": cost basis, in the
+holding's own currency. `spec.lots(metadata)` — each descriptor's own
+`asMetalMeta`/`asPropertyMeta` parse — runs before this shared
+cost-basis logic, so a `metal` holding's differently-shaped metadata
+never silently mis-parses into the flat stored balance. For a priced
+type,
 `gross = net =` the resolved value and `principalOrCost` is ALWAYS the
 cost basis (even when gross also equals the cost basis on the
 no-price-point path) — the holding-detail breakdown needs cost basis

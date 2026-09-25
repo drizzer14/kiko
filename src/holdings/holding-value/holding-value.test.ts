@@ -523,6 +523,31 @@ describe('holdingValueBreakdown — metal (priced)', () => {
     expect(breakdown.interest.minorUnits).toBe(0);
     expect(breakdown.tax.minorUnits).toBe(0);
   });
+
+  // NBU's metal price point is always UAH, but a restore-only row's
+  // `currency` column could disagree with it. The priced value must never be
+  // shown UNDER the holding's own currency label when the two disagree — that
+  // would silently relabel a UAH amount as USD rather than convert it. The
+  // holding falls back to its lots' cost basis instead, exactly as it would
+  // for no stored price point at all.
+  it('falls back to the lots cost basis for a metal row whose currency disagrees with the price point, never labeling the priced value as that currency', () => {
+    const book = buildPriceBook([
+      {
+        instrument: metalInstrument('XAU'),
+        day: propertyDay2024,
+        price: '90000',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+    ]);
+    const holding: ValuableHolding = { ...goldBar(), currency: 'USD' };
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, book);
+    expect(breakdown.gross.currency).toBe('USD');
+    expect(breakdown.gross.minorUnits).toBe(8_500_000);
+    expect(breakdown.net.minorUnits).toBe(8_500_000);
+    expect(breakdown.principalOrCost.minorUnits).toBe(8_500_000);
+  });
 });
 
 // Local helper mirrors interest.addMonths so the test states its own expectation.
