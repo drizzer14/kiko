@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -61,6 +62,42 @@ function writeRulesStub(directory: string): string {
   const rulesPath = join(directory, 'rules-stub.yml');
   writeFileSync(rulesPath, 'rules: []\n');
   return rulesPath;
+}
+
+// A semgrep stub for the rebuildContents tests below. It captures its own
+// cwd and argv, and the content of the AFTER target it was pointed at, plus
+// whether and what the BEFORE counterpart (the sibling before/<rel> path
+// relative to that same cwd) holds — this is how the tests observe the
+// rebuilt content and the mirrored-tree layout without reading them off the
+// guard's own scratch tree, which is removed before the guard process
+// exits, so any check has to happen from data the stub captured while that
+// tree still existed.
+function writeCapturingSemgrepStub(directory: string, captureDirectory: string): string {
+  const stubPath = join(directory, 'semgrep-capture-stub.sh');
+  writeFileSync(
+    stubPath,
+    [
+      '#!/usr/bin/env bash',
+      'for target in "$@"; do :; done',
+      'pwd > "$KIKO_PREWRITE_TEST_CAPTURE_DIR/cwd.txt"',
+      'printf \'%s\' "$target" > "$KIKO_PREWRITE_TEST_CAPTURE_DIR/argv.txt"',
+      'cp "$target" "$KIKO_PREWRITE_TEST_CAPTURE_DIR/after.txt"',
+      "beforeTarget=$(printf '%s' \"$target\" | sed 's#^after/#before/#')",
+      'if [ -f "$beforeTarget" ]; then',
+      '  cp "$beforeTarget" "$KIKO_PREWRITE_TEST_CAPTURE_DIR/before.txt"',
+      '  printf \'yes\' > "$KIKO_PREWRITE_TEST_CAPTURE_DIR/before-exists.txt"',
+      'else',
+      '  : > "$KIKO_PREWRITE_TEST_CAPTURE_DIR/before.txt"',
+      '  printf \'no\' > "$KIKO_PREWRITE_TEST_CAPTURE_DIR/before-exists.txt"',
+      'fi',
+      'printf \'%s\' \'{"results":[],"errors":[],"paths":{"scanned":[]}}\'',
+      'exit 0',
+      '',
+    ].join('\n'),
+  );
+  chmodSync(stubPath, 0o755);
+  mkdirSync(captureDirectory, { recursive: true });
+  return stubPath;
 }
 
 function payloadFor(toolName: string, toolInput: Record<string, unknown>): string {
@@ -326,5 +363,214 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
     expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
     expect(parsed.hookSpecificOutput.permissionDecisionReason).toContain('exit 42');
     expect(result.stderr).toContain('boom');
+  });
+});
+
+describe('rebuildContents (BEFORE/AFTER reconstruction for Write/Edit/MultiEdit)', () => {
+  it('Write, new file: BEFORE empty, AFTER = content', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const stub = writeCapturingSemgrepStub(project, captureDirectory);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'new-file.ts');
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: 'export const value = 1;\n' }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        KIKO_PREWRITE_TEST_CAPTURE_DIR: captureDirectory,
+      }),
+    );
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(captureDirectory, 'before.txt'), 'utf8')).toBe('');
+    expect(readFileSync(join(captureDirectory, 'after.txt'), 'utf8')).toBe(
+      'export const value = 1;\n',
+    );
+  });
+
+  it('Write, existing file: BEFORE = disk, AFTER = content', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const stub = writeCapturingSemgrepStub(project, captureDirectory);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'existing-file.ts');
+    writeFileSync(targetFile, 'export const value = 0;\n');
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: 'export const value = 1;\n' }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        KIKO_PREWRITE_TEST_CAPTURE_DIR: captureDirectory,
+      }),
+    );
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(captureDirectory, 'before.txt'), 'utf8')).toBe(
+      'export const value = 0;\n',
+    );
+    expect(readFileSync(join(captureDirectory, 'after.txt'), 'utf8')).toBe(
+      'export const value = 1;\n',
+    );
+  });
+
+  it('Edit: replaces the first occurrence only', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const stub = writeCapturingSemgrepStub(project, captureDirectory);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'edit-file.ts');
+    writeFileSync(targetFile, 'a X b X');
+
+    const result = runGuard(
+      payloadFor('Edit', { file_path: targetFile, old_string: 'X', new_string: 'Y' }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        KIKO_PREWRITE_TEST_CAPTURE_DIR: captureDirectory,
+      }),
+    );
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(captureDirectory, 'after.txt'), 'utf8')).toBe('a Y b X');
+  });
+
+  it('Edit replace_all: replaces every occurrence', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const stub = writeCapturingSemgrepStub(project, captureDirectory);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'edit-file.ts');
+    writeFileSync(targetFile, 'a X b X');
+
+    const result = runGuard(
+      payloadFor('Edit', {
+        file_path: targetFile,
+        old_string: 'X',
+        new_string: 'Y',
+        replace_all: true,
+      }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        KIKO_PREWRITE_TEST_CAPTURE_DIR: captureDirectory,
+      }),
+    );
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(captureDirectory, 'after.txt'), 'utf8')).toBe('a Y b Y');
+  });
+
+  it('Edit: keeps a literal $& in new_string, never a matched-substring backreference', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const stub = writeCapturingSemgrepStub(project, captureDirectory);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'edit-file.ts');
+    writeFileSync(targetFile, 'aXb');
+
+    const result = runGuard(
+      payloadFor('Edit', { file_path: targetFile, old_string: 'X', new_string: '$&' }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        KIKO_PREWRITE_TEST_CAPTURE_DIR: captureDirectory,
+      }),
+    );
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(captureDirectory, 'after.txt'), 'utf8')).toBe('a$&b');
+  });
+
+  it('MultiEdit: applies edits in array order on the running result', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const stub = writeCapturingSemgrepStub(project, captureDirectory);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'multi-edit-file.ts');
+    writeFileSync(targetFile, 'X');
+
+    const result = runGuard(
+      payloadFor('MultiEdit', {
+        file_path: targetFile,
+        edits: [
+          { old_string: 'X', new_string: 'Y' },
+          { old_string: 'Y', new_string: 'Z' },
+        ],
+      }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        KIKO_PREWRITE_TEST_CAPTURE_DIR: captureDirectory,
+      }),
+    );
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(captureDirectory, 'after.txt'), 'utf8')).toBe('Z');
+  });
+
+  it('denies when old_string is not found verbatim', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const stub = writeCapturingSemgrepStub(project, captureDirectory);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'edit-file.ts');
+    writeFileSync(targetFile, 'hello world');
+
+    const result = runGuard(
+      payloadFor('Edit', { file_path: targetFile, old_string: 'NOTFOUND', new_string: 'X' }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        KIKO_PREWRITE_TEST_CAPTURE_DIR: captureDirectory,
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
+    expect(parsed.hookSpecificOutput.permissionDecisionReason).toContain('re-read');
+  });
+
+  it('mirrors the repo-relative path under before/ and after/', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const stub = writeCapturingSemgrepStub(project, captureDirectory);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'screens', 'a', 'a.screen.tsx');
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: 'export const value = 1;\n' }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        KIKO_PREWRITE_TEST_CAPTURE_DIR: captureDirectory,
+      }),
+    );
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(captureDirectory, 'argv.txt'), 'utf8')).toBe(
+      'after/src/screens/a/a.screen.tsx',
+    );
+    // The BEFORE file is checked by the stub itself, while the guard's
+    // mkdtemp scratch tree still exists — the guard removes it in its own
+    // `finally` before this test process gets to run any assertion.
+    expect(readFileSync(join(captureDirectory, 'before-exists.txt'), 'utf8')).toBe('yes');
   });
 });

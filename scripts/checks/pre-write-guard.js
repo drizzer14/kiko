@@ -12,10 +12,10 @@
 // This first pass wires the shared shape every later task builds on: read
 // the payload, resolve `file_path` against CLAUDE_PROJECT_DIR (through a
 // symlink on either side), gate on file scope, mirror the before/after
-// content into a scratch tree, and run ONE Semgrep pass against it. Content
-// rebuilding for Edit/MultiEdit (rebuildContents) and real finding
-// extraction (runSemgrep) are stubs here — Edit/MultiEdit rebuilding and
-// new-findings-only comparison land in later tasks. Fail closed throughout:
+// content into a scratch tree, and run ONE Semgrep pass against it.
+// `rebuildContents` rebuilds Write/Edit/MultiEdit; real Semgrep finding
+// extraction (parsing `results` into Finding[]) and the new-findings-only
+// comparison remain stubs here and land in later tasks. Fail closed throughout:
 // the top-level try/catch below turns ANY throw — a malformed payload, a
 // missing/unreadable rules file, an unexpected Semgrep exit code, or an
 // internal timeout killing a child — into a deny, never a silent allow.
@@ -106,12 +106,63 @@ function isInScope(relativePath) {
   return !EXCLUDED_PREFIXES.some((prefix) => posixRelativePath.startsWith(prefix));
 }
 
-// STUB: real Edit/MultiEdit rebuilding (applying old_string/new_string, or
-// an edits array, against beforeText) lands in a later task. For now this
-// only handles the Write shape, which is enough to exercise scope, the
-// mirrored trees, and the Semgrep child-process contract this task wires.
-function rebuildContents(_toolName, toolInput, _beforeText) {
-  return toolInput.content ?? '';
+// Thrown by rebuildContents when an old_string cannot be found verbatim in
+// the running text — for example after a curly-quote or CRLF normalization
+// changed the on-disk bytes since the agent last read them (Review Focus 1:
+// the caller's fail-closed try/catch turns this into a deny that tells the
+// agent to re-read the file, never an unchecked write).
+class RebuildError extends Error {}
+
+// Applies one old_string/new_string edit to sourceText, exactly as the real
+// Edit tool would: every occurrence when replaceAll is true, otherwise only
+// the first. Deliberately never uses String.prototype.replace with a string
+// replacement argument — a literal '$&' (or '$1', '$`', etc.) in newString
+// has special meaning to that overload and would silently stop being
+// literal. split/join and indexOf/slice below only ever treat newString as
+// a plain literal string.
+function applySingleEdit(sourceText, oldString, newString, replaceAll) {
+  if (!sourceText.includes(oldString)) {
+    throw new RebuildError('old_string not found; re-read the file and retry');
+  }
+  if (replaceAll) {
+    return sourceText.split(oldString).join(newString);
+  }
+  const matchIndex = sourceText.indexOf(oldString);
+  return (
+    sourceText.slice(0, matchIndex) + newString + sourceText.slice(matchIndex + oldString.length)
+  );
+}
+
+// Rebuilds the AFTER content per the spec's "Rebuilding the proposed
+// content" section:
+// - Write: AFTER is toolInput.content verbatim; beforeText is unused.
+// - Edit: BEFORE with one old_string/new_string edit applied.
+// - MultiEdit: BEFORE with toolInput.edits applied in array order, each one
+//   built on the running result of the previous edit (reduce, not a fresh
+//   apply against the original beforeText every time) — the same order the
+//   real MultiEdit tool applies them in.
+// Throws RebuildError (via applySingleEdit) when an old_string is not found
+// verbatim; the caller's fail-closed try/catch turns that into a deny.
+function rebuildContents(toolName, toolInput, beforeText) {
+  if (toolName === 'Write') {
+    return toolInput.content ?? '';
+  }
+  if (toolName === 'Edit') {
+    return applySingleEdit(
+      beforeText,
+      toolInput.old_string,
+      toolInput.new_string,
+      Boolean(toolInput.replace_all),
+    );
+  }
+  if (toolName === 'MultiEdit') {
+    return (toolInput.edits || []).reduce(
+      (runningText, edit) =>
+        applySingleEdit(runningText, edit.old_string, edit.new_string, Boolean(edit.replace_all)),
+      beforeText,
+    );
+  }
+  return beforeText;
 }
 
 // Mirrors BEFORE and AFTER into one mkdtemp root, each under its own
@@ -135,21 +186,29 @@ function writeMirroredTrees(relativePath, beforeText, afterText) {
 
 // Runs Semgrep against the requested trees ('after', or ['before','after']
 // for a later task's new-findings comparison) with the pre-write rule set.
-// A missing/unreadable rules file, a Semgrep exit code other than 0
-// (clean) or 1 (findings), or a child killed by its own timeout all throw —
-// caught by the top-level fail-closed handler below. STUB: parsing
-// `results` into Finding[] lands in a later task; this pass only proves the
-// child-process contract (rules readability, exit-code handling, the
-// timeout budget).
+// The child runs with cwd = temporaryRoot and is given targets RELATIVE to
+// it ('after/<rel>', not an absolute path) — this is what lets a
+// path-keyed rule (for example rule 9's nav-layer allowlist, or rule 12's
+// screen-folder rule) evaluate against the file's real repo-relative path
+// instead of a throwaway scratch path, and lets both trees stay reachable
+// from the SAME cwd even though this task only ever scans 'after'
+// (the BEFORE-tree pass is a later task's new-findings comparison). A
+// missing/unreadable rules file, a Semgrep exit code other than 0 (clean)
+// or 1 (findings), or a child killed by its own timeout all throw — caught
+// by the top-level fail-closed handler below. STUB: parsing `results` into
+// Finding[] lands in a later task; this pass only proves the child-process
+// contract (rules readability, exit-code handling, the timeout budget).
 function runSemgrep(temporaryRoot, relativePath, trees) {
   const rulesPath =
     process.env.KIKO_PREWRITE_RULES || path.join(ROOT, 'rules', 'semgrep-prewrite.yml');
   fs.accessSync(rulesPath, fs.constants.R_OK);
 
   const semgrepBinary = process.env.KIKO_PREWRITE_SEMGREP_BIN || 'semgrep';
-  const targets = trees.map((tree) => path.join(temporaryRoot, tree, relativePath));
+  const posixRelativePath = relativePath.split(path.sep).join('/');
+  const targets = trees.map((tree) => `${tree}/${posixRelativePath}`);
 
   const childResult = spawnSync(semgrepBinary, ['--config', rulesPath, '--json', ...targets], {
+    cwd: temporaryRoot,
     encoding: 'utf8',
     timeout: remainingBudget(),
   });
