@@ -20,8 +20,8 @@ jest.mock('../../db/client', () => {
   };
 });
 
-import maybe, { foldMap } from 'fnts/maybe';
 import { write } from '@kiko/db/client';
+import maybe, { foldMap } from 'fnts/maybe';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { captureSetDatabaseTransaction } from '@kiko/db/capture-set-tx';
 import { inArrayClauseFromCondition } from '@kiko/db/in-array-clause-test-helper';
@@ -146,6 +146,13 @@ describe('holdingsRepo', () => {
     const { sql } = holdingsRepo.listByAccountQuery('acc-1').toSQL();
     expect(sql.toLowerCase()).toContain('order by');
     expect(sql).toContain('sort_order');
+  });
+
+  it('builds a distinct-open-currencies query, excluding closed holdings', () => {
+    const { sql } = holdingsRepo.openCurrenciesQuery().toSQL();
+    expect(sql.toLowerCase()).toContain('distinct');
+    expect(sql).toContain('holdings');
+    expect(sql.toLowerCase()).toContain('closed_at');
   });
 
   it('create inserts the holding and resolves to the generated id', async () => {

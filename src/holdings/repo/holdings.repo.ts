@@ -1,6 +1,6 @@
 import { match } from 'ts-pattern';
 import type { Repository } from '@kiko/db/repository';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import {
   asTermDepositMeta,
@@ -212,6 +212,22 @@ export const holdingsRepo = {
       .from(holdings)
       .where(eq(holdings.accountId, accountId))
       .orderBy(asc(holdings.sortOrder), asc(holdings.createdAt)),
+  /**
+   * The DISTINCT currencies among OPEN (non-closed) holdings — the one cheap
+   * gate query a rate/price refresh reads before deciding whether it needs to
+   * run at all (kiko-architecture: app-open and refresh work is gated on data
+   * presence). A caller derives BOTH gates from this single read: the fiat
+   * leg needs a live rate only when some currency here differs from the base
+   * (display) currency; the crypto leg needs CoinGecko only when the result,
+   * filtered to `cryptoCurrencyOptions`, is non-empty (and, filtered further,
+   * names exactly which coins to fetch — never one nobody holds). One
+   * `SELECT DISTINCT`, never a per-holding loop.
+   */
+  openCurrenciesQuery: () =>
+    database
+      .selectDistinct({ currency: holdings.currency })
+      .from(holdings)
+      .where(isNull(holdings.closedAt)),
   /**
    * Insert a new holding and resolve to its generated app id (the text UUID),
    * so a caller can immediately act on the new row (e.g. set its icon). The
