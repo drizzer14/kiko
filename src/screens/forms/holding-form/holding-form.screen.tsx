@@ -2,8 +2,8 @@ import { match } from 'ts-pattern';
 import { Alert, View } from 'react-native';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
+import { holdingsRepo } from '@kiko/holdings/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { holdingsRepo, type LoanPricePointOp } from '@kiko/holdings/repo';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { ScrollViewInstance, TextInputInstance } from 'react-native';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
@@ -27,8 +27,8 @@ import HoldingTypeField from '../holding-type-field';
 import type { HoldingRow } from '../../../db/schema';
 import { parseAmount } from '../../../currency/parse';
 import Box from '../../../design-system/components/box';
-import { shiftDecimal } from '../../../currency/decimal';
 import { useLiveQuery } from '../../../db/use-live-query';
+import type { PriceBook } from '../../../prices/price-book';
 import HoldingIdentityField from '../holding-identity-field';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
@@ -37,23 +37,15 @@ import Divider from '../../../design-system/components/divider';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import TextField from '../../../design-system/components/text-field';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
-import { dayKeyOf, type PriceBook } from '../../../prices/price-book';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../../navigation/types';
-import { loanOutstandingMinorAt } from '../../../holdings/loan-schedule';
+import { type Currency, currencySymbol } from '../../../currency/currency';
 import CurrencyField from '../../../design-system/components/currency-field';
 import { groupAmount, majorAmountText } from '../amount-format/amount-format';
-import { asLoanMeta, type LoanMeta } from '../../../holdings/holding-metadata';
 import { isSyncedAccount, isSyncedHolding } from '../../../holdings/deletable';
-import { type Currency, currencyScale, currencySymbol } from '../../../currency/currency';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 
-import {
-  useLoanFields,
-  type LoanReasonKey,
-  type UseLoanFieldsResult,
-} from './loan/use-loan-fields';
 import {
   useTermDepositFields,
   type UseTermDepositFieldsResult,
@@ -63,6 +55,7 @@ import BondFormBlock from './bond/bond-form-block';
 import MetalFormBlock from './metal/metal-form-block';
 import PropertyFormBlock from './property/property-form-block';
 import TermDepositFormBlock from './term-deposit/term-deposit-form-block';
+import { useLoanFields, type UseLoanFieldsResult } from './loan/use-loan-fields';
 import { useBondFields, type UseBondFieldsResult } from './bond/use-bond-fields';
 import { useMetalFields, type UseMetalFieldsResult } from './metal/use-metal-fields';
 import type { ScrollTarget, CreatePayload, HoldingTypeForm } from './holding-type-form';
@@ -108,196 +101,32 @@ const buildHoldingPatch = (params: {
   };
 };
 
-// The fields `buildLoanMeta`/`buildLoanCreatePayload` both need (ponytail:
-// a `Pick` off the hook's own result type, not a restated shape).
-type LoanFieldsSnapshot = Pick<
-  UseLoanFieldsResult,
-  'kind' | 'principal' | 'startDate' | 'schedule' | 'annualRatePct' | 'termMonths'
->;
-
-// A loan's `LoanMeta` (T26/T28, spec 5.1) — shared by `buildMetadata`'s EDIT
-// branch and `buildLoanCreatePayload` below, so the two can never build a
-// differently shaped `LoanMeta` for the same field values.
-const buildLoanMeta = (fields: LoanFieldsSnapshot, currency: Currency): LoanMeta => ({
-  kind: fields.kind,
-  principalMinorUnits: Money.fromMajor(currency, parseAmount(fields.principal) || 0).minorUnits,
-  startDate: fields.startDate ?? Date.now(),
-  schedule: fields.schedule,
-  ...(fields.schedule === 'none'
-    ? {}
-    : {
-        annualRatePct: parseAmount(fields.annualRatePct) || 0,
-        termMonths: parseAmount(fields.termMonths) || 0,
-      }),
-});
-
-// The loan CREATE payload (T28): a zero stored balance (ledgerless — its
-// value derives entirely from the schedule math / its own manual series,
-// kiko-domain) plus the `LoanMeta` above. A `'none'` schedule (an informal
-// debt) ADDITIONALLY writes a first `manual` price point on the holding's
-// own `holding:<id>` series equal to the principal, dated the start day —
-// mirroring `buildPropertyCreatePayload`'s own first-point convention —
-// so `loanOutstandingMinorAt`'s manual-series read never comes up empty
-// before the user records a real correction. An `'annuity'`/`'differentiated'`
-// schedule writes none: its outstanding is computed at read time from the
-// principal + schedule (`loanOutstandingMinorAt`'s own no-correction
-// fallback), so no correction point is needed yet.
-const buildLoanCreatePayload = (
-  fields: LoanFieldsSnapshot,
-  currency: Currency,
-): {
-  balanceMinorUnits: number;
-  metadata: LoanMeta;
-  firstPricePoint?: { day: number; price: string };
-} => {
-  const metadata = buildLoanMeta(fields, currency);
-
-  if (fields.schedule !== 'none') {
-    return { balanceMinorUnits: 0, metadata };
-  }
-
-  const day = dayKeyOf(fields.startDate ?? Date.now());
-
-  return {
-    balanceMinorUnits: 0,
-    metadata,
-    firstPricePoint: {
-      day,
-      price: shiftDecimal(String(metadata.principalMinorUnits), -currencyScale[currency]),
-    },
-  };
-};
-
-/**
- * The `LoanPricePointOp` a loan EDIT's `holdingsRepo.updateLoan` call needs
- * — the three-case ruling in kiko-domain's "Loan form + detail": (a) a
- * schedule change INTO `'none'` preserves the OLD schedule's current
- * outstanding as a manual point, so the debt never silently reads as 0 the
- * instant the schedule is cleared; (b) a `'none'` loan's principal/start-date
- * edit moves its start-day point (any later correction stays); (c) every
- * other transition (including `'none'` OUT to a schedule) leaves the manual
- * series untouched — a correction point is still valid for a scheduled loan
- * (N10a). `oldMeta === null` (a fresh holding, or unparsed metadata) has
- * nothing to reconcile.
- */
-const buildLoanPricePointOp = (params: {
-  oldMeta: LoanMeta | null;
-  newMeta: LoanMeta;
-  holdingId: string;
-  currency: Currency;
-  book: PriceBook;
-  now: number;
-}): LoanPricePointOp => {
-  const { oldMeta, newMeta, holdingId, currency, book, now } = params;
-
-  if (oldMeta === null) {
-    return { kind: 'none' };
-  }
-
-  if (oldMeta.schedule !== 'none' && newMeta.schedule === 'none') {
-    // (a) normally dates the preserved point today. But `loanOutstandingMinorAt`
-    // reads 0 for any instant before the loan's own `startDate` (a future-start
-    // loan), so dating it today would write a permanent 0 that outlives the
-    // start date once it arrives. Write the principal at the start day instead
-    // — mirroring the create-mode `'none'` first point — whenever today is
-    // still before that day.
-    const beforeStart = dayKeyOf(now) < dayKeyOf(newMeta.startDate);
-    const day = beforeStart ? dayKeyOf(newMeta.startDate) : dayKeyOf(now);
-    const outstanding = beforeStart
-      ? newMeta.principalMinorUnits
-      : loanOutstandingMinorAt(oldMeta, holdingId, book, now);
-
-    return {
-      kind: 'upsert',
-      day,
-      price: shiftDecimal(String(outstanding), -currencyScale[currency]),
-      currency,
-    };
-  }
-
-  if (
-    oldMeta.schedule === 'none' &&
-    newMeta.schedule === 'none' &&
-    (oldMeta.principalMinorUnits !== newMeta.principalMinorUnits ||
-      oldMeta.startDate !== newMeta.startDate)
-  ) {
-    return {
-      kind: 'move',
-      oldDay: dayKeyOf(oldMeta.startDate),
-      newDay: dayKeyOf(newMeta.startDate),
-      price: shiftDecimal(String(newMeta.principalMinorUnits), -currencyScale[currency]),
-      currency,
-    };
-  }
-
-  return { kind: 'none' };
-};
-
-// The EDIT-mode save for a loan (T28 review round 1, I1) — extracted out of
-// `save` purely to keep that function's own branch count under the
-// cognitive-complexity budget, the same reason `buildLoanPricePointOp` and
-// `LoanFormBlock` are their own top-level functions. `oldMeta` reads the
-// STILL-STORED (pre-edit) metadata off the live-queried `editingHolding`, so
-// `buildLoanPricePointOp` can tell what actually changed.
-const saveLoanEdit = (params: {
-  holdingId: string;
-  patch: Partial<HoldingRow>;
-  editingHolding: HoldingRow | undefined;
-  loanFields: LoanFieldsSnapshot;
-  currency: Currency;
-  book: PriceBook;
-}): Promise<void> => {
-  const { holdingId, patch, editingHolding, loanFields, currency, book } = params;
-  const oldMeta = editingHolding ? asLoanMeta(editingHolding.metadata) : null;
-
-  return holdingsRepo.updateLoan(
-    holdingId,
-    patch,
-    buildLoanPricePointOp({
-      oldMeta,
-      newMeta: buildLoanMeta(loanFields, currency),
-      holdingId,
-      currency,
-      book,
-      now: Date.now(),
-    }),
-  );
-};
-
-// The whole EDIT-mode write (metadata/balance + icon), extracted out of
-// `save` purely to keep that function's own branch count under the
-// cognitive-complexity budget. A loan's edit ALSO reconciles its manual
-// `holding:<id>` series in the same transaction (`saveLoanEdit`, T28 review
-// round 1, I1); every other type's edited balance lands on the ledger
-// instead (`updateWithBalanceDelta`, not `update` — a patch with no balance
-// in it, a deposit/bond/synced holding, writes no ledger row).
+// The whole EDIT-mode write (balance + icon), extracted out of `save` purely
+// to keep that function's own branch count under the cognitive-complexity
+// budget. By the time this runs, `type` is always a balance type (card,
+// cash, crypto_asset, jar) — every hook-owned type (term_deposit, bond,
+// property_item, metal, loan) routes through `saveHookEdit` below instead —
+// so this always writes through the ledger (`updateWithBalanceDelta`, not
+// `update` — a patch with no balance in it, a synced holding, writes no
+// ledger row).
 const saveEdit = async (params: {
   holdingId: string;
   patch: Partial<HoldingRow>;
-  editingHolding: HoldingRow | undefined;
-  loanFields: LoanFieldsSnapshot;
-  type: HoldingType;
-  currency: Currency;
-  book: PriceBook;
   icon: string | null;
 }): Promise<void> => {
-  const { holdingId, patch, editingHolding, loanFields, type, currency, book, icon } = params;
+  const { holdingId, patch, icon } = params;
 
-  if (type === 'loan') {
-    await saveLoanEdit({ holdingId, patch, editingHolding, loanFields, currency, book });
-  } else {
-    await holdingsRepo.updateWithBalanceDelta(holdingId, patch, Date.now());
-  }
+  await holdingsRepo.updateWithBalanceDelta(holdingId, patch, Date.now());
 
   // Write the icon unconditionally in edit mode so clearing a custom icon
   // (icon === null) persists the removal rather than leaving the old glyph.
   await holdingsRepo.setIcon(holdingId, icon);
 };
 
-// The EDIT-mode save for a hook-owned ledgerless type (term_deposit, bond,
-// property_item — R3 Phase C) — extracted out of `save` purely to keep that function's own
-// branch count under the cognitive-complexity budget, the same reason
-// `saveLoanEdit` is. Routed through the hook's own `saveEdit` rather than
+// The EDIT-mode save for a hook-owned type (term_deposit, bond,
+// property_item, metal, loan — R3 Phase C) — extracted out of `save` purely
+// to keep that function's own branch count under the cognitive-complexity
+// budget. Routed through the hook's own `saveEdit` rather than
 // `buildHoldingPatch`/the generic `saveEdit` above: it builds its metadata
 // from state closed over inside the hook, which no longer lives on this
 // screen. That hook write carries no icon (its own doc comment), so this
@@ -332,6 +161,7 @@ const performEditSave = (params: {
   bond: UseBondFieldsResult;
   property: UsePropertyFieldsResult;
   metal: UseMetalFieldsResult;
+  loanFields: UseLoanFieldsResult;
   name: string;
   color: string | null;
   currency: Currency;
@@ -339,7 +169,6 @@ const performEditSave = (params: {
   metadata: Record<string, unknown> | undefined;
   isSynced: boolean;
   editingHolding: HoldingRow | undefined;
-  loanFields: LoanFieldsSnapshot;
   book: PriceBook;
   icon: string | null;
 }): Promise<void> => {
@@ -350,6 +179,7 @@ const performEditSave = (params: {
     bond,
     property,
     metal,
+    loanFields,
     name,
     color,
     currency,
@@ -357,7 +187,6 @@ const performEditSave = (params: {
     metadata,
     isSynced,
     editingHolding,
-    loanFields,
     book,
     icon,
   } = params;
@@ -367,6 +196,7 @@ const performEditSave = (params: {
     .with('bond', () => bond)
     .with('property_item', () => property)
     .with('metal', () => metal)
+    .with('loan', () => loanFields)
     .otherwise(() => null);
 
   if (hookFields !== null) {
@@ -386,11 +216,6 @@ const performEditSave = (params: {
   return saveEdit({
     holdingId,
     patch: buildHoldingPatch({ name, color, type, currency, openingBalance, metadata, isSynced }),
-    editingHolding,
-    loanFields,
-    type,
-    currency,
-    book,
     icon,
   });
 };
@@ -407,11 +232,11 @@ const createPayloadFor = (params: {
   currency: Currency;
   openingBalance: string;
   metadata: Record<string, unknown> | undefined;
-  loanFields: LoanFieldsSnapshot;
   depositCreatePayload: (openingBalanceMinorUnits: number) => CreatePayload;
   bondCreatePayload: (openingBalanceMinorUnits: number) => CreatePayload;
   propertyCreatePayload: (openingBalanceMinorUnits: number) => CreatePayload;
   metalCreatePayload: (openingBalanceMinorUnits: number) => CreatePayload;
+  loanCreatePayload: (openingBalanceMinorUnits: number) => CreatePayload;
 }): CreatePayload => {
   const { type } = params;
 
@@ -448,7 +273,11 @@ const createPayloadFor = (params: {
   }
 
   if (type === 'loan') {
-    return buildLoanCreatePayload(params.loanFields, params.currency);
+    // Like property/metal, a loan's create payload never reads
+    // `openingBalance` at all — it always writes a zero stored balance (its
+    // value derives entirely from its own schedule/metadata), so this passes
+    // 0 rather than parsing a field loan ignores.
+    return params.loanCreatePayload(0);
   }
 
   return {
@@ -481,33 +310,25 @@ const saveReasonsFor = (params: {
 // refs.
 type ValidatedFieldRefs = {
   nameFieldRef: RefObject<FieldInstance | null>;
-  annualRateFieldRef: RefObject<FieldInstance | null>;
-  termMonthsFieldRef: RefObject<FieldInstance | null>;
-  loanPrincipalFieldRef: RefObject<FieldInstance | null>;
-  loanStartDateFieldRef: RefObject<FieldInstance | null>;
 };
 
-// A blocked Save's FOCUS action for each TEXT-backed validated field — called
-// once `scrollToField` has positioned it on screen (see `save`'s own
-// `onSettled` callback below). The contributions group and the maturity date
-// have no matching entry: both are composite/picker targets with no single
-// input to focus (a date picker has no keyboard of its own), so `save`'s
-// scroll for those two lands the field on screen with no focus follow-up.
+// A blocked Save's FOCUS action for the name field — called once
+// `scrollToField` has positioned it on screen (see `save`'s own `onSettled`
+// callback below). Every other type's own fields carry their FOCUS action
+// alongside their `scrollTargets` entry instead (see each `use<Type>Fields`
+// hook).
 type ValidatedFieldFocus = {
   name: () => void;
-  annualRate: () => void;
-  termMonths: () => void;
-  loanPrincipal: () => void;
 };
 
 // The first still-invalid field's own wrapper ref (plus its FOCUS action,
-// when it has one — see `ValidatedFieldFocus` above), in the SAME priority
-// order `deposit.scrollTargets`/`bond.scrollTargets` already check their
-// fields in: the name field first (it always applies, independent of type),
-// then the active type's fields. `save`'s `!isValid` branch passes this
-// straight to `scrollTo`. Module-level and pure (given the already-computed
-// reason keys) so this branching stays out of `save`'s own
-// cognitive-complexity budget.
+// when it has one), in the SAME priority order `deposit.scrollTargets`/
+// `bond.scrollTargets`/`loanFields.scrollTargets` already check their fields
+// in: the name field first (it always applies, independent of type), then
+// the active type's fields. `save`'s `!isValid` branch passes this straight
+// to `scrollTo`. Module-level and pure (given the already-computed scroll
+// targets) so this branching stays out of `save`'s own cognitive-complexity
+// budget.
 const firstInvalidFieldRef = (params: {
   name: string;
   type: HoldingType;
@@ -515,7 +336,7 @@ const firstInvalidFieldRef = (params: {
   bondScrollTargets: readonly ScrollTarget[];
   propertyScrollTargets: readonly ScrollTarget[];
   metalScrollTargets: readonly ScrollTarget[];
-  loanReasonKey: LoanReasonKey | null;
+  loanScrollTargets: readonly ScrollTarget[];
   refs: ValidatedFieldRefs;
   focus: ValidatedFieldFocus;
 }): { ref: RefObject<FieldInstance | null>; focus?: () => void } | null => {
@@ -526,7 +347,7 @@ const firstInvalidFieldRef = (params: {
     bondScrollTargets,
     propertyScrollTargets,
     metalScrollTargets,
-    loanReasonKey,
+    loanScrollTargets,
     refs,
     focus,
   } = params;
@@ -537,29 +358,7 @@ const firstInvalidFieldRef = (params: {
     ...(type === 'bond' ? bondScrollTargets : []),
     ...(type === 'property_item' ? propertyScrollTargets : []),
     ...(type === 'metal' ? metalScrollTargets : []),
-    ...(type === 'loan'
-      ? [
-          {
-            invalid: loanReasonKey === 'forms.holding.loanPrincipalError',
-            ref: refs.loanPrincipalFieldRef,
-            focus: focus.loanPrincipal,
-          },
-          {
-            invalid: loanReasonKey === 'forms.holding.loanStartDateError',
-            ref: refs.loanStartDateFieldRef,
-          },
-          {
-            invalid: loanReasonKey === 'forms.holding.annualRateError',
-            ref: refs.annualRateFieldRef,
-            focus: focus.annualRate,
-          },
-          {
-            invalid: loanReasonKey === 'forms.holding.termMonthsError',
-            ref: refs.termMonthsFieldRef,
-            focus: focus.termMonths,
-          },
-        ]
-      : []),
+    ...(type === 'loan' ? loanScrollTargets : []),
   ];
 
   const entry = order.find((candidate) => candidate.invalid);
@@ -718,26 +517,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // `FieldError` for the two group/relational reasons) sits right beside it,
   // so the scroll always lands on the same field the message is anchored to.
   const nameFieldRef = useRef<FieldInstance>(null);
-  // Shared with the Loan form's own annual-rate/term-months fields (the
-  // deposit hook owns its own separate pair) — only one of the two types
-  // renders at a time, so the same wrapper ref/input ref safely serves
-  // whichever one is mounted.
-  const annualRateFieldRef = useRef<FieldInstance>(null);
-  const termMonthsFieldRef = useRef<FieldInstance>(null);
-  const loanPrincipalFieldRef = useRef<FieldInstance>(null);
-  const loanStartDateFieldRef = useRef<FieldInstance>(null);
-  // The TEXT-backed validated fields' own inner TextInput/name-input, so a
-  // blocked Save can focus the first-invalid one imperatively once it has
-  // scrolled into view — mirrors `TextField`'s own `inputRef` /
-  // `HoldingIdentityField`'s own `nameInputRef`. The contributions group and
-  // the maturity date are composite/picker targets with no single input to
-  // focus (a picker/date has no keyboard of its own), so they have no
-  // matching entry here — `save`'s scroll below simply omits the focus
-  // callback for those two.
+  // The name field's own inner TextInput, so a blocked Save can focus it
+  // imperatively once it has scrolled into view — mirrors `TextField`'s own
+  // `inputRef` / `HoldingIdentityField`'s own `nameInputRef`. Every other
+  // type's own fields carry their input ref alongside their `scrollTargets`
+  // entry instead (see each `use<Type>Fields` hook).
   const nameInputRef = useRef<TextInputInstance>(null);
-  const annualRateInputRef = useRef<TextInputInstance>(null);
-  const termMonthsInputRef = useRef<TextInputInstance>(null);
-  const loanPrincipalInputRef = useRef<TextInputInstance>(null);
 
   // term_deposit state + validation + create/edit payloads (R3 Phase C's
   // worked example) — every field, the per-field reasons, the edit-mode
@@ -765,11 +550,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // way `usePropertyFields` extracted the property form's own state.
   const metal = useMetalFields({ isEdit });
 
-  // loan state (T28). Unlike property/metal, every field here is editable in
-  // BOTH create and edit mode (mirrors term_deposit/bond) — see
-  // `useLoanFields`'s own doc comment for why this hook owns the full state
-  // + per-schedule validation rather than a bag of module-level helpers.
-  const loanFields = useLoanFields();
+  // loan state + validation + create/edit payloads (T28, R3 Phase C). Unlike
+  // property/metal, every field here is editable in BOTH create and edit mode
+  // (mirrors term_deposit/bond) — see `useLoanFields`'s own doc comment for
+  // why this hook owns the full state + per-schedule validation rather than
+  // a bag of module-level helpers.
+  const loanFields = useLoanFields({ currency });
 
   // A `metal` holding's value is hard-fixed to UAH regardless of currency
   // (NBU quotes precious metals only in UAH — kiko-pricing), so the currency
@@ -834,19 +620,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     }
   }, [isEdit, navigation, t]);
 
-  const buildMetadata = (): Record<string, unknown> | undefined => {
-    // A loan's CREATE metadata is built separately (see `save`'s create
-    // branch, `buildLoanCreatePayload`) — a `'none'` schedule additionally
-    // writes a `firstPricePoint` there. This branch covers EDIT mode only:
-    // unlike property/metal, every field stays user-editable after
-    // creation (T28) — there is no fixed-at-creation "first lot" a loan's
-    // principal/dates/schedule are frozen against.
-    if (type === 'loan' && isEdit) {
-      return buildLoanMeta(loanFields, currency);
-    }
-    return undefined;
-  };
-
   const isValid =
     name.trim().length > 0 &&
     match(type)
@@ -873,20 +646,9 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         bondScrollTargets: bond.scrollTargets,
         propertyScrollTargets: property.scrollTargets,
         metalScrollTargets: metal.scrollTargets,
-        loanReasonKey: loanFields.reasonKey,
-        refs: {
-          nameFieldRef,
-          annualRateFieldRef,
-          termMonthsFieldRef,
-          loanPrincipalFieldRef,
-          loanStartDateFieldRef,
-        },
-        focus: {
-          name: () => nameInputRef.current?.focus(),
-          annualRate: () => annualRateInputRef.current?.focus(),
-          termMonths: () => termMonthsInputRef.current?.focus(),
-          loanPrincipal: () => loanPrincipalInputRef.current?.focus(),
-        },
+        loanScrollTargets: loanFields.scrollTargets,
+        refs: { nameFieldRef },
+        focus: { name: () => nameInputRef.current?.focus() },
       });
 
       if (target) {
@@ -896,7 +658,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       return;
     }
 
-    const metadata = buildMetadata();
+    // Every hook-owned type (term_deposit, bond, property_item, metal, loan)
+    // builds its own metadata inside its hook's `createPayload`/`saveEdit`;
+    // this stays `undefined` for the remaining balance types, which carry no
+    // metadata of their own.
+    const metadata: Record<string, unknown> | undefined = undefined;
 
     try {
       if (isEdit && holdingId !== undefined) {
@@ -928,15 +694,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         return;
       }
 
-      // A property's or a metal's create payload is built separately
-      // (`createPayloadFor`, delegating to `buildPropertyCreatePayload` /
-      // `buildMetalCreatePayload`): a zero stored balance and one lot each —
+      // Every hook-owned type's create payload is built separately
+      // (`createPayloadFor`, delegating to each hook's own `createPayload`):
       // property additionally writes a first manual price point equal to the
       // entered cost, in the SAME transaction (`holdingsRepo.create`'s
       // `firstPricePoint` param); metal writes none (kiko-pricing: its price
       // comes from the SHARED metal instrument, never a per-holding one).
-      // Every other type writes its entered opening balance and the metadata
-      // `buildMetadata` built above.
+      // Every other type writes its entered opening balance and no metadata.
       const newHoldingId = await holdingsRepo.create({
         accountId,
         name,
@@ -951,11 +715,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           currency,
           openingBalance,
           metadata,
-          loanFields,
           depositCreatePayload: deposit.createPayload,
           bondCreatePayload: bond.createPayload,
           propertyCreatePayload: property.createPayload,
           metalCreatePayload: metal.createPayload,
+          loanCreatePayload: loanFields.createPayload,
         }),
       });
 
@@ -1102,34 +866,20 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           />
         )}
 
-        {type === 'term_deposit' && (
-          <TermDepositFormBlock fields={deposit} attemptedSave={attemptedSave} />
-        )}
-
-        {type === 'bond' && <BondFormBlock fields={bond} attemptedSave={attemptedSave} />}
-
-        {type === 'property_item' && (
-          <PropertyFormBlock fields={property} attemptedSave={attemptedSave} isEdit={isEdit} />
-        )}
-
-        {type === 'metal' && (
-          <MetalFormBlock fields={metal} attemptedSave={attemptedSave} isEdit={isEdit} />
-        )}
-
-        <LoanFormBlock
-          type={type}
-          t={t}
-          attemptedSave={attemptedSave}
-          currency={currency}
-          loanFields={loanFields}
-          loanPrincipalFieldRef={loanPrincipalFieldRef}
-          loanPrincipalInputRef={loanPrincipalInputRef}
-          loanStartDateFieldRef={loanStartDateFieldRef}
-          annualRateFieldRef={annualRateFieldRef}
-          annualRateInputRef={annualRateInputRef}
-          termMonthsFieldRef={termMonthsFieldRef}
-          termMonthsInputRef={termMonthsInputRef}
-        />
+        {match(type)
+          .with('term_deposit', () => (
+            <TermDepositFormBlock fields={deposit} attemptedSave={attemptedSave} />
+          ))
+          .with('bond', () => <BondFormBlock fields={bond} attemptedSave={attemptedSave} />)
+          .with('property_item', () => (
+            <PropertyFormBlock fields={property} attemptedSave={attemptedSave} isEdit={isEdit} />
+          ))
+          .with('metal', () => (
+            <MetalFormBlock fields={metal} attemptedSave={attemptedSave} isEdit={isEdit} />
+          ))
+          .with('loan', () => <LoanFormBlock fields={loanFields} attemptedSave={attemptedSave} />)
+          .with('card', 'cash', 'crypto_asset', 'jar', () => null)
+          .exhaustive()}
       </Box>
     </Screen>
   );

@@ -1,13 +1,24 @@
-import { useCallback, useState } from 'react';
+import type { RefObject } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import type { TextInputInstance } from 'react-native';
+import { holdingsRepo, type LoanPricePointOp } from '@kiko/holdings/repo';
 
 import {
   asLoanMeta,
   type LoanKind,
+  type LoanMeta,
   type LoanSchedule,
 } from '../../../../../holdings/holding-metadata';
+import { Money } from '../../../../../currency/money';
 import type { HoldingRow } from '../../../../../db/schema';
 import { parseAmount } from '../../../../../currency/parse';
+import { shiftDecimal } from '../../../../../currency/decimal';
+import { dayKeyOf, type PriceBook } from '../../../../../prices/price-book';
+import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
+import { loanOutstandingMinorAt } from '../../../../../holdings/loan-schedule';
+import { currencyScale, type Currency } from '../../../../../currency/currency';
 import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
+import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
 
 // The literal i18n keys `loanReasonKey` below may return, so `t()` (typed
 // from src/i18n/locales/en.ts) accepts them — mirrors `PropertyReasonKey`/
@@ -93,7 +104,8 @@ export const loanReasonKey = (params: LoanValidationParams): LoanReasonKey | nul
   );
 };
 
-export type UseLoanFieldsResult = {
+export type UseLoanFieldsResult = HoldingTypeForm & {
+  currency: Currency;
   kind: LoanKind;
   setKind: (kind: LoanKind) => void;
   principal: string;
@@ -110,25 +122,150 @@ export type UseLoanFieldsResult = {
   // Independent per-field errors for display — see `loanFieldErrors`'s own
   // doc comment for why the screen renders from this, not `reasonKey`.
   fieldErrors: LoanFieldErrors;
-  isValid: boolean;
-  // Seeds every field from a stored `loan` holding's metadata (edit-mode
-  // hydration) — a no-op for invalid/absent metadata, mirroring
-  // `seedPropertyFields`/`seedMetalFields` in holding-form.screen.tsx. Kept
-  // INSIDE the hook (rather than a module-level function the screen calls
-  // with a bag of setters, the property/metal shape) since every field this
-  // seeds already lives here — the screen has nothing left to pass but the
-  // holding itself.
-  seed: (holding: HoldingRow) => void;
+  refs: {
+    principalFieldRef: RefObject<FieldInstance | null>;
+    startDateFieldRef: RefObject<FieldInstance | null>;
+    annualRateFieldRef: RefObject<FieldInstance | null>;
+    termMonthsFieldRef: RefObject<FieldInstance | null>;
+    principalInputRef: RefObject<TextInputInstance | null>;
+    annualRateInputRef: RefObject<TextInputInstance | null>;
+    termMonthsInputRef: RefObject<TextInputInstance | null>;
+  };
+};
+
+type UseLoanFieldsParams = {
+  currency: Currency;
+};
+
+// The fields `buildLoanMeta`/`buildLoanCreatePayload` both need (ponytail: a
+// `Pick` off the hook's own result type, not a restated shape).
+type LoanFieldsSnapshot = Pick<
+  UseLoanFieldsResult,
+  'kind' | 'principal' | 'startDate' | 'schedule' | 'annualRatePct' | 'termMonths'
+>;
+
+// A loan's `LoanMeta` (T26/T28, spec 5.1) — shared by the EDIT-mode
+// `saveEdit` below and `buildLoanCreatePayload`, so the two can never build a
+// differently shaped `LoanMeta` for the same field values.
+const buildLoanMeta = (fields: LoanFieldsSnapshot, currency: Currency): LoanMeta => ({
+  kind: fields.kind,
+  principalMinorUnits: Money.fromMajor(currency, parseAmount(fields.principal) || 0).minorUnits,
+  startDate: fields.startDate ?? Date.now(),
+  schedule: fields.schedule,
+  ...(fields.schedule === 'none'
+    ? {}
+    : {
+        annualRatePct: parseAmount(fields.annualRatePct) || 0,
+        termMonths: parseAmount(fields.termMonths) || 0,
+      }),
+});
+
+// The loan CREATE payload (T28): a zero stored balance (ledgerless — its
+// value derives entirely from the schedule math / its own manual series,
+// kiko-domain) plus the `LoanMeta` above. A `'none'` schedule (an informal
+// debt) ADDITIONALLY writes a first `manual` price point on the holding's
+// own `holding:<id>` series equal to the principal, dated the start day —
+// mirroring `buildPropertyCreatePayload`'s own first-point convention —
+// so `loanOutstandingMinorAt`'s manual-series read never comes up empty
+// before the user records a real correction. An `'annuity'`/`'differentiated'`
+// schedule writes none: its outstanding is computed at read time from the
+// principal + schedule (`loanOutstandingMinorAt`'s own no-correction
+// fallback), so no correction point is needed yet.
+const buildLoanCreatePayload = (fields: LoanFieldsSnapshot, currency: Currency): CreatePayload => {
+  const metadata = buildLoanMeta(fields, currency);
+
+  if (fields.schedule !== 'none') {
+    return { balanceMinorUnits: 0, metadata };
+  }
+
+  const day = dayKeyOf(fields.startDate ?? Date.now());
+
+  return {
+    balanceMinorUnits: 0,
+    metadata,
+    firstPricePoint: {
+      day,
+      price: shiftDecimal(String(metadata.principalMinorUnits), -currencyScale[currency]),
+    },
+  };
+};
+
+/**
+ * The `LoanPricePointOp` a loan EDIT's `holdingsRepo.updateLoan` call needs
+ * — the three-case ruling in kiko-domain's "Loan form + detail": (a) a
+ * schedule change INTO `'none'` preserves the OLD schedule's current
+ * outstanding as a manual point, so the debt never silently reads as 0 the
+ * instant the schedule is cleared; (b) a `'none'` loan's principal/start-date
+ * edit moves its start-day point (any later correction stays); (c) every
+ * other transition (including `'none'` OUT to a schedule) leaves the manual
+ * series untouched — a correction point is still valid for a scheduled loan
+ * (N10a). `oldMeta === null` (a fresh holding, or unparsed metadata) has
+ * nothing to reconcile.
+ */
+const buildLoanPricePointOp = (params: {
+  oldMeta: LoanMeta | null;
+  newMeta: LoanMeta;
+  holdingId: string;
+  currency: Currency;
+  book: PriceBook;
+  now: number;
+}): LoanPricePointOp => {
+  const { oldMeta, newMeta, holdingId, currency, book, now } = params;
+
+  if (oldMeta === null) {
+    return { kind: 'none' };
+  }
+
+  if (oldMeta.schedule !== 'none' && newMeta.schedule === 'none') {
+    // (a) normally dates the preserved point today. But `loanOutstandingMinorAt`
+    // reads 0 for any instant before the loan's own `startDate` (a future-start
+    // loan), so dating it today would write a permanent 0 that outlives the
+    // start date once it arrives. Write the principal at the start day instead
+    // — mirroring the create-mode `'none'` first point — whenever today is
+    // still before that day.
+    const beforeStart = dayKeyOf(now) < dayKeyOf(newMeta.startDate);
+    const day = beforeStart ? dayKeyOf(newMeta.startDate) : dayKeyOf(now);
+    const outstanding = beforeStart
+      ? newMeta.principalMinorUnits
+      : loanOutstandingMinorAt(oldMeta, holdingId, book, now);
+
+    return {
+      kind: 'upsert',
+      day,
+      price: shiftDecimal(String(outstanding), -currencyScale[currency]),
+      currency,
+    };
+  }
+
+  if (
+    oldMeta.schedule === 'none' &&
+    newMeta.schedule === 'none' &&
+    (oldMeta.principalMinorUnits !== newMeta.principalMinorUnits ||
+      oldMeta.startDate !== newMeta.startDate)
+  ) {
+    return {
+      kind: 'move',
+      oldDay: dayKeyOf(oldMeta.startDate),
+      newDay: dayKeyOf(newMeta.startDate),
+      price: shiftDecimal(String(newMeta.principalMinorUnits), -currencyScale[currency]),
+      currency,
+    };
+  }
+
+  return { kind: 'none' };
 };
 
 /**
  * Owns every Loan form field (T28, spec 5.1) — the six pieces of state, the
- * per-schedule validation reason, and the edit-mode seed — extracted out of
- * `HoldingFormScreen` the same way T25's `useBondIsinMode` extracted the
- * Bond form's own mode state, so this hook carries its own
- * cognitive-complexity budget instead of borrowing the screen's.
+ * per-schedule validation reason, the edit-mode seed, and the create/edit
+ * payload builders — extracted out of `HoldingFormScreen` the same way
+ * `useBondFields`/`useMetalFields` did for their own forms (R3 Phase C).
+ * Unlike property/metal, every field here is editable in BOTH create and
+ * edit mode (mirrors term_deposit/bond).
  */
-export const useLoanFields = (): UseLoanFieldsResult => {
+export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult => {
+  const { currency } = params;
+
   const [kind, setKind] = useState<LoanKind>('mortgage');
   const [principal, setPrincipal] = useState('');
   const [startDate, setStartDate] = useState<number | null>(null);
@@ -138,6 +275,14 @@ export const useLoanFields = (): UseLoanFieldsResult => {
   const [schedule, setSchedule] = useState<LoanSchedule>('annuity');
   const [annualRatePct, setAnnualRatePct] = useState('');
   const [termMonths, setTermMonths] = useState('');
+
+  const principalFieldRef = useRef<FieldInstance>(null);
+  const startDateFieldRef = useRef<FieldInstance>(null);
+  const annualRateFieldRef = useRef<FieldInstance>(null);
+  const termMonthsFieldRef = useRef<FieldInstance>(null);
+  const principalInputRef = useRef<TextInputInstance>(null);
+  const annualRateInputRef = useRef<TextInputInstance>(null);
+  const termMonthsInputRef = useRef<TextInputInstance>(null);
 
   const reasonKey = loanReasonKey({ principal, startDate, schedule, annualRatePct, termMonths });
   const fieldErrors = loanFieldErrors({
@@ -163,7 +308,35 @@ export const useLoanFields = (): UseLoanFieldsResult => {
     setTermMonths(meta.termMonths === undefined ? '' : String(meta.termMonths));
   }, []);
 
+  const createPayload = (): CreatePayload =>
+    buildLoanCreatePayload(
+      { kind, principal, startDate, schedule, annualRatePct, termMonths },
+      currency,
+    );
+
+  // The EDIT-mode write: a loan's manual `holding:<id>` series is reconciled
+  // in the SAME transaction as its metadata patch (T28 review round 1, I1) —
+  // see `buildLoanPricePointOp`'s own doc comment for the three-case ruling.
+  // `oldMeta` reads the STILL-STORED (pre-edit) metadata off the live-queried
+  // `editingHolding`, so `buildLoanPricePointOp` can tell what actually
+  // changed.
+  const saveEdit = (context: EditContext): Promise<void> => {
+    const { holdingId, name, color, editingHolding, book } = context;
+    const oldMeta = editingHolding ? asLoanMeta(editingHolding.metadata) : null;
+    const newMeta = buildLoanMeta(
+      { kind, principal, startDate, schedule, annualRatePct, termMonths },
+      currency,
+    );
+
+    return holdingsRepo.updateLoan(
+      holdingId,
+      { name, color, metadata: newMeta },
+      buildLoanPricePointOp({ oldMeta, newMeta, holdingId, currency, book, now: Date.now() }),
+    );
+  };
+
   return {
+    currency,
     kind,
     setKind,
     principal,
@@ -179,6 +352,35 @@ export const useLoanFields = (): UseLoanFieldsResult => {
     reasonKey,
     fieldErrors,
     isValid: reasonKey === null,
+    scrollTargets: [
+      {
+        invalid: fieldErrors.principalError !== null,
+        ref: principalFieldRef,
+        focus: () => principalInputRef.current?.focus(),
+      },
+      { invalid: fieldErrors.startDateError !== null, ref: startDateFieldRef },
+      {
+        invalid: fieldErrors.annualRateError !== null,
+        ref: annualRateFieldRef,
+        focus: () => annualRateInputRef.current?.focus(),
+      },
+      {
+        invalid: fieldErrors.termMonthsError !== null,
+        ref: termMonthsFieldRef,
+        focus: () => termMonthsInputRef.current?.focus(),
+      },
+    ],
+    createPayload,
+    saveEdit,
     seed,
+    refs: {
+      principalFieldRef,
+      startDateFieldRef,
+      annualRateFieldRef,
+      termMonthsFieldRef,
+      principalInputRef,
+      annualRateInputRef,
+      termMonthsInputRef,
+    },
   };
 };

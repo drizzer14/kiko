@@ -7,6 +7,8 @@ import {
   useLoanFields,
 } from './use-loan-fields';
 
+const renderLoanFields = () => renderHook(() => useLoanFields({ currency: 'UAH' }));
+
 const baseArgs = () => ({
   principal: '1000',
   startDate: 1_700_000_000_000,
@@ -126,7 +128,7 @@ describe('loanFieldErrors', () => {
 
 describe('useLoanFields', () => {
   it('defaults to mortgage/annuity with every text field blank and no start date', async () => {
-    const { result } = await renderHook(() => useLoanFields());
+    const { result } = await renderLoanFields();
 
     expect(result.current.kind).toBe('mortgage');
     expect(result.current.schedule).toBe('annuity');
@@ -141,7 +143,7 @@ describe('useLoanFields', () => {
   });
 
   it('reports isValid/reasonKey derived from the live field state', async () => {
-    const { result } = await renderHook(() => useLoanFields());
+    const { result } = await renderLoanFields();
 
     await act(async () => {
       result.current.setPrincipal('1000');
@@ -156,7 +158,7 @@ describe('useLoanFields', () => {
   });
 
   it('seeds every field from a stored loan holding, converting the principal back to a major string', async () => {
-    const { result } = await renderHook(() => useLoanFields());
+    const { result } = await renderLoanFields();
 
     await act(async () => {
       result.current.seed({
@@ -183,7 +185,7 @@ describe('useLoanFields', () => {
   });
 
   it('seeds a "none" loan with blank rate/term fields (both undefined in the stored metadata)', async () => {
-    const { result } = await renderHook(() => useLoanFields());
+    const { result } = await renderLoanFields();
 
     await act(async () => {
       result.current.seed({
@@ -205,7 +207,7 @@ describe('useLoanFields', () => {
   });
 
   it('leaves every field untouched for a holding with invalid/absent loan metadata', async () => {
-    const { result } = await renderHook(() => useLoanFields());
+    const { result } = await renderLoanFields();
 
     await act(async () => {
       result.current.seed({
