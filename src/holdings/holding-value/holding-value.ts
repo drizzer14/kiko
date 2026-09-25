@@ -1,3 +1,5 @@
+import { match } from 'ts-pattern';
+
 import {
   asBondMeta,
   asLoanMeta,
@@ -9,10 +11,10 @@ import {
 import { costBasisMinorAt } from '../lots';
 import { taxOnInterestMinor } from '../tax';
 import type { HoldingRow } from '../../db/schema';
+import { pricedValueMinor } from '../priced-value';
 import { Money, toMajor } from '../../currency/money';
 import { startOfLocalDay } from '../../dates/local-day';
 import { loanOutstandingMinorAt } from '../loan-schedule';
-import { isPricedHoldingType, pricedValueMinor } from '../priced-value';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
 import { bondCouponDates, bondCouponMajor, depositAccruedMajor, depositLedger } from '../interest';
 
@@ -275,22 +277,16 @@ export const holdingValueBreakdown = (
   holding: ValuableHolding,
   now: number,
   book: PriceBook = EMPTY_PRICE_BOOK,
-): HoldingValueBreakdown => {
-  if (isPricedHoldingType(holding.type)) {
-    return pricedBreakdown(holding, now, book);
-  }
-
-  switch (holding.type) {
-    case 'term_deposit':
-      return depositBreakdown(holding, now);
-    case 'bond':
-      return bondBreakdown(holding, now);
-    case 'loan':
-      return loanBreakdown(holding, now, book);
-    default:
-      return flat(holding.currency, holding.balanceMinorUnits);
-  }
-};
+): HoldingValueBreakdown =>
+  match(holding.type)
+    .with('property_item', 'metal', () => pricedBreakdown(holding, now, book))
+    .with('term_deposit', () => depositBreakdown(holding, now))
+    .with('bond', () => bondBreakdown(holding, now))
+    .with('loan', () => loanBreakdown(holding, now, book))
+    .with('card', 'cash', 'crypto_asset', 'jar', () =>
+      flat(holding.currency, holding.balanceMinorUnits),
+    )
+    .exhaustive();
 
 export const holdingValue = (
   holding: ValuableHolding,

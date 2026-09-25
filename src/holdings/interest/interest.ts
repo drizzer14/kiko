@@ -1,3 +1,5 @@
+import { match } from 'ts-pattern';
+
 import { splitInterestTaxMinor } from '../tax';
 import type { BondCouponFrequency, CompoundingFrequency } from '../holding-metadata';
 
@@ -10,30 +12,21 @@ const DAYS_PER_YEAR = 365;
 // feed the shared step-by-step `depositLedger` engine).
 type CalendarCompounding = Exclude<CompoundingFrequency, 'bi-weekly'>;
 
-export const periodsPerYear = (frequency: CompoundingFrequency): number => {
-  switch (frequency) {
-    case 'bi-weekly':
-      return 24;
-    case 'monthly':
-      return 12;
-    case 'quarterly':
-      return 4;
-    case 'annually':
-      return 1;
-  }
-};
+export const periodsPerYear = (frequency: CompoundingFrequency): number =>
+  match(frequency)
+    .with('bi-weekly', () => 24)
+    .with('monthly', () => 12)
+    .with('quarterly', () => 4)
+    .with('annually', () => 1)
+    .exhaustive();
 
 // How many calendar months one compounding period spans.
-const monthsPerPeriod = (frequency: CalendarCompounding): number => {
-  switch (frequency) {
-    case 'monthly':
-      return 1;
-    case 'quarterly':
-      return 3;
-    case 'annually':
-      return 12;
-  }
-};
+const monthsPerPeriod = (frequency: CalendarCompounding): number =>
+  match(frequency)
+    .with('monthly', () => 1)
+    .with('quarterly', () => 3)
+    .with('annually', () => 12)
+    .exhaustive();
 
 // Add (or subtract) whole calendar months, CLAMPING the day to the target
 // month's length. A naive `setMonth(getMonth() + n)` overflows whenever the
@@ -365,18 +358,13 @@ export const depositAccruedMajor = (
 };
 
 // How many calendar months one bond coupon period spans.
-export const monthsPerCouponPeriod = (frequency: BondCouponFrequency): number => {
-  switch (frequency) {
-    case 'monthly':
-      return 1;
-    case 'quarterly':
-      return 3;
-    case 'semiannually':
-      return 6;
-    case 'annually':
-      return 12;
-  }
-};
+export const monthsPerCouponPeriod = (frequency: BondCouponFrequency): number =>
+  match(frequency)
+    .with('monthly', () => 1)
+    .with('quarterly', () => 3)
+    .with('semiannually', () => 6)
+    .with('annually', () => 12)
+    .exhaustive();
 
 // The 15th ("middle") of the calendar month that `instant` falls in.
 const midMonth = (instant: number): number => {
