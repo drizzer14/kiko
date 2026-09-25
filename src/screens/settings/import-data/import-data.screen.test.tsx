@@ -47,6 +47,8 @@ const renderScreen = () =>
 const VALID_KEY = 'a'.repeat(44);
 
 describe('ImportDataScreen', () => {
+  afterEach(() => jest.restoreAllMocks());
+
   beforeEach(async () => {
     mockPick.mockReset();
     mockImportData.mockReset();
@@ -282,7 +284,6 @@ describe('ImportDataScreen', () => {
         'The key is wrong, or the file is corrupted.',
       ),
     );
-    alertSpy.mockRestore();
   });
 
   it('shows the generic invalid-file error when importData throws anything else', async () => {
@@ -304,6 +305,5 @@ describe('ImportDataScreen', () => {
         'This does not look like a valid Kiko export file.',
       ),
     );
-    alertSpy.mockRestore();
   });
 });
