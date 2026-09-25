@@ -23,6 +23,7 @@ below).
 | `npm run check:secrets` | gitleaks | any detected secret fails | fast |
 | `npm run check:overrides` | override-guard.sh | any bare `biome-ignore` (no `OVERRIDE(...)`) fails | medium |
 | `npm run check:import-order` | `scripts/checks/import-order.sh` (+ `.js` analyzer) | a leading import block not sorted per kiko-code-style's "Import ordering" (3 blank-line-separated groups, ascending by ending-line length, value-before-type tiebreak, side-effect import as a barrier) fails | fast (per-file) + project-wide (`check:all`) |
+| `npm run check:full-word-identifiers` | `scripts/checks/full-word-identifiers.sh` (+ `.js` analyzer) | any denylisted abbreviation (`cond`/`btn`/`idx`/`acc`/`tx`/`err`/`val`/`prev`/`cfg`/`e`/`res`/`msg`/`cb`/`ctx`/`el`/`opts`/`tmp`/`num`/`arr`/`obj`/`str`) as a whole camelCase/PascalCase/snake_case part of an identifier fails, unless the exact `(file path, denylisted word, identifier name)` triple is on the analyzer's own `EXEMPTIONS` allowlist (an exact-name match, not a whole-file exemption — see `docs/harness/documented-exceptions.md`) | fast (per-file) + project-wide (`check:all`) |
 | `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
 | `npm run check:mutation` | Stryker (Jest runner) | mutation score below 60 (break threshold; ratchet up over time) fails | deep only |
 | `bash scripts/checks/osv.sh` | osv-scanner | any known CVE in `package-lock.json` fails | deep only |
@@ -31,7 +32,7 @@ Composite scripts:
 
 - `npm run check:all` — the fast + medium tier checks, in order:
   lint, dup, knip, deps, security, rules, plist, secrets, overrides,
-  import-order, typecheck.
+  import-order, full-word-identifiers, typecheck.
 - `npm run check:deep` — the heavy tier: mutation testing, then
   osv-scanner. **Run this before declaring a feature done.** It is not
   wired to any hook because it is slow; it is a manual checkpoint. By
@@ -48,8 +49,9 @@ Composite scripts:
 
 Automatic wiring (`harness/kiko/hooks/hooks.json`, via the
 `kiko` plugin — see "Harness agents" below): the fast tier
-(`scripts/checks/fast.sh`: lint, security, secrets, import-order on
-the touched file) runs on `PostToolUse` for `Edit|Write|MultiEdit`. The medium
+(`scripts/checks/fast.sh`: lint, security, secrets, import-order,
+full-word-identifiers on the touched file) runs on `PostToolUse` for
+`Edit|Write|MultiEdit`. The medium
 tier (`scripts/checks/medium.sh`: dup, override-guard scoped to the
 session's changed source files; knip, deps, the Semgrep rule
 fixtures, the Info.plist security assertions, and typecheck
@@ -75,6 +77,10 @@ process-group `kill` (including via `xargs`, `$(...)`, or a
 process ID you started yourself (`kill <pid>`), or let the tool
 timeout end a hung command. The hook is not part of the
 fast/medium/deep tiers and has no dedup fingerprint.
+
+Both `import-order` and `full-word-identifiers` keep the same per-file
+dedup fingerprint (target file + the analyzer script's own contents)
+as every other check below.
 
 **Content dedup (a check skips when its inputs did not change).** Every
 check fingerprints its own real inputs and skips its next run when that
