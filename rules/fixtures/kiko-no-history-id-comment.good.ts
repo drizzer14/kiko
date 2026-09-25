@@ -82,8 +82,8 @@ export const sectionNearMissNote = 'kept for realism; the comment above is the r
 // `computeD1Delta` for the same word-boundary trick.
 export const taskBriefingNearMissNote = 'kept for realism; the comment above is the real test';
 
-// 12. A real sweep's false positive for the narrowed task/parity-brief
-// family: hide the header during the brief window so the sheet reads as
-// uninterrupted — no "task"/"parity" qualifier appears before "brief", so
-// the narrowed family never opens a match at all.
+// 12. The narrowed task/parity-brief family must not match this ordinary
+// prose collision: hide the header during the brief window so the sheet
+// reads as uninterrupted — no "task"/"parity" qualifier appears before
+// "brief", so the narrowed family never opens a match at all.
 export const briefWindowNote = 'kept for realism; the comment above is the real test';

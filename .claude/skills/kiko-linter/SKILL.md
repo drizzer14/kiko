@@ -385,22 +385,23 @@ matches at all — see `rules/fixtures/kiko-no-history-id-comment.good.ts`.
 **`Phase N` is not a family member at all** — a bare `Phase\s\d+`
 collides with ordinary engineering prose no digit-anchoring can fix
 ("Phase 1 copies the rows; Phase 2 deletes the source only after
-commit" is a real false positive a sweep found, not a review-round
-id). A "Phase N (Task M)" citation is still caught without it: the
-existing `Task\s\d+` family member fires on the "Task M" half of that
-exact shape, which is the only pattern this codebase's real "Phase N"
-citations ever actually needed — see the `.bad.ts`/`.good.ts` fixture
-pair for both the still-caught shape and the now-excluded prose.
+commit" is ordinary prose that collides with the digit-anchored
+pattern, not a review-round id). A "Phase N (Task M)" citation is
+still caught without it: the existing `Task\s\d+` family member fires
+on the "Task M" half of that exact shape, which is the only pattern
+this codebase's real "Phase N" citations ever actually needed — see
+the `.bad.ts`/`.good.ts` fixture pair for both the still-caught shape
+and the prose the narrowing excludes.
 
 **`the brief` is narrowed to `(?:task|parity)\sbrief(?:'s)?`** — the
 bare word "brief" collides with ordinary English on its own ("brief"
 as an adjective: "a brief window", "a brief moment"), which no
 boundary trick fixes either. Requiring the specific "task"/"parity"
 qualifier this codebase's own SDD vocabulary uses keeps every real
-citation (`task brief's own signature`, `per the task brief`) while a
-"brief window"-style sentence never opens a match at all — see the
-fixture pair's `task brief`/`parity brief` positive shapes and the
-`brief window` negative probe.
+citation (`the parity brief's own signature`, `the task brief's
+base64-decode ruling`) while a "brief window"-style sentence never
+opens a match at all — see the fixture pair's `task brief`/`parity
+brief` positive shapes and the `brief window` negative probe.
 
 ## One exported component per `.tsx` — a Jest invariant, not Semgrep
 
