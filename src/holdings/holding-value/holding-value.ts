@@ -8,9 +8,11 @@ import { flat, type HoldingValueBreakdown } from '../holding-descriptor/breakdow
  * `id` is optional — mirroring `PricedHolding` (`src/holdings/priced-value/`)
  * — so every existing test fixture across the app's holding-value suites
  * (a synthetic cash/deposit/bond literal with no real row) keeps compiling
- * unchanged. A PRICED holding (`isPricedHoldingType`) needs its own `id` to
- * resolve its `holding:<id>` instrument key; one with no `id` simply reads as
- * having no stored price point (falls back to its lots' cost basis).
+ * unchanged. Of the two priced types (`isPricedHoldingType`), only
+ * `property_item` needs its own `id` to resolve its `holding:<id>` instrument
+ * key (missing it reads as no stored price point, falling back to its lots'
+ * cost basis); `metal` reads the SHARED `metal:<XAU|XAG|XPT|XPD>` instrument
+ * and needs no id at all.
  */
 export type ValuableHolding = Pick<
   HoldingRow,

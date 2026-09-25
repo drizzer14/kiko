@@ -12,9 +12,7 @@ import type { HoldingDescriptor, PricedSpec } from '../holding-descriptor.d';
  * Dispatches to the spec's own `valueMinor` with no id guard here: whether a
  * missing `id` matters is per-spec — `property_item` reads its own
  * `holding:<id>` instrument and must guard it itself, `metal` reads a SHARED
- * instrument and needs no id at all. Guarding here unconditionally used to
- * return null for an id-less metal holding too, even though metal never
- * reads the id.
+ * instrument and needs no id at all.
  */
 export const pricedValueOrNull = (
   spec: PricedSpec | null,
