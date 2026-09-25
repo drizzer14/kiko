@@ -26,8 +26,7 @@ const readCsvRows = (text: string): string[][] =>
  * `StatementParseError` (naming `formatLabel`) instead of returning an
  * empty array when no data row is left — every Phase 4 format's own
  * `parse` starts from exactly this ("read rows, take everything after the
- * header, refuse a file with no data") rather than each re-deriving it
- * (Task 5 review). */
+ * header, refuse a file with no data") rather than each re-deriving it. */
 export const readDataRows = (text: string, formatLabel: string): string[][] => {
   const [, ...dataRows] = readCsvRows(text);
 
@@ -52,9 +51,9 @@ export const resolveRowCurrency = (raw: string, formatLabel: string): Currency =
 };
 
 /** Parses an amount cell to a finite major-unit number, throwing
- * `StatementParseError` instead of ever returning `NaN` (Task 3 review
- * precedent) — an empty or malformed cell must never reach
- * `Money.fromMajor` and get written as a `NaN` `amountMinorUnits`. */
+ * `StatementParseError` instead of ever returning `NaN` — an empty or
+ * malformed cell must never reach `Money.fromMajor` and get written as a
+ * `NaN` `amountMinorUnits`. */
 export const parseFiniteAmountMajor = (raw: string, formatLabel: string): number => {
   const major = parseAmount(raw);
 

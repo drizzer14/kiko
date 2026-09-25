@@ -53,9 +53,9 @@ const preambleLines = [
   HEADER_ROW.join(';'),
 ].join('\n');
 
-// Task 3 review precedent (NaN guard, IMPORTANT): neither the debit nor the
-// credit cell is populated — an empty or malformed amount cell must never
-// reach `Money.fromMajor` as `NaN`. Sensebank has no PrivatBank-style
+// The NaN guard: neither the debit nor the credit cell is populated — an
+// empty or malformed amount cell must never reach `Money.fromMajor` as
+// `NaN`. Sensebank has no PrivatBank-style
 // "unresolved rows" concept (its currency is a single regex match, not a
 // per-row word lookup), so this format follows Monobank's convention: throw
 // `StatementParseError` rather than silently writing `NaN`.

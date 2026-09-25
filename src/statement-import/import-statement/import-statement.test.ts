@@ -16,8 +16,8 @@ jest.mock('../../db/client', () => {
   };
 });
 
-// The target holding's OWN currency (Task 3 review, CRITICAL fix) — mocked
-// directly at the repo boundary rather than through the real op-sqlite
+// The target holding's OWN currency — mocked directly at the repo boundary
+// rather than through the real op-sqlite
 // connection, which `write`'s own mock above already bypasses. Defaults to a
 // single UAH `holding-1`, matching every pre-existing fixture below; a test
 // exercising a different holding currency reassigns this before calling
@@ -49,7 +49,7 @@ const fixtureText = readFileSync(
 );
 const monobankInput = { text: fixtureText, fileName: 'uabean-monobank-sample.csv' };
 
-// The real synthetic PrivatBank fixture (Task 3, `privatbank-xlsx.format.test.ts`'s
+// The real synthetic PrivatBank fixture (`privatbank-xlsx.format.test.ts`'s
 // own fixture-reading pattern) — its 2 resolvable rows are DIFFERENT
 // currencies (row 1: грн -> UAH; row 2: дол -> USD), so importing it exercises
 // the real multi-currency exclusion end to end, through the real
@@ -380,7 +380,7 @@ describe('importStatement', () => {
       expect(result.total).toBe(2);
       expect(result.imported).toBe(1);
       expect(result.skippedWrongCurrency).toBe(1);
-      // F4 item 9: the result names WHICH currency was skipped, not just how many rows.
+      // The result names WHICH currency was skipped, not just how many rows.
       expect(result.skippedWrongCurrencyCodes).toEqual(['USD']);
       expect(store.transactions).toHaveLength(1);
       expect(store.transactions[0].source).toBe('import');
@@ -432,8 +432,8 @@ describe('importStatement', () => {
     });
   });
 
-  // Task 3 review, CRITICAL: a PrivatBank file can mix currencies per row
-  // (one card per currency) — importing it into a holding of ONE of those
+  // A PrivatBank file can mix currencies per row (one card per currency) —
+  // importing it into a holding of ONE of those
   // currencies must write ONLY the matching rows, at their EXACT amount, and
   // exclude (never convert, never write verbatim) every other-currency row.
   describe('multi-currency exclusion (no FX conversion, no cross-currency corruption)', () => {

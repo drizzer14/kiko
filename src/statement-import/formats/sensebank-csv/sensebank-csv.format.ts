@@ -130,8 +130,8 @@ const parseSensebankDateSeconds = (raw: string): number => {
 
 // Controller ruling 3: the debit cell's raw text already carries its own
 // leading minus sign (e.g. "-150,00"); the credit cell is unsigned positive —
-// no manual negation anywhere. Controller ruling 5 (Task 3 review precedent):
-// guards against ever computing a `NaN` `amountMinorUnits` — an empty or
+// no manual negation anywhere. Controller ruling 5 guards against ever
+// computing a `NaN` `amountMinorUnits` — an empty or
 // malformed debit/credit pair throws rather than silently writing `NaN`. A
 // row carrying BOTH a debit AND a credit is not a valid single-amount row at
 // all (money-safety review, mirrors `business-csv`'s Дебет/Кредит guard) —

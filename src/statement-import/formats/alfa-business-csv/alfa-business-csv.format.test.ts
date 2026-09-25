@@ -26,9 +26,8 @@ import {
 const fixtureInput = alfaBusinessFixtureInput;
 const fixtureText = fixtureInput.text;
 
-// Task 3 review precedent (NaN guard, IMPORTANT): the unsigned `Сума` cell
-// is empty — must never reach `Money.fromMajor` as `NaN`; `parse` throws
-// `StatementParseError` instead.
+// The NaN guard: the unsigned `Сума` cell is empty — must never reach
+// `Money.fromMajor` as `NaN`; `parse` throws `StatementParseError` instead.
 const malformedAmountInput = {
   text: [
     FULL_HEADER_LINE,

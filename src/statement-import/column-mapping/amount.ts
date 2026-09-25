@@ -12,8 +12,8 @@ const MINUS_SIGN = '−';
 const SPACE_PATTERN = new RegExp(`[ ${NON_BREAKING_SPACE}]`, 'g');
 
 /**
- * Review Focus 1: a `number` cell (an XLSX numeric cell) is used AS-IS —
- * never re-run through the separator rule, which would otherwise mistake its
+ * A `number` cell (an XLSX numeric cell) is used AS-IS — never re-run
+ * through the separator rule, which would otherwise mistake its
  * own '.' for a stray thousands separator and mangle it (`123.45` read with
  * `,` becoming `12345`). Only a `string` cell goes through the
  * strip-spaces/normalize-minus/drop-other-separator/normalize-decimal

@@ -34,7 +34,7 @@ import {
 // Not exported — nothing outside this file references either type by name
 // (every call site passes an inline object literal to
 // `createColumnarBusinessCsvFormat`, which TypeScript checks structurally);
-// `check:knip` flags an unused exported type as dead code (Task 5 review).
+// `check:knip` flags an unused exported type as dead code.
 type ColumnarBusinessCsvColumn = {
   account: number;
   currency: number;
@@ -59,8 +59,8 @@ type ColumnarBusinessCsvConfig = {
 
 // Controller ruling 1: the Дебет cell's raw text is UNSIGNED — negate it
 // manually; the Кредит cell is unsigned positive, no negation. Guards
-// against ever computing a NaN `amountMinorUnits` (Task 3 review precedent)
-// when both cells are empty/malformed. A row carrying BOTH a debit AND a
+// against ever computing a NaN `amountMinorUnits` when both cells are
+// empty/malformed. A row carrying BOTH a debit AND a
 // credit is not a valid Дебет XOR Кредит row at all (money-safety review) —
 // silently preferring the debit side would drop the credit amount without a
 // trace, so this throws instead of guessing.

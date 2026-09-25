@@ -21,9 +21,9 @@ const unrelatedCsv = {
 const MONOBANK_HEADER =
   'Дата i час операції,Деталі операції,MCC,Сума в валюті картки (UAH),Сума в валюті операції,Валюта,Курс,Сума комісій (UAH),Сума кешбеку (UAH),Залишок після операції';
 
-// Regression fixture (Task 3 review, IMPORTANT): an empty/malformed amount
-// cell must never reach `Money.fromMajor` as `NaN` — `detect()` never
-// validates a data row, so a truncated/malformed export must fail loudly
+// Regression fixture: an empty/malformed amount cell must never reach
+// `Money.fromMajor` as `NaN` — `detect()` never validates a data row, so a
+// truncated/malformed export must fail loudly
 // (`StatementParseError`) out of `parse()` instead of silently writing a
 // `NaN` `amountMinorUnits` to the ledger.
 const malformedAmountInput = {
@@ -135,8 +135,8 @@ describe('monobankCsvFormat.parse', () => {
     });
   });
 
-  // Task 3 review, IMPORTANT: an empty/malformed amount cell must never
-  // silently become a `NaN` `amountMinorUnits` written to the ledger —
+  // An empty/malformed amount cell must never silently become a `NaN`
+  // `amountMinorUnits` written to the ledger —
   // `parse()` throws instead, the same way a bad date cell already does.
   it('throws a StatementParseError instead of writing a NaN amount for a malformed amount cell', () => {
     expect(() => monobankCsvFormat.parse(malformedAmountInput)).toThrow(StatementParseError);

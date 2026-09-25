@@ -20,10 +20,10 @@ import { COLUMN, FULL_HEADER_LINE, OPERATSII_WORD, ukrsibBusinessCsvFormat } fro
 const fixtureInput = ukrsibBusinessFixtureInput;
 const fixtureText = fixtureInput.text;
 
-// Task 3 review precedent (NaN guard, IMPORTANT): neither `Дебет` nor
-// `Кредит` is populated — an empty or malformed amount cell must never
-// reach `Money.fromMajor` as `NaN`; `parse` throws `StatementParseError`
-// instead (Monobank/Sensebank/ProCredit business's convention).
+// The NaN guard: neither `Дебет` nor `Кредит` is populated — an empty or
+// malformed amount cell must never reach `Money.fromMajor` as `NaN`; `parse`
+// throws `StatementParseError` instead (Monobank/Sensebank/ProCredit
+// business's convention).
 const malformedAmountInput = {
   text: [
     FULL_HEADER_LINE,

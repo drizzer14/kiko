@@ -1,4 +1,4 @@
-// Review Focus 2 setup (dedup parity, real re-import). Mirrors
+// Dedup parity setup (a real re-import). Mirrors
 // `import-statement.test.ts`'s own in-memory fake-transaction-handle pattern:
 // the real `write`/`@kiko/holdings/repo` are blocked under Jest (op-sqlite's
 // `open()`), so `write` is mocked to run its callback against a fake

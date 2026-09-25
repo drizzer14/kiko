@@ -28,9 +28,9 @@ const fixtureText = fixtureInput.text;
 const REAL_HEADER =
   'ЄДРПОУ;Код ID НБУ;Рахунок;Валюта;Дата операції;Код операції;МФО банка;Назва банка;Рахунок кореспондента;ЄДРПОУ кореспондента;Кореспондент;Номер документа;Дата документа;Дебет;Кредит;Призначення платежу;Гривневе покриття';
 
-// Task 3 review precedent (NaN guard, IMPORTANT): neither the debit nor the
-// credit cell is populated — an empty or malformed amount cell must never
-// reach `Money.fromMajor` as `NaN`; `parse` throws `StatementParseError`
+// The NaN guard: neither the debit nor the credit cell is populated — an
+// empty or malformed amount cell must never reach `Money.fromMajor` as
+// `NaN`; `parse` throws `StatementParseError`
 // instead (Monobank/Sensebank's convention).
 const malformedAmountInput = {
   text: [

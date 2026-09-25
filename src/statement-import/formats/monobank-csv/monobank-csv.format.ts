@@ -64,9 +64,9 @@ const detect = (input: StatementFormatInput): boolean => {
 const parseMcc = (raw: string | undefined): number | undefined =>
   isAbsentColumn(raw) ? undefined : Number(raw);
 
-// Guards against ever computing a `NaN` `amountMinorUnits` (Task 3 review,
-// IMPORTANT) — an empty or malformed amount cell throws the same way a bad
-// date cell already does, rather than silently writing `NaN` to the ledger.
+// Guards against ever computing a `NaN` `amountMinorUnits` — an empty or
+// malformed amount cell throws the same way a bad date cell already does,
+// rather than silently writing `NaN` to the ledger.
 const parseRowAmountMinorUnits = (raw: string, currency: Currency): number => {
   const major = parseAmount(raw);
 

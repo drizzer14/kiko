@@ -14,8 +14,8 @@ describe('dateFormatIds', () => {
   });
 });
 
-// F4 item 8: the date-format picker shows a worked example instead of the
-// raw preset id — self-verified by parsing each example back through its
+// The date-format picker shows a worked example instead of the raw preset
+// id — self-verified by parsing each example back through its
 // OWN format, so a typo'd example can never silently drift from what its
 // format id actually accepts.
 describe('dateFormatExamples', () => {

@@ -1,8 +1,8 @@
 import { parseAmountCell } from './amount';
 
 describe('parseAmountCell', () => {
-  // Review Focus 1: an XLSX number cell is used AS-IS, never re-parsed
-  // through the separator rule — otherwise 123.45 read with ',' becomes
+  // An XLSX number cell is used AS-IS, never re-parsed through the
+  // separator rule — otherwise 123.45 read with ',' becomes
   // 12345 (the '.' would be treated as a stray other-separator and dropped).
   it('uses a number cell as-is, ignoring the separator entirely', () => {
     expect(parseAmountCell(123.45, ',')).toBe(123.45);

@@ -80,7 +80,7 @@ describe('mapParsedTransaction', () => {
   });
 });
 
-// PrivatBank XLSX (Phase 2/Task 3) never carries an MCC — section C.1 — so a
+// PrivatBank XLSX never carries an MCC — section C.1 — so a
 // row shaped exactly like a real PrivatBank row (masked-card hint, no mcc at
 // all) must map to `category: null` through the SAME generic mapper, not a
 // PrivatBank-specific branch. This exercises the real `mapParsedTransaction`

@@ -10,8 +10,8 @@ const DATE_TIME_PATTERN = /^(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2}):(\d{2})$/;
  * `'PrivatBank'`) names the source format in the thrown message only, so an
  * unrecognized value still points at which format's row failed to parse.
  * Extracted out of `monobank-csv.format.ts`/`privatbank-xlsx.format.ts`
- * (Task 3 review) rather than duplicated — every CSV format Phase 4 adds is
- * expected to reuse this too.
+ * rather than duplicated — every CSV format added later is expected to
+ * reuse this too.
  */
 export const parseDateTimeSeconds = (raw: string, formatLabel: string): number => {
   const match = DATE_TIME_PATTERN.exec(raw.trim());

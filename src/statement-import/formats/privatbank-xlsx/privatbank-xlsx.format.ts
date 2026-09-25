@@ -92,9 +92,9 @@ const parseDataRow = (row: SpreadsheetCellValue[]): RowOutcome => {
 
   // The CARD-currency amount pair, not the transaction-currency one (section
   // C.1) — the latter is informational and deliberately dropped. Guards
-  // against ever computing a `NaN` `amountMinorUnits` (Task 3 review,
-  // IMPORTANT): an empty or malformed amount cell is routed to
-  // `unresolvedRows` instead, never written.
+  // against ever computing a `NaN` `amountMinorUnits`: an empty or
+  // malformed amount cell is routed to `unresolvedRows` instead, never
+  // written.
   const rawAmount = cellText(row[COLUMN.cardAmount]);
   const amountMajor = parseAmount(rawAmount);
 

@@ -70,8 +70,8 @@ export const readTableRows = (
 /**
  * The first of the first 10 rows with the most non-empty cells — a cheap
  * guess a user picks up front, shown pre-selected before they confirm the
- * header row themselves (P0 Review Focus 3: a saved/guessed mapping never
- * imports without the user's own tap).
+ * header row themselves — a saved/guessed mapping never imports without the
+ * user's own tap.
  */
 export const guessHeaderRowIndex = (rows: TableCell[][]): number => {
   let bestIndex = 0;

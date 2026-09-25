@@ -18,9 +18,9 @@ export type ImportResult = {
   /** Parsed rows excluded because their OWN currency (section C.1's per-row
    * `currency`) didn't match the target holding's — Kiko has no FX, so a
    * mismatched row is excluded rather than converted or written verbatim
-   * (Task 3 review, CRITICAL: a PrivatBank multi-card export can mix
-   * currencies per row; writing e.g. a $50.00 row's raw minor units into a
-   * UAH holding would silently post +₴50.00 instead of +$50.00). */
+   * (a PrivatBank multi-card export can mix currencies per row; writing
+   * e.g. a $50.00 row's raw minor units into a UAH holding would silently
+   * post +₴50.00 instead of +$50.00). */
   skippedWrongCurrency: number;
   /** The DISTINCT skipped rows' own currency codes, alphabetically sorted —
    * names WHICH currencies were skipped, not just how many rows — empty

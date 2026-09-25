@@ -12,8 +12,8 @@ export type ParsedTransaction = {
    * `undefined` here is the NORMAL case, not a placeholder. The mapper (A.3)
    * synthesizes a deterministic key when this is absent (section D). */
   externalId?: string;
-  /** THIS ROW's own currency — REQUIRED (Task 3 review, CRITICAL fix). A
-   * single-currency format (every CSV shipped so far) sets the same file-wide
+  /** THIS ROW's own currency — REQUIRED. A single-currency format (every
+   * CSV shipped so far) sets the same file-wide
    * currency on every row; a multi-currency format (PrivatBank XLSX, one row
    * per card, each card potentially in a different currency) sets each row's
    * own resolved currency. `import-statement.ts` compares this against the
@@ -58,8 +58,7 @@ export type ParsedAccountHint = {
  *   is known incomplete).
  * - `invalid-amount` — the amount cell didn't parse to a finite number (an
  *   empty or malformed cell) — guards against ever computing a `NaN`
- *   `amountMinorUnits` and writing it to the ledger (Task 3 review,
- *   IMPORTANT fix). */
+ *   `amountMinorUnits` and writing it to the ledger. */
 export type UnresolvedStatementRow =
   | { reason: 'unmapped-currency'; rawCurrency: string; description: string }
   | { reason: 'invalid-amount'; description: string; rawAmount: string };
@@ -116,13 +115,12 @@ export type ParsedStatement = {
   closingBalance?: ClosingBalance;
 };
 
-/** One entry per SHIPPED format. Phase 1 shipped Monobank CSV; Phase 2 added
- * PrivatBank XLSX; Phase 3 added Sensebank CSV; Phase 4 (Task 5) adds the
- * three FOP/business CSVs (ProCredit, Ukrsibbank, Alfa) — required for each
- * new stub's own `id` field to typecheck against `StatementFormatId`, same
- * reasoning Task 3/4 used for `privatbank-xlsx`/`sensebank-csv`. Every other
- * bank studied for this plan lands in its own later phase and is
- * deliberately NOT listed here yet. */
+/** One entry per SHIPPED format: Monobank CSV, PrivatBank XLSX, Sensebank
+ * CSV, and the three FOP/business CSVs (ProCredit, Ukrsibbank, Alfa) —
+ * required for each new stub's own `id` field to typecheck against
+ * `StatementFormatId`, same reasoning used for `privatbank-xlsx`/
+ * `sensebank-csv`. Every other bank studied for this plan lands in its own
+ * later phase and is deliberately NOT listed here yet. */
 export const statementFormatIds = [
   'monobank-csv',
   'privatbank-xlsx',

@@ -1,7 +1,7 @@
 // A user-confirmed `ColumnMapping`, saved so a re-import of the same bank or
 // the same file shape can pre-fill the mapping form instead of asking the
-// user to remap every column again (Review Focus 3: a saved mapping only
-// PRE-FILLS — the user still taps Import; see `applyColumnMapping`'s caller).
+// user to remap every column again — a saved mapping only PRE-FILLS, the
+// user still taps Import; see `applyColumnMapping`'s caller.
 import { isBankId } from '../../bank-sync/bank-catalog';
 
 import type { TableCell } from './table-rows';

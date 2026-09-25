@@ -53,8 +53,8 @@ const csvInput: StatementFormatInput = {
   fileName: 'not-a-spreadsheet.csv',
 };
 
-// Regression fixture (Task 3 review, IMPORTANT): a row whose amount cell is
-// empty/malformed must never reach `Money.fromMajor` as `NaN` — it is routed
+// Regression fixture: a row whose amount cell is empty/malformed must never
+// reach `Money.fromMajor` as `NaN` — it is routed
 // to `unresolvedRows` as `invalid-amount` instead, the same "recoverable, not
 // thrown, not silently dropped" treatment `unmapped-currency` already gets.
 // Its currency word (`грн`) resolves cleanly, so `account.currency` still
@@ -173,8 +173,8 @@ describe('privatbankXlsxFormat.parse', () => {
     expect(parsed.account.currency).toBe('UAH');
   });
 
-  // Task 3 review, CRITICAL: each row must carry ITS OWN resolved currency —
-  // a multi-currency PrivatBank file mixes UAH and USD rows, and
+  // Each row must carry ITS OWN resolved currency — a multi-currency
+  // PrivatBank file mixes UAH and USD rows, and
   // `import-statement.ts` relies on this per-row field to exclude a
   // wrong-currency row instead of writing its amount verbatim into a
   // differently-denominated holding.
