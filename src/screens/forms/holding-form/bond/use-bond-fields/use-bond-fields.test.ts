@@ -18,7 +18,7 @@ jest.mock('../../../../../bonds/bond-register-repo', () => ({
 
 import { useBondFields } from './use-bond-fields';
 
-// UA4000234215 (T23/T24 fixture): a real register ISIN, checksum-valid.
+// UA4000234215: a real register ISIN, checksum-valid.
 const VALID_ISIN = 'UA4000234215';
 
 const foundRow = (
@@ -120,7 +120,7 @@ describe('useBondFields scrollTargets', () => {
     expect(firstInvalid?.ref).toBe(result.current.refs.purchaseDateFieldRef);
   });
 
-  it('redirects the same maturity-order reason to the maturity field once switched to Manual mode', async () => {
+  it('points the same maturity-order reason at the maturity field once switched to Manual mode', async () => {
     mockBondRegisterRows = [foundRow({ maturityDate: new Date(2020, 0, 1).getTime() })];
     const { result } = await renderBondFields();
 
@@ -131,6 +131,9 @@ describe('useBondFields scrollTargets', () => {
       result.current.setBondMode('manual');
     });
 
-    expect(result.current.scrollTargets.at(-1)?.ref).toBe(result.current.refs.maturityDateFieldRef);
+    const lastTarget = result.current.scrollTargets.at(-1);
+
+    expect(lastTarget?.invalid).toBe(true);
+    expect(lastTarget?.ref).toBe(result.current.refs.maturityDateFieldRef);
   });
 });

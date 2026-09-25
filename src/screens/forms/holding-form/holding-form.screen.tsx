@@ -271,11 +271,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     setIcon(holding.icon);
     setColor(holding.color);
 
-    // SQLite enforces no constraint on the stored `type` column
-    // (`holdingDescriptor`'s own doc comment) — a corrupted row's `type`
+    // The balance seed is the normal path for card/cash/crypto_asset/jar —
+    // those types have no type-specific fields of their own. It is also the
+    // fallback for a corrupted row's `type`: SQLite enforces no constraint on
+    // the stored `type` column (`holdingDescriptor`'s own doc comment), so it
     // could be any string. The `Object.hasOwn` guard (mirroring
-    // `holdingDescriptorOrUndefined`) falls back to the balance seed for
-    // that case.
+    // `holdingDescriptorOrUndefined`) routes both cases to the balance seed.
     const seeds: Record<string, HoldingTypeForm['seed']> = {
       term_deposit: deposit.seed,
       bond: bond.seed,

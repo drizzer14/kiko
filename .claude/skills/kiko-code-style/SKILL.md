@@ -204,9 +204,10 @@ Everything else defaults to plain functions and modules:
 ## `ts-pattern` for exhaustive mapping
 
 Any place that maps over a closed set of literals — currency codes,
-account/holding `kind`/`type` (including the `loan`, `metal`,
-`property_item`, and `share` holding types — see `src/db/schema.ts`
-for the current full set), Monobank statement kinds, ISO 4217 numeric
+account/holding `kind`/`type` (including the `loan`, `metal`, and
+`property_item` holding types, with `share` planned but not yet in
+`holdingTypes` — see `src/holdings/holding-type/holding-type.ts` for
+the current full set), Monobank statement kinds, ISO 4217 numeric
 codes — uses `ts-pattern`'s `match(...).exhaustive()` rather than a
 `switch` or an `if`/`else` chain. Exhaustiveness checking means adding
 a new currency or a new holding type is a compile error at every
