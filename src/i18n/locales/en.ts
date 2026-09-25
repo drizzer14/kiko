@@ -270,16 +270,6 @@ export const en = {
       bond: 'Bond',
       bondKind: 'Bond kind',
       card: 'Card',
-      category: 'Category',
-      // The property-category select field's placeholder — unreachable
-      // today (the field always starts with a concrete default category),
-      // kept for the `SelectField` contract's `selected: null` case, same as
-      // every other select field's placeholder.
-      categoryPlaceholder: 'Select a category',
-      // The property-category SelectField's sheet header — Title Case, a
-      // distinct string from the sentence-case field label (`category`
-      // above), the sheet-title UI role.
-      categorySheetTitle: 'Select a Category',
       compounding: 'Compounding',
       contributionAmount: 'Contribution {{index}} amount',
       contributionDate: 'Contribution {{index}} date',

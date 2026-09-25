@@ -51,6 +51,7 @@ import { useBondFields } from './bond/use-bond-fields';
 import { useMetalFields } from './metal/use-metal-fields';
 import BalanceFormBlock from './balance/balance-form-block';
 import PropertyFormBlock from './property/property-form-block';
+import PropertyTypeField from './property/property-type-field';
 import { useBalanceFields } from './balance/use-balance-fields';
 import { usePropertyFields } from './property/use-property-fields';
 import type { ScrollTarget, HoldingTypeForm } from './holding-type-form';
@@ -489,19 +490,31 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             bank create offers only term_deposit / bond. Edit mode uses the full
             set so an existing synced card/jar row still displays its (read-only)
             type. */}
-        {/* A select sheet, mirroring AccountKindField — up to 9 long type
+        {/* A `property` account's only holding type IS its category
+            (`holdingTypesForAccountKind`), so its Type field is the
+            category picker itself (`PropertyTypeField`) rather than the
+            generic single-option sheet every other kind renders below. A
+            select sheet, mirroring AccountKindField — up to 9 long type
             names (e.g. "Строковий депозит") run too wide for a chip row,
-            the same label-width reasoning that moved PropertySection's
-            category and LoanSection's kind onto `SelectField`. */}
-        <HoldingTypeField
-          options={typeOptions}
-          selected={type}
-          onSelect={setType}
-          labels={typeLabels}
-          icons={holdingTypeSymbol}
-          disabled={isEdit}
-          testID="holding-type-field"
-        />
+            the same label-width reasoning that moved LoanSection's kind
+            onto `SelectField`. */}
+        {accountKind === 'property' ? (
+          <PropertyTypeField
+            selected={property.category}
+            onSelect={property.setCategory}
+            testID="property-category-field"
+          />
+        ) : (
+          <HoldingTypeField
+            options={typeOptions}
+            selected={type}
+            onSelect={setType}
+            labels={typeLabels}
+            icons={holdingTypeSymbol}
+            disabled={isEdit}
+            testID="holding-type-field"
+          />
+        )}
 
         {/* A holding type with a fixed currency (today, only `metal` — NBU
             quotes precious metals only in UAH, kiko-pricing) offers no

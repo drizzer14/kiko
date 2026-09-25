@@ -206,11 +206,27 @@ rather than trusting a restated summary here.
 
 ## `property_item` / `metal` create-form sections
 
-`src/screens/forms/holding-form/property/property-section/` is the
-`property_item` create-form section: a category `SelectField`
-(`propertyCategories` from `src/holdings/holding-metadata`, editable
-in both create and edit mode — too many long category names for a
-`ChipRow`) plus a Cost field (create-only). One lot
+A `property` account's Type field IS its category picker
+(`PropertyTypeField`, `src/screens/forms/holding-form/property/property-type-field/`):
+`property_item` is that account kind's only holding type
+(`holdingTypesForAccountKind`), so `HoldingFormScreen` renders this
+`SelectField` wrapper — over `propertyCategories` from
+`src/holdings/holding-metadata`, in the fixed display order Real
+estate/Vehicle/Valuable/Business share/Loan given/Other, distinct from
+`propertyCategories`' own declaration order — in the generic
+`HoldingTypeField`'s slot instead, for every OTHER account kind's
+holding form untouched. Editable in both create and edit mode (never
+disabled, unlike the generic Type field), reusing the SAME "Type"
+label/sheet-title/placeholder catalog keys. Editing an existing
+holding pre-selects the stored category via `propertyCategoryOf`
+(`holding-metadata.ts`), a LENIENT reader that falls back to `'other'`
+for a missing/unrecognized value — independent of the strict
+all-or-nothing `asPropertyMeta` parse `usePropertyFields`'s `seed`
+still uses for the holding's `lots`.
+`src/screens/forms/holding-form/property/property-section/` is now
+just the Cost field (create-only); `PropertyFormBlock` mounts it (and
+its own "Details" heading) only in create mode, since nothing else is
+left to show there in edit mode. One lot
 plus one manual price point equal to that cost is what
 `usePropertyFields`'s own `createPayload`
 (`src/screens/forms/holding-form/property/use-property-fields/`, R3
@@ -600,8 +616,11 @@ own "Debts" section (`accounts.screen.tsx`) computes its OWN section
 total independently, via `guardedNetWorth` of just the debt-kind
 accounts' holdings (M2 — every debt-kind account holds only `loan`
 holdings, so this total is always <= 0); it does not call
-`buildDebtTotal`, which sums across every account kind. Read
-`kiko-charts` for the pie/line-specific rules.
+`buildDebtTotal`, which sums across every account kind. A
+property-kind account gets the SAME treatment: its own "Property"
+section, its own `guardedNetWorth`-summed section total over just the
+property-kind accounts' holdings, rendered between the main grid and
+the Debts section. Read `kiko-charts` for the pie/line-specific rules.
 
 ## Price series and priced holdings
 

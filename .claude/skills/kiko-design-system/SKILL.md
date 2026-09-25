@@ -586,8 +586,11 @@ new component can land between reviews of this skill:
   GENERIC version of this shape — `label`/`sheetTitle`/`options`/
   `selected` (nullable — see below)/`onSelect`/`labels`/optional
   `subtitles`/optional `icons`/`placeholder`/`required`/`disabled`/
-  `error`/`testID` — and is now the ONE shared implementation:
-  `PropertySection`'s category field, `LoanSection`'s kind field (6 and
+  `error`/`testID` — and is now the ONE shared implementation: a
+  `property` account's Type-as-category field (`PropertyTypeField`,
+  replacing the generic holding-type picker for that one account
+  kind — see `kiko-domain`'s "`property_item`/`metal` create-form
+  sections"), `LoanSection`'s kind field (6 and
   4 long option names, too wide for a `ChipRow`), the Bond form's
   coupon-frequency picker (shared by both `BondIsinSection`'s ISIN-mode
   unmapped-frequency picker and `ManualBondFields`'s own frequency

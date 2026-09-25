@@ -9,6 +9,7 @@ import {
   metalForms,
   metalUnits,
   preciousMetals,
+  propertyCategoryOf,
   syncedAtOf,
   walletAddressOf,
 } from './holding-metadata';
@@ -265,6 +266,25 @@ describe('asPropertyMeta', () => {
 
   it('returns null for null', () => {
     expect(asPropertyMeta(null)).toBeNull();
+  });
+});
+
+describe('propertyCategoryOf', () => {
+  it('reads a valid category off the metadata', () => {
+    expect(propertyCategoryOf({ category: 'vehicle', lots: [] })).toBe('vehicle');
+  });
+
+  it('falls back to other for an unrecognized category', () => {
+    expect(propertyCategoryOf({ category: 'nonsense', lots: [] })).toBe('other');
+  });
+
+  it('falls back to other for a missing category', () => {
+    expect(propertyCategoryOf({ lots: [] })).toBe('other');
+  });
+
+  it('falls back to other for a non-record metadata value', () => {
+    expect(propertyCategoryOf(null)).toBe('other');
+    expect(propertyCategoryOf(undefined)).toBe('other');
   });
 });
 

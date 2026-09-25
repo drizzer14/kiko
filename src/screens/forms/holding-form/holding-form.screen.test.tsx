@@ -1403,6 +1403,62 @@ describe('HoldingFormScreen property', () => {
     expect(screen.queryByLabelText('Balance')).toBeNull();
   });
 
+  it('renders the Type field as the category picker, never the generic single-option Type sheet, and pre-selects Real estate', async () => {
+    const screen = await renderScreen();
+
+    expect(screen.queryByTestId('holding-type-field')).toBeNull();
+    expect(screen.getByTestId('property-category-field')).toHaveTextContent('Real estate');
+
+    await fireEvent.press(screen.getByTestId('property-category-field'));
+
+    expect(screen.getByTestId('property-category-field-option-real_estate')).toBeTruthy();
+    expect(screen.getByTestId('property-category-field-option-vehicle')).toBeTruthy();
+    expect(screen.getByTestId('property-category-field-option-valuable')).toBeTruthy();
+    expect(screen.getByTestId('property-category-field-option-business_share')).toBeTruthy();
+    expect(screen.getByTestId('property-category-field-option-loan_given')).toBeTruthy();
+    expect(screen.getByTestId('property-category-field-option-other')).toBeTruthy();
+  });
+
+  it('keeps the Type-as-category field editable (not disabled) in edit mode, unlike the generic Type field', async () => {
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Apartment',
+      type: 'property_item',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 500_000 }],
+      },
+    });
+
+    expect(
+      screen.getByTestId('property-category-field').props.accessibilityState?.disabled,
+    ).not.toBe(true);
+  });
+
+  it('pre-selects Other when editing a property holding whose stored category is unrecognized', async () => {
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Weird row',
+      type: 'property_item',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        category: 'nonsense',
+        lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 500_000 }],
+      },
+    });
+
+    expect(screen.getByTestId('property-category-field')).toHaveTextContent('Other');
+  });
+
   it('creates the holding under the tapped category', async () => {
     const screen = await renderScreen();
 

@@ -252,6 +252,24 @@ export type PropertyCategory = (typeof propertyCategories)[number];
 const isPropertyCategory = (value: unknown): value is PropertyCategory =>
   typeof value === 'string' && (propertyCategories as readonly string[]).includes(value);
 
+/**
+ * The `property_item`'s category, read LENIENTLY: a missing or unrecognized
+ * value falls back to `'other'` rather than treating the whole metadata blob
+ * as invalid the way `asPropertyMeta` does (mirrors `walletAddressOf`'s
+ * tolerant-reader shape). This is what pre-selects the property form's Type
+ * field in edit mode, independent of whether the metadata's `lots` also
+ * happen to parse.
+ */
+export const propertyCategoryOf = (metadata: unknown): PropertyCategory => {
+  if (!isRecord(metadata)) {
+    return 'other';
+  }
+
+  const { category } = metadata;
+
+  return isPropertyCategory(category) ? category : 'other';
+};
+
 export type PropertyMeta = {
   category: PropertyCategory;
   lots: Lot[];

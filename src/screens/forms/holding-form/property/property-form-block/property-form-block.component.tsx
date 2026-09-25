@@ -13,9 +13,17 @@ import type { PropertyFormBlockProps } from './property-form-block.props';
 
 // The `type === 'property_item'` details block as its own leaf component,
 // keeping its own cognitive-complexity budget separate from the screen's.
+// The category select that used to render here moved to the Type slot
+// (`PropertyTypeField`, on `HoldingFormScreen`), so the only field left is
+// the CREATE-only Cost field — nothing to show in edit mode, so the whole
+// block (including its own "Details" heading) renders nothing there.
 const PropertyFormBlock: FC<PropertyFormBlockProps> = ({ fields, attemptedSave, isEdit }) => {
   const { t } = useTranslation();
   const { fieldErrors, refs } = fields;
+
+  if (isEdit) {
+    return null;
+  }
 
   return (
     <Box gap={4}>
@@ -24,9 +32,6 @@ const PropertyFormBlock: FC<PropertyFormBlockProps> = ({ fields, attemptedSave, 
       <Text variant="heading">{t('forms.holding.details')}</Text>
 
       <PropertySection
-        category={fields.category}
-        onSelectCategory={fields.setCategory}
-        showCost={!isEdit}
         cost={fields.cost}
         onChangeCost={(text) => fields.setCost(groupAmount(text))}
         currencySuffix={currencySymbol[fields.currency]}
