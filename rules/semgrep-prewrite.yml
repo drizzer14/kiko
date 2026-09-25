@@ -203,3 +203,32 @@ rules:
       - metavariable-regex:
           metavariable: $COLOR
           regex: "^#[0-9A-Fa-f]{3,8}$|^rgba?\\("
+  # kiko-design-system's "Component set (GlassSurface)" — `GlassSurface`
+  # renders Apple's Liquid Glass material, reserved for the NAVIGATION layer
+  # (the tab bar, `BottomSheet`, the keyboard "Done" accessory, the Home
+  # add-transaction FAB). A content-layer card/list/chart reads `Card`
+  # instead (a solid, bordered fill — no glass material). `pattern-regex`
+  # over the whole import statement, not an AST `pattern:` — an import path
+  # is a plain string literal, so there is no AST shape to distinguish "the
+  # glass-surface module" from any other import beyond the path text itself.
+  # `paths.exclude` is the nav-layer allowlist: extend this list for a new
+  # nav-layer surface.
+  - id: kiko-glass-surface-nav-layer-only
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `GlassSurface` is reserved for the navigation layer (tab bar,
+      `BottomSheet`, the keyboard "Done" accessory, the Home add-transaction
+      FAB). A content-layer module reads `Card` instead — see
+      kiko-design-system's "Component set (GlassSurface)".
+    metadata:
+      fix: "Import `Card` (the content-layer surface) instead of `GlassSurface`."
+      skill: "kiko-design-system › Component set (GlassSurface)"
+    paths:
+      exclude:
+        - "src/design-system/components/glass-surface/**"
+        - "src/design-system/components/bottom-sheet/**"
+        - "src/design-system/components/keyboard-done-accessory/**"
+        - "src/screens/home/add-transaction-fab/**"
+    patterns:
+      - pattern-regex: "import\\s[^;]*from\\s*['\"][^'\"]*glass-surface['\"]"

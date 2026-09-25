@@ -25,6 +25,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-use-animated-keyboard',
   'kiko-no-history-id-comment',
   'kiko-no-raw-color-literal',
+  'kiko-glass-surface-nav-layer-only',
 ] as const;
 
 function payloadFor(filePath: string, content: string): string {
