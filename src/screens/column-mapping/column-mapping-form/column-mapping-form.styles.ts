@@ -7,7 +7,4 @@ export const styles = StyleSheet.create((theme) => ({
   fieldGroup: {
     paddingTop: theme.spacing(1),
   },
-  resultBlock: {
-    paddingTop: theme.spacing(2),
-  },
 }));

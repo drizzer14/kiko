@@ -203,6 +203,15 @@ const currencyColumnErrorFor = (params: {
   return currencyColumnUnresolved ? t('columnMapping.currencyColumnUnresolvedError') : undefined;
 };
 
+// Every field-level Import-press validation message — module-level and pure,
+// so this branching stays out of the screen component's own
+// cognitive-complexity budget. Computed FRESH on every render and read
+// directly inside `handleImport` (never gated on `attemptedImport` itself,
+// mirroring `holding-form.screen.tsx`'s own
+// `termDepositReasonKey()`/`bondReasonKey()`) — the screen component decides
+// whether to DISPLAY these messages (`attemptedImport ? errors :
+// NO_COLUMN_MAPPING_ERRORS`), matching the shared "validate on press" form
+// model (`kiko-code-style`).
 const columnMappingFieldErrors = (params: {
   t: TFunction;
   dateColumn: number | undefined;

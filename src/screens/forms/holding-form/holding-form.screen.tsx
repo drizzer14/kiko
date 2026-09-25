@@ -657,8 +657,8 @@ const compoundingOptions: readonly CompoundingFrequency[] = [
 // `attemptedSave` so it renders nothing before the first press. The
 // type-specific per-field reasons (term deposit / bond) no longer flow
 // through this helper — each field now calls `termDepositReasonKey()` /
-// `bondReasonKey()` directly (see `fieldErrorMessage` below), since each field
-// needs its OWN reason, not the type's single first-failing one. Kept as a
+// `bondReasonKey()` directly, since each field needs its OWN reason, not the
+// type's single first-failing one. Kept as a
 // module-level helper (rather than inline in the component) to mirror the
 // pattern the rest of this file already uses for save-time branching.
 const saveReasonsFor = (params: {
@@ -674,8 +674,8 @@ const saveReasonsFor = (params: {
 // TWO separate `<FieldError>`s though both come from the SAME
 // `contributionsFieldReasonKey` check — this narrows to the specific
 // sub-reason each one owns, so neither shows for the other's cause. Kept
-// module-level so this comparison stays out of HoldingFormScreen's own
-// cognitive-complexity budget, the same reason `fieldErrorMessage` is.
+// module-level (rather than inline in the component) to stay out of
+// HoldingFormScreen's own cognitive-complexity budget.
 const contributionsSubReasonMessage = (
   t: TFunction,
   attemptedSave: boolean,
@@ -782,8 +782,7 @@ type ValidatedFieldFocus = {
 // the active type's fields. `save`'s `!isValid` branch passes this straight
 // to `scrollToField`. Module-level and pure (given the already-computed
 // reason keys) so this branching stays out of `save`'s own
-// cognitive-complexity budget — the same reason `fieldErrorMessage` above is
-// a module-level helper.
+// cognitive-complexity budget.
 const firstInvalidFieldRef = (params: {
   name: string;
   type: HoldingType;

@@ -1,23 +1,23 @@
 import type { RefObject } from 'react';
-
 import type {
   TableCell,
   DateFormatId,
   TableDelimiter,
   ColumnMappingRowError,
-} from '../../../statement-import/column-mapping';
-import type { Currency } from '../../../currency/currency';
+} from '@kiko/statement-import/column-mapping';
+import type { Currency } from '@kiko/currency/currency';
+import type { FieldInstance } from '@kiko/screens/forms/scroll-to-field/scroll-to-field';
+import type { PreviewStats } from '@kiko/screens/statement-import/preview-stats/preview-stats';
+import type { useTargetHoldingOptions } from '@kiko/screens/statement-import/use-target-holding-options/use-target-holding-options';
+
 import type { AmountMode } from '../amount-fields/amount-fields.props';
 import type { CurrencyMode } from '../currency-fields/currency-fields.props';
-import type { FieldInstance } from '../../forms/scroll-to-field/scroll-to-field';
-import type { PreviewStats } from '../../statement-import/preview-stats/preview-stats';
 import type { ColumnSelectFieldOption } from '../column-select-field/column-select-field.props';
-import type { useTargetHoldingOptions } from '../../statement-import/use-target-holding-options/use-target-holding-options';
 
 export type Encoding = 'utf-8' | 'windows-1251';
 
-// The wrapper refs `firstInvalidColumnMappingFieldRef` below picks a scroll
-// target from — grouped into its own type so that function's own signature
+// The wrapper refs `firstInvalidColumnMappingFieldRef` (`column-mapping.screen.tsx`)
+// picks a scroll target from — grouped into its own type so that function's own signature
 // reads as one param per concern, mirroring `holding-form.screen.tsx`'s own
 // `ValidatedFieldRefs`. `amountGroupFieldRef`/`currencyGroupFieldRef` each
 // wrap their WHOLE field group (single-vs-debit/credit, column-vs-fixed) —
@@ -38,16 +38,10 @@ export type ColumnMappingFieldRefs = {
   targetHoldingFieldRef: RefObject<FieldInstance | null>;
 };
 
-// Every field-level Import-press validation message — module-level and
-// pure, the same reason `firstInvalidFieldRef` in
-// `holding-form.screen.tsx` is, so this branching stays out of the screen
-// component's own cognitive-complexity budget. Computed FRESH on every
-// render AND read directly inside `handleImport` (never gated on
-// `attemptedImport` itself, mirroring `holding-form.screen.tsx`'s own
-// `termDepositReasonKey()`/`bondReasonKey()`) — the screen component decides
-// whether to DISPLAY these messages (`attemptedImport ? errors :
-// NO_COLUMN_MAPPING_ERRORS`), matching the shared "validate on press" form
-// model (`kiko-code-style`).
+// One error slot per column-mapping field, plus the Result block's own
+// `noRowsResolvedError` and the holding picker's `targetHoldingError` — see
+// `columnMappingFieldErrors` in `column-mapping.screen.tsx` for how each is
+// computed.
 export type ColumnMappingFieldErrors = {
   dateColumnError: string | undefined;
   dateFormatError: string | undefined;
@@ -115,7 +109,8 @@ export type ColumnMappingFormProps = {
   onCreateNewHolding: () => void;
   // Import-press field-level errors — every field is `undefined` before the
   // first press, hence `Partial` rather than `ColumnMappingFieldErrors`
-  // itself (see `NO_COLUMN_MAPPING_ERRORS`'s own doc comment).
+  // itself (see `NO_COLUMN_MAPPING_ERRORS`'s own doc comment in
+  // `column-mapping.screen.tsx`).
   validation: Partial<ColumnMappingFieldErrors>;
   fieldRefs: ColumnMappingFieldRefs;
 };

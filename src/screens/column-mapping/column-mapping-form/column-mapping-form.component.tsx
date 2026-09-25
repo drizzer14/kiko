@@ -1,19 +1,18 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
-import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import Divider from '@kiko/design-system/components/divider';
+import ChipRow from '@kiko/design-system/components/chip-row';
+import type { TableDelimiter } from '@kiko/statement-import/column-mapping';
+import TargetHoldingField from '@kiko/screens/statement-import/target-holding-field';
 
 import RawPreview from '../raw-preview';
 import AmountFields from '../amount-fields';
 import MappingResult from '../mapping-result';
 import CurrencyFields from '../currency-fields';
 import ColumnSelectField from '../column-select-field';
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import Divider from '../../../design-system/components/divider';
-import ChipRow from '../../../design-system/components/chip-row';
-import TargetHoldingField from '../../statement-import/target-holding-field';
-import type { TableDelimiter } from '../../../statement-import/column-mapping';
 
 import { styles } from './column-mapping-form.styles';
 import type { Encoding, ColumnMappingFormProps } from './column-mapping-form.props';
@@ -21,17 +20,16 @@ import type { Encoding, ColumnMappingFormProps } from './column-mapping-form.pro
 // Literal technical labels, not translated — the same treatment the
 // delimiter pills give a bare "," / ";" (only "Tab", which has no visible
 // symbol, gets a translated label).
-const encodingLabel = (encoding: Encoding): string =>
-  encoding === 'utf-8' ? 'UTF-8' : 'Windows-1251';
-
-const delimiterLabel = (translate: TFunction, delimiter: TableDelimiter): string =>
-  delimiter === '\t' ? translate('columnMapping.delimiterTab') : delimiter;
+const ENCODING_LABELS: Record<Encoding, string> = {
+  'utf-8': 'UTF-8',
+  'windows-1251': 'Windows-1251',
+};
 
 // Every prop the `ready`-state form needs — its own component so this large,
 // mostly-static form tree doesn't count against the screen's own
 // cognitive-complexity budget. Groups sections with the shared `Divider`:
-// encoding/separators, dates, amounts/currency, description/counterparty
-// (moved to the bottom), then the result.
+// encoding/separators, dates, amounts/currency, description/counterparty,
+// then the result.
 const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
   isXlsx,
   savedApplied,
@@ -82,14 +80,10 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
   fieldRefs,
 }) => {
   const { t } = useTranslation();
-  const encodingLabels: Partial<Record<Encoding, string>> = {
-    'utf-8': encodingLabel('utf-8'),
-    'windows-1251': encodingLabel('windows-1251'),
-  };
   const delimiterLabels: Partial<Record<TableDelimiter, string>> = {
     ',': ',',
     ';': ';',
-    '\t': delimiterLabel(t, '\t'),
+    '\t': t('columnMapping.delimiterTab'),
   };
 
   return (
@@ -101,9 +95,8 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
       )}
 
       <Box gap={3}>
-        {/* A stronger, more visible hint — `heading` instead of the former
-            muted `body`/`textSecondary` caption; this line doubles as the
-            raw-preview section's own heading. */}
+        {/* A stronger, more visible hint that also doubles as the raw-preview
+            section's own heading. */}
         <Text variant="heading">{t('columnMapping.rawPreview')}</Text>
 
         <RawPreview
@@ -133,7 +126,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
                 options={['utf-8', 'windows-1251']}
                 selected={encoding}
                 onSelect={onEncodingChange}
-                labels={encodingLabels}
+                labels={ENCODING_LABELS}
               />
             </Box>
 
@@ -235,8 +228,8 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
 
       <Divider testID="column-mapping-divider-description" />
 
-      {/* Group (d): description/counterparty/balance — moved to the bottom,
-          in their own divided group, now sharing ONE section heading. */}
+      {/* Group (d): description/counterparty/balance, in their own divided
+          group under one shared section heading. */}
       <Box gap={3} style={styles.fieldGroup}>
         <Text variant="heading">{t('columnMapping.sectionDetails')}</Text>
 

@@ -1,12 +1,12 @@
 import type { FC } from 'react';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import { currencySymbol } from '@kiko/currency/currency';
+import Divider from '@kiko/design-system/components/divider';
 
 import LoanSection from '../loan-section';
 import { fieldErrorMessage } from '../field-error-message';
-import Box from '../../../../design-system/components/box';
-import Text from '../../../../design-system/components/text';
-import { currencySymbol } from '../../../../currency/currency';
 import { groupAmount } from '../../amount-format/amount-format';
-import Divider from '../../../../design-system/components/divider';
 
 import type { LoanFormBlockProps } from './loan-form-block.props';
 

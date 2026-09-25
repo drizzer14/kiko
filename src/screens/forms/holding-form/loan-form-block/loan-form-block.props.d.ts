@@ -1,9 +1,9 @@
 import type { RefObject } from 'react';
 import type { TFunction } from 'i18next';
 import type { TextInputInstance } from 'react-native';
+import type { Currency } from '@kiko/currency/currency';
+import type { HoldingType } from '@kiko/holdings/holding-type';
 
-import type { Currency } from '../../../../currency/currency';
-import type { HoldingType } from '../../../../holdings/holding-type';
 import type { FieldInstance } from '../../scroll-to-field/scroll-to-field';
 import type { UseLoanFieldsResult } from '../use-loan-fields/use-loan-fields';
 

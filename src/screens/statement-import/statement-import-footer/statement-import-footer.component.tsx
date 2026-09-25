@@ -1,8 +1,7 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-
-import Box from '../../../design-system/components/box';
-import Button from '../../../design-system/components/button';
+import Box from '@kiko/design-system/components/box';
+import Button from '@kiko/design-system/components/button';
 
 import type { StatementImportFooterProps } from './statement-import-footer.props';
 
