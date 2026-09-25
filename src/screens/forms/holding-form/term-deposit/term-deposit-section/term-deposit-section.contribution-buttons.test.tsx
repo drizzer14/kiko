@@ -1,15 +1,11 @@
 import { StyleSheet } from 'react-native';
 import type { ComponentProps, ReactNode } from 'react';
 import { fireEvent, render, within } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
-import '../../../i18n';
-import {
-  asNavigationProp,
-  asRouteProp,
-  navigationSpy,
-} from '../../../test-support/navigation-props';
+import '@kiko/design-system/unistyles';
+import '@kiko/i18n';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
-import HoldingFormScreen from './holding-form.screen';
+import HoldingFormScreen from '../../holding-form.screen';
 
 // The Button variant maps to a themed fill inside a react-native-unistyles
 // `variants` block, which the project's Jest mock strips out of the resolved
@@ -27,7 +23,7 @@ const mockButtonProps: {
   accessibilityLabel?: string;
 }[] = [];
 
-jest.mock('../../../design-system/components/button', () => {
+jest.mock('@kiko/design-system/components/button', () => {
   const { Pressable, Text: RNText } = require('react-native');
 
   return {
@@ -67,7 +63,7 @@ jest.mock('@kiko/holdings/repo', () => ({
   },
 }));
 
-jest.mock('../../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   // A bank account, so the create form defaults to a term deposit and renders
   // the contributions block with its Add/Remove controls.
   useLiveQuery: (_query: unknown, keys: string[]) =>
