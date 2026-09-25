@@ -9,6 +9,7 @@ import {
   type SyncedMetadataField,
 } from '../holding-metadata';
 import { id } from '../../db/id';
+import { Money } from '../../currency/money';
 import { isSyncedHolding } from '../deletable';
 import { database, write } from '../../db/client';
 import { holdingInstrument } from '../../prices/instrument';
@@ -31,16 +32,31 @@ const nextSortOrder = async (
   return (rows.at(0)?.value ?? -1) + 1;
 };
 
-type NewHolding = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
-  Partial<Pick<HoldingRow, 'balanceMinorUnits' | 'metadata' | 'sortOrder' | 'color'>> & {
-    // A priced holding's (property_item) first manual price point,
-    // written on the holding's own `holding:<id>` instrument in the SAME
-    // transaction as the insert (kiko-domain's PriceBook) — so it never reads
-    // as "no price yet" the instant it is created. `day`/`price` follow the
-    // same `price_points` convention every other write to that table uses
-    // (`dayKeyOf`-normalized day, a decimal-string price).
-    firstPricePoint?: { day: number; price: string };
-  };
+type NewHoldingBase = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
+  Partial<Pick<HoldingRow, 'metadata' | 'sortOrder' | 'color'>>;
+
+// `holdingsRepo.create`'s own input: the identity fields above, plus an
+// OPTIONAL opening balance as `Money` (kiko-domain "Money at the boundary")
+// — converted to minor units, and currency-checked against `currency`,
+// inside the write itself, never by the caller.
+type NewHolding = NewHoldingBase & {
+  openingBalance?: Money;
+  // A priced holding's (property_item) first manual price point,
+  // written on the holding's own `holding:<id>` instrument in the SAME
+  // transaction as the insert (kiko-domain's PriceBook) — so it never reads
+  // as "no price yet" the instant it is created. `day`/`price` follow the
+  // same `price_points` convention every other write to that table uses
+  // (`dayKeyOf`-normalized day, a decimal-string price).
+  firstPricePoint?: { day: number; price: string };
+};
+
+// The sync upserts below (`upsertMonobank(Many)` / `upsertExchange(Many)`)
+// write a RAW provider-given balance straight through every run — never a
+// typed opening balance a user entered — so this base stays a plain
+// minor-units number, not `Money`.
+type SyncBalanceHolding = NewHoldingBase & {
+  balanceMinorUnits?: number;
+};
 
 /**
  * A synced holding carries its source key in `metadata[metadataField]`:
@@ -48,7 +64,7 @@ type NewHolding = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
  * balance provider. Upserts match on that key so a re-sync updates the balance
  * in place instead of duplicating the holding.
  */
-type SyncedHolding = NewHolding & {
+type SyncedHolding = SyncBalanceHolding & {
   metadataField: SyncedMetadataField;
   metadataKey: string;
   // One-time transition rename: rewrite an EXISTING matched holding's name to
@@ -57,9 +73,9 @@ type SyncedHolding = NewHolding & {
   renameFromDefault?: string;
 };
 
-export type MonobankHolding = NewHolding & { monobankId: string };
+export type MonobankHolding = SyncBalanceHolding & { monobankId: string };
 
-export type ExchangeHolding = NewHolding & {
+export type ExchangeHolding = SyncBalanceHolding & {
   metadataField: ExchangeMetadataField;
   metadataKey: string;
   renameFromDefault?: string;
@@ -233,6 +249,15 @@ export const holdingsRepo = {
       .innerJoin(accounts, eq(holdings.accountId, accounts.id))
       .where(and(isNull(holdings.closedAt), isNull(accounts.archivedAt))),
   /**
+   * Converts a stored row's raw `balanceMinorUnits` column into `Money`, in
+   * the row's own currency — kiko-domain's "Money at the boundary" (a repo
+   * is the only place that conversion may happen). Every non-repo reader
+   * that needs a holding's CURRENT stored balance as a value goes through
+   * this, never `row.balanceMinorUnits` directly.
+   */
+  balanceOf: (row: Pick<HoldingRow, 'currency' | 'balanceMinorUnits'>): Money =>
+    Money.of(row.currency, row.balanceMinorUnits),
+  /**
    * Insert a new holding and resolve to its generated app id (the text UUID),
    * so a caller can immediately act on the new row (e.g. set its icon). The
    * op-sqlite insert result (rowsAffected/lastInsertRowId) is the SQLite rowid,
@@ -259,26 +284,33 @@ export const holdingsRepo = {
    * stamps it too, for the same reason: a typed starting balance IS a
    * hand-set balance, whichever create path writes it.
    */
-  create: ({ firstPricePoint, ...input }: NewHolding): Promise<string> =>
+  create: ({ firstPricePoint, openingBalance, ...input }: NewHolding): Promise<string> =>
     write(async (databaseTransaction) => {
+      if (openingBalance !== undefined && openingBalance.currency !== input.currency) {
+        throw new Error(
+          'holdingsRepo.create: opening balance currency does not match the holding currency',
+        );
+      }
+
       const holdingId = id();
       const sortOrder =
         input.sortOrder ?? (await nextSortOrder(databaseTransaction, input.accountId));
-      const openingBalance = input.balanceMinorUnits ?? 0;
+      const openingBalanceMinorUnits = openingBalance?.minorUnits ?? 0;
       const now = Date.now();
 
       await databaseTransaction.insert(holdings).values({
         id: holdingId,
         ...input,
+        balanceMinorUnits: openingBalanceMinorUnits,
         sortOrder,
-        balanceSetAt: openingBalance !== 0 ? now : null,
+        balanceSetAt: openingBalanceMinorUnits !== 0 ? now : null,
       });
 
-      if (openingBalance !== 0) {
+      if (openingBalanceMinorUnits !== 0) {
         await databaseTransaction.insert(transactions).values({
           id: id(),
           holdingId,
-          amountMinorUnits: openingBalance,
+          amountMinorUnits: openingBalanceMinorUnits,
           time: now,
           description: '',
           category: null,
@@ -308,22 +340,25 @@ export const holdingsRepo = {
    * cleared icon persists an explicit null), the same split the create form
    * uses.
    *
-   * A patch that touches `balanceMinorUnits` belongs on
-   * `updateWithBalanceDelta` below, NOT here: this bare `set(patch)` moves a
-   * balance with no ledger row to explain it, which breaks the kiko-domain
-   * invariant. `update` stays bare on purpose for the non-balance callers
-   * (`setIcon`/`setColor`-style field writes, the sync's own writes, reorder),
-   * which must never start emitting transactions.
+   * A patch that touches the balance belongs on `updateWithBalanceDelta`
+   * below, NOT here: this bare `set(patch)` moves a balance with no ledger
+   * row to explain it, which breaks the kiko-domain invariant. `update` stays
+   * bare on purpose for the non-balance callers (`setIcon`/`setColor`-style
+   * field writes, the sync's own writes, reorder), which must never start
+   * emitting transactions.
    */
   update: (holdingId: string, patch: Partial<HoldingRow>) =>
     write((databaseTransaction) =>
       databaseTransaction.update(holdings).set(patch).where(eq(holdings.id, holdingId)),
     ),
   /**
-   * Update a holding's editable fields and, when `balanceMinorUnits` is part of
-   * the patch and differs from what is stored, write the DIFFERENCE as a
-   * `manual` transaction — both in ONE op-sqlite transaction, so the balance and
-   * the ledger row can never desync on a partial failure.
+   * Update a holding's editable fields and, when `balance` (`Money`) is part
+   * of the patch and differs in minor units from what is stored, write the
+   * DIFFERENCE as a `manual` transaction — both in ONE op-sqlite transaction,
+   * so the balance and the ledger row can never desync on a partial failure.
+   * Throws when `balance.currency` disagrees with the holding's own stored
+   * currency (never fires for a valid caller, which always builds it in the
+   * holding's own, locked-in-the-form currency).
    *
    * WHY: kiko-domain's invariant is that a manual balance adjustment always
    * writes a manual transaction, so a holding's balance history stays derivable
@@ -359,22 +394,42 @@ export const holdingsRepo = {
    * `time`, in the SAME `.set(...)` as `patch` — `transactionsRepo.importRows`'s
    * own doc comment is the full statement of why.
    */
-  updateWithBalanceDelta: (holdingId: string, patch: Partial<HoldingRow>, time: number) =>
+  updateWithBalanceDelta: (
+    holdingId: string,
+    patch: Omit<Partial<HoldingRow>, 'balanceMinorUnits'> & { balance?: Money },
+    time: number,
+  ) =>
     write(async (databaseTransaction) => {
+      const { balance, ...rest } = patch;
       const rows = await databaseTransaction
-        .select({ balanceMinorUnits: holdings.balanceMinorUnits })
+        .select({ currency: holdings.currency, balanceMinorUnits: holdings.balanceMinorUnits })
         .from(holdings)
         .where(eq(holdings.id, holdingId))
         .limit(1);
-      const stored = rows.at(0)?.balanceMinorUnits;
+      const row = rows.at(0);
+
+      if (balance !== undefined && row !== undefined && balance.currency !== row.currency) {
+        throw new Error(
+          'holdingsRepo.updateWithBalanceDelta: balance currency does not match the holding currency',
+        );
+      }
+
+      const stored = row?.balanceMinorUnits;
+      const nextBalanceMinorUnits = balance?.minorUnits;
       const delta =
-        patch.balanceMinorUnits !== undefined && stored !== undefined
-          ? patch.balanceMinorUnits - stored
+        nextBalanceMinorUnits !== undefined && stored !== undefined
+          ? nextBalanceMinorUnits - stored
           : 0;
 
       await databaseTransaction
         .update(holdings)
-        .set({ ...patch, balanceSetAt: delta !== 0 ? time : undefined })
+        .set({
+          ...rest,
+          ...(nextBalanceMinorUnits !== undefined
+            ? { balanceMinorUnits: nextBalanceMinorUnits }
+            : {}),
+          balanceSetAt: delta !== 0 ? time : undefined,
+        })
         .where(eq(holdings.id, holdingId));
 
       if (delta === 0) {
@@ -575,14 +630,30 @@ export const holdingsRepo = {
    * balance. A bare field write — it moves no money and emits no ledger row, so
    * it stays off `updateWithBalanceDelta`. Distinct from `balanceMinorUnits`,
    * which `upsertMonobank` writes up front from /client-info every run.
+   * Throws when `balance.currency` disagrees with the holding's own stored
+   * currency — never fires for a valid caller (the Monobank sync always
+   * builds it in the card's own currency).
    */
-  setSyncedBalance: (holdingId: string, balanceMinorUnits: number) =>
-    write((databaseTransaction) =>
-      databaseTransaction
+  setSyncedBalance: (holdingId: string, balance: Money) =>
+    write(async (databaseTransaction) => {
+      const rows = await databaseTransaction
+        .select({ currency: holdings.currency })
+        .from(holdings)
+        .where(eq(holdings.id, holdingId))
+        .limit(1);
+      const row = rows.at(0);
+
+      if (row !== undefined && balance.currency !== row.currency) {
+        throw new Error(
+          'holdingsRepo.setSyncedBalance: balance currency does not match the holding currency',
+        );
+      }
+
+      await databaseTransaction
         .update(holdings)
-        .set({ syncedBalanceMinorUnits: balanceMinorUnits })
-        .where(eq(holdings.id, holdingId)),
-    ),
+        .set({ syncedBalanceMinorUnits: balance.minorUnits })
+        .where(eq(holdings.id, holdingId));
+    }),
   /**
    * Balance-provider counterpart of `upsertMonobank`: one live balance snapshot
    * per holding, matched on `walletAddress` / `binanceAsset`. A provider may

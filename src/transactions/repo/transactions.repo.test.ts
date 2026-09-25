@@ -14,6 +14,7 @@ jest.mock('../../db/client', () => {
 });
 
 import maybe, { foldMap } from 'fnts/maybe';
+import { Money } from '@kiko/currency/money';
 import { drizzle } from 'drizzle-orm/sqlite-proxy';
 import { renderCondition } from '@kiko/db/render-condition-test-helper';
 
@@ -2858,7 +2859,7 @@ describe('createCashAccount + importRows integration', () => {
     await accountsRepo.createCashAccount({
       name: 'Wallet',
       currency: 'UAH',
-      initialBalanceMinorUnits: 5_000,
+      initialBalance: Money.of('UAH', 5_000),
     });
 
     const holdingId = store.holdings[0].id as string;

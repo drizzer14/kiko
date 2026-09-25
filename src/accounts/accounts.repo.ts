@@ -4,6 +4,7 @@ import { clearLoanLinksForHoldingsDatabaseTransaction } from '@kiko/holdings/rep
 
 import { id } from '../db/id';
 import { database, write } from '../db/client';
+import type { Money } from '../currency/money';
 import type { Currency } from '../currency/currency';
 import { SYNCED_AT_FIELD } from '../holdings/holding-metadata';
 import { isSyncedAccount, type SyncedInstitution } from '../holdings/deletable';
@@ -55,7 +56,10 @@ type NewAccount = Pick<AccountRow, 'name' | 'kind'> &
 type NewCashAccount = {
   name: string;
   currency: Currency;
-  initialBalanceMinorUnits: number;
+  // Converted to minor units, and currency-checked against `currency`, inside
+  // the write itself (kiko-domain "Money at the boundary") — never by the
+  // caller.
+  initialBalance: Money;
   // Optional SF Symbol icon, persisted on the account row in the same
   // transaction so a cash account created with a picked icon keeps it (the
   // create form now offers the icon picker for every kind, cash included).
@@ -140,12 +144,19 @@ export const accountsRepo = {
    * opening balance (see `transactionsRepo.importRows`'s doc comment for why
    * this matters) — at the SAME instant as the ledger row's `time`.
    */
-  createCashAccount: ({ name, currency, initialBalanceMinorUnits, icon, color }: NewCashAccount) =>
+  createCashAccount: ({ name, currency, initialBalance, icon, color }: NewCashAccount) =>
     write(async (databaseTransaction) => {
+      if (initialBalance.currency !== currency) {
+        throw new Error(
+          'accountsRepo.createCashAccount: initial balance currency does not match the account currency',
+        );
+      }
+
       const accountId = id();
       const holdingId = id();
       const sortOrder = await nextSortOrder(databaseTransaction, 'cash');
       const now = Date.now();
+      const initialBalanceMinorUnits = initialBalance.minorUnits;
 
       await databaseTransaction.insert(accounts).values({
         id: accountId,

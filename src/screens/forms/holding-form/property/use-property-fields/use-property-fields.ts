@@ -45,7 +45,6 @@ const buildPropertyCreatePayload = (params: {
   const lot: Lot = { day, quantityDelta: '1', costMinorUnits };
 
   return {
-    balanceMinorUnits: 0,
     metadata: { category, lots: [lot] },
     firstPricePoint: {
       day,

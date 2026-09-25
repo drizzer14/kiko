@@ -1,4 +1,5 @@
 import type { RefObject } from 'react';
+import type { Money } from '@kiko/currency/money';
 import type { HoldingRow } from '@kiko/db/schema';
 import type { Currency } from '@kiko/currency/currency';
 import type { PriceBook } from '@kiko/prices/price-book';
@@ -12,9 +13,13 @@ export type ScrollTarget = {
   focus?: () => void;
 };
 
-/** What `holdingsRepo.create` gets besides the identity fields. */
+/**
+ * What `holdingsRepo.create` gets besides the identity fields.
+ * `openingBalance` is OMITTED (not zero-valued) for every ledgerless type —
+ * `holdingsRepo.create` itself defaults an absent opening balance to 0.
+ */
 export type CreatePayload = {
-  balanceMinorUnits: number;
+  openingBalance?: Money;
   metadata: Record<string, unknown> | undefined;
   firstPricePoint?: { day: number; price: string };
 };
@@ -38,8 +43,9 @@ export type HoldingTypeForm = {
   scrollTargets: readonly ScrollTarget[];
   /**
    * The create write. A ledgerless type (property/metal/loan/deposit/bond)
-   * always writes `balanceMinorUnits: 0` — its value derives entirely from its
-   * own lots/schedule, never a typed opening balance. Only `useBalanceFields`
+   * always omits `openingBalance` (so `holdingsRepo.create` writes its
+   * default of 0) — its value derives entirely from its own lots/schedule,
+   * never a typed opening balance. Only `useBalanceFields`
    * (card/cash/crypto_asset/jar) reads its own live opening-balance field.
    */
   createPayload: () => CreatePayload;

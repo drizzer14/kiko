@@ -339,10 +339,10 @@ const makeInMemoryDeps = (
     upsertMonobankMany,
     // The crash-safe marker write: advances a card's `syncedBalanceMinorUnits`
     // once its statements have committed, mirroring `holdingsRepo.setSyncedBalance`.
-    setSyncedBalance: async (holdingId, balanceMinorUnits) => {
+    setSyncedBalance: async (holdingId, balance) => {
       const target = holdingsStore.find((holding) => holding.id === holdingId);
       if (target) {
-        target.syncedBalanceMinorUnits = balanceMinorUnits;
+        target.syncedBalanceMinorUnits = balance.minorUnits;
       }
     },
     // Stale-holding reconciliation seam (mirrors `holdingsRepo.closeMany`): stamp

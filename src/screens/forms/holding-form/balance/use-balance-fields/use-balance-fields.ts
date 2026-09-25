@@ -31,28 +31,27 @@ export const useBalanceFields = (params: UseBalanceFieldsParams): UseBalanceFiel
 
   const [openingBalance, setOpeningBalance] = useState('');
 
-  const openingBalanceMinorUnits = (): number =>
-    Money.fromMajor(currency, parseAmount(openingBalance) || 0).minorUnits;
+  const openingBalanceMoney = (): Money =>
+    Money.fromMajor(currency, parseAmount(openingBalance) || 0);
 
   const seed = useCallback((holding: HoldingRow): void => {
-    setOpeningBalance(groupAmount(majorAmountText(holding.currency, holding.balanceMinorUnits)));
+    const balance = holdingsRepo.balanceOf(holding);
+    setOpeningBalance(groupAmount(majorAmountText(balance.currency, balance.minorUnits)));
   }, []);
 
   const createPayload = (): CreatePayload => ({
-    balanceMinorUnits: openingBalanceMinorUnits(),
+    openingBalance: openingBalanceMoney(),
     metadata: undefined,
   });
 
   // A synced holding's balance is owned by the sync, not the user: the patch
-  // omits `balanceMinorUnits` entirely so an edit never clobbers the last
-  // synced balance. Every other holding writes its edited balance through
-  // the ledger (`updateWithBalanceDelta`, not `update`), so its history
-  // stays derivable from the ledger.
+  // omits `balance` entirely so an edit never clobbers the last synced
+  // balance. Every other holding writes its edited balance through the
+  // ledger (`updateWithBalanceDelta`, not `update`), so its history stays
+  // derivable from the ledger.
   const saveEdit = (context: EditContext): Promise<void> => {
     const { holdingId, name, color, isSynced } = context;
-    const patch = isSynced
-      ? { name, color }
-      : { name, color, balanceMinorUnits: openingBalanceMinorUnits() };
+    const patch = isSynced ? { name, color } : { name, color, balance: openingBalanceMoney() };
 
     return holdingsRepo.updateWithBalanceDelta(holdingId, patch, Date.now());
   };

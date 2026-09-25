@@ -2,6 +2,7 @@ import type { ComponentProps } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
+import { Money } from '@kiko/currency/money';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 
@@ -50,6 +51,10 @@ jest.mock('@kiko/holdings/repo', () => ({
     update: jest.fn(),
     updateWithBalanceDelta: jest.fn(),
     updateLoan: jest.fn(),
+    balanceOf: (row: { currency: string; balanceMinorUnits: number }) => ({
+      currency: row.currency,
+      minorUnits: row.balanceMinorUnits,
+    }),
     byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
@@ -1386,7 +1391,6 @@ describe('HoldingFormScreen property', () => {
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'property_item',
-        balanceMinorUnits: 0,
         metadata: {
           category: 'real_estate',
           lots: [{ day: expect.any(Number), quantityDelta: '1', costMinorUnits: 500_000 }],
@@ -1514,7 +1518,7 @@ describe('HoldingFormScreen property', () => {
       }),
       expect.any(Number),
     );
-    expect(updateDeltaMock.mock.calls[0][1]).not.toHaveProperty('balanceMinorUnits');
+    expect(updateDeltaMock.mock.calls[0][1]).not.toHaveProperty('balance');
   });
 
   it('edits a property holding onto a different category, preserving its stored lots', async () => {
@@ -1651,7 +1655,6 @@ describe('HoldingFormScreen metal', () => {
       expect.objectContaining({
         type: 'metal',
         currency: 'UAH',
-        balanceMinorUnits: 0,
         metadata: {
           metal: 'XAU',
           form: 'bar',
@@ -1849,7 +1852,7 @@ describe('HoldingFormScreen metal', () => {
       }),
       expect.any(Number),
     );
-    expect(updateDeltaMock.mock.calls[0][1]).not.toHaveProperty('balanceMinorUnits');
+    expect(updateDeltaMock.mock.calls[0][1]).not.toHaveProperty('balance');
   });
 
   // Writes the exact normalized purity the user typed, never the value the
@@ -1979,7 +1982,6 @@ describe('HoldingFormScreen loan', () => {
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'loan',
-        balanceMinorUnits: 0,
         metadata: {
           kind: 'mortgage',
           principalMinorUnits: 50_000_000,
@@ -2019,7 +2021,6 @@ describe('HoldingFormScreen loan', () => {
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'loan',
-        balanceMinorUnits: 0,
         metadata: {
           kind: 'mortgage',
           principalMinorUnits: 50_000_000,
@@ -2423,7 +2424,11 @@ describe('HoldingFormScreen icon', () => {
     // transaction (see holdings.repo.ts, and its tests for the row's shape), so
     // a new holding's balance is explained by its ledger from the first render.
     expect(createMock).toHaveBeenCalledWith(
-      expect.objectContaining({ accountId: 'acc-1', currency: 'UAH', balanceMinorUnits: 500_00 }),
+      expect.objectContaining({
+        accountId: 'acc-1',
+        currency: 'UAH',
+        openingBalance: Money.of('UAH', 500_00),
+      }),
     );
     expect(updateDeltaMock).not.toHaveBeenCalled();
     expect(updateMock).not.toHaveBeenCalled();
@@ -2492,24 +2497,24 @@ describe('HoldingFormScreen create-mode hidden opening balance', () => {
     mockAccountInstitution = null;
   });
 
-  it('writes a zero balance for a term deposit created after typing a balance on Card', async () => {
+  it('writes no opening balance for a term deposit created after typing a balance on Card', async () => {
     const screen = await renderScreen();
 
     await fill(screen, 'Balance', '100');
     await fillTermDepositFields(screen);
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ balanceMinorUnits: 0 }));
+    expect(createMock.mock.calls[0][0]).not.toHaveProperty('openingBalance');
   });
 
-  it('writes a zero balance for a bond created after typing a balance on Card', async () => {
+  it('writes no opening balance for a bond created after typing a balance on Card', async () => {
     const screen = await renderScreen();
 
     await fill(screen, 'Balance', '100');
     await fillBondFields(screen);
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ balanceMinorUnits: 0 }));
+    expect(createMock.mock.calls[0][0]).not.toHaveProperty('openingBalance');
   });
 
   it('still writes the typed balance for a card-only create', async () => {
@@ -2519,7 +2524,9 @@ describe('HoldingFormScreen create-mode hidden opening balance', () => {
     await fill(screen, 'Balance', '100');
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ balanceMinorUnits: 100_00 }));
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({ openingBalance: Money.of('UAH', 100_00) }),
+    );
   });
 });
 
@@ -2876,7 +2883,7 @@ describe('HoldingFormScreen edit mode', () => {
 
     expect(updateDeltaMock).toHaveBeenCalledWith(
       'h-1',
-      { name: 'Renamed card', color: entityColors.teal, balanceMinorUnits: 300_00 },
+      { name: 'Renamed card', color: entityColors.teal, balance: Money.of('UAH', 300_00) },
       expect.any(Number),
     );
     expect(setIconMock).toHaveBeenCalledWith('h-1', 'banknote');
@@ -2896,7 +2903,7 @@ describe('HoldingFormScreen edit mode', () => {
 
     expect(updateDeltaMock).toHaveBeenCalledWith(
       'h-1',
-      expect.objectContaining({ balanceMinorUnits: 500_00 }),
+      expect.objectContaining({ balance: Money.of('UAH', 500_00) }),
       expect.any(Number),
     );
     expect(updateMock).not.toHaveBeenCalled();
@@ -2933,7 +2940,7 @@ describe('HoldingFormScreen edit mode', () => {
     expect(screen.queryByLabelText('Balance')).not.toBeNull();
   });
 
-  it('does not write balanceMinorUnits when editing a synced holding', async () => {
+  it('does not write a balance when editing a synced holding', async () => {
     mockAccountInstitution = 'monobank';
     const screen = await renderEdit(syncedCardHolding);
 
@@ -2943,7 +2950,7 @@ describe('HoldingFormScreen edit mode', () => {
     const patch = updateDeltaMock.mock.calls[0][1];
     expect(patch.name).toBe('Renamed monobank');
     // The synced balance must stay untouched until the next sync.
-    expect(patch.balanceMinorUnits).toBeUndefined();
+    expect(patch.balance).toBeUndefined();
   });
 
   it('seeds a term deposit and saves its edited metadata through update', async () => {
@@ -2965,7 +2972,7 @@ describe('HoldingFormScreen edit mode', () => {
       { amountMinorUnits: 100_000, date: localDay(2026, 1, 1) },
     ]);
     // A deposit's value derives from metadata, so no balance is written.
-    expect(patch.balanceMinorUnits).toBeUndefined();
+    expect(patch.balance).toBeUndefined();
   });
 
   it('seeds a bond and saves its edited metadata through update', async () => {
@@ -2983,7 +2990,7 @@ describe('HoldingFormScreen edit mode', () => {
     expect(patch.metadata.couponPct).toBe(11);
     expect(patch.metadata.quantity).toBe(10);
     expect(patch.metadata.bondKind).toBe('corporate');
-    expect(patch.balanceMinorUnits).toBeUndefined();
+    expect(patch.balance).toBeUndefined();
   });
 
   it('resolves a stored empty-string color to a real swatch, not blank', async () => {

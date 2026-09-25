@@ -190,13 +190,12 @@ const buildLoanCreatePayload = (fields: LoanFieldsSnapshot, currency: Currency):
   const metadata = buildLoanMeta(fields, currency);
 
   if (fields.schedule !== 'none') {
-    return { balanceMinorUnits: 0, metadata };
+    return { metadata };
   }
 
   const day = dayKeyOf(fields.startDate ?? Date.now());
 
   return {
-    balanceMinorUnits: 0,
     metadata,
     firstPricePoint: {
       day,

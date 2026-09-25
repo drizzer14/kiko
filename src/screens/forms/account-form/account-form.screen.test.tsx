@@ -3,6 +3,7 @@ import type { ComponentProps } from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import { i18n } from '../../../i18n';
+import { Money } from '../../../currency/money';
 import {
   asNavigationProp,
   asRouteProp,
@@ -572,7 +573,7 @@ describe('AccountFormScreen', () => {
     await fireEvent.press(getByText('Save'));
 
     expect(mockCreateCashAccount).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'Wallet', initialBalanceMinorUnits: 0 }),
+      expect.objectContaining({ name: 'Wallet', initialBalance: Money.of('UAH', 0) }),
     );
   });
 
@@ -600,7 +601,7 @@ describe('AccountFormScreen', () => {
       // No color was picked either, so the create passes an explicit null and the
       // row follows its cash kind default at display time.
       color: null,
-      initialBalanceMinorUnits: 25050,
+      initialBalance: Money.of('EUR', 25050),
     });
     expect(mockCreate).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();

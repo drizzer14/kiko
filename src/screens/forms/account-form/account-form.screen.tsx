@@ -397,7 +397,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         await accountsRepo.createCashAccount({
           name: trimmedName,
           currency,
-          initialBalanceMinorUnits: Money.fromMajor(currency, initialMajor).minorUnits,
+          initialBalance: Money.fromMajor(currency, initialMajor),
           icon,
           color,
         });

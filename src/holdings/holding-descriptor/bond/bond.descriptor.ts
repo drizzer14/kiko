@@ -2,6 +2,7 @@ import type { TFunction } from 'i18next';
 
 import { makeEntry } from '../entry-parts';
 import { taxOnInterestMinor } from '../../tax';
+import { holdingsRepo } from '../../repo/holdings.repo';
 import { Money, toMajor } from '../../../currency/money';
 import type { DerivedEntry } from '../../derived-entries';
 import { startOfLocalDay } from '../../../dates/local-day';
@@ -15,7 +16,7 @@ import { flat, type HoldingValueBreakdown } from '../breakdown-parts';
 const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreakdown => {
   const meta = asBondMeta(holding.metadata);
   if (meta === null) {
-    return flat(holding.currency, holding.balanceMinorUnits);
+    return flat(holding.currency, holdingsRepo.balanceOf(holding).minorUnits);
   }
   const { currency } = holding;
   const costMoney = Money.of(currency, meta.purchasePriceMinorUnits);

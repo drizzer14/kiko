@@ -2,6 +2,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 
 import { costBasisMinorAt } from '../../lots';
 import { Money } from '../../../currency/money';
+import { holdingsRepo } from '../../repo/holdings.repo';
 import type { PricedHolding } from '../../priced-value';
 import type { ValuableHolding } from '../../holding-value';
 import type { PriceBook } from '../../../prices/price-book';
@@ -28,7 +29,7 @@ const pricedBreakdown = (
 ): HoldingValueBreakdown => {
   const lots = spec.lots(holding.metadata);
   if (lots === undefined) {
-    return flat(holding.currency, holding.balanceMinorUnits);
+    return flat(holding.currency, holdingsRepo.balanceOf(holding).minorUnits);
   }
   const { currency } = holding;
   const costBasisMinor = costBasisMinorAt(lots, now);

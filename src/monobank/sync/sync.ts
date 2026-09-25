@@ -1,3 +1,4 @@
+import { Money } from '@kiko/currency/money';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
@@ -81,7 +82,7 @@ interface SyncAccountsRepo {
 interface SyncHoldingsRepo {
   listByAccountQuery: (accountId: string) => PromiseLike<HoldingRow[]>;
   upsertMonobankMany: (holdings: MonobankHolding[]) => Promise<unknown>;
-  setSyncedBalance: (holdingId: string, balanceMinorUnits: number) => Promise<unknown>;
+  setSyncedBalance: (holdingId: string, balance: Money) => Promise<unknown>;
   closeMany: (holdingIds: string[]) => Promise<unknown>;
 }
 
@@ -604,7 +605,7 @@ const orderStatementQueue = (
 ): MonobankAccount[] => {
   const priority = (account: MonobankAccount): number => {
     const prior = context.priorHoldingByMonobankId.get(account.id);
-    if (prior != null && prior.balanceMinorUnits !== account.balance) {
+    if (prior != null && holdingsRepo.balanceOf(prior).minorUnits !== account.balance) {
       return 0;
     }
     const holding = context.holdingByMonobankId.get(account.id);
@@ -828,7 +829,10 @@ const fetchCardWithProgress = async (
     onPage,
   );
 
-  await deps.holdingsRepo.setSyncedBalance(card.holding.id, card.account.balance);
+  await deps.holdingsRepo.setSyncedBalance(
+    card.holding.id,
+    Money.of(card.holding.currency, card.account.balance),
+  );
   // Reconcile the card's work to its full up-front estimate (a card that paged
   // fewer windows than estimated still reaches its share), then complete the
   // holding for the label.
@@ -1086,7 +1090,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
       return false;
     }
     const prior = priorHoldingByMonobankId.get(jar.id);
-    return prior === undefined || prior.balanceMinorUnits !== jar.balance;
+    return prior === undefined || holdingsRepo.balanceOf(prior).minorUnits !== jar.balance;
   }).length;
 
   // Per-card fetch plan, computed UP FRONT so the weighted progress denominator

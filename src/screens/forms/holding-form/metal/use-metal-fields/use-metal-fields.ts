@@ -72,7 +72,6 @@ const buildMetalCreatePayload = (fields: MetalFields): CreatePayload => {
   };
 
   return {
-    balanceMinorUnits: 0,
     metadata: {
       metal,
       form,

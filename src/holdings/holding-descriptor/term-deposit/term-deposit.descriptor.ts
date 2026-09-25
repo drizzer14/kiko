@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next';
 
 import { makeEntry } from '../entry-parts';
+import { holdingsRepo } from '../../repo/holdings.repo';
 import { Money, toMajor } from '../../../currency/money';
 import type { DerivedEntry } from '../../derived-entries';
 import { asTermDepositMeta } from '../../holding-metadata';
@@ -14,7 +15,7 @@ import { INCOME_TAX_RATE_PCT, MILITARY_LEVY_RATE_PCT, taxOnInterestMinor } from 
 const depositBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreakdown => {
   const meta = asTermDepositMeta(holding.metadata);
   if (meta === null) {
-    return flat(holding.currency, holding.balanceMinorUnits);
+    return flat(holding.currency, holdingsRepo.balanceOf(holding).minorUnits);
   }
   const { currency } = holding;
   // A contribution dated after `now` is not yet credited: exclude it from both

@@ -2,9 +2,14 @@ const mockUpdateWithBalanceDelta = jest.fn().mockResolvedValue(undefined);
 jest.mock('@kiko/holdings/repo', () => ({
   holdingsRepo: {
     updateWithBalanceDelta: (...args: unknown[]) => mockUpdateWithBalanceDelta(...args),
+    balanceOf: (row: { currency: string; balanceMinorUnits: number }) => ({
+      currency: row.currency,
+      minorUnits: row.balanceMinorUnits,
+    }),
   },
 }));
 
+import { Money } from '@kiko/currency/money';
 import { act, renderHook } from '@testing-library/react-native';
 
 import type { EditContext } from '../../holding-type-form';
@@ -44,7 +49,7 @@ describe('useBalanceFields', () => {
       result.current.setOpeningBalance('250');
     });
 
-    expect(result.current.createPayload().balanceMinorUnits).toBe(250_00);
+    expect(result.current.createPayload().openingBalance).toEqual(Money.of('UAH', 250_00));
   });
 
   it('seeds the opening balance as a grouped major string from a stored holding', async () => {
@@ -70,7 +75,7 @@ describe('useBalanceFields', () => {
     });
 
     expect(result.current.createPayload()).toEqual({
-      balanceMinorUnits: 500_00,
+      openingBalance: Money.of('UAH', 500_00),
       metadata: undefined,
     });
   });
@@ -85,12 +90,12 @@ describe('useBalanceFields', () => {
 
     expect(mockUpdateWithBalanceDelta).toHaveBeenCalledWith(
       'h-1',
-      { name: 'Everyday card', color: '#FF0000', balanceMinorUnits: 500_00 },
+      { name: 'Everyday card', color: '#FF0000', balance: Money.of('UAH', 500_00) },
       expect.any(Number),
     );
   });
 
-  it('omits balanceMinorUnits entirely when the holding is synced', async () => {
+  it('omits the balance entirely when the holding is synced', async () => {
     const { result } = await renderBalanceFields();
 
     await result.current.saveEdit(baseContext({ isSynced: true }));

@@ -1,5 +1,6 @@
 import type { Money } from '../../currency/money';
 import type { HoldingRow } from '../../db/schema';
+import { holdingsRepo } from '../repo/holdings.repo';
 import { holdingDescriptorOrUndefined } from '../holding-descriptor';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
 import { flat, type HoldingValueBreakdown } from '../holding-descriptor/breakdown-parts';
@@ -24,7 +25,7 @@ export const holdingValueBreakdown = (
   // stored balance instead of throwing, the same tolerance the old `ts-pattern`
   // dispatch's `.otherwise()` gave.
   if (descriptor === undefined) {
-    return flat(holding.currency, holding.balanceMinorUnits);
+    return flat(holding.currency, holdingsRepo.balanceOf(holding).minorUnits);
   }
 
   return descriptor.breakdown(holding, now, book);

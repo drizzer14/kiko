@@ -1,4 +1,5 @@
 import { flat } from '../breakdown-parts';
+import { holdingsRepo } from '../../repo/holdings.repo';
 import type { HoldingDescriptor } from '../holding-descriptor.d';
 import { entityColorsDark } from '../../../design-system/palette';
 
@@ -18,7 +19,7 @@ const balanceDescriptor = (config: BalanceDescriptorConfig): HoldingDescriptor =
   timeExempt: false,
   fixedCurrency: null,
   priced: null,
-  breakdown: (holding) => flat(holding.currency, holding.balanceMinorUnits),
+  breakdown: (holding) => flat(holding.currency, holdingsRepo.balanceOf(holding).minorUnits),
   entries: () => [],
 });
 

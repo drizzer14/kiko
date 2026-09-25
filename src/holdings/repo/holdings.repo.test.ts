@@ -22,6 +22,7 @@ jest.mock('../../db/client', () => {
 
 import { write } from '@kiko/db/client';
 import maybe, { foldMap } from 'fnts/maybe';
+import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { captureSetDatabaseTransaction } from '@kiko/db/capture-set-tx';
 import { inArrayClauseFromCondition } from '@kiko/db/in-array-clause-test-helper';
@@ -137,6 +138,13 @@ describe('holdingsRepo', () => {
     expect(params).toContain('h1');
   });
 
+  it("balanceOf converts a stored row to Money in the row's own currency", () => {
+    const money = holdingsRepo.balanceOf({ currency: 'UAH', balanceMinorUnits: 250_00 });
+
+    expect(money.currency).toBe('UAH');
+    expect(money.minorUnits).toBe(250_00);
+  });
+
   it('allQuery orders by sortOrder', () => {
     expect(holdingsRepo.allQuery().toSQL().sql.toLowerCase()).toContain('order by');
     expect(holdingsRepo.allQuery().toSQL().sql).toContain('sort_order');
@@ -182,7 +190,7 @@ describe('holdingsRepo', () => {
       name: 'Wallet',
       type: 'cash',
       currency: 'UAH',
-      balanceMinorUnits: 250_00,
+      openingBalance: Money.of('UAH', 250_00),
     });
 
     // Same rule the cash-account path follows: an opening balance is a manual
@@ -213,7 +221,7 @@ describe('holdingsRepo', () => {
       name: 'Wallet',
       type: 'cash',
       currency: 'UAH',
-      balanceMinorUnits: 0,
+      openingBalance: Money.of('UAH', 0),
     });
 
     expect(insertTables).toEqual(['holdings']);
@@ -275,7 +283,7 @@ describe('holdingsRepo', () => {
       name: 'Apartment',
       type: 'property_item',
       currency: 'UAH',
-      balanceMinorUnits: 0,
+      openingBalance: Money.of('UAH', 0),
       metadata: {
         category: 'real_estate',
         lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 500000 }],
@@ -300,6 +308,21 @@ describe('holdingsRepo', () => {
     await holdingsRepo.create({ accountId: 'acc-1', name: 'Card', type: 'card', currency: 'EUR' });
 
     expect(insertTables).toEqual(['holdings']);
+  });
+
+  it('create throws when the opening balance currency does not match the holding currency', async () => {
+    const { databaseTransaction } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await expect(
+      holdingsRepo.create({
+        accountId: 'acc-1',
+        name: 'Wallet',
+        type: 'cash',
+        currency: 'UAH',
+        openingBalance: Money.of('USD', 100_00),
+      }),
+    ).rejects.toThrow(/currency/);
   });
 
   it('updateName writes the new name for the given holding id', async () => {
@@ -995,13 +1018,14 @@ const makeBalanceDeltaDatabaseTransaction = (
 describe('holdingsRepo.updateWithBalanceDelta', () => {
   it('writes the balance difference as a manual transaction', async () => {
     const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction({
+      currency: 'UAH',
       balanceMinorUnits: 100_00,
     });
     mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.updateWithBalanceDelta(
       'h-1',
-      { balanceMinorUnits: 500_00 },
+      { balance: Money.of('UAH', 500_00) },
       1_700_000_000_000,
     );
 
@@ -1024,11 +1048,12 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
 
   it('leaves the adjustment row unlabelled and uncategorised', async () => {
     const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction({
+      currency: 'UAH',
       balanceMinorUnits: 100_00,
     });
     mockDatabaseTransaction = databaseTransaction;
 
-    await holdingsRepo.updateWithBalanceDelta('h-1', { balanceMinorUnits: 500_00 }, 1);
+    await holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('UAH', 500_00) }, 1);
 
     // No persisted sentence: the list resolves this row's label at render time
     // through `t` (transactions/row-description.ts), so it follows a language
@@ -1038,11 +1063,12 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
 
   it('writes a negative delta for a decrease', async () => {
     const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction({
+      currency: 'UAH',
       balanceMinorUnits: 500_00,
     });
     mockDatabaseTransaction = databaseTransaction;
 
-    await holdingsRepo.updateWithBalanceDelta('h-1', { balanceMinorUnits: 100_00 }, 1);
+    await holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('UAH', 100_00) }, 1);
 
     expect(captured.inserts[0]).toMatchObject({ amountMinorUnits: -400_00 });
     expect(captured.holdingSet).toEqual({ balanceMinorUnits: 100_00, balanceSetAt: 1 });
@@ -1050,6 +1076,7 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
 
   it('writes no transaction for a name-only edit', async () => {
     const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction({
+      currency: 'UAH',
       balanceMinorUnits: 100_00,
     });
     mockDatabaseTransaction = databaseTransaction;
@@ -1062,11 +1089,12 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
 
   it('writes no transaction for a zero delta, and does not stamp balanceSetAt', async () => {
     const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction({
+      currency: 'UAH',
       balanceMinorUnits: 100_00,
     });
     mockDatabaseTransaction = databaseTransaction;
 
-    await holdingsRepo.updateWithBalanceDelta('h-1', { balanceMinorUnits: 100_00 }, 1);
+    await holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('UAH', 100_00) }, 1);
 
     expect(captured.inserts).toHaveLength(0);
     expect(captured.holdingSet).toEqual({ balanceMinorUnits: 100_00 });
@@ -1076,9 +1104,25 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction(null);
     mockDatabaseTransaction = databaseTransaction;
 
-    await holdingsRepo.updateWithBalanceDelta('missing', { balanceMinorUnits: 500_00 }, 1);
+    await holdingsRepo.updateWithBalanceDelta('missing', { balance: Money.of('UAH', 500_00) }, 1);
 
     expect(captured.inserts).toHaveLength(0);
+  });
+
+  // The throw guards a caller bug (a Money built in the wrong currency) before
+  // it can silently mislabel a delta; it never fires for a valid caller, which
+  // always builds the patch's `balance` in the holding's own (locked, in the
+  // form) currency.
+  it('throws when the balance currency does not match the holding currency', async () => {
+    const { databaseTransaction } = makeBalanceDeltaDatabaseTransaction({
+      currency: 'UAH',
+      balanceMinorUnits: 100_00,
+    });
+    mockDatabaseTransaction = databaseTransaction;
+
+    await expect(
+      holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('USD', 100_00) }, 1),
+    ).rejects.toThrow(/currency/);
   });
 
   // The regression this function exists to prevent: `holdingValueAt` back-derives
@@ -1104,11 +1148,12 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     const earlier = { time: base, amountMinorUnits: 10_00 };
     const before = holdingValueAt(holding, [earlier], pastDay);
     const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction({
+      currency: holding.currency,
       balanceMinorUnits: holding.balanceMinorUnits,
     });
     mockDatabaseTransaction = databaseTransaction;
 
-    await holdingsRepo.updateWithBalanceDelta('h-1', { balanceMinorUnits: 500_00 }, editDay);
+    await holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('UAH', 500_00) }, editDay);
 
     const edited = {
       ...holding,
@@ -1121,6 +1166,70 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
 
     expect(holdingValueAt(edited, ledger, pastDay)).toBe(before);
     expect(holdingValueAt(edited, ledger, editDay)).toBe(500_00);
+  });
+});
+
+describe('holdingsRepo.setSyncedBalance', () => {
+  // A fake write-transaction handle for `setSyncedBalance`: it reads the
+  // holding's own stored currency (to guard against a mismatched `Money`,
+  // mirroring `updateWithBalanceDelta`), then writes the crash-safe marker.
+  // `stored` is what that read resolves to, or `null` for a missing id.
+  const makeSetSyncedBalanceDatabaseTransaction = (
+    stored: { currency: string } | null,
+  ): {
+    databaseTransaction: unknown;
+    captured: { set?: Record<string, unknown> };
+  } => {
+    const captured: { set?: Record<string, unknown> } = {};
+    const databaseTransaction = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: () => Promise.resolve(foldMap(maybe(stored), (row) => [row]) ?? []),
+          }),
+        }),
+      }),
+      update: () => ({
+        set: (values: Record<string, unknown>) => {
+          captured.set = values;
+
+          return { where: () => Promise.resolve() };
+        },
+      }),
+    };
+
+    return { databaseTransaction, captured };
+  };
+
+  it("advances the crash-safe marker to the given Money's minor units", async () => {
+    const { databaseTransaction, captured } = makeSetSyncedBalanceDatabaseTransaction({
+      currency: 'UAH',
+    });
+    mockDatabaseTransaction = databaseTransaction;
+
+    await holdingsRepo.setSyncedBalance('h-1', Money.of('UAH', 500_00));
+
+    expect(captured.set).toEqual({ syncedBalanceMinorUnits: 500_00 });
+  });
+
+  // Never fires for a valid caller — every real caller (the Monobank sync)
+  // builds the balance in the holding's own currency.
+  it('throws when the balance currency does not match the holding currency', async () => {
+    const { databaseTransaction } = makeSetSyncedBalanceDatabaseTransaction({ currency: 'UAH' });
+    mockDatabaseTransaction = databaseTransaction;
+
+    await expect(holdingsRepo.setSyncedBalance('h-1', Money.of('USD', 500_00))).rejects.toThrow(
+      /currency/,
+    );
+  });
+
+  it('writes through when no holding is found for the id', async () => {
+    const { databaseTransaction, captured } = makeSetSyncedBalanceDatabaseTransaction(null);
+    mockDatabaseTransaction = databaseTransaction;
+
+    await holdingsRepo.setSyncedBalance('missing', Money.of('UAH', 500_00));
+
+    expect(captured.set).toEqual({ syncedBalanceMinorUnits: 500_00 });
   });
 });
 
