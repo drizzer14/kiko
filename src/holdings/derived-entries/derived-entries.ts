@@ -285,9 +285,9 @@ const entriesForType = (holding: IdentifiedHolding, now: number, t: TFunction): 
     .with({ type: 'bond' }, (bond) => bondEntries(bond, now, t))
     .with({ type: 'metal' }, (metal) => metalEntries(metal, now, t))
     // Not `.exhaustive()`: the original if-chain's trailing, unconditional
-    // `return []` tolerated ANY unmatched `type` (not only the other 6 literal
-    // types) — a stale/malformed stored value derives no lifecycle entries the
-    // same way it always has, rather than throwing.
+    // `return []` tolerated any unmatched `type`, not only the other 6
+    // literal types — a malformed or absent `type` derives no lifecycle
+    // entries instead of throwing.
     .otherwise(() => []);
 
 // The derived lifecycle entries for a holding, sorted oldest-first. Entries that

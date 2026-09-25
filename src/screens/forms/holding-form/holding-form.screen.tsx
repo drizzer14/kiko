@@ -1388,9 +1388,9 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         loanFields.seed(loanHolding);
       })
       // Not `.exhaustive()`: the original if-chain's trailing, unconditional
-      // statement below tolerated ANY unmatched `type` (not only the 4 remaining
-      // literal types) — a stale/malformed stored value falls back to reading
-      // the plain balance the same way it always has, rather than throwing.
+      // statement tolerated any unmatched `type`, not only the other 4
+      // literal types — a malformed or absent `type` falls back to reading
+      // the plain balance instead of throwing.
       .otherwise((rest) => {
         setOpeningBalance(groupAmount(majorAmountText(rest.currency, rest.balanceMinorUnits)));
       });
