@@ -74,7 +74,6 @@ describe('exportData', () => {
 
   it('reads secrets (keyed off the just-read accounts) when the toggle is on', async () => {
     mockReadExportSecrets.mockResolvedValue({
-      dbKeyHex: 'deadbeef'.repeat(8),
       monobankTokens: [{ accountId: 'a1', token: 'mono-token' }],
       binanceCredentials: [],
     });

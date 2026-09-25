@@ -1156,17 +1156,19 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   one side but not the other. Read that file for the current field list and
   its (currently empty) documented-exclusion array — do not copy the table
   list here.
-- **Every Keychain secret class is read and restored — except one, on
-  purpose.** `payload.d.ts`'s `ExportSecrets` covers `dbKeyHex`,
-  `monobankTokens`, and `binanceCredentials`. `secrets/read-secrets.ts` reads
-  all three from the Keychain (skipping an account with no stored secret).
-  `secrets/restore-secrets.ts` restores ONLY the Monobank tokens and Binance
-  credentials, each back to its original account id — never `dbKeyHex`. Read
-  the safety comment on `restoreExportSecrets` for why: the exported DB key is
-  display-only; re-storing a FOREIGN device's SQLCipher key into this device's
-  own `kiko.db.key` Keychain item would not affect the already-open session,
-  but would brick the importing device's own encrypted database on its very
-  next launch (wrong key at `resolveDbKey()`).
+- **Every Keychain secret class the export carries is read and restored.**
+  `payload.d.ts`'s `ExportSecrets` covers `monobankTokens` and
+  `binanceCredentials` only — the export never carries the SQLCipher DB key
+  at all. `secrets/read-secrets.ts` reads both from the Keychain (skipping an
+  account with no stored secret) and `secrets/restore-secrets.ts` restores
+  both, each back to its original account id. `restoreExportSecrets` still
+  never imports `db/keys/db-key.ts`: an older file that still carries a
+  `dbKeyHex` field (from before that field was dropped) is read through
+  as an unknown, unrestored property — re-storing a FOREIGN device's
+  SQLCipher key into this device's own `kiko.db.key` Keychain item would
+  brick the importing device's own encrypted database on its very next
+  launch (wrong key at `resolveDbKey()`), which is why the field was
+  dropped rather than kept display-only.
 - **A legacy export missing a newer field must still restore.**
   `restoreExportSecrets` treats an entirely absent `secrets` object (an export
   written before the credentials toggle, or with it off) as a no-op, not an
