@@ -264,10 +264,11 @@ Which holding types record their buy/sell history through the
 dedicated Lot form (`src/screens/forms/lot-form/`, reached from
 holding-detail's `addLot` footer action) rather than a fixed one-time
 lot or a sync is a single-type entry (`metal`'s `footerAction: () =>
-'addLot'`, checked ahead of the priced `updateValue` branch) in
-`holdingDetailSpecs` (`holding-detail-spec/`) — only `metal` is
-eligible today. See `kiko-pricing`'s "Recording a lot: LotForm and the
-sell cost rule" section for the form itself.
+'addLot'` — its price is the shared `metal:<XAU|...>` instrument, so it
+adds lots rather than updating a value) in `holdingDetailSpecs`
+(`holding-detail-spec/`) — only `metal` is eligible today. See
+`kiko-pricing`'s "Recording a lot: LotForm and the sell cost rule"
+section for the form itself.
 
 ## Entity glyphs: one source of truth
 

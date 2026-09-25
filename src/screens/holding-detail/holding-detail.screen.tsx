@@ -60,11 +60,7 @@ import type { MoneyTextTone } from '../../design-system/components/money-text/mo
 import { type HoldingValueBreakdown, holdingValueBreakdown } from '../../holdings/holding-value';
 import { type DerivedEntry, derivedEntries, type EntryTone } from '../../holdings/derived-entries';
 
-import {
-  balanceSpec,
-  type FooterAction,
-  holdingDetailSpecOrUndefined,
-} from './holding-detail-spec';
+import { type FooterAction, holdingDetailSpecFor } from './holding-detail-spec';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
 
@@ -421,29 +417,14 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     'accounts',
   ]);
   const account = accounts.at(0);
-  // The breakdown display this holding's type carries (`HoldingDetailSpec`,
-  // `holding-detail-spec/`) — `undefined` for a type that hides the
-  // breakdown, or one this build's registry does not recognize.
-  const breakdownDisplay = foldMap(maybe(holding), (found) =>
-    foldMap(maybe(holdingDetailSpecOrUndefined(found.type)?.breakdown), (breakdownSpec) => ({
-      principalLabelKey: breakdownSpec.principalLabelKey,
-      // Bonds carry a whole-life expected profit line (net coupons + nominal
-      // - price); every other breakdown-showing type's `expectedProfit`
-      // returns `null`.
-      expectedProfit: breakdownSpec.expectedProfit(found),
-    })),
-  );
-  const showBreakdown = breakdownDisplay != null;
-  const principalLabelKey = breakdownDisplay?.principalLabelKey ?? 'holdingDetail.principal';
-  const expectedProfit = breakdownDisplay?.expectedProfit ?? null;
-  // An annuity/differentiated loan's next upcoming installment (T28) — its
+  // This holding's detail-screen behavior (`HoldingDetailSpec`,
+  // `holding-detail-spec/`) — `undefined` when there is no real holding
+  // (`holdingDetailSpecFor` itself always tolerates an unrecognized type).
+  const spec = foldMap(maybe(holding), (found) => holdingDetailSpecFor(found.type));
+  // An annuity/differentiated loan's next upcoming installment — its
   // interest/principal split shown just below the Value header.
   const nextInstallment = foldMap(maybe(holding), (found) =>
-    (holdingDetailSpecOrUndefined(found.type) ?? balanceSpec).nextInstallment(
-      found,
-      priceBook,
-      now,
-    ),
+    spec?.nextInstallment(found, priceBook, now),
   );
 
   // The user's main currency, and the rate table that converts into it. A
@@ -503,11 +484,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // holding, or a type this build's registry does not recognize
   // (`HoldingDetailSpec`, `holding-detail-spec/`).
   const footerAction: FooterAction =
-    foldMap(maybe(holding), (found) =>
-      (holdingDetailSpecOrUndefined(found.type) ?? balanceSpec).footerAction(
-        isSyncedHolding(found, account),
-      ),
-    ) ?? 'none';
+    foldMap(maybe(holding), (found) => spec?.footerAction(isSyncedHolding(found, account))) ??
+    'none';
   // The footer's own label for `'updateValue'`: a debt-side type (loan) reads
   // "Update outstanding"; every other priced type reads "Update value". Reads
   // the SAME descriptor `side` net-worth math keys off, so this label and the
@@ -585,7 +563,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
               <ValueHeaderSecondary convertedToBase={convertedToBase} valueAsOf={valueAsOf} />
             }
           />
-          {showBreakdown && (
+          {spec?.breakdown && (
             <Box style={styles.breakdown}>
               {/* The one shared "label left, value right" row layout
                   (`SummaryTable`, device-feedback-round-F1 item 3) — this is
@@ -593,13 +571,16 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                   result section now reuse the LAYOUT of, never these
                   value/percent/tax COLUMNS themselves. */}
               <SummaryTable
-                rows={breakdownRows(breakdown, principalLabelKey, expectedProfit, t).map(
-                  (detail) => ({
-                    key: detail.label,
-                    label: detail.label,
-                    value: <MoneyText money={detail.money} tone={detail.tone} />,
-                  }),
-                )}
+                rows={breakdownRows(
+                  breakdown,
+                  spec.breakdown.principalLabelKey,
+                  spec.breakdown.expectedProfit(holding),
+                  t,
+                ).map((detail) => ({
+                  key: detail.label,
+                  label: detail.label,
+                  value: <MoneyText money={detail.money} tone={detail.tone} />,
+                }))}
               />
             </Box>
           )}

@@ -3,6 +3,7 @@ import {
   loanOutstandingMinorAt,
   type LoanInstallment,
 } from '@kiko/holdings/loan-schedule';
+import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import type { HoldingRow } from '@kiko/db/schema';
 import { startOfLocalDay } from '@kiko/dates/local-day';
@@ -14,11 +15,9 @@ import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor/bond'
 /** Which add action the detail screen's footer offers. */
 export type FooterAction = 'contribution' | 'transaction' | 'updateValue' | 'addLot' | 'none';
 
-// What the detail screen shows per holding type. Not exported: nothing
-// outside this module needs to name the shape directly yet (every consumer
-// reads it through `holdingDetailSpec`/`holdingDetailSpecOrUndefined`) — add
-// the `export` back the moment a real consumer needs it (knip's "no unused
-// export" gate).
+// What the detail screen shows per holding type. Not exported: every
+// consumer reads a value of this shape through `holdingDetailSpecFor`/
+// `holdingDetailSpecOrUndefined` below rather than naming the type directly.
 type HoldingDetailSpec = {
   /** `synced` = `isSyncedHolding(holding, account)`. */
   footerAction: (synced: boolean) => FooterAction;
@@ -39,26 +38,24 @@ const noInstallment = (): undefined => undefined;
 // Shared by every ledger-backed (non-ledgerless) type below: a synced
 // (Monobank) holding's ledger is owned by the sync, so it offers no add
 // action; a manual one takes the generic "Add transaction". None of these
-// four show a breakdown or a next-installment panel. Exported so the screen
-// can fall back to it for a stored `type` this registry does not recognize
-// (`holdingDetailSpecOrUndefined`'s own doc comment) — the same tolerant
-// result the pre-registry `footerActionFor`/`showBreakdown`/
-// `nextLoanInstallment` gave any type outside their own explicit checks.
-export const balanceSpec: HoldingDetailSpec = {
+// four show a breakdown or a next-installment panel. Also the fallback
+// `holdingDetailSpecFor` returns for a stored `type` this registry does not
+// recognize.
+const balanceSpec: HoldingDetailSpec = {
   footerAction: (synced) => (synced ? 'none' : 'transaction'),
   breakdown: null,
   nextInstallment: noInstallment,
 };
 
 // The next upcoming amortization row for an `'annuity'`/`'differentiated'`
-// loan (T28) — the one this holding's next scheduled payment falls on, picked
+// loan — the one this holding's next scheduled payment falls on, picked
 // as the first installment whose due day is on or after `now`'s own LOCAL day
 // (mirrors `priceAsOfCaption`'s day-key convention). `undefined` for an
 // invalid/absent `LoanMeta`, a `'none'` schedule (no installments at all —
 // `loanInstallments` already returns `[]` for it), once every installment has
 // already come due (a fully repaid loan), and once an overpaid correction has
-// already clamped the outstanding to 0 (N10a), even while `loanInstallments`
-// still has future rows on the ORIGINAL schedule.
+// already clamped the outstanding to 0, even while `loanInstallments` still
+// has future rows on the ORIGINAL schedule.
 const loanNextInstallment = (
   holding: HoldingRow,
   book: PriceBook,
@@ -81,11 +78,10 @@ const loanNextInstallment = (
 
 // A bond's whole-life expected profit (net coupons + nominal redeemed, less
 // the price paid) — `null` for unparsable metadata.
-const bondExpectedProfit = (holding: HoldingRow): Money | null => {
-  const meta = asBondMeta(holding.metadata);
-
-  return meta ? Money.of(holding.currency, bondExpectedProfitMinor(meta, holding.currency)) : null;
-};
+const bondExpectedProfit = (holding: HoldingRow): Money | null =>
+  foldMap(maybe(asBondMeta(holding.metadata)), (meta) =>
+    Money.of(holding.currency, bondExpectedProfitMinor(meta, holding.currency)),
+  ) ?? null;
 
 /**
  * The ONE place every holding type's detail-screen behavior is looked up:
@@ -113,17 +109,16 @@ export const holdingDetailSpecs = {
     nextInstallment: noInstallment,
   },
   // `metal` opens the dedicated Lot form to record a buy/sell instead of the
-  // generic price-point form — checked AHEAD of the priced-value branch a
-  // type's own `isPricedHoldingType` would otherwise route through, since
-  // `metal` is ALSO a priced type but must never offer "Update value": its
-  // price comes from the SHARED `metal:<XAU|...>` instrument (kiko-pricing),
-  // never a per-holding manual price point the way `property_item` uses.
+  // generic price-point form: `metal` is ALSO a priced type, but its price
+  // comes from the SHARED `metal:<XAU|...>` instrument (kiko-pricing), never
+  // a per-holding manual price point the way `property_item` uses — so it
+  // adds lots rather than updating a value.
   metal: {
     footerAction: () => 'addLot',
     breakdown: null,
     nextInstallment: noInstallment,
   },
-  // A loan (T28) is ledgerless but still takes the SAME `'updateValue'`
+  // A loan is ledgerless but still takes the SAME `'updateValue'`
   // action as a priced holding — it reuses `PricePointForm` to write a
   // correction onto its own `holding:<id>` manual series
   // (`loanOutstandingMinorAt` reads a correction there for every schedule,
@@ -140,8 +135,6 @@ export const holdingDetailSpecs = {
   jar: balanceSpec,
 } as const satisfies Record<HoldingType, HoldingDetailSpec>;
 
-export const holdingDetailSpec = (type: HoldingType): HoldingDetailSpec => holdingDetailSpecs[type];
-
 /**
  * A lookup safe for a `type` read straight off a stored row: the schema
  * types `holdings.type` as this exact enum, but SQLite enforces no such
@@ -156,4 +149,18 @@ export const holdingDetailSpecOrUndefined = (type: HoldingType): HoldingDetailSp
   const specs = holdingDetailSpecs as Record<string, HoldingDetailSpec>;
 
   return Object.hasOwn(specs, type) ? specs[type] : undefined;
+};
+
+/**
+ * The tolerant lookup the detail screen reads for footer action, breakdown,
+ * and next-installment behavior in one place: `Object.hasOwn`-guarded the
+ * same way `holdingDetailSpecOrUndefined` above is, but falls back to
+ * `balanceSpec` — the plain "add transaction" behavior — for a type it does
+ * not recognize, or for `undefined`, so callers never need their own
+ * `?? balanceSpec`.
+ */
+export const holdingDetailSpecFor = (type: string | undefined): HoldingDetailSpec => {
+  const specs = holdingDetailSpecs as Record<string, HoldingDetailSpec>;
+
+  return type !== undefined && Object.hasOwn(specs, type) ? specs[type] : balanceSpec;
 };

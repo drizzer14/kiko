@@ -75,7 +75,7 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
 
   // The stack sets the static "Update Value" title (accounts.stack.tsx); this
   // screen overrides it to read correctly for a debt once the holding loads
-  // as a loan (holding-detail's footerActionFor reuses 'updateValue' for a
+  // as a loan (holding-detail's holdingDetailSpecs reuses 'updateValue' for a
   // loan rather than minting a separate action). Mirrors HoldingFormScreen's
   // own edit-mode title override.
   useLayoutEffect(() => {

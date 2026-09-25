@@ -55,10 +55,11 @@ export const isTimeExemptHoldingType = (type: HoldingType): boolean =>
 
 // The holding types that write no manual ledger (transaction) rows at all —
 // their value derives entirely from `lots` in metadata (kiko-domain), priced
-// at read time. `footerActionFor` (holding-detail.screen.tsx) and
-// `isTransactionEligibleType` (transaction-form.screen.tsx) both gate on this
-// predicate rather than re-deriving their own type list, so the two can never
-// disagree on which types are ledgerless.
+// at read time. `isTransactionEligibleType` (transaction-form.screen.tsx)
+// gates on this predicate rather than re-deriving its own type list; the
+// detail footer's own `holdingDetailSpecs` (holding-detail-spec/) agrees on
+// which types are ledgerless by construction, held to it by the two
+// registries' own tests rather than by sharing this predicate.
 export const isLedgerlessHoldingType = (type: HoldingType): boolean =>
   holdingDescriptorOrUndefined(type)?.ledgerless ?? false;
 

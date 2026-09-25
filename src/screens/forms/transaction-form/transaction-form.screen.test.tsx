@@ -1059,7 +1059,7 @@ describe('TransactionFormScreen — empty-create / global add (B)', () => {
     // The two eligible holdings are offered as option rows (each labeled
     // "<name>, <account>"); the bond and the property_item are not — both are
     // ledgerless (isLedgerlessHoldingType), the same 'transaction' gate
-    // `footerActionFor` applies.
+    // `holdingDetailSpecs` applies.
     expect(getByLabelText('Wallet, Cash')).toBeTruthy();
     expect(getByLabelText('Card, Bank')).toBeTruthy();
     expect(queryByLabelText('War Bond, Cash')).toBeNull();

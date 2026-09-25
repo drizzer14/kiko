@@ -137,7 +137,7 @@ describe('PricePointFormScreen', () => {
 
   // T28: a loan's correction targets its own manual outstanding series
   // through this SAME form (PricePointForm never changes for a loan — see
-  // holding-detail's own footerActionFor doc comment), but the stack's
+  // holding-detail's own holdingDetailSpecs doc comment), but the stack's
   // static "Update Value" title reads wrong for a debt, so the screen
   // overrides it once the holding loads.
   it('overrides the title to "Update Outstanding" for a loan holding', async () => {

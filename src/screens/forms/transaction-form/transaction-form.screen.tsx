@@ -625,12 +625,12 @@ const buildExchangeOptions = (
 };
 
 // Whether a holding TYPE takes a plain manual transaction — the same gate
-// `footerActionFor` (`holding-detail.screen.tsx`) applies for its `'transaction'`
+// `holdingDetailSpecs` (`holding-detail-spec/`) applies for its `'transaction'`
 // action: a ledgerless type (term_deposit, bond, property_item — see
 // `isLedgerlessHoldingType`) carries no manual ledger and is excluded;
 // everything else (cash/card/crypto_asset/jar) is eligible. Mirrored here
-// (rather than exported from that screen) so the primary picker and the
-// footer action agree without a cross-screen import.
+// (rather than imported from that spec) so the primary picker and the
+// footer action agree without a cross-feature import.
 const isTransactionEligibleType = (type: HoldingRow['type']): boolean =>
   !isLedgerlessHoldingType(type);
 

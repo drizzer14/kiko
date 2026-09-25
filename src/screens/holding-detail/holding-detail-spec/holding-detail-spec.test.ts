@@ -1,12 +1,14 @@
 import type { HoldingRow } from '@kiko/db/schema';
+import { startOfLocalDay } from '@kiko/dates/local-day';
 import { EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
-import type { BondMeta } from '@kiko/holdings/holding-metadata';
+import { loanInstallments } from '@kiko/holdings/loan-schedule';
+import type { BondMeta, LoanMeta } from '@kiko/holdings/holding-metadata';
 import { holdingTypes, type HoldingType } from '@kiko/holdings/holding-type';
 import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor/bond';
 
 import {
   type FooterAction,
-  holdingDetailSpec,
+  holdingDetailSpecFor,
   holdingDetailSpecOrUndefined,
   holdingDetailSpecs,
 } from './holding-detail-spec';
@@ -26,16 +28,9 @@ const holding = (overrides: Partial<HoldingRow> = {}): HoldingRow =>
     ...overrides,
   }) as HoldingRow;
 
-describe('holdingDetailSpecs', () => {
-  it.each(holdingTypes)('has a spec for %s', (type) => {
-    expect(holdingDetailSpecs[type]).toBeDefined();
-  });
-});
-
-// The full footer-action table, per today's `footerActionFor` (moved here
-// from `holding-detail.screen.tsx`, T28/T20 review debt): `metal`'s `addLot`
-// is checked ahead of the priced `updateValue` branch, so a priced-AND-lot-
-// eligible type never falls through to the wrong action.
+// The full footer-action table: `metal` gets `addLot` (its price comes from
+// the shared instrument, so it never offers "Update value") while every
+// other priced type keeps `updateValue`.
 describe('holdingDetailSpecs footerAction', () => {
   const table: ReadonlyArray<{ type: HoldingType; unsynced: FooterAction; synced: FooterAction }> =
     [
@@ -57,19 +52,11 @@ describe('holdingDetailSpecs footerAction', () => {
       expect(holdingDetailSpecs[type].footerAction(true)).toBe(synced);
     },
   );
-
-  it('gives metal "addLot", never "updateValue" — it is ALSO a priced type but must not fall into that branch', () => {
-    expect(holdingDetailSpec('metal').footerAction(false)).toBe('addLot');
-  });
-
-  it('gives property_item "updateValue", not "addLot" — it is priced but not lot-form-eligible', () => {
-    expect(holdingDetailSpec('property_item').footerAction(false)).toBe('updateValue');
-  });
 });
 
 describe('holdingDetailSpecs breakdown', () => {
   it('shows the deposit its principal label with no expected-profit line', () => {
-    const spec = holdingDetailSpec('term_deposit').breakdown;
+    const spec = holdingDetailSpecFor('term_deposit').breakdown;
 
     expect(spec?.principalLabelKey).toBe('holdingDetail.principal');
     expect(spec?.expectedProfit(holding({ type: 'term_deposit' }))).toBeNull();
@@ -150,22 +137,21 @@ describe('holdingDetailSpecs nextInstallment', () => {
   it('returns the first installment due on/after today for a structured loan', () => {
     const now = new Date();
     const startDate = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 12, 1);
-    const loanHolding = holding({
-      type: 'loan',
-      metadata: {
-        kind: 'car_loan',
-        principalMinorUnits: 100_000_00,
-        startDate,
-        schedule: 'annuity',
-        annualRatePct: 12,
-        termMonths: 120,
-      },
-    });
+    const meta: LoanMeta = {
+      kind: 'car_loan',
+      principalMinorUnits: 100_000_00,
+      startDate,
+      schedule: 'annuity',
+      annualRatePct: 12,
+      termMonths: 120,
+    };
+    const loanHolding = holding({ type: 'loan', metadata: meta });
+    const todayStart = startOfLocalDay(Date.now());
+    const expected = loanInstallments(meta).find((row) => row.dueDate >= todayStart);
 
     const next = holdingDetailSpecs.loan.nextInstallment(loanHolding, EMPTY_PRICE_BOOK, Date.now());
 
-    expect(next).toBeDefined();
-    expect(next?.dueDate).toBeGreaterThanOrEqual(Date.now() - 24 * 60 * 60 * 1000);
+    expect(next).toEqual(expected);
   });
 });
 
@@ -176,5 +162,19 @@ describe('holdingDetailSpecOrUndefined', () => {
 
   it("returns undefined for an inherited Object.prototype key, not that key's value", () => {
     expect(holdingDetailSpecOrUndefined('constructor' as HoldingType)).toBeUndefined();
+  });
+});
+
+describe('holdingDetailSpecFor', () => {
+  it('returns the real spec for a known type', () => {
+    expect(holdingDetailSpecFor('metal').footerAction(false)).toBe('addLot');
+  });
+
+  it('falls back to the balance spec for a type the registry does not know', () => {
+    expect(holdingDetailSpecFor('not-a-real-type').footerAction(false)).toBe('transaction');
+  });
+
+  it('falls back to the balance spec for an undefined type', () => {
+    expect(holdingDetailSpecFor(undefined).footerAction(false)).toBe('transaction');
   });
 });
