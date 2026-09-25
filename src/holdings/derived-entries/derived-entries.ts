@@ -1,13 +1,11 @@
 import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 
-import { taxOnInterestMinor } from '../tax';
-import { Money, toMajor } from '../../currency/money';
+import { asMetalMeta } from '../holding-metadata';
 import { compareDecimal } from '../../currency/decimal';
 import type { ValuableHolding } from '../holding-value';
-import { asBondMeta, asMetalMeta } from '../holding-metadata';
+import { bondDescriptor } from '../holding-descriptor/bond';
 import { makeEntry } from '../holding-descriptor/entry-parts';
-import { bondCouponDates, bondCouponMajor } from '../interest';
 import { termDepositDescriptor } from '../holding-descriptor/term-deposit';
 
 export type DerivedEntryKind =
@@ -40,60 +38,6 @@ export type DerivedEntry = {
 };
 
 type IdentifiedHolding = ValuableHolding & { id: string };
-
-const bondEntries = (holding: IdentifiedHolding, now: number, t: TFunction): DerivedEntry[] => {
-  const meta = asBondMeta(holding.metadata);
-  if (meta === null) {
-    return [];
-  }
-  const { currency } = holding;
-  const nominalMinorUnits = meta.quantity * meta.faceValueMinorUnits;
-  const nominalMajor = toMajor(nominalMinorUnits, currency);
-  const grossCouponMinor = Money.fromMajor(
-    currency,
-    bondCouponMajor(nominalMajor, meta.couponPct, meta.couponFrequency),
-  ).minorUnits;
-  // Each coupon pays out net of the corporate 23% withholding (government bonds
-  // are untaxed). The bank credits the net amount, so that is the ledger entry.
-  const netCouponMinor =
-    grossCouponMinor - (meta.bondKind === 'corporate' ? taxOnInterestMinor(grossCouponMinor) : 0);
-  const couponDates = bondCouponDates(meta.purchaseDate, meta.maturityDate, meta.couponFrequency);
-
-  // Purchase (money out), each coupon (money in, net), and redemption of the
-  // nominal at maturity (money in). Past entries render as real ledger rows;
-  // entries dated after `now` render dimmed as projected.
-  return [
-    makeEntry(
-      holding.id,
-      'purchase',
-      0,
-      meta.purchaseDate,
-      -meta.purchasePriceMinorUnits,
-      t('holdingDetail.purchase'),
-      now,
-    ),
-    ...couponDates.map((couponDate, index) =>
-      makeEntry(
-        holding.id,
-        'coupon',
-        index,
-        couponDate,
-        netCouponMinor,
-        t('holdingDetail.coupon'),
-        now,
-      ),
-    ),
-    makeEntry(
-      holding.id,
-      'redemption',
-      0,
-      meta.maturityDate,
-      nominalMinorUnits,
-      t('holdingDetail.redemption'),
-      now,
-    ),
-  ];
-};
 
 // A metal holding's buy/sell history (T18's Lot form) as ledger rows: one per
 // stored lot, oldest first with the rest of the list re-sorted by
@@ -134,7 +78,7 @@ const entriesForType = (
 ): readonly DerivedEntry[] =>
   match(holding)
     .with({ type: 'term_deposit' }, (deposit) => termDepositDescriptor.entries(deposit, now, t))
-    .with({ type: 'bond' }, (bond) => bondEntries(bond, now, t))
+    .with({ type: 'bond' }, (bond) => bondDescriptor.entries(bond, now, t))
     .with({ type: 'metal' }, (metal) => metalEntries(metal, now, t))
     // Not `.exhaustive()`: the original if-chain's trailing, unconditional
     // `return []` tolerated any unmatched `type`, not only the other 6

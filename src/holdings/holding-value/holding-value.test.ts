@@ -1,3 +1,5 @@
+import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor/bond';
+
 import { Money } from '../../currency/money';
 import { asBondMeta } from '../holding-metadata';
 import { pricedHoldingTypes } from '../priced-value';
@@ -5,7 +7,6 @@ import { buildPriceBook, EMPTY_PRICE_BOOK } from '../../prices/price-book';
 import { holdingInstrument, metalInstrument } from '../../prices/instrument';
 
 import {
-  bondExpectedProfitMinor,
   type HoldingValueBreakdown,
   holdingValue,
   holdingValueBreakdown,

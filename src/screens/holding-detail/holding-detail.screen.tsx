@@ -13,17 +13,13 @@ import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor/bond';
 
 import {
   isLedgerlessHoldingType,
   isLotFormHoldingType,
   isTimeExemptHoldingType,
 } from '../../holdings/holding-type';
-import {
-  bondExpectedProfitMinor,
-  type HoldingValueBreakdown,
-  holdingValueBreakdown,
-} from '../../holdings/holding-value';
 import {
   loanInstallments,
   loanOutstandingMinorAt,
@@ -70,6 +66,7 @@ import { isSyncedHolding, isSyncedTransaction } from '../../holdings/deletable';
 import EditHeaderButton from '../../design-system/components/edit-header-button';
 import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
 import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
+import { type HoldingValueBreakdown, holdingValueBreakdown } from '../../holdings/holding-value';
 import { type DerivedEntry, derivedEntries, type EntryTone } from '../../holdings/derived-entries';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;

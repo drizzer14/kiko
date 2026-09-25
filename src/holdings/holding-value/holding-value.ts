@@ -1,22 +1,14 @@
 import { P, match } from 'ts-pattern';
 
-import {
-  asBondMeta,
-  asLoanMeta,
-  asMetalMeta,
-  asPropertyMeta,
-  type BondMeta,
-} from '../holding-metadata';
 import { costBasisMinorAt } from '../lots';
-import { taxOnInterestMinor } from '../tax';
+import { Money } from '../../currency/money';
 import type { HoldingRow } from '../../db/schema';
-import { Money, toMajor } from '../../currency/money';
-import { startOfLocalDay } from '../../dates/local-day';
 import { loanOutstandingMinorAt } from '../loan-schedule';
-import { bondCouponDates, bondCouponMajor } from '../interest';
+import { bondDescriptor } from '../holding-descriptor/bond';
 import { isPricedHoldingType, pricedValueMinor } from '../priced-value';
 import { termDepositDescriptor } from '../holding-descriptor/term-deposit';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
+import { asLoanMeta, asMetalMeta, asPropertyMeta } from '../holding-metadata';
 import { flat, type HoldingValueBreakdown } from '../holding-descriptor/breakdown-parts';
 
 /**
@@ -33,54 +25,6 @@ export type ValuableHolding = Pick<
 > & { id?: HoldingRow['id'] };
 
 export type { HoldingValueBreakdown };
-
-const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreakdown => {
-  const meta = asBondMeta(holding.metadata);
-  if (meta === null) {
-    return flat(holding.currency, holding.balanceMinorUnits);
-  }
-  const { currency } = holding;
-  const costMoney = Money.of(currency, meta.purchasePriceMinorUnits);
-  const zero = Money.of(currency, 0);
-  // Value the bond by LOCAL DAY, not by raw instant. `purchaseDate` is often a
-  // mid-day timestamp (the holding-form default `purchaseDate ?? Date.now()`),
-  // while the card debit that funds a same-day card->bond move lands at its own
-  // clock time and each net-worth bucket is a day key. Comparing raw ms turns
-  // the bond on at a different instant than the debit lands, so a same-day move
-  // shows a one-bucket dip. The bond instead carries value for any instant whose
-  // local day is at or after the purchase day (local-day is the unit —
-  // kiko-domain "Dates").
-  const valuationDay = startOfLocalDay(now);
-  // A bond whose purchase day is in the future has not been bought yet, so it
-  // reports no value — not its nominal.
-  if (valuationDay < startOfLocalDay(meta.purchaseDate)) {
-    return { gross: zero, principalOrCost: zero, interest: zero, tax: zero, net: zero };
-  }
-  // On or after the maturity day the nominal is redeemed (returned as the
-  // redemption ledger entry), so the bond holding itself no longer carries value.
-  if (valuationDay >= startOfLocalDay(meta.maturityDate)) {
-    return { gross: zero, principalOrCost: costMoney, interest: zero, tax: zero, net: zero };
-  }
-  // A live bond is worth its COST (the price paid), flat, until maturity — NOT
-  // its nominal. A card->bond move debits the card the price PAID and credits
-  // the bond the SAME price, so net worth is unchanged on the purchase day.
-  // Valuing a premium bond at nominal instead left a permanent (price - nominal)
-  // dip from the purchase day onward (the R4 bug). The premium/discount is
-  // realized only AT maturity, through the redemption ledger entry that returns
-  // the nominal (see `bondEntries` in `derived-entries.ts`); the maturity guard
-  // above hands the bond off to that entry. The bank pays each coupon out to a
-  // cash account on its discrete coupon date (see the ledger entries); it does
-  // NOT accrue a continuous dirty price into the held value between coupons, so
-  // there is no per-day accrual and no unwind on a coupon date. Interest/tax on
-  // the coupon stream are ledger events, not part of the held value.
-  return {
-    gross: costMoney,
-    principalOrCost: costMoney,
-    interest: zero,
-    tax: zero,
-    net: costMoney,
-  };
-};
 
 // A priced holding's (`property_item`, `metal` — `isPricedHoldingType`) own
 // `lots` array, whichever metadata shape its type carries (kiko-domain:
@@ -165,28 +109,6 @@ const pricedBreakdown = (
   };
 };
 
-// The bond's expected lifetime profit (minor units): the sum of every net
-// coupon plus the redeemed nominal, less the price actually paid. Reproduces the
-// figure the user's bank shows (e.g. 3 * 8,175 + 100,000 - 107,868 = 16,657).
-export const bondExpectedProfitMinor = (
-  meta: BondMeta,
-  currency: ValuableHolding['currency'],
-): number => {
-  const nominalMinor = meta.quantity * meta.faceValueMinorUnits;
-  const couponMinor = Money.fromMajor(
-    currency,
-    bondCouponMajor(toMajor(nominalMinor, currency), meta.couponPct, meta.couponFrequency),
-  ).minorUnits;
-  const netCouponMinor =
-    couponMinor - (meta.bondKind === 'corporate' ? taxOnInterestMinor(couponMinor) : 0);
-  const couponCount = bondCouponDates(
-    meta.purchaseDate,
-    meta.maturityDate,
-    meta.couponFrequency,
-  ).length;
-  return netCouponMinor * couponCount + nominalMinor - meta.purchasePriceMinorUnits;
-};
-
 export const holdingValueBreakdown = (
   holding: ValuableHolding,
   now: number,
@@ -195,7 +117,7 @@ export const holdingValueBreakdown = (
   match(holding.type)
     .with(P.when(isPricedHoldingType), () => pricedBreakdown(holding, now, book))
     .with('term_deposit', () => termDepositDescriptor.breakdown(holding, now, book))
-    .with('bond', () => bondBreakdown(holding, now))
+    .with('bond', () => bondDescriptor.breakdown(holding, now, book))
     .with('loan', () => loanBreakdown(holding, now, book))
     // Not `.exhaustive()`: the original `switch`'s `default` branch tolerated
     // any unmatched value, not only the 3 other named literal types — a
