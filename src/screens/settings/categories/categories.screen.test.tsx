@@ -78,6 +78,8 @@ const mockSetDefault = jest.fn();
 let mockLiveQueryData: Array<{ key: string; title: string; icon: string; color?: string | null }> =
   [];
 let mockSettingsRows: Array<{ defaultCategoryKey: string }> = [];
+let mockCategoriesIsLoading = false;
+let mockSettingsIsLoading = false;
 
 jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: {
@@ -98,7 +100,9 @@ jest.mock('@kiko/settings/settings.repo', () => ({
 }));
 jest.mock('../../../db/use-live-query', () => ({
   useLiveQuery: (_query: unknown, keys: string[]) =>
-    keys?.[0] === 'settings' ? { data: mockSettingsRows } : { data: mockLiveQueryData },
+    keys?.[0] === 'settings'
+      ? { data: mockSettingsRows, isLoading: mockSettingsIsLoading }
+      : { data: mockLiveQueryData, isLoading: mockCategoriesIsLoading },
 }));
 
 type CategoriesProps = ComponentProps<typeof CategoriesScreen>;
@@ -120,6 +124,8 @@ describe('CategoriesScreen', () => {
     mockLiveQueryData = SEEDED_CATEGORIES.map((category) => ({ ...category }));
     // `other` is the seeded default catch-all.
     mockSettingsRows = [{ defaultCategoryKey: 'other' }];
+    mockCategoriesIsLoading = false;
+    mockSettingsIsLoading = false;
   });
 
   it('lists every seeded category by its title', async () => {
@@ -672,5 +678,30 @@ describe('CategoriesScreen', () => {
 
       expect(mockUpdateTitle).toHaveBeenCalledWith('groceries', 'Овочі');
     });
+  });
+});
+
+describe('CategoriesScreen — loading gate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockLiveQueryData = [];
+    mockCategoriesIsLoading = true;
+  });
+
+  it('shows a loading spinner, not a blank list, while categories is on its first load', async () => {
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('categories-loading')).toBeTruthy();
+    expect(queryByTestId('sortable-grid')).toBeNull();
+  });
+
+  it('renders the real list once categories has loaded', async () => {
+    mockCategoriesIsLoading = false;
+    mockLiveQueryData = SEEDED_CATEGORIES.map((category) => ({ ...category }));
+
+    const { getByDisplayValue, queryByTestId } = await renderScreen();
+
+    expect(getByDisplayValue(SEEDED_CATEGORIES[0].title)).toBeTruthy();
+    expect(queryByTestId('categories-loading')).toBeNull();
   });
 });

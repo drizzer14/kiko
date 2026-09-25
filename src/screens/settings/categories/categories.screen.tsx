@@ -11,12 +11,14 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import ColorPicker from '../../forms/color-picker';
 import type { CategoryRow } from '../../../db/schema';
 import Box from '../../../design-system/components/box';
+import { useDataReady } from '../../../db/use-data-ready';
 import { useLiveQuery } from '../../../db/use-live-query';
 import Card from '../../../design-system/components/card';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import HoldingIdentityField from '../../forms/holding-identity-field';
 import { onGridDragEnd } from '../../../design-system/grid-interaction';
+import LoadingState from '../../../design-system/components/loading-state';
 import type { SettingsStackParamList } from '../../../navigation/types';
 import ConfirmSheet from '../../../design-system/components/confirm-sheet';
 import { DEFAULT_CATEGORY_KEY } from '../../../categories/category-display';
@@ -354,8 +356,16 @@ const categoryKeyExtractor = (category: CategoryRow): string => category.key;
 // deletion. The inline add-category affordance renders as the final card.
 const CategoriesScreen: FC<CategoriesScreenProps> = () => {
   const { theme } = useUnistyles();
-  const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
-  const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
+    categoriesRepo.allQuery(),
+    ['categories'],
+  );
+  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(settingsRepo.getQuery(), [
+    'settings',
+  ]);
+  // The blank list must never render while either query is still on its own
+  // first load (kiko-architecture's useLiveQuery consumer rule).
+  const isReady = useDataReady(categoriesLoading, settingsLoading);
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
 
   // The full current top-to-bottom order, the basis for both reorder buttons.
@@ -419,6 +429,17 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
       scrollableRef.current?.scrollToEnd({ animated: true });
     });
   };
+
+  if (!isReady) {
+    // The SAME Screen mode/props as the ready branch below — the first
+    // scroll view iOS walks to drive the large-title collapse exists from
+    // the very first render.
+    return (
+      <Screen scroll scrollableRef={scrollableRef}>
+        <LoadingState testID="categories-loading" />
+      </Screen>
+    );
+  }
 
   return (
     <Screen scroll scrollableRef={scrollableRef}>
