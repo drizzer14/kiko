@@ -50,8 +50,8 @@ describe('priceAsOfCaption', () => {
     );
   });
 
-  // Audit 13 (F4): divergent twins — holding-card's own copy of this helper
-  // used to lack this branch entirely, so a metal holding's card never
+  // Divergent twins — holding-card's own copy of this helper used to lack
+  // this branch entirely, so a metal holding's card never
   // showed ANY caption (its `holding:<id>` instrument never resolves for a
   // metal — the shared `metal:<XAU|...>` instrument does).
   it('shows "Price as of <date>" for a metal holding\'s own SHARED metal:<slug> instrument', () => {

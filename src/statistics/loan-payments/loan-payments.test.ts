@@ -65,9 +65,9 @@ describe('loanPaymentExcludedTransactionIds', () => {
     expect(ids.has('tx-unlinked')).toBe(false);
   });
 
-  // Review Focus 7 (global-constraints.md): a link to a missing loan counts
-  // as normal spending — a dangling `loanHoldingId` is not excluded.
-  it('Review Focus 7: does not exclude a payment linked to a MISSING loan holding', () => {
+  // A link to a missing loan counts as normal spending — a dangling
+  // `loanHoldingId` is not excluded.
+  it('does not exclude a payment linked to a MISSING loan holding', () => {
     const dangling: LoanPaymentTransaction = {
       ...linkedPayment,
       id: 'tx-dangling',

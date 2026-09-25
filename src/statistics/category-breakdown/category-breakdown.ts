@@ -98,8 +98,8 @@ const groupKey = (
 ): string => resolveCategoryKey(category, byKey, defaultKey);
 
 // Sum the POSITIVE change-returns per group so a split payment's category is
-// netted by its change (design F2-6). Returns are same-currency as their
-// payment for v1, so this sums raw minor units in the payment's own currency.
+// netted by its change. Returns are same-currency as their payment for v1,
+// so this sums raw minor units in the payment's own currency.
 // Shared shape with category-trend's own per-group return sum.
 export const sumReturnsByGroup = (
   transactions: readonly Pick<BreakdownTransaction, 'changeGroupId' | 'amountMinorUnits'>[],

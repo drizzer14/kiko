@@ -251,7 +251,7 @@ describe('buildNetWorthSeries', () => {
     // A PREMIUM bond: $107.87 paid for a $100.00 nominal. The card is debited the
     // price PAID. Valuing the live bond at cost (not nominal) makes the move
     // net-worth-neutral; valuing at nominal would leave a permanent $7.87 dip
-    // until maturity (the R4 bug).
+    // until maturity.
     const dayD = D1;
     const debitTime = dayD + 6 * HOUR; // 06:00 on day D
     const purchaseDate = dayD + 18 * HOUR; // 18:00 on day D (a mid-day timestamp)

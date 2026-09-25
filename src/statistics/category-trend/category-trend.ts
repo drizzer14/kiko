@@ -125,8 +125,8 @@ const accumulateSpend = (input: {
   const rangeTo = buckets[buckets.length - 1];
   const totals = new Map<string, TrendAccumulator>();
   // Sum the POSITIVE change-returns per group so a split payment's trend value is
-  // netted by its change (design F2-7), exactly as buildCategoryBreakdown nets
-  // the pie. Returns share the payment's currency AND time for v1, so a payment
+  // netted by its change, exactly as buildCategoryBreakdown nets the pie.
+  // Returns share the payment's currency AND time for v1, so a payment
   // and its returns always land in the same bucket — netting raw minor units
   // in the payment's own currency here is safe. Shares the pie's own helpers.
   const returnsByGroup = sumReturnsByGroup(transactions);

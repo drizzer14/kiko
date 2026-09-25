@@ -29,7 +29,7 @@ export const buildRateTable = (
 });
 
 /**
- * `convert`/`netWorth` throw on a missing rate pair (RULING R2). A holding is
+ * `convert`/`netWorth` throw on a missing rate pair. A holding is
  * convertible only when it is already in the base currency or a POSITIVE,
  * finite base rate exists — otherwise it is excluded from any sum so a
  * first-run (no rates yet) render never crashes. A rate of 0 (a bad provider

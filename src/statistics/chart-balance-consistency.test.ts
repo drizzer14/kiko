@@ -1,4 +1,4 @@
-// Chart-reactivity invariant guard (audit F3): the by-type bar
+// Chart-reactivity invariant guard: the by-type bar
 // (statistics/type-breakdown) and the account-contribution pie
 // (statistics/account-contribution) read each holding's stored BALANCE, never
 // the transactions table — so they refresh after a transaction ONLY because the

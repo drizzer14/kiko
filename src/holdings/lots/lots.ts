@@ -69,8 +69,8 @@ export const asLots = (value: unknown): Lot[] | null => {
  * The quantity held as of `instant`'s LOCAL calendar day: every lot dated at
  * or before that day, summed exactly via the decimal-string helpers (never
  * `Number` arithmetic on a stored quantity). Clamped to never go below
- * `"0"` — Review Focus 8: a sell delta larger than the held quantity must
- * not read as a negative holding.
+ * `"0"` — a sell delta larger than the held quantity must not read as a
+ * negative holding.
  */
 export const quantityAt = (lots: readonly Lot[], instant: number): string => {
   const day = dayKeyOf(instant);
