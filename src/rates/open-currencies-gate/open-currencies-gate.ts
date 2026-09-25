@@ -1,7 +1,7 @@
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 
-import { isCrypto, type CryptoCurrency } from '../../currency/currency';
+import { isCrypto, type Currency, type CryptoCurrency } from '../../currency/currency';
 
 /** The data-presence gate result a rate/price refresh reads before running. */
 export type OpenCurrencies = {
@@ -9,6 +9,17 @@ export type OpenCurrencies = {
   needsFiat: boolean;
   /** The distinct crypto currencies (BTC/ETH/USDT) an ACTIVE holding holds. */
   cryptoCurrencies: CryptoCurrency[];
+  /**
+   * Every distinct ACTIVE-holding currency (fiat or crypto) that differs from
+   * the base — the raw set `needsFiat` is derived from
+   * (`needsFiat === nonBaseCurrencies.length > 0`). `refreshRates` reads this
+   * directly to check whether a currently-held currency still has no
+   * `currency_rates` row at all, a case its own throttle must never suppress.
+   * Optional (defaulting to `[]` at the one real call site) so a test double
+   * that only cares about `needsFiat`/`cryptoCurrencies` — `runBackfill`'s own
+   * gate use, which never reads this field — does not need to supply it too.
+   */
+  nonBaseCurrencies?: Currency[];
 };
 
 /**
@@ -32,9 +43,11 @@ export const openCurrencies = async (): Promise<OpenCurrencies> => {
   ]);
   const base = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   const currencies = currencyRows.map((row) => row.currency);
+  const nonBaseCurrencies = currencies.filter((currency) => currency !== base);
 
   return {
-    needsFiat: currencies.some((currency) => currency !== base),
+    needsFiat: nonBaseCurrencies.length > 0,
     cryptoCurrencies: currencies.filter(isCrypto),
+    nonBaseCurrencies,
   };
 };

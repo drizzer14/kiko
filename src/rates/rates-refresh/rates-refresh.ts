@@ -56,6 +56,14 @@ export type RefreshDeps = {
    * `holdingsRepo`'s one cheap `openCurrenciesQuery`.
    */
   openCurrencies?: () => Promise<OpenCurrencies>;
+  /**
+   * Distinct currencies with at least one stored row in `currency_rates` —
+   * the cheap presence check the throttle below reads before honoring the
+   * cache window, so a currently-held currency (crypto or fiat) with NO rate
+   * at all is never left stuck behind another connection's throttle window.
+   * Defaults to a real read of `ratesRepo.presentCurrenciesQuery()`.
+   */
+  presentCurrencies?: () => Promise<Currency[]>;
 };
 
 // Part B: a small, bounded backoff for a FAILED live fetch — two retries, so a
@@ -183,6 +191,37 @@ const runCryptoLeg = (
     ? withRetry(() => loadCrypto(cryptoCurrencies), sleep)
     : Promise.resolve([]);
 
+/** Every currency with at least one stored row in `currency_rates`, base or quote. */
+const defaultPresentCurrencies = async (): Promise<Currency[]> => {
+  const rows = await ratesRepo.presentCurrenciesQuery();
+  return rows.map((row) => row.currency);
+};
+
+/**
+ * The throttle exists to respect Monobank's own ~5-minute cache window, not
+ * to leave a currently-held currency permanently unrated — a Monobank
+ * connect at t0 writes fiat only, and a Binance connect inside that window
+ * must not have BTC's rate suppressed until the window elapses. Resolves
+ * `true` only when the cache window is active AND every held currency
+ * (crypto or fiat) already has a `currency_rates` row — a real gap (a held
+ * currency with none at all) always skips the throttle.
+ */
+const shouldThrottle = async (
+  at: number,
+  deps: RefreshDeps,
+  nonBaseCurrencies: Currency[] | undefined,
+): Promise<boolean> => {
+  const lastRefreshAt = deps.lastRefreshAt ?? null;
+  const withinWindow = lastRefreshAt !== null && at - lastRefreshAt < FIVE_MINUTES_MS;
+  if (!withinWindow) {
+    return false;
+  }
+  const loadPresentCurrencies = deps.presentCurrencies ?? defaultPresentCurrencies;
+  const present = new Set(await loadPresentCurrencies());
+
+  return (nonBaseCurrencies ?? []).every((currency) => present.has(currency));
+};
+
 /**
  * Fetch fiat and BTC rates, compose all cross pairs the app can convert
  * between, and upsert them. Skips work while the last refresh is still inside
@@ -191,18 +230,18 @@ const runCryptoLeg = (
 export const refreshRates = async (deps: RefreshDeps = {}): Promise<void> => {
   const now = deps.now ?? Date.now;
   const at = now();
-  const lastRefreshAt = deps.lastRefreshAt ?? null;
-  if (lastRefreshAt !== null && at - lastRefreshAt < FIVE_MINUTES_MS) {
-    return;
-  }
 
   const openCurrencies = deps.openCurrencies ?? defaultOpenCurrencies;
-  const { needsFiat, cryptoCurrencies } = await openCurrencies();
+  const { needsFiat, cryptoCurrencies, nonBaseCurrencies } = await openCurrencies();
 
   // kiko-architecture: no request or query for data the user does not have —
   // nothing open that differs from the base currency, and no crypto held,
   // means neither leg has anything to fetch this run.
   if (!needsFiat && cryptoCurrencies.length === 0) {
+    return;
+  }
+
+  if (await shouldThrottle(at, deps, nonBaseCurrencies)) {
     return;
   }
 

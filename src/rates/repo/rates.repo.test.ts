@@ -124,6 +124,12 @@ describe('ratesRepo', () => {
     expect(ratesRepo.allQuery().toSQL().sql).toContain('currency_rates');
   });
 
+  it('builds a distinct-currency presence query against the currency_rates table', () => {
+    const sql = ratesRepo.presentCurrenciesQuery().toSQL().sql;
+    expect(sql).toContain('currency_rates');
+    expect(sql.toLowerCase()).toContain('distinct');
+  });
+
   it('reads the latest stored fetchedAt via a max aggregate', async () => {
     mockExecuteRaw.mockResolvedValue(rawResult([[1_700_000_000_000]]));
     const latest = await ratesRepo.latestFetchedAt();

@@ -17,19 +17,31 @@ describe('openCurrencies', () => {
   });
 
   it('reports needsFiat=false and no crypto when no currency is active', async () => {
-    await expect(openCurrencies()).resolves.toEqual({ needsFiat: false, cryptoCurrencies: [] });
+    await expect(openCurrencies()).resolves.toEqual({
+      needsFiat: false,
+      cryptoCurrencies: [],
+      nonBaseCurrencies: [],
+    });
   });
 
   it('reports needsFiat=false when every active currency matches the base', async () => {
     mockCurrencyRows = [{ currency: 'UAH' }];
 
-    await expect(openCurrencies()).resolves.toEqual({ needsFiat: false, cryptoCurrencies: [] });
+    await expect(openCurrencies()).resolves.toEqual({
+      needsFiat: false,
+      cryptoCurrencies: [],
+      nonBaseCurrencies: [],
+    });
   });
 
   it('reports needsFiat=true when an active currency differs from the base', async () => {
     mockCurrencyRows = [{ currency: 'USD' }];
 
-    await expect(openCurrencies()).resolves.toEqual({ needsFiat: true, cryptoCurrencies: [] });
+    await expect(openCurrencies()).resolves.toEqual({
+      needsFiat: true,
+      cryptoCurrencies: [],
+      nonBaseCurrencies: ['USD'],
+    });
   });
 
   it('reports needsFiat=true (via the fiat anchor a crypto pair needs) for a held crypto currency', async () => {
@@ -38,6 +50,7 @@ describe('openCurrencies', () => {
     await expect(openCurrencies()).resolves.toEqual({
       needsFiat: true,
       cryptoCurrencies: ['BTC'],
+      nonBaseCurrencies: ['BTC'],
     });
   });
 
@@ -49,6 +62,7 @@ describe('openCurrencies', () => {
     await expect(openCurrencies()).resolves.toEqual({
       needsFiat: true,
       cryptoCurrencies: ['BTC', 'ETH'],
+      nonBaseCurrencies: ['BTC', 'ETH'],
     });
   });
 
@@ -56,6 +70,23 @@ describe('openCurrencies', () => {
     mockSettingsRows = [];
     mockCurrencyRows = [{ currency: 'USD' }];
 
-    await expect(openCurrencies()).resolves.toEqual({ needsFiat: true, cryptoCurrencies: [] });
+    await expect(openCurrencies()).resolves.toEqual({
+      needsFiat: true,
+      cryptoCurrencies: [],
+      nonBaseCurrencies: ['USD'],
+    });
+  });
+
+  it('lists every distinct held non-base currency, fiat and crypto together', async () => {
+    // `nonBaseCurrencies` is the raw set `needsFiat`'s own boolean is derived
+    // from — `refreshRates` reads it directly to check which held currency
+    // (crypto OR fiat) still needs its own `currency_rates` row.
+    mockCurrencyRows = [{ currency: 'UAH' }, { currency: 'USD' }, { currency: 'BTC' }];
+
+    await expect(openCurrencies()).resolves.toEqual({
+      needsFiat: true,
+      cryptoCurrencies: ['BTC'],
+      nonBaseCurrencies: ['USD', 'BTC'],
+    });
   });
 });

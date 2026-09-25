@@ -18,6 +18,15 @@ export const ratesRepo = {
     const rows = await database.select({ value: max(currencyRates.fetchedAt) }).from(currencyRates);
     return rows.at(0)?.value ?? null;
   },
+  /**
+   * Distinct currencies with at least one stored row — a cheap presence
+   * check, never the full cross table. `buildPairs` composes every ordered
+   * pair among priced currencies, so a currency with any rate at all always
+   * appears as `base` too; checking that one column is enough. A one-shot
+   * read (not reactive) — `refreshRates`'s own throttle-skip check awaits it.
+   */
+  presentCurrenciesQuery: () =>
+    database.selectDistinct({ currency: currencyRates.base }).from(currencyRates),
   upsertMany: (rates: NewRate[]) =>
     write(async (databaseTransaction) => {
       if (rates.length === 0) {
