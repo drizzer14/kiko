@@ -4,7 +4,7 @@ import * as RNFS from 'react-native-fs';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { useRef, useEffect, useState } from 'react';
-import { Alert, type ScrollViewInstance } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -38,6 +38,7 @@ import Text from '../../design-system/components/text';
 import Screen from '../../design-system/components/screen';
 import { accountsRepo } from '../../accounts/accounts.repo';
 import { settingsRepo } from '../../settings/settings.repo';
+import { alertOnCatch } from '../../design-system/alert-on-catch';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { readTableRows, findSavedMapping } from '../../statement-import/column-mapping';
 import { importStatement, type ImportResult } from '../../statement-import/import-statement';
@@ -395,9 +396,9 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
       setImportResult(await importStatement(input, selectedHoldingId));
       setResultSheetVisible(true);
     } catch {
-      // F4 audit 7: a translated Alert, never raw `error.message` rendered
-      // inline — see `statementImport.importErrorTitle`'s own doc comment.
-      Alert.alert(t('statementImport.importErrorTitle'), t('statementImport.importErrorMessage'));
+      // A translated Alert, never raw `error.message` rendered inline — see
+      // `statementImport.importErrorTitle`'s own doc comment.
+      alertOnCatch(t, 'statementImport.importErrorTitle', 'statementImport.importErrorMessage');
     } finally {
       setImporting(false);
     }

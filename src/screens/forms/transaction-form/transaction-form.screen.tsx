@@ -20,7 +20,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
-import { Alert, type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
+import { type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
 
 import {
   canConvertToExchange,
@@ -50,6 +50,7 @@ import { buildRateTable } from '../../../rates/net-worth-view';
 import Divider from '../../../design-system/components/divider';
 import SymbolIcon from '../../../design-system/components/symbol';
 import TextField from '../../../design-system/components/text-field';
+import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import FieldError from '../../../design-system/components/field-error';
@@ -1874,7 +1875,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // `applyOverride`, and `applyOverrideOne` each catch their own write and
   // call this rather than repeating the same two catalog keys three times.
   const showSaveErrorAlert = (): void => {
-    Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
+    alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
   };
 
   // Editing a category ALWAYS propagates to every same-name transaction (and to

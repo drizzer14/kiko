@@ -1,5 +1,5 @@
 import type { FC } from 'react';
-import { Alert, Share } from 'react-native';
+import { Share } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useRef, useState } from 'react';
 import Clipboard from '@react-native-clipboard/clipboard';
@@ -14,6 +14,7 @@ import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import Switch from '../../../design-system/components/switch';
 import TextField from '../../../design-system/components/text-field';
+import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import type { SettingsStackParamList } from '../../../navigation/types';
 import { useSubmitOnce } from '../../forms/use-submit-once/use-submit-once';
 
@@ -74,7 +75,7 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
         // Dismissed/cancelled the share sheet.
       }
     } catch {
-      Alert.alert(t('settings.dataExport.errorTitle'), t('settings.dataExport.errorMessage'));
+      alertOnCatch(t, 'settings.dataExport.errorTitle', 'settings.dataExport.errorMessage');
     }
   };
 

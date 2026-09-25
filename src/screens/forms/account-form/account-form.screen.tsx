@@ -4,8 +4,8 @@ import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Alert, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
 import { id } from '../../../db/id';
 import { Money } from '../../../currency/money';
@@ -19,6 +19,7 @@ import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import Divider from '../../../design-system/components/divider';
 import CryptoSyncForm from '../../account-detail/crypto-sync-form';
+import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import TextField from '../../../design-system/components/text-field';
 import { defaultAccountColor } from '../../../holdings/entity-colors';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
@@ -414,7 +415,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       // A DB write failure (disk full, locked) must not vanish silently — the
       // screen was about to navigate away with nothing saved. Keep it open and
       // say so, mirroring contribution-form's established Alert pattern.
-      Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
+      alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
     }
   };
 

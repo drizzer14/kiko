@@ -4,7 +4,7 @@ import { type FC, useLayoutEffect, useRef, useState } from 'react';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
-import { Alert, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
+import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
 import DateField from '../date-field';
 import {
@@ -24,6 +24,7 @@ import Screen from '../../../design-system/components/screen';
 import { holdingInstrument } from '../../../prices/instrument';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import { pricePointsRepo } from '../../../prices/price-points-repo';
+import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import TextField from '../../../design-system/components/text-field';
 import type { AccountsStackParamList } from '../../../navigation/types';
 import { type Currency, currencyScale, currencySymbol } from '../../../currency/currency';
@@ -118,7 +119,7 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
     } catch {
       // Mirrors contribution-form's Alert pattern: a write failure keeps the
       // screen open with the entered values intact.
-      Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
+      alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
       return;
     }
     navigation.goBack();

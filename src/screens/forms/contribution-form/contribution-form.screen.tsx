@@ -3,7 +3,7 @@ import { type FC, useRef, useState } from 'react';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Alert, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
+import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
 import DateField from '../date-field';
 import {
@@ -19,6 +19,7 @@ import { groupAmount } from '../amount-format/amount-format';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
+import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import TextField from '../../../design-system/components/text-field';
 import type { AccountsStackParamList } from '../../../navigation/types';
 import { type Currency, currencySymbol } from '../../../currency/currency';
@@ -101,7 +102,7 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
       await holdingsRepo.appendDepositContribution(holding.id, { amountMinorUnits, date });
     } catch {
       // Keep the screen open on failure so the entered values are not lost.
-      Alert.alert(t('forms.contribution.errorTitle'), t('forms.contribution.errorMessage'));
+      alertOnCatch(t, 'forms.contribution.errorTitle', 'forms.contribution.errorMessage');
       return;
     }
     navigation.goBack();

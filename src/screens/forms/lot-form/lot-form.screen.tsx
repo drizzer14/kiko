@@ -3,7 +3,7 @@ import { type FC, useRef, useState } from 'react';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Alert, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
+import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
 import {
   compareDecimal,
@@ -26,6 +26,7 @@ import { groupAmount } from '../amount-format/amount-format';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
+import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import TextField from '../../../design-system/components/text-field';
 import FieldLabel from '../../../design-system/components/field-label';
 import type { AccountsStackParamList } from '../../../navigation/types';
@@ -195,11 +196,10 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
         metadata: { ...rawMetadata, lots: [...existingLots, lot] },
       });
     } catch {
-      // F4 audit 23: the SAME shared save-error Alert every other form's
-      // write failure uses (account-form, holding-form, price-point-form,
-      // transaction-form) — a write failure keeps the screen open with the
-      // entered values intact.
-      Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
+      // The SAME shared save-error Alert every other form's write failure
+      // uses (account-form, holding-form, price-point-form, transaction-form)
+      // — a write failure keeps the screen open with the entered values intact.
+      alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
       return;
     }
     navigation.goBack();

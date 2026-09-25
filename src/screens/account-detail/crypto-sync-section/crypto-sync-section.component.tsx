@@ -1,7 +1,6 @@
 import type { FC } from 'react';
 import { useState } from 'react';
 import { match } from 'ts-pattern';
-import { Alert } from 'react-native';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
@@ -19,6 +18,7 @@ import Button from '../../../design-system/components/button';
 import type { AccountRow, HoldingRow } from '../../../db/schema';
 import SymbolIcon from '../../../design-system/components/symbol';
 import { resyncRequest } from '../../../crypto-sync/resync-request';
+import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import { formatLastSyncAt, latestSyncedAt } from '../format-last-sync';
 import { disconnectCryptoAccount } from '../../../crypto-sync/disconnect';
 import ConfirmSheet from '../../../design-system/components/confirm-sheet';
@@ -62,7 +62,7 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
     try {
       await disconnectCryptoAccount(account.id, providerId);
     } catch {
-      Alert.alert(t('accountDetail.disconnectErrorTitle'), t('accountDetail.tryAgainMessage'));
+      alertOnCatch(t, 'accountDetail.disconnectErrorTitle', 'accountDetail.tryAgainMessage');
     }
   };
 

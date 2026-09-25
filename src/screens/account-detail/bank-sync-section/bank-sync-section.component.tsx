@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Alert } from 'react-native';
 import type { FC, ReactNode } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useSync } from '@kiko/sync/use-sync';
@@ -19,6 +18,7 @@ import { useLiveQuery } from '../../../db/use-live-query';
 import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
 import { bankProviderRegistry } from '../../../bank-sync/registry';
+import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import ConfirmSheet from '../../../design-system/components/confirm-sheet';
 
 import { styles } from '../account-detail.styles';
@@ -167,7 +167,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
     try {
       await connectedEntry.disconnect(account.id);
     } catch {
-      Alert.alert(t('accountDetail.disconnectErrorTitle'), t('accountDetail.tryAgainMessage'));
+      alertOnCatch(t, 'accountDetail.disconnectErrorTitle', 'accountDetail.tryAgainMessage');
     }
   };
 

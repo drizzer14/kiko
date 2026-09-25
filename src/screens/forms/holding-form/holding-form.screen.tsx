@@ -1,5 +1,5 @@
 import { match } from 'ts-pattern';
-import { Alert, View } from 'react-native';
+import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
@@ -31,6 +31,7 @@ import Screen from '../../../design-system/components/screen';
 import { usePriceBook } from '../../../prices/use-price-book';
 import Divider from '../../../design-system/components/divider';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
+import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
@@ -423,7 +424,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       // Mirrors contribution-form's and account-form's Alert pattern: a write
       // failure keeps the screen open with the entered values intact, rather
       // than navigating away as if nothing was wrong.
-      Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
+      alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
     }
   };
 

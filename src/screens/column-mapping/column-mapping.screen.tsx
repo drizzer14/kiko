@@ -5,7 +5,7 @@ import type { FC, RefObject } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, type ScrollViewInstance } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -47,6 +47,7 @@ import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import { accountsRepo } from '../../accounts/accounts.repo';
 import { settingsRepo } from '../../settings/settings.repo';
+import { alertOnCatch } from '../../design-system/alert-on-catch';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { supportedFormatNames } from '../../statement-import/registry';
 import ImportResultSheet from '../statement-import/import-result-sheet';
@@ -813,7 +814,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     } catch {
       // A translated Alert, never raw `error.message` rendered inline — see
       // `statementImport.importErrorTitle`'s own doc comment.
-      Alert.alert(t('statementImport.importErrorTitle'), t('statementImport.importErrorMessage'));
+      alertOnCatch(t, 'statementImport.importErrorTitle', 'statementImport.importErrorMessage');
     } finally {
       setImporting(false);
     }
