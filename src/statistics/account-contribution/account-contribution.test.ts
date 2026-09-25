@@ -22,6 +22,7 @@ const account = (
 const holding = (
   over: Partial<HoldingRow> & Pick<HoldingRow, 'accountId'>,
 ): ContributionHolding => ({
+  id: 'h1',
   currency: 'UAH',
   type: 'cash',
   balanceMinorUnits: 0,

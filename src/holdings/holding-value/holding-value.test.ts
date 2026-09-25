@@ -12,7 +12,7 @@ import {
   type ValuableHolding,
 } from './holding-value';
 
-const base = { currency: 'UAH' as const, balanceMinorUnits: 0, metadata: null };
+const base = { id: 'h1', currency: 'UAH' as const, balanceMinorUnits: 0, metadata: null };
 const START = Date.UTC(2026, 0, 1);
 const day = 86_400_000;
 const HOUR = 3_600_000;
@@ -280,6 +280,7 @@ describe('holdingValue', () => {
 });
 
 const deposit = (over: Record<string, unknown>): ValuableHolding => ({
+  id: 'deposit-1',
   type: 'term_deposit' as const,
   currency: 'UAH' as const,
   balanceMinorUnits: 0,
@@ -294,6 +295,7 @@ const deposit = (over: Record<string, unknown>): ValuableHolding => ({
 });
 
 const bond = (bondKind: string): ValuableHolding => ({
+  id: 'bond-1',
   type: 'bond' as const,
   currency: 'UAH' as const,
   balanceMinorUnits: 0,
@@ -471,20 +473,24 @@ const goldBar = (over: Record<string, unknown> = {}): ValuableHolding => ({
   },
 });
 
+// Shared by every "metal (priced)" case below that needs a stored NBU point:
+// one XAU point, priced 90000 UAH, at propertyDay2024.
+const xauBookAt90000 = () =>
+  buildPriceBook([
+    {
+      instrument: metalInstrument('XAU'),
+      day: propertyDay2024,
+      price: '90000',
+      currency: 'UAH',
+      source: 'nbu',
+    },
+  ]);
+
 describe('holdingValueBreakdown — metal (priced)', () => {
   it('values a gold bar at its NBU point at-or-before now', () => {
-    const book = buildPriceBook([
-      {
-        instrument: metalInstrument('XAU'),
-        day: propertyDay2024,
-        price: '90000',
-        currency: 'UAH',
-        source: 'nbu',
-      },
-    ]);
     const holding = goldBar();
 
-    const breakdown = holdingValueBreakdown(holding, propertyDay2024, book);
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, xauBookAt90000());
     // 31.1034768g at purity 1 is exactly one troy ounce.
     expect(breakdown.gross.minorUnits).toBe(9_000_000);
     expect(breakdown.net.minorUnits).toBe(9_000_000);
@@ -500,18 +506,9 @@ describe('holdingValueBreakdown — metal (priced)', () => {
   });
 
   it('reports the lots cost basis as principalOrCost even when a price point exists', () => {
-    const book = buildPriceBook([
-      {
-        instrument: metalInstrument('XAU'),
-        day: propertyDay2024,
-        price: '90000',
-        currency: 'UAH',
-        source: 'nbu',
-      },
-    ]);
     const holding = goldBar();
 
-    const breakdown = holdingValueBreakdown(holding, propertyDay2024, book);
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, xauBookAt90000());
     expect(breakdown.gross.minorUnits).toBe(9_000_000);
     expect(breakdown.principalOrCost.minorUnits).toBe(8_500_000);
   });
@@ -531,18 +528,9 @@ describe('holdingValueBreakdown — metal (priced)', () => {
   // holding falls back to its lots' cost basis instead, exactly as it would
   // for no stored price point at all.
   it('falls back to the lots cost basis for a metal row whose currency disagrees with the price point, never labeling the priced value as that currency', () => {
-    const book = buildPriceBook([
-      {
-        instrument: metalInstrument('XAU'),
-        day: propertyDay2024,
-        price: '90000',
-        currency: 'UAH',
-        source: 'nbu',
-      },
-    ]);
     const holding: ValuableHolding = { ...goldBar(), currency: 'USD' };
 
-    const breakdown = holdingValueBreakdown(holding, propertyDay2024, book);
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, xauBookAt90000());
     expect(breakdown.gross.currency).toBe('USD');
     expect(breakdown.gross.minorUnits).toBe(8_500_000);
     expect(breakdown.net.minorUnits).toBe(8_500_000);
@@ -639,13 +627,17 @@ describe('holdingValueBreakdown — loan', () => {
     expect(atStart.gross.minorUnits).toBe(-12_000_000);
   });
 
-  // An id-less loan (a synthetic fixture, never a real stored row — see
-  // `ValuableHolding`'s own doc comment) cannot resolve a `holding:<id>`
-  // instrument key, so it reads through an EMPTY price book instead of the
-  // real one: the book below stores a point under exactly that key, and the
-  // correct read ignores it. A 'none' loan with no correction found reads 0
-  // — the same baseline `loanOutstandingMinorAt` gives a real, identified
-  // loan with no correction — not the principal.
+  // An id-less loan (never a real stored row — every real HoldingRow has an
+  // id — but a value read through a source looser than one, e.g. a partial
+  // object built by hand) cannot resolve a `holding:<id>` instrument key, so
+  // it reads through an EMPTY price book instead of the real one: the book
+  // below stores a point under exactly that key, and the correct read
+  // ignores it. A 'none' loan with no correction found reads 0 — the same
+  // baseline `loanOutstandingMinorAt` gives a real, identified loan with no
+  // correction — not the principal. `withoutId` is cast back to
+  // `ValuableHolding` (its `id` is genuinely absent at runtime, only the type
+  // widens) so this runtime-defensive path stays covered even though every
+  // WELL-TYPED caller always has an id.
   it('reads 0 for an id-less "none" loan with no correction, never a lookup on the empty id', () => {
     const { id: _id, ...withoutId } = loan({
       schedule: 'none',
@@ -662,7 +654,7 @@ describe('holdingValueBreakdown — loan', () => {
       },
     ]);
 
-    const b = holdingValueBreakdown(withoutId, loanStart, book);
+    const b = holdingValueBreakdown(withoutId as ValuableHolding, loanStart, book);
 
     expect(b.gross.minorUnits).toBe(0);
     expect(b.net.minorUnits).toBe(0);
@@ -677,7 +669,11 @@ describe('holdingValueBreakdown — loan', () => {
     const { id: _id, ...withoutId } = loan();
 
     const identified = holdingValueBreakdown(loan(), sixMonthsIn, EMPTY_PRICE_BOOK);
-    const idLess = holdingValueBreakdown(withoutId, sixMonthsIn, EMPTY_PRICE_BOOK);
+    const idLess = holdingValueBreakdown(
+      withoutId as ValuableHolding,
+      sixMonthsIn,
+      EMPTY_PRICE_BOOK,
+    );
 
     expect(idLess.gross.minorUnits).toBe(identified.gross.minorUnits);
     expect(idLess.gross.minorUnits).toBeGreaterThan(-120_000_000);
@@ -691,7 +687,7 @@ describe('holdingValueBreakdown — loan', () => {
     const dayBeforeStart = local(2020, 0, 14);
     const { id: _id, ...withoutId } = loan();
 
-    const b = holdingValueBreakdown(withoutId, dayBeforeStart, EMPTY_PRICE_BOOK);
+    const b = holdingValueBreakdown(withoutId as ValuableHolding, dayBeforeStart, EMPTY_PRICE_BOOK);
 
     expect(b.gross.minorUnits).toBe(0);
     expect(b.net.minorUnits).toBe(0);

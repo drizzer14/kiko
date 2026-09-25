@@ -6,7 +6,10 @@ import type { CurrencyRateRow, HoldingRow } from '../../db/schema';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
 import { netWorth, type RateTable, rateTableFromRows } from '../conversion';
 
-type ConvertibleHolding = Pick<HoldingRow, 'currency' | 'balanceMinorUnits' | 'type' | 'metadata'>;
+type ConvertibleHolding = Pick<
+  HoldingRow,
+  'currency' | 'balanceMinorUnits' | 'type' | 'metadata' | 'id'
+>;
 
 /**
  * The `rate` column is stored as a string; parse it into the numeric

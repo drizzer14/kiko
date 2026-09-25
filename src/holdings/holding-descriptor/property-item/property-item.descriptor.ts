@@ -14,17 +14,12 @@ import type { HoldingDescriptor, PricedSpec } from '../holding-descriptor.d';
 // `holding:<id>` instrument at or before that day (`priceAt` — the local-day
 // convention), as Money in the holding's OWN currency (a per-holding manual
 // revaluation, always entered in that currency). Returns `null` for invalid
-// metadata, a missing price point, or (unlike `metal`, which reads a SHARED
-// instrument) a holding with no `id` — it cannot resolve its own per-holding
-// instrument key.
+// metadata or a missing price point.
 const propertyItemValue = (
   holding: PricedHolding,
   book: PriceBook,
   instant: number,
 ): Money | null => {
-  if (holding.id === undefined) {
-    return null;
-  }
   const meta = asPropertyMeta(holding.metadata);
   if (meta === null) {
     return null;

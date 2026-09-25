@@ -90,22 +90,6 @@ describe('pricedValue', () => {
     expect(pricedValue(holding, book, day2024)).toBeNull();
   });
 
-  it('returns null for a holding with no id — it cannot resolve its own instrument key', () => {
-    const holding = property({});
-    const { id: _id, ...withoutId } = holding;
-    const book = buildPriceBook([
-      {
-        instrument: holdingInstrument('p1'),
-        day: day2024,
-        price: '20000',
-        currency: 'UAH',
-        source: 'manual',
-      },
-    ]);
-
-    expect(pricedValue(withoutId, book, day2024)).toBeNull();
-  });
-
   it('values a gram-denominated metal lot by converting to troy ounces (31.1034768g at purity 1 = 1oz x price)', () => {
     const book = buildPriceBook([
       {
@@ -196,21 +180,5 @@ describe('pricedValue', () => {
     ]);
 
     expect(pricedValue(holding, book, day2024)).toBeNull();
-  });
-
-  it('values a metal holding with no id — it reads the SHARED metal instrument, not a per-holding one', () => {
-    const holding = goldBar();
-    const { id: _id, ...withoutId } = holding;
-    const book = buildPriceBook([
-      {
-        instrument: metalInstrument('XAU'),
-        day: day2024,
-        price: '90000',
-        currency: 'UAH',
-        source: 'nbu',
-      },
-    ]);
-
-    expect(pricedValue(withoutId, book, day2024)?.minorUnits).toBe(9_000_000);
   });
 });

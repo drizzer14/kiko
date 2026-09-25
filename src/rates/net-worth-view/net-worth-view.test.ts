@@ -12,6 +12,7 @@ const NOW = Date.UTC(2026, 0, 1);
 // A plain cash holding — the flat-balance shape most fixtures below need;
 // only its currency and balance vary per case.
 const cash = (currency: Currency, balanceMinorUnits: number) => ({
+  id: 'cash-1',
   currency,
   balanceMinorUnits,
   type: 'cash' as const,
@@ -21,6 +22,7 @@ const cash = (currency: Currency, balanceMinorUnits: number) => ({
 // A plain crypto_asset holding, the same flat shape as `cash` above, for the
 // BTC-conversion-guard cases.
 const crypto = (currency: Currency, balanceMinorUnits: number) => ({
+  id: 'crypto-1',
   currency,
   balanceMinorUnits,
   type: 'crypto_asset' as const,

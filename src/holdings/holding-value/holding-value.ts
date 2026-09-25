@@ -5,19 +5,19 @@ import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
 import { flat, type HoldingValueBreakdown } from '../holding-descriptor/breakdown-parts';
 
 /**
- * `id` is optional — mirroring `PricedHolding` (`src/holdings/priced-value/`)
- * — so every existing test fixture across the app's holding-value suites
- * (a synthetic cash/deposit/bond literal with no real row) keeps compiling
- * unchanged. Of the two priced types (`isPricedHoldingType`), only
- * `property_item` needs its own `id` to resolve its `holding:<id>` instrument
- * key (missing it reads as no stored price point, falling back to its lots'
- * cost basis); `metal` reads the SHARED `metal:<XAU|XAG|XPT|XPD>` instrument
- * and needs no id at all.
+ * Every real holding row has an `id`; this `Pick` requires it too. A `loan`
+ * holding (not priced — `priced: null`) is the one place code still reads an
+ * id-less `ValuableHolding` at runtime: `loanBreakdown`
+ * (`holding-descriptor/loan/loan.descriptor.ts`) guards `holding.id` through
+ * `foldMap(maybe(...))` rather than trusting the type, so a holding value
+ * built from a source looser than a real `HoldingRow` still values safely
+ * through an EMPTY price book instead of crashing or reading a stray point
+ * under a fabricated id.
  */
 export type ValuableHolding = Pick<
   HoldingRow,
-  'type' | 'currency' | 'balanceMinorUnits' | 'metadata'
-> & { id?: HoldingRow['id'] };
+  'type' | 'currency' | 'balanceMinorUnits' | 'metadata' | 'id'
+>;
 
 export type { HoldingValueBreakdown };
 

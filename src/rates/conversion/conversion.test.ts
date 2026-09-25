@@ -36,12 +36,14 @@ describe('netWorth', () => {
   it('sums holdings converted to the base currency', () => {
     const holdings = [
       {
+        id: 'usd-cash',
         currency: 'USD' as const,
         balanceMinorUnits: 10_000,
         type: 'cash' as const,
         metadata: null,
       },
       {
+        id: 'uah-cash',
         currency: 'UAH' as const,
         balanceMinorUnits: 100_000,
         type: 'cash' as const,

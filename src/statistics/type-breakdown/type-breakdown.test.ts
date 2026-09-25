@@ -6,6 +6,7 @@ import { holdingInstrument } from '../../prices/instrument';
 import { type BreakdownHolding, buildTypeBreakdown, type TypeSlice } from './type-breakdown';
 
 const holding = (over: Partial<HoldingRow> & Pick<HoldingRow, 'type'>): BreakdownHolding => ({
+  id: 'h1',
   currency: 'USD',
   balanceMinorUnits: 0,
   metadata: null,

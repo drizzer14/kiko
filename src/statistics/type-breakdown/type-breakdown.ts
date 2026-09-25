@@ -12,7 +12,7 @@ import { type HoldingType, holdingTypes } from '../../holdings/holding-type';
 /** A holding as the by-type bar needs it: its type plus its convertible value. */
 export type BreakdownHolding = Pick<
   HoldingRow,
-  'type' | 'currency' | 'balanceMinorUnits' | 'metadata'
+  'type' | 'currency' | 'balanceMinorUnits' | 'metadata' | 'id'
 >;
 
 /**

@@ -66,6 +66,7 @@ describe('holdingDescriptorOrUndefined', () => {
 describe('the facades tolerate an unknown stored type', () => {
   it('holdingValueBreakdown falls back to the flat stored balance', () => {
     const holding: ValuableHolding = {
+      id: 'h1',
       type: 'not-a-real-type' as HoldingType,
       currency: 'UAH',
       balanceMinorUnits: 12_345,

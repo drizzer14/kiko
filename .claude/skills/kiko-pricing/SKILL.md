@@ -258,21 +258,22 @@ holding across every bucket with no matching ledger entries: the
 series reflects the priced value at each bucket's instant, not a
 ledger reconstruction.
 
-**The optional `id` field pattern.** `ValuableHolding`
-(`src/holdings/holding-value/`) and `PricedHolding`
-(`src/holdings/priced-value/`) both declare `id` as OPTIONAL
-(`{ id?: HoldingRow['id'] }`) on their `Pick<HoldingRow, ...>` read
-types, not required — the standing convention for threading an
-identity-dependent capability (here: resolving a `holding:<id>` or
-`metal:<...>` instrument key) through a `Pick`-based read type without
-forcing every existing literal test fixture across the codebase to
-gain the field just to type-check. A holding value with no `id` (a
-synthetic fixture, or any caller that only has the `Pick`ed fields)
-simply cannot resolve its own instrument key, so `pricedValueMinor`
-treats it identically to "no stored price point yet" (falls back to
-cost basis) — never a runtime error. Apply the same optional-`id`-on-a-
-`Pick` pattern the next time a capability needs a holding's identity
-threaded through one of these narrowed read types.
+**`id` is required on the value read types.** `ValuableHolding`
+(`src/holdings/holding-value/`), `PricedHolding`
+(`src/holdings/priced-value/`), `BreakdownHolding`
+(`src/statistics/type-breakdown/`), and `ContributionHolding`
+(`src/statistics/account-contribution/`) all include `id` as a plain
+required member of their `Pick<HoldingRow, ...>` — every real caller
+already has a full row. `property_item`'s own `value` no longer guards
+a missing `id` (that branch was dead once the type required one); a
+test that needs to exercise an id-less object at runtime (never a real
+stored row) builds it and casts it back to the read type, rather than
+widening the type back to optional — see the loan case next.
+`loan.descriptor.ts`'s `loanBreakdown` is the one place that still
+reads `holding.id` defensively (`foldMap(maybe(...))`) despite the
+type now guaranteeing it, precisely because a value built from a
+source looser than a real `HoldingRow` can still omit it at runtime;
+that guard stays.
 
 ## Recording a lot: LotForm and the sell cost rule
 

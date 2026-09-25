@@ -9,6 +9,7 @@ const card = (
   currency: ValuableHolding['currency'],
   balanceMinorUnits: number,
 ): ValuableHolding => ({
+  id: 'card-1',
   type: 'card',
   currency,
   balanceMinorUnits,
@@ -38,6 +39,7 @@ describe('sumByCurrency', () => {
   it('values a term deposit at its net-of-tax computed value, not its raw balance', () => {
     const now = START + 365 * day;
     const deposit: ValuableHolding = {
+      id: 'deposit-1',
       type: 'term_deposit',
       currency: 'UAH',
       // Deliberately different from the computed value to prove valuation is used.

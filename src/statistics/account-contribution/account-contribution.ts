@@ -18,7 +18,7 @@ export type ContributionAccount = Pick<AccountRow, 'id' | 'name' | 'kind' | 'col
 /** A holding as the pie chart needs it: its account plus its convertible value. */
 export type ContributionHolding = Pick<
   HoldingRow,
-  'accountId' | 'currency' | 'balanceMinorUnits' | 'type' | 'metadata'
+  'accountId' | 'currency' | 'balanceMinorUnits' | 'type' | 'metadata' | 'id'
 >;
 
 /**

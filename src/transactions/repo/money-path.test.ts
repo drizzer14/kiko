@@ -80,7 +80,8 @@ describe('Money-path guard: split-change + convert prefill', () => {
 
     // Apply the captured balance writes back onto the holdings and sum net worth
     // in UAH (base == each holding's currency, so no rate needed).
-    const finalBalances = updates.map((update) => ({
+    const finalBalances = updates.map((update, index) => ({
+      id: `holding-${index}`,
       currency: 'UAH' as const,
       balanceMinorUnits: update.values.balanceMinorUnits as number,
       type: 'cash' as const,

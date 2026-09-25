@@ -16,19 +16,8 @@ export const isPricedHoldingType = (type: HoldingType): boolean => {
   return priced !== undefined && priced !== null;
 };
 
-/**
- * A holding as `pricedValue` needs it. `id` is optional (mirroring
- * `ValuableHolding` — `src/holdings/holding-value/`) so a synthetic test
- * fixture with no real row still type-checks. Whether a missing `id` matters
- * is per-spec (`PricedSpec.value`, `holding-descriptor/priced-parts`):
- * `property_item` reads its own `holding:<id>` instrument and cannot resolve
- * one without an id (treated the same as no stored price point, null);
- * `metal` reads the SHARED `metal:<XAU|XAG|XPT|XPD>` instrument and needs no
- * id at all.
- */
-export type PricedHolding = Pick<HoldingRow, 'type' | 'currency' | 'metadata'> & {
-  id?: HoldingRow['id'];
-};
+/** A holding as `pricedValue` needs it — every real holding row has an `id`. */
+export type PricedHolding = Pick<HoldingRow, 'type' | 'currency' | 'metadata' | 'id'>;
 
 /**
  * A priced holding's value, as Money, at `instant`'s local day. Dispatches to

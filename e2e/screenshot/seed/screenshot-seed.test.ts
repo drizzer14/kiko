@@ -125,6 +125,7 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     const holdings = dataset.accounts
       .flatMap((account) => account.holdings)
       .map((holding) => ({
+        id: holding.name,
         type: holding.type,
         currency: holding.currency,
         balanceMinorUnits: sumBalance(holding.transactions),
