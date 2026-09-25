@@ -857,7 +857,7 @@ decimal-string rule.
   still mapping to the nearest boundary installment — both bounds are
   inclusive, only a payment strictly beyond one counts 0.
 
-`holding-value.ts`'s valuation branch (`gross = net = -outstanding`,
+`holding-descriptor/loan/loan.descriptor.ts`'s valuation branch (`gross = net = -outstanding`,
 `principalOrCost = -principal`, interest/tax always 0 — a loan never
 accrues either AT VALUATION time) and the net-worth assets-minus-debt
 rule change landed at T27. The `loanHoldingId` link column + its repo
