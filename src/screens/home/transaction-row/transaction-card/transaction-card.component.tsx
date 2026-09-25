@@ -11,7 +11,7 @@ import { styles } from './transaction-card.styles';
 import type { TransactionCardProps } from './transaction-card.props';
 
 /**
- * The shared transaction card body (F3 fix round 1, C1): the presentational
+ * The shared transaction card body: the presentational
  * `Card` content Home's `TransactionRow` used to own inline — category icon,
  * title, amount, optional footer captions — extracted so any OTHER preview
  * of "what a transaction looks like" (the statement-import/column-mapping

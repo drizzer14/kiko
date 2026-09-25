@@ -40,9 +40,9 @@ const TransactionRow: FC<TransactionRowProps> = ({
   // resolves which from the transaction's own `source`, so the row only needs
   // to pass the id.
   //
-  // The row's presentational body is the shared `TransactionCard` (F3 fix
-  // round 1, C1) — the SAME card `ExampleTransaction` previews a statement
-  // import through, so a real Home row and its import preview render
+  // The row's presentational body is the shared `TransactionCard` — the
+  // SAME card `ExampleTransaction` previews a statement import through, so
+  // a real Home row and its import preview render
   // identically. `TransactionCard` owns the `Card` content surface itself;
   // this component keeps only the tap/hold wrapping below.
   //

@@ -215,11 +215,11 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
       </Pressable>
 
       {/* `scrollable={false}`: the Clear/Apply row below must stay reachable
-          regardless of scroll position (F5 fix requires every sheet's
-          overflow to scroll, but never at the cost of hiding its actions), so
-          this sheet owns its own inner ScrollView around just the heading +
-          calendar rather than the shared one BottomSheet would otherwise wrap
-          ALL of children in. */}
+          regardless of scroll position (every sheet's overflow must scroll,
+          but never at the cost of hiding its actions), so this sheet owns
+          its own inner ScrollView around just the heading + calendar rather
+          than the shared one BottomSheet would otherwise wrap ALL of
+          children in. */}
       <BottomSheet
         visible={open}
         onDismiss={() => setOpen(false)}

@@ -27,7 +27,7 @@ jest.mock('../../../../design-system/components/money-text', () => {
 });
 
 describe('TransactionCard', () => {
-  // F3 fix round 1, C1: an income preview row shows the description as its
+  // An income preview row shows the description as its
   // title, the category icon, and the income (positive/green) color — the
   // same as Home's own TransactionRow (verified here by the "transaction"
   // context + positive sign combination MoneyText resolves to `positive`).
