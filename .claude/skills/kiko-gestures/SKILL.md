@@ -87,6 +87,17 @@ full crash chain, and the "Every function called inside a worklet..."
 rule above for the RELEASE-vs-Debug verification gap this class of bug
 shares.
 
+## No swipe actions — row edit/delete is the long-press CardContextMenu
+
+Swipe actions were removed on purpose. A row's edit/delete is the
+long-press `CardContextMenu` (Edit/Duplicate/Delete), never a swipe
+gesture. Do not propose or add one: no gesture-handler `Swipeable` /
+`ReanimatedSwipeable`, no swipe-list package, no fling recognizer
+(`Gesture.Fling()`, `useFlingGesture`, `FlingGestureHandler`), no
+swipe-named row component. The bottom sheet's drag-to-dismiss
+(`Gesture.Pan()`) stays allowed. Mechanized as `kiko-no-swipe-action`
+(ERROR, `rules/semgrep-prewrite.yml`).
+
 ## `runOnJS(true)` for non-worklet callbacks
 
 `CardContextMenu`'s (`src/design-system/components/card-context-menu/`)

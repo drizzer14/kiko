@@ -19,5 +19,6 @@
     "react-native-screens",
     "typescript",
     "@kiko/*"
-  ]
+  ],
+  "ignorePatterns": ["rules/fixtures"]
 }

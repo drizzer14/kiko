@@ -779,7 +779,9 @@ new component can land between reviews of this skill:
   so a synced card stays reorderable. This replaced the app's earlier
   swipe-to-reveal-delete row (`SwipeableRow`, removed) as the one
   delete-affordance pattern; a new deletable card/row wraps in this
-  rather than reintroducing a swipe gesture.
+  rather than reintroducing a swipe gesture. No swipe actions anywhere:
+  row edit/delete = long-press `CardContextMenu` (`kiko-no-swipe-action`,
+  see kiko-gestures).
 - **SymbolIcon** — wraps an SF Symbol glyph
   (`react-native-nitro-sfsymbols`); see "SF Symbol `tintColor` gotcha"
   below before passing it a color.

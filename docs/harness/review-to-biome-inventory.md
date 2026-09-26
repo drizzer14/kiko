@@ -204,6 +204,12 @@ because it can compare against the actual pinned set.
 |---|---|---|---|
 | `kiko-balance-through-repo` | kiko-domain "Money at the boundary" (D7b): a stored holding row's raw `balanceMinorUnits` column converts to `Money` in exactly one place, the new `holdingsRepo.balanceOf(row)` | Semgrep (TS, WARNING/Class B) | Matches any `$X.balanceMinorUnits` member expression (Semgrep is not type-aware, so this is syntactic — it cannot tell a `HoldingRow` from an unrelated shape that happens to carry a same-named field), excluding `src/**/repo/**`, `src/accounts/accounts.repo.ts`, `src/db/**`, `src/data-transfer/**`, and every `*.test.ts`/`*.test.tsx`. Class B because of that type-obliviousness — verified on the real tree: it drew exactly one finding, `src/crypto-sync/sync/sync.ts`'s `balance.balanceMinorUnits` (a `ProviderBalance` field, not a stored row), fixed by destructuring the parameter instead of reordering behavior, rather than an OVERRIDE. Own fixture pair (`kiko-balance-through-repo.bad.ts` / `.good.ts`); the good fixture imports the real `holdingsRepo` (mirroring the `kiko-no-textdecoder-textencoder` good fixture's pattern of importing the real replacement module) rather than re-declaring a local `balanceOf`-shaped helper, since a locally re-implemented one would itself contain the exact member read the rule bans. |
 
+### Enforced — 2026-09-26 FB1-MECH (FB1 + P6 findings)
+
+| Rule id | Finding | Enforce via | Notes |
+|---|---|---|---|
+| `kiko-no-swipe-action` | FB1 user feedback: swipe actions were removed on purpose; row edit/delete is the long-press `CardContextMenu` (kiko-gestures "No swipe actions") | Semgrep (TS, ERROR, `semgrep-prewrite.yml`) | A `pattern-either` of: an import whose module path matches `(?i)swipe` (gesture-handler's `react-native-gesture-handler/ReanimatedSwipeable`, a swipe-list package), a named import matching `(?i)(swipe\|fling)` (`FlingGestureHandler`, v3 `useFlingGesture`), `Gesture.Fling(...)` / `useFlingGesture(...)`, and a JSX element whose name matches `(?i)(swipe\|fling)`. `Gesture.Pan()` (the bottom sheet's drag-to-dismiss) and `Gesture.LongPress()` never match; comments and test-id strings never match (AST arms). The fixture must type-check (tsconfig includes `rules/fixtures`), so the swipe-list-package arm has no fixture line: that package is not installed. `.depcheckrc.json` got `ignorePatterns: ["rules/fixtures"]` (documented-exceptions.md). No existing violations. |
+
 ## Go-forward process (to wire into the retrospect/scribe loop)
 
 After each code review, triage every finding:
