@@ -299,6 +299,7 @@ describe('runBalanceSync', () => {
     const originalUpsertHoldings = deps.upsertHoldings;
     deps.upsertHoldings = async (holdingsList) => {
       upsertCalled = true;
+
       return originalUpsertHoldings?.(holdingsList);
     };
 

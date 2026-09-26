@@ -309,6 +309,7 @@ describe('refreshMetalPrices', () => {
     const knownEmptyBackwardFloors = new Map<Metal, number>();
     const deps = backwardGapDeps(async () => {
       historyCallCount += 1;
+
       return [];
     }, knownEmptyBackwardFloors);
 

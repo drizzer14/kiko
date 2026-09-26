@@ -82,7 +82,7 @@ jest.mock('@kiko/sync/refresh-market-data', () => ({
 jest.mock('@kiko/loans/use-loan-auto-link', () => ({
   runLoanAutoLink: jest.fn().mockResolvedValue(undefined),
 }));
-jest.mock('../scroll-to-field/scroll-to-field');
+jest.mock('../../../design-system/scroll-to-field/scroll-to-field');
 
 const updateDeltaMock = holdingsRepo.updateWithBalanceDelta as jest.Mock;
 

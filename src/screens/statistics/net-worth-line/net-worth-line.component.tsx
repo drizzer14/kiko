@@ -362,6 +362,7 @@ export const buildLineSegments = (
   // referenceY gives xCross = x2), which would otherwise duplicate it.
   const pushVertex = (vertices: string[], x: number, y: number): void => {
     const vertex = `${x},${y}`;
+
     if (vertices[vertices.length - 1] !== vertex) {
       vertices.push(vertex);
     }

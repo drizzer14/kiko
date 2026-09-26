@@ -441,6 +441,7 @@ describe('runBackfill — a newly-held currency with no stored history yet', () 
       today: day(2),
       fetchNbuHistory: async (start, end) => {
         nbuCalls.push([start, end]);
+
         return nbu;
       },
       fetchCryptoHistory,
@@ -458,6 +459,7 @@ describe('runBackfill — a newly-held currency with no stored history yet', () 
     const cryptoCalls: number[] = [];
     const { deps, nbuCalls } = unreturnedCoinDeps(knownEmptyCurrencies, async (days) => {
       cryptoCalls.push(days);
+
       return answered(crypto.filter((entry) => entry.base === 'BTC'));
     });
 

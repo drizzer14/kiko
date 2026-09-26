@@ -166,6 +166,7 @@ const planRefresh = (
     }
 
     const knownEmptyFloor = knownEmptyBackwardFloors.get(metal);
+
     if (
       earliestLotDay < stored.firstStoredDay &&
       (knownEmptyFloor === undefined || earliestLotDay < knownEmptyFloor)

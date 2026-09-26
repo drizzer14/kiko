@@ -258,6 +258,7 @@ describe('useLiveQuery', () => {
     let callCount = 0;
     const sameKeyQuery = queryDouble([], (resolve, reject) => {
       callCount += 1;
+
       if (callCount === 1) {
         resolveFirst = resolve;
       } else {

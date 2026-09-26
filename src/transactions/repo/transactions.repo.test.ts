@@ -1248,6 +1248,7 @@ describe('transactionsRepo.setAutoLoanLinks', () => {
         from: () => ({
           where: (whereArg: unknown) => {
             selectWhereArgs.push(whereArg);
+
             return Promise.resolve(existingLoanHoldingIds.map((id) => ({ id })));
           },
         }),
