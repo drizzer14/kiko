@@ -857,4 +857,12 @@ describe('AccountsScreen — the price_points gate', () => {
     const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
     expect(priceCall?.[2]).toBe(true);
   });
+
+  it('reads price_points in parallel while holdings are still on their first load', async () => {
+    setLiveData({ isLoading: { holdings: true } });
+    await renderAccounts();
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(true);
+  });
 });

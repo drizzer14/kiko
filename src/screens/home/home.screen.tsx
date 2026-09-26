@@ -117,9 +117,11 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   ]);
   // kiko-architecture: skip the price_points read while nothing rendered on
   // this screen ever reads it — a holding whose type carries no priced spec
-  // and is not a loan (`needsPriceBook`) never touches `price_points`.
+  // and is not a loan (`needsPriceBook`) never touches `price_points`. It
+  // stays enabled while holdings are still on their first load, so the two
+  // reads run in parallel instead of price_points waiting on holdings.
   const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
-    holdings.some((holding) => needsPriceBook(holding.type)),
+    holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
   );
   const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(settingsRepo.getQuery(), [
     'settings',

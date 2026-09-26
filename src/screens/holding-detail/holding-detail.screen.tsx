@@ -570,9 +570,12 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   ]);
   // kiko-architecture: skip the price_points read while this specific
   // holding's type never reads it — a type carrying no priced spec and not
-  // a loan (`needsPriceBook`) never touches `price_points`.
+  // a loan (`needsPriceBook`) never touches `price_points`. It stays enabled
+  // while holdings are still on their first load, so the two reads run in
+  // parallel instead of price_points waiting on holdings.
   const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
-    holdings.some((candidate) => candidate.id === holdingId && needsPriceBook(candidate.type)),
+    holdingsLoading ||
+      holdings.some((candidate) => candidate.id === holdingId && needsPriceBook(candidate.type)),
   );
 
   // Resolve each transaction row's stored category to its display (icon + title)

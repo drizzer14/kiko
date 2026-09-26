@@ -417,10 +417,14 @@ gate says there is nothing to do.
   `isLoading: false` — ready, never stuck (a gated-off screen must
   still flip its overall readiness, never spin forever on a query it
   deliberately never ran). `usePriceBook(enabled)` forwards straight
-  through; a screen passes `holdings.some((holding) =>
+  through; a screen passes `holdingsLoading || holdings.some((holding) =>
   needsPriceBook(holding.type))` (or the one displayed holding, for a
   detail screen) — never a conditional call to the hook itself, which
-  Rules of Hooks forbids. `needsPriceBook` (`src/holdings/priced-value/`)
+  Rules of Hooks forbids. The `holdingsLoading ||` is required: without
+  it `holdings` reads `[]` during its first load, so the price_points
+  read only STARTS after holdings resolve (a waterfall that doubled
+  readiness for a loan/property/metal user); with it both reads run in
+  parallel and price_points disables afterwards if nothing needs it. `needsPriceBook` (`src/holdings/priced-value/`)
   is true for a priced type (`property_item`/`metal`) OR `loan` (not
   priced, but reads its own `holding:<id>` series the same way,
   kiko-pricing) — the one predicate every call site uses.
