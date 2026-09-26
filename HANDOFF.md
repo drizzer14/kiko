@@ -21,7 +21,7 @@ coordinator = SendMessage target).
 | ipad-adaptive-e7, duo-adaptive-d4 | own worktrees | — | idle, unmerged; user: KEEP |
 
 ### Next steps for the coordinator, in order (user-approved END ORDER)
-1. Guard final report -> merge pre-write-guard INTO feat/assets-debts (onto the feat tip; last known 144d2967). Expect a conflict in
+1. DONE 2026-09-26: guard merged into feat (2163a66b + fixup 5307e076, make verify 386/5003 coordinator-verified); guard worktree+branch pruned; notes copied to feat .superpowers/sdd/2026-09-25-pre-write-guard/; plugin 0.2.1 on main (4d0daf62, c22d3fb7), next == main. NEW queued feat task IMPORTS (@kiko alias + barrels across feature folders; memory imports-kiko-alias-and-barrels) after the FB1 deployable, before T43. KEYS: full list shown to the user for approval 2026-09-26 (A 1-40, B 41-51). Was: Guard final report -> merge pre-write-guard INTO feat/assets-debts (onto the feat tip; last known 144d2967). Expect a conflict in
    src/rates/rates-refresh/rates-refresh.ts (~327: take FEAT's side, 0898a16c) and rule-11 blank-line hits in feat code (run
    node scripts/checks/blank-line-separation.js --write + import-order.js --write in a fixup commit, like 9ab2cf2f). Keep the rule
    move intact: kiko-no-switch / kiko-no-nullable-map-ternary / kiko-no-use-animated-keyboard / kiko-no-history-id-comment only in
