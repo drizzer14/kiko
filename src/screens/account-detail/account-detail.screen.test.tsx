@@ -356,18 +356,17 @@ describe('AccountDetailScreen', () => {
     expect(StyleSheet.flatten(row.props.style).flexDirection).toBe('row');
   });
 
-  it('makes the connected Sync button blue (primary) and keeps Disconnect neutral', async () => {
+  it('keeps the connected Sync button and Disconnect both neutral (secondaryTonal)', async () => {
     setLiveData({ accounts: [account({ institution: 'monobank' })] });
 
     mockButtonProps.length = 0;
     await renderScreen();
 
-    // Once connected, Sync is the affirmative re-import CTA in the solid blue
-    // `primary` fill; Disconnect stays the neutral `secondaryTonal` tint beside
-    // it (never blue).
+    // Sync is now the same lower-emphasis `secondaryTonal` tint as Disconnect
+    // beside it — the pinned account-detail Sync button style.
     const syncEntry = mockButtonProps.find((entry) => entry.children === 'Sync');
     const disconnectEntry = mockButtonProps.find((entry) => entry.children === 'Disconnect');
-    expect(syncEntry?.variant).toBe('primary');
+    expect(syncEntry?.variant).toBe('secondaryTonal');
     expect(disconnectEntry?.variant).toBe('secondaryTonal');
   });
 

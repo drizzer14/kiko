@@ -23,6 +23,7 @@ import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
 import { bankProviderRegistry } from '../../../bank-sync/registry';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
+import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
 import ConfirmSheet from '../../../design-system/components/confirm-sheet';
 
 type BankSyncSectionProps = {
@@ -225,36 +226,17 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
             </Box>
           )}
 
-          {/* Sync and Disconnect share a single row. Sync is the affirmative
-              blue `primary` re-import CTA; Disconnect stays a neutral tonal
-              action beside it — never blue. */}
-          <Box direction="row" gap={2} testID="bank-sync-actions-row">
-            <Button
-              variant="primary"
-              size="small"
-              fullWidth={false}
-              onPress={() => {
-                sync(account.id);
-              }}
-              disabled={isSyncing}
-              // iOS-26 rotate glyph; the central IOS26_SYMBOL_FALLBACKS map
-              // (symbol.availability.ts) hands SymbolIcon the iOS-16-safe
-              // `arrow.triangle.2.circlepath` on a pre-26 device automatically,
-              // even through the shared Button's `icon` prop.
-              icon="arrow.trianglehead.2.clockwise.rotate.90"
-            >
-              {isSyncing ? t('accountDetail.syncing') : t('accountDetail.syncNow')}
-            </Button>
-            <Button
-              variant="secondaryTonal"
-              size="small"
-              fullWidth={false}
-              onPress={confirmDisconnect}
-              icon="lock.open"
-            >
-              {t('accountDetail.disconnectAction')}
-            </Button>
-          </Box>
+          {/* Sync and Disconnect share a single row — the shared
+              SyncDisconnectActionsRow (both the neutral `secondaryTonal`
+              treatment, never blue). */}
+          <SyncDisconnectActionsRow
+            onSync={() => {
+              sync(account.id);
+            }}
+            isSyncing={isSyncing}
+            onDisconnect={confirmDisconnect}
+            testID="bank-sync-actions-row"
+          />
         </Box>
 
         {error !== undefined && (
@@ -316,7 +298,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
               pick and re-shows "Add a bank". */}
           {bankIdProviderId === undefined && (
             <Button
-              variant="ghost"
+              variant="secondaryTonal"
               size="small"
               fullWidth={false}
               onPress={() => setSelectedProviderId(undefined)}

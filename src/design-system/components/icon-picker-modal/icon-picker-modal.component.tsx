@@ -110,7 +110,12 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
           </Button>
         )}
 
-        <Button variant="secondary" fullWidth={false} onPress={onDismiss}>
+        <Button
+          variant="ghost"
+          textColor={theme.colors.negative}
+          fullWidth={false}
+          onPress={onDismiss}
+        >
           {t('common.cancel')}
         </Button>
       </SheetFooter>

@@ -14,11 +14,11 @@ import CryptoSyncForm from '../crypto-sync-form';
 import { styles } from '../account-detail.styles';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
-import Button from '../../../design-system/components/button';
 import type { AccountRow, HoldingRow } from '../../../db/schema';
 import SymbolIcon from '../../../design-system/components/symbol';
 import { resyncRequest } from '../../../crypto-sync/resync-request';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
+import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
 import { formatLastSyncAt, latestSyncedAt } from '../format-last-sync';
 import { disconnectCryptoAccount } from '../../../crypto-sync/disconnect';
 import ConfirmSheet from '../../../design-system/components/confirm-sheet';
@@ -99,37 +99,17 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
             </Text>
           </Box>
 
-          {/* Sync and Disconnect share a single row. Sync is the affirmative blue
-              `primary` re-import action; Disconnect stays a neutral tonal action
-              beside it — never blue. */}
-          <Box direction="row" gap={2} testID="crypto-sync-actions-row">
-            <Button
-              variant="primary"
-              size="small"
-              fullWidth={false}
-              onPress={() => {
-                sync(resyncRequest(connectedProvider, account.id));
-              }}
-              disabled={isSyncing}
-              // iOS-26 rotate glyph; the central IOS26_SYMBOL_FALLBACKS map
-              // (symbol.availability.ts) hands SymbolIcon the iOS-16-safe
-              // `arrow.triangle.2.circlepath` on a pre-26 device for free, even
-              // through the shared Button's `icon` prop.
-              icon="arrow.trianglehead.2.clockwise.rotate.90"
-            >
-              {isSyncing ? t('accountDetail.syncing') : t('accountDetail.syncNow')}
-            </Button>
-
-            <Button
-              variant="secondaryTonal"
-              size="small"
-              fullWidth={false}
-              onPress={confirmDisconnect}
-              icon="lock.open"
-            >
-              {t('accountDetail.disconnectAction')}
-            </Button>
-          </Box>
+          {/* Sync and Disconnect share a single row — the shared
+              SyncDisconnectActionsRow (both the neutral `secondaryTonal`
+              treatment, never blue). */}
+          <SyncDisconnectActionsRow
+            onSync={() => {
+              sync(resyncRequest(connectedProvider, account.id));
+            }}
+            isSyncing={isSyncing}
+            onDisconnect={confirmDisconnect}
+            testID="crypto-sync-actions-row"
+          />
         </Box>
 
         {error !== undefined && (

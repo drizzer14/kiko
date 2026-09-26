@@ -34,6 +34,9 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-literal-sync-error',
   'kiko-no-literal-biometric-label',
   'kiko-worklet-directive-required',
+  'kiko-pinned-sync-button-variant',
+  'kiko-pinned-change-bank-button-variant',
+  'kiko-pinned-cancel-button-style',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
