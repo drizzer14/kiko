@@ -16,9 +16,9 @@ import {
   type TermUnit,
 } from '../../../term-field/term-reasons';
 import { saveMetadataEdit } from '../../save-metadata-edit';
-import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
 import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
+import type { FieldInstance } from '../../../../../design-system/scroll-to-field/scroll-to-field';
 
 import {
   parsedContributions,

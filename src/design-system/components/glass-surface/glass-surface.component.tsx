@@ -20,9 +20,13 @@ const resolveBackdropFill = (
   isBloom: boolean,
 ) => {
   if (tint !== undefined) return styles.opaqueBase;
+
   if (isBloom) return false;
+
   if (isStrong) return styles.strongTranslucentBase;
+
   if (isTransparent) return styles.translucentBase;
+
   return false;
 };
 
@@ -40,7 +44,9 @@ const resolveFallbackFill = (
   isBloom: boolean,
 ) => {
   if (isStrong) return styles.strongTranslucentBase;
+
   if (isTransparent || isMaterial || isBloom) return styles.translucentBase;
+
   return styles.opaqueBase;
 };
 
@@ -52,7 +58,9 @@ const resolveFallbackFill = (
 // token doc comments for why the non-glass fallback does not need it.
 const resolveWashFill = (tint: string | undefined, isStrong: boolean, isGlassPath: boolean) => {
   if (tint !== undefined) return { backgroundColor: tint };
+
   if (isStrong && isGlassPath) return styles.strongWash;
+
   return undefined;
 };
 

@@ -1,6 +1,7 @@
 let mockDatabaseTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
+
   return {
     ...actual,
     write: (work: (databaseTransaction: unknown) => unknown) => work(mockDatabaseTransaction),
@@ -29,6 +30,7 @@ const makeDatabaseTransaction = (
       set: (values: Record<string, unknown>) => ({
         where: (whereArg: unknown) => {
           captured.push({ table, set: values, whereArg });
+
           return Promise.resolve();
         },
       }),
@@ -232,6 +234,7 @@ describe('upgradeStoredDedupKeys', () => {
             if (table === transactions) {
               capturedWhereArg = whereArg;
             }
+
             return Promise.resolve(table === settings ? [{ dedupKeysUpgraded: false }] : []);
           },
         }),

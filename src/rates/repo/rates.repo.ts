@@ -16,6 +16,7 @@ export const ratesRepo = {
    */
   latestFetchedAt: async (): Promise<number | null> => {
     const rows = await database.select({ value: max(currencyRates.fetchedAt) }).from(currencyRates);
+
     return rows.at(0)?.value ?? null;
   },
   /**

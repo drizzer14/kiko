@@ -2,6 +2,7 @@
 let mockDatabaseTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
+
   return { ...actual, write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction) };
 });
 
@@ -27,15 +28,25 @@ import { restoreDataSnapshot } from './restore-snapshot';
 
 const tableNameOf = (table: unknown): string => {
   if (table === accounts) return 'accounts';
+
   if (table === holdings) return 'holdings';
+
   if (table === transactions) return 'transactions';
+
   if (table === currencyRates) return 'currencyRates';
+
   if (table === currencyRateHistory) return 'currencyRateHistory';
+
   if (table === settings) return 'settings';
+
   if (table === syncState) return 'syncState';
+
   if (table === categories) return 'categories';
+
   if (table === categoryOverrides) return 'categoryOverrides';
+
   if (table === pricePoints) return 'pricePoints';
+
   if (table === bondRegister) return 'bondRegister';
   throw new Error('unknown table');
 };
@@ -54,6 +65,7 @@ const makeRowCapturingDatabaseTransaction = (): {
       values: (rows: unknown[]) => {
         const name = tableNameOf(table);
         insertedRows[name] = [...(insertedRows[name] ?? []), ...rows];
+
         return Promise.resolve();
       },
     }),
@@ -85,6 +97,7 @@ describe('restoreDataSnapshot', () => {
     mockDatabaseTransaction = {
       delete: (table: unknown) => {
         deletedTables.push(tableNameOf(table));
+
         return Promise.resolve();
       },
       insert: (table: unknown) => ({
@@ -92,6 +105,7 @@ describe('restoreDataSnapshot', () => {
           const name = tableNameOf(table);
           insertedTables.push(name);
           insertedRows[name] = [...(insertedRows[name] ?? []), ...rows];
+
           return Promise.resolve();
         },
       }),
@@ -295,6 +309,7 @@ describe('restoreDataSnapshot', () => {
           if (table === transactions) {
             insertedChunkSizes.push(rows.length);
           }
+
           return Promise.resolve();
         },
       }),
@@ -313,6 +328,7 @@ describe('restoreDataSnapshot', () => {
     const boundParametersPerChunk = insertedChunkSizes.map(
       (size) => size * transactionColumnNames.length,
     );
+
     for (const bound of boundParametersPerChunk) {
       expect(bound).toBeLessThanOrEqual(32766);
     }

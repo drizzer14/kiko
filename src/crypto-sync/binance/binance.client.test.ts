@@ -33,6 +33,7 @@ describe('fetchAccount', () => {
     const spyFetch = (async (url: string, init: SpyFetchInit) => {
       sentUrl = url;
       sentHeaders = init.headers;
+
       return { ok: true, json: async () => accountBody, status: 200 };
     }) as unknown as typeof fetch;
 
@@ -118,6 +119,7 @@ describe('fetchFundingAsset', () => {
     const spyFetch = (async (url: string, init: SpyInit) => {
       sentUrl = url;
       sentInit = init;
+
       return { ok: true, json: async () => [], status: 200 };
     }) as unknown as typeof fetch;
 
@@ -169,6 +171,7 @@ const pagedFetch = (
     calls.push(url);
     const current = new URL(url).searchParams.get('current') ?? '1';
     const page = pagesByCurrent[current] ?? { rows: [], total: 0 };
+
     return { ok: true, status: 200, json: async () => page };
   }) as unknown as typeof fetch;
 
@@ -182,6 +185,7 @@ describe('fetchFlexiblePosition', () => {
     const spyFetch = (async (url: string, init: SpyInit) => {
       sentUrl = url;
       sentInit = init;
+
       return { ok: true, json: async () => ({ rows: [], total: 0 }), status: 200 };
     }) as unknown as typeof fetch;
 
@@ -287,6 +291,7 @@ describe('fetchFlexiblePosition', () => {
   it('rejects if a later page fails, so the caller skips the whole wallet (no partial total)', async () => {
     const spyFetch = (async (url: string) => {
       const current = new URL(url).searchParams.get('current');
+
       if (current === '1') {
         return {
           ok: true,
@@ -294,6 +299,7 @@ describe('fetchFlexiblePosition', () => {
           json: async () => ({ rows: Array.from({ length: 100 }, () => flexRow), total: 150 }),
         };
       }
+
       return {
         ok: false,
         status: 429,
@@ -321,6 +327,7 @@ describe('fetchDepositHistory', () => {
     const spyFetch = (async (url: string, init: SpyInit) => {
       sentUrl = url;
       sentInit = init;
+
       return { ok: true, json: async () => [], status: 200 };
     }) as unknown as typeof fetch;
 
@@ -372,6 +379,7 @@ describe('fetchWithdrawHistory', () => {
     const spyFetch = (async (url: string, init: SpyInit) => {
       sentUrl = url;
       sentInit = init;
+
       return { ok: true, json: async () => [], status: 200 };
     }) as unknown as typeof fetch;
 
@@ -431,6 +439,7 @@ describe('fetchLockedPosition', () => {
     const spyFetch = (async (url: string, init: SpyInit) => {
       sentUrl = url;
       sentInit = init;
+
       return { ok: true, json: async () => ({ rows: [], total: 0 }), status: 200 };
     }) as unknown as typeof fetch;
 

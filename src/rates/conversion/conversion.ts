@@ -41,10 +41,12 @@ export const rateTableFromRows = (rows: RateRow[]): RateTable => {
       continue;
     }
     const rate = Number(row.rate);
+
     if (Number.isFinite(rate) && rate > 0) {
       table[row.base] = rate;
     }
   }
+
   return table;
 };
 
@@ -65,6 +67,7 @@ export const rateBetween = (rates: RateTable, from: Currency, to: Currency): num
   }
   const fromPrice = uahPer(rates, from);
   const toPrice = uahPer(rates, to);
+
   if (
     fromPrice === undefined ||
     toPrice === undefined ||
@@ -75,6 +78,7 @@ export const rateBetween = (rates: RateTable, from: Currency, to: Currency): num
   ) {
     return undefined;
   }
+
   return fromPrice / toPrice;
 };
 
@@ -83,10 +87,12 @@ export const convert = (money: Money, target: Currency, rates: RateTable): Money
     return money;
   }
   const rate = rateBetween(rates, money.currency, target);
+
   if (rate === undefined) {
     throw new Error(`Missing rate ${money.currency}->${target}`);
   }
   const sourceMajor = money.minorUnits / 10 ** currencyScale[money.currency];
+
   return Money.fromMajor(target, sourceMajor * rate);
 };
 

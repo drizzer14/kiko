@@ -16,7 +16,7 @@ import { styles } from './lock-gate.styles';
 const LOCK_ICON_SIZE = 56;
 
 const unlockHint = (result: AuthResult | undefined, t: TFunction): string =>
-  match(result?.kind)
+  match<AuthResult['kind'] | undefined, string>(result?.kind)
     .with(undefined, () => t('auth.hint.default'))
     .with('success', () => '')
     .with('cancelled', () => t('auth.hint.cancelled'))

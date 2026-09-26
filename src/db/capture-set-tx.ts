@@ -20,14 +20,17 @@ export const captureSetDatabaseTransaction = (): {
     update: () => ({
       set: (values: Record<string, unknown>) => {
         captured.set = values;
+
         return {
           where: () => {
             captured.whereCalled = true;
+
             return Promise.resolve();
           },
         };
       },
     }),
   };
+
   return { captured, databaseTransaction };
 };

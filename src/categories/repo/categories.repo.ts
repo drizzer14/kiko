@@ -76,6 +76,7 @@ export const categoriesRepo = {
     write(async (databaseTransaction) => {
       const settingsRows = await databaseTransaction.select().from(settings);
       const defaultKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
+
       if (key === defaultKey) {
         throw new Error('categoriesRepo.delete: cannot delete the default category');
       }

@@ -102,10 +102,12 @@ export const derivePresentCurrencies = (
   rows: Pick<CurrencyRateHistoryRow, 'base' | 'quote'>[],
 ): Currency[] => {
   const present = new Set<Currency>();
+
   for (const row of rows) {
     present.add(row.base);
     present.add(row.quote);
   }
+
   return [...present];
 };
 
@@ -133,9 +135,11 @@ export const missingDays = (
       ? toUtcMidnight(earliestDay)
       : toUtcMidnight(lastBackfilledDay) + DAY_MS;
   const days: number[] = [];
+
   for (let d = start; d <= end; d += DAY_MS) {
     days.push(d);
   }
+
   return days;
 };
 
@@ -180,6 +184,7 @@ type UahPrice = Partial<Record<Currency, number>>;
  */
 const nearestAtOrBefore = (timeline: HistoryRateEntry[], day: number): number | undefined => {
   let rate: number | undefined;
+
   for (const entry of timeline) {
     if (entry.day <= day) {
       rate = entry.rate;
@@ -187,6 +192,7 @@ const nearestAtOrBefore = (timeline: HistoryRateEntry[], day: number): number | 
       break;
     }
   }
+
   return rate;
 };
 
@@ -198,15 +204,18 @@ const anchorKey = (base: Currency, quote: Currency) => `${base}:${quote}`;
  */
 const groupTimelines = (entries: HistoryRateEntry[]): Map<string, HistoryRateEntry[]> => {
   const timelines = new Map<string, HistoryRateEntry[]>();
+
   for (const entry of entries) {
     const key = anchorKey(entry.base, entry.quote);
     const list = timelines.get(key) ?? [];
     list.push(entry);
     timelines.set(key, list);
   }
+
   for (const list of timelines.values()) {
     list.sort((a, b) => a.day - b.day);
   }
+
   return timelines;
 };
 
@@ -219,20 +228,25 @@ const uahPriceAt = (timelines: Map<string, HistoryRateEntry[]>, day: number): Ua
   const price: UahPrice = { UAH: 1 };
   const usd = nearestAtOrBefore(timelines.get('USD:UAH') ?? [], day);
   const eur = nearestAtOrBefore(timelines.get('EUR:UAH') ?? [], day);
+
   if (usd !== undefined) {
     price.USD = usd;
   }
+
   if (eur !== undefined) {
     price.EUR = eur;
   }
+
   if (usd !== undefined) {
     for (const crypto of currencyOptions.filter(isCrypto)) {
       const cryptoUsd = nearestAtOrBefore(timelines.get(`${crypto}:USD`) ?? [], day);
+
       if (cryptoUsd !== undefined) {
         price[crypto] = cryptoUsd * usd;
       }
     }
   }
+
   return price;
 };
 
@@ -250,16 +264,20 @@ export const composeHistoryRows = (
 ): NewHistoryRow[] => {
   const timelines = groupTimelines(entries);
   const rows: NewHistoryRow[] = [];
+
   for (const day of days) {
     const price = uahPriceAt(timelines, day);
+
     for (const base of allCurrencies) {
       const rate = price[base];
+
       if (rate === undefined) {
         continue;
       }
       rows.push({ base, quote: 'UAH', day, rate: String(rate), source: pairSource(base) });
     }
   }
+
   return rows;
 };
 
@@ -374,6 +392,7 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
   const effectiveLastBackfilledDay = resolveResumeCursor(lastBackfilledDay, unbackfilled);
 
   const days = missingDays(deps.earliestDay, effectiveLastBackfilledDay, today);
+
   if (days.length === 0) {
     return { state: 'complete', lastDay: lastBackfilledDay };
   }
@@ -434,5 +453,6 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
   const lastPersisted = rows.reduce((max, row) => {
     return row.day > max ? row.day : max;
   }, rows[0].day);
+
   return { state: 'complete', lastDay: lastPersisted };
 };

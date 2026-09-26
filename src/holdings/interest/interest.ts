@@ -62,6 +62,7 @@ export const daysBetween = (start: number, end: number): number => {
   const endDate = new Date(end);
   const startUtc = Date.UTC(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
   const endUtc = Date.UTC(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+
   return Math.max(0, Math.round((endUtc - startUtc) / DAY_MS));
 };
 
@@ -98,6 +99,7 @@ const atDay = (year: number, monthIndex: number, day: number): number =>
 const midCredit = (year: number, monthIndex: number, openingDay: number): number => {
   const length = daysInMonth(year, monthIndex);
   const clampedDay = Math.min(openingDay, length);
+
   return clampedDay + 1 <= length
     ? atDay(year, monthIndex, clampedDay + 1)
     : atDay(year, monthIndex + 1, 1);
@@ -120,15 +122,18 @@ export const biweeklyCreditDates = (start: number, end: number): number[] => {
   for (let guard = 0; guard < 2400; guard += 1) {
     const mid = midCredit(year, month, openingDay);
     const nextFirst = atDay(year, month + 1, 1);
+
     for (const instant of [mid, nextFirst]) {
       if (instant > start && instant <= end) {
         dates.push(instant);
       }
     }
+
     if (nextFirst > end) {
       break;
     }
     month += 1;
+
     if (month > 11) {
       month = 0;
       year += 1;
@@ -146,6 +151,7 @@ export const biweeklyCreditDates = (start: number, end: number): number[] => {
 // `daysBetween`).
 const dayAfter = (instant: number): number => {
   const d = new Date(instant);
+
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
 };
 
@@ -166,6 +172,7 @@ const depositPeriods = (
   frequency: CompoundingFrequency,
 ): DepositPeriod[] => {
   const periods: DepositPeriod[] = [];
+
   if (frequency === 'bi-weekly') {
     const credits = biweeklyCreditDates(start, maturity);
     const openingDay = new Date(start).getDate();
@@ -179,23 +186,29 @@ const depositPeriods = (
       periods.push({ periodStart: credits[i], periodEnd, capitalize });
     }
     const last = credits[credits.length - 1] ?? start;
+
     if (maturity > last) {
       periods.push({ periodStart: last, periodEnd: maturity, capitalize: true });
     }
+
     return periods;
   }
   let previous = start;
+
   for (let k = 1; ; k += 1) {
     const boundary = periodBoundary(start, frequency, k);
+
     if (boundary >= maturity) {
       break;
     }
     periods.push({ periodStart: previous, periodEnd: boundary, capitalize: true });
     previous = boundary;
   }
+
   if (maturity > previous) {
     periods.push({ periodStart: previous, periodEnd: maturity, capitalize: true });
   }
+
   return periods;
 };
 
@@ -274,6 +287,7 @@ export const depositLedger = (
 
   for (const { periodStart, periodEnd, capitalize } of depositPeriods(start, maturity, frequency)) {
     let grossExact = 0;
+
     for (const tranche of tranches) {
       const days = daysBetween(Math.max(tranche.earnFrom, periodStart), periodEnd);
       grossExact += (tranche.amountMinor * rate * days) / DAYS_PER_YEAR;
@@ -290,10 +304,12 @@ export const depositLedger = (
     pendingNetMinor += netMinor;
 
     let capitalizationMinor = 0;
+
     if (capitalize) {
       capitalizationMinor = pendingNetMinor;
       capitalizedInterestMinor += pendingNetMinor;
       tranches.push({ amountMinor: pendingNetMinor, earnFrom: dayAfter(periodEnd) });
+
       if (periodEnd <= now) {
         capitalizedGrossMinor += pendingGrossMinor;
         capitalizedTaxMinor += pendingTaxMinor;
@@ -318,6 +334,7 @@ export const depositLedger = (
   }
 
   const principalMinor = contributedBy(now);
+
   return {
     accruals,
     principalMinor,
@@ -346,11 +363,13 @@ export const depositAccruedMajor = (
   now: number,
 ): number => {
   const active = contributions.filter((c) => c.date <= now);
+
   if (active.length === 0) {
     return 0;
   }
   const maturity = depositMaturity(active, termMonths);
   const end = Math.min(now, maturity);
+
   return active.reduce(
     (sum, c) =>
       sum + accruedMajor(c.amountMajor, annualRatePct, daysBetween(dayAfter(c.date), end)),
@@ -372,6 +391,7 @@ export const monthsPerCouponPeriod = (frequency: BondCouponFrequency): number =>
 // The 15th ("middle") of the calendar month that `instant` falls in.
 const midMonth = (instant: number): number => {
   const d = new Date(instant);
+
   return atDay(d.getFullYear(), d.getMonth(), 15);
 };
 
@@ -389,9 +409,11 @@ export const bondCouponDates = (
 ): number[] => {
   const months = monthsPerCouponPeriod(frequency);
   const dates: number[] = [];
+
   for (let k = 0; k < 2000; k += 1) {
     const stepped = addMonths(maturityDate, -k * months);
     const couponDate = k === 0 ? maturityDate : midMonth(stepped);
+
     if (couponDate <= purchaseDate) {
       break;
     }

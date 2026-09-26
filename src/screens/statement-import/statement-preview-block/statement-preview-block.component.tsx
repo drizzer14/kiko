@@ -6,8 +6,8 @@ import Text from '@kiko/design-system/components/text';
 import SummaryTable from '@kiko/design-system/components/summary-table';
 
 import PreviewDetailList from '../preview-detail-list';
-import ExampleTransaction from '../example-transaction';
-import TargetHoldingField from '../target-holding-field';
+import ExampleTransaction from '../../../design-system/components/example-transaction';
+import TargetHoldingField from '../../../design-system/components/target-holding-field';
 
 import { styles } from './statement-preview-block.styles';
 import type { StatementPreviewBlockProps } from './statement-preview-block.props';

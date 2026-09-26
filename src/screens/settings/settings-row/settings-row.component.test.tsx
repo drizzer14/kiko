@@ -2,7 +2,7 @@ import { Text as RNText, StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import { darkTheme } from '../../../design-system/theme';
-import GlassSurface from '../../../design-system/components/glass-surface';
+import Card from '../../../design-system/components/card';
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 
 import SettingsRow from './settings-row.component';
@@ -84,10 +84,10 @@ describe('SettingsRow', () => {
     const onPressFirst = jest.fn();
     const onPressSecond = jest.fn();
     const { getByText, getAllByRole } = await render(
-      <GlassSurface>
+      <Card>
         <SettingsRow label="First" onPress={onPressFirst} />
         <SettingsRow label="Second" onPress={onPressSecond} />
-      </GlassSurface>,
+      </Card>,
     );
 
     expect(getAllByRole('button')).toHaveLength(2);

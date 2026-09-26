@@ -2,8 +2,8 @@ import type { RefObject } from 'react';
 import type { TextInputInstance } from 'react-native';
 
 import type { TermUnit } from '../../../term-field/term-reasons';
-import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
 import type { LoanKind, LoanSchedule } from '../../../../../holdings/holding-metadata';
+import type { FieldInstance } from '../../../../../design-system/scroll-to-field/scroll-to-field';
 import type { HoldingSelectOption } from '../../../holding-select-field/holding-select-field.props';
 
 export type LoanSectionProps = {

@@ -80,6 +80,7 @@ export const refreshMarketData = async (
 
   if (options.throttled) {
     const cursor = await either<unknown, number | null>(loadLatestFetchedAt);
+
     if (isLeft(cursor)) {
       failures.push({ step: 'rates', reason: bifold(cursor) });
     } else {

@@ -17,6 +17,7 @@ export const bucketDaysForSpan = (spanMs: number): number =>
 export const bucketTimes = (from: number, to: number, bucketDays: number): number[] => {
   const step = bucketDays * DAY_MS;
   const times: number[] = [];
+
   for (let t = from; t < to; t += step) {
     times.push(t);
   }

@@ -4,6 +4,7 @@
 let mockDatabaseTransaction: unknown;
 jest.mock('../db/client', () => {
   const actual = jest.requireActual('../db/client');
+
   return {
     ...actual,
     write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
@@ -66,9 +67,11 @@ const captureSetDatabaseTransaction = (): { captured: Captured; databaseTransact
     update: () => ({
       set: (values: Record<string, unknown>) => {
         captured.set = values;
+
         return {
           where: () => {
             captured.whereCalled = true;
+
             return Promise.resolve();
           },
         };

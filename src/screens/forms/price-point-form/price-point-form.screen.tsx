@@ -7,11 +7,6 @@ import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor'
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
 import DateField from '../date-field';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '../scroll-to-field/scroll-to-field';
 import { Money } from '../../../currency/money';
 import { parseAmount } from '../../../currency/parse';
 import { dayKeyOf } from '../../../prices/price-book';
@@ -22,11 +17,16 @@ import { groupAmount } from '../amount-format/amount-format';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import { holdingInstrument } from '../../../prices/instrument';
-import { useSubmitOnce } from '../use-submit-once/use-submit-once';
+import {
+  useHeaderInset,
+  scrollToField,
+  type FieldInstance,
+} from '../../../design-system/scroll-to-field/scroll-to-field';
 import { pricePointsRepo } from '../../../prices/price-points-repo';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import TextField from '../../../design-system/components/text-field';
 import type { AccountsStackParamList } from '../../../navigation/types';
+import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
 import { type Currency, currencyScale, currencySymbol } from '../../../currency/currency';
 
 type PricePointFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'PricePointForm'>;
@@ -93,6 +93,7 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
     // A loan's outstanding can reach exactly 0 (repaid) — every other
     // priced holding's value must stay strictly positive.
     const isValidValue = isDebt ? majorValue >= 0 : majorValue > 0;
+
     if (!isValidValue) {
       setAttemptedSave(true);
       scrollToField(
@@ -120,6 +121,7 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
       // Mirrors contribution-form's Alert pattern: a write failure keeps the
       // screen open with the entered values intact.
       alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
+
       return;
     }
     navigation.goBack();

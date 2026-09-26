@@ -49,12 +49,14 @@ const toNbuDate = (ms: number): string => {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
   const day = String(date.getUTCDate()).padStart(2, '0');
+
   return `${year}${month}${day}`;
 };
 
 /** Parse NBU's `DD.MM.YYYY` `exchangedate` into a UTC-midnight epoch-ms day. */
 const parseNbuDate = (value: string): number => {
   const [day, month, year] = value.split('.').map(Number);
+
   return Date.UTC(year, month - 1, day);
 };
 
@@ -82,12 +84,15 @@ export const fetchNbuHistory = async (
   fetchImpl: typeof fetch = fetch,
 ): Promise<HistoryRateEntry[]> => {
   const entries: HistoryRateEntry[] = [];
+
   for (const { valcode, currency } of nbuValcodes) {
     const response = await fetchImpl(rangeUrl(valcode, start, end));
     const rows = await readRange(response);
+
     for (const row of rows) {
       entries.push(toEntry(currency, row));
     }
   }
+
   return entries;
 };

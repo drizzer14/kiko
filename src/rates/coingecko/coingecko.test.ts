@@ -10,6 +10,7 @@ describe('fetchCryptoPrices', () => {
     let sentUrl = '';
     const spyFetch = (async (url: string) => {
       sentUrl = url;
+
       return { ok: true, json: async () => body, status: 200 };
     }) as unknown as typeof fetch;
 
@@ -53,6 +54,7 @@ describe('fetchCryptoPrices', () => {
       let sentUrl = '';
       const spyFetch = (async (url: string) => {
         sentUrl = url;
+
         return { ok: true, json: async () => ({ bitcoin: { usd: 65_000 } }), status: 200 };
       }) as unknown as typeof fetch;
 
@@ -81,6 +83,7 @@ describe('fetchCryptoPrices', () => {
       let called = false;
       const spyFetch = (async () => {
         called = true;
+
         return { ok: true, json: async () => ({}), status: 200 };
       }) as unknown as typeof fetch;
 

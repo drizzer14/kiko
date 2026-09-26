@@ -49,8 +49,10 @@ jest.mock('@callstack/liquid-glass', () => {
     useEffect(() => {
       state.baseMountCount += 1;
     }, []);
+
     return createElement(View, props);
   };
+
   return {
     LiquidGlassView,
     isLiquidGlassSupported: false,
@@ -220,6 +222,7 @@ describe('GlassSurface', () => {
       .spyOn(globalThis, 'requestAnimationFrame')
       .mockImplementation((callback) => {
         callback(0);
+
         return 0;
       });
 
@@ -586,6 +589,7 @@ describe('GlassSurface', () => {
           .spyOn(globalThis, 'requestAnimationFrame')
           .mockImplementation((callback) => {
             callback(0);
+
             return 0;
           });
 
@@ -638,6 +642,7 @@ describe('GlassSurface', () => {
           .spyOn(globalThis, 'requestAnimationFrame')
           .mockImplementation((callback) => {
             callback(0);
+
             return 0;
           });
 
@@ -679,6 +684,7 @@ describe('GlassSurface', () => {
           .spyOn(globalThis, 'requestAnimationFrame')
           .mockImplementation((callback) => {
             callback(0);
+
             return 0;
           });
 
@@ -711,6 +717,7 @@ describe('GlassSurface', () => {
           .spyOn(globalThis, 'requestAnimationFrame')
           .mockImplementation((callback) => {
             callback(0);
+
             return 0;
           });
 

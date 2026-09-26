@@ -62,6 +62,7 @@ const RootNavigator: FC = () => {
         component={HomeStack}
         options={{ title: t('home.title'), tabBarIcon: () => ({ sfSymbol: 'house.fill' }) }}
       />
+
       <Tabs.Screen
         name="AccountsTab"
         component={AccountsStack}
@@ -70,6 +71,7 @@ const RootNavigator: FC = () => {
           tabBarIcon: () => ({ sfSymbol: genericEntitySymbol.account }),
         }}
       />
+
       <Tabs.Screen
         name="StatisticsTab"
         component={StatisticsStack}
@@ -78,6 +80,7 @@ const RootNavigator: FC = () => {
           tabBarIcon: () => ({ sfSymbol: 'chart.xyaxis.line' }),
         }}
       />
+
       <Tabs.Screen
         name="SettingsTab"
         component={SettingsStack}

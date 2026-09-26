@@ -126,6 +126,7 @@ const StatementImportStub: FC<
   return (
     <>
       <Text testID="screen-statement-import">StatementImport</Text>
+
       <Pressable
         testID="push-column-mapping"
         onPress={() =>
@@ -137,6 +138,7 @@ const StatementImportStub: FC<
       >
         <Text>Map columns manually</Text>
       </Pressable>
+
       <Pressable
         testID="push-holding-form-from-preview"
         onPress={() =>
@@ -148,6 +150,7 @@ const StatementImportStub: FC<
       >
         <Text>Create new holding</Text>
       </Pressable>
+
       <Pressable
         testID="done"
         onPress={() =>
@@ -181,12 +184,17 @@ const ColumnMappingStub: FC<NativeStackScreenProps<AccountsStackParamList, 'Colu
   return (
     <>
       <Text testID="screen-column-mapping">ColumnMapping</Text>
+
       <Text testID="column-mapping-date-column">{dateColumn ?? 'unset'}</Text>
+
       <Text testID="column-mapping-holding">{route.params.holdingId ?? 'none'}</Text>
+
       <Text testID="import-result">{importResultVisible ? 'shown' : 'hidden'}</Text>
+
       <Pressable testID="pick-date-column" onPress={() => setDateColumn(0)}>
         <Text>Pick date column</Text>
       </Pressable>
+
       <Pressable
         testID="push-holding-form-from-mapping"
         onPress={() =>
@@ -198,6 +206,7 @@ const ColumnMappingStub: FC<NativeStackScreenProps<AccountsStackParamList, 'Colu
       >
         <Text>Create new holding</Text>
       </Pressable>
+
       <Pressable
         testID="import"
         onPress={() => {
@@ -211,6 +220,7 @@ const ColumnMappingStub: FC<NativeStackScreenProps<AccountsStackParamList, 'Colu
       >
         <Text>Import</Text>
       </Pressable>
+
       <Pressable
         testID="done-column-mapping"
         onPress={() =>
@@ -277,8 +287,11 @@ const renderNavigator = () =>
           component={AccountDetailStub}
           initialParams={{ accountId: 'acc-1', name: 'Acc' }}
         />
+
         <Stack.Screen name="StatementImport" component={StatementImportStub} />
+
         <Stack.Screen name="ColumnMapping" component={ColumnMappingStub} />
+
         <Stack.Screen name="HoldingForm" component={HoldingFormStub} />
       </Stack.Navigator>
     </NavigationContainer>,

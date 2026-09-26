@@ -21,6 +21,7 @@ const eurRows: NbuRow[] = [
 const makeFetch = (byValcode: Record<string, NbuRow[]>, ok = true): typeof fetch =>
   (async (url: string) => {
     const valcode = new URL(url).searchParams.get('valcode') ?? '';
+
     return {
       ok,
       status: ok ? 200 : 500,
@@ -37,12 +38,14 @@ describe('fetchNbuHistory', () => {
     const spyFetch = (async (url: string) => {
       urls.push(url);
       const valcode = new URL(url).searchParams.get('valcode') ?? '';
+
       return { ok: true, status: 200, json: async () => (valcode === 'usd' ? usdRows : eurRows) };
     }) as unknown as typeof fetch;
 
     await fetchNbuHistory(start, end, spyFetch);
 
     expect(urls).toHaveLength(2);
+
     for (const url of urls) {
       const params = new URL(url).searchParams;
       expect(url.startsWith('https://bank.gov.ua/NBU_Exchange/exchange_site')).toBe(true);

@@ -37,10 +37,12 @@ const TROY_OUNCE_GRAMS = '31.1034768';
 // or a missing price point.
 const metalValue = (holding: PricedHolding, book: PriceBook, instant: number): Money | null => {
   const meta = asMetalMeta(holding.metadata);
+
   if (meta === null) {
     return null;
   }
   const point = priceAt(book, metalInstrument(meta.metal), instant);
+
   if (point === undefined) {
     return null;
   }
@@ -72,6 +74,7 @@ const metalPricedSpec: PricedSpec = {
 // with no separate branch per direction needed.
 const metalEntries = (holding: ValuableHolding, now: number, t: TFunction): DerivedEntry[] => {
   const meta = asMetalMeta(holding.metadata);
+
   if (meta === null) {
     return [];
   }

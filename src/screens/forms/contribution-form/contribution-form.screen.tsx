@@ -6,11 +6,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
 import DateField from '../date-field';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '../scroll-to-field/scroll-to-field';
 import { Money } from '../../../currency/money';
 import { parseAmount } from '../../../currency/parse';
 import Box from '../../../design-system/components/box';
@@ -18,11 +13,16 @@ import { useLiveQuery } from '../../../db/use-live-query';
 import { groupAmount } from '../amount-format/amount-format';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
-import { useSubmitOnce } from '../use-submit-once/use-submit-once';
+import {
+  useHeaderInset,
+  scrollToField,
+  type FieldInstance,
+} from '../../../design-system/scroll-to-field/scroll-to-field';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import TextField from '../../../design-system/components/text-field';
 import type { AccountsStackParamList } from '../../../navigation/types';
 import { type Currency, currencySymbol } from '../../../currency/currency';
+import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
 
 type ContributionFormScreenProps = NativeStackScreenProps<
   AccountsStackParamList,
@@ -82,6 +82,7 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
     // field, and `!(NaN > 0)` rejects it: require a strictly positive major
     // amount before persisting anything.
     const majorAmount = parseAmount(amount);
+
     if (!(majorAmount > 0)) {
       setAttemptedSave(true);
       scrollToField(
@@ -103,6 +104,7 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
     } catch {
       // Keep the screen open on failure so the entered values are not lost.
       alertOnCatch(t, 'forms.contribution.errorTitle', 'forms.contribution.errorMessage');
+
       return;
     }
     navigation.goBack();

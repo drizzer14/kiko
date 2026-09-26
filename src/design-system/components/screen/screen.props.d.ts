@@ -60,7 +60,7 @@ export type ScreenProps = {
   bleedTop?: boolean;
   // Forwarded to the `scroll`-mode ScrollView's own `onContentSizeChange`, so
   // a caller resolving a Save-press scroll target (`scrollToField`, see
-  // `src/screens/forms/scroll-to-field/`) can capture the CURRENT total
+  // `src/design-system/scroll-to-field/`) can capture the CURRENT total
   // content height into a ref and bound an over-large scroll target against
   // the real content extent — `scrollToOverflowEnabled` (see
   // `screen.component.tsx`) disables the native clamp that would otherwise

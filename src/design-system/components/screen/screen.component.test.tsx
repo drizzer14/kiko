@@ -60,6 +60,7 @@ jest.mock('react-native-safe-area-context', () => {
     // header owns the top inset (see the `bleedTop` tests below).
     const edges = props.edges as readonly string[] | undefined;
     const reservesBottomInset = edges === undefined || edges.includes('bottom');
+
     return (
       <View
         {...props}
@@ -67,6 +68,7 @@ jest.mock('react-native-safe-area-context', () => {
       />
     );
   };
+
   return {
     SafeAreaView: mockSafeAreaView,
     SafeAreaProvider: View,

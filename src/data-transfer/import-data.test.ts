@@ -57,6 +57,7 @@ const payload = {
 const encryptedFixture = (): { fileText: string; keyBase64: string } => {
   const key = generateExportKey();
   const envelope = encryptEnvelope(utf8ToBytes(JSON.stringify(payload)), key);
+
   return { fileText: JSON.stringify(envelope), keyBase64: encodeBytesToBase64(key) };
 };
 

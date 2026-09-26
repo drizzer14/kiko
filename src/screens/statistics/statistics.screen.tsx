@@ -50,8 +50,11 @@ import {
   buildAccountContribution,
   buildDebtTotal,
 } from '../../statistics/account-contribution';
+import FilterMenu, {
+  FILTER_ALL,
+  type FilterOption,
+} from '../../design-system/components/filter-menu';
 import Box from '../../design-system/components/box';
-import DateRangeField from '../home/date-range-field';
 import { useDataReady } from '../../db/use-data-ready';
 import { useLiveQuery } from '../../db/use-live-query';
 import Card from '../../design-system/components/card';
@@ -74,11 +77,12 @@ import LoadingState from '../../design-system/components/loading-state';
 import SummaryTable from '../../design-system/components/summary-table';
 import { buildNetWorthSeries } from '../../statistics/net-worth-series';
 import type { SeriesTransaction } from '../../statistics/holding-value-at';
-import FilterMenu, { FILTER_ALL, type FilterOption } from '../home/filter-menu';
+import DateRangeField from '../../design-system/components/date-range-field';
 import { exchangeExcludedTransactionIds } from '../../statistics/exchange-exclusion';
 import { internalTransferTransactionIds } from '../../statistics/internal-transfers';
 import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '../../categories/category-display';
+import { useFocusRefreshedNow } from '../../design-system/use-focus-refreshed-now/use-focus-refreshed-now';
 
 import BarChart from './bar-chart';
 import PieChart from './pie-chart';
@@ -86,7 +90,6 @@ import NetWorthLine from './net-worth-line';
 import { styles } from './statistics.styles';
 import TrendFilterField from './trend-filter-field';
 import CategoryTrendLine from './category-trend-line';
-import { useFocusRefreshedNow } from './use-focus-refreshed-now';
 
 // Adapt a category spending slice onto the shared `PieChart` slice shape: the
 // category KEY is the slice identity (its React key + testID suffix), its title
@@ -114,6 +117,7 @@ const toggleFilter =
 
     setSelected((previous) => {
       const next = new Set(previous);
+
       if (next.has(value)) {
         next.delete(value);
       } else {
@@ -451,6 +455,7 @@ const StatisticsScreen: FC = () => {
       // rejecting) when every provider failed for the span — treated
       // identically to the `isLeft` arm above: retry on the next focus.
       const settled: BackfillStatus = bifold(result);
+
       if (settled.state === 'failed') {
         backfillRanForSpanRef.current = null;
       }
@@ -564,6 +569,7 @@ const StatisticsScreen: FC = () => {
 
     return transactions.flatMap((transaction) => {
       const currency = currencyByHolding.get(transaction.holdingId);
+
       if (currency === undefined) {
         return [];
       }
@@ -683,8 +689,10 @@ const StatisticsScreen: FC = () => {
   // spending pie); a 4829 to any other IBAN is a genuine P2P payment (kept).
   const ownIbans = useMemo(() => {
     const ibans = new Set<string>();
+
     for (const holding of holdings) {
       const iban = ibanOf(holding.metadata);
+
       if (iban !== undefined) {
         ibans.add(iban);
       }
@@ -792,6 +800,7 @@ const StatisticsScreen: FC = () => {
   // KEY is not selected is excluded. De-duplicated by key, first-seen-wins.
   const categoryOptions = useMemo(() => {
     const byKey = new Map<string, FilterOption>();
+
     for (const slice of allCategorySlices) {
       if (byKey.has(slice.key)) {
         continue;
@@ -819,6 +828,7 @@ const StatisticsScreen: FC = () => {
       }
 
       const display = categoryByKey.get(key);
+
       if (display === undefined) {
         continue;
       }

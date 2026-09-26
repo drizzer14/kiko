@@ -20,8 +20,10 @@ const ancestorWith = (
   predicate: (layer: Record<string, unknown>) => boolean,
 ): Record<string, unknown> | undefined => {
   let current: RenderedElement | null = node.parent;
+
   while (current) {
     const match = styleLayers(current.props.style).find(predicate);
+
     if (match) return match;
     current = current.parent;
   }

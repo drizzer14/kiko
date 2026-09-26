@@ -196,7 +196,7 @@ The established patterns grouped under this heading:
   `manualRows`, which has no display data for a hidden key and falls
   back to the bare slug as its label).
 - A field's own Connect (`MonobankConnectField`, `BinanceCredentialsField`,
-  `WalletAddressField`, `src/screens/account-detail/`) is a PRIMARY
+  `WalletAddressField`, `src/design-system/components/`) is a PRIMARY
   action, so it follows the same form validation model as a Save
   button: always enabled, never `disabled={... || field.trim() ===
   ''}`. A blank required field shows its own `*RequiredError` message
@@ -386,6 +386,17 @@ new component can land between reviews of this skill:
   `src/design-system/components/icon-button/` was deleted when its only
   consumer went away.)
 
+  **Three pinned button treatments, mechanized (`rules/semgrep-prewrite.yml`):**
+  the account-detail Sync button ("accountDetail.syncNow") and Change bank
+  button ("accountDetail.changeBankAction") are both pinned to
+  `variant="secondaryTonal"` everywhere (`kiko-pinned-sync-button-variant`,
+  `kiko-pinned-change-bank-button-variant`); every sheet's Cancel button
+  ("common.cancel") is pinned to `variant="ghost"` AND
+  `textColor={theme.colors.negative}` together, one red ghost Cancel
+  everywhere (`kiko-pinned-cancel-button-style`, the
+  `confirm-sheet.component.tsx` shape). A pre-write-guard deny on any of
+  these three points back here.
+
   **Sizes — `regular` / `compact` / `small`** (read `button.props.d.ts`'s
   `ButtonSize` for the exact current set). `regular` is the 50pt tall
   footer/submit CTA. `compact` is a shorter inline action that still
@@ -412,7 +423,7 @@ new component can land between reviews of this skill:
   **The paste-icon-only ghost Button convention.** A field that reads
   the system clipboard (the Monobank token entry, both legs of the
   Binance API key/secret entry, the crypto wallet-address field —
-  `src/screens/account-detail/monobank-token-input/`,
+  `src/design-system/components/monobank-token-input/`,
   `binance-credentials-field/`, `wallet-address-field/`) pairs its
   `TextField` with an icon-only trailing `Button`:
   `variant="ghost"`, `size="small"`, `fullWidth={false}`,
@@ -785,6 +796,13 @@ new component can land between reviews of this skill:
   `screens/forms/` where it used to sit — a design-system component
   must never import from `src/screens/**`, enforced by the
   `kiko-no-import-screens-outside-ui` Semgrep rule (see `kiko-linter`).
+- **No imports across screen folders.** A file under
+  `src/screens/<a>/` must never import from `src/screens/<b>/**`
+  (relative path, `@kiko/` alias, or `jest.mock`). Move shared code to
+  `src/design-system/`, a shared hook/util directory, or a barrel
+  outside `src/screens/`. Enforced by `kiko-no-cross-screen-import`
+  (`scripts/checks/screen-imports.js`, the guard and
+  `check:screen-imports`).
 - **CurrencyBreakdown** — a two-column per-currency amount grid (code
   left, formatted `MoneyText` right), filled row-major.
 - **SummaryTable** (`src/design-system/components/summary-table/`) — the

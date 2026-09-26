@@ -116,6 +116,7 @@ export const accountsRepo = {
       const accountId = input.id ?? id();
       const sortOrder = input.sortOrder ?? (await nextSortOrder(databaseTransaction, input.kind));
       await databaseTransaction.insert(accounts).values({ ...input, id: accountId, sortOrder });
+
       return accountId;
     }),
   /**
@@ -293,9 +294,11 @@ export const accountsRepo = {
         .from(accounts)
         .where(eq(accounts.id, accountId));
       const row = rows.at(0);
+
       if (!row) {
         return;
       }
+
       if (isSyncedAccount(row)) {
         throw new Error('accountsRepo.remove: cannot delete a synced account');
       }
@@ -303,6 +306,7 @@ export const accountsRepo = {
         .select()
         .from(holdings)
         .where(eq(holdings.accountId, accountId));
+
       for (const holding of accountHoldings) {
         await databaseTransaction
           .delete(transactions)

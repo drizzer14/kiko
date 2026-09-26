@@ -27,7 +27,7 @@ import type { TrendFilter } from '../../statistics/trend-filter';
 import type { BackfillStatus } from '../../rates/history-backfill';
 import { categoryColor } from '../../statistics/category-breakdown';
 import '../../design-system/unistyles';
-import { FILTER_ALL } from '../home/filter-menu';
+import { FILTER_ALL } from '../../design-system/components/filter-menu';
 
 import StatisticsScreen from './statistics.screen';
 
@@ -80,7 +80,7 @@ jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
 // taken once at mount and held STABLE across re-renders, the same behavior the
 // screen's old `useMemo(() => Date.now(), [])` had (no test here drives a focus
 // event, so the value never needs to change mid-test).
-jest.mock('./use-focus-refreshed-now', () => {
+jest.mock('../../design-system/use-focus-refreshed-now/use-focus-refreshed-now', () => {
   const { useState } = jest.requireActual('react');
 
   return { useFocusRefreshedNow: () => useState(() => Date.now())[0] };
@@ -513,6 +513,7 @@ const flattenPreOrder = (node: JSONNode): JSONNode[] => [
 
 const renderOrder = (root: Awaited<ReturnType<typeof render>>): JSONNode[] => {
   const tree = root.toJSON();
+
   if (tree === null) {
     return [];
   }
@@ -722,7 +723,9 @@ describe('StatisticsScreen', () => {
     // top of this file; a real focus re-entry advances it, so drive that
     // here with a spy the test controls directly instead of a fake navigation
     // focus event.
-    const focusModule = jest.requireMock('./use-focus-refreshed-now') as {
+    const focusModule = jest.requireMock(
+      '../../design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+    ) as {
       useFocusRefreshedNow: () => number;
     };
     const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
@@ -758,7 +761,9 @@ describe('StatisticsScreen', () => {
     });
     mockRunBackfill.mockReturnValueOnce(firstRun);
 
-    const focusModule = jest.requireMock('./use-focus-refreshed-now') as {
+    const focusModule = jest.requireMock(
+      '../../design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+    ) as {
       useFocusRefreshedNow: () => number;
     };
     const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
@@ -816,7 +821,9 @@ describe('StatisticsScreen', () => {
     });
     mockRunBackfill.mockResolvedValueOnce({ state: 'failed', lastDay: null });
 
-    const focusModule = jest.requireMock('./use-focus-refreshed-now') as {
+    const focusModule = jest.requireMock(
+      '../../design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+    ) as {
       useFocusRefreshedNow: () => number;
     };
     const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
@@ -854,7 +861,9 @@ describe('StatisticsScreen', () => {
       history: [],
     });
 
-    const focusModule = jest.requireMock('./use-focus-refreshed-now') as {
+    const focusModule = jest.requireMock(
+      '../../design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+    ) as {
       useFocusRefreshedNow: () => number;
     };
     const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
@@ -1632,6 +1641,7 @@ describe('StatisticsScreen', () => {
     const startDate = (() => {
       const date = new Date(now);
       date.setMonth(date.getMonth() - 1);
+
       return date.getTime();
     })();
     const LOAN_META = {

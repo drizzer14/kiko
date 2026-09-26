@@ -1,6 +1,7 @@
 import { identity } from 'fnts';
 import either, { bifoldMap } from 'fnts/either';
 
+import { i18n } from '../../i18n';
 import { Money } from '../../currency/money';
 import type { HoldingRow } from '../../db/schema';
 import type { BalanceProvider, ProviderBalance } from '../provider';
@@ -130,7 +131,7 @@ const hasRows = (body: unknown): body is { rows: unknown[] } =>
 /** Spot BTC satoshis: `free + locked` per BTC balance. Throws on a malformed body. */
 const spotSatoshis = (account: BinanceAccount): number => {
   if (!hasBalances(account)) {
-    throw new Error('Binance account response did not contain a balances array');
+    throw new Error(i18n.t('accountDetail.binanceMissingBalancesArray'));
   }
 
   const btcBalances = account.balances.filter((balance): balance is BinanceBalance =>
@@ -139,7 +140,7 @@ const spotSatoshis = (account: BinanceAccount): number => {
 
   for (const balance of btcBalances) {
     if (!isFiniteAmount(balance.free) || !isFiniteAmount(balance.locked)) {
-      throw new Error('Binance balance contained a non-numeric free/locked amount');
+      throw new Error(i18n.t('accountDetail.binanceNonNumericBalanceAmount'));
     }
   }
 
@@ -149,15 +150,16 @@ const spotSatoshis = (account: BinanceAccount): number => {
 /** Funding BTC satoshis: `free + locked + freeze + withdrawing` per BTC row. */
 const fundingSatoshis = (assets: BinanceFundingAsset[]): number => {
   if (!Array.isArray(assets)) {
-    throw new Error('Binance funding response was not an array');
+    throw new Error(i18n.t('accountDetail.binanceFundingResponseNotArray'));
   }
 
   const btcAssets = assets.filter((asset): asset is BinanceFundingAsset => isBTCEntry(asset));
 
   for (const asset of btcAssets) {
     const fields = [asset.free, asset.locked, asset.freeze, asset.withdrawing];
+
     if (fields.some((field) => !isFiniteAmount(field))) {
-      throw new Error('Binance funding balance contained a non-numeric amount');
+      throw new Error(i18n.t('accountDetail.binanceNonNumericFundingAmount'));
     }
   }
 
@@ -177,14 +179,14 @@ const positionSatoshis = (
   amountField: 'totalAmount' | 'amount',
 ): number => {
   if (!hasRows(body)) {
-    throw new Error('Binance simple-earn response did not contain a rows array');
+    throw new Error(i18n.t('accountDetail.binanceMissingRowsArray'));
   }
 
   const btcRows = body.rows.filter((row): row is Record<string, unknown> => isBTCEntry(row));
 
   for (const row of btcRows) {
     if (!isFiniteAmount(row[amountField])) {
-      throw new Error('Binance simple-earn position contained a non-numeric amount');
+      throw new Error(i18n.t('accountDetail.binanceNonNumericPositionAmount'));
     }
   }
 
@@ -222,12 +224,15 @@ const walletSatoshis = async (
 /** The `binanceAsset` match keys already present among a target's holdings. */
 const existingBinanceKeys = (holdings: HoldingRow[]): Set<string> => {
   const keys = new Set<string>();
+
   for (const holding of holdings) {
     const key = (holding.metadata as { binanceAsset?: unknown } | null)?.binanceAsset;
+
     if (typeof key === 'string') {
       keys.add(key);
     }
   }
+
   return keys;
 };
 
@@ -252,6 +257,7 @@ const appendWallet = (
   if (satoshis === null) {
     return;
   }
+
   if (satoshis === 0 && !existingKeys.has(metadataKey)) {
     return;
   }
@@ -265,7 +271,7 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
     const credentials = await deps.readCredentials(target.accountId);
 
     if (credentials === undefined) {
-      throw new Error('No Binance credentials stored; connect Binance before syncing');
+      throw new Error(i18n.t('accountDetail.noBinanceCredentials'));
     }
 
     const { apiKey, secret } = credentials;
@@ -308,6 +314,7 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
         await deps.fetchLockedPosition(apiKey, secret, options),
         'amount',
       );
+
       return flexible + locked;
     });
     appendWallet(balances, earn, EARN_KEY, EARN_HOLDING_NAME, existingKeys);

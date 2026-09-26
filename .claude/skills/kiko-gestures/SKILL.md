@@ -46,7 +46,9 @@ called SYNCHRONOUSLY inside a reanimated worklet hook (`useAnimatedStyle`,
 `useDerivedValue`, `useAnimatedReaction`, `useAnimatedScrollHandler`, or a
 `Gesture.*` worklet callback) MUST carry its own `'worklet'` directive at
 its definition, or be defined inline in the worklet — otherwise the
-worklets runtime captures it as a "remote function." See
+worklets runtime captures it as a "remote function." The pre-write guard
+(`kiko-worklet-directive-required`) catches only a SAME-FILE helper; an
+imported helper is still a review item. See
 `src/design-system/components/bottom-sheet/bottom-sheet.keyboard.ts`'s
 `resolveKeyboardLift`/`resolveKeyboardAwareMaxHeight`/
 `resolveKeyboardAwareBottomPadding` for the worked example: each carries
@@ -74,7 +76,7 @@ none), so that call sends an unrecognized selector and SIGABRTs on cold
 launch — it hit every screen once, since the shared `BottomSheet` calls
 whatever drives its keyboard height. Mechanized as the
 `kiko-no-use-animated-keyboard` Semgrep rule (ERROR,
-`rules/semgrep-mobile.yml`, see `kiko-linter`) — any new call is a hard-fail,
+`rules/semgrep-prewrite.yml`, see `kiko-linter`) — any new call is a hard-fail,
 not just a review comment. `bottom-sheet.component.tsx` instead
 drives its `keyboardHeight` shared value by hand from RN core's `Keyboard`
 events (`keyboardWillChangeFrame` / `keyboardWillHide`); read that file's

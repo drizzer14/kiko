@@ -17,13 +17,16 @@ below).
 | `npm run check:dup` | jscpd | >5% duplicated lines/tokens fails | medium (Stop/SubagentStop) |
 | `npm run check:knip` | Knip | any unused file/export/dependency fails | medium |
 | `npm run check:deps` | depcheck + `npm ci --dry-run` | any unused/missing dep, or broken lockfile, fails; a changed dependency block is surfaced for confirmation | medium |
-| `npm run check:security` | Semgrep (`p/typescript`, `p/react`, `p/secrets`, `rules/semgrep-mobile.yml`) | any Class A (ERROR) finding fails; Class B (WARNING) findings are surfaced, override-eligible, non-blocking | fast |
-| `npm run check:rules` | `scripts/checks/semgrep-rules.sh` — Semgrep (`rules/semgrep-mobile.yml`) against `rules/fixtures/` | for every fixture present: a rule that reports nothing on its positive fixture, misses a line pinned there by an `EXPECT-FINDING` comment, or matches its negative one fails; so does a fixture id with only one half of its pair present, and a scan that proved nothing (no fixtures, a fixture semgrep never opened, a semgrep error, or a semgrep/verifier crash). A rule with no fixture at all is not detected here — the fixture set is the input | medium |
+| `npm run check:security` | Semgrep (`p/typescript`, `p/react`, `p/secrets`, `rules/semgrep-mobile.yml`, `rules/semgrep-prewrite.yml`) | any Class A (ERROR) finding fails; Class B (WARNING) findings are surfaced, override-eligible, non-blocking; a Semgrep error, timeout, bad exit code, or invalid JSON output also fails (see `security.sh`) | fast |
+| `npm run check:rules` | `scripts/checks/semgrep-rules.sh` — Semgrep (`rules/semgrep-mobile.yml` and `rules/semgrep-prewrite.yml`) against `rules/fixtures/` | for every fixture present: a rule that reports nothing on its positive fixture, misses a line pinned there by an `EXPECT-FINDING` comment, or matches its negative one fails; so does a fixture id with only one half of its pair present, and a scan that proved nothing (no fixtures, a fixture semgrep never opened, a semgrep error, or a semgrep/verifier crash). A rule with no fixture at all is not detected here — the fixture set is the input | medium |
+| (PreToolUse hook) | `scripts/checks/pre-write-guard.sh` + `.js` — Semgrep (`rules/semgrep-prewrite.yml`) plus the Node-checker rules in `pre-write-guard.js`'s own `NODE_RULES` (see that file for the closed rule set) against the proposed post-edit content of an `Edit`/`Write`/`MultiEdit` target | any NEW finding from a Semgrep rule in `rules/semgrep-prewrite.yml` or a Node rule in `pre-write-guard.js`'s `NODE_RULES` denies the write before it lands; a "could not check" failure (Semgrep/Node crash, malformed input) denies too — fail-closed, never bypass | PreToolUse (pre-write) |
 | `npm run check:plist` | plist.sh (`plutil`) | any Info.plist security invariant violation fails | medium |
 | `npm run check:secrets` | gitleaks | any detected secret fails | fast |
-| `npm run check:overrides` | override-guard.sh | any bare `biome-ignore` (no `OVERRIDE(...)`) fails | medium |
+| `npm run check:overrides` | override-guard.sh | any bare `biome-ignore`, `nosemgrep`, or `kiko-override:` comment (no `OVERRIDE(...)`) fails | medium |
 | `npm run check:import-order` | `scripts/checks/import-order.sh` (+ `.js` analyzer) | a leading import block not sorted per kiko-code-style's "Import ordering" (3 blank-line-separated groups, ascending by ending-line length, value-before-type tiebreak, side-effect import as a barrier) fails; two ADJACENT groups of the same kind (no side-effect import as a barrier between them) also fail and must be merged into one — `--write` fixes what it safely can, then re-checks its own output and prints `left for hand fix: <file> <reason>` and exits non-zero for ANY violation it could not fix (a merge blocked by a later group's own prefix or interior comment, or a group left untouched because a comment is glued to a non-first import), for a human to fix by hand. The per-file fast tier can miss a multi-file/grouping violation that the project-wide `check:import-order` catches, so run the project-wide check before committing | fast (per-file) + project-wide (`check:all`) |
 | `npm run check:full-word-identifiers` | `scripts/checks/full-word-identifiers.sh` (+ `.js` analyzer) | any denylisted abbreviation (`cond`/`btn`/`idx`/`acc`/`tx`/`err`/`val`/`prev`/`cfg`/`e`/`res`/`msg`/`cb`/`ctx`/`el`/`opts`/`tmp`/`num`/`arr`/`obj`/`str`) as a whole camelCase/PascalCase/snake_case part of an identifier fails, unless the exact `(file path, denylisted word, identifier name)` triple is on the analyzer's own `EXEMPTIONS` allowlist (an exact-name match, not a whole-file exemption — see `docs/harness/documented-exceptions.md`) | fast (per-file) + project-wide (`check:all`) |
+| `npm run check:screen-imports` | `scripts/checks/screen-imports.sh` | a cross-screen import (`kiko-no-cross-screen-import`) fails project-wide | project-wide (`check:all`) + pre-write guard |
+| `npm run check:blank-line-separation` | `scripts/checks/blank-line-separation.sh` | a blank-line-separation violation (`kiko-blank-line-separation`) fails project-wide | project-wide (`check:all`) + pre-write guard |
 | `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
 | `npm run check:mutation` | Stryker (Jest runner) | mutation score below 60 (break threshold; ratchet up over time) fails | deep only |
 | `bash scripts/checks/osv.sh` | osv-scanner | any known CVE in `package-lock.json` fails | deep only |
@@ -32,7 +35,8 @@ Composite scripts:
 
 - `npm run check:all` — the fast + medium tier checks, in order:
   lint, dup, knip, deps, security, rules, plist, secrets, overrides,
-  import-order, full-word-identifiers, typecheck.
+  import-order, full-word-identifiers, screen-imports,
+  blank-line-separation, typecheck.
 - `npm run check:deep` — the heavy tier: mutation testing, then
   osv-scanner. **Run this before declaring a feature done.** It is not
   wired to any hook because it is slow; it is a manual checkpoint. By
@@ -57,8 +61,9 @@ session's changed source files; knip, deps, the Semgrep rule
 fixtures, the Info.plist security assertions, and typecheck
 project-wide) runs on `Stop` and `SubagentStop`, and stays silent
 only when the session changed neither a source file nor a harness
-input — a rule `.yml`, a file under `rules/fixtures/`, a wrapper in
-`scripts/checks/`, or `ios/Kiko/Info.plist`. A session that edited
+input (read the harness-input regex in `scripts/checks/medium.sh`: rule
+files, fixtures, check wrappers, the Info.plist, and the Xcode
+project). A session that edited
 only a rule, a fixture, or the plist is the one most likely to have
 broken a rule (or unpinned a credential-bearing host), so it must not
 be the one that runs nothing. `tsc --noEmit` is project-wide by
@@ -77,6 +82,25 @@ process-group `kill` (including via `xargs`, `$(...)`, or a
 process ID you started yourself (`kill <pid>`), or let the tool
 timeout end a hung command. The hook is not part of the
 fast/medium/deep tiers and has no dedup fingerprint.
+
+A second `PreToolUse` matcher (`Edit|Write|MultiEdit`, beside the
+`Bash` matcher above) runs `scripts/checks/pre-write-guard.sh`: it
+rebuilds the proposed post-edit content and denies the write when a
+Semgrep rule in `rules/semgrep-prewrite.yml` or a Node-checker rule in
+`pre-write-guard.js`'s `NODE_RULES` reports a NEW finding. It is a
+no-op when the target script is absent from a root (matching every
+other hook's own "script absent → allow" convention) and fail-closed
+on any other failure (a Semgrep/Node crash, malformed input, or a
+timeout all deny — see `pre-write-guard.sh`'s own header for the exit
+code contract). Every hook in `hooks.json` (kill-guard, pre-write-guard,
+fast, medium) invokes `harness/kiko/hooks/dispatch.sh <script-name>`
+rather than a hardcoded path: the dispatcher resolves the edited
+file's (or the payload's `cwd`'s) own git worktree root — bounded to
+`CLAUDE_PROJECT_DIR`'s own repository — and execs that root's
+`scripts/checks/<script-name>`, so a subagent editing a DIFFERENT
+worktree than the coordinator's own checkout still runs that
+worktree's own rules. See `dispatch.sh`'s own header for the full
+resolution order and fail-closed/fail-open split per hook.
 
 Both `import-order` and `full-word-identifiers` keep the same per-file
 dedup fingerprint (target file + the analyzer script's own contents)
@@ -102,8 +126,13 @@ never a bare `biome-ignore`:
 const raw: any = sdk.rawResponse();
 ```
 
-`npm run check:overrides` fails on any `biome-ignore` comment that
-does not contain `OVERRIDE(...)`. Do not delete the guard or move a
+`npm run check:overrides` fails on any `biome-ignore`, `nosemgrep`, or
+`kiko-override:` comment that does not contain `OVERRIDE(...)`. A
+`kiko-override:` on a Node rule passes only the pre-write guard;
+`check:all` still fails on that line, because the project-wide Node
+checkers have no inline override. Use `nosemgrep:` for Semgrep rules;
+a Node-rule exception needs a checker-level exemption (see kiko-linter's
+"Override forms and where each is honored"). Do not delete the guard or move a
 suppressed pattern elsewhere to dodge it — either justify the
 override with a specific reason, or fix the code so the ignore is not
 needed at all.
@@ -168,6 +197,11 @@ A fresh checkout must run `npm install` before the harness hooks
 work — the check tools they call (Biome, jscpd, Knip, depcheck,
 Stryker) live in `node_modules`; `semgrep` and `gitleaks` are resolved
 from `PATH` instead.
+
+Changes to `harness/kiko/hooks/` (`hooks.json`, `dispatch.sh`) reach
+running sessions only after a plugin reinstall (or cache rebuild) plus
+`/reload-plugins`: hooks run from the plugin cache copy
+(`CLAUDE_PLUGIN_ROOT`), not the checkout.
 
 ### Delegation rule
 

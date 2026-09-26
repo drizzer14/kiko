@@ -26,11 +26,6 @@ import {
   headerFingerprint,
   guessHeaderRowIndex,
 } from '../../statement-import/column-mapping';
-import {
-  scrollToField,
-  useHeaderInset,
-  type FieldInstance,
-} from '../forms/scroll-to-field/scroll-to-field';
 import { holdingsRepo } from '../../holdings/repo';
 import {
   fileNameOf,
@@ -48,14 +43,22 @@ import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import { accountsRepo } from '../../accounts/accounts.repo';
 import { settingsRepo } from '../../settings/settings.repo';
+import {
+  previewStats,
+  type PreviewStats,
+} from '../../statement-import/preview-stats/preview-stats';
+import {
+  scrollToField,
+  useHeaderInset,
+  type FieldInstance,
+} from '../../design-system/scroll-to-field/scroll-to-field';
 import { alertOnCatch } from '../../design-system/alert-on-catch';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { supportedFormatNames } from '../../statement-import/registry';
-import ImportResultSheet from '../statement-import/import-result-sheet';
+import ImportResultSheet from '../../design-system/components/import-result-sheet';
 import type { SpreadsheetCellValue, StatementFormatInput } from '../../statement-import/parser';
-import { previewStats, type PreviewStats } from '../statement-import/preview-stats/preview-stats';
 import { importParsedStatement, type ImportResult } from '../../statement-import/import-statement';
-import { useTargetHoldingOptions } from '../statement-import/use-target-holding-options/use-target-holding-options';
+import { useTargetHoldingOptions } from '../../statement-import/use-target-holding-options/use-target-holding-options';
 
 import ColumnMappingForm from './column-mapping-form';
 import type {
@@ -601,6 +604,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
 
         if (isLegacyXlsFile(name)) {
           setLoadState({ kind: 'xlsNotSupported' });
+
           return;
         }
 
@@ -667,6 +671,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
 
     if (saved === undefined) {
       setHeaderRowIndex(guessHeaderRowIndex(rows));
+
       return;
     }
 

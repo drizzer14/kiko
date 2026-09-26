@@ -1,3 +1,4 @@
+import { i18n } from '../../i18n';
 import type { HoldingRow } from '../../db/schema';
 import type { BalanceProvider } from '../provider';
 import { walletAddressOf } from '../../holdings/holding-metadata';
@@ -36,11 +37,11 @@ export const bitcoinWalletProvider: BalanceProvider<BitcoinWalletDeps> = {
     const address = (deps.address ?? storedAddress(target.holdings))?.trim();
 
     if (address === undefined) {
-      throw new Error('No wallet address stored; connect a wallet before syncing');
+      throw new Error(i18n.t('accountDetail.noWalletAddressStored'));
     }
 
     if (!isValidBitcoinAddress(address)) {
-      throw new Error('Invalid BTC address');
+      throw new Error(i18n.t('accountDetail.invalidBTCAddress'));
     }
 
     const balanceMinorUnits = await deps.fetchAddressBalance(address, deps.fetchImpl);

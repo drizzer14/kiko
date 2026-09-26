@@ -22,11 +22,6 @@ import {
   supportedFormatNames,
 } from '../../statement-import/registry';
 import {
-  scrollToField,
-  useHeaderInset,
-  type FieldInstance,
-} from '../forms/scroll-to-field/scroll-to-field';
-import {
   fileNameOf,
   isXlsxFile,
   decodeStatementText,
@@ -39,16 +34,21 @@ import Text from '../../design-system/components/text';
 import Screen from '../../design-system/components/screen';
 import { accountsRepo } from '../../accounts/accounts.repo';
 import { settingsRepo } from '../../settings/settings.repo';
+import {
+  scrollToField,
+  useHeaderInset,
+  type FieldInstance,
+} from '../../design-system/scroll-to-field/scroll-to-field';
 import { alertOnCatch } from '../../design-system/alert-on-catch';
 import type { AccountsStackParamList } from '../../navigation/types';
+import { previewStats } from '../../statement-import/preview-stats/preview-stats';
+import ImportResultSheet from '../../design-system/components/import-result-sheet';
 import { readTableRows, findSavedMapping } from '../../statement-import/column-mapping';
 import { importStatement, type ImportResult } from '../../statement-import/import-statement';
+import { useTargetHoldingOptions } from '../../statement-import/use-target-holding-options/use-target-holding-options';
 
-import ImportResultSheet from './import-result-sheet';
-import { previewStats } from './preview-stats/preview-stats';
 import StatementImportFooter from './statement-import-footer';
 import StatementPreviewBlock from './statement-preview-block';
-import { useTargetHoldingOptions } from './use-target-holding-options/use-target-holding-options';
 
 type StatementImportScreenProps = NativeStackScreenProps<AccountsStackParamList, 'StatementImport'>;
 

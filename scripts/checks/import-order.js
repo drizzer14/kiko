@@ -62,8 +62,14 @@ function isImportOpen(line) {
   return /^\s*import\b/.test(line);
 }
 
+// A `;` followed only by whitespace, OR by a trailing `// comment`, ends the
+// statement — without the comment allowance, a trailing `// note` on an
+// import line fails this anchor, so consumeStatement never stops there and
+// keeps reading forward looking for a later `;\s*$` line, silently folding
+// the NEXT import into the same "statement" and hiding the whole group from
+// checking.
 function endsStatement(line) {
-  return /;\s*$/.test(line);
+  return /;\s*(\/\/.*)?$/.test(line);
 }
 
 // Each `consume*` returns the END index (exclusive) of the run starting at

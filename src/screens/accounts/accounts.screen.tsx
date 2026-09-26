@@ -30,10 +30,10 @@ import { onGridDragEnd } from '../../design-system/grid-interaction';
 import type { AccountsStackParamList } from '../../navigation/types';
 import LoadingState from '../../design-system/components/loading-state';
 import EntityIconTile from '../../design-system/components/entity-icon-tile';
-import { useFocusRefreshedNow } from '../statistics/use-focus-refreshed-now';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
 import CardContextMenu from '../../design-system/components/card-context-menu';
 import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
+import { useFocusRefreshedNow } from '../../design-system/use-focus-refreshed-now/use-focus-refreshed-now';
 
 import { styles } from './accounts.styles';
 

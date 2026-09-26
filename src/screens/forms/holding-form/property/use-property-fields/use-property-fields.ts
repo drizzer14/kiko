@@ -15,8 +15,8 @@ import type { TextInputInstance } from 'react-native';
 import { currencyScale, type Currency } from '@kiko/currency/currency';
 
 import { saveMetadataEdit } from '../../save-metadata-edit';
-import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
+import type { FieldInstance } from '../../../../../design-system/scroll-to-field/scroll-to-field';
 
 import {
   propertyFieldErrors,

@@ -58,6 +58,7 @@ jest.mock('react-native-safe-area-context', () => {
 // stronger-translucent backdrop under the glass.
 jest.mock('@callstack/liquid-glass', () => {
   const { View } = require('react-native');
+
   return { LiquidGlassView: View, isLiquidGlassSupported: false };
 });
 
@@ -125,6 +126,7 @@ const mockUseRefreshControlSignal = jest.fn();
 jest.mock('./use-refresh-control-signal', () => ({
   useRefreshControlSignal: (onRefresh: () => Promise<void>) => {
     mockUseRefreshControlSignal(onRefresh);
+
     return { refreshing: mockRefreshing(), onRefresh };
   },
 }));

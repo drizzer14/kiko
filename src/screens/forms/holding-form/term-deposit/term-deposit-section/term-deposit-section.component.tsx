@@ -94,6 +94,7 @@ const TermDepositSection: FC<TermDepositSectionProps> = ({ fields, attemptedSave
                 if (index === 0) {
                   refs.contributionsFieldRef.current = node;
                 }
+
                 if (index === contributions.length - 1) {
                   refs.lastContributionFieldRef.current = node;
                 }

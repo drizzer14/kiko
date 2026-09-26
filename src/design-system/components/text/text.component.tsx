@@ -14,6 +14,7 @@ const Text: FC<TextProps> = ({
   children,
 }) => {
   styles.useVariants({ variant, tone });
+
   return (
     <RNText
       style={[styles.text, style]}

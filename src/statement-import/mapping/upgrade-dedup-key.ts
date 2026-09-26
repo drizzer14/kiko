@@ -44,11 +44,13 @@ export const upgradeLegacyDedupKey = (row: LegacyDedupCandidate): string | null 
   }
 
   const legacyPrefix = `${base}${LEGACY_OCCURRENCE_SEPARATOR}`;
+
   if (!row.externalId.startsWith(legacyPrefix)) {
     return null;
   }
 
   const occurrenceDigits = row.externalId.slice(legacyPrefix.length);
+
   if (!/^\d+$/.test(occurrenceDigits)) {
     return null;
   }

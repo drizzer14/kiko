@@ -36,7 +36,8 @@ dkey=""; fp=""
 if [ -f "$TARGET" ]; then
   dkey="security:$(printf '%s' "$TARGET" | harness_hash)"
   fp="$( { shasum "$TARGET" 2>/dev/null
-          shasum "$ROOT/rules/semgrep-mobile.yml" 2>/dev/null; } | harness_hash )"
+          shasum "$ROOT/rules/semgrep-mobile.yml" 2>/dev/null
+          shasum "$ROOT/rules/semgrep-prewrite.yml" 2>/dev/null; } | harness_hash )"
   if harness_unchanged "$ROOT" "$dkey" "$fp"; then
     exit 0
   fi
@@ -45,6 +46,7 @@ fi
 out="$(semgrep --quiet --error --json \
   --config p/typescript --config p/react --config p/secrets \
   --config "$ROOT/rules/semgrep-mobile.yml" \
+  --config "$ROOT/rules/semgrep-prewrite.yml" \
   --exclude 'fixtures' \
   "$TARGET" 2>/tmp/kiko-security-stderr.$$)"
 semgrep_code=$?
@@ -59,6 +61,30 @@ if [ "$semgrep_code" -ne 0 ] && [ "$semgrep_code" -ne 1 ]; then
     "The security scan could not complete, so no security signal is available for this change." \
     "Fix the Semgrep invocation or configuration error above and re-run: npm run check:security" \
     "Do not treat a broken scan as a pass. Fix the scanner, then re-run."
+  exit 2
+fi
+
+# A rule Semgrep could not evaluate is a rule that silently did not run on
+# that file: a Timeout (reported only at level "warn", exit 0) or any
+# "error"-level entry fails closed, the same as semgrep-rules.sh treats a
+# Semgrep error as a failed proof. Unparseable output fails too, since it
+# cannot prove zero findings. Other warn-level entries stay non-blocking.
+scan_problems="$(printf '%s' "$out" | node -e '
+let text="";process.stdin.on("data",(chunk)=>text+=chunk).on("end",()=>{
+  let parsed;
+  try{parsed=JSON.parse(text)}catch{process.stdout.write("Semgrep output was not valid JSON.");return}
+  const blocking=(parsed.errors||[]).filter((entry)=>entry.level==="error"||entry.type==="Timeout");
+  process.stdout.write(blocking.map((entry)=>entry.long_msg||entry.message||JSON.stringify(entry)).join("\n"));
+})')"
+
+if [ -n "$scan_problems" ]; then
+  print_block \
+    "Semgrep (mobile security rules)" \
+    "Semgrep could not evaluate every rule on every file (a rule timed out or errored)." \
+    "$scan_problems" \
+    "A rule that timed out or errored did not run on that file, so a vulnerability there would pass unseen." \
+    "Make the named rule cheaper on the named file (or fix the reported error) and re-run: npm run check:security" \
+    "Do not raise the timeout or exclude the file to pass. Fix the rule or the scan error."
   exit 2
 fi
 
@@ -85,6 +111,7 @@ if [ "${error_count:-0}" -gt 0 ]; then
   readable="$(semgrep --quiet \
     --config p/typescript --config p/react --config p/secrets \
     --config "$ROOT/rules/semgrep-mobile.yml" \
+    --config "$ROOT/rules/semgrep-prewrite.yml" \
     --exclude 'fixtures' \
     "$TARGET" 2>&1)"
   print_block \
@@ -101,6 +128,7 @@ if [ "${warning_count:-0}" -gt 0 ]; then
   readable="$(semgrep --quiet \
     --config p/typescript --config p/react --config p/secrets \
     --config "$ROOT/rules/semgrep-mobile.yml" \
+    --config "$ROOT/rules/semgrep-prewrite.yml" \
     --exclude 'fixtures' \
     "$TARGET" 2>&1)"
   {

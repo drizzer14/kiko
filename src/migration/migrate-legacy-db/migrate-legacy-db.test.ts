@@ -30,6 +30,7 @@ const makeFakeDb = (name: string, tables: number): FakeDb =>
       if (sql.includes('VACUUM INTO')) {
         return { rows: [], rowsAffected: 0 };
       }
+
       return { rows: [{ n: tables }], rowsAffected: 0 };
     }),
     getDbPath: jest.fn(() => `/mock/Documents/${name}`),
@@ -48,6 +49,7 @@ describe('migrateLegacyDatabase', () => {
       if (name === 'pff.db') {
         throw new Error('legacy db must not be opened when kiko.db is populated');
       }
+
       return kiko;
     });
 

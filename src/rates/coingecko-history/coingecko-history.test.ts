@@ -13,6 +13,7 @@ const makeRoutedFetch = (
     const id = /coins\/([a-z]+)\/market_chart/.exec(url)?.[1] ?? '';
     const entry = byCoin[id] ?? { prices: [] };
     const ok = entry.ok ?? true;
+
     return { ok, status: ok ? 200 : 429, json: async () => ({ prices: entry.prices }) };
   }) as unknown as typeof fetch;
 
@@ -120,6 +121,7 @@ describe('fetchCryptoHistory', () => {
       const requestedIds: string[] = [];
       const fetchImpl = (async (url: string) => {
         requestedIds.push(/coins\/([a-z]+)\/market_chart/.exec(url)?.[1] ?? '');
+
         return { ok: true, status: 200, json: async () => ({ prices: [[d1, 78_552]] }) };
       }) as unknown as typeof fetch;
 
@@ -132,6 +134,7 @@ describe('fetchCryptoHistory', () => {
       let called = false;
       const fetchImpl = (async () => {
         called = true;
+
         return { ok: true, status: 200, json: async () => ({ prices: [] }) };
       }) as unknown as typeof fetch;
 

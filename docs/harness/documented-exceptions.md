@@ -159,6 +159,20 @@ verified usage, not dead weight:
   directly by `__tests__/kill-guard.test.ts`, which spawns
   `kill-guard.sh` (and so `kill-guard.js`) as a subprocess, not an import,
   so Jest's coverage does not make Knip see it as reachable either.
+- **`knip.json` `ignore`**: `scripts/checks/pre-write-guard.js` — the
+  PreToolUse hook script that `scripts/checks/pre-write-guard.sh` invokes
+  (`node --experimental-strip-types --no-warnings pre-write-guard.js`) to
+  rebuild an Edit/Write/MultiEdit's proposed file content and deny the
+  write when it introduces a known violation (see CLAUDE.md's "Automatic
+  wiring" and `.claude/skills/kiko-linter/SKILL.md`), the same reason as
+  `kill-guard.js` above. It is reached only from a sibling `.sh` wrapper's
+  `node` invocation — never a static `import`/`require` from any
+  TypeScript/JavaScript source, and never a package.json script Knip's
+  static scan can see — so Knip's reachability graph reports it as an
+  unused file. It is exercised directly by
+  `__tests__/pre-write-guard.test.ts`, which spawns `pre-write-guard.sh`
+  (and so `pre-write-guard.js`) as a subprocess, not an import, so Jest's
+  coverage does not make Knip see it as reachable either.
 - **`knip.json` `ignore`**: `scripts/checks/import-order.js` — the same
   shape as `kill-guard.js` above. `scripts/checks/import-order.sh`
   reaches it only via a `node` invocation (both the fast-tier per-file
@@ -181,6 +195,44 @@ verified usage, not dead weight:
   `full-word-identifiers.sh` (and so `full-word-identifiers.js`) as a
   subprocess — not an import, so Jest's coverage does not make Knip see it
   as reachable either.
+- **`knip.json` `ignore`**: `scripts/checks/blank-line-separation.js` — the
+  same shape as `import-order.js`/`full-word-identifiers.js`/
+  `kill-guard.js` above. `scripts/checks/blank-line-separation.sh` reaches
+  it only via a `node` invocation (both its per-file mode and its
+  project-wide mode), and `scripts/checks/pre-write-guard.js` reaches it
+  only via `runSpawnedNodeChecker`'s own `spawnSync` — never a static
+  `import`/`require`, and never a package.json script Knip's static scan
+  can see (it mechanizes kiko-code-style's "Blank lines before statement
+  blocks" and "Blank line between adjacent JSX sibling nodes" rules, wired
+  into the pre-write guard's `NODE_RULES` as `kiko-blank-line-separation`;
+  it is guard-mode only for now — not yet in `check:all`, so its
+  project-wide mode has no package.json script either), so Knip's
+  reachability graph reports it as unused. Exercised directly by
+  `__tests__/blank-line-separation.test.ts`, which spawns
+  `blank-line-separation.sh` (and so `blank-line-separation.js`) as a
+  subprocess, and by a direct `node blank-line-separation.js [--write]`
+  invocation in the same test file, and by
+  `__tests__/pre-write-guard.test.ts`'s `kiko-blank-line-separation` case
+  (via `pre-write-guard.sh`) — none of which Jest's static import graph
+  makes Knip see as reachable.
+- **`knip.json` `ignore`**: `scripts/checks/screen-imports.js` — the same
+  shape as `blank-line-separation.js`/`import-order.js`/`kill-guard.js`
+  above. `scripts/checks/screen-imports.sh` reaches it only via a `node`
+  invocation (both its per-file mode and its project-wide mode), and
+  `scripts/checks/pre-write-guard.js` reaches it only via
+  `runSpawnedNodeChecker`'s own `spawnSync` — never a static `import`/
+  `require`, and never a package.json script Knip's static scan can see
+  (it mechanizes the pre-write-guard design spec's rule 12, "no import from
+  another screen's folder", wired into the pre-write guard's `NODE_RULES`
+  as `kiko-no-cross-screen-import`; it is guard-mode only for now — not yet
+  in `check:all`, so its project-wide mode has no package.json script
+  either), so Knip's reachability graph reports it as unused. Exercised
+  directly by `__tests__/screen-imports.test.ts`, which spawns
+  `screen-imports.sh` (and so `screen-imports.js`) as a subprocess, and by
+  a direct `node screen-imports.js` invocation in the same test file, and
+  by `__tests__/pre-write-guard.test.ts`'s `kiko-no-cross-screen-import`
+  case (via `pre-write-guard.sh`) — none of which Jest's static import
+  graph makes Knip see as reachable.
 - **`scripts/checks/full-word-identifiers.js`'s own `EXEMPTIONS` list**: an
   exact `(file path suffix, denylisted word, EXACT identifier name)`
   allowlist mechanizing kiko-code-style's "Full words in identifiers"
@@ -388,4 +440,30 @@ verified usage, not dead weight:
   `kiko-appgroup-write-needs-protection`) and their fixtures were removed
   2026-09-23 (`4e66dd7`) as dead — re-add both, with fixtures, the moment
   any code (a Share Extension or otherwise) writes to the App Group again.
+- **The pre-write guard's override comment (`// nosemgrep: <rule-id>
+  OVERRIDE(<reason>) <justification>`, or `kiko-override:` for a
+  Node-checked rule) is the same shape as the Biome override protocol
+  above, applied to `rules/semgrep-prewrite.yml` and the
+  `NODE_RULES` in `scripts/checks/pre-write-guard.js`.** A bare
+  `nosemgrep`/`kiko-override` comment with no `OVERRIDE(...)` never
+  suppresses a finding — see `pre-write-guard.js`'s
+  `OVERRIDE_COMMENT_PATTERN` and its surrounding comments for the
+  exact match rule. Every `paths.exclude` scope added to
+  `rules/semgrep-prewrite.yml` (one per rule, pointing at the real
+  implementation a rule's own pattern would otherwise also flag) is
+  documented inline in that file's own comments next to each rule —
+  read the rule there rather than duplicating the list here, since a
+  new rule's exclude would otherwise drift this bullet out of date.
 
+- **`kiko-worklet-directive-required` (`rules/semgrep-prewrite.yml`)
+  excludes every test file (`*.test.ts`, `*.test.tsx`, `__tests__/**`,
+  `e2e/**`).** Jest mocks `react-native-reanimated`, so no worklet runtime
+  ever captures a helper in a test file and the Release-only SIGABRT the
+  rule guards against cannot happen there. The rule's `$F(...)` x
+  statement-sequence match is also quadratic on a large test file whose
+  "Gesture" substrings (`fireGestureHandler`, `GestureRootWrapper`) defeat
+  Semgrep's prefilter: it crossed Semgrep's per-rule timeout under load, so
+  the pre-write guard denied "could not check" at random. The rule's
+  `rules/fixtures/` pair is not named like a test file and still proves the
+  rule in `check:rules`; `__tests__/pre-write-guard-rules.test.ts` proves
+  the exclusion.

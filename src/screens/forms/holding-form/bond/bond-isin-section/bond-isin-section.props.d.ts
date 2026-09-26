@@ -3,7 +3,7 @@ import type { TextInputInstance } from 'react-native';
 import type { BondTerms } from '@kiko/bonds/nbu-register';
 import type { BondCouponFrequency } from '@kiko/holdings/holding-metadata';
 
-import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
+import type { FieldInstance } from '../../../../../design-system/scroll-to-field/scroll-to-field';
 
 // "ISIN" pre-fills a found bond's terms from the NBU register; "Manual" is
 // the classic hand-entered form. A CREATE defaults to

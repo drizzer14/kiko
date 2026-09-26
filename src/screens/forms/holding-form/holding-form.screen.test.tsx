@@ -18,8 +18,8 @@ import { darkTheme } from '../../../design-system/theme';
 import type { Metal } from '../../../holdings/holding-metadata';
 import { fieldSuffix } from '../../../test-support/field-suffix';
 import type { HoldingType } from '../../../holdings/holding-type';
-import { scrollToField } from '../scroll-to-field/scroll-to-field';
 import { refreshBondRegisterIfStale } from '../../../bonds/bond-register-repo';
+import { scrollToField } from '../../../design-system/scroll-to-field/scroll-to-field';
 
 import HoldingFormScreen from './holding-form.screen';
 
@@ -44,6 +44,7 @@ const selectedSwatchHex = (
       return hex;
     }
   }
+
   return undefined;
 };
 
@@ -112,17 +113,21 @@ const mockUseLiveQuery = jest.fn(
     if (keys[0] === 'holdings') {
       return { data: query.__kind === 'all' ? mockAllHoldings : mockEditHoldings };
     }
+
     if (keys[0] === 'accounts' && query.__kind === 'list') {
       return { data: mockAllAccounts };
     }
+
     if (keys[0] === 'bond_register') {
       return query.__kind === 'fetchedAt'
         ? { data: mockBondRegisterFetchedAtRows }
         : { data: mockBondRegisterRows };
     }
+
     if (keys[0] === 'price_points') {
       return { data: mockPricePoints };
     }
+
     return {
       data: [
         {
@@ -179,7 +184,7 @@ jest.mock('@kiko/loans/use-loan-auto-link', () => ({
 // Auto-mocked so the scroll-order tests below can assert on WHICH field ref a
 // rejected Save targets, without a real ScrollView/measureLayout in the test
 // environment (mirrors contribution-form's and account-form's own mock).
-jest.mock('../scroll-to-field/scroll-to-field');
+jest.mock('../../../design-system/scroll-to-field/scroll-to-field');
 
 const navigation = navigationSpy();
 const route = asRouteProp<HoldingFormProps['route']>('HoldingForm', { accountId: 'acc-1' });
@@ -504,6 +509,7 @@ describe('HoldingFormScreen term deposit', () => {
       .spyOn(globalThis, 'requestAnimationFrame')
       .mockImplementation((callback) => {
         callback(0);
+
         return 0;
       });
     const screen = await renderScreen();
@@ -530,6 +536,7 @@ describe('HoldingFormScreen term deposit', () => {
       .spyOn(globalThis, 'requestAnimationFrame')
       .mockImplementation((callback) => {
         callback(0);
+
         return 0;
       });
     const screen = await renderScreen();

@@ -256,6 +256,7 @@ describe('asPropertyMeta', () => {
       'business_share',
       'other',
     ];
+
     for (const category of categories) {
       expect(asPropertyMeta({ ...valid, category })?.category).toBe(category);
     }

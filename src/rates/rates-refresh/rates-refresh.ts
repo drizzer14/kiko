@@ -111,6 +111,7 @@ const withRetry = async <T>(
  */
 const buildUahPrice = (fiat: RateEntry[], crypto: RateEntry[]): UahPrice => {
   const price: UahPrice = { UAH: 1 };
+
   for (const entry of fiat) {
     if (entry.quote === 'UAH') {
       price[entry.base] = entry.rate;
@@ -119,6 +120,7 @@ const buildUahPrice = (fiat: RateEntry[], crypto: RateEntry[]): UahPrice => {
     }
   }
   const usdPrice = price.USD;
+
   if (usdPrice !== undefined) {
     for (const entry of crypto) {
       if (entry.quote === 'USD' && isCrypto(entry.base)) {
@@ -126,6 +128,7 @@ const buildUahPrice = (fiat: RateEntry[], crypto: RateEntry[]): UahPrice => {
       }
     }
   }
+
   return price;
 };
 
@@ -150,8 +153,10 @@ const buildUahRows = (
   fiatSource: 'monobank' | 'nbu' = 'monobank',
 ): StoredRate[] => {
   const rows: StoredRate[] = [];
+
   for (const base of allCurrencies) {
     const rate = price[base];
+
     if (base === 'UAH' || rate === undefined) {
       continue;
     }
@@ -163,6 +168,7 @@ const buildUahRows = (
       fetchedAt,
     });
   }
+
   return rows;
 };
 
@@ -185,6 +191,7 @@ const runCryptoLeg = (
 /** Every currency with at least one stored row in `currency_rates`, base or quote. */
 const defaultPresentCurrencies = async (): Promise<Currency[]> => {
   const rows = await ratesRepo.presentCurrenciesQuery();
+
   return rows.map((row) => row.currency);
 };
 
@@ -210,6 +217,7 @@ const shouldThrottle = async (
 ): Promise<boolean> => {
   const lastRefreshAt = deps.lastRefreshAt ?? null;
   const withinWindow = lastRefreshAt !== null && at - lastRefreshAt < FIVE_MINUTES_MS;
+
   if (!withinWindow) {
     return false;
   }
@@ -252,9 +260,11 @@ const resolveOutcome = (
   cryptoResult: PromiseSettledResult<RateEntry[]>,
 ): RatesRefreshOutcome => {
   const failedLegs: RatesRefreshOutcome['failedLegs'] = [];
+
   if (fiatAttempted && fiatResult.status === 'rejected') {
     failedLegs.push('fiat');
   }
+
   if (cryptoAttempted && cryptoResult.status === 'rejected') {
     failedLegs.push('crypto');
   }
@@ -263,6 +273,7 @@ const resolveOutcome = (
   if (failedLegs.length === 0) {
     return { state: 'refreshed', failedLegs };
   }
+
   return { state: failedLegs.length === attemptedLegs ? 'failed' : 'partial', failedLegs };
 };
 

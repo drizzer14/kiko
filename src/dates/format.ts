@@ -60,6 +60,7 @@ export const formatDateTime = (input: number | Date): string => {
 // malformed string or an out-of-range day so callers can reject invalid input.
 export const parseLocalDate = (value: string): number => {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+
   if (match === null) {
     return Number.NaN;
   }
@@ -72,5 +73,6 @@ export const parseLocalDate = (value: string): number => {
   if (date.getFullYear() !== year || date.getMonth() !== monthIndex || date.getDate() !== day) {
     return Number.NaN;
   }
+
   return date.getTime();
 };

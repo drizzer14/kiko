@@ -29,11 +29,6 @@ import {
   exchangeConvertDirection,
 } from '../../../holdings/exchange-convert';
 import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '../scroll-to-field/scroll-to-field';
-import {
   buildCategoryDisplayMap,
   DEFAULT_CATEGORY_KEY,
   resolveCategoryDisplay,
@@ -59,10 +54,14 @@ import Screen from '../../../design-system/components/screen';
 import { isSyncedHolding } from '../../../holdings/deletable';
 import { buildRateTable } from '../../../rates/net-worth-view';
 import ConvertExchangeFields from '../convert-exchange-fields';
+import {
+  useHeaderInset,
+  scrollToField,
+  type FieldInstance,
+} from '../../../design-system/scroll-to-field/scroll-to-field';
 import Divider from '../../../design-system/components/divider';
 import DescriptionSuggestions from '../description-suggestions';
 import SymbolIcon from '../../../design-system/components/symbol';
-import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import TextField from '../../../design-system/components/text-field';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
@@ -78,6 +77,7 @@ import { groupAmount, majorAmountText } from '../amount-format/amount-format';
 import { seedCounterpartMinorUnits } from '../../../holdings/exchange-prefill';
 import { normalizeTransactionName } from '../../../transactions/normalize-name';
 import type { AccountRow, HoldingRow, TransactionRow } from '../../../db/schema';
+import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
 import { defaultTransactionDescription } from '../../../transactions/default-description';
 import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 

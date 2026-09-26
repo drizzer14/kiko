@@ -7,6 +7,7 @@
 let mockDatabaseTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
+
   return {
     ...actual,
     write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
@@ -229,6 +230,7 @@ describe('transactionsRepo', () => {
       insert: () => ({
         values: (values: Record<string, unknown>) => {
           captured.insert = values;
+
           return Promise.resolve();
         },
       }),
@@ -240,6 +242,7 @@ describe('transactionsRepo', () => {
       update: () => ({
         set: (values: Record<string, unknown>) => {
           captured.set = values;
+
           return { where: () => Promise.resolve() };
         },
       }),
@@ -269,6 +272,7 @@ describe('transactionsRepo', () => {
       insert: () => ({
         values: (values: Record<string, unknown>) => {
           captured.insert = values;
+
           return Promise.resolve();
         },
       }),
@@ -297,6 +301,7 @@ describe('transactionsRepo', () => {
       insert: () => ({
         values: (values: Record<string, unknown>) => {
           captured.insert = values;
+
           return Promise.resolve();
         },
       }),
@@ -440,6 +445,7 @@ const makeRemoveDatabaseTransaction = (options: {
     }),
     delete: (table: unknown) => {
       captured.deletedFrom.push(table);
+
       return { where: () => Promise.resolve() };
     },
     update: (table: unknown) => ({
@@ -447,10 +453,12 @@ const makeRemoveDatabaseTransaction = (options: {
         if (table === holdings) {
           captured.holdingSet = values;
         }
+
         return { where: () => Promise.resolve() };
       },
     }),
   };
+
   return { databaseTransaction, captured };
 };
 
@@ -752,6 +760,7 @@ describe('transactionsRepo.addManyDedup upsert', () => {
       insert: () => ({
         values: (values: Record<string, unknown>[]) => {
           insertedChunkSizes.push(values.length);
+
           return { onConflictDoUpdate: () => Promise.resolve() };
         },
       }),
@@ -1247,6 +1256,7 @@ describe('transactionsRepo.setAutoLoanLinks', () => {
         set: (values: Record<string, unknown>) => ({
           where: (whereArg: unknown) => {
             captured.push({ set: values, whereArg });
+
             return Promise.resolve();
           },
         }),
@@ -1485,12 +1495,14 @@ const makeExchangeDatabaseTransaction = (
     insert: () => ({
       values: (values: Record<string, unknown>) => {
         inserts.push(values);
+
         return Promise.resolve();
       },
     }),
     update: (table: unknown) => ({
       set: (values: Record<string, unknown>) => {
         updates.push({ table, values });
+
         return { where: () => Promise.resolve() };
       },
     }),
@@ -1642,6 +1654,7 @@ describe('transactionsRepo.recordExchange', () => {
         from: () => ({
           where: () => {
             selectCalls += 1;
+
             if (selectCalls === 2) {
               throw new Error('forced destination failure');
             }

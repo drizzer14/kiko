@@ -43,6 +43,7 @@ describe('sync_state backfill migration', () => {
     const sql = backfill();
 
     expect(sql).toContain('INSERT INTO `sync_state`');
+
     for (const column of [
       'account_id',
       'last_sync_at',

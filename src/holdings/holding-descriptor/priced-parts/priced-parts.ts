@@ -28,6 +28,7 @@ const pricedBreakdown = (
   book: PriceBook,
 ): HoldingValueBreakdown => {
   const lots = spec.lots(holding.metadata);
+
   if (lots === undefined) {
     return flat(holding.currency, holdingsRepo.balanceOf(holding).minorUnits);
   }

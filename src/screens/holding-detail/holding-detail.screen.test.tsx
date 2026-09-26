@@ -390,6 +390,7 @@ describe('HoldingDetailScreen', () => {
     expect(navigation.setOptions).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'My deposit' }),
     );
+
     for (const [options] of (navigation.setOptions as jest.Mock).mock.calls) {
       expect(options.headerTitle).toBeUndefined();
       expect(options.headerLargeTitle).toBeUndefined();
@@ -1234,6 +1235,7 @@ describe('HoldingDetailScreen', () => {
     const next = loanInstallments(annuityLoanMeta).find(
       (row) => row.dueDate >= startOfLocalDay(Date.now()),
     );
+
     if (next === undefined) {
       throw new Error('fixture must have an upcoming installment for this test to mean anything');
     }

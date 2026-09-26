@@ -328,6 +328,7 @@ describe('NetWorthLine', () => {
 
     const pairs = segments[0].props.points.trim().split(' ');
     expect(pairs).toHaveLength(nonCrossingPoints.length);
+
     for (const pair of pairs) {
       expect(pair).toMatch(/^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/);
     }
@@ -864,6 +865,7 @@ describe('NetWorthLine', () => {
     // Exactly three labels (first, middle, last) — the 0.25/0.75 gridline
     // fractions get no label of their own, unlike the gridline set above.
     expect(getAllByTestId(/^net-worth-line-x-tick-/)).toHaveLength(3);
+
     for (const key of ['0.00', '0.50', '1.00']) {
       expect(getByTestId(`net-worth-line-x-tick-${key}`)).toBeTruthy();
     }

@@ -215,6 +215,7 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
     if (bondMode !== 'isin' || registerTerms === null) {
       return;
     }
+
     if (lastAppliedIsinRef.current === registerTerms.isin) {
       return;
     }

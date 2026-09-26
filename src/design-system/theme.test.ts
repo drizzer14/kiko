@@ -49,6 +49,7 @@ describe('surfaceTranslucent vs surfaceTranslucentStrong', () => {
     expect(darkTheme.colors.surfaceWashStrong).toBe('rgba(0,0,0,0.38)');
 
     const match = darkTheme.colors.surfaceWashStrong.match(/^rgba\((\d+),(\d+),(\d+),([\d.]+)\)$/);
+
     if (!match) throw new Error('surfaceWashStrong is not an rgba() string');
     const [, r, g, b, alphaString] = match;
     expect(`${r},${g},${b}`).toBe('0,0,0');
@@ -64,7 +65,9 @@ describe('surfaceTranslucent vs surfaceTranslucentStrong', () => {
   it('shares the same RGB hue as surfaceTranslucent, at a higher but still-translucent alpha', () => {
     const parseRgba = (value: string) => {
       const match = value.match(/^rgba\((\d+),(\d+),(\d+),([\d.]+)\)$/);
+
       if (!match) throw new Error(`not an rgba() string: ${value}`);
+
       return { rgb: `${match[1]},${match[2]},${match[3]}`, alpha: Number(match[4]) };
     };
 
@@ -148,6 +151,7 @@ describe('entity/chart palettes', () => {
 
   it('exposes a categorical chart palette of >= 6 distinct hex hues', () => {
     expect(chartSeriesDark.length).toBeGreaterThanOrEqual(6);
+
     for (const hue of chartSeriesDark) {
       expect(hue).toMatch(/^#[0-9A-Fa-f]{6}$/);
     }

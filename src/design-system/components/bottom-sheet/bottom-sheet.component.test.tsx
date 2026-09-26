@@ -20,6 +20,7 @@ import { KEYBOARD_CORNER_OVERLAP, SHEET_DRAG_GESTURE_TEST_ID } from './bottom-sh
 // describe block below can flip it on for its own scope.
 jest.mock('@callstack/liquid-glass', () => {
   const { View } = require('react-native');
+
   return { LiquidGlassView: View, isLiquidGlassSupported: false };
 });
 
@@ -45,6 +46,7 @@ const MAX_HEIGHT_RATIO = 0.66;
 const MOCK_BOTTOM_INSET = 34;
 jest.mock('react-native-safe-area-context', () => {
   const { View } = require('react-native');
+
   return {
     SafeAreaView: View,
     SafeAreaProvider: View,

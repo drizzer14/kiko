@@ -47,6 +47,7 @@ jest.mock('@kiko/settings/settings.repo', () => ({
 // through the mocked `useLiveQuery` (which ignores its query argument).
 jest.mock('@kiko/accounts/accounts.repo', () => {
   const actual = jest.requireActual('@kiko/accounts/accounts.repo');
+
   return {
     accountsRepo: {
       ...actual.accountsRepo,

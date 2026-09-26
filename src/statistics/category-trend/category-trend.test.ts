@@ -57,6 +57,7 @@ describe('buildCategoryTrend', () => {
     expect(points).toHaveLength(4);
     expect(points[0].t).toBe(DEFAULT_RANGE.from);
     expect(points[3].t).toBe(DEFAULT_RANGE.to);
+
     for (let i = 1; i < points.length; i += 1) {
       expect(points[i].t - points[i - 1].t).toBe(dayMs);
     }

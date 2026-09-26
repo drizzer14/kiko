@@ -253,7 +253,7 @@ follow the same layout conventions as every other Kiko screen:
   ANY defined node); `column-mapping.screen.tsx` gates its own footer
   on `loadState.kind === 'ready'`.
 - **"Choose a holding" is a labeled SELECT FIELD, not a Button.**
-  `src/screens/statement-import/target-holding-field/` wraps the
+  `src/design-system/components/target-holding-field/` wraps the
   existing `FieldTrigger` + `TargetHoldingSheet` pair (the same
   field-plus-sheet family `ModeSelectField`/`HoldingSelectField`
   follow) — shared by both screens, replacing what used to be two
@@ -267,14 +267,14 @@ follow the same layout conventions as every other Kiko screen:
   transaction-count/date-span rows, both go through the SAME shared
   component the deposit/bond value-breakdown block also uses — never
   each other's columns, only the row layout.
-- **`ExampleTransaction`** (`src/screens/statement-import/example-
+- **`ExampleTransaction`** (`src/design-system/components/example-
   transaction/`) is the ONE shared "first parsed row" preview, rendered
   under the summary table on both screens from `PreviewStats.firstTransaction`
   (the first `ParsedTransaction` in ON-FILE order, not chronological order
   — `previewStats` sets it via `parsed.transactions.at(0)`, optional
   since an existing `PreviewStats` object literal predates the field). It
   renders through the shared `TransactionCard`
-  (`src/screens/home/transaction-row/transaction-card/`) — the SAME
+  (`src/design-system/components/transaction-card/`) — the SAME
   presentational card Home's own `TransactionRow` uses, extracted out of
   that component, NOT a rebuilt card wrapping the base `Card` primitive
   (a rebuilt card risks showing the date as its title and

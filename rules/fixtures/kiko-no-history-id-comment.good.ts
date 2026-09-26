@@ -17,8 +17,10 @@ export const sampleInstant = '2026-09-25T10:00:00.000Z';
 
 // 3. A hex color, where the run of hex digits never leaves a boundary at
 // exactly one of the denylisted letters — #3366FF reads as one continuous
-// hex run, not F as a standalone id.
-export const brandColor = '#3366FF';
+// hex run, not F as a standalone id. Named, not a bare literal, so this
+// fixture also stays silent under kiko-no-raw-color-literal (its own
+// negative fixture covers that rule's boundary cases).
+export const brandColorNote = 'a hex run like #3366FF stays one continuous token';
 
 // 4. A short identifier shaped like a denylisted id, but only ever written
 // in real CODE (never inside a comment) — this rule only reads comment

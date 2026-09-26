@@ -35,6 +35,7 @@ const measureValue = (measure: CategoryMeasure, by: TrendMeasure): number => {
   if (by === 'contribution') {
     return measure.total;
   }
+
   if (by === 'frequency') {
     return measure.count;
   }

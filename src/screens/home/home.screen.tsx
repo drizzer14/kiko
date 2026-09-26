@@ -28,6 +28,7 @@ import Card from '../../design-system/components/card';
 import Text from '../../design-system/components/text';
 import type { Currency } from '../../currency/currency';
 import { usePriceBook } from '../../prices/use-price-book';
+import Divider from '../../design-system/components/divider';
 import { defaultDateRange } from '../../dates/default-range';
 import { activeHoldings } from '../../rates/active-holdings';
 import { needsPriceBook } from '../../holdings/priced-value';
@@ -40,6 +41,7 @@ import LoadingState from '../../design-system/components/loading-state';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import { type DaySection, groupByDay } from '../../transactions/group-by-day';
 import type { HomeStackParamList, TabParamList } from '../../navigation/types';
+import type { FilterOption } from '../../design-system/components/filter-menu';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
 import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
 import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
@@ -48,7 +50,6 @@ import { buildRateTable, guardedBreakdown, guardedNetWorth } from '../../rates/n
 import { styles } from './home.styles';
 import TransactionRow from './transaction-row';
 import SyncProgressBar from './sync-progress-bar';
-import type { FilterOption } from './filter-menu';
 import AddTransactionFab from './add-transaction-fab';
 import { useRefreshControlSignal } from './use-refresh-control-signal';
 import TransactionFilterBar, { FILTER_ALL } from './transaction-filter-bar';
@@ -227,6 +228,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
 
       setSelected((previous) => {
         const next = new Set(previous);
+
         if (next.has(value)) {
           next.delete(value);
         } else {
@@ -293,6 +295,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // first-seen-wins, preserving the old `Set`-based distinctness.
   const accountOptions = useMemo(() => {
     const byName = new Map<string, FilterOption>();
+
     for (const account of accounts) {
       if (account.archivedAt != null || byName.has(account.name)) {
         continue;
@@ -303,6 +306,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
         color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
       });
     }
+
     return Array.from(byName.values());
   }, [accounts]);
   // Group and match the category filter by the STABLE `categories.key` slug,
@@ -330,8 +334,10 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(localized label) `resolveCategoryDisplay` resolves a default category's title through i18n INTERNALLY (not via a captured variable Biome can see), so `i18n.language` is a real dependency — without it a live language switch leaves the option labels in the previous language.
   const categoryOptions = useMemo(() => {
     const byKey = new Map<string, FilterOption>();
+
     for (const row of transactions) {
       const key = categoryKeyForRow(row.category);
+
       if (byKey.has(key)) {
         continue;
       }
@@ -353,6 +359,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     categories.forEach((category, index) => {
       orderByKey.set(category.key, index);
     });
+
     return Array.from(byKey.values()).sort((a, b) => {
       const orderA = orderByKey.get(a.value) ?? Number.POSITIVE_INFINITY;
       const orderB = orderByKey.get(b.value) ?? Number.POSITIVE_INFINITY;
@@ -516,7 +523,9 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             <Text variant="caption" tone="textSecondary">
               {t('home.netWorth')}
             </Text>
+
             <MoneyText money={total} context="balance" style={styles.balance} />
+
             <Box style={styles.breakdown}>
               <CurrencyBreakdown items={breakdown} />
             </Box>
@@ -535,7 +544,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             divider → filters spacing — splitting the existing card-to-filter band
             evenly around the rule instead of stacking a second, doubled gap. */}
         <Box>
-          <Box style={styles.divider} />
+          <Divider />
           <Box style={styles.filterBar}>
             <TransactionFilterBar
               accounts={accountOptions}

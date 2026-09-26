@@ -228,9 +228,11 @@ const makeInMemoryDeps = (
       (holding) =>
         holding.accountId === rest.accountId && monobankIdOf(holding.metadata) === monobankId,
     );
+
     if (existing) {
       existing.balanceMinorUnits = rest.balanceMinorUnits ?? 0;
       existing.metadata = merged;
+
       return;
     }
     holdingsStore.push({
@@ -325,6 +327,7 @@ const makeInMemoryDeps = (
     listQuery: async () => accountsStore.map((account) => ({ ...account })),
     update: async (accountId, patch) => {
       const target = accountsStore.find((account) => account.id === accountId);
+
       if (target) {
         Object.assign(target, patch);
       }
@@ -341,6 +344,7 @@ const makeInMemoryDeps = (
     // once its statements have committed, mirroring `holdingsRepo.setSyncedBalance`.
     setSyncedBalance: async (holdingId, balance) => {
       const target = holdingsStore.find((holding) => holding.id === holdingId);
+
       if (target) {
         target.syncedBalanceMinorUnits = balance.minorUnits;
       }
@@ -351,6 +355,7 @@ const makeInMemoryDeps = (
     closeMany: jest.fn(async (holdingIds: string[]): Promise<void> => {
       for (const holdingId of holdingIds) {
         const target = holdingsStore.find((holding) => holding.id === holdingId);
+
         if (target) {
           target.closedAt = 1704326400000;
         }
@@ -604,11 +609,13 @@ describe('runSync', () => {
       // At the moment fetchClientInfo resolves, the account must still be
       // unmarked — the mark can only happen after this call returns.
       expect(accountsStore[0].institution).toBeNull();
+
       return originalFetchClientInfo(token, fetchImpl);
     };
     deps.accountsRepo.update = async (accountId, patch) => {
       calls.push('updateAccount');
       const account = accountsStore.find((row) => row.id === accountId);
+
       if (account) {
         Object.assign(account, patch);
       }
@@ -852,6 +859,7 @@ describe('runSync', () => {
         return [];
       }
       call += 1;
+
       return call === 1 ? cappedPage : secondPage;
     };
 
@@ -896,12 +904,15 @@ describe('runSync', () => {
       if (decodeURIComponent(accountId) !== clientInfo.accounts[0].id) {
         return [];
       }
+
       if (to >= boundary + 1000) {
         return page;
       }
+
       if (to >= boundary) {
         return [straggler];
       }
+
       return [];
     }) as SyncDeps['fetchStatement'];
 
@@ -936,6 +947,7 @@ describe('runSync', () => {
       if (decodeURIComponent(accountId) !== clientInfo.accounts[0].id) {
         return [];
       }
+
       return to >= boundary ? page : [];
     }) as SyncDeps['fetchStatement'];
 
@@ -981,6 +993,7 @@ describe('runSync', () => {
     deps.now = () => {
       const value = current;
       current += 120_000;
+
       return value;
     };
 
@@ -1056,6 +1069,7 @@ describe('runSync', () => {
     });
     const fetchClientInfo = jest.fn(async () => {
       await opened;
+
       return {
         accounts: clientInfo.accounts as MonobankAccount[],
         jars: clientInfo.jars as MonobankJar[],
@@ -1093,6 +1107,7 @@ describe('runSync', () => {
     });
     const fetchClientInfo = jest.fn(async () => {
       await opened;
+
       return {
         accounts: clientInfo.accounts as MonobankAccount[],
         jars: clientInfo.jars as MonobankJar[],
@@ -1119,6 +1134,7 @@ describe('runSync', () => {
     });
     const fetchClientInfo = jest.fn(async () => {
       await opened;
+
       return {
         accounts: clientInfo.accounts as MonobankAccount[],
         jars: clientInfo.jars as MonobankJar[],
@@ -1175,15 +1191,19 @@ describe('runSync', () => {
     let failA = true;
     deps.fetchStatement = async (_token, accountId) => {
       const id = decodeURIComponent(accountId);
+
       if (id === idA) {
         if (failA) {
           throw new Error('Monobank request failed: 500');
         }
+
         return [itemA];
       }
+
       if (id === idB) {
         return [itemB];
       }
+
       return [];
     };
 
@@ -1231,9 +1251,11 @@ describe('runSync', () => {
     const { deps } = makeInMemoryDeps(() => [], [connected]);
     deps.fetchStatement = async (_token, accountId) => {
       const id = decodeURIComponent(accountId);
+
       if (id === idA) {
         throw new Error('Monobank request failed: 500');
       }
+
       return id === idB ? [itemB] : [];
     };
 
@@ -1343,6 +1365,7 @@ describe('runSync', () => {
     });
     deps.fetchClientInfo = async () => {
       await opened;
+
       return {
         accounts: clientInfo.accounts as MonobankAccount[],
         jars: clientInfo.jars as MonobankJar[],
@@ -1390,6 +1413,7 @@ describe('runSync', () => {
       if (signalDuringUpsert === undefined) {
         signalDuringUpsert = isSyncingSnapshot();
       }
+
       return baseUpsert(holdings);
     };
 
@@ -1401,13 +1425,16 @@ describe('runSync', () => {
     const baseFetchStatement = deps.fetchStatement;
     deps.fetchStatement = async (token, accountId, fromSeconds, toSeconds, fetchImpl) => {
       const id = decodeURIComponent(accountId);
+
       if (signalAtFirstFetch === undefined) {
         signalAtFirstFetch = isSyncingSnapshot();
         holdingsAtFirstFetch = holdingsStore.length;
       }
+
       if (id === idB) {
         signalAtLastCardFetch = isSyncingSnapshot();
       }
+
       return baseFetchStatement(token, accountId, fromSeconds, toSeconds, fetchImpl);
     };
 
@@ -1454,6 +1481,7 @@ describe('runSync', () => {
       if (fastPhaseDuringUpsert === undefined) {
         fastPhaseDuringUpsert = isFastPhaseDone();
       }
+
       return baseUpsert(holdings);
     };
 
@@ -1466,6 +1494,7 @@ describe('runSync', () => {
       if (fastPhaseAtFirstFetch === undefined) {
         fastPhaseAtFirstFetch = isFastPhaseDone();
       }
+
       return baseFetchStatement(token, accountId, fromSeconds, toSeconds, fetchImpl);
     };
 
@@ -1701,6 +1730,7 @@ describe('runSync', () => {
         if (decodeURIComponent(accountId) === idA) {
           throw new Error('Monobank request failed: 500');
         }
+
         return [];
       };
       const setLastSyncAt = jest.fn(
@@ -1846,6 +1876,7 @@ describe('runSync', () => {
 
       const holdingA = holdingsStore.find((holding) => monobankIdOf(holding.metadata) === idA);
       const holdingB = holdingsStore.find((holding) => monobankIdOf(holding.metadata) === idB);
+
       if (!holdingA || !holdingB) {
         throw new Error('expected both card holdings to exist after the first sync');
       }
@@ -1901,6 +1932,7 @@ describe('runSync', () => {
     const base = deps.fetchStatement as SyncDeps['fetchStatement'];
     deps.fetchStatement = async (token, accountId, from, to, fetchImpl) => {
       samples.push({ ...getProgressSnapshot() });
+
       return base(token, accountId, from, to, fetchImpl);
     };
 
@@ -1946,6 +1978,7 @@ describe('runSync', () => {
       const snap = getProgressSnapshot();
       workTotalDuringRun = snap.workTotal;
       holdingsTotalDuringRun = snap.total;
+
       return base(token, accountId, from, to, fetchImpl);
     };
 
@@ -2114,6 +2147,7 @@ describe('runSync', () => {
         const call = (fetchStatement as jest.Mock).mock.calls.find(
           ([, accountId]) => decodeURIComponent(accountId as string) === id,
         );
+
         return call?.[2] as number | undefined;
       };
       expect(fromFor(idA)).toBe(Math.floor(lastSyncAt / 1000));
@@ -2150,12 +2184,15 @@ describe('runSync', () => {
       });
       const fetchStatement = jest.fn(async (_token: string, accountId: string) => {
         const id = decodeURIComponent(accountId);
+
         if (id === idA) {
           throw new Error('interrupted after the first card');
         }
+
         if (id === idB) {
           return [bToday];
         }
+
         return [];
       });
       deps.fetchStatement = fetchStatement as unknown as SyncDeps['fetchStatement'];

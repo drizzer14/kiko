@@ -36,7 +36,7 @@ const BAR_RADIUS = 4;
 // new HoldingType fails this `exhaustive()` at compile time instead of
 // silently falling through, and each key is a literal `t()` calls tsc checks.
 const holdingTypeLabel = (type: HoldingType, t: TFunction): string =>
-  match(type)
+  match<HoldingType, string>(type)
     .with('card', () => t('forms.holding.card'))
     .with('term_deposit', () => t('forms.holding.deposit'))
     .with('bond', () => t('forms.holding.bond'))

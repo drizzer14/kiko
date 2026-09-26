@@ -81,7 +81,7 @@ describe('authenticate', () => {
       title: 'Unlock Kiko',
       allowDeviceCredentials: true,
       cancelLabel: 'Cancel',
-      fallbackLabel: 'Use Passcode',
+      fallbackLabel: 'Use passcode',
     });
   });
 

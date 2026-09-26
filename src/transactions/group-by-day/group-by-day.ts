@@ -22,6 +22,7 @@ const dayHeader = (dayStart: number, now: number, t: TFunction): string => {
   if (dayStart === today) {
     return t('home.today');
   }
+
   if (dayStart === yesterdayDate.getTime()) {
     return t('home.yesterday');
   }

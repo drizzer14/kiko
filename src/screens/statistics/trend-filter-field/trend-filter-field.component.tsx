@@ -16,10 +16,10 @@ import ChipRow from '../../../design-system/components/chip-row';
 import SymbolIcon from '../../../design-system/components/symbol';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import SheetFooter from '../../../design-system/components/sheet-footer';
-import { FILTER_ALL } from '../../home/filter-menu/filter-menu.component';
 import SelectableRow from '../../../design-system/components/selectable-row';
-import type { FilterOption } from '../../home/filter-menu/filter-menu.props';
 import SegmentedControl from '../../../design-system/components/segmented-control';
+import { FILTER_ALL } from '../../../design-system/components/filter-menu/filter-menu.component';
+import type { FilterOption } from '../../../design-system/components/filter-menu/filter-menu.props';
 
 import { styles } from './trend-filter-field.styles';
 import type { TrendFilterFieldProps } from './trend-filter-field.props';
@@ -143,6 +143,7 @@ const isDraftDirty = (draft: Draft, filter: TrendFilter): boolean => {
 // Toggle one category key in an immutable copy of the selection.
 const toggleKey = (keys: Set<string>, key: string): Set<string> => {
   const next = new Set(keys);
+
   if (next.has(key)) {
     next.delete(key);
   } else {

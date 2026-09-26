@@ -48,43 +48,53 @@ const AccountsStack: FC = () => {
         component={AccountsScreen}
         options={{ title: t('accounts.title') }}
       />
+
       <Stack.Screen name="AccountDetail" component={AccountDetailScreen} />
+
       <Stack.Screen name="HoldingDetail" component={HoldingDetailScreen} />
+
       <Stack.Screen
         name="AccountForm"
         component={AccountFormScreen}
         options={{ title: t('forms.account.addTitle') }}
       />
+
       <Stack.Screen
         name="HoldingForm"
         component={HoldingFormScreen}
         options={{ title: t('forms.holding.addTitle') }}
       />
+
       <Stack.Screen
         name="TransactionForm"
         component={TransactionFormScreen}
         options={{ title: t('forms.transaction.addTitle') }}
       />
+
       <Stack.Screen
         name="ContributionForm"
         component={ContributionFormScreen}
         options={{ title: t('forms.contribution.addTitle') }}
       />
+
       <Stack.Screen
         name="PricePointForm"
         component={PricePointFormScreen}
         options={{ title: t('forms.pricePoint.title') }}
       />
+
       <Stack.Screen
         name="LotForm"
         component={LotFormScreen}
         options={{ title: t('forms.lot.addTitle') }}
       />
+
       <Stack.Screen
         name="StatementImport"
         component={StatementImportScreen}
         options={{ title: t('statementImport.previewHeading') }}
       />
+
       <Stack.Screen
         name="ColumnMapping"
         component={ColumnMappingScreen}

@@ -89,6 +89,7 @@ describe('refreshMarketData', () => {
       makeDeps({
         latestFetchedAt: async () => {
           latestFetchedAtCalled = true;
+
           return 1000;
         },
       }),
@@ -104,6 +105,7 @@ describe('refreshMarketData', () => {
       makeDeps({
         refreshRates: async (deps) => {
           receivedLastRefreshAt = deps.lastRefreshAt;
+
           return REFRESHED;
         },
       }),
@@ -120,6 +122,7 @@ describe('refreshMarketData', () => {
         latestFetchedAt: async () => 42,
         refreshRates: async (deps) => {
           receivedLastRefreshAt = deps.lastRefreshAt;
+
           return REFRESHED;
         },
       }),
@@ -137,6 +140,7 @@ describe('refreshMarketData', () => {
         latestFetchedAt: () => Promise.reject(readError),
         refreshRates: async (deps) => {
           receivedLastRefreshAt = deps.lastRefreshAt;
+
           return REFRESHED;
         },
       }),
@@ -207,6 +211,7 @@ describe('refreshMarketData', () => {
       }),
     ).then((outcome) => {
       settled = true;
+
       return outcome;
     });
 

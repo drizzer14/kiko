@@ -181,6 +181,7 @@ const sensebankDetectFormatCalls: string[] = [];
 
 jest.mock('../../statement-import/registry', () => {
   const actual = jest.requireActual('../../statement-import/registry');
+
   return {
     ...actual,
     detectFormat: (input: { text: string; fileName: string }) => {
@@ -190,6 +191,7 @@ jest.mock('../../statement-import/registry', () => {
 
       if (input.fileName === SENSEBANK_TRIGGER_FILE_NAME) {
         sensebankDetectFormatCalls.push(input.text);
+
         return sensebankFormatStub.detect(input) ? sensebankFormatStub : undefined;
       }
 
@@ -203,8 +205,9 @@ jest.mock('../../statement-import/registry', () => {
 // here to a minimal stand-in exposing one `onSelect` trigger per holding the
 // screen hands it, following `account-detail.screen.test.tsx`'s precedent of
 // mocking a sub-section under its own test elsewhere (`crypto-sync-section`).
-jest.mock('./target-holding-sheet', () => {
+jest.mock('../../design-system/components/target-holding-sheet', () => {
   const { Pressable, Text: RNText } = require('react-native');
+
   return {
     __esModule: true,
     default: ({
@@ -249,6 +252,7 @@ const renderScreen = async (params: {
       navigation={asNavigationProp<StatementImportProps['navigation']>(navigation)}
     />,
   );
+
   return { ...view, navigation };
 };
 

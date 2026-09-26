@@ -1,8 +1,8 @@
 import type { RefObject } from 'react';
 
-import type { previewStats } from '../preview-stats/preview-stats';
-import type { FieldInstance } from '../../forms/scroll-to-field/scroll-to-field';
-import type { TargetHoldingOption } from '../target-holding-sheet/target-holding-sheet.props';
+import type { previewStats } from '../../../statement-import/preview-stats/preview-stats';
+import type { FieldInstance } from '../../../design-system/scroll-to-field/scroll-to-field';
+import type { TargetHoldingOption } from '../../../design-system/components/target-holding-sheet/target-holding-sheet.props';
 
 export type StatementPreviewBlockProps = {
   stats: ReturnType<typeof previewStats>;

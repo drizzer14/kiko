@@ -52,6 +52,7 @@ describe('fetchNbuRegister', () => {
     let sentUrl = '';
     const spyFetch = (async (url: string) => {
       sentUrl = url;
+
       return { ok: true, json: async () => depoSecuritiesSample, status: 200 };
     }) as unknown as typeof fetch;
 

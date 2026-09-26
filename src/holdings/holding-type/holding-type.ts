@@ -83,8 +83,10 @@ export const creatableHoldingTypesForAccount = (
     if (type === 'jar') {
       return false;
     }
+
     if (type === 'metal' && kind === 'bank' && !bankSellsMetals(bankId)) {
       return false;
     }
+
     return !isSynced || !isSyncOnlyHoldingType(type);
   });

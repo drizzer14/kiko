@@ -6,8 +6,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PROJECT_DIR}/scripts/checks/kill-guard.sh",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" kill-guard.sh",
             "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" pre-write-guard.sh",
+            "timeout": 30
           }
         ]
       }
@@ -18,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PROJECT_DIR}/scripts/checks/fast.sh",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" fast.sh",
             "timeout": 60
           }
         ]
@@ -30,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PROJECT_DIR}/scripts/checks/medium.sh",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" medium.sh",
             "timeout": 300
           }
         ]
@@ -42,7 +52,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PROJECT_DIR}/scripts/checks/medium.sh",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" medium.sh",
             "timeout": 300
           }
         ]

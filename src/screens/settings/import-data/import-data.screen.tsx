@@ -12,10 +12,11 @@ import Card from '../../../design-system/components/card';
 import Text from '../../../design-system/components/text';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
+import FieldError from '../../../design-system/components/field-error';
 import type { SettingsStackParamList } from '../../../navigation/types';
-import ClipboardTextField from '../../account-detail/clipboard-text-field';
 import ConfirmSheet from '../../../design-system/components/confirm-sheet';
-import { useSubmitOnce } from '../../forms/use-submit-once/use-submit-once';
+import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
+import ClipboardTextField from '../../../design-system/components/clipboard-text-field';
 
 type ImportDataScreenProps = NativeStackScreenProps<SettingsStackParamList, 'ImportData'>;
 
@@ -74,6 +75,7 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
         setFileUri(undefined);
         setFileName(undefined);
         setWrongFileTypeError(true);
+
         return;
       }
 
@@ -195,18 +197,14 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
             </Button>
 
             {wrongFileTypeError && (
-              <Text variant="caption" tone="negative">
-                {t('settings.dataImport.wrongFileTypeError')}
-              </Text>
+              <FieldError message={t('settings.dataImport.wrongFileTypeError')} />
             )}
 
             {/* The more specific wrong-file-type error above already implies
                 "no valid file chosen yet" — showing both would be redundant,
                 so this only renders when that one is not already up. */}
             {noFileError && !wrongFileTypeError && (
-              <Text variant="caption" tone="negative">
-                {t('settings.dataImport.noFileError')}
-              </Text>
+              <FieldError message={t('settings.dataImport.noFileError')} />
             )}
           </Box>
         </Card>
@@ -222,11 +220,7 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
               secureTextEntry
             />
 
-            {keyTooShortError && (
-              <Text variant="caption" tone="negative">
-                {t('settings.dataImport.keyTooShortError')}
-              </Text>
-            )}
+            {keyTooShortError && <FieldError message={t('settings.dataImport.keyTooShortError')} />}
           </Box>
         </Card>
 

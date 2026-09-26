@@ -18,9 +18,11 @@ jest.mock('../sync-jobs', () => ({
     if (account.institution === 'monobank') {
       return [{ name: account.name, run: mockMonobankRun }];
     }
+
     if (account.institution === 'binance' || account.institution === 'btc_wallet') {
       return [{ name: account.name, run: mockCryptoRun }];
     }
+
     return [];
   },
 }));
@@ -31,6 +33,7 @@ jest.mock('../../bank-sync/registry', () => ({
 }));
 jest.mock('@kiko/sync/refresh-market-data', () => {
   const actual = jest.requireActual('@kiko/sync/refresh-market-data');
+
   return {
     ...actual,
     refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),

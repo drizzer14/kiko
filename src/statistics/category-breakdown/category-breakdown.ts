@@ -60,6 +60,7 @@ export type CategorySlice = {
 export const categoryColor = (key: string): string => {
   const chartSeries = chartSeriesDark;
   let hash = 0;
+
   for (let index = 0; index < key.length; index += 1) {
     hash = (hash * 31 + key.charCodeAt(index)) >>> 0;
   }
@@ -178,14 +179,17 @@ export const buildCategoryBreakdown = (input: {
     if (transaction.amountMinorUnits >= 0) {
       continue;
     }
+
     if (excludedIds.has(transaction.id)) {
       continue;
     }
+
     if (!canConvert(transaction.currency, baseCurrency, rateTable)) {
       continue;
     }
 
     const key = groupKey(transaction.category, categoryDisplay, defaultCategoryKey);
+
     if (excluded.has(key)) {
       continue;
     }

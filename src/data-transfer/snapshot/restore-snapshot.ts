@@ -19,6 +19,7 @@ import {
 import { write } from '../../db/client';
 import type { Currency } from '../../currency/currency';
 import { chunkForTable } from '../../db/chunk-for-table';
+import { entityColorsDark } from '../../design-system/palette';
 import { upgradeLegacyDedupKey } from '../../statement-import/mapping/upgrade-dedup-key';
 
 import type { DataSnapshot } from './data-snapshot';
@@ -49,6 +50,7 @@ const balanceSetAtBoundariesByHoldingId = (
     }
 
     const current = boundaries.get(row.holdingId);
+
     if (current === undefined || row.time > current) {
       boundaries.set(row.holdingId, row.time);
     }
@@ -102,14 +104,17 @@ const strayOpeningTransactionFor = (
   if (!STRAY_DEPOSIT_BOND_TYPES.has(holding.type)) {
     return undefined;
   }
+
   if (holding.balanceMinorUnits === 0 || holding.balanceSetAt === null) {
     return undefined;
   }
+
   if (transactionsForHolding.length !== 1) {
     return undefined;
   }
 
   const [candidate] = transactionsForHolding;
+
   if (
     candidate === undefined ||
     !isBalanceSetShapedRow(candidate) ||
@@ -131,6 +136,7 @@ const transactionsByHoldingId = (
 
   for (const row of allTransactions) {
     const bucket = buckets.get(row.holdingId);
+
     if (bucket === undefined) {
       buckets.set(row.holdingId, [row]);
       continue;
@@ -157,11 +163,13 @@ const withStrayDepositBondBalanceCleaned = (
 
   const cleanedHoldings = snapshotHoldings.map((holding) => {
     const stray = strayOpeningTransactionFor(holding, buckets.get(holding.id) ?? []);
+
     if (stray === undefined) {
       return holding;
     }
 
     strayTransactionIds.add(stray.id);
+
     return { ...holding, balanceMinorUnits: 0, balanceSetAt: null };
   });
 
@@ -200,7 +208,7 @@ const withLoanInterestReseeded = (snapshotCategories: CategoryRow[]): CategoryRo
       key: LOAN_INTEREST_CATEGORY_KEY,
       title: 'Loan interest',
       icon: 'percent',
-      color: '#5E5CE6',
+      color: entityColorsDark.indigo,
       sortOrder,
     },
   ];
@@ -226,12 +234,14 @@ const withLegacyDedupKeysUpgraded = (
   snapshotTransactions: TransactionRow[],
 ): { settings: SettingsRow[]; transactions: TransactionRow[] } => {
   const [settingsRow] = snapshotSettings;
+
   if (settingsRow === undefined || Object.hasOwn(settingsRow, 'dedupKeysUpgraded')) {
     return { settings: snapshotSettings, transactions: snapshotTransactions };
   }
 
   const upgradedTransactions = snapshotTransactions.map((row) => {
     const upgradedExternalId = upgradeLegacyDedupKey(row);
+
     return upgradedExternalId === null ? row : { ...row, externalId: upgradedExternalId };
   });
 
@@ -252,23 +262,27 @@ const bucketRateRowsBy = <T extends NormalizableRateRow>(
   groupKey: (row: T) => string | number,
 ): Map<string | number, T[]> => {
   const buckets = new Map<string | number, T[]>();
+
   for (const row of rows) {
     const key = groupKey(row);
     const bucket = buckets.get(key) ?? [];
     bucket.push(row);
     buckets.set(key, bucket);
   }
+
   return buckets;
 };
 
 /** Every already-star (`X:UAH`, `X !== 'UAH'`) row in `bucket`, by its own `base`. */
 const existingStarRowsByBase = <T extends NormalizableRateRow>(bucket: T[]): Map<Currency, T> => {
   const starByBase = new Map<Currency, T>();
+
   for (const row of bucket) {
     if (row.quote === 'UAH' && row.base !== 'UAH') {
       starByBase.set(row.base, row);
     }
   }
+
   return starByBase;
 };
 
@@ -282,6 +296,7 @@ const deriveStarRowsFromInverse = <T extends NormalizableRateRow>(
       continue;
     }
     const inverseRate = Number(row.rate);
+
     if (Number.isFinite(inverseRate) && inverseRate !== 0) {
       starByBase.set(row.quote, {
         ...row,
@@ -303,11 +318,13 @@ const deriveStarRowsFromCrossPivot = <T extends NormalizableRateRow>(
       continue;
     }
     const pivot = starByBase.get(row.quote);
+
     if (pivot === undefined) {
       continue;
     }
     const crossRate = Number(row.rate);
     const pivotRate = Number(pivot.rate);
+
     if (Number.isFinite(crossRate) && Number.isFinite(pivotRate)) {
       starByBase.set(row.base, {
         ...row,
@@ -340,6 +357,7 @@ const withRatesNormalizedToUah = <T extends NormalizableRateRow>(
   const buckets = bucketRateRowsBy(rows, groupKey);
 
   const normalized: T[] = [];
+
   for (const bucket of buckets.values()) {
     const starByBase = existingStarRowsByBase(bucket);
     deriveStarRowsFromInverse(bucket, starByBase);
@@ -421,9 +439,11 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
       for (const part of chunkForTable(accounts, snapshot.accounts)) {
         await databaseTransaction.insert(accounts).values(part);
       }
+
       for (const part of chunkForTable(holdings, holdingsToInsert)) {
         await databaseTransaction.insert(holdings).values(part);
       }
+
       for (const part of chunkForTable(categories, withLoanInterestReseeded(snapshot.categories))) {
         await databaseTransaction.insert(categories).values(part);
       }
@@ -433,9 +453,11 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
       for (const part of chunkForTable(categoryOverrides, snapshot.categoryOverrides)) {
         await databaseTransaction.insert(categoryOverrides).values(part);
       }
+
       for (const part of chunkForTable(transactions, transactionsToInsert)) {
         await databaseTransaction.insert(transactions).values(part);
       }
+
       for (const part of chunkForTable(syncState, snapshot.syncState)) {
         await databaseTransaction.insert(syncState).values(part);
       }
@@ -453,12 +475,14 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
       )) {
         await databaseTransaction.insert(currencyRates).values(part);
       }
+
       for (const part of chunkForTable(
         currencyRateHistory,
         withRatesNormalizedToUah(snapshot.currencyRateHistory, (row) => row.day),
       )) {
         await databaseTransaction.insert(currencyRateHistory).values(part);
       }
+
       for (const part of chunkForTable(settings, settingsToInsert)) {
         await databaseTransaction.insert(settings).values(part);
       }

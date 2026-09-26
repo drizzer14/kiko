@@ -16,6 +16,7 @@ jest.mock('./client', () => ({
     reactiveExecute: (config: { callback: (r: { rows: unknown[] }) => void }) => {
       mockReactiveExecute(config);
       mockReactiveCallback.current = config.callback;
+
       return mockUnsubscribe;
     },
   },

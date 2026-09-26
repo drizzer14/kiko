@@ -200,10 +200,12 @@ describe('runBackfill', () => {
       today: day(0),
       fetchNbuHistory: async (start, end) => {
         nbuCalls.push([start, end]);
+
         return nbu;
       },
       fetchCryptoHistory: async (days) => {
         btcCalls.push(days);
+
         return answered(btc);
       },
       upsertMany: async (rows: StoredRow[]) => {
@@ -221,6 +223,7 @@ describe('runBackfill', () => {
       presentCurrencies: ['USD', 'EUR', 'BTC'],
       ...overrides,
     };
+
     return { deps, captured, nbuCalls, btcCalls };
   };
 
@@ -375,6 +378,7 @@ describe('runBackfill — a newly-held currency with no stored history yet', () 
       today: day(2),
       fetchNbuHistory: async (start, end) => {
         nbuCalls.push([start, end]);
+
         return nbu;
       },
       fetchCryptoHistory: async () => answered(crypto),
@@ -405,6 +409,7 @@ describe('runBackfill — a newly-held currency with no stored history yet', () 
       today: day(2),
       fetchNbuHistory: async (start, end) => {
         nbuCalls.push([start, end]);
+
         return nbu;
       },
       fetchCryptoHistory: async () => answered([]),
@@ -533,10 +538,12 @@ describe('runBackfill — the data-presence gate', () => {
     const deps = makeDeps({
       fetchNbuHistory: async () => {
         nbuCalled = true;
+
         return nbu;
       },
       fetchCryptoHistory: async () => {
         cryptoCalled = true;
+
         return answered(btc);
       },
       upsertMany: async (rows: StoredRow[]) => {
@@ -558,6 +565,7 @@ describe('runBackfill — the data-presence gate', () => {
     const deps = makeDeps({
       fetchCryptoHistory: async () => {
         cryptoCalled = true;
+
         return answered(btc);
       },
       openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: [] }),
@@ -573,6 +581,7 @@ describe('runBackfill — the data-presence gate', () => {
     const deps = makeDeps({
       fetchNbuHistory: async () => {
         nbuCalled = true;
+
         return nbu;
       },
       openCurrencies: async () => ({ needsFiat: false, cryptoCurrencies: ['BTC'] }),
@@ -588,6 +597,7 @@ describe('runBackfill — the data-presence gate', () => {
     const deps = makeDeps({
       fetchCryptoHistory: async (_days, currencies) => {
         receivedCurrencies = currencies ?? [];
+
         return answered(btc);
       },
       openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC'] }),
@@ -613,6 +623,7 @@ describe('composeHistoryRows -> buildNetWorthSeries — a history day with a mis
 
   it('values a BTC holding on the gap day from its OWN carried anchor, not a stale joint pair', () => {
     const nbuAnchors: HistoryRateEntry[] = [];
+
     for (let index = 0; index < GAP_SPAN_DAYS - 1; index += 1) {
       // NBU has no quote for day 6 (the weekend gap) — every earlier day does.
       nbuAnchors.push({

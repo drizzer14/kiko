@@ -15,6 +15,7 @@ export const flat = (
 ): HoldingValueBreakdown => {
   const money = Money.of(currency, minorUnits);
   const zero = Money.of(currency, 0);
+
   return { gross: money, principalOrCost: money, interest: zero, tax: zero, net: money };
 };
 
@@ -28,6 +29,7 @@ export const makeBreakdown = (
   taxMinor: number,
 ): HoldingValueBreakdown => {
   const grossMinor = principalMinor + interestMinor;
+
   return {
     gross: Money.of(currency, grossMinor),
     principalOrCost: Money.of(currency, principalMinor),

@@ -1,17 +1,18 @@
 import { useTranslation } from 'react-i18next';
+import { useUnistyles } from 'react-native-unistyles';
 import type { TextInputInstance } from 'react-native';
 import { categoriesRepo } from '@kiko/categories/repo';
 import { type FC, useEffect, useRef, useState } from 'react';
 
-import ColorPicker from '../../../forms/color-picker';
 import Box from '../../../../design-system/components/box';
 import Card from '../../../../design-system/components/card';
 import Button from '../../../../design-system/components/button';
 import { alertOnCatch } from '../../../../design-system/alert-on-catch';
-import HoldingIdentityField from '../../../forms/holding-identity-field';
 import FieldError from '../../../../design-system/components/field-error';
-import { useSubmitOnce } from '../../../forms/use-submit-once/use-submit-once';
+import ColorPicker from '../../../../design-system/components/color-picker';
 import { resolveCategoryColor } from '../../../../statistics/category-breakdown';
+import { useSubmitOnce } from '../../../../design-system/use-submit-once/use-submit-once';
+import HoldingIdentityField from '../../../../design-system/components/holding-identity-field';
 import { KIKO_CATEGORIES_ICONS } from '../../../../design-system/components/icon-picker-modal/icon-pools';
 
 import { styles } from './add-category-row.styles';
@@ -35,6 +36,7 @@ type AddCategoryRowProps = {
 // hands back with nothing persisted.
 const AddCategoryRow: FC<AddCategoryRowProps> = ({ onCollapse }) => {
   const { t } = useTranslation();
+  const { theme } = useUnistyles();
   const [name, setName] = useState('');
   const [icon, setIcon] = useState(DEFAULT_ICON);
   // Null until the user taps a swatch — an honest "no color picked yet" that
@@ -148,7 +150,9 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onCollapse }) => {
 
         <Box direction="row" gap={3}>
           <Box style={styles.action}>
-            <Button variant="secondary" onPress={onCollapse}>
+            {/* The shared red ghost Cancel treatment, the confirm-sheet.component.tsx
+                shape — see kiko-design-system's "Component set (Button)". */}
+            <Button variant="ghost" textColor={theme.colors.negative} onPress={onCollapse}>
               {t('common.cancel')}
             </Button>
           </Box>

@@ -27,7 +27,6 @@ import {
 import { Money } from '../../currency/money';
 import { formatMoney } from '../../currency/format';
 import Box from '../../design-system/components/box';
-import EntityHeaderIcon from '../entity-header-icon';
 import { useDataReady } from '../../db/use-data-ready';
 import { useLiveQuery } from '../../db/use-live-query';
 import Card from '../../design-system/components/card';
@@ -35,10 +34,10 @@ import Text from '../../design-system/components/text';
 import { startOfLocalDay } from '../../dates/local-day';
 import { activeLocale } from '../../i18n/active-locale';
 import type { Currency } from '../../currency/currency';
-import EntityAmountHeader from '../entity-amount-header';
 import { usePriceBook } from '../../prices/use-price-book';
 import Button from '../../design-system/components/button';
 import { formatDate, formatTime } from '../../dates/format';
+import Divider from '../../design-system/components/divider';
 import { groupByDay } from '../../transactions/group-by-day';
 import { needsPriceBook } from '../../holdings/priced-value';
 import SymbolIcon from '../../design-system/components/symbol';
@@ -56,7 +55,9 @@ import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import CardContextMenu from '../../design-system/components/card-context-menu';
 import { transactionRowDescription } from '../../transactions/row-description';
 import { isSyncedHolding, isSyncedTransaction } from '../../holdings/deletable';
+import EntityHeaderIcon from '../../design-system/components/entity-header-icon';
 import EditHeaderButton from '../../design-system/components/edit-header-button';
+import EntityAmountHeader from '../../design-system/components/entity-amount-header';
 import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
 import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
 import { type HoldingValueBreakdown, holdingValueBreakdown } from '../../holdings/holding-value';
@@ -853,7 +854,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         context={rowContext}
       />
 
-      <Box style={styles.divider} />
+      <Divider spacing={2} />
 
       <Text variant="heading">{t('holdingDetail.transactionsHeading')}</Text>
     </Box>
@@ -1027,15 +1028,6 @@ const styles = StyleSheet.create((theme) => ({
   // layout itself now lives in the shared `SummaryTable`.
   breakdown: {
     marginTop: theme.spacing(3),
-  },
-  // A hairline rule separating the Value block from the Transactions list — the
-  // same standard hairline treatment the account-detail sections use
-  // (account-detail.styles.ts `divider`), drawn in the theme's separator color
-  // with vertical margin so each section has room to breathe.
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginVertical: theme.spacing(2),
-    backgroundColor: theme.colors.border,
   },
   // The primary line of a transaction row: description on the left, amount on
   // the right, split by space-between.

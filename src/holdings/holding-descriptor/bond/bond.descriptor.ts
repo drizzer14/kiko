@@ -15,6 +15,7 @@ import { flat, type HoldingValueBreakdown } from '../breakdown-parts';
 
 const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreakdown => {
   const meta = asBondMeta(holding.metadata);
+
   if (meta === null) {
     return flat(holding.currency, holdingsRepo.balanceOf(holding).minorUnits);
   }
@@ -80,11 +81,13 @@ export const bondExpectedProfitMinor = (
     meta.maturityDate,
     meta.couponFrequency,
   ).length;
+
   return netCouponMinor * couponCount + nominalMinor - meta.purchasePriceMinorUnits;
 };
 
 const bondEntries = (holding: ValuableHolding, now: number, t: TFunction): DerivedEntry[] => {
   const meta = asBondMeta(holding.metadata);
+
   if (meta === null) {
     return [];
   }

@@ -45,6 +45,7 @@ const keepsLabelsDistinct = (values: number[], unit: CompactUnit): boolean => {
  */
 export const chooseCompactUnit = (values: number[]): CompactUnit => {
   const finite = values.filter((value) => Number.isFinite(value));
+
   if (finite.length === 0) {
     return BASE_UNIT;
   }

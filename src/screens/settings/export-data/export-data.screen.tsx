@@ -16,7 +16,7 @@ import Switch from '../../../design-system/components/switch';
 import TextField from '../../../design-system/components/text-field';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import type { SettingsStackParamList } from '../../../navigation/types';
-import { useSubmitOnce } from '../../forms/use-submit-once/use-submit-once';
+import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
 
 import { styles } from './export-data.styles';
 

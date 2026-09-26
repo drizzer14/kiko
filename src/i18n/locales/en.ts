@@ -562,8 +562,16 @@ export const en = {
     binanceApiKeyPlaceholder: 'Binance API key',
     binanceApiSecretPlaceholder: 'Binance API secret',
     binanceConnected: 'Binance connected',
+    binanceFundingResponseNotArray: 'Binance funding response was not an array',
     binanceKeychainDisclosure:
       "Your Binance API key is stored only in your device's Keychain, used only to fetch your own data directly from Binance, and is never sent to Kiko or any server.",
+    binanceMissingBalancesArray: 'Binance account response did not contain a balances array',
+    binanceMissingRowsArray: 'Binance simple-earn response did not contain a rows array',
+    binanceNonNumericBalanceAmount: 'Binance balance contained a non-numeric free/locked amount',
+    binanceNonNumericFundingAmount: 'Binance funding balance contained a non-numeric amount',
+    binanceNonNumericPositionAmount: 'Binance simple-earn position contained a non-numeric amount',
+    binanceRequestFailed: 'Binance request failed: {{status}}{{detail}}',
+    blockExplorerRequestFailed: 'Block explorer request failed: {{status}}',
     btcAddressPlaceholder: 'BTC address',
     changeBankAction: 'Change bank',
     checking: 'Checking…',
@@ -596,12 +604,15 @@ export const en = {
       "Your token is stored only in your device's Keychain, used only to fetch your own data directly from Monobank, and is never sent to Kiko or any server.",
     monobankRateLimited:
       'Monobank allows at most 1 request per 60 seconds. Wait a minute, then try again.',
+    monobankRequestFailed: 'Monobank request failed: {{status}}',
     monobankTimeout: 'Monobank did not respond in time. Please try again.',
     monobankTokenPlaceholder: 'Monobank token',
     never: 'Never',
+    noBinanceCredentials: 'No Binance credentials stored; connect Binance before syncing.',
     noConnectionFound: 'No {{name}} connection found',
     noMonobankConnection: 'No Monobank account connected',
     noMonobankToken: 'No Monobank token found; connect an account before syncing.',
+    noWalletAddressStored: 'No wallet address stored; connect a wallet before syncing.',
     openBinanceLink: 'Open Binance API management',
     openMonobankLink: 'Open api.monobank.ua',
     pasteApiKey: 'Paste API key from clipboard',
@@ -680,8 +691,8 @@ export const en = {
     // FAB pinned over the Home list).
     addTransaction: 'Add transaction',
     // The shared Home/Statistics date-range sheet (see
-    // src/screens/home/date-range-field) — its own literals, namespaced under
-    // Home since that is where the component lives.
+    // src/design-system/components/date-range-field) — its own literals,
+    // namespaced under Home since that is the copy's original owner.
     dateRangeField: {
       apply: 'Apply',
       clear: 'Clear',

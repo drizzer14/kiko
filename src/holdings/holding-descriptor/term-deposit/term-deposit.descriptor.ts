@@ -14,6 +14,7 @@ import { INCOME_TAX_RATE_PCT, MILITARY_LEVY_RATE_PCT, taxOnInterestMinor } from 
 
 const depositBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreakdown => {
   const meta = asTermDepositMeta(holding.metadata);
+
   if (meta === null) {
     return flat(holding.currency, holdingsRepo.balanceOf(holding).minorUnits);
   }
@@ -22,6 +23,7 @@ const depositBreakdown = (holding: ValuableHolding, now: number): HoldingValueBr
   // the principal and the compounded/accrued value so a future top-up never
   // shows in the present balance.
   const active = meta.contributions.filter((c) => c.date <= now);
+
   if (active.length === 0) {
     return flat(currency, 0);
   }
@@ -43,6 +45,7 @@ const depositBreakdown = (holding: ValuableHolding, now: number): HoldingValueBr
     );
     const interestMinor = Money.fromMajor(currency, accruedMajorValue).minorUnits;
     const taxMinor = taxOnInterestMinor(interestMinor);
+
     return makeBreakdown(currency, principalMinor, interestMinor, taxMinor);
   }
 
@@ -60,6 +63,7 @@ const depositBreakdown = (holding: ValuableHolding, now: number): HoldingValueBr
     meta.termMonths,
     now,
   );
+
   return makeBreakdown(
     currency,
     ledger.principalMinor,
@@ -76,9 +80,11 @@ const contributionEntries = (
   t: TFunction,
 ): DerivedEntry[] => {
   const meta = asTermDepositMeta(holding.metadata);
+
   if (meta === null) {
     return [];
   }
+
   return meta.contributions.map((contribution, index) =>
     makeEntry(
       holding.id,
@@ -116,10 +122,12 @@ const recapAccrualEntries = (
     entries.push(makeEntry(holding.id, kind, counters[kind], time, amount, label, now));
     counters[kind] += 1;
   };
+
   for (const accrual of ledger.accruals) {
     if (accrual.grossMinor > 0) {
       push('accrual', accrual.date, accrual.grossMinor, t('holdingDetail.interestAccrual'));
     }
+
     if (accrual.incomeTaxMinor > 0) {
       push(
         'income-tax',
@@ -128,6 +136,7 @@ const recapAccrualEntries = (
         t('holdingDetail.incomeTax', { pct: INCOME_TAX_RATE_PCT }),
       );
     }
+
     if (accrual.militaryLevyMinor > 0) {
       push(
         'military-levy',
@@ -136,6 +145,7 @@ const recapAccrualEntries = (
         t('holdingDetail.militaryLevy', { pct: MILITARY_LEVY_RATE_PCT }),
       );
     }
+
     if (accrual.capitalized && accrual.capitalizationMinor !== 0) {
       push(
         'capitalization',
@@ -145,6 +155,7 @@ const recapAccrualEntries = (
       );
     }
   }
+
   return entries;
 };
 
@@ -154,12 +165,15 @@ const recapAccrualEntries = (
 // single cumulative interest/tax pair at `now`.
 const depositEntries = (holding: ValuableHolding, now: number, t: TFunction): DerivedEntry[] => {
   const meta = asTermDepositMeta(holding.metadata);
+
   if (meta === null) {
     return [];
   }
   const entries = contributionEntries(holding, now, t);
+
   if (!meta.recapitalization) {
     const breakdown = depositBreakdown(holding, now);
+
     if (breakdown.interest.minorUnits > 0) {
       entries.push(
         makeEntry(
@@ -173,6 +187,7 @@ const depositEntries = (holding: ValuableHolding, now: number, t: TFunction): De
         ),
       );
     }
+
     if (breakdown.tax.minorUnits > 0) {
       entries.push(
         makeEntry(
@@ -186,8 +201,10 @@ const depositEntries = (holding: ValuableHolding, now: number, t: TFunction): De
         ),
       );
     }
+
     return entries;
   }
+
   return [...entries, ...recapAccrualEntries(holding, meta, now, t)];
 };
 

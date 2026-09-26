@@ -47,6 +47,7 @@ export const migrateLegacyDatabase = (): DB => {
   if (tableCount(legacy) === 0) {
     legacy.close();
     legacy.delete();
+
     return kiko;
   }
 

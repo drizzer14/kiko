@@ -27,6 +27,7 @@ export const setSyncing = (next: boolean): void => {
     return;
   }
   isSyncing = next;
+
   for (const listener of listeners) {
     listener();
   }
@@ -35,6 +36,7 @@ export const setSyncing = (next: boolean): void => {
 /** Register a change listener; the returned function unsubscribes it. */
 export const subscribe = (listener: Listener): (() => void) => {
   listeners.add(listener);
+
   return () => {
     listeners.delete(listener);
   };
@@ -94,6 +96,7 @@ export const setSyncProgress = (next: SyncProgress): void => {
     return;
   }
   progress = next;
+
   for (const listener of progressListeners) {
     listener();
   }
@@ -102,6 +105,7 @@ export const setSyncProgress = (next: SyncProgress): void => {
 /** Register a progress change listener; the returned function unsubscribes it. */
 export const subscribeProgress = (listener: Listener): (() => void) => {
   progressListeners.add(listener);
+
   return () => {
     progressListeners.delete(listener);
   };
@@ -156,6 +160,7 @@ const resetSessionAccumulators = (): void => {
 const publishSessionProgress = (): void => {
   if (workTotal <= 0) {
     setSyncProgress(ZERO_PROGRESS);
+
     return;
   }
   // Clamp both numerators into their totals so a per-card page over-count (a
@@ -208,10 +213,12 @@ export const endProgressSession = (): void => {
     return;
   }
   sessionDepth -= 1;
+
   if (sessionDepth === 0) {
     resetSessionAccumulators();
     setSyncProgress(ZERO_PROGRESS);
     setSyncing(false);
+
     return;
   }
   publishSessionProgress();
@@ -245,6 +252,7 @@ export const setFastPhaseDone = (next: boolean): void => {
     return;
   }
   fastPhaseDone = next;
+
   for (const listener of fastPhaseListeners) {
     listener();
   }
@@ -256,6 +264,7 @@ export const isFastPhaseDone = (): boolean => fastPhaseDone;
 /** Register a fast-phase-done change listener; the returned function unsubscribes it. */
 export const subscribeFastPhase = (listener: Listener): (() => void) => {
   fastPhaseListeners.add(listener);
+
   return () => {
     fastPhaseListeners.delete(listener);
   };

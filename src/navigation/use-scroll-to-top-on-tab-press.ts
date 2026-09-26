@@ -96,16 +96,19 @@ const getScrollableNode = (ref: RefObject<TabRootScrollable | null>): Scrollable
 const scrollToTrueTop = (scrollable: ScrollableView, target: number): void => {
   if ('scrollTo' in scrollable) {
     scrollable.scrollTo({ y: target, animated: true });
+
     return;
   }
 
   if ('scrollToOffset' in scrollable) {
     scrollable.scrollToOffset({ offset: target, animated: true });
+
     return;
   }
 
   if ('scrollResponderScrollTo' in scrollable) {
     scrollable.scrollResponderScrollTo({ y: target, animated: true });
+
     return;
   }
 

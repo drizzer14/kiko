@@ -82,6 +82,7 @@ export const useBloomResample = (needsResample: boolean) => {
 
         if (shouldStopResampling(attempt, isPositionSettled(lastPosition, current))) {
           resample();
+
           return;
         }
 
@@ -94,6 +95,7 @@ export const useBloomResample = (needsResample: boolean) => {
 
     return () => {
       cancelled = true;
+
       if (frame !== undefined) {
         cancelAnimationFrame(frame);
       }

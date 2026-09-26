@@ -48,6 +48,7 @@ const fetchOneCoinHistory = async (
   const { prices } = await readChart(response);
 
   const byDay = new Map<number, number>();
+
   for (const [ts, price] of prices) {
     if (Number.isFinite(price)) {
       byDay.set(toUtcMidnight(ts), price);
@@ -91,6 +92,7 @@ export const fetchCryptoHistory = async (
   const fulfilled = results.filter(
     (r): r is PromiseFulfilledResult<HistoryRateEntry[]> => r.status === 'fulfilled',
   );
+
   if (fulfilled.length === 0) {
     throw new Error('CoinGecko history request failed for every coin');
   }

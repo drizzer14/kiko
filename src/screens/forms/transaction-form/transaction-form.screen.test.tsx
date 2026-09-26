@@ -11,7 +11,7 @@ import {
   navigationSpy,
 } from '../../../test-support/navigation-props';
 import { darkTheme } from '../../../design-system/theme';
-import { scrollToField } from '../scroll-to-field/scroll-to-field';
+import { scrollToField } from '../../../design-system/scroll-to-field/scroll-to-field';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
 import { mockReanimatedScrollToEnd } from '../../../test-support/mock-reanimated-scroll-to-end';
@@ -27,7 +27,7 @@ jest.mock('react-native-reanimated', () => mockReanimatedScrollToEnd(() => mockS
 // an unconditional `scrollToEnd` — auto-mocked here so the new-row tests
 // below can assert on the WIRING without depending on real
 // `measureLayout`/`measure` host-instance behavior under the test renderer.
-jest.mock('../scroll-to-field/scroll-to-field');
+jest.mock('../../../design-system/scroll-to-field/scroll-to-field');
 
 type TransactionFormProps = ComponentProps<typeof TransactionFormScreen>;
 
@@ -46,6 +46,7 @@ const collectRenderedText = (node: RenderedNode | string | null): string[] => {
   if (node === null) {
     return [];
   }
+
   if (typeof node === 'string') {
     return [node];
   }
@@ -2201,6 +2202,7 @@ describe('TransactionFormScreen — Exchange mode', () => {
     if (valueOut !== '') {
       await fireEvent.changeText(getByLabelText('Value out'), valueOut);
     }
+
     if (valueIn !== '') {
       await fireEvent.changeText(getByLabelText('Value in'), valueIn);
     }
@@ -3087,6 +3089,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
       .spyOn(globalThis, 'requestAnimationFrame')
       .mockImplementation((callback) => {
         callback(0);
+
         return 0;
       });
 
@@ -3114,6 +3117,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
       .spyOn(globalThis, 'requestAnimationFrame')
       .mockImplementation((callback) => {
         callback(0);
+
         return 0;
       });
 

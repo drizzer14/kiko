@@ -240,6 +240,7 @@ const buildXTickSet = (scales: Scales, fractions: readonly number[]): XTick[] =>
 // the evenly spaced set would otherwise stack every date on the same x.
 const buildXLabelTicks = (scales: Scales): XTick[] => {
   const timeSpan = scales.maxTime - scales.minTime;
+
   if (timeSpan <= 0) {
     return [{ key: '0.00', time: scales.minTime, leftPercent: 0, isEdge: true, isStart: true }];
   }
@@ -253,6 +254,7 @@ const buildXLabelTicks = (scales: Scales): XTick[] => {
 // old single fraction-set render filtered out of the gridlines anyway).
 const buildXGridTicks = (scales: Scales): XTick[] => {
   const timeSpan = scales.maxTime - scales.minTime;
+
   if (timeSpan <= 0) {
     return [];
   }

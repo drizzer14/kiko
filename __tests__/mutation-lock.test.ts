@@ -34,6 +34,7 @@ const makeStub = (temporaryDirectory: string, exitCode: number): string => {
   ].join('\n');
   writeFileSync(bin, body, { mode: 0o755 });
   chmodSync(bin, 0o755);
+
   return bin;
 };
 
@@ -50,6 +51,7 @@ const run = (bin: string, temporaryDirectory: string, callLog: string): Run => {
     },
     encoding: 'utf8',
   });
+
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 };
 
@@ -63,6 +65,7 @@ const holdLock = (temporaryDirectory: string, pid: string, worktree: string): st
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'pid'), pid);
   writeFileSync(join(dir, 'holder'), worktree);
+
   return dir;
 };
 
