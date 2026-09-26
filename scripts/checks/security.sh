@@ -64,6 +64,30 @@ if [ "$semgrep_code" -ne 0 ] && [ "$semgrep_code" -ne 1 ]; then
   exit 2
 fi
 
+# A rule Semgrep could not evaluate is a rule that silently did not run on
+# that file: a Timeout (reported only at level "warn", exit 0) or any
+# "error"-level entry fails closed, the same as semgrep-rules.sh treats a
+# Semgrep error as a failed proof. Unparseable output fails too, since it
+# cannot prove zero findings. Other warn-level entries stay non-blocking.
+scan_problems="$(printf '%s' "$out" | node -e '
+let text="";process.stdin.on("data",(chunk)=>text+=chunk).on("end",()=>{
+  let parsed;
+  try{parsed=JSON.parse(text)}catch{process.stdout.write("Semgrep output was not valid JSON.");return}
+  const blocking=(parsed.errors||[]).filter((entry)=>entry.level==="error"||entry.type==="Timeout");
+  process.stdout.write(blocking.map((entry)=>entry.long_msg||entry.message||JSON.stringify(entry)).join("\n"));
+})')"
+
+if [ -n "$scan_problems" ]; then
+  print_block \
+    "Semgrep (mobile security rules)" \
+    "Semgrep could not evaluate every rule on every file (a rule timed out or errored)." \
+    "$scan_problems" \
+    "A rule that timed out or errored did not run on that file, so a vulnerability there would pass unseen." \
+    "Make the named rule cheaper on the named file (or fix the reported error) and re-run: npm run check:security" \
+    "Do not raise the timeout or exclude the file to pass. Fix the rule or the scan error."
+  exit 2
+fi
+
 # Class A (ERROR): hard-fail. Class B (WARNING): override-eligible,
 # surfaced but does not block on its own.
 error_count="$(printf '%s' "$out" | node -e '
