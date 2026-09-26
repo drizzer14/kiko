@@ -21,6 +21,7 @@ import {
   type PropertyOwnershipView,
 } from '@kiko/holdings/holding-descriptor/property-item';
 import type { PriceBook } from '@kiko/prices/price-book';
+import type { BondTerms } from '@kiko/bonds/nbu-register';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { usePriceBook } from '@kiko/prices/use-price-book';
 import { asLoanMeta } from '@kiko/holdings/holding-metadata';
@@ -75,6 +76,7 @@ import {
 } from './holding-detail-spec';
 import ShareChanges from './share-changes';
 import UpcomingPayments from './upcoming-payments';
+import { useBondRegisterTerms } from './use-bond-register-terms';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
 
@@ -117,16 +119,33 @@ const BreakdownValue: FC<{ row: BreakdownRow }> = ({ row }) => {
   return <MoneyText money={row.money} tone={row.tone} />;
 };
 
+// Two decimals of a percent — the precision a seller's statement shows a
+// yield in (15.40%).
+const yieldText = (rate: number): string =>
+  `${(rate * 100).toLocaleString(activeLocale(), {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}%`;
+
 // The deposit/bond breakdown: principal-or-cost, gross, interest, tax, and a
-// bond's own whole-life expected profit. Only these two types accrue
-// interest/withhold tax, so this table is meaningful there.
+// bond's own whole-life expected profit and yield to maturity. Only these two
+// types accrue interest/withhold tax, so this table is meaningful there.
 const interestBreakdownRows = (
   breakdown: HoldingValueBreakdown,
   spec: Extract<HoldingBreakdownSpec, { kind: 'interest' }>,
   holding: HoldingRow,
+  registerTerms: BondTerms | null,
   t: TFunction,
 ): BreakdownRow[] => {
   const expectedProfit = spec.expectedProfit(holding);
+  const yieldRows =
+    foldMap(maybe(spec.yieldToMaturity(holding, registerTerms)), (rate) => [
+      {
+        label: t('holdingDetail.yieldToMaturity'),
+        text: yieldText(rate),
+        testID: 'bond-yield-to-maturity',
+      },
+    ]) ?? [];
 
   return [
     {
@@ -161,6 +180,7 @@ const interestBreakdownRows = (
           },
         ]
       : []),
+    ...yieldRows,
   ];
 };
 
@@ -270,12 +290,13 @@ const breakdownRows = (
   spec: HoldingBreakdownSpec,
   holding: HoldingRow,
   book: PriceBook,
+  registerTerms: BondTerms | null,
   now: number,
   t: TFunction,
 ): BreakdownRow[] =>
   match(spec)
     .with({ kind: 'interest' }, (interestSpec) =>
-      interestBreakdownRows(breakdown, interestSpec, holding, t),
+      interestBreakdownRows(breakdown, interestSpec, holding, registerTerms, t),
     )
     .with(
       { kind: 'priced' },
@@ -728,6 +749,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     holding?.type === 'loan',
     { cached: true },
   );
+  // The register terms a bond's yield to maturity reads its payments from.
+  const { terms: registerTerms, isLoading: registerTermsLoading } = useBondRegisterTerms(holding);
   const currency: Currency = holding?.currency ?? 'UAH';
   const now = Date.now();
   const breakdown = holding ? holdingValueBreakdown(holding, now, priceBook) : null;
@@ -755,6 +778,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     priceBookLoading,
     accountsLoading,
     linkedPaymentsLoading,
+    registerTermsLoading,
   );
   // This holding's detail-screen behavior (`HoldingDetailSpec`,
   // `holding-detail-spec/`) — `undefined` when there is no real holding
@@ -927,14 +951,20 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                   LAYOUT of, never these value/percent/tax COLUMNS
                   themselves. */}
               <SummaryTable
-                rows={breakdownRows(breakdown, spec.breakdown, holding, priceBook, now, t).map(
-                  (detail) => ({
-                    key: detail.label,
-                    label: detail.label,
-                    testID: detail.testID,
-                    value: <BreakdownValue row={detail} />,
-                  }),
-                )}
+                rows={breakdownRows(
+                  breakdown,
+                  spec.breakdown,
+                  holding,
+                  priceBook,
+                  registerTerms,
+                  now,
+                  t,
+                ).map((detail) => ({
+                  key: detail.label,
+                  label: detail.label,
+                  testID: detail.testID,
+                  value: <BreakdownValue row={detail} />,
+                }))}
               />
             </Box>
           )}

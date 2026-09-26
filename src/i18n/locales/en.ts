@@ -735,6 +735,9 @@ export const en = {
     valueLabel: 'Value',
     // A property owned in part: the value of the whole asset, and the share.
     wholeValue: 'Whole value',
+    // A bond's breakdown row: the effective annual return of the price paid
+    // against every payment still due after the purchase day.
+    yieldToMaturity: 'Yield to maturity',
     yourShare: 'Your share',
   },
   home: {

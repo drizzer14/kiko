@@ -43,8 +43,30 @@
     "payments": [
       { "pay_date": "2025-02-01", "pay_type": "1", "pay_val": 0.00875 },
       { "pay_date": "2025-08-01", "pay_type": "1", "pay_val": 0.00875 },
+      { "pay_date": "2026-02-01", "pay_type": "1", "pay_val": 0.0225 },
+      { "pay_date": "2026-08-01", "pay_type": "1", "pay_val": 0.0225 },
+      { "pay_date": "2027-02-01", "pay_type": "1", "pay_val": 0.0225 },
+      { "pay_date": "2027-08-01", "pay_type": "1", "pay_val": 0.03 },
+      { "pay_date": "2028-02-01", "pay_type": "1", "pay_val": 0.03 },
+      { "pay_date": "2028-08-01", "pay_type": "1", "pay_val": 0.03 },
       { "pay_date": "2029-02-01", "pay_type": "1", "pay_val": 0.03 },
       { "pay_date": "2029-02-01", "pay_type": "2", "pay_val": 1 }
+    ]
+  },
+  {
+    "cpcode": "UA4000239115",
+    "nominal": 1000,
+    "auk_proc": 15.18,
+    "pgs_date": "2027-09-15",
+    "cptype": "DCP",
+    "cpdescr": "Середньострокові",
+    "pay_period": 182,
+    "val_code": "UAH",
+    "payments": [
+      { "pay_date": "2026-09-16", "pay_type": "1", "pay_val": 75.9 },
+      { "pay_date": "2027-03-17", "pay_type": "1", "pay_val": 75.9 },
+      { "pay_date": "2027-09-15", "pay_type": "1", "pay_val": 75.9 },
+      { "pay_date": "2027-09-15", "pay_type": "2", "pay_val": 1000 }
     ]
   }
 ]

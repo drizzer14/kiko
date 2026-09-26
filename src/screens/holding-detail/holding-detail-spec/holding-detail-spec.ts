@@ -3,7 +3,9 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { startOfLocalDay } from '@kiko/dates';
 import type { PriceBook } from '@kiko/prices/price-book';
+import type { BondTerms } from '@kiko/bonds/nbu-register';
 import type { HoldingType } from '@kiko/holdings/holding-type';
+import { bondYieldToMaturity } from '@kiko/bonds/yield-to-maturity';
 import { asBondMeta, asLoanMeta } from '@kiko/holdings/holding-metadata';
 import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
 import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor/bond';
@@ -19,12 +21,15 @@ export type FooterAction = 'contribution' | 'transaction' | 'updateValue' | 'add
 // `metal`) shows instead — it has no interest or tax to withhold, so those
 // rows would only ever read a misleading zero. `loan` is the
 // principal/paid/interest paid/principal repaid/outstanding table read from
-// the loan's linked payments (`loanLedgerSummary`).
+// the loan's linked payments (`loanLedgerSummary`). A bond's yield to
+// maturity reads the register's cached terms for its ISIN, which the screen
+// queries (`registerTerms`, null when there are none).
 export type HoldingBreakdownSpec =
   | {
       kind: 'interest';
       principalLabelKey: 'holdingDetail.principal' | 'holdingDetail.cost';
       expectedProfit: (holding: HoldingRow) => Money | null;
+      yieldToMaturity: (holding: HoldingRow, registerTerms: BondTerms | null) => number | null;
     }
   | { kind: 'priced' }
   | { kind: 'loan' };
@@ -111,6 +116,7 @@ export const holdingDetailSpecs = {
       kind: 'interest',
       principalLabelKey: 'holdingDetail.principal',
       expectedProfit: () => null,
+      yieldToMaturity: () => null,
     },
     upcomingInstallments: noInstallments,
   },
@@ -120,6 +126,8 @@ export const holdingDetailSpecs = {
       kind: 'interest',
       principalLabelKey: 'holdingDetail.cost',
       expectedProfit: bondExpectedProfit,
+      yieldToMaturity: (holding, registerTerms) =>
+        bondYieldToMaturity(holding.metadata, holding.currency, registerTerms),
     },
     upcomingInstallments: noInstallments,
   },

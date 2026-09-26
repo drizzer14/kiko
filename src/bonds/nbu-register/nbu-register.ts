@@ -1,9 +1,12 @@
 import { guard } from 'fnts';
+import { match } from 'ts-pattern';
 import { NBU_API_ENDPOINT } from '@env';
 import { Money } from '@kiko/currency/money';
+import { startOfLocalDay } from '@kiko/dates';
+import { monthsPerCouponPeriod } from '@kiko/holdings/interest';
 import { type Currency, currencyOptions } from '@kiko/currency/currency';
-
-import type { BondCouponFrequency } from '../../holdings/holding-metadata';
+import { decimalFromJsonNumber, multiplyToDecimal } from '@kiko/currency/decimal';
+import { bondCouponFrequencies, type BondCouponFrequency } from '@kiko/holdings/holding-metadata';
 
 /**
  * NBU's public, tokenless securities-register endpoint — the
@@ -15,12 +18,17 @@ import type { BondCouponFrequency } from '../../holdings/holding-metadata';
 const REGISTER_ENDPOINT = `${NBU_API_ENDPOINT}/depo_securities?json`;
 
 /**
- * One record of the register payload, trimmed to the fields
- * `toBondTerms` reads. The fixture keeps a
- * real `payments[]` array for realism, but this type does not declare it: a
- * later phase that reads exact coupon dates instead of the frequency
- * approximation adds its own type for that field then.
+ * One scheduled payment of a register record. `pay_type` is `1` for a coupon
+ * and `2` for the redemption; the live payload has carried it both as a
+ * string and as a number, so both are read.
  */
+type NbuRegisterPayment = {
+  pay_date: string;
+  pay_type: string | number;
+  pay_val: number;
+};
+
+/** One record of the register payload, trimmed to the fields `toBondTerms` reads. */
 type NbuRegisterRow = {
   cpcode: string;
   nominal: number;
@@ -29,6 +37,19 @@ type NbuRegisterRow = {
   cpdescr: string;
   val_code: string;
   pay_period: number;
+  payments?: NbuRegisterPayment[];
+};
+
+/**
+ * One register cash flow for ONE bond of the register's `nominal`: `amount`
+ * is the exact decimal the register lists (a Eurobond pays fractions of a
+ * cent per 1-dollar nominal, so it cannot be minor units), `date` a
+ * device-local midnight like `maturityDate`.
+ */
+export type BondPayment = {
+  date: number;
+  kind: 'coupon' | 'redemption';
+  amount: string;
 };
 
 /** The register's resolved terms for one bond ISIN — the ISIN-mode form's read shape. */
@@ -40,22 +61,30 @@ export type BondTerms = {
   maturityDate: number;
   couponFrequency: BondCouponFrequency | null;
   name: string;
+  // Absent on a cache row written before payments were parsed, and on a
+  // record with a malformed payment; a consumer then generates the schedule
+  // from the coupon terms instead.
+  payments?: BondPayment[];
 };
 
 const isCurrency = (value: string): value is Currency =>
   (currencyOptions as readonly string[]).includes(value);
 
-// [canonicalPayPeriodDays, frequency] — the register's observed `pay_period`
-// values cluster around these four periods; `couponFrequencyFromPayPeriod`
-// tolerates a ±5-day slack around each, the same way a banking-day-adjusted
-// coupon date never lands on an exact calendar multiple.
-const COUPON_BANDS: readonly [number, BondCouponFrequency][] = [
-  [30, 'monthly'],
-  [91, 'quarterly'],
-  [182, 'semiannually'],
-  [364, 'annually'],
-];
+// The register's observed `pay_period` values cluster around these four
+// periods; `couponFrequencyFromPayPeriod` tolerates a ±5-day slack around
+// each, the same way a banking-day-adjusted coupon date never lands on an
+// exact calendar multiple.
+const COUPON_PERIOD_DAYS: Record<BondCouponFrequency, number> = {
+  monthly: 30,
+  quarterly: 91,
+  semiannually: 182,
+  annually: 364,
+};
 const COUPON_BAND_SLACK_DAYS = 5;
+
+/** The register's canonical days between two coupons of `frequency`. */
+export const couponPeriodDays = (frequency: BondCouponFrequency): number =>
+  COUPON_PERIOD_DAYS[frequency];
 
 /**
  * Maps a register `pay_period` (days between coupon payments) onto Kiko's
@@ -64,11 +93,10 @@ const COUPON_BAND_SLACK_DAYS = 5;
  * approximate, so it falls back to Manual mode with the known fields
  * pre-filled instead of guessing.
  */
-export const couponFrequencyFromPayPeriod = (days: number): BondCouponFrequency | null => {
-  const band = COUPON_BANDS.find(([period]) => Math.abs(days - period) <= COUPON_BAND_SLACK_DAYS);
-
-  return band?.[1] ?? null;
-};
+export const couponFrequencyFromPayPeriod = (days: number): BondCouponFrequency | null =>
+  bondCouponFrequencies.find(
+    (frequency) => Math.abs(days - COUPON_PERIOD_DAYS[frequency]) <= COUPON_BAND_SLACK_DAYS,
+  ) ?? null;
 
 const REGISTER_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -111,6 +139,75 @@ const readRegister = guard(
   (response: Response): Promise<NbuRegisterRow[]> => response.json(),
 );
 
+const paymentKind = (payType: string | number): BondPayment['kind'] | null =>
+  match(String(payType))
+    .with('1', () => 'coupon' as const)
+    .with('2', () => 'redemption' as const)
+    .otherwise(() => null);
+
+const toBondPayment = (payment: NbuRegisterPayment): BondPayment | null => {
+  const date = parseRegisterDate(payment.pay_date);
+  const kind = paymentKind(payment.pay_type);
+  const amount = decimalFromJsonNumber(payment.pay_val);
+
+  if (date === null || kind === null || amount === null) {
+    return null;
+  }
+
+  return { date, kind, amount };
+};
+
+/**
+ * All-or-nothing, like `asLots`: keeping the valid rest of a schedule with
+ * one malformed payment would silently drop a cash flow from every yield
+ * computed on it, so the whole schedule is discarded instead.
+ */
+const toBondPayments = (payments: unknown): BondPayment[] | undefined => {
+  if (!Array.isArray(payments)) {
+    return undefined;
+  }
+
+  const parsed = payments.map(toBondPayment);
+
+  return parsed.every((payment): payment is BondPayment => payment !== null) ? parsed : undefined;
+};
+
+// Four decimal places of a percent: exact for every register rate seen, and
+// the float a `Number` parse of it gives prints back unchanged.
+const COUPON_PERCENT_SCALE = 4;
+
+/**
+ * The rate of the next coupon not yet paid on `now`'s local day (a coupon
+ * paid today counts as paid): its amount x payments per year / nominal,
+ * through exact decimal math — `77 * 2 / 1000 * 100` in float is
+ * `15.400000000000002`. Null when there is no such coupon or no known
+ * frequency, so the caller falls back to the auction rate. A step-up bond
+ * reads its CURRENT step this way, where `auk_proc` stays the first one.
+ */
+const nextCouponPct = (
+  row: NbuRegisterRow,
+  payments: readonly BondPayment[],
+  now: number,
+): number | null => {
+  const frequency = couponFrequencyFromPayPeriod(row.pay_period);
+  const nominal = decimalFromJsonNumber(row.nominal);
+  const todayStart = startOfLocalDay(now);
+  const next = payments
+    .filter((payment) => payment.kind === 'coupon' && payment.date > todayStart)
+    .sort((first, second) => first.date - second.date)
+    .at(0);
+
+  if (frequency === null || nominal === null || row.nominal <= 0 || next === undefined) {
+    return null;
+  }
+
+  const paymentsPerYear = String(12 / monthsPerCouponPeriod(frequency));
+
+  return Number(
+    multiplyToDecimal([next.amount, paymentsPerYear, '100'], COUPON_PERCENT_SCALE, nominal),
+  );
+};
+
 /**
  * Maps one register row to `BondTerms`:
  * `nominal` -> `faceValueMinorUnits` through `Money.fromMajor` (an amount,
@@ -120,7 +217,7 @@ const readRegister = guard(
  * `pgs_date` is dropped rather than throwing, mirroring `nbu-metals.ts`'s
  * `toCurrentRate`.
  */
-const toBondTerms = (row: NbuRegisterRow): BondTerms[] => {
+const toBondTerms = (row: NbuRegisterRow, now: number): BondTerms[] => {
   if (!isCurrency(row.val_code)) {
     return [];
   }
@@ -131,27 +228,34 @@ const toBondTerms = (row: NbuRegisterRow): BondTerms[] => {
     return [];
   }
 
+  const payments = toBondPayments(row.payments);
+
   return [
     {
       isin: row.cpcode,
       currency: row.val_code,
       faceValueMinorUnits: Money.fromMajor(row.val_code, row.nominal).minorUnits,
-      couponPct: row.auk_proc,
+      couponPct: nextCouponPct(row, payments ?? [], now) ?? row.auk_proc,
       maturityDate,
       couponFrequency: couponFrequencyFromPayPeriod(row.pay_period),
       name: `${row.cpdescr} ${row.cpcode}`,
+      payments,
     },
   ];
 };
 
 /**
  * Fetch NBU's full securities register and map every record to
- * `BondTerms`. `bondRegisterRepo.replaceAll` (`src/bonds/bond-register-repo/`)
+ * `BondTerms`, reading each coupon as of `now`.
+ * `bondRegisterRepo.replaceAll` (`src/bonds/bond-register-repo/`)
  * writes the result into the `bond_register` cache wholesale.
  */
-export const fetchNbuRegister = async (fetchImpl: typeof fetch = fetch): Promise<BondTerms[]> => {
+export const fetchNbuRegister = async (
+  fetchImpl: typeof fetch = fetch,
+  now: number = Date.now(),
+): Promise<BondTerms[]> => {
   const response = await fetchImpl(REGISTER_ENDPOINT);
   const rows = await readRegister(response);
 
-  return rows.flatMap(toBondTerms);
+  return rows.flatMap((row) => toBondTerms(row, now));
 };

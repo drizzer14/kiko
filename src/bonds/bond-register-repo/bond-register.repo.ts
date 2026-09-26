@@ -40,7 +40,7 @@ export type RefreshBondRegisterDeps = {
   fetchImpl?: typeof fetch;
   /** The cache's current `fetchedAt` high-water mark, or null when never refreshed. */
   fetchedAt?: () => Promise<number | null>;
-  fetchRegister?: (fetchImpl: typeof fetch) => Promise<BondTerms[]>;
+  fetchRegister?: (fetchImpl: typeof fetch, now: number) => Promise<BondTerms[]>;
   replaceAll?: (rows: NewBondRegisterRow[]) => Promise<void>;
 };
 
@@ -82,7 +82,7 @@ export const refreshBondRegisterIfStale = async (
     return;
   }
 
-  const terms = await fetchRegister(fetchImpl);
+  const terms = await fetchRegister(fetchImpl, at);
 
   if (terms.length === 0) {
     return;

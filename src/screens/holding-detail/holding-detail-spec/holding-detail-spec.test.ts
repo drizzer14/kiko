@@ -92,6 +92,30 @@ describe('holdingDetailSpecs breakdown', () => {
     const spec = asInterestBreakdown(holdingDetailSpecs.bond.breakdown);
 
     expect(spec.expectedProfit(holding({ type: 'bond', metadata: null }))).toBeNull();
+    expect(spec.yieldToMaturity(holding({ type: 'bond', metadata: null }), null)).toBeNull();
+  });
+
+  it("shows a bond its yield to maturity from the bond's own price and schedule", () => {
+    const meta: BondMeta = {
+      quantity: 98,
+      faceValueMinorUnits: 100_000,
+      couponPct: 15.18,
+      couponFrequency: 'semiannually',
+      bondKind: 'government',
+      purchaseDate: new Date(2026, 8, 10).getTime(),
+      purchasePriceMinorUnits: 10_551_856,
+      maturityDate: new Date(2027, 8, 15).getTime(),
+    };
+    const bondHolding = holding({ type: 'bond', currency: 'UAH', metadata: meta });
+    const spec = asInterestBreakdown(holdingDetailSpecs.bond.breakdown);
+
+    expect(spec.yieldToMaturity(bondHolding, null)?.toFixed(4)).toBe('0.1540');
+  });
+
+  it('shows a deposit no yield to maturity', () => {
+    const spec = asInterestBreakdown(holdingDetailSpecFor('term_deposit').breakdown);
+
+    expect(spec.yieldToMaturity(holding({ type: 'term_deposit' }), null)).toBeNull();
   });
 
   // property_item and metal show the cost/value/gain breakdown instead of the

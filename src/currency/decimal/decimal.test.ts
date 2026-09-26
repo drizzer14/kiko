@@ -6,6 +6,7 @@ import {
   scaleMinorUnits,
   compareDecimal,
   normalizeDecimal,
+  multiplyToDecimal,
   multiplyToMinorUnits,
   decimalFromJsonNumber,
 } from './decimal';
@@ -122,6 +123,21 @@ describe('multiplyToMinorUnits', () => {
 
   it('needs no divisor for a plain quantity * price', () => {
     expect(multiplyToMinorUnits(['3', '19.99'], 'USD')).toBe(5997);
+  });
+});
+
+describe('multiplyToDecimal', () => {
+  it('divides exactly where float math drifts (77 * 2 / 1000 * 100)', () => {
+    expect(multiplyToDecimal(['77', '2', '100'], 4, '1000')).toBe('15.4000');
+  });
+
+  it('rounds half away from zero at the requested scale', () => {
+    expect(multiplyToDecimal(['2'], 2, '3')).toBe('0.67');
+    expect(multiplyToDecimal(['1'], 2, '3')).toBe('0.33');
+  });
+
+  it('needs no divisor for a plain product', () => {
+    expect(multiplyToDecimal(['0.0225', '2', '100'], 4)).toBe('4.5000');
   });
 });
 

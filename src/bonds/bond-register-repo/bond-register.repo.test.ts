@@ -149,13 +149,14 @@ describe('refreshBondRegisterIfStale', () => {
     expect(deps.replaceAll).toHaveBeenCalledTimes(1);
   });
 
-  it('passes the injected fetchImpl through to fetchRegister', async () => {
+  it('passes the injected fetchImpl and its own now through to fetchRegister', async () => {
     const spyFetchImpl = (async () => ({})) as unknown as typeof fetch;
     const deps = makeDeps({ fetchImpl: spyFetchImpl });
 
     await refreshBondRegisterIfStale(deps);
 
-    expect(deps.fetchRegister).toHaveBeenCalledWith(spyFetchImpl);
+    // The register's coupon is the next unpaid one as of the refresh day.
+    expect(deps.fetchRegister).toHaveBeenCalledWith(spyFetchImpl, day1);
   });
 
   it('leaves the cache untouched when the fetch returns zero rows (never wipes a good cache)', async () => {

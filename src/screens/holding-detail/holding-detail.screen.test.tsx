@@ -198,6 +198,13 @@ jest.mock('@kiko/transactions/repo', () => ({
     remove: jest.fn(),
   },
 }));
+jest.mock('@kiko/bonds/bond-register-repo', () => ({
+  bondRegisterRepo: {
+    findByIsinQuery: (isin: string) => ({ toSQL: () => ({ sql: '', params: [isin] }) }),
+  },
+}));
+// The `bond_register` rows the bond yield reads for the holding's ISIN.
+let mockBondRegisterRows: unknown[] = [];
 jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
@@ -319,6 +326,7 @@ const seed = (
       isLoading: isLoading.accounts ?? false,
     },
     price_points: { data: pricePoints, isLoading: isLoading.price_points ?? false },
+    bond_register: { data: mockBondRegisterRows, isLoading: isLoading.bond_register ?? false },
     transactions: {
       data: transactions.map((row) => ({
         exchangeCounterpartHoldingId: null,
@@ -1913,5 +1921,88 @@ describe('HoldingDetailScreen — the price_points gate', () => {
     seed(annuityLoanHolding);
     await renderScreen();
     expect(loanPaymentsCall()?.[2]).toBe(true);
+  });
+});
+
+describe('HoldingDetailScreen — bond yield to maturity', () => {
+  const localDay = (year: number, month: number, day: number): number =>
+    new Date(year, month - 1, day).getTime();
+
+  // 98 x UA4000239115 bought at 1,076.72 each on 2026-09-10 — the seller
+  // shows 15.40%.
+  const isinBondMeta = {
+    quantity: 98,
+    faceValueMinorUnits: 100_000,
+    couponPct: 15.18,
+    couponFrequency: 'semiannually',
+    bondKind: 'government',
+    purchaseDate: localDay(2026, 9, 10),
+    purchasePriceMinorUnits: 10_551_856,
+    maturityDate: localDay(2027, 9, 15),
+    isin: 'UA4000239115',
+  };
+  const isinBondHolding = { ...bondHolding, metadata: isinBondMeta };
+  const registerRow = {
+    isin: 'UA4000239115',
+    terms: {
+      isin: 'UA4000239115',
+      currency: 'UAH',
+      faceValueMinorUnits: 100_000,
+      couponPct: 15.18,
+      maturityDate: localDay(2027, 9, 15),
+      couponFrequency: 'semiannually',
+      name: 'Середньострокові UA4000239115',
+      payments: [
+        { date: localDay(2026, 9, 16), kind: 'coupon', amount: '75.9' },
+        { date: localDay(2027, 3, 17), kind: 'coupon', amount: '75.9' },
+        { date: localDay(2027, 9, 15), kind: 'coupon', amount: '75.9' },
+        { date: localDay(2027, 9, 15), kind: 'redemption', amount: '1000' },
+      ],
+    },
+    fetchedAt: 1,
+  };
+
+  const registerCall = () =>
+    mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'bond_register');
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockBondRegisterRows = [];
+  });
+
+  it("shows the seller's 15.40% for an ISIN bond read from the register payments", async () => {
+    mockBondRegisterRows = [registerRow];
+    seed(isinBondHolding);
+
+    const { getByText, getByTestId } = await renderScreen();
+
+    expect(getByText('Yield to maturity')).toBeTruthy();
+    expect(getByTestId('bond-yield-to-maturity')).toHaveTextContent('15.40%');
+    expect(registerCall()?.[0].toSQL().params).toEqual(['UA4000239115']);
+    expect(registerCall()?.[2]).toBe(true);
+  });
+
+  it('shows the same 15.40% for a Manual bond from its generated schedule', async () => {
+    seed({ ...bondHolding, metadata: { ...isinBondMeta, isin: undefined } });
+
+    const { getByTestId } = await renderScreen();
+
+    expect(getByTestId('bond-yield-to-maturity')).toHaveTextContent('15.40%');
+    expect(registerCall()?.[2]).toBe(false);
+  });
+
+  it('shows no yield for a bond stored without a price', async () => {
+    seed(bondHolding);
+
+    const { queryByText } = await renderScreen();
+
+    expect(queryByText('Yield to maturity')).toBeNull();
+  });
+
+  it('never reads the register for a holding that is not a bond', async () => {
+    seed(depositHolding);
+    await renderScreen();
+
+    expect(registerCall()?.[2]).toBe(false);
   });
 });

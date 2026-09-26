@@ -859,6 +859,59 @@ onto `BondCouponFrequency`, tolerating a ±5-day slack around each of
 the four canonical periods (30/91/182/364); a period outside every
 band resolves to `null` — the eventual ISIN-mode form falls back to
 Manual mode with the known fields pre-filled rather than guessing.
+`couponPeriodDays(frequency)` reads the same canonical periods back.
+
+**Register payments and the coupon source (USER DECISION D4, 2026-09-26).**
+`BondTerms.payments?: BondPayment[]` keeps the record's `payments[]`
+(`pay_type` `1` → `'coupon'`, `2` → `'redemption'`, read as a string
+OR a number; `pay_date` a device-local midnight like `maturityDate`;
+`pay_val` the exact decimal string for ONE bond of the register's
+`nominal` — a Eurobond pays fractions of a cent, so never minor
+units). All-or-nothing, like `asLots`: one malformed payment drops the
+whole list (`payments` absent), the same as a cache row written before
+payments were parsed — no schema change, `terms` is JSON. `couponPct`
+is the NEXT UNPAID coupon (a `pay_type` 1 dated after `now`'s local
+day; one paid today counts as paid): `pay_val` x payments per year
+(from `pay_period`: 182/183 → 2, 364/365 → 1, 91/92 → 4) / `nominal`
+x 100, exact through `multiplyToDecimal` (`src/currency/decimal/`;
+`77 * 2 / 1000 * 100` in float is `15.400000000000002`). `auk_proc`
+is only the fallback when no future coupon (or no known frequency)
+exists. A step-up bond (XS2895055981) therefore reads its CURRENT
+step. `fetchNbuRegister(fetchImpl, now)` takes `now` from
+`refreshBondRegisterIfStale`, so the cached coupon is as of the
+refresh day. The register only feeds the ISIN-mode form's fill: a
+SAVED bond's `BondMeta.couponPct` stays as saved — a later refresh
+(including a step-up date) never rewrites it.
+
+**Yield to maturity (USER DECISION D4).** `src/bonds/yield-to-maturity/`:
+`yieldToMaturity(cashFlows, paidMinorUnits, lotDate)` is the effective
+annual IRR (a decimal fraction, 0.154 = 15.4%), act/365 via
+`daysBetween`, over the flows strictly after the lot's LOCAL day (a
+flow on the lot day went to the seller); null for a lot without a price
+(null/≤0) or with nothing left. Solved by bisection in ln(1 + rate) —
+monotone over all reals for positive flows, so always bracketed
+(doubling, ≤64 expansions) and deterministic (tolerance 1e-12, ≤200
+iterations); amounts stay integer minor units.
+`portfolioYieldToMaturity(lots)` weights each priced lot's yield by the
+amount paid; an unpriced lot has no weight. `bondYieldToMaturity(metadata,
+currency, registerTerms)` reads the register's payments (scaled by
+`quantity` through `multiplyToMinorUnits`) when the cache has them for
+the bond's ISIN AND the holding's face value and currency match the
+register's; otherwise it GENERATES the schedule: the ledger's own gross
+coupon (face x coupon% / payments per year) on each date stepped back
+from maturity by `couponPeriodDays` in DAYS (not calendar months — an
+NBU bond pays exactly 182 days apart, so a bond entered by hand lands on
+the register's dates), plus the nominal at maturity. A stored bond with
+no `purchasePriceMinorUnits` (legacy; `asBondMeta` defaults it to the
+nominal) has no yield. Pin: 98 x UA4000239115 at 1,076.72 on
+2026-09-10 → 15.40% from the register AND from the generated schedule
+(month-stepped `bondCouponDates` would give 15.41%). The holding
+detail's bond breakdown shows it as its last row, "Yield to maturity"
+(`holdingDetail.yieldToMaturity`, a `text` row, testID
+`bond-yield-to-maturity`, 2 decimals via `activeLocale()`), reading the
+cached terms through `useBondRegisterTerms`
+(`src/screens/holding-detail/use-bond-register-terms/`, disabled for a
+holding without an ISIN).
 
 `src/bonds/bond-register-repo/` caches the register in the
 `bond_register` table (migration `0037`; `isin` primary key, `terms`
@@ -884,9 +937,10 @@ been flagged by Knip.
 `BondMeta.isin?: string` (`holding-metadata.ts`) records how a bond was
 added — present for one saved through ISIN mode (or typed into
 Manual mode's own optional ISIN field), `undefined` for a legacy
-Manual-mode bond. Once saved, the holding never depends on the
-register again — nothing re-validates a stored ISIN
-against a later register state.
+Manual-mode bond. Once saved, the holding's stored terms never depend
+on the register again — nothing re-validates a stored ISIN or
+rewrites its coupon against a later register state (the detail
+screen's yield to maturity only READS the cached payments, above).
 
 `BondFormBlock`'s bond section has an "ISIN / Manual"
 `BondEntryMode` mode, the design-system `SegmentedControl` (not

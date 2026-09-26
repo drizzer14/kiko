@@ -160,21 +160,11 @@ const roundHalfAwayFromZero = (numerator: bigint, denominator: bigint): bigint =
   return sign * (roundedUp ? quotient + 1n : quotient);
 };
 
-/**
- * Multiplies a chain of decimal-string factors (a quantity, a price, a
- * cross-rate) — optionally dividing by one more decimal-string factor — and
- * rounds the exact result to `currency`'s minor-unit scale, half away from
- * zero. The one BigInt boundary every price/quantity/purity multiplication
- * in the app goes through (kiko-domain), so a share valuation or a metal
- * weight never drifts through float math.
- */
-export const multiplyToMinorUnits = (
+const multiplyToScale = (
   factors: readonly string[],
-  currency: Currency,
+  targetScale: number,
   divideBy?: string,
-): number => {
-  const targetScale = currencyScale[currency];
-
+): bigint => {
   let numeratorDigits = 1n;
   let numeratorScale = 0;
 
@@ -190,8 +180,33 @@ export const multiplyToMinorUnits = (
   const scaledNumerator = numeratorDigits * 10n ** BigInt(denominator.scale + targetScale);
   const scaledDenominator = denominator.signedDigits * 10n ** BigInt(numeratorScale);
 
-  return Number(roundHalfAwayFromZero(scaledNumerator, scaledDenominator));
+  return roundHalfAwayFromZero(scaledNumerator, scaledDenominator);
 };
+
+/**
+ * Multiplies a chain of decimal-string factors (a quantity, a price, a
+ * cross-rate) — optionally dividing by one more decimal-string factor — and
+ * rounds the exact result to `currency`'s minor-unit scale, half away from
+ * zero. The one BigInt boundary every price/quantity/purity multiplication
+ * in the app goes through (kiko-domain), so a share valuation or a metal
+ * weight never drifts through float math.
+ */
+export const multiplyToMinorUnits = (
+  factors: readonly string[],
+  currency: Currency,
+  divideBy?: string,
+): number => Number(multiplyToScale(factors, currencyScale[currency], divideBy));
+
+/**
+ * The same exact product/quotient as `multiplyToMinorUnits`, for a value that
+ * is not money (a percentage): rounded half away from zero to `scale` decimal
+ * places and returned as a decimal string, never a float.
+ */
+export const multiplyToDecimal = (
+  factors: readonly string[],
+  scale: number,
+  divideBy?: string,
+): string => formatSignedDecimal(multiplyToScale(factors, scale, divideBy), scale);
 
 /**
  * Scales an integer minor-units amount by `numerator / denominator` — an

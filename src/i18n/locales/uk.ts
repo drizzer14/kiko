@@ -619,6 +619,7 @@ export const uk: typeof en = {
     value: 'Поточна вартість',
     valueLabel: 'Вартість',
     wholeValue: 'Повна вартість',
+    yieldToMaturity: 'Дохідність до погашення',
     yourShare: 'Ваша частка',
   },
   home: {

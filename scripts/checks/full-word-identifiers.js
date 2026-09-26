@@ -112,6 +112,18 @@ const EXEMPTIONS = [
     reason: 'val_code is the literal NBU register external JSON field name',
   },
   {
+    suffix: 'src/bonds/nbu-register/nbu-register.ts',
+    word: 'val',
+    name: 'pay_val',
+    reason: 'pay_val is the literal NBU register payments[] external JSON field name',
+  },
+  {
+    suffix: 'src/bonds/nbu-register/nbu-register.test.ts',
+    word: 'val',
+    name: 'pay_val',
+    reason: 'pay_val is the literal NBU register payments[] external JSON field name',
+  },
+  {
     suffix: 'src/crypto-sync/binance/binance.client.ts',
     word: 'msg',
     name: 'msg',
