@@ -798,4 +798,126 @@ describe('restoreDataSnapshot', () => {
       expect(insertedRows.settings).toEqual([alreadyMigratedSettingsRow]);
     });
   });
+
+  // A pre-star-model `.kiko` export can carry the legacy cross/inverse rows
+  // migration 0042 removes from a live device — the SAME predicate applies
+  // here, so a restore normalizes exactly like a live upgrade rather than
+  // reintroducing dead cross rows `rateTableFromRows`/`rateTableAt` already
+  // ignore.
+  describe('rate normalization to UAH-star rows (migration 0042 restore mirror)', () => {
+    it('keeps only a star row per currency, dropping every cross/inverse row, rate text unchanged', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        currencyRates: [
+          { base: 'USD', quote: 'UAH', rate: '40', source: 'monobank', fetchedAt: 1 },
+          { base: 'EUR', quote: 'UAH', rate: '43', source: 'monobank', fetchedAt: 1 },
+          { base: 'BTC', quote: 'UAH', rate: '2600000', source: 'coingecko', fetchedAt: 1 },
+          { base: 'UAH', quote: 'USD', rate: '0.025', source: 'monobank', fetchedAt: 1 },
+          { base: 'USD', quote: 'EUR', rate: '0.93', source: 'monobank', fetchedAt: 1 },
+        ] as never,
+      });
+
+      expect(insertedRows.currencyRates).toEqual([
+        { base: 'USD', quote: 'UAH', rate: '40', source: 'monobank', fetchedAt: 1 },
+        { base: 'EUR', quote: 'UAH', rate: '43', source: 'monobank', fetchedAt: 1 },
+        { base: 'BTC', quote: 'UAH', rate: '2600000', source: 'coingecko', fetchedAt: 1 },
+      ]);
+    });
+
+    it('derives a star row from an inverse UAH:X row when X has none of its own (JS predicate: String(1 / Number(rate)))', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        currencyRates: [
+          { base: 'UAH', quote: 'GBP', rate: '0.02', source: 'monobank', fetchedAt: 5 },
+        ] as never,
+      });
+
+      expect(insertedRows.currencyRates).toEqual([
+        { base: 'GBP', quote: 'UAH', rate: String(1 / 0.02), source: 'monobank', fetchedAt: 5 },
+      ]);
+    });
+
+    it('derives a star row from a legacy cross pair (X:Y product with Y:UAH)', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        currencyRates: [
+          { base: 'USD', quote: 'UAH', rate: '40', source: 'monobank', fetchedAt: 1 },
+          { base: 'GBP', quote: 'USD', rate: '1.3', source: 'monobank', fetchedAt: 1 },
+        ] as never,
+      });
+
+      expect(insertedRows.currencyRates).toEqual([
+        { base: 'USD', quote: 'UAH', rate: '40', source: 'monobank', fetchedAt: 1 },
+        { base: 'GBP', quote: 'UAH', rate: String(1.3 * 40), source: 'monobank', fetchedAt: 1 },
+      ]);
+    });
+
+    it('restores a star-only snapshot byte-identical', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+      const starRows = [
+        { base: 'USD', quote: 'UAH', rate: '40', source: 'monobank', fetchedAt: 1 },
+        { base: 'BTC', quote: 'UAH', rate: '2600000', source: 'coingecko', fetchedAt: 1 },
+      ];
+
+      await restoreDataSnapshot({ ...emptySnapshot, currencyRates: starRows as never });
+
+      expect(insertedRows.currencyRates).toEqual(starRows);
+    });
+
+    it('restores an empty currencyRates table unchanged', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      await restoreDataSnapshot(emptySnapshot);
+
+      expect(insertedRows.currencyRates ?? []).toEqual([]);
+    });
+
+    it('applies the identical three-case normalization to currencyRateHistory, scoped per day', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        currencyRateHistory: [
+          // Day 1: a full legacy pair set — only the star rows should survive.
+          { base: 'USD', quote: 'UAH', day: 1, rate: '40', source: 'nbu' },
+          { base: 'BTC', quote: 'USD', day: 1, rate: '65000', source: 'coingecko' },
+          // Day 2: only an inverse UAH:GBP row.
+          { base: 'UAH', quote: 'GBP', day: 2, rate: '0.02', source: 'nbu' },
+        ] as never,
+      });
+
+      expect(insertedRows.currencyRateHistory).toEqual([
+        { base: 'USD', quote: 'UAH', day: 1, rate: '40', source: 'nbu' },
+        {
+          base: 'BTC',
+          quote: 'UAH',
+          day: 1,
+          rate: String(65_000 * 40),
+          source: 'coingecko',
+        },
+        { base: 'GBP', quote: 'UAH', day: 2, rate: String(1 / 0.02), source: 'nbu' },
+      ]);
+    });
+
+    it('restores an empty currencyRateHistory table unchanged', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      await restoreDataSnapshot(emptySnapshot);
+
+      expect(insertedRows.currencyRateHistory ?? []).toEqual([]);
+    });
+  });
 });

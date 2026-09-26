@@ -142,6 +142,24 @@ project-level pointer to this section.
   transaction before flipping the flag, so a crash mid-run retries the
   WHOLE upgrade on the next launch instead of leaving some rows
   unrewritten.
+- **A data-only cleanup migration needs a restore mirror, not a schema
+  change.** Migration `0042_uah_star_rates` is hand-authored SQL, no
+  snapshot JSON (same as `0040`/`0039`): it removes every stored
+  cross/inverse rate row (`currency_rates`/`currency_rate_history`,
+  `quote <> 'UAH' OR base = 'UAH'`) now that every A->B conversion
+  resolves at read time through the UAH pivot (kiko-pricing's
+  "Currency-rate fallback chain"). Crash-safe, derive-then-delete order
+  (same shape as `0040`'s snapshot-then-mutate): two additive
+  `INSERT OR IGNORE` steps first — one X:UAH row from an inverse
+  `UAH:X` row, one from a legacy `X:Y * Y:UAH` cross pair — so a
+  currency whose only pre-star row was an inverse or a cross pair still
+  ends up with its own star row before the final, irreversible DELETE
+  runs; idempotent (a second run derives and deletes nothing).
+  `src/data-transfer/snapshot/restore-snapshot.ts`'s
+  `withRatesNormalizedToUah` applies the IDENTICAL rule to a `.kiko`
+  restore, so a pre-star export normalizes exactly like a live device
+  upgrade rather than reintroducing dead cross rows. Next free
+  migration index: `0043`.
 
 ## Hard rule: every write goes through `db.transaction()`
 

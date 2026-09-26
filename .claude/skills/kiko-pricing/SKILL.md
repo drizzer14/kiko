@@ -85,6 +85,15 @@ instead of dropping it from the leading buckets. `price_points`' own
 `priceAt` (below) mirrors this same nearest-at-or-before /
 earliest-fallback shape.
 
+A legacy stored cross/inverse row (any row with `quote !== 'UAH'` or
+`base === 'UAH'`) is removed both at upgrade and at restore: migration
+`0042_uah_star_rates` deletes one from a live device (deriving a
+missing star row first, from an inverse or a legacy cross pair, so no
+currency loses its conversion), and
+`restore-snapshot.ts`'s `withRatesNormalizedToUah` applies the
+identical rule to a `.kiko` import — see kiko-architecture's
+migrations section for the full derive-then-delete shape.
+
 ### History backfill
 
 `composeHistoryRows` writes one `X:UAH` row per priced currency per

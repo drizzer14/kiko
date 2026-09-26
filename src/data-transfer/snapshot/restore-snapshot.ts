@@ -17,6 +17,7 @@ import {
   transactions,
 } from '../../db/schema';
 import { write } from '../../db/client';
+import type { Currency } from '../../currency/currency';
 import { chunkForTable } from '../../db/chunk-for-table';
 import { upgradeLegacyDedupKey } from '../../statement-import/mapping/upgrade-dedup-key';
 
@@ -240,6 +241,115 @@ const withLegacyDedupKeysUpgraded = (
   };
 };
 
+/** The rate-row fields `withRatesNormalizedToUah` reads/rewrites; every other
+ * field on `T` (e.g. `fetchedAt` on `currencyRates`, `day` on
+ * `currencyRateHistory`) rides along verbatim from whichever row supplied it. */
+type NormalizableRateRow = { base: Currency; quote: Currency; rate: string };
+
+/** Groups `rows` by `groupKey`, preserving each bucket's own row order. */
+const bucketRateRowsBy = <T extends NormalizableRateRow>(
+  rows: T[],
+  groupKey: (row: T) => string | number,
+): Map<string | number, T[]> => {
+  const buckets = new Map<string | number, T[]>();
+  for (const row of rows) {
+    const key = groupKey(row);
+    const bucket = buckets.get(key) ?? [];
+    bucket.push(row);
+    buckets.set(key, bucket);
+  }
+  return buckets;
+};
+
+/** Every already-star (`X:UAH`, `X !== 'UAH'`) row in `bucket`, by its own `base`. */
+const existingStarRowsByBase = <T extends NormalizableRateRow>(bucket: T[]): Map<Currency, T> => {
+  const starByBase = new Map<Currency, T>();
+  for (const row of bucket) {
+    if (row.quote === 'UAH' && row.base !== 'UAH') {
+      starByBase.set(row.base, row);
+    }
+  }
+  return starByBase;
+};
+
+/** Step 1 (mutates `starByBase`): derive X:UAH from an inverse UAH:X row, when X has none yet. */
+const deriveStarRowsFromInverse = <T extends NormalizableRateRow>(
+  bucket: T[],
+  starByBase: Map<Currency, T>,
+): void => {
+  for (const row of bucket) {
+    if (row.base !== 'UAH' || row.quote === 'UAH' || starByBase.has(row.quote)) {
+      continue;
+    }
+    const inverseRate = Number(row.rate);
+    if (Number.isFinite(inverseRate) && inverseRate !== 0) {
+      starByBase.set(row.quote, {
+        ...row,
+        base: row.quote,
+        quote: 'UAH',
+        rate: String(1 / inverseRate),
+      });
+    }
+  }
+};
+
+/** Step 2 (mutates `starByBase`): derive X:UAH from X:Y * Y:UAH, for a legacy X whose only row is a cross pair. */
+const deriveStarRowsFromCrossPivot = <T extends NormalizableRateRow>(
+  bucket: T[],
+  starByBase: Map<Currency, T>,
+): void => {
+  for (const row of bucket) {
+    if (row.base === 'UAH' || row.quote === 'UAH' || starByBase.has(row.base)) {
+      continue;
+    }
+    const pivot = starByBase.get(row.quote);
+    if (pivot === undefined) {
+      continue;
+    }
+    const crossRate = Number(row.rate);
+    const pivotRate = Number(pivot.rate);
+    if (Number.isFinite(crossRate) && Number.isFinite(pivotRate)) {
+      starByBase.set(row.base, {
+        ...row,
+        base: row.base,
+        quote: 'UAH',
+        rate: String(crossRate * pivotRate),
+      });
+    }
+  }
+};
+
+/**
+ * Mirrors migration 0042's own three-step rule (`drizzle/migrations/
+ * 0042_uah_star_rates.sql`'s doc comment is the full statement of WHY) for a
+ * `.kiko` restore: keeps an existing `X:UAH` star row untouched, derives one
+ * from an inverse `UAH:X` row (`String(1 / Number(rate))`) when `X` has none
+ * of its own, derives one from a legacy cross pair (`X:Y` times the resolved
+ * `Y:UAH`) for an `X` that only ever had a cross row, then drops every
+ * remaining non-star row. `groupKey` scopes derivation to one bucket at a
+ * time — `currencyRateHistory` passes `(row) => row.day` (a same-day pivot
+ * only, matching the SQL's `day` join column); `currencyRates` (no `day`
+ * column) defaults every row into ONE bucket. Pure and order-preserving
+ * within a bucket (`Map` insertion order), so a star-only snapshot restores
+ * byte-identical and an empty snapshot stays empty.
+ */
+const withRatesNormalizedToUah = <T extends NormalizableRateRow>(
+  rows: T[],
+  groupKey: (row: T) => string | number = () => 0,
+): T[] => {
+  const buckets = bucketRateRowsBy(rows, groupKey);
+
+  const normalized: T[] = [];
+  for (const bucket of buckets.values()) {
+    const starByBase = existingStarRowsByBase(bucket);
+    deriveStarRowsFromInverse(bucket, starByBase);
+    deriveStarRowsFromCrossPivot(bucket, starByBase);
+    normalized.push(...starByBase.values());
+  }
+
+  return normalized;
+};
+
 /**
  * Replaces every row in every one of the 10 logical tables with the given
  * snapshot's rows, inside ONE `write()` transaction — so a failure partway
@@ -332,10 +442,21 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
     };
 
     const insertRatesAndSettings = async (): Promise<void> => {
-      for (const part of chunkForTable(currencyRates, snapshot.currencyRates)) {
+      // Migration 0042's own restore mirror: a pre-star `.kiko` export can
+      // carry a legacy cross/inverse row `rateTableFromRows`/`rateTableAt`
+      // already ignore at read time — normalize BEFORE insert so a restored
+      // device's `currency_rates`/`currency_rate_history` end up shaped
+      // exactly like a live device's post-0042 upgrade.
+      for (const part of chunkForTable(
+        currencyRates,
+        withRatesNormalizedToUah(snapshot.currencyRates),
+      )) {
         await databaseTransaction.insert(currencyRates).values(part);
       }
-      for (const part of chunkForTable(currencyRateHistory, snapshot.currencyRateHistory)) {
+      for (const part of chunkForTable(
+        currencyRateHistory,
+        withRatesNormalizedToUah(snapshot.currencyRateHistory, (row) => row.day),
+      )) {
         await databaseTransaction.insert(currencyRateHistory).values(part);
       }
       for (const part of chunkForTable(settings, settingsToInsert)) {
