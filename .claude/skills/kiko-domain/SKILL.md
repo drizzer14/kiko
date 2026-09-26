@@ -262,7 +262,7 @@ hides the field and ignores the list. This form never edits or
 deletes a past change; the holding detail does.
 
 **Share changes are editable.** The holding detail lists every stored
-change newest first in a "Share changes" section (`ShareChanges`,
+change newest first in a "Share Changes" section (`ShareChanges`,
 `src/screens/holding-detail/share-changes/`, fed by
 `propertyShareChanges`, `property-item.descriptor.ts`): the day
 (`formatDate(day, { timeZone: 'UTC' })`) and the share through the
@@ -1141,7 +1141,7 @@ Principal repaid / Outstanding (`loanLedgerSummary`, above; testIDs
 `-principal-repaid`, `-outstanding`). Its Outstanding row is the same
 number as the Value header, the card, and net worth.
 An `'annuity'`/`'differentiated'` loan additionally lists EVERY remaining
-scheduled payment under an "Upcoming payments" heading (the loan entry's
+scheduled payment under an "Upcoming Payments" heading (the loan entry's
 own `upcomingInstallments` — every `loanInstallments` row due on or after
 today's local day, in schedule order; its first row is the next
 installment). `UpcomingPayments`
@@ -1447,7 +1447,7 @@ carries `selectedLoanHoldingId`, regardless of the row's own amount
 sign — a linked row later edited from debit to credit must still reach the
 field where None/Undo live.
 
-**The loan holding-detail screen's own "Linked payments" section is the
+**The loan holding-detail screen's own "Linked Payments" section is the
 only way to review an auto link** (a loan is ledgerless, so it carries no
 ledger of its own transactions worth reviewing there instead): every
 transaction linked (manual or auto) to that loan, newest first, via

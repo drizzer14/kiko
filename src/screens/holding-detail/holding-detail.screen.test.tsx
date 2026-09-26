@@ -957,7 +957,7 @@ describe('HoldingDetailScreen', () => {
         const { getByText, getAllByTestId } = await renderScreen();
         const rows = getAllByTestId('share-change-row');
 
-        expect(getByText('Share changes')).toBeTruthy();
+        expect(getByText('Share Changes')).toBeTruthy();
         expect(rows).toHaveLength(2);
         expect(rows[0]).toHaveTextContent('01.06.20251/3 · 33.33%');
         expect(rows[1]).toHaveTextContent('01.01.20241/2 · 50%');
@@ -979,7 +979,7 @@ describe('HoldingDetailScreen', () => {
 
         const { queryByText, queryByTestId } = await renderScreen();
 
-        expect(queryByText('Share changes')).toBeNull();
+        expect(queryByText('Share Changes')).toBeNull();
         expect(queryByTestId('share-change-row')).toBeNull();
       });
 
@@ -991,7 +991,7 @@ describe('HoldingDetailScreen', () => {
 
         const { queryByText } = await renderScreen();
 
-        expect(queryByText('Share changes')).toBeNull();
+        expect(queryByText('Share Changes')).toBeNull();
       });
 
       it('opens the edit form for the held change, by holding id and day key', async () => {
@@ -1493,7 +1493,7 @@ describe('HoldingDetailScreen', () => {
       throw new Error('fixture must have an upcoming installment for this test to mean anything');
     }
 
-    expect(getByText('Upcoming payments')).toBeTruthy();
+    expect(getByText('Upcoming Payments')).toBeTruthy();
     expect(getAllByTestId(/^upcoming-payment-/)).toHaveLength(upcoming.length);
     // Scoped per row: a swapped principal/interest would fail here, unlike a
     // bare `getByText` search over the whole screen.
@@ -1521,7 +1521,7 @@ describe('HoldingDetailScreen', () => {
 
     const { queryByText } = await renderScreen();
 
-    expect(queryByText('Upcoming payments')).toBeNull();
+    expect(queryByText('Upcoming Payments')).toBeNull();
   });
 
   it('shows no upcoming payments for a non-loan holding', async () => {
@@ -1529,7 +1529,7 @@ describe('HoldingDetailScreen', () => {
 
     const { queryByText } = await renderScreen();
 
-    expect(queryByText('Upcoming payments')).toBeNull();
+    expect(queryByText('Upcoming Payments')).toBeNull();
   });
 
   // An overpaid correction clamps the outstanding to 0 even though
@@ -1542,7 +1542,7 @@ describe('HoldingDetailScreen', () => {
 
     const { queryByText } = await renderScreen();
 
-    expect(queryByText('Upcoming payments')).toBeNull();
+    expect(queryByText('Upcoming Payments')).toBeNull();
   });
 
   // The loan detail lists linked payments — the ONLY way to review an auto
@@ -1586,7 +1586,7 @@ describe('HoldingDetailScreen', () => {
 
     const { getByText, getAllByTestId } = await renderScreen();
 
-    expect(getByText('Linked payments')).toBeTruthy();
+    expect(getByText('Linked Payments')).toBeTruthy();
     expect(getByText('First installment')).toBeTruthy();
     expect(getByText('Second installment')).toBeTruthy();
     // The query already orders newest-first — the screen renders the rows
@@ -1600,7 +1600,7 @@ describe('HoldingDetailScreen', () => {
 
     const { queryByText } = await renderScreen();
 
-    expect(queryByText('Linked payments')).toBeNull();
+    expect(queryByText('Linked Payments')).toBeNull();
   });
 
   it('never shows a Linked payments section for a non-loan holding, even if seeded', async () => {
@@ -1619,7 +1619,7 @@ describe('HoldingDetailScreen', () => {
 
     const { queryByText } = await renderScreen();
 
-    expect(queryByText('Linked payments')).toBeNull();
+    expect(queryByText('Linked Payments')).toBeNull();
   });
 
   it('tapping a linked-payment row opens the transaction form for that row', async () => {

@@ -32,7 +32,7 @@ describe('UpcomingPayments', () => {
       <UpcomingPayments installments={installments.slice(0, 2)} currency="UAH" />,
     );
 
-    expect(getByText('Upcoming payments')).toBeTruthy();
+    expect(getByText('Upcoming Payments')).toBeTruthy();
     expect(getByText(formatDate(first.dueDate))).toBeTruthy();
 
     const row = getByTestId(`upcoming-payment-${first.index}`);

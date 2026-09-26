@@ -27,13 +27,13 @@ describe('ShareChanges', () => {
   it('renders nothing without a stored change', async () => {
     const { queryByText } = await renderList(property({}));
 
-    expect(queryByText('Share changes')).toBeNull();
+    expect(queryByText('Share Changes')).toBeNull();
   });
 
   it('renders nothing before the holding loads', async () => {
     const { queryByText } = await renderList(undefined);
 
-    expect(queryByText('Share changes')).toBeNull();
+    expect(queryByText('Share Changes')).toBeNull();
   });
 
   it('shows each change as its day and its share, newest first', async () => {
@@ -48,7 +48,7 @@ describe('ShareChanges', () => {
     );
     const rows = getAllByTestId('share-change-row');
 
-    expect(getByText('Share changes')).toBeTruthy();
+    expect(getByText('Share Changes')).toBeTruthy();
     expect(rows[0]).toHaveTextContent('01.06.202525%');
     expect(rows[1]).toHaveTextContent('01.01.202450%');
   });

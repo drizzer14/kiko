@@ -864,7 +864,7 @@ new component can land between reviews of this skill:
   layout/alignment/styling for their own summary rows (transaction count,
   currency, date span) — never the deposit table's value/percent/tax
   COLUMNS, only its layout. The loan detail's ledger breakdown and its
-  "Upcoming payments" list (`UpcomingPayments`, one row per installment:
+  "Upcoming Payments" list (`UpcomingPayments`, one row per installment:
   date label, payment over a principal / interest caption) are
   `SummaryTable`s too. A property owned in part swaps the priced
   Cost / Value / Gain rows for Whole value / Your share / Your value /

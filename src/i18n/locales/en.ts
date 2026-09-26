@@ -676,7 +676,7 @@ export const en = {
     // The loan detail screen's own "Linked payments" section heading: the
     // transactions the auto-link matcher (or a manual pick) linked to this
     // loan, newest first.
-    linkedPayments: 'Linked payments',
+    linkedPayments: 'Linked Payments',
     militaryLevy: 'Military levy {{pct}}%',
     openingDeposit: 'Opening deposit',
     outstanding: 'Outstanding',
@@ -693,7 +693,7 @@ export const en = {
     purchase: 'Purchase',
     redemption: 'Redemption',
     sale: 'Sale',
-    shareChanges: 'Share changes',
+    shareChanges: 'Share Changes',
     // After the share ("1/3 · 33.33% since 01.06.2025"): the day it took effect.
     shareSince: 'since {{date}}',
     tax: 'Tax',
@@ -702,7 +702,7 @@ export const en = {
     transactionsHeading: 'Transactions',
     // The loan detail's list of every remaining scheduled payment
     // (annuity/differentiated only).
-    upcomingPayments: 'Upcoming payments',
+    upcomingPayments: 'Upcoming Payments',
     // The loan footer action's label — writes a correction to the loan's
     // manual outstanding series via `PricePointForm` (same mechanism as
     // `updateValue` below, for a priced holding).
