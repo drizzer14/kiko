@@ -2,10 +2,41 @@ import { bondFieldErrors, bondReasonKey } from './bond-reasons';
 
 const baseParams = () => ({
   quantity: '10',
+  purchasePrice: '',
+  purchasePriceRequired: false,
   faceValue: '1000',
   couponPct: '9',
   purchaseDate: 1_700_000_000_000,
   maturityDate: 1_800_000_000_000,
+});
+
+describe('bondFieldErrors — purchase price', () => {
+  it('requires a price where the form requires one (ISIN mode)', () => {
+    expect(
+      bondFieldErrors({ ...baseParams(), purchasePriceRequired: true }).purchasePriceError,
+    ).toBe('forms.holding.purchasePriceRequiredError');
+  });
+
+  it('rejects a zero price where one is required', () => {
+    expect(
+      bondFieldErrors({ ...baseParams(), purchasePriceRequired: true, purchasePrice: '0' })
+        .purchasePriceError,
+    ).toBe('forms.holding.purchasePriceRequiredError');
+  });
+
+  it('accepts a positive price where one is required', () => {
+    expect(
+      bondFieldErrors({
+        ...baseParams(),
+        purchasePriceRequired: true,
+        purchasePrice: '105 518,56',
+      }).purchasePriceError,
+    ).toBeNull();
+  });
+
+  it('accepts a blank price where it is optional (Manual mode defaults it to nominal)', () => {
+    expect(bondFieldErrors(baseParams()).purchasePriceError).toBeNull();
+  });
 });
 
 describe('bondFieldErrors — quantity', () => {
@@ -123,6 +154,12 @@ describe('bondReasonKey', () => {
   it('prioritizes the quantity reason over every other field', () => {
     expect(bondReasonKey({ ...baseParams(), quantity: '', faceValue: '', couponPct: '' })).toBe(
       'forms.holding.quantityError',
+    );
+  });
+
+  it('prioritizes the purchase-price reason over face value once quantity passes', () => {
+    expect(bondReasonKey({ ...baseParams(), purchasePriceRequired: true, faceValue: '' })).toBe(
+      'forms.holding.purchasePriceRequiredError',
     );
   });
 

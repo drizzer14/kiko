@@ -86,12 +86,14 @@ export type UseBondFieldsResult = HoldingTypeForm & {
   refs: {
     isinFieldRef: RefObject<FieldInstance | null>;
     quantityFieldRef: RefObject<FieldInstance | null>;
+    purchasePriceFieldRef: RefObject<FieldInstance | null>;
     faceValueFieldRef: RefObject<FieldInstance | null>;
     couponPctFieldRef: RefObject<FieldInstance | null>;
     purchaseDateFieldRef: RefObject<FieldInstance | null>;
     maturityDateFieldRef: RefObject<FieldInstance | null>;
     isinInputRef: RefObject<TextInputInstance | null>;
     quantityInputRef: RefObject<TextInputInstance | null>;
+    purchasePriceInputRef: RefObject<TextInputInstance | null>;
     faceValueInputRef: RefObject<TextInputInstance | null>;
     couponPctInputRef: RefObject<TextInputInstance | null>;
   };
@@ -120,12 +122,14 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
 
   const isinFieldRef = useRef<FieldInstance>(null);
   const quantityFieldRef = useRef<FieldInstance>(null);
+  const purchasePriceFieldRef = useRef<FieldInstance>(null);
   const faceValueFieldRef = useRef<FieldInstance>(null);
   const couponPctFieldRef = useRef<FieldInstance>(null);
   const purchaseDateFieldRef = useRef<FieldInstance>(null);
   const maturityDateFieldRef = useRef<FieldInstance>(null);
   const isinInputRef = useRef<TextInputInstance>(null);
   const quantityInputRef = useRef<TextInputInstance>(null);
+  const purchasePriceInputRef = useRef<TextInputInstance>(null);
   const faceValueInputRef = useRef<TextInputInstance>(null);
   const couponPctInputRef = useRef<TextInputInstance>(null);
 
@@ -188,14 +192,17 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
     };
   };
 
-  const fieldErrors = bondFieldErrors({
+  const validationParams = {
     quantity,
+    purchasePrice,
+    purchasePriceRequired: bondMode === 'isin',
     faceValue,
     couponPct,
     purchaseDate,
     maturityDate,
-  });
-  const reasonKey = bondReasonKey({ quantity, faceValue, couponPct, purchaseDate, maturityDate });
+  };
+  const fieldErrors = bondFieldErrors(validationParams);
+  const reasonKey = bondReasonKey(validationParams);
 
   // A bond ALSO needs a valid ISIN and, while `needsCouponFrequencyPick` (an
   // unmapped-frequency ISIN-mode match), a picked coupon frequency — never
@@ -292,6 +299,11 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
         focus: () => quantityInputRef.current?.focus(),
       },
       {
+        invalid: fieldErrors.purchasePriceError !== null,
+        ref: purchasePriceFieldRef,
+        focus: () => purchasePriceInputRef.current?.focus(),
+      },
+      {
         invalid: fieldErrors.faceValueError !== null,
         ref: faceValueFieldRef,
         focus: () => faceValueInputRef.current?.focus(),
@@ -316,12 +328,14 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
     refs: {
       isinFieldRef,
       quantityFieldRef,
+      purchasePriceFieldRef,
       faceValueFieldRef,
       couponPctFieldRef,
       purchaseDateFieldRef,
       maturityDateFieldRef,
       isinInputRef,
       quantityInputRef,
+      purchasePriceInputRef,
       faceValueInputRef,
       couponPctInputRef,
     },

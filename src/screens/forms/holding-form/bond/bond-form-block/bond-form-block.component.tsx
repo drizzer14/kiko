@@ -118,14 +118,25 @@ const BondFormBlock: FC<BondFormBlockProps> = ({ fields, attemptedSave }) => {
         />
       </View>
 
-      <TextField
-        label={t('forms.holding.purchasePrice')}
-        value={fields.purchasePrice}
-        onChangeText={(text) => fields.setPurchasePrice(groupAmount(text))}
-        keyboardType="decimal-pad"
-        placeholder={t('forms.holding.purchasePricePlaceholder')}
-        suffix={currencySymbol[fields.currency]}
-      />
+      {/* Required in ISIN mode, where the yield to maturity needs the price
+          actually paid; Manual mode still defaults a blank one to nominal. */}
+      <View ref={refs.purchasePriceFieldRef}>
+        <TextField
+          label={t('forms.holding.purchasePrice')}
+          value={fields.purchasePrice}
+          onChangeText={(text) => fields.setPurchasePrice(groupAmount(text))}
+          keyboardType="decimal-pad"
+          placeholder={t(
+            fields.bondMode === 'isin'
+              ? 'forms.holding.purchasePriceIsinPlaceholder'
+              : 'forms.holding.purchasePricePlaceholder',
+          )}
+          suffix={currencySymbol[fields.currency]}
+          required={fields.bondMode === 'isin'}
+          error={fieldErrorMessage(t, attemptedSave, fieldErrors.purchasePriceError)}
+          inputRef={refs.purchasePriceInputRef}
+        />
+      </View>
 
       {/* See `purchaseDateErrorMessage`'s own doc comment. */}
       <View ref={refs.purchaseDateFieldRef}>

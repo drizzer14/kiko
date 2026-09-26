@@ -987,8 +987,13 @@ recombine them:
   unmapped-frequency match — this is why the three effects must stay
   separate.
 
-ISIN mode shows quantity (required) and purchasePrice (optional,
-defaults to nominal — unchanged from Manual) always; it hides face
+ISIN mode shows quantity (required) and purchasePrice always. The price
+is REQUIRED in ISIN mode (USER DECISION D4 — the yield to maturity needs
+the price actually paid): `bondFieldErrors`' `purchasePriceError`
+(`forms.holding.purchasePriceRequiredError`, gated by
+`purchasePriceRequired: bondMode === 'isin'`), its own scroll target
+after quantity, and the placeholder `purchasePriceIsinPlaceholder`;
+Manual mode keeps it optional, defaulting a blank one to nominal. It hides face
 value, coupon, maturity, kind, and frequency — a found ISIN fills all
 of them: `bondKind` is always `'government'` (the register is
 Minfin-only), `couponFrequency` only when the register's `pay_period`

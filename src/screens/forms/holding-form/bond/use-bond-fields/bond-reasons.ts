@@ -5,6 +5,10 @@ import { parseAmount } from '@kiko/currency/parse';
 // read, mirroring `TermDepositValidationParams`.
 type BondValidationParams = {
   quantity: string;
+  purchasePrice: string;
+  // ISIN mode requires the price paid; Manual mode defaults a blank one to
+  // the nominal.
+  purchasePriceRequired: boolean;
   faceValue: string;
   couponPct: string;
   purchaseDate: number | null;
@@ -13,6 +17,7 @@ type BondValidationParams = {
 
 export type BondFieldErrors = {
   quantityError: 'forms.holding.quantityError' | null;
+  purchasePriceError: 'forms.holding.purchasePriceRequiredError' | null;
   faceValueError: 'forms.holding.faceValueError' | null;
   couponPctError: 'forms.holding.couponPctError' | null;
   purchaseDateError: 'forms.holding.purchaseDateRequiredError' | null;
@@ -29,6 +34,13 @@ export type BondReasonKey = NonNullable<BondFieldErrors[keyof BondFieldErrors]>;
 // The bond quantity field's OWN reason, independent of the fields below it.
 const quantityFieldReasonKey = (quantity: string): BondFieldErrors['quantityError'] =>
   parseAmount(quantity) > 0 ? null : 'forms.holding.quantityError';
+
+// The purchase-price field's OWN reason: only where the price is required.
+const purchasePriceFieldReasonKey = (
+  purchasePrice: string,
+  required: boolean,
+): BondFieldErrors['purchasePriceError'] =>
+  required && !(parseAmount(purchasePrice) > 0) ? 'forms.holding.purchasePriceRequiredError' : null;
 
 // The face-value field's OWN reason, independent of quantity/coupon/dates.
 const faceValueFieldReasonKey = (faceValue: string): BondFieldErrors['faceValueError'] =>
@@ -75,13 +87,17 @@ const maturityDateFieldReasonKey = (
 // screen renders from this, never from `bondReasonKey` below.
 export const bondFieldErrors = (params: BondValidationParams): BondFieldErrors => ({
   quantityError: quantityFieldReasonKey(params.quantity),
+  purchasePriceError: purchasePriceFieldReasonKey(
+    params.purchasePrice,
+    params.purchasePriceRequired,
+  ),
   faceValueError: faceValueFieldReasonKey(params.faceValue),
   couponPctError: couponPctFieldReasonKey(params.couponPct),
   purchaseDateError: purchaseDateFieldReasonKey(params.purchaseDate),
   maturityDateError: maturityDateFieldReasonKey(params.purchaseDate, params.maturityDate),
 });
 
-// The bond's own reason, derived from the five field functions above, in the
+// The bond's own reason, derived from the six field functions above, in the
 // SAME priority order each field itself displays — this can never drift from
 // what any one field shows, unlike a hand-duplicated chain. A bond ALSO
 // needs a valid ISIN and, in the ISIN-mode unmapped-frequency case, a picked
@@ -94,6 +110,7 @@ export const bondReasonKey = (params: BondValidationParams): BondReasonKey | nul
 
   return (
     fieldErrors.quantityError ??
+    fieldErrors.purchasePriceError ??
     fieldErrors.faceValueError ??
     fieldErrors.couponPctError ??
     fieldErrors.purchaseDateError ??

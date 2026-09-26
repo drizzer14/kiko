@@ -407,7 +407,11 @@ export const en = {
       purchaseDateRequiredError: 'No purchase date selected.',
       purchaseDateSheetTitle: 'Purchase Date',
       purchasePrice: 'Purchase price (total paid)',
+      // ISIN mode requires the price (the yield to maturity needs it), so its
+      // placeholder is an example amount instead of the Manual-mode default.
+      purchasePriceIsinPlaceholder: '1000.00',
       purchasePricePlaceholder: 'Defaults to nominal',
+      purchasePriceRequiredError: 'Enter the purchase price.',
       purity: 'Purity',
       purityError: 'Enter a fineness above 0 and up to 1000 ‰.',
       purityPlaceholder: '999.9',

@@ -841,6 +841,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     await selectHoldingType(screen, 'bond');
     await fireEvent.changeText(isinInput(screen), 'UA4000234215');
     await fill(screen, 'Quantity', '10');
+    await fill(screen, 'Purchase price (total paid)', '10 000');
 
     // The read-only summary reflects the found terms.
     expect(within(screen.getByTestId('bond-isin-summary')).getByText(/9\.5/)).toBeTruthy();
@@ -941,6 +942,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     await selectHoldingType(screen, 'bond');
     await fireEvent.changeText(isinInput(screen), 'UA4000234215');
     await fill(screen, 'Quantity', '10');
+    await fill(screen, 'Purchase price (total paid)', '10 000');
 
     expect(screen.getByDisplayValue('Register Bond UA4000234215')).toBeTruthy();
 
@@ -969,6 +971,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
 
     await fireEvent.press(screen.getByTestId('bond-isin-mode-control-option-isin'));
     await fill(screen, 'Quantity', '10');
+    await fill(screen, 'Purchase price (total paid)', '10 000');
 
     expect(within(screen.getByTestId('bond-isin-summary')).getByText(/9\.5/)).toBeTruthy();
 
@@ -999,6 +1002,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     await selectHoldingType(screen, 'bond');
     await fireEvent.changeText(isinInput(screen), 'UA4000234215');
     await fill(screen, 'Quantity', '10');
+    await fill(screen, 'Purchase price (total paid)', '10 000');
 
     // Auto-switched to Manual for the unmapped frequency.
     expect(
@@ -1052,11 +1056,44 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     await selectHoldingType(screen, 'bond');
     await fireEvent.changeText(isinInput(screen), 'UA4000234215');
     await fill(screen, 'Quantity', '10');
+    await fill(screen, 'Purchase price (total paid)', '10 000');
 
     await fireEvent.press(screen.getByText('Save'));
 
     expect(screen.queryByText('No purchase date selected.')).toBeNull();
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
+  });
+
+  // The yield to maturity needs the price actually paid, so ISIN mode never
+  // falls back to the nominal the way Manual mode does.
+  it('blocks save with a visible price error in ISIN mode until a price is typed', async () => {
+    mockBondRegisterRows = [foundRegisterRow];
+    const screen = await renderScreen();
+
+    await selectHoldingType(screen, 'bond');
+    await fireEvent.changeText(isinInput(screen), 'UA4000234215');
+    await fill(screen, 'Quantity', '10');
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Enter the purchase price.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
+
+    await fill(screen, 'Purchase price (total paid)', '10 767,20');
+    await fireEvent.press(screen.getByText('Save'));
+
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
+    expect(createMock.mock.calls[0][0].metadata.purchasePriceMinorUnits).toBe(1_076_720);
+  });
+
+  it('keeps the purchase price optional in Manual mode', async () => {
+    const screen = await renderScreen();
+
+    await selectHoldingType(screen, 'bond');
+    await fireEvent.press(screen.getByText('Manual'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.queryByText('Enter the purchase price.')).toBeNull();
   });
 
   // In edit mode, a found ISIN in a DIFFERENT
