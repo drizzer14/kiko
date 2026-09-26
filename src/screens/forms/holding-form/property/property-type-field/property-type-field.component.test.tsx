@@ -5,6 +5,18 @@ import '@kiko/i18n';
 
 import PropertyTypeField from './property-type-field.component';
 
+type RenderedNode = {
+  props: Record<string, unknown>;
+  children: readonly (RenderedNode | string)[];
+};
+
+// Every SF Symbol name rendered anywhere under `node` — v14 of the testing
+// library dropped the by-type queries, and a row's glyph carries no testID.
+const glyphNamesWithin = (node: RenderedNode): string[] => [
+  ...(typeof node.props.fallbackName === 'string' ? [String(node.props.name)] : []),
+  ...node.children.flatMap((child) => (typeof child === 'string' ? [] : glyphNamesWithin(child))),
+];
+
 describe('PropertyTypeField', () => {
   it("shows the selected category's label in the trigger, labeled Type", async () => {
     const { getByText, getByTestId } = await render(
@@ -36,5 +48,22 @@ describe('PropertyTypeField', () => {
     await fireEvent.press(getByTestId('property-type-option-vehicle'));
 
     expect(onSelect).toHaveBeenCalledWith('vehicle');
+  });
+
+  it("shows each category's own glyph on its sheet row and the selected one on the trigger", async () => {
+    const { getByTestId } = await render(
+      <PropertyTypeField selected="vehicle" onSelect={jest.fn()} testID="property-type" />,
+    );
+
+    expect(glyphNamesWithin(getByTestId('property-type'))).toEqual(['car.fill']);
+
+    await fireEvent.press(getByTestId('property-type'));
+
+    expect(glyphNamesWithin(getByTestId('property-type-option-valuable'))).toContain(
+      'diamond.fill',
+    );
+    expect(glyphNamesWithin(getByTestId('property-type-option-business_share'))).toContain(
+      'briefcase.fill',
+    );
   });
 });

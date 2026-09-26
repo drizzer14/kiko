@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import SelectField from '@kiko/design-system/components/select-field';
+import { propertyCategorySymbol } from '@kiko/holdings/entity-symbols';
 import type { PropertyCategory } from '@kiko/holdings/holding-metadata';
 
 import type { PropertyTypeFieldProps } from './property-type-field.props';
@@ -46,6 +47,7 @@ const PropertyTypeField: FC<PropertyTypeFieldProps> = ({ selected, onSelect, tes
       selected={selected}
       onSelect={onSelect}
       labels={labels}
+      icons={propertyCategorySymbol}
       placeholder={t('forms.holding.typePlaceholder')}
       testID={testID}
     />

@@ -44,9 +44,9 @@ import { needsPriceBook } from '../../holdings/priced-value';
 import SymbolIcon from '../../design-system/components/symbol';
 import { convert, type RateTable } from '../../rates/conversion';
 import MoneyText from '../../design-system/components/money-text';
-import { holdingTypeSymbol } from '../../holdings/entity-symbols';
 import type { HoldingRow, TransactionRow } from '../../db/schema';
 import { defaultHoldingColor } from '../../holdings/entity-colors';
+import { defaultHoldingSymbol } from '../../holdings/entity-symbols';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../navigation/types';
 import SummaryTable from '../../design-system/components/summary-table';
@@ -79,7 +79,7 @@ type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, '
 // Extracted so the fallbacks don't count against the screen component's
 // cognitive-complexity budget.
 const holdingIdentity = (holding: HoldingRow): { icon: string; color: string } => ({
-  icon: holding.icon ?? holdingTypeSymbol[holding.type],
+  icon: holding.icon ?? defaultHoldingSymbol(holding),
   color: resolveEntityColor(holding.color, defaultHoldingColor[holding.type]),
 });
 

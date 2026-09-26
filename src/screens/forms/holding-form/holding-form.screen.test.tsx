@@ -1445,6 +1445,17 @@ describe('HoldingFormScreen property', () => {
     expect(screen.getByTestId('property-category-field-option-other')).toBeTruthy();
   });
 
+  it("shows the picked category's glyph on the untouched icon chip", async () => {
+    const screen = await renderScreen();
+
+    expect(screen.getByLabelText('Icon house.fill')).toBeTruthy();
+
+    await fireEvent.press(screen.getByTestId('property-category-field'));
+    await fireEvent.press(screen.getByTestId('property-category-field-option-vehicle'));
+
+    expect(screen.getByLabelText('Icon car.fill')).toBeTruthy();
+  });
+
   it('keeps the Type-as-category field editable (not disabled) in edit mode, unlike the generic Type field', async () => {
     const screen = await renderEdit({
       id: 'h1',

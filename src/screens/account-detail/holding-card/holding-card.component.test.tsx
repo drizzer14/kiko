@@ -71,6 +71,31 @@ describe('HoldingCard', () => {
     expect(getByLabelText('Black card icon').props.tintColor).toBe(darkTheme.colors.onAccent);
   });
 
+  it("shows a property's category glyph when it has no icon of its own", async () => {
+    const { getByLabelText } = await renderCard({
+      holding: holding({
+        name: 'Sedan',
+        type: 'property_item',
+        metadata: { category: 'vehicle', lots: [] },
+      }),
+    });
+
+    expect(getByLabelText('Sedan icon').props.name).toBe('car.fill');
+  });
+
+  it("shows the user's own icon over the category glyph", async () => {
+    const { getByLabelText } = await renderCard({
+      holding: holding({
+        name: 'Sedan',
+        type: 'property_item',
+        icon: 'star',
+        metadata: { category: 'vehicle', lots: [] },
+      }),
+    });
+
+    expect(getByLabelText('Sedan icon').props.name).toBe('star');
+  });
+
   it("derives the icon tile's gradient from the holding's stored color", async () => {
     const { getByTestId } = await renderCard({
       holding: holding({ color: darkTheme.colors.entityColors.violet }),

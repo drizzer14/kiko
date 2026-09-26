@@ -1,6 +1,7 @@
-import type { AccountRow } from '../../db/schema';
 import type { HoldingType } from '../holding-type';
 import { recordByType } from '../holding-descriptor';
+import type { AccountRow, HoldingRow } from '../../db/schema';
+import { type PropertyCategory, propertyCategoryOf } from '../holding-metadata';
 
 // The default SF Symbol shown for an account/holding icon, keyed by its
 // kind/type. Mirrors src/holdings/entity-colors.ts: fixed UI symbols (not
@@ -49,6 +50,26 @@ export const accountKindSymbol: Record<AccountKind, string> = {
 export const holdingTypeSymbol: Record<HoldingType, string> = recordByType(
   (descriptor) => descriptor.symbol,
 );
+
+// Every `property_item` shares one holding type, so its category — not the
+// type — picks the default glyph. All six are SF Symbols 1/2 (iOS 13/14), safe
+// on the deployment floor.
+export const propertyCategorySymbol: Record<PropertyCategory, string> = {
+  real_estate: 'house.fill',
+  vehicle: 'car.fill',
+  valuable: 'diamond.fill',
+  business_share: 'briefcase.fill',
+  loan_given: 'arrow.up.forward.circle.fill',
+  other: 'square.grid.2x2.fill',
+};
+
+// The glyph a holding shows while the user has picked no icon of its own. The
+// category is read leniently (`propertyCategoryOf`), so garbled metadata still
+// gets a glyph rather than a blank tile.
+export const defaultHoldingSymbol = (holding: Pick<HoldingRow, 'type' | 'metadata'>): string =>
+  holding.type === 'property_item'
+    ? propertyCategorySymbol[propertyCategoryOf(holding.metadata)]
+    : holdingTypeSymbol[holding.type];
 
 // The GENERIC entity glyphs — TYPE-agnostic references used for headings, empty
 // states, and section labels, NOT a per-entity user-chosen icon and NOT the

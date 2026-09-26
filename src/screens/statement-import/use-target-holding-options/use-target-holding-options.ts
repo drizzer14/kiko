@@ -1,6 +1,6 @@
 import { holdingsRepo } from '@kiko/holdings/repo';
-import { holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
+import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
 
 import { useLiveQuery } from '../../../db/use-live-query';
 import { accountsRepo } from '../../../accounts/accounts.repo';
@@ -41,7 +41,7 @@ export const useTargetHoldingOptions = (accountId: string): TargetHoldingOptions
     name: holding.name,
     accountId: holding.accountId,
     accountName: accountNameById.get(holding.accountId) ?? '',
-    icon: holding.icon ?? holdingTypeSymbol[holding.type],
+    icon: holding.icon ?? defaultHoldingSymbol(holding),
     color: resolveEntityColor(holding.color, defaultHoldingColor[holding.type]),
   }));
 

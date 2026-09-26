@@ -486,6 +486,14 @@ describe('HoldingDetailScreen', () => {
     );
   });
 
+  it("shows a property's category glyph as its identity icon when it has no icon of its own", async () => {
+    seed({ ...propertyHolding, metadata: { ...propertyHolding.metadata, category: 'valuable' } });
+
+    const { getByLabelText } = await renderScreen();
+
+    expect(getByLabelText('Icon diamond.fill')).toBeTruthy();
+  });
+
   it('tints the holding identity icon beside the Value amount with the type default color when no color is stored', async () => {
     seed(cardHolding);
 

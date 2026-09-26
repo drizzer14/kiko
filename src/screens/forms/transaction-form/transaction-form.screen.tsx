@@ -65,10 +65,10 @@ import SymbolIcon from '../../../design-system/components/symbol';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import TextField from '../../../design-system/components/text-field';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
-import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import FieldError from '../../../design-system/components/field-error';
 import type { TransactionFormParams } from '../../../navigation/types';
+import { defaultHoldingSymbol } from '../../../holdings/entity-symbols';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import { type Currency, currencySymbol } from '../../../currency/currency';
@@ -612,7 +612,7 @@ const buildLoanOptions = (
     {
       id: selectedHolding.id,
       name: selectedHolding.name,
-      icon: selectedHolding.icon ?? holdingTypeSymbol[selectedHolding.type],
+      icon: selectedHolding.icon ?? defaultHoldingSymbol(selectedHolding),
       color: resolveEntityColor(selectedHolding.color, defaultHoldingColor[selectedHolding.type]),
       currency: selectedHolding.currency,
       accountName: accountNameById.get(selectedHolding.accountId) ?? '',
@@ -673,7 +673,7 @@ const buildExchangeOptions = (
     .map((candidate) => ({
       id: candidate.id,
       name: candidate.name,
-      icon: candidate.icon ?? holdingTypeSymbol[candidate.type],
+      icon: candidate.icon ?? defaultHoldingSymbol(candidate),
       color: resolveEntityColor(candidate.color, defaultHoldingColor[candidate.type]),
       currency: candidate.currency,
       accountName: accountNameById.get(candidate.accountId) ?? '',

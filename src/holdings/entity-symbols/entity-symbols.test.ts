@@ -1,11 +1,14 @@
 import type { AccountRow } from '../../db/schema';
+import { propertyCategories } from '../holding-metadata';
 import { holdingTypes, holdingTypesForAccountKind } from '../holding-type';
 
 import {
   accountKindSymbol,
-  genericEntitySymbol,
-  genericEntitySymbolFallback,
   holdingTypeSymbol,
+  genericEntitySymbol,
+  defaultHoldingSymbol,
+  propertyCategorySymbol,
+  genericEntitySymbolFallback,
 } from './entity-symbols';
 
 type AccountKind = AccountRow['kind'];
@@ -57,6 +60,44 @@ describe('holdingTypeSymbol', () => {
     expect(holdingTypeSymbol.property_item).toBe('house.fill');
     expect(holdingTypeSymbol.metal).toBe('cube.fill');
     expect(holdingTypeSymbol.loan).toBe('minus.circle.fill');
+  });
+});
+
+describe('propertyCategorySymbol', () => {
+  it('maps every property category to a non-empty SF Symbol name', () => {
+    for (const category of propertyCategories) {
+      expect(propertyCategorySymbol[category]).toMatch(SF_SYMBOL);
+    }
+  });
+
+  it('assigns real_estate house.fill, vehicle car.fill, valuable diamond.fill, business_share briefcase.fill, loan_given arrow.up.forward.circle.fill, other square.grid.2x2.fill', () => {
+    expect(propertyCategorySymbol).toEqual({
+      real_estate: 'house.fill',
+      vehicle: 'car.fill',
+      valuable: 'diamond.fill',
+      business_share: 'briefcase.fill',
+      loan_given: 'arrow.up.forward.circle.fill',
+      other: 'square.grid.2x2.fill',
+    });
+  });
+});
+
+describe('defaultHoldingSymbol', () => {
+  it("gives a property_item its category's glyph", () => {
+    expect(
+      defaultHoldingSymbol({ type: 'property_item', metadata: { category: 'vehicle', lots: [] } }),
+    ).toBe('car.fill');
+  });
+
+  it('gives a property_item with garbled metadata the Other glyph', () => {
+    expect(defaultHoldingSymbol({ type: 'property_item', metadata: 'garbled' })).toBe(
+      'square.grid.2x2.fill',
+    );
+  });
+
+  it("gives every other holding type its type's glyph", () => {
+    expect(defaultHoldingSymbol({ type: 'metal', metadata: null })).toBe('cube.fill');
+    expect(defaultHoldingSymbol({ type: 'card', metadata: null })).toBe('creditcard');
   });
 });
 

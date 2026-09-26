@@ -21,30 +21,38 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
 import { useTargetHoldingOptions } from './use-target-holding-options';
 
 // Every mock holding row carries a `type` (the picker resolves each row's
-// own icon/color) so `defaultHoldingColor`/`holdingTypeSymbol`
+// own icon/color) so `defaultHoldingColor`/`defaultHoldingSymbol`
 // have something to key off — `card` resolves to `'creditcard'` /
 // `entityColorsDark.white` (`entity-symbols.ts`/`entity-colors.ts`), asserted
 // below rather than restated as a magic literal.
 const CARD_ICON = 'creditcard';
 const CARD_COLOR = '#FFFFFF';
 
+// Serves `holdings` from the account-scoped holdings query and `accounts`
+// from the accounts query, both already loaded.
+const serveRows = (holdings: readonly object[], accounts: readonly object[]): void => {
+  mockUseLiveQuery.mockImplementation((query: { __kind?: string }) => ({
+    data: query.__kind === 'holdings-by-account' ? holdings : accounts,
+    isLoading: false,
+  }));
+};
+
+const blackCard = { id: 'h1', name: 'Black card', accountId: 'a', type: 'card' };
+
+const optionsFor = async () => {
+  const { result } = await renderHook(() => useTargetHoldingOptions('a'));
+
+  return result.current;
+};
+
 describe('useTargetHoldingOptions', () => {
   it('scopes to one account and joins in that account’s own name', async () => {
-    mockUseLiveQuery.mockImplementation((query: { __kind?: string }) => {
-      if (query.__kind === 'holdings-by-account') {
-        return {
-          data: [{ id: 'h1', name: 'Black card', accountId: 'a', type: 'card' }],
-          isLoading: false,
-        };
-      }
+    serveRows([blackCard], [{ id: 'a', name: 'Monobank' }]);
 
-      return { data: [{ id: 'a', name: 'Monobank' }], isLoading: false };
-    });
+    const { isLoading, options } = await optionsFor();
 
-    const { result } = await renderHook(() => useTargetHoldingOptions('a'));
-
-    expect(result.current.isLoading).toBe(false);
-    expect(result.current.options).toEqual([
+    expect(isLoading).toBe(false);
+    expect(options).toEqual([
       {
         id: 'h1',
         name: 'Black card',
@@ -57,64 +65,36 @@ describe('useTargetHoldingOptions', () => {
   });
 
   it('falls back to an empty account name when the joining account row has not loaded yet', async () => {
-    mockUseLiveQuery.mockImplementation((query: { __kind?: string }) => {
-      if (query.__kind === 'holdings-by-account') {
-        return {
-          data: [{ id: 'h1', name: 'Black card', accountId: 'a', type: 'card' }],
-          isLoading: false,
-        };
-      }
+    serveRows([blackCard], []);
 
-      return { data: [], isLoading: false };
-    });
+    const { options } = await optionsFor();
 
-    const { result } = await renderHook(() => useTargetHoldingOptions('a'));
-
-    expect(result.current.options).toEqual([
-      {
-        id: 'h1',
-        name: 'Black card',
-        accountId: 'a',
-        accountName: '',
-        icon: CARD_ICON,
-        color: CARD_COLOR,
-      },
-    ]);
+    expect(options[0]?.accountName).toBe('');
   });
 
   it('prefers a stored custom icon/color over the type default', async () => {
-    mockUseLiveQuery.mockImplementation((query: { __kind?: string }) => {
-      if (query.__kind === 'holdings-by-account') {
-        return {
-          data: [
-            {
-              id: 'h1',
-              name: 'Black card',
-              accountId: 'a',
-              type: 'card',
-              icon: 'star',
-              color: '#ABCDEF',
-            },
-          ],
-          isLoading: false,
-        };
-      }
+    serveRows([{ ...blackCard, icon: 'star', color: '#ABCDEF' }], [{ id: 'a', name: 'Monobank' }]);
 
-      return { data: [{ id: 'a', name: 'Monobank' }], isLoading: false };
-    });
+    const { options } = await optionsFor();
 
-    const { result } = await renderHook(() => useTargetHoldingOptions('a'));
+    expect(options[0]).toMatchObject({ icon: 'star', color: '#ABCDEF' });
+  });
 
-    expect(result.current.options).toEqual([
-      {
-        id: 'h1',
-        name: 'Black card',
-        accountId: 'a',
-        accountName: 'Monobank',
-        icon: 'star',
-        color: '#ABCDEF',
-      },
-    ]);
+  it("gives a property holding its category's glyph", async () => {
+    serveRows(
+      [
+        {
+          ...blackCard,
+          type: 'property_item',
+          metadata: { category: 'business_share', lots: [] },
+        },
+      ],
+      [{ id: 'a', name: 'Property' }],
+    );
+
+    const { options } = await optionsFor();
+
+    expect(options[0]?.icon).toBe('briefcase.fill');
   });
 
   it('reports isLoading while either its holdings or its accounts query is still on its first load', async () => {

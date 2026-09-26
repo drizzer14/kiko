@@ -36,12 +36,12 @@ import Divider from '../../../design-system/components/divider';
 import { needsPriceBook } from '../../../holdings/priced-value';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
-import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../../navigation/types';
 import CurrencyField from '../../../design-system/components/currency-field';
 import { isSyncedAccount, isSyncedHolding } from '../../../holdings/deletable';
+import { defaultHoldingSymbol, holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 
@@ -103,7 +103,7 @@ const buildPaymentHoldingOptions = (
     .map((candidate) => ({
       id: candidate.id,
       name: candidate.name,
-      icon: candidate.icon ?? holdingTypeSymbol[candidate.type],
+      icon: candidate.icon ?? defaultHoldingSymbol(candidate),
       color: resolveEntityColor(candidate.color, defaultHoldingColor[candidate.type]),
       currency: candidate.currency,
       accountName: accountNameById.get(candidate.accountId) ?? '',
@@ -124,7 +124,7 @@ const buildPaymentHoldingOptions = (
     {
       id: selectedHolding.id,
       name: selectedHolding.name,
-      icon: selectedHolding.icon ?? holdingTypeSymbol[selectedHolding.type],
+      icon: selectedHolding.icon ?? defaultHoldingSymbol(selectedHolding),
       color: resolveEntityColor(selectedHolding.color, defaultHoldingColor[selectedHolding.type]),
       currency: selectedHolding.currency,
       accountName: accountNameById.get(selectedHolding.accountId) ?? '',
@@ -225,9 +225,9 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // (see `screen.component.tsx`, `CurrencyField`'s `onOpenChange`).
   const [isCurrencySheetOpen, setIsCurrencySheetOpen] = useState(false);
   // The icon is null until the user picks one ("not dirty"): while null, the
-  // chip shows the selected type's default glyph (holdingTypeSymbol[type]) and
-  // switching type re-derives it, so an untouched icon follows the type. Once
-  // the user picks (icon !== null, "dirty"), that choice overrides the default
+  // chip shows the selected type's default glyph (`defaultHoldingSymbol`, a
+  // property's own category glyph) and switching type or category re-derives
+  // it, so an untouched icon follows the selection. Once the user picks (icon !== null, "dirty"), that choice overrides the default
   // and type changes no longer move it.
   const [icon, setIcon] = useState<string | null>(null);
   // The color mirrors the icon's dirty pattern: null until the user taps a
@@ -569,7 +569,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           <HoldingIdentityField
             icons={KIKO_ENTITIES_ICONS}
             icon={icon}
-            fallbackIcon={holdingTypeSymbol[type]}
+            fallbackIcon={defaultHoldingSymbol({ type, metadata: { category: property.category } })}
             iconColor={effectiveColor}
             name={name}
             onChangeName={setName}

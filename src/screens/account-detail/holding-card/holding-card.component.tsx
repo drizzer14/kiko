@@ -13,8 +13,8 @@ import type { PriceBook } from '../../../prices/price-book';
 import { holdingValue } from '../../../holdings/holding-value';
 import { convert, type RateTable } from '../../../rates/conversion';
 import MoneyText from '../../../design-system/components/money-text';
-import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
+import { defaultHoldingSymbol } from '../../../holdings/entity-symbols';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import EntityIconTile from '../../../design-system/components/entity-icon-tile';
 
@@ -63,7 +63,7 @@ const HoldingCard: FC<{
       <Pressable accessibilityRole="button" onPress={onOpen} style={styles.row}>
         <Box direction="row" gap={3} style={styles.rowLead}>
           <EntityIconTile
-            name={holding.icon ?? holdingTypeSymbol[holding.type]}
+            name={holding.icon ?? defaultHoldingSymbol(holding)}
             color={color}
             accessibilityLabel={`${holding.name} icon`}
           />

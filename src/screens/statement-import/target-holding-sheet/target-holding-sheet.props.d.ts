@@ -13,7 +13,7 @@ export type TargetHoldingOption = {
   accountId: string;
   accountName: string;
   // The holding's own SF Symbol + already-RESOLVED entity color — the same
-  // `icon ?? holdingTypeSymbol[type]` / `resolveEntityColor` pair
+  // `icon ?? defaultHoldingSymbol(holding)` / `resolveEntityColor` pair
   // `transaction-form.screen.tsx`'s exchange picker resolves, so this picker
   // shows the holding's icon exactly as every other holding picker does.
   icon: string;

@@ -299,7 +299,21 @@ never a second place to set a type's icon/color. Every reader — the
 account card, the account-detail header, the Kind select, the holding
 card, the holding-detail header, the holding-form icon-chip fallback,
 the Type select — calls one of these four functions; never add a
-second kind/type -> glyph map in a screen module. A past
+second kind/type -> glyph map in a screen module.
+
+A `property_item`'s default glyph follows its CATEGORY, not its type:
+`propertyCategorySymbol` (same folder) maps each `PropertyCategory` to its
+own SF Symbol, and `defaultHoldingSymbol(holding)` — the category glyph
+for a `property_item` (read leniently via `propertyCategoryOf`, so
+garbled metadata still gets the Other glyph), else `holdingTypeSymbol`
+— is what every holding icon site calls as `icon ?? defaultHoldingSymbol(holding)`
+(the holding card, the holding-detail header, the holding- and
+transaction-form holding pickers, the statement-import target options).
+The holding form's untouched icon chip follows the picked category live,
+and `PropertyTypeField` shows the same glyphs on its rows. The only
+remaining `holdingTypeSymbol[...]` reader is `defaultHoldingSymbol`
+itself; the generic `HoldingTypeField` takes the whole record as its
+`icons`. A past
 `holding-icon.ts` plus a screen-exported `KIND_ICON` drifted from
 this file, so the icon a user picked in a select differed from the
 card glyph.
