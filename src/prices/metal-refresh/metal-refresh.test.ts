@@ -2,6 +2,7 @@
 // path applies, so `refreshMetalPrices`'s backfill branch calls
 // `fetchNbuMetalHistory` (one range call per metal), and its already-priced
 // branch calls `fetchNbuMetalsCurrent` (the shared current-exchange payload).
+import type { Metal } from '../../holdings/holding-metadata';
 import type { HoldingRow, PricePointRow } from '../../db/schema';
 import type { NbuMetalHistoryPoint, NbuMetalRate } from '../nbu-metals';
 
@@ -273,6 +274,39 @@ describe('refreshMetalPrices', () => {
     expect(upserted).toEqual([
       { instrument: 'metal:XAU', day: day11, price: '105000', currency: 'UAH', source: 'nbu' },
     ]);
+  });
+
+  it('does not refetch a backward range a previous run already asked for and got empty', async () => {
+    // A lot dated before NBU's own metal data starts: the backward range
+    // [earlierLotDay, firstStoredDay - DAY] will NEVER have any rows, so a
+    // naive re-plan-every-run would refetch it forever.
+    const firstStoredDay = Date.UTC(2025, 0, 1);
+    const earlierLotDay = Date.UTC(1990, 0, 1);
+    let historyCallCount = 0;
+    const knownEmptyBackwardFloors = new Map<Metal, number>();
+    const { deps } = makeDeps({
+      listHoldings: async () => [metalHolding('XAU', [earlierLotDay])],
+      loadPoints: async () => [
+        { instrument: 'metal:XAU', day: firstStoredDay },
+        { instrument: 'metal:XAU', day: today },
+      ],
+      fetchHistory: async () => {
+        historyCallCount += 1;
+        return [];
+      },
+      fetchCurrent: async (): Promise<NbuMetalRate[]> => {
+        throw new Error('fetchCurrent should not be called — today is already stored');
+      },
+      knownEmptyBackwardFloors,
+    });
+
+    await refreshMetalPrices(deps);
+    expect(historyCallCount).toBe(1);
+
+    // A second, later refresh run reuses the same per-app-run memory and
+    // must not ask NBU for the same known-empty range again.
+    await refreshMetalPrices(deps);
+    expect(historyCallCount).toBe(1);
   });
 
   it('rejects and writes nothing when the underlying fetch fails', async () => {

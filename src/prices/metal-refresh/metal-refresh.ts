@@ -14,8 +14,16 @@ type HeldHolding = Pick<HoldingRow, 'type' | 'metadata'>;
 type StoredPoint = Pick<PricePointRow, 'instrument' | 'day'>;
 /** One metal's stored `price_points` span: its earliest and latest stored day. */
 type MetalStoredRange = { firstStoredDay: number; lastStoredDay: number };
-/** One `fetchHistory` call to make: a metal's own missing `[start, end]` span. */
-type MetalRange = { metal: Metal; start: number; end: number };
+/**
+ * One `fetchHistory` call to make: a metal's own missing `[start, end]` span.
+ * `isEarlierLotGap` marks the BACKWARD span (a lot dated before the metal's
+ * first stored day) — the only span whose `[start, end]` bounds stay fixed
+ * across runs while `earliestLotDay` and `firstStoredDay` don't change, so an
+ * empty NBU answer for it would otherwise repeat forever (see
+ * `emptyBackwardFloorByMetal` below). The ordinary forward gap always ends at
+ * "today", which moves every day, so it never needs the same guard.
+ */
+type MetalRange = { metal: Metal; start: number; end: number; isEarlierLotGap: boolean };
 type NewPricePointRow = Pick<PricePointRow, 'instrument' | 'day' | 'price' | 'currency' | 'source'>;
 type FetchCurrent = (fetchImpl: typeof fetch) => Promise<NbuMetalRate[]>;
 type FetchHistory = (
@@ -33,7 +41,26 @@ export type MetalRefreshDeps = {
   fetchCurrent?: FetchCurrent;
   fetchHistory?: FetchHistory;
   upsertMany?: (rows: NewPricePointRow[]) => Promise<void>;
+  /**
+   * Injectable override for `emptyBackwardFloorByMetal` below, so a test can
+   * isolate its own map instead of sharing this module's own per-app-run
+   * singleton across unrelated test cases. Production never passes this.
+   */
+  knownEmptyBackwardFloors?: Map<Metal, number>;
 };
+
+/**
+ * DESIGN CHOICE (deferred item 5): per-app-run, IN-MEMORY floor of the
+ * earliest-lot backward range NBU already answered empty, per metal — not a
+ * new table/migration. A lot dated before NBU's own metal data starts makes
+ * `[earliestLotDay, firstStoredDay - DAY_MS)` a fixed span that can never
+ * gain rows, so without this, every refresh re-asks NBU for the exact same
+ * empty range forever. This map is forgotten on app restart (a fresh module
+ * instance), which is an accepted, bounded cost — at most one wasted call per
+ * metal per app session, never more — rather than adding persisted state for
+ * a rare, cheap-to-repeat case.
+ */
+const emptyBackwardFloorByMetal = new Map<Metal, number>();
 
 /**
  * The earliest lot day per held metal, across every `metal` holding —
@@ -114,11 +141,18 @@ const toRow = (metal: Metal, day: number, price: string): NewPricePointRow => ({
  * that missing range must still be filled even once "today" is stored — so
  * the earlier-lot check runs unconditionally, never short-circuited by the
  * "already refreshed today" guard (which applies only to the FORWARD gap).
+ *
+ * `knownEmptyBackwardFloors` skips re-planning a backward span whose start
+ * already sits at or past a floor a previous run confirmed empty for that
+ * metal (`emptyBackwardFloorByMetal`'s doc comment above) — an EARLIER lot
+ * added later (a smaller `earliestLotDay`) still gets planned, since that is
+ * a genuinely new, not-yet-attempted span.
  */
 const planRefresh = (
   earliestDays: ReadonlyMap<Metal, number>,
   storedRanges: ReadonlyMap<Metal, MetalStoredRange>,
   today: number,
+  knownEmptyBackwardFloors: ReadonlyMap<Metal, number>,
 ): { backfill: MetalRange[]; current: Metal[] } => {
   const backfill: MetalRange[] = [];
   const current: Metal[] = [];
@@ -127,12 +161,21 @@ const planRefresh = (
     const stored = storedRanges.get(metal);
 
     if (stored === undefined) {
-      backfill.push({ metal, start: earliestLotDay, end: today });
+      backfill.push({ metal, start: earliestLotDay, end: today, isEarlierLotGap: false });
       continue;
     }
 
-    if (earliestLotDay < stored.firstStoredDay) {
-      backfill.push({ metal, start: earliestLotDay, end: stored.firstStoredDay - DAY_MS });
+    const knownEmptyFloor = knownEmptyBackwardFloors.get(metal);
+    if (
+      earliestLotDay < stored.firstStoredDay &&
+      (knownEmptyFloor === undefined || earliestLotDay < knownEmptyFloor)
+    ) {
+      backfill.push({
+        metal,
+        start: earliestLotDay,
+        end: stored.firstStoredDay - DAY_MS,
+        isEarlierLotGap: true,
+      });
     }
 
     if (stored.lastStoredDay >= today) {
@@ -142,23 +185,44 @@ const planRefresh = (
     if (stored.lastStoredDay === today - DAY_MS) {
       current.push(metal);
     } else {
-      backfill.push({ metal, start: stored.lastStoredDay + DAY_MS, end: today });
+      backfill.push({
+        metal,
+        start: stored.lastStoredDay + DAY_MS,
+        end: today,
+        isEarlierLotGap: false,
+      });
     }
   }
 
   return { backfill, current };
 };
 
-/** One `fetchHistory` range call per missing span, flattened to rows. */
+/**
+ * One `fetchHistory` range call per missing span, flattened to rows. An
+ * `isEarlierLotGap` span that comes back with zero rows records its `start`
+ * into `knownEmptyBackwardFloors` (widening the floor to the smallest empty
+ * `start` seen so far) instead of contributing any rows, so `planRefresh`
+ * skips the identical span on the next run.
+ */
 const backfillRows = async (
   ranges: MetalRange[],
   fetchHistory: FetchHistory,
   fetchImpl: typeof fetch,
+  knownEmptyBackwardFloors: Map<Metal, number>,
 ): Promise<NewPricePointRow[]> => {
   const rows: NewPricePointRow[] = [];
 
-  for (const { metal, start, end } of ranges) {
+  for (const { metal, start, end, isEarlierLotGap } of ranges) {
     const history = await fetchHistory(metal, start, end, fetchImpl);
+
+    if (isEarlierLotGap && history.length === 0) {
+      const existingFloor = knownEmptyBackwardFloors.get(metal);
+      knownEmptyBackwardFloors.set(
+        metal,
+        existingFloor === undefined ? start : Math.min(existingFloor, start),
+      );
+      continue;
+    }
 
     for (const point of history) {
       rows.push(toRow(point.metal, point.day, point.price));
@@ -213,6 +277,7 @@ export const refreshMetalPrices = async (deps: MetalRefreshDeps = {}): Promise<v
   const fetchCurrent = deps.fetchCurrent ?? fetchNbuMetalsCurrent;
   const fetchHistory = deps.fetchHistory ?? fetchNbuMetalHistory;
   const upsertMany = deps.upsertMany ?? pricePointsRepo.upsertMany;
+  const knownEmptyBackwardFloors = deps.knownEmptyBackwardFloors ?? emptyBackwardFloorByMetal;
 
   const holdings = await listHoldings();
   const earliestDays = earliestLotDayByMetal(holdings);
@@ -223,9 +288,14 @@ export const refreshMetalPrices = async (deps: MetalRefreshDeps = {}): Promise<v
 
   const points = await loadPoints();
   const today = dayKeyOf(now());
-  const plan = planRefresh(earliestDays, storedRangeByMetal(points), today);
+  const plan = planRefresh(
+    earliestDays,
+    storedRangeByMetal(points),
+    today,
+    knownEmptyBackwardFloors,
+  );
   const rows = [
-    ...(await backfillRows(plan.backfill, fetchHistory, fetchImpl)),
+    ...(await backfillRows(plan.backfill, fetchHistory, fetchImpl, knownEmptyBackwardFloors)),
     ...(await currentRows(plan.current, fetchCurrent, fetchImpl, today)),
   ];
 
