@@ -42,30 +42,20 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const TIMEOUT_MILLISECONDS = Number(process.env.KIKO_PREWRITE_TIMEOUT_MS) || 25000;
 const DEADLINE = Date.now() + TIMEOUT_MILLISECONDS;
 
-// The remaining internal budget, in milliseconds, handed to a child's own
-// `spawn` `timeout` option — never the full per-hook budget again for a
-// later child, so children left running past a slow one cannot blow past the
-// hook's own 30s ceiling. Floored at 1 so `spawn` (which treats 0 as
-// "no timeout") always gets a real deadline.
+// A later child gets only what is left of the guard's own budget, never a
+// fresh full one, so the hook's 30 s ceiling holds. Floored at 1 because
+// `spawn` treats 0 as "no timeout".
 function remainingBudget() {
   return Math.max(1, DEADLINE - Date.now());
 }
 
 const EXCLUDED_PREFIXES = ['rules/fixtures/', 'node_modules/', 'ios/', 'android/'];
 
-// Runs every promise to completion via Promise.allSettled (never
-// Promise.all) and only then throws the FIRST rejection, in array order —
-// Promise.all instead settles (rejects) the moment its FIRST promise
-// rejects, letting the caller's fail-closed try/catch run its `finally`
-// (which rmSync's the one shared mkdtemp root both Semgrep and every Node
-// checker read from) while a slower SIBLING promise is still a real child
-// process reading a file under that same root: a fast rejection (a
-// synchronous throw, like runSemgrep's own `fs.accessSync` on an unreadable
-// rules file, rejects on the same tick it is called) must never race a
-// slower sibling still spawning or mid-read for the tree out from under it.
-// Every awaited promise here always finishes — successfully or not —
-// before this function itself returns or throws, the guarantee Promise.all
-// does not make.
+// Promise.all rejects on the FIRST rejection, which would let `run`'s
+// `finally` remove the shared mkdtemp root while a sibling child is still
+// reading from it. Waiting for every promise to settle, then throwing the
+// first rejection in array order, keeps the tree alive until every reader
+// is done.
 async function allSettledOrThrowFirst(promises) {
   const settled = await Promise.allSettled(promises);
   const firstRejected = settled.find((result) => result.status === 'rejected');
@@ -73,21 +63,11 @@ async function allSettledOrThrowFirst(promises) {
   return settled.map((result) => result.value);
 }
 
-// Runs one child process asynchronously (never spawnSync) and resolves once
-// it exits, with the SAME shape spawnSync's own return value has (`error`,
-// `status`, `signal`, `stdout`, `stderr`) — every existing spawnSync-shaped
-// check below (error/signal/status/stderr validation in runSemgrep and
-// runSpawnedNodeChecker) keeps working unchanged against it. This is what
-// lets Semgrep's one process and every Node-checker child run CONCURRENTLY
-// (see runNodeChecks below) instead of one
-// blocking the event loop for its own full lifetime before the next one even
-// starts: `spawnSync` cannot overlap two children in one process, `spawn`
-// can. `options.timeout`/`options.killSignal` behave exactly as they do for
-// spawnSync (a child that outlives the deadline is killed and reported back
-// with a non-null `signal`), so the fail-closed timeout contract is
-// unchanged. Settling exactly once — on whichever of 'error' or 'close'
-// fires first — matches Node's own documented caveat that a process which
-// fails to spawn may emit 'error' with no following 'close'.
+// spawnSync cannot overlap two children, so this resolves with the same
+// shape spawnSync returns (`error`, `status`, `signal`, `stdout`, `stderr`)
+// and lets Semgrep and the Node checkers run concurrently under the same
+// fail-closed checks. It settles once, on 'error' or 'close', because a
+// process that fails to spawn may emit 'error' with no 'close'.
 function spawnAsync(command, args, options) {
   return new Promise((resolve) => {
     let settled = false;
@@ -105,13 +85,9 @@ function spawnAsync(command, args, options) {
       return;
     }
 
-    // Decodes as a UTF-8 STREAM (Node's StringDecoder, which holds back an
-    // incomplete multibyte sequence until the byte(s) that complete it
-    // arrive), never per-chunk: `stdout += chunk` on a raw Buffer chunk
-    // would coerce each chunk to a string on its own, so a multibyte
-    // character split across two `data` events decoded to a replacement
-    // character (U+FFFD) — a Node checker's matchedText could then differ
-    // BEFORE vs AFTER for the SAME on-disk text and read as a false new
+    // Decode as a UTF-8 stream: per-chunk decoding turns a multibyte
+    // character split across two `data` events into U+FFFD, so the same
+    // text could read differently BEFORE vs AFTER and look like a new
     // finding.
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
@@ -282,33 +258,20 @@ function writeMirroredTrees(relativePath, beforeText, afterText) {
   return { temporaryRoot, beforePath, afterPath };
 }
 
-// Strips the enclosing config's own path segments from a Semgrep
-// `check_id` — this Semgrep version reports a rule loaded from
-// `rules/semgrep-prewrite.yml` as `rules.<rule-id>` (a dotted prefix built
-// from the config file's own basename), not the bare rule id every other
-// place in this codebase names it (fixtures, `NODE_RULES`, the deny
-// message). Only the LAST dot-separated segment is ever the rule id itself,
-// since a rule id is hyphen-separated, never dotted.
+// This Semgrep version reports a rule from rules/semgrep-prewrite.yml as
+// `rules.<rule-id>`; a rule id is never dotted, so the last segment is the
+// id every other place (fixtures, NODE_RULES, the deny reason) uses.
 function stripConfigPathPrefix(checkId) {
   const segments = checkId.split('.');
   return segments[segments.length - 1];
 }
 
-// Builds one Finding from a raw Semgrep JSON result. `matchedText` is
-// ALWAYS sliced from the real mirrored source file by byte offset
-// (`start.offset`/`end.offset`) — this Semgrep version reports
-// `extra.lines` as the fixed literal string "requires login" regardless of
-// the actual match, so it can never be trusted as the matched text.
-// `start.offset`/`end.offset` are UTF-8 BYTE offsets, not UTF-16 code-unit
-// indices, so the source is read as a raw Buffer and sliced there — slicing
-// a decoded JS string with them would misalign on any non-ASCII byte
-// earlier in the file (a Cyrillic comment, an em dash) and read the wrong
-// span, or a pre-existing finding's span, as new. Fails closed (throws,
-// caught by `run`'s top-level fail-closed handler) when a result's metadata
-// is missing the `skill` pointer every pre-write rule is required to carry:
-// a rule that would deny a write without pointing the agent at the skill
-// section explaining why is a guard bug, not a rule this hook can safely
-// enforce.
+// `matchedText` is sliced from the mirrored file because this Semgrep
+// version reports `extra.lines` as the literal "requires login". The
+// offsets are UTF-8 BYTE offsets, so the slice happens on a Buffer: a
+// string slice misaligns after any non-ASCII byte. A result without
+// `metadata.skill` throws, because a deny must point the agent at the
+// rule's skill section.
 function buildFinding(temporaryRoot, result) {
   const tree = result.path.split('/')[0];
   const sourceBuffer = fs.readFileSync(path.join(temporaryRoot, result.path));
@@ -369,29 +332,15 @@ function describeParseErrors(parseErrors) {
   );
 }
 
-// Runs Semgrep against the requested trees ('after', or ['before','after'])
-// with the pre-write rule set. Async (spawnAsync, never spawnSync — see
-// `run` below, which starts this alongside the AFTER-tree `runNodeChecks`
-// call and awaits both together with `allSettledOrThrowFirst`, for speed:
-// Semgrep and the Node checkers read the SAME
-// already-written mirrored trees and report independently of each other, so
-// overlapping them changes nothing about the result, only the wall time
-// (`allSettledOrThrowFirst`, not a bare `Promise.all`, is what lets the
-// slower sibling still finish reading the mirrored trees before the caller's
-// `finally` removes them, even when this one rejects first). The child runs
-// with cwd = temporaryRoot and is given targets RELATIVE to it
-// ('after/<rel>', not an absolute path) — this is what lets a path-keyed
-// rule (for example rule 9's nav-layer allowlist, or rule 12's
-// screen-folder rule) evaluate against the file's real repo-relative path
-// instead of a throwaway scratch path, and lets both trees stay reachable
-// from the SAME cwd in one process when both are requested. A
-// missing/unreadable rules file, a Semgrep exit code other than 0 (clean) or
-// 1 (findings), a non-empty `errors[]` (Semgrep's own signal that it could
-// not evaluate a rule), a target missing from `paths.scanned` (Semgrep
-// silently skipped a target — a `paths.exclude` pattern or a
-// `.semgrepignore` entry would otherwise let a violation through unseen), or
-// a child killed by its own timeout all throw — caught by the top-level
-// fail-closed handler below.
+// Semgrep runs with cwd = temporaryRoot and targets relative to it
+// ('after/<rel>'), so a path-keyed rule (rule 9's nav-layer allowlist,
+// rule 12's screen folders) sees the real repo-relative path, and both
+// trees fit in one process. `run` overlaps this with the AFTER-tree Node
+// checks, since both only read the already-written trees. Every sign that
+// Semgrep did not check the whole target throws rather than returning an
+// empty result: an unreadable rules file, an exit code other than 0/1, a
+// non-empty `errors[]`, a target missing from `paths.scanned` (a
+// `paths.exclude` or `.semgrepignore` skip), or a timeout kill.
 async function runSemgrep(temporaryRoot, relativePath, trees) {
   const rulesPath =
     process.env.KIKO_PREWRITE_RULES || path.join(ROOT, 'rules', 'semgrep-prewrite.yml');
@@ -454,26 +403,11 @@ async function runSemgrep(temporaryRoot, relativePath, trees) {
   return (parsed.results || []).map((result) => buildFinding(temporaryRoot, result));
 }
 
-// Spawns one Node checker script (import-order.js, full-word-identifiers.js,
-// blank-line-separation.js, or screen-imports.js — never
-// one-component-per-file.ts, which runs in-process below) against a single
-// mirrored file. Async (spawnAsync, never spawnSync): `runNodeChecks` below
-// fires every applicable rule's `run` at once and awaits them together with
-// `allSettledOrThrowFirst`, which is what lets 2 or more checkers overlap on
-// the same mirrored file INSTEAD OF one blocking the event loop for its own
-// full runtime before the next one even starts (a large real .tsx file's
-// checkers otherwise summed past the 3s target) — without a fast-crashing
-// sibling racing a slower one for the
-// mirrored tree out from under it.
-// Mirrors runSemgrep's exit-code contract: 0 is clean, 1 means `parseOutput`
-// should read the checker's own stdout; any other code (a crash, a stub
-// standing in for one in a test) throws, caught by the top-level fail-closed
-// handler in `run`. A crashing checker (a syntax error, an uncaught
-// exception) can ALSO exit 1 — the same code a real violation report uses —
-// so exit 1 alone is not proof of a real finding: any stderr output, or an
-// exit-1 stdout that `parseOutput` reads as zero findings, throws too,
-// instead of silently parsing to an empty Finding[] that would let a broken
-// checker disable its own rule unnoticed.
+// Spawns one Node checker script against one mirrored file (the `.ts`
+// one-component-per-file checker runs in-process instead). Exit 0 is clean,
+// 1 means findings, anything else throws. A crashing checker can also exit
+// 1, so exit 1 with any stderr output, or with no parseable finding, throws
+// too — otherwise a broken checker would silently disable its own rule.
 async function runSpawnedNodeChecker(scriptName, filePath, parseOutput) {
   const nodeBinary = process.env.KIKO_PREWRITE_NODE_BIN || 'node';
   const scriptPath = path.join(ROOT, 'scripts', 'checks', scriptName);
@@ -623,13 +557,9 @@ async function runOneComponentPerFileChecker(filePath) {
     .map((name) => ({ line: exportDeclarationLine(source, name), matchedText: name }));
 }
 
-// One row per Node-checker rule id: which `.ts`/`.tsx` extension(s) it
-// applies to, how to run it against one mirrored file, and the fix/skill
-// pair the deny reason cites (see buildFindingBlock below) — the Node-check
-// analog of a Semgrep rule's own `metadata.fix`/`metadata.skill`. A new
-// checker (rule 11's blank-line-separation, rule 12's no-cross-screen-
-// import) is one more row here plus, for a spawned script, one more
-// `parseOutput` function above.
+// One row per Node-checker rule: the extensions it applies to, how to run
+// it, and the fix/skill pair the deny reason cites (the Node-check analog
+// of a Semgrep rule's `metadata.fix`/`metadata.skill`).
 const NODE_RULES = [
   {
     ruleId: 'kiko-import-order',
@@ -681,23 +611,12 @@ const NODE_RULES = [
   },
 ];
 
-// Runs every NODE_RULES row whose `extensions` covers `relativePath`'s own
-// extension against the ONE requested tree ('before' or 'after'), returning
-// their combined Finding[] — the Node-checker analog of runSemgrep, called
-// twice by `run` below (AFTER first; BEFORE only when AFTER already has a
-// finding, so a clean edit never pays for a BEFORE pass it cannot possibly
-// need — see the "New-findings-only comparison" section normalizeText/
-// findingKeys implement for Semgrep, applied the same way here). The
-// applicable rules' `run` calls are started together and awaited with
-// `allSettledOrThrowFirst` (not a bare `Promise.all`) rather than one after another in a loop — each rule only
-// ever reads the SAME already-written mirrored file and reports its own
-// findings independently of every other rule, so running them concurrently
-// changes nothing about the result, only the wall time, and letting every
-// one of them finish before throwing means a fast-crashing rule never rmSync's
-// the mirrored file out from under a still-running sibling. Preserves the
-// SAME per-rule result order the old sequential loop produced (array order,
-// not completion order), so `findings`' order — and therefore
-// `findingKeys`' occurrence numbering — is unchanged.
+// Runs the NODE_RULES rows for this extension against ONE tree. `run`
+// calls it for AFTER first and for BEFORE only when AFTER has findings,
+// since a clean AFTER cannot add a finding. The rules start together (each
+// only reads the same mirrored file) and settle through
+// allSettledOrThrowFirst; findings stay in NODE_RULES order, not
+// completion order, so `findingKeys`' occurrence numbering is stable.
 async function runNodeChecks(temporaryRoot, relativePath, tree) {
   const filePath = path.join(temporaryRoot, tree, relativePath);
   const extension = path.extname(relativePath);

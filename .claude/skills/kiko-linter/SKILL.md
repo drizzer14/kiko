@@ -287,6 +287,18 @@ reasoning.
   is honored by Semgrep's own suppression even with trailing text after
   the rule id (the `OVERRIDE(...)` and justification) — Semgrep does not
   require the comment to end at the rule id.
+- Inside ONE `patterns:` list, a text-based `pattern-regex` narrows the
+  matched span to its own matched text, and a sibling negative filter
+  (`pattern-not-regex` or a structural `pattern-not`) is then checked
+  against that narrowed span, not the original node — so the exclusion
+  silently never fires and every candidate matches. To exclude a value,
+  capture it as a metavariable and filter it with `metavariable-regex`
+  (which does not narrow the span), and give each text-based filter its
+  own `patterns:` arm under a top-level `pattern-either` (the
+  `kiko-pinned-*` Button rules in `rules/semgrep-prewrite.yml`). A
+  narrowed span also reports the finding at the narrowed child line, not
+  the enclosing statement, so an `EXPECT-FINDING` pin cannot land there
+  (`kiko-no-hand-built-selectable-row`'s fixture cannot pin at all).
 
 ## Class A vs Class B
 
