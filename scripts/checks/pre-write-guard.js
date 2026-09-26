@@ -53,6 +53,26 @@ function remainingBudget() {
 
 const EXCLUDED_PREFIXES = ['rules/fixtures/', 'node_modules/', 'ios/', 'android/'];
 
+// Runs every promise to completion via Promise.allSettled (never
+// Promise.all) and only then throws the FIRST rejection, in array order —
+// Promise.all instead settles (rejects) the moment its FIRST promise
+// rejects, letting the caller's fail-closed try/catch run its `finally`
+// (which rmSync's the one shared mkdtemp root both Semgrep and every Node
+// checker read from) while a slower SIBLING promise is still a real child
+// process reading a file under that same root (I2): a fast rejection (a
+// synchronous throw, like runSemgrep's own `fs.accessSync` on an unreadable
+// rules file, rejects on the same tick it is called) must never race a
+// slower sibling still spawning or mid-read for the tree out from under it.
+// Every awaited promise here always finishes — successfully or not —
+// before this function itself returns or throws, the guarantee Promise.all
+// does not make.
+async function allSettledOrThrowFirst(promises) {
+  const settled = await Promise.allSettled(promises);
+  const firstRejected = settled.find((result) => result.status === 'rejected');
+  if (firstRejected) throw firstRejected.reason;
+  return settled.map((result) => result.value);
+}
+
 // Runs one child process asynchronously (never spawnSync) and resolves once
 // it exits, with the SAME shape spawnSync's own return value has (`error`,
 // `status`, `signal`, `stdout`, `stderr`) — every existing spawnSync-shaped
@@ -307,10 +327,13 @@ function buildFinding(temporaryRoot, result) {
 // Runs Semgrep against the requested trees ('after', or ['before','after'])
 // with the pre-write rule set. Async (spawnAsync, never spawnSync — see
 // `run` below, which starts this alongside the AFTER-tree `runNodeChecks`
-// call and awaits both together with `Promise.all`, Task 20's speed
-// mitigation: Semgrep and the Node checkers read the SAME already-written
-// mirrored trees and report independently of each other, so overlapping them
-// changes nothing about the result, only the wall time). The child runs
+// call and awaits both together with `allSettledOrThrowFirst`, Task 20's
+// speed mitigation: Semgrep and the Node checkers read the SAME
+// already-written mirrored trees and report independently of each other, so
+// overlapping them changes nothing about the result, only the wall time
+// (I2: `allSettledOrThrowFirst`, not a bare `Promise.all`, is what lets the
+// slower sibling still finish reading the mirrored trees before the caller's
+// `finally` removes them, even when this one rejects first). The child runs
 // with cwd = temporaryRoot and is given targets RELATIVE to it
 // ('after/<rel>', not an absolute path) — this is what lets a path-keyed
 // rule (for example rule 9's nav-layer allowlist, or rule 12's
@@ -370,10 +393,12 @@ async function runSemgrep(temporaryRoot, relativePath, trees) {
 // one-component-per-file.ts, which runs in-process below) against a single
 // mirrored file. Async (spawnAsync, never spawnSync): `runNodeChecks` below
 // fires every applicable rule's `run` at once and awaits them together with
-// `Promise.all`, which is what lets 2 or more checkers overlap on the same
-// mirrored file INSTEAD OF one blocking the event loop for its own full
-// runtime before the next one even starts — the Task 20 speed mitigation (a
-// large real .tsx file's checkers otherwise summed past the 3s target).
+// `allSettledOrThrowFirst`, which is what lets 2 or more checkers overlap on
+// the same mirrored file INSTEAD OF one blocking the event loop for its own
+// full runtime before the next one even starts — the Task 20 speed
+// mitigation (a large real .tsx file's checkers otherwise summed past the 3s
+// target) — without a fast-crashing sibling (I2) racing a slower one for the
+// mirrored tree out from under it.
 // Mirrors runSemgrep's exit-code contract: 0 is clean, 1 means `parseOutput`
 // should read the checker's own stdout; any other code (a crash, a stub
 // standing in for one in a test) throws, caught by the top-level fail-closed
@@ -598,20 +623,24 @@ const NODE_RULES = [
 // need — see the "New-findings-only comparison" section normalizeText/
 // findingKeys implement for Semgrep, applied the same way here). The
 // applicable rules' `run` calls are started together and awaited with
-// `Promise.all` (Task 20's speed mitigation) rather than one after another
-// in a loop — each rule only ever reads the SAME already-written mirrored
-// file and reports its own findings independently of every other rule, so
-// running them concurrently changes nothing about the result, only the wall
-// time. `Promise.all` preserves the SAME per-rule result order the old
-// sequential loop produced (array order, not completion order), so
-// `findings`' order — and therefore `findingKeys`' occurrence numbering — is
-// unchanged.
+// `allSettledOrThrowFirst` (Task 20's speed mitigation, I2's fix over a bare
+// `Promise.all`) rather than one after another in a loop — each rule only
+// ever reads the SAME already-written mirrored file and reports its own
+// findings independently of every other rule, so running them concurrently
+// changes nothing about the result, only the wall time, and letting every
+// one of them finish before throwing means a fast-crashing rule never rmSync's
+// the mirrored file out from under a still-running sibling. Preserves the
+// SAME per-rule result order the old sequential loop produced (array order,
+// not completion order), so `findings`' order — and therefore
+// `findingKeys`' occurrence numbering — is unchanged.
 async function runNodeChecks(temporaryRoot, relativePath, tree) {
   const filePath = path.join(temporaryRoot, tree, relativePath);
   const extension = path.extname(relativePath);
   const applicableRules = NODE_RULES.filter((rule) => rule.extensions.includes(extension));
 
-  const resultsByRule = await Promise.all(applicableRules.map((rule) => rule.run(filePath)));
+  const resultsByRule = await allSettledOrThrowFirst(
+    applicableRules.map((rule) => rule.run(filePath)),
+  );
 
   const findings = [];
   resultsByRule.forEach((ruleFindings, ruleIndex) => {
@@ -788,7 +817,7 @@ async function run() {
     // they run TOGETHER here (Task 20's speed mitigation) instead of one
     // waiting on the other.
     const trees = beforeText === '' ? ['after'] : ['before', 'after'];
-    const [rawFindings, afterNodeFindings] = await Promise.all([
+    const [rawFindings, afterNodeFindings] = await allSettledOrThrowFirst([
       runSemgrep(temporaryRoot, relativePath, trees),
       runNodeChecks(temporaryRoot, relativePath, 'after'),
     ]);

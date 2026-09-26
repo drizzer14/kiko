@@ -2068,6 +2068,60 @@ describe('runNodeChecks concurrency (Task 20 speed mitigation)', () => {
   });
 });
 
+// I2: Promise.all rejects the moment its FIRST promise rejects, without
+// waiting for its still-running siblings — so a fast rejection (Semgrep's
+// own `fs.accessSync` throwing synchronously on an unreadable rules file,
+// before it even spawns) let `run`'s fail-closed catch/finally rmSync the
+// shared mkdtemp root while the 4 spawned Node checkers, real child
+// processes still mid-flight, were reading files under it. This describe
+// block never configures a Semgrep binary at all: an unreadable rules file
+// makes runSemgrep throw before it would ever spawn one.
+describe('temp root lifetime vs a fast-rejecting sibling (I2)', () => {
+  function writeExistenceCheckingNodeStub(directory: string, markerPath: string): string {
+    const stubPath = join(directory, 'node-existence-stub.sh');
+    writeFileSync(
+      stubPath,
+      [
+        '#!/usr/bin/env bash',
+        'targetFile="$2"',
+        'sleep 0.3',
+        'if [ -f "$targetFile" ]; then',
+        `  printf 'existed\\n' >> "${markerPath}"`,
+        'else',
+        `  printf 'missing\\n' >> "${markerPath}"`,
+        'fi',
+        'exit 0',
+        '',
+      ].join('\n'),
+    );
+    chmodSync(stubPath, 0o755);
+
+    return stubPath;
+  }
+
+  it('lets a slower Node checker finish reading its mirrored file before the temp root is removed', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const missingRules = join(project, 'rules', 'semgrep-prewrite.yml');
+    const marker = join(project, 'marker.txt');
+    const nodeStub = writeExistenceCheckingNodeStub(project, marker);
+    const targetFile = join(project, 'src', 'example.ts');
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: 'export const value = 1;\n' }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_RULES: missingRules,
+        KIKO_PREWRITE_NODE_BIN: nodeStub,
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const markerContent = readFileSync(marker, 'utf8');
+    expect(markerContent).not.toContain('missing');
+    expect(markerContent).toContain('existed');
+  });
+});
+
 // Task 21: harness/kiko/hooks/hooks.json wires this script onto PreToolUse
 // for Edit/Write/MultiEdit, alongside the existing Bash matcher
 // (kill-guard.sh). These tests parse the real hooks.json and execute the
