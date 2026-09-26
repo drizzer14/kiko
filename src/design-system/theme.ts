@@ -119,10 +119,9 @@ export const darkTheme = {
     // The base fill for a presented bottom sheet — the iOS
     // `systemGroupedBackground` (dark, elevated) equivalent. A sheet is a
     // grouped surface: its base sits one level BELOW the cards/controls on it,
-    // so a control on the sheet (an ChipRow selected chip, at `surfaceHigh`)
-    // reads as raised instead of blending into the sheet. Before this, the sheet
-    // used `surfaceHigh` itself, the SAME tone as a selected pill, so the two
-    // blended. This is `#1C1C1E` — kept a DISTINCT
+    // so a control on the sheet reads as raised instead of blending into the
+    // sheet. Before this, the sheet used `surfaceHigh` itself, the SAME tone as
+    // a raised pill, so the two blended. This is `#1C1C1E` — kept a DISTINCT
     // semantic token from `surface` (like `onAccent` vs `textPrimary`)
     // because its role is the sheet's grouped base, not a card surface, and
     // the two were always meant to be free to diverge: `surface` was later
@@ -134,17 +133,17 @@ export const darkTheme = {
     // against the black screen behind it instead of reading as an elevated
     // card.
     sheetBackground: '#1C1C1E',
-    // The selected-segment fill for `SegmentedControl` — iOS's own
-    // `systemGray` (dark). `surfaceHigh` (`#2C2C2E`) against the control's
-    // `surface` (`#111112`) track only reaches a 1.35:1 contrast ratio,
-    // well under WCAG 1.4.11's 3:1 floor for a UI state indicator —
-    // this token exists because no other surface token in
-    // this scale clears that floor against `surface`. `segmentSelected`
-    // against `surface` is 3.15:1. This is its own token, not folded into
-    // `surfaceHigh`, because the two are free to diverge: `surfaceHigh` is
-    // the general elevated-surface step, this is tuned specifically for
-    // the segmented control's own contrast requirement.
-    segmentSelected: '#636366',
+    // The selected-segment thumb for `SegmentedControl`: a lighter raised
+    // thumb on the faint `neutralSubtle` track, the native iOS look. The
+    // track is translucent, so it composites over whatever sits behind the
+    // control — the true-black screen or a card/sheet at `surface`. iOS's own
+    // `#636366` thumb reaches only ~2.4:1 against the track over `surface`,
+    // under WCAG 1.4.11's 3:1 floor for a UI state indicator; this value is
+    // the lightest step that clears 3:1 on both backdrops (about 3.1:1 over
+    // `surface`, 3.65:1 over black) while the white selected label stays
+    // legible on it (about 4.65:1, above 4.5:1). Its own token, not folded
+    // into `surfaceHigh`, because it is tuned for this one contrast need.
+    segmentSelected: '#747478',
     textPrimary: '#FFFFFF', // label
     textSecondary: 'rgba(235,235,245,0.60)', // secondaryLabel
     accent: '#0A84FF', // systemBlue (dark)

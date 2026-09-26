@@ -80,14 +80,10 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
                 style={[
                   styles.option,
                   {
-                    // The grid renders inside the shared BottomSheet, whose
-                    // base is the grouped `sheetBackground` (= `surface`). An
-                    // unselected tile therefore uses `surfaceHigh` — one level
-                    // ABOVE the sheet base — so it reads as a raised control
-                    // instead of blending into the sheet (the same grouped-
-                    // elevation convention as a ChipRow chip). Selected
-                    // keeps the accent fill.
-                    backgroundColor: isSelected ? theme.colors.accent : theme.colors.surfaceHigh,
+                    // The same selection look as a ChipRow chip: the accent
+                    // fill once selected, else the faint neutral fill, which
+                    // reads as a control on the sheet without a solid pill.
+                    backgroundColor: isSelected ? theme.colors.accent : theme.colors.neutralSubtle,
                   },
                 ]}
               >

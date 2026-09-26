@@ -10,6 +10,18 @@ import SegmentedControl from '.';
 
 const options = ['single', 'debitCredit'] as const;
 
+// An `rgba(r,g,b,a)` token composited over an opaque `#RRGGBB` backdrop, as the
+// opaque hex a contrast check needs.
+const compositeOver = (rgba: string, backdropHex: string): string => {
+  const [red, green, blue, alpha] = (rgba.match(/[\d.]+/g) ?? []).map(Number);
+  const backdrop = [1, 3, 5].map((offset) => parseInt(backdropHex.slice(offset, offset + 2), 16));
+
+  return `#${[red, green, blue]
+    .map((channel, index) => Math.round(channel * alpha + backdrop[index] * (1 - alpha)))
+    .map((channel) => channel.toString(16).padStart(2, '0'))
+    .join('')}`;
+};
+
 describe('SegmentedControl', () => {
   it('reports the pressed option through onSelect', async () => {
     const onSelect = jest.fn();
@@ -74,12 +86,41 @@ describe('SegmentedControl', () => {
     );
   });
 
-  // The selected segment's fill against the track meets
-  // the WCAG 1.4.11 3:1 non-text contrast floor.
-  it('gives the selected segment >= 3:1 contrast against the track', () => {
-    const ratio = wcagContrastRatio(darkTheme.colors.segmentSelected, darkTheme.colors.surface);
+  // The native iOS segmented look: a faint neutral track and a lighter raised
+  // thumb (the selected label stays textPrimary, semibold).
+  it('paints a faint neutral track under a lighter thumb', async () => {
+    const { getByTestId } = await render(
+      <SegmentedControl
+        options={options}
+        selected="single"
+        onSelect={jest.fn()}
+        accessibilityLabel="Amount mode"
+        testID="mode-segmented"
+      />,
+    );
 
-    expect(ratio).toBeGreaterThanOrEqual(3);
+    expect(
+      StyleSheet.flatten(getByTestId('mode-segmented-track').props.style).backgroundColor,
+    ).toBe(darkTheme.colors.neutralSubtle);
+    expect(
+      StyleSheet.flatten(getByTestId('mode-segmented-selected').props.style).backgroundColor,
+    ).toBe(darkTheme.colors.segmentSelected);
+  });
+
+  // The translucent track composites over whatever sits behind the control:
+  // the true-black screen, or a card/sheet at `surface`. The thumb must meet
+  // the WCAG 1.4.11 3:1 non-text contrast floor against the track on both,
+  // and the selected white label must stay legible (4.5:1) on the thumb.
+  it('gives the thumb >= 3:1 contrast against the track on black and on surface', () => {
+    for (const backdrop of [darkTheme.colors.background, darkTheme.colors.surface]) {
+      const track = compositeOver(darkTheme.colors.neutralSubtle, backdrop);
+
+      expect(wcagContrastRatio(darkTheme.colors.segmentSelected, track)).toBeGreaterThanOrEqual(3);
+    }
+
+    expect(
+      wcagContrastRatio(darkTheme.colors.textPrimary, darkTheme.colors.segmentSelected),
+    ).toBeGreaterThanOrEqual(4.5);
   });
 
   // Each segment is a REAL

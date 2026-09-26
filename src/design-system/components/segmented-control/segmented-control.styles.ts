@@ -49,14 +49,15 @@ export const styles = StyleSheet.create((theme) => ({
   // (the segments cluster insets from it via `row`'s own padding above,
   // exactly reproducing the old single-`Box` track's look).
   // `pointerEvents="none"` (set by the component) keeps it out of hit
-  // testing entirely; it is purely visual.
+  // testing entirely; it is purely visual. The faint neutral fill (the iOS
+  // segmented-control track), so the lighter selected thumb reads as raised.
   trackFill: {
     position: 'absolute',
     top: TRACK_INSET,
     bottom: TRACK_INSET,
     left: 0,
     right: 0,
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.colors.neutralSubtle,
     borderRadius: theme.radii.sm,
   },
   // One segment: the REAL touch target, at least 44pt tall. `minHeight`

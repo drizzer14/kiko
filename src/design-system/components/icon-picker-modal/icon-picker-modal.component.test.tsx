@@ -5,6 +5,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 import '../../unistyles';
 import '../../../i18n';
+import { darkTheme } from '../../theme';
 import { SEEDED_CATEGORIES } from '../../../db/__fixtures__/seeded-categories';
 
 import IconPickerModal from '.';
@@ -99,6 +100,19 @@ describe('IconPickerModal', () => {
     fireEvent.press(getByLabelText('Choose icon basket'));
 
     expect(onSelect).toHaveBeenCalledWith('basket');
+  });
+
+  // The chip selection look: the selected tile is the accent fill, an
+  // unselected tile the faint neutral fill (ChipRow's own unselected chip).
+  it('fills the selected tile with the accent and an unselected tile with the faint neutral fill', async () => {
+    const { getByLabelText } = await setup();
+
+    expect(StyleSheet.flatten(getByLabelText('Choose icon cart').props.style).backgroundColor).toBe(
+      darkTheme.colors.accent,
+    );
+    expect(
+      StyleSheet.flatten(getByLabelText('Choose icon basket').props.style).backgroundColor,
+    ).toBe(darkTheme.colors.neutralSubtle);
   });
 
   it('calls onDismiss when the cancel control is pressed', async () => {

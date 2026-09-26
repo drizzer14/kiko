@@ -50,7 +50,9 @@ const ChipRow = <Option extends string | number>({
               hitSlop={CHIP_HIT_SLOP}
               style={[
                 styles.chip,
-                { backgroundColor: isSelected ? theme.colors.accent : theme.colors.surface },
+                // The native iOS filter-chip look: accent fill once selected,
+                // else the faint neutral fill (never a solid dark surface).
+                { backgroundColor: isSelected ? theme.colors.accent : theme.colors.neutralSubtle },
               ]}
             >
               <Text variant={labelVariant} tone={isSelected ? 'onAccent' : 'textPrimary'}>

@@ -538,11 +538,12 @@ new component can land between reviews of this skill:
   `SHEET_PADDING_STEP`) stays the single inset, never stacked with a
   second one. The sheet is still a GROUPED surface: this translucent
   base (composited to ~rgb(17,17,18) over true-black — darker than
-  `surfaceHigh` #2C2C2E) sits one level BELOW the `surfaceHigh`
-  cards/controls on it, so a control (e.g. a ChipRow selected
-  chip) reads as raised instead of blending into the sheet — it used
-  `surfaceHigh` itself before, the same tone as a selected pill, then a
-  flat opaque `sheetBackground` token before this glass pass. It caps
+  `surfaceHigh` #2C2C2E) sits one level BELOW the cards/controls on
+  it, so a control reads as raised instead of blending into the sheet
+  (a chip or segment on it uses the faint `neutralSubtle` fill — see
+  `ChipRow` and `SegmentedControl` below) — it used `surfaceHigh`
+  itself before, then a flat opaque `sheetBackground` token before this
+  glass pass. It caps
   its own height at a fixed 66%-of-window ceiling and takes an optional
   `maxHeight` prop that can only tighten that cap further, plus a
   `scrollable` prop (defaults `true`) that wraps `children` in a
@@ -826,7 +827,14 @@ new component can land between reviews of this skill:
   the same visible height as `Button`'s `small` size — and restores the
   44pt tap target with vertical `hitSlop` (`CHIP_HIT_SLOP`,
   `chip-row.component.tsx`), never with a taller chip. `labelVariant`
-  only changes the label's type step, not the chip's size. See
+  only changes the label's type step, not the chip's size. **Selection
+  look (the user-approved native iOS filter-chip style):** a selected
+  chip is the `accent` fill with an `onAccent` label; an unselected chip
+  is the faint `neutralSubtle` fill with a `textPrimary` label — never a
+  solid dark `surface`/`surfaceHigh` pill. The icon picker's tiles
+  (`icon-picker-modal.component.tsx`) follow the same look. A chip or
+  segment on a glass sheet is a plain fill, never a `GlassSurface` (no
+  glass on glass). See
   `kiko-statement-import`'s column-mapping section for the fullest
   worked comparison against `SegmentedControl` below. Because a
   design-system component may never import from `src/screens/**`
@@ -839,16 +847,21 @@ new component can land between reviews of this skill:
   — a JS implementation of Apple's iOS `UISegmentedControl`, per the Human
   Interface Guidelines
   (https://developer.apple.com/design/human-interface-guidelines/segmented-controls):
-  a rounded track one elevation step above the screen background
-  (`theme.colors.surface`), holding N equal-width segments, with the
-  SELECTED segment raised to `theme.colors.segmentSelected` — its own
-  token, not `surfaceHigh`, which fails the WCAG
-  1.4.11 3:1 non-text-contrast floor against `surface`; read `theme.ts`'s
-  own doc comment on `segmentSelected` for the current hex and measured
-  ratio rather than trusting a copy of either restated here (they drift).
-  This is still NOT the app's other filled-accent selection
-  vocabulary (`ChipRow`/`SelectableRow`) — a segmented
-  control reads as its own distinct iOS control. No segmented-control
+  a rounded track in the faint neutral fill (`theme.colors.neutralSubtle`,
+  the native iOS segmented track — the user-approved native style),
+  holding N equal-width segments, with the SELECTED segment a lighter
+  raised thumb (`theme.colors.segmentSelected`) under a `textPrimary`
+  semibold label. The track is translucent, so the thumb's WCAG 1.4.11
+  3:1 non-text contrast is checked against the track composited over
+  BOTH backdrops the control sits on (true-black `background` and
+  `surface`, which a card or the glass sheet composites to); that is
+  why the thumb is lighter than iOS's own `#636366`, which only reaches
+  ~2.4:1 over `surface`. Read `theme.ts`'s own doc comment on
+  `segmentSelected` for the current hex and measured ratios rather than
+  trusting a copy restated here. This is still NOT the app's other
+  filled-accent selection vocabulary (`ChipRow`/`SelectableRow`) — a
+  segmented control reads as its own distinct iOS control, never an
+  accent fill. No segmented-control
   NATIVE library is a dependency of this app; this
   renders the same visual/interaction contract in plain
   `Pressable`/`Box`/`Text` instead of adding one. Touch target: each segment `Pressable` is a REAL layout box with
