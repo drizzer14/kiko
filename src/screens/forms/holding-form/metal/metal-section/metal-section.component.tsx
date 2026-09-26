@@ -17,8 +17,9 @@ import type { MetalSectionProps } from './metal-section.props';
 
 // The `metal` create-form section (the metal itself is picked in the Type
 // slot, `MetalTypeField`): a physical Form ChipRow, a Unit ChipRow, a Purity
-// field (pre-filled `"0.9999"` — the standard bar/coin fineness, validated on
-// Save as 0 < purity <= 1 in both create and edit mode), and the first-lot
+// field in fineness per mille (pre-filled `"999.9"` — the standard bar/coin
+// fineness, validated on Save as 0 < fineness <= 1000 in both create and edit
+// mode), and the first-lot
 // Quantity/Total cost fields (create-only — see
 // `MetalSectionProps.showFirstLot`'s own doc comment). The quantity shows the
 // picked Unit after it. One lot is what `useMetalFields` builds from those two fields
@@ -85,6 +86,7 @@ const MetalSection: FC<MetalSectionProps> = ({
           onChangeText={onChangePurity}
           keyboardType="decimal-pad"
           placeholder={t('forms.holding.purityPlaceholder')}
+          suffix={t('forms.units.perMille')}
           required
           error={purityError}
           inputRef={purityInputRef}

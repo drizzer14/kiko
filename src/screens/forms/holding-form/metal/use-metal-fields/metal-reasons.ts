@@ -1,6 +1,8 @@
 import { parseAmount } from '@kiko/currency/parse';
 import { compareDecimal, normalizeDecimal } from '@kiko/currency/decimal';
 
+const MAX_FINENESS = '1000';
+
 // The shape every metal field function validates — kept as one type so
 // `metalFieldErrors` and `metalReasonKey` can never drift apart on WHAT they
 // read, mirroring `PropertyValidationParams`.
@@ -15,7 +17,7 @@ type MetalValidationParams = {
 // generic quantity error the bond form already carries, and the Lot form's
 // own total-cost error, rather than minting a metal-specific duplicate of
 // either message. `purityError` is metal-specific: no other form field
-// validates a 0-1 fineness ratio.
+// validates a fineness.
 export type MetalFieldErrors = {
   purityError: 'forms.holding.purityError' | null;
   quantityError: 'forms.holding.quantityError' | null;
@@ -24,11 +26,11 @@ export type MetalFieldErrors = {
 
 export type MetalReasonKey = NonNullable<MetalFieldErrors[keyof MetalFieldErrors]>;
 
-// Purity applies in BOTH create and edit mode — `MetalSection` always
+// Purity is typed as a fineness per mille (999.9 ‰), valid above 0 and up to
+// 1000. It applies in BOTH create and edit mode — `MetalSection` always
 // renders the field (unlike the create-only Quantity/Total cost pair
-// below), and a fineness ratio is meaningful whenever it's shown. A garbled
-// or out-of-range value BLOCKS Save rather than reaching either metadata
-// builder at all. Validates with `normalizeDecimal` + `compareDecimal`, the
+// below). A garbled or out-of-range value BLOCKS Save rather than reaching
+// either metadata builder at all. Validates with `normalizeDecimal` + `compareDecimal`, the
 // SAME parser `normalizedPurityOrThrow` (the writer) uses, so a value this
 // check accepts is guaranteed to parse when the writer runs.
 const purityFieldReasonKey = (purity: string): MetalFieldErrors['purityError'] => {
@@ -36,7 +38,7 @@ const purityFieldReasonKey = (purity: string): MetalFieldErrors['purityError'] =
 
   return normalizedPurity !== null &&
     compareDecimal(normalizedPurity, '0') > 0 &&
-    compareDecimal(normalizedPurity, '1') <= 0
+    compareDecimal(normalizedPurity, MAX_FINENESS) <= 0
     ? null
     : 'forms.holding.purityError';
 };

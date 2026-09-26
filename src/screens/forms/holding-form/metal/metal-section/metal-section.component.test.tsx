@@ -12,7 +12,7 @@ const baseProps = {
   onSelectForm: jest.fn(),
   unit: 'oz' as const,
   onSelectUnit: jest.fn(),
-  purity: '0.9999',
+  purity: '999.9',
   onChangePurity: jest.fn(),
   showFirstLot: true,
   quantity: '',
@@ -64,10 +64,11 @@ describe('MetalSection', () => {
     expect(onSelectUnit).toHaveBeenCalledWith('g');
   });
 
-  it('shows a purity field defaulted to 0.9999', async () => {
+  it('shows the purity as a fineness per mille', async () => {
     const { getByLabelText } = await render(<MetalSection {...baseProps} />);
 
-    expect(getByLabelText('Purity').props.value).toBe('0.9999');
+    expect(getByLabelText('Purity').props.value).toBe('999.9');
+    expect(fieldSuffix(getByLabelText('Purity'))).toBe('‰');
   });
 
   it('reports the entered purity', async () => {
@@ -76,9 +77,9 @@ describe('MetalSection', () => {
       <MetalSection {...baseProps} onChangePurity={onChangePurity} />,
     );
 
-    fireEvent.changeText(getByLabelText('Purity'), '0.999');
+    fireEvent.changeText(getByLabelText('Purity'), '585');
 
-    expect(onChangePurity).toHaveBeenCalledWith('0.999');
+    expect(onChangePurity).toHaveBeenCalledWith('585');
   });
 
   it('shows the first-lot Quantity and Total cost fields when showFirstLot is true', async () => {
@@ -141,10 +142,10 @@ describe('MetalSection', () => {
   // validated field.
   it('renders purityError directly after the field', async () => {
     const { getByText } = await render(
-      <MetalSection {...baseProps} purityError="Enter a purity between 0 and 1." />,
+      <MetalSection {...baseProps} purityError="Enter a fineness above 0 and up to 1000 ‰." />,
     );
 
-    expect(getByText('Enter a purity between 0 and 1.')).toBeTruthy();
+    expect(getByText('Enter a fineness above 0 and up to 1000 ‰.')).toBeTruthy();
   });
 
   it('marks the purity field as required, with an example-value placeholder', async () => {
@@ -153,6 +154,6 @@ describe('MetalSection', () => {
     );
 
     expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(1);
-    expect(getByPlaceholderText('0.9999')).toBeTruthy();
+    expect(getByPlaceholderText('999.9')).toBeTruthy();
   });
 });

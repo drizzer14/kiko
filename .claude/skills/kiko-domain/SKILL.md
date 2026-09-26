@@ -237,7 +237,11 @@ symmetry.
 `src/screens/forms/holding-form/metal/metal-section/metal-section.component.tsx`
 is the `metal` create-form section: a
 physical-form `ChipRow`, a unit `ChipRow`, a Purity `TextField`
-(pre-filled `"0.9999"`), and the first-lot Quantity/Total-cost fields
+typed and shown as a fineness per mille (pre-filled `999.9`, suffix
+`‰`, valid above 0 and up to 1000; `MetalMeta.purity` still stores the
+0..1 ratio — `useMetalFields` shifts the point three places each way
+with `shiftDecimal` + `trimDecimal`, so `999.9` <-> `"0.9999"` and
+`1000` -> `"1"` exactly, never through a float), and the first-lot Quantity/Total-cost fields
 (create-only — see `MetalSectionProps.showFirstLot`'s own doc
 comment). Unlike `property_item`, `metal`'s create payload writes NO
 `firstPricePoint` — its price comes from the shared

@@ -1851,43 +1851,34 @@ describe('HoldingFormScreen metal', () => {
     expect(screen.queryByText('Total cost must be greater than 0.')).toBeNull();
   });
 
-  // A garbled purity (e.g. the comma-decimal "999,9", parsed as
-  // 999.9) must never silently fall back to the standard 0.9999 fineness
-  // default — that would write a valid-looking but WRONG MetalMeta with no
-  // sign anything was off. Save blocks on it instead.
-  it('blocks save and shows an error for a garbled purity, instead of silently defaulting it', async () => {
+  // Purity is typed as a fineness per mille and stored as the 0..1 ratio,
+  // shifted exactly (never through a float), with a comma decimal mark read
+  // as a dot.
+  it.each([
+    ['999,9', '0.9999'],
+    ['585', '0.585'],
+    ['1000', '1'],
+  ])('stores a typed %s fineness as the %s ratio', async (fineness, stored) => {
     const screen = await renderScreen();
 
     await fill(screen, 'Name', 'Gold bar');
-    await fill(screen, 'Purity', '999,9');
+    await fill(screen, 'Purity', fineness);
     await fill(screen, 'Quantity', '31.1');
     await fill(screen, 'Total cost', '80000');
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(screen.getByText('Enter a purity between 0 and 1.')).toBeTruthy();
-    expect(createMock).not.toHaveBeenCalled();
-    expect(navigation.goBack).not.toHaveBeenCalled();
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ purity: stored }),
+      }),
+    );
   });
 
-  it('blocks save and shows an error for an out-of-range purity greater than 1', async () => {
-    const screen = await renderScreen();
-
-    await fill(screen, 'Name', 'Gold bar');
-    await fill(screen, 'Purity', '1.5');
-    await fill(screen, 'Quantity', '31.1');
-    await fill(screen, 'Total cost', '80000');
-    await fireEvent.press(screen.getByText('Save'));
-
-    expect(screen.getByText('Enter a purity between 0 and 1.')).toBeTruthy();
-    expect(createMock).not.toHaveBeenCalled();
-  });
-
-  // Purity is validated with the SAME `normalizeDecimal` parser the writer
-  // uses — a leading-dot, comma-decimal, or trailing-dot shape is rejected
-  // by that parser, so each of these blocks Save rather than being written
-  // as some other value the user never typed.
-  it.each(['.999', ',999', '1.'])(
-    'blocks save and shows an error for a purity normalizeDecimal cannot parse: %s',
+  // Validated with the SAME `normalizeDecimal` parser the writer uses, so a
+  // shape it rejects (leading dot, trailing dot, junk) blocks Save rather
+  // than being written as some other value the user never typed.
+  it.each(['0', '1000.1', 'abc', '.999', '1.'])(
+    'blocks save and shows the fineness error for a purity of %s',
     async (purity) => {
       const screen = await renderScreen();
 
@@ -1897,29 +1888,10 @@ describe('HoldingFormScreen metal', () => {
       await fill(screen, 'Total cost', '80000');
       await fireEvent.press(screen.getByText('Save'));
 
-      expect(screen.getByText('Enter a purity between 0 and 1.')).toBeTruthy();
+      expect(screen.getByText('Enter a fineness above 0 and up to 1000 ‰.')).toBeTruthy();
       expect(createMock).not.toHaveBeenCalled();
     },
   );
-
-  // Writes the exact normalized purity the user typed, never the pre-fill
-  // default — the value here is deliberately NOT '0.9999' so a substitution
-  // bug can't hide behind a coincidental match.
-  it('creates a metal holding with the exact typed purity, not the pre-filled default', async () => {
-    const screen = await renderScreen();
-
-    await fill(screen, 'Name', 'Gold bar');
-    await fill(screen, 'Purity', '0.750');
-    await fill(screen, 'Quantity', '31.1');
-    await fill(screen, 'Total cost', '80000');
-    await fireEvent.press(screen.getByText('Save'));
-
-    expect(createMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        metadata: expect.objectContaining({ purity: '0.750' }),
-      }),
-    );
-  });
 
   it('edits a metal holding without Quantity/Total cost fields, preserving its stored lots', async () => {
     const screen = await renderEdit({
@@ -1961,11 +1933,10 @@ describe('HoldingFormScreen metal', () => {
     expect(updateDeltaMock.mock.calls[0][1]).not.toHaveProperty('balance');
   });
 
-  // Writes the exact normalized purity the user typed, never the value the
-  // holding was hydrated with — the value here is deliberately different
-  // from the hydrated '0.9999' so a substitution bug can't hide behind a
-  // coincidental match.
-  it('edits a metal holding writing the exact typed purity, not the hydrated one', async () => {
+  // Writes the purity the user typed, never the value the holding was
+  // hydrated with — deliberately different from the hydrated 999.9 so a
+  // substitution bug can't hide behind a coincidental match.
+  it('edits a metal holding writing the typed purity, not the hydrated one', async () => {
     const screen = await renderEdit({
       id: 'h1',
       accountId: 'acc-1',
@@ -1984,13 +1955,15 @@ describe('HoldingFormScreen metal', () => {
       },
     });
 
-    await fill(screen, 'Purity', '0.750');
+    expect(screen.getByLabelText('Purity').props.value).toBe('999.9');
+
+    await fill(screen, 'Purity', '750');
     await fireEvent.press(screen.getByText('Save'));
 
     expect(updateDeltaMock).toHaveBeenCalledWith(
       'h1',
       expect.objectContaining({
-        metadata: expect.objectContaining({ purity: '0.750' }),
+        metadata: expect.objectContaining({ purity: '0.75' }),
       }),
       expect.any(Number),
     );
@@ -1999,7 +1972,7 @@ describe('HoldingFormScreen metal', () => {
   // Purity stays user-editable in edit mode (unlike
   // Quantity/Total cost, which are create-only), so it must validate there
   // too.
-  it('blocks save for a garbled purity in EDIT mode too, leaving the stored MetalMeta untouched', async () => {
+  it('blocks save for an out-of-range purity in EDIT mode too, leaving the stored MetalMeta untouched', async () => {
     const screen = await renderEdit({
       id: 'h1',
       accountId: 'acc-1',
@@ -2018,10 +1991,10 @@ describe('HoldingFormScreen metal', () => {
       },
     });
 
-    await fill(screen, 'Purity', '999,9');
+    await fill(screen, 'Purity', '1000.1');
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(screen.getByText('Enter a purity between 0 and 1.')).toBeTruthy();
+    expect(screen.getByText('Enter a fineness above 0 and up to 1000 ‰.')).toBeTruthy();
     expect(updateDeltaMock).not.toHaveBeenCalled();
   });
 

@@ -26,7 +26,7 @@ describe('useMetalFields scrollTargets', () => {
     const { result } = await renderHook(() => useMetalFields({ isEdit: false }));
 
     await act(async () => {
-      result.current.setPurity('2');
+      result.current.setPurity('1001');
     });
 
     const firstInvalid = result.current.scrollTargets.find((target) => target.invalid);
@@ -38,5 +38,45 @@ describe('useMetalFields scrollTargets', () => {
     const { result } = await renderHook(() => useMetalFields({ isEdit: true }));
 
     expect(result.current.scrollTargets.find((target) => target.invalid)).toBeUndefined();
+  });
+});
+
+describe('useMetalFields purity in fineness per mille', () => {
+  it('pre-fills the standard 999.9 fineness', async () => {
+    const { result } = await renderHook(() => useMetalFields({ isEdit: false }));
+
+    expect(result.current.purity).toBe('999.9');
+  });
+
+  it.each([
+    ['999.9', '0.9999'],
+    ['999,9', '0.9999'],
+    ['585', '0.585'],
+    ['1000', '1'],
+  ])('stores a %s fineness as the %s ratio', async (fineness, stored) => {
+    const { result } = await renderHook(() => useMetalFields({ isEdit: false }));
+
+    await act(async () => {
+      result.current.setPurity(fineness);
+      result.current.setQuantity('1');
+      result.current.setCost('100');
+    });
+
+    expect(result.current.createPayload().metadata).toMatchObject({ purity: stored });
+  });
+
+  it('shows a stored ratio as its fineness', async () => {
+    const { result } = await renderHook(() => useMetalFields({ isEdit: true }));
+
+    await act(async () => {
+      result.current.seed({
+        id: 'h1',
+        currency: 'UAH',
+        metadata: { metal: 'XAU', form: 'bar', unit: 'oz', purity: '0.9990', lots: [] },
+        // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture) `seed` only reads `metadata`; a full HoldingRow literal would be noise.
+      } as any);
+    });
+
+    expect(result.current.purity).toBe('999');
   });
 });

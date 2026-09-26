@@ -12,7 +12,7 @@ import { parseAmount } from '@kiko/currency/parse';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { useCallback, useRef, useState } from 'react';
 import type { TextInputInstance } from 'react-native';
-import { normalizeDecimal } from '@kiko/currency/decimal';
+import { normalizeDecimal, shiftDecimal, trimDecimal } from '@kiko/currency/decimal';
 
 import { saveMetadataEdit } from '../../save-metadata-edit';
 import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
@@ -25,23 +25,29 @@ import {
   type MetalReasonKey,
 } from './metal-reasons';
 
-// The pre-filled purity — the standard bar/coin fineness — shown before
-// the user types anything of their own.
-const DEFAULT_METAL_PURITY = '0.9999';
+// The pre-filled purity — the standard bar/coin fineness, per mille — shown
+// before the user types anything of their own.
+const DEFAULT_METAL_PURITY = '999.9';
+
+// The field shows a fineness per mille; `MetalMeta.purity` stores the 0..1
+// ratio. Both directions shift the decimal point exactly (never a float).
+const PER_MILLE_PLACES = 3;
+
+const finenessOf = (purity: string): string => trimDecimal(shiftDecimal(purity, PER_MILLE_PLACES));
 
 // Both metal-metadata builders below only ever run once `metalReasonKey`
 // has already confirmed `normalizeDecimal(value)` parses — a `null` result
 // here can only mean that validation gate itself has a bug, never a value
 // the user actually typed, so this throws instead of silently substituting
 // `DEFAULT_METAL_PURITY` for whatever the user entered.
-const normalizedPurityOrThrow = (purity: string): string => {
-  const normalized = normalizeDecimal(purity);
+const normalizedPurityOrThrow = (fineness: string): string => {
+  const normalized = normalizeDecimal(fineness);
 
   if (normalized === null) {
     throw new Error('Metal purity failed to parse after passing Save validation');
   }
 
-  return normalized;
+  return trimDecimal(shiftDecimal(normalized, -PER_MILLE_PLACES));
 };
 
 type MetalFields = {
@@ -157,7 +163,7 @@ export const useMetalFields = (params: UseMetalFieldsParams): UseMetalFieldsResu
     setMetal(meta.metal);
     setForm(meta.form);
     setUnit(meta.unit);
-    setPurity(meta.purity);
+    setPurity(finenessOf(meta.purity));
     setLots(meta.lots);
   }, []);
 

@@ -2,40 +2,41 @@ import { metalFieldErrors, metalReasonKey } from './metal-reasons';
 
 const baseParams = () => ({
   isEdit: false,
-  purity: '0.9999',
+  purity: '999.9',
   quantity: '31.1',
   cost: '80000',
 });
 
 describe('metalFieldErrors — purity', () => {
-  it('rejects a garbled purity normalizeDecimal cannot parse', () => {
-    expect(metalFieldErrors({ ...baseParams(), purity: '999,9' }).purityError).toBe(
+  it('rejects a purity normalizeDecimal cannot parse', () => {
+    expect(metalFieldErrors({ ...baseParams(), purity: 'abc' }).purityError).toBe(
       'forms.holding.purityError',
     );
   });
 
-  it('rejects a purity of 0', () => {
+  it('rejects a fineness of 0', () => {
     expect(metalFieldErrors({ ...baseParams(), purity: '0' }).purityError).toBe(
       'forms.holding.purityError',
     );
   });
 
-  it('rejects a purity greater than 1', () => {
-    expect(metalFieldErrors({ ...baseParams(), purity: '1.5' }).purityError).toBe(
+  it('rejects a fineness above 1000', () => {
+    expect(metalFieldErrors({ ...baseParams(), purity: '1000.1' }).purityError).toBe(
       'forms.holding.purityError',
     );
   });
 
-  it('accepts a purity of exactly 1', () => {
-    expect(metalFieldErrors({ ...baseParams(), purity: '1' }).purityError).toBeNull();
+  it('accepts a fineness of exactly 1000', () => {
+    expect(metalFieldErrors({ ...baseParams(), purity: '1000' }).purityError).toBeNull();
   });
 
-  it('accepts the standard fineness default', () => {
-    expect(metalFieldErrors({ ...baseParams(), purity: '0.9999' }).purityError).toBeNull();
+  it('accepts the standard fineness, with a dot or a comma', () => {
+    expect(metalFieldErrors({ ...baseParams(), purity: '999.9' }).purityError).toBeNull();
+    expect(metalFieldErrors({ ...baseParams(), purity: '999,9' }).purityError).toBeNull();
   });
 
   it('applies in BOTH create and edit mode', () => {
-    expect(metalFieldErrors({ ...baseParams(), isEdit: true, purity: '999,9' }).purityError).toBe(
+    expect(metalFieldErrors({ ...baseParams(), isEdit: true, purity: '0' }).purityError).toBe(
       'forms.holding.purityError',
     );
   });
@@ -87,7 +88,7 @@ describe('metalReasonKey', () => {
   });
 
   it('prioritizes the purity reason over quantity and cost', () => {
-    expect(metalReasonKey({ ...baseParams(), purity: '1.5', quantity: '', cost: '' })).toBe(
+    expect(metalReasonKey({ ...baseParams(), purity: '1000.1', quantity: '', cost: '' })).toBe(
       'forms.holding.purityError',
     );
   });

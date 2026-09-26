@@ -11,7 +11,8 @@ export type MetalSectionProps = {
   onSelectUnit: (unit: MetalUnit) => void;
   purity: string;
   onChangePurity: (text: string) => void;
-  // Purity is validated on Save (0 < purity <= 1) in BOTH create and edit
+  // Purity is typed as a fineness per mille and validated on Save
+  // (0 < fineness <= 1000) in BOTH create and edit
   // mode — a garbled or out-of-range value blocks Save instead of silently
   // falling back to the standard fineness default.
   purityError?: string;

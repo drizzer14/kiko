@@ -1,6 +1,7 @@
 import {
   addDecimal,
   subDecimal,
+  trimDecimal,
   shiftDecimal,
   compareDecimal,
   normalizeDecimal,
@@ -55,6 +56,19 @@ describe('compareDecimal', () => {
     expect(compareDecimal('1.50', '1.5')).toBe(0);
     expect(compareDecimal('1.49', '1.5')).toBe(-1);
     expect(compareDecimal('2', '1.999')).toBe(1);
+  });
+});
+
+describe('trimDecimal', () => {
+  it('drops trailing fraction zeros and a bare point', () => {
+    expect(trimDecimal('1.000')).toBe('1');
+    expect(trimDecimal('0.750')).toBe('0.75');
+    expect(trimDecimal('999.9')).toBe('999.9');
+  });
+
+  it('leaves integer zeros alone', () => {
+    expect(trimDecimal('1000')).toBe('1000');
+    expect(trimDecimal('0')).toBe('0');
   });
 });
 

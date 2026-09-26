@@ -104,6 +104,14 @@ export const shiftDecimal = (value: string, places: number): string => {
   return formatSignedDecimal(parsed.signedDigits * 10n ** BigInt(-newScale), 0);
 };
 
+/**
+ * Drops trailing zeros from a decimal string's fraction, and the point with
+ * them when nothing is left — `'1.000'` -> `'1'`, `'0.750'` -> `'0.75'`. The
+ * integer part is untouched. Exact: a string edit, no parse.
+ */
+export const trimDecimal = (value: string): string =>
+  value.includes('.') ? value.replace(/\.?0+$/, '') : value;
+
 // A JS `number` parsed from JSON can print in exponential notation
 // (`(1e-7).toString() === '1e-7'`) — this expands that mantissa/exponent form
 // back to a plain decimal string via `shiftDecimal`, so the result is exact
