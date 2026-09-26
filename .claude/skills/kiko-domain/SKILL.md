@@ -566,6 +566,17 @@ the marker on its single debit leg). Three consequences hold together:
   transaction lists via `transactionRowDescription` (`src/transactions/`). A
   persisted sentence stayed English after a language switch and went
   stale after a rename; that is the bug the column exists to prevent.
+- **`transactionRowDescription` is the ONE owner of a blank row's label.**
+  Every surface that shows it calls it: both lists, `ExampleTransaction`,
+  and the transaction form. On an edit, the form pre-fills a blank
+  stored description with that label as the field VALUE (and previews it
+  as the placeholder once cleared); Save stores `''` when the text still
+  equals the pre-filled label, and the typed text otherwise — so an
+  untouched leg keeps resolving at render time. A direct
+  `defaultTransactionDescription(` call outside
+  `src/transactions/row-description/` (or the helper's own folder)
+  skips the exchange branch and is denied by the
+  `kiko-no-direct-default-transaction-description` Semgrep rule.
 - A repository input therefore carries holding IDs, never holding
   display names, for an exchange.
 

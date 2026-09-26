@@ -148,6 +148,7 @@ type Transaction = {
   comment?: string | null;
   loanHoldingId?: string | null;
   loanLinkSource?: 'auto' | 'manual' | null;
+  exchangeCounterpartHoldingId?: string | null;
 };
 
 // The category options the picker renders in every test; a stable set so the
@@ -1300,6 +1301,120 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
 
     expect(queryByText('Delete')).toBeNull();
     expect(mockRemove).not.toHaveBeenCalled();
+  });
+});
+
+describe('TransactionFormScreen — blank description pre-fill on edit', () => {
+  const holdings: Holding[] = [
+    { id: 'h-uah', currency: 'UAH', balanceMinorUnits: 5000, type: 'cash', name: 'Wallet UAH' },
+    { id: 'h-usd', currency: 'USD', balanceMinorUnits: 5000, type: 'cash', name: 'Savings USD' },
+    { id: 'h-card', currency: 'UAH', balanceMinorUnits: 5000, type: 'card', name: 'Black card' },
+  ];
+
+  const leg = (overrides: Partial<Transaction>): Transaction => ({
+    id: 'txn-leg',
+    holdingId: 'h-uah',
+    amountMinorUnits: -1000,
+    time: 42,
+    description: '',
+    source: 'manual',
+    exchangeCounterpartHoldingId: null,
+    ...overrides,
+  });
+
+  // The two legs `recordExchange` writes, and the leg `recordExchangeCounterpart`
+  // (Convert) records against an existing income — all store description ''.
+  const exchangeLegs: [string, Transaction, string][] = [
+    [
+      'the outgoing exchange leg',
+      leg({ exchangeCounterpartHoldingId: 'h-usd' }),
+      'Exchange to Savings USD',
+    ],
+    [
+      'the incoming exchange leg',
+      leg({ holdingId: 'h-usd', amountMinorUnits: 500, exchangeCounterpartHoldingId: 'h-uah' }),
+      'Exchange from Wallet UAH',
+    ],
+    [
+      'the leg Convert recorded',
+      leg({ holdingId: 'h-card', amountMinorUnits: -700, exchangeCounterpartHoldingId: 'h-uah' }),
+      'Exchange to Wallet UAH',
+    ],
+  ];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUpdate.mockResolvedValue(undefined);
+    mockSetCategory.mockResolvedValue(undefined);
+  });
+
+  it.each(exchangeLegs)('pre-fills %s with the label the list shows', async (_name, row, label) => {
+    setLiveData(holdings, row);
+
+    const { getByLabelText } = await renderEdit('txn-leg');
+
+    expect(getByLabelText('Description').props.value).toBe(label);
+  });
+
+  it.each(exchangeLegs)('saves %s untouched with an empty description', async (_name, row) => {
+    setLiveData(holdings, row);
+
+    const { getByText } = await renderEdit('txn-leg');
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ transactionId: 'txn-leg', description: '' }),
+    );
+  });
+
+  it.each(exchangeLegs)('saves the typed text on %s once edited', async (_name, row) => {
+    setLiveData(holdings, row);
+
+    const { getByLabelText, getByText } = await renderEdit('txn-leg');
+    await fireEvent.changeText(getByLabelText('Description'), 'Rent swap');
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ transactionId: 'txn-leg', description: 'Rent swap' }),
+    );
+  });
+
+  it('previews the exchange label as the placeholder once the pre-filled text is cleared', async () => {
+    setLiveData(holdings, leg({ exchangeCounterpartHoldingId: 'h-usd' }));
+
+    const { getByLabelText } = await renderEdit('txn-leg');
+    await fireEvent.changeText(getByLabelText('Description'), '');
+
+    expect(getByLabelText('Description').props.placeholder).toBe('Exchange to Savings USD');
+  });
+
+  it('pre-fills an ordinary blank row with its holding-name label and saves it untouched as empty', async () => {
+    setLiveData(holdings, leg({}));
+
+    const { getByLabelText, getByText } = await renderEdit('txn-leg');
+
+    expect(getByLabelText('Description').props.value).toBe('Wallet UAH expense');
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ description: '' }));
+  });
+
+  it('keys a category change on an untouched leg to this row only, not a rule named after the label', async () => {
+    setLiveData(holdings, leg({ exchangeCounterpartHoldingId: 'h-usd', category: 'groceries' }));
+
+    const utils = await renderEdit('txn-leg');
+    await pickCategory(utils, 'Dining');
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(utils.queryByText('Apply Category to All')).toBeNull();
+    await waitFor(() =>
+      expect(mockSetCategory).toHaveBeenCalledWith({
+        transactionId: 'txn-leg',
+        category: 'dining',
+      }),
+    );
+    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
   });
 });
 

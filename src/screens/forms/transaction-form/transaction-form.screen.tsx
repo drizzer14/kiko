@@ -19,6 +19,7 @@ import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
+import { transactionRowDescription } from '@kiko/transactions/row-description';
 import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
 import { type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
 
@@ -78,7 +79,6 @@ import { seedCounterpartMinorUnits } from '../../../holdings/exchange-prefill';
 import { normalizeTransactionName } from '../../../transactions/normalize-name';
 import type { AccountRow, HoldingRow, TransactionRow } from '../../../db/schema';
 import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
-import { defaultTransactionDescription } from '../../../transactions/default-description';
 import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 
 // This screen is registered in BOTH the Home and Accounts stacks (Home lists
@@ -208,31 +208,83 @@ const signedMinorUnits = (currency: Currency, amount: string, sign: Sign): numbe
 };
 
 // The description field's placeholder: a preview of the label the row would
-// carry if its description is left blank — the same holding-name + sign
-// fallback the Home and Holding-detail lists render for an empty description
-// (see `defaultTransactionDescription`). Only the polarity of the sign matters
-// to that helper, so the current `mode` maps to a representative signed value
-// (a negative for expense, non-negative otherwise). Falls back to a concrete
-// example ("Coffee") when no holding has resolved yet, so there is nothing to
-// preview — an example the user can type, not an echo of the field's own label.
-// Kept module-level and pure so its branch stays out of the screen
-// component's cognitive-complexity budget; `t` is the full `TFunction` (both
-// the fallback and the interpolated preview flow through it). Both `expense`
-// and `split` are expenses (a split's payment is negative), so each maps to a
-// negative representative value and previews the expense-style fallback; only a
-// plain income maps to non-negative.
-const resolveDescriptionPlaceholder = (
-  holding: Pick<HoldingRow, 'name'> | undefined,
-  mode: FormMode,
-  t: TFunction,
-): string =>
-  holding !== undefined
-    ? defaultTransactionDescription(
-        holding.name,
-        mode === 'expense' || mode === 'split' ? -1 : 0,
-        t,
-      )
-    : t('forms.transaction.descriptionPlaceholder');
+// carry if its description is left blank, resolved by the SAME
+// `transactionRowDescription` the Home and Holding-detail lists render — so an
+// edited exchange leg previews its "Exchange to/from <counterpart>" label
+// rather than a holding-name expense the list never shows. Only the polarity of
+// the sign matters to that helper, so the current `mode` maps to a
+// representative signed value (a negative for expense, non-negative
+// otherwise). Falls back to a concrete example ("Coffee") when no holding has
+// resolved yet, so there is nothing to preview — an example the user can type,
+// not an echo of the field's own label. Kept module-level and pure so its
+// branch stays out of the screen component's cognitive-complexity budget. Both
+// `expense` and `split` are expenses (a split's payment is negative), so each
+// maps to a negative representative value; only a plain income maps to
+// non-negative. Only an EDITED row carries the exchange marker — a duplicate is
+// written through `recordManual` without one, so its source's marker is not
+// read here.
+const resolveDescriptionPlaceholder = (input: {
+  holding: Pick<HoldingRow, 'name'> | undefined;
+  existing: Pick<TransactionRow, 'exchangeCounterpartHoldingId'> | undefined;
+  holdings: readonly Pick<HoldingRow, 'id' | 'name'>[];
+  mode: FormMode;
+  t: TFunction;
+}): string => {
+  const { holding, existing, holdings, mode, t } = input;
+
+  if (holding === undefined) {
+    return t('forms.transaction.descriptionPlaceholder');
+  }
+
+  return transactionRowDescription({
+    transaction: {
+      description: '',
+      amountMinorUnits: mode === 'expense' || mode === 'split' ? -1 : 0,
+      exchangeCounterpartHoldingId: existing?.exchangeCounterpartHoldingId ?? null,
+    },
+    holdingName: holding.name,
+    holdingNameById: buildHoldingNameById(holdings),
+    t,
+  });
+};
+
+const buildHoldingNameById = (
+  holdings: readonly Pick<HoldingRow, 'id' | 'name'>[],
+): ReadonlyMap<string, string> =>
+  new Map(holdings.map((candidate) => [candidate.id, candidate.name]));
+
+// The text an edited row with a BLANK stored description opens with: the label
+// the transaction lists show for it (an exchange leg's "Exchange to/from
+// <counterpart>", else the holding-name default), so the field never reads
+// empty while the list reads a label. Null when nothing is pre-filled — no
+// edit, a description of the row's own, or a holding not yet resolved.
+const resolveBlankLabel = (input: {
+  existing:
+    | Pick<TransactionRow, 'description' | 'amountMinorUnits' | 'exchangeCounterpartHoldingId'>
+    | undefined;
+  holding: Pick<HoldingRow, 'name'> | undefined;
+  holdings: readonly Pick<HoldingRow, 'id' | 'name'>[];
+  t: TFunction;
+}): string | null => {
+  const { existing, holding } = input;
+
+  if (existing === undefined || existing.description !== '' || holding === undefined) {
+    return null;
+  }
+
+  return transactionRowDescription({
+    transaction: existing,
+    holdingName: holding.name,
+    holdingNameById: buildHoldingNameById(input.holdings),
+    t: input.t,
+  });
+};
+
+// An untouched pre-filled label saves as '' so the row keeps resolving its
+// label at render time — a stored copy would stay in the language it was
+// written in and go stale after a rename. Anything the user typed is stored.
+const storedDescription = (typed: string, prefilledLabel: string | null): string =>
+  typed === prefilledLabel ? '' : typed;
 
 // Whether a money field holds a strictly positive number — the same guard every
 // `save` path applies before it writes. `parseAmount` yields NaN for a blank,
@@ -845,6 +897,9 @@ type HydrationPlan =
       amount: string;
       sign: Sign;
       description: string;
+      // The list label seeded in place of a blank stored description (see
+      // `resolveBlankLabel`), or null when the row's own description was seeded.
+      prefilledLabel: string | null;
       category: string | null;
       time: number | null;
     };
@@ -853,6 +908,7 @@ const seedFieldsFrom = (
   currency: Currency,
   row: Pick<TransactionRow, 'amountMinorUnits' | 'description' | 'category'>,
   time: number | null,
+  prefilledLabel: string | null,
 ): HydrationPlan => {
   const fields = toAmountFields(currency, row.amountMinorUnits);
 
@@ -860,7 +916,8 @@ const seedFieldsFrom = (
     kind: 'seedFields',
     amount: groupAmount(fields.amount),
     sign: fields.sign,
-    description: row.description,
+    description: prefilledLabel ?? row.description,
+    prefilledLabel,
     // Lowercase the stored value to a slug key — the same normalization the
     // display resolver applies — so it lines up with the picker's option keys.
     category: row.category ? row.category.toLowerCase() : null,
@@ -880,6 +937,7 @@ const resolveHydration = (args: {
   // the SAME `seedHolding` step the duplicate path uses, so the empty-create
   // default rides the effect's own one-shot latch with no second effect.
   defaultPrimaryHoldingId: string | null;
+  blankLabel: string | null;
 }): HydrationPlan => {
   const {
     existing,
@@ -888,12 +946,13 @@ const resolveHydration = (args: {
     primaryHoldingId,
     currency,
     defaultPrimaryHoldingId,
+    blankLabel,
   } = args;
 
   // Edit: seed once both the row and its holding have loaded, carrying the
   // stored timestamp so a manual row round-trips its own time.
   if (existing && holding) {
-    return seedFieldsFrom(currency, existing, existing.time);
+    return seedFieldsFrom(currency, existing, existing.time, blankLabel);
   }
 
   if (duplicateSource) {
@@ -906,7 +965,7 @@ const resolveHydration = (args: {
 
     // Duplicate step 2: seed the copied fields, dated to NOW (`time: null`).
     if (holding) {
-      return seedFieldsFrom(currency, duplicateSource, null);
+      return seedFieldsFrom(currency, duplicateSource, null, null);
     }
   }
 
@@ -1775,6 +1834,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // blur must never overwrite that choice.
   const [userPickedCategory, setUserPickedCategory] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  // Held from the seed rather than re-resolved at Save, so a counterpart
+  // renamed mid-edit cannot turn the untouched label into stored text.
+  const [prefilledLabel, setPrefilledLabel] = useState<string | null>(null);
+  const blankLabel = resolveBlankLabel({ existing, holding, holdings, t });
   // Whether the user has pressed Save at least once. Save is always enabled;
   // this latches the inline reason on so it only ever appears after a press
   // that `disableSave` blocked, never live while the user is still filling
@@ -1809,6 +1872,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       primaryHoldingId,
       currency,
       defaultPrimaryHoldingId,
+      blankLabel,
     });
 
     match(plan)
@@ -1823,6 +1887,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         setAmount(seedFieldsPlan.amount);
         setMode(seedFieldsPlan.sign);
         setDescription(seedFieldsPlan.description);
+        setPrefilledLabel(seedFieldsPlan.prefilledLabel);
         setSelectedCategory(seedFieldsPlan.category);
         // A seeded non-null category counts as a user pick, so a later
         // description blur (A1's `reseatCategoryFromName`) can never clobber it.
@@ -1858,6 +1923,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     hydrated,
     currency,
     defaultPrimaryHoldingId,
+    blankLabel,
   ]);
 
   // Feature 1: seed the counterpart (cash) amount from the latest cached rate at
@@ -1914,7 +1980,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // disabled for a create still missing its amount or category (see
   // `transactionFieldErrors`). Both are module-level pure helpers so their
   // branches stay out of this component's cognitive-complexity budget.
-  const descriptionPlaceholder = resolveDescriptionPlaceholder(holding, mode, t);
+  const descriptionPlaceholder = resolveDescriptionPlaceholder({
+    holding,
+    existing,
+    holdings,
+    mode,
+    t,
+  });
   const saveDisabledParams: SaveDisabledParams = {
     converting,
     isExchange,
@@ -1990,6 +2062,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     navigation.setOptions({ title });
   }, [navigation, title]);
 
+  const descriptionToStore = storedDescription(description, prefilledLabel);
+
   // Persist the amount/description edit on a manual row (edit vs. add). Only
   // ever called from the income/expense path (`save` branches Exchange off to
   // `saveExchange` before reaching here), so `mode` is guaranteed a `Sign`.
@@ -2005,7 +2079,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         transactionId: editingId,
         amountMinorUnits,
         time,
-        description,
+        description: descriptionToStore,
       });
 
       return;
@@ -2410,7 +2484,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
       // The rule keys on the synced row's own description (read-only) or the
       // just-saved manual description.
-      const name = isReadOnly ? (existing?.description ?? '') : description;
+      const name = isReadOnly ? (existing?.description ?? '') : descriptionToStore;
       const overrideRequest = resolveCategoryOverrideRequest(
         categoryChanged,
         selectedCategory,
