@@ -364,10 +364,15 @@ describe('CategoriesScreen', () => {
     expect(mockUpdateColor).toHaveBeenCalledWith('groceries', expect.stringMatching(/^#/));
   });
 
-  it('does not create a category when the name is empty', async () => {
-    const { getByLabelText, getByText } = await renderScreen();
+  it('shows a name-required error and creates nothing when the name is blank', async () => {
+    const { getByLabelText, getByText, findByText } = await renderScreen();
 
     await fireEvent.press(getByText('Add category'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(await findByText('Enter a name.')).toBeTruthy();
+    expect(mockCreate).not.toHaveBeenCalled();
+
     await fireEvent.changeText(getByLabelText('Name'), '   ');
     await fireEvent.press(getByText('Save'));
 

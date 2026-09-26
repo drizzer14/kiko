@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { StyleSheet, TextInput } from 'react-native';
+import { Alert, StyleSheet, TextInput } from 'react-native';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../../../design-system/unistyles';
 import '../../../../i18n';
@@ -39,6 +39,7 @@ describe('AddCategoryRow', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCreate.mockResolvedValue(undefined);
   });
 
   it('renders as its own card with the icon, name, and color fields already revealed', async () => {
@@ -129,16 +130,6 @@ describe('AddCategoryRow', () => {
     expect(StyleSheet.flatten(save.props.style).width).toBe('100%');
   });
 
-  it('disables Save until a non-blank name is entered', async () => {
-    const { getByLabelText, getByRole } = await render(<AddCategoryRow onCollapse={onCollapse} />);
-
-    expect(getByRole('button', { name: 'Save' })).toBeDisabled();
-
-    await fireEvent.changeText(getByLabelText('Name'), 'Groceries');
-
-    expect(getByRole('button', { name: 'Save' })).not.toBeDisabled();
-  });
-
   it('persists color:null when the user saves without tapping a swatch', async () => {
     const { getByLabelText, getByText } = await render(<AddCategoryRow onCollapse={onCollapse} />);
 
@@ -147,16 +138,88 @@ describe('AddCategoryRow', () => {
 
     // The seeded ring is DISPLAY-only: an untouched picker still persists null
     // so the saved row keeps its per-key palette fallback.
-    expect(mockCreate).toHaveBeenCalledWith({ title: 'Groceries', icon: 'tag', color: null });
+    await waitFor(() =>
+      expect(mockCreate).toHaveBeenCalledWith({ title: 'Groceries', icon: 'tag', color: null }),
+    );
   });
 
-  it('calls onCollapse after a successful save', async () => {
+  it('calls onCollapse once the save resolves', async () => {
     const { getByLabelText, getByText } = await render(<AddCategoryRow onCollapse={onCollapse} />);
 
     await fireEvent.changeText(getByLabelText('Name'), 'Groceries');
     await fireEvent.press(getByText('Save'));
 
     await waitFor(() => expect(onCollapse).toHaveBeenCalledTimes(1));
+  });
+
+  it('shows a name-required error and creates nothing when Save is pressed with a blank name', async () => {
+    const { getByText, findByText } = await render(<AddCategoryRow onCollapse={onCollapse} />);
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(await findByText('Enter a name.')).toBeTruthy();
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(onCollapse).not.toHaveBeenCalled();
+  });
+
+  it('shows the same error for a whitespace-only name', async () => {
+    const { getByLabelText, getByText, findByText } = await render(
+      <AddCategoryRow onCollapse={onCollapse} />,
+    );
+
+    await fireEvent.changeText(getByLabelText('Name'), '   ');
+    await fireEvent.press(getByText('Save'));
+
+    expect(await findByText('Enter a name.')).toBeTruthy();
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('clears the name-required error once a name is typed', async () => {
+    const { getByLabelText, getByText, findByText, queryByText } = await render(
+      <AddCategoryRow onCollapse={onCollapse} />,
+    );
+
+    await fireEvent.press(getByText('Save'));
+    expect(await findByText('Enter a name.')).toBeTruthy();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Groceries');
+    expect(queryByText('Enter a name.')).toBeNull();
+  });
+
+  it('submits once even when Save is pressed twice quickly', async () => {
+    let resolveCreate: () => void = () => {};
+    mockCreate.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveCreate = resolve;
+      }),
+    );
+    const { getByLabelText, getByText } = await render(<AddCategoryRow onCollapse={onCollapse} />);
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Groceries');
+    await fireEvent.press(getByText('Save'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+
+    resolveCreate();
+    await waitFor(() => expect(onCollapse).toHaveBeenCalledTimes(1));
+  });
+
+  it('alerts and keeps the form open (never calling onCollapse) when the write rejects', async () => {
+    mockCreate.mockRejectedValue(new Error('disk full'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+
+    const { getByLabelText, getByText } = await render(<AddCategoryRow onCollapse={onCollapse} />);
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Groceries');
+    await fireEvent.press(getByText('Save'));
+
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
+    );
+    expect(onCollapse).not.toHaveBeenCalled();
+
+    alertSpy.mockRestore();
   });
 
   it('collapses without persisting anything when Cancel is pressed', async () => {

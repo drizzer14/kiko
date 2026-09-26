@@ -7,7 +7,10 @@ import ColorPicker from '../../../forms/color-picker';
 import Box from '../../../../design-system/components/box';
 import Card from '../../../../design-system/components/card';
 import Button from '../../../../design-system/components/button';
+import { alertOnCatch } from '../../../../design-system/alert-on-catch';
 import HoldingIdentityField from '../../../forms/holding-identity-field';
+import FieldError from '../../../../design-system/components/field-error';
+import { useSubmitOnce } from '../../../forms/use-submit-once/use-submit-once';
 import { resolveCategoryColor } from '../../../../statistics/category-breakdown';
 import { KIKO_CATEGORIES_ICONS } from '../../../../design-system/components/icon-picker-modal/icon-pools';
 
@@ -38,6 +41,11 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onCollapse }) => {
   // persists as null so the row falls back to the stable per-key palette hash,
   // mirroring accounts/holdings' nullable color.
   const [color, setColor] = useState<string | null>(null);
+  // Mirrors account-form's attempted-flag pattern: the name-required reason
+  // stays hidden until a failed Save press, so a fresh form shows no error
+  // before the user has tried to save — Save is always enabled, never a
+  // standing `disabled={!canSave}` gate with no visible reason at all.
+  const [attemptedSave, setAttemptedSave] = useState(false);
   // The name field's ref, so the form can focus it imperatively on mount
   // instead of relying on the native `autoFocus` prop — see
   // HoldingIdentityField's `nameInputRef` doc comment for why.
@@ -59,14 +67,28 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onCollapse }) => {
   // tapped entityColors hex, which resolveCategoryColor then rings verbatim.
   const previewColor = resolveCategoryColor(color, trimmedName || 'new-category');
 
-  const save = async (): Promise<void> => {
+  const submit = async (): Promise<void> => {
+    // Block submit on an empty (or whitespace-only) name; Save is always
+    // enabled now, so this surfaces the name-required reason on press rather
+    // than a standing disabled state.
     if (!canSave) {
+      setAttemptedSave(true);
+
       return;
     }
 
-    await categoriesRepo.create({ title: trimmedName, icon, color });
-    onCollapse();
+    try {
+      await categoriesRepo.create({ title: trimmedName, icon, color });
+      onCollapse();
+    } catch {
+      // A DB write failure (disk full, locked) must not vanish silently — the
+      // form was about to hand back with nothing saved. Keep it open and say
+      // so, mirroring every other form's established Alert pattern.
+      alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
+    }
   };
+
+  const { onPress: onSave, isSubmitting } = useSubmitOnce(submit);
 
   // Focus the name field the moment the form mounts. Deferred to the next
   // frame so the sibling keyboard InputAccessoryView (mounted in the same
@@ -104,6 +126,12 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onCollapse }) => {
           nameInputRef={nameInputRef}
         />
 
+        {/* Dense (captionless) mode never renders HoldingIdentityField's own
+            error slot (see its doc comment), so this form renders the shared
+            FieldError directly below the row instead — the same REFLOW,
+            not-reserve contract every other field uses. */}
+        {attemptedSave && !canSave && <FieldError message={t('forms.fields.nameRequiredError')} />}
+
         {/* value is the resolved DISPLAY color (previewColor), so a swatch is
             ringed from open — a stable decorative default, mirroring the accounts
             form's kind-default ring, not the saved row's eventual hue (that
@@ -126,7 +154,7 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onCollapse }) => {
           </Box>
 
           <Box style={styles.action}>
-            <Button onPress={save} disabled={!canSave}>
+            <Button onPress={onSave} disabled={isSubmitting}>
               {t('common.save')}
             </Button>
           </Box>
