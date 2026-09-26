@@ -111,6 +111,7 @@ const BondFormBlock: FC<BondFormBlockProps> = ({ fields, attemptedSave }) => {
           onChangeText={(text) => fields.setQuantity(groupAmount(text))}
           keyboardType="number-pad"
           placeholder={t('forms.holding.quantityPlaceholder')}
+          suffix={t('forms.units.pieces')}
           required
           error={fieldErrorMessage(t, attemptedSave, fieldErrors.quantityError)}
           inputRef={refs.quantityInputRef}

@@ -10,6 +10,7 @@ import {
   navigationSpy,
 } from '../../../test-support/navigation-props';
 import { dayKeyOf } from '../../../prices/price-book';
+import { fieldSuffix } from '../../../test-support/field-suffix';
 
 import LotFormScreen from './lot-form.screen';
 
@@ -89,6 +90,26 @@ describe('LotFormScreen', () => {
 
     expect(getByLabelText('Quantity')).toBeTruthy();
     expect(getByLabelText('Total cost')).toBeTruthy();
+  });
+
+  it("shows the metal's own unit after the quantity", async () => {
+    seed({ ...metalHolding, metadata: { ...metalHolding.metadata, unit: 'oz' } });
+
+    const { getByLabelText } = await renderScreen();
+
+    expect(fieldSuffix(getByLabelText('Quantity'))).toBe('oz');
+  });
+
+  it('shows no unit after the quantity for a holding that is not a metal', async () => {
+    seed({
+      id: 'h-1',
+      currency: 'UAH',
+      metadata: { category: 'real_estate', lots: metalHolding.metadata.lots },
+    });
+
+    const { getByLabelText } = await renderScreen();
+
+    expect(fieldSuffix(getByLabelText('Quantity'))).toBeNull();
   });
 
   it('hides the total cost field once Sell is selected', async () => {

@@ -223,6 +223,16 @@ adds its own key alongside them, in this same form:
 `forms.holding.loanStartDateError`,
 `forms.holding.couponFrequencyRequiredError`.
 
+A numeric field's unit goes in `TextField`'s `suffix`, never in its
+label — "Annual rate" with a `%` suffix, not "Annual rate %" — so the
+label never doubles the unit the field already shows. Currency fields
+pass the currency glyph; every other unit is a `forms.units.*` key
+(percent, months, pieces, grams, troy ounces). A metal quantity follows
+its own unit (`metalUnitSuffix`, `src/screens/forms/metal-unit-suffix/`,
+shared by the create form and the Lot form); a field whose holding has
+no unit passes none. `fieldSuffix` (`src/test-support/field-suffix.ts`)
+reads which unit a given field shows in a test.
+
 ## Calendar week start
 
 `KikoCalendar` (`src/calendar/kiko-calendar/`) starts its week on the

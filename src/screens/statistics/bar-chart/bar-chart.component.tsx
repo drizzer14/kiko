@@ -1,6 +1,7 @@
 import { match } from 'ts-pattern';
 import { View } from 'react-native';
 import { type FC, memo } from 'react';
+import type { TFunction } from 'i18next';
 import { Rect, Svg } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 
@@ -34,7 +35,7 @@ const BAR_RADIUS = 4;
 // keys (the same wording the holding-kind picker uses), via ts-pattern so a
 // new HoldingType fails this `exhaustive()` at compile time instead of
 // silently falling through, and each key is a literal `t()` calls tsc checks.
-const holdingTypeLabel = (type: HoldingType, t: ReturnType<typeof useTranslation>['t']): string =>
+const holdingTypeLabel = (type: HoldingType, t: TFunction): string =>
   match(type)
     .with('card', () => t('forms.holding.card'))
     .with('term_deposit', () => t('forms.holding.deposit'))

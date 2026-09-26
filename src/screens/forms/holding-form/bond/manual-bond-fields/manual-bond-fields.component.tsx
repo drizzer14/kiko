@@ -73,6 +73,7 @@ const ManualBondFields: FC<ManualBondFieldsProps> = ({
           onChangeText={onChangeCouponPct}
           keyboardType="decimal-pad"
           placeholder={t('forms.holding.couponPlaceholder')}
+          suffix={t('forms.units.percent')}
           required
           error={couponPctError}
           inputRef={couponPctInputRef}

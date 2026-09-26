@@ -142,6 +142,7 @@ const LoanSection: FC<LoanSectionProps> = ({
               onChangeText={onChangeAnnualRatePct}
               keyboardType="decimal-pad"
               placeholder={t('forms.holding.annualRatePlaceholder')}
+              suffix={t('forms.units.percent')}
               required
               error={annualRatePctError}
               inputRef={annualRatePctInputRef}
@@ -155,6 +156,7 @@ const LoanSection: FC<LoanSectionProps> = ({
               onChangeText={onChangeTermMonths}
               keyboardType="number-pad"
               placeholder={t('forms.holding.termMonthsPlaceholder')}
+              suffix={t('forms.units.months')}
               required
               error={termMonthsError}
               inputRef={termMonthsInputRef}

@@ -1,4 +1,5 @@
 import { match } from 'ts-pattern';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { type FC, type ReactNode, useCallback, useEffect, useState } from 'react';
@@ -14,10 +15,7 @@ import { styles } from './lock-gate.styles';
 
 const LOCK_ICON_SIZE = 56;
 
-const unlockHint = (
-  result: AuthResult | undefined,
-  t: ReturnType<typeof useTranslation>['t'],
-): string =>
+const unlockHint = (result: AuthResult | undefined, t: TFunction): string =>
   match(result?.kind)
     .with(undefined, () => t('auth.hint.default'))
     .with('success', () => '')
@@ -30,10 +28,8 @@ const unlockHint = (
 // With `allowDeviceCredentials` the same system sheet falls back to the passcode
 // once biometry is locked out, so the retry action is the same call; only the
 // label changes to tell the user what to expect.
-const unlockLabel = (
-  result: AuthResult | undefined,
-  t: ReturnType<typeof useTranslation>['t'],
-): string => (result?.kind === 'lockout' ? t('auth.usePasscode') : t('auth.unlock'));
+const unlockLabel = (result: AuthResult | undefined, t: TFunction): string =>
+  result?.kind === 'lockout' ? t('auth.usePasscode') : t('auth.unlock');
 
 /**
  * Mounted inside `MigrationsGate` (settings must be readable) and around the

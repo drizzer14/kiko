@@ -78,6 +78,14 @@ noise errors and buries the real one (T-26 measured 261 errors in
 `uk.ts` from this alone). The T-26 fix is landed — `en.ts` ends
 `};`, not `} as const;` — keep it that way when adding a key.
 
+Type a `t` parameter as i18next's `TFunction` (`import type { TFunction }
+from 'i18next'`), never `ReturnType<typeof useTranslation>['t']`. The
+catalogue is large enough that the `ReturnType` form sits at TypeScript's
+instantiation-depth limit: adding five `forms.units.*` keys made every
+such parameter fail with TS2589 "excessively deep" in files the change
+never touched (`bar-chart.component.tsx`, `lock-gate.component.tsx`,
+both since moved to `TFunction`).
+
 ## Language must be resolved before the first gate paints
 
 `MigrationsGate` and `LockGate` (`src/migration/`,

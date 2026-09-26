@@ -174,6 +174,7 @@ const TermDepositSection: FC<TermDepositSectionProps> = ({ fields, attemptedSave
           onChangeText={fields.setAnnualRate}
           keyboardType="decimal-pad"
           placeholder={t('forms.holding.annualRatePlaceholder')}
+          suffix={t('forms.units.percent')}
           required
           error={fieldErrorMessage(t, attemptedSave, fieldErrors.annualRateError)}
           inputRef={refs.annualRateInputRef}
@@ -187,6 +188,7 @@ const TermDepositSection: FC<TermDepositSectionProps> = ({ fields, attemptedSave
           onChangeText={fields.setTermMonths}
           keyboardType="number-pad"
           placeholder={t('forms.holding.termMonthsPlaceholder')}
+          suffix={t('forms.units.months')}
           required
           error={fieldErrorMessage(t, attemptedSave, fieldErrors.termMonthsError, {
             max: MAX_TERM_MONTHS,

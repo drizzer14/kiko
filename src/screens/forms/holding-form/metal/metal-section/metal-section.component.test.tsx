@@ -3,6 +3,8 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n';
 
+import { fieldSuffix } from '@kiko/test-support/field-suffix';
+
 import MetalSection from './metal-section.component';
 
 const baseProps = {
@@ -84,6 +86,16 @@ describe('MetalSection', () => {
 
     expect(getByLabelText('Quantity')).toBeTruthy();
     expect(getByLabelText('Total cost')).toBeTruthy();
+  });
+
+  it('shows the picked unit after the quantity', async () => {
+    const { getByLabelText, rerender } = await render(<MetalSection {...baseProps} unit="g" />);
+
+    expect(fieldSuffix(getByLabelText('Quantity'))).toBe('g');
+
+    await rerender(<MetalSection {...baseProps} unit="oz" />);
+
+    expect(fieldSuffix(getByLabelText('Quantity'))).toBe('oz');
   });
 
   it('hides the first-lot fields when showFirstLot is false', async () => {

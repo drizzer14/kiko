@@ -11,14 +11,17 @@ import Box from '@kiko/design-system/components/box';
 import ChipRow from '@kiko/design-system/components/chip-row';
 import TextField from '@kiko/design-system/components/text-field';
 
+import { metalUnitSuffix } from '../../../metal-unit-suffix';
+
 import type { MetalSectionProps } from './metal-section.props';
 
 // The `metal` create-form section (the metal itself is picked in the Type
-// slot, `MetalTypeField`): a physical Form ChipRow, a Unit ChipRow, a Purity field (pre-filled `"0.9999"` — the
-// standard bar/coin fineness, validated on Save as 0 < purity <= 1 in both
-// create and edit mode), and the first-lot Quantity/Total cost
-// fields (create-only — see `MetalSectionProps.showFirstLot`'s own doc
-// comment). One lot is what `useMetalFields` builds from those two fields
+// slot, `MetalTypeField`): a physical Form ChipRow, a Unit ChipRow, a Purity
+// field (pre-filled `"0.9999"` — the standard bar/coin fineness, validated on
+// Save as 0 < purity <= 1 in both create and edit mode), and the first-lot
+// Quantity/Total cost fields (create-only — see
+// `MetalSectionProps.showFirstLot`'s own doc comment). The quantity shows the
+// picked Unit after it. One lot is what `useMetalFields` builds from those two fields
 // on save; this component only collects and reports the fields, mirroring
 // PropertySection's shape.
 const MetalSection: FC<MetalSectionProps> = ({
@@ -97,6 +100,7 @@ const MetalSection: FC<MetalSectionProps> = ({
               onChangeText={onChangeQuantity}
               keyboardType="decimal-pad"
               placeholder={t('forms.holding.quantityPlaceholder')}
+              suffix={metalUnitSuffix(t, unit)}
               required
               error={quantityError}
               inputRef={quantityInputRef}

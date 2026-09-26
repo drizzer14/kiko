@@ -3,6 +3,8 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n';
 
+import { fieldSuffix } from '@kiko/test-support/field-suffix';
+
 import ManualBondFields from './manual-bond-fields.component';
 
 const baseProps = {
@@ -30,10 +32,16 @@ describe('ManualBondFields', () => {
     const { getByLabelText, getByText } = await render(<ManualBondFields {...baseProps} />);
 
     expect(getByLabelText('Face value')).toBeTruthy();
-    expect(getByLabelText('Coupon %')).toBeTruthy();
+    expect(getByLabelText('Coupon')).toBeTruthy();
     expect(getByText('Maturity date')).toBeTruthy();
     expect(getByText('Bond kind')).toBeTruthy();
     expect(getByText('Coupon frequency')).toBeTruthy();
+  });
+
+  it('shows % after the coupon', async () => {
+    const { getByLabelText } = await render(<ManualBondFields {...baseProps} />);
+
+    expect(fieldSuffix(getByLabelText('Coupon'))).toBe('%');
   });
 
   it('renders nothing in ISIN mode', async () => {
@@ -54,7 +62,7 @@ describe('ManualBondFields', () => {
     );
 
     await fireEvent.changeText(getByLabelText('Face value'), '1000');
-    await fireEvent.changeText(getByLabelText('Coupon %'), '9');
+    await fireEvent.changeText(getByLabelText('Coupon'), '9');
 
     expect(onChangeFaceValue).toHaveBeenCalledWith('1000');
     expect(onChangeCouponPct).toHaveBeenCalledWith('9');

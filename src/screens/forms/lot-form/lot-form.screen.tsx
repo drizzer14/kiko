@@ -1,6 +1,8 @@
+import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { type FC, useRef, useState } from 'react';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import { asMetalMeta } from '@kiko/holdings/holding-metadata';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
@@ -20,6 +22,7 @@ import {
 import { Money } from '../../../currency/money';
 import { parseAmount } from '../../../currency/parse';
 import { dayKeyOf } from '../../../prices/price-book';
+import { metalUnitSuffix } from '../metal-unit-suffix';
 import Box from '../../../design-system/components/box';
 import { useLiveQuery } from '../../../db/use-live-query';
 import { groupAmount } from '../amount-format/amount-format';
@@ -98,6 +101,11 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
   const existingLots: Lot[] = asLots(rawMetadata.lots) ?? [];
 
   const { t } = useTranslation();
+  // A metal's quantity is in its own stored unit (g or oz); any other holding's
+  // quantity has no unit to show.
+  const quantitySuffix = foldMap(maybe(asMetalMeta(holding?.metadata)), (meta) =>
+    metalUnitSuffix(t, meta.unit),
+  );
   const [direction, setDirection] = useState<LotDirection>('buy');
   const [quantityText, setQuantityText] = useState('');
   const [costText, setCostText] = useState('');
@@ -243,6 +251,7 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
             onChangeText={(text) => setQuantityText(groupAmount(text))}
             keyboardType="decimal-pad"
             placeholder={t('forms.lot.quantityPlaceholder')}
+            suffix={quantitySuffix}
             required
             error={quantityErrorMessage}
             inputRef={quantityInputRef}

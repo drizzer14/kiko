@@ -3,6 +3,8 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '../../../../../design-system/unistyles';
 import '../../../../../i18n';
 
+import { fieldSuffix } from '../../../../../test-support/field-suffix';
+
 import LoanSection from './loan-section.component';
 
 const baseProps = {
@@ -133,15 +135,22 @@ describe('LoanSection', () => {
       <LoanSection {...baseProps} schedule="differentiated" />,
     );
 
-    expect(getByLabelText('Annual rate %')).toBeTruthy();
-    expect(getByLabelText('Term (months)')).toBeTruthy();
+    expect(getByLabelText('Annual rate')).toBeTruthy();
+    expect(getByLabelText('Term')).toBeTruthy();
+  });
+
+  it('shows % after the rate and months after the term', async () => {
+    const { getByLabelText } = await render(<LoanSection {...baseProps} />);
+
+    expect(fieldSuffix(getByLabelText('Annual rate'))).toBe('%');
+    expect(fieldSuffix(getByLabelText('Term'))).toBe('mo');
   });
 
   it('hides the rate and term fields for a "none" schedule', async () => {
     const { queryByLabelText } = await render(<LoanSection {...baseProps} schedule="none" />);
 
-    expect(queryByLabelText('Annual rate %')).toBeNull();
-    expect(queryByLabelText('Term (months)')).toBeNull();
+    expect(queryByLabelText('Annual rate')).toBeNull();
+    expect(queryByLabelText('Term')).toBeNull();
   });
 
   it('reports the entered rate and term', async () => {
@@ -155,8 +164,8 @@ describe('LoanSection', () => {
       />,
     );
 
-    await fireEvent.changeText(getByLabelText('Annual rate %'), '12');
-    await fireEvent.changeText(getByLabelText('Term (months)'), '24');
+    await fireEvent.changeText(getByLabelText('Annual rate'), '12');
+    await fireEvent.changeText(getByLabelText('Term'), '24');
 
     expect(onChangeAnnualRatePct).toHaveBeenCalledWith('12');
     expect(onChangeTermMonths).toHaveBeenCalledWith('24');

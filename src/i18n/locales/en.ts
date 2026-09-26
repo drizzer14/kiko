@@ -261,7 +261,7 @@ export const en = {
       addContribution: 'Add contribution',
       addTitle: 'Add Holding',
       annualRateError: 'Enter a rate of 0 or higher.',
-      annualRatePct: 'Annual rate %',
+      annualRatePct: 'Annual rate',
       annualRatePlaceholder: '12',
       // Frequency vocabulary shared by the term-deposit Compounding chip row
       // and the bond Coupon frequency select field within this same screen.
@@ -286,12 +286,12 @@ export const en = {
       // The bond coupon-frequency SelectField's sheet header — Title Case,
       // distinct from the sentence-case field label above.
       couponFrequencySheetTitle: 'Select a Frequency',
-      couponPct: 'Coupon %',
+      couponPct: 'Coupon',
       couponPctError: 'Enter a coupon of 0 or higher.',
       couponPlaceholder: '8',
-      // The ISIN-mode summary row's own label (SummaryTable) — plain
-      // "Coupon", not "Coupon %": the row's own value already carries the
-      // "%" sign, so reusing `couponPct` here doubled it ("Coupon %: 8%").
+      // The ISIN-mode summary row's own label (SummaryTable), kept apart from
+      // the field label `couponPct`: the row's value already carries the "%"
+      // sign, so neither label may ever gain one.
       couponSummaryLabel: 'Coupon',
       cryptoAsset: 'Crypto asset',
       deposit: 'Deposit',
@@ -400,7 +400,7 @@ export const en = {
       removeContribution: 'Remove contribution {{index}}',
       semiannually: 'Semiannually',
       switchToManual: 'Switch to manual',
-      termMonths: 'Term (months)',
+      termMonths: 'Term',
       termMonthsError: 'Enter a whole number of months greater than 0.',
       termMonthsMaxError: 'Enter a whole number of months from 1 to {{max}}.',
       termMonthsPlaceholder: '12',
@@ -505,6 +505,15 @@ export const en = {
       valueOut: 'Value out',
       valueOutError: 'Amount must be greater than 0.',
       valueOutPlaceholder: '100.00',
+    },
+    // The unit a numeric field shows after its value (`TextField`'s
+    // `suffix`), never inside its label.
+    units: {
+      grams: 'g',
+      months: 'mo',
+      percent: '%',
+      pieces: 'pcs',
+      troyOunces: 'oz',
     },
   },
   accounts: {
