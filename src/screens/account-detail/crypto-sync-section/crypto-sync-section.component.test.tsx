@@ -138,11 +138,11 @@ const CONNECTED_WALLET_SYNCED_AT = 1_700_000_000_000;
 // Shared by every "already connected to a wallet" test below — each one only
 // differs in what it asserts afterward, never in how the section itself is
 // rendered.
-const renderConnectedWallet = (syncedAt: number = CONNECTED_WALLET_SYNCED_AT) =>
+const renderConnectedWallet = () =>
   render(
     <CryptoSyncSection
       account={account({ institution: 'btc_wallet' })}
-      holdings={[holding({ walletAddress: ADDRESS, syncedAt })]}
+      holdings={[holding({ walletAddress: ADDRESS, syncedAt: CONNECTED_WALLET_SYNCED_AT })]}
     />,
   );
 
@@ -226,12 +226,11 @@ describe('CryptoSyncSection', () => {
   });
 
   it('once connected to a wallet, shows Sync + last sync and Disconnect, no picker or fields', async () => {
-    const syncedAt = CONNECTED_WALLET_SYNCED_AT;
-    const { getByText, queryByText, queryByLabelText } = await renderConnectedWallet(syncedAt);
+    const { getByText, queryByText, queryByLabelText } = await renderConnectedWallet();
 
     expect(getByText('Sync')).toBeTruthy();
     expect(getByText('Disconnect')).toBeTruthy();
-    const stamp = formatDateTime(syncedAt);
+    const stamp = formatDateTime(CONNECTED_WALLET_SYNCED_AT);
     expect(getByText(new RegExp(stamp.replace(/[.]/g, '\\.')))).toBeTruthy();
     expect(queryByText('Binance')).toBeNull();
     expect(queryByLabelText('wallet-field')).toBeNull();
