@@ -160,11 +160,10 @@ REQUIRED; counterparty and balance are OPTIONAL. `balanceColumn`
 (import-balance commit B) is the running balance after each row — when
 mapped, `resolveMappedClosingBalance` derives the parsed statement's
 `closingBalance` from it, using the SAME "row with the newest parsed
-time" rule Monobank CSV's own `resolveClosingBalance` uses (review
-follow-up M2), reading the cell with the mapping's own
+time" rule Monobank CSV's own `resolveClosingBalance` uses, reading the cell with the mapping's own
 `decimalSeparator` (`parseAmountCell`, same as every other amount cell
 this mapping reads). A tie on the newest time is broken by FILE ORDER,
-not "last one wins" (ruling I1, commit `245265a`):
+not "last one wins":
 `pickClosingBalanceRow` reads the resolved rows' own first-vs-last time
 to tell a newest-first file from an oldest-first one, then takes the
 FIRST tied row in a newest-first file or the LAST in an oldest-first
@@ -173,8 +172,7 @@ last resolved rows share one time), it falls back to the tied rows'
 own balance cells — identical cells resolve to that value, genuinely
 different cells yield no closing balance at all, rather than guess. A
 missing or non-numeric cell on the chosen row also yields no closing
-balance (review follow-up I1's original guard — never a `NaN` written
-to the ledger), and so does leaving the column unmapped. Unlike
+balance (never a `NaN` written to the ledger), and so does leaving the column unmapped. Unlike
 PrivatBank XLSX's own `balance` column (left unset — see
 `ClosingBalance`'s doc comment in `parser.ts`), column mapping has no
 `maskedCardHint` concept and accepts ANY file via "Map columns
@@ -239,11 +237,10 @@ a `navigate`-vs-`popTo` regression — verify a fix here with a real
 navigator test (as in the return-navigator test above) or a device
 check, not a mocked-navigation unit test.
 
-## Screen layout (device-feedback-round-F1)
+## Screen layout
 
 Both `statement-import.screen.tsx` and `column-mapping.screen.tsx`
-follow the same layout conventions as every other Kiko screen, after
-a P0 UI fix round driven by device feedback:
+follow the same layout conventions as every other Kiko screen:
 
 - **Import (and, on the statement-import screen, "Map columns
   manually") live in `Screen`'s own `footer` slot**, not inline in the
@@ -275,15 +272,14 @@ a P0 UI fix round driven by device feedback:
   under the summary table on both screens from `PreviewStats.firstTransaction`
   (the first `ParsedTransaction` in ON-FILE order, not chronological order
   — `previewStats` sets it via `parsed.transactions.at(0)`, optional
-  since an existing `PreviewStats` object literal predates the field). As
-  of F3 fix round 1 (C1) it renders through the shared `TransactionCard`
+  since an existing `PreviewStats` object literal predates the field). It
+  renders through the shared `TransactionCard`
   (`src/screens/home/transaction-row/transaction-card/`) — the SAME
   presentational card Home's own `TransactionRow` uses, extracted out of
   that component, NOT a rebuilt card wrapping the base `Card` primitive
-  (the original F3 item 4 attempt, which showed the date as its title and
-  the amount with no income color — see the review's C1 finding). This
-  is NOT pixel-identical to a real Home row, though — that was a false
-  claim in an earlier pass of this skill (F3 fix round 2, N2): a preview
+  (a rebuilt card risks showing the date as its title and
+  the amount with no income color). This
+  is NOT pixel-identical to a real Home row, though: a preview
   row has no real transaction id / account / holding-type row to read, so
   its footer content differs from Home's own `"<account> · <category>"` +
   time (see below), by design.
@@ -292,11 +288,11 @@ a P0 UI fix round driven by device feedback:
   categories table exactly as Home resolves a real row's category
   (`ExampleTransaction` queries `categoriesRepo`/`settingsRepo` itself),
   and `TransactionCard` always renders its amount with `MoneyText`'s
-  `"transaction"` context (no longer a caller-configurable prop — F3 fix
-  round 2, N5 ponytail, since every consumer wanted exactly that), so an
+  `"transaction"` context (not a caller-configurable prop, since every
+  consumer wants exactly that), so an
   income preview row shows the same icon and income (green) color a Home
   row would. The title resolves through the SAME `transactionRowDescription`
-  Home uses (F3 fix round 2, N3) — an empty mapped description falls back
+  Home uses — an empty mapped description falls back
   to the income/expense default label (fed the chosen target holding's
   name, via each caller's own `holdingName` prop, `undefined` before a
   holding is chosen) instead of rendering blank; `exchangeCounterpartHoldingId`
@@ -306,7 +302,7 @@ a P0 UI fix round driven by device feedback:
   `footerTrailing` props — the user's only per-row check that the chosen
   date format/column is right; Home is unaffected, since it already
   passes its own footer content through those same two props.
-  `ExampleTransaction` owns its own `Divider`s above and below (F3 item 5)
+  `ExampleTransaction` owns its own `Divider`s above and below
   — a caller renders just `<ExampleTransaction ... />`, not a
   Divider/ExampleTransaction/Divider triple.
 - **The raw preview grid** (`column-mapping/raw-preview/`) gives each
@@ -319,15 +315,15 @@ a P0 UI fix round driven by device feedback:
   (`theme.colors.accent`) with `onAccent` cell text — replacing the
   former neutral `surfaceHigh` tint — matching the app's standard
   filled-accent selection vocabulary (ChipRow/SelectableRow),
-  with its own cell text turned SEMIBOLD too (F3 item 8, `fontWeight:
-  '600'` — the app's selected-label weight everywhere else, not `'700'`;
-  fixed from an initial `'700'` pass in F3 fix round 1, M3) so the
+  with its own cell text turned SEMIBOLD too (`fontWeight:
+  '600'` — the app's selected-label weight everywhere else, not `'700'`)
+  so the
   selected row reads as distinct even without color.
   "Tap the row with the column names" (`columnMapping.rawPreview`)
   renders at the `heading` type step instead of a muted `body`/
   `textSecondary` caption, so it reads clearly above the grid, and
   doubles as this section's own heading. The grid shows at most
-  `PREVIEW_COLUMN_COUNT` (5) columns per row (F3 item 7) — a wide export
+  `PREVIEW_COLUMN_COUNT` (5) columns per row — a wide export
   (multi-card PrivatBank, say) no longer scrolls dozens of columns
   before the user has even picked a header row; every
   `ColumnSelectField`'s own option list is unaffected, since that is
@@ -341,58 +337,53 @@ a P0 UI fix round driven by device feedback:
   their own `accessibilityLabel` (the section heading text,
   `columnMapping.sectionAmount`/`sectionCurrency`), a REQUIRED prop.
   **ENCODING, DELIMITER, and DECIMAL SEPARATOR are all `ChipRow`**
-  (`src/design-system/components/chip-row/`), per the F4 Q2 USER RULE
-  (`kiko-design-system`'s tabs-vs-chips rule): none of the three changes
+  (`src/design-system/components/chip-row/`), per
+  `kiko-design-system`'s tabs-vs-chips rule: none of the three changes
   which fields the screen shows — picking a value just re-parses the
   SAME preview with the SAME fields visible — while amount-mode/
-  currency-mode DO change the visible fields. An earlier round (F3 item
-  9) had moved encoding/decimal-separator to `SegmentedControl` as a
-  DEFAULT the user never asked for ("tabs ONLY for amount and currency
-  modes" was the actual instruction); F4 audit item 4 reverted that —
-  do not re-apply it. Each `ChipRow` composes its own visible
+  currency-mode DO change the visible fields. Never move
+  encoding/decimal-separator to `SegmentedControl` as a DEFAULT the
+  user did not ask for — tabs are ONLY for amount and currency modes.
+  Each `ChipRow` composes its own visible
   `FieldLabel` above it (`label` prop) since encoding/delimiter/decimal-
   separator sit inside a shared "File Format" section alongside each
   other, unlike the amount/currency sections where the section heading
   itself is the only label needed.
 - **Every section shows its own heading, at ONE uniform spacing, on
-  BOTH screens** (F3 items 12/13/14, fixed in fix round 1 I1/I2 for
-  column-mapping, fix round 2 for statement-import): the screen's former
+  BOTH screens**: the screen's former
   in-body title (duplicating the native stack header's own `title:
-  t('columnMapping.title')`, `accounts.stack.tsx`) is REMOVED (item 12);
+  t('columnMapping.title')`, `accounts.stack.tsx`) is REMOVED;
   every section — raw preview, file format, dates, amount columns,
   currency, additional details (description/counterparty/balance), and
-  result — shows its own `heading`-step `Text` (item 14) as the PLAIN
+  result — shows its own `heading`-step `Text` as the PLAIN
   FIRST CHILD of its section's own `gap={3}` Box — no wrapper `Box` and
-  no `marginBottom` style of its own. An earlier pass (F3 item 13's first
-  landing) gave each heading an explicit `marginBottom: spacing(3)` INSIDE
-  a `gap={3}` parent, which — Yoga adds a child's own margin ON TOP OF the
-  parent's `gap`, same as CSS flexbox — actually produced 24pt below most
-  headings, 12pt below the raw-preview one (no `gap` sibling), and 20pt
-  below `MappingResult`'s "incomplete" heading (`gap={2}`), not the
-  uniform spacing the comment claimed; `column-mapping-form.styles.ts`
-  (`column-mapping-form/`) no longer has a `sectionHeading` style at
+  no `marginBottom` style of its own. Do NOT give a heading an explicit
+  `marginBottom: spacing(3)` INSIDE a `gap={3}` parent — Yoga adds a
+  child's own margin ON TOP OF the parent's `gap`, same as CSS flexbox,
+  so the two stack rather than dedupe, breaking the uniform spacing.
+  `column-mapping-form.styles.ts`
+  (`column-mapping-form/`) has no `sectionHeading` style at
   all. `MappingResult` renders its
   own `columnMapping.result` heading UNCONDITIONALLY, in BOTH the
   `stats === undefined` and `stats !== undefined` branches, passing NO
-  `title` to `SummaryTable` in the complete branch — before this fix the
-  complete branch's heading was `SummaryTable`'s own `title` row (a
-  `gap={1}` Box, 4pt below it), so the heading visibly jumped position the
+  `title` to `SummaryTable` in the complete branch — `SummaryTable`'s own
+  `title` row sits in a `gap={1}` Box (4pt below it), which is not the
+  same spacing as the plain first-child heading, so passing `title`
+  there would make the heading jump position the
   moment the last required column got mapped. The statement-import screen's
-  `StatementPreviewBlock` (`statement-preview-block/`) gets the SAME fix (F3 fix round 2): it renders
+  `StatementPreviewBlock` (`statement-preview-block/`) follows the SAME rule: it renders
   its own `<Text variant="heading">{stats.displayName}</Text>` as the
   plain first child of its own `gap={3}` `previewBlock` Box, passing NO
-  `title` to ITS `SummaryTable` either — before this fix that screen's
-  heading sat in `SummaryTable`'s own `gap={1}` Box (4pt), not the same
-  12pt every column-mapping section heading gets. `SummaryTable` itself
-  is UNCHANGED on both screens — its `title` prop stays optional, simply
-  unused by both these call sites now.
+  `title` to ITS `SummaryTable` either, for the same reason. `SummaryTable` itself
+  keeps its `title` prop optional, simply
+  unused by both these call sites.
 - **Fields are grouped with the shared `Divider`** between: (a)
   encoding/separators, (b) dates, (c) amounts/currency, (d)
   description/counterparty/balance (moved to the BOTTOM, in their own
   group, below amounts/currency — description used to sit between the
   date and amount groups), (e) result.
-- **The target-holding picker shows each holding's own icon** (F3 item
-  3, `target-holding-sheet.component.tsx`'s `SelectableRow` rows and
+- **The target-holding picker shows each holding's own icon**
+  (`target-holding-sheet.component.tsx`'s `SelectableRow` rows and
   `target-holding-field.component.tsx`'s `FieldTrigger`), the same
   `icon ?? holdingTypeSymbol[type]` / `resolveEntityColor` pair
   `transaction-form.screen.tsx`'s exchange `HoldingSelectField` resolves
@@ -411,7 +402,7 @@ a P0 UI fix round driven by device feedback:
   `required` prop, forwarded through `ColumnSelectField` and
   `FieldTrigger`) — date, date format, amount/debit/credit column(s),
   currency column (when in column mode), description, and the target
-  holding field are marked required (holding: commit `6a835dd`);
+  holding field are marked required;
   counterparty stays unmarked (optional), and
   `columnMapping.counterpartyColumn` no longer carries an
   "(optional)"/"(необов'язково)" suffix — the absent marker IS the
