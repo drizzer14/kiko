@@ -38,8 +38,8 @@ coordinator = SendMessage target).
 6. Merge feat/assets-debts into next (release 1.1). Prune pre-write-guard worktree+branch after its merge (KEYS.md copy already saved).
 
 ### Device
-iPhone (UDID 00008130-0018712A1E32001C, app data container 11300148-8CFA-440B-8C97-DB08CEB653CA) has 8adaf394 (Release-AdHoc, installed 2026-09-26 19:1x, make verify 397/5206; all keys through P6 approved). User device test: RETEST-FB1-P6-addendum.md + the 3 earlier RETEST files. Was: 5cb70fb.
-device-deploy HEAD = 8adaf394, npm install done (.env keys from C2). EVERY ops install brief must pin the UDID, Release-AdHoc and the
+iPhone (UDID 00008130-0018712A1E32001C, app data container 11300148-8CFA-440B-8C97-DB08CEB653CA) has e1ded680 (Release-AdHoc, installed 2026-09-26 20:45, make verify 399/5285; retest RETEST-DEV1-addendum.md). Before: 8adaf394 (installed 2026-09-26 19:1x, make verify 397/5206; all keys through P6 approved). User device test: RETEST-FB1-P6-addendum.md + the 3 earlier RETEST files. Was: 5cb70fb.
+device-deploy HEAD = e1ded680, npm install done (.env keys from C2). EVERY ops install brief must pin the UDID, Release-AdHoc and the
 container UUID check (an ops run once installed on the iPhone 17 SIMULATOR with a Distribution config and reported SUCCESS).
 
 ### Pending for the USER (approve before a deploy that ships them)
