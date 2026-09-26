@@ -572,19 +572,52 @@ const buildReturnOptions = (
 // synced-holding exclusion: a `debt` account (the only
 // account kind a `loan` holding lives under) has no sync concept at all
 // (see kiko-domain), so every loan holding is manual-owned already.
+//
+// A filter never hides an active selection (kiko-design-system): the row's
+// OWN already-linked loan is unioned back in even when it has since closed
+// or moved to another currency — `buildExchangeOptions` would otherwise drop
+// it (closed) or the currency filter above would (a currency change), and
+// the picker would then show no value at all for a link that still exists in
+// the database, with no way for the user to see what it is or clear it.
 const buildLoanOptions = (
   holdings: readonly HoldingRow[],
   accountNameById: ReadonlyMap<string, string>,
   accountOrderById: ReadonlyMap<string, number>,
   paymentCurrency: Currency,
+  selectedLoanHoldingId: string | null,
 ): HoldingSelectOption[] => {
-  return buildExchangeOptions(
+  const openOptions = buildExchangeOptions(
     holdings,
     accountNameById,
     accountOrderById,
     undefined,
     (type) => type === 'loan',
   ).filter((option) => option.currency === paymentCurrency);
+
+  if (
+    selectedLoanHoldingId === null ||
+    openOptions.some((option) => option.id === selectedLoanHoldingId)
+  ) {
+    return openOptions;
+  }
+
+  const selectedHolding = holdings.find((candidate) => candidate.id === selectedLoanHoldingId);
+
+  if (selectedHolding === undefined) {
+    return openOptions;
+  }
+
+  return [
+    ...openOptions,
+    {
+      id: selectedHolding.id,
+      name: selectedHolding.name,
+      icon: selectedHolding.icon ?? holdingTypeSymbol[selectedHolding.type],
+      color: resolveEntityColor(selectedHolding.color, defaultHoldingColor[selectedHolding.type]),
+      currency: selectedHolding.currency,
+      accountName: accountNameById.get(selectedHolding.accountId) ?? '',
+    },
+  ];
 };
 
 // Order two holdings the way the Accounts screen shows them: primary by
@@ -1267,15 +1300,25 @@ const showsSaveButton = (
 // own visibility never flip-flops before Save. Kept module-level and pure
 // for the same cognitive-complexity-budget reason as `showsSaveButton`
 // above.
+//
+// Also visible whenever the row already carries a link
+// (`selectedLoanHoldingId`), even with zero open loan options — a filter
+// never hides an active selection: the row stays a debit whose loan closed
+// or changed currency is still linked, and the user must be able to reach
+// the field to see that link, Undo it, or pick "None", not just a
+// currently-open loan. `buildLoanOptions` already unions that same loan back
+// into `loanOptions`, so this is a belt-and-suspenders direct check, not the
+// only guard.
 const isLoanFieldVisible = (
   existingAmountMinorUnits: number | undefined,
   loanOptionCount: number,
   converting: boolean,
+  selectedLoanHoldingId: string | null,
 ): boolean =>
   existingAmountMinorUnits !== undefined &&
   existingAmountMinorUnits < 0 &&
-  loanOptionCount > 0 &&
-  !converting;
+  !converting &&
+  (loanOptionCount > 0 || selectedLoanHoldingId !== null);
 
 // The current loan link's own two pieces, resolved together so the screen
 // body reads one call instead of two separate `?? null` chains — kept
@@ -1609,11 +1652,23 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     holdingId,
     isExchangeCreateDestinationType,
   );
+  // The row's current loan link, resolved once and reused everywhere below
+  // (options, visibility, and the field's own render props) rather than
+  // recomputed inline at each site — that keeps every extra `??`/`?.` this
+  // task adds inside the already-budgeted `resolveLoanLinkState` helper
+  // instead of this component's own cognitive-complexity count.
+  const loanLinkState = resolveLoanLinkState(existing);
   // The loan-payment picker's own eligible options, scoped to the payment's
   // holding currency (see `buildLoanOptions`'s own doc comment). Read here,
   // ahead of the field's `converting`-gated visibility below, alongside every
   // other holdings-derived option list on this screen.
-  const loanOptions = buildLoanOptions(holdings, accountNameById, accountOrderById, currency);
+  const loanOptions = buildLoanOptions(
+    holdings,
+    accountNameById,
+    accountOrderById,
+    currency,
+    loanLinkState.selectedLoanHoldingId,
+  );
 
   const convertView = resolveConvertView(
     existing,
@@ -1841,6 +1896,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     existing?.amountMinorUnits,
     loanOptions.length,
     converting,
+    loanLinkState.selectedLoanHoldingId,
   );
 
   // The description field's placeholder previews the label the row would carry
@@ -2562,7 +2618,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             categoryFieldRef,
             loanFieldVisible,
             loanOptions,
-            ...resolveLoanLinkState(existing),
+            ...loanLinkState,
             onSelectLoanPayment: selectLoanPayment,
             onUndoLoanLink: undoLoanLink,
           })}

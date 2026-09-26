@@ -1892,6 +1892,34 @@ describe('TransactionFormScreen — loan payment field', () => {
     expect(queryByLabelText('Loan payment')).toBeNull();
   });
 
+  it('keeps the field visible and lists the linked loan once it closes, with no other open loan', async () => {
+    setLiveData(
+      [PAYER_HOLDING, { ...LOAN_HOLDING, closedAt: 1 }],
+      { ...debitTransaction, loanHoldingId: 'loan-1', loanLinkSource: 'manual' },
+      undefined,
+      [DEBT_ACCOUNT],
+    );
+
+    const { getByLabelText, getByText } = await renderEdit('txn-1');
+
+    expect(getByLabelText('Loan payment')).toBeTruthy();
+    expect(getByText('Car loan')).toBeTruthy();
+  });
+
+  it('keeps the field visible and lists the linked loan once it moves to another currency, with no other open loan', async () => {
+    setLiveData(
+      [PAYER_HOLDING, { ...LOAN_HOLDING, currency: 'USD' }],
+      { ...debitTransaction, loanHoldingId: 'loan-1', loanLinkSource: 'manual' },
+      undefined,
+      [DEBT_ACCOUNT],
+    );
+
+    const { getByLabelText, getByText } = await renderEdit('txn-1');
+
+    expect(getByLabelText('Loan payment')).toBeTruthy();
+    expect(getByText('Car loan')).toBeTruthy();
+  });
+
   it('persists a picked loan as a MANUAL link at once, with no Save press', async () => {
     setLiveData([PAYER_HOLDING, LOAN_HOLDING], debitTransaction, undefined, [DEBT_ACCOUNT]);
     mockSetLoanPayment.mockResolvedValue(undefined);
