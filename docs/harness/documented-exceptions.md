@@ -268,7 +268,7 @@ verified usage, not dead weight:
   still fails; add a new entry here only for another verified
   external-name case, per this file's own standing rule.
 - **`rules/fixtures/**` (Biome `files.includes`, `knip.json` `ignore`,
-  `.jscpd.json` `ignore`, `.depcheckrc.json` `ignorePatterns`, and
+  `.jscpd.json` `ignore`, and
   `--exclude 'fixtures'` in `scripts/checks/security.sh`)**: the
   positive/negative fixture pair that
   proves each project Semgrep rule still fires. A positive fixture is
@@ -278,10 +278,7 @@ verified usage, not dead weight:
   is the positive one plus the fix. Verified: without these exclusions a
   `.bad.tsx` fails Biome, reads as an unused file to Knip, and a pair reports
   40% duplicated lines / 43.71% duplicated tokens to jscpd, all by design.
-  Fixtures are Semgrep inputs, never built or installed, so a positive
-  fixture importing a banned package that is not a dependency (e.g.
-  `kiko-no-swipe-action.bad.tsx`'s `react-native-swipe-list-view`) must not
-  read as a missing dependency to depcheck. The
+  The
   semgrep `--exclude` is the bare directory name `fixtures` (semgrep matches it
   per path component), so it hits only `rules/fixtures`; the app's own
   `src/**/__fixtures__` stays in scope. No coverage is lost:
