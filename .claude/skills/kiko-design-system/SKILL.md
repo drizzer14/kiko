@@ -234,18 +234,14 @@ new component can land between reviews of this skill:
   header height — see
   `src/navigation/use-scroll-to-top-on-tab-press.ts`, which targets
   the tracked expanded height rather than a live height plus a band.
-  A `scroll`-mode screen also takes a `fillHeight` prop (default
-  `false`) for content — such as Settings' bottom-anchored About
-  footer (app name/version, copyright, links) — that must sit pinned
-  to the screen's true bottom edge when shorter than the viewport, yet
-  still scroll normally once it overflows: it grows the ScrollView's
-  content container (`flexGrow: 1`) so a `flex: 1` spacer among the
-  children can push trailing content down, and reserves the same
-  floating-tab-bar clearance the plain branch already reserves. This is
-  page CONTENT that scrolls away, not a pinned always-reachable action
-  — use the existing `footer` slot for that instead; read
-  `screen.props.d.ts`'s `fillHeight` doc comment for the exact
-  interaction with `footer` if both are ever passed together.
+  Settings' About block (app name/version, copyright, links) is an
+  EXCEPTION to the ordinary "use `footer` only for a pinned
+  always-reachable action" rule: it renders through the pinned
+  `footer` slot even though it is not an action, because App Store
+  Guideline 5.6 review needs it reachable without scrolling (review
+  decision 21). There is no `fillHeight` prop — a screen whose content
+  is shorter than the viewport just leaves it top-anchored; nothing in
+  this codebase pins non-footer content to the bottom.
 - **LoadingState** (`src/design-system/components/loading-state/`) —
   the shared "this screen's own data has not loaded yet" visual: a
   plain centered native `ActivityIndicator`, no text at all — a
