@@ -2,6 +2,71 @@
 
 
 
+## ⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-09-26 12:55) — READ THIS FIRST
+Previous coordinator: pff-ios-9b (hands over now on user request). FIRST ACTION of the new coordinator: SendMessage your
+name to shares-assets-research-72 (feat), pre-write-guard-00 (guard) and the PM pff-ios-89; they report to "pff-ios-9b".
+Then RE-ARM the watchers (they were session-only and die with the old coordinator): per orchestrator terminal, run the
+scratchpad-style ctxwatch loop (orca terminal read -> result.terminal.tail -> last `C [█░]+ NN%`, exit at 50%) and a
+CronCreate at 17,47 * * * * that checks both tracks (git log -1, orca worktree ps, gauge; handover at 50%; unblock if idle
+>60 min). HANDOVER THRESHOLD = 50% (user rule). Orchestrator brief template: see the session 5/6 briefs below (opus,
+--permission-mode auto; read the handoff file; delegation rule; one review per phase/group; fix rounds only Critical/Important;
+coordinator = SendMessage target).
+
+### Running sessions (Orca)
+| Session | Worktree / branch | Terminal | State |
+|---|---|---|---|
+| shares-assets-research-72 (feat session 6) | shares-assets-research / feat/assets-debts | term_64b728cd-967c-47b3-9338-55d575630639 | FB1 round: P1-P5 built (7ee9f6d); review found C1 (live-query cache seeds edit forms with stale rows -> lost lot) + I1 (backfill marks a failed coin known-empty); fix round queued AFTER the running P6 developer; then P2c follow-up (preview starts at the header row, 5 rows, Show more/less); then scoped re-review -> deployable sha. P6 in progress (tip 144d2967 units). ~44% context. |
+| pre-write-guard-00 (guard session 2) | pre-write-guard / pre-write-guard | term_72f7b430-5387-4e3c-8238-c7ae3c164e7c | Final fix wave done 199e7dd (re-review clean). Running: Ruling X (conflict-marker files editable; baseline = union of ours/theirs findings) + Task 24 drift pass incl. the feedback->guard-rule MECHANISM (kiko-linter "Adding a pre-write guard rule", pinned-value rules, harness-workflow classification, reviewer mechanizable tag). Then final report -> coordinator merges. Tip 4ed5be0e. |
+| pff-ios-89 | main | — | standing PM; message at EVERY milestone |
+| ipad-adaptive-e7, duo-adaptive-d4 | own worktrees | — | idle, unmerged; user: KEEP |
+
+### Next steps for the coordinator, in order (user-approved END ORDER)
+1. Guard final report -> merge pre-write-guard INTO feat/assets-debts (onto the feat tip; last known 144d2967). Expect a conflict in
+   src/rates/rates-refresh/rates-refresh.ts (~327: take FEAT's side, 0898a16c) and rule-11 blank-line hits in feat code (run
+   node scripts/checks/blank-line-separation.js --write + import-order.js --write in a fixup commit, like 9ab2cf2f). Keep the rule
+   move intact: kiko-no-switch / kiko-no-nullable-map-ternary / kiko-no-use-animated-keyboard / kiko-no-history-id-comment only in
+   rules/semgrep-prewrite.yml. Conflicted .ts/.tsx: after the plugin refresh the guard is active; Ruling X makes conflict files
+   editable. Use a kiko:developer (model opus until 2026-09-27 16:00) — never edit app files inline.
+2. USER refreshes the kiko plugin ONCE (plugin 0.2.0 on main): `! claude plugin update kiko@kiko-marketplace`, then /reload-plugins
+   in every running session. PROVE liveness with a harmless probe: `pkill -0 -f __nonexistent__` must be DENIED (verified 2026-09-26:
+   kill-guard was NEVER live; the cache is still 0.1.0 from 09-04).
+3. Feat: S1, S2 (held for the guard merge), FB1-MECH (guard rules for FB1 findings incl. no-swipe; FB1-MECH.md), T43 whole-branch
+   review + fix rounds.
+4. DEVICE TEST by the user (deploy the T43 deployable; user approves strings) + fix rounds.
+5. THEN the one deep gate: KIKO_MUTATION_BASE=next make deep on feat (run detached, await the exit code; effectively green = mutation
+   >= threshold AND osv only the known CVEs).
+6. Merge feat/assets-debts into next (release 1.1). Prune pre-write-guard worktree+branch after its merge (KEYS.md copy already saved).
+
+### Device
+iPhone (UDID 00008130-0018712A1E32001C, app data container 11300148-8CFA-440B-8C97-DB08CEB653CA) has 5cb70fb (Release-AdHoc).
+device-deploy HEAD = 5cb70fb, npm install done (.env keys from C2). EVERY ops install brief must pin the UDID, Release-AdHoc and the
+container UUID check (an ops run once installed on the iPhone 17 SIMULATOR with a Distribution config and reported SUCCESS).
+
+### Pending for the USER (approve before a deploy that ships them)
+- KEYS-overnight.md (feat sdd folder): ~22 pending keys (B1b term max, PROP-UX Property, phase 3 x8, phase 5 x12 + 1 changed, FB1 keys).
+  uk questions: Cost "Вартість" vs "Собівартість"; "Ім’я кредитора" -> "Кредитор".
+- KEYS-pre-write-guard.md (feat sdd folder; copy of the guard's KEYS.md): 11 sync-error keys + "Use passcode" / localized Cancel
+  biometric labels. Coordinator concern: 7 are developer messages -> suggest one user-facing Binance error; full stops.
+- Retest scripts in the feat sdd folder: RETEST-0930.md, RETEST-phase3-addendum.md, RETEST-phase4-5-addendum.md (0042 net-worth
+  check for base UAH/USD/EUR; loan links).
+- Visible guard changes: holding select checkmark moves to the leading side (SelectableRow); "Use Passcode" -> "Use passcode".
+
+### User decisions this run (all relayed; logged in DECISIONS-overnight.md)
+P5 broker/shares DEFERRED to a later release; lighter reviews; handover at 50%; no request/query without data (P-NOWORK); "price as
+of" caption removed everywhere (silent newest-rate fallback); Property section in Accounts; property Type lists categories; P6:
+icons (briefcase for business), ownership (whole value x share, percent OR fraction, tracked over time in PropertyMeta.ownership,
+no migration; applies to real estate/business/vehicle/valuable/other, NOT loan given), metal types in the Type select (also for
+bank accounts), units on inputs, months/years term toggle, purity 999.9 ‰, loan ledger + ALL upcoming payments, Outstanding from
+linked payments when any EVERYWHERE; share changes editable/deletable via CONTEXT MENU (NO SWIPE, swipe was removed); native iOS
+chip/segment style (#747478 thumb) incl. icon-picker tiles; mapping preview rows stay 44 pt; preview starts at the header row +
+Show more/less; approved visuals are LOCKED (kiko-design-system "Locked decisions"); feedback findings must become guard rules.
+
+### Main / harness state
+main 312bffa8 (next == main): e5fba750 pre-write hook entry; 2cfc9452 dispatcher (hooks resolve the edited file's own worktree)
++ plugin 0.2.0; 0ef9c67 handover 50%; 312bffa8 retrospect drift fix + lessons (hook liveness, dispatcher, device installs, negative
+claims, debugger symptom rule, locked visuals, review cadence). Gate exit 0 at 312bffa8 (coordinator-verified). Nothing pushed.
+Capacity: SONNET weekly limit until 2026-09-27 16:00 Kyiv -> dispatch roles with model "opus".
+
 ## ⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-09-24 ~18:30) — READ THIS FIRST
 Previous coordinator: pff-ios-9b. FIRST ACTION of the new coordinator: SendMessage your new name to the running
 sessions below (they report to "pff-ios-9b" today) and to the PM pff-ios-89.
