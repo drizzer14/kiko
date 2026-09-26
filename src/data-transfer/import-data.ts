@@ -1,5 +1,6 @@
 import * as RNFS from 'react-native-fs';
 import { bifold, eitherSync, isLeft } from 'fnts/either';
+import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 
 import {
@@ -163,6 +164,13 @@ export const importData = async (options: {
   // without sitting on the network; only fire the refresh after the write
   // commits.
   refreshMarketData({ throttled: false, metals: true });
+  // Item 4: a bulk restore bypasses the sync/import/loan-edit call sites
+  // that normally trigger the auto-link matcher — trigger it explicitly
+  // here too. `runLoanAutoLink` never rejects and returns early with no
+  // loan (its own doc comment), so this is a no-op for a restore with none;
+  // fire-and-forget for the same "background nicety, not a precondition"
+  // reason as `refreshMarketData` above.
+  runLoanAutoLink();
 
   return {
     accountsRestored: payload.tables.accounts.length,

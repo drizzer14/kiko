@@ -20,6 +20,16 @@ jest.mock('@kiko/sync/refresh-market-data', () => ({
   refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),
 }));
 
+// Item 4: a bulk restore bypasses the sync/import/loan-edit call sites that
+// normally trigger the auto-link matcher — trigger it explicitly here too,
+// the same "first-add refresh" reasoning as `refreshMarketData` above.
+// `runLoanAutoLink` itself returns early with no loan (its own doc comment),
+// so this is a no-op for a restore with none.
+const mockRunLoanAutoLink = jest.fn().mockResolvedValue(undefined);
+jest.mock('@kiko/loans/use-loan-auto-link', () => ({
+  runLoanAutoLink: (...args: unknown[]) => mockRunLoanAutoLink(...args),
+}));
+
 import { right } from 'fnts/either';
 import { utf8ToBytes } from '@noble/ciphers/utils.js';
 
@@ -57,6 +67,8 @@ describe('importData', () => {
     mockRestoreExportSecrets.mockReset().mockResolvedValue(undefined);
     mockRefreshMarketData.mockClear();
     mockRefreshMarketData.mockResolvedValue(right(undefined));
+    mockRunLoanAutoLink.mockClear();
+    mockRunLoanAutoLink.mockResolvedValue(undefined);
   });
 
   it('decrypts a valid file, restores the snapshot and secrets, and returns row counts', async () => {
@@ -85,6 +97,34 @@ describe('importData', () => {
     await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
 
     expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: false, metals: true });
+  });
+
+  // Item 4: fire-and-forget, after a successful restore.
+  it('triggers the loan auto-link matcher after a successful restore', async () => {
+    const { fileText, keyBase64 } = encryptedFixture();
+    mockReadFile.mockResolvedValue(fileText);
+
+    await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+
+    expect(mockRunLoanAutoLink).toHaveBeenCalledWith();
+  });
+
+  it('resolves with the row-count summary without waiting for the loan auto-link matcher to settle', async () => {
+    const { fileText, keyBase64 } = encryptedFixture();
+    mockReadFile.mockResolvedValue(fileText);
+    let resolveAutoLink: () => void = () => {};
+    mockRunLoanAutoLink.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveAutoLink = resolve;
+        }),
+    );
+
+    const summary = await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+
+    expect(summary.accountsRestored).toBe(1);
+
+    resolveAutoLink();
   });
 
   // The refresh is a background nicety, not an import precondition —
