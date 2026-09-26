@@ -11,6 +11,41 @@ type SQLQuery<T> = { toSQL(): { sql: string; params: unknown[] } } & PromiseLike
 const toError = (caught: unknown): Error =>
   caught instanceof Error ? caught : new Error(String(caught));
 
+export const LIVE_QUERY_CACHE_LIMIT = 100;
+
+// The last applied rows per full query key (sql + params), shared by every
+// hook instance. A native-stack pop unmounts a screen, so reopening it is a
+// fresh mount: a hit here lets that mount render its data on the FIRST frame
+// (isLoading false) while the query still re-runs and re-subscribes in the
+// background. Bounded as an LRU (Map insertion order = recency).
+const liveQueryCache = new Map<string, unknown[]>();
+
+const readCache = (key: string): unknown[] | undefined => {
+  const rows = liveQueryCache.get(key);
+
+  if (rows !== undefined) {
+    liveQueryCache.delete(key);
+    liveQueryCache.set(key, rows);
+  }
+
+  return rows;
+};
+
+const writeCache = (key: string, rows: unknown[]): void => {
+  liveQueryCache.delete(key);
+  liveQueryCache.set(key, rows);
+
+  if (liveQueryCache.size > LIVE_QUERY_CACHE_LIMIT) {
+    const [leastRecentKey] = liveQueryCache.keys();
+
+    liveQueryCache.delete(leastRecentKey);
+  }
+};
+
+export const clearLiveQueryCache = (): void => {
+  liveQueryCache.clear();
+};
+
 /**
  * Reactive read hook built on op-sqlite's `reactiveExecute` primitive
  * (Drizzle's own `useLiveQuery` only supports expo-sqlite).
@@ -35,12 +70,15 @@ export function useLiveQuery<T>(
    */
   enabled = true,
 ): { data: T[]; error?: Error; isLoading: boolean } {
-  const [data, setData] = useState<T[]>([]);
-  const [error, setError] = useState<Error | undefined>();
   const { sql, params } = query.toSQL();
   const paramsKey = JSON.stringify(params);
   const tablesKey = tables.join(',');
   const currentKey = `${sql}::${paramsKey}`;
+  // Read once, on mount only: a cache hit seeds both the rows and the key
+  // they belong to, so the first render is already "applied" (not loading).
+  const [cachedOnMount] = useState(() => readCache(currentKey) as T[] | undefined);
+  const [data, setData] = useState<T[]>(cachedOnMount ?? []);
+  const [error, setError] = useState<Error | undefined>();
   // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(content-keyed subscription) keyed on tablesKey (a stable serialized primitive), not the `tables` array reference itself — see the identical rationale on the effect below.
   const fireOn = useMemo(() => tables.map((table) => ({ table })), [tablesKey]);
   // Generation counter: `runQuery` runs on mount and again on every
@@ -52,7 +90,9 @@ export function useLiveQuery<T>(
   // from — NOT the newest generation that has merely STARTED (see the guard
   // below, where that distinction matters).
   const appliedGeneration = useRef(0);
-  const appliedKey = useRef<string | undefined>(undefined);
+  const appliedKey = useRef<string | undefined>(
+    cachedOnMount === undefined ? undefined : currentKey,
+  );
   // isLoading is derived, not stored: true whenever the CURRENT render's
   // sql+paramsKey has no applied result yet — true on first mount and true
   // again the instant the key changes (a dependent query re-keying off data
@@ -116,7 +156,10 @@ export function useLiveQuery<T>(
         return;
       }
 
-      setData(bifold(settled));
+      const rows: T[] = bifold(settled);
+
+      writeCache(myKey, rows);
+      setData(rows);
       setError(undefined);
     };
 

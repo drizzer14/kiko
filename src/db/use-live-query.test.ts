@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react-native';
 
-import { useLiveQuery } from './use-live-query';
+import { LIVE_QUERY_CACHE_LIMIT, clearLiveQueryCache, useLiveQuery } from './use-live-query';
 
 const mockUnsubscribe = jest.fn();
 const mockReactiveExecute = jest.fn();
@@ -42,6 +42,7 @@ describe('useLiveQuery', () => {
   beforeEach(() => {
     mockRows.current = [{ id: 'a' }];
     mockReactiveCallback.current = undefined;
+    clearLiveQueryCache();
   });
 
   it('runs the Drizzle query for mapped rows on mount', async () => {
@@ -396,6 +397,7 @@ describe('useLiveQuery — the enabled argument', () => {
     mockRows.current = [{ id: 'a' }];
     mockReactiveCallback.current = undefined;
     mockReactiveExecute.mockClear();
+    clearLiveQueryCache();
   });
 
   it('never runs the query and never subscribes while disabled', async () => {
@@ -450,5 +452,146 @@ describe('useLiveQuery — the enabled argument', () => {
     expect(mockUnsubscribe).toHaveBeenCalled();
     expect(result.current.data).toEqual([]);
     expect(result.current.isLoading).toBe(false);
+  });
+});
+
+// kiko-architecture: a screen reopened within seconds shows its data on the
+// first frame. A native-stack pop unmounts the screen, so every reopen is a
+// fresh mount — the last applied rows per query key are served from a
+// module-level cache while the query still re-runs in the background.
+describe('useLiveQuery — the live-query cache', () => {
+  // A query for `params` whose `await` never settles until the test says so,
+  // so the first render of a remount can be observed before any fresh read.
+  const pendingQueryFor = (params: unknown[]) => {
+    const resolvers: Array<(rows: unknown[]) => void> = [];
+    const query = {
+      toSQL: () => ({ sql: 'SELECT * FROM accounts WHERE id = ?', params }),
+      // biome-ignore lint/suspicious/noThenProperty: OVERRIDE(intentional thenable double) same rationale as `fakeQuery` above.
+      then<TResult1 = unknown[], TResult2 = never>(
+        onfulfilled?: ((value: unknown[]) => TResult1 | PromiseLike<TResult1>) | null,
+        onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+      ) {
+        return new Promise<unknown[]>((resolve) => {
+          resolvers.push(resolve);
+        }).then(onfulfilled, onrejected);
+      },
+    };
+
+    return { query, resolvers };
+  };
+
+  const settledQueryFor = (params: unknown[], rows: unknown[]) => ({
+    toSQL: () => ({ sql: 'SELECT * FROM accounts WHERE id = ?', params }),
+    // biome-ignore lint/suspicious/noThenProperty: OVERRIDE(intentional thenable double) same rationale as `fakeQuery` above.
+    then<TResult1 = unknown[], TResult2 = never>(
+      onfulfilled?: ((value: unknown[]) => TResult1 | PromiseLike<TResult1>) | null,
+      onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+    ) {
+      return Promise.resolve(rows).then(onfulfilled, onrejected);
+    },
+  });
+
+  beforeEach(() => {
+    mockReactiveCallback.current = undefined;
+    mockReactiveExecute.mockClear();
+    clearLiveQueryCache();
+  });
+
+  it('serves a remount of the same key from the cache on the first render, and still re-runs the query', async () => {
+    const first = await renderHook(() =>
+      useLiveQuery(settledQueryFor(['a'], [{ id: 'cached' }]), ['accounts']),
+    );
+    expect(first.result.current.data).toEqual([{ id: 'cached' }]);
+    await first.unmount();
+    mockReactiveExecute.mockClear();
+
+    const { query, resolvers } = pendingQueryFor(['a']);
+    const { result } = await renderHook(() => useLiveQuery(query, ['accounts']));
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.data).toEqual([{ id: 'cached' }]);
+    expect(mockReactiveExecute).toHaveBeenCalled();
+    expect(resolvers).toHaveLength(1);
+
+    await act(async () => {
+      resolvers[0]([{ id: 'fresh' }]);
+    });
+
+    expect(result.current.data).toEqual([{ id: 'fresh' }]);
+  });
+
+  it('updates the cached rows on a reactive change after a remount', async () => {
+    const first = await renderHook(() =>
+      useLiveQuery(settledQueryFor(['a'], [{ id: 'cached' }]), ['accounts']),
+    );
+    await first.unmount();
+
+    const second = await renderHook(() =>
+      useLiveQuery(settledQueryFor(['a'], [{ id: 'changed' }]), ['accounts']),
+    );
+    await act(async () => {
+      mockReactiveCallback.current?.({ rows: [] });
+    });
+    expect(second.result.current.data).toEqual([{ id: 'changed' }]);
+    await second.unmount();
+
+    const { query } = pendingQueryFor(['a']);
+    const { result } = await renderHook(() => useLiveQuery(query, ['accounts']));
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.data).toEqual([{ id: 'changed' }]);
+  });
+
+  it('never shares a cache entry between different params of the same sql', async () => {
+    const first = await renderHook(() =>
+      useLiveQuery(settledQueryFor(['a'], [{ id: 'a' }]), ['accounts']),
+    );
+    await first.unmount();
+
+    const { query } = pendingQueryFor(['b']);
+    const { result } = await renderHook(() => useLiveQuery(query, ['accounts']));
+
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.data).toEqual([]);
+  });
+
+  it('never caches a rejected read', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const rejectingQuery = {
+      toSQL: () => ({ sql: 'SELECT * FROM accounts WHERE id = ?', params: ['a'] }),
+      // biome-ignore lint/suspicious/noThenProperty: OVERRIDE(intentional thenable double) same rationale as `fakeQuery` above.
+      then<TResult1 = unknown[], TResult2 = never>(
+        onfulfilled?: ((value: unknown[]) => TResult1 | PromiseLike<TResult1>) | null,
+        onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+      ) {
+        return Promise.reject(new Error('boom')).then(onfulfilled, onrejected);
+      },
+    };
+    const first = await renderHook(() => useLiveQuery(rejectingQuery, ['accounts']));
+    await first.unmount();
+
+    const { query } = pendingQueryFor(['a']);
+    const { result } = await renderHook(() => useLiveQuery(query, ['accounts']));
+
+    expect(result.current.isLoading).toBe(true);
+    warnSpy.mockRestore();
+  });
+
+  it('evicts the least recently used key once the cache holds more than its limit', async () => {
+    for (let index = 0; index <= LIVE_QUERY_CACHE_LIMIT; index += 1) {
+      const mounted = await renderHook(() =>
+        useLiveQuery(settledQueryFor([String(index)], [{ id: String(index) }]), ['accounts']),
+      );
+      await mounted.unmount();
+    }
+
+    const oldest = pendingQueryFor(['0']);
+    const oldestHook = await renderHook(() => useLiveQuery(oldest.query, ['accounts']));
+    expect(oldestHook.result.current.isLoading).toBe(true);
+    await oldestHook.unmount();
+
+    const newest = pendingQueryFor([String(LIVE_QUERY_CACHE_LIMIT)]);
+    const newestHook = await renderHook(() => useLiveQuery(newest.query, ['accounts']));
+    expect(newestHook.result.current.isLoading).toBe(false);
   });
 });

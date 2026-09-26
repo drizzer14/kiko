@@ -219,8 +219,9 @@ consequences follow directly:
 ### `useLiveQuery` consumer rule: gate an empty state on `isLoading`, never on `data.length === 0` alone
 
 Every `useLiveQuery` (and `usePriceBook`, which wraps one) starts
-`isLoading: true` and clears it only once its FIRST read for its
-CURRENT sql+paramsKey settles — never before. Because of the
+`isLoading: true` — unless the live-query cache below has rows for its
+key — and clears it only once its FIRST read for its CURRENT
+sql+paramsKey settles — never before. Because of the
 one-worker-thread queueing above, that first read can sit queued for
 real, perceptible time on a busy app open. A screen that renders its
 own empty state (empty list text, an empty chart, a `0` balance)
@@ -342,6 +343,28 @@ isLoading }`, not a bare `PriceBook` — every consumer destructures
 `const { book: priceBook } = usePriceBook();` (or additionally
 `isLoading: priceBookLoading` when gating). See `kiko-pricing` for the
 full contract, and the section below for its `enabled` argument.
+
+### The live-query cache: a reopened screen shows its data on the first frame
+
+Rule: a screen reopened within seconds shows its data at once, on the
+first frame — never a `LoadingState` (a native-stack pop UNMOUNTS the
+screen, so every reopen is a fresh mount, and on the dark `Screen`
+background the spinner's delayed empty container reads as a black
+screen). `useLiveQuery` keeps a module-level LRU cache
+(`LIVE_QUERY_CACHE_LIMIT`, 100 keys) of the last successfully APPLIED
+rows per full query key (`sql` + serialized `params` — different
+params never share an entry). A mount with a cache hit seeds `data`
+with the cached rows and `appliedKey` with the current key, so
+`isLoading` is `false` on the very first render; it STILL runs the
+query and subscribes, and every applied result (mount, reactive fire)
+overwrites the entry, so a write replaces the cached rows. Only a
+mount reads the cache — a later re-key waits for its own read as
+above. A rejected read is never cached. A write committed while the
+screen was unmounted shows the cached (stale) rows for one read's
+duration before the background refresh replaces them — accepted, the
+same as any stale-while-revalidate read. Tests call
+`clearLiveQueryCache()` in `beforeEach` so one `it`'s rows never seed
+the next.
 
 ## App-open and refresh work is gated on data presence
 
