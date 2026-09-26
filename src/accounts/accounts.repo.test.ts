@@ -436,6 +436,20 @@ describe('accountsRepo', () => {
       }),
     ).rejects.toThrow(/currency/);
   });
+
+  it('createCashAccount rejects a crypto currency and writes nothing', async () => {
+    const { databaseTransaction, insertTables } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await expect(
+      accountsRepo.createCashAccount({
+        name: 'Wallet',
+        currency: 'USDT',
+        initialBalance: Money.of('USDT', 0),
+      }),
+    ).rejects.toThrow(/cash holding.*USDT/);
+    expect(insertTables).toEqual([]);
+  });
 });
 
 describe('accountsRepo.reorder', () => {

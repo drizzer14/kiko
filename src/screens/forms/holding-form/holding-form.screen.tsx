@@ -5,6 +5,7 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
+import { holdingCurrencyOptions } from '@kiko/holdings/holding-currency';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { ScrollViewInstance, TextInputInstance } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -679,6 +680,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             sheetTitle={t('forms.fields.currencySheetTitle')}
             selected={currency}
             onSelect={setCurrency}
+            options={holdingCurrencyOptions(type)}
+            cryptoFirst={type === 'crypto_asset'}
             disabled={isEdit}
             onOpenChange={setIsCurrencySheetOpen}
             testID="holding-currency-field"

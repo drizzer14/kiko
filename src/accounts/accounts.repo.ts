@@ -1,5 +1,6 @@
 import { asc, eq, sql } from 'drizzle-orm';
 import type { Repository } from '@kiko/db/repository';
+import { isCurrencyAllowedForHoldingType } from '@kiko/holdings/holding-currency';
 import { clearLoanLinksForHoldingsDatabaseTransaction } from '@kiko/holdings/repo';
 
 import { id } from '../db/id';
@@ -151,6 +152,10 @@ export const accountsRepo = {
         throw new Error(
           'accountsRepo.createCashAccount: initial balance currency does not match the account currency',
         );
+      }
+
+      if (!isCurrencyAllowedForHoldingType('cash', currency)) {
+        throw new Error(`accountsRepo.createCashAccount: a cash holding cannot hold ${currency}`);
       }
 
       const accountId = id();

@@ -340,6 +340,16 @@ describe('holdingsRepo', () => {
     ).rejects.toThrow(/currency/);
   });
 
+  it('create rejects a cash holding in a crypto currency and writes nothing', async () => {
+    const { databaseTransaction, insertTables } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await expect(
+      holdingsRepo.create({ accountId: 'acc-1', name: 'Wallet', type: 'cash', currency: 'BTC' }),
+    ).rejects.toThrow(/cash holding.*BTC/);
+    expect(insertTables).toEqual([]);
+  });
+
   it('updateName writes the new name for the given holding id', async () => {
     const { captured, databaseTransaction } = captureSetDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;

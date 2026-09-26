@@ -1,4 +1,6 @@
 // src/data-transfer/snapshot/restore-snapshot.ts
+import { isCurrencyAllowedForHoldingType } from '@kiko/holdings/holding-currency';
+
 import {
   accounts,
   bondRegister,
@@ -368,6 +370,23 @@ const withRatesNormalizedToUah = <T extends NormalizableRateRow>(
   return normalized;
 };
 
+// A cash holding is fiat-only (see `isCurrencyAllowedForHoldingType`). A file
+// carrying one in a crypto currency is refused whole, before any table is
+// touched, rather than restored into a state no create path allows. The
+// `data-transfer/crypto-cash-holding` prefix is what `import-data.screen.tsx`
+// maps to its own error copy.
+const rejectCryptoCashHolding = (snapshotHoldings: DataSnapshot['holdings']): void => {
+  const rejected = snapshotHoldings.find(
+    (holding) => !isCurrencyAllowedForHoldingType(holding.type, holding.currency),
+  );
+
+  if (rejected !== undefined) {
+    throw new Error(
+      `data-transfer/crypto-cash-holding: a cash holding cannot hold ${rejected.currency}`,
+    );
+  }
+};
+
 /**
  * Replaces every row in every one of the 10 logical tables with the given
  * snapshot's rows, inside ONE `write()` transaction — so a failure partway
@@ -401,6 +420,8 @@ const withRatesNormalizedToUah = <T extends NormalizableRateRow>(
  */
 export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
   write(async (databaseTransaction) => {
+    rejectCryptoCashHolding(snapshot.holdings);
+
     const deleteAllTables = async (): Promise<void> => {
       await databaseTransaction.delete(transactions);
       await databaseTransaction.delete(syncState);

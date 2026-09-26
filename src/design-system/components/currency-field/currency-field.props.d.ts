@@ -20,11 +20,18 @@ export type CurrencyFieldProps = {
   selected: Currency | undefined;
   onSelect: (currency: Currency) => void;
   /**
-   * The pickable set, in display order. Defaults to `currencyOptions`. The
-   * cash-account form passes `fiatCurrencyOptions` (fiat only); the holding
-   * form passes the full set (a crypto holding needs a crypto currency).
+   * The pickable set. Defaults to `currencyOptions`. The cash-account form
+   * passes `fiatCurrencyOptions` (fiat only); the holding form passes its
+   * type's `holdingCurrencyOptions` (fiat only for cash, the full set
+   * otherwise — a crypto holding needs a crypto currency).
    */
   options?: readonly Currency[];
+  /**
+   * Lists the crypto group before the fiat group (each keeps its own order).
+   * Defaults to false. The crypto-holding create form sets it, where a crypto
+   * currency is the likely pick.
+   */
+  cryptoFirst?: boolean;
   /** Shows the required asterisk on the label. Defaults to false. */
   required?: boolean;
   /** Read-only: the trigger is inert and dimmed, no sheet opens. Defaults to false. */

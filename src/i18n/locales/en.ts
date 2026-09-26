@@ -86,6 +86,8 @@ export const en = {
       confirmMessage:
         'Importing replaces every account, holding, transaction, and category currently in Kiko with the contents of this file. This cannot be undone.',
       confirmTitle: 'Replace All Data?',
+      cryptoCashHoldingError:
+        'This file has a cash holding in a cryptocurrency. Cash holdings take regular currencies only, so the file cannot be imported.',
       description: 'Choose a Kiko export file and enter its encryption key to restore your data.',
       errorTitle: 'Import failed',
       importButton: 'Import data',

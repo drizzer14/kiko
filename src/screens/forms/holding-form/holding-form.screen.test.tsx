@@ -359,6 +359,33 @@ describe('HoldingFormScreen term deposit', () => {
     expect(getByTestId('currency-option-BTC')).toBeTruthy();
   });
 
+  it('offers a new cash holding fiat currencies only', async () => {
+    mockAccountKind = 'cash';
+    const { getByTestId, queryByTestId, getByPlaceholderText } = await renderScreen();
+
+    await fireEvent.press(getByTestId('holding-currency-field'));
+    await fireEvent.changeText(getByPlaceholderText('Search by code or name'), 'BTC');
+
+    expect(queryByTestId('currency-option-BTC')).toBeNull();
+
+    await fireEvent.changeText(getByPlaceholderText('Search by code or name'), 'EUR');
+
+    expect(getByTestId('currency-option-EUR')).toBeTruthy();
+  });
+
+  it('lists crypto currencies first when creating a crypto holding', async () => {
+    mockAccountKind = 'crypto';
+    const { getByTestId, getAllByTestId } = await renderScreen();
+
+    await fireEvent.press(getByTestId('holding-currency-field'));
+
+    const codes = getAllByTestId(/^currency-option-/).map((row) =>
+      String(row.props.testID).replace('currency-option-', ''),
+    );
+
+    expect(codes.slice(0, 4)).toEqual(['BTC', 'ETH', 'USDT', 'UAH']);
+  });
+
   // DEVICE BUG fix (root cause): the currency sheet's search field lives
   // inside a Modal above this Screen's background ScrollView, which
   // otherwise misfires `automaticallyAdjustKeyboardInsets` for a responder

@@ -236,6 +236,28 @@ describe('CurrencyField', () => {
     expect(labels).toEqual(['UAH Ukrainian Hryvnia', 'BTC Bitcoin', 'ETH Ethereum', 'USDT Tether']);
   });
 
+  it('lists the crypto group before the fiat group when cryptoFirst is set', async () => {
+    const utils = await renderCurrencyField({
+      options: ['ARS', 'USDT', 'UAH', 'ETH', 'BTC'],
+      cryptoFirst: true,
+    });
+    await open(utils);
+
+    const labels = utils
+      .getAllByTestId(/^currency-option-/)
+      .map((row) => row.props.accessibilityLabel as string);
+
+    // The fiat group keeps its own order after the crypto trio: UAH pinned
+    // first, then the rest by localized name.
+    expect(labels).toEqual([
+      'BTC Bitcoin',
+      'ETH Ethereum',
+      'USDT Tether',
+      'UAH Ukrainian Hryvnia',
+      'ARS Argentine Peso',
+    ]);
+  });
+
   it('finds a currency by searching its ISO code', async () => {
     const utils = await renderCurrencyField();
     await open(utils);

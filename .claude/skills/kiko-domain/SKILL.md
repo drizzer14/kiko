@@ -460,6 +460,18 @@ derive from `currencyOptions` rather than carrying their own literal
 list. A Drizzle `text({ enum: [...] })` is a TS-only compile-time
 hint, not a DB constraint, so changing the set needs no migration.
 
+**A cash holding is fiat-only.** `src/holdings/holding-currency/` owns
+the rule (`holdingCurrencyOptions` for a create picker,
+`isCurrencyAllowedForHoldingType` for a write). Every path that can
+create a cash holding rejects a crypto currency: the holding form and
+cash-account form offer fiat only, `holdingsRepo.create` and
+`accountsRepo.createCashAccount` throw, and a `.kiko` restore refuses
+the whole file before touching a table
+(`data-transfer/crypto-cash-holding` prefix, mapped to
+`settings.dataImport.cryptoCashHoldingError`). Statement import and
+the syncs never create a cash holding. No migration exists for an
+already-stored crypto cash holding.
+
 ## Category color resolution
 
 A category's display color is never read as a raw

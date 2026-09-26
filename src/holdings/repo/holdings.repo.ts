@@ -22,6 +22,7 @@ import { Money } from '../../currency/money';
 import { isSyncedHolding } from '../deletable';
 import { database, write } from '../../db/client';
 import { holdingInstrument } from '../../prices/instrument';
+import { isCurrencyAllowedForHoldingType } from '../holding-currency';
 import { accounts, type HoldingRow, holdings, pricePoints, transactions } from '../../db/schema';
 
 // The next free grid slot for a new holding under one account: one past that
@@ -354,6 +355,10 @@ export const holdingsRepo = {
         throw new Error(
           'holdingsRepo.create: opening balance currency does not match the holding currency',
         );
+      }
+
+      if (!isCurrencyAllowedForHoldingType(input.type, input.currency)) {
+        throw new Error(`holdingsRepo.create: a cash holding cannot hold ${input.currency}`);
       }
 
       const holdingId = id();

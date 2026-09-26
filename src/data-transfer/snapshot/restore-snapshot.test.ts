@@ -392,6 +392,46 @@ describe('restoreDataSnapshot', () => {
   // keys — SQLite then defaults the missing columns itself (null / false),
   // exactly like every other nullable column added after `transactions` first
   // shipped (`counterIban`, `changeGroupId`).
+  it('rejects a snapshot with a cash holding in a crypto currency, deleting and inserting nothing', async () => {
+    const touchedTables: string[] = [];
+    mockDatabaseTransaction = {
+      delete: (table: unknown) => {
+        touchedTables.push(tableNameOf(table));
+
+        return Promise.resolve();
+      },
+      insert: (table: unknown) => ({
+        values: () => {
+          touchedTables.push(tableNameOf(table));
+
+          return Promise.resolve();
+        },
+      }),
+    };
+
+    await expect(
+      restoreDataSnapshot({
+        ...emptySnapshot,
+        accounts: [{ id: 'a1', kind: 'cash' }] as never,
+        holdings: [
+          { id: 'h1', accountId: 'a1', type: 'cash', currency: 'UAH' },
+          { id: 'h2', accountId: 'a1', type: 'cash', currency: 'BTC' },
+        ] as never,
+      }),
+    ).rejects.toThrow(/^data-transfer\/crypto-cash-holding: .*BTC/);
+    expect(touchedTables).toEqual([]);
+  });
+
+  it('restores a crypto currency on a crypto_asset holding', async () => {
+    const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+    const cryptoHolding = { id: 'h1', accountId: 'a1', type: 'crypto_asset', currency: 'BTC' };
+
+    await restoreDataSnapshot({ ...emptySnapshot, holdings: [cryptoHolding] as never });
+
+    expect(insertedRows.holdings).toEqual([expect.objectContaining(cryptoHolding)]);
+  });
+
   it('restores a legacy transaction row with no loan-link keys unchanged', async () => {
     const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;
