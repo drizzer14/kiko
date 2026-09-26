@@ -184,7 +184,7 @@ The established patterns grouped under this heading:
   it drops out of that scope — union it back in from wherever its
   display data lives (Statistics: `categoryByKey`), rather than pruning
   the selection or letting the row vanish so the user can never find
-  it to uncheck (review decision 17: `statistics.screen.tsx`'s
+  it to uncheck (`statistics.screen.tsx`'s
   `categoryOptions` and its twin, `trend-filter-field.component.tsx`'s
   `manualRows`, which has no display data for a hidden key and falls
   back to the bare slug as its label).
@@ -193,8 +193,8 @@ The established patterns grouped under this heading:
   action, so it follows the same form validation model as a Save
   button: always enabled, never `disabled={... || field.trim() ===
   ''}`. A blank required field shows its own `*RequiredError` message
-  (via the field's `error` prop) on a Connect press instead (review
-  decision 15) — `disabled` stays reserved for the field's own
+  (via the field's `error` prop) on a Connect press instead —
+  `disabled` stays reserved for the field's own
   in-flight `status.kind === 'checking'`.
 
 ## Field placeholder and error copy
@@ -220,8 +220,7 @@ adds its own key alongside them, in this same form:
 
 `KikoCalendar` (`src/calendar/kiko-calendar/`) starts its week on the
 DEVICE REGION's first weekday, like a native iOS calendar app — NOT
-the app language (review decision 23; the original plan's app-language
-ruling was superseded). `weekStartFor(region)`
+the app language. `weekStartFor(region)`
 (`src/calendar/week-start/`) maps a 2-letter region code to `0`
 (Sunday) or `1` (Monday) off the FULL current CLDR `weekData/firstDay`
 Sunday-first territory list (unicode-org/cldr-json,
@@ -283,8 +282,8 @@ new component can land between reviews of this skill:
   EXCEPTION to the ordinary "use `footer` only for a pinned
   always-reachable action" rule: it renders through the pinned
   `footer` slot even though it is not an action, because App Store
-  Guideline 5.6 review needs it reachable without scrolling (review
-  decision 21). There is no `fillHeight` prop — a screen whose content
+  Guideline 5.6 review needs it reachable without scrolling. There is
+  no `fillHeight` prop — a screen whose content
   is shorter than the viewport just leaves it top-anchored; nothing in
   this codebase pins non-footer content to the bottom.
 - **LoadingState** (`src/design-system/components/loading-state/`) —
