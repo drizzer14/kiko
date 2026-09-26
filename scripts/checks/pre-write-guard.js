@@ -395,6 +395,23 @@ function parseBlankLineSeparationCheckerOutput(stdout) {
   return findings;
 }
 
+// screen-imports.js's output is one `<path>:<line>: <specifier>` line per
+// violation — see its own `findViolations`. `<path>` can itself contain
+// colons on some systems, so the pattern anchors on the LAST `:<digits>: `
+// run, the same convention as the two parsers above.
+const SCREEN_IMPORTS_VIOLATION_LINE = /:(\d+): (.+)$/;
+
+function parseScreenImportsCheckerOutput(stdout) {
+  const findings = [];
+  for (const line of stdout.split('\n')) {
+    const match = SCREEN_IMPORTS_VIOLATION_LINE.exec(line);
+    if (match) {
+      findings.push({ line: Number(match[1]), matchedText: match[2] });
+    }
+  }
+  return findings;
+}
+
 // Finds the 1-based line of the `export` declaration that introduces
 // `name` — tried, in order, against every shape
 // one-component-per-file.ts's own `classifySlice` recognizes an EXPORTED
@@ -491,6 +508,14 @@ const NODE_RULES = [
         filePath,
         parseBlankLineSeparationCheckerOutput,
       ),
+  },
+  {
+    ruleId: 'kiko-no-cross-screen-import',
+    extensions: ['.ts', '.tsx'],
+    fix: 'move the shared module out of src/screens/ into src/design-system/components/ (a UI component) or the owning domain module (a hook/util), then import it from there — see the FieldTrigger precedent; if the module is really screen-owned, move the IMPORTER instead',
+    skill: 'kiko-design-system › Component set',
+    run: (filePath) =>
+      runSpawnedNodeChecker('screen-imports.js', filePath, parseScreenImportsCheckerOutput),
   },
 ];
 

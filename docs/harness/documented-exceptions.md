@@ -215,6 +215,24 @@ verified usage, not dead weight:
   `__tests__/pre-write-guard.test.ts`'s `kiko-blank-line-separation` case
   (via `pre-write-guard.sh`) — none of which Jest's static import graph
   makes Knip see as reachable.
+- **`knip.json` `ignore`**: `scripts/checks/screen-imports.js` — the same
+  shape as `blank-line-separation.js`/`import-order.js`/`kill-guard.js`
+  above. `scripts/checks/screen-imports.sh` reaches it only via a `node`
+  invocation (both its per-file mode and its project-wide mode), and
+  `scripts/checks/pre-write-guard.js` reaches it only via
+  `runSpawnedNodeChecker`'s own `spawnSync` — never a static `import`/
+  `require`, and never a package.json script Knip's static scan can see
+  (it mechanizes the pre-write-guard design spec's rule 12, "no import from
+  another screen's folder", wired into the pre-write guard's `NODE_RULES`
+  as `kiko-no-cross-screen-import`; it is guard-mode only for now — not yet
+  in `check:all`, so its project-wide mode has no package.json script
+  either), so Knip's reachability graph reports it as unused. Exercised
+  directly by `__tests__/screen-imports.test.ts`, which spawns
+  `screen-imports.sh` (and so `screen-imports.js`) as a subprocess, and by
+  a direct `node screen-imports.js` invocation in the same test file, and
+  by `__tests__/pre-write-guard.test.ts`'s `kiko-no-cross-screen-import`
+  case (via `pre-write-guard.sh`) — none of which Jest's static import
+  graph makes Knip see as reachable.
 - **`scripts/checks/full-word-identifiers.js`'s own `EXEMPTIONS` list**: an
   exact `(file path suffix, denylisted word, EXACT identifier name)`
   allowlist mechanizing kiko-code-style's "Full words in identifiers"

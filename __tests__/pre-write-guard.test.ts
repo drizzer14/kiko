@@ -1484,6 +1484,38 @@ describe('runNodeChecks (rule 11: blank-line-separation)', () => {
   });
 });
 
+// Rule 12: the REAL screen-imports.js checker against the mirrored tree —
+// only Semgrep is stubbed clean here, the same convention as rule 11 above.
+// This rule is Node-checked, not Semgrep, because Semgrep cannot resolve a
+// RELATIVE specifier ('../../b/y') against the importing file's own path
+// (spec deviation 1) — deciding "screen-a" vs "screen-b" requires exactly
+// that resolution.
+describe('runNodeChecks (rule 12: no-cross-screen-import)', () => {
+  it('denies an edit that adds a cross-screen import (kiko-no-cross-screen-import)', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'screens', 'a', 'forms', 'x.tsx');
+
+    const result = runGuard(
+      payloadFor('Write', {
+        file_path: targetFile,
+        content: "import { Thing } from '../../b/y';\n",
+      }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-no-cross-screen-import');
+    expect(reason).toContain('../../b/y');
+  });
+});
+
 // The override protocol: a rule-id-specific comment naming the rule and
 // carrying OVERRIDE(<reason>) — `nosemgrep: <id> OVERRIDE(reason) why` for
 // Semgrep rules, `kiko-override: <id> OVERRIDE(reason) why` for Node-checked
