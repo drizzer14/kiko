@@ -381,6 +381,20 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
                       )}
                       accessibilityLabel={category.title}
                     />
+                    {/* A small "loan payment" marker, uniform with Home's
+                      list row — shown regardless of `loanLinkSource` ('auto'
+                      or 'manual' read the same marker). No accessibility
+                      label: decorative, mirroring `SelectableRow`'s own
+                      checkmark glyph — the row's own accessible content
+                      already fully describes the transaction. */}
+                    {transactionRow.transaction.loanHoldingId != null && (
+                      <SymbolIcon
+                        name="link"
+                        size={theme.iconSizes.caption}
+                        tone="textSecondary"
+                        testID="ledger-row-loan-link-marker"
+                      />
+                    )}
                     <Box style={styles.rowDescription}>
                       <Text variant="body">{description}</Text>
                     </Box>

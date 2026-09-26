@@ -548,6 +548,35 @@ describe('HoldingDetailScreen', () => {
     expect(getByText('09:05')).toBeTruthy();
   });
 
+  it('shows a loan-link marker on a row carrying a loan link', async () => {
+    seed(cardHolding, [
+      {
+        id: 'x1',
+        amountMinorUnits: -5000,
+        time: 1,
+        description: 'Loan payment',
+        source: 'manual',
+        loanHoldingId: 'loan-1',
+      },
+    ]);
+
+    const { getAllByTestId } = await renderScreen();
+    const ledgerRow = getAllByTestId('ledger-row')[0];
+
+    expect(within(ledgerRow).queryByTestId('ledger-row-loan-link-marker')).toBeTruthy();
+  });
+
+  it('shows no loan-link marker on an unlinked row', async () => {
+    seed(cardHolding, [
+      { id: 'x1', amountMinorUnits: -5000, time: 1, description: 'Coffee', source: 'manual' },
+    ]);
+
+    const { getAllByTestId } = await renderScreen();
+    const ledgerRow = getAllByTestId('ledger-row')[0];
+
+    expect(within(ledgerRow).queryByTestId('ledger-row-loan-link-marker')).toBeNull();
+  });
+
   it('right-aligns the stored transaction row timestamp so it sits below the value, like Home', async () => {
     const at = new Date(2024, 0, 15, 9, 5).getTime();
     seed(cardHolding, [
