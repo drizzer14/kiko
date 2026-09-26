@@ -165,7 +165,7 @@ export const en = {
     // seeded default-category display names above).
     addCategory: 'Add category',
     changeIconLabel: 'Change {{title}} icon',
-    chooseIconHeading: 'Choose Icon',
+    chooseIconHeading: 'Icon',
     chooseNewIconLabel: 'Choose new category icon',
     colorLabel: 'Color',
     deleteLabel: 'Delete {{title}}',
@@ -861,16 +861,15 @@ export const en = {
     unrecognizedFormat:
       "We don't recognize this file's format. Kiko can import statements from: {{formats}}.",
     // The field's own caption — a plain noun, like every other field label
-    // on this screen (see `columnMapping.dateColumn`'s own "Date"), not the
-    // imperative "Choose a holding" the sheet title below already carries;
-    // repeating the same phrase as BOTH the caption and the closed field's
-    // own placeholder read as the same line twice.
+    // on this screen (see `columnMapping.dateColumn`'s own "Date"); repeating
+    // the same phrase as BOTH the caption and the closed field's own
+    // placeholder read as the same line twice.
     chooseHolding: 'Holding',
     // The target-holding sheet's own header — a sheet title, Title Case —
     // kept separate from `chooseHolding` above (a field label on the same
     // screen, sentence case): see `accountDetail.addBankSheetTitle` for the
     // identical split.
-    chooseHoldingSheetTitle: 'Choose a Holding',
+    chooseHoldingSheetTitle: 'Holding',
     // The field's own "nothing picked yet" value: never `chooseHolding`
     // repeated verbatim — the established "Select a …" copy style shared
     // with `columnMapping.dateColumnPlaceholder` and its siblings.

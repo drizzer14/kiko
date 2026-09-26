@@ -149,7 +149,7 @@ export const uk: typeof en = {
     // seeded default-category display names above).
     addCategory: 'Додати категорію',
     changeIconLabel: 'Змінити іконку {{title}}',
-    chooseIconHeading: 'Оберіть іконку',
+    chooseIconHeading: 'Іконка',
     chooseNewIconLabel: 'Обрати іконку нової категорії',
     colorLabel: 'Колір',
     deleteLabel: 'Видалити {{title}}',
@@ -715,7 +715,7 @@ export const uk: typeof en = {
     unrecognizedFormat:
       'Ми не розпізнаємо формат цього файлу. Кіко вміє імпортувати виписки з: {{formats}}.',
     chooseHolding: 'Актив',
-    chooseHoldingSheetTitle: 'Оберіть актив',
+    chooseHoldingSheetTitle: 'Актив',
     chooseHoldingPlaceholder: 'Оберіть актив',
     chooseHoldingError: 'Актив для імпорту не вибрано.',
     createNewHolding: 'Створити актив',
