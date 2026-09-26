@@ -34,7 +34,7 @@ const isPositiveInteger = (value: unknown): value is number =>
 const isReducedShare = (numerator: number, denominator: number): boolean =>
   numerator <= denominator && greatestCommonDivisor(numerator, denominator) === 1;
 
-const sameShare = (first: OwnershipShare, second: OwnershipShare): boolean =>
+export const sameShare = (first: OwnershipShare, second: OwnershipShare): boolean =>
   first.numerator === second.numerator && first.denominator === second.denominator;
 
 const shareOf = ({ numerator, denominator }: OwnershipShare): OwnershipShare => ({

@@ -294,9 +294,9 @@ export const propertyCategoryOf = (metadata: unknown): PropertyCategory => {
 
 // How the user last typed the share; it only picks the form's input mode and
 // the detail line's wording, never the value.
-const ownershipInputs = ['percent', 'fraction'] as const;
+export const ownershipInputs = ['percent', 'fraction'] as const;
 
-type OwnershipInput = (typeof ownershipInputs)[number];
+export type OwnershipInput = (typeof ownershipInputs)[number];
 
 const isOwnershipInput = (value: unknown): value is OwnershipInput =>
   typeof value === 'string' && (ownershipInputs as readonly string[]).includes(value);

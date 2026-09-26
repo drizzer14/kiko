@@ -1004,7 +1004,9 @@ new component can land between reviews of this skill:
     `src/screens/forms/holding-form/bond/bond-isin-section/`); the Loan
     form's schedule selector (`LoanSection` — `none` hides the
     rate/term fields); the Lot form's Buy/Sell toggle (`LotFormScreen`
-    — Buy alone shows the Total-cost field); the account-detail crypto
+    — Buy alone shows the Total-cost field); the property form's
+    ownership Percent/Fraction mode (`OwnershipField` — Percent shows one
+    field, Fraction two); the account-detail crypto
     sync form's Wallet/Binance source toggle (`CryptoSyncForm` — each
     shows a different credential field); the Statistics trend-filter
     sheet's Top/Manual mode (`TrendFilterField` — Top shows the

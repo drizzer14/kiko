@@ -224,9 +224,8 @@ for a missing/unrecognized value — independent of the strict
 all-or-nothing `asPropertyMeta` parse `usePropertyFields`'s `seed`
 still uses for the holding's `lots`.
 `src/screens/forms/holding-form/property/property-section/` is now
-just the Cost field (create-only); `PropertyFormBlock` mounts it (and
-its own "Details" heading) only in create mode, since nothing else is
-left to show there in edit mode. One lot
+just the Cost field (create-only); `PropertyFormBlock` mounts it only
+in create mode. One lot
 plus one manual price point equal to that cost is what
 `usePropertyFields`'s own `createPayload`
 (`src/screens/forms/holding-form/property/use-property-fields/`)
@@ -234,6 +233,31 @@ builds from it on save, via `holdingsRepo.create`'s
 `firstPricePoint` param — see `kiko-pricing`'s "Creating and clearing
 a priced holding's price series" section for the create/remove
 symmetry.
+
+**Ownership field.** `OwnershipField`
+(`src/screens/forms/holding-form/property/ownership-field/`) renders
+in `PropertyFormBlock` on create AND edit for every category but
+`loan_given` (`ownershipApplies`); an edited loan given shows no
+block at all. A `SegmentedControl` Percent | Fraction (it changes
+which fields show) sits under an "Ownership" `FieldLabel`; Percent is
+one "Share" field with a `%` suffix (up to 2 decimals), Fraction is a
+"Share" and an "Out of" field stacked (whole numbers). The value is
+checked by `parsePercentShare`/`parseFractionShare`
+(`src/holdings/ownership/`); `0`, above 100%, or `n > d` blocks Save
+with `ownershipError`. Create defaults to 100% and writes NO
+`ownership`/`ownershipInput` key at 100%; any other share writes one
+change dated the lot day plus `ownershipInput` (the picked mode). Edit
+pre-fills the stored mode and the share in effect today
+(`ownershipAt`); an "Effective from" `DateField` (default today)
+appears only once the typed share differs, and Save records it through
+`withOwnershipChange` (a same-day change is replaced, a change equal to
+the share already in effect is dropped), keeping earlier changes. A
+percent that shows the same rounded value as the share in effect
+(`33.33` for 1/3) counts as unchanged (`enteredShare`,
+`property-ownership.ts`), so re-saving never records 3333/10000. A
+category switch keeps the stored list, even to `loan_given`, which
+hides the field and ignores the list. This form never edits or
+deletes a past change.
 `src/screens/forms/holding-form/metal/metal-section/metal-section.component.tsx`
 is the `metal` create-form section: a
 physical-form `ChipRow`, a unit `ChipRow`, a Purity `TextField`

@@ -318,6 +318,13 @@ export const uk: typeof en = {
       metalUnitOz: 'Тройські унції',
       monthly: 'Щомісяця',
       namePlaceholder: 'Акції Apple',
+      ownership: 'Частка власності',
+      ownershipDenominator: 'З',
+      ownershipEffectiveDate: 'Діє з',
+      ownershipError: 'Введіть частку більше 0 і не більше 100%.',
+      ownershipFraction: 'Дріб',
+      ownershipNumerator: 'Частка',
+      ownershipPercent: 'Відсоток',
       propertyCategory: {
         businessShare: 'Частка в бізнесі',
         loanGiven: 'Позика',

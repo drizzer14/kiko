@@ -372,6 +372,13 @@ export const en = {
       metalUnitOz: 'Troy ounces',
       monthly: 'Monthly',
       namePlaceholder: 'Apple shares',
+      ownership: 'Ownership',
+      ownershipDenominator: 'Out of',
+      ownershipEffectiveDate: 'Effective from',
+      ownershipError: 'Enter a share above 0 and up to 100%.',
+      ownershipFraction: 'Fraction',
+      ownershipNumerator: 'Share',
+      ownershipPercent: 'Percent',
       propertyCategory: {
         businessShare: 'Business share',
         loanGiven: 'Loan given',

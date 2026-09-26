@@ -1667,6 +1667,179 @@ describe('HoldingFormScreen property', () => {
   });
 });
 
+describe('HoldingFormScreen property ownership', () => {
+  const firstDay = Date.UTC(2024, 0, 1);
+  const storedLots = [{ day: firstDay, quantityDelta: '1', costMinorUnits: 900_000 }];
+  const sharedApartment = (metadata: Record<string, unknown> = {}) => ({
+    id: 'h1',
+    accountId: 'acc-1',
+    name: 'Apartment',
+    type: 'property_item',
+    currency: 'UAH',
+    balanceMinorUnits: 0,
+    icon: null,
+    color: null,
+    metadata: {
+      category: 'real_estate',
+      lots: storedLots,
+      ownership: [{ day: firstDay, numerator: 1, denominator: 3 }],
+      ownershipInput: 'fraction',
+      ...metadata,
+    },
+  });
+  const createdMetadata = (): Record<string, unknown> => createMock.mock.calls[0][0].metadata;
+  const savedMetadata = (): Record<string, unknown> => updateDeltaMock.mock.calls[0][1].metadata;
+
+  beforeEach(() => {
+    createMock.mockClear();
+    navigation.goBack.mockClear();
+    updateDeltaMock.mockClear();
+    mockAccountKind = 'property';
+    mockAccountInstitution = null;
+  });
+
+  const fillNewProperty = async (screen: Screen): Promise<void> => {
+    await fill(screen, 'Name', 'Apartment');
+    await fill(screen, 'Cost', '9000');
+  };
+
+  it('creates a property at 50% with one change on the lot day', async () => {
+    const screen = await renderScreen();
+
+    await fillNewProperty(screen);
+    await fill(screen, 'Share', '50');
+    await fireEvent.press(screen.getByText('Save'));
+
+    const metadata = createdMetadata() as { lots: { day: number }[] };
+    expect(metadata).toEqual(
+      expect.objectContaining({
+        ownership: [{ day: metadata.lots[0].day, numerator: 1, denominator: 2 }],
+        ownershipInput: 'percent',
+      }),
+    );
+  });
+
+  it('creates a property at a third typed as a fraction', async () => {
+    const screen = await renderScreen();
+
+    await fillNewProperty(screen);
+    await fireEvent.press(screen.getByText('Fraction'));
+    await fill(screen, 'Share', '1');
+    await fill(screen, 'Out of', '3');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createdMetadata()).toEqual(
+      expect.objectContaining({
+        ownership: [{ day: expect.any(Number), numerator: 1, denominator: 3 }],
+        ownershipInput: 'fraction',
+      }),
+    );
+  });
+
+  it('writes no ownership key for the default 100%', async () => {
+    const screen = await renderScreen();
+
+    expect(screen.getByLabelText('Share').props.value).toBe('100');
+
+    await fillNewProperty(screen);
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createdMetadata()).not.toHaveProperty('ownership');
+    expect(createdMetadata()).not.toHaveProperty('ownershipInput');
+  });
+
+  it.each([
+    ['percent', '0', ''],
+    ['percent', '101', ''],
+    ['fraction', '2', '1'],
+  ])('blocks save on a %s share of %s %s', async (mode, share, outOf) => {
+    const screen = await renderScreen();
+
+    await fillNewProperty(screen);
+
+    if (mode === 'fraction') {
+      await fireEvent.press(screen.getByText('Fraction'));
+      await fill(screen, 'Out of', outOf);
+    }
+    await fill(screen, 'Share', share);
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Enter a share above 0 and up to 100%.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('pre-fills the stored input form and the share in effect on edit', async () => {
+    const screen = await renderEdit(sharedApartment());
+
+    expect(screen.getByLabelText('Share').props.value).toBe('1');
+    expect(screen.getByLabelText('Out of').props.value).toBe('3');
+    expect(screen.queryByLabelText('Effective from')).toBeNull();
+  });
+
+  it('keeps the stored list unchanged when the share is saved as it was', async () => {
+    const screen = await renderEdit(sharedApartment());
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(savedMetadata()).toEqual({
+      category: 'real_estate',
+      lots: storedLots,
+      ownership: [{ day: firstDay, numerator: 1, denominator: 3 }],
+      ownershipInput: 'fraction',
+    });
+  });
+
+  it('appends a change effective from a picked past day, keeping the earlier one', async () => {
+    const screen = await renderEdit(sharedApartment());
+
+    await fill(screen, 'Out of', '2');
+    await pickDate(screen, 'Effective from', 2025, 6, 1);
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(savedMetadata()).toEqual(
+      expect.objectContaining({
+        ownership: [
+          { day: firstDay, numerator: 1, denominator: 3 },
+          { day: Date.UTC(2025, 5, 1), numerator: 1, denominator: 2 },
+        ],
+        ownershipInput: 'fraction',
+      }),
+    );
+  });
+
+  it('hides the field for a loan given and writes no key on create', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByTestId('property-category-field'));
+    await fireEvent.press(screen.getByTestId('property-category-field-option-loan_given'));
+
+    expect(screen.queryByText('Ownership')).toBeNull();
+
+    await fillNewProperty(screen);
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createdMetadata()).not.toHaveProperty('ownership');
+  });
+
+  it('keeps the stored list when the category switches to one that hides the field', async () => {
+    const screen = await renderEdit(sharedApartment());
+
+    await fireEvent.press(screen.getByTestId('property-category-field'));
+    await fireEvent.press(screen.getByTestId('property-category-field-option-loan_given'));
+
+    expect(screen.queryByLabelText('Share')).toBeNull();
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(savedMetadata()).toEqual({
+      category: 'loan_given',
+      lots: storedLots,
+      ownership: [{ day: firstDay, numerator: 1, denominator: 3 }],
+      ownershipInput: 'fraction',
+    });
+  });
+});
+
 // "Add new" holding launched from the statement-import
 // preview or Map Columns must end up SELECTED back there, not just created.
 describe('HoldingFormScreen create-and-return', () => {
