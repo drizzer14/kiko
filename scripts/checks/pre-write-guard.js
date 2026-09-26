@@ -35,7 +35,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { spawnSync } = require('node:child_process');
+const { spawn } = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 
@@ -43,15 +43,64 @@ const TIMEOUT_MILLISECONDS = Number(process.env.KIKO_PREWRITE_TIMEOUT_MS) || 250
 const DEADLINE = Date.now() + TIMEOUT_MILLISECONDS;
 
 // The remaining internal budget, in milliseconds, handed to a child's own
-// `spawnSync` `timeout` option — never the full per-hook budget again for a
-// second child, so a slow first child cannot let a second one blow past the
-// hook's own 30s ceiling. Floored at 1 so `spawnSync` (which treats 0 as
+// `spawn` `timeout` option — never the full per-hook budget again for a
+// later child, so children left running past a slow one cannot blow past the
+// hook's own 30s ceiling. Floored at 1 so `spawn` (which treats 0 as
 // "no timeout") always gets a real deadline.
 function remainingBudget() {
   return Math.max(1, DEADLINE - Date.now());
 }
 
 const EXCLUDED_PREFIXES = ['rules/fixtures/', 'node_modules/', 'ios/', 'android/'];
+
+// Runs one child process asynchronously (never spawnSync) and resolves once
+// it exits, with the SAME shape spawnSync's own return value has (`error`,
+// `status`, `signal`, `stdout`, `stderr`) — every existing spawnSync-shaped
+// check below (error/signal/status/stderr validation in runSemgrep and
+// runSpawnedNodeChecker) keeps working unchanged against it. This is what
+// lets Semgrep's one process and every Node-checker child run CONCURRENTLY
+// (Task 20's speed mitigation — see runNodeChecks below) instead of one
+// blocking the event loop for its own full lifetime before the next one even
+// starts: `spawnSync` cannot overlap two children in one process, `spawn`
+// can. `options.timeout`/`options.killSignal` behave exactly as they do for
+// spawnSync (a child that outlives the deadline is killed and reported back
+// with a non-null `signal`), so the fail-closed timeout contract is
+// unchanged. Settling exactly once — on whichever of 'error' or 'close'
+// fires first — matches Node's own documented caveat that a process which
+// fails to spawn may emit 'error' with no following 'close'.
+function spawnAsync(command, args, options) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+
+    let child;
+    try {
+      child = spawn(command, args, options);
+    } catch (error) {
+      settle({ error, status: null, signal: null, stdout: '', stderr: '' });
+      return;
+    }
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+    });
+    child.on('error', (error) => {
+      settle({ error, status: null, signal: null, stdout, stderr });
+    });
+    child.on('close', (code, signal) => {
+      settle({ error: null, status: code, signal, stdout, stderr });
+    });
+  });
+}
 
 // Reads the hook's tool_input JSON payload. Throws (SyntaxError) on
 // malformed JSON — the caller's fail-closed try/catch turns that into a
@@ -245,20 +294,26 @@ function buildFinding(temporaryRoot, result) {
 }
 
 // Runs Semgrep against the requested trees ('after', or ['before','after'])
-// with the pre-write rule set. The child runs with cwd = temporaryRoot and
-// is given targets RELATIVE to it ('after/<rel>', not an absolute path) —
-// this is what lets a path-keyed rule (for example rule 9's nav-layer
-// allowlist, or rule 12's screen-folder rule) evaluate against the file's
-// real repo-relative path instead of a throwaway scratch path, and lets
-// both trees stay reachable from the SAME cwd in one process when both are
-// requested. A missing/unreadable rules file, a Semgrep exit code other
-// than 0 (clean) or 1 (findings), a non-empty `errors[]` (Semgrep's own
-// signal that it could not evaluate a rule), a target missing from
-// `paths.scanned` (Semgrep silently skipped a target — a `paths.exclude`
-// pattern or a `.semgrepignore` entry would otherwise let a violation
-// through unseen), or a child killed by its own timeout all throw — caught
-// by the top-level fail-closed handler below.
-function runSemgrep(temporaryRoot, relativePath, trees) {
+// with the pre-write rule set. Async (spawnAsync, never spawnSync — see
+// `run` below, which starts this alongside the AFTER-tree `runNodeChecks`
+// call and awaits both together with `Promise.all`, Task 20's speed
+// mitigation: Semgrep and the Node checkers read the SAME already-written
+// mirrored trees and report independently of each other, so overlapping them
+// changes nothing about the result, only the wall time). The child runs
+// with cwd = temporaryRoot and is given targets RELATIVE to it
+// ('after/<rel>', not an absolute path) — this is what lets a path-keyed
+// rule (for example rule 9's nav-layer allowlist, or rule 12's
+// screen-folder rule) evaluate against the file's real repo-relative path
+// instead of a throwaway scratch path, and lets both trees stay reachable
+// from the SAME cwd in one process when both are requested. A
+// missing/unreadable rules file, a Semgrep exit code other than 0 (clean) or
+// 1 (findings), a non-empty `errors[]` (Semgrep's own signal that it could
+// not evaluate a rule), a target missing from `paths.scanned` (Semgrep
+// silently skipped a target — a `paths.exclude` pattern or a
+// `.semgrepignore` entry would otherwise let a violation through unseen), or
+// a child killed by its own timeout all throw — caught by the top-level
+// fail-closed handler below.
+async function runSemgrep(temporaryRoot, relativePath, trees) {
   const rulesPath =
     process.env.KIKO_PREWRITE_RULES || path.join(ROOT, 'rules', 'semgrep-prewrite.yml');
   fs.accessSync(rulesPath, fs.constants.R_OK);
@@ -267,12 +322,11 @@ function runSemgrep(temporaryRoot, relativePath, trees) {
   const posixRelativePath = relativePath.split(path.sep).join('/');
   const targets = trees.map((tree) => `${tree}/${posixRelativePath}`);
 
-  const childResult = spawnSync(
+  const childResult = await spawnAsync(
     semgrepBinary,
     ['--metrics', 'off', '--quiet', '--json', '--disable-nosem', '--config', rulesPath, ...targets],
     {
       cwd: temporaryRoot,
-      encoding: 'utf8',
       timeout: remainingBudget(),
     },
   );
@@ -300,23 +354,29 @@ function runSemgrep(temporaryRoot, relativePath, trees) {
   return (parsed.results || []).map((result) => buildFinding(temporaryRoot, result));
 }
 
-// Spawns one Node checker script (import-order.js or full-word-
-// identifiers.js — never one-component-per-file.ts, which runs in-process
-// below) against a single mirrored file. Mirrors runSemgrep's exit-code
-// contract: 0 is clean, 1 means `parseOutput` should read the checker's own
-// stdout; any other code (a crash, a stub standing in for one in a test)
-// throws, caught by the top-level fail-closed handler in `run`. A crashing
-// checker (a syntax error, an uncaught exception) can ALSO exit 1 — the same
-// code a real violation report uses — so exit 1 alone is not proof of a real
-// finding: any stderr output, or an exit-1 stdout that `parseOutput` reads as
-// zero findings, throws too, instead of silently parsing to an empty
-// Finding[] that would let a broken checker disable its own rule unnoticed.
-function runSpawnedNodeChecker(scriptName, filePath, parseOutput) {
+// Spawns one Node checker script (import-order.js, full-word-identifiers.js,
+// blank-line-separation.js, or screen-imports.js — never
+// one-component-per-file.ts, which runs in-process below) against a single
+// mirrored file. Async (spawnAsync, never spawnSync): `runNodeChecks` below
+// fires every applicable rule's `run` at once and awaits them together with
+// `Promise.all`, which is what lets 2 or more checkers overlap on the same
+// mirrored file INSTEAD OF one blocking the event loop for its own full
+// runtime before the next one even starts — the Task 20 speed mitigation (a
+// large real .tsx file's checkers otherwise summed past the 3s target).
+// Mirrors runSemgrep's exit-code contract: 0 is clean, 1 means `parseOutput`
+// should read the checker's own stdout; any other code (a crash, a stub
+// standing in for one in a test) throws, caught by the top-level fail-closed
+// handler in `run`. A crashing checker (a syntax error, an uncaught
+// exception) can ALSO exit 1 — the same code a real violation report uses —
+// so exit 1 alone is not proof of a real finding: any stderr output, or an
+// exit-1 stdout that `parseOutput` reads as zero findings, throws too,
+// instead of silently parsing to an empty Finding[] that would let a broken
+// checker disable its own rule unnoticed.
+async function runSpawnedNodeChecker(scriptName, filePath, parseOutput) {
   const nodeBinary = process.env.KIKO_PREWRITE_NODE_BIN || 'node';
   const scriptPath = path.join(ROOT, 'scripts', 'checks', scriptName);
 
-  const childResult = spawnSync(nodeBinary, [scriptPath, filePath], {
-    encoding: 'utf8',
+  const childResult = await spawnAsync(nodeBinary, [scriptPath, filePath], {
     timeout: remainingBudget(),
   });
 
@@ -525,16 +585,26 @@ const NODE_RULES = [
 // twice by `run` below (AFTER first; BEFORE only when AFTER already has a
 // finding, so a clean edit never pays for a BEFORE pass it cannot possibly
 // need — see the "New-findings-only comparison" section normalizeText/
-// findingKeys implement for Semgrep, applied the same way here).
+// findingKeys implement for Semgrep, applied the same way here). The
+// applicable rules' `run` calls are started together and awaited with
+// `Promise.all` (Task 20's speed mitigation) rather than one after another
+// in a loop — each rule only ever reads the SAME already-written mirrored
+// file and reports its own findings independently of every other rule, so
+// running them concurrently changes nothing about the result, only the wall
+// time. `Promise.all` preserves the SAME per-rule result order the old
+// sequential loop produced (array order, not completion order), so
+// `findings`' order — and therefore `findingKeys`' occurrence numbering — is
+// unchanged.
 async function runNodeChecks(temporaryRoot, relativePath, tree) {
   const filePath = path.join(temporaryRoot, tree, relativePath);
   const extension = path.extname(relativePath);
+  const applicableRules = NODE_RULES.filter((rule) => rule.extensions.includes(extension));
+
+  const resultsByRule = await Promise.all(applicableRules.map((rule) => rule.run(filePath)));
+
   const findings = [];
-
-  for (const rule of NODE_RULES) {
-    if (!rule.extensions.includes(extension)) continue;
-
-    const ruleFindings = await rule.run(filePath);
+  resultsByRule.forEach((ruleFindings, ruleIndex) => {
+    const rule = applicableRules[ruleIndex];
     for (const finding of ruleFindings) {
       findings.push({
         ruleId: rule.ruleId,
@@ -546,7 +616,7 @@ async function runNodeChecks(temporaryRoot, relativePath, tree) {
         skill: rule.skill,
       });
     }
-  }
+  });
 
   return findings;
 }
@@ -697,15 +767,22 @@ async function run() {
     // An empty BEFORE tree can have no findings at all — skip scanning it
     // and spend the ONE Semgrep process this hook budgets for on the AFTER
     // tree alone, which is trivially every new finding there is.
+    //
+    // The Node checkers (rules 4, 5, 6, 11, 12) run AFTER first; a clean
+    // AFTER can have no new finding, so BEFORE is only worth the extra
+    // process when AFTER already found something to diff against. Semgrep
+    // and the AFTER-tree Node checkers are independent of each other (both
+    // only read the mirrored trees `writeMirroredTrees` already wrote, and
+    // their findings are only ever concatenated, never order-dependent), so
+    // they run TOGETHER here (Task 20's speed mitigation) instead of one
+    // waiting on the other.
     const trees = beforeText === '' ? ['after'] : ['before', 'after'];
-    const rawFindings = runSemgrep(temporaryRoot, relativePath, trees);
+    const [rawFindings, afterNodeFindings] = await Promise.all([
+      runSemgrep(temporaryRoot, relativePath, trees),
+      runNodeChecks(temporaryRoot, relativePath, 'after'),
+    ]);
     const beforeFindings = rawFindings.filter((finding) => finding.tree === 'before');
     const afterFindings = rawFindings.filter((finding) => finding.tree === 'after');
-
-    // The Node checkers (rules 4, 5, 6) run AFTER first; a clean AFTER can
-    // have no new finding, so BEFORE is only worth the extra process when
-    // AFTER already found something to diff against.
-    const afterNodeFindings = await runNodeChecks(temporaryRoot, relativePath, 'after');
     const beforeNodeFindings =
       afterNodeFindings.length > 0
         ? await runNodeChecks(temporaryRoot, relativePath, 'before')

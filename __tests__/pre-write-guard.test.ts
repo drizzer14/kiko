@@ -1902,3 +1902,94 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
     expect(reason).toContain('kiko-no-switch');
   });
 });
+
+// Task 20 (speed measurement): on a large real .tsx file, the 4 spawned Node
+// checkers (import-order, full-word-identifiers, blank-line-separation,
+// screen-imports) running one after another via spawnSync pushed p50/p95
+// past the 3s target. The mitigation is to run them concurrently instead
+// (spawn, not spawnSync) — same results, since each checker only ever reads
+// the SAME mirrored file and reports its own findings independently of the
+// others. This stub sleeps a fixed duration per invocation so the test can
+// tell "ran one after another" (roughly 4x the sleep) from "ran together"
+// (roughly ONE sleep) by wall-clock alone, without depending on real
+// checker runtimes that could vary by machine.
+describe('runNodeChecks concurrency (Task 20 speed mitigation)', () => {
+  function writeSleepingNodeStub(directory: string): string {
+    const stubPath = join(directory, 'node-sleep-stub.sh');
+    writeFileSync(
+      stubPath,
+      ['#!/usr/bin/env bash', 'sleep "$NODE_STUB_SLEEP_SECONDS"', 'exit 0', ''].join('\n'),
+    );
+    chmodSync(stubPath, 0o755);
+
+    return stubPath;
+  }
+
+  const cleanComponentContent = [
+    "import type { FC } from 'react';",
+    "import { Text } from 'react-native';",
+    '',
+    'const ExampleComponent: FC = () => {',
+    '  return <Text>Example</Text>;',
+    '};',
+    '',
+    'export default ExampleComponent;',
+    '',
+  ].join('\n');
+
+  it('runs the 4 spawned AFTER-tree Node checkers concurrently, not one after another', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const semgrepStub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const nodeStub = writeSleepingNodeStub(project);
+    const targetFile = join(project, 'src', 'component', 'component.tsx');
+
+    const startTime = Date.now();
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: cleanComponentContent }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: semgrepStub,
+        KIKO_PREWRITE_RULES: rules,
+        KIKO_PREWRITE_NODE_BIN: nodeStub,
+        NODE_STUB_SLEEP_SECONDS: '1',
+      }),
+    );
+    const durationMilliseconds = Date.now() - startTime;
+
+    expect(result.status).toBe(0);
+    // Sequential: 4 * 1s of stub sleep alone is >= 4000ms. Concurrent: the
+    // whole AFTER-tree Node-check phase takes roughly ONE sleep.
+    expect(durationMilliseconds).toBeGreaterThanOrEqual(900);
+    expect(durationMilliseconds).toBeLessThan(2500);
+  });
+
+  it('runs Semgrep concurrently with the AFTER-tree Node checkers, not one after the other', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const semgrepStub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const nodeStub = writeSleepingNodeStub(project);
+    const targetFile = join(project, 'src', 'component', 'component.tsx');
+
+    const startTime = Date.now();
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: cleanComponentContent }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: semgrepStub,
+        KIKO_PREWRITE_RULES: rules,
+        KIKO_PREWRITE_NODE_BIN: nodeStub,
+        NODE_STUB_SLEEP_SECONDS: '1',
+        STUB_SLEEP: '1',
+      }),
+    );
+    const durationMilliseconds = Date.now() - startTime;
+
+    expect(result.status).toBe(0);
+    // Sequential: Semgrep's own 1s sleep, THEN the (already-concurrent) 1s
+    // Node-check phase, is roughly 2000ms. Concurrent: both phases overlap,
+    // so the whole guard invocation takes roughly ONE sleep.
+    expect(durationMilliseconds).toBeGreaterThanOrEqual(900);
+    expect(durationMilliseconds).toBeLessThan(1800);
+  });
+});
