@@ -9,7 +9,7 @@ describe('unistyles configuration', () => {
     // test asserts against (isolateModules gives the required graph fresh
     // copies distinct from the outer import).
     jest.isolateModules(() => {
-      const { darkTheme } = require('./theme');
+      const { darkTheme } = require('../theme');
       require('./unistyles');
 
       expect(configure).toHaveBeenCalledTimes(1);

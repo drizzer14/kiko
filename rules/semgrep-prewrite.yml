@@ -300,8 +300,8 @@ rules:
       skill: "kiko-design-system › Token categories"
     paths:
       exclude:
-        - "src/design-system/palette.ts"
-        - "src/design-system/theme.ts"
+        - "src/design-system/palette/palette.ts"
+        - "src/design-system/theme/theme.ts"
         - "*.test.ts"
         - "*.test.tsx"
     patterns:

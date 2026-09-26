@@ -1,4 +1,4 @@
-import { entityColorsDark } from './palette';
+import { entityColorsDark } from '../palette';
 
 // Entity-color derivations shared across the design system: resolving an
 // account/holding/category's effective hue (`resolveEntityColor`), the two

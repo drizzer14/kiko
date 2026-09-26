@@ -10,10 +10,10 @@
 // - systemBlue for the accent, systemGreen/systemRed for money tones
 // - separator for hairline borders
 //
-// The named entity-color and chart-series palettes live in ./palette
+// The named entity-color and chart-series palettes live in ../palette
 // (entityColorsDark, chartSeriesDark); the theme references those sets.
 
-import { chartSeriesDark, entityColorsDark } from './palette';
+import { chartSeriesDark, entityColorsDark } from '../palette';
 
 const spacing = (multiplier: number) => multiplier * 4;
 // `full` is a capsule/pill sentinel, not a fourth point value in the sm/md/lg

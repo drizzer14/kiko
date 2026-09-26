@@ -1,3 +1,5 @@
+import { darkTheme } from '../theme';
+
 import {
   darkenHex,
   entityIconTileGradient,
@@ -5,7 +7,6 @@ import {
   lightenHex,
   resolveEntityColor,
 } from './entity-tint';
-import { darkTheme } from './theme';
 
 describe('darkenHex', () => {
   it('moves every channel toward black by the given percent', () => {

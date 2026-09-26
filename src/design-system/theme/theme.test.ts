@@ -1,5 +1,6 @@
+import { chartSeriesDark, entityColorsDark } from '../palette';
+
 import { darkTheme } from './theme';
-import { chartSeriesDark, entityColorsDark } from './palette';
 
 describe('darkTheme iOS dark palette', () => {
   it('uses Apple dark system color values', () => {
