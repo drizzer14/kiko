@@ -720,8 +720,8 @@ new component can land between reviews of this skill:
   own field (`Text variant="caption" tone="negative"`, the same tone
   `FieldLabel`'s required asterisk uses) — never next to a footer Save
   button, and never a reserved-height slot: it fades in on failure and
-  the layout reflows, so a valid field shows no error node at all
-  (Option A, the current validation pattern; F4 Q1 answer). Every
+  the layout reflows, so a valid field shows no error node at all.
+  Every
   invalid field shows its OWN error at the same Save/Import press —
   each field's message is computed from ONLY that field's own inputs,
   gated by the attempted-save flag, never by comparing against a
@@ -755,8 +755,8 @@ new component can land between reviews of this skill:
   one shared "label left, value right" summary block: an optional `title`
   heading row, then a stack of `rows` (`{ key, label, value: ReactNode,
   testID? }`), each split `space-between`. Extracted from the
-  holding-detail deposit/bond value-breakdown block (device-feedback-
-  round-F1 item 3) — `HoldingDetailScreen` now renders its own
+  holding-detail deposit/bond value-breakdown block —
+  `HoldingDetailScreen` renders its own
   principal/gross/interest/tax/expected-profit rows through this, passing
   `<MoneyText money={...} tone={...} />` as each row's `value`, with NO
   visual change from before the extraction. The statement-import preview
@@ -814,18 +814,16 @@ new component can land between reviews of this skill:
   a rounded track one elevation step above the screen background
   (`theme.colors.surface`), holding N equal-width segments, with the
   SELECTED segment raised to `theme.colors.segmentSelected` — its own
-  token (F3 fix round 1, I3), not `surfaceHigh`, which fails the WCAG
+  token, not `surfaceHigh`, which fails the WCAG
   1.4.11 3:1 non-text-contrast floor against `surface`; read `theme.ts`'s
   own doc comment on `segmentSelected` for the current hex and measured
-  ratio rather than trusting a copy of either restated here (they drift —
-  a duplicate here was itself a documented fix-round-1 skill-drift finding,
-  N2). This is still NOT the app's other filled-accent selection
+  ratio rather than trusting a copy of either restated here (they drift).
+  This is still NOT the app's other filled-accent selection
   vocabulary (`ChipRow`/`SelectableRow`) — a segmented
   control reads as its own distinct iOS control. No segmented-control
-  NATIVE library is a dependency of this app (checked at F3 item 9); this
+  NATIVE library is a dependency of this app; this
   renders the same visual/interaction contract in plain
-  `Pressable`/`Box`/`Text` instead of adding one. Touch target (F3 fix
-  rounds 3-4): each segment `Pressable` is a REAL layout box with
+  `Pressable`/`Box`/`Text` instead of adding one. Touch target: each segment `Pressable` is a REAL layout box with
   `minHeight` 44pt and no `hitSlop` (`minHeight`, not `height`, so
   Dynamic Type can grow it). The native-matching visible track (32pt)
   and selected pill (24pt, a 4pt ring of track around it) are
@@ -853,12 +851,12 @@ new component can land between reviews of this skill:
   confirmed on a real device.
   Props: `options`/`selected`/`onSelect`/`labels`/`accessibilityLabel`
   (required — every segment folds it into its own `accessibilityHint`)
-  /`testID`. Accessibility (F3 fix round 2, M4): each segment keeps
+  /`testID`. Accessibility: each segment keeps
   `accessibilityRole="button"` with `accessibilityState={{ selected }}`
   — NOT `"tab"`/`"tablist"`, which RN 0.87 maps to NO accessibility trait
   on iOS (confirmed against `RCTViewManager`/Fabric's
-  `accessibilityPropsConversions` — only `"tabbar"` maps to a trait there
-  — a round-1 version of this component used `"tab"`/`"tablist"` and lost
+  `accessibilityPropsConversions` — only `"tabbar"` maps to a trait there.
+  A `"tab"`/`"tablist"` role loses
   the Button trait VoiceOver needs to announce "can be activated"); each
   segment's own `accessibilityLabel` is its visible text, and its
   `accessibilityHint` folds in the group's `accessibilityLabel` plus a
