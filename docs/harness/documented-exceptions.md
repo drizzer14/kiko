@@ -233,12 +233,6 @@ verified usage, not dead weight:
   by `__tests__/pre-write-guard.test.ts`'s `kiko-no-cross-screen-import`
   case (via `pre-write-guard.sh`) — none of which Jest's static import
   graph makes Knip see as reachable.
-- **`knip.json` `ignore`**: `scripts/checks/specifier-scanner.js` — the
-  specifier scanner shared by the Node import checkers. Its only importer
-  is `screen-imports.js` (a `require`), which is itself Knip-ignored
-  because it is reached only via `node`, so Knip's reachability graph never
-  reaches the scanner either. Exercised through that checker by
-  `__tests__/screen-imports.test.ts`.
 - **`scripts/checks/full-word-identifiers.js`'s own `EXEMPTIONS` list**: an
   exact `(file path suffix, denylisted word, EXACT identifier name)`
   allowlist mechanizing kiko-code-style's "Full words in identifiers"

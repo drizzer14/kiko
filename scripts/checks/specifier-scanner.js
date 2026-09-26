@@ -51,6 +51,19 @@ const isIdentifierChar = (character) => character !== undefined && /[A-Za-z0-9_$
 const REGEX_START_CONTEXT =
   /[([{,;:=!&|?+\-*%^~]$|^$|\b(?:return|typeof|instanceof|in|of|yield|throw|new|void|delete|case|do|else)$/;
 
+// Only the tail decides whether a '/' opens a regex literal. Trimming the
+// whole prefix on every '/' made a JSX-heavy file quadratic; 11 characters
+// hold the longest keyword plus the one before it that `\b` looks at.
+const precedesRegexLiteral = (resultSoFar) => {
+  let end = resultSoFar.length;
+
+  while (end > 0 && /\s/.test(resultSoFar[end - 1])) {
+    end -= 1;
+  }
+
+  return REGEX_START_CONTEXT.test(resultSoFar.slice(Math.max(0, end - 11), end));
+};
+
 const consumeRegexFlags = (source, at) => {
   let cursor = at;
 
@@ -120,7 +133,7 @@ const consumeNoiseSpan = (source, cursor, resultSoFar) => {
     return { text: template.text, end: template.end };
   }
 
-  if (character === '/' && REGEX_START_CONTEXT.test(resultSoFar.replace(/\s+$/, ''))) {
+  if (character === '/' && precedesRegexLiteral(resultSoFar)) {
     const stop = regexLiteralEnd(source, cursor);
 
     return { text: blankSpan(source, cursor, stop), end: stop };
@@ -221,12 +234,20 @@ const blankNoise = (source) => {
 // pattern's match starts on — used below to confirm the match is not
 // itself sitting inside a blanked (comment/string) span.
 const DEFAULT_PATTERNS = [
-  { keyword: 'import', pattern: /\bimport\b[^'"`;]*?\bfrom\s*['"]([^'"]+)['"]/g },
-  { keyword: 'export', pattern: /\bexport\b[^'"`;]*?\bfrom\s*['"]([^'"]+)['"]/g },
-  { keyword: 'import', pattern: /\bimport\s*\(\s*['"]([^'"]+)['"]/g },
-  { keyword: 'import', pattern: /\bimport\s*['"]([^'"]+)['"]/g },
-  { keyword: 'require', pattern: /\brequire\s*\(\s*['"]([^'"]+)['"]/g },
-  { keyword: 'jest.mock', pattern: /\bjest\.mock\s*\(\s*['"]([^'"]+)['"]/g },
+  {
+    keyword: 'import',
+    callKind: 'import',
+    pattern: /\bimport\b[^'"`;]*?\bfrom\s*['"]([^'"]+)['"]/g,
+  },
+  {
+    keyword: 'export',
+    callKind: 'export',
+    pattern: /\bexport\b[^'"`;]*?\bfrom\s*['"]([^'"]+)['"]/g,
+  },
+  { keyword: 'import', callKind: 'import', pattern: /\bimport\s*\(\s*['"]([^'"]+)['"]/g },
+  { keyword: 'import', callKind: 'import', pattern: /\bimport\s*['"]([^'"]+)['"]/g },
+  { keyword: 'require', callKind: 'require', pattern: /\brequire\s*\(\s*['"]([^'"]+)['"]/g },
+  { keyword: 'jest.mock', callKind: 'jest', pattern: /\bjest\.mock\s*\(\s*['"]([^'"]+)['"]/g },
 ];
 
 function lineNumberAt(source, index) {
@@ -242,7 +263,9 @@ function lineNumberAt(source, index) {
 }
 
 // Every specifier this file's source imports/requires/re-exports/mocks, in
-// file order, as { line, specifier }. A match whose own keyword is blanked
+// file order, as { line, specifier, callKind, statement } — `statement` is
+// the matched text, so a caller can tell a type-only import from a value
+// one. A match whose own keyword is blanked
 // in `blanked` (sitting inside a comment or a plain string that merely
 // contains import-looking text) is skipped; `seen` dedupes a specifier a
 // later, broader pattern in the list would otherwise also match (a bare
@@ -254,7 +277,7 @@ function findSpecifiers(source, patterns = DEFAULT_PATTERNS) {
   const found = [];
   const seen = new Set();
 
-  for (const { keyword, pattern } of patterns) {
+  for (const { keyword, callKind, pattern } of patterns) {
     pattern.lastIndex = 0;
     let match = pattern.exec(source);
 
@@ -266,7 +289,7 @@ function findSpecifiers(source, patterns = DEFAULT_PATTERNS) {
 
         if (!seen.has(key)) {
           seen.add(key);
-          found.push({ index: start, specifier: match[1] });
+          found.push({ index: start, specifier: match[1], callKind, statement: match[0] });
         }
       }
 
@@ -276,7 +299,12 @@ function findSpecifiers(source, patterns = DEFAULT_PATTERNS) {
 
   return found
     .sort((left, right) => left.index - right.index)
-    .map((entry) => ({ line: lineNumberAt(source, entry.index), specifier: entry.specifier }));
+    .map((entry) => ({
+      line: lineNumberAt(source, entry.index),
+      specifier: entry.specifier,
+      callKind: entry.callKind,
+      statement: entry.statement,
+    }));
 }
 
-module.exports = { DEFAULT_PATTERNS, blankNoise, findSpecifiers };
+module.exports = { DEFAULT_PATTERNS, findSpecifiers };
