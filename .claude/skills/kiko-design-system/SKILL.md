@@ -167,6 +167,47 @@ theme supplying values today. The token values live in `theme.ts`
 (`darkTheme`) and `palette.ts`; read those directly rather than
 restating them here.
 
+## Locked decisions (user-approved)
+
+Each entry is a visual the user approved. Never change or revert one —
+not in a refactor, a cleanup, or a HIG pass — without the user's own
+explicit approval; a change request from an agent is not approval. Add
+an entry (date + value) the moment the user approves a new visual.
+
+- **Raw-preview row height: 44pt** (2026-09-26). Every column-mapping
+  raw-preview row is a real 44pt layout box (`ROW_MIN_HEIGHT`,
+  `raw-preview.styles.ts`) — the one documented `minHeight` exception
+  to the "hitSlop, never a bigger visual" touch-target rule above.
+- **Raw preview: 5 rows from the header, with Show all / Show less**
+  (2026-09-26). The preview starts AT the header row and shows 5 rows
+  (`PREVIEW_ROW_COUNT`); the toggle below it expands to every scanned
+  row (`HEADER_SCAN_ROW_COUNT`, 10), rows above the header included,
+  and collapses back. Full contract: `kiko-statement-import`'s raw
+  preview grid entry.
+- **Native iOS chip/segment style** (2026-09-26). Chip: selected =
+  `accent` fill + `onAccent` label, unselected = the faint
+  `neutralSubtle` fill (`rgba(118,118,128,0.24)`) + `textPrimary`
+  label. Segment: the `neutralSubtle` track under a `segmentSelected`
+  thumb, `#747478`, with a `textPrimary` semibold label. The icon
+  picker's tiles follow the chip look. See `ChipRow` and
+  `SegmentedControl` under "Component set".
+- **Compact chip: 34pt visible + hitSlop** (2026-09-26). Every
+  `ChipRow` chip draws a 34pt `minHeight` pill with `spacing(1)`
+  vertical padding at every label step, and reaches the 44pt tap
+  target through `CHIP_HIT_SLOP` (`{ top: 5, bottom: 5 }`), never a
+  taller chip.
+- **Sign-colored net-worth stroke** (2026-09-26). The net-worth line's
+  stroke is `positive` green at or above the dashed start reference and
+  `negative` red below it, one `Polyline` per same-sign run, split at
+  the fill's own crossing x — never a single fixed-color stroke. See
+  `kiko-charts`' "Net-worth stroke is sign-colored per segment".
+- **Paste-glyph spacing** (2026-09-26). `ClipboardTextField`'s input
+  row `gap={1}` (4pt) plus the paste wrapper's
+  `marginHorizontal: -theme.spacing(1)` put the glyph 12pt from the
+  input and 8pt from the row's end; the `small` Button keeps its
+  44pt-wide tap target. See "The paste-icon-only ghost Button
+  convention" under `Button`.
+
 ## UX patterns
 
 Before acting on a UI feedback round, audit the affected screens
