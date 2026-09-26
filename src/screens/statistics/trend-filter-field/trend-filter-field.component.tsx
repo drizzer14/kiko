@@ -215,22 +215,13 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
 
   const isChecked = (key: string): boolean =>
     key === FILTER_ALL ? draft.manualKeys.size === 0 : draft.manualKeys.has(key);
-  // A saved manual key can be missing from `categoryOptions` (the range-scoped
-  // FilterMenu twin of this same gap — review decision 17): a category with no
-  // spending in the statistics screen's active range never reaches this list,
-  // so a previously-saved selection on it would otherwise render no row at
-  // all, and the user could never find it to uncheck. This component has no
-  // display data (title/icon/color) for a hidden key, so it renders as a
-  // bare, label-less row (falling back to its own slug as the label, the same
-  // as `option.label ?? option.value` below) rather than dropping it silently.
-  const hiddenManualKeys = [...draft.manualKeys].filter(
-    (key) => !categoryOptions.some((option) => option.value === key),
-  );
-  const manualRows: FilterOption[] = [
-    { value: FILTER_ALL },
-    ...categoryOptions,
-    ...hiddenManualKeys.map((key) => ({ value: key })),
-  ];
+  // A saved manual key with no spending in the screen's active range never
+  // reaches the range-scoped `categoryOptions` slices, but the caller
+  // (`statistics.screen.tsx`'s `categoryOptions`) already unions it back in
+  // from the categories table with its real title/icon/color — the same
+  // review-decision-17 union its `selectedCategories` twin already did — so
+  // this component never needs its own bare, label-less fallback row for it.
+  const manualRows: FilterOption[] = [{ value: FILTER_ALL }, ...categoryOptions];
   // Save stays disabled until the draft differs from the applied filter, so
   // pressing it can never re-persist the already-applied selection unchanged.
   const dirty = isDraftDirty(draft, filter);
