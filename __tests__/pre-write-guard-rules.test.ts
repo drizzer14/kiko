@@ -14,7 +14,19 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:f
 // a clear failure — never a silent pass — when semgrep is missing, the same
 // convention scripts/checks/security.sh and semgrep-rules.sh use.
 const SCRIPT = join(__dirname, '../scripts/checks/pre-write-guard.sh');
+const DISPATCH = join(__dirname, '../harness/kiko/hooks/dispatch.sh');
 const FIXTURES = join(__dirname, '../rules/fixtures');
+const REPOSITORY_ROOT = join(__dirname, '..');
+// I3: the coordinator's own session (and any subagent it starts) can have
+// CLAUDE_PROJECT_DIR pointed at a DIFFERENT checkout than the file being
+// edited — a subagent driven from the main checkout, editing a file in
+// THIS worktree, being the real case this guards against (see
+// harness/kiko/hooks/dispatch.sh's own header). A real `git worktree add`
+// is not created for this test (never create a git worktree); this
+// worktree's own relationship to the main checkout — a real linked
+// worktree sharing the SAME git common dir — already exists, so this test
+// points CLAUDE_PROJECT_DIR at it, read-only.
+const MAIN_CHECKOUT_ROOT = '/Users/drizzer14/Developer/Projects/pff-ios';
 
 // The first four were moved into rules/semgrep-prewrite.yml from
 // rules/semgrep-mobile.yml as part of the guard's own consolidation; every
@@ -154,5 +166,37 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     } finally {
       rmSync(project, { recursive: true, force: true });
     }
+  });
+
+  // I3: proves, THROUGH the dispatcher and the REAL guard, that a worktree
+  // edit is still checked when CLAUDE_PROJECT_DIR points at a DIFFERENT
+  // checkout (the exact shape the dispatcher exists to fix — see
+  // harness/kiko/hooks/dispatch.sh's own header). file_path sits inside
+  // THIS worktree (an existing src/ directory, never actually written to —
+  // the guard only ever writes into its own mkdtemp scratch tree), while
+  // CLAUDE_PROJECT_DIR is the main checkout, a DIFFERENT top-level
+  // directory. If the dispatcher fell back to resolving against
+  // CLAUDE_PROJECT_DIR instead of the file's own worktree, the guard's
+  // relativeInProject check would call this file "outside the project" and
+  // allow it unchecked; it must instead deny, exactly like the plain
+  // history-id test above.
+  it('denies through the dispatcher when CLAUDE_PROJECT_DIR points at a different checkout', () => {
+    const targetDirectory = join(REPOSITORY_ROOT, 'src', 'screens', 'statistics');
+    const targetFile = join(targetDirectory, 'new-probe-i3.test.tsx');
+    const content = [
+      '// T12 review round 3: this probe pins the regression the fix covers.',
+      'export const probeValue = 1;',
+      '',
+    ].join('\n');
+
+    const result = spawnSync('bash', [DISPATCH, 'pre-write-guard.sh'], {
+      input: payloadFor(targetFile, content),
+      encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: MAIN_CHECKOUT_ROOT },
+    });
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-no-history-id-comment');
   });
 });
