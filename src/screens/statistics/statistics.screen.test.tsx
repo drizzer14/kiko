@@ -722,7 +722,9 @@ describe('StatisticsScreen', () => {
     // top of this file; a real focus re-entry advances it, so drive that
     // here with a spy the test controls directly instead of a fake navigation
     // focus event.
-    const focusModule = jest.requireMock('../../design-system/use-focus-refreshed-now/use-focus-refreshed-now') as {
+    const focusModule = jest.requireMock(
+      '../../design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+    ) as {
       useFocusRefreshedNow: () => number;
     };
     const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
@@ -758,7 +760,9 @@ describe('StatisticsScreen', () => {
     });
     mockRunBackfill.mockReturnValueOnce(firstRun);
 
-    const focusModule = jest.requireMock('../../design-system/use-focus-refreshed-now/use-focus-refreshed-now') as {
+    const focusModule = jest.requireMock(
+      '../../design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+    ) as {
       useFocusRefreshedNow: () => number;
     };
     const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
@@ -816,7 +820,9 @@ describe('StatisticsScreen', () => {
     });
     mockRunBackfill.mockResolvedValueOnce({ state: 'failed', lastDay: null });
 
-    const focusModule = jest.requireMock('../../design-system/use-focus-refreshed-now/use-focus-refreshed-now') as {
+    const focusModule = jest.requireMock(
+      '../../design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+    ) as {
       useFocusRefreshedNow: () => number;
     };
     const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
@@ -854,7 +860,9 @@ describe('StatisticsScreen', () => {
       history: [],
     });
 
-    const focusModule = jest.requireMock('../../design-system/use-focus-refreshed-now/use-focus-refreshed-now') as {
+    const focusModule = jest.requireMock(
+      '../../design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+    ) as {
       useFocusRefreshedNow: () => number;
     };
     const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
