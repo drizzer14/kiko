@@ -129,15 +129,30 @@ native gradient extractor masks off any alpha embedded in an rgba()
 `stopColor` and substitutes `stopOpacity` (defaulting to fully opaque)
 instead, so an rgba() color alone silently renders fully opaque.
 
-## Net-worth stroke and area-fill opacity
+## Net-worth stroke is sign-colored per segment (approved visual)
 
-The net-worth line's `<Polyline>` STROKE is a single fixed
-`theme.colors.entityColors.white`, testID `net-worth-line-polyline` —
-only the area FILL below/above the dashed `startReference` baseline is
-sign-colored (green above, red below), via `toAreaPath`'s two clamped
-paths. A sign-colored stroke was tried and reverted (decision-review
-item 31): it added no readability the fill did not already give, and
-duplicated `toAreaPath`'s crossing-x math in a second builder.
+The net-worth line's `<Polyline>` STROKE is colored green
+(`theme.colors.positive`) where the line is at or above the dashed
+`startReference` baseline and red (`theme.colors.negative`) where it is
+below — the user-approved look, LOCKED: never replace it with a single
+fixed-color (white) stroke. `buildLineSegments`
+(`net-worth-line.component.tsx`) splits the plotted points into
+contiguous same-sign runs, one `<Polyline>` per run. It deliberately
+REUSES `toAreaPath`'s exact crossing-x formula so a segment's split
+lands at the identical x as the fill's own crossing, and the line and
+fill never visually disagree — read both functions together rather
+than assuming the stroke split is independently derived. The area
+FILL stays sign-colored too (green above, red below).
+
+The stroke `testID` is per segment,
+`net-worth-line-polyline-${segment.key}` — there is no single
+`net-worth-line-polyline`. Query it with a prefix match
+(`getAllByTestId(/^net-worth-line-polyline-/)`), the pattern
+`statistics.screen.test.tsx` and `net-worth-line.component.test.tsx`
+use. A non-crossing series renders as exactly one segment, so the
+prefix query also covers the common case.
+
+## Net-worth area-fill opacity
 
 The red/negative area gradient uses a HIGHER opacity than the
 green/positive one, not the same constant for both: alpha-compositing
@@ -151,9 +166,9 @@ restating them here.
 
 **Net worth can go negative** (see kiko-domain "Net worth"): a debt
 outweighing assets means the line can cross 0 — this
-needed NO change to `NetWorthLine` itself: `toAreaPath` already splits
-the fill on sign per crossing (above), which is exactly the "cross 0"
-case. The Y axis already floors to the series' own minimum (whatever
+needed NO change to `NetWorthLine` itself: `buildLineSegments` and
+`toAreaPath` already split the stroke and the fill on sign per crossing
+(above), which is exactly the "cross 0" case. The Y axis already floors to the series' own minimum (whatever
 that is, positive or negative), so a negative range draws correctly
 with no separate floor-at-0 logic to remove.
 

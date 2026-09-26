@@ -285,9 +285,10 @@ const buildXGridTicks = (scales: Scales): XTick[] => {
 // (the loading/empty state short-circuits the render), so `points[0]` is always
 // present here.
 // The four scaled coordinates of one adjacent point-pair (x1,y1,x2,y2, the
-// segment ending at `points[index]`) — `toAreaPath` below walks these
-// looking for a REFERENCE crossing, to insert an interpolated vertex at the
-// true crossing x.
+// segment ending at `points[index]`) — shared by every builder below that
+// walks adjacent points looking for a REFERENCE crossing (`toAreaPath`'s fill
+// boundary, `buildLineSegments`' stroke split): both derive the exact same
+// crossing-x formula from these same four numbers.
 const adjacentSegment = (
   points: NetWorthPoint[],
   scales: Scales,
@@ -330,9 +331,71 @@ export const toAreaPath = (
   return `M ${vertices.join(' L ')} L ${lastX},${referenceY} L ${firstX},${referenceY} Z`;
 };
 
-// The plain "x,y x,y ..." point list `Polyline` takes, in scaled pixel space.
-const toPolylinePoints = (points: NetWorthPoint[], scales: Scales): string =>
-  points.map((point) => `${scales.x(point.t)},${scales.y(point.amount)}`).join(' ');
+// Colors the net-worth STROKE by sign per segment — green where above the
+// dashed start reference, red where below — matching the FILL's own
+// crossing logic exactly rather than re-deriving it. Reuses the SAME
+// crossing-x interpolation `toAreaPath` above uses —
+// `x1 + (x2 - x1) * (referenceY - y1) / (y2 - y1)` — so a stroke segment's
+// split lands at the identical x as the fill's, and the line/fill never
+// visually disagree. `sideOfY` ties a point sitting exactly ON the
+// reference to 'above', the same inclusive convention `bandExtremes`'s
+// `aboveYs` filter uses below (`y <= referenceY`).
+type LineSegment = { key: string; side: 'above' | 'below'; points: string };
+
+const sideOfY = (y: number, referenceY: number): 'above' | 'below' =>
+  y <= referenceY ? 'above' : 'below';
+
+// Splits the plotted line into contiguous same-sign runs. A series that
+// never crosses the reference collapses to exactly ONE segment (the
+// degenerate/no-split case the fill also preserves); an empty `points` array
+// is guarded by the same caller precondition `toAreaPath` documents above.
+export const buildLineSegments = (
+  points: NetWorthPoint[],
+  scales: Scales,
+  referenceY: number,
+): LineSegment[] => {
+  // Never push the same "x,y" pair twice in a row — the crossing-x formula
+  // below degenerates to an EXISTING vertex's own x when that vertex already
+  // sits ON the reference (y1 === referenceY gives xCross = x1; y2 ===
+  // referenceY gives xCross = x2), which would otherwise duplicate it.
+  const pushVertex = (vertices: string[], x: number, y: number): void => {
+    const vertex = `${x},${y}`;
+    if (vertices[vertices.length - 1] !== vertex) {
+      vertices.push(vertex);
+    }
+  };
+
+  const firstX = scales.x(points[0].t);
+  const firstY = scales.y(points[0].amount);
+  let side = sideOfY(firstY, referenceY);
+  let vertices: string[] = [`${firstX},${firstY}`];
+  const segments: LineSegment[] = [];
+  let index = 0;
+
+  const flush = (): void => {
+    segments.push({ key: `${index}`, side, points: vertices.join(' ') });
+    index += 1;
+  };
+
+  for (let i = 1; i < points.length; i += 1) {
+    const { x1, y1, x2, y2 } = adjacentSegment(points, scales, i);
+    const nextSide = sideOfY(y2, referenceY);
+
+    if (nextSide !== side) {
+      const xCross = x1 + ((x2 - x1) * (referenceY - y1)) / (y2 - y1);
+      pushVertex(vertices, xCross, referenceY);
+      flush();
+      side = nextSide;
+      vertices = [`${xCross},${referenceY}`];
+    }
+
+    pushVertex(vertices, x2, y2);
+  }
+
+  flush();
+
+  return segments;
+};
 
 // The vertical extremes of the ACTUAL filled bands, so each gradient anchors to
 // the sliver it fills rather than the whole plot half. `greenTopY` is the
@@ -604,13 +667,20 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
               />
             ) : null}
 
-            <Polyline
-              testID="net-worth-line-polyline"
-              points={toPolylinePoints(points, scales)}
-              fill="none"
-              stroke={theme.colors.entityColors.white}
-              strokeWidth={LINE_STROKE_WIDTH}
-            />
+            {/* See buildLineSegments above: the stroke reads sign at a
+                glance, green above / red below the dashed reference, split
+                at the SAME crossing x the fill above uses. A non-crossing
+                series renders as exactly one segment/color. */}
+            {buildLineSegments(points, scales, referenceY).map((segment) => (
+              <Polyline
+                key={segment.key}
+                testID={`net-worth-line-polyline-${segment.key}`}
+                points={segment.points}
+                fill="none"
+                stroke={segment.side === 'above' ? theme.colors.positive : theme.colors.negative}
+                strokeWidth={LINE_STROKE_WIDTH}
+              />
+            ))}
           </Svg>
         </View>
       </View>

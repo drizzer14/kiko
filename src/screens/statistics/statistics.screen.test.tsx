@@ -591,11 +591,11 @@ describe('StatisticsScreen', () => {
   });
 
   it('renders a by-type bar, the net-worth polyline, and a pie arc per account', async () => {
-    const { getByTestId } = await renderScreen();
+    const { getByTestId, getAllByTestId } = await renderScreen();
 
     expect(getByTestId('bar-chart-bar-cash')).toBeTruthy();
     expect(getByTestId('bar-chart-bar-card')).toBeTruthy();
-    expect(getByTestId('net-worth-line-polyline')).toBeTruthy();
+    expect(getAllByTestId(/^net-worth-line-polyline-/).length).toBeGreaterThan(0);
     expect(getByTestId('pie-chart-arc-a')).toBeTruthy();
     expect(getByTestId('pie-chart-arc-b')).toBeTruthy();
   });
@@ -658,7 +658,7 @@ describe('StatisticsScreen', () => {
 
     expect(mockRunBackfill).toHaveBeenCalled();
     expect(getByTestId('net-worth-line-loading')).toBeTruthy();
-    expect(queryByTestId('net-worth-line-polyline')).toBeNull();
+    expect(queryByTestId(/^net-worth-line-polyline-/)).toBeNull();
   });
 
   it('does not run the backfill while history is still on its own first load (only transactions have settled)', async () => {
