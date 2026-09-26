@@ -1,7 +1,7 @@
 import type { ComponentProps } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
-import '../../../i18n';
+import '@kiko/i18n/init';
 import { holdingsRepo } from '@kiko/holdings/repo';
 
 import {

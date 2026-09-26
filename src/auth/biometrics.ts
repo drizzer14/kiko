@@ -1,7 +1,6 @@
+import { i18n } from '@kiko/i18n/init';
 import either, { bifold, isLeft } from 'fnts/either';
 import type * as ReactNativeBiometrics from '@sbaiahmed1/react-native-biometrics';
-
-import { i18n } from '../i18n';
 
 /**
  * Lazily resolves the native biometrics module. `@sbaiahmed1/react-native-biometrics`

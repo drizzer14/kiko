@@ -2,9 +2,9 @@ import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
-import { i18n } from '../../../i18n';
-import { darkTheme as theme } from '../../theme';
+import { i18n } from '@kiko/i18n/init';
 
+import { darkTheme as theme } from '../../theme';
 import { KIKO_CATEGORIES_ICONS } from '../icon-picker-modal/icon-pools';
 
 import HoldingIdentityField from '.';

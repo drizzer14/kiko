@@ -2,7 +2,7 @@ import type { HoldingType } from '@kiko/holdings/holding-type';
 import { fireEvent, render } from '@testing-library/react-native';
 
 import '@kiko/design-system/unistyles';
-import '@kiko/i18n';
+import '@kiko/i18n/init';
 
 import MetalTypeField from './metal-type-field.component';
 

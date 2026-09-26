@@ -1,7 +1,7 @@
 import { StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import '../../../../design-system/unistyles';
-import '../../../../i18n';
+import '@kiko/i18n/init';
 import { darkTheme } from '../../../../design-system/theme';
 
 import AppLockSetting from './app-lock-setting.component';

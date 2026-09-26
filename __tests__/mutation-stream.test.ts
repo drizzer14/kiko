@@ -470,7 +470,7 @@ describe('scripts/checks/mutation.sh diff scoping', () => {
 
   // Part 2 file-level exclusion: barrels (**/index.ts) and pure-static
   // *.styles.ts are dropped from the diff-scoped mutate set, EXCEPT the
-  // logic-bearing re-includes (src/i18n/index.ts, bottom-sheet.styles.ts,
+  // logic-bearing re-includes (bottom-sheet.styles.ts,
   // entity-icon-tile.styles.ts). These must be filtered out in mutation.sh's own
   // grep because `--mutate` REPLACES the config mutate[] (deepMerge replaces
   // arrays), so the config negations do NOT apply on the diff-scoped run.
@@ -490,9 +490,10 @@ describe('scripts/checks/mutation.sh diff scoping', () => {
     gitq(root, 'checkout', '-q', '-b', 'feature');
     // A logic-bearing source file so the changed set is never empty.
     writeFile(root, 'src/changed.ts', 'export const b = 2;\n');
-    // Barrels: a plain re-export index (DROPPED) and the i18n init module (KEPT).
+    // Barrels (DROPPED, the i18n one too) and the i18n init module (KEPT).
     writeFile(root, 'src/foo/index.ts', "export * from './foo';\n");
-    writeFile(root, 'src/i18n/index.ts', 'export const init = () => 1;\n');
+    writeFile(root, 'src/i18n/index.ts', "export * from './init';\n");
+    writeFile(root, 'src/i18n/init/init.ts', 'export const init = () => 1;\n');
     // Styles: a pure-static one (DROPPED) and the 2 logic re-includes (KEPT).
     writeFile(root, 'src/foo/foo.styles.ts', 'export const s = {};\n');
     writeFile(
@@ -517,13 +518,14 @@ describe('scripts/checks/mutation.sh diff scoping', () => {
     expect(mutate).toBeDefined();
     // In scope.
     expect(mutate).toContain('src/changed.ts');
-    expect(mutate).toContain('src/i18n/index.ts');
+    expect(mutate).toContain('src/i18n/init/init.ts');
     expect(mutate).toContain('src/design-system/components/bottom-sheet/bottom-sheet.styles.ts');
     expect(mutate).toContain(
       'src/design-system/components/entity-icon-tile/entity-icon-tile.styles.ts',
     );
     // Dropped.
     expect(mutate).not.toContain('src/foo/index.ts');
+    expect(mutate).not.toContain('src/i18n/index.ts');
     expect(mutate).not.toContain('src/foo/foo.styles.ts');
   });
 

@@ -1,7 +1,8 @@
 import { Alert } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
-import { i18n } from '../../../i18n';
+import { i18n } from '@kiko/i18n/init';
+
 import {
   asNavigationProp,
   asRouteProp,

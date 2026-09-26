@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 import type { ComponentProps } from 'react';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '../../design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
 
-import { i18n } from '../../i18n';
 import { supportedFormatNames } from '../../statement-import/registry';
 import { headerFingerprint } from '../../statement-import/column-mapping';
 import type { ParsedStatement, StatementFormat } from '../../statement-import/parser';

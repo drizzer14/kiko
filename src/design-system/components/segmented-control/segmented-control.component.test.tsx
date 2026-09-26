@@ -1,8 +1,8 @@
 import { StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import '../../unistyles';
+import { i18n } from '@kiko/i18n/init';
 
-import { i18n } from '../../../i18n';
 import { darkTheme } from '../../theme';
 import { wcagContrastRatio } from '../../entity-tint';
 

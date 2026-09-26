@@ -1,7 +1,7 @@
 import { identity } from 'fnts';
+import { i18n } from '@kiko/i18n/init';
 import either, { bifoldMap } from 'fnts/either';
 
-import { i18n } from '../../i18n';
 import { Money } from '../../currency/money';
 import type { HoldingRow } from '../../db/schema';
 import type { BalanceProvider, ProviderBalance } from '../provider';

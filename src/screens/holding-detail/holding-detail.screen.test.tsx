@@ -5,10 +5,10 @@ import { State } from 'react-native-gesture-handler';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
 
-import { i18n } from '../../i18n';
 import { Money } from '../../currency/money';
 import { formatDate } from '../../dates/format';
 import { dayKeyOf } from '../../prices/price-book';

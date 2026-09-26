@@ -1,4 +1,4 @@
-import { i18n } from '../index';
+import { i18n } from '../init';
 
 import { resolveDefaultCategoryTitle } from './default-category-title';
 

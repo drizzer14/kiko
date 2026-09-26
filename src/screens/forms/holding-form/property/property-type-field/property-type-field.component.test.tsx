@@ -1,7 +1,7 @@
 import { fireEvent, render } from '@testing-library/react-native';
 
 import '@kiko/design-system/unistyles';
-import '@kiko/i18n';
+import '@kiko/i18n/init';
 
 import PropertyTypeField from './property-type-field.component';
 

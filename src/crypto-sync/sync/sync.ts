@@ -1,7 +1,7 @@
+import { i18n } from '@kiko/i18n/init';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 
-import { i18n } from '../../i18n';
 import {
   beginProgressSession,
   commitHolding,

@@ -1,4 +1,5 @@
-import { i18n } from '../../i18n';
+import { i18n } from '@kiko/i18n/init';
+
 import type { ValuableHolding } from '../holding-value';
 
 import { derivedEntries } from './derived-entries';

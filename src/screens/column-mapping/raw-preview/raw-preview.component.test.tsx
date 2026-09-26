@@ -1,8 +1,8 @@
 import { fireEvent, render, within } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
-import '../../../i18n';
+import '@kiko/i18n/init';
+import { i18n } from '@kiko/i18n/init';
 
-import { i18n } from '../../../i18n';
 import { darkTheme } from '../../../design-system/theme';
 import type { TableCell } from '../../../statement-import/column-mapping';
 

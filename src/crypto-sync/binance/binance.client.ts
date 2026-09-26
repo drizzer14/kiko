@@ -1,8 +1,7 @@
 import { guard } from 'fnts';
+import { i18n } from '@kiko/i18n/init';
 import { BINANCE_API_ENDPOINT } from '@env';
 import either, { bifoldr } from 'fnts/either';
-
-import { i18n } from '../../i18n';
 
 import { signQuery } from './binance.hmac';
 

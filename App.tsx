@@ -4,7 +4,7 @@ import './src/design-system/unistyles';
 // Must run first alongside Unistyles: initializes the i18next instance with the
 // device language as a side effect, before any component that calls
 // useTranslation renders.
-import './src/i18n';
+import '@kiko/i18n/init';
 
 import type { FC } from 'react';
 import RootNavigator from '@kiko/navigation/root-navigator';
@@ -12,11 +12,11 @@ import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { navigationDarkTheme } from '@kiko/navigation/dark-theme';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useSyncLanguageWithSettings } from '@kiko/i18n/use-sync-language-with-settings';
 
 import { useAutoSync } from './src/sync/use-auto-sync';
 import MigrationsGate from './src/migration/migrations-gate';
 import LockGate from './src/auth/lock-gate/lock-gate.component';
-import { useSyncLanguageWithSettings } from './src/i18n/use-sync-language-with-settings';
 
 /**
  * Rendered only once `MigrationsGate` reports success, so its mount is the

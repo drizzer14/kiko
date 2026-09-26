@@ -7,6 +7,7 @@ import { settingsRepo } from '@kiko/settings/settings.repo';
 import { type FC, useCallback, useRef, useState } from 'react';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
 
 import type { CategoryRow } from '../../../db/schema';
 import Box from '../../../design-system/components/box';
@@ -22,7 +23,6 @@ import LoadingState from '../../../design-system/components/loading-state';
 import ConfirmSheet from '../../../design-system/components/confirm-sheet';
 import { DEFAULT_CATEGORY_KEY } from '../../../categories/category-display';
 import { resolveCategoryColor } from '../../../statistics/category-breakdown';
-import { resolveDefaultCategoryTitle } from '../../../i18n/default-category-title';
 import HoldingIdentityField from '../../../design-system/components/holding-identity-field';
 import { KIKO_CATEGORIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 

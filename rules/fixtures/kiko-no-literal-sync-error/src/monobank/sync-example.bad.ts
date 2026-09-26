@@ -4,7 +4,7 @@
 // (kiko-linter's "Semgrep facts" gotcha) — so this fixture is nested to
 // mirror a real src/monobank/ path instead. Never move it back to a flat
 // rules/fixtures/kiko-no-literal-sync-error.bad.ts location.
-import { i18n } from '../../../../../src/i18n';
+import { i18n } from '@kiko/i18n/init';
 
 export const readClientStatus = (status: number): number => {
   if (status !== 200) {

@@ -1,5 +1,5 @@
-import { i18n } from '@kiko/i18n';
 import { match } from 'ts-pattern';
+import { i18n } from '@kiko/i18n/init';
 import { initDatabase } from '@kiko/db/client';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
@@ -23,7 +23,7 @@ type MigrationState =
 /**
  * Apply the persisted language before the first gate paints.
  *
- * i18next initializes with the DEVICE language (src/i18n/index.ts), and the
+ * i18next initializes with the DEVICE language (src/i18n/init/init.ts), and the
  * only `changeLanguage` caller (`useSyncLanguageWithSettings`) is mounted from
  * `AppRoot` — which renders only after this gate succeeds AND `LockGate`
  * unlocks. So a user with device `en` and `settings.language = 'uk'` read

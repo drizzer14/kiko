@@ -15,7 +15,7 @@ jest.mock('react-i18next', () => ({
   ...jest.requireActual('react-i18next'),
   useTranslation: () => ({
     t: (key: string) => {
-      const { en } = require('@kiko/i18n/locales/en');
+      const { en } = require('@kiko/i18n/locales');
 
       // The accumulator is a NESTED catalogue node, not a string, and it becomes
       // `undefined` the moment a key part is missing — so the reduce is typed over

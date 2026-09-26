@@ -16,9 +16,9 @@ jest.mock('../../rates/history-backfill', () => {
   return { ...actual, runBackfill: (...args: unknown[]) => mockRunBackfill(...args) };
 });
 
+import { i18n } from '@kiko/i18n/init';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 
-import { i18n } from '../../i18n';
 import { formatDate } from '../../dates/format';
 import { startOfLocalDay } from '../../dates/local-day';
 import { toUtcMidnight } from '../../rates/history-entry';

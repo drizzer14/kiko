@@ -1,8 +1,8 @@
 import { StyleSheet } from 'react-native';
 import { act, render } from '@testing-library/react-native';
-
 import '../../../design-system/unistyles';
-import { i18n } from '../../../i18n';
+import { i18n } from '@kiko/i18n/init';
+
 import { darkTheme } from '../../../design-system/theme';
 
 import ExchangeFields from './exchange-fields.component';

@@ -1,7 +1,7 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 
 import '../../../design-system/unistyles';
-import '../../../i18n';
+import '@kiko/i18n/init';
 import type { TrendFilter } from '../../../statistics/trend-filter';
 
 import TrendFilterField from './trend-filter-field.component';

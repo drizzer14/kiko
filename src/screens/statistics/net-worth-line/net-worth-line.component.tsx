@@ -22,7 +22,7 @@ declare module 'react-native-svg' {
 import { formatDayMonth } from '../../../dates/format';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
-import { activeLocale } from '../../../i18n/active-locale';
+import { activeLocale } from '@kiko/i18n/active-locale';
 import type { Currency } from '../../../currency/currency';
 import type { NetWorthPoint } from '../../../statistics/net-worth-series';
 import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact';

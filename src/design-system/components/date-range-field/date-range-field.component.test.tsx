@@ -1,3 +1,4 @@
+import { i18n } from '@kiko/i18n/init';
 import type { ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
@@ -5,7 +6,6 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import { formatDate } from '../../../dates/format';
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 import '../../../design-system/unistyles';
-import { i18n } from '../../../i18n';
 
 import DateRangeField from './date-range-field.component';
 

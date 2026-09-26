@@ -2,7 +2,7 @@ import { StyleSheet } from 'react-native';
 import type { ComponentProps, ReactNode } from 'react';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
-import '@kiko/i18n';
+import '@kiko/i18n/init';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HoldingFormScreen from '../../holding-form.screen';

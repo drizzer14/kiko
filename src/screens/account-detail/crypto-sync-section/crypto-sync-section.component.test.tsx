@@ -2,8 +2,8 @@ import type { ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
 
-import { i18n } from '../../../i18n';
 import { formatDateTime } from '../../../dates/format';
 import type { AccountRow, HoldingRow } from '../../../db/schema';
 

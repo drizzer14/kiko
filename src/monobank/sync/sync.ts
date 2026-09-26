@@ -1,3 +1,4 @@
+import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
@@ -12,7 +13,6 @@ import {
   registerWork,
   setFastPhaseDone,
 } from '../sync-status';
-import { i18n } from '../../i18n';
 import { readToken } from '../token';
 import { categoryForMcc } from '../mcc-category';
 import { currencyFromCode } from '../currency-code';

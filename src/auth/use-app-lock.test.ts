@@ -1,7 +1,7 @@
 import { AppState, type AppStateStatus } from 'react-native';
 import { act, renderHook } from '@testing-library/react-native';
 
-import '../i18n';
+import '@kiko/i18n/init';
 
 import { useAppLock } from './use-app-lock';
 

@@ -1,5 +1,6 @@
-import '../../i18n';
-import { i18n } from '../../i18n';
+import '@kiko/i18n/init';
+import { i18n } from '@kiko/i18n/init';
+
 import { formatDateTime } from '../../dates/format';
 
 import { formatLastSyncAt, latestSyncedAt } from './format-last-sync';

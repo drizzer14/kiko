@@ -1,12 +1,12 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
-// Side-effect import: src/i18n/index.ts calls `i18next.init()` at module
+// Side-effect import: src/i18n/init/init.ts calls `i18next.init()` at module
 // load. Every test file gets its own fresh module registry, so without this
 // import `useTranslation`'s `t()` returns the raw key (e.g.
 // "settings.dataExport.exportButton") instead of the real English string
 // this suite asserts on — the same reason
 // src/screens/settings/settings/settings.screen.test.tsx imports it.
-import '../../../i18n';
+import '@kiko/i18n/init';
 import {
   asNavigationProp,
   asRouteProp,

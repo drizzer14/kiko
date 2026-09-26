@@ -2,9 +2,8 @@ import { render, waitFor } from '@testing-library/react-native';
 import { AppState, type AppStateStatus, Text } from 'react-native';
 import { authenticateWithOptions } from '@sbaiahmed1/react-native-biometrics';
 import '../../design-system/unistyles';
-import '../../i18n';
-
-import { en } from '../../i18n/locales/en';
+import '@kiko/i18n/init';
+import { en } from '@kiko/i18n/locales';
 
 import LockGate from './lock-gate.component';
 

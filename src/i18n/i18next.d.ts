@@ -1,4 +1,4 @@
-import type { en } from './locales/en';
+import type { en } from './locales';
 
 // Types t()/useTranslation off en.ts. Key 'settings.language' resolves; a typo
 // like 'settings.langauge' fails tsc, so a wrong key is a compile error, not a

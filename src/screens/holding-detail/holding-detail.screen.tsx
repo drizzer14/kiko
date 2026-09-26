@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { FlatList, Pressable } from 'react-native';
 import { categoriesRepo } from '@kiko/categories/repo';
+import { activeLocale } from '@kiko/i18n/active-locale';
 import {
   propertyOwnershipView,
   type PropertyOwnershipView,
@@ -40,7 +41,6 @@ import { useLiveQuery } from '../../db/use-live-query';
 import Card from '../../design-system/components/card';
 import Text from '../../design-system/components/text';
 import { startOfLocalDay } from '../../dates/local-day';
-import { activeLocale } from '../../i18n/active-locale';
 import type { Currency } from '../../currency/currency';
 import { usePriceBook } from '../../prices/use-price-book';
 import Button from '../../design-system/components/button';

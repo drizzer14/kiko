@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { Pressable } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { activeLocale } from '@kiko/i18n/active-locale';
 import { ownershipShareText } from '@kiko/holdings/ownership';
 import { propertyOwnershipView } from '@kiko/holdings/holding-descriptor/property-item';
 
@@ -9,7 +10,6 @@ import { formatMoney } from '../../../currency/format';
 import Box from '../../../design-system/components/box';
 import Card from '../../../design-system/components/card';
 import Text from '../../../design-system/components/text';
-import { activeLocale } from '../../../i18n/active-locale';
 import { canConvert } from '../../../rates/net-worth-view';
 import type { Currency } from '../../../currency/currency';
 import type { PriceBook } from '../../../prices/price-book';

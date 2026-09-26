@@ -2,13 +2,14 @@
 // sync.ts imports the repos which open the connection at load. A minimal
 // stub lets the module graph load; runSync's data access is fully injected
 // through SyncDeps, so the real repos are never exercised here.
+import { i18n } from '@kiko/i18n/init';
+
 import {
   getProgressSnapshot,
   isFastPhaseDone,
   getSnapshot as isSyncingSnapshot,
   subscribeProgress,
 } from '../sync-status';
-import { i18n } from '../../i18n';
 import statement from '../__fixtures__/statement.json';
 import clientInfo from '../__fixtures__/client-info.json';
 import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';

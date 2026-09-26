@@ -15,6 +15,7 @@
 // `envelope.ts`), so the ciphertext is NEVER byte-reproducible — the guard
 // below decrypts and compares the PAYLOAD, never the raw `.kiko` bytes.
 import { join } from 'node:path';
+import type { AppLanguage } from '@kiko/i18n/device-language';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 import {
@@ -23,7 +24,6 @@ import {
   type ExportEnvelope,
   EXPORT_VERSION,
 } from '../../../src/data-transfer/crypto/envelope';
-import type { AppLanguage } from '../../../src/i18n';
 import type { ExportPayload } from '../../../src/data-transfer/payload';
 import { ANCHOR, buildScreenshotDataset } from '../seed/screenshot-seed';
 import { generateExportKey } from '../../../src/data-transfer/crypto/generate-key';

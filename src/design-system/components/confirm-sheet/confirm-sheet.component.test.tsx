@@ -4,7 +4,7 @@ import '../../unistyles';
 // accident through GlassSurface -> screenshot-mode -> i18n before the 5.6
 // screenshot-subsystem strip removed that import chain; now imported directly
 // so `t('common.cancel')` resolves under test the same way it does at runtime.
-import '../../../i18n';
+import '@kiko/i18n/init';
 
 import ConfirmSheet from '.';
 

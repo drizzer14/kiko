@@ -1,7 +1,7 @@
+import { i18n } from '@kiko/i18n/init';
 import type { ReactNode } from 'react';
 import { act, render } from '@testing-library/react-native';
 
-import { i18n } from '../../../i18n';
 import { Money } from '../../../currency/money';
 import '../../unistyles';
 import MoneyText from './money-text.component';

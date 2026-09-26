@@ -7,7 +7,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 // style uses (mirrors `glass-surface.component.test.tsx`'s own bordered
 // test).
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
-import '../../../i18n';
+import '@kiko/i18n/init';
 import '../../unistyles';
 
 import { darkTheme } from '../../theme';

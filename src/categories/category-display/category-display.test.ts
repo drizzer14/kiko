@@ -1,4 +1,4 @@
-import '../../i18n';
+import '@kiko/i18n/init';
 
 import {
   buildCategoryDisplayMap,

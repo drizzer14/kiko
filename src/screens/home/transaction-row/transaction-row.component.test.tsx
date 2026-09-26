@@ -9,7 +9,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 // Initialize i18next so the row's and CardContextMenu's `t()` labels resolve
 // to the real catalogue instead of the raw key.
-import '../../../i18n';
+import '@kiko/i18n/init';
 
 import {
   DELETE_ACTION_TEST_ID,

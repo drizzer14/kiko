@@ -1,6 +1,6 @@
 // src/i18n/active-locale.test.ts
 
-import { i18n } from '../index';
+import { i18n } from '../init';
 
 import { activeLocale } from './active-locale';
 

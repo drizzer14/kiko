@@ -6,7 +6,7 @@ import '../../unistyles';
 // screenshot-subsystem strip removed that import chain; now imported directly
 // so the search placeholder's `t(...)` resolves under test the same way it
 // does at runtime.
-import '../../../i18n';
+import '@kiko/i18n/init';
 import { fiatCurrencyOptions } from '../../../currency/currency';
 
 import CurrencyField from '.';

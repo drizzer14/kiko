@@ -1,5 +1,4 @@
-import { en } from '../../i18n/locales/en';
-import { uk } from '../../i18n/locales/uk';
+import { en, uk } from '@kiko/i18n/locales';
 
 import { currencyOptions } from './currency';
 

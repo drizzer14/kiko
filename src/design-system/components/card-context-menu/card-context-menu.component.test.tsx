@@ -13,7 +13,7 @@ import '../../unistyles';
 // screenshot-subsystem strip removed that import chain; now imported directly
 // so the sheet's `t('common.cancel')`/`t('common.delete')` resolve under test
 // the same way they do at runtime.
-import '../../../i18n';
+import '@kiko/i18n/init';
 
 import GestureRootWrapper from '../../../test-support/gesture-root-wrapper';
 

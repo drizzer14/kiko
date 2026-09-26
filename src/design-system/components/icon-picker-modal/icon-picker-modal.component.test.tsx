@@ -4,7 +4,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 import '../../unistyles';
-import '../../../i18n';
+import '@kiko/i18n/init';
 import { darkTheme } from '../../theme';
 import { SEEDED_CATEGORIES } from '../../../db/__fixtures__/seeded-categories';
 

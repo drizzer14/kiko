@@ -5,7 +5,7 @@ import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 
 import type { HoldingRow } from '../../../db/schema';
 import '../../../design-system/unistyles';
-import '../../../i18n';
+import '@kiko/i18n/init';
 import { darkTheme } from '../../../design-system/theme';
 import { EMPTY_PRICE_BOOK } from '../../../prices/price-book';
 import { entityIconTileGradient } from '../../../design-system/entity-tint';

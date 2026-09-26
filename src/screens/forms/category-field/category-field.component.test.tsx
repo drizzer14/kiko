@@ -1,7 +1,7 @@
 import { ScrollView } from 'react-native';
 import { act, fireEvent, type RenderResult, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
-import { i18n } from '../../../i18n';
+import { i18n } from '@kiko/i18n/init';
 
 import CategoryField from './category-field.component';
 

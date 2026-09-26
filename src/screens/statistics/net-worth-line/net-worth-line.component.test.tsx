@@ -1,6 +1,6 @@
+import { i18n } from '@kiko/i18n/init';
 import { act, render, within } from '@testing-library/react-native';
 
-import { i18n } from '../../../i18n';
 import { darkTheme } from '../../../design-system/theme';
 import { endOfLocalDay, startOfLocalDay } from '../../../dates/local-day';
 import type { NetWorthPoint } from '../../../statistics/net-worth-series';

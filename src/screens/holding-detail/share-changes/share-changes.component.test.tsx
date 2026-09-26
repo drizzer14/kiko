@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
-import '../../../i18n';
+import '@kiko/i18n/init';
 
 import GestureRootWrapper from '../../../test-support/gesture-root-wrapper';
 

@@ -309,10 +309,9 @@ verified usage, not dead weight:
   (`**/index.ts`)** — pure re-export modules (`export ... from './x'`)
   whose only mutable token is the module-path string; no branch, no
   arithmetic, no logic, and no test imports the excluded barrels
-  directly. The SOLE non-barrel `index.ts` is `src/i18n/index.ts` (an
-  `i18next.init(...)` side-effect module with config booleans/strings),
-  so it is RE-INCLUDED (`**/i18n/index.ts`, a positive pattern after the
-  negation). (4) **pure-static styles (`**/*.styles.ts`)** — pure
+  directly. Every `index.ts` is a barrel: the `i18next.init(...)`
+  side-effect module lives in `src/i18n/init/init.ts`, so it stays in
+  scope without a re-include. (4) **pure-static styles (`**/*.styles.ts`)** — pure
   `StyleSheet.create` objects (string/number/object-literal tokens only,
   no conditionals or arithmetic); no test imports any `.styles` file, so
   their mutants are pure denominator noise. The two logic-bearing styles
@@ -322,11 +321,12 @@ verified usage, not dead weight:
   `**/entity-icon-tile.styles.ts` (exports the `iconTileSize` helper
   function). The mechanism is PURELY glob-based, not logic-based: the
   drop is by PATTERN — EVERY `**/index.ts` and EVERY `**/*.styles.ts`
-  is negated — and ONLY the three named files above
-  (`src/i18n/index.ts`, `bottom-sheet.styles.ts`,
-  `entity-icon-tile.styles.ts`) are re-included, BY NAME. So the files
-  that stay in scope (`src/design-system/palette.ts`, `theme.ts`,
-  `entity-tint.ts`, the mixed const+function modules,
+  is negated — and ONLY the two named files above
+  (`bottom-sheet.styles.ts`, `entity-icon-tile.styles.ts`) are
+  re-included, BY NAME. So the files that stay in scope
+  (`src/i18n/init/init.ts`, `src/design-system/palette/palette.ts`,
+  `theme/theme.ts`, `entity-tint/entity-tint.ts`, the mixed
+  const+function modules,
   `drizzle/migrations/**`, and every other non-`.styles`, non-barrel
   source) stay in scope simply because they never match the `index.ts`
   or `*.styles.ts` globs — NOT because any logic test spared them.

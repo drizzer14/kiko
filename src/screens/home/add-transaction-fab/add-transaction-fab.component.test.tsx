@@ -7,7 +7,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 // Initialize i18next so the FAB's accessibility label resolves to the real
 // catalogue string rather than the bare key.
-import '../../../i18n';
+import '@kiko/i18n/init';
 import { darkTheme } from '../../../design-system/theme';
 import { asNavigationProp, navigationSpy } from '../../../test-support/navigation-props';
 

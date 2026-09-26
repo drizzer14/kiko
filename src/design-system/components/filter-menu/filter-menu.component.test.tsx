@@ -1,7 +1,8 @@
 import { StyleSheet } from 'react-native';
 import { act, fireEvent, type RenderResult, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
-import { i18n } from '../../../i18n';
+import { i18n } from '@kiko/i18n/init';
+
 import { darkTheme } from '../../theme';
 
 import type { FilterOption } from './filter-menu.props';

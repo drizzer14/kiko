@@ -1,8 +1,8 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
+import { appLanguages } from '@kiko/i18n/device-language';
 
 import ChipRow from '../chip-row';
-import { appLanguages } from '../../../i18n';
 
 import type { LanguageSwitchProps } from './language-switch.props';
 

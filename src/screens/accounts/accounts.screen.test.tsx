@@ -5,8 +5,8 @@ import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
 
-import { i18n } from '../../i18n';
 import { darkTheme } from '../../design-system/theme';
 import {
   DELETE_CONFIRM_TEST_ID,

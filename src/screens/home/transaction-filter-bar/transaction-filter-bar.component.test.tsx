@@ -1,8 +1,8 @@
+import { i18n } from '@kiko/i18n/init';
 import { act, fireEvent, render } from '@testing-library/react-native';
 
 import { formatDate } from '../../../dates/format';
 import '../../../design-system/unistyles';
-import { i18n } from '../../../i18n';
 
 import TransactionFilterBar, { FILTER_ALL } from './transaction-filter-bar.component';
 

@@ -1,6 +1,6 @@
 import { match } from 'ts-pattern';
 
-import { i18n } from '../index';
+import { i18n } from '../init';
 import type { AppLanguage } from '../device-language';
 
 // The BCP-47 locale for Number.prototype.toLocaleString, off the active

@@ -3,11 +3,11 @@ import type { ComponentProps } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 
-import { i18n } from '../../../i18n';
 import {
   asNavigationProp,
   asRouteProp,

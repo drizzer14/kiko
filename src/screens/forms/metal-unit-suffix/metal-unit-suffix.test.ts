@@ -1,4 +1,4 @@
-import { i18n } from '@kiko/i18n';
+import { i18n } from '@kiko/i18n/init';
 
 import { metalUnitSuffix } from './metal-unit-suffix';
 

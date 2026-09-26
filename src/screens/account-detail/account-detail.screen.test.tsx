@@ -4,8 +4,8 @@ import type { ComponentProps, ReactNode } from 'react';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
 
-import { i18n } from '../../i18n';
 import { formatDateTime } from '../../dates/format';
 import { darkTheme } from '../../design-system/theme';
 import {

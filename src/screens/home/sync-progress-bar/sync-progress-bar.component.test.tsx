@@ -6,7 +6,7 @@ import { render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 // Initialize i18next so the bar's `t()` label resolves to the real catalogue
 // string rather than the bare key.
-import '../../../i18n';
+import '@kiko/i18n/init';
 
 // The determinate progress bar reads the two sync-status signals directly; drive
 // them from the test so a render can assert the rendered fraction and the
