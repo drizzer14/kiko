@@ -82,7 +82,7 @@ const fetchCryptoHistory = async () => {
       source: 'coingecko',
     });
   }
-  return rows;
+  return { entries: rows, failedCurrencies: [] };
 };
 
 type HistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate'>;

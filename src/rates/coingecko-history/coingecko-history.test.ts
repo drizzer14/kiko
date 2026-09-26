@@ -18,7 +18,7 @@ const makeRoutedFetch = (
 
 describe('fetchCryptoHistory', () => {
   it('requests each crypto coin’s market_chart for the day span and unions the series', async () => {
-    const result = await fetchCryptoHistory(
+    const { entries: result } = await fetchCryptoHistory(
       2,
       makeRoutedFetch({
         bitcoin: {
@@ -66,7 +66,7 @@ describe('fetchCryptoHistory', () => {
   });
 
   it('keeps the surviving coins when one coin request is non-ok', async () => {
-    const result = await fetchCryptoHistory(
+    const { entries: result } = await fetchCryptoHistory(
       1,
       makeRoutedFetch({
         bitcoin: { prices: [[d1, 78_552]] },
@@ -78,6 +78,21 @@ describe('fetchCryptoHistory', () => {
     expect(result.some((entry) => entry.base === 'BTC')).toBe(true);
     expect(result.some((entry) => entry.base === 'USDT')).toBe(true);
     expect(result.some((entry) => entry.base === 'ETH')).toBe(false);
+  });
+
+  // A coin whose OWN request failed is reported apart from one CoinGecko
+  // answered empty, so the backfill never remembers a failure as "no data".
+  it('reports which coins failed, never an empty-answered coin among them', async () => {
+    const { failedCurrencies } = await fetchCryptoHistory(
+      1,
+      makeRoutedFetch({
+        bitcoin: { prices: [[d1, 78_552]] },
+        ethereum: { ok: false, prices: [] },
+        tether: { prices: [] },
+      }),
+    );
+
+    expect(failedCurrencies).toEqual(['ETH']);
   });
 
   it('throws only when every coin request fails', async () => {
@@ -120,7 +135,10 @@ describe('fetchCryptoHistory', () => {
         return { ok: true, status: 200, json: async () => ({ prices: [] }) };
       }) as unknown as typeof fetch;
 
-      await expect(fetchCryptoHistory(1, fetchImpl, [])).resolves.toEqual([]);
+      await expect(fetchCryptoHistory(1, fetchImpl, [])).resolves.toEqual({
+        entries: [],
+        failedCurrencies: [],
+      });
       expect(called).toBe(false);
     });
   });

@@ -440,7 +440,12 @@ gate says there is nothing to do.
   returned no row for it (a held coin CoinGecko never returns) is kept
   in an in-memory `knownEmptyCurrenciesThisRun` set and no longer
   resets the cursor, so Statistics does not refetch the full span on
-  every focus (a rejected leg is never recorded — it retries). A create/restore
+  every focus (a rejected leg is never recorded — it retries; nor is a
+  coin whose OWN CoinGecko request failed while another coin's succeeded:
+  `fetchCryptoHistory` settles per coin and returns `failedCurrencies`
+  beside its `entries`. The metal twin, `emptyBackwardFloorByMetal`,
+  records only an ANSWERED empty backward range — a failed request
+  throws before it is recorded). A create/restore
   that may add the first holding of a new currency or type triggers
   these gated refreshes WITHOUT awaiting them, so Save never blocks on
   the network.

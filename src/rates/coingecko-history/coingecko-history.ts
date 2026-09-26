@@ -11,6 +11,13 @@ import { cryptoCurrencyOptions, type CryptoCurrency } from '../../currency/curre
 // earliest available rate backward for those older days.
 const MAX_MARKET_CHART_DAYS = 365;
 
+/**
+ * One `fetchCryptoHistory` answer: every answering coin's series, plus the
+ * coins whose OWN request failed — so a caller never mistakes a failed coin
+ * for one CoinGecko answered with no data.
+ */
+export type CryptoHistory = { entries: HistoryRateEntry[]; failedCurrencies: CryptoCurrency[] };
+
 /** The `market_chart` body: `prices` is a `[epochMs, price]` pair per day. */
 type MarketChart = { prices: [number, number][] };
 
@@ -60,18 +67,19 @@ const fetchOneCoinHistory = async (
  * data the user does not have). Coins are settled independently: a single
  * coin's 401 drops only that coin's history, and the function throws only
  * when EVERY requested coin fails (so `runBackfill`'s outer `allSettled`
- * keeps the NBU fiat anchors when at least one coin survives). Each
- * `[ts, price]` point is normalized to its UTC day (latest price wins),
- * non-finite prices dropped, entries ascending per coin. An empty
- * `currencies` list makes no request at all and resolves to `[]`.
+ * keeps the NBU fiat anchors when at least one coin survives); every other
+ * failed coin is listed in `failedCurrencies`. Each `[ts, price]` point is
+ * normalized to its UTC day (latest price wins), non-finite prices dropped,
+ * entries ascending per coin. An empty `currencies` list makes no request at
+ * all and resolves to no entries and no failures.
  */
 export const fetchCryptoHistory = async (
   days: number,
   fetchImpl: typeof fetch = fetch,
   currencies: readonly CryptoCurrency[] = cryptoCurrencyOptions,
-): Promise<HistoryRateEntry[]> => {
+): Promise<CryptoHistory> => {
   if (currencies.length === 0) {
-    return [];
+    return { entries: [], failedCurrencies: [] };
   }
 
   const results = await Promise.allSettled(
@@ -87,5 +95,8 @@ export const fetchCryptoHistory = async (
     throw new Error('CoinGecko history request failed for every coin');
   }
 
-  return fulfilled.flatMap((r) => r.value);
+  return {
+    entries: fulfilled.flatMap((r) => r.value),
+    failedCurrencies: currencies.filter((_, index) => results[index].status === 'rejected'),
+  };
 };

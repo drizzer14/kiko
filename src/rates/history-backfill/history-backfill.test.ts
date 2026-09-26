@@ -1,3 +1,7 @@
+import {
+  type CryptoHistory,
+  fetchCryptoHistory as fetchCoinGeckoHistory,
+} from '../coingecko-history';
 import { Money, toMajor } from '../../currency/money';
 import type { Currency } from '../../currency/currency';
 import type { HistoryRateEntry } from '../history-entry';
@@ -18,6 +22,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const day = (index: number) => Date.UTC(2026, 8, 1) + index * DAY_MS; // 2026-09-01 + n
 
 type StoredRow = { base: string; quote: string; day: number; rate: string; source: string };
+
+// A CoinGecko answer where every requested coin's own request succeeded.
+const answered = (entries: HistoryRateEntry[]): CryptoHistory => ({
+  entries,
+  failedCurrencies: [],
+});
 
 describe('missingDays', () => {
   it('spans earliest..today inclusive when nothing was backfilled yet', () => {
@@ -194,7 +204,7 @@ describe('runBackfill', () => {
       },
       fetchCryptoHistory: async (days) => {
         btcCalls.push(days);
-        return btc;
+        return answered(btc);
       },
       upsertMany: async (rows: StoredRow[]) => {
         captured.push(rows);
@@ -286,7 +296,7 @@ describe('runBackfill', () => {
       lastBackfilledDay: day(0),
       today: day(2),
       fetchNbuHistory: async () => [],
-      fetchCryptoHistory: async () => [],
+      fetchCryptoHistory: async () => answered([]),
     });
 
     const status: BackfillStatus = await runBackfill(deps);
@@ -367,7 +377,7 @@ describe('runBackfill — a newly-held currency with no stored history yet', () 
         nbuCalls.push([start, end]);
         return nbu;
       },
-      fetchCryptoHistory: async () => crypto,
+      fetchCryptoHistory: async () => answered(crypto),
       upsertMany: async (rows: StoredRow[]) => {
         captured.push(rows);
       },
@@ -397,7 +407,7 @@ describe('runBackfill — a newly-held currency with no stored history yet', () 
         nbuCalls.push([start, end]);
         return nbu;
       },
-      fetchCryptoHistory: async () => [],
+      fetchCryptoHistory: async () => answered([]),
       upsertMany: async (rows: StoredRow[]) => {
         captured.push(rows);
       },
@@ -443,7 +453,7 @@ describe('runBackfill — a newly-held currency with no stored history yet', () 
     const cryptoCalls: number[] = [];
     const { deps, nbuCalls } = unreturnedCoinDeps(knownEmptyCurrencies, async (days) => {
       cryptoCalls.push(days);
-      return crypto.filter((entry) => entry.base === 'BTC');
+      return answered(crypto.filter((entry) => entry.base === 'BTC'));
     });
 
     await runBackfill(deps);
@@ -467,6 +477,30 @@ describe('runBackfill — a newly-held currency with no stored history yet', () 
 
     expect(cryptoCalls).toEqual([3, 3]);
   });
+
+  // CoinGecko settles per coin: BTC's 200 fulfils the whole crypto leg even
+  // when ETH's own request is rate-limited. ETH never answered, so it must be
+  // retried on the next run — never remembered as a coin with no history.
+  it('retries a newly-held coin whose OWN request failed while another coin succeeded', async () => {
+    const knownEmptyCurrencies = new Set<Currency>();
+    const requestedCoins: string[] = [];
+    const bitcoinOkEthereumRateLimited = (async (url: string) => {
+      const coin = /coins\/([a-z]+)\/market_chart/.exec(url)?.[1] ?? '';
+      requestedCoins.push(coin);
+      const ok = coin === 'bitcoin';
+
+      return { ok, status: ok ? 200 : 429, json: async () => ({ prices: [[day(0), 65_000]] }) };
+    }) as unknown as typeof fetch;
+    const { deps } = unreturnedCoinDeps(knownEmptyCurrencies, (days, currencies) =>
+      fetchCoinGeckoHistory(days, bitcoinOkEthereumRateLimited, currencies),
+    );
+
+    await runBackfill(deps);
+    await runBackfill(deps);
+
+    expect(knownEmptyCurrencies.has('ETH')).toBe(false);
+    expect(requestedCoins.filter((coin) => coin === 'ethereum')).toHaveLength(2);
+  });
 });
 
 // kiko-architecture: app-open and refresh work is gated on data presence —
@@ -487,7 +521,7 @@ describe('runBackfill — the data-presence gate', () => {
     lastBackfilledDay: null,
     today: day(0),
     fetchNbuHistory: async () => nbu,
-    fetchCryptoHistory: async () => btc,
+    fetchCryptoHistory: async () => answered(btc),
     upsertMany: async () => {},
     ...overrides,
   });
@@ -503,7 +537,7 @@ describe('runBackfill — the data-presence gate', () => {
       },
       fetchCryptoHistory: async () => {
         cryptoCalled = true;
-        return btc;
+        return answered(btc);
       },
       upsertMany: async (rows: StoredRow[]) => {
         captured.push(rows);
@@ -524,7 +558,7 @@ describe('runBackfill — the data-presence gate', () => {
     const deps = makeDeps({
       fetchCryptoHistory: async () => {
         cryptoCalled = true;
-        return btc;
+        return answered(btc);
       },
       openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: [] }),
     });
@@ -554,7 +588,7 @@ describe('runBackfill — the data-presence gate', () => {
     const deps = makeDeps({
       fetchCryptoHistory: async (_days, currencies) => {
         receivedCurrencies = currencies ?? [];
-        return btc;
+        return answered(btc);
       },
       openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC'] }),
     });

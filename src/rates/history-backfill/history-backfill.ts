@@ -11,9 +11,9 @@ import {
   type CryptoCurrency,
 } from '../../currency/currency';
 import { fetchNbuHistory } from '../nbu-history';
-import { fetchCryptoHistory } from '../coingecko-history';
 import type { CurrencyRateHistoryRow } from '../../db/schema';
 import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
+import { type CryptoHistory, fetchCryptoHistory } from '../coingecko-history';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -53,7 +53,7 @@ export type BackfillDeps = {
   /** Today, defaulting to the current UTC day. */
   today?: number;
   fetchNbuHistory?: (start: number, end: number) => Promise<HistoryRateEntry[]>;
-  fetchCryptoHistory?: (days: number, currencies: CryptoCurrency[]) => Promise<HistoryRateEntry[]>;
+  fetchCryptoHistory?: (days: number, currencies: CryptoCurrency[]) => Promise<CryptoHistory>;
   upsertMany?: (rows: NewHistoryRow[]) => Promise<void>;
   /**
    * The data-presence gate (kiko-architecture: app-open/refresh work is
@@ -91,8 +91,9 @@ export type BackfillDeps = {
  * Statistics focus. Same trade-off as `metal-refresh.ts`'s
  * `emptyBackwardFloorByMetal`: forgotten on app restart, so at most one
  * wasted full-span fetch per currency per app session, never persisted
- * state for a rare case. A currency whose leg REJECTED is never recorded —
- * a network failure is retried, not remembered as empty.
+ * state for a rare case. A currency whose leg REJECTED, or a coin whose OWN
+ * CoinGecko request failed inside a fulfilled leg, is never recorded — a
+ * network failure is retried, not remembered as empty.
  */
 const knownEmptyCurrenciesThisRun = new Set<Currency>();
 
@@ -270,13 +271,18 @@ const runNbuLeg = (
   today: number,
 ): Promise<HistoryRateEntry[]> => (needsFiat ? loadNbu(spanStart, today) : Promise.resolve([]));
 
-/** The CoinGecko leg, gated on a non-empty held set — `[]` without ever calling `loadCrypto`. */
+/** A crypto leg that requested nothing: no entries, no failed coin. */
+const NO_CRYPTO_HISTORY: CryptoHistory = { entries: [], failedCurrencies: [] };
+
+/** The CoinGecko leg, gated on a non-empty held set — no entries without ever calling `loadCrypto`. */
 const runCryptoLeg = (
   cryptoCurrencies: CryptoCurrency[],
-  loadCrypto: (days: number, currencies: CryptoCurrency[]) => Promise<HistoryRateEntry[]>,
+  loadCrypto: (days: number, currencies: CryptoCurrency[]) => Promise<CryptoHistory>,
   cryptoDays: number,
-): Promise<HistoryRateEntry[]> =>
-  cryptoCurrencies.length > 0 ? loadCrypto(cryptoDays, cryptoCurrencies) : Promise.resolve([]);
+): Promise<CryptoHistory> =>
+  cryptoCurrencies.length > 0
+    ? loadCrypto(cryptoDays, cryptoCurrencies)
+    : Promise.resolve(NO_CRYPTO_HISTORY);
 
 /**
  * The global `lastBackfilledDay` cursor can already sit at `today` from a
@@ -311,22 +317,25 @@ const resolveResumeCursor = (
 
 /**
  * Adds to `knownEmpty` every `unbackfilled` currency this whole-span run
- * composed no row for — only when EVERY provider leg answered, since a
- * rejected leg is a network failure to retry, not an empty answer.
+ * composed no row for — only when EVERY provider leg answered, and never a
+ * coin in `failedCurrencies`: CoinGecko settles per coin, so one coin's 200
+ * fulfils the leg while another coin's own request failed. A failed request is
+ * a network failure to retry, not an empty answer.
  */
 const recordKnownEmpty = (
-  legs: PromiseSettledResult<HistoryRateEntry[]>[],
+  legs: PromiseSettledResult<unknown>[],
   unbackfilled: Currency[],
   rows: NewHistoryRow[],
+  failedCurrencies: readonly Currency[],
   knownEmpty: Set<Currency>,
 ): void => {
   if (legs.some((leg) => leg.status === 'rejected')) {
     return;
   }
 
-  const composedBases = new Set(rows.map((row) => row.base));
+  const composedOrFailed = new Set<Currency>([...rows.map((row) => row.base), ...failedCurrencies]);
 
-  for (const currency of unbackfilled.filter((candidate) => !composedBases.has(candidate))) {
+  for (const currency of unbackfilled.filter((candidate) => !composedOrFailed.has(candidate))) {
     knownEmpty.add(currency);
   }
 };
@@ -399,11 +408,17 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
   }
 
   const nbu = nbuResult.status === 'fulfilled' ? nbuResult.value : [];
-  const crypto = cryptoResult.status === 'fulfilled' ? cryptoResult.value : [];
+  const crypto = cryptoResult.status === 'fulfilled' ? cryptoResult.value : NO_CRYPTO_HISTORY;
 
-  const rows = composeHistoryRows([...nbu, ...crypto], days);
+  const rows = composeHistoryRows([...nbu, ...crypto.entries], days);
 
-  recordKnownEmpty([nbuResult, cryptoResult], unbackfilled, rows, knownEmpty);
+  recordKnownEmpty(
+    [nbuResult, cryptoResult],
+    unbackfilled,
+    rows,
+    crypto.failedCurrencies,
+    knownEmpty,
+  );
 
   if (rows.length === 0) {
     // Nothing composed (both providers empty for the span), so nothing is
