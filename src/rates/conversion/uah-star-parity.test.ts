@@ -42,6 +42,7 @@ const uahPer = (currency: Currency): number => {
   if (isCryptoFixtureKey(currency)) {
     return CRYPTO_USD[currency] * FIAT_UAH.USD;
   }
+
   if (isFiatFixtureKey(currency)) {
     return FIAT_UAH[currency];
   }
@@ -95,6 +96,7 @@ const tableFromRefresh = async (fixture: RefreshFixture = {}): Promise<RateTable
       if (!isCurrency(row.base) || !isCurrency(row.quote)) {
         throw new Error(`unexpected pair ${row.base}:${row.quote}`);
       }
+
       return { base: row.base, quote: row.quote, rate: row.rate };
     }),
   );
@@ -136,9 +138,11 @@ describe('Task 1.1 — current-rate pins', () => {
 describe('Task 1.2 — seed-only pins (offline, fresh install)', () => {
   const seedUahPer = (currency: Currency): number => {
     const price = FIAT_UAH_PRICE_SEED[currency];
+
     if (price === undefined) {
       throw new Error(`seed has no UAH price for ${currency}`);
     }
+
     return price;
   };
 

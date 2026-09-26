@@ -32,12 +32,15 @@ const uahPer = (index: number, currency: Currency): number => {
   if (currency === 'UAH') {
     return 1;
   }
+
   if (currency === 'USD') {
     return usdAtDay(index);
   }
+
   if (currency === 'EUR') {
     return eurAtDay(index);
   }
+
   if (currency === 'BTC') {
     return btcUsdAtDay(index) * usdAtDay(index);
   }
@@ -49,19 +52,23 @@ const uahPer = (index: number, currency: Currency): number => {
 // this fixture's own range goes past day 9).
 const dayIndexFor = (t: number): number => {
   const raw = Math.round((toUtcMidnight(t) - D0) / DAY_MS);
+
   return Math.min(Math.max(raw, 0), SPAN_DAYS - 1);
 };
 
 const fetchNbuHistory = async (start: number, end: number) => {
   const rows: { base: Currency; quote: Currency; day: number; rate: number; source: 'nbu' }[] = [];
+
   for (let index = 0; index < SPAN_DAYS; index += 1) {
     const day = dayAt(index);
+
     if (day < start || day > end) {
       continue;
     }
     rows.push({ base: 'USD', quote: 'UAH', day, rate: usdAtDay(index), source: 'nbu' });
     rows.push({ base: 'EUR', quote: 'UAH', day, rate: eurAtDay(index), source: 'nbu' });
   }
+
   return rows;
 };
 
@@ -73,6 +80,7 @@ const fetchCryptoHistory = async () => {
     rate: number;
     source: 'coingecko';
   }[] = [];
+
   for (let index = 0; index < SPAN_DAYS; index += 1) {
     rows.push({
       base: 'BTC',
@@ -82,6 +90,7 @@ const fetchCryptoHistory = async () => {
       source: 'coingecko',
     });
   }
+
   return rows;
 };
 
@@ -106,6 +115,7 @@ const buildHistoryRows = async (): Promise<HistoryRow[]> => {
   if (status.state !== 'complete') {
     throw new Error(`expected a complete backfill, got ${status.state}`);
   }
+
   return captured;
 };
 
@@ -148,6 +158,7 @@ const expectedAmountAt = (t: number, base: Currency): number => {
       ),
     0,
   );
+
   return toMajor(totalMinor, base);
 };
 

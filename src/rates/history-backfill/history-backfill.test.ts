@@ -532,6 +532,7 @@ describe('composeHistoryRows -> buildNetWorthSeries — a history day with a mis
 
   it('values a BTC holding on the gap day from its OWN carried anchor, not a stale joint pair', () => {
     const nbuAnchors: HistoryRateEntry[] = [];
+
     for (let index = 0; index < GAP_SPAN_DAYS - 1; index += 1) {
       // NBU has no quote for day 6 (the weekend gap) — every earlier day does.
       nbuAnchors.push({

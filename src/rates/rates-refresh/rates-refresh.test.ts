@@ -591,6 +591,7 @@ describe('refreshRates — UAH is always treated as present for the throttle', (
     const { deps, captured } = makeDeps({
       fetchFiatRates: async () => {
         fiatCalled = true;
+
         return fiat;
       },
       now: () => 1000 + 60_000, // 1 minute after the last refresh — inside the window

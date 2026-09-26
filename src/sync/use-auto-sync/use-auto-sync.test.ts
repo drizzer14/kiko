@@ -33,6 +33,7 @@ jest.mock('../../bank-sync/registry', () => ({
 }));
 jest.mock('@kiko/sync/refresh-market-data', () => {
   const actual = jest.requireActual('@kiko/sync/refresh-market-data');
+
   return {
     ...actual,
     refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),

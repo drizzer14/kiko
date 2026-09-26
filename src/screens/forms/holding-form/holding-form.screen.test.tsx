@@ -111,6 +111,7 @@ const mockUseLiveQuery = jest.fn(
     if (keys[0] === 'holdings') {
       return { data: query.__kind === 'all' ? mockAllHoldings : mockEditHoldings };
     }
+
     if (keys[0] === 'accounts' && query.__kind === 'list') {
       return { data: mockAllAccounts };
     }
