@@ -24,6 +24,13 @@ describe('darkTheme iOS dark palette', () => {
     // every existing test.
     expect(darkTheme.colors.onAccent).toBe('#FFFFFF');
   });
+
+  // The user-approved native iOS chip/segment selection look (kiko-design-system
+  // "Native iOS chip/segment style"): a value change needs a new approval.
+  it('pins the native chip/segment selection tokens', () => {
+    expect(darkTheme.colors.segmentSelected).toBe('#747478');
+    expect(darkTheme.colors.neutralSubtle).toBe('rgba(118,118,128,0.24)');
+  });
 });
 
 describe('surfaceTranslucent vs surfaceTranslucentStrong', () => {
