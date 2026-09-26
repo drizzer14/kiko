@@ -1230,6 +1230,23 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   deletes real rows, since op-sqlite itself is a native module unavailable
   under Jest; every other migration's test coverage here stays at the
   plumbing level (`run-migrations.test.ts`) or the restore-side JS mirror.
+- **A launch-time upgrade step (not a migration) needs the SAME restore-side
+  mirror as a migration's own backfill.** Migration 0041's flag
+  (`settings.dedupKeysUpgraded`) and its launch-time rewrite
+  (`upgradeStoredDedupKeys`) only run on live data — a `.kiko` restore
+  REPLACES the whole `transactions`/`settings` tables, so a pre-0041
+  export's legacy statement-import dedup keys need the identical rewrite
+  applied on restore too. `restoreDataSnapshot`'s
+  `withLegacyDedupKeysUpgraded` mirrors it: `Object.hasOwn` on the settings
+  row detects the `dedupKeysUpgraded` key's PRESENCE (a pre-0041 export
+  carries none at all), not its value — an already-0041-shaped snapshot's
+  `false` (a device that hadn't upgraded yet) is left exactly as exported,
+  since that device's own next launch runs the identical rewrite anyway.
+  Applied AFTER `withStrayDepositBondBalanceCleaned`, to the FINAL
+  transaction set that cleanup produces (a different table than the
+  balanceSetAt/stray-balance backfills above, so order between them
+  doesn't matter — it runs last only because it has to act on what's
+  actually being inserted).
 - **No `TextDecoder`/`TextEncoder`.** Hermes has no working `TextDecoder`
   (confirmed on device — see `utf8/utf8.ts`'s header comment); use the
   hand-rolled `utf8Encode`/`utf8Decode` and `encodeBytesToBase64`/

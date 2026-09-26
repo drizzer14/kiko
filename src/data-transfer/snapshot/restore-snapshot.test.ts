@@ -20,6 +20,7 @@ import {
   syncState,
   transactions,
 } from '../../db/schema';
+import { computeDedupKeyBase } from '../../statement-import/mapping/mapping';
 
 import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
@@ -718,6 +719,83 @@ describe('restoreDataSnapshot', () => {
       });
 
       expect(insertedRows.holdings).toEqual([cleanHolding]);
+    });
+  });
+
+  // Migration 0041's flag (`settings.dedupKeysUpgraded`) and the launch-time
+  // rewrite it gates (`upgradeStoredDedupKeys`) only run on LIVE data — a
+  // `.kiko` restore REPLACES the whole `transactions`/`settings` tables, so a
+  // pre-0041 export's legacy keys must be upgraded HERE too, mirroring
+  // migration 0036's `withLegacyBalanceSetAtBackfilled` above:
+  // `Object.hasOwn` on the settings row detects an entirely absent
+  // `dedupKeysUpgraded` key (a pre-0041 export), not its value — an
+  // already-0041-shaped snapshot's `false` (a device that hadn't run its own
+  // upgrade yet) is left for THAT device's next launch to handle, the same
+  // as any other live `false`.
+  describe('legacy dedup-key upgrade (a pre-0041 snapshot has no dedupKeysUpgraded key)', () => {
+    const legacyBase = computeDedupKeyBase('h1', 100, 5_000, 'Top up');
+    const legacyImportTransaction = (overrides: Partial<Record<string, unknown>> = {}) => ({
+      id: 't1',
+      holdingId: 'h1',
+      time: 100_000,
+      amountMinorUnits: 5_000,
+      description: 'Top up',
+      source: 'import',
+      externalId: `${legacyBase} 1`,
+      ...overrides,
+    });
+
+    it('rewrites a legacy occurrence key and marks the settings row upgraded', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+      // No `dedupKeysUpgraded` key at all — a pre-0041 export.
+      const legacySettingsRow = { id: 1, baseCurrency: 'UAH' };
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        settings: [legacySettingsRow] as never,
+        transactions: [legacyImportTransaction()] as never,
+      });
+
+      expect(insertedRows.transactions).toEqual([
+        legacyImportTransaction({ externalId: `${legacyBase}␟1` }),
+      ]);
+      expect(insertedRows.settings).toEqual([
+        { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true },
+      ]);
+    });
+
+    it("leaves a row that isn't shaped like a legacy key unchanged, even while upgrading the settings row", async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+      const editedTransaction = legacyImportTransaction({ description: 'Top up (edited note)' });
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        settings: [{ id: 1, baseCurrency: 'UAH' }] as never,
+        transactions: [editedTransaction] as never,
+      });
+
+      expect(insertedRows.transactions).toEqual([editedTransaction]);
+      expect(insertedRows.settings).toEqual([
+        { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true },
+      ]);
+    });
+
+    it('leaves a snapshot that ALREADY carries dedupKeysUpgraded unchanged (a post-0041 export)', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+      const alreadyMigratedSettingsRow = { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: false };
+      const legacyShapedTransaction = legacyImportTransaction();
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        settings: [alreadyMigratedSettingsRow] as never,
+        transactions: [legacyShapedTransaction] as never,
+      });
+
+      expect(insertedRows.transactions).toEqual([legacyShapedTransaction]);
+      expect(insertedRows.settings).toEqual([alreadyMigratedSettingsRow]);
     });
   });
 });

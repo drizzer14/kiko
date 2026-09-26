@@ -10,6 +10,7 @@ import {
   type HoldingRow,
   holdings,
   pricePoints,
+  type SettingsRow,
   settings,
   syncState,
   type TransactionRow,
@@ -17,6 +18,7 @@ import {
 } from '../../db/schema';
 import { write } from '../../db/client';
 import { chunkForTable } from '../../db/chunk-for-table';
+import { upgradeLegacyDedupKey } from '../../statement-import/mapping/upgrade-dedup-key';
 
 import type { DataSnapshot } from './data-snapshot';
 
@@ -204,6 +206,41 @@ const withLoanInterestReseeded = (snapshotCategories: CategoryRow[]): CategoryRo
 };
 
 /**
+ * Migration 0041's flag and its launch-time rewrite (`upgradeStoredDedupKeys`)
+ * only run on LIVE data — a `.kiko` restore REPLACES the whole
+ * `transactions`/`settings` tables, so a pre-0041 export's legacy
+ * statement-import dedup keys need the identical upgrade applied HERE, the
+ * same way `withLegacyBalanceSetAtBackfilled` mirrors migration 0036.
+ * `Object.hasOwn` detects the settings row's `dedupKeysUpgraded` key by
+ * PRESENCE, not value — an already-0041-shaped snapshot's `false` (a device
+ * that hadn't upgraded yet) is left exactly as exported, since that device's
+ * own next launch runs the identical rewrite through `upgradeStoredDedupKeys`;
+ * restoring it here too would just be redundant, never wrong, but this stays
+ * a no-op to match every other "only a LEGACY export gets the mirror"
+ * backfill in this file. An absent settings row (an empty `settings: []`
+ * snapshot) is left alone entirely — there's nothing to flag.
+ */
+const withLegacyDedupKeysUpgraded = (
+  snapshotSettings: SettingsRow[],
+  snapshotTransactions: TransactionRow[],
+): { settings: SettingsRow[]; transactions: TransactionRow[] } => {
+  const [settingsRow] = snapshotSettings;
+  if (settingsRow === undefined || Object.hasOwn(settingsRow, 'dedupKeysUpgraded')) {
+    return { settings: snapshotSettings, transactions: snapshotTransactions };
+  }
+
+  const upgradedTransactions = snapshotTransactions.map((row) => {
+    const upgradedExternalId = upgradeLegacyDedupKey(row);
+    return upgradedExternalId === null ? row : { ...row, externalId: upgradedExternalId };
+  });
+
+  return {
+    settings: [{ ...settingsRow, dedupKeysUpgraded: true }],
+    transactions: upgradedTransactions,
+  };
+};
+
+/**
  * Replaces every row in every one of the 10 logical tables with the given
  * snapshot's rows, inside ONE `write()` transaction — so a failure partway
  * leaves the live database untouched (op-sqlite's transaction auto-rolls-back
@@ -258,8 +295,14 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
     const holdingsAfterLegacyBackfill = snapshot.holdings.map((holding) =>
       withLegacyBalanceSetAtBackfilled(holding, boundaries),
     );
-    const { holdings: holdingsToInsert, transactions: transactionsToInsert } =
+    const { holdings: holdingsToInsert, transactions: transactionsAfterStrayCleanup } =
       withStrayDepositBondBalanceCleaned(holdingsAfterLegacyBackfill, snapshot.transactions);
+
+    // Independent of the two backfills above (a different table, a different
+    // migration) — applied last, to the FINAL transaction set the stray
+    // cleanup produced, since that's what actually gets inserted.
+    const { settings: settingsToInsert, transactions: transactionsToInsert } =
+      withLegacyDedupKeysUpgraded(snapshot.settings, transactionsAfterStrayCleanup);
 
     // Split into four sequential groups (rather than one 10-loop function) to
     // stay under the cognitive-complexity ceiling; overall parent-before-child
@@ -295,7 +338,7 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
       for (const part of chunkForTable(currencyRateHistory, snapshot.currencyRateHistory)) {
         await databaseTransaction.insert(currencyRateHistory).values(part);
       }
-      for (const part of chunkForTable(settings, snapshot.settings)) {
+      for (const part of chunkForTable(settings, settingsToInsert)) {
         await databaseTransaction.insert(settings).values(part);
       }
       // `?? []`: see the doc comment above — an export that predates
