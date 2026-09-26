@@ -66,9 +66,12 @@ never in `.env`, `.env.local`, the database, or a log.
 `.env` is not tracked; only the public `.env.example` template is. The
 `postinstall` step (`scripts/ensure-env.js`) copies `.env.example` to
 `.env` automatically when `.env` is missing, so a fresh checkout,
-worktree, or CI has a working `.env` with no manual step. It never
-overwrites an existing `.env`, so a hand-edited file or a `.env.local`
-override survives `npm install`.
+worktree, or CI has a working `.env` with no manual step. When `.env`
+already exists, it instead appends any key present in `.env.example`
+but absent from `.env`, so a key added to the template later still
+reaches an older checkout's `.env`. Either way it never overwrites an
+existing key's value, so a hand-edited file or a `.env.local` override
+survives `npm install`.
 
 `.env.test` is a tracked, public-only variant of `.env`. `jest.config.js`
 defaults `ENVFILE` to it, so a fresh checkout runs hermetic Jest tests; an
