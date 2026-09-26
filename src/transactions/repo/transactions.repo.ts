@@ -441,8 +441,8 @@ export const transactionsRepo = {
    * matcher compares against each loan's own currency itself (this query
    * makes no currency decision of its own).
    *
-   * Item 4 (op-sqlite queue, a single-worker read queue every other app-open
-   * read shares): a plain, unbounded scan of every eligible debit ever
+   * op-sqlite is a single-worker read queue every other app-open read
+   * shares, so a plain, unbounded scan of every eligible debit ever
    * recorded would grow with the WHOLE ledger, not with what the matcher
    * could ever possibly use — bounded to `time >= minTime` (the caller
    * passes each loan's own earliest `startDate` minus the match window's own
@@ -479,7 +479,7 @@ export const transactionsRepo = {
    * loan holdings — the matcher's own "taken installment" input
    * (`LinkedLoanPayment`, `src/loans/payment-matcher/`): a link already
    * proven against rules 1+2 must keep its installment from being handed to
-   * a DIFFERENT, later transaction on a following run (item 1 bug —
+   * a DIFFERENT, later transaction on a following run —
    * `loanMatchCandidatesQuery` above itself excludes an already-linked row,
    * so without this separate read the matcher would never see it at all).
    */
@@ -494,8 +494,8 @@ export const transactionsRepo = {
       .where(inArray(transactions.loanHoldingId, [...loanHoldingIds])),
   /**
    * Every transaction linked (manual or auto) to one loan holding, newest
-   * first — the loan holding-detail screen's own "Linked payments" section
-   * (item 2): the loan itself is ledgerless (`isLedgerlessHoldingType`), so
+   * first — the loan holding-detail screen's own "Linked payments" section:
+   * the loan itself is ledgerless (`isLedgerlessHoldingType`), so
    * its own `listByHoldingQuery` would read nothing; a payment always lives
    * on the PAYER holding instead, found only by this marker.
    */

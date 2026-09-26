@@ -634,9 +634,9 @@ export const en = {
     interest: 'Interest',
     interestAccrual: 'Interest accrual',
     interestEarned: 'Interest earned',
-    // The loan detail screen's own "Linked payments" section heading (item
-    // 2): the transactions the auto-link matcher (or a manual pick) linked
-    // to this loan, newest first.
+    // The loan detail screen's own "Linked payments" section heading: the
+    // transactions the auto-link matcher (or a manual pick) linked to this
+    // loan, newest first.
     linkedPayments: 'Linked payments',
     militaryLevy: 'Military levy {{pct}}%',
     // The loan detail screen's "next installment" panel (annuity/

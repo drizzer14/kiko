@@ -110,9 +110,9 @@ describe('runLoanAutoLink', () => {
     await expect(runLoanAutoLink()).resolves.toBeUndefined();
   });
 
-  // Item 4 (op-sqlite queue): bound the candidate read to the earliest
-  // loan's own start date minus the match window's before-margin, and to
-  // the open loans' own currencies — never a whole-table scan.
+  // Bound the candidate read (op-sqlite queue) to the earliest loan's own
+  // start date minus the match window's before-margin, and to the open
+  // loans' own currencies — never a whole-table scan.
   it('bounds loanMatchCandidatesQuery to the earliest loan start minus the window margin, and to the loan currencies', async () => {
     mockLoanHoldingsQuery.mockResolvedValue([loanHoldingRow]);
     mockLoanMatchCandidatesQuery.mockResolvedValue([]);
@@ -143,8 +143,8 @@ describe('runLoanAutoLink', () => {
     expect(mockLoanLinkedPaymentsQuery).toHaveBeenCalledWith(['loan-1']);
   });
 
-  // Item 1 bug, test (b): the FIRST run auto-links the real payment; the
-  // SECOND run must not hand its installment to a later same-amount
+  // The FIRST run auto-links the real payment; the SECOND run must not
+  // hand its installment to a later same-amount
   // candidate now that the real payment shows up as already linked.
   it('does not re-link a same-amount candidate once its installment was auto-linked on an earlier run', async () => {
     mockLoanHoldingsQuery.mockResolvedValue([loanHoldingRow]);

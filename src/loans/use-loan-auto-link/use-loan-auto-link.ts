@@ -41,16 +41,13 @@ export const runLoanAutoLink = async (now: number = Date.now()): Promise<void> =
       return;
     }
 
-    // Item 4 (op-sqlite queue): bound the candidate read to what the matcher
-    // could ever possibly use, rather than a whole-table scan — every loan's
-    // own currency, and no earlier than the earliest loan's own start date
-    // minus the match window's own before-margin (the SAME constants
-    // `withinDateWindow` checks against, so this bound can never exclude an
-    // installment the matcher would otherwise have considered). A loan
-    // holding with unparseable metadata contributes neither a currency nor a
-    // start date here — `matchLoanPayments` itself already treats it as
-    // having no installments at all (`asLoanMeta` returning null), so
-    // omitting it from the bound changes nothing it would have matched.
+    // Bound the candidate read (op-sqlite's single-worker queue makes a
+    // whole-table scan costly) to every loan's own currency and no earlier
+    // than the earliest start date minus the match window's own
+    // before-margin — the SAME constants `withinDateWindow` checks against,
+    // so this can never exclude an installment the matcher would otherwise
+    // consider. Unparseable metadata contributes no bound here, matching
+    // `matchLoanPayments`'s own treatment of it as having no installments.
     const loanMetas = loanHoldingRows
       .map((row) => asLoanMeta(row.metadata))
       .filter((meta): meta is LoanMeta => meta !== null);
@@ -67,9 +64,9 @@ export const runLoanAutoLink = async (now: number = Date.now()): Promise<void> =
         minTime: earliestStartDate - WINDOW_BEFORE_DAYS * MS_PER_DAY,
         currencies,
       }),
-      // Item 1 bug: an already-linked row is excluded from `candidateRows`
-      // above, so the matcher needs this SEPARATE read to know which
-      // installments those rows already took (`installmentIsTaken`).
+      // An already-linked row is excluded from `candidateRows` above, so the
+      // matcher needs this SEPARATE read to know which installments those
+      // rows already took (`installmentIsTaken`).
       transactionsRepo.loanLinkedPaymentsQuery(loanHoldingRows.map((row) => row.id)),
     ]);
 

@@ -373,8 +373,8 @@ describe('matchLoanPayments', () => {
   });
 });
 
-// Item 1 bug: `loanMatchCandidatesQuery` (the real caller) drops an
-// already-linked row from `transactions`, so without `linkedPayments` the
+// `loanMatchCandidatesQuery` (the real caller) drops an already-linked row
+// from `transactions`, so without `linkedPayments` the
 // installment it paid would look unpaid again on the next run — a later
 // same-amount candidate (with its OWN valid third signal) would then take
 // its place, double-counting one installment across two real payments.
@@ -446,7 +446,7 @@ describe('matchLoanPayments — an installment already taken (item 1)', () => {
   });
 });
 
-// Item 5: the IBAN comparison must not false-negative on cosmetic
+// The IBAN comparison must not false-negative on cosmetic
 // differences (case, grouping spaces) between what the user typed on the
 // loan form and what a bank feed's own counterIban carries; a lenderName
 // shorter than 3 characters is too likely to appear inside an unrelated

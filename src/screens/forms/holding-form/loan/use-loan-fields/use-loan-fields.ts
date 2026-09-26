@@ -196,7 +196,7 @@ const buildLoanMeta = (fields: LoanFieldsSnapshot, currency: Currency): LoanMeta
       }),
   paymentHoldingId: fields.paymentHoldingId ?? undefined,
   lenderName: fields.lenderName.trim() || undefined,
-  // Item 5: normalized (whitespace-stripped, uppercased) at save time, so the
+  // Normalized (whitespace-stripped, uppercased) at save time, so the
   // matcher's own IBAN compare never depends on cosmetic differences between
   // what the user typed and what a bank feed's own counterIban carries. The
   // typed field's OWN display value is untouched — only the stored value is
@@ -444,9 +444,9 @@ export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult 
       holdingId,
       { name, color, metadata: newMeta },
       buildLoanPricePointOp({ oldMeta, newMeta, holdingId, currency, book, now: Date.now() }),
-      // Item 1: a fresh holding (`oldMeta === null`) has no prior auto links
-      // to invalidate — mirrors `buildLoanPricePointOp`'s own `oldMeta ===
-      // null` guard.
+      // A fresh holding (`oldMeta === null`) has no prior auto links to
+      // invalidate — mirrors `buildLoanPricePointOp`'s own `oldMeta === null`
+      // guard.
       oldMeta !== null && loanEditInvalidatesAutoLinks(oldMeta, newMeta),
     );
   };

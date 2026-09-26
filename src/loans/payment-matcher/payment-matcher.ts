@@ -8,9 +8,9 @@ import { loanInstallments } from '../../holdings/loan-schedule';
 import { asLoanMeta, type LoanMeta } from '../../holdings/holding-metadata';
 
 // Exported so `use-loan-auto-link.ts` can derive its own SQL-level lower
-// bound (item 4: "earliest loan start minus the window's own before-margin")
-// from the SAME constants this module's own date-window check uses, rather
-// than a second, driftable literal.
+// bound ("earliest loan start minus the window's own before-margin") from
+// the SAME constants this module's own date-window check uses, rather than
+// a second, driftable literal.
 export const MS_PER_DAY = 24 * 60 * 60 * 1000;
 // Spec 5.4 rule 2: "3 days before to 7 days after the due date".
 export const WINDOW_BEFORE_DAYS = 3;
@@ -30,13 +30,13 @@ const PAYMENT_KEYWORDS = [
   'repayment',
 ];
 
-// Item 5: a lenderName shorter than this is too likely to appear inside an
+// A lenderName shorter than this is too likely to appear inside an
 // unrelated description by coincidence (e.g. "Jo" inside "Joe's Diner") to
 // count as a real third signal.
 const MIN_LENDER_NAME_LENGTH = 3;
 
 /**
- * Item 5: strips whitespace (including the grouping spaces a user or a bank
+ * Strips whitespace (including the grouping spaces a user or a bank
  * feed may insert every 4 characters) and uppercases, so a cosmetic
  * difference between what the user typed on the loan form and what a bank's
  * own `counterIban` carries never false-negatives rule 3's IBAN signal.
@@ -54,7 +54,7 @@ type MatchableLoanHolding = Pick<HoldingRow, 'id' | 'currency' | 'metadata'>;
 
 /**
  * One transaction ALREADY linked (manual or auto alike) to a loan — the
- * matcher's own "taken installment" input (item 1 fix). `loanMatchCandidatesQuery`
+ * matcher's own "taken installment" input. `loanMatchCandidatesQuery`
  * excludes an already-linked row from `transactions` (P-NOWORK: never hand
  * the matcher a row it can never (re-)link), so without this separate list
  * the installment that row already paid would look UNPAID on the very next
@@ -178,8 +178,8 @@ const hasThirdSignal = (
   );
 };
 
-// Item 1 fix: an installment already paid by a linked row (manual or auto)
-// must never be handed to a DIFFERENT, later transaction — `linkedPayments`
+// An installment already paid by a linked row (manual or auto) must never
+// be handed to a DIFFERENT, later transaction — `linkedPayments`
 // carries every row already linked to each loan, and an installment counts
 // as taken the moment ANY of them still passes rules 1 (amount) and 2 (date)
 // for it. The third signal is deliberately NOT re-checked here: the link
@@ -252,7 +252,7 @@ const installmentKey = (installment: CandidateInstallment): string =>
 export const matchLoanPayments = (params: {
   transactions: readonly MatchableTransaction[];
   loans: readonly MatchableLoanHolding[];
-  // Every row already linked (manual or auto) to one of `loans` — item 1's
+  // Every row already linked (manual or auto) to one of `loans` — the
   // "taken installment" input (see `installmentIsTaken`'s own doc comment).
   // Optional, defaulting to none, so an existing caller that has no such
   // list yet (or a test not exercising this path) keeps its prior behavior

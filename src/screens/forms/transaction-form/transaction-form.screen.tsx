@@ -1303,7 +1303,7 @@ const showsSaveButton = (
 //
 // Also visible whenever the row already carries a link
 // (`selectedLoanHoldingId`), even with zero open loan options AND even once
-// the row is no longer a debit (item 3: a linked row later edited from debit
+// the row is no longer a debit (a linked row later edited from debit
 // to credit must not hide the field where None/Undo live) — a filter never
 // hides an active selection: the row stays linked whose loan closed, moved
 // currency, or whose own amount sign changed, and the user must be able to

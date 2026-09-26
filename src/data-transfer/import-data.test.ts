@@ -20,7 +20,7 @@ jest.mock('@kiko/sync/refresh-market-data', () => ({
   refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),
 }));
 
-// Item 4: a bulk restore bypasses the sync/import/loan-edit call sites that
+// A bulk restore bypasses the sync/import/loan-edit call sites that
 // normally trigger the auto-link matcher — trigger it explicitly here too,
 // the same "first-add refresh" reasoning as `refreshMarketData` above.
 // `runLoanAutoLink` itself returns early with no loan (its own doc comment),
@@ -99,7 +99,7 @@ describe('importData', () => {
     expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: false, metals: true });
   });
 
-  // Item 4: fire-and-forget, after a successful restore.
+  // Fire-and-forget, after a successful restore.
   it('triggers the loan auto-link matcher after a successful restore', async () => {
     const { fileText, keyBase64 } = encryptedFixture();
     mockReadFile.mockResolvedValue(fileText);

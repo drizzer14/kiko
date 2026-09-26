@@ -2076,7 +2076,7 @@ describe('HoldingFormScreen loan', () => {
     expect(screen.queryByText('USD card')).toBeNull();
   });
 
-  // Item 3 (orchestrator ruling): a filter never hides an ACTIVE selection —
+  // A filter never hides an ACTIVE selection —
   // `buildLoanOptions` (the transaction form's own loan-payment field)
   // already unions a closed/mismatched selection back in; "Paid from" must
   // do the same, or an edited loan's own payer silently reads as "None".
@@ -2338,8 +2338,8 @@ describe('HoldingFormScreen loan', () => {
         },
       }),
       { kind: 'none' },
-      // Item 1: the principal changed, so this edit clears the loan's own
-      // auto links (they may no longer match the new schedule).
+      // The principal changed, so this edit clears the loan's own auto
+      // links (they may no longer match the new schedule).
       true,
     );
     expect(updateLoanMock.mock.calls[0][1]).not.toHaveProperty('balanceMinorUnits');
@@ -2382,7 +2382,7 @@ describe('HoldingFormScreen loan', () => {
         },
       }),
       { kind: 'none' },
-      // Item 1: nothing that matters to the matcher changed.
+      // Nothing that matters to the matcher changed.
       false,
     );
   });
@@ -2433,7 +2433,7 @@ describe('HoldingFormScreen loan', () => {
       'h1',
       expect.objectContaining({ metadata: expect.objectContaining({ schedule: 'none' }) }),
       { kind: 'upsert', day: today, price: '300000.00', currency: 'UAH' },
-      // Item 1: the schedule changed (annuity -> none).
+      // The schedule changed (annuity -> none).
       true,
     );
   });
@@ -2477,7 +2477,7 @@ describe('HoldingFormScreen loan', () => {
         price: '500000.00',
         currency: 'UAH',
       },
-      // Item 1: the schedule changed (annuity -> none).
+      // The schedule changed (annuity -> none).
       true,
     );
   });
@@ -2554,7 +2554,7 @@ describe('HoldingFormScreen loan', () => {
       'h1',
       expect.objectContaining({ metadata: expect.objectContaining({ schedule: 'annuity' }) }),
       { kind: 'none' },
-      // Item 1: the schedule changed (none -> annuity).
+      // The schedule changed (none -> annuity).
       true,
     );
   });

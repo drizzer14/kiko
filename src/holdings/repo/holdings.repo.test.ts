@@ -1388,9 +1388,9 @@ describe('holdingsRepo.updateLoan', () => {
     ]);
   });
 
-  // Item 1: a loan edit that changes amount/schedule/paymentHoldingId can
-  // invalidate a previously-computed AUTO link's own rules 1/2 against the
-  // NEW schedule — the caller (`use-loan-fields.ts`'s `saveEdit`) detects
+  // A loan edit that changes its amortization schedule or a third-signal
+  // input can invalidate a previously-computed AUTO link's own rules 1/2
+  // against the NEW schedule — the caller (`use-loan-fields.ts`'s `saveEdit`) detects
   // this and asks `updateLoan` to clear this loan's own auto links, in the
   // SAME transaction as the metadata patch, before the fire-and-forget
   // matcher re-run that follows.

@@ -140,9 +140,9 @@ describe('transactionsRepo', () => {
     expect(sql).toContain('"transactions"."time"');
   });
 
-  // Item 4 (op-sqlite queue): a whole-table scan on every sync/import/
-  // loan-edit is wasteful once the ledger grows — bound the read to what the
-  // matcher could ever possibly use.
+  // A whole-table scan (op-sqlite queue) on every sync/import/loan-edit is
+  // wasteful once the ledger grows — bound the read to what the matcher
+  // could ever possibly use.
   it('bounds loanMatchCandidatesQuery to transactions at/after minTime', () => {
     const { sql, params } = transactionsRepo
       .loanMatchCandidatesQuery({ minTime: 12_345, currencies: ['UAH'] })
@@ -161,8 +161,8 @@ describe('transactionsRepo', () => {
     expect(params).toEqual(expect.arrayContaining(['UAH', 'USD']));
   });
 
-  // Item 1's own read: every row already linked (manual or auto) to one of
-  // these loan holdings — the matcher's "taken installment" input.
+  // Every row already linked (manual or auto) to one of these loan
+  // holdings — the matcher's "taken installment" input.
   it('scopes loanLinkedPaymentsQuery to the given loan holding ids', () => {
     const { sql, params } = transactionsRepo.loanLinkedPaymentsQuery(['loan-1', 'loan-2']).toSQL();
     const lower = sql.toLowerCase();
@@ -171,7 +171,7 @@ describe('transactionsRepo', () => {
     expect(params).toEqual(expect.arrayContaining(['loan-1', 'loan-2']));
   });
 
-  // Item 2: the loan holding-detail screen's own "Linked payments" section.
+  // The loan holding-detail screen's own "Linked payments" section.
   it('builds a newest-first query of every transaction linked to one loan holding', () => {
     const { sql, params } = transactionsRepo.listLinkedToLoanQuery('loan-1').toSQL();
     const lower = sql.toLowerCase();

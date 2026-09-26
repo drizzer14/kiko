@@ -1861,7 +1861,7 @@ describe('TransactionFormScreen — loan payment field', () => {
     expect(queryByLabelText('Loan payment')).toBeNull();
   });
 
-  // Item 3: a linked row later edited from debit to credit must not hide
+  // A linked row later edited from debit to credit must not hide
   // the field where None/Undo live — `selectedLoanHoldingId` bypasses the
   // sign check entirely, the same "a filter never hides an active
   // selection" rule the field's own currency/closed-loan union already

@@ -81,7 +81,7 @@ const runLoanAutoLinkIfLoan = (type: HoldingType): void => {
 // transaction form's own loan-payment field). A loan holding is itself
 // ledgerless, so this can never offer the loan as its own payer.
 //
-// A filter never hides an active selection (kiko-design-system, item 3): the
+// A filter never hides an active selection (kiko-design-system): the
 // CURRENTLY selected `paymentHoldingId` is unioned back in even once it has
 // since closed or moved to another currency — mirrors `buildLoanOptions`'s
 // own union-back — or `PaymentHoldingField` would resolve no match for it

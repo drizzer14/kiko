@@ -292,7 +292,7 @@ const seed = (
   // call site above keeps behaving exactly as before.
   isLoading: Partial<Record<string, boolean>> = {},
   // The rows `listLinkedToLoanQuery` resolves to — the loan detail's own
-  // "Linked payments" section (item 2). Defaults to none, so every existing
+  // "Linked payments" section. Defaults to none, so every existing
   // call site above keeps rendering no such section, unaffected.
   linkedLoanPayments: unknown[] = [],
 ): void => {

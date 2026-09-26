@@ -254,7 +254,7 @@ describe('useLoanFields', () => {
     expect(result.current.lenderIban).toBe('');
   });
 
-  // Item 5: the CREATE payload normalizes lenderIban (strip whitespace,
+  // The CREATE payload normalizes lenderIban (strip whitespace,
   // uppercase) so a cosmetic difference from what a bank feed's own
   // counterIban carries never false-negatives the matcher's rule 3.
   it('normalizes lenderIban (strip whitespace, uppercase) in the create payload, leaving the typed field display untouched', async () => {
