@@ -199,8 +199,9 @@ describe('RawPreview', () => {
     expect(unselectedFill.backgroundColor).toBeUndefined();
   });
 
-  // The header-row tap target must clear the HIG 44pt floor.
-  it('gives each row at least the 44pt HIG tap-target height', async () => {
+  // The header-row tap target is the HIG 44pt floor, and the row height is a
+  // locked visual (kiko-design-system), so a taller row is a regression too.
+  it('gives each row exactly the 44pt HIG tap-target height', async () => {
     const { getByTestId } = await render(
       <RawPreview rows={rows} headerRowIndex={0} onSelectHeaderRow={jest.fn()} />,
     );
@@ -208,7 +209,7 @@ describe('RawPreview', () => {
     const { StyleSheet } = require('react-native');
     const fill = StyleSheet.flatten(getByTestId('raw-preview-row-0-fill').props.style);
 
-    expect(fill.minHeight).toBeGreaterThanOrEqual(44);
+    expect(fill.minHeight).toBe(44);
   });
 
   // A wide export renders no more than 5 columns per row.
