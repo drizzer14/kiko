@@ -14,10 +14,15 @@ import { NativeModules } from 'react-native';
 export const deviceRegion = (): string | undefined => {
   const locale: string | undefined = NativeModules?.SettingsManager?.settings?.AppleLocale;
 
+  // iOS's "Regional Override" setting appends a CLDR locale extension (for
+  // example "@rg=gbzzzz") after the region subtag; strip it before
+  // splitting, or the extension's own segments pollute the search below.
+  const localeWithoutExtension = locale?.split('@')[0];
+
   // The region subtag is the first 2-letter segment after the leading
   // language subtag; a script subtag (e.g. "Hans") is always 4 letters and
   // never matches.
-  const region = locale
+  const region = localeWithoutExtension
     ?.split(/[-_]/)
     .slice(1)
     .find((segment) => /^[a-zA-Z]{2}$/.test(segment));
