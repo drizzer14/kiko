@@ -345,6 +345,16 @@ new component can land between reviews of this skill:
   `textTransform`: each catalogue supplies its own casing (English
   Button copy is sentence case; Ukrainian already is) — there is no
   style-layer transform and no per-language gate.
+  **`loading` — an in-flight write.** `loading` shows a native
+  `ActivityIndicator` (in the label color) over the button's label and
+  icons, which stay laid out but invisible (`hiddenContent`,
+  `button.styles.ts`), so the button keeps EXACTLY its resting size; it
+  ignores presses and reports `accessibilityState.busy`, and is NOT
+  dimmed like `disabled` (the spinner already says why). A button whose
+  press awaits a slow write (the transaction form's category-override
+  sheet: Apply and "Just for this one") passes its `useSubmitOnce`
+  `isSubmitting` as `loading`, and the surface it sits on stays open
+  until the write is done — never a hand-rolled spinner beside a button.
   The shared `DISABLED_OPACITY` token
   (`src/design-system/disabled-opacity.ts`) is the ONE dimming a disabled
   pressable applies — `Button` reads it, and any new disabled pressable

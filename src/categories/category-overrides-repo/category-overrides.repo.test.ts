@@ -12,19 +12,29 @@ jest.mock('../../db/client', () => {
   };
 });
 
+import type { SQL } from 'drizzle-orm';
+
 import { categoryOverrides, transactions } from '../../db/schema';
+import { renderCondition } from '../../db/render-condition-test-helper';
 
 import { categoryOverridesRepo } from './category-overrides.repo';
 
 // Fake transaction: the rule upsert (insert->values->onConflictDoUpdate), the
-// full-scan select of transactions, and the id-filtered category update.
+// DISTINCT description read, and the description-filtered category update. A
+// plain full-row `select` throws: the rewrite must never pull every
+// transaction row into JS.
 const makeDatabaseTransaction = (allTransactions: { id: string; description: string }[]) => {
   const captured: {
     ruleValues?: Record<string, unknown>;
     ruleConflict?: Record<string, unknown>;
     transactionUpdateSet?: Record<string, unknown>;
+    transactionUpdateWhere?: SQL;
     transactionUpdateWhereCalled: boolean;
+    distinctRead?: { fields: Record<string, unknown>; table: unknown };
   } = { transactionUpdateWhereCalled: false };
+  const distinctDescriptions = [
+    ...new Set(allTransactions.map((transaction) => transaction.description)),
+  ].map((description) => ({ description }));
   const databaseTransaction = {
     insert: (table: unknown) => ({
       values: (values: Record<string, unknown>) => ({
@@ -38,7 +48,16 @@ const makeDatabaseTransaction = (allTransactions: { id: string; description: str
         },
       }),
     }),
-    select: () => ({ from: () => Promise.resolve(allTransactions) }),
+    select: () => {
+      throw new Error('full transactions scan');
+    },
+    selectDistinct: (fields: Record<string, unknown>) => ({
+      from: (table: unknown) => {
+        captured.distinctRead = { fields, table };
+
+        return Promise.resolve(distinctDescriptions);
+      },
+    }),
     update: (table: unknown) => ({
       set: (values: Record<string, unknown>) => {
         if (table === transactions) {
@@ -46,8 +65,9 @@ const makeDatabaseTransaction = (allTransactions: { id: string; description: str
         }
 
         return {
-          where: () => {
+          where: (condition: SQL) => {
             captured.transactionUpdateWhereCalled = true;
+            captured.transactionUpdateWhere = condition;
 
             return Promise.resolve();
           },
@@ -68,6 +88,27 @@ describe('categoryOverridesRepo.allQuery', () => {
 });
 
 describe('categoryOverridesRepo.upsertCategoryOverride', () => {
+  it('filters the rewrite in SQL by the matching raw descriptions, reading only distinct descriptions', async () => {
+    const { databaseTransaction, captured } = makeDatabaseTransaction([
+      { id: 't1', description: 'ATB Market' },
+      { id: 't2', description: '  atb   market ' },
+      { id: 't3', description: 'Coffee' },
+      { id: 't4', description: 'ATB Market' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
+
+    await categoryOverridesRepo.upsertCategoryOverride('ATB Market', 'groceries');
+
+    expect(captured.distinctRead).toEqual({
+      fields: { description: transactions.description },
+      table: transactions,
+    });
+    expect(renderCondition(captured.transactionUpdateWhere)).toEqual({
+      sql: '"transactions"."description" in (?, ?)',
+      params: ['ATB Market', '  atb   market '],
+    });
+  });
+
   it('upserts the rule keyed by the normalized name and rewrites matching transactions', async () => {
     const { databaseTransaction, captured } = makeDatabaseTransaction([
       { id: 't1', description: 'ATB Market' },
@@ -134,7 +175,7 @@ describe('categoryOverridesRepo.upsertCategoryOverride', () => {
 
     expect(captured.ruleValues).toMatchObject({ category: 'groceries' });
     expect(captured.transactionUpdateSet).toEqual({ category: 'groceries' });
-    expect(captured.transactionUpdateWhereCalled).toBe(true);
+    expect(renderCondition(captured.transactionUpdateWhere).params).toEqual(['АТБ', 'атб']);
   });
 
   it('no-ops on a whitespace-only name — no rule, no rewrite', async () => {

@@ -48,6 +48,11 @@ type ButtonBaseProps = {
   // (usually paired with `size="compact"`).
   fullWidth?: boolean;
   disabled?: boolean;
+  // An in-flight write: the button shows a spinner (in the label color) over
+  // its hidden label and icons, so it keeps the SAME size, and ignores presses
+  // until the write settles. Not dimmed like `disabled` — the spinner already
+  // says why it cannot be pressed.
+  loading?: boolean;
   // An optional leading SF Symbol name, rendered before the label in a row and
   // tinted to match the variant's white label — the button owns the icon tint
   // so a call site cannot desync it from the label.

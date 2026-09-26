@@ -2124,7 +2124,15 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const { onPress: onApplyOverrideOne, isSubmitting: isApplyingOverrideOne } =
     useSubmitOnce(applyOverrideOne);
 
+  // Either sheet write in flight: the sheet stays up (a scrim/back dismiss or
+  // Cancel closes nothing) until the write is done and its own `goBack` runs.
+  const isOverrideWriting = [isApplyingOverride, isApplyingOverrideOne].includes(true);
+
   const cancelOverride = (): void => {
+    if (isOverrideWriting) {
+      return;
+    }
+
     navigation.goBack();
   };
 
@@ -2636,7 +2644,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
           primary all-similar name rule; "Just for this one" (edit mode only) is
           the secondary single-row override; "Cancel" is a transparent ghost with
           a red label. Dismissing the sheet (scrim/back) behaves like Cancel — it
-          returns to the list. */}
+          returns to the list. While either write runs, its button shows a
+          spinner and the sheet stays open until the write is done. */}
       <BottomSheet
         visible={pendingOverride !== null}
         onDismiss={cancelOverride}
@@ -2656,17 +2665,31 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
           {overrideMessage}
         </Text>
 
-        <Button onPress={onApplyOverride} disabled={isApplyingOverride}>
+        <Button
+          onPress={onApplyOverride}
+          loading={isApplyingOverride}
+          disabled={isApplyingOverrideOne}
+        >
           {t('forms.transaction.apply')}
         </Button>
 
         {editingId !== null && (
-          <Button variant="secondary" onPress={onApplyOverrideOne} disabled={isApplyingOverrideOne}>
+          <Button
+            variant="secondary"
+            onPress={onApplyOverrideOne}
+            loading={isApplyingOverrideOne}
+            disabled={isApplyingOverride}
+          >
             {t('forms.transaction.applyToThisOne')}
           </Button>
         )}
 
-        <Button variant="ghost" textColor={theme.colors.negative} onPress={cancelOverride}>
+        <Button
+          variant="ghost"
+          textColor={theme.colors.negative}
+          onPress={cancelOverride}
+          disabled={isOverrideWriting}
+        >
           {t('common.cancel')}
         </Button>
       </BottomSheet>

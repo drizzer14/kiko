@@ -1,7 +1,7 @@
 import type { FC } from 'react';
 import { match } from 'ts-pattern';
 import { useUnistyles } from 'react-native-unistyles';
-import { Pressable, Text as RNText } from 'react-native';
+import { ActivityIndicator, Pressable, Text as RNText, View } from 'react-native';
 
 import SymbolIcon from '../symbol';
 
@@ -22,6 +22,7 @@ const Button: FC<ButtonProps> = ({
   size = 'regular',
   fullWidth = true,
   disabled = false,
+  loading = false,
   icon,
   trailingIcon,
   accessibilityLabel,
@@ -65,19 +66,8 @@ const Button: FC<ButtonProps> = ({
     .with('small', () => styles.small)
     .exhaustive();
 
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      testID={testID}
-      onPress={onPress}
-      disabled={disabled}
-      // The small size's visible pill is shorter than 44pt, so it carries a
-      // hitSlop that restores the >= 44pt HIG tap target; regular and compact
-      // already meet 44pt as their visible minHeight, so they take no slop.
-      hitSlop={size === 'small' ? SMALL_HIT_SLOP : undefined}
-      style={[styles.button, sizeStyle, fullWidth && styles.fullWidth, disabled && styles.disabled]}
-    >
+  const content = (
+    <>
       {icon !== undefined && (
         <SymbolIcon name={icon} color={labelColor} size={theme.iconSizes.body} />
       )}
@@ -86,6 +76,32 @@ const Button: FC<ButtonProps> = ({
       )}
       {trailingIcon !== undefined && (
         <SymbolIcon name={trailingIcon} color={labelColor} size={theme.iconSizes.body} />
+      )}
+    </>
+  );
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ busy: loading }}
+      testID={testID}
+      onPress={onPress}
+      disabled={disabled || loading}
+      // The small size's visible pill is shorter than 44pt, so it carries a
+      // hitSlop that restores the >= 44pt HIG tap target; regular and compact
+      // already meet 44pt as their visible minHeight, so they take no slop.
+      hitSlop={size === 'small' ? SMALL_HIT_SLOP : undefined}
+      style={[styles.button, sizeStyle, fullWidth && styles.fullWidth, disabled && styles.disabled]}
+    >
+      {loading ? <View style={styles.hiddenContent}>{content}</View> : content}
+
+      {loading && (
+        <ActivityIndicator
+          color={labelColor}
+          style={styles.spinner}
+          testID="button-loading-spinner"
+        />
       )}
     </Pressable>
   );

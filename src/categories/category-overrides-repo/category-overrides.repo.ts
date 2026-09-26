@@ -17,8 +17,12 @@ export const categoryOverridesRepo = {
   /**
    * Upsert a name→category rule AND rewrite every existing same-name transaction
    * to the new category, all in ONE op-sqlite transaction so a partial failure
-   * can never leave the rule and the ledger disagreeing. Matching is done in JS
-   * (never SQL) so Cyrillic/whitespace variants match — see normalizeTransactionName.
+   * can never leave the rule and the ledger disagreeing. The NAME match runs in
+   * JS (never SQL) so Cyrillic/whitespace variants match — see
+   * normalizeTransactionName — but only over the DISTINCT descriptions (a
+   * merchant repeats across many rows); the ROW filter is SQL, an update
+   * `where description in (...)` over the matching raw descriptions, so no
+   * transaction row is ever pulled into JS.
    * A whitespace-only name is a no-op: it must not create a catch-all rule.
    *
    * Categories are keyed by a stable slug, so a later category rename only
@@ -42,20 +46,20 @@ export const categoryOverridesRepo = {
           set: { category, displayName, updatedAt: sql`(unixepoch() * 1000)` },
         });
 
-      const rows = await databaseTransaction
-        .select({ id: transactions.id, description: transactions.description })
+      const descriptionRows = await databaseTransaction
+        .selectDistinct({ description: transactions.description })
         .from(transactions);
-      const matchingIds = rows
-        .filter((row) => normalizeTransactionName(row.description) === key)
-        .map((row) => row.id);
+      const matchingDescriptions = descriptionRows
+        .map((row) => row.description)
+        .filter((description) => normalizeTransactionName(description) === key);
 
-      if (matchingIds.length === 0) {
+      if (matchingDescriptions.length === 0) {
         return;
       }
 
       await databaseTransaction
         .update(transactions)
         .set({ category })
-        .where(inArray(transactions.id, matchingIds));
+        .where(inArray(transactions.description, matchingDescriptions));
     }),
 } satisfies Repository;

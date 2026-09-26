@@ -82,6 +82,23 @@ export const styles = StyleSheet.create((theme) => ({
   disabled: {
     opacity: DISABLED_OPACITY,
   },
+  // A loading button's label and icons: still laid out, so the button keeps
+  // the exact size it has at rest, but invisible under the spinner.
+  hiddenContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing(2),
+    opacity: 0,
+  },
+  // The loading spinner fills the button and centers itself over the hidden
+  // content (ActivityIndicator centers its glyph inside its own frame).
+  spinner: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  },
   // A plain `Text as RNText`, not the design-system `Text` primitive: `Text`
   // intentionally excludes `color` from its style prop (see text.props.ts) so
   // the tone token stays authoritative, but this label's color must vary by

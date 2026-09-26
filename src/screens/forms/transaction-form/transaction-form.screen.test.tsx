@@ -1702,6 +1702,57 @@ describe('TransactionFormScreen — category editing', () => {
     mockUpsertCategoryOverride.mockReset();
   });
 
+  // Both sheet writes can take a moment (Apply rewrites every same-name row):
+  // the pressed action shows a spinner, and the sheet stays up — a scrim/back
+  // dismiss or Cancel mid-write closes nothing — until the write is done.
+  it.each([
+    ['Apply', () => mockUpsertCategoryOverride],
+    ['Just for this one', () => mockSetCategory],
+  ])(
+    'shows "%s" loading and keeps the sheet open until its write is done',
+    async (actionLabel, writeMock) => {
+      setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
+        id: 'txn-1',
+        holdingId: 'h1',
+        amountMinorUnits: -1234,
+        time: 42,
+        description: 'Coffee',
+        source: 'manual',
+        category: 'groceries',
+      });
+      let resolveWrite: () => void = () => {};
+      writeMock().mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveWrite = resolve;
+          }),
+      );
+
+      const utils = await renderEdit('txn-1');
+      await pickCategory(utils, 'Dining');
+      await fireEvent.press(utils.getByText('Save'));
+
+      const sheet = within(utils.getByTestId('category-override-sheet'));
+      expect(sheet.queryByTestId('button-loading-spinner')).toBeNull();
+
+      await fireEvent.press(sheet.getByText(actionLabel));
+
+      expect(sheet.getAllByTestId('button-loading-spinner')).toHaveLength(1);
+
+      await fireEvent(utils.getByTestId('category-override-sheet-modal'), 'requestClose');
+      await fireEvent.press(sheet.getByText('Cancel'));
+
+      expect(navigation.goBack).not.toHaveBeenCalled();
+
+      await act(async () => {
+        resolveWrite();
+      });
+      await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
+
+      writeMock().mockReset();
+    },
+  );
+
   it('renders the picked category icon in white in the confirm modal', async () => {
     setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
       id: 'txn-1',
