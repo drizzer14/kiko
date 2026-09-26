@@ -1993,3 +1993,80 @@ describe('runNodeChecks concurrency (Task 20 speed mitigation)', () => {
     expect(durationMilliseconds).toBeLessThan(1800);
   });
 });
+
+// Task 21: harness/kiko/hooks/hooks.json wires this script onto PreToolUse
+// for Edit/Write/MultiEdit, alongside the existing Bash matcher
+// (kill-guard.sh). These tests parse the real hooks.json and execute the
+// wired command string itself via `bash -c`, rather than the script
+// directly, so a wiring regression (a typo in the command, a missing
+// matcher, the guard-presence check dropped) fails here even though every
+// other describe block above already covers the script's own behavior.
+describe('PreToolUse wiring in harness/kiko/hooks/hooks.json', () => {
+  const hooksJsonPath = join(__dirname, '../harness/kiko/hooks/hooks.json');
+
+  function readHooksConfig(): {
+    hooks: { PreToolUse: Array<{ matcher: string; hooks: Array<{ command: string }> }> };
+  } {
+    return JSON.parse(readFileSync(hooksJsonPath, 'utf8'));
+  }
+
+  function preToolUseCommand(matcher: string): string {
+    const hooksConfig = readHooksConfig();
+    const matcherEntry = hooksConfig.hooks.PreToolUse.find((entry) => entry.matcher === matcher);
+
+    if (!matcherEntry) throw new Error(`no PreToolUse matcher for ${matcher}`);
+
+    return matcherEntry.hooks[0].command;
+  }
+
+  it('keeps the existing Bash matcher alongside a new Edit|Write|MultiEdit matcher', () => {
+    const hooksConfig = readHooksConfig();
+    const matchers = hooksConfig.hooks.PreToolUse.map((entry) => entry.matcher);
+
+    expect(matchers).toContain('Bash');
+    expect(matchers).toContain('Edit|Write|MultiEdit');
+  });
+
+  it('exits 0 with empty stdout when the guard script is absent from CLAUDE_PROJECT_DIR', () => {
+    const command = preToolUseCommand('Edit|Write|MultiEdit');
+    const missingProject = createTempDirectory('kiko-prewrite-wiring-');
+
+    const result = spawnSync('bash', ['-c', command], {
+      input: '',
+      encoding: 'utf8',
+      env: baseEnv({ CLAUDE_PROJECT_DIR: missingProject }),
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe('');
+  });
+
+  it('reaches the guard script when CLAUDE_PROJECT_DIR is this repo', () => {
+    const command = preToolUseCommand('Edit|Write|MultiEdit');
+    const repoRoot = join(__dirname, '..');
+    const targetFile = join(repoRoot, 'README.md');
+
+    // A non-.ts/.tsx target lets the real guard allow the write without
+    // ever invoking semgrep — this alone proves the wired command reached
+    // scripts/checks/pre-write-guard.sh, not that semgrep behaves.
+    const allowResult = spawnSync('bash', ['-c', command], {
+      input: payloadFor('Write', { file_path: targetFile, content: 'hello' }),
+      encoding: 'utf8',
+      env: baseEnv({ CLAUDE_PROJECT_DIR: repoRoot }),
+    });
+
+    expect(allowResult.status).toBe(0);
+
+    // A malformed stdin payload denies before the guard ever reaches
+    // semgrep, so this is safe to run unstubbed against the real repo too.
+    const denyResult = spawnSync('bash', ['-c', command], {
+      input: '{not valid json',
+      encoding: 'utf8',
+      env: baseEnv({ CLAUDE_PROJECT_DIR: repoRoot }),
+    });
+
+    expect(denyResult.status).toBe(2);
+    const parsed = JSON.parse(denyResult.stdout);
+    expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
+  });
+});
