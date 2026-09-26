@@ -18,6 +18,7 @@ Rules:
 - Do not shorten words in identifiers — see kiko-code-style's "Full words in identifiers" section for the denylist and the explicit exception list.
 - Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean.
 - Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
+- Edit files under `src/` and `__tests__/` only with Edit/Write. Never write them through Bash (redirects, `sed -i`, python, heredocs) — that skips the PreToolUse pre-write guard.
 - Iterate with SCOPED tests (only the touched files) while developing. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.
 - Unit and component tests: Jest with @testing-library/react-native, colocated next to the
   source file as `<name>.test.ts(x)` (e.g. `<name>.component.test.tsx`) — not in a `__tests__/`

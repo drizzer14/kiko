@@ -815,6 +815,14 @@ The baseline pass re-runs only the Node rules that found something in
 a new tree. See `conflictSides`, `afterTreesFor`, and
 `throwIfEditBrokeASide` in `scripts/checks/pre-write-guard.js`.
 
+## Harness and hook changes land through a worktree
+
+Merge a harness/hook change in a worktree first, never straight into
+`main`. Before it lands, run `bash -n` on each changed shell script
+under `harness/kiko/hooks/` and grep `harness/kiko/hooks/*` for
+conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`). A broken hook
+breaks every session's tool calls.
+
 ## Adding a pre-write guard rule
 
 Use this for every review finding or user feedback item classified as

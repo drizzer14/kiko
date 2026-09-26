@@ -288,6 +288,13 @@ kiko-architecture "write started from a cached display screen" rule —
 so a stale cached row can never put back a change another write
 removed. `ownershipMetadata` (`src/holdings/ownership/`) is the one
 builder of the ownership keys for the form and the repo.
+
+**Dated series need pinned tests.** A model of dated changes (the
+ownership series, and every future dated series) always has a pinned
+test that an edit effective on day X leaves every bucket before X
+unchanged. A value that switches source when data first arrives (a
+linked loan's linked payments vs its schedule) always has a pinned test
+that it does not step at the switch.
 `src/screens/forms/holding-form/metal/metal-section/metal-section.component.tsx`
 is the `metal` create-form section: a
 physical-form `ChipRow`, a unit `ChipRow`, a Purity `TextField`

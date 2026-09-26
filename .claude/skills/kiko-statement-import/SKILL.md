@@ -305,7 +305,7 @@ follow the same layout conventions as every other Kiko screen:
   `ExampleTransaction` owns its own `Divider`s above and below
   — a caller renders just `<ExampleTransaction ... />`, not a
   Divider/ExampleTransaction/Divider triple.
-- **The raw preview grid** (`column-mapping/raw-preview/`) gives each
+- **The raw preview grid** (`src/screens/column-mapping/raw-preview/`) gives each
   column a CONSISTENT width across every row
   (`raw-preview/column-widths.ts`'s `computeColumnWidths`, keyed off
   the longest cell text seen in that column across the previewed

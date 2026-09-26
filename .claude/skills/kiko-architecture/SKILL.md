@@ -366,9 +366,9 @@ read never overwrites a newer one. A rejected read is never cached.
 **The cache is OPT-IN, for display screens only.** Only a call that
 passes `{ cached: true }` (the 4th argument:
 `useLiveQuery(query, tables, true, { cached: true })`, or
-`usePriceBook(enabled, { cached: true })`) READS it. Today the opt-in
-is exactly the readiness queries of Accounts, Home, Account detail,
-Holding detail, Settings, System, Categories, and Statistics. A mount
+`usePriceBook(enabled, { cached: true })`) READS it. Only a display screen's readiness query opts in — never a
+form, a one-shot seed, or a query that drives a write. For the current
+set, grep `cached: true` under `src/`. A mount
 with a cache hit seeds `data` with the cached rows and `appliedKey`
 with the current key, so `isLoading` is `false` on the very first
 render; it STILL runs the query and subscribes, and the fresh result
@@ -391,8 +391,10 @@ mount's own read for the current key has applied (always `true` while
 disabled). Every write a display screen starts either passes only IDs
 (plus the user's explicit new value) to a repo that re-reads inside its
 own transaction (every `remove`, `categoriesRepo.delete`, the sync
-jobs, `holdingsRepo.editOwnershipChange`/`removeOwnershipChange` —
-a holding id plus a share change's day key), or is gated on `isFresh`. The drag reorders (Accounts' three
+jobs, `holdingsRepo.removeOwnershipChange` started from Holding
+detail — a holding id plus a share change's day key;
+`editOwnershipChange` is ID-shaped the same way but starts from the
+uncached `OwnershipChangeForm`), or is gated on `isFresh`. The drag reorders (Accounts' three
 grids, Account detail's holdings grid, Categories) set
 `sortEnabled={isFresh && …}`, and Categories' move-to-top/bottom
 buttons ignore a press until `isFresh` — each persists the WHOLE order
