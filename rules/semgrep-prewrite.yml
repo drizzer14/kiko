@@ -305,12 +305,20 @@ rules:
   # parameter/prop apart from a local re-declared under that SAME name after
   # already being routed through `effectiveFallbackName(...)` (`const
   # fallbackName = effectiveFallbackName(name, x)`, then `fallbackName={
-  # fallbackName}`), which is safe. `pattern-not-inside` on `const
-  # fallbackName = $ANY;` scopes the fifth arm to skip exactly that shape —
-  # any local reassignment under the same name, not only one calling
-  # `effectiveFallbackName` by name (a plain `declare const fallbackName`
-  # ambient type declaration, the true-positive shape, has no `=`
-  # initializer and so never matches this exclusion).
+  # fallbackName}`), which is safe. Two `pattern-not-inside` arms (a
+  # `function $FN(...) { ... }` declaration, and a `(...) => { ... }` arrow,
+  # each wrapping `const fallbackName = $ANY;`) scope the fifth arm to skip
+  # exactly that shape — but ONLY within the SAME enclosing function/arrow
+  # body as the JSX. A bare, unwrapped `...; const fallbackName = $ANY; ...`
+  # (no brace-delimited container) is NOT safe to use here: verified
+  # empirically that its ellipsis can match across an ENTIRE file's sibling
+  # top-level statements/functions, so a guarded local in one function
+  # silenced the true-positive bare pass-through in an unrelated LATER
+  # sibling function — wrapping the exclusion in the function/arrow's own
+  # braces bounds its span to that one declaration, which cannot leak past
+  # its closing `}` into a sibling. A plain `declare const fallbackName`
+  # ambient type declaration, the true-positive shape, has no `=` initializer
+  # and so never matches either exclusion arm regardless of scope.
   - id: kiko-no-undefined-nitro-prop
     languages: [typescript]
     severity: ERROR
@@ -340,9 +348,17 @@ rules:
                   - pattern: '<SFSymbolView ... fallbackName={fallbackName} ...></SFSymbolView>'
                   - pattern: '<SFSymbolView ... fallbackName={fallbackName} ... />'
               - pattern-not-inside: |
-                  ...
-                  const fallbackName = $ANY;
-                  ...
+                  function $FN(...) {
+                    ...
+                    const fallbackName = $ANY;
+                    ...
+                  }
+              - pattern-not-inside: |
+                  (...) => {
+                    ...
+                    const fallbackName = $ANY;
+                    ...
+                  }
   # kiko-design-system's `Divider` component owns the ONE hairline-rule
   # style. The pattern anchors on the LITERAL `height` key, never a bare
   # `$KEY: StyleSheet.hairlineWidth` — a BORDERED field/card

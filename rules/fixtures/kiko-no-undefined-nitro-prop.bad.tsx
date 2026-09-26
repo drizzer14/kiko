@@ -15,6 +15,7 @@ declare const missingFallback: boolean;
 declare const fallback: string;
 declare const name: string;
 declare const fallbackName: string | undefined;
+declare const resolveFallback: (name: string, incoming: string | undefined) => string;
 
 // EXPECT-FINDING
 export const literalUndefined = <SFSymbolView name="star" fallbackName={undefined} />;
@@ -36,3 +37,19 @@ export const ternaryUndefinedOnThen = (
 
 // EXPECT-FINDING
 export const barePassThrough = <SFSymbolView name={name} fallbackName={fallbackName} />;
+
+// Regression probe (G3 finding N1): a guarded local in an EARLIER sibling
+// function must not silence an unrelated LATER sibling function's real bare
+// pass-through — the exclusion has to scope to its OWN function/arrow body,
+// not leak across the whole file. Neither function is exported, so neither
+// reads as a second component-like export under "One component per file".
+function SafeOne({ name, incoming }: { name: string; incoming: string | undefined }) {
+  const fallbackName = resolveFallback(name, incoming);
+
+  return <SFSymbolView name={name} fallbackName={fallbackName} />;
+}
+
+function UnsafeTwo({ name, fallbackName }: { name: string; fallbackName: string | undefined }) {
+  // EXPECT-FINDING
+  return <SFSymbolView name={name} fallbackName={fallbackName} />;
+}
