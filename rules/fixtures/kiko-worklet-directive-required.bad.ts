@@ -18,3 +18,19 @@ export const useLiftStyle = (liftScale: { value: number }) =>
     // EXPECT-FINDING
     return { transform: [{ scale: scaleForLift(liftScale.value) }] };
   });
+
+// Semgrep fixture (POSITIVE) continuation: a helper declared inside a
+// COMPONENT-BODY arrow (not the worklet-hook callback's own block) still
+// reaches the worklet's closure untagged — the same real bug, one arrow
+// level further out. `kiko-worklet-directive-required` MUST report a
+// finding on the pinned line below too.
+export const useLiftSheetStyle = (liftScale: { value: number }) => {
+  const clampForLift = (liftScaleValue: number): number => {
+    return liftScaleValue * 2;
+  };
+
+  return useAnimatedStyle(() => {
+    // EXPECT-FINDING
+    return { transform: [{ scale: clampForLift(liftScale.value) }] };
+  });
+};

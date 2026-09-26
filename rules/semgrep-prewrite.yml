@@ -526,8 +526,13 @@ rules:
   # this sequence pattern (its own immediately-enclosing block IS such a
   # statement list) and false-positive: the two block-shaped
   # `pattern-not-inside` arms at the bottom exist to exclude precisely that
-  # shape (a `(...) => { ... }` whose OWN body directly declares `$F`),
-  # verified empirically against a throwaway inline-arrow probe before
+  # shape — scoped to `$HOOK(..., (...) => { ... const $F = ... } ...)`
+  # (the callback argument literally passed TO the hook call), not a bare
+  # `(...) => { ... }`: an unscoped arrow shape also matches a COMPONENT's or
+  # custom hook's own OUTER arrow body (any `(...) => { ...; useAnimatedStyle
+  # ...; ... }` containing both the helper and the hook call as sibling
+  # statements), which wrongly excluded that same-file, still-untagged helper
+  # too — verified empirically against a throwaway inline-arrow probe before
   # writing this. A function imported from ANOTHER file is a known false
   # negative — no local declaration to match — and `Gesture.$G().$ON(...)`
   # only matches that literal two-hop chain, not this codebase's real,
@@ -578,14 +583,14 @@ rules:
           function $F(...) { 'worklet'; ... }
           ...
       - pattern-not-inside: |
-          (...) => {
+          $HOOK(..., (...) => {
             ...
             const $F = (...) => { ... }
             ...
-          }
+          }, ...)
       - pattern-not-inside: |
-          (...) => {
+          $HOOK(..., (...) => {
             ...
             function $F(...) { ... }
             ...
-          }
+          }, ...)
