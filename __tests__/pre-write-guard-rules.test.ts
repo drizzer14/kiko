@@ -52,6 +52,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-pinned-sync-button-variant',
   'kiko-pinned-change-bank-button-variant',
   'kiko-pinned-cancel-button-style',
+  'kiko-no-direct-default-transaction-description',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (

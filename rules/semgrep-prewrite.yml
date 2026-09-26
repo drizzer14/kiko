@@ -897,3 +897,27 @@ rules:
                   <Button ... variant=$VARIANT ...>
                     {t('common.cancel')}
                   </Button>
+  # kiko-domain's "Exchange/Convert legs": a blank row's fallback label has ONE
+  # owner, `transactionRowDescription`, which tries the exchange-leg label
+  # before the holding-name default. A surface calling
+  # `defaultTransactionDescription` itself skips that branch — the transaction
+  # form's description placeholder did, and an edited exchange leg previewed
+  # "<holding> expense" while the list showed "Exchange to <holding>".
+  # `row-description/**` is the owner; `default-description/**` holds the
+  # helper and its own unit test.
+  - id: kiko-no-direct-default-transaction-description
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `defaultTransactionDescription` is called outside its one owner. Resolve a
+      blank transaction's label (list row, preview, or form placeholder) with
+      `transactionRowDescription` from `@kiko/transactions/row-description`, so an
+      exchange leg reads "Exchange to/from <counterpart>" everywhere.
+    metadata:
+      fix: "Call `transactionRowDescription({ transaction, holdingName, holdingNameById, t })` from `@kiko/transactions/row-description` instead of `defaultTransactionDescription`."
+      skill: "kiko-domain › Exchange/Convert legs: a structural marker, a resolved label"
+    paths:
+      exclude:
+        - "src/transactions/row-description/**"
+        - "src/transactions/default-description/**"
+    pattern: defaultTransactionDescription(...)
