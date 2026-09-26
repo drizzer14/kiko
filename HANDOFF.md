@@ -53,6 +53,12 @@ review). Coordinator one-shot cron 08:50 prepares device-deploy + kiko:ops insta
 02:00 c05ec8b INSTALLED on iPhone (09:30 build). OPS NOTE for the NEXT device build (feat 09bdba5 or later, C2): public URLs
 moved to .env (NBU_API_ENDPOINT, COINGECKO_MARKET_CHART_ENDPOINT, PRIVACY_POLICY_URL_EN/UK) -> run `npm install` in device-deploy
 first (postinstall ensure-env appends the keys). S1/S2 held until the pre-write-guard merge into feat.
+05:50: PHASE 3 CLOSED 5cb70fb (feat). 5cb70fb INSTALLED on the PHYSICAL iPhone (Release-AdHoc, container 11300148 matches,
+npm install done in device-deploy) = the 09:30 build. (A first ops run wrongly installed on the iPhone 17 SIMULATOR with the
+Release/Distribution config; memory ops-brief-pin-physical-udid.) Guard: G1-G4 done; Task 17 merge ac64375a done by coordinator's
+developer. Morning items for the user: RETEST-0930.md + RETEST-phase3-addendum.md; KEYS-overnight.md (10 pending) + uk Cost
+"Вартість" vs "Собівартість"; guard KEYS.md (11 sync-error strings; coordinator concern: 7 are developer messages -> suggest one
+user-facing Binance message; full stops); visible guard changes (checkmark leading, "Use passcode").
 1. When the hotfix session sends the bump sha: `git -C ~/orca/workspaces/pff-ios/device-deploy checkout -q --detach <sha>`,
    then kiko:ops archives Release / KikoDistribution there: FORCE_BUNDLING=1, clean build (rm ios/build + pod install
    if needed), NON-beta Xcode (check DTXcodeBuild), move the .xcarchive to ~/Library/Developer/Xcode/Archives/<date>/,
