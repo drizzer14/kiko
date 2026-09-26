@@ -510,6 +510,25 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
     },
   );
 
+  // M7 (ponytail): the script-name validation used to be five separate
+  // case/esac blocks, each with its own bespoke error message. Collapsed
+  // into one validity check with one shared error message, so every
+  // rejection reason now reads identically regardless of WHICH shape of
+  // argument tripped it.
+  it('rejects every invalid script-name shape with the SAME error message wording', () => {
+    const slashResult = runDispatch('../evil.sh', '{}', { ...process.env });
+    const suffixResult = runDispatch('no-suffix', '{}', { ...process.env });
+
+    // Both messages share the identical wording MINUS the offending
+    // argument itself (which necessarily differs) — proving one shared
+    // message template, not one bespoke message per rejection reason.
+    const messageTemplate = (stderr: string, scriptName: string): string =>
+      stderr.trim().replace(scriptName, '<script-name>');
+    expect(messageTemplate(slashResult.stderr, '../evil.sh')).toBe(
+      messageTemplate(suffixResult.stderr, 'no-suffix'),
+    );
+  });
+
   it('accepts a plain, well-formed script-name argument', () => {
     const repository = initGitRepository('kiko-dispatch-validname-');
     const marker = join(repository, 'marker.txt');

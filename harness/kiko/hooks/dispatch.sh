@@ -78,38 +78,26 @@ denyOrNoop() {
 # operation — a hard, unconditional reject (never delegated to
 # denyOrNoop's per-script table) is correct here because an invalid argument
 # is a dispatcher MISCONFIGURATION, not a runtime payload to gracefully
-# degrade from.
+# degrade from. One validity check, one error message (M7): a valid
+# script-name is empty of "/" and ".." and every character outside
+# [A-Za-z0-9._-], and ends in ".sh" — every other shape (missing, a path
+# segment, a ".." traversal, a disallowed character, or a missing ".sh"
+# suffix) is rejected identically, rather than five separate case/esac
+# blocks each printing its own bespoke message.
+isValidScriptName=1
 case "$scriptName" in
-  '')
-    printf 'dispatch.sh: missing script-name argument\n' >&2
-    exit 2
-    ;;
-esac
-case "$scriptName" in
-  */*)
-    printf 'dispatch.sh: invalid script-name (contains a slash): %s\n' "$scriptName" >&2
-    exit 2
-    ;;
-esac
-case "$scriptName" in
-  *..*)
-    printf 'dispatch.sh: invalid script-name (contains ..): %s\n' "$scriptName" >&2
-    exit 2
-    ;;
-esac
-case "$scriptName" in
-  *[!A-Za-z0-9._-]*)
-    printf 'dispatch.sh: invalid script-name (disallowed character): %s\n' "$scriptName" >&2
-    exit 2
+  '' | */* | *..* | *[!A-Za-z0-9._-]*)
+    isValidScriptName=0
     ;;
 esac
 case "$scriptName" in
   *.sh) : ;;
-  *)
-    printf 'dispatch.sh: invalid script-name (must end in .sh): %s\n' "$scriptName" >&2
-    exit 2
-    ;;
+  *) isValidScriptName=0 ;;
 esac
+if [ "$isValidScriptName" -eq 0 ]; then
+  printf 'dispatch.sh: invalid script-name argument: %s\n' "$scriptName" >&2
+  exit 2
+fi
 
 # Buffer stdin to a temp file (never `$(cat)`, which strips trailing
 # newlines) so the exact bytes can be replayed to the target script below.
