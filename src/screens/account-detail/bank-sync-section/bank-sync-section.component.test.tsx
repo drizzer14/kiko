@@ -166,7 +166,7 @@ describe('BankSyncSection — disconnected', () => {
     expect(view.getByText('Add a bank')).toBeTruthy();
 
     await act(async () => {
-      view.rerender(<BankSyncSection account={bankAccount({ bankId: 'monobank' })} />);
+      await view.rerender(<BankSyncSection account={bankAccount({ bankId: 'monobank' })} />);
     });
 
     expect(view.queryByText('Add a bank')).toBeNull();
@@ -189,7 +189,7 @@ describe('BankSyncSection — disconnected', () => {
     // Disconnect itself clears `institution`, not `bankId` — the live query
     // re-renders this same instance with the post-disconnect row.
     await act(async () => {
-      view.rerender(
+      await view.rerender(
         <BankSyncSection account={bankAccount({ institution: null, bankId: 'monobank' })} />,
       );
     });

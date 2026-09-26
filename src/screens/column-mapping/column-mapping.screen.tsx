@@ -643,6 +643,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
       cancelled = true;
 
       if (ownsFile) {
+        // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) deleteLocalStatementCopy swallows a failed unlink, and an unmount cleanup cannot await
         deleteLocalStatementCopy(filePath);
       }
     };

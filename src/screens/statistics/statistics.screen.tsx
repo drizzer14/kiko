@@ -435,6 +435,7 @@ const StatisticsScreen: FC = () => {
     // currency against `presentCurrencies` — a check this screen cannot
     // replicate without `openCurrencies`'s own async read.
     setBackfillStatus({ state: 'loading', lastDay: lastBackfilledDay });
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) either() captures every rejection as a Left, and the .then handler only sets state
     either<unknown, BackfillStatus>(() =>
       runBackfill({
         earliestDay: spanStart,

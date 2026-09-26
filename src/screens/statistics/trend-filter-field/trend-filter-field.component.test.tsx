@@ -31,7 +31,7 @@ const renderField = (
 
 const press = async (node: Parameters<typeof fireEvent.press>[0]): Promise<void> => {
   await act(async () => {
-    fireEvent.press(node);
+    await fireEvent.press(node);
   });
 };
 

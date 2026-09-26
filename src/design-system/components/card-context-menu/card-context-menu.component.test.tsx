@@ -56,7 +56,7 @@ describe('CardContextMenu', () => {
     expect(getByText('Delete "Black card"')).toBeTruthy();
     expect(onDelete).not.toHaveBeenCalled();
 
-    fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+    await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
 
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
@@ -72,7 +72,7 @@ describe('CardContextMenu', () => {
       { wrapper: GestureRootWrapper },
     );
 
-    fireEvent.press(getByText('card'));
+    await fireEvent.press(getByText('card'));
 
     expect(onPress).toHaveBeenCalledTimes(1);
     expect(queryByText('Delete "Black card"')).toBeNull();
@@ -104,7 +104,7 @@ describe('CardContextMenu', () => {
     expect(getByTestId(DELETE_ACTION_TEST_ID)).toBeTruthy();
     expect(queryByText('Delete "Coffee"')).toBeNull();
 
-    fireEvent.press(getByTestId(DUPLICATE_ACTION_TEST_ID));
+    await fireEvent.press(getByTestId(DUPLICATE_ACTION_TEST_ID));
 
     expect(onDuplicate).toHaveBeenCalledTimes(1);
     expect(onDelete).not.toHaveBeenCalled();
@@ -131,13 +131,13 @@ describe('CardContextMenu', () => {
     // Choosing Delete from the action list opens the SAME named confirm sheet
     // the delete-only path uses; only its destructive confirm routes to onDelete.
     await act(async () => {
-      fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
     });
 
     expect(getByText('Delete "Coffee"')).toBeTruthy();
     expect(onDelete).not.toHaveBeenCalled();
 
-    fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+    await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
 
     expect(onDelete).toHaveBeenCalledTimes(1);
     expect(onDuplicate).not.toHaveBeenCalled();
@@ -167,7 +167,7 @@ describe('CardContextMenu', () => {
     expect(queryByText('Delete "50% since 01.06.2025"')).toBeNull();
 
     await act(async () => {
-      fireEvent.press(getByTestId(EDIT_ACTION_TEST_ID));
+      await fireEvent.press(getByTestId(EDIT_ACTION_TEST_ID));
     });
 
     expect(onEdit).toHaveBeenCalledTimes(1);
@@ -222,7 +222,7 @@ describe('CardContextMenu', () => {
       hold.end();
     });
     await act(async () => {
-      fireEvent.press(getByText('Cancel'));
+      await fireEvent.press(getByText('Cancel'));
     });
 
     expect(scaleOf()).toBe(1);

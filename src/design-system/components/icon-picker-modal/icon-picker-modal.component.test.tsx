@@ -97,7 +97,7 @@ describe('IconPickerModal', () => {
   it('calls onSelect with the chosen icon when an option is pressed', async () => {
     const { onSelect, getByLabelText } = await setup();
 
-    fireEvent.press(getByLabelText('Choose icon basket'));
+    await fireEvent.press(getByLabelText('Choose icon basket'));
 
     expect(onSelect).toHaveBeenCalledWith('basket');
   });
@@ -118,7 +118,7 @@ describe('IconPickerModal', () => {
   it('calls onDismiss when the cancel control is pressed', async () => {
     const { onDismiss, getByText } = await setup();
 
-    fireEvent.press(getByText('Cancel'));
+    await fireEvent.press(getByText('Cancel'));
 
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
@@ -126,7 +126,7 @@ describe('IconPickerModal', () => {
   it('calls onDismiss when the backdrop behind the sheet is tapped', async () => {
     const { onDismiss, getByLabelText } = await setup();
 
-    fireEvent.press(getByLabelText('Dismiss icon picker'));
+    await fireEvent.press(getByLabelText('Dismiss icon picker'));
 
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
@@ -157,7 +157,7 @@ describe('IconPickerModal', () => {
     const onRemove = jest.fn();
     const { getByText } = await setup({ onRemove });
 
-    fireEvent.press(getByText('Remove'));
+    await fireEvent.press(getByText('Remove'));
 
     expect(onRemove).toHaveBeenCalledTimes(1);
   });

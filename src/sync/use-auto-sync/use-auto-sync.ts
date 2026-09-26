@@ -101,6 +101,7 @@ export const useAutoSync = (): void => {
     }
     hasRun.current = true;
 
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) either() captures every rejection as a Left
     either<unknown, void>(async () => {
       const accounts = await accountsRepo.listQuery();
       const bankAccountId = bankAccountIdFor(accounts);

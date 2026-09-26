@@ -142,7 +142,7 @@ describe('WalletAddressField', () => {
 
     await fireEvent.changeText(getByPlaceholderText('BTC address'), ADDRESS);
     await act(async () => {
-      fireEvent.press(getByText('Connect wallet'));
+      await fireEvent.press(getByText('Connect wallet'));
     });
 
     expect(await findByText(/Checking/)).toBeTruthy();

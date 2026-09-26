@@ -183,6 +183,7 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
       return;
     }
     refreshTriggered.current = true;
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) either() captures every rejection as a Left
     either(() => refreshBondRegisterIfStale());
   }, [type]);
 

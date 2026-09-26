@@ -77,7 +77,7 @@ describe('MetalSection', () => {
       <MetalSection {...baseProps} onChangePurity={onChangePurity} />,
     );
 
-    fireEvent.changeText(getByLabelText('Purity'), '585');
+    await fireEvent.changeText(getByLabelText('Purity'), '585');
 
     expect(onChangePurity).toHaveBeenCalledWith('585');
   });

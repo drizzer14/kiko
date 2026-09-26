@@ -216,7 +216,7 @@ describe('CategoriesScreen', () => {
     mockLiveQueryData = SEEDED_CATEGORIES.map((category) => ({ ...category }));
 
     await act(async () => {
-      rerender(screenElement());
+      await rerender(screenElement());
     });
 
     const nextProps = mockGridSpy.mock.calls.at(-1)?.[0];

@@ -94,6 +94,7 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
 
   const handleShareFile = (): void => {
     if (fileUri !== undefined) {
+      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(no recovery) the share sheet reports its own outcome to the user; the file stays exported either way
       Share.share({ url: toFileShareUrl(fileUri) });
     }
   };

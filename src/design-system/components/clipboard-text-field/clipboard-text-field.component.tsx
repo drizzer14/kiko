@@ -56,6 +56,7 @@ const ClipboardTextField: FC<ClipboardTextFieldProps> = ({
   const { theme } = useUnistyles();
 
   const handlePaste = (): void => {
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(no recovery) a failed clipboard read leaves the field unchanged, which is the right outcome
     Clipboard.getString().then((clipboardValue) => {
       onChangeText(clipboardValue.trim());
     });

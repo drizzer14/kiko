@@ -69,6 +69,7 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
     }
 
     setStatus({ kind: 'checking' });
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) every step catches into a status, and onConnect (the shared sync action) never rejects
     (async () => {
       try {
         await fetchAccount(apiKey, secret);

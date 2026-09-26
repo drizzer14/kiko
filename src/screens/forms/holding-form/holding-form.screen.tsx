@@ -71,6 +71,7 @@ import { useTermDepositFields } from './term-deposit/use-term-deposit-fields';
 // `save`'s own cognitive-complexity budget.
 const runLoanAutoLinkIfLoan = (type: HoldingType): void => {
   if (type === 'loan') {
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) runLoanAutoLink catches every failure and never rejects
     runLoanAutoLink();
   }
 };
@@ -529,6 +530,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       // background nicety, not a save precondition — Save must not sit on
       // the network before navigating back; only fire the refresh after the
       // write commits.
+      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshMarketData never rejects; see the comment above
       refreshMarketData({ throttled: false, metals: true });
       // A freshly created loan can already have past ledger history worth
       // backfilling (see `runLoanAutoLinkIfLoan`'s own doc comment).

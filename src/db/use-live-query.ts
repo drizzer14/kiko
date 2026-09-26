@@ -201,6 +201,7 @@ export function useLiveQuery<T>(
       }
     };
 
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) runQuery folds a rejected read into a Left and never rejects
     runQuery();
 
     const subscription = first(
@@ -210,6 +211,7 @@ export function useLiveQuery<T>(
           arguments: params,
           fireOn,
           callback: () => {
+            // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) runQuery folds a rejected read into a Left and never rejects
             runQuery();
           },
         }),

@@ -618,7 +618,7 @@ describe('GlassSurface', () => {
           expect(liquidGlass.baseMountCount).toBe(2);
           expect(getByTestId('bloom-resample-glass-base').props.effect).toBe('clear');
 
-          rerender(
+          await rerender(
             <GlassSurface testID="bloom-resample-glass" transparent bloom>
               <Text>content</Text>
             </GlassSurface>,

@@ -43,7 +43,7 @@ const renderMenu = (props: MenuProps = {}): ReturnType<typeof render> =>
 
 const openMenu = async (getByTestId: (id: string) => unknown): Promise<void> => {
   await act(async () => {
-    fireEvent.press(getByTestId(TEST_ID) as Parameters<typeof fireEvent.press>[0]);
+    await fireEvent.press(getByTestId(TEST_ID) as Parameters<typeof fireEvent.press>[0]);
   });
 };
 
@@ -123,7 +123,7 @@ describe('FilterMenu', () => {
 
     await openMenu(getByTestId);
     await act(async () => {
-      fireEvent.press(getByTestId(`${TEST_ID}-option-PrivatBank`));
+      await fireEvent.press(getByTestId(`${TEST_ID}-option-PrivatBank`));
     });
 
     expect(onToggle).toHaveBeenCalledWith('PrivatBank');

@@ -1001,7 +1001,7 @@ describe('HoldingDetailScreen', () => {
 
         await holdRow();
         await act(async () => {
-          fireEvent.press(getByTestId(EDIT_ACTION_TEST_ID));
+          await fireEvent.press(getByTestId(EDIT_ACTION_TEST_ID));
         });
 
         expect(navigation.navigate).toHaveBeenCalledWith('OwnershipChangeForm', {
@@ -1017,7 +1017,7 @@ describe('HoldingDetailScreen', () => {
 
         await holdRow();
         await act(async () => {
-          fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+          await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
         });
 
         expect(getByText('Delete "50% since 01.06.2025"')).toBeTruthy();
@@ -1126,7 +1126,7 @@ describe('HoldingDetailScreen', () => {
     });
 
     await act(async () => {
-      fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
     });
 
     expect(getByText('Delete "Coffee"')).toBeTruthy();
@@ -1153,7 +1153,7 @@ describe('HoldingDetailScreen', () => {
     });
 
     await act(async () => {
-      fireEvent.press(getByTestId(DUPLICATE_ACTION_TEST_ID));
+      await fireEvent.press(getByTestId(DUPLICATE_ACTION_TEST_ID));
     });
 
     expect(navigation.navigate).toHaveBeenCalledWith('TransactionForm', {

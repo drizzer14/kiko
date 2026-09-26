@@ -87,7 +87,7 @@ describe('useKeyboardDoneAccessory', () => {
 
     const { getByText } = await render(<Host />);
 
-    fireEvent.press(getByText('Done'));
+    await fireEvent.press(getByText('Done'));
 
     expect(dismissSpy).toHaveBeenCalledTimes(1);
 

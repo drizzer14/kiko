@@ -73,7 +73,7 @@ describe('ConvertExchangeFields', () => {
       />,
     );
 
-    fireEvent.changeText(getByLabelText('Value In'), '42');
+    await fireEvent.changeText(getByLabelText('Value In'), '42');
 
     expect(onChangeCounterpartAmount).toHaveBeenCalledWith('42');
   });

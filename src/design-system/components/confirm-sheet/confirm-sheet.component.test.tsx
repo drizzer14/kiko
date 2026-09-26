@@ -88,7 +88,7 @@ describe('ConfirmSheet', () => {
       />,
     );
 
-    fireEvent.press(getByTestId(CONFIRM_TEST_ID));
+    await fireEvent.press(getByTestId(CONFIRM_TEST_ID));
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
@@ -105,7 +105,7 @@ describe('ConfirmSheet', () => {
       />,
     );
 
-    fireEvent.press(getByText('Cancel'));
+    await fireEvent.press(getByText('Cancel'));
 
     expect(onCancel).toHaveBeenCalledTimes(1);
   });

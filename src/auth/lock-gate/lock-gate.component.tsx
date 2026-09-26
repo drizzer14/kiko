@@ -44,6 +44,7 @@ const LockGate: FC<{ children: ReactNode }> = ({ children }) => {
   const [lastResult, setLastResult] = useState<AuthResult | undefined>(undefined);
 
   const attemptUnlock = useCallback((): void => {
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) authenticate() never rejects; a failure resolves as the `failed` result
     unlock().then(setLastResult);
   }, [unlock]);
 

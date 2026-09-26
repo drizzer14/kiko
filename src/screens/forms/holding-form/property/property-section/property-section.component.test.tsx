@@ -24,7 +24,7 @@ describe('PropertySection', () => {
       <PropertySection {...baseProps} onChangeCost={onChangeCost} />,
     );
 
-    fireEvent.changeText(getByLabelText('Cost'), '5000');
+    await fireEvent.changeText(getByLabelText('Cost'), '5000');
 
     expect(onChangeCost).toHaveBeenCalledWith('5000');
   });

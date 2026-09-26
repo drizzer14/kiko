@@ -93,11 +93,11 @@ describe('TransactionRow', () => {
     // Duplicate/Delete choice; Delete hands off to the SAME named confirm sheet
     // that routes to `transactionsRepo.remove`.
     await act(async () => {
-      fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
     });
 
     expect(getByText('Delete "Coffee"')).toBeTruthy();
-    fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+    await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
 
     expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-1');
   });
@@ -118,7 +118,7 @@ describe('TransactionRow', () => {
     });
 
     await act(async () => {
-      fireEvent.press(getByTestId(DUPLICATE_ACTION_TEST_ID));
+      await fireEvent.press(getByTestId(DUPLICATE_ACTION_TEST_ID));
     });
 
     expect(onDuplicate).toHaveBeenCalledWith('txn-1');
@@ -150,7 +150,7 @@ describe('TransactionRow', () => {
     const onPress = jest.fn();
     const { getByText } = await renderRow(baseItem, onPress);
 
-    fireEvent.press(getByText('Coffee'));
+    await fireEvent.press(getByText('Coffee'));
 
     expect(onPress).toHaveBeenCalledWith('txn-1');
   });
@@ -183,7 +183,7 @@ describe('TransactionRow', () => {
       hold.end();
     });
     await act(async () => {
-      fireEvent.press(getByText('Cancel'));
+      await fireEvent.press(getByText('Cancel'));
     });
 
     expect(scaleOf()).toBe(1);

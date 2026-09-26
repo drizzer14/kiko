@@ -46,7 +46,7 @@ const openSheet = async (filter: TrendFilter): ReturnType<typeof render> => {
   );
 
   await act(async () => {
-    fireEvent.press(utilities.getByTestId(FIELD_ID));
+    await fireEvent.press(utilities.getByTestId(FIELD_ID));
   });
 
   return utilities;

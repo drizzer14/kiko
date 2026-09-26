@@ -260,13 +260,13 @@ const pressFilter = async (
   value: string,
 ): Promise<void> => {
   await act(async () => {
-    fireEvent.press(getByTestId(menuTestID));
+    await fireEvent.press(getByTestId(menuTestID));
   });
   await act(async () => {
-    fireEvent.press(getByTestId(`${menuTestID}-option-${value}`));
+    await fireEvent.press(getByTestId(`${menuTestID}-option-${value}`));
   });
   await act(async () => {
-    fireEvent.press(getByTestId(`${menuTestID}-backdrop`));
+    await fireEvent.press(getByTestId(`${menuTestID}-backdrop`));
   });
 };
 
@@ -395,7 +395,7 @@ describe('HomeScreen', () => {
     expect(rowIconTint).toBe(resolveCategoryColor(null, 'other'));
 
     await act(async () => {
-      fireEvent.press(getByTestId('category-filter-menu'));
+      await fireEvent.press(getByTestId('category-filter-menu'));
     });
 
     // The filter option icon renders through the shared SelectableRow, so it no
@@ -622,7 +622,7 @@ describe('HomeScreen', () => {
     const { getByTestId, queryByTestId } = await renderHome();
 
     await act(async () => {
-      fireEvent.press(getByTestId('account-filter-menu'));
+      await fireEvent.press(getByTestId('account-filter-menu'));
     });
 
     expect(getByTestId('account-filter-menu-option-Monobank')).toBeTruthy();
@@ -668,7 +668,7 @@ describe('HomeScreen', () => {
     const { getByTestId, getAllByTestId } = await renderHome();
 
     await act(async () => {
-      fireEvent.press(getByTestId('category-filter-menu'));
+      await fireEvent.press(getByTestId('category-filter-menu'));
     });
 
     const optionValues = getAllByTestId(/^category-filter-menu-option-/)
@@ -726,21 +726,21 @@ describe('HomeScreen', () => {
     // Open once, then toggle two categories without reopening. Each toggle
     // changes the selection state (and re-renders the sheet); it must stay open.
     await act(async () => {
-      fireEvent.press(getByTestId('category-filter-menu'));
+      await fireEvent.press(getByTestId('category-filter-menu'));
     });
     await act(async () => {
-      fireEvent.press(getByTestId('category-filter-menu-option-dining'));
+      await fireEvent.press(getByTestId('category-filter-menu-option-dining'));
     });
     expect(queryByTestId('category-filter-menu-option-transport')).toBeTruthy();
 
     await act(async () => {
-      fireEvent.press(getByTestId('category-filter-menu-option-transport'));
+      await fireEvent.press(getByTestId('category-filter-menu-option-transport'));
     });
     expect(queryByTestId('category-filter-menu-option-utilities')).toBeTruthy();
 
     // Dismiss and confirm both selections took effect.
     await act(async () => {
-      fireEvent.press(getByTestId('category-filter-menu-backdrop'));
+      await fireEvent.press(getByTestId('category-filter-menu-backdrop'));
     });
     expect(getByText('Coffee')).toBeTruthy();
     expect(getByText('Groceries')).toBeTruthy();
@@ -762,7 +762,7 @@ describe('HomeScreen', () => {
     const { getByTestId, getByText, queryByTestId } = await renderHome();
 
     await act(async () => {
-      fireEvent.press(getByTestId('category-filter-menu'));
+      await fireEvent.press(getByTestId('category-filter-menu'));
     });
 
     expect(getByTestId('category-filter-menu-option-groceries')).toBeTruthy();
@@ -815,7 +815,7 @@ describe('HomeScreen', () => {
     // the pick, so picking 3 days ago pulls the `to` bound down to it. That
     // excludes both the "Recent" (2 days ago) and "TooOld" (40 days ago) rows.
     await act(async () => {
-      fireEvent.press(getByLabelText('Date range'));
+      await fireEvent.press(getByLabelText('Date range'));
     });
     const threeDaysAgo = new Date();
     threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
@@ -830,17 +830,17 @@ describe('HomeScreen', () => {
       });
     });
     await act(async () => {
-      fireEvent.press(getByText('Apply'));
+      await fireEvent.press(getByText('Apply'));
     });
     expect(queryByText('Recent')).toBeNull();
 
     // Clearing must land back on the 30-day default, NOT on all-time: the
     // 40-day-old row stays excluded and the field shows the 30-day range again.
     await act(async () => {
-      fireEvent.press(getByLabelText('Date range'));
+      await fireEvent.press(getByLabelText('Date range'));
     });
     await act(async () => {
-      fireEvent.press(getByText('Clear'));
+      await fireEvent.press(getByText('Clear'));
     });
 
     const range = defaultDateRange();
@@ -1212,7 +1212,7 @@ describe('HomeScreen — localization', () => {
     // The option itself now renders the Ukrainian catalog label, still keyed
     // on the same stable `groceries` value and still checked.
     await act(async () => {
-      fireEvent.press(getByTestId('category-filter-menu'));
+      await fireEvent.press(getByTestId('category-filter-menu'));
     });
     expect(
       getByTestId('category-filter-menu-option-groceries').props.accessibilityState?.checked,

@@ -139,10 +139,20 @@ From `biome.json`'s `linter.rules`:
   those), so collapsing the gates into one match is the fix instead of
   another extraction (`holding-form.screen.tsx`'s own per-type
   form-block dispatch).
-- `complexity.noVoid` is an error — never use the `void` operator. To
-  fire-and-forget a promise that already captures its own errors (an
-  `either(...)` call), call it as a plain expression statement; do
-  not prefix it with `void`.
+- `complexity.noVoid` is an error — never use the `void` operator.
+- `nursery.noFloatingPromises` is an error — a promise statement must be
+  awaited, returned, or given a rejection handler (`.catch(handler)` or a
+  two-argument `.then`). In tests, `await` every `fireEvent.*` and
+  `rerender` call (RNTL returns a promise). A deliberate fire-and-forget
+  of a total function (an `either(...)` call, `refreshMarketData`,
+  `runLoanAutoLink`, a hook's shared `sync`) stays a plain expression
+  statement with a justified override on the line above:
+  `// biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) <callee> never rejects`.
+  Verify the callee never rejects before you write that; if it can
+  reject, handle the rejection instead. Biome does not flag a promise
+  returned from an expression-bodied arrow (`onDelete={(day) =>
+  repo.remove(day)}`), so a void-typed callback prop that drops a
+  promise stays a review item.
 
 ## Comments: WHY only, never history
 

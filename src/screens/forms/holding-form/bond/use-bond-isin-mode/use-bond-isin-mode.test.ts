@@ -122,7 +122,7 @@ describe('useBondIsinMode', () => {
     // An unrelated prop change (e.g. the user picked a purchase date) still
     // reports the SAME matched isin — the apply must not fire again.
     await act(async () => {
-      rerender({ ...params, purchaseDate: Date.now() });
+      await rerender({ ...params, purchaseDate: Date.now() });
     });
 
     expect(params.setName).toHaveBeenCalledTimes(1);
@@ -176,7 +176,7 @@ describe('useBondIsinMode', () => {
     // hook to re-read the mocked `useLiveQuery` result.
     mockBondRegisterRows = [foundRow()];
     await act(async () => {
-      rerender({ ...params, purchaseDate: Date.now() });
+      await rerender({ ...params, purchaseDate: Date.now() });
     });
 
     await act(async () => {

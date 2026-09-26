@@ -130,7 +130,7 @@ describe('TextField', () => {
       keyboardType: 'decimal-pad',
     });
 
-    fireEvent.press(getByText('Done'));
+    await fireEvent.press(getByText('Done'));
 
     expect(dismissSpy).toHaveBeenCalledTimes(1);
 

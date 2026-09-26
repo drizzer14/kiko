@@ -87,7 +87,7 @@ describe('BottomSheet', () => {
       </BottomSheet>,
     );
 
-    fireEvent.press(getByTestId('sheet-backdrop'));
+    await fireEvent.press(getByTestId('sheet-backdrop'));
 
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });

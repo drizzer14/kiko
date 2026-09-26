@@ -68,6 +68,7 @@ export const useRefreshControlSignal = (
       clear();
     }
     // Fallback so the spinner never hangs when no fast-phase signal fires.
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) the only caller passes syncAll, which settles every job and never rejects
     onRefresh().finally(clear);
   };
 

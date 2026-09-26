@@ -327,7 +327,7 @@ describe('SettingsScreen', () => {
     const navigation = navigationSpy();
     const { findByTestId } = await renderScreen(navigation);
 
-    fireEvent.press(await findByTestId('settings-row-export-data'));
+    await fireEvent.press(await findByTestId('settings-row-export-data'));
 
     expect(navigation.navigate).toHaveBeenCalledWith('ExportData');
   });
@@ -336,7 +336,7 @@ describe('SettingsScreen', () => {
     const navigation = navigationSpy();
     const { findByTestId } = await renderScreen(navigation);
 
-    fireEvent.press(await findByTestId('settings-row-import-data'));
+    await fireEvent.press(await findByTestId('settings-row-import-data'));
 
     expect(navigation.navigate).toHaveBeenCalledWith('ImportData');
   });

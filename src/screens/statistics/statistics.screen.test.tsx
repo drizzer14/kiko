@@ -490,13 +490,13 @@ const pressFilter = async (
   value: string,
 ): Promise<void> => {
   await act(async () => {
-    fireEvent.press(getByTestId(menuTestID));
+    await fireEvent.press(getByTestId(menuTestID));
   });
   await act(async () => {
-    fireEvent.press(getByTestId(`${menuTestID}-option-${value}`));
+    await fireEvent.press(getByTestId(`${menuTestID}-option-${value}`));
   });
   await act(async () => {
-    fireEvent.press(getByTestId(`${menuTestID}-backdrop`));
+    await fireEvent.press(getByTestId(`${menuTestID}-backdrop`));
   });
 };
 
@@ -1154,7 +1154,7 @@ describe('StatisticsScreen', () => {
     const { getByTestId } = await renderScreen();
 
     await act(async () => {
-      fireEvent.press(getByTestId(CATEGORY_FILTER));
+      await fireEvent.press(getByTestId(CATEGORY_FILTER));
     });
 
     // The option icon (an SFSymbolView, mocked to a View) sits inside its shared
@@ -1176,7 +1176,7 @@ describe('StatisticsScreen', () => {
     const { getByTestId } = await renderScreen();
 
     await act(async () => {
-      fireEvent.press(getByTestId(CATEGORY_FILTER));
+      await fireEvent.press(getByTestId(CATEGORY_FILTER));
     });
 
     expect(
@@ -1204,7 +1204,7 @@ describe('StatisticsScreen', () => {
     const view = await renderScreen();
 
     await act(async () => {
-      fireEvent.press(view.getByTestId(CATEGORY_FILTER));
+      await fireEvent.press(view.getByTestId(CATEGORY_FILTER));
     });
 
     const prefix = `${CATEGORY_FILTER}-option-`;
@@ -1412,7 +1412,7 @@ describe('StatisticsScreen', () => {
     // timestamp — so every category (groceries included) drops out of the
     // range-scoped slices. The selection itself is untouched by the narrowing.
     await act(async () => {
-      fireEvent.press(getByLabelText('Date range'));
+      await fireEvent.press(getByLabelText('Date range'));
     });
     const today = new Date(now);
     const calendar = getByTestId('date-range-calendar').props as {
@@ -1426,7 +1426,7 @@ describe('StatisticsScreen', () => {
       });
     });
     await act(async () => {
-      fireEvent.press(getByText('Apply'));
+      await fireEvent.press(getByText('Apply'));
     });
 
     expect(getByTestId('category-pie-empty')).toBeTruthy();
@@ -1435,7 +1435,7 @@ describe('StatisticsScreen', () => {
     // spending in the narrowed range — hiding it would leave the selection
     // impossible to find and uncheck.
     await act(async () => {
-      fireEvent.press(getByTestId(CATEGORY_FILTER));
+      await fireEvent.press(getByTestId(CATEGORY_FILTER));
     });
     expect(
       getByTestId(`${CATEGORY_FILTER}-option-groceries`).props.accessibilityState?.checked,
@@ -1443,13 +1443,13 @@ describe('StatisticsScreen', () => {
 
     // The user can still uncheck it, same as any other option.
     await act(async () => {
-      fireEvent.press(getByTestId(`${CATEGORY_FILTER}-option-groceries`));
+      await fireEvent.press(getByTestId(`${CATEGORY_FILTER}-option-groceries`));
     });
     await act(async () => {
-      fireEvent.press(getByTestId(`${CATEGORY_FILTER}-backdrop`));
+      await fireEvent.press(getByTestId(`${CATEGORY_FILTER}-backdrop`));
     });
     await act(async () => {
-      fireEvent.press(getByTestId(CATEGORY_FILTER));
+      await fireEvent.press(getByTestId(CATEGORY_FILTER));
     });
     expect(queryByTestId(`${CATEGORY_FILTER}-option-groceries`)).toBeNull();
   });
@@ -1562,16 +1562,16 @@ describe('StatisticsScreen', () => {
     const { getByTestId, getByText } = await renderScreen();
 
     await act(async () => {
-      fireEvent.press(getByTestId('statistics-trend-filter'));
+      await fireEvent.press(getByTestId('statistics-trend-filter'));
     });
     await act(async () => {
-      fireEvent.press(getByText('Manual'));
+      await fireEvent.press(getByText('Manual'));
     });
     await act(async () => {
-      fireEvent.press(getByTestId('statistics-trend-filter-option-transport'));
+      await fireEvent.press(getByTestId('statistics-trend-filter-option-transport'));
     });
     await act(async () => {
-      fireEvent.press(getByTestId('statistics-trend-filter-save'));
+      await fireEvent.press(getByTestId('statistics-trend-filter-save'));
     });
 
     expect(mockSetTrendFilter).toHaveBeenCalledWith({ mode: 'manual', keys: ['transport'] });
@@ -1594,7 +1594,7 @@ describe('StatisticsScreen', () => {
 
     const { getByTestId } = await renderScreen();
     await act(async () => {
-      fireEvent.press(getByTestId('statistics-trend-filter'));
+      await fireEvent.press(getByTestId('statistics-trend-filter'));
     });
 
     const row = getByTestId('statistics-trend-filter-option-utilities');
@@ -1643,7 +1643,7 @@ describe('StatisticsScreen', () => {
     // selection at the pick, so picking 3 days ago collapses the range to that
     // one day (from === to === narrowedDay), clearly off the default window.
     await act(async () => {
-      fireEvent.press(getByLabelText('Date range'));
+      await fireEvent.press(getByLabelText('Date range'));
     });
     const narrowedDay = new Date();
     narrowedDay.setDate(narrowedDay.getDate() - 3);
@@ -1658,16 +1658,16 @@ describe('StatisticsScreen', () => {
       });
     });
     await act(async () => {
-      fireEvent.press(getByText('Apply'));
+      await fireEvent.press(getByText('Apply'));
     });
     expect(getByText(`${formatDate(narrowedDay)} – ${formatDate(narrowedDay)}`)).toBeTruthy();
 
     // Clearing must land back on the 30-day default, NOT on all-time.
     await act(async () => {
-      fireEvent.press(getByLabelText('Date range'));
+      await fireEvent.press(getByLabelText('Date range'));
     });
     await act(async () => {
-      fireEvent.press(getByText('Clear'));
+      await fireEvent.press(getByText('Clear'));
     });
 
     expect(getByText(`${formatDate(range.from)} – ${formatDate(range.to)}`)).toBeTruthy();
@@ -1958,7 +1958,7 @@ describe('StatisticsScreen — localization', () => {
     // The option itself now renders the Ukrainian catalog label, still keyed
     // on the same stable `groceries` value and still checked.
     await act(async () => {
-      fireEvent.press(getByTestId(CATEGORY_FILTER));
+      await fireEvent.press(getByTestId(CATEGORY_FILTER));
     });
     expect(
       getByTestId(`${CATEGORY_FILTER}-option-groceries`).props.accessibilityState?.checked,

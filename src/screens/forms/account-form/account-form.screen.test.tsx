@@ -162,8 +162,8 @@ jest.mock('../../../design-system/components/monobank-connect-field', () => {
       return (
         <Pressable
           accessibilityLabel="monobank-field"
-          onPress={() => {
-            onConnect('tok-123').then((connected: boolean) => setResult(String(connected)));
+          onPress={async () => {
+            setResult(String(await onConnect('tok-123')));
           }}
         >
           <Text>monobank field</Text>

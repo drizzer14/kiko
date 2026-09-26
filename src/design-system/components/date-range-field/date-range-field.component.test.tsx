@@ -66,7 +66,7 @@ const pickAndApply = async (minDate: Date, maxDate: Date, taps: Date[]): Promise
   );
 
   await act(async () => {
-    fireEvent.press(getByLabelText('Date range'));
+    await fireEvent.press(getByLabelText('Date range'));
   });
 
   const calendar = getByTestId('date-range-calendar');
@@ -78,7 +78,7 @@ const pickAndApply = async (minDate: Date, maxDate: Date, taps: Date[]): Promise
   }
 
   await act(async () => {
-    fireEvent.press(getByText('Apply'));
+    await fireEvent.press(getByText('Apply'));
   });
 
   expect(onApply).toHaveBeenCalledTimes(1);
@@ -109,7 +109,7 @@ const pickRangeAndApply = async (
   );
 
   await act(async () => {
-    fireEvent.press(getByLabelText('Date range'));
+    await fireEvent.press(getByLabelText('Date range'));
   });
 
   const calendar = getByTestId('date-range-calendar');
@@ -121,7 +121,7 @@ const pickRangeAndApply = async (
   }
 
   await act(async () => {
-    fireEvent.press(getByText('Apply'));
+    await fireEvent.press(getByText('Apply'));
   });
 
   expect(onApply).toHaveBeenCalledTimes(1);
@@ -294,7 +294,7 @@ describe('DateRangeField safe area', () => {
     );
 
     await act(async () => {
-      fireEvent.press(getByLabelText('Date range'));
+      await fireEvent.press(getByLabelText('Date range'));
     });
 
     // Walk up from the calendar itself to the sheet Box that wraps it.
@@ -334,7 +334,7 @@ describe('DateRangeField localization', () => {
     expect(getByText(`Від ${formatDate(from)}`)).toBeTruthy();
 
     await act(async () => {
-      fireEvent.press(getByLabelText('Період дат'));
+      await fireEvent.press(getByLabelText('Період дат'));
     });
 
     expect(getByText('Період дат')).toBeTruthy();
@@ -355,7 +355,7 @@ describe('DateRangeField calendar initial month', () => {
     );
 
     await act(async () => {
-      fireEvent.press(getByText(/10\.03\.2026/));
+      await fireEvent.press(getByText(/10\.03\.2026/));
     });
 
     // The end bound is a later month than the start, so opening on the end
@@ -376,7 +376,7 @@ describe('DateRangeField calendar initial month', () => {
     );
 
     await act(async () => {
-      fireEvent.press(getByLabelText('Date range'));
+      await fireEvent.press(getByLabelText('Date range'));
     });
 
     expect(getByTestId('date-range-calendar').props.initialDate).toBeDefined();
@@ -400,7 +400,7 @@ describe('DateRangeField calendar bounds', () => {
     );
 
     await act(async () => {
-      fireEvent.press(getByLabelText('Date range'));
+      await fireEvent.press(getByLabelText('Date range'));
     });
 
     const calendar = getByTestId('date-range-calendar');
@@ -426,7 +426,7 @@ describe('DateRangeField action sizes', () => {
     );
 
     await act(async () => {
-      fireEvent.press(utils.getByLabelText('Date range'));
+      await fireEvent.press(utils.getByLabelText('Date range'));
     });
 
     return utils;

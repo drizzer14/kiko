@@ -24,7 +24,7 @@ const type = async (view: View, value: string): Promise<void> => {
 
 const pressConnect = async (view: View): Promise<void> => {
   await act(async () => {
-    fireEvent.press(view.getByText(connectLabel));
+    await fireEvent.press(view.getByText(connectLabel));
   });
 };
 
