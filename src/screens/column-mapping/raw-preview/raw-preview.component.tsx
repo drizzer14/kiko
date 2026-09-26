@@ -8,14 +8,18 @@ import { styles } from './raw-preview.styles';
 import { computeColumnWidths } from './column-widths';
 import type { RawPreviewProps } from './raw-preview.props';
 
-const PREVIEW_ROW_COUNT = 10;
+// The raw preview shows at least this many rows. A selected header row past
+// them extends the preview to that row (a bank export's preamble lines can sit
+// above its header), so the chosen header is never hidden or untappable.
+const PREVIEW_ROW_COUNT = 5;
 // The raw preview shows at most this many columns per row — every
 // `ColumnSelectField` option list still derives from the FULL header row.
 const PREVIEW_COLUMN_COUNT = 5;
 
 /**
  * The column-mapping screen's own raw-table preview: the first
- * `PREVIEW_ROW_COUNT` rows exactly as `readTableRows` parsed them, capped to
+ * `PREVIEW_ROW_COUNT` rows (or up to the selected header row, if later)
+ * exactly as `readTableRows` parsed them, capped to
  * the first `PREVIEW_COLUMN_COUNT` columns, rendered inside one
  * shared horizontal `ScrollView` so every row's cells stay column-aligned as
  * the user scrolls sideways. Tapping a row sets it as the header row — the
@@ -30,8 +34,9 @@ const PREVIEW_COLUMN_COUNT = 5;
  * from every other previewed row, not just differently colored.
  */
 const RawPreview: FC<RawPreviewProps> = ({ rows, headerRowIndex, onSelectHeaderRow, testID }) => {
+  const previewRowCount = Math.max(PREVIEW_ROW_COUNT, (headerRowIndex ?? 0) + 1);
   const previewRows = rows
-    .slice(0, PREVIEW_ROW_COUNT)
+    .slice(0, previewRowCount)
     .map((row) => row.slice(0, PREVIEW_COLUMN_COUNT));
   const columnWidths = computeColumnWidths(previewRows);
 

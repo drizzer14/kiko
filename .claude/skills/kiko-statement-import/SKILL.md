@@ -327,8 +327,12 @@ follow the same layout conventions as every other Kiko screen:
   "Tap the row with the column names" (`columnMapping.rawPreview`)
   renders at the `heading` type step instead of a muted `body`/
   `textSecondary` caption, so it reads clearly above the grid, and
-  doubles as this section's own heading. The grid shows at most
-  `PREVIEW_COLUMN_COUNT` (5) columns per row — a wide export
+  doubles as this section's own heading. The grid shows the first
+  `PREVIEW_ROW_COUNT` (5) rows — extended up to the selected header row
+  when that row sits further down (Sensebank's CSV header is row index
+  5, below a preamble), so the chosen header is never hidden or
+  untappable; `guessHeaderRowIndex` still scans the first 10 rows. The
+  grid shows at most `PREVIEW_COLUMN_COUNT` (5) columns per row — a wide export
   (multi-card PrivatBank, say) no longer scrolls dozens of columns
   before the user has even picked a header row; every
   `ColumnSelectField`'s own option list is unaffected, since that is

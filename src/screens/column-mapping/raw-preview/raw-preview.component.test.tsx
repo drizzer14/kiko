@@ -13,7 +13,7 @@ const rows: TableCell[][] = [
 ];
 
 describe('RawPreview', () => {
-  it('renders every cell of every row, up to the first 10 rows', async () => {
+  it('renders every cell of every row, up to the first 5 rows', async () => {
     const { getByText } = await render(
       <RawPreview rows={rows} headerRowIndex={0} onSelectHeaderRow={jest.fn()} />,
     );
@@ -23,15 +23,29 @@ describe('RawPreview', () => {
     expect(getByText('5000')).toBeTruthy();
   });
 
-  it('caps the preview at the first 10 rows', async () => {
+  it('caps the preview at the first 5 rows', async () => {
     const manyRows: TableCell[][] = Array.from({ length: 15 }, (_, index) => [`row-${index}`]);
 
     const { queryByText } = await render(
       <RawPreview rows={manyRows} headerRowIndex={0} onSelectHeaderRow={jest.fn()} />,
     );
 
-    expect(queryByText('row-9')).toBeTruthy();
-    expect(queryByText('row-10')).toBeNull();
+    expect(queryByText('row-4')).toBeTruthy();
+    expect(queryByText('row-5')).toBeNull();
+  });
+
+  // A bank export can carry preamble lines above its header (Sensebank's
+  // header sits at row index 5), so a selected header row past the cap
+  // extends the preview to it — never an invisible, untappable header.
+  it('extends the preview to a selected header row past the first 5 rows', async () => {
+    const manyRows: TableCell[][] = Array.from({ length: 15 }, (_, index) => [`row-${index}`]);
+
+    const { queryByText } = await render(
+      <RawPreview rows={manyRows} headerRowIndex={6} onSelectHeaderRow={jest.fn()} />,
+    );
+
+    expect(queryByText('row-6')).toBeTruthy();
+    expect(queryByText('row-7')).toBeNull();
   });
 
   it('calls onSelectHeaderRow with the tapped row index', async () => {
