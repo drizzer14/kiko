@@ -19,7 +19,7 @@ import { currencyFromCode } from '../currency-code';
 import { fetchClientInfo, fetchStatement } from '../client';
 import { createRequestGate, type RequestGate } from '../throttle';
 import type { AccountRow, HoldingRow, SyncStateRow, TransactionRow } from '../../db/schema';
-import type { MonobankAccount, MonobankJar, MonobankStatementItem } from '../monobank.types';
+import type { MonobankAccount, MonobankJar, MonobankStatementItem } from '../monobank-types';
 
 type NewHolding = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
   Partial<Pick<HoldingRow, 'balanceMinorUnits' | 'metadata' | 'sortOrder'>>;

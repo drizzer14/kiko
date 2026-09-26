@@ -630,7 +630,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     // fix) outside the encrypted database — deleted once this screen is
     // REMOVED from the stack, but ONLY when this screen actually OWNS the
     // file (`ownsFile`, set by `StatementImportScreen`'s auto-`replace`
-    // ONLY — see `navigation/types.d.ts`'s `ColumnMapping.ownsFile` doc
+    // ONLY — see `navigation/types/types.d.ts`'s `ColumnMapping.ownsFile` doc
     // comment). When this screen was reached instead by "Map columns
     // manually" (a PUSH), `StatementImportScreen` stays mounted underneath
     // and still owns the file — deleting it here on a plain Back would

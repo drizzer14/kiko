@@ -131,7 +131,7 @@ export const accountsRepo = {
    * own `manual` transaction (kiko-domain: a holding's balance history must stay
    * derivable from its transactions; `holdingsRepo.updateWithBalanceDelta`
    * enforces the same invariant for a later edit). Without it, `holdingValueAt`
-   * (statistics/holding-value-at.ts) back-derived the opening balance as
+   * (statistics/holding-value-at/holding-value-at.ts) back-derived the opening balance as
    * `balance - sum(transactions)` and the whole historical net-worth series
    * carried a step no ledger row could explain.
    *

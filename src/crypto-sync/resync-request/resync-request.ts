@@ -1,7 +1,7 @@
 import { match } from 'ts-pattern';
 
-import type { BalanceProviderId } from './provider';
-import type { CryptoSyncRequest } from './run-crypto-sync';
+import type { BalanceProviderId } from '../provider';
+import type { CryptoSyncRequest } from '../run-crypto-sync';
 
 /**
  * Build the re-sync request for an already-connected crypto account. A re-sync

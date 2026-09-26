@@ -4,12 +4,13 @@
 // `sync.ts` itself imports the repos, which open the op-sqlite connection at
 // load — `jest/setup.js` mocks `@op-engineering/op-sqlite` globally, so this
 // module graph loads safely under Jest and `mapStatementItem` runs for real.
+import type { MonobankStatementItem } from '@kiko/monobank/monobank-types';
+
 import { mapStatementItem } from '../../monobank/sync';
 import { startOfLocalDay } from '../../dates/local-day';
 import { buildPriceBook } from '../../prices/price-book';
 import type { SeriesHolding } from '../holding-value-at';
 import type { CurrencyRateHistoryRow, HoldingRow } from '../../db/schema';
-import type { MonobankStatementItem } from '../../monobank/monobank.types';
 import { holdingInstrument, metalInstrument } from '../../prices/instrument';
 
 import { buildNetWorthSeries, type NetWorthSeries } from './net-worth-series';
@@ -342,7 +343,7 @@ describe('buildNetWorthSeries', () => {
     // major-unit amount, an un-scaled timestamp).
     //
     // This test instead builds a plain `MonobankStatementItem` — the exact wire
-    // shape `GET /personal/statement/...` returns (`src/monobank/monobank.types.d.ts`)
+    // shape `GET /personal/statement/...` returns (`src/monobank/monobank-types/monobank.types.d.ts`)
     // — and threads it through the REAL, exported `mapStatementItem` from
     // `src/monobank/sync.ts` (the same function `mapFetched`/`importAccount` call
     // in production) to produce the funding debit, rather than typing

@@ -12,7 +12,7 @@ import { i18n } from '../../i18n';
 import statement from '../__fixtures__/statement.json';
 import clientInfo from '../__fixtures__/client-info.json';
 import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
-import type { MonobankAccount, MonobankJar, MonobankStatementItem } from '../monobank.types';
+import type { MonobankAccount, MonobankJar, MonobankStatementItem } from '../monobank-types';
 
 import {
   mapAccountToHolding,

@@ -1,6 +1,5 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
-
-import type { StatementFormatId } from '../statement-import/parser';
+import type { StatementFormatId } from '@kiko/statement-import/parser';
 
 /**
  * Per-tab native-stack param lists. Each tab owns its own stack, so screens

@@ -7,8 +7,8 @@
 // the one write(...), so a future balance-less writer can never silently desync
 // those charts. Modeled on transactions.repo.test.ts's makeExchangeDatabaseTransaction seam.
 let mockDatabaseTransaction: unknown;
-jest.mock('../db/client', () => {
-  const actual = jest.requireActual('../db/client');
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
 
   return {
     ...actual,
@@ -16,8 +16,9 @@ jest.mock('../db/client', () => {
   };
 });
 
-import { holdings } from '../db/schema';
-import { transactionsRepo } from '../transactions/repo/transactions.repo';
+import { holdings } from '../../db/schema';
+
+import { transactionsRepo } from './transactions.repo';
 
 // A fake database-transaction handle capturing inserts + balance updates in call order, answering
 // both the chained `.where(...).limit(1)` and the bare `await where(...)`

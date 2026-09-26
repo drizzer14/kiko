@@ -1111,7 +1111,7 @@ export const transactionsRepo = {
    * `asOfSeconds`, but the SIZE of `D` is never surfaced anywhere. A
    * history-only import (rows before the boundary, inserted at 0) leaves the
    * same kind of untracked adjustment one level down: `holdingValueAt`
-   * (`src/statistics/holding-value-at.ts`) derives a holding's opening
+   * (`src/statistics/holding-value-at/holding-value-at.ts`) derives a holding's opening
    * balance as `current balance - sum(all transactions)`, so those newly
    * inserted rows shift that subtraction even though they added 0 to the
    * current balance, moving every PAST value the net-worth series

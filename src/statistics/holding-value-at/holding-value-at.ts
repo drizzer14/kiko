@@ -1,10 +1,10 @@
 import { holdingsRepo } from '@kiko/holdings/repo';
+import { holdingValueBreakdown } from '@kiko/holdings/holding-value';
+import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 
-import type { HoldingRow } from '../db/schema';
-import { startOfLocalDay } from '../dates/local-day';
-import { holdingValueBreakdown } from '../holdings/holding-value';
-import { EMPTY_PRICE_BOOK, type PriceBook } from '../prices/price-book';
+import type { HoldingRow } from '../../db/schema';
+import { startOfLocalDay } from '../../dates/local-day';
 
 /** A holding as the series builders need it: identity, currency, and value inputs. */
 export type SeriesHolding = Pick<

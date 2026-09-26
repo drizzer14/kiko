@@ -1,10 +1,10 @@
 import type { TFunction } from 'i18next';
-import KikoCalendar from '@kiko/calendar';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import type { DateData } from 'react-native-calendars';
+import KikoCalendar from '@kiko/calendar/kiko-calendar';
 
 import Box from '../box';
 import Text from '../text';
