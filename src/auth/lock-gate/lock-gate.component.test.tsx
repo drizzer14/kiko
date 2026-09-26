@@ -43,6 +43,9 @@ jest.mock('@kiko/monobank/migrate-credential', () => ({
 jest.mock('@kiko/crypto-sync/binance/migrate-binance-credential', () => ({
   migrateBinanceCredentialToPerAccount: () => Promise.resolve(),
 }));
+jest.mock('@kiko/statement-import/upgrade-stored-dedup-keys/upgrade-stored-dedup-keys', () => ({
+  upgradeStoredDedupKeys: () => Promise.resolve(),
+}));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { connectedQuery: () => Promise.resolve([]) },
 }));
