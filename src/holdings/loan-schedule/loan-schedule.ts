@@ -210,39 +210,22 @@ export const loanAnchorAt = (
   };
 };
 
-/**
- * The interest portion of a bank payment linked to this loan
- * ("interest-only spending"): `none` (an informal debt has no schedule) never
- * counts any interest — `loanInstallments` already returns `[]` for it, so
- * the length guard below covers that case with no separate `schedule` check.
- * Otherwise the payment maps to the installment whose due date is NEAREST to
- * the payment's own local day (not necessarily the next unpaid one — an
- * early or late payment still matches its intended installment), and the
- * interest counted is that installment's scheduled interest, capped at the
- * payment's own (absolute) amount — a partial payment can never count more
- * interest than it actually paid.
- *
- * A payment MORE THAN ONE PERIOD outside the schedule counts 0 interest,
- * rather than mapping to the nearest (first/
- * last) installment regardless of distance — a payment years before the loan
- * even started, or years after it was fully paid off, is not this loan's
- * interest. "One period" is the same monthly cadence every due date is built
- * from (`addMonths(startDate, k)`): one period before the first installment
- * is `startDate` itself, one period after the
- * last is `addMonths(startDate, installments.length + 1)`. Both bounds are
- * INCLUSIVE — a payment exactly on one still maps to its boundary
- * installment, only a payment strictly beyond it counts 0.
- */
-export const loanInterestForPaymentMinor = (
+/** A bank payment linked to a loan; a debit carries a negative amount. */
+type LinkedPayment = { time: number; amountMinorUnits: number };
+
+// The installment a payment pays: the one whose due date is NEAREST to the
+// payment's local day (an early or late payment still matches its intended
+// installment), or undefined when the loan has no schedule or the payment is
+// more than one period outside it (see `loanInterestPerPaymentMinor`).
+const installmentIndexOf = (
   meta: LoanMeta,
+  plan: LoanPlan,
   paymentTime: number,
-  paymentAbsMinor: number,
-  plan: LoanPlan = loanPlanOf(meta),
-): number => {
+): number | undefined => {
   const { installments, dueDayKeys } = plan;
 
   if (installments.length === 0) {
-    return 0;
+    return undefined;
   }
 
   const paymentDayKey = dayKeyOf(paymentTime);
@@ -250,16 +233,66 @@ export const loanInterestForPaymentMinor = (
   const upperBoundDayKey = dayKeyOf(addMonths(meta.startDate, installments.length + 1));
 
   if (paymentDayKey < lowerBoundDayKey || paymentDayKey > upperBoundDayKey) {
-    return 0;
+    return undefined;
   }
 
-  const nearestIndex = dueDayKeys.reduce(
+  return dueDayKeys.reduce(
     (closest, dueDayKey, index) =>
       Math.abs(dueDayKey - paymentDayKey) < Math.abs(dueDayKeys[closest] - paymentDayKey)
         ? index
         : closest,
     0,
   );
+};
 
-  return Math.min(installments[nearestIndex].interestMinorUnits, paymentAbsMinor);
+/**
+ * The interest portion of each of one loan's linked bank payments
+ * ("interest-only spending"), in the order `payments` is given: `none` (an
+ * informal debt has no schedule) never counts any interest. Otherwise each
+ * payment maps to the installment whose due date is NEAREST to its own local
+ * day (not necessarily the next unpaid one), and that installment's scheduled
+ * interest is counted ONCE across every payment mapped to it: taking the
+ * payments earliest first, each counts what is left of the installment's
+ * interest, capped at its own absolute amount, and the rest of it is
+ * principal. So an installment paid in two halves counts its interest on the
+ * first half (and on the second only what the first could not cover), and a
+ * partial payment never counts more interest than it actually paid.
+ *
+ * A payment MORE THAN ONE PERIOD outside the schedule counts 0 interest,
+ * rather than mapping to the nearest (first/last) installment regardless of
+ * distance — a payment years before the loan even started, or years after it
+ * was fully paid off, is not this loan's interest. "One period" is the same
+ * monthly cadence every due date is built from (`addMonths(startDate, k)`):
+ * one period before the first installment is `startDate` itself, one period
+ * after the last is `addMonths(startDate, installments.length + 1)`. Both
+ * bounds are INCLUSIVE — a payment exactly on one still maps to its boundary
+ * installment, only a payment strictly beyond it counts 0.
+ */
+export const loanInterestPerPaymentMinor = (
+  meta: LoanMeta,
+  payments: readonly LinkedPayment[],
+  plan: LoanPlan = loanPlanOf(meta),
+): number[] => {
+  const interests = payments.map(() => 0);
+  const interestLeftByInstallment = new Map<number, number>();
+  const earliestFirst = payments
+    .map((payment, position) => ({ payment, position }))
+    .sort((first, second) => first.payment.time - second.payment.time);
+
+  for (const { payment, position } of earliestFirst) {
+    const index = installmentIndexOf(meta, plan, payment.time);
+
+    if (index === undefined) {
+      continue;
+    }
+
+    const interestLeft =
+      interestLeftByInstallment.get(index) ?? plan.installments[index].interestMinorUnits;
+    const interest = Math.min(interestLeft, Math.abs(payment.amountMinorUnits));
+
+    interests[position] = interest;
+    interestLeftByInstallment.set(index, interestLeft - interest);
+  }
+
+  return interests;
 };

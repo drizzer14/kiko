@@ -2,7 +2,7 @@ import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { Currency } from '@kiko/currency/currency';
 import { asLoanMeta } from '@kiko/holdings/holding-metadata';
-import { loanPlanOf, loanInterestForPaymentMinor } from '@kiko/holdings/loan-schedule';
+import { loanInterestPerPaymentMinor } from '@kiko/holdings/loan-schedule';
 
 import type { TrendTransaction } from '../category-trend';
 
@@ -70,9 +70,10 @@ export const loanPaymentExcludedTransactionIds = (
 /**
  * One synthetic "Loan interest" entry per linked payment whose loan still
  * exists: the payment maps to the installment whose due date is
- * NEAREST to its own local day, and the interest counted is that
- * installment's interest, capped at the payment's own absolute amount
- * (`loanInterestForPaymentMinor`). A payment with 0 counted interest (an
+ * NEAREST to its own local day, and the interest counted is what is left of
+ * that installment's interest after the loan's earlier payments mapped to
+ * it, capped at the payment's own absolute amount
+ * (`loanInterestPerPaymentMinor`). A payment with 0 counted interest (an
  * informal `'none'`-schedule loan, or a payment more than one period
  * outside the schedule) produces NO entry: its whole amount was
  * already dropped by `loanPaymentExcludedTransactionIds` above, so it simply counts
@@ -86,9 +87,8 @@ export const loanPaymentExcludedTransactionIds = (
  * (statistics.screen.tsx): the id is `loan-interest:<txId>` (never collides
  * with a real transaction id), the category is the seeded `loan_interest`
  * key, and the amount is the interest as a NEGATIVE minor-units expense, in
- * the LOAN holding's own currency — `loanInterestForPaymentMinor` computes
- * interest in that currency, so stamping the payment's currency instead
- * would mislabel the amount the moment the two differ. A payment whose
+ * the LOAN holding's own currency — `loanInterestPerPaymentMinor` computes
+ * interest in that currency, which is the payment's own: a payment whose
  * currency differs from its linked loan's produces no entry at all (same
  * rule as `loanPaymentExcludedTransactionIds` above, so the row is never dropped
  * from spending without a replacement). A CREDIT (a positive amount, e.g. a
@@ -101,36 +101,10 @@ export const loanInterestEntries = (input: {
 }): TrendTransaction[] => {
   const { transactions, loanHoldings } = input;
   const holdingById = new Map(loanHoldings.map((holding) => [holding.id, holding] as const));
-  const termsById = new Map(
-    loanHoldings.flatMap((holding) => {
-      const meta = asLoanMeta(holding.metadata);
-
-      return (
-        foldMap(maybe(meta), (found) => [
-          [holding.id, { meta: found, plan: loanPlanOf(found) }] as const,
-        ]) ?? []
-      );
-    }),
-  );
+  const interests = interestByTransactionId(transactions, holdingById);
 
   return transactions.flatMap((transaction) => {
-    if (transaction.loanHoldingId === null || transaction.amountMinorUnits >= 0) {
-      return [];
-    }
-
-    const holding = holdingById.get(transaction.loanHoldingId);
-    const terms = termsById.get(transaction.loanHoldingId);
-
-    if (holding === undefined || terms === undefined || holding.currency !== transaction.currency) {
-      return [];
-    }
-
-    const interest = loanInterestForPaymentMinor(
-      terms.meta,
-      transaction.time,
-      Math.abs(transaction.amountMinorUnits),
-      terms.plan,
-    );
+    const interest = interests.get(transaction.id) ?? 0;
 
     if (interest <= 0) {
       return [];
@@ -146,9 +120,48 @@ export const loanInterestEntries = (input: {
         description: '',
         exchangeCounterpartHoldingId: null,
         changeGroupId: null,
-        currency: holding.currency,
+        currency: transaction.currency,
         time: transaction.time,
       },
     ];
   });
+};
+
+// An installment paid in parts counts its interest once across the parts, so
+// interest is allocated per loan over all of that loan's counted payments,
+// never one payment at a time.
+const interestByTransactionId = (
+  transactions: readonly LoanPaymentTransaction[],
+  holdingById: ReadonlyMap<string, LoanHolding>,
+): Map<string, number> => {
+  const paymentsByLoan = new Map<string, LoanPaymentTransaction[]>();
+
+  for (const transaction of transactions) {
+    if (transaction.loanHoldingId === null || transaction.amountMinorUnits >= 0) {
+      continue;
+    }
+
+    if (holdingById.get(transaction.loanHoldingId)?.currency !== transaction.currency) {
+      continue;
+    }
+
+    const payments = paymentsByLoan.get(transaction.loanHoldingId) ?? [];
+
+    payments.push(transaction);
+    paymentsByLoan.set(transaction.loanHoldingId, payments);
+  }
+
+  return new Map(
+    [...paymentsByLoan].flatMap(([loanHoldingId, payments]) => {
+      const meta = asLoanMeta(holdingById.get(loanHoldingId)?.metadata);
+
+      return (
+        foldMap(maybe(meta), (found) => {
+          const interests = loanInterestPerPaymentMinor(found, payments);
+
+          return payments.map((payment, index) => [payment.id, interests[index]] as const);
+        }) ?? []
+      );
+    }),
+  );
 };

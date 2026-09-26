@@ -6,7 +6,7 @@ import {
   loanPlanOf,
   loanAnchorAt,
   loanOutstandingMinorAt,
-  loanInterestForPaymentMinor,
+  loanInterestPerPaymentMinor,
   type LoanPlan,
   type LoanAnchor,
 } from '../loan-schedule';
@@ -49,18 +49,15 @@ const ledgerKeyOf = (meta: LoanMeta, loan: LedgerLoan): string =>
 // currency (the rule the spending pie's loan-payment exclusion applies).
 const buildLedger = (meta: LoanMeta, loan: LedgerLoan, book: PriceBook): Ledger => {
   const plan = loanPlanOf(meta);
-  const entries = (book.loanPayments.get(loan.id) ?? [])
-    .filter((payment) => payment.currency === loan.currency && payment.amountMinorUnits < 0)
-    .map((payment) => ({
-      payment,
-      dayKey: dayKeyOf(payment.time),
-      interestMinorUnits: loanInterestForPaymentMinor(
-        meta,
-        payment.time,
-        Math.abs(payment.amountMinorUnits),
-        plan,
-      ),
-    }));
+  const payments = (book.loanPayments.get(loan.id) ?? []).filter(
+    (payment) => payment.currency === loan.currency && payment.amountMinorUnits < 0,
+  );
+  const interests = loanInterestPerPaymentMinor(meta, payments, plan);
+  const entries = payments.map((payment, index) => ({
+    payment,
+    dayKey: dayKeyOf(payment.time),
+    interestMinorUnits: interests[index],
+  }));
 
   return { plan, entries };
 };
@@ -186,8 +183,8 @@ export const loanLedgerOutstandingMinorAt = (
 
 /**
  * The loan detail's breakdown at `now`: the principal, what the counted
- * linked payments paid in total, its interest part (each payment's own
- * `loanInterestForPaymentMinor` — 0 for a `none` schedule), its principal
+ * linked payments paid in total, its interest part (each payment's share
+ * from `loanInterestPerPaymentMinor` — 0 for a `none` schedule), its principal
  * part, and the outstanding every other screen shows.
  */
 export const loanLedgerSummary = (

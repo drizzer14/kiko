@@ -1213,7 +1213,7 @@ describe('transactionsRepo.setLoanPayment', () => {
   });
 
   // A USD mortgage paid from a UAH card (or vice versa) is a common case for
-  // Kiko's users; `loanInterestForPaymentMinor` computes interest in the
+  // Kiko's users; `loanInterestPerPaymentMinor` computes interest in the
   // LOAN's own currency, so a cross-currency link would mislabel that
   // amount — refused outright rather than silently written wrong.
   it('throws and writes nothing when the payment holding currency differs from the loan holding currency', async () => {

@@ -20,7 +20,7 @@ import { flat, type HoldingValueBreakdown } from '../breakdown-parts';
 // mirroring `principalOrCost`'s role elsewhere as the reference point a
 // gain/loss (here, a payoff progress) is measured against, not the current
 // balance. A loan never accrues interest/tax at valuation time (interest is
-// a ledger event on payment, `loanInterestForPaymentMinor` — not a held
+// a ledger event on payment, `loanInterestPerPaymentMinor` — not a held
 // value), so both stay zero.
 const loanBreakdown = (
   holding: ValuableHolding,

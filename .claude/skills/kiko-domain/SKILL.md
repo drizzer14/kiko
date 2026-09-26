@@ -547,8 +547,10 @@ category the seeded `loan_interest` key
 (`drizzle/migrations/0039_seed_loan_interest_category.sql`), amount
 the NEGATIVE interest portion only (never the principal) — mapping
 the payment to the installment whose due date is nearest to its own
-local day and capping at the payment's own amount
-(`loanInterestForPaymentMinor`, `src/holdings/loan-schedule/`).
+local day and capping at the payment's own amount; an installment paid
+in parts counts its interest once, on the earliest parts
+(`loanInterestPerPaymentMinor`, `src/holdings/loan-schedule/`, allocated
+per loan over all of that loan's linked payments).
 `statistics.screen.tsx` feeds these derived entries into BOTH
 `buildCategoryBreakdown` and the category trend, alongside every real
 row — not into the exclusion-RULE inputs themselves (a synthetic
@@ -1168,22 +1170,28 @@ decimal-string rule.
   book, instant)` — `LoanAnchor`, `{ dayKey, valueMinorUnits,
   fromCorrection }` — shared with the loan ledger below, so both anchor
   on the exact same correction.
-- `loanInterestForPaymentMinor(meta, paymentTime, paymentAbsMinor)`
-  ("interest-only spending" — the derived-entry wiring itself is the
-  "Spending-exclusion pipeline" section above): `none` always counts 0 interest
+- `loanInterestPerPaymentMinor(meta, payments, plan?)` → one interest
+  amount per payment, in the given order ("interest-only spending" — the
+  derived-entry wiring itself is the "Spending-exclusion pipeline" section
+  above): `none` always counts 0 interest
   (an informal debt has no schedule to derive interest from).
-  Otherwise the payment maps to the installment whose `dueDate` is
+  Otherwise each payment maps to the installment whose `dueDate` is
   NEAREST to the payment's own local day (not necessarily the next
-  unpaid one), and the interest counted is that installment's
-  scheduled interest capped at `paymentAbsMinor` — a partial payment
-  can never count more interest than it actually paid. A payment MORE THAN ONE PERIOD outside the
+  unpaid one), and each installment's scheduled interest is counted
+  ONCE across every payment mapped to it: earliest payment first, each
+  counts what is left of that interest, capped at its own `|amount|`;
+  the rest is principal. So an installment paid in two halves (9 and 10
+  Feb) counts its interest on the first half only, and a partial
+  payment never counts more interest than it actually paid. Always pass
+  ALL of one loan's counted payments together — interest per payment
+  one at a time counted a split installment's interest twice. A payment MORE THAN ONE PERIOD outside the
   schedule (before `addMonths(startDate, 0)`, after
   `addMonths(startDate, installments.length + 1)`) counts 0 instead of
   still mapping to the nearest boundary installment — both bounds are
   inclusive, only a payment strictly beyond one counts 0.
 - `loanPlanOf(meta)` → `LoanPlan` (`{ installments, dueDayKeys }`): the
   table plus each row's day key, built ONCE per loan. `loanOutstandingMinorAt`
-  and `loanInterestForPaymentMinor` take it as an optional last argument
+  and `loanInterestPerPaymentMinor` take it as an optional last argument
   (default: build it); every caller that repeats a read for the same loan
   (each linked payment, each net-worth bucket, each statistics
   transaction) builds it once and passes it. Rebuilding it per payment per
@@ -1208,8 +1216,8 @@ together.
   detail's upcoming-payments guard; the form's schedule-to-`none`
   edit). No counted payment: exactly `loanOutstandingMinorAt` (pinned —
   a loan with no linked payment values as it always did). Otherwise:
-  the anchor minus the principal part (`|amount|` minus
-  `loanInterestForPaymentMinor`) of each counted payment dated strictly
+  the anchor minus the principal part (`|amount|` minus its
+  `loanInterestPerPaymentMinor` share) of each counted payment dated strictly
   after the anchor's day, clamped at 0; 0 before the start day. The
   anchor (`ledgerAnchorAt`) is the latest correction on or before the
   instant (`loanAnchorAt`); with none, an `annuity`/`differentiated`
@@ -1228,7 +1236,7 @@ together.
   book with the old AND the new terms, so the terms must be in the key).
 - `loanLedgerSummary(meta, loan, book, now)` — the detail's breakdown:
   `principalMinorUnits`, `paidSoFarMinorUnits` (Σ `|amount|`),
-  `interestPaidMinorUnits` (Σ `loanInterestForPaymentMinor`; 0 for
+  `interestPaidMinorUnits` (Σ `loanInterestPerPaymentMinor`; 0 for
   `none`), `principalRepaidMinorUnits` (paid − interest), and
   `outstandingMinorUnits` (the function above at `now`).
 

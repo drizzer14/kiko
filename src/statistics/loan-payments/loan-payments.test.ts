@@ -9,7 +9,7 @@ import {
 } from './loan-payments';
 
 // A single-installment (termMonths: 1) annuity loan: its whole schedule is
-// one installment, so `loanInterestForPaymentMinor` never has to pick among
+// one installment, so `loanInterestPerPaymentMinor` never has to pick among
 // several — the payment maps to it directly. `principalMinorUnits: 900_000`
 // at 12% annual (1% monthly) gives `round(900_000 * 0.01) = 9_000` interest.
 const scheduledMeta: LoanMeta = {
@@ -174,6 +174,32 @@ describe('loanInterestEntries', () => {
     const entries = loanInterestEntries({ transactions: [partial], loanHoldings: [scheduledLoan] });
 
     expect(entries).toEqual([expect.objectContaining({ amountMinorUnits: -4_000 })]);
+  });
+
+  // Listed newest first, the way the statistics screen reads transactions:
+  // the earlier part still takes the interest.
+  it('counts an installment paid in two parts as interest once, on the earlier part', () => {
+    const earlier: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-earlier',
+      time: PAYMENT_TIME - 86_400_000,
+      amountMinorUnits: -6_000,
+    };
+    const later: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-later',
+      amountMinorUnits: -6_000,
+    };
+
+    const entries = loanInterestEntries({
+      transactions: [later, earlier],
+      loanHoldings: [scheduledLoan],
+    });
+
+    expect(entries).toEqual([
+      expect.objectContaining({ id: 'loan-interest:tx-later', amountMinorUnits: -3_000 }),
+      expect.objectContaining({ id: 'loan-interest:tx-earlier', amountMinorUnits: -6_000 }),
+    ]);
   });
 
   it('produces no interest entry for a payment whose currency differs from its linked loan holding currency', () => {

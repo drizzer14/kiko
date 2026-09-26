@@ -119,7 +119,7 @@ const withinAmountTolerance = (
 
 // Rule 2: the transaction's own LOCAL day, 3 days before to 7 days after the
 // due date's local day — both bounds inclusive, the same "both bounds
-// inclusive" idiom `loanInterestForPaymentMinor` (N10b) already establishes.
+// inclusive" idiom `loanInterestPerPaymentMinor` already establishes.
 const withinDateWindow = (transactionTime: number, dueDate: number): boolean => {
   const dayDiff = (dayKeyOf(transactionTime) - dayKeyOf(dueDate)) / MS_PER_DAY;
 

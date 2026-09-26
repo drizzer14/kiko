@@ -135,6 +135,21 @@ describe('loanLedgerOutstandingMinorAt', () => {
     );
   });
 
+  it('counts the interest once when the first installment is paid in two halves', () => {
+    const twoYearMeta: LoanMeta = { ...annuityMeta, termMonths: 24 };
+    const first = loanInstallments(twoYearMeta)[0];
+    const half = first.paymentMinorUnits / 2;
+    const book = bookWith([
+      { time: local(2024, 1, 9, 10), amountMinorUnits: -half },
+      { time: local(2024, 1, 10, 10), amountMinorUnits: -half },
+    ]);
+    const summary = loanLedgerSummary(twoYearMeta, LOAN, book, local(2024, 1, 20));
+
+    expect(first.paymentMinorUnits).toBe(564_882);
+    expect(summary.interestPaidMinorUnits).toBe(120_000);
+    expect(summary.outstandingMinorUnits).toBe(11_555_118);
+  });
+
   it('clamps an overpaid loan to 0', () => {
     const book = bookWith([{ time: installments[0].dueDate, amountMinorUnits: -20_000_000 }]);
 
@@ -228,14 +243,17 @@ describe('loanLedgerOutstandingMinorAt', () => {
     });
   });
 
+  // Both payments map to the first installment, so they share its interest
+  // once and everything else they paid is principal.
   it('anchors on the principal when the first link is on the start day', () => {
+    const startDayPaid = 100_000;
     const book = bookWith([
-      { time: annuityMeta.startDate, amountMinorUnits: -100_000 },
+      { time: annuityMeta.startDate, amountMinorUnits: -startDayPaid },
       onSchedule(0),
     ]);
 
     expect(loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, installments[0].dueDate)).toBe(
-      annuityMeta.principalMinorUnits - installments[0].principalMinorUnits,
+      annuityMeta.principalMinorUnits - installments[0].principalMinorUnits - startDayPaid,
     );
   });
 

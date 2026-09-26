@@ -6,8 +6,8 @@ import type { LoanMeta } from '../holding-metadata';
 
 import {
   loanInstallments,
-  loanInterestForPaymentMinor,
   loanOutstandingMinorAt,
+  loanInterestPerPaymentMinor,
 } from './loan-schedule';
 import type { LoanInstallment } from './loan-schedule';
 
@@ -264,9 +264,12 @@ describe('loanOutstandingMinorAt', () => {
   });
 });
 
-describe('loanInterestForPaymentMinor', () => {
+const interestOfOnePayment = (meta: LoanMeta, time: number, paidMinorUnits: number): number =>
+  loanInterestPerPaymentMinor(meta, [{ time, amountMinorUnits: -paidMinorUnits }])[0];
+
+describe('loanInterestPerPaymentMinor', () => {
   it('is 0 for a none-schedule (informal) loan', () => {
-    expect(loanInterestForPaymentMinor(noneMeta, local(2021, 0, 1), 10_000_00)).toBe(0);
+    expect(interestOfOnePayment(noneMeta, local(2021, 0, 1), 10_000_00)).toBe(0);
   });
 
   it('N10b: maps a payment 3 days after a due date to that installment, capped by the payment amount', () => {
@@ -276,21 +279,21 @@ describe('loanInterestForPaymentMinor', () => {
 
     // The payment comfortably covers the scheduled interest: the full
     // installment interest counts.
-    expect(
-      loanInterestForPaymentMinor(annuityMeta, paymentDay, fifth.interestMinorUnits + 50_000),
-    ).toBe(fifth.interestMinorUnits);
+    expect(interestOfOnePayment(annuityMeta, paymentDay, fifth.interestMinorUnits + 50_000)).toBe(
+      fifth.interestMinorUnits,
+    );
 
     // A partial payment smaller than the scheduled interest caps at the
     // payment amount itself.
     const partial = Math.floor(fifth.interestMinorUnits / 2);
-    expect(loanInterestForPaymentMinor(annuityMeta, paymentDay, partial)).toBe(partial);
+    expect(interestOfOnePayment(annuityMeta, paymentDay, partial)).toBe(partial);
   });
 
   it('picks the NEAREST installment by due date, not the first or last', () => {
     const installments = loanInstallments(annuityMeta);
     const hundredth = installments[99];
     const paymentDay = addDays(hundredth.dueDate, -2);
-    expect(loanInterestForPaymentMinor(annuityMeta, paymentDay, 10_000_000)).toBe(
+    expect(interestOfOnePayment(annuityMeta, paymentDay, 10_000_000)).toBe(
       hundredth.interestMinorUnits,
     );
   });
@@ -304,19 +307,19 @@ describe('loanInterestForPaymentMinor', () => {
   // last is `addMonths(startDate, termMonths + 1)`.
   it('a payment more than one period before the first installment counts 0 interest', () => {
     const beforeLowerBound = addDays(annuityMeta.startDate, -1);
-    expect(loanInterestForPaymentMinor(annuityMeta, beforeLowerBound, 10_000_000)).toBe(0);
+    expect(interestOfOnePayment(annuityMeta, beforeLowerBound, 10_000_000)).toBe(0);
   });
 
   it('a payment more than one period after the last installment counts 0 interest', () => {
     const installments = loanInstallments(annuityMeta);
     const upperBound = addMonths(annuityMeta.startDate, installments.length + 1);
     const afterUpperBound = addDays(upperBound, 1);
-    expect(loanInterestForPaymentMinor(annuityMeta, afterUpperBound, 10_000_000)).toBe(0);
+    expect(interestOfOnePayment(annuityMeta, afterUpperBound, 10_000_000)).toBe(0);
   });
 
   it('a payment exactly one period before the first installment still maps to it (boundary is inclusive)', () => {
     const installments = loanInstallments(annuityMeta);
-    expect(loanInterestForPaymentMinor(annuityMeta, annuityMeta.startDate, 10_000_000)).toBe(
+    expect(interestOfOnePayment(annuityMeta, annuityMeta.startDate, 10_000_000)).toBe(
       installments[0].interestMinorUnits,
     );
   });
@@ -324,8 +327,51 @@ describe('loanInterestForPaymentMinor', () => {
   it('a payment exactly one period after the last installment still maps to it (boundary is inclusive)', () => {
     const installments = loanInstallments(annuityMeta);
     const upperBound = addMonths(annuityMeta.startDate, installments.length + 1);
-    expect(loanInterestForPaymentMinor(annuityMeta, upperBound, 10_000_000)).toBe(
+    expect(interestOfOnePayment(annuityMeta, upperBound, 10_000_000)).toBe(
       installments[installments.length - 1].interestMinorUnits,
     );
+  });
+
+  // One installment paid in two halves carries its scheduled interest once:
+  // the earlier half takes it, the later half is all principal.
+  it('counts an installment paid in two halves as interest only once, earliest half first', () => {
+    const twoYearMeta: LoanMeta = { ...annuityMeta, termMonths: 24 };
+    const first = loanInstallments(twoYearMeta)[0];
+    const half = Math.round(first.paymentMinorUnits / 2);
+    const earlier = { time: addDays(first.dueDate, -6), amountMinorUnits: -half };
+    const later = { time: addDays(first.dueDate, -5), amountMinorUnits: -half };
+
+    expect(half).toBeGreaterThan(first.interestMinorUnits);
+    expect(loanInterestPerPaymentMinor(twoYearMeta, [later, earlier])).toEqual([
+      0,
+      first.interestMinorUnits,
+    ]);
+  });
+
+  it('lets a later part take the interest an earlier, smaller part could not cover', () => {
+    const first = loanInstallments(annuityMeta)[0];
+    const small = Math.floor(first.interestMinorUnits / 3);
+    const payments = [
+      { time: addDays(first.dueDate, -1), amountMinorUnits: -small },
+      { time: first.dueDate, amountMinorUnits: -first.paymentMinorUnits },
+    ];
+
+    expect(loanInterestPerPaymentMinor(annuityMeta, payments)).toEqual([
+      small,
+      first.interestMinorUnits - small,
+    ]);
+  });
+
+  it('keeps each installment interest separate when the parts map to different installments', () => {
+    const [first, second] = loanInstallments(annuityMeta);
+    const payments = [
+      { time: first.dueDate, amountMinorUnits: -first.paymentMinorUnits },
+      { time: second.dueDate, amountMinorUnits: -second.paymentMinorUnits },
+    ];
+
+    expect(loanInterestPerPaymentMinor(annuityMeta, payments)).toEqual([
+      first.interestMinorUnits,
+      second.interestMinorUnits,
+    ]);
   });
 });

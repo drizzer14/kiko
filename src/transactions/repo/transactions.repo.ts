@@ -903,7 +903,7 @@ export const transactionsRepo = {
    *
    * A LINK (`loanHoldingId` non-null) is refused with a typed error when the
    * payment's own holding currency differs from the target loan holding's
-   * currency: `loanInterestForPaymentMinor` computes interest in the LOAN's
+   * currency: `loanInterestPerPaymentMinor` computes interest in the LOAN's
    * currency, so a cross-currency link would either mislabel that amount or
    * compare two currencies' minor units directly (`statistics/loan-payments`
    * treats such a link, however written, as ordinary spending — this guard
