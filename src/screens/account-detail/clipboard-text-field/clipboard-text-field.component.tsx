@@ -65,7 +65,7 @@ const ClipboardTextField: FC<ClipboardTextFieldProps> = ({
     <Box gap={1}>
       <FieldLabel label={label} invalid={error !== undefined && error !== ''} />
 
-      <Box direction="row" gap={3} style={styles.inputRow}>
+      <Box direction="row" gap={1} style={styles.inputRow}>
         <Box style={styles.tokenFieldColumn}>
           <TextField
             value={value}

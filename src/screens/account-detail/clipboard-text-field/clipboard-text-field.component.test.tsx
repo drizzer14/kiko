@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import '../../../i18n';
@@ -157,6 +158,38 @@ describe('ClipboardTextField', () => {
     );
 
     expect(getByText('Enter your Monobank token.')).toBeTruthy();
+  });
+
+  // The paste glyph sits close to the input and to the row's end — a compact
+  // icon-button spacing — while the Button keeps its own 44pt-wide tap target:
+  // the row gap is 4pt, and the wrapper's -4pt horizontal margin pulls the
+  // button's 12pt padding in, so the glyph sits 12pt from the input and 8pt
+  // from the row's end, and the tap target still starts at the input's edge.
+  it('spaces the paste glyph compactly: a 4pt row gap and a -4pt wrapper margin', async () => {
+    const { getByLabelText } = await render(
+      <ClipboardTextField
+        label="Token"
+        value=""
+        onChangeText={jest.fn()}
+        placeholder="Monobank token"
+        pasteAccessibilityLabel="Paste from clipboard"
+      />,
+    );
+
+    const styledAncestors: Record<string, unknown>[] = [];
+    let node = getByLabelText('Paste from clipboard').parent;
+
+    while (node !== null && styledAncestors.length < 2) {
+      if (typeof node.type === 'string' && node.props.style !== undefined) {
+        styledAncestors.push(StyleSheet.flatten(node.props.style));
+      }
+
+      node = node.parent;
+    }
+
+    const [wrapperStyle, rowStyle] = styledAncestors;
+    expect(wrapperStyle.marginHorizontal).toBe(-4);
+    expect(rowStyle.gap).toBe(4);
   });
 
   it('emits typed text through onChangeText', async () => {

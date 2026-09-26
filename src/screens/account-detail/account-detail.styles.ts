@@ -56,8 +56,14 @@ export const styles = StyleSheet.create((theme) => ({
   // inherit the same value), but is kept EXPLICIT so this wrapper's placement
   // stays centered even if `inputRow`'s own alignment ever changes for an
   // unrelated reason — the one thing this style exists to guarantee.
+  // The negative horizontal margin gives the paste glyph a compact icon-button
+  // spacing without shrinking the Button's own 44pt-wide tap target (12pt
+  // padding + 20pt glyph + 12pt padding): with `inputRow`'s 4pt gap, the glyph
+  // sits 12pt from the input and 8pt from the row's end, and the tap target
+  // starts exactly at the input's edge, never overlapping it.
   pasteButtonWrapper: {
     alignSelf: 'center',
+    marginHorizontal: -theme.spacing(1),
   },
   // The link's touch target: hugs its text at the leading edge rather than
   // stretching across the column.

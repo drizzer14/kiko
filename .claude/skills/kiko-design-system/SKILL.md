@@ -398,10 +398,18 @@ new component can land between reviews of this skill:
   `variant="ghost"`, `size="small"`, `fullWidth={false}`,
   `icon="document.on.clipboard"`, `textColor={theme.colors.textSecondary}`,
   and a translated `accessibilityLabel` (VoiceOver has no label text to
-  read otherwise, per the icon-only rule above). This is a repeated
-  `Button` usage pattern at each call site, not a separate shared
-  component — a new paste affordance follows the same prop set rather
-  than inventing its own.
+  read otherwise, per the icon-only rule above). The ONE place that
+  builds this row is `ClipboardTextField`
+  (`src/screens/account-detail/clipboard-text-field/`) — every paste
+  field (including Settings' import-data key field) goes through it, so
+  a new paste affordance reuses it rather than re-pairing a `TextField`
+  and a `Button`. Its spacing is a compact icon-button spacing: the
+  input row's `gap={1}` (4pt) plus the paste wrapper's
+  `marginHorizontal: -theme.spacing(1)` (`account-detail.styles.ts`'s
+  `pasteButtonWrapper`) put the glyph 12pt from the input and 8pt from
+  the row's end, while the `small` Button keeps its own 44pt-wide tap
+  target (starting exactly at the input's edge, never overlapping it) —
+  the visual spacing shrinks, never the tap target.
 - **Card** (`src/design-system/components/card/`) — the shared
   CONTENT-layer surface: a solid, opaque themed fill with a defined
   hairline border, no glass/blur material at all. Every content card,
