@@ -16,10 +16,21 @@ jest.mock('@kiko/bonds/bond-register-repo', () => ({
   refreshBondRegisterIfStale: jest.fn().mockResolvedValue(undefined),
 }));
 
-const mockSaveMetadataEdit = jest.fn().mockResolvedValue(undefined);
+// The row as stored when the edit write runs, which a register refresh can
+// change after the form seeded.
+let mockStoredMetadata: unknown;
+const mockWrittenMetadata: Record<string, unknown>[] = [];
 
-jest.mock('../../save-metadata-edit', () => ({
-  saveMetadataEdit: (...args: unknown[]) => mockSaveMetadataEdit(...args),
+jest.mock('@kiko/holdings/repo', () => ({
+  holdingsRepo: {
+    updateMetadataFromStored: async (
+      _holdingId: string,
+      _patch: unknown,
+      buildMetadata: (storedMetadata: unknown) => Record<string, unknown>,
+    ) => {
+      mockWrittenMetadata.push(buildMetadata(mockStoredMetadata));
+    },
+  },
 }));
 
 import type { HoldingRow } from '@kiko/db';
@@ -62,7 +73,8 @@ const renderBondFields = (isEdit = false) =>
 beforeEach(() => {
   mockBondRegisterRows = [];
   mockFetchedAtRows = [{ value: 1 }];
-  mockSaveMetadataEdit.mockClear();
+  mockStoredMetadata = undefined;
+  mockWrittenMetadata.length = 0;
 });
 
 describe('useBondFields kept payment schedule', () => {
@@ -87,48 +99,72 @@ describe('useBondFields kept payment schedule', () => {
     expect(result.current.createPayload().metadata).toMatchObject({ isin: VALID_ISIN, payments });
   });
 
+  const bondMetadata = {
+    quantity: 10,
+    faceValueMinorUnits: 100_000,
+    couponPct: 9.5,
+    purchaseDate: new Date(2026, 8, 1).getTime(),
+    maturityDate: new Date(2029, 5, 24).getTime(),
+    couponFrequency: 'quarterly',
+    isin: VALID_ISIN,
+  };
+  const bondHolding = (metadata: Record<string, unknown>) =>
+    ({ currency: 'UAH', metadata }) as unknown as HoldingRow;
+  const context = (holding: HoldingRow): EditContext => ({
+    holdingId: 'h1',
+    name: 'Bond',
+    color: null,
+    currency: 'UAH',
+    isSynced: false,
+    editingHolding: holding,
+    book: EMPTY_PRICE_BOOK,
+  });
+
   it('drops the kept schedule once the coupon is edited, saving the edited coupon', async () => {
     mockBondRegisterRows = [withPayments()];
-    const holding = {
-      currency: 'UAH',
-      metadata: {
-        quantity: 10,
-        faceValueMinorUnits: 100_000,
-        couponPct: 9.5,
-        purchaseDate: new Date(2026, 8, 1).getTime(),
-        maturityDate: new Date(2029, 5, 24).getTime(),
-        couponFrequency: 'quarterly',
-        isin: VALID_ISIN,
-        payments,
-      },
-    } as unknown as HoldingRow;
+    const holding = bondHolding({ ...bondMetadata, payments });
+    mockStoredMetadata = holding.metadata;
     const { result } = await renderBondFields(true);
-    const context: EditContext = {
-      holdingId: 'h1',
-      name: 'Bond',
-      color: null,
-      currency: 'UAH',
-      isSynced: false,
-      editingHolding: holding,
-      book: EMPTY_PRICE_BOOK,
-    };
 
     await act(async () => {
       result.current.seed(holding);
     });
-    await result.current.saveEdit(context);
+    await result.current.saveEdit(context(holding));
 
-    expect(mockSaveMetadataEdit.mock.calls.at(-1)?.[1]).toMatchObject({ payments });
+    expect(mockWrittenMetadata.at(-1)).toMatchObject({ payments });
 
     await act(async () => {
       result.current.setCouponPct('12');
     });
-    await result.current.saveEdit(context);
+    await result.current.saveEdit(context(holding));
 
-    expect(mockSaveMetadataEdit.mock.calls.at(-1)?.[1]).toMatchObject({
-      couponPct: 12,
-      payments: [],
+    expect(mockWrittenMetadata.at(-1)).toMatchObject({ couponPct: 12, payments: [] });
+  });
+
+  // A bond saved before bonds kept a schedule: the edit form's own register
+  // refresh keeps the schedule in the row and drops the ISIN from the cache
+  // after the form seeded.
+  it('keeps a schedule stored after the form seeded through a Save with the coupon unchanged', async () => {
+    const legacy = bondHolding(bondMetadata);
+    const { result } = await renderBondFields(true);
+
+    await act(async () => {
+      result.current.seed(legacy);
     });
+    mockStoredMetadata = { ...bondMetadata, payments };
+    await act(async () => {
+      result.current.setQuantity('12');
+    });
+    await result.current.saveEdit(context(legacy));
+
+    expect(mockWrittenMetadata.at(-1)).toMatchObject({ quantity: 12, payments });
+
+    await act(async () => {
+      result.current.setCouponPct('12');
+    });
+    await result.current.saveEdit(context(legacy));
+
+    expect(mockWrittenMetadata.at(-1)).toMatchObject({ couponPct: 12, payments: [] });
   });
 });
 

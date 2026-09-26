@@ -10,13 +10,13 @@ import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { parseAmount } from '@kiko/currency/parse';
+import { holdingsRepo } from '@kiko/holdings/repo';
 import { useCallback, useRef, useState } from 'react';
 import type { TextInputInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
 import type { BondTerms } from '@kiko/bonds/nbu-register';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 
-import { saveMetadataEdit } from '../../save-metadata-edit';
 import { useBondIsinMode, type IsinReasonKey } from '../use-bond-isin-mode';
 import type { BondEntryMode } from '../bond-isin-section/bond-isin-section.props';
 import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
@@ -29,7 +29,7 @@ import {
   type BondFieldErrors,
   type BondReasonKey,
 } from './bond-reasons';
-import { bondPaymentsOnSave } from './bond-payments-on-save';
+import { bondPaymentsOnSave, type SavedBond } from './bond-payments-on-save';
 
 // Seed the bond number/date fields from stored metadata. Minor-unit money
 // fields (face value, purchase price) convert back to grouped major strings;
@@ -170,9 +170,9 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
 
   // The bond as stored when the edit form seeded, to tell which fields the
   // user changed; null on create.
-  const savedBondRef = useRef<{ meta: BondMeta; currency: Currency } | null>(null);
+  const savedBondRef = useRef<SavedBond | null>(null);
 
-  const buildBondMetadata = (): Record<string, unknown> => {
+  const buildBondMetadata = (saved: SavedBond | null): Record<string, unknown> => {
     const quantityValue = parseAmount(quantity) || 0;
     const faceValueMinorUnits = Money.fromMajor(currency, parseAmount(faceValue) || 0).minorUnits;
     const priceValue = parseAmount(purchasePrice);
@@ -180,7 +180,7 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
     const payments = bondPaymentsOnSave({
       bondMode,
       registerTerms,
-      saved: savedBondRef.current,
+      saved,
       next: {
         isin: isin.trim() === '' ? undefined : isin,
         currency,
@@ -274,11 +274,24 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
   // a typed opening balance — the stored balance is always 0, the same as
   // property/metal/loan.
   const createPayload = (): CreatePayload => ({
-    metadata: buildBondMetadata(),
+    metadata: buildBondMetadata(null),
   });
 
+  // The schedule comes from the row as stored at the time of the write, not
+  // the seed: this form's own register refresh can keep one in the row after
+  // the seed, and Save must not write the seed back over it.
   const saveEdit = (context: EditContext): Promise<void> =>
-    saveMetadataEdit(context, buildBondMetadata());
+    holdingsRepo.updateMetadataFromStored(
+      context.holdingId,
+      { name: context.name, color: context.color },
+      (storedMetadata) =>
+        buildBondMetadata(
+          foldMap(maybe(savedBondRef.current), (seeded) => ({
+            ...seeded,
+            meta: { ...seeded.meta, payments: asBondMeta(storedMetadata)?.payments },
+          })) ?? null,
+        ),
+    );
 
   return {
     currency,

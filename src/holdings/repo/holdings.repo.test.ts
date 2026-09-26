@@ -1197,6 +1197,34 @@ const makeBalanceDeltaDatabaseTransaction = (
   return { databaseTransaction, captured };
 };
 
+describe('holdingsRepo.updateMetadataFromStored', () => {
+  it('builds the metadata from the row stored at the time of the write', async () => {
+    const stored = { couponPct: 4.5, payments: [] };
+    const store: Store = {
+      accounts: [],
+      holdings: [{ id: 'h1', type: 'bond', name: 'Old', color: null, metadata: stored }],
+      transactions: [],
+      pricePoints: [],
+    };
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
+    const buildMetadata = jest.fn(() => ({ couponPct: 6 }));
+
+    await holdingsRepo.updateMetadataFromStored(
+      'h1',
+      { name: 'New', color: '#FF0000' },
+      buildMetadata,
+    );
+
+    expect(buildMetadata).toHaveBeenCalledWith(stored);
+    expect(store.holdings[0]).toMatchObject({
+      name: 'New',
+      color: '#FF0000',
+      metadata: { couponPct: 6 },
+    });
+    expect(store.transactions).toEqual([]);
+  });
+});
+
 describe('holdingsRepo.updateWithBalanceDelta', () => {
   it('writes the balance difference as a manual transaction', async () => {
     const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction({

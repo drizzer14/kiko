@@ -242,6 +242,7 @@ describe('asBondMeta payments', () => {
 
   it.each([
     ['a non-array', { kind: 'coupon' }],
+    ['null', null],
     ['a non-number date', [{ ...payments[0], date: '1500' }]],
     ['an unknown kind', [{ ...payments[0], kind: 'dividend' }]],
     ['a number amount', [{ ...payments[0], amount: 0.0225 }]],

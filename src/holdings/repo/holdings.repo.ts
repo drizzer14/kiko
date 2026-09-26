@@ -431,6 +431,29 @@ export const holdingsRepo = {
       databaseTransaction.update(holdings).set(patch).where(eq(holdings.id, holdingId)),
     ),
   /**
+   * A ledgerless holding's EDIT whose metadata keeps a key another write can
+   * add while the form is open (the register refresh's kept bond schedule):
+   * the metadata is built from the row stored at the time of the write, never
+   * the form's seed, so Save cannot write the seed back over it. Never
+   * touches the balance, so no ledger row either.
+   */
+  updateMetadataFromStored: (
+    holdingId: string,
+    patch: Pick<HoldingRow, 'name' | 'color'>,
+    buildMetadata: (storedMetadata: unknown) => Record<string, unknown>,
+  ) =>
+    write(async (databaseTransaction) => {
+      const rows = await databaseTransaction
+        .select({ metadata: holdings.metadata })
+        .from(holdings)
+        .where(eq(holdings.id, holdingId));
+
+      await databaseTransaction
+        .update(holdings)
+        .set({ ...patch, metadata: buildMetadata(rows.at(0)?.metadata) })
+        .where(eq(holdings.id, holdingId));
+    }),
+  /**
    * Update a holding's editable fields and, when `balance` (`Money`) is part
    * of the patch and differs in minor units from what is stored, write the
    * DIFFERENCE as a `manual` transaction — both in ONE op-sqlite transaction,

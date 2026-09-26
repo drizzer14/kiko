@@ -10,7 +10,7 @@ export type BondToSave = Pick<
   'isin' | 'faceValueMinorUnits' | 'couponPct' | 'couponFrequency'
 > & { currency: Currency };
 
-type SavedBond = { meta: BondMeta; currency: Currency };
+export type SavedBond = { meta: BondMeta; currency: Currency };
 
 type BondPaymentsOnSaveParams = {
   bondMode: BondEntryMode;
@@ -25,17 +25,24 @@ const identityChanged = (saved: SavedBond, next: BondToSave): boolean =>
   saved.meta.faceValueMinorUnits !== next.faceValueMinorUnits ||
   saved.currency !== next.currency;
 
-const couponChanged = (saved: SavedBond, next: BondToSave): boolean =>
-  saved.meta.couponPct !== next.couponPct || saved.meta.couponFrequency !== next.couponFrequency;
+// A register row with an unmapped frequency makes the user pick one, so only
+// the coupon % can tell a typed coupon from the matched one.
+const couponChanged = (
+  from: Pick<BondTerms, 'couponPct' | 'couponFrequency'>,
+  next: BondToSave,
+): boolean =>
+  from.couponPct !== next.couponPct ||
+  (from.couponFrequency !== null && from.couponFrequency !== next.couponFrequency);
 
 /**
  * The schedule a bond keeps in its metadata on Save. ISIN mode takes the
  * matched register's. Manual mode keeps the saved one, or captures the
  * matched register's for a bond saved without one, since a register refresh
  * can land while the form is open. An edited ISIN, face value or currency is
- * another bond, so it keeps none and reads the cache. An edited coupon or
- * frequency on an ISIN bond is the user's own coupon: an empty schedule, so
- * the cache cannot override it either.
+ * another bond, so it keeps none and reads the cache. A coupon or frequency
+ * the user typed over the saved or matched one, on an ISIN bond, is the
+ * user's own coupon: an empty schedule, so the cache cannot override it
+ * either.
  */
 export const bondPaymentsOnSave = ({
   bondMode,
@@ -49,11 +56,19 @@ export const bondPaymentsOnSave = ({
     return registerPayments;
   }
 
-  if (saved === null || identityChanged(saved, next)) {
+  if (saved === null) {
+    if (bondMode === 'isin' || next.isin === undefined) {
+      return undefined;
+    }
+
+    return registerTerms === null || couponChanged(registerTerms, next) ? [] : registerPayments;
+  }
+
+  if (identityChanged(saved, next)) {
     return undefined;
   }
 
-  if (bondMode === 'manual' && next.isin !== undefined && couponChanged(saved, next)) {
+  if (bondMode === 'manual' && next.isin !== undefined && couponChanged(saved.meta, next)) {
     return [];
   }
 

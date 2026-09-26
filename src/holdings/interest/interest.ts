@@ -1,5 +1,5 @@
 import { splitInterestTaxMinor } from '../tax';
-import type { BondCouponFrequency, CompoundingFrequency } from '../holding-metadata';
+import type { BondPayment, BondCouponFrequency, CompoundingFrequency } from '../holding-metadata';
 
 const DAY_MS = 86_400_000;
 const DAYS_PER_YEAR = 365;
@@ -430,7 +430,7 @@ export const bondCouponDates = (
  * One coupon a bond's issuer schedules (the NBU register's payments): the
  * exact decimal amount paid for ONE bond on `date`.
  */
-export type BondCouponPayment = { date: number; amount: string };
+export type BondCouponPayment = Pick<BondPayment, 'date' | 'amount'>;
 
 /**
  * The scheduled coupon a ledger coupon date stands for, or undefined without

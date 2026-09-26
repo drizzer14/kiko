@@ -74,9 +74,48 @@ describe('bondPaymentsOnSave on create', () => {
     ).toBeUndefined();
   });
 
-  it('copies nothing in Manual mode', () => {
+  it('keeps an empty schedule for a Manual coupon typed over the matched one, so it is booked', () => {
+    expect(bondPaymentsOnSave({ bondMode: 'manual', registerTerms, saved: null, next })).toEqual(
+      [],
+    );
     expect(
-      bondPaymentsOnSave({ bondMode: 'manual', registerTerms, saved: null, next }),
+      bondPaymentsOnSave({
+        bondMode: 'manual',
+        registerTerms,
+        saved: null,
+        next: { ...next, couponPct: 6, couponFrequency: 'quarterly' },
+      }),
+    ).toEqual([]);
+    expect(
+      bondPaymentsOnSave({ bondMode: 'manual', registerTerms: null, saved: null, next }),
+    ).toEqual([]);
+  });
+
+  it("copies the matched register schedule in Manual mode while its coupon is still the register's", () => {
+    const filled = { ...next, couponPct: 6 };
+    const unmapped = { ...registerTerms, couponFrequency: null };
+
+    expect(
+      bondPaymentsOnSave({ bondMode: 'manual', registerTerms, saved: null, next: filled }),
+    ).toEqual(registerPayments);
+    expect(
+      bondPaymentsOnSave({
+        bondMode: 'manual',
+        registerTerms: unmapped,
+        saved: null,
+        next: { ...filled, couponFrequency: 'quarterly' },
+      }),
+    ).toEqual(registerPayments);
+  });
+
+  it('keeps nothing for a Manual bond without an ISIN', () => {
+    expect(
+      bondPaymentsOnSave({
+        bondMode: 'manual',
+        registerTerms: null,
+        saved: null,
+        next: { ...next, isin: undefined },
+      }),
     ).toBeUndefined();
   });
 });

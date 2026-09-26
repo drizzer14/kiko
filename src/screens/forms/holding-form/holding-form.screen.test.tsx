@@ -54,6 +54,7 @@ jest.mock('@kiko/holdings/repo', () => ({
     setIcon: jest.fn(),
     update: jest.fn(),
     updateWithBalanceDelta: jest.fn(),
+    updateMetadataFromStored: jest.fn(),
     updateLoan: jest.fn(),
     balanceOf: (row: { currency: string; balanceMinorUnits: number }) => ({
       currency: row.currency,
@@ -202,6 +203,11 @@ const updateDeltaMock = holdingsRepo.updateWithBalanceDelta as jest.Mock;
 // the metadata patch AND the manual `holding:<id>` price-point op commit in
 // the SAME transaction, so the series can never drift from the edit.
 const updateLoanMock = holdingsRepo.updateLoan as jest.Mock;
+// A bond edit builds its metadata from the row stored at the time of the
+// write, so a test hands the captured builder that row.
+const updateFromStoredMock = holdingsRepo.updateMetadataFromStored as jest.Mock;
+const savedBondMetadata = (storedMetadata: unknown): Record<string, unknown> =>
+  updateFromStoredMock.mock.calls[0][2](storedMetadata);
 
 beforeEach(() => {
   mockAccountKind = 'bank';
@@ -952,8 +958,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     await fireEvent.changeText(isinInput(screen), 'XS2895055981');
     await fireEvent.press(screen.getByText('Save'));
 
-    const patch = updateDeltaMock.mock.calls[0][1];
-    expect(patch.metadata.isin).toBe('XS2895055981');
+    expect(savedBondMetadata(bondHolding.metadata).isin).toBe('XS2895055981');
   });
 
   // The found-terms apply must not re-fire on an
@@ -1139,7 +1144,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     expect(
       screen.getByText("This ISIN's currency doesn't match the holding's currency."),
     ).toBeTruthy();
-    expect(updateDeltaMock).not.toHaveBeenCalled();
+    expect(updateFromStoredMock).not.toHaveBeenCalled();
   });
 });
 
@@ -3630,7 +3635,7 @@ describe('HoldingFormScreen edit mode', () => {
     expect(patch.balance).toBeUndefined();
   });
 
-  it('seeds a bond and saves its edited metadata through update', async () => {
+  it('seeds a bond and saves its edited metadata from the stored row', async () => {
     const screen = await renderEdit(bondHolding);
 
     // Stored bond fields seed the inputs (quantity, coupon %, corporate kind).
@@ -3641,12 +3646,17 @@ describe('HoldingFormScreen edit mode', () => {
     await fill(screen, 'Coupon', '11');
     await fireEvent.press(screen.getByText('Save'));
 
-    const patch = updateDeltaMock.mock.calls[0][1];
-    expect(patch.metadata.couponPct).toBe(11);
-    expect(patch.metadata.quantity).toBe(10);
-    expect(patch.metadata.bondKind).toBe('corporate');
-    expect(patch.metadata.purchasePriceMinorUnits).toBe(950_000);
-    expect(patch.balance).toBeUndefined();
+    expect(updateFromStoredMock.mock.calls[0][1]).toEqual({
+      name: bondHolding.name,
+      color: bondHolding.color,
+    });
+    expect(savedBondMetadata(bondHolding.metadata)).toMatchObject({
+      couponPct: 11,
+      quantity: 10,
+      bondKind: 'corporate',
+      purchasePriceMinorUnits: 950_000,
+    });
+    expect(updateDeltaMock).not.toHaveBeenCalled();
   });
 
   it('seeds a blank price for a bond stored without one, and re-saves it still without one', async () => {
@@ -3657,8 +3667,7 @@ describe('HoldingFormScreen edit mode', () => {
 
     await fireEvent.press(screen.getByText('Save'));
 
-    const patch = updateDeltaMock.mock.calls[0][1];
-    expect(patch.metadata).not.toHaveProperty('purchasePriceMinorUnits');
+    expect(savedBondMetadata(unpricedMetadata)).not.toHaveProperty('purchasePriceMinorUnits');
   });
 
   it('resolves a stored empty-string color to a real swatch, not blank', async () => {

@@ -1,37 +1,36 @@
 import { eq, inArray } from 'drizzle-orm';
 import maybe, { foldMap } from 'fnts/maybe';
 import { write, holdings, bondRegister, type HoldingRow } from '@kiko/db';
-import { asBondMeta, type BondPayment } from '@kiko/holdings/holding-metadata';
+import { asBondMeta, type BondMeta, type BondPayment } from '@kiko/holdings/holding-metadata';
 
 import { type BondTerms, cachedRegisterPayments } from '../nbu-register';
 
 type BondRow = Pick<HoldingRow, 'id' | 'currency' | 'metadata'>;
 
-type PaymentsBackfill = { id: string; metadata: Record<string, unknown> };
+type PendingBond = { row: BondRow; meta: BondMeta; isin: string };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
+type PaymentsBackfill = { id: string; metadata: Record<string, unknown> };
 
 // A bond saved without a schedule (its key absent, never an empty one, which
 // is the user's own coupon), under an ISIN the register can describe.
-const pendingIsin = (row: BondRow): string[] => {
+const pendingBond = (row: BondRow): PendingBond[] => {
   const meta = asBondMeta(row.metadata);
 
-  return meta?.payments === undefined && meta?.isin !== undefined ? [meta.isin] : [];
+  return meta?.payments === undefined && meta?.isin !== undefined
+    ? [{ row, meta, isin: meta.isin }]
+    : [];
 };
 
-const backfillFor = (row: BondRow, terms: readonly BondTerms[]): PaymentsBackfill[] => {
-  const meta = asBondMeta(row.metadata);
-
-  if (meta === null || meta.payments !== undefined || !isRecord(row.metadata)) {
-    return [];
-  }
-
-  const metadata = row.metadata;
+const backfillFor = (
+  { row, meta }: PendingBond,
+  terms: readonly BondTerms[],
+): PaymentsBackfill[] => {
   const payments = terms.reduce<BondPayment[] | null>(
     (found, candidate) => found ?? cachedRegisterPayments(meta, row.currency, candidate),
     null,
   );
+  // `asBondMeta` parsed it, so the stored metadata is a record.
+  const metadata = row.metadata as Record<string, unknown>;
 
   return (
     foldMap(maybe(payments), (schedule) => [
@@ -39,6 +38,9 @@ const backfillFor = (row: BondRow, terms: readonly BondTerms[]): PaymentsBackfil
     ]) ?? []
   );
 };
+
+const backfillsFor = (pending: readonly PendingBond[], terms: readonly BondTerms[]) =>
+  pending.flatMap((bond) => backfillFor(bond, terms));
 
 /**
  * The metadata to write for each bond saved without a schedule that one of
@@ -48,7 +50,7 @@ const backfillFor = (row: BondRow, terms: readonly BondTerms[]): PaymentsBackfil
 export const bondPaymentBackfills = (
   rows: readonly BondRow[],
   terms: readonly BondTerms[],
-): PaymentsBackfill[] => rows.flatMap((row) => backfillFor(row, terms));
+): PaymentsBackfill[] => backfillsFor(rows.flatMap(pendingBond), terms);
 
 /**
  * Keeps the register schedule in every bond saved before bonds kept their
@@ -65,7 +67,8 @@ export const backfillBondPayments = (freshTerms: readonly BondTerms[]): Promise<
       .select({ id: holdings.id, currency: holdings.currency, metadata: holdings.metadata })
       .from(holdings)
       .where(eq(holdings.type, 'bond'));
-    const isins = [...new Set(bonds.flatMap(pendingIsin))];
+    const pending = bonds.flatMap(pendingBond);
+    const isins = [...new Set(pending.map((bond) => bond.isin))];
 
     if (isins.length === 0) {
       return;
@@ -75,10 +78,7 @@ export const backfillBondPayments = (freshTerms: readonly BondTerms[]): Promise<
       .select({ terms: bondRegister.terms })
       .from(bondRegister)
       .where(inArray(bondRegister.isin, isins));
-    const backfills = bondPaymentBackfills(bonds, [
-      ...freshTerms,
-      ...cached.map((row) => row.terms),
-    ]);
+    const backfills = backfillsFor(pending, [...freshTerms, ...cached.map((row) => row.terms)]);
 
     for (const backfill of backfills) {
       await databaseTransaction

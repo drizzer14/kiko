@@ -284,12 +284,14 @@ export const asBondMeta = (value: unknown): BondMeta | null => {
   // any other wrong-type field above. An ABSENT (undefined) field is the
   // legacy shape every stored pre-field row still has, and keeps its
   // documented default below — the decision targets bad input, not missing
-  // input.
+  // input. A present `payments: null` is bad input too: `maybe` would read it
+  // as absent.
   if (
     (bondKind !== undefined && bondKind !== 'government' && bondKind !== 'corporate') ||
     (couponFrequency !== undefined && !isBondCouponFrequency(couponFrequency)) ||
     (purchasePriceMinorUnits !== undefined && !isNumber(purchasePriceMinorUnits)) ||
     (isin !== undefined && typeof isin !== 'string') ||
+    payments === null ||
     parsedPayments === null
   ) {
     return null;

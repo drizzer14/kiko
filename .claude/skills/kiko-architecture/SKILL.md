@@ -396,7 +396,12 @@ reading it would latch the stale row, and Save would write it back over
 the newer one — this shipped as a data-loss bug (edit metal, cancel,
 add a lot, edit again, Save: the new lot was gone). Forms,
 statement import, `useTargetHoldingOptions`, `useBondIsinMode`, and
-every other one-shot seed never pass `cached`.
+every other one-shot seed never pass `cached`. An uncached seed is still
+one read old once a background write can land while the form is open:
+the bond edit form fires the register refresh, whose backfill can add
+`payments` to the very row the form seeded, so the bond edit saves
+through `holdingsRepo.updateMetadataFromStored` and takes that key from
+the row re-read inside its own write.
 
 **A write started from a cached display screen must not trust its
 rows.** `useLiveQuery` also returns `isFresh`: `true` once THIS

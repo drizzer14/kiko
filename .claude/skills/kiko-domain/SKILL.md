@@ -147,7 +147,8 @@ through one of them:
   `balanceMinorUnits` differs from the stored value, the DIFFERENCE as
   a `manual` row — one `db.transaction()`, delta computed from the row
   re-read inside it (never a render snapshot), no row at all for a zero
-  delta. The holding form's edit save calls this, never
+  delta. The holding form's edit save calls this (a bond edit, which
+  writes no balance, calls `updateMetadataFromStored` instead), never
   `holdingsRepo.update`, whose bare `set(patch)` stays for the
   non-balance writers (icon/color/metadata, the sync's own writes,
   reorder) and must never be handed a `balanceMinorUnits`.
@@ -896,8 +897,8 @@ stays as saved (nothing rewrites it); it is only the fallback.
   units), `date` the register's device-local midnight. `BondPayment` is
   holdings-owned (`holding-metadata.ts`); `nbu-register.ts` imports it.
   `asBondMeta` parses it through `asBondPayments` — all-or-nothing, and a
-  present-but-invalid list rejects the whole record like every other
-  present field. The key is TRI-STATE: absent = never captured (read the
+  present-but-invalid list (a stored `null` included) rejects the whole
+  record like every other present field. The key is TRI-STATE: absent = never captured (read the
   cache); a non-empty list = the schedule; `[]` = the user's own coupon
   replaced the schedule (read neither, so a matching cache cannot
   override an edited coupon).
@@ -914,14 +915,24 @@ stays as saved (nothing rewrites it); it is only the fallback.
   expected profit all read this order.
 - **Written at save** (`bondPaymentsOnSave`,
   `src/screens/forms/holding-form/bond/use-bond-fields/`): ISIN mode
-  copies the matched register schedule (create or edit). Manual create
-  keeps none. An edit keeps the saved schedule, or captures the matched
-  register's for a bond saved without one (a refresh can land while the
-  form is open). An edited ISIN, face value or currency drops it (key
-  absent: another bond, so the cache is read). An edited coupon % or
-  frequency on an ISIN bond in Manual mode writes `[]`, so the edited
-  coupon is what the ledger books. `useBondFields` compares against the
-  row it seeded (`savedBondRef`).
+  copies the matched register schedule (create or edit). A Manual create
+  with an ISIN copies the matched register's schedule while its coupon %
+  (and frequency, when the register maps one) is still the matched
+  one; a coupon typed over it, or no matched register row, writes `[]`,
+  so the typed coupon is booked (OVERNIGHT ruling 2026-09-27, needs user
+  confirmation). A Manual create without an ISIN keeps none. An edit
+  keeps the saved schedule, or captures the matched register's for a
+  bond saved without one (a refresh can land while the form is open).
+  An edited ISIN, face value or currency drops it (key absent: another
+  bond, so the cache is read). An edited coupon % or frequency on an
+  ISIN bond in Manual mode writes `[]`, so the edited coupon is what the
+  ledger books. `useBondFields` compares the fields against the row it
+  seeded (`savedBondRef`), but takes the schedule it keeps from the row
+  as stored at the time of the write: the edit saves through
+  `holdingsRepo.updateMetadataFromStored`, which re-reads the metadata
+  inside its own write, because the form's own register refresh can
+  backfill a schedule after the seed and then drop the ISIN from the
+  cache (the seed-once write-back class, kiko-architecture).
 - **Backfill of bonds saved before this** (`backfillBondPayments`,
   `src/bonds/bond-payments-backfill/`): runs inside the daily register
   refresh (`refreshBondRegisterIfStale`), after a non-empty fetch and
@@ -946,9 +957,10 @@ stays as saved (nothing rewrites it); it is only the fallback.
   than half a period away (months x 365 / 24 days) belongs to another
   date and gives undefined) x `quantity` through `multiplyToMinorUnits`,
   else the saved constant coupon. Corporate
-  tax is withheld per coupon. `BondCouponPayment` (`{ date, amount }`)
-  is the holdings-owned shape; `BondPayment` satisfies it, so holdings
-  never imports bonds. The holding detail screen passes
+  tax is withheld per coupon. `BondCouponPayment` is
+  `Pick<BondPayment, 'date' | 'amount'>`: the ledger reads only a
+  coupon's date and amount, so a caller can pass the kept `BondPayment`
+  list as is. The holding detail screen passes
   `holdingRegisterCoupons(…, registerTerms)` from
   `useBondRegisterTerms`; the spec's `expectedProfit(holding,
   registerTerms)` does the same.
