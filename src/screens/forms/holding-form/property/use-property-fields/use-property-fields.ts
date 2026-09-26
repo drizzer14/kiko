@@ -51,7 +51,9 @@ import {
 // `dayKeyOf` normalization `PriceBook` itself reads price points by, and the
 // point's `price` is derived from the SAME minor-units cost the lot carries
 // (never re-parsed from the raw text field), so the two can never disagree.
-// A share other than the whole is one ownership change on that same day.
+// A share other than the whole is one ownership change on that same day:
+// the share reads whole before its first change, and the lot day is the first
+// day the property has any value, so the share covers all of it.
 const buildPropertyCreatePayload = (params: {
   category: PropertyCategory;
   currency: Currency;

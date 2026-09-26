@@ -88,6 +88,14 @@ describe('propertyOwnershipView', () => {
     expect(propertyOwnershipView(holding, NOW, book)).toBeNull();
   });
 
+  it('is null before a share change with a future effective day', () => {
+    const holding = property({ ownership: [{ day: NOW + DAY, numerator: 1, denominator: 2 }] });
+
+    expect(propertyOwnershipView(holding, NOW, book)).toBeNull();
+    expect(holdingValue(holding, NOW, book).minorUnits).toBe(3_000_001);
+    expect(propertyOwnershipView(holding, NOW + DAY, book)?.since).toBe(NOW + DAY);
+  });
+
   it('is null for a holding that is not a property', () => {
     const holding = {
       ...property({ ownership: [{ day: firstDay, numerator: 1, denominator: 3 }] }),

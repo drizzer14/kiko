@@ -246,7 +246,9 @@ checked by `parsePercentShare`/`parseFractionShare`
 (`src/holdings/ownership/`); `0`, above 100%, or `n > d` blocks Save
 with `ownershipError`. Create defaults to 100% and writes NO
 `ownership`/`ownershipInput` key at 100%; any other share writes one
-change dated the lot day plus `ownershipInput` (the picked mode). Edit
+change dated the lot day (the first day the holding has value; before
+its first change a property reads whole) plus `ownershipInput` (the
+picked mode). Edit
 pre-fills the stored mode and the share in effect today
 (`ownershipAt`); an "Effective from" `DateField` (default today)
 appears only once the typed share differs, and Save records it through

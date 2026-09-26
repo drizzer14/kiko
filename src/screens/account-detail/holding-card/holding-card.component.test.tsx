@@ -87,6 +87,18 @@ describe('HoldingCard', () => {
       expect(getByTestId('holding-card-whole')).toHaveTextContent('50% of 3,000,000.00 ₴');
     });
 
+    it('shows the whole value and no share before a future share change', async () => {
+      const { getByText, queryByTestId } = await renderCard({
+        holding: property({
+          ownership: [{ day: NOW + 86_400_000, numerator: 1, denominator: 2 }],
+          ownershipInput: 'percent',
+        }),
+      });
+
+      expect(getByText(/^3,000,000\.00 ₴$/)).toBeTruthy();
+      expect(queryByTestId('holding-card-whole')).toBeNull();
+    });
+
     it('shows no second line for a property owned whole', async () => {
       const { getByText, queryByTestId } = await renderCard({ holding: property() });
 

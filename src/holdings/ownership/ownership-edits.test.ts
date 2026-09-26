@@ -5,6 +5,7 @@ import { holdingInstrument } from '../../prices/instrument';
 import { buildNetWorthSeries } from '../../statistics/net-worth-series';
 
 import {
+  withOwnershipChange,
   withoutOwnershipChange,
   withEditedOwnershipChange,
   type OwnershipChange,
@@ -55,6 +56,20 @@ const history: OwnershipChange[] = [
 ];
 
 describe('an edited ownership history', () => {
+  it('halves a property with no stored share only from the effective day', () => {
+    const edited = withOwnershipChange([], { day: D1, numerator: 1, denominator: 2 });
+
+    expect(seriesOf(propertyWith(edited))).toEqual([20000, 10000, 10000]);
+    expect(holdingValue(propertyWith(edited), D0, book).minorUnits).toBe(20_000_00);
+  });
+
+  it('keeps the whole asset until a future effective day', () => {
+    const future = withOwnershipChange([], { day: D2, numerator: 1, denominator: 2 });
+
+    expect(holdingValue(propertyWith(future), D1, book).minorUnits).toBe(20_000_00);
+    expect(holdingValue(propertyWith(future), D2, book).minorUnits).toBe(10_000_00);
+  });
+
   it('moves the net-worth step to the edited day and share', () => {
     const edited = withEditedOwnershipChange(history, D1, {
       day: D2,

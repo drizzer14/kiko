@@ -861,10 +861,7 @@ describe('buildNetWorthSeries', () => {
       metadata: {
         category: 'real_estate',
         lots: [{ day: D0, quantityDelta: '1', costMinorUnits: 20_000_00 }],
-        ownership: [
-          { day: D0, numerator: 1, denominator: 1 },
-          { day: D1, numerator: 1, denominator: 2 },
-        ],
+        ownership: [{ day: D1, numerator: 1, denominator: 2 }],
       },
     });
 
@@ -879,7 +876,7 @@ describe('buildNetWorthSeries', () => {
     expect(series.points.map((point) => point.amount)).toEqual([20_000, 10_000, 10_000]);
   });
 
-  it('carries a share set at creation back to the buckets before it', () => {
+  it('values the whole asset on the buckets before the first share change', () => {
     const propertyHolding = holding({
       id: 'prop',
       type: 'property_item',
@@ -898,7 +895,39 @@ describe('buildNetWorthSeries', () => {
       range: { from: D0, to: D2 },
     });
 
-    expect(series.points.map((point) => point.amount)).toEqual([10_000, 10_000, 10_000]);
+    expect(series.points.map((point) => point.amount)).toEqual([20_000, 20_000, 10_000]);
+  });
+
+  it('reads a share set at creation from the lot day, the first day with value', () => {
+    const propertyHolding = holding({
+      id: 'prop',
+      type: 'property_item',
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: D1, quantityDelta: '1', costMinorUnits: 20_000_00 }],
+        ownership: [{ day: D1, numerator: 1, denominator: 2 }],
+      },
+    });
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('prop'),
+        day: D0,
+        price: '20000',
+        currency: 'USD',
+        source: 'manual',
+      },
+    ]);
+
+    const series = buildNetWorthSeries({
+      holdings: [propertyHolding],
+      transactionsByHolding: new Map(),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'USD',
+      range: { from: D0, to: D2 },
+      book,
+    });
+
+    expect(series.points.map((point) => point.amount)).toEqual([0, 10_000, 10_000]);
   });
 
   // A metal holding is priced through the SHARED

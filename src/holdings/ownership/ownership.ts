@@ -145,25 +145,23 @@ export const parseFractionShare = (
 
 /**
  * The change in effect on `instant`'s local day: the latest one on or before
- * it. Before the first change the first one carries back, the same rule as
- * `priceAt`, so a holding created at a half reads a half on its back-dated
- * history too. Undefined with no changes.
+ * it. Undefined before the first change, and with no changes. Unlike
+ * `priceAt`, the first change never carries back: an edit that halves a
+ * property owned whole since 2020 must not halve its history before the
+ * effective day. A share set at creation sits on the lot day, and the value
+ * is zero before that day, so it still reads everywhere the holding has value.
  */
 export const ownershipChangeAt = (
   changes: readonly OwnershipChange[],
   instant: number,
 ): OwnershipChange | undefined => {
-  if (changes.length === 0) {
-    return undefined;
-  }
-
   const day = dayKeyOf(instant);
   const atOrBefore = changes.filter((change) => change.day <= day);
 
-  return atOrBefore.length > 0 ? atOrBefore[atOrBefore.length - 1] : changes[0];
+  return atOrBefore.at(-1);
 };
 
-/** The share owned on `instant`'s local day; no changes reads the whole asset. */
+/** The share owned on `instant`'s local day; before the first change, and with none, the whole asset. */
 export const ownershipAt = (changes: readonly OwnershipChange[], instant: number): OwnershipShare =>
   foldMap(maybe(ownershipChangeAt(changes, instant)), shareOf) ?? WHOLE_SHARE;
 

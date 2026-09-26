@@ -320,9 +320,15 @@ key, a reduced fraction `0 < n <= d`), parsed all-or-nothing by
 `asOwnershipChanges` (`src/holdings/ownership/`); an invalid list makes
 `asPropertyMeta` reject the row, like invalid lots. `ownershipAt(changes,
 instant)` reads the latest change on or before the instant's local
-day, carries the FIRST change back before it (the `priceAt` rule, so a
-holding created at 1/2 reads 1/2 on back-dated history), and reads 1/1
-with no changes. `ownershipApplies(category)` is false for
+day, and reads 1/1 BEFORE the first change and with no changes. Unlike
+`priceAt`, the first change never carries back: an edit that halves a
+property owned whole since 2020, effective 2025-06-01, stores one
+change and must leave every bucket before 2025-06-01 whole, and a
+future effective day leaves today whole (the card and the detail show
+no share until then — `ownershipChangeAt` is undefined). A share set at
+creation is still one change dated the LOT day; a property's value is
+`quantityAt(lots) x price`, zero before its first lot even when a price
+point is older, so "created at 1/2" reads 1/2 everywhere it has value. `ownershipApplies(category)` is false for
 `loan_given`, which always values whole even with a stored list. Every
 valuation site — card, Home totals, statistics, net-worth history —
 gets the share of its own instant through the same

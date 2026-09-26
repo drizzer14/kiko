@@ -3,6 +3,7 @@ import {
   ownershipAt,
   sharePercentText,
   ownershipApplies,
+  ownershipChangeAt,
   ownershipShareText,
   ownershipShareDetailText,
   parsePercentShare,
@@ -121,10 +122,12 @@ describe('ownershipAt', () => {
     expect(ownershipAt(changes, day20 + 40 * DAY)).toEqual({ numerator: 1, denominator: 2 });
   });
 
-  it('carries the first change back to an instant before it', () => {
-    const createdAtHalf = [{ day: day10, numerator: 1, denominator: 2 }];
+  it('reads the whole asset before the first change', () => {
+    const halvedLater = [{ day: day10, numerator: 1, denominator: 2 }];
 
-    expect(ownershipAt(createdAtHalf, day1)).toEqual({ numerator: 1, denominator: 2 });
+    expect(ownershipAt(halvedLater, day1)).toEqual({ numerator: 1, denominator: 1 });
+    expect(ownershipChangeAt(halvedLater, day1)).toBeUndefined();
+    expect(ownershipAt(halvedLater, day10)).toEqual({ numerator: 1, denominator: 2 });
   });
 
   it('reads a change on a later hour of its own day', () => {
