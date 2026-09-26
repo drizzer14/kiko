@@ -208,9 +208,14 @@ reasoning.
   **zero** findings against a path-prefixed include (the fixture isn't
   under that prefix) — verified by sabotage: the prefixed form drew
   zero findings against a flat fixture. A **basename-only** pattern
-  (e.g. `"*.swift"`) needs no nesting. `kiko-no-cross-screen-import`
-  (rule 12, `rules/semgrep-prewrite.yml`) is the nested-fixture example
-  — read its fixture path for the current shape.
+  (e.g. `"*.swift"`) needs no nesting. `kiko-no-literal-sync-error`
+  (`rules/semgrep-prewrite.yml`, `paths.include: src/crypto-sync/**,
+  src/monobank/**`) is the nested-fixture example — its fixture pair
+  lives at `rules/fixtures/kiko-no-literal-sync-error/src/monobank/...`,
+  mirroring the included path; read it directly for the current shape.
+  (`kiko-no-cross-screen-import` is NOT a Semgrep rule and has no
+  fixture pair at all — it is a `NODE_RULES` entry in
+  `pre-write-guard.js`, run via `scripts/checks/screen-imports.js`.)
 - `pattern-inside: func $F(...) { ... }` (or any brace-delimited
   container pattern) matches **nothing** in Swift — Semgrep's rules
   here are effectively file-scoped for Swift, not function-scoped. A
