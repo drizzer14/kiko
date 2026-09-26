@@ -3,6 +3,7 @@ import {
   subDecimal,
   trimDecimal,
   shiftDecimal,
+  scaleMinorUnits,
   compareDecimal,
   normalizeDecimal,
   multiplyToMinorUnits,
@@ -121,5 +122,25 @@ describe('multiplyToMinorUnits', () => {
 
   it('needs no divisor for a plain quantity * price', () => {
     expect(multiplyToMinorUnits(['3', '19.99'], 'USD')).toBe(5997);
+  });
+});
+
+describe('scaleMinorUnits', () => {
+  it('rounds a third of a minor-units amount once, half away from zero', () => {
+    expect(scaleMinorUnits(100, 1, 3)).toBe(33);
+    expect(scaleMinorUnits(200, 1, 3)).toBe(67);
+  });
+
+  it('rounds a negative amount away from zero', () => {
+    expect(scaleMinorUnits(-200, 1, 3)).toBe(-67);
+    expect(scaleMinorUnits(-1, 1, 2)).toBe(-1);
+  });
+
+  it('keeps the amount unchanged at a whole share', () => {
+    expect(scaleMinorUnits(3_000_000_01, 1, 1)).toBe(3_000_000_01);
+  });
+
+  it('stays exact beyond float precision', () => {
+    expect(scaleMinorUnits(9_007_199_254_740_991, 2, 3)).toBe(6_004_799_503_160_661);
   });
 });

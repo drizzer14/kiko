@@ -854,6 +854,53 @@ describe('buildNetWorthSeries', () => {
     expect(series.points[0]?.amount).toBe(25_000);
   });
 
+  it('values each bucket at the ownership share of its own day', () => {
+    const propertyHolding = holding({
+      id: 'prop',
+      type: 'property_item',
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: D0, quantityDelta: '1', costMinorUnits: 20_000_00 }],
+        ownership: [
+          { day: D0, numerator: 1, denominator: 1 },
+          { day: D1, numerator: 1, denominator: 2 },
+        ],
+      },
+    });
+
+    const series = buildNetWorthSeries({
+      holdings: [propertyHolding],
+      transactionsByHolding: new Map(),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'USD',
+      range: { from: D0, to: D2 },
+    });
+
+    expect(series.points.map((point) => point.amount)).toEqual([20_000, 10_000, 10_000]);
+  });
+
+  it('carries a share set at creation back to the buckets before it', () => {
+    const propertyHolding = holding({
+      id: 'prop',
+      type: 'property_item',
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: D0, quantityDelta: '1', costMinorUnits: 20_000_00 }],
+        ownership: [{ day: D2, numerator: 1, denominator: 2 }],
+      },
+    });
+
+    const series = buildNetWorthSeries({
+      holdings: [propertyHolding],
+      transactionsByHolding: new Map(),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'USD',
+      range: { from: D0, to: D2 },
+    });
+
+    expect(series.points.map((point) => point.amount)).toEqual([10_000, 10_000, 10_000]);
+  });
+
   // A metal holding is priced through the SHARED
   // `metal:<XAU|...>` instrument, not a per-holding `holding:<id>` series —
   // its series must FOLLOW that instrument's own day-to-day NBU points

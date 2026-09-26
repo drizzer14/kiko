@@ -192,3 +192,15 @@ export const multiplyToMinorUnits = (
 
   return Number(roundHalfAwayFromZero(scaledNumerator, scaledDenominator));
 };
+
+/**
+ * Scales an integer minor-units amount by `numerator / denominator` — an
+ * ownership share — rounding once, half away from zero, through BigInt so a
+ * large amount never drifts through float math.
+ */
+export const scaleMinorUnits = (
+  minorUnits: number,
+  numerator: number,
+  denominator: number,
+): number =>
+  Number(roundHalfAwayFromZero(BigInt(minorUnits) * BigInt(numerator), BigInt(denominator)));

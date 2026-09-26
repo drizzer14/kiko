@@ -21,6 +21,7 @@ import {
   syncState,
   transactions,
 } from '../../db/schema';
+import { holdingValue } from '../../holdings/holding-value';
 import { computeDedupKeyBase } from '../../statement-import/mapping/mapping';
 
 import type { DataSnapshot } from './data-snapshot';
@@ -73,6 +74,8 @@ const makeRowCapturingDatabaseTransaction = (): {
 
   return { databaseTransaction, insertedRows };
 };
+
+const NOW = Date.UTC(2026, 0, 1);
 
 const emptySnapshot: DataSnapshot = {
   accounts: [],
@@ -272,6 +275,51 @@ describe('restoreDataSnapshot', () => {
     expect(insertedRows.bondRegister).toEqual([
       { isin: 'UA4000234215', terms: { isin: 'UA4000234215', currency: 'UAH' }, fetchedAt: 1 },
     ]);
+  });
+
+  describe('property ownership share (carried inside metadata, no restore mirror)', () => {
+    const propertyHolding = (metadata: Record<string, unknown>) => ({
+      id: 'prop',
+      type: 'property_item',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      balanceSetAt: null,
+      metadata,
+    });
+    const lots = [{ day: Date.UTC(2024, 0, 1), quantityDelta: '1', costMinorUnits: 900_000 }];
+
+    it('restores a stored ownership list byte-identical', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+      const metadata = {
+        category: 'real_estate',
+        lots,
+        ownership: [{ day: Date.UTC(2024, 0, 1), numerator: 1, denominator: 3 }],
+        ownershipInput: 'fraction',
+      };
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        holdings: [propertyHolding(metadata)] as never,
+      });
+
+      expect(JSON.stringify(insertedRows.holdings)).toBe(
+        JSON.stringify([propertyHolding(metadata)]),
+      );
+      expect(holdingValue(insertedRows.holdings?.[0] as never, NOW).minorUnits).toBe(300_000);
+    });
+
+    it('values a pre-share snapshot property as the whole asset', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        holdings: [propertyHolding({ category: 'real_estate', lots })] as never,
+      });
+
+      expect(holdingValue(insertedRows.holdings?.[0] as never, NOW).minorUnits).toBe(900_000);
+    });
   });
 
   it('restores an empty bond_register table for a legacy snapshot with no bondRegister field', async () => {

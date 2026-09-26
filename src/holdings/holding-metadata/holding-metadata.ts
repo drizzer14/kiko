@@ -1,4 +1,7 @@
+import maybe, { foldMap } from 'fnts/maybe';
+
 import { asLots, type Lot } from '../lots';
+import { asOwnershipChanges, type OwnershipChange } from '../ownership';
 
 export type CompoundingFrequency = 'bi-weekly' | 'monthly' | 'quarterly' | 'annually';
 
@@ -289,9 +292,21 @@ export const propertyCategoryOf = (metadata: unknown): PropertyCategory => {
   return isPropertyCategory(category) ? category : 'other';
 };
 
+// How the user last typed the share; it only picks the form's input mode and
+// the detail line's wording, never the value.
+const ownershipInputs = ['percent', 'fraction'] as const;
+
+type OwnershipInput = (typeof ownershipInputs)[number];
+
+const isOwnershipInput = (value: unknown): value is OwnershipInput =>
+  typeof value === 'string' && (ownershipInputs as readonly string[]).includes(value);
+
 export type PropertyMeta = {
   category: PropertyCategory;
   lots: Lot[];
+  /** Absent reads the whole asset; see `ownershipAt`. */
+  ownership?: OwnershipChange[];
+  ownershipInput?: OwnershipInput;
 };
 
 export const asPropertyMeta = (value: unknown): PropertyMeta | null => {
@@ -299,14 +314,20 @@ export const asPropertyMeta = (value: unknown): PropertyMeta | null => {
     return null;
   }
 
-  const { category, lots } = value;
+  const { category, lots, ownership, ownershipInput } = value;
   const parsedLots = asLots(lots);
+  const parsedOwnership = foldMap(maybe(ownership), asOwnershipChanges);
 
-  if (!isPropertyCategory(category) || parsedLots === null) {
+  if (!isPropertyCategory(category) || parsedLots === null || parsedOwnership === null) {
     return null;
   }
 
-  return { category, lots: parsedLots };
+  return {
+    category,
+    lots: parsedLots,
+    ...foldMap(maybe(parsedOwnership), (changes) => ({ ownership: changes })),
+    ...(isOwnershipInput(ownershipInput) ? { ownershipInput } : {}),
+  };
 };
 
 // The closed set of precious metals Kiko prices via NBU, keyed by the

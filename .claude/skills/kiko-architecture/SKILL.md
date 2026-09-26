@@ -1371,6 +1371,17 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   balanceSetAt/stray-balance backfills above, so order between them
   doesn't matter — it runs last only because it has to act on what's
   actually being inserted).
+- **A value that lives inside `holdings.metadata` needs NO restore
+  mirror.** A property's dated ownership share (`metadata.ownership`,
+  kiko-pricing "Ownership share") rides in the opaque JSON column: a
+  newer export restores it byte-identical, and an older `.kiko` has no
+  key, which reads the whole asset — no migration, no `DataSnapshot`
+  key, nothing in `restoreDataSnapshot`
+  (`restore-snapshot.test.ts` pins both directions). An OLDER build
+  restoring a newer export ignores the key and values the whole asset.
+  Reach for metadata over a new table when the data is per holding,
+  user-typed, and small; a new table (and its restore mirror) is for a
+  series shared across holdings or bulk-written, like `price_points`.
 - **No `TextDecoder`/`TextEncoder`.** Hermes has no working `TextDecoder`
   (confirmed on device — see `utf8/utf8.ts`'s header comment); use the
   hand-rolled `utf8Encode`/`utf8Decode` and `encodeBytesToBase64`/

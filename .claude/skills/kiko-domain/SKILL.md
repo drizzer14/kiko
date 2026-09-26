@@ -608,7 +608,11 @@ anywhere in the summation path**: `netWorth`/`guardedNetWorth`
 (`src/rates/conversion/`, `src/rates/net-worth-view/`) and
 `buildNetWorthSeries` (`src/statistics/net-worth-series/`) simply add
 up every holding's own (possibly negative) value, exactly as they did
-before loans existed. A credit-card negative balance already worked
+before loans existed. A shared property counts only the owned part:
+its own value is already the whole value times the ownership share of
+that instant (kiko-pricing "Ownership share"), so a history bucket
+before a share change uses the old share and one on or after it the
+new one, again with no branch in the summation path. A credit-card negative balance already worked
 the same way (a plain negative `balanceMinorUnits`) and still does —
 a loan is just the second holding shape whose value can be negative.
 The headline can now render negative; `MoneyText` already renders a
@@ -700,6 +704,9 @@ bond.
 See `kiko-pricing` for `price_points`, `PriceBook`, priced-holding
 valuation (`property_item`/`metal`), the create-time `firstPricePoint`
 and remove-time series cleanup, and `PricePointForm` / "Update value".
+A property's price points and lots are the WHOLE asset; its owned value
+is the whole value times the ownership share of that day (kiko-pricing
+"Ownership share").
 
 ## Bonds — ISIN validation and the NBU register cache
 

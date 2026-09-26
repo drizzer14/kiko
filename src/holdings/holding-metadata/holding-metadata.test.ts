@@ -282,6 +282,33 @@ describe('asPropertyMeta', () => {
   it('returns null for null', () => {
     expect(asPropertyMeta(null)).toBeNull();
   });
+
+  it('reads no ownership key as absent', () => {
+    const result = asPropertyMeta(valid);
+
+    expect(result).not.toHaveProperty('ownership');
+    expect(result).not.toHaveProperty('ownershipInput');
+  });
+
+  it('keeps a valid ownership list and its input form', () => {
+    const ownership = [{ day: 1_700_000_000_000, numerator: 1, denominator: 3 }];
+
+    expect(asPropertyMeta({ ...valid, ownership, ownershipInput: 'fraction' })).toEqual({
+      ...valid,
+      ownership,
+      ownershipInput: 'fraction',
+    });
+  });
+
+  it('rejects an invalid ownership list', () => {
+    const ownership = [{ day: 1_700_000_000_000, numerator: 4, denominator: 3 }];
+
+    expect(asPropertyMeta({ ...valid, ownership })).toBeNull();
+  });
+
+  it('drops an unknown ownership input form rather than rejecting the row', () => {
+    expect(asPropertyMeta({ ...valid, ownershipInput: 'decimal' })).toEqual(valid);
+  });
 });
 
 describe('propertyCategoryOf', () => {

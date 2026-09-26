@@ -8,6 +8,7 @@ import { multiplyToMinorUnits } from '../../../currency/decimal';
 import { entityColorsDark } from '../../../design-system/palette';
 import { priceAt, type PriceBook } from '../../../prices/price-book';
 import type { HoldingDescriptor, PricedSpec } from '../holding-descriptor.d';
+import { ownershipAt, ownershipApplies, WHOLE_SHARE, type OwnershipShare } from '../../ownership';
 
 // `quantityAt(lots, instant)` times the price point for the holding's own
 // `holding:<id>` instrument at or before that day (`priceAt` — the local-day
@@ -35,9 +36,20 @@ const propertyItemValue = (
   return Money.of(holding.currency, minorUnits);
 };
 
+const propertyItemShare = (metadata: unknown, instant: number): OwnershipShare => {
+  const meta = asPropertyMeta(metadata);
+
+  if (meta === null || !ownershipApplies(meta.category)) {
+    return WHOLE_SHARE;
+  }
+
+  return ownershipAt(meta.ownership ?? [], instant);
+};
+
 const propertyItemPricedSpec: PricedSpec = {
   lots: (metadata) => asPropertyMeta(metadata)?.lots,
   value: propertyItemValue,
+  share: propertyItemShare,
 };
 
 export const propertyItemDescriptor: HoldingDescriptor = pricedDescriptor(propertyItemPricedSpec, {

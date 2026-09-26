@@ -305,6 +305,31 @@ sign-based tone — never a hardcoded green) — no interest/tax row, since
 interest or withholds tax, so those rows would only ever read a
 misleading zero.
 
+### Ownership share (`property_item`)
+
+Price points and lots always describe the WHOLE asset: the user enters
+the whole value and the whole cost. A `PricedSpec` may carry an optional
+`share(metadata, instant)`; `pricedBreakdown` scales the resolved value
+and the cost basis each ONCE by the share at `now`
+(`scaleMinorUnits`, `src/currency/decimal/` — BigInt, half away from
+zero), so `gross = net =` owned value, `principalOrCost` = owned cost,
+and the detail's Gain is the owned gain. Only `property_item` sets it
+(`metal` owns the whole). Its share comes from `metadata.ownership`, a
+list of dated changes `{ day, numerator, denominator }` (a `dayKeyOf`
+key, a reduced fraction `0 < n <= d`), parsed all-or-nothing by
+`asOwnershipChanges` (`src/holdings/ownership/`); an invalid list makes
+`asPropertyMeta` reject the row, like invalid lots. `ownershipAt(changes,
+instant)` reads the latest change on or before the instant's local
+day, carries the FIRST change back before it (the `priceAt` rule, so a
+holding created at 1/2 reads 1/2 on back-dated history), and reads 1/1
+with no changes. `ownershipApplies(category)` is false for
+`loan_given`, which always values whole even with a stored list. Every
+valuation site — card, Home totals, statistics, net-worth history —
+gets the share of its own instant through the same
+`breakdown(holding, now, book)` seam; there is no ownership query and
+no new parameter. A property with no `ownership` key values exactly as
+before (`src/holdings/ownership/existing-holdings-pin.test.ts`).
+
 **A priced holding writes no ledger (`Transaction`) rows for its
 revaluations.** Its lots array is the only source of quantity/cost-basis
 history; a price change moves its VALUE without ever touching its

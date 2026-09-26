@@ -457,6 +457,98 @@ describe('holdingValueBreakdown — property_item (priced)', () => {
   });
 });
 
+describe('holdingValueBreakdown — property_item ownership share', () => {
+  const wholeBook = buildPriceBook([
+    {
+      instrument: holdingInstrument('prop-1'),
+      day: propertyDay2024,
+      price: '30000.01',
+      currency: 'UAH',
+      source: 'manual',
+    },
+  ]);
+  const third = [{ day: propertyDay2024, numerator: 1, denominator: 3 }];
+
+  // Every property saved before the share existed has no `ownership` key; its
+  // value must not move by a single minor unit.
+  it('values a holding with no ownership key exactly as the whole asset', () => {
+    const breakdown = holdingValueBreakdown(property(), propertyDay2026, wholeBook);
+
+    expect(breakdown.gross.minorUnits).toBe(3_000_001);
+    expect(breakdown.net.minorUnits).toBe(3_000_001);
+    expect(breakdown.principalOrCost.minorUnits).toBe(18_000_00);
+    expect(
+      holdingValueBreakdown(property(), propertyDay2026, EMPTY_PRICE_BOOK).net.minorUnits,
+    ).toBe(18_000_00);
+  });
+
+  it('owns a third of the value, the cost, and so the gain', () => {
+    const breakdown = holdingValueBreakdown(
+      property({ ownership: third }),
+      propertyDay2026,
+      wholeBook,
+    );
+
+    expect(breakdown.gross.minorUnits).toBe(1_000_000);
+    expect(breakdown.net.minorUnits).toBe(1_000_000);
+    expect(breakdown.principalOrCost.minorUnits).toBe(600_000);
+    expect(breakdown.interest.minorUnits).toBe(0);
+    expect(breakdown.tax.minorUnits).toBe(0);
+  });
+
+  it('owns a share of the cost basis when there is no price point', () => {
+    const breakdown = holdingValueBreakdown(
+      property({ ownership: third }),
+      propertyDay2026,
+      EMPTY_PRICE_BOOK,
+    );
+
+    expect(breakdown.net.minorUnits).toBe(600_000);
+    expect(breakdown.principalOrCost.minorUnits).toBe(600_000);
+  });
+
+  it('values a loan given whole even with a stored share', () => {
+    const breakdown = holdingValueBreakdown(
+      property({ category: 'loan_given', ownership: third }),
+      propertyDay2026,
+      wholeBook,
+    );
+
+    expect(breakdown.net.minorUnits).toBe(3_000_001);
+    expect(breakdown.principalOrCost.minorUnits).toBe(18_000_00);
+  });
+
+  it('owns half of a vehicle', () => {
+    const breakdown = holdingValueBreakdown(
+      property({
+        category: 'vehicle',
+        ownership: [{ day: propertyDay2024, numerator: 1, denominator: 2 }],
+      }),
+      propertyDay2026,
+      wholeBook,
+    );
+
+    expect(breakdown.net.minorUnits).toBe(1_500_001);
+    expect(breakdown.principalOrCost.minorUnits).toBe(900_000);
+  });
+
+  it('reads the share of the requested day', () => {
+    const holding = property({
+      ownership: [
+        { day: propertyDay2024, numerator: 1, denominator: 1 },
+        { day: propertyDay2026, numerator: 1, denominator: 2 },
+      ],
+    });
+
+    expect(holdingValueBreakdown(holding, propertyDay2026 - day, wholeBook).net.minorUnits).toBe(
+      3_000_001,
+    );
+    expect(holdingValueBreakdown(holding, propertyDay2026, wholeBook).net.minorUnits).toBe(
+      1_500_001,
+    );
+  });
+});
+
 // Metal lots and price points key on the same `dayKeyOf`-style UTC-anchored
 // convention as property's above.
 const goldBar = (over: Record<string, unknown> = {}): ValuableHolding => ({

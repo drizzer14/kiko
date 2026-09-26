@@ -1,10 +1,12 @@
 import maybe, { foldMap } from 'fnts/maybe';
 
 import { costBasisMinorAt } from '../../lots';
+import { WHOLE_SHARE } from '../../ownership';
 import { Money } from '../../../currency/money';
 import { holdingsRepo } from '../../repo/holdings.repo';
 import type { PricedHolding } from '../../priced-value';
 import type { ValuableHolding } from '../../holding-value';
+import { scaleMinorUnits } from '../../../currency/decimal';
 import type { PriceBook } from '../../../prices/price-book';
 import { flat, type HoldingValueBreakdown } from '../breakdown-parts';
 import type { HoldingDescriptor, PricedSpec } from '../holding-descriptor.d';
@@ -20,7 +22,9 @@ const pricedValueOrNull = (
 // Falls back to `costBasisMinorAt` when the priced value is null, or when its
 // currency disagrees with `holding.currency` (an invalid/restore-only row) —
 // never surfaced under the wrong currency label. `principalOrCost` is always
-// the cost basis; interest/tax stay zero.
+// the cost basis; interest/tax stay zero. The value and the cost are each the
+// whole asset's scaled once by the share owned at `now`, so the gain is the
+// owned gain.
 const pricedBreakdown = (
   spec: PricedSpec,
   holding: ValuableHolding,
@@ -33,15 +37,18 @@ const pricedBreakdown = (
     return flat(holding.currency, holdingsRepo.balanceOf(holding).minorUnits);
   }
   const { currency } = holding;
+  const share = spec.share?.(holding.metadata, now) ?? WHOLE_SHARE;
+  const owned = (wholeMinorUnits: number): Money =>
+    Money.of(currency, scaleMinorUnits(wholeMinorUnits, share.numerator, share.denominator));
   const costBasisMinor = costBasisMinorAt(lots, now);
   const pricedMoney = pricedValueOrNull(spec, holding, book, now);
   const usesPricedMoney = pricedMoney !== null && pricedMoney.currency === currency;
-  const value = usesPricedMoney ? pricedMoney : Money.of(currency, costBasisMinor);
+  const value = owned(usesPricedMoney ? pricedMoney.minorUnits : costBasisMinor);
   const zero = Money.of(currency, 0);
 
   return {
     gross: value,
-    principalOrCost: Money.of(currency, costBasisMinor),
+    principalOrCost: owned(costBasisMinor),
     interest: zero,
     tax: zero,
     net: value,
