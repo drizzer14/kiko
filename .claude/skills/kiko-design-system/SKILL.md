@@ -766,7 +766,11 @@ new component can land between reviews of this skill:
   `Modal`.
 - **CardContextMenu** (`src/design-system/components/card-context-menu/`)
   — wraps a grid/list card in a touch-and-hold delete (and, when an
-  `onDuplicate` handler is passed, Duplicate/Delete choice) menu: a
+  `onDuplicate` and/or `onEdit` handler is passed, an Edit/Duplicate/
+  Delete choice, in that order) menu. `onEdit` is for a row with no tap
+  target of its own: the holding detail's share-change rows (Edit +
+  Delete); a transaction row keeps tap-to-edit and passes only
+  `onDuplicate`. The menu is: a
   `Gesture.LongPress()` that raises the shared `ConfirmSheet` above on a
   still hold, while a hold that MOVES fails the gesture so an enclosing
   `react-native-sortables` drag can still claim it — see `kiko-gestures`

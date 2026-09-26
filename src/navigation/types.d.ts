@@ -94,6 +94,10 @@ export type AccountsStackParamList = {
   // `holding:<id>` price series — a metal's price comes from the SHARED
   // `metal:<XAU|...>` instrument (kiko-pricing).
   LotForm: { holdingId: string };
+  // Edit one stored share change of a property, reached from the holding
+  // detail's Share changes list. `day` is the change's `dayKeyOf` key; the
+  // repo re-reads the list inside its write rather than trusting a row.
+  OwnershipChangeForm: { holdingId: string; day: number };
   // The shared statement-import preview + target-holding screen, reached
   // from the in-app document-picker entry point (`account-detail.screen.tsx`'s
   // `pickAndOpenStatement`) with a resolved local `filePath` and the owning

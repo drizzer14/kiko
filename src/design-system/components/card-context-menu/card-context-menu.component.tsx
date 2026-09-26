@@ -21,10 +21,11 @@ export const HOLD_GESTURE_TEST_ID = 'card-context-menu-hold';
 export const DELETE_CONFIRM_TEST_ID = 'card-context-menu-delete-confirm';
 
 // The action-list buttons' jest test ids, exported so a consumer's test can
-// drive the Duplicate/Delete CHOICE that a hold opens once `onDuplicate` is
-// wired. Only present when `onDuplicate` is provided (a delete-only card never
-// renders the action list — it opens the confirm directly).
+// drive the CHOICE that a hold opens once `onDuplicate` or `onEdit` is wired.
+// Only present then (a delete-only card never renders the action list — it
+// opens the confirm directly).
 export const DUPLICATE_ACTION_TEST_ID = 'card-context-menu-duplicate';
+export const EDIT_ACTION_TEST_ID = 'card-context-menu-edit';
 export const DELETE_ACTION_TEST_ID = 'card-context-menu-delete-action';
 
 // A touch-and-hold must stay still for this long to open the delete confirm —
@@ -94,6 +95,10 @@ const CardContextMenu: FC<{
   // behavior. Only the transaction rows (Home + the holding-detail ledger) pass
   // it, for manual rows only — the account/holding cards and grids never do.
   onDuplicate?: () => void;
+  // An optional "edit this entry" action for a row that has no tap target of
+  // its own to open an editor (the holding detail's share changes). Joins
+  // the same action list as Duplicate.
+  onEdit?: () => void;
   // Opt-in press feedback for a card that sits in a PLAIN (non-sortable)
   // list, matching the barely-there `activeItemScale={1.03}` lift the
   // account/holding sortable grids already get for free from
@@ -104,7 +109,7 @@ const CardContextMenu: FC<{
   // would double-animate it. Only the Home transaction row passes it today.
   liftOnHold?: boolean;
   children: ReactNode;
-}> = ({ name, deletable, onDelete, onDuplicate, liftOnHold = false, children }) => {
+}> = ({ name, deletable, onDelete, onDuplicate, onEdit, liftOnHold = false, children }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const [confirmVisible, setConfirmVisible] = useState(false);
@@ -121,15 +126,17 @@ const CardContextMenu: FC<{
   const liftStyle = useAnimatedStyle(() => ({ transform: [{ scale: liftScale.value }] }));
 
   const canDuplicate = onDuplicate !== undefined;
+  const canEdit = onEdit !== undefined;
+  const hasActionList = canDuplicate || canEdit;
 
-  // A card with NEITHER a delete nor a duplicate action renders bare — no
-  // gesture, no sheet — leaving the touch-and-hold free for an enclosing
-  // sortables drag to claim (a synced row keeps its reorder this way).
-  if (!deletable && !canDuplicate) {
+  // A card with NO action renders bare — no gesture, no sheet — leaving the
+  // touch-and-hold free for an enclosing sortables drag to claim (a synced
+  // row keeps its reorder this way).
+  if (!deletable && !hasActionList) {
     return <>{children}</>;
   }
 
-  // A hold offers the action-list CHOICE only when a duplicate action exists;
+  // A hold offers the action-list CHOICE only when a duplicate or edit action exists;
   // otherwise it keeps the original behavior and opens the delete confirm
   // straight away, so every delete-only consumer is unchanged. `liftOnHold`
   // additionally scales the card up on `onStart` and eases it back to 1 on
@@ -148,7 +155,7 @@ const CardContextMenu: FC<{
         liftScale.value = withTiming(HOLD_LIFT_SCALE, { duration: HOLD_LIFT_DURATION_MS });
       }
 
-      if (canDuplicate) {
+      if (hasActionList) {
         setActionsVisible(true);
 
         return;
@@ -170,11 +177,17 @@ const CardContextMenu: FC<{
     setActionsVisible(false);
   };
 
-  // Duplicate closes the action list first, THEN runs the handler (which
-  // typically navigates away), keeping the setState off a soon-unmounted node.
+  // Duplicate and Edit close the action list first, THEN run the handler
+  // (which typically navigates away), keeping the setState off a
+  // soon-unmounted node.
   const runDuplicate = (): void => {
     setActionsVisible(false);
     onDuplicate?.();
+  };
+
+  const runEdit = (): void => {
+    setActionsVisible(false);
+    onEdit?.();
   };
 
   // Delete from the action list hands off to the SAME named confirm sheet the
@@ -204,7 +217,7 @@ const CardContextMenu: FC<{
         )}
       </GestureDetector>
 
-      {canDuplicate && (
+      {hasActionList && (
         <BottomSheet
           visible={actionsVisible}
           onDismiss={dismissActions}
@@ -212,9 +225,17 @@ const CardContextMenu: FC<{
           header={<Text variant="heading">{name}</Text>}
           testID="card-context-menu-actions"
         >
-          <Button onPress={runDuplicate} testID={DUPLICATE_ACTION_TEST_ID}>
-            {t('common.duplicate')}
-          </Button>
+          {canEdit && (
+            <Button onPress={runEdit} testID={EDIT_ACTION_TEST_ID}>
+              {t('common.edit')}
+            </Button>
+          )}
+
+          {canDuplicate && (
+            <Button onPress={runDuplicate} testID={DUPLICATE_ACTION_TEST_ID}>
+              {t('common.duplicate')}
+            </Button>
+          )}
 
           {deletable && (
             <Button variant="destructive" onPress={chooseDelete} testID={DELETE_ACTION_TEST_ID}>

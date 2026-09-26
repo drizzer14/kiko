@@ -2,6 +2,7 @@ import {
   ownershipAt,
   WHOLE_SHARE,
   ownershipApplies,
+  ownershipMetadata,
   withOwnershipChange,
   type OwnershipChange,
   type OwnershipShare,
@@ -38,7 +39,6 @@ import {
   enteredShare,
   shareChanged,
   ownershipEntryOf,
-  ownershipMetadata,
   type OwnershipEntry,
 } from './property-ownership';
 

@@ -18,10 +18,11 @@ import '../../../i18n';
 import GestureRootWrapper from '../../../test-support/gesture-root-wrapper';
 
 import CardContextMenu, {
+  EDIT_ACTION_TEST_ID,
   DELETE_ACTION_TEST_ID,
+  HOLD_GESTURE_TEST_ID,
   DELETE_CONFIRM_TEST_ID,
   DUPLICATE_ACTION_TEST_ID,
-  HOLD_GESTURE_TEST_ID,
 } from './card-context-menu.component';
 
 describe('CardContextMenu', () => {
@@ -140,6 +141,38 @@ describe('CardContextMenu', () => {
 
     expect(onDelete).toHaveBeenCalledTimes(1);
     expect(onDuplicate).not.toHaveBeenCalled();
+  });
+
+  it('offers an Edit/Delete action list on hold when onEdit is provided, routing Edit to onEdit without deleting', async () => {
+    const onEdit = jest.fn();
+    const onDelete = jest.fn();
+    const { getByTestId, queryByTestId, queryByText } = await render(
+      <CardContextMenu name="50% since 01.06.2025" deletable onDelete={onDelete} onEdit={onEdit}>
+        <Text>row</Text>
+      </CardContextMenu>,
+      { wrapper: GestureRootWrapper },
+    );
+
+    await act(async () => {
+      fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+        { state: State.BEGAN },
+        { state: State.ACTIVE },
+        { state: State.END },
+      ]);
+    });
+
+    expect(getByTestId(EDIT_ACTION_TEST_ID)).toHaveTextContent('Edit');
+    expect(getByTestId(DELETE_ACTION_TEST_ID)).toBeTruthy();
+    expect(queryByTestId(DUPLICATE_ACTION_TEST_ID)).toBeNull();
+    expect(queryByText('Delete "50% since 01.06.2025"')).toBeNull();
+
+    await act(async () => {
+      fireEvent.press(getByTestId(EDIT_ACTION_TEST_ID));
+    });
+
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(queryByTestId(EDIT_ACTION_TEST_ID)).toBeNull();
   });
 
   it('renders a synced (non-deletable) card bare, with no gesture and no confirm sheet', async () => {

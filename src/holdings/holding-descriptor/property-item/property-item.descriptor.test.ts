@@ -2,7 +2,7 @@ import { holdingValue } from '../../holding-value';
 import { buildPriceBook } from '../../../prices/price-book';
 import { holdingInstrument } from '../../../prices/instrument';
 
-import { propertyOwnershipView } from './property-item.descriptor';
+import { propertyShareChanges, propertyOwnershipView } from './property-item.descriptor';
 
 const DAY = 86_400_000;
 const firstDay = Date.UTC(2024, 0, 1);
@@ -95,5 +95,47 @@ describe('propertyOwnershipView', () => {
     };
 
     expect(propertyOwnershipView(holding, NOW, book)).toBeNull();
+  });
+});
+
+describe('propertyShareChanges', () => {
+  it('lists every stored change newest first, with the typed input form', () => {
+    const holding = property({
+      ownership: [
+        { day: firstDay, numerator: 1, denominator: 2 },
+        { day: changeDay, numerator: 1, denominator: 3 },
+      ],
+      ownershipInput: 'fraction',
+    });
+
+    expect(propertyShareChanges(holding)).toEqual({
+      changes: [
+        { day: changeDay, numerator: 1, denominator: 3 },
+        { day: firstDay, numerator: 1, denominator: 2 },
+      ],
+      input: 'fraction',
+    });
+  });
+
+  it('lists nothing for a property with no stored change', () => {
+    expect(propertyShareChanges(property()).changes).toEqual([]);
+  });
+
+  it('lists nothing for a loan given, even with a stored share', () => {
+    const holding = property({
+      category: 'loan_given',
+      ownership: [{ day: firstDay, numerator: 1, denominator: 3 }],
+    });
+
+    expect(propertyShareChanges(holding).changes).toEqual([]);
+  });
+
+  it('lists nothing for a holding that is not a property', () => {
+    const holding = {
+      ...property({ ownership: [{ day: firstDay, numerator: 1, denominator: 3 }] }),
+      type: 'metal' as const,
+    };
+
+    expect(propertyShareChanges(holding).changes).toEqual([]);
   });
 });

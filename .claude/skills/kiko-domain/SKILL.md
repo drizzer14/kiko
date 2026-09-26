@@ -257,7 +257,35 @@ percent that shows the same rounded value as the share in effect
 `property-ownership.ts`), so re-saving never records 3333/10000. A
 category switch keeps the stored list, even to `loan_given`, which
 hides the field and ignores the list. This form never edits or
-deletes a past change.
+deletes a past change; the holding detail does.
+
+**Share changes are editable.** The holding detail lists every stored
+change newest first in a "Share changes" section (`ShareChanges`,
+`src/screens/holding-detail/share-changes/`, fed by
+`propertyShareChanges`, `property-item.descriptor.ts`): the day
+(`formatDate(day, { timeZone: 'UTC' })`) and the share through the
+same `ownershipShareDetailText` as the "Your share" row. It is hidden
+with no stored change and for `loan_given`. Each row is a `Card` in
+`CardContextMenu` (long press, `liftOnHold`) with Edit and Delete —
+no swipe. Edit opens `OwnershipChangeForm` (`{ holdingId, day }`,
+`src/screens/forms/ownership-change-form/`): the same `OwnershipField`
+with the "Effective from" `DateField` always shown, pre-filled with
+that change's share (in the stored `ownershipInput`) and day. Save
+calls `holdingsRepo.editOwnershipChange(holdingId, fromDay, change,
+input)` → `withEditedOwnershipChange` (the old change leaves first,
+then `withOwnershipChange`: moving onto a day that has a change
+replaces it; a change equal to the share already in effect is
+dropped). Delete goes through the menu's named `ConfirmSheet` to
+`holdingsRepo.removeOwnershipChange(holdingId, day)` →
+`withoutOwnershipChange` (the list is made canonical again, so a later
+change that now repeats the share before it is dropped; the last
+change removed leaves NO `ownership`/`ownershipInput` key — the whole
+asset). Both repo methods take the day key, not a row, and re-read the
+list inside one `write` (`rewriteOwnership`, `holdings.repo.ts`) — the
+kiko-architecture "write started from a cached display screen" rule —
+so a stale cached row can never put back a change another write
+removed. `ownershipMetadata` (`src/holdings/ownership/`) is the one
+builder of the ownership keys for the form and the repo.
 `src/screens/forms/holding-form/metal/metal-section/metal-section.component.tsx`
 is the `metal` create-form section: a
 physical-form `ChipRow`, a unit `ChipRow`, a Purity `TextField`

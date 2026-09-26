@@ -391,7 +391,8 @@ mount's own read for the current key has applied (always `true` while
 disabled). Every write a display screen starts either passes only IDs
 (plus the user's explicit new value) to a repo that re-reads inside its
 own transaction (every `remove`, `categoriesRepo.delete`, the sync
-jobs), or is gated on `isFresh`. The drag reorders (Accounts' three
+jobs, `holdingsRepo.editOwnershipChange`/`removeOwnershipChange` —
+a holding id plus a share change's day key), or is gated on `isFresh`. The drag reorders (Accounts' three
 grids, Account detail's holdings grid, Categories) set
 `sortEnabled={isFresh && …}`, and Categories' move-to-top/bottom
 buttons ignore a press until `isFresh` — each persists the WHOLE order

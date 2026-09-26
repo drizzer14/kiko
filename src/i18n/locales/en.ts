@@ -440,6 +440,9 @@ export const en = {
       totalCostPlaceholder: '1000.00',
       type: 'Type',
     },
+    ownershipChange: {
+      title: 'Edit Share Change',
+    },
     pricePoint: {
       // Loan-specific title/field/button/error `PricePointFormScreen` applies
       // once the holding loads as a loan; `loanValueError` also accepts 0.
@@ -690,6 +693,7 @@ export const en = {
     purchase: 'Purchase',
     redemption: 'Redemption',
     sale: 'Sale',
+    shareChanges: 'Share changes',
     // After the share ("1/3 · 33.33% since 01.06.2025"): the day it took effect.
     shareSince: 'since {{date}}',
     tax: 'Tax',

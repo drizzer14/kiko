@@ -6,6 +6,7 @@ import {
   ownershipApplies,
   ownershipChangeAt,
   type OwnershipShare,
+  type OwnershipChange,
 } from '../../ownership';
 import { quantityAt } from '../../lots';
 import { Money } from '../../../currency/money';
@@ -106,6 +107,28 @@ export const propertyOwnershipView = (
     since: change.day,
     whole: whole.value,
     owned: ownedMoney(whole.value, share),
+  };
+};
+
+/** A property's stored share changes, newest first, and the form the share was typed in. */
+type PropertyShareChanges = {
+  changes: OwnershipChange[];
+  input: OwnershipInput;
+};
+
+/** Empty for a loan given, invalid metadata, any type but a property, or no holding yet. */
+export const propertyShareChanges = (
+  holding: Pick<ValuableHolding, 'type' | 'metadata'> | undefined,
+): PropertyShareChanges => {
+  const meta = holding?.type === 'property_item' ? asPropertyMeta(holding.metadata) : null;
+
+  if (meta === null || !ownershipApplies(meta.category)) {
+    return { changes: [], input: 'percent' };
+  }
+
+  return {
+    changes: [...(meta.ownership ?? [])].reverse(),
+    input: meta.ownershipInput ?? 'percent',
   };
 };
 

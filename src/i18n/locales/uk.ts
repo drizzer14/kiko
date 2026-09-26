@@ -380,6 +380,9 @@ export const uk: typeof en = {
       totalCostPlaceholder: '1 000,00',
       type: 'Тип',
     },
+    ownershipChange: {
+      title: 'Редагувати зміну частки',
+    },
     pricePoint: {
       loanSave: 'Зберегти залишок',
       loanTitle: 'Оновити залишок',
@@ -585,6 +588,7 @@ export const uk: typeof en = {
     purchase: 'Купівля',
     redemption: 'Погашення',
     sale: 'Продаж',
+    shareChanges: 'Зміни частки',
     shareSince: 'з {{date}}',
     tax: 'Податок',
     taxWithheld: 'Утримано податку',

@@ -5,6 +5,7 @@ import { State } from 'react-native-gesture-handler';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
+import { holdingsRepo } from '@kiko/holdings/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
 
 import { i18n } from '../../i18n';
@@ -15,10 +16,11 @@ import { formatMoney } from '../../currency/format';
 import { darkTheme } from '../../design-system/theme';
 import { startOfLocalDay } from '../../dates/local-day';
 import {
+  EDIT_ACTION_TEST_ID,
+  HOLD_GESTURE_TEST_ID,
   DELETE_ACTION_TEST_ID,
   DELETE_CONFIRM_TEST_ID,
   DUPLICATE_ACTION_TEST_ID,
-  HOLD_GESTURE_TEST_ID,
 } from '../../design-system/components/card-context-menu';
 import { loanInstallments } from '../../holdings/loan-schedule';
 import type { LoanMeta } from '../../holdings/holding-metadata';
@@ -170,6 +172,7 @@ jest.mock('@kiko/holdings/repo', () => ({
   holdingsRepo: {
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     appendDepositContribution: jest.fn(),
+    removeOwnershipChange: jest.fn(),
     updateName: jest.fn(),
     setIcon: jest.fn(),
     setColor: jest.fn(),
@@ -917,6 +920,113 @@ describe('HoldingDetailScreen', () => {
       expect(getByText('Cost')).toBeTruthy();
       expect(queryByText('Whole value')).toBeNull();
       expect(queryByText('Your share')).toBeNull();
+    });
+
+    describe('the share changes list', () => {
+      const changeDay = Date.UTC(2025, 5, 1);
+      const seedChanges = (metadata: Record<string, unknown>) =>
+        seed(
+          { ...propertyHolding, metadata: { ...propertyHolding.metadata, ...metadata } },
+          [],
+          [],
+          [],
+          [],
+          [{ baseCurrency: 'UAH' }],
+          undefined,
+          [wholePricePoint],
+        );
+      const holdRow = async (): Promise<void> => {
+        await act(async () => {
+          fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+            { state: State.BEGAN },
+            { state: State.ACTIVE },
+            { state: State.END },
+          ]);
+        });
+      };
+
+      it('lists every stored change newest first, in the typed input form', async () => {
+        seedChanges({
+          ownership: [
+            { day: Date.UTC(2024, 0, 1), numerator: 1, denominator: 2 },
+            { day: changeDay, numerator: 1, denominator: 3 },
+          ],
+          ownershipInput: 'fraction',
+        });
+
+        const { getByText, getAllByTestId } = await renderScreen();
+        const rows = getAllByTestId('share-change-row');
+
+        expect(getByText('Share changes')).toBeTruthy();
+        expect(rows).toHaveLength(2);
+        expect(rows[0]).toHaveTextContent('01.06.20251/3 · 33.33%');
+        expect(rows[1]).toHaveTextContent('01.01.20241/2 · 50%');
+      });
+
+      it('shows a percent-typed change as its percent', async () => {
+        seedChanges({
+          ownership: [{ day: changeDay, numerator: 1, denominator: 2 }],
+          ownershipInput: 'percent',
+        });
+
+        const { getByTestId } = await renderScreen();
+
+        expect(getByTestId('share-change-row')).toHaveTextContent('01.06.202550%');
+      });
+
+      it('is hidden for a property owned whole with no stored change', async () => {
+        seed(propertyHolding);
+
+        const { queryByText, queryByTestId } = await renderScreen();
+
+        expect(queryByText('Share changes')).toBeNull();
+        expect(queryByTestId('share-change-row')).toBeNull();
+      });
+
+      it('is hidden for a loan given, even with a stored share', async () => {
+        seedChanges({
+          category: 'loan_given',
+          ownership: [{ day: changeDay, numerator: 1, denominator: 3 }],
+        });
+
+        const { queryByText } = await renderScreen();
+
+        expect(queryByText('Share changes')).toBeNull();
+      });
+
+      it('opens the edit form for the held change, by holding id and day key', async () => {
+        seedChanges({ ownership: [{ day: changeDay, numerator: 1, denominator: 2 }] });
+
+        const { getByTestId } = await renderScreen();
+
+        await holdRow();
+        await act(async () => {
+          fireEvent.press(getByTestId(EDIT_ACTION_TEST_ID));
+        });
+
+        expect(navigation.navigate).toHaveBeenCalledWith('OwnershipChangeForm', {
+          holdingId: 'h-1',
+          day: changeDay,
+        });
+      });
+
+      it('deletes the held change through the named confirm, by holding id and day key', async () => {
+        seedChanges({ ownership: [{ day: changeDay, numerator: 1, denominator: 2 }] });
+
+        const { getByTestId, getByText } = await renderScreen();
+
+        await holdRow();
+        await act(async () => {
+          fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+        });
+
+        expect(getByText('Delete "50% since 01.06.2025"')).toBeTruthy();
+        expect(holdingsRepo.removeOwnershipChange).not.toHaveBeenCalled();
+
+        await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
+        expect(holdingsRepo.removeOwnershipChange).toHaveBeenCalledWith('h-1', changeDay);
+      });
     });
   });
 

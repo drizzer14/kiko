@@ -76,6 +76,7 @@ import {
   type HoldingBreakdownSpec,
   holdingDetailSpecFor,
 } from './holding-detail-spec';
+import ShareChanges from './share-changes';
 import UpcomingPayments from './upcoming-payments';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
@@ -953,6 +954,12 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         payments={linkedPayments}
         holdingNameById={holdingNameById}
         context={rowContext}
+      />
+
+      <ShareChanges
+        holding={holding}
+        onEdit={(day) => navigation.navigate('OwnershipChangeForm', { holdingId, day })}
+        onDelete={(day) => holdingsRepo.removeOwnershipChange(holdingId, day)}
       />
 
       <Divider spacing={2} />

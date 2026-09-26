@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import AccountsScreen from '../screens/accounts/accounts.screen';
 import LotFormScreen from '../screens/forms/lot-form/lot-form.screen';
+import OwnershipChangeFormScreen from '../screens/forms/ownership-change-form';
 import AccountDetailScreen from '../screens/account-detail/account-detail.screen';
 import AccountFormScreen from '../screens/forms/account-form/account-form.screen';
 import HoldingFormScreen from '../screens/forms/holding-form/holding-form.screen';
@@ -87,6 +88,12 @@ const AccountsStack: FC = () => {
         name="LotForm"
         component={LotFormScreen}
         options={{ title: t('forms.lot.addTitle') }}
+      />
+
+      <Stack.Screen
+        name="OwnershipChangeForm"
+        component={OwnershipChangeFormScreen}
+        options={{ title: t('forms.ownershipChange.title') }}
       />
 
       <Stack.Screen

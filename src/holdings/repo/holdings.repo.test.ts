@@ -514,6 +514,158 @@ describe('appendDepositContribution', () => {
   });
 });
 
+describe('ownership change edits', () => {
+  const DAY = 86_400_000;
+  const day1 = Date.UTC(2025, 0, 1);
+  const day10 = day1 + 9 * DAY;
+  const lots = [{ day: day1, quantityDelta: '1', costMinorUnits: 100_000 }];
+  const propertyStore = (metadata: Record<string, unknown>): Store => ({
+    accounts: [],
+    holdings: [{ id: 'h1', type: 'property_item', metadata }],
+    transactions: [],
+    pricePoints: [],
+  });
+
+  it('edits the share and day of one change from the stored row', async () => {
+    const store = propertyStore({
+      category: 'real_estate',
+      lots,
+      ownership: [
+        { day: day1, numerator: 1, denominator: 2 },
+        { day: day10, numerator: 1, denominator: 3 },
+      ],
+      ownershipInput: 'percent',
+    });
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
+
+    await holdingsRepo.editOwnershipChange(
+      'h1',
+      day10,
+      { day: day10 + DAY, numerator: 1, denominator: 4 },
+      'fraction',
+    );
+
+    expect(store.holdings[0].metadata).toEqual({
+      category: 'real_estate',
+      lots,
+      ownership: [
+        { day: day1, numerator: 1, denominator: 2 },
+        { day: day10 + DAY, numerator: 1, denominator: 4 },
+      ],
+      ownershipInput: 'fraction',
+    });
+  });
+
+  it('replaces the change already on the day an edit moves to', async () => {
+    const store = propertyStore({
+      category: 'vehicle',
+      lots,
+      ownership: [
+        { day: day1, numerator: 1, denominator: 2 },
+        { day: day10, numerator: 1, denominator: 3 },
+      ],
+    });
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
+
+    await holdingsRepo.editOwnershipChange(
+      'h1',
+      day1,
+      { day: day10, numerator: 1, denominator: 4 },
+      'percent',
+    );
+
+    expect(store.holdings[0].metadata).toMatchObject({
+      ownership: [{ day: day10, numerator: 1, denominator: 4 }],
+    });
+  });
+
+  it('removes one change and keeps the input form', async () => {
+    const store = propertyStore({
+      category: 'real_estate',
+      lots,
+      ownership: [
+        { day: day1, numerator: 1, denominator: 2 },
+        { day: day10, numerator: 1, denominator: 3 },
+      ],
+      ownershipInput: 'fraction',
+    });
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
+
+    await holdingsRepo.removeOwnershipChange('h1', day10);
+
+    expect(store.holdings[0].metadata).toEqual({
+      category: 'real_estate',
+      lots,
+      ownership: [{ day: day1, numerator: 1, denominator: 2 }],
+      ownershipInput: 'fraction',
+    });
+  });
+
+  it('writes no ownership keys once the last change is removed', async () => {
+    const store = propertyStore({
+      category: 'real_estate',
+      lots,
+      ownership: [{ day: day1, numerator: 1, denominator: 2 }],
+      ownershipInput: 'percent',
+    });
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
+
+    await holdingsRepo.removeOwnershipChange('h1', day1);
+
+    expect(store.holdings[0].metadata).toEqual({ category: 'real_estate', lots });
+  });
+
+  it('never resurrects a change a stale cached row still shows', async () => {
+    // The screen's cached row still lists a change on day 10 that another
+    // write already deleted; a delete passes only the day key.
+    const day20 = day1 + 19 * DAY;
+    const store = propertyStore({
+      category: 'real_estate',
+      lots,
+      ownership: [
+        { day: day1, numerator: 1, denominator: 2 },
+        { day: day20, numerator: 1, denominator: 4 },
+      ],
+      ownershipInput: 'percent',
+    });
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
+
+    await holdingsRepo.removeOwnershipChange('h1', day1);
+
+    expect(store.holdings[0].metadata).toMatchObject({
+      ownership: [{ day: day20, numerator: 1, denominator: 4 }],
+    });
+  });
+
+  it('refuses a holding that is not a property', async () => {
+    const store: Store = {
+      accounts: [],
+      holdings: [{ id: 'h1', type: 'card', metadata: null }],
+      transactions: [],
+      pricePoints: [],
+    };
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
+
+    await expect(holdingsRepo.removeOwnershipChange('h1', day1)).rejects.toThrow(/not a property/);
+    expect(store.holdings[0].metadata).toBeNull();
+  });
+
+  it('refuses a property with invalid metadata', async () => {
+    const store = propertyStore({ nonsense: true });
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
+
+    await expect(
+      holdingsRepo.editOwnershipChange(
+        'h1',
+        day1,
+        { day: day1, numerator: 1, denominator: 2 },
+        'percent',
+      ),
+    ).rejects.toThrow(/invalid property metadata/);
+    expect(store.holdings[0].metadata).toEqual({ nonsense: true });
+  });
+});
+
 // A fake write-transaction handle for the metadata-key upserts. The helper
 // first selects the matching holding (`select(...).from().where().limit(1)`),
 // then — on a miss — reads the account's max `sort_order` (`where()` awaited

@@ -7,8 +7,11 @@ import {
   ownershipShareDetailText,
   parsePercentShare,
   asOwnershipChanges,
+  ownershipMetadata,
   parseFractionShare,
   withOwnershipChange,
+  withoutOwnershipChange,
+  withEditedOwnershipChange,
 } from './ownership';
 
 // UTC-midnight day keys, the `dayKeyOf` convention `lots.test.ts` uses, so a
@@ -173,6 +176,110 @@ describe('withOwnershipChange', () => {
       { day: day1, numerator: 1, denominator: 2 },
       { day: day10, numerator: 1, denominator: 3 },
     ]);
+  });
+});
+
+describe('withEditedOwnershipChange', () => {
+  const existing = [
+    { day: day1, numerator: 1, denominator: 2 },
+    { day: day10, numerator: 1, denominator: 3 },
+    { day: day20, numerator: 1, denominator: 2 },
+  ];
+
+  it('changes the share of one change', () => {
+    expect(
+      withEditedOwnershipChange(existing, day10, { day: day10, numerator: 1, denominator: 4 }),
+    ).toEqual([
+      { day: day1, numerator: 1, denominator: 2 },
+      { day: day10, numerator: 1, denominator: 4 },
+      { day: day20, numerator: 1, denominator: 2 },
+    ]);
+  });
+
+  it('moves a change to another day', () => {
+    const later = day10 + DAY;
+
+    expect(
+      withEditedOwnershipChange(existing, day10, { day: later, numerator: 1, denominator: 3 }),
+    ).toEqual([
+      { day: day1, numerator: 1, denominator: 2 },
+      { day: later, numerator: 1, denominator: 3 },
+      { day: day20, numerator: 1, denominator: 2 },
+    ]);
+  });
+
+  it('replaces the change already on the day it moves to', () => {
+    expect(
+      withEditedOwnershipChange(existing, day10, { day: day20, numerator: 1, denominator: 4 }),
+    ).toEqual([
+      { day: day1, numerator: 1, denominator: 2 },
+      { day: day20, numerator: 1, denominator: 4 },
+    ]);
+  });
+
+  it('drops an edited change equal to the share already in effect', () => {
+    expect(
+      withEditedOwnershipChange(existing, day10, { day: day10, numerator: 1, denominator: 2 }),
+    ).toEqual([{ day: day1, numerator: 1, denominator: 2 }]);
+  });
+
+  it('records the typed change when the edited one is already gone', () => {
+    expect(
+      withEditedOwnershipChange([], day10, { day: day10, numerator: 1, denominator: 3 }),
+    ).toEqual([{ day: day10, numerator: 1, denominator: 3 }]);
+  });
+});
+
+describe('withoutOwnershipChange', () => {
+  it('removes the change on one day', () => {
+    const existing = [
+      { day: day1, numerator: 1, denominator: 2 },
+      { day: day10, numerator: 1, denominator: 3 },
+    ];
+
+    expect(withoutOwnershipChange(existing, day10)).toEqual([
+      { day: day1, numerator: 1, denominator: 2 },
+    ]);
+  });
+
+  it('drops a later change that now repeats the share before it', () => {
+    const existing = [
+      { day: day1, numerator: 1, denominator: 2 },
+      { day: day10, numerator: 1, denominator: 3 },
+      { day: day20, numerator: 1, denominator: 2 },
+    ];
+
+    expect(withoutOwnershipChange(existing, day10)).toEqual([
+      { day: day1, numerator: 1, denominator: 2 },
+    ]);
+  });
+
+  it('empties the list when the last change is removed, which reads the whole asset', () => {
+    const remaining = withoutOwnershipChange([{ day: day1, numerator: 1, denominator: 2 }], day1);
+
+    expect(remaining).toEqual([]);
+    expect(ownershipAt(remaining, day20)).toEqual({ numerator: 1, denominator: 1 });
+  });
+
+  it('leaves the list as it is when no change is on that day', () => {
+    const existing = [{ day: day1, numerator: 1, denominator: 2 }];
+
+    expect(withoutOwnershipChange(existing, day10)).toEqual(existing);
+  });
+});
+
+describe('ownershipMetadata', () => {
+  it('writes no ownership keys for an empty list', () => {
+    expect(ownershipMetadata([], 'fraction')).toEqual({});
+  });
+
+  it('writes the list and the input form together', () => {
+    const ownership = [{ day: day1, numerator: 1, denominator: 3 }];
+
+    expect(ownershipMetadata(ownership, 'fraction')).toEqual({
+      ownership,
+      ownershipInput: 'fraction',
+    });
   });
 });
 

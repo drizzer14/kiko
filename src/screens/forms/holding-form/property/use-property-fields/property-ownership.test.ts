@@ -1,4 +1,4 @@
-import { enteredShare, ownershipEntryOf, ownershipMetadata } from './property-ownership';
+import { enteredShare, ownershipEntryOf } from './property-ownership';
 
 const third = { numerator: 1, denominator: 3 };
 const whole = { numerator: 1, denominator: 1 };
@@ -43,20 +43,5 @@ describe('enteredShare', () => {
         whole,
       ),
     ).toBeNull();
-  });
-});
-
-describe('ownershipMetadata', () => {
-  it('writes no ownership keys for an empty list', () => {
-    expect(ownershipMetadata([], 'fraction')).toEqual({});
-  });
-
-  it('writes the list and the input form together', () => {
-    const ownership = [{ day: 1, ...third }];
-
-    expect(ownershipMetadata(ownership, 'fraction')).toEqual({
-      ownership,
-      ownershipInput: 'fraction',
-    });
   });
 });

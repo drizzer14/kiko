@@ -77,6 +77,10 @@ describe('AccountsStack', () => {
     expect(titleByScreen().LotForm).toBe('Add Lot');
   });
 
+  it('gives the share-change form a static "Edit Share Change" title', () => {
+    expect(titleByScreen().OwnershipChangeForm).toBe('Edit Share Change');
+  });
+
   it('leaves the detail screens without a static title (they set it dynamically)', () => {
     const titles = titleByScreen();
     expect(titles.AccountDetail).toBeUndefined();

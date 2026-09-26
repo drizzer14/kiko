@@ -9,7 +9,7 @@ import {
 } from '../../currency/decimal';
 import { Money } from '../../currency/money';
 import { dayKeyOf } from '../../prices/price-book';
-import type { OwnershipInput, PropertyCategory } from '../holding-metadata';
+import type { PropertyMeta, OwnershipInput, PropertyCategory } from '../holding-metadata';
 
 /** A reduced fraction of a whole asset, `0 < numerator <= denominator`. */
 export type OwnershipShare = { numerator: number; denominator: number };
@@ -171,24 +171,49 @@ export const ownershipAt = (changes: readonly OwnershipChange[], instant: number
 export const ownedMoney = (whole: Money, share: OwnershipShare): Money =>
   Money.of(whole.currency, scaleMinorUnits(whole.minorUnits, share.numerator, share.denominator));
 
-/**
- * Records `change`: it replaces a change on the same day, then the list is
- * kept in day order with no change that repeats the share before it. A list
- * left holding only the whole asset is empty, which reads the same.
- */
-export const withOwnershipChange = (
-  changes: readonly OwnershipChange[],
-  change: OwnershipChange,
-): OwnershipChange[] => {
-  const merged = [...changes.filter((existing) => existing.day !== change.day), change].sort(
-    (first, second) => first.day - second.day,
-  );
-  const withoutRepeats = merged.filter(
-    (current, index) => index === 0 || !sameShare(merged[index - 1], current),
+// Day order with no change that repeats the share before it. A list left
+// holding only the whole asset is empty, which reads the same.
+const canonicalOwnership = (changes: readonly OwnershipChange[]): OwnershipChange[] => {
+  const sorted = [...changes].sort((first, second) => first.day - second.day);
+  const withoutRepeats = sorted.filter(
+    (current, index) => index === 0 || !sameShare(sorted[index - 1], current),
   );
 
   return withoutRepeats.every((kept) => sameShare(kept, WHOLE_SHARE)) ? [] : withoutRepeats;
 };
+
+const withoutDay = (changes: readonly OwnershipChange[], day: number): OwnershipChange[] =>
+  changes.filter((existing) => existing.day !== day);
+
+/** Records `change`: it replaces a change on the same day; the list stays canonical. */
+export const withOwnershipChange = (
+  changes: readonly OwnershipChange[],
+  change: OwnershipChange,
+): OwnershipChange[] => canonicalOwnership([...withoutDay(changes, change.day), change]);
+
+/**
+ * Replaces the change on `fromDay` with `change`, which may sit on another
+ * day. The old change leaves before the list is made canonical again, so a
+ * later change that only repeated it is kept until the new one is in place.
+ */
+export const withEditedOwnershipChange = (
+  changes: readonly OwnershipChange[],
+  fromDay: number,
+  change: OwnershipChange,
+): OwnershipChange[] => withOwnershipChange(withoutDay(changes, fromDay), change);
+
+/** Removes the change on `day`; the list stays canonical. */
+export const withoutOwnershipChange = (
+  changes: readonly OwnershipChange[],
+  day: number,
+): OwnershipChange[] => canonicalOwnership(withoutDay(changes, day));
+
+/** The ownership keys to save; none for an empty list, which reads the whole asset. */
+export const ownershipMetadata = (
+  changes: readonly OwnershipChange[],
+  input: OwnershipInput,
+): Pick<PropertyMeta, 'ownership' | 'ownershipInput'> =>
+  changes.length === 0 ? {} : { ownership: [...changes], ownershipInput: input };
 
 // A loan given is a claim the user holds in full; splitting it is not a share
 // of an asset.

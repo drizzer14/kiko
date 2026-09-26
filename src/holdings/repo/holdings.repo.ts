@@ -3,7 +3,16 @@ import type { Repository } from '@kiko/db/repository';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import {
+  ownershipMetadata,
+  withoutOwnershipChange,
+  withEditedOwnershipChange,
+  type OwnershipChange,
+} from '../ownership';
+import {
+  asPropertyMeta,
   asTermDepositMeta,
+  type PropertyMeta,
+  type OwnershipInput,
   type DepositContribution,
   type ExchangeMetadataField,
   type SyncedMetadataField,
@@ -213,6 +222,47 @@ export const clearLoanLinksForHoldingsDatabaseTransaction = async (
     .set({ loanHoldingId: null, loanLinkSource: null })
     .where(inArray(transactions.loanHoldingId, holdingIds));
 };
+
+type OwnershipRewrite = (meta: PropertyMeta) => {
+  changes: OwnershipChange[];
+  input: OwnershipInput;
+};
+
+// Reads the ownership list from the row stored at the time of the write, never
+// from a screen's cached copy, so a change another write removed is not put
+// back. The metadata is rebuilt from the parsed meta, the same clean shape the
+// property form saves.
+const rewriteOwnership = (holdingId: string, rewrite: OwnershipRewrite) =>
+  write(async (databaseTransaction) => {
+    const rows = await databaseTransaction
+      .select()
+      .from(holdings)
+      .where(eq(holdings.id, holdingId));
+    const row = rows.at(0);
+
+    if (row?.type !== 'property_item') {
+      throw new Error('rewriteOwnership: not a property');
+    }
+
+    const meta = asPropertyMeta(row.metadata);
+
+    if (meta === null) {
+      throw new Error('rewriteOwnership: invalid property metadata');
+    }
+
+    const { changes, input } = rewrite(meta);
+
+    await databaseTransaction
+      .update(holdings)
+      .set({
+        metadata: {
+          category: meta.category,
+          lots: meta.lots,
+          ...ownershipMetadata(changes, input),
+        },
+      })
+      .where(eq(holdings.id, holdingId));
+  });
 
 export const holdingsRepo = {
   // Ordered by the user-controlled `sortOrder` (the drag-and-drop grid order),
@@ -575,6 +625,30 @@ export const holdingsRepo = {
     write((databaseTransaction) =>
       appendDepositContributionDatabaseTransaction(databaseTransaction, holdingId, contribution),
     ),
+  /**
+   * Replaces a property's ownership change on `fromDay` with `change`, typed
+   * as `input` (`withEditedOwnershipChange`). Takes the day key, not a row:
+   * the list is re-read inside the write.
+   */
+  editOwnershipChange: (
+    holdingId: string,
+    fromDay: number,
+    change: OwnershipChange,
+    input: OwnershipInput,
+  ) =>
+    rewriteOwnership(holdingId, (meta) => ({
+      changes: withEditedOwnershipChange(meta.ownership ?? [], fromDay, change),
+      input,
+    })),
+  /**
+   * Removes a property's ownership change on `day`; removing the last one
+   * leaves the whole asset. The list is re-read inside the write.
+   */
+  removeOwnershipChange: (holdingId: string, day: number) =>
+    rewriteOwnership(holdingId, (meta) => ({
+      changes: withoutOwnershipChange(meta.ownership ?? [], day),
+      input: meta.ownershipInput ?? 'percent',
+    })),
   /**
    * Deletes a manual holding and all of its transactions in one transaction.
    * Refuses a holding whose balance is owned by a LIVE sync, so a synced row is
