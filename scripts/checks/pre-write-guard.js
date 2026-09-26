@@ -356,9 +356,26 @@ async function runSemgrep(temporaryRoot, relativePath, trees) {
   const posixRelativePath = relativePath.split(path.sep).join('/');
   const targets = trees.map((tree) => `${tree}/${posixRelativePath}`);
 
+  // Semgrep's own per-rule default (5 s) would turn a rule that is merely
+  // slow under load into an errors[] Timeout, and so a random "could not
+  // check" deny. It gets the guard's whole remaining budget instead, in
+  // whole seconds (floored at 1, since 0 means "no limit" to Semgrep); the
+  // spawn `timeout` below still ends the child at the guard's own deadline.
+  const ruleTimeoutSeconds = Math.max(1, Math.floor(remainingBudget() / 1000));
   const childResult = await spawnAsync(
     semgrepBinary,
-    ['--metrics', 'off', '--quiet', '--json', '--disable-nosem', '--config', rulesPath, ...targets],
+    [
+      '--metrics',
+      'off',
+      '--quiet',
+      '--json',
+      '--disable-nosem',
+      '--timeout',
+      String(ruleTimeoutSeconds),
+      '--config',
+      rulesPath,
+      ...targets,
+    ],
     {
       cwd: temporaryRoot,
       timeout: remainingBudget(),

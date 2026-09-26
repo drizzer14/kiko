@@ -34,13 +34,13 @@ function createTempDirectory(prefix: string): string {
   return directory;
 }
 
-// The guard's own `runSemgrep` always sends the SAME 7 fixed flag/value
+// The guard's own `runSemgrep` always sends the SAME 9 fixed flag/value
 // tokens before any target ('--metrics off --quiet --json --disable-nosem
-// --config <rulesPath>') — `shift 7` drops exactly those, leaving only the
-// requested targets in "$@", which every stub below reports back as
-// `paths.scanned` so the guard's own "target missing from paths.scanned"
-// fail-closed check never fires against a stub that never claimed to have
-// scanned anything.
+// --timeout <seconds> --config <rulesPath>') — `shift 9` drops exactly
+// those, leaving only the requested targets in "$@", which every stub below
+// reports back as `paths.scanned` so the guard's own "target missing from
+// paths.scanned" fail-closed check never fires against a stub that never
+// claimed to have scanned anything.
 function writeSemgrepStub(directory: string): string {
   const stubPath = join(directory, 'semgrep-stub.sh');
   writeFileSync(
@@ -53,7 +53,7 @@ function writeSemgrepStub(directory: string): string {
       'if [ -n "$STUB_SLEEP" ]; then',
       '  sleep "$STUB_SLEEP"',
       'fi',
-      'shift 7',
+      'shift 9',
       'scannedParts=""',
       'for target in "$@"; do',
       '  if [ -z "$scannedParts" ]; then scannedParts="\\"$target\\""; else scannedParts="$scannedParts,\\"$target\\""; fi',
@@ -93,7 +93,7 @@ function writeCapturingSemgrepStub(directory: string, captureDirectory: string):
     stubPath,
     [
       '#!/usr/bin/env bash',
-      'shift 7',
+      'shift 9',
       'for target in "$@"; do :; done',
       'pwd > "$KIKO_PREWRITE_TEST_CAPTURE_DIR/cwd.txt"',
       'printf \'%s\' "$target" > "$KIKO_PREWRITE_TEST_CAPTURE_DIR/argv.txt"',
@@ -137,7 +137,7 @@ function writeFindingsStub(directory: string): string {
     [
       '#!/usr/bin/env node',
       'const fs = require("fs");',
-      'const targets = process.argv.slice(9);',
+      'const targets = process.argv.slice(11);',
       'const before = JSON.parse(process.env.STUB_RESULTS_BEFORE || "[]");',
       'const after = JSON.parse(process.env.STUB_RESULTS_AFTER || "[]");',
       'const results = before',
@@ -1038,6 +1038,53 @@ describe('Semgrep pass + new-findings-only diff', () => {
     expect(result.status).toBe(0);
     expect(readFileSync(counterFile, 'utf8').trim().split('\n')).toEqual(['1']);
     expect(JSON.parse(readFileSync(argvFile, 'utf8'))).toEqual(['after/src/new-file.ts']);
+  });
+
+  // Semgrep's own default per-rule timeout (5 s) turns a slow rule into an
+  // errors[] Timeout — a "could not check" deny at random under load. The
+  // guard hands Semgrep its own remaining budget instead, in whole seconds,
+  // so a slow rule finishes; the guard's own deadline still ends the child.
+  it('passes semgrep a --timeout of whole seconds within the remaining budget', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const argvFile = join(captureDirectory, 'argv.json');
+    const stub = join(project, 'semgrep-argv-stub.js');
+    writeFileSync(
+      stub,
+      [
+        '#!/usr/bin/env node',
+        'const fs = require("fs");',
+        'const argumentList = process.argv.slice(2);',
+        'fs.writeFileSync(process.env.KIKO_PREWRITE_TEST_ARGV_FILE, JSON.stringify(argumentList));',
+        'const targets = argumentList.filter((item) => /^(before|after)\\//.test(item));',
+        'process.stdout.write(JSON.stringify({ results: [], errors: [], paths: { scanned: targets } }));',
+        '',
+      ].join('\n'),
+    );
+    chmodSync(stub, 0o755);
+
+    const result = runGuard(
+      payloadFor('Write', {
+        file_path: join(project, 'src', 'new-file.ts'),
+        content: 'export const value = 1;\n',
+      }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: writeRulesStub(project),
+        KIKO_PREWRITE_TIMEOUT_MS: '20000',
+        KIKO_PREWRITE_TEST_ARGV_FILE: argvFile,
+      }),
+    );
+
+    expect(result.status).toBe(0);
+    const argumentList: string[] = JSON.parse(readFileSync(argvFile, 'utf8'));
+    const timeoutIndex = argumentList.indexOf('--timeout');
+    expect(timeoutIndex).toBeGreaterThanOrEqual(0);
+    const timeoutSeconds = argumentList[timeoutIndex + 1];
+    expect(timeoutSeconds).toMatch(/^\d+$/);
+    expect(Number(timeoutSeconds)).toBeGreaterThanOrEqual(1);
+    expect(Number(timeoutSeconds)).toBeLessThanOrEqual(20);
   });
 
   it('runs one semgrep process over both trees when AFTER has findings', () => {
