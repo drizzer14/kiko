@@ -62,6 +62,10 @@ user-facing Binance message; full stops); visible guard changes (checkmark leadi
 GUARD KEYS copied (worktree KEYS.md is untracked and dies with the prune) to the feat sdd folder:
 .superpowers/sdd/shares-property-metals-debts/KEYS-pre-write-guard.md (11 sync-error keys + the "Use passcode" / localized
 Cancel biometric prompt labels). USER MUST APPROVE before any deploy that ships the guard merge.
+2026-09-26 12:30 END ORDER (user): guard final report -> coordinator merges pre-write-guard into feat -> user refreshes the kiko
+plugin once (`claude plugin update kiko@kiko-marketplace` + /reload-plugins) -> feat: S1, S2, FB1-MECH, T43 -> DEVICE TEST by the
+user (+ fix rounds) -> THEN the one deep gate (KIKO_MUTATION_BASE=next make deep) -> merge into next. FB1 in progress (P1,P3,P4
+done). Sonnet blocked until 2026-09-27 16:00 (roles on opus).
 1. When the hotfix session sends the bump sha: `git -C ~/orca/workspaces/pff-ios/device-deploy checkout -q --detach <sha>`,
    then kiko:ops archives Release / KikoDistribution there: FORCE_BUNDLING=1, clean build (rm ios/build + pod install
    if needed), NON-beta Xcode (check DTXcodeBuild), move the .xcarchive to ~/Library/Developer/Xcode/Archives/<date>/,
