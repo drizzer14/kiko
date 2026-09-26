@@ -1,10 +1,10 @@
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { Currency } from '@kiko/currency/currency';
+import { asLoanMeta } from '@kiko/holdings/holding-metadata';
+import { loanInterestForPaymentMinor } from '@kiko/holdings/loan-schedule';
 
 import type { TrendTransaction } from '../category-trend';
-import { asLoanMeta } from '../../holdings/holding-metadata';
-import { loanInterestForPaymentMinor } from '../../holdings/loan-schedule';
 
 // The seeded default category (`drizzle/migrations/0039_seed_loan_interest_category.sql`)
 // every derived interest entry below is filed under.

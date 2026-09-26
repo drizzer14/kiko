@@ -1,8 +1,8 @@
 import { i18n } from '@kiko/i18n/init';
 import type { HoldingRow } from '@kiko/db';
+import { walletAddressOf } from '@kiko/holdings/holding-metadata';
 
 import type { BalanceProvider } from '../provider';
-import { walletAddressOf } from '../../holdings/holding-metadata';
 
 import { isValidBitcoinAddress } from './bitcoin-address';
 import { fetchAddressBalance } from './btc-wallet.client';

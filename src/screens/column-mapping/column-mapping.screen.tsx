@@ -8,6 +8,7 @@ import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { bifoldr, eitherSync } from 'fnts/either';
+import { holdingsRepo } from '@kiko/holdings/repo';
 import { useEffect, useRef, useState } from 'react';
 import type { ScrollViewInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
@@ -30,7 +31,6 @@ import {
   headerFingerprint,
   guessHeaderRowIndex,
 } from '../../statement-import/column-mapping';
-import { holdingsRepo } from '../../holdings/repo';
 import {
   fileNameOf,
   isXlsxFile,

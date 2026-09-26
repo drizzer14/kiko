@@ -8,6 +8,9 @@ import { Money } from '@kiko/currency/money';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
+import type { Metal } from '@kiko/holdings/holding-metadata';
+import type { HoldingType } from '@kiko/holdings/holding-type';
+import { refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
 
 import {
   asNavigationProp,
@@ -15,10 +18,7 @@ import {
   navigationSpy,
 } from '../../../test-support/navigation-props';
 import { darkTheme } from '../../../design-system/theme';
-import type { Metal } from '../../../holdings/holding-metadata';
 import { fieldSuffix } from '../../../test-support/field-suffix';
-import type { HoldingType } from '../../../holdings/holding-type';
-import { refreshBondRegisterIfStale } from '../../../bonds/bond-register-repo';
 import { scrollToField } from '../../../design-system/scroll-to-field/scroll-to-field';
 
 import HoldingFormScreen from './holding-form.screen';
@@ -155,7 +155,7 @@ jest.mock('@kiko/db/use-live-query', () => ({
 // enough — the same pattern `accountsRepo.byIdQuery` uses below.
 // `refreshBondRegisterIfStale` is mocked so no test hits
 // a real network `fetch`; each relevant test can assert it was invoked.
-jest.mock('../../../bonds/bond-register-repo', () => ({
+jest.mock('@kiko/bonds/bond-register-repo', () => ({
   bondRegisterRepo: {
     findByIsinQuery: () => ({ __kind: 'findByIsin', toSQL: () => ({ sql: '', params: [] }) }),
     fetchedAtQuery: () => ({ __kind: 'fetchedAt', toSQL: () => ({ sql: '', params: [] }) }),

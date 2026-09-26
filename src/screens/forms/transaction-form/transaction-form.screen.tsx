@@ -9,43 +9,49 @@ import {
   useState,
 } from 'react';
 import { match } from 'ts-pattern';
+import {
+  canConvertToExchange,
+  type ExchangeConvertDirection,
+  exchangeConvertDirection,
+} from '@kiko/holdings/exchange-convert';
 import type { TFunction } from 'i18next';
+import {
+  buildCategoryDisplayMap,
+  DEFAULT_CATEGORY_KEY,
+  resolveCategoryDisplay,
+} from '@kiko/categories/category-display';
 import { ratesRepo } from '@kiko/rates/repo';
 import { Money } from '@kiko/currency/money';
+import {
+  isExchangeCreateDestinationType,
+  isExchangeCreateSourceType,
+  isExchangeDestinationType,
+  isExchangeSourceType,
+} from '@kiko/holdings/exchange-destination';
 import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { parseAmount } from '@kiko/currency/parse';
 import { categoriesRepo } from '@kiko/categories/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { isSyncedHolding } from '@kiko/holdings/deletable';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
+import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
+import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
+import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
 import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
 import { type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
 import { useLiveQuery, type AccountRow, type HoldingRow, type TransactionRow } from '@kiko/db';
 
 import DateTimeRow from '../date-time-row';
-import {
-  canConvertToExchange,
-  type ExchangeConvertDirection,
-  exchangeConvertDirection,
-} from '../../../holdings/exchange-convert';
-import {
-  buildCategoryDisplayMap,
-  DEFAULT_CATEGORY_KEY,
-  resolveCategoryDisplay,
-} from '../../../categories/category-display';
 import CategoryField from '../category-field';
-import {
-  isExchangeCreateDestinationType,
-  isExchangeCreateSourceType,
-  isExchangeDestinationType,
-  isExchangeSourceType,
-} from '../../../holdings/exchange-destination';
 import ExchangeFields from '../exchange-fields';
 import ModeSelectField from '../mode-select-field';
 import LoanPaymentField from '../loan-payment-field';
@@ -54,7 +60,6 @@ import HoldingSelectField from '../holding-select-field';
 import Text from '../../../design-system/components/text';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
-import { isSyncedHolding } from '../../../holdings/deletable';
 import ConvertExchangeFields from '../convert-exchange-fields';
 import {
   useHeaderInset,
@@ -66,17 +71,12 @@ import DescriptionSuggestions from '../description-suggestions';
 import SymbolIcon from '../../../design-system/components/symbol';
 import TextField from '../../../design-system/components/text-field';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
-import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import FieldError from '../../../design-system/components/field-error';
 import type { TransactionFormParams } from '../../../navigation/types';
-import { defaultHoldingSymbol } from '../../../holdings/entity-symbols';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import type { FormMode } from '../mode-select-field/mode-select-field.props';
-import { resolveCategoryColor } from '../../../statistics/category-breakdown';
 import { groupAmount, majorAmountText } from '../amount-format/amount-format';
-import { seedCounterpartMinorUnits } from '../../../holdings/exchange-prefill';
-import { normalizeTransactionName } from '../../../transactions/normalize-name';
 import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
 import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 

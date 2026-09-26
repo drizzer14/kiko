@@ -6,13 +6,13 @@ import { Rect, Svg } from 'react-native-svg';
 import { Money } from '@kiko/currency/money';
 import { useTranslation } from 'react-i18next';
 import type { Currency } from '@kiko/currency/currency';
+import type { HoldingType } from '@kiko/holdings/holding-type';
+import type { TypeSlice } from '@kiko/statistics/type-breakdown';
+import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
-import type { HoldingType } from '../../../holdings/holding-type';
-import type { TypeSlice } from '../../../statistics/type-breakdown';
 import MoneyText from '../../../design-system/components/money-text';
-import { defaultHoldingColor } from '../../../holdings/entity-colors';
 
 import { styles } from './bar-chart.styles';
 

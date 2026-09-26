@@ -16,9 +16,8 @@ import { Money } from '@kiko/currency/money';
 import { accounts, holdings, transactions } from '@kiko/db';
 import { captureSetDatabaseTransaction } from '@kiko/db/capture-set-tx';
 import { renderCondition } from '@kiko/db/render-condition-test-helper';
+import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import { inArrayClauseFromCondition } from '@kiko/db/in-array-clause-test-helper';
-
-import { isSyncedAccount, isSyncedHolding } from '../holdings/deletable';
 
 import { accountsRepo } from './accounts.repo';
 

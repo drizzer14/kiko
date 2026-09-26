@@ -3,6 +3,7 @@ import { StyleSheet, TextInput } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { categoryColor } from '@kiko/statistics/category-breakdown';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 
 import {
@@ -11,7 +12,6 @@ import {
   navigationSpy,
 } from '../../../test-support/navigation-props';
 import { darkTheme } from '../../../design-system/theme';
-import { categoryColor } from '../../../statistics/category-breakdown';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
 import { mockReanimatedScrollToEnd } from '../../../test-support/mock-reanimated-scroll-to-end';

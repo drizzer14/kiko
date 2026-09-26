@@ -158,6 +158,10 @@ jest.mock('@kiko/holdings/repo', () => ({
     }),
     remove: (...args: unknown[]) => mockRemove(...args),
     reorder: (...args: unknown[]) => mockReorder(...args),
+    balanceOf: (row: { currency: string; balanceMinorUnits: number }) => ({
+      currency: row.currency,
+      minorUnits: row.balanceMinorUnits,
+    }),
   },
 }));
 jest.mock('@kiko/rates/repo', () => ({

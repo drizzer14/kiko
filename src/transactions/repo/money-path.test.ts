@@ -14,11 +14,10 @@ jest.mock('@kiko/db/client', () => {
 });
 
 import { holdings, transactions } from '@kiko/db';
+import { buildCategoryTrend } from '@kiko/statistics/category-trend';
+import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
 import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
-
-import { buildCategoryTrend } from '../../statistics/category-trend';
-import { seedCounterpartMinorUnits } from '../../holdings/exchange-prefill';
-import { buildCategoryBreakdown } from '../../statistics/category-breakdown';
+import { buildCategoryBreakdown } from '@kiko/statistics/category-breakdown';
 
 import { transactionsRepo } from './transactions.repo';
 

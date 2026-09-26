@@ -1,9 +1,9 @@
 import type { HoldingRow } from '@kiko/db';
 import { buildPriceBook } from '@kiko/prices/price-book';
 import { holdingInstrument } from '@kiko/prices/instrument';
+import { buildNetWorthSeries } from '@kiko/statistics/net-worth-series';
 
 import { holdingValue } from '../holding-value';
-import { buildNetWorthSeries } from '../../statistics/net-worth-series';
 
 import {
   withOwnershipChange,

@@ -1,26 +1,26 @@
 import type { FC } from 'react';
 import { formatDate } from '@kiko/dates';
-import maybe, { foldMap } from 'fnts/maybe';
-import { Money } from '@kiko/currency/money';
-import { settingsRepo } from '@kiko/settings';
-import { useTranslation } from 'react-i18next';
-import { useDataReady, useLiveQuery } from '@kiko/db';
-
-import Box from '../box';
-import Text from '../text';
-import Divider from '../divider';
-import LoadingState from '../loading-state';
 import {
   DEFAULT_CATEGORY_KEY,
   buildCategoryDisplayMap,
   resolveCategoryDisplay,
   resolveCategoryKey,
-} from '../../../categories/category-display';
+} from '@kiko/categories/category-display';
+import maybe, { foldMap } from 'fnts/maybe';
+import { Money } from '@kiko/currency/money';
+import { settingsRepo } from '@kiko/settings';
+import { useTranslation } from 'react-i18next';
+import { useDataReady, useLiveQuery } from '@kiko/db';
+import { categoriesRepo } from '@kiko/categories/repo';
+import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import { transactionRowDescription } from '@kiko/transactions/row-description';
+
+import Box from '../box';
+import Text from '../text';
+import Divider from '../divider';
+import LoadingState from '../loading-state';
 import TransactionCard from '../transaction-card';
-import { categoriesRepo } from '../../../categories/repo';
 import { categoryForMcc } from '../../../monobank/mcc-category';
-import { resolveCategoryColor } from '../../../statistics/category-breakdown';
-import { transactionRowDescription } from '../../../transactions/row-description';
 
 import type { ExampleTransactionProps } from './example-transaction.props';
 

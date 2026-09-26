@@ -1,16 +1,16 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
-import type { TFunction } from 'i18next';
-import { useTranslation } from 'react-i18next';
-
-import DateField from '../../../date-field';
-import TermField from '../../../term-field';
 import {
   loanKinds,
   loanSchedules,
   type LoanKind,
   type LoanSchedule,
-} from '../../../../../holdings/holding-metadata';
+} from '@kiko/holdings/holding-metadata';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
+
+import DateField from '../../../date-field';
+import TermField from '../../../term-field';
 import Box from '../../../../../design-system/components/box';
 import PaymentHoldingField from '../../../payment-holding-field';
 import TextField from '../../../../../design-system/components/text-field';

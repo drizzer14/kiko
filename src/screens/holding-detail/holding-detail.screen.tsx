@@ -3,7 +3,14 @@ import type { TFunction } from 'i18next';
 import {
   holdingDescriptorOrUndefined,
   isTimeExemptHoldingType,
+  propertyOwnershipView,
+  type PropertyOwnershipView,
 } from '@kiko/holdings/holding-descriptor';
+import {
+  buildCategoryDisplayMap,
+  DEFAULT_CATEGORY_KEY,
+  resolveCategoryDisplay,
+} from '@kiko/categories/category-display';
 import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
 import { Money } from '@kiko/currency/money';
@@ -16,58 +23,49 @@ import { formatMoney } from '@kiko/currency/format';
 import { categoriesRepo } from '@kiko/categories/repo';
 import { activeLocale } from '@kiko/i18n/active-locale';
 import type { Currency } from '@kiko/currency/currency';
-import {
-  propertyOwnershipView,
-  type PropertyOwnershipView,
-} from '@kiko/holdings/holding-descriptor/property-item';
 import type { PriceBook } from '@kiko/prices/price-book';
 import type { BondTerms } from '@kiko/bonds/nbu-register';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { usePriceBook } from '@kiko/prices/use-price-book';
 import { asLoanMeta } from '@kiko/holdings/holding-metadata';
+import { groupByDay } from '@kiko/transactions/group-by-day';
+import { needsPriceBook } from '@kiko/holdings/priced-value';
 import { loanLedgerSummary } from '@kiko/holdings/loan-ledger';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { convert, type RateTable } from '@kiko/rates/conversion';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { ownershipShareDetailText } from '@kiko/holdings/ownership';
+import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
 import { startOfLocalDay, formatDate, formatTime } from '@kiko/dates';
 import { buildRateTable, canConvert } from '@kiko/rates/net-worth-view';
+import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { transactionRowDescription } from '@kiko/transactions/row-description';
+import { isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
 import { useDataReady, useLiveQuery, type HoldingRow, type TransactionRow } from '@kiko/db';
 import { type FC, type ReactElement, type ReactNode, useLayoutEffect, useMemo } from 'react';
+import { type HoldingValueBreakdown, holdingValueBreakdown } from '@kiko/holdings/holding-value';
+import { type DerivedEntry, derivedEntries, type EntryTone } from '@kiko/holdings/derived-entries';
 
-import {
-  buildCategoryDisplayMap,
-  DEFAULT_CATEGORY_KEY,
-  resolveCategoryDisplay,
-} from '../../categories/category-display';
 import Box from '../../design-system/components/box';
 import Card from '../../design-system/components/card';
 import Text from '../../design-system/components/text';
 import Button from '../../design-system/components/button';
 import Divider from '../../design-system/components/divider';
-import { groupByDay } from '../../transactions/group-by-day';
-import { needsPriceBook } from '../../holdings/priced-value';
 import SymbolIcon from '../../design-system/components/symbol';
 import MoneyText from '../../design-system/components/money-text';
-import { defaultHoldingColor } from '../../holdings/entity-colors';
-import { defaultHoldingSymbol } from '../../holdings/entity-symbols';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../navigation/types';
 import SummaryTable from '../../design-system/components/summary-table';
 import LoadingState from '../../design-system/components/loading-state';
-import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import CardContextMenu from '../../design-system/components/card-context-menu';
-import { transactionRowDescription } from '../../transactions/row-description';
-import { isSyncedHolding, isSyncedTransaction } from '../../holdings/deletable';
 import EntityHeaderIcon from '../../design-system/components/entity-header-icon';
 import EditHeaderButton from '../../design-system/components/edit-header-button';
 import EntityAmountHeader from '../../design-system/components/entity-amount-header';
 import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
 import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
-import { type HoldingValueBreakdown, holdingValueBreakdown } from '../../holdings/holding-value';
-import { type DerivedEntry, derivedEntries, type EntryTone } from '../../holdings/derived-entries';
 
 import {
   type FooterAction,

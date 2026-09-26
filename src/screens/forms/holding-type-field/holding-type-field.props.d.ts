@@ -1,4 +1,4 @@
-import type { HoldingType } from '../../../holdings/holding-type/holding-type';
+import type { HoldingType } from '@kiko/holdings/holding-type';
 
 export type HoldingTypeFieldProps = {
   // Every type offered in the sheet, in display order — the holding form

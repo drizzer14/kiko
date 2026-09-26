@@ -2,7 +2,7 @@ import { Money } from '@kiko/currency/money';
 import type { Currency } from '@kiko/currency/currency';
 import { fireEvent, render, within } from '@testing-library/react-native';
 
-import type { AccountSlice } from '../../../statistics/account-contribution';
+import type { AccountSlice } from '@kiko/statistics/account-contribution';
 import '../../../design-system/unistyles';
 import PieChart from './pie-chart.component';
 

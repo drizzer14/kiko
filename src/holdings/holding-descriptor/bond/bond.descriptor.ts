@@ -1,16 +1,16 @@
 import type { TFunction } from 'i18next';
 import { startOfLocalDay } from '@kiko/dates';
+import { holdingsRepo } from '@kiko/holdings/repo';
 import { Money, toMajor } from '@kiko/currency/money';
+import { taxOnInterestMinor } from '@kiko/holdings/tax';
+import type { DerivedEntry } from '@kiko/holdings/derived-entries';
+import type { ValuableHolding } from '@kiko/holdings/holding-value';
+import { bondCouponDates, bondCouponMajor } from '@kiko/holdings/interest';
+import { asBondMeta, type BondMeta } from '@kiko/holdings/holding-metadata';
 
 import { makeEntry } from '../entry-parts';
-import { taxOnInterestMinor } from '../../tax';
-import { holdingsRepo } from '../../repo/holdings.repo';
-import type { DerivedEntry } from '../../derived-entries';
-import type { ValuableHolding } from '../../holding-value';
 import type { HoldingDescriptor } from '../holding-descriptor.d';
 import { entityColorsDark } from '../../../design-system/palette';
-import { bondCouponDates, bondCouponMajor } from '../../interest';
-import { asBondMeta, type BondMeta } from '../../holding-metadata';
 import { flat, type HoldingValueBreakdown } from '../breakdown-parts';
 
 const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreakdown => {

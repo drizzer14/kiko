@@ -1,6 +1,7 @@
 import { holdingsRepo } from '@kiko/holdings/repo';
 import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 
 import {
   StatementParseError,
@@ -9,7 +10,6 @@ import {
   type ParsedStatementSource,
 } from '../parser';
 import { detectFormat } from '../registry';
-import { runLoanAutoLink } from '../../loans/use-loan-auto-link';
 import { computeDedupKey, mapParsedTransaction } from '../mapping';
 
 export type ImportResult = {

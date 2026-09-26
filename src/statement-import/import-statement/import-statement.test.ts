@@ -35,7 +35,7 @@ jest.mock('@kiko/holdings/repo', () => ({
 // (`use-loan-auto-link.test.ts`); this file only proves the WIRING — that
 // every `importParsedStatement` caller runs it once the import commits.
 const mockRunLoanAutoLink = jest.fn().mockResolvedValue(undefined);
-jest.mock('../../loans/use-loan-auto-link', () => ({
+jest.mock('@kiko/loans/use-loan-auto-link', () => ({
   runLoanAutoLink: () => mockRunLoanAutoLink(),
 }));
 

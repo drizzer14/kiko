@@ -1,17 +1,17 @@
 import type { TFunction } from 'i18next';
 import { Money } from '@kiko/currency/money';
+import { quantityAt } from '@kiko/holdings/lots';
 import type { Currency } from '@kiko/currency/currency';
 import { metalInstrument } from '@kiko/prices/instrument';
+import { asMetalMeta } from '@kiko/holdings/holding-metadata';
+import type { PricedHolding } from '@kiko/holdings/priced-value';
 import { priceAt, type PriceBook } from '@kiko/prices/price-book';
+import type { DerivedEntry } from '@kiko/holdings/derived-entries';
+import type { ValuableHolding } from '@kiko/holdings/holding-value';
 import { compareDecimal, multiplyToMinorUnits } from '@kiko/currency/decimal';
 
-import { quantityAt } from '../../lots';
 import { makeEntry } from '../entry-parts';
 import { pricedDescriptor } from '../priced-parts';
-import { asMetalMeta } from '../../holding-metadata';
-import type { PricedHolding } from '../../priced-value';
-import type { DerivedEntry } from '../../derived-entries';
-import type { ValuableHolding } from '../../holding-value';
 import { entityColorsDark } from '../../../design-system/palette';
 import type { HoldingDescriptor, PricedSpec } from '../holding-descriptor.d';
 

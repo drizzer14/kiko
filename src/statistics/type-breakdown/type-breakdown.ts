@@ -2,12 +2,11 @@ import type { HoldingRow } from '@kiko/db';
 import { Money } from '@kiko/currency/money';
 import { canConvert } from '@kiko/rates/net-worth-view';
 import type { Currency } from '@kiko/currency/currency';
+import { holdingValue } from '@kiko/holdings/holding-value';
 import { convert, type RateTable } from '@kiko/rates/conversion';
 import { holdingDescriptor } from '@kiko/holdings/holding-descriptor';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
-
-import { holdingValue } from '../../holdings/holding-value';
-import { type HoldingType, holdingTypes } from '../../holdings/holding-type';
+import { type HoldingType, holdingTypes } from '@kiko/holdings/holding-type';
 
 /** A holding as the by-type bar needs it: its type plus its convertible value. */
 export type BreakdownHolding = Pick<

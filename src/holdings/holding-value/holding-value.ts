@@ -2,9 +2,12 @@ import type { HoldingRow } from '@kiko/db';
 import type { Money } from '@kiko/currency/money';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
 
-import { holdingsRepo } from '../repo/holdings.repo';
-import { holdingDescriptorOrUndefined } from '../holding-descriptor';
-import { flat, type HoldingValueBreakdown } from '../holding-descriptor/breakdown-parts';
+import {
+  flat,
+  holdingDescriptorOrUndefined,
+  type HoldingValueBreakdown,
+} from '../holding-descriptor';
+import { holdingsRepo } from '../repo';
 
 /** Every real holding row has an `id`; this `Pick` requires it too. */
 export type ValuableHolding = Pick<

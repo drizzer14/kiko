@@ -1,8 +1,7 @@
 import { Money } from '@kiko/currency/money';
 import { type Currency, currencyScale } from '@kiko/currency/currency';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
-
-import { holdingValue, type ValuableHolding } from '../../holdings/holding-value';
+import { holdingValue, type ValuableHolding } from '@kiko/holdings/holding-value';
 
 /**
  * A currency's price in ONE UAH — `rate(X, UAH)` — the single pivot every

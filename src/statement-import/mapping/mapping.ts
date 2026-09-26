@@ -1,9 +1,9 @@
 import maybe, { foldMap } from 'fnts/maybe';
 import type { TransactionRow } from '@kiko/db';
+import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
 import type { ParsedTransaction } from '../parser';
 import { categoryForMcc } from '../../monobank/mcc-category';
-import { normalizeTransactionName } from '../../transactions/normalize-name';
 
 /**
  * The identical `NewTransaction` field set `mapStatementItem`

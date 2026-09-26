@@ -1,14 +1,14 @@
+import {
+  type CategoryDisplay,
+  resolveCategoryDisplay,
+  resolveCategoryKey,
+} from '@kiko/categories/category-display';
 import { Money } from '@kiko/currency/money';
 import { canConvert } from '@kiko/rates/net-worth-view';
 import type { Currency } from '@kiko/currency/currency';
 import type { HoldingRow, TransactionRow } from '@kiko/db';
 import { convert, type RateTable } from '@kiko/rates/conversion';
 
-import {
-  type CategoryDisplay,
-  resolveCategoryDisplay,
-  resolveCategoryKey,
-} from '../../categories/category-display';
 import { chartSeriesDark } from '../../design-system/palette';
 
 /**

@@ -1,11 +1,11 @@
 import maybe, { foldMap } from 'fnts/maybe';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import type { HoldingRow, PricePointRow } from '@kiko/db';
+import { asMetalMeta, type Metal } from '@kiko/holdings/holding-metadata';
 
 import { dayKeyOf } from '../price-book';
 import { metalInstrument } from '../instrument';
 import { pricePointsRepo } from '../price-points-repo';
-import { asMetalMeta, type Metal } from '../../holdings/holding-metadata';
 import { fetchNbuMetalHistory, fetchNbuMetalsCurrent, type NbuMetalRate } from '../nbu-metals';
 
 const DAY_MS = 24 * 60 * 60 * 1000;

@@ -1,4 +1,5 @@
-import type { TrendFilter } from '../../../statistics/trend-filter';
+import type { TrendFilter } from '@kiko/statistics/trend-filter';
+
 import type { FilterOption } from '../../../design-system/components/filter-menu/filter-menu.props';
 
 export type TrendFilterFieldProps = {

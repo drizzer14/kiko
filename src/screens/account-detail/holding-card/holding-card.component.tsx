@@ -7,17 +7,17 @@ import { activeLocale } from '@kiko/i18n/active-locale';
 import { canConvert } from '@kiko/rates/net-worth-view';
 import type { Currency } from '@kiko/currency/currency';
 import type { PriceBook } from '@kiko/prices/price-book';
+import { holdingValue } from '@kiko/holdings/holding-value';
 import { ownershipShareText } from '@kiko/holdings/ownership';
 import { convert, type RateTable } from '@kiko/rates/conversion';
-import { propertyOwnershipView } from '@kiko/holdings/holding-descriptor/property-item';
+import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
+import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
+import { propertyOwnershipView } from '@kiko/holdings/holding-descriptor';
 
 import Box from '../../../design-system/components/box';
 import Card from '../../../design-system/components/card';
 import Text from '../../../design-system/components/text';
-import { holdingValue } from '../../../holdings/holding-value';
 import MoneyText from '../../../design-system/components/money-text';
-import { defaultHoldingColor } from '../../../holdings/entity-colors';
-import { defaultHoldingSymbol } from '../../../holdings/entity-symbols';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import EntityIconTile from '../../../design-system/components/entity-icon-tile';
 

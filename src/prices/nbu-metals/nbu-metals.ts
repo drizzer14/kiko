@@ -2,8 +2,7 @@ import { guard } from 'fnts';
 import { NBU_API_ENDPOINT } from '@env';
 import maybe, { foldMap } from 'fnts/maybe';
 import { decimalFromJsonNumber } from '@kiko/currency/decimal';
-
-import { type Metal, preciousMetals } from '../../holdings/holding-metadata';
+import { type Metal, preciousMetals } from '@kiko/holdings/holding-metadata';
 
 /**
  * NBU's public, tokenless CURRENT-rate endpoint — the SAME URL

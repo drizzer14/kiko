@@ -3,8 +3,8 @@
 // `fetchNbuMetalHistory` (one range call per metal), and its already-priced
 // branch calls `fetchNbuMetalsCurrent` (the shared current-exchange payload).
 import type { HoldingRow, PricePointRow } from '@kiko/db';
+import type { Metal } from '@kiko/holdings/holding-metadata';
 
-import type { Metal } from '../../holdings/holding-metadata';
 import type { NbuMetalHistoryPoint, NbuMetalRate } from '../nbu-metals';
 
 import { type MetalRefreshDeps, refreshMetalPrices } from './metal-refresh';

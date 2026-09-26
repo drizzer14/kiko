@@ -3,10 +3,10 @@ import { netWorth } from '@kiko/rates/conversion';
 import { buildPriceBook } from '@kiko/prices/price-book';
 import { holdingInstrument } from '@kiko/prices/instrument';
 import { sumByCurrency } from '@kiko/rates/currency-totals';
+import { buildTypeBreakdown } from '@kiko/statistics/type-breakdown';
+import { buildNetWorthSeries } from '@kiko/statistics/net-worth-series';
 
 import { holdingValue } from '../holding-value';
-import { buildTypeBreakdown } from '../../statistics/type-breakdown';
-import { buildNetWorthSeries } from '../../statistics/net-worth-series';
 
 // Every property saved before the ownership share existed carries no
 // `ownership` key. These literals were read off the build before the share

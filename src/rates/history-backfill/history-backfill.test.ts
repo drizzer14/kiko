@@ -1,13 +1,13 @@
 import { Money, toMajor } from '@kiko/currency/money';
 import type { Currency } from '@kiko/currency/currency';
+import type { SeriesHolding } from '@kiko/statistics/holding-value-at';
+import { buildNetWorthSeries } from '@kiko/statistics/net-worth-series';
 
 import {
   type CryptoHistory,
   fetchCryptoHistory as fetchCoinGeckoHistory,
 } from '../coingecko-history';
 import type { HistoryRateEntry } from '../history-entry';
-import type { SeriesHolding } from '../../statistics/holding-value-at';
-import { buildNetWorthSeries } from '../../statistics/net-worth-series';
 
 import {
   type BackfillDeps,

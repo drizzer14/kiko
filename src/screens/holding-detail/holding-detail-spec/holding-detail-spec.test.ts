@@ -1,10 +1,12 @@
+import {
+  bondExpectedProfitMinor,
+  isLedgerlessHoldingType,
+} from '@kiko/holdings/holding-descriptor';
 import type { HoldingRow } from '@kiko/db';
 import { addMonths } from '@kiko/holdings/interest';
 import type { BondMeta, LoanMeta } from '@kiko/holdings/holding-metadata';
 import { buildPriceBook, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
-import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { holdingTypes, type HoldingType } from '@kiko/holdings/holding-type';
-import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor/bond';
 
 import { type FooterAction, holdingDetailSpecFor, holdingDetailSpecs } from './holding-detail-spec';
 

@@ -3,9 +3,8 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import type { Currency } from '@kiko/currency/currency';
-
-import { loanInstallments } from '../../holdings/loan-schedule';
-import { asLoanMeta, type LoanMeta } from '../../holdings/holding-metadata';
+import { loanInstallments } from '@kiko/holdings/loan-schedule';
+import { asLoanMeta, type LoanMeta } from '@kiko/holdings/holding-metadata';
 
 // Exported so `use-loan-auto-link.ts` can derive its own SQL-level lower
 // bound ("earliest loan start minus the window's own before-margin") from

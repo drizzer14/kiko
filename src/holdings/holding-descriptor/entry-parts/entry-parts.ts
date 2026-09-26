@@ -1,6 +1,5 @@
 import { match } from 'ts-pattern';
-
-import type { DerivedEntry, DerivedEntryKind, EntryTone } from '../../derived-entries';
+import type { DerivedEntry, DerivedEntryKind, EntryTone } from '@kiko/holdings/derived-entries';
 
 // The ledger tone a derived entry reads in: withholding lines are `negative`
 // (red), interest/coupon accruals are `positive` (green), and the principal

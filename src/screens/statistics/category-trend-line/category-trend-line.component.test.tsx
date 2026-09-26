@@ -1,6 +1,6 @@
 import { render, within } from '@testing-library/react-native';
 
-import type { CategoryTrendSeries } from '../../../statistics/category-trend';
+import type { CategoryTrendSeries } from '@kiko/statistics/category-trend';
 import '../../../design-system/unistyles';
 import CategoryTrendLine from './index';
 

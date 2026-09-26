@@ -8,7 +8,7 @@ import type { HoldingType } from '@kiko/holdings/holding-type';
 import { bondYieldToMaturity } from '@kiko/bonds/yield-to-maturity';
 import { asBondMeta, asLoanMeta } from '@kiko/holdings/holding-metadata';
 import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
-import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor/bond';
+import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor';
 import { loanInstallments, type LoanInstallment } from '@kiko/holdings/loan-schedule';
 
 /** Which add action the detail screen's footer offers. */

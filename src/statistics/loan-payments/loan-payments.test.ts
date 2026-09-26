@@ -1,4 +1,4 @@
-import type { LoanMeta } from '../../holdings/holding-metadata';
+import type { LoanMeta } from '@kiko/holdings/holding-metadata';
 
 import {
   type LoanHolding,

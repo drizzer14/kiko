@@ -1,8 +1,8 @@
 import { startOfLocalDay } from '@kiko/dates';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import type { Currency } from '@kiko/currency/currency';
+import type { BondMeta } from '@kiko/holdings/holding-metadata';
 
-import type { BondMeta } from '../../holdings/holding-metadata';
 import type { SeriesHolding, SeriesTransaction } from '../holding-value-at';
 
 /**

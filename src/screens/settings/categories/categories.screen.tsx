@@ -7,6 +7,8 @@ import { useAnimatedRef } from 'react-native-reanimated';
 import { type FC, useCallback, useRef, useState } from 'react';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { type CategoryRow, useDataReady, useLiveQuery } from '@kiko/db';
+import { DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
+import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
 
@@ -19,8 +21,6 @@ import type { SettingsStackParamList } from '../../../navigation/types';
 import ColorPicker from '../../../design-system/components/color-picker';
 import LoadingState from '../../../design-system/components/loading-state';
 import ConfirmSheet from '../../../design-system/components/confirm-sheet';
-import { DEFAULT_CATEGORY_KEY } from '../../../categories/category-display';
-import { resolveCategoryColor } from '../../../statistics/category-breakdown';
 import HoldingIdentityField from '../../../design-system/components/holding-identity-field';
 import { KIKO_CATEGORIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 

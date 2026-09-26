@@ -1,26 +1,30 @@
 import { match } from 'ts-pattern';
 import { View } from 'react-native';
-import { accountsRepo } from '@kiko/accounts';
-import { useTranslation } from 'react-i18next';
-import { holdingsRepo } from '@kiko/holdings/repo';
-import type { Currency } from '@kiko/currency/currency';
-import { usePriceBook } from '@kiko/prices/use-price-book';
-import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
-import { refreshMarketData } from '@kiko/sync/refresh-market-data';
-import { holdingCurrencyOptions } from '@kiko/holdings/holding-currency';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
-import { useLiveQuery, type AccountRow, type HoldingRow } from '@kiko/db';
-import type { ScrollViewInstance, TextInputInstance } from 'react-native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { holdingDescriptor, isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
-
 import {
   creatableHoldingTypesForAccount,
   type HoldingType,
   holdingTypes,
   holdingTypesForAccountKind,
-} from '../../../holdings/holding-type';
+} from '@kiko/holdings/holding-type';
+import { accountsRepo } from '@kiko/accounts';
+import { useTranslation } from 'react-i18next';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import type { Currency } from '@kiko/currency/currency';
+import { usePriceBook } from '@kiko/prices/use-price-book';
+import { needsPriceBook } from '@kiko/holdings/priced-value';
+import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
+import { refreshMarketData } from '@kiko/sync/refresh-market-data';
+import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
+import { holdingCurrencyOptions } from '@kiko/holdings/holding-currency';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import { useLiveQuery, type AccountRow, type HoldingRow } from '@kiko/db';
+import type { ScrollViewInstance, TextInputInstance } from 'react-native';
+import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { defaultHoldingSymbol, holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
+import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { holdingDescriptor, isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
+
 import HoldingTypeField from '../holding-type-field';
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
@@ -31,16 +35,12 @@ import {
   type FieldInstance,
 } from '../../../design-system/scroll-to-field/scroll-to-field';
 import Divider from '../../../design-system/components/divider';
-import { needsPriceBook } from '../../../holdings/priced-value';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
-import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../../navigation/types';
 import ColorPicker from '../../../design-system/components/color-picker';
 import CurrencyField from '../../../design-system/components/currency-field';
-import { isSyncedAccount, isSyncedHolding } from '../../../holdings/deletable';
 import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
-import { defaultHoldingSymbol, holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import HoldingIdentityField from '../../../design-system/components/holding-identity-field';
 import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';

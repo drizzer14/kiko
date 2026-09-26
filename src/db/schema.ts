@@ -1,9 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { currencyOptions } from '@kiko/currency/currency';
+import type { BondTerms } from '@kiko/bonds/nbu-register';
+import type { TrendFilter } from '@kiko/statistics/trend-filter';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
-import type { BondTerms } from '../bonds/nbu-register';
-import type { TrendFilter } from '../statistics/trend-filter';
 import type { SavedColumnMapping } from '../statement-import/column-mapping/saved-mapping';
 
 // The currency columns below are TS-enum-typed text columns (SQLite stores plain

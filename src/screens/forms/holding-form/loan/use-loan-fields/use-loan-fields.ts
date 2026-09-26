@@ -1,4 +1,10 @@
 import type { RefObject } from 'react';
+import {
+  asLoanMeta,
+  type LoanKind,
+  type LoanMeta,
+  type LoanSchedule,
+} from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
@@ -7,6 +13,7 @@ import { useCallback, useRef, useState } from 'react';
 import { shiftDecimal } from '@kiko/currency/decimal';
 import type { TextInputInstance } from 'react-native';
 import { normalizeIban } from '@kiko/loans/payment-matcher';
+import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import { dayKeyOf, type PriceBook } from '@kiko/prices/price-book';
 import { currencyScale, type Currency } from '@kiko/currency/currency';
 import { holdingsRepo, type LoanPricePointOp } from '@kiko/holdings/repo';
@@ -20,13 +27,6 @@ import {
   termMonthsFromInput,
   type TermReasonKey,
 } from '../../../term-field/term-reasons';
-import {
-  asLoanMeta,
-  type LoanKind,
-  type LoanMeta,
-  type LoanSchedule,
-} from '../../../../../holdings/holding-metadata';
-import { loanInstallments } from '../../../../../holdings/loan-schedule';
 import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
 import type { FieldInstance } from '../../../../../design-system/scroll-to-field/scroll-to-field';

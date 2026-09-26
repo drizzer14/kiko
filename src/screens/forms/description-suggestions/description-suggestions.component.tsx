@@ -1,8 +1,8 @@
 import type { ReactElement } from 'react';
+import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
 import Box from '../../../design-system/components/box';
 import ChipRow from '../../../design-system/components/chip-row';
-import { normalizeTransactionName } from '../../../transactions/normalize-name';
 
 import type { DescriptionSuggestionsProps } from './description-suggestions.props';
 

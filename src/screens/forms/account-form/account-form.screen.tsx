@@ -6,10 +6,12 @@ import { useTranslation } from 'react-i18next';
 import { parseAmount } from '@kiko/currency/parse';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import { id, type AccountRow, useLiveQuery } from '@kiko/db';
+import { defaultAccountColor } from '@kiko/holdings/entity-colors';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { type Currency, currencySymbol, fiatCurrencyOptions } from '@kiko/currency/currency';
 
 import BankTypeField from '../bank-type-field';
@@ -28,7 +30,6 @@ import {
 import Divider from '../../../design-system/components/divider';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import TextField from '../../../design-system/components/text-field';
-import { defaultAccountColor } from '../../../holdings/entity-colors';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import { type BankId, isBankId } from '../../../bank-sync/bank-catalog';
 import type { AccountsStackParamList } from '../../../navigation/types';
@@ -36,7 +37,6 @@ import ColorPicker from '../../../design-system/components/color-picker';
 import CurrencyField from '../../../design-system/components/currency-field';
 import CryptoSyncForm from '../../../design-system/components/crypto-sync-form';
 import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
-import { accountKindSymbol, genericEntitySymbol } from '../../../holdings/entity-symbols';
 import HoldingIdentityField from '../../../design-system/components/holding-identity-field';
 import MonobankConnectField from '../../../design-system/components/monobank-connect-field';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';

@@ -1,5 +1,6 @@
+import { holdingsRepo } from '@kiko/holdings/repo';
+
 import { flat } from '../breakdown-parts';
-import { holdingsRepo } from '../../repo/holdings.repo';
 import type { HoldingDescriptor } from '../holding-descriptor.d';
 import { entityColorsDark } from '../../../design-system/palette';
 

@@ -4,13 +4,13 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { DAY_MS, formatDate, defaultDateRange } from '@kiko/dates';
+import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 
 import { darkTheme } from '../../design-system/theme';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
 // resolved MoneyText `tone` via a testID — see the module for the full rationale.
 import mockTextTone from '../../test-support/mock-text-tone';
-import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import { resolveBottomClearance } from '../../design-system/components/screen';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
@@ -73,7 +73,13 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { listQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 jest.mock('@kiko/holdings/repo', () => ({
-  holdingsRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+  holdingsRepo: {
+    allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    balanceOf: (row: { currency: string; balanceMinorUnits: number }) => ({
+      currency: row.currency,
+      minorUnits: row.balanceMinorUnits,
+    }),
+  },
 }));
 jest.mock('@kiko/rates/repo', () => ({
   ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },

@@ -6,56 +6,67 @@ import {
   planBackfillRun,
   runBackfill,
 } from '@kiko/rates/history-backfill';
+import {
+  resolveTrendFilter,
+  selectTopCategories,
+  type TrendFilter,
+} from '@kiko/statistics/trend-filter';
+import {
+  loanInterestEntries,
+  loanPaymentExcludedTransactionIds,
+} from '@kiko/statistics/loan-payments';
+import {
+  buildCategoryMeasures,
+  buildCategoryTrend,
+  type TrendTransaction,
+} from '@kiko/statistics/category-trend';
 import { ratesRepo } from '@kiko/rates/repo';
 import { Money } from '@kiko/currency/money';
+import {
+  type BreakdownTransaction,
+  buildCategoryBreakdown,
+  type CategorySlice,
+  resolveCategoryColor,
+} from '@kiko/statistics/category-breakdown';
+import {
+  descriptionExcludedTransferTransactionIds,
+  mccExcludedTransferTransactionIds,
+} from '@kiko/statistics/transfer-exclusion';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
+import {
+  type AccountSlice,
+  buildAccountContribution,
+  buildDebtTotal,
+} from '@kiko/statistics/account-contribution';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import either, { bifold, isLeft } from 'fnts/either';
 import { useDataReady, useLiveQuery } from '@kiko/db';
 import { categoriesRepo } from '@kiko/categories/repo';
 import type { ScrollViewInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
+import { ibanOf } from '@kiko/holdings/holding-metadata';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { usePriceBook } from '@kiko/prices/use-price-book';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
+import { needsPriceBook } from '@kiko/holdings/priced-value';
+import { bucketDaysForSpan } from '@kiko/statistics/buckets';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
+import { defaultAccountColor } from '@kiko/holdings/entity-colors';
+import { buildTypeBreakdown } from '@kiko/statistics/type-breakdown';
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
+import { transactionSpan } from '@kiko/transactions/transaction-span';
+import { buildNetWorthSeries } from '@kiko/statistics/net-worth-series';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { SeriesTransaction } from '@kiko/statistics/holding-value-at';
 import { defaultDateRange, endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
+import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclusion';
+import { internalTransferTransactionIds } from '@kiko/statistics/internal-transfers';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
+import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
 
-import {
-  resolveTrendFilter,
-  selectTopCategories,
-  type TrendFilter,
-} from '../../statistics/trend-filter';
-import {
-  loanInterestEntries,
-  loanPaymentExcludedTransactionIds,
-} from '../../statistics/loan-payments';
-import {
-  buildCategoryMeasures,
-  buildCategoryTrend,
-  type TrendTransaction,
-} from '../../statistics/category-trend';
-import {
-  type BreakdownTransaction,
-  buildCategoryBreakdown,
-  type CategorySlice,
-  resolveCategoryColor,
-} from '../../statistics/category-breakdown';
-import {
-  descriptionExcludedTransferTransactionIds,
-  mccExcludedTransferTransactionIds,
-} from '../../statistics/transfer-exclusion';
-import {
-  type AccountSlice,
-  buildAccountContribution,
-  buildDebtTotal,
-} from '../../statistics/account-contribution';
 import FilterMenu, {
   FILTER_ALL,
   type FilterOption,
@@ -63,23 +74,12 @@ import FilterMenu, {
 import Box from '../../design-system/components/box';
 import Card from '../../design-system/components/card';
 import Text from '../../design-system/components/text';
-import { ibanOf } from '../../holdings/holding-metadata';
 import Screen from '../../design-system/components/screen';
-import { needsPriceBook } from '../../holdings/priced-value';
-import { bucketDaysForSpan } from '../../statistics/buckets';
 import MoneyText from '../../design-system/components/money-text';
-import { defaultAccountColor } from '../../holdings/entity-colors';
 import { resolveEntityColor } from '../../design-system/entity-tint';
-import { buildTypeBreakdown } from '../../statistics/type-breakdown';
-import { transactionSpan } from '../../transactions/transaction-span';
 import LoadingState from '../../design-system/components/loading-state';
 import SummaryTable from '../../design-system/components/summary-table';
-import { buildNetWorthSeries } from '../../statistics/net-worth-series';
-import type { SeriesTransaction } from '../../statistics/holding-value-at';
 import DateRangeField from '../../design-system/components/date-range-field';
-import { exchangeExcludedTransactionIds } from '../../statistics/exchange-exclusion';
-import { internalTransferTransactionIds } from '../../statistics/internal-transfers';
-import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '../../categories/category-display';
 import { useFocusRefreshedNow } from '../../design-system/use-focus-refreshed-now/use-focus-refreshed-now';
 
 import BarChart from './bar-chart';

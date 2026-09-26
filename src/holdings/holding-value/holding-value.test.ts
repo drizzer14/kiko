@@ -1,9 +1,9 @@
 import { Money } from '@kiko/currency/money';
 import { buildPriceBook, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 import { holdingInstrument, metalInstrument } from '@kiko/prices/instrument';
-import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor/bond';
 
 import { asBondMeta } from '../holding-metadata';
+import { bondExpectedProfitMinor } from '../holding-descriptor';
 
 import {
   type HoldingValueBreakdown,

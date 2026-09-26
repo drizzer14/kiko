@@ -6,8 +6,8 @@ import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import { activeLocale } from '@kiko/i18n/active-locale';
 import { ownershipShareDetailText } from '@kiko/holdings/ownership';
+import { propertyShareChanges } from '@kiko/holdings/holding-descriptor';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
-import { propertyShareChanges } from '@kiko/holdings/holding-descriptor/property-item';
 
 import { styles } from './share-changes.styles';
 import type { ShareChangesProps } from './share-changes.props';

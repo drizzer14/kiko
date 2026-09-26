@@ -12,6 +12,8 @@ import { dayKeyOf } from '@kiko/prices/price-book';
 import { formatMoney } from '@kiko/currency/format';
 import { formatDate, startOfLocalDay } from '@kiko/dates';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { loanInstallments } from '@kiko/holdings/loan-schedule';
+import type { LoanMeta } from '@kiko/holdings/holding-metadata';
 
 import { darkTheme } from '../../design-system/theme';
 import {
@@ -21,8 +23,6 @@ import {
   DELETE_CONFIRM_TEST_ID,
   DUPLICATE_ACTION_TEST_ID,
 } from '../../design-system/components/card-context-menu';
-import { loanInstallments } from '../../holdings/loan-schedule';
-import type { LoanMeta } from '../../holdings/holding-metadata';
 import GestureRootWrapper from '../../test-support/gesture-root-wrapper';
 import { ancestorWithStyle } from '../../test-support/ancestor-with-style';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
@@ -170,6 +170,10 @@ jest.mock('@kiko/db/use-live-query', () => ({
 jest.mock('@kiko/holdings/repo', () => ({
   holdingsRepo: {
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    balanceOf: (row: { currency: string; balanceMinorUnits: number }) => ({
+      currency: row.currency,
+      minorUnits: row.balanceMinorUnits,
+    }),
     appendDepositContribution: jest.fn(),
     removeOwnershipChange: jest.fn(),
     updateName: jest.fn(),

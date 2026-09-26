@@ -20,8 +20,8 @@ import {
   transactions,
 } from '@kiko/db';
 import { getTableColumns } from 'drizzle-orm';
+import { holdingValue } from '@kiko/holdings/holding-value';
 
-import { holdingValue } from '../../holdings/holding-value';
 import { computeDedupKeyBase } from '../../statement-import/mapping/mapping';
 
 import type { DataSnapshot } from './data-snapshot';

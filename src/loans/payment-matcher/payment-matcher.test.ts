@@ -1,7 +1,6 @@
 import type { HoldingRow, TransactionRow } from '@kiko/db';
-
-import { loanInstallments } from '../../holdings/loan-schedule';
-import type { LoanMeta } from '../../holdings/holding-metadata';
+import { loanInstallments } from '@kiko/holdings/loan-schedule';
+import type { LoanMeta } from '@kiko/holdings/holding-metadata';
 
 import {
   type LinkedLoanPayment,

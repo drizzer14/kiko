@@ -14,15 +14,15 @@ import {
 } from '@kiko/db';
 import { match } from 'ts-pattern';
 import type { Currency } from '@kiko/currency/currency';
+import { exchangeReceivePath } from '@kiko/holdings/exchange-destination';
+import type { DepositContribution } from '@kiko/holdings/holding-metadata';
+import { isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
+import type { ExchangeConvertDirection } from '@kiko/holdings/exchange-convert';
 import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/repo';
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
 
 import { normalizeTransactionName } from '../normalize-name';
 import type { ClosingBalance } from '../../statement-import/parser';
-import { exchangeReceivePath } from '../../holdings/exchange-destination';
-import type { DepositContribution } from '../../holdings/holding-metadata';
-import { isSyncedHolding, isSyncedTransaction } from '../../holdings/deletable';
-import type { ExchangeConvertDirection } from '../../holdings/exchange-convert';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<

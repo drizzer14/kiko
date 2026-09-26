@@ -22,8 +22,8 @@ import type { BackfillStatus } from '@kiko/rates/history-backfill';
 import { formatDate, startOfLocalDay, defaultDateRange } from '@kiko/dates';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 
-import type { TrendFilter } from '../../statistics/trend-filter';
-import { categoryColor } from '../../statistics/category-breakdown';
+import type { TrendFilter } from '@kiko/statistics/trend-filter';
+import { categoryColor } from '@kiko/statistics/category-breakdown';
 import '../../design-system/unistyles';
 import { FILTER_ALL } from '../../design-system/components/filter-menu';
 

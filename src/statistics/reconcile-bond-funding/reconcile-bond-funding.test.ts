@@ -1,6 +1,6 @@
 import { startOfLocalDay } from '@kiko/dates';
+import type { BondMeta } from '@kiko/holdings/holding-metadata';
 
-import type { BondMeta } from '../../holdings/holding-metadata';
 import type { SeriesHolding, SeriesTransaction } from '../holding-value-at';
 
 import { reconcileBondFunding } from './reconcile-bond-funding';

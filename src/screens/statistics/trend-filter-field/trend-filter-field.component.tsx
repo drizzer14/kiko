@@ -1,14 +1,14 @@
 import { match } from 'ts-pattern';
-import { type FC, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView } from 'react-native';
-
 import {
   DEFAULT_TREND_FILTER,
   type TrendFilter,
   type TrendMeasure,
   type TrendMode,
-} from '../../../statistics/trend-filter';
+} from '@kiko/statistics/trend-filter';
+import { type FC, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Pressable, ScrollView } from 'react-native';
+
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import Button from '../../../design-system/components/button';

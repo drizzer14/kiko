@@ -1,4 +1,5 @@
-import { buildCategoryDisplayMap } from '../../categories/category-display';
+import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
+
 import { type BreakdownTransaction, categoryColor } from '../category-breakdown';
 
 import { buildCategoryMeasures, buildCategoryTrend, type TrendTransaction } from './category-trend';

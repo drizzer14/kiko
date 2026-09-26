@@ -11,11 +11,10 @@ import {
 import { asc, eq, sql } from 'drizzle-orm';
 import type { Money } from '@kiko/currency/money';
 import type { Currency } from '@kiko/currency/currency';
+import { SYNCED_AT_FIELD } from '@kiko/holdings/holding-metadata';
 import { isCurrencyAllowedForHoldingType } from '@kiko/holdings/holding-currency';
 import { clearLoanLinksForHoldingsDatabaseTransaction } from '@kiko/holdings/repo';
-
-import { SYNCED_AT_FIELD } from '../holdings/holding-metadata';
-import { isSyncedAccount, type SyncedInstitution } from '../holdings/deletable';
+import { isSyncedAccount, type SyncedInstitution } from '@kiko/holdings/deletable';
 
 // The next free grid slot for a new account, read inside the same write
 // transaction as the insert so a concurrent create cannot observe a stale

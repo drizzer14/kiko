@@ -16,6 +16,7 @@ import { asMetalMeta } from '@kiko/holdings/holding-metadata';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
+import { asLots, costBasisMinorAt, quantityAt, type Lot } from '@kiko/holdings/lots';
 import { type Currency, currencyScale, currencySymbol } from '@kiko/currency/currency';
 
 import DateField from '../date-field';
@@ -35,7 +36,6 @@ import FieldLabel from '../../../design-system/components/field-label';
 import type { AccountsStackParamList } from '../../../navigation/types';
 import SegmentedControl from '../../../design-system/components/segmented-control';
 import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
-import { asLots, costBasisMinorAt, quantityAt, type Lot } from '../../../holdings/lots';
 
 type LotFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'LotForm'>;
 

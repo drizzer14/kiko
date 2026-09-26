@@ -24,11 +24,10 @@ jest.mock('@kiko/db/client', () => {
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
+import { holdingValueAt } from '@kiko/statistics/holding-value-at';
 import { captureSetDatabaseTransaction } from '@kiko/db/capture-set-tx';
 import { write, accounts, holdings, pricePoints, transactions } from '@kiko/db';
 import { inArrayClauseFromCondition } from '@kiko/db/in-array-clause-test-helper';
-
-import { holdingValueAt } from '../../statistics/holding-value-at';
 
 import { holdingsRepo, type LoanPricePointOp } from './holdings.repo';
 

@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react-native';
 
-import type { TypeSlice } from '../../../statistics/type-breakdown';
-import { defaultHoldingColor } from '../../../holdings/entity-colors';
+import type { TypeSlice } from '@kiko/statistics/type-breakdown';
+import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import '../../../design-system/unistyles';
 import BarChart from './index';
 

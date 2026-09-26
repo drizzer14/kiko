@@ -1,7 +1,6 @@
 import { buildPriceBook } from '@kiko/prices/price-book';
 import { holdingInstrument } from '@kiko/prices/instrument';
-
-import { holdingValue } from '../../holding-value';
+import { holdingValue } from '@kiko/holdings/holding-value';
 
 import { propertyShareChanges, propertyOwnershipView } from './property-item.descriptor';
 

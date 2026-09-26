@@ -5,12 +5,12 @@ import { Pressable, View } from 'react-native';
 import { type FC, memo, useState } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '@kiko/currency/currency';
+import type { AccountSlice } from '@kiko/statistics/account-contribution';
 
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import SymbolIcon from '../../../design-system/components/symbol';
 import MoneyText from '../../../design-system/components/money-text';
-import type { AccountSlice } from '../../../statistics/account-contribution';
 
 import { styles } from './pie-chart.styles';
 

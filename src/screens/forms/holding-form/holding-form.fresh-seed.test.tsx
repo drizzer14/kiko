@@ -74,7 +74,7 @@ jest.mock('@kiko/transactions/repo', () => ({
     loanLedgerPaymentsQuery: () => mockQuery('loan ledger payments', [], () => []),
   },
 }));
-jest.mock('../../../bonds/bond-register-repo', () => ({
+jest.mock('@kiko/bonds/bond-register-repo', () => ({
   bondRegisterRepo: {
     findByIsinQuery: (isin: string) => mockQuery('bond by isin', [isin], () => []),
     fetchedAtQuery: () => mockQuery('bond register fetched at', [], () => [{ value: 1 }]),

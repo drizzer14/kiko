@@ -5,11 +5,11 @@ import type { Currency } from '@kiko/currency/currency';
 import { toUtcMidnight } from '@kiko/rates/history-entry';
 import { convert, type RateTable } from '@kiko/rates/conversion';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
+import { asBondMeta, type BondMeta } from '@kiko/holdings/holding-metadata';
 import { earliestRateTable, rateTableAt } from '@kiko/rates/rate-history-repo';
 
 import { bucketTimes } from '../buckets';
 import { reconcileBondFunding } from '../reconcile-bond-funding';
-import { asBondMeta, type BondMeta } from '../../holdings/holding-metadata';
 import { holdingValueAt, type SeriesHolding, type SeriesTransaction } from '../holding-value-at';
 
 type HistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate'>;

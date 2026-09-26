@@ -1,3 +1,9 @@
+import {
+  buildCategoryDisplayMap,
+  DEFAULT_CATEGORY_KEY,
+  resolveCategoryDisplay,
+  resolveCategoryKey,
+} from '@kiko/categories/category-display';
 import { ratesRepo } from '@kiko/rates/repo';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
@@ -11,35 +17,29 @@ import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { usePriceBook } from '@kiko/prices/use-price-book';
 import { activeHoldings } from '@kiko/rates/active-holdings';
+import { needsPriceBook } from '@kiko/holdings/priced-value';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { defaultAccountColor } from '@kiko/holdings/entity-colors';
 import type { CompositeScreenProps } from '@react-navigation/native';
+import { transactionSpan } from '@kiko/transactions/transaction-span';
 import { RefreshControl, ScrollView, SectionList } from 'react-native';
+import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { type DaySection, groupByDay } from '@kiko/transactions/group-by-day';
 import { defaultDateRange, endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import { buildRateTable, guardedBreakdown, guardedNetWorth } from '@kiko/rates/net-worth-view';
 
-import {
-  buildCategoryDisplayMap,
-  DEFAULT_CATEGORY_KEY,
-  resolveCategoryDisplay,
-  resolveCategoryKey,
-} from '../../categories/category-display';
 import Box from '../../design-system/components/box';
 import Card from '../../design-system/components/card';
 import Text from '../../design-system/components/text';
 import Divider from '../../design-system/components/divider';
-import { needsPriceBook } from '../../holdings/priced-value';
 import MoneyText from '../../design-system/components/money-text';
-import { defaultAccountColor } from '../../holdings/entity-colors';
 import { resolveEntityColor } from '../../design-system/entity-tint';
-import { transactionSpan } from '../../transactions/transaction-span';
 import LoadingState from '../../design-system/components/loading-state';
-import { resolveCategoryColor } from '../../statistics/category-breakdown';
-import { type DaySection, groupByDay } from '../../transactions/group-by-day';
 import type { HomeStackParamList, TabParamList } from '../../navigation/types';
 import type { FilterOption } from '../../design-system/components/filter-menu';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';

@@ -1,16 +1,20 @@
+import {
+  INCOME_TAX_RATE_PCT,
+  MILITARY_LEVY_RATE_PCT,
+  taxOnInterestMinor,
+} from '@kiko/holdings/tax';
 import type { TFunction } from 'i18next';
+import { holdingsRepo } from '@kiko/holdings/repo';
 import { Money, toMajor } from '@kiko/currency/money';
+import type { DerivedEntry } from '@kiko/holdings/derived-entries';
+import { asTermDepositMeta } from '@kiko/holdings/holding-metadata';
+import type { ValuableHolding } from '@kiko/holdings/holding-value';
+import { depositAccruedMajor, depositLedger } from '@kiko/holdings/interest';
 
 import { makeEntry } from '../entry-parts';
-import { holdingsRepo } from '../../repo/holdings.repo';
-import type { DerivedEntry } from '../../derived-entries';
-import { asTermDepositMeta } from '../../holding-metadata';
-import type { ValuableHolding } from '../../holding-value';
 import type { HoldingDescriptor } from '../holding-descriptor.d';
 import { entityColorsDark } from '../../../design-system/palette';
-import { depositAccruedMajor, depositLedger } from '../../interest';
 import { flat, makeBreakdown, type HoldingValueBreakdown } from '../breakdown-parts';
-import { INCOME_TAX_RATE_PCT, MILITARY_LEVY_RATE_PCT, taxOnInterestMinor } from '../../tax';
 
 const depositBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreakdown => {
   const meta = asTermDepositMeta(holding.metadata);

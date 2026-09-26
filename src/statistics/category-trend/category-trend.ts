@@ -2,6 +2,7 @@ import { Money, toMajor } from '@kiko/currency/money';
 import { canConvert } from '@kiko/rates/net-worth-view';
 import type { Currency } from '@kiko/currency/currency';
 import { convert, type RateTable } from '@kiko/rates/conversion';
+import { resolveCategoryDisplay } from '@kiko/categories/category-display';
 
 import {
   type BreakdownTransaction,
@@ -10,7 +11,6 @@ import {
   sumReturnsByGroup,
 } from '../category-breakdown';
 import { bucketTimes } from '../buckets';
-import { resolveCategoryDisplay } from '../../categories/category-display';
 
 /**
  * One point on a category's spending line: `amount` is that category's total

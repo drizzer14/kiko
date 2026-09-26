@@ -5,11 +5,11 @@ import { activeLocale } from '@kiko/i18n/active-locale';
 import type { Currency } from '@kiko/currency/currency';
 import { type DimensionValue, View } from 'react-native';
 import { G, Line, Polyline, Svg } from 'react-native-svg';
+import type { CategoryTrendSeries } from '@kiko/statistics/category-trend';
 import { chooseCompactUnit, formatCompactMoney } from '@kiko/currency/compact';
 
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
-import type { CategoryTrendSeries } from '../../../statistics/category-trend';
 
 import { styles } from './category-trend-line.styles';
 

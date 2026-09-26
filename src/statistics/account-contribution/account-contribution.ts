@@ -2,11 +2,11 @@ import { Money } from '@kiko/currency/money';
 import type { AccountRow, HoldingRow } from '@kiko/db';
 import { canConvert } from '@kiko/rates/net-worth-view';
 import type { Currency } from '@kiko/currency/currency';
+import { holdingValue } from '@kiko/holdings/holding-value';
 import { convert, type RateTable } from '@kiko/rates/conversion';
+import { defaultAccountColor } from '@kiko/holdings/entity-colors';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
 
-import { holdingValue } from '../../holdings/holding-value';
-import { defaultAccountColor } from '../../holdings/entity-colors';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 
 /**

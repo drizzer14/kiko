@@ -1,9 +1,9 @@
 import { Money } from '@kiko/currency/money';
 import type { PriceBook } from '@kiko/prices/price-book';
+import { asLoanMeta } from '@kiko/holdings/holding-metadata';
+import type { ValuableHolding } from '@kiko/holdings/holding-value';
+import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
 
-import { asLoanMeta } from '../../holding-metadata';
-import type { ValuableHolding } from '../../holding-value';
-import { loanLedgerOutstandingMinorAt } from '../../loan-ledger';
 import type { HoldingDescriptor } from '../holding-descriptor.d';
 import { entityColorsDark } from '../../../design-system/palette';
 import { flat, type HoldingValueBreakdown } from '../breakdown-parts';
