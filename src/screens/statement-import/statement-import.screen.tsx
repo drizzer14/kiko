@@ -45,7 +45,7 @@ import { previewStats } from '../../statement-import/preview-stats/preview-stats
 import ImportResultSheet from '../../design-system/components/import-result-sheet';
 import { readTableRows, findSavedMapping } from '../../statement-import/column-mapping';
 import { importStatement, type ImportResult } from '../../statement-import/import-statement';
-import { useTargetHoldingOptions } from '../../design-system/use-target-holding-options/use-target-holding-options';
+import { useTargetHoldingOptions } from '../../statement-import/use-target-holding-options/use-target-holding-options';
 
 import StatementImportFooter from './statement-import-footer';
 import StatementPreviewBlock from './statement-preview-block';

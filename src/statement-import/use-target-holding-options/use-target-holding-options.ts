@@ -2,10 +2,10 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import { holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 
-import { resolveEntityColor } from '../entity-tint';
 import { useLiveQuery } from '../../db/use-live-query';
 import { accountsRepo } from '../../accounts/accounts.repo';
-import type { TargetHoldingOption } from '../components/target-holding-sheet/target-holding-sheet.props';
+import { resolveEntityColor } from '../../design-system/entity-tint';
+import type { TargetHoldingOption } from '../../design-system/components/target-holding-sheet/target-holding-sheet.props';
 
 type TargetHoldingOptions = {
   options: TargetHoldingOption[];

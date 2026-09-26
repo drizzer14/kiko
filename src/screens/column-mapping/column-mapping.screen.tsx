@@ -58,7 +58,7 @@ import { supportedFormatNames } from '../../statement-import/registry';
 import ImportResultSheet from '../../design-system/components/import-result-sheet';
 import type { SpreadsheetCellValue, StatementFormatInput } from '../../statement-import/parser';
 import { importParsedStatement, type ImportResult } from '../../statement-import/import-statement';
-import { useTargetHoldingOptions } from '../../design-system/use-target-holding-options/use-target-holding-options';
+import { useTargetHoldingOptions } from '../../statement-import/use-target-holding-options/use-target-holding-options';
 
 import ColumnMappingForm from './column-mapping-form';
 import type {
