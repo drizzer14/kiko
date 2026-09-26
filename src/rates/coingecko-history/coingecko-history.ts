@@ -1,15 +1,9 @@
 import { guard } from 'fnts';
+import { COINGECKO_MARKET_CHART_ENDPOINT } from '@env';
 
 import { cryptoCoinGeckoId } from '../coingecko-ids';
 import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
 import { cryptoCurrencyOptions, type CryptoCurrency } from '../../currency/currency';
-
-/**
- * CoinGecko's `market_chart` returns a full daily price series in ONE call per
- * coin, so a whole crypto backfill span costs one request per coin. Quoted in
- * USD; other crypto pairs are composed downstream from fiat.
- */
-const MARKET_CHART_BASE = 'https://api.coingecko.com/api/v3/coins';
 
 // CoinGecko's free/demo tier caps `market_chart` at ~365 days and 401s on a
 // longer span, so the request is clamped to this ceiling. A multi-year account
@@ -34,7 +28,7 @@ const readChart = guard(
 // the free key. Omitted, CoinGecko auto-selects the granularity (daily past ~90
 // days); any finer intraday points collapse to one entry per day downstream.
 const chartUrl = (id: string, days: number): string =>
-  `${MARKET_CHART_BASE}/${id}/market_chart?vs_currency=usd&days=${Math.min(days, MAX_MARKET_CHART_DAYS)}`;
+  `${COINGECKO_MARKET_CHART_ENDPOINT}/${id}/market_chart?vs_currency=usd&days=${Math.min(days, MAX_MARKET_CHART_DAYS)}`;
 
 /** Fetch and day-normalize one coin's USD series. Throws on a non-ok response. */
 const fetchOneCoinHistory = async (

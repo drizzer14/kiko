@@ -1,4 +1,5 @@
 import type { FC } from 'react';
+import { MONOBANK_API_ENDPOINT } from '@env';
 import { useTranslation } from 'react-i18next';
 import { Linking, Pressable } from 'react-native';
 
@@ -8,8 +9,6 @@ import ClipboardTextField from '../clipboard-text-field';
 import Text from '../../../design-system/components/text';
 
 import type { MonobankTokenInputProps } from './monobank-token-input.props';
-
-const MONOBANK_API_URL = 'https://api.monobank.ua/';
 
 // The shared, presentational Monobank token-entry surface: the
 // "Open api.monobank.ua" link, the token TextField, and its trailing paste-icon
@@ -22,7 +21,7 @@ const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText }
   const { t } = useTranslation();
 
   const handleOpenMonobank = (): void => {
-    Linking.openURL(MONOBANK_API_URL);
+    Linking.openURL(`${MONOBANK_API_ENDPOINT}/`);
   };
 
   return (

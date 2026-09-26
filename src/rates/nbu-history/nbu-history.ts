@@ -1,4 +1,5 @@
 import { guard } from 'fnts';
+import { NBU_API_ENDPOINT } from '@env';
 
 import type { Currency } from '../../currency/currency';
 import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
@@ -6,9 +7,10 @@ import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
 /**
  * NBU's date-RANGE endpoint: one call returns the daily official rate for a
  * single currency across a `[start, end]` span, so a multi-day backfill needs
- * just one request per currency instead of one per day. Auth-free.
+ * just one request per currency instead of one per day. Auth-free. The host
+ * (`NBU_API_ENDPOINT`) is shared config; this path is specific to this call.
  */
-const RANGE_ENDPOINT = 'https://bank.gov.ua/NBU_Exchange/exchange_site';
+const RANGE_ENDPOINT = `${NBU_API_ENDPOINT}/NBU_Exchange/exchange_site`;
 
 /** One row of the NBU range payload. `rate` is UAH per `units` of `cc`. */
 type NbuRangeRow = {
