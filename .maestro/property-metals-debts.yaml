@@ -1,0 +1,271 @@
+# Functional flow for T33 (shares-property-metals-debts P1-P4): a Property
+# account + item (created, then revalued through "Update value"), a Metals
+# account with a gold bar, and a Debt account with an annuity loan. NOT a
+# screenshot-diff check — no `takeScreenshot` step, no baseline; there is no
+# automated screenshot check of any kind any more (2026-09-19, Guideline 5.6
+# remediation). This asserts real end-to-end BEHAVIOR: the Home net-worth
+# headline actually changes once these accounts/holdings exist, and the
+# Accounts screen renders its own Property and Debts sections
+# (`accounts-property-grid` / `accounts-debts-grid`, PROP-UX's own account-kind
+# split — see `accounts.screen.tsx`). No network assertion of any kind: a
+# metal holding's OWN priced value depends on a live NBU quote this flow never
+# reads or asserts, and the Property/Debt deltas below are chosen to move the
+# headline regardless of whether that quote is available.
+#
+# THIS FLOW STARTS FROM WHATEVER STATE THE TARGET SIMULATOR/DEVICE ALREADY
+# CARRIES — unlike the statement-import flows, there is no committed seed
+# fixture to provision first (the old screenshot-regression seed was retired,
+# 2026-09-19). Every account/holding NAME picked below is chosen to be
+# distinctive against the rest of the catalog's own strings, so a tap by
+# `text:` on that name can never collide with a section heading or a kind
+# label rendered elsewhere on the same screen.
+#
+# LOCALE: this flow asserts the ENGLISH catalog strings
+# (`src/i18n/locales/en.ts`), matching `src/i18n/index.ts`'s `fallbackLng:
+# 'en'` and the typical US-locale simulator default. A device actually set to
+# Ukrainian needs every `text:` value below swapped for its `uk.ts`
+# counterpart — unlike the statement-import flows' own committed Ukrainian
+# seed, nothing here forces one locale over the other.
+#
+# TAB BAR IDENTIFIERS: `house.fill` (Home) and `tray` (Accounts) are read
+# straight off `src/navigation/root.navigator.tsx`'s current
+# `tabBarIcon`/`genericEntitySymbol.account` values — NOT copied from the
+# sibling `.maestro/statement-import*.yaml` flows' own `wallet.pass.fill`,
+# which predates the icon-overhaul rename (`git log -S"wallet.pass.fill"`:
+# commit 54d58cab, "Accounts tab wallet.pass.fill -> genericEntitySymbol.account
+# (tray)") and is itself stale against the current source.
+#
+# THIS FLOW WAS AUTHORED WITHOUT A LIVE MAESTRO RUN (orchestrator ruling:
+# write + validate YAML syntax only; the run is a morning device check) —
+# ops/qa must verify the exact step sequence on a real simulator/device the
+# first time this flow executes. Two design points in particular need live
+# confirmation:
+#
+# 1. EVERY LABELED TEXT FIELD in this codebase (`TextField`/
+#    `HoldingIdentityField`/`DateField`) renders BOTH a visible `FieldLabel`
+#    Text with the field's label string AND sets that SAME string as the
+#    input/Pressable's own `accessibilityLabel` — two elements Maestro's
+#    `text:` selector can match. Every `tapOn: text: <label>` below on such a
+#    field passes `index: 1`, betting that the FieldLabel (rendered first,
+#    per every such component's own JSX order) is match 0 and the actual
+#    input/Pressable is match 1. No app testID reaches these bare inputs
+#    (`property-section.component.tsx`/`metal-section.component.tsx`/
+#    `loan-section.component.tsx`/`price-point-form.screen.tsx` pass no
+#    `testID` through to their own `TextField`s), so this ordinal bet is the
+#    only route to them; verify it against the real accessibility tree.
+# 2. The Start Date field's calendar day cell testID
+#    (`${testID}.day_${dateString}`, `node_modules/react-native-calendars/
+#    src/calendar/index.js`) is computed here from `new Date()` at RUN time
+#    (today's date, in `YYYY-MM-DD`) via a `${...}` JS expression — DateField
+#    opens `KikoCalendar` on `initialDate: toCalendarKey(value ?? Date.now())`
+#    when nothing is picked yet, so today's cell is always visible in the
+#    opened month without a header navigation step. Verify Maestro's flow
+#    templating actually evaluates `new Date()` this way live.
+appId: com.dmytro-vasylkivskyi.kiko
+---
+- launchApp
+
+- extendedWaitUntil:
+    notVisible:
+      id: "migrations-gate-pending"
+    timeout: 30000
+
+# ---------------------------------------------------------------------------
+# 0. Capture the Home net-worth headline BEFORE any of this flow's accounts
+#    exist, so the final assertion (P5) can prove it actually MOVED rather
+#    than asserting an exact (network-dependent, metal-priced) figure.
+#    `MoneyText` carries no testID of its own (`home.screen.tsx`), so the
+#    figure is read via the ONE relative selector this screen supports: the
+#    element directly below the "Net worth" caption Text.
+# ---------------------------------------------------------------------------
+- tapOn:
+    id: "house.fill"
+- assertVisible:
+    id: "home-content"
+- copyTextFrom:
+    below:
+      text: "Net worth"
+- evalScript: ${output.before = maestro.copiedText}
+
+# ---------------------------------------------------------------------------
+# P1: a Property account, one property item, then a revaluation through
+#     the holding's own "Update value" action (PricePointForm).
+# ---------------------------------------------------------------------------
+- tapOn:
+    id: "tray"
+- tapOn:
+    text: "Add account"
+- assertVisible:
+    id: "account-form"
+- tapOn:
+    text: "Name"
+    index: 1
+- inputText: "Kyiv Apartment"
+- tapOn:
+    id: "account-kind-field"
+- tapOn:
+    id: "account-kind-field-option-property"
+- tapOn:
+    text: "Save"
+
+- tapOn:
+    text: "Kyiv Apartment"
+- tapOn:
+    text: "Add holding"
+- assertVisible:
+    id: "holding-form"
+- tapOn:
+    text: "Name"
+    index: 1
+- inputText: "Apartment"
+# The Type slot is `PropertyTypeField` under a `property` account (PROP-UX:
+# property's only holding type IS its category, no separate Category field
+# any more) — its default, "Real estate", is already the category this
+# holding wants, so no tap is needed here.
+- tapOn:
+    text: "Cost"
+    index: 1
+- inputText: "3000000"
+- tapOn:
+    text: "Save"
+
+- assertVisible:
+    id: "holding-grid-item"
+- tapOn:
+    id: "holding-grid-item"
+- assertVisible:
+    id: "holding-value-header"
+- tapOn:
+    text: "Update value"
+- tapOn:
+    text: "Value"
+    index: 1
+- inputText: "3500000"
+- tapOn:
+    text: "Save value"
+
+# ---------------------------------------------------------------------------
+# P2/P3: a Metals account holding one gold bar. `useMetalFields`'s own
+#     defaults (`metal: 'XAU'`, `form: 'bar'`, `unit: 'oz'`, a prefilled
+#     purity) already ARE "a gold bar" — no ChipRow tap needed, only the
+#     required first-lot Quantity/Total cost pair.
+# ---------------------------------------------------------------------------
+- tapOn:
+    id: "tray"
+- tapOn:
+    text: "Add account"
+- tapOn:
+    text: "Name"
+    index: 1
+- inputText: "Home Safe"
+- tapOn:
+    id: "account-kind-field"
+- tapOn:
+    id: "account-kind-field-option-metals"
+- tapOn:
+    text: "Save"
+
+- tapOn:
+    text: "Home Safe"
+- tapOn:
+    text: "Add holding"
+- assertVisible:
+    id: "holding-form"
+- tapOn:
+    text: "Name"
+    index: 1
+- inputText: "Gold Bar"
+# A `metals`-kind account offers exactly one holding type (`metal` —
+# `holdingTypesForAccountKind`), so `HoldingFormScreen`'s own type-sync effect
+# snaps the type there the instant the account loads; no Type-field tap
+# needed.
+- tapOn:
+    text: "Quantity"
+    index: 1
+- inputText: "1"
+- tapOn:
+    text: "Total cost"
+    index: 1
+- inputText: "100000"
+- tapOn:
+    text: "Save"
+
+# ---------------------------------------------------------------------------
+# P4: a Debt account holding one annuity loan. `useLoanFields`'s own defaults
+#     (`kind: 'mortgage'`, `schedule: 'annuity'`) already select an annuity
+#     schedule — no SelectField/SegmentedControl tap needed, only the
+#     required principal/start-date/rate/term fields (LoanSection hides
+#     rate/term only for a 'none' schedule, which this never reaches).
+# ---------------------------------------------------------------------------
+- tapOn:
+    id: "tray"
+- tapOn:
+    text: "Add account"
+- tapOn:
+    text: "Name"
+    index: 1
+- inputText: "Auto Loan"
+- tapOn:
+    id: "account-kind-field"
+- tapOn:
+    id: "account-kind-field-option-debt"
+- tapOn:
+    text: "Save"
+
+- tapOn:
+    text: "Auto Loan"
+- tapOn:
+    text: "Add holding"
+- assertVisible:
+    id: "holding-form"
+- tapOn:
+    text: "Name"
+    index: 1
+- inputText: "Car Note"
+# A `debt`-kind account offers exactly one holding type (`loan`), so the
+# same type-sync effect as the metals account above snaps to it automatically.
+- tapOn:
+    text: "Principal"
+    index: 1
+- inputText: "500000"
+- tapOn:
+    text: "Start date"
+    index: 1
+- assertVisible:
+    id: "Start date calendar"
+- tapOn:
+    id: "Start date calendar.day_${new Date().toISOString().slice(0, 10)}"
+- tapOn:
+    text: "Annual rate %"
+    index: 1
+- inputText: "15"
+- tapOn:
+    text: "Term (months)"
+    index: 1
+- inputText: "60"
+- tapOn:
+    text: "Save"
+
+# ---------------------------------------------------------------------------
+# P5: the Accounts screen shows its own dedicated Property and Debts
+#     sections (PROP-UX), and the Home headline has moved from its P0 value.
+# ---------------------------------------------------------------------------
+- tapOn:
+    id: "tray"
+- assertVisible:
+    id: "accounts-property-grid"
+- assertVisible:
+    id: "accounts-debts-grid"
+- assertVisible:
+    text: "Property"
+- assertVisible:
+    text: "Debts"
+
+- tapOn:
+    id: "house.fill"
+- assertVisible:
+    id: "home-content"
+- copyTextFrom:
+    below:
+      text: "Net worth"
+- assertTrue: ${maestro.copiedText != output.before}
