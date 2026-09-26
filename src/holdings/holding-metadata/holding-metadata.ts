@@ -200,6 +200,14 @@ export const asTermDepositMeta = (value: unknown): TermDepositMeta | null => {
   };
 };
 
+/**
+ * Whether a stored bond carries a price the user entered. `asBondMeta` gives a
+ * bond without one the nominal as its price (for the ledger and expected
+ * profit); a yield to maturity needs the real price, so it asks here.
+ */
+export const hasStoredBondPurchasePrice = (value: unknown): boolean =>
+  isRecord(value) && isNumber(value.purchasePriceMinorUnits);
+
 export const asBondMeta = (value: unknown): BondMeta | null => {
   if (!isRecord(value)) {
     return null;

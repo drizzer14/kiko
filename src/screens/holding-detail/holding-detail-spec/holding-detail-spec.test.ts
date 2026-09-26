@@ -112,6 +112,25 @@ describe('holdingDetailSpecs breakdown', () => {
     expect(spec.yieldToMaturity(bondHolding, null)?.toFixed(4)).toBe('0.1540');
   });
 
+  it('shows a bond saved without a price its nominal-default expected profit but no yield', () => {
+    const meta = {
+      quantity: 98,
+      faceValueMinorUnits: 100_000,
+      couponPct: 15.18,
+      couponFrequency: 'semiannually' as const,
+      bondKind: 'government' as const,
+      purchaseDate: new Date(2026, 8, 10).getTime(),
+      maturityDate: new Date(2027, 8, 15).getTime(),
+    };
+    const bondHolding = holding({ type: 'bond', currency: 'UAH', metadata: meta });
+    const spec = asInterestBreakdown(holdingDetailSpecs.bond.breakdown);
+
+    expect(spec.expectedProfit(bondHolding)?.minorUnits).toBe(
+      bondExpectedProfitMinor({ ...meta, purchasePriceMinorUnits: 9_800_000 }, 'UAH'),
+    );
+    expect(spec.yieldToMaturity(bondHolding, null)).toBeNull();
+  });
+
   it('shows a deposit no yield to maturity', () => {
     const spec = asInterestBreakdown(holdingDetailSpecFor('term_deposit').breakdown);
 

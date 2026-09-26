@@ -902,8 +902,9 @@ coupon (face x coupon% / payments per year) on each date stepped back
 from maturity by `couponPeriodDays` in DAYS (not calendar months — an
 NBU bond pays exactly 182 days apart, so a bond entered by hand lands on
 the register's dates), plus the nominal at maturity. A stored bond with
-no `purchasePriceMinorUnits` (legacy; `asBondMeta` defaults it to the
-nominal) has no yield. Pin: 98 x UA4000239115 at 1,076.72 on
+no `purchasePriceMinorUnits` (legacy, or Manual saved with a blank
+price; `hasStoredBondPurchasePrice` in `holding-metadata.ts` tells it
+from `asBondMeta`'s nominal default) has no yield. Pin: 98 x UA4000239115 at 1,076.72 on
 2026-09-10 → 15.40% from the register AND from the generated schedule
 (month-stepped `bondCouponDates` would give 15.41%). The holding
 detail's bond breakdown shows it as its last row, "Yield to maturity"
@@ -993,7 +994,11 @@ the price actually paid): `bondFieldErrors`' `purchasePriceError`
 (`forms.holding.purchasePriceRequiredError`, gated by
 `purchasePriceRequired: bondMode === 'isin'`), its own scroll target
 after quantity, and the placeholder `purchasePriceIsinPlaceholder`;
-Manual mode keeps it optional, defaulting a blank one to nominal. It hides face
+Manual mode keeps it optional. A blank price is NOT stored (the key is
+left out, never written as the nominal): `asBondMeta` alone supplies the
+nominal default for the purchase entry and expected profit, and the
+yield shows none. Edit seeds a blank price field when the key is absent,
+so an unchanged re-save stays unpriced. It hides face
 value, coupon, maturity, kind, and frequency — a found ISIN fills all
 of them: `bondKind` is always `'government'` (the register is
 Minfin-only), `couponFrequency` only when the register's `pay_period`

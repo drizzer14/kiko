@@ -81,7 +81,7 @@ describe('bondYieldToMaturity', () => {
     expect(bondYieldToMaturity(pinnedBond, 'UAH', otherCurrency)?.toFixed(4)).toBe('0.1540');
   });
 
-  it('shows no yield for a bond stored before it carried a price', () => {
+  it('shows no yield for a bond stored without a price (legacy, or Manual with a blank price)', () => {
     const { purchasePriceMinorUnits: _, ...legacyBond } = pinnedBond;
 
     expect(bondYieldToMaturity(legacyBond, 'UAH', registerTerms)).toBeNull();

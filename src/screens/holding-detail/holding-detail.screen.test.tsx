@@ -1991,12 +1991,13 @@ describe('HoldingDetailScreen — bond yield to maturity', () => {
     expect(registerCall()?.[2]).toBe(false);
   });
 
-  it('shows no yield for a bond stored without a price', async () => {
-    seed(bondHolding);
+  it('shows no yield for a bond stored without a price, keeping its expected profit', async () => {
+    seed({ ...bondHolding, metadata: { ...isinBondMeta, purchasePriceMinorUnits: undefined } });
 
-    const { queryByText } = await renderScreen();
+    const { getByText, queryByText } = await renderScreen();
 
     expect(queryByText('Yield to maturity')).toBeNull();
+    expect(getByText('Expected profit')).toBeTruthy();
   });
 
   it('never reads the register for a holding that is not a bond', async () => {

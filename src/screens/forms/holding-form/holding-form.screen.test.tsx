@@ -732,6 +732,28 @@ describe('HoldingFormScreen term deposit', () => {
     );
   });
 
+  // A blank price is "no price", not a price equal to the nominal: the
+  // yield to maturity needs the price paid, so nothing is stored and
+  // `asBondMeta` alone supplies the nominal default for the ledger.
+  it('stores no purchase price for a Manual bond saved with a blank price', async () => {
+    const screen = await renderScreen();
+
+    await fillBondFields(screen);
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(metadataOfFirstCreate()).not.toHaveProperty('purchasePriceMinorUnits');
+  });
+
+  it('stores the typed purchase price for a Manual bond', async () => {
+    const screen = await renderScreen();
+
+    await fillBondFields(screen);
+    await fill(screen, 'Purchase price (total paid)', '9 500');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(metadataOfFirstCreate().purchasePriceMinorUnits).toBe(950_000);
+  });
+
   it('creates a corporate bond when the corporate chip is selected', async () => {
     const screen = await renderScreen();
 
@@ -3620,7 +3642,20 @@ describe('HoldingFormScreen edit mode', () => {
     expect(patch.metadata.couponPct).toBe(11);
     expect(patch.metadata.quantity).toBe(10);
     expect(patch.metadata.bondKind).toBe('corporate');
+    expect(patch.metadata.purchasePriceMinorUnits).toBe(950_000);
     expect(patch.balance).toBeUndefined();
+  });
+
+  it('seeds a blank price for a bond stored without one, and re-saves it still without one', async () => {
+    const { purchasePriceMinorUnits: _, ...unpricedMetadata } = bondHolding.metadata;
+    const screen = await renderEdit({ ...bondHolding, metadata: unpricedMetadata });
+
+    expect(screen.getByLabelText('Purchase price (total paid)').props.value).toBe('');
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    const patch = updateDeltaMock.mock.calls[0][1];
+    expect(patch.metadata).not.toHaveProperty('purchasePriceMinorUnits');
   });
 
   it('resolves a stored empty-string color to a real swatch, not blank', async () => {

@@ -4,6 +4,7 @@ import {
   type BondKind,
   type BondMeta,
   type BondCouponFrequency,
+  hasStoredBondPurchasePrice,
 } from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
 import { Money } from '@kiko/currency/money';
@@ -30,12 +31,16 @@ import {
 
 // Seed the bond number/date fields from stored metadata. Minor-unit money
 // fields (face value, purchase price) convert back to grouped major strings;
-// plain-number fields (quantity, coupon %) render verbatim.
-const seedBondFields = (meta: BondMeta, currency: Currency) => ({
+// plain-number fields (quantity, coupon %) render verbatim. A bond stored
+// without a price seeds a blank one, not `asBondMeta`'s nominal default, so
+// re-saving it unchanged never invents a price.
+const seedBondFields = (meta: BondMeta, currency: Currency, hasStoredPrice: boolean) => ({
   quantity: groupAmount(String(meta.quantity)),
   faceValue: groupAmount(majorAmountText(currency, meta.faceValueMinorUnits)),
   couponPct: String(meta.couponPct),
-  purchasePrice: groupAmount(majorAmountText(currency, meta.purchasePriceMinorUnits)),
+  purchasePrice: hasStoredPrice
+    ? groupAmount(majorAmountText(currency, meta.purchasePriceMinorUnits))
+    : '',
   purchaseDate: meta.purchaseDate,
   maturityDate: meta.maturityDate,
   bondKind: meta.bondKind,
@@ -170,12 +175,13 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
       quantity: quantityValue,
       faceValueMinorUnits,
       couponPct: parseAmount(couponPct) || 0,
-      // The total actually paid. If left blank, fall back to nominal (par), so
-      // the purchase entry and expected profit read as break-even.
-      purchasePriceMinorUnits:
-        priceValue > 0
-          ? Money.fromMajor(currency, priceValue).minorUnits
-          : quantityValue * faceValueMinorUnits,
+      // The total actually paid. A blank one is left out, not stored as the
+      // nominal: `asBondMeta` still reads it as nominal (par), so the purchase
+      // entry and expected profit read as break-even, while the yield to
+      // maturity, which needs the real price, shows none.
+      ...(priceValue > 0
+        ? { purchasePriceMinorUnits: Money.fromMajor(currency, priceValue).minorUnits }
+        : {}),
       purchaseDate: purchaseDate ?? Date.now(),
       maturityDate: maturityDate ?? Date.now(),
       bondKind,
@@ -222,7 +228,11 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
         return;
       }
 
-      const fields = seedBondFields(meta, holding.currency);
+      const fields = seedBondFields(
+        meta,
+        holding.currency,
+        hasStoredBondPurchasePrice(holding.metadata),
+      );
       setQuantity(fields.quantity);
       setFaceValue(fields.faceValue);
       setCouponPct(fields.couponPct);

@@ -1,8 +1,12 @@
+import {
+  asBondMeta,
+  type BondMeta,
+  hasStoredBondPurchasePrice,
+} from '@kiko/holdings/holding-metadata';
 import { startOfLocalDay } from '@kiko/dates';
 import { Money, toMajor } from '@kiko/currency/money';
 import type { Currency } from '@kiko/currency/currency';
 import { bondCouponMajor } from '@kiko/holdings/interest';
-import { asBondMeta, type BondMeta } from '@kiko/holdings/holding-metadata';
 import { decimalFromJsonNumber, multiplyToMinorUnits } from '@kiko/currency/decimal';
 
 import { couponPeriodDays, type BondTerms } from '../nbu-register';
@@ -10,11 +14,6 @@ import { couponPeriodDays, type BondTerms } from '../nbu-register';
 import { portfolioYieldToMaturity, type CashFlow } from './yield-to-maturity';
 
 const MAX_GENERATED_COUPONS = 2000;
-
-// `asBondMeta` gives a bond stored before the price field existed its nominal
-// as the price; that is a default, not a price the user paid.
-const hasStoredPrice = (metadata: unknown): boolean =>
-  typeof metadata === 'object' && metadata !== null && 'purchasePriceMinorUnits' in metadata;
 
 /**
  * The register lists each payment for ONE bond of its own nominal, so the
@@ -97,7 +96,7 @@ export const bondYieldToMaturity = (
 ): number | null => {
   const meta = asBondMeta(metadata);
 
-  if (meta === null || !hasStoredPrice(metadata)) {
+  if (meta === null || !hasStoredBondPurchasePrice(metadata)) {
     return null;
   }
 

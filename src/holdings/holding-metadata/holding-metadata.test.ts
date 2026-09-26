@@ -10,6 +10,7 @@ import {
   metalUnits,
   preciousMetals,
   propertyCategoryOf,
+  hasStoredBondPurchasePrice,
   syncedAtOf,
   walletAddressOf,
 } from './holding-metadata';
@@ -107,6 +108,15 @@ describe('asBondMeta', () => {
     bondKind: 'government' as const,
     couponFrequency: 'semiannually' as const,
   };
+
+  it('tells a stored price apart from the nominal default of a bond without one', () => {
+    const { purchasePriceMinorUnits: _, ...unpriced } = valid;
+
+    expect(hasStoredBondPurchasePrice(valid)).toBe(true);
+    expect(hasStoredBondPurchasePrice(unpriced)).toBe(false);
+    expect(asBondMeta(unpriced)?.purchasePriceMinorUnits).toBe(1_000_000);
+    expect(hasStoredBondPurchasePrice(null)).toBe(false);
+  });
 
   it('returns the typed object for a valid shape', () => {
     const result: BondMeta | null = asBondMeta(valid);
