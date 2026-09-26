@@ -27,6 +27,7 @@ const PLACEHOLDER_ICON = 'tag';
 // propagates to every same-name row), so there is no `disabled`.
 const CategoryField = ({
   label,
+  sheetTitle,
   options,
   selectedKey,
   onSelect,
@@ -108,7 +109,7 @@ const CategoryField = ({
         onDismiss={() => setOpen(false)}
         gap={2}
         scrollable={false}
-        header={<Text variant="heading">{label}</Text>}
+        header={<Text variant="heading">{sheetTitle}</Text>}
         testID="category-picker-sheet"
       >
         <ScrollView

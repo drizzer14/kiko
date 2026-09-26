@@ -1,6 +1,9 @@
 export type TimeFieldProps = {
   // The caption rendered above the field, and the field's accessibility label.
   label: string;
+  // The picker sheet's header: a Title Case sheet title, a separate key from
+  // the sentence-case `label` (kiko-translator: one key per UI role).
+  sheetTitle: string;
   // The current transaction time as a unix-millis timestamp; the field displays
   // its time-of-day (HH:mm). Null when there is nothing to show yet.
   value: number | null;

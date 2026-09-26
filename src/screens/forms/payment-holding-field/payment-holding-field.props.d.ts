@@ -2,6 +2,9 @@ import type { HoldingSelectOption } from '../holding-select-field/holding-select
 
 export type PaymentHoldingFieldProps = {
   label: string;
+  // The picker sheet's header: a Title Case sheet title, a separate key from
+  // the sentence-case `label` (kiko-translator: one key per UI role).
+  sheetTitle: string;
   // The synthetic "clear the link" row's own label ("None"), prepended
   // ahead of `options` and shown as the trigger's value whenever
   // `selectedId` is `null`. Mirrors `LoanPaymentField`'s own `noneLabel`.

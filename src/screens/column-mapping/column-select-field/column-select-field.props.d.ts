@@ -5,6 +5,9 @@ export type ColumnSelectFieldOption<T extends string | number> = {
 
 export type ColumnSelectFieldProps<T extends string | number> = {
   label: string;
+  // The picker sheet's header: a Title Case sheet title, a separate key from
+  // the sentence-case `label` (kiko-translator: one key per UI role).
+  sheetTitle: string;
   options: ColumnSelectFieldOption<T>[];
   selected: T | undefined;
   onSelect: (value: T | undefined) => void;

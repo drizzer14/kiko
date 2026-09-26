@@ -94,6 +94,7 @@ const visibleCurrencies = (
 // creation).
 const CurrencyField: FC<CurrencyFieldProps> = ({
   label,
+  sheetTitle,
   selected,
   onSelect,
   options = currencyOptions,
@@ -181,7 +182,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
         onDismiss={handleDismiss}
         gap={2}
         scrollable={false}
-        header={<Text variant="heading">{label}</Text>}
+        header={<Text variant="heading">{sheetTitle}</Text>}
         testID="currency-picker-sheet"
         backdropTestID="currency-picker-sheet-backdrop"
       >

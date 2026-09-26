@@ -47,6 +47,7 @@ const AmountFields: FC<AmountFieldsProps> = ({
       {mode === 'single' && (
         <ColumnSelectField
           label={t('columnMapping.amountColumn')}
+          sheetTitle={t('columnMapping.amountColumnSheetTitle')}
           options={columnOptions}
           selected={amountColumn}
           onSelect={onAmountColumnChange}
@@ -61,6 +62,7 @@ const AmountFields: FC<AmountFieldsProps> = ({
         <>
           <ColumnSelectField
             label={t('columnMapping.debitColumn')}
+            sheetTitle={t('columnMapping.debitColumnSheetTitle')}
             options={columnOptions}
             selected={debitColumn}
             onSelect={onDebitColumnChange}
@@ -72,6 +74,7 @@ const AmountFields: FC<AmountFieldsProps> = ({
 
           <ColumnSelectField
             label={t('columnMapping.creditColumn')}
+            sheetTitle={t('columnMapping.creditColumnSheetTitle')}
             options={columnOptions}
             selected={creditColumn}
             onSelect={onCreditColumnChange}

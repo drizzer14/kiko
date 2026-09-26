@@ -18,6 +18,7 @@ import type { LoanPaymentFieldProps } from './loan-payment-field.props';
 // change until Save.
 const LoanPaymentField = ({
   label,
+  sheetTitle,
   noneLabel,
   options,
   selectedId,
@@ -31,6 +32,7 @@ const LoanPaymentField = ({
   <Box gap={1}>
     <PaymentHoldingField
       label={label}
+      sheetTitle={sheetTitle}
       noneLabel={noneLabel}
       options={options}
       selectedId={selectedId}

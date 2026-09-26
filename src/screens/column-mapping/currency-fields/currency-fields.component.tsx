@@ -46,6 +46,7 @@ const CurrencyFields: FC<CurrencyFieldsProps> = ({
       {mode === 'column' && (
         <ColumnSelectField
           label={t('columnMapping.currencyColumn')}
+          sheetTitle={t('columnMapping.currencyColumnSheetTitle')}
           options={columnOptions}
           selected={currencyColumn}
           onSelect={onCurrencyColumnChange}
@@ -59,6 +60,7 @@ const CurrencyFields: FC<CurrencyFieldsProps> = ({
       {mode === 'fixed' && (
         <CurrencyField
           label={t('columnMapping.fixedCurrency')}
+          sheetTitle={t('columnMapping.fixedCurrencySheetTitle')}
           selected={fixedCurrency}
           onSelect={onFixedCurrencyChange}
           testID="column-mapping-fixed-currency"

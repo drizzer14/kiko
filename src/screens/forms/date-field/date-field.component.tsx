@@ -34,6 +34,7 @@ const toCalendarKey = (timestamp: number): string => {
 // independently without either field clobbering the other.
 const DateField: FC<DateFieldProps> = ({
   label,
+  sheetTitle,
   value,
   onChange,
   placeholder,
@@ -112,7 +113,7 @@ const DateField: FC<DateFieldProps> = ({
         visible={open}
         onDismiss={() => setOpen(false)}
         gap={4}
-        header={<Text variant="heading">{label}</Text>}
+        header={<Text variant="heading">{sheetTitle}</Text>}
       >
         <KikoCalendar
           testID={`${label} calendar`}

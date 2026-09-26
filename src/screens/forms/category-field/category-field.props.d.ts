@@ -2,6 +2,9 @@ export type CategoryOption = { key: string; title: string; icon: string; color: 
 
 export type CategoryFieldProps = {
   label: string;
+  // The picker sheet's header: a Title Case sheet title, a separate key from
+  // the sentence-case `label` (kiko-translator: one key per UI role).
+  sheetTitle: string;
   options: readonly CategoryOption[];
   selectedKey: string | null;
   onSelect: (key: string) => void;

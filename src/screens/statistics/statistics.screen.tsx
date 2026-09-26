@@ -1032,6 +1032,7 @@ const StatisticsScreen: FC = () => {
         <Box direction="row" gap={3} style={styles.filterBar}>
           <FilterMenu
             label={t('statistics.filterAccounts')}
+            sheetTitle={t('statistics.filterAccountsSheetTitle')}
             testID="statistics-account-filter"
             options={accountOptions}
             selected={selectedAccounts}
@@ -1109,6 +1110,7 @@ const StatisticsScreen: FC = () => {
             <Box direction="row" gap={3} style={styles.filterBar}>
               <FilterMenu
                 label={t('statistics.filterCategories')}
+                sheetTitle={t('statistics.filterCategoriesSheetTitle')}
                 testID="statistics-category-filter"
                 options={categoryOptions}
                 selected={selectedCategories}

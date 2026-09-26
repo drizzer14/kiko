@@ -229,6 +229,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             <CurrencyField
               testID="settings-row-base-currency"
               label={t('settings.baseCurrency')}
+              sheetTitle={t('settings.baseCurrencySheetTitle')}
               hideLabel
               selected={settings?.baseCurrency}
               onSelect={handleSelectCurrency}

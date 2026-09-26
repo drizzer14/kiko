@@ -44,7 +44,13 @@ const captionFor = (entry: (typeof bankCatalog)[number], t: TFunction): string =
 // trigger stays visible and re-openable afterward (no vanish-after-select —
 // see the account-detail BankSyncSection fix this plan also ships for the
 // SAME class of bug there).
-const BankTypeField: FC<BankTypeFieldProps> = ({ label, selected, onSelect, testID }) => {
+const BankTypeField: FC<BankTypeFieldProps> = ({
+  label,
+  sheetTitle,
+  selected,
+  onSelect,
+  testID,
+}) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const [open, setOpen] = useState(false);
@@ -79,7 +85,7 @@ const BankTypeField: FC<BankTypeFieldProps> = ({ label, selected, onSelect, test
       <BottomSheet
         visible={open}
         onDismiss={() => setOpen(false)}
-        header={<Text variant="heading">{label}</Text>}
+        header={<Text variant="heading">{sheetTitle}</Text>}
         testID="bank-type-sheet"
       >
         {/* Guideline 5.6 "not a bank" disclaimer: a footer caption visible

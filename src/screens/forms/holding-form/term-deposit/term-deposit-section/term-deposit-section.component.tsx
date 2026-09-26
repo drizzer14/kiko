@@ -113,6 +113,7 @@ const TermDepositSection: FC<TermDepositSectionProps> = ({ fields, attemptedSave
 
                 <DateField
                   label={t('forms.holding.contributionDate', { index: index + 1 })}
+                  sheetTitle={t('forms.holding.contributionDateSheetTitle', { index: index + 1 })}
                   value={contribution.date}
                   onChange={(next) => fields.updateContributionDate(index, next)}
                   placeholder={t('forms.fields.selectDatePlaceholder')}

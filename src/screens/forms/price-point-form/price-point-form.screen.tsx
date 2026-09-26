@@ -163,6 +163,7 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
 
         <DateField
           label={t('forms.fields.date')}
+          sheetTitle={t('forms.fields.dateSheetTitle')}
           value={date}
           onChange={setDate}
           placeholder={t('forms.fields.selectDatePlaceholder')}

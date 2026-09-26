@@ -14,6 +14,7 @@ const renderOpenSheet = async () => {
   const utils = await render(
     <BankTypeField
       label="Bank type"
+      sheetTitle="Select a Bank"
       selected={null}
       onSelect={onSelect}
       testID="bank-type-field"
@@ -33,6 +34,7 @@ describe('BankTypeField', () => {
     const { getByLabelText, getByTestId } = await render(
       <BankTypeField
         label="Bank type"
+        sheetTitle="Select a Bank"
         selected={null}
         onSelect={onSelect}
         testID="bank-type-field"
@@ -47,11 +49,18 @@ describe('BankTypeField', () => {
     expect(getByTestId('bank-type-sheet')).toBeTruthy();
   });
 
+  it('shows sheetTitle, not label, as the sheet header', async () => {
+    const { getByText } = await renderOpenSheet();
+
+    expect(getByText('Select a Bank')).toBeTruthy();
+  });
+
   it('lists all ten banks, Monobank connectable and the rest import-only', async () => {
     const onSelect = jest.fn();
     const { getByTestId, getAllByText } = await render(
       <BankTypeField
         label="Bank type"
+        sheetTitle="Select a Bank"
         selected={null}
         onSelect={onSelect}
         testID="bank-type-field"
@@ -88,6 +97,7 @@ describe('BankTypeField', () => {
     const { getByTestId } = await render(
       <BankTypeField
         label="Bank type"
+        sheetTitle="Select a Bank"
         selected={null}
         onSelect={onSelect}
         testID="bank-type-field"
@@ -108,6 +118,7 @@ describe('BankTypeField', () => {
     const { getByTestId } = await render(
       <BankTypeField
         label="Bank type"
+        sheetTitle="Select a Bank"
         selected="monobank"
         onSelect={onSelect}
         testID="bank-type-field"
@@ -125,6 +136,7 @@ describe('BankTypeField', () => {
     const { getByTestId } = await render(
       <BankTypeField
         label="Bank type"
+        sheetTitle="Select a Bank"
         selected={null}
         onSelect={onSelect}
         testID="bank-type-field"
@@ -142,6 +154,7 @@ describe('BankTypeField', () => {
     const { getByTestId } = await render(
       <BankTypeField
         label="Bank type"
+        sheetTitle="Select a Bank"
         selected="monobank"
         onSelect={onSelect}
         testID="bank-type-field"
@@ -156,6 +169,7 @@ describe('BankTypeField', () => {
     const { getByTestId } = await render(
       <BankTypeField
         label="Bank type"
+        sheetTitle="Select a Bank"
         selected="monobank"
         onSelect={onSelect}
         testID="bank-type-field"
@@ -175,6 +189,7 @@ describe('BankTypeField', () => {
     const { getByTestId, toJSON } = await render(
       <BankTypeField
         label="Bank type"
+        sheetTitle="Select a Bank"
         selected={null}
         onSelect={onSelect}
         testID="bank-type-field"

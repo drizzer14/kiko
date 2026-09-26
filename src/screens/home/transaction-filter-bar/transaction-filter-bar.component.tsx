@@ -46,6 +46,7 @@ const TransactionFilterBar: FC<TransactionFilterBarProps> = ({
       <Box direction="row" gap={3}>
         <FilterMenu
           label={t('home.filterAccounts')}
+          sheetTitle={t('home.filterAccountsSheetTitle')}
           options={accounts}
           selected={selectedAccount}
           onToggle={onToggleAccount}
@@ -55,6 +56,7 @@ const TransactionFilterBar: FC<TransactionFilterBarProps> = ({
 
         <FilterMenu
           label={t('home.filterCategories')}
+          sheetTitle={t('home.filterCategoriesSheetTitle')}
           options={categories}
           selected={selectedCategory}
           onToggle={onToggleCategory}

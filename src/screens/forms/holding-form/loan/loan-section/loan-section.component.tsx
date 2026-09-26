@@ -116,6 +116,7 @@ const LoanSection: FC<LoanSectionProps> = ({
       <View ref={startDateFieldRef}>
         <DateField
           label={t('forms.holding.loanStartDate')}
+          sheetTitle={t('forms.holding.loanStartDateSheetTitle')}
           value={startDate}
           onChange={onChangeStartDate}
           placeholder={t('forms.fields.selectDatePlaceholder')}
@@ -169,6 +170,7 @@ const LoanSection: FC<LoanSectionProps> = ({
             data-entry step. */}
           <PaymentHoldingField
             label={t('forms.holding.loanPaidFrom')}
+            sheetTitle={t('forms.holding.loanPaidFromSheetTitle')}
             noneLabel={t('forms.holding.loanPaidFromNone')}
             options={paymentHoldingOptions}
             selectedId={paymentHoldingId}

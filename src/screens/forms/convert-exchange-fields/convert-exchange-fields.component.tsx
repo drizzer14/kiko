@@ -24,6 +24,7 @@ const ConvertExchangeFields: FC<ConvertExchangeFieldsProps> = ({
   fixedValue,
   fixedSuffix,
   counterpartLabel,
+  counterpartSheetTitle,
   counterpartPlaceholder,
   counterpartOptions,
   counterpartHoldingId,
@@ -56,6 +57,7 @@ const ConvertExchangeFields: FC<ConvertExchangeFieldsProps> = ({
         <Box gap={1}>
           <HoldingSelectField
             label={counterpartLabel}
+            sheetTitle={counterpartSheetTitle}
             placeholder={counterpartPlaceholder}
             options={counterpartOptions}
             selectedId={counterpartHoldingId}

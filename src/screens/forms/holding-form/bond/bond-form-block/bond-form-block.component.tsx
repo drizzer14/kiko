@@ -131,6 +131,7 @@ const BondFormBlock: FC<BondFormBlockProps> = ({ fields, attemptedSave }) => {
       <View ref={refs.purchaseDateFieldRef}>
         <DateField
           label={t('forms.holding.purchaseDate')}
+          sheetTitle={t('forms.holding.purchaseDateSheetTitle')}
           value={fields.purchaseDate}
           onChange={fields.setPurchaseDate}
           placeholder={t('forms.fields.selectDatePlaceholder')}

@@ -162,6 +162,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
         <View ref={fieldRefs.dateColumnFieldRef}>
           <ColumnSelectField
             label={t('columnMapping.dateColumn')}
+            sheetTitle={t('columnMapping.dateColumnSheetTitle')}
             options={columnOptions}
             selected={dateColumn}
             onSelect={onDateColumnChange}
@@ -175,6 +176,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
         <View ref={fieldRefs.dateFormatFieldRef}>
           <ColumnSelectField
             label={t('columnMapping.dateFormat')}
+            sheetTitle={t('columnMapping.dateFormatSheetTitle')}
             options={dateFormatOptions}
             selected={dateFormat}
             onSelect={onDateFormatChange}
@@ -237,6 +239,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
         <View ref={fieldRefs.descriptionColumnFieldRef}>
           <ColumnSelectField
             label={t('columnMapping.descriptionColumn')}
+            sheetTitle={t('columnMapping.descriptionColumnSheetTitle')}
             options={columnOptions}
             selected={descriptionColumn}
             onSelect={onDescriptionColumnChange}
@@ -249,6 +252,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
 
         <ColumnSelectField
           label={t('columnMapping.counterpartyColumn')}
+          sheetTitle={t('columnMapping.counterpartyColumnSheetTitle')}
           options={columnOptions}
           selected={counterpartyColumn}
           onSelect={onCounterpartyColumnChange}
@@ -259,6 +263,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
 
         <ColumnSelectField
           label={t('columnMapping.balanceColumn')}
+          sheetTitle={t('columnMapping.balanceColumnSheetTitle')}
           options={columnOptions}
           selected={balanceColumn}
           onSelect={onBalanceColumnChange}

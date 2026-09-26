@@ -25,6 +25,7 @@ const NONE_ICON = 'xmark.circle';
 // never use. Purely presentational: the caller builds and filters `options`.
 const PaymentHoldingField = ({
   label,
+  sheetTitle,
   noneLabel,
   options,
   selectedId,
@@ -56,7 +57,7 @@ const PaymentHoldingField = ({
         visible={open}
         onDismiss={() => setOpen(false)}
         gap={2}
-        header={<Text variant="heading">{label}</Text>}
+        header={<Text variant="heading">{sheetTitle}</Text>}
       >
         <SelectableRow
           selected={selectedId === null}

@@ -99,6 +99,7 @@ const OwnershipField: FC<OwnershipFieldProps> = ({
       {showsEffectiveDate && (
         <DateField
           label={t('forms.holding.ownershipEffectiveDate')}
+          sheetTitle={t('forms.holding.ownershipEffectiveDateSheetTitle')}
           value={effectiveDate}
           onChange={onChangeEffectiveDate}
           placeholder={t('forms.fields.selectDatePlaceholder')}

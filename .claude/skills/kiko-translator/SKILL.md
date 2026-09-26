@@ -164,10 +164,17 @@ title (`options={{ title }}` / `navigation.setOptions({ title })`). Every
 other expression in a heading slot (a variable, a `t(variableKey)`, a
 template) fails until it is listed in exactly one allowlist:
 `DYNAMIC_HEADING_KEYS` (the keys it can render), `FORWARDED_HEADING_SITES`
-(a component rendering its own prop, which must be in `HEADING_PROPS`), or
-`UNCHECKED_HEADING_SITES` (a reason: user-entered names, a picker sheet
-repeating its own field label). A new component that renders a prop as a
-heading goes into `HEADING_PROPS`. Read the FAILURE MESSAGE'S key path before
+(a component rendering its own prop, which must be in `HEADING_PROPS`, or a
+`sheetTitle` prop, which needs no `HEADING_PROPS` entry), or
+`UNCHECKED_HEADING_SITES` (a reason: user-entered names, a month/year, a
+bank brand name). A new component that renders a prop as a heading goes
+into `HEADING_PROPS`. Every picker sheet (`SelectField` and its wrappers,
+`DateField`, `TimeField`, `CategoryField`, `BankTypeField`,
+`HoldingSelectField`, `PaymentHoldingField`/`LoanPaymentField`,
+`CurrencyField`, `FilterMenu`, `ColumnSelectField`) takes a REQUIRED
+`sheetTitle` prop, never its `label` repeated: give each field-label key a
+`<labelKey>SheetTitle` twin (en Title Case, uk the label's own sentence-case
+text) and add it to `TITLE_KEYS` (sheet-title decision, 2026-09-26). Read the FAILURE MESSAGE'S key path before
 assuming a new string is miscased: add a new title key to
 `title-keys.ts`, not just to the catalogue.
 

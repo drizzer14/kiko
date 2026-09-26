@@ -15,6 +15,9 @@ export type ConvertExchangeFieldsProps = {
   // The NEW leg the user records: its picker label ('To' for a destination,
   // 'From' for a source), the eligible options, the picked id, and the amount.
   counterpartLabel: string;
+  // The picker sheet's Title Case header, the sheet-title twin of
+  // `counterpartLabel`.
+  counterpartSheetTitle: string;
   counterpartPlaceholder: string;
   counterpartOptions: readonly HoldingSelectOption[];
   counterpartHoldingId: string | null;

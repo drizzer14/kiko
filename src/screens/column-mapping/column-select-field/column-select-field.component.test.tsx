@@ -15,6 +15,7 @@ describe('ColumnSelectField', () => {
     const { getByText } = await render(
       <ColumnSelectField
         label="Date"
+        sheetTitle="Date Column"
         options={options}
         selected={undefined}
         onSelect={jest.fn()}
@@ -29,6 +30,7 @@ describe('ColumnSelectField', () => {
     const { getByText } = await render(
       <ColumnSelectField
         label="Date"
+        sheetTitle="Date Column"
         options={options}
         selected={1}
         onSelect={jest.fn()}
@@ -44,6 +46,7 @@ describe('ColumnSelectField', () => {
     const { getByTestId } = await render(
       <ColumnSelectField
         label="Date"
+        sheetTitle="Date Column"
         options={options}
         selected={undefined}
         onSelect={onSelect}
@@ -58,11 +61,32 @@ describe('ColumnSelectField', () => {
     expect(onSelect).toHaveBeenCalledWith(2);
   });
 
+  it('shows sheetTitle, not label, as the sheet header', async () => {
+    const { getByTestId, queryByText } = await render(
+      <ColumnSelectField
+        label="Date"
+        sheetTitle="Date Column"
+        options={options}
+        selected={undefined}
+        onSelect={jest.fn()}
+        placeholder="Select a date column"
+        testID="date-column-field"
+      />,
+    );
+
+    expect(queryByText('Date Column')).toBeNull();
+
+    await fireEvent.press(getByTestId('date-column-field'));
+
+    expect(queryByText('Date Column')).toBeTruthy();
+  });
+
   it('offers a "Not used" row that selects undefined, only when allowNotUsed is set', async () => {
     const onSelect = jest.fn();
     const { getByTestId, queryByTestId } = await render(
       <ColumnSelectField
         label="Counterparty"
+        sheetTitle="Counterparty Column"
         options={options}
         selected={0}
         onSelect={onSelect}
@@ -84,6 +108,7 @@ describe('ColumnSelectField', () => {
     const { getByTestId, queryByTestId } = await render(
       <ColumnSelectField
         label="Date"
+        sheetTitle="Date Column"
         options={options}
         selected={0}
         onSelect={jest.fn()}

@@ -32,6 +32,7 @@ const DateTimeRow: FC<DateTimeRowProps> = ({
       <View style={styles.field}>
         <DateField
           label={t('forms.fields.date')}
+          sheetTitle={t('forms.fields.dateSheetTitle')}
           value={time}
           onChange={onChangeTime}
           disabled={disabled}
@@ -43,6 +44,7 @@ const DateTimeRow: FC<DateTimeRowProps> = ({
       <View style={styles.field}>
         <TimeField
           label={t('forms.fields.time')}
+          sheetTitle={t('forms.fields.timeSheetTitle')}
           value={time}
           onChange={onChangeTime}
           disabled={disabled}

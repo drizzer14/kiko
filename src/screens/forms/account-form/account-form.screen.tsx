@@ -575,6 +575,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           <>
             <CurrencyField
               label={t('forms.fields.currency')}
+              sheetTitle={t('forms.fields.currencySheetTitle')}
               selected={currency}
               onSelect={setCurrency}
               options={fiatCurrencyOptions}
@@ -623,6 +624,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
             <BankTypeField
               label={t('forms.account.bankType')}
+              sheetTitle={t('forms.account.bankTypeSheetTitle')}
               selected={bankId}
               onSelect={setBankId}
               testID="account-bank-type-field"

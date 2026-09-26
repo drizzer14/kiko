@@ -83,6 +83,7 @@ const ManualBondFields: FC<ManualBondFieldsProps> = ({
       <View ref={maturityDateFieldRef} testID="maturity-date-field">
         <DateField
           label={t('forms.holding.maturityDate')}
+          sheetTitle={t('forms.holding.maturityDateSheetTitle')}
           value={maturityDate}
           onChange={onChangeMaturityDate}
           placeholder={t('forms.fields.selectDatePlaceholder')}

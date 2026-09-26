@@ -35,6 +35,7 @@ const combineDayAndTime = (dayMillis: number, picked: Date): number => {
 // of DateField, which keeps the time-of-day while replacing only the day.
 const TimeField: FC<TimeFieldProps> = ({
   label,
+  sheetTitle,
   value,
   onChange,
   placeholder,
@@ -79,7 +80,7 @@ const TimeField: FC<TimeFieldProps> = ({
         visible={open}
         onDismiss={() => setOpen(false)}
         gap={4}
-        header={<Text variant="heading">{label}</Text>}
+        header={<Text variant="heading">{sheetTitle}</Text>}
       >
         <DateTimePicker
           testID={`${label} picker`}

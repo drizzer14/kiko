@@ -4,6 +4,7 @@ import '../../../design-system/unistyles';
 import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 
 import LoanPaymentField from '.';
+import type { LoanPaymentFieldProps } from './loan-payment-field.props';
 
 const options: HoldingSelectOption[] = [
   {
@@ -16,58 +17,42 @@ const options: HoldingSelectOption[] = [
   },
 ];
 
+const renderLoanPaymentField = (overrides: Partial<LoanPaymentFieldProps> = {}) =>
+  render(
+    <LoanPaymentField
+      label="Loan payment"
+      sheetTitle="Loan Payment"
+      noneLabel="None"
+      options={options}
+      selectedId={null}
+      onSelect={jest.fn()}
+      linkSource={null}
+      autoLinkedCaption="Linked automatically."
+      undoLabel="Undo"
+      onUndo={jest.fn()}
+      {...overrides}
+    />,
+  );
+
 describe('LoanPaymentField', () => {
   it('shows "None" when nothing is linked', async () => {
-    const { getByText } = await render(
-      <LoanPaymentField
-        label="Loan payment"
-        noneLabel="None"
-        options={options}
-        selectedId={null}
-        onSelect={jest.fn()}
-        linkSource={null}
-        autoLinkedCaption="Linked automatically."
-        undoLabel="Undo"
-        onUndo={jest.fn()}
-      />,
-    );
+    const { getByText } = await renderLoanPaymentField();
 
     expect(getByText('None')).toBeTruthy();
   });
 
   it('shows the linked loan holding name', async () => {
-    const { getByText } = await render(
-      <LoanPaymentField
-        label="Loan payment"
-        noneLabel="None"
-        options={options}
-        selectedId="loan-1"
-        onSelect={jest.fn()}
-        linkSource="manual"
-        autoLinkedCaption="Linked automatically."
-        undoLabel="Undo"
-        onUndo={jest.fn()}
-      />,
-    );
+    const { getByText } = await renderLoanPaymentField({
+      selectedId: 'loan-1',
+      linkSource: 'manual',
+    });
 
     expect(getByText('Car loan')).toBeTruthy();
   });
 
   it('reports the picked loan holding id at once (no Save gating)', async () => {
     const onSelect = jest.fn();
-    const { getByLabelText, getByText } = await render(
-      <LoanPaymentField
-        label="Loan payment"
-        noneLabel="None"
-        options={options}
-        selectedId={null}
-        onSelect={onSelect}
-        linkSource={null}
-        autoLinkedCaption="Linked automatically."
-        undoLabel="Undo"
-        onUndo={jest.fn()}
-      />,
-    );
+    const { getByLabelText, getByText } = await renderLoanPaymentField({ onSelect });
 
     await fireEvent.press(getByLabelText('Loan payment'));
     await fireEvent.press(getByText('Car loan'));
@@ -75,21 +60,23 @@ describe('LoanPaymentField', () => {
     expect(onSelect).toHaveBeenCalledWith('loan-1');
   });
 
+  it('forwards sheetTitle as the sheet header', async () => {
+    const { getByLabelText, queryByText } = await renderLoanPaymentField();
+
+    expect(queryByText('Loan Payment')).toBeNull();
+
+    await fireEvent.press(getByLabelText('Loan payment'));
+
+    expect(queryByText('Loan Payment')).toBeTruthy();
+  });
+
   it('reports null when "None" is picked from an existing link', async () => {
     const onSelect = jest.fn();
-    const { getByLabelText, getAllByText } = await render(
-      <LoanPaymentField
-        label="Loan payment"
-        noneLabel="None"
-        options={options}
-        selectedId="loan-1"
-        onSelect={onSelect}
-        linkSource="manual"
-        autoLinkedCaption="Linked automatically."
-        undoLabel="Undo"
-        onUndo={jest.fn()}
-      />,
-    );
+    const { getByLabelText, getAllByText } = await renderLoanPaymentField({
+      selectedId: 'loan-1',
+      onSelect,
+      linkSource: 'manual',
+    });
 
     await fireEvent.press(getByLabelText('Loan payment'));
     // "None" appears once as the sheet row's own label (the trigger itself
@@ -100,19 +87,10 @@ describe('LoanPaymentField', () => {
   });
 
   it('shows the auto-link caption and Undo only when linkSource is "auto"', async () => {
-    const { getByText, queryByText } = await render(
-      <LoanPaymentField
-        label="Loan payment"
-        noneLabel="None"
-        options={options}
-        selectedId="loan-1"
-        onSelect={jest.fn()}
-        linkSource="auto"
-        autoLinkedCaption="Linked automatically."
-        undoLabel="Undo"
-        onUndo={jest.fn()}
-      />,
-    );
+    const { getByText, queryByText } = await renderLoanPaymentField({
+      selectedId: 'loan-1',
+      linkSource: 'auto',
+    });
 
     expect(getByText('Linked automatically.')).toBeTruthy();
     expect(getByText('Undo')).toBeTruthy();
@@ -120,19 +98,10 @@ describe('LoanPaymentField', () => {
   });
 
   it('hides the auto-link caption and Undo for a manual link', async () => {
-    const { queryByText } = await render(
-      <LoanPaymentField
-        label="Loan payment"
-        noneLabel="None"
-        options={options}
-        selectedId="loan-1"
-        onSelect={jest.fn()}
-        linkSource="manual"
-        autoLinkedCaption="Linked automatically."
-        undoLabel="Undo"
-        onUndo={jest.fn()}
-      />,
-    );
+    const { queryByText } = await renderLoanPaymentField({
+      selectedId: 'loan-1',
+      linkSource: 'manual',
+    });
 
     expect(queryByText('Linked automatically.')).toBeNull();
     expect(queryByText('Undo')).toBeNull();
@@ -140,19 +109,11 @@ describe('LoanPaymentField', () => {
 
   it('fires onUndo when Undo is pressed', async () => {
     const onUndo = jest.fn();
-    const { getByText } = await render(
-      <LoanPaymentField
-        label="Loan payment"
-        noneLabel="None"
-        options={options}
-        selectedId="loan-1"
-        onSelect={jest.fn()}
-        linkSource="auto"
-        autoLinkedCaption="Linked automatically."
-        undoLabel="Undo"
-        onUndo={onUndo}
-      />,
-    );
+    const { getByText } = await renderLoanPaymentField({
+      selectedId: 'loan-1',
+      linkSource: 'auto',
+      onUndo,
+    });
 
     await fireEvent.press(getByText('Undo'));
 

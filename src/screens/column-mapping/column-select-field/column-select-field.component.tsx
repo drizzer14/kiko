@@ -21,6 +21,7 @@ import type { ColumnSelectFieldProps } from './column-select-field.props';
  */
 const ColumnSelectField = <T extends string | number>({
   label,
+  sheetTitle,
   options,
   selected,
   onSelect,
@@ -58,7 +59,7 @@ const ColumnSelectField = <T extends string | number>({
         // ModeSelectField, CategoryField, CurrencyField, SelectField), which
         // all pass an explicit `gap={2}` rather than the BottomSheet default.
         gap={2}
-        header={<Text variant="heading">{label}</Text>}
+        header={<Text variant="heading">{sheetTitle}</Text>}
         testID={testID ? `${testID}-sheet` : undefined}
       >
         {options.map((option) => (

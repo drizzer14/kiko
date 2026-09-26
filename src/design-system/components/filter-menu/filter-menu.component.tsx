@@ -30,6 +30,7 @@ const isChecked = (value: string, selected: Set<string>): boolean =>
  */
 const FilterMenu: FC<FilterMenuProps> = ({
   label,
+  sheetTitle,
   options,
   selected,
   onToggle,
@@ -76,7 +77,7 @@ const FilterMenu: FC<FilterMenuProps> = ({
         visible={open}
         onDismiss={() => setOpen(false)}
         gap={2}
-        header={<Text variant="heading">{label}</Text>}
+        header={<Text variant="heading">{sheetTitle}</Text>}
         backdropTestID={`${testID}-backdrop`}
       >
         {rows.map((option) => (

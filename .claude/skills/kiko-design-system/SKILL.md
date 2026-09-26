@@ -745,7 +745,12 @@ new component can land between reviews of this skill:
   larger task. `sheetTitle` is REQUIRED and distinct from `label` — a
   field label (sentence case) and a sheet title (Title Case) are two
   different UI roles per `kiko-translator`'s casing-by-role rule, so the
-  sheet header can never just reuse the label verbatim. `SelectField`'s
+  sheet header can never just reuse the label verbatim. The same REQUIRED
+  `sheetTitle` prop is on every other picker-sheet field too (`DateField`,
+  `TimeField`, `CategoryField`, `BankTypeField`, `HoldingSelectField`,
+  `PaymentHoldingField`, `CurrencyField`, `FilterMenu`,
+  `ColumnSelectField`); the trigger's `label` stays its caption and
+  accessibility label. `SelectField`'s
   `selected` accepts `null` for a picker that legitimately starts with
   nothing chosen — the trigger then shows `placeholder` at
   `textSecondary`, the same "no default" contract a `ChipRow` used to

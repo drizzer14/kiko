@@ -676,6 +676,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         {holdingDescriptor(type).fixedCurrency === null && (
           <CurrencyField
             label={t('forms.fields.currency')}
+            sheetTitle={t('forms.fields.currencySheetTitle')}
             selected={currency}
             onSelect={setCurrency}
             disabled={isEdit}

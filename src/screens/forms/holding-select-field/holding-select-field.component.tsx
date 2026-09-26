@@ -19,6 +19,7 @@ import type { HoldingSelectFieldProps } from './holding-select-field.props';
 // filters the option list; this component only renders what it is given.
 const HoldingSelectField = ({
   label,
+  sheetTitle,
   placeholder,
   options,
   selectedId,
@@ -69,7 +70,7 @@ const HoldingSelectField = ({
         visible={open}
         onDismiss={() => setOpen(false)}
         gap={2}
-        header={<Text variant="heading">{label}</Text>}
+        header={<Text variant="heading">{sheetTitle}</Text>}
       >
         {options.map((option) => {
           const isSelected = option.id === selectedId;

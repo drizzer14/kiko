@@ -28,6 +28,11 @@ const DYNAMIC_HEADING_KEYS: Record<string, readonly string[]> = {
   'screens/account-detail/bank-sync-section/bank-sync-section.component.tsx#titleKey': [
     'accountDetail.disconnectMonobank',
   ],
+  'screens/forms/convert-exchange-fields/convert-exchange-fields.component.tsx#counterpartSheetTitle':
+    ['forms.transaction.fromSheetTitle', 'forms.transaction.toSheetTitle'],
+  'screens/forms/transaction-form/transaction-form.screen.tsx#props.sheetTitle': [
+    'forms.transaction.holdingSheetTitle',
+  ],
   'screens/forms/transaction-form/transaction-form.screen.tsx#title': [
     'forms.transaction.title',
     'forms.transaction.editTitle',
@@ -39,19 +44,33 @@ const DYNAMIC_HEADING_KEYS: Record<string, readonly string[]> = {
 // are checked at that component's call sites through HEADING_PROPS instead.
 const FORWARDED_HEADING_SITES: Record<string, `${string}.${string}`> = {
   'design-system/components/confirm-sheet/confirm-sheet.component.tsx#title': 'ConfirmSheet.title',
+  'design-system/components/currency-field/currency-field.component.tsx#sheetTitle':
+    'CurrencyField.sheetTitle',
   'design-system/components/entity-amount-header/entity-amount-header.component.tsx#label':
     'EntityAmountHeader.label',
+  'design-system/components/filter-menu/filter-menu.component.tsx#sheetTitle':
+    'FilterMenu.sheetTitle',
   'design-system/components/select-field/select-field.component.tsx#sheetTitle':
     'SelectField.sheetTitle',
   'design-system/components/summary-table/summary-table.component.tsx#title': 'SummaryTable.title',
+  'screens/column-mapping/column-select-field/column-select-field.component.tsx#sheetTitle':
+    'ColumnSelectField.sheetTitle',
   'screens/forms/account-kind-field/account-kind-field.component.tsx#sheetTitle':
     'AccountKindField.sheetTitle',
+  'screens/forms/bank-type-field/bank-type-field.component.tsx#sheetTitle':
+    'BankTypeField.sheetTitle',
+  'screens/forms/category-field/category-field.component.tsx#sheetTitle':
+    'CategoryField.sheetTitle',
+  'screens/forms/date-field/date-field.component.tsx#sheetTitle': 'DateField.sheetTitle',
+  'screens/forms/holding-select-field/holding-select-field.component.tsx#sheetTitle':
+    'HoldingSelectField.sheetTitle',
+  'screens/forms/loan-payment-field/loan-payment-field.component.tsx#sheetTitle':
+    'LoanPaymentField.sheetTitle',
+  'screens/forms/payment-holding-field/payment-holding-field.component.tsx#sheetTitle':
+    'PaymentHoldingField.sheetTitle',
+  'screens/forms/time-field/time-field.component.tsx#sheetTitle': 'TimeField.sheetTitle',
   'screens/holding-detail/holding-detail.screen.tsx#title': 'LinkedPaymentsSection.title',
 };
-
-// A picker sheet that repeats its own field label as its title renders a
-// field-label key, which the field-label role keeps in sentence case.
-const FIELD_LABEL_ECHO = 'a picker sheet repeating its own sentence-case field label';
 
 // A heading slot that renders no Title-role key, with the reason.
 const UNCHECKED_HEADING_SITES: Record<string, string> = {
@@ -59,17 +78,7 @@ const UNCHECKED_HEADING_SITES: Record<string, string> = {
     'a month name and a year, not a phrase that has a casing role',
   'design-system/components/card-context-menu/card-context-menu.component.tsx#name':
     'the user-entered name of the entity the menu acts on',
-  'design-system/components/currency-field/currency-field.component.tsx#label': FIELD_LABEL_ECHO,
-  'design-system/components/filter-menu/filter-menu.component.tsx#label': FIELD_LABEL_ECHO,
   'screens/account-detail/account-detail.screen.tsx#accountName': 'the user-entered account name',
-  'screens/column-mapping/column-select-field/column-select-field.component.tsx#label':
-    FIELD_LABEL_ECHO,
-  'screens/forms/bank-type-field/bank-type-field.component.tsx#label': FIELD_LABEL_ECHO,
-  'screens/forms/category-field/category-field.component.tsx#label': FIELD_LABEL_ECHO,
-  'screens/forms/date-field/date-field.component.tsx#label': FIELD_LABEL_ECHO,
-  'screens/forms/holding-select-field/holding-select-field.component.tsx#label': FIELD_LABEL_ECHO,
-  'screens/forms/payment-holding-field/payment-holding-field.component.tsx#label': FIELD_LABEL_ECHO,
-  'screens/forms/time-field/time-field.component.tsx#label': FIELD_LABEL_ECHO,
   'screens/holding-detail/holding-detail.screen.tsx#holdingName': 'the user-entered holding name',
   'screens/statement-import/statement-preview-block/statement-preview-block.component.tsx#stats.displayName':
     'the statement format name the parser reports, a bank brand name',

@@ -29,6 +29,7 @@ const renderMenu = (props: MenuProps = {}): ReturnType<typeof render> =>
   render(
     <FilterMenu
       label="Accounts"
+      sheetTitle="Filter by Account"
       testID={TEST_ID}
       options={
         props.options ?? [
@@ -58,6 +59,16 @@ describe('FilterMenu', () => {
     expect(getByTestId(`${TEST_ID}-option-PrivatBank`)).toBeTruthy();
   });
 
+  it('shows sheetTitle, not label, as the sheet header', async () => {
+    const { getByTestId, queryByText } = await renderMenu();
+
+    expect(queryByText('Filter by Account')).toBeNull();
+
+    await openMenu(getByTestId);
+
+    expect(queryByText('Filter by Account')).toBeTruthy();
+  });
+
   it('renders the default filter trigger glyph when no triggerIcon is passed', async () => {
     const utils = await renderMenu();
 
@@ -73,6 +84,7 @@ describe('FilterMenu', () => {
     const utils = await render(
       <FilterMenu
         label="Accounts"
+        sheetTitle="Filter by Account"
         testID={TEST_ID}
         options={[]}
         selected={new Set<string>()}

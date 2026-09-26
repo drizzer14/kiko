@@ -11,6 +11,9 @@ export type HoldingSelectOption = {
 
 export type HoldingSelectFieldProps = {
   label: string;
+  // The picker sheet's header: a Title Case sheet title, a separate key from
+  // the sentence-case `label` (kiko-translator: one key per UI role).
+  sheetTitle: string;
   placeholder: string;
   options: readonly HoldingSelectOption[];
   selectedId: string | null;

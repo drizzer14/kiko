@@ -758,6 +758,7 @@ const resolveDefaultPrimaryHolding = (args: {
 const renderPrimaryHoldingField = (props: {
   visible: boolean;
   label: string;
+  sheetTitle: string;
   placeholder: string;
   options: readonly HoldingSelectOption[];
   selectedId: string | null;
@@ -770,6 +771,7 @@ const renderPrimaryHoldingField = (props: {
   return (
     <HoldingSelectField
       label={props.label}
+      sheetTitle={props.sheetTitle}
       placeholder={props.placeholder}
       options={props.options}
       selectedId={props.selectedId}
@@ -935,6 +937,7 @@ type ConvertView = {
   fixedValue: string;
   fixedLabel: string;
   counterpartLabel: string;
+  counterpartSheetTitle: string;
   counterpartAmountLabel: string;
 };
 
@@ -982,11 +985,13 @@ const resolveConvertView = (
       ? {
           fixedLabel: t('forms.transaction.valueIn'),
           counterpartLabel: t('forms.transaction.from'),
+          counterpartSheetTitle: t('forms.transaction.fromSheetTitle'),
           counterpartAmountLabel: t('forms.transaction.valueOut'),
         }
       : {
           fixedLabel: t('forms.transaction.valueOut'),
           counterpartLabel: t('forms.transaction.to'),
+          counterpartSheetTitle: t('forms.transaction.toSheetTitle'),
           counterpartAmountLabel: t('forms.transaction.valueIn'),
         };
 
@@ -1074,6 +1079,7 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         fixedValue={props.convertView.fixedValue}
         fixedSuffix={props.fixedSuffix}
         counterpartLabel={props.convertView.counterpartLabel}
+        counterpartSheetTitle={props.convertView.counterpartSheetTitle}
         counterpartPlaceholder={props.t('forms.transaction.selectHolding')}
         counterpartOptions={props.convertView.options}
         counterpartHoldingId={props.counterpartHoldingId}
@@ -1225,6 +1231,7 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
           <Box gap={2}>
             <HoldingSelectField
               label={props.t('forms.transaction.returnTo', { index: index + 1 })}
+              sheetTitle={props.t('forms.transaction.returnToSheetTitle', { index: index + 1 })}
               placeholder={props.selectHoldingPlaceholder}
               options={props.buildOptions(index)}
               selectedId={row.holdingId}
@@ -1388,6 +1395,7 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
           <Box gap={1}>
             <CategoryField
               label={props.t('forms.transaction.category')}
+              sheetTitle={props.t('forms.transaction.categorySheetTitle')}
               testID="transaction-category-field"
               options={props.categoryOptions}
               selectedKey={props.selectedCategory}
@@ -1412,6 +1420,7 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
       {props.loanFieldVisible && (
         <LoanPaymentField
           label={props.t('forms.transaction.loanPayment')}
+          sheetTitle={props.t('forms.transaction.loanPaymentSheetTitle')}
           noneLabel={props.t('forms.transaction.loanPaymentNone')}
           testID="transaction-loan-payment-field"
           options={props.loanOptions}
@@ -2488,6 +2497,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
           {renderPrimaryHoldingField({
             visible: isEmptyCreate,
             label: t('forms.transaction.holding'),
+            sheetTitle: t('forms.transaction.holdingSheetTitle'),
             placeholder: t('forms.transaction.selectHolding'),
             options: primaryOptions,
             selectedId: primaryHoldingId,

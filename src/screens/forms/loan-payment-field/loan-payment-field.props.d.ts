@@ -2,6 +2,8 @@ import type { HoldingSelectOption } from '../holding-select-field/holding-select
 
 export type LoanPaymentFieldProps = {
   label: string;
+  // Forwarded to `PaymentHoldingField` as its Title Case sheet header.
+  sheetTitle: string;
   // The synthetic "clear the link" row's own label ("None"), prepended
   // ahead of `options` and shown as the trigger's value whenever
   // `selectedId` is `null`.

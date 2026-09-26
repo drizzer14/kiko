@@ -23,6 +23,7 @@ const baseProps = {
   fixedLabel: 'Value Out',
   fixedValue: '1,000.00',
   counterpartLabel: 'To',
+  counterpartSheetTitle: 'Select a Destination',
   counterpartPlaceholder: 'Select holding',
   counterpartOptions: options,
   counterpartHoldingId: null,
@@ -50,6 +51,16 @@ describe('ConvertExchangeFields', () => {
     // The fixed existing leg reads in hryvnia, the counterpart leg in dollars.
     expect(getByText('₴')).toBeTruthy();
     expect(getByText('$')).toBeTruthy();
+  });
+
+  it("shows counterpartSheetTitle as the counterpart picker's sheet header", async () => {
+    const { getByLabelText, queryByText } = await render(<ConvertExchangeFields {...baseProps} />);
+
+    expect(queryByText('Select a Destination')).toBeNull();
+
+    await fireEvent.press(getByLabelText('To'));
+
+    expect(queryByText('Select a Destination')).toBeTruthy();
   });
 
   it('reports the picked counterpart holding', async () => {

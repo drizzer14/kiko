@@ -60,6 +60,7 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
         <Box gap={1}>
           <HoldingSelectField
             label={t('forms.transaction.to')}
+            sheetTitle={t('forms.transaction.toSheetTitle')}
             placeholder={t('forms.transaction.selectHolding')}
             options={destinationOptions}
             selectedId={destinationHoldingId}

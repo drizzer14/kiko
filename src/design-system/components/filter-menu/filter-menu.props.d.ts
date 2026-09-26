@@ -17,8 +17,11 @@ export type FilterOption = {
 };
 
 export type FilterMenuProps = {
-  // The control's label, shown on the button and used as the menu title.
+  // The control's label, shown on the button.
   label: string;
+  // The menu sheet's header: a Title Case sheet title, a separate key from the
+  // sentence-case `label` (kiko-translator: one key per UI role).
+  sheetTitle: string;
   // The selectable options, each rendered as a checkable menu item; matching
   // still keys on each option's `value`.
   options: FilterOption[];
