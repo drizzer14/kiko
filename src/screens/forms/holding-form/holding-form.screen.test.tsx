@@ -97,6 +97,7 @@ let mockBondRegisterFetchedAtRows: { value: number | null }[] = [{ value: 1 }];
 // correction to anchor the outstanding it preserves. Empty by default; only
 // the (a)-case test below seeds a correction.
 let mockPricePoints: unknown[] = [];
+let mockPricePointsLoading = false;
 // The loan form's own "Paid from" picker options source — every OTHER
 // holding, distinct from `mockEditHoldings` (the ONE holding being edited).
 // Both subscribe under the same `['holdings']` key, so `__kind` (set on the
@@ -125,7 +126,7 @@ const mockUseLiveQuery = jest.fn(
     }
 
     if (keys[0] === 'price_points') {
-      return { data: mockPricePoints };
+      return { data: mockPricePoints, isLoading: mockPricePointsLoading };
     }
 
     return {
@@ -210,6 +211,7 @@ beforeEach(() => {
   mockBondRegisterRows = [];
   mockBondRegisterFetchedAtRows = [{ value: 1 }];
   mockPricePoints = [];
+  mockPricePointsLoading = false;
   mockAllHoldings = [];
   mockAllAccounts = [];
 });
@@ -3804,6 +3806,47 @@ describe('HoldingFormScreen — the price_points gate', () => {
 
     const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
     expect(priceCall?.[2]).toBe(true);
+  });
+
+  // A loan edit reads its current outstanding off the book; saved before the
+  // book loads, a change into 'none' would store the schedule-only value as a
+  // permanent manual point.
+  it('disables Save on a loan edit until the price book has loaded', async () => {
+    const loan = {
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Car loan',
+      type: 'loan',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        kind: 'personal',
+        principalMinorUnits: 100_000_00,
+        startDate: localDay(2026, 1, 1),
+        annualRatePct: 10,
+        termMonths: 12,
+        schedule: 'annuity',
+      },
+    };
+    mockPricePointsLoading = true;
+    const screen = await renderEdit(loan);
+
+    expect(screen.getByText('Save')).toBeDisabled();
+
+    mockPricePointsLoading = false;
+    await screen.rerender(
+      <HoldingFormScreen
+        navigation={navigationProp(navigation)}
+        route={asRouteProp<HoldingFormProps['route']>('HoldingForm', {
+          accountId: 'acc-1',
+          holdingId: 'h1',
+        })}
+      />,
+    );
+
+    expect(screen.getByText('Save')).not.toBeDisabled();
   });
 });
 

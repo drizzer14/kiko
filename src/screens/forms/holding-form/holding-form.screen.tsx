@@ -250,8 +250,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // kiko-architecture: skip the price_points read while the active type
   // (the row being edited, read straight off the query rather than waiting
   // for the type-sync effect below; the currently selected type in create
-  // mode) never reads it (`needsPriceBook`).
-  const { book: priceBook } = usePriceBook(needsPriceBook(editingHolding?.type ?? type));
+  // mode) never reads it (`needsPriceBook`). Save waits for the book on an
+  // edit: saved against a still-empty book, a loan changed into `'none'`
+  // would store its schedule-only outstanding as a permanent manual point.
+  const { book: priceBook, isLoading: isPriceBookLoading } = usePriceBook(
+    needsPriceBook(editingHolding?.type ?? type),
+  );
   const [currency, setCurrency] = useState<Currency>('UAH');
   // DEVICE BUG fix (root cause): while the currency sheet's search field can
   // be focused, this screen's background ScrollView must NOT react to the
@@ -596,7 +600,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         contentHeightRef.current = height;
       }}
       footer={
-        <Button onPress={onSave} disabled={isSubmitting}>
+        <Button onPress={onSave} disabled={isSubmitting || (isEdit && isPriceBookLoading)}>
           {t('common.save')}
         </Button>
       }

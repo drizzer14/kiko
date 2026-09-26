@@ -197,7 +197,12 @@ true while either read is on its first load — every consumer destructures `con
 book: priceBook } = usePriceBook();`, and a screen that gates its own
 empty state additionally destructures `isLoading: priceBookLoading`
 and folds it into its `useDataReady(...)` call (see
-`kiko-architecture`'s useLiveQuery consumer rule). This is the
+`kiko-architecture`'s useLiveQuery consumer rule). A form that WRITES
+from the book (`holding-form`'s edit `saveEdit`: a loan changed into
+`'none'` stores its current outstanding as a manual point) destructures
+`isLoading: isPriceBookLoading` and keeps Save disabled on an edit until
+it is false — saved against a still-empty book, that point would be the
+schedule-only value, forever. This is the
 reactive entry point every value reader (`holdingValueBreakdown`,
 `holdingValueAt`, `buildNetWorthSeries`, `netWorth`, `guardedNetWorth`/
 `guardedBreakdown`, `sumByCurrency`, `buildTypeBreakdown`,
