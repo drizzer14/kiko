@@ -88,9 +88,8 @@ const styles = StyleSheet.create(() => ({
 // themed ConfirmSheet since it moves this category's transactions to the default)
 // renders on EVERY card, but is DISABLED on the default card — the default can
 // never be deleted, and the disabled control keeps the bottom row's layout
-// identical across all cards. Local title state is seeded from the row so
-// keystrokes show immediately, while the persisted value flows back through the
-// live query.
+// identical across all cards. Local title state follows the row so keystrokes
+// show immediately, while the persisted value flows back through the live query.
 const CategoryListRow: FC<{
   category: CategoryRow;
   isDefault: boolean;
@@ -104,6 +103,14 @@ const CategoryListRow: FC<{
   // the translated string it is shown as (see `displayTitle` below) can never
   // itself be saved as a rename.
   const [title, setTitle] = useState(category.title);
+  // The stored title `title` last took. The row is keyed by category.key, so it
+  // never remounts when a fresh row replaces the cached one (kiko-architecture:
+  // a cached display mount can be one read old); a stored title that changed
+  // while the field is not being edited — a rename made elsewhere, such as a
+  // .kiko restore — replaces the local one. Syncing on a CHANGE, not rendering
+  // `category.title` directly, keeps a just-committed rename on screen until
+  // its write flows back, instead of flashing the old title.
+  const [syncedTitle, setSyncedTitle] = useState(category.title);
   // Tracks whether the field currently has focus. While unfocused, an
   // un-renamed default shows its translated label (`resolveDefaultCategoryTitle`
   // is a no-op for a renamed/custom row, so those always show `title`
@@ -112,6 +119,11 @@ const CategoryListRow: FC<{
   // controlled `value` stays in sync with) the real stored text, not the
   // translated one.
   const [isEditing, setIsEditing] = useState(false);
+
+  if (!isEditing && category.title !== syncedTitle) {
+    setSyncedTitle(category.title);
+    setTitle(category.title);
+  }
   // Whether the themed delete confirm (`ConfirmSheet`) is up, replacing the old
   // native `ActionSheetIOS`; a scrim/back dismiss behaves like Cancel.
   const [deletePending, setDeletePending] = useState(false);
@@ -130,8 +142,12 @@ const CategoryListRow: FC<{
 
   const commitTitle = (): void => {
     const trimmed = title.trim();
+    // An edit that began on a cached title and ends after the fresh one arrived
+    // still holds the cached text; only text the user actually changed is a
+    // rename, so the cached title is never written back over the fresh one.
+    const isRename = trimmed !== syncedTitle && trimmed !== category.title;
 
-    if (trimmed !== '' && trimmed !== category.title) {
+    if (trimmed !== '' && isRename) {
       categoriesRepo.updateTitle(category.key, trimmed);
     }
 

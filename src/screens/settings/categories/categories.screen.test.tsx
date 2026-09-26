@@ -117,13 +117,31 @@ type CategoriesProps = ComponentProps<typeof CategoriesScreen>;
 // The screen reads neither prop (it navigates through hooks), but React
 // Navigation still types both as required, so every render supplies the pair
 // from the shared, singly-cast test doubles.
-const renderScreen = () =>
-  render(
-    <CategoriesScreen
-      navigation={asNavigationProp<CategoriesProps['navigation']>(navigationSpy())}
-      route={asRouteProp<CategoriesProps['route']>('Categories')}
-    />,
-  );
+const screenElement = () => (
+  <CategoriesScreen
+    navigation={asNavigationProp<CategoriesProps['navigation']>(navigationSpy())}
+    route={asRouteProp<CategoriesProps['route']>('Categories')}
+  />
+);
+
+const renderScreen = () => render(screenElement());
+
+// The categories query hands back new rows (a live-query refire), so each row
+// re-renders with the same key and never remounts.
+const rerenderWithCategories = async (
+  rerender: (element: ReturnType<typeof screenElement>) => void,
+  titleByKey: Record<string, string>,
+) => {
+  mockLiveQueryData = SEEDED_CATEGORIES.map((category) => ({
+    ...category,
+    title: titleByKey[category.key] ?? category.title,
+  }));
+  mockCategoriesIsFresh = true;
+
+  await act(async () => {
+    rerender(screenElement());
+  });
+};
 
 describe('CategoriesScreen', () => {
   beforeEach(() => {
@@ -198,12 +216,7 @@ describe('CategoriesScreen', () => {
     mockLiveQueryData = SEEDED_CATEGORIES.map((category) => ({ ...category }));
 
     await act(async () => {
-      rerender(
-        <CategoriesScreen
-          navigation={asNavigationProp<CategoriesProps['navigation']>(navigationSpy())}
-          route={asRouteProp<CategoriesProps['route']>('Categories')}
-        />,
-      );
+      rerender(screenElement());
     });
 
     const nextProps = mockGridSpy.mock.calls.at(-1)?.[0];
@@ -220,6 +233,59 @@ describe('CategoriesScreen', () => {
 
     expect(mockUpdateTitle).toHaveBeenCalledWith('groceries', 'Food');
     expect(getByDisplayValue('Food')).toBeTruthy();
+  });
+
+  // kiko-architecture: a cached display mount shows rows that can be one read
+  // old, and a row keyed by category.key never remounts when the fresh row
+  // arrives. A rename made elsewhere (a .kiko restore) must reach the field,
+  // and a no-op focus/blur must never write the cached title back over it.
+  describe('rename from a cached row', () => {
+    beforeEach(() => {
+      mockLiveQueryData = SEEDED_CATEGORIES.map((category) =>
+        category.key === 'groceries' ? { ...category, title: 'Food' } : { ...category },
+      );
+      mockCategoriesIsFresh = false;
+    });
+
+    it('shows the fresh title once it arrives, and a focus/blur writes nothing', async () => {
+      const { rerender, getByLabelText, getByDisplayValue, queryByDisplayValue } =
+        await renderScreen();
+
+      await rerenderWithCategories(rerender, { groceries: 'Groceries' });
+
+      expect(getByDisplayValue('Groceries')).toBeTruthy();
+      expect(queryByDisplayValue('Food')).toBeNull();
+
+      const field = getByLabelText('Groceries title');
+      await fireEvent(field, 'focus');
+      await fireEvent(field, 'endEditing');
+
+      expect(mockUpdateTitle).not.toHaveBeenCalled();
+    });
+
+    it('never writes the cached title back when the fresh title arrives mid-edit', async () => {
+      const { rerender, getByLabelText, getByDisplayValue } = await renderScreen();
+
+      await fireEvent(getByLabelText('Food title'), 'focus');
+      await rerenderWithCategories(rerender, { groceries: 'Groceries' });
+      await fireEvent(getByLabelText('Groceries title'), 'endEditing');
+
+      expect(mockUpdateTitle).not.toHaveBeenCalled();
+      expect(getByDisplayValue('Groceries')).toBeTruthy();
+    });
+
+    it('still saves a rename typed after the fresh title arrived', async () => {
+      const { rerender, getByLabelText } = await renderScreen();
+
+      await rerenderWithCategories(rerender, { groceries: 'Groceries' });
+
+      const field = getByLabelText('Groceries title');
+      await fireEvent(field, 'focus');
+      await fireEvent.changeText(field, 'Food');
+      await fireEvent(field, 'endEditing');
+
+      expect(mockUpdateTitle).toHaveBeenCalledWith('groceries', 'Food');
+    });
   });
 
   it('does not call updateTitle when the trimmed new title is empty', async () => {
