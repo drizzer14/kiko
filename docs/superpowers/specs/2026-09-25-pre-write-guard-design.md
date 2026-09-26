@@ -405,6 +405,30 @@ write; a finding present in both is pre-existing and is reported to
 neither the agent nor the transcript by this hook (it is still visible
 to `check:rules`/`check:all`, which are unaffected by this hook).
 
+The BEFORE pass re-runs only the Node rules that reported a finding in
+AFTER: a BEFORE finding can only match an AFTER finding of the same
+rule, so the other rows cannot change the result.
+
+### Merge-conflict files
+
+A merge-conflict file does not parse, so BEFORE cannot be the baseline
+as-is. The guard splits a conflicted BEFORE into its ours and theirs
+sides (`conflictSides` in `pre-write-guard.js`):
+
+- BEFORE with conflict markers never denies on its own parse error. A
+  side that does not parse is dropped from the baseline; if both are
+  dropped, the write is allowed and `check:all` checks the finished
+  file.
+- An AFTER that still has a complete block (`<<<<<<<`, `=======`,
+  `>>>>>>>`) is allowed unchecked, so blocks can be resolved one at a
+  time.
+- A marker-free AFTER is checked against the union of the ours and
+  theirs findings as the baseline.
+- A write that adds markers to a clean file is denied (AFTER does not
+  parse).
+- A file without markers that does not parse on disk is denied on every
+  write, with advice to ask the user how to repair it.
+
 ## Deny message
 
 On a block, the hook's stdout is the documented Claude Code
@@ -450,6 +474,11 @@ finding would otherwise attach to.
   the pre-write guard would have exempted, forcing a real fix or a
   documented exception through CLAUDE.md's normal exceptions list
   instead).
+  As built: the guard honors either spelling for any rule id. A
+  `kiko-override:` on a Node rule passes the guard, but `check:all`
+  still fails on that line, because the project-wide Node checkers have
+  no inline override. Use `nosemgrep:` for Semgrep rules; a Node-rule
+  exception needs a checker-level exemption.
 
 `npm run check:overrides` (`scripts/checks/override-guard.sh`) must be
 extended, at implementation time, to also fail on a bare `nosemgrep:`
