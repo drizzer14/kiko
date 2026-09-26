@@ -59,6 +59,13 @@ const styles = StyleSheet.create(() => ({
   reorderButtons: {
     marginLeft: 'auto',
   },
+  // The footer's "Add category" button spans the full footer width (not
+  // `alignSelf: 'flex-start'`) so it reads as the row's dominant action and
+  // keeps a comfortable, easy-to-hit tap target — mirrors accounts.styles.ts's
+  // addAccountButton.
+  addCategoryButton: {
+    width: '100%',
+  },
 }));
 
 // One category, rendered as its own `Card` — the same solid content-layer
@@ -355,7 +362,13 @@ const categoryKeyExtractor = (category: CategoryRow): string => category.key;
 // current default category (read from settings) is marked and shielded from
 // deletion. The inline add-category affordance renders as the final card.
 const CategoriesScreen: FC<CategoriesScreenProps> = () => {
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
+  // Whether the "Add category" form is mounted (review decision 19): the
+  // screen owns this, not AddCategoryRow — the footer's own "Add category"
+  // action is the only way in, and the form's Save/Cancel are the only ways
+  // out (both call `collapseAddCategoryForm` below).
+  const [addCategoryExpanded, setAddCategoryExpanded] = useState(false);
   const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
     categoriesRepo.allQuery(),
     ['categories'],
@@ -430,6 +443,15 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
     });
   };
 
+  const expandAddCategoryForm = (): void => {
+    setAddCategoryExpanded(true);
+    scrollToAddCategoryForm();
+  };
+
+  const collapseAddCategoryForm = (): void => {
+    setAddCategoryExpanded(false);
+  };
+
   if (!isReady) {
     // The SAME Screen mode/props as the ready branch below — the first
     // scroll view iOS walks to drive the large-title collapse exists from
@@ -442,7 +464,19 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
   }
 
   return (
-    <Screen scroll scrollableRef={scrollableRef}>
+    <Screen
+      scroll
+      scrollableRef={scrollableRef}
+      footer={
+        addCategoryExpanded ? undefined : (
+          <Box testID="add-category-footer" style={styles.addCategoryButton}>
+            <Button variant="primary" fullWidth onPress={expandAddCategoryForm}>
+              {t('categories.addCategory')}
+            </Button>
+          </Box>
+        )
+      }
+    >
       <Box gap={4}>
         {/* A single-column drag-and-drop stack of category cards, mirroring the
             accounts/holdings grids: a hold-and-move reorders (routed through the
@@ -479,7 +513,7 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
           }
         />
 
-        <AddCategoryRow onExpand={scrollToAddCategoryForm} />
+        {addCategoryExpanded && <AddCategoryRow onCollapse={collapseAddCategoryForm} />}
       </Box>
     </Screen>
   );
