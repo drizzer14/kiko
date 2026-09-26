@@ -1,8 +1,10 @@
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
+import { MS_PER_DAY, WINDOW_BEFORE_DAYS } from '@kiko/loans/payment-matcher';
 
 const mockLoanHoldingsQuery = jest.fn();
 const mockLoanMatchCandidatesQuery = jest.fn();
+const mockLoanLinkedPaymentsQuery = jest.fn();
 const mockSetAutoLoanLinks = jest.fn();
 
 jest.mock('@kiko/holdings/repo', () => ({
@@ -10,7 +12,9 @@ jest.mock('@kiko/holdings/repo', () => ({
 }));
 jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: {
-    loanMatchCandidatesQuery: () => mockLoanMatchCandidatesQuery(),
+    loanMatchCandidatesQuery: (params: unknown) => mockLoanMatchCandidatesQuery(params),
+    loanLinkedPaymentsQuery: (loanHoldingIds: unknown) =>
+      mockLoanLinkedPaymentsQuery(loanHoldingIds),
     setAutoLoanLinks: (links: unknown) => mockSetAutoLoanLinks(links),
   },
 }));
@@ -49,6 +53,7 @@ const candidateRow = {
 describe('runLoanAutoLink', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockLoanLinkedPaymentsQuery.mockResolvedValue([]);
   });
 
   it('returns without reading transactions at all when the user has no loan holdings (P-NOWORK)', async () => {
@@ -57,6 +62,7 @@ describe('runLoanAutoLink', () => {
     await runLoanAutoLink(NOW);
 
     expect(mockLoanMatchCandidatesQuery).not.toHaveBeenCalled();
+    expect(mockLoanLinkedPaymentsQuery).not.toHaveBeenCalled();
     expect(mockSetAutoLoanLinks).not.toHaveBeenCalled();
   });
 
@@ -102,5 +108,73 @@ describe('runLoanAutoLink', () => {
     mockLoanHoldingsQuery.mockResolvedValue([]);
 
     await expect(runLoanAutoLink()).resolves.toBeUndefined();
+  });
+
+  // Item 4 (op-sqlite queue): bound the candidate read to the earliest
+  // loan's own start date minus the match window's before-margin, and to
+  // the open loans' own currencies — never a whole-table scan.
+  it('bounds loanMatchCandidatesQuery to the earliest loan start minus the window margin, and to the loan currencies', async () => {
+    mockLoanHoldingsQuery.mockResolvedValue([loanHoldingRow]);
+    mockLoanMatchCandidatesQuery.mockResolvedValue([]);
+
+    await runLoanAutoLink(NOW);
+
+    expect(mockLoanMatchCandidatesQuery).toHaveBeenCalledWith({
+      minTime: loanMeta.startDate - WINDOW_BEFORE_DAYS * MS_PER_DAY,
+      currencies: ['UAH'],
+    });
+  });
+
+  it('returns without reading transactions when every loan holding carries unparseable metadata', async () => {
+    mockLoanHoldingsQuery.mockResolvedValue([{ id: 'loan-1', currency: 'UAH', metadata: null }]);
+
+    await runLoanAutoLink(NOW);
+
+    expect(mockLoanMatchCandidatesQuery).not.toHaveBeenCalled();
+    expect(mockSetAutoLoanLinks).not.toHaveBeenCalled();
+  });
+
+  it('reads loanLinkedPaymentsQuery scoped to every open loan holding id', async () => {
+    mockLoanHoldingsQuery.mockResolvedValue([loanHoldingRow]);
+    mockLoanMatchCandidatesQuery.mockResolvedValue([]);
+
+    await runLoanAutoLink(NOW);
+
+    expect(mockLoanLinkedPaymentsQuery).toHaveBeenCalledWith(['loan-1']);
+  });
+
+  // Item 1 bug, test (b): the FIRST run auto-links the real payment; the
+  // SECOND run must not hand its installment to a later same-amount
+  // candidate now that the real payment shows up as already linked.
+  it('does not re-link a same-amount candidate once its installment was auto-linked on an earlier run', async () => {
+    mockLoanHoldingsQuery.mockResolvedValue([loanHoldingRow]);
+    mockLoanMatchCandidatesQuery.mockResolvedValue([candidateRow]);
+
+    await runLoanAutoLink(NOW);
+
+    expect(mockSetAutoLoanLinks).toHaveBeenCalledWith([
+      { transactionId: 'txn-1', loanHoldingId: 'loan-1' },
+    ]);
+
+    // Sync 2: the real payment now shows up as already linked (excluded from
+    // the candidate read, per `loanMatchCandidatesQuery`'s own contract), and
+    // a same-amount rent arrives in its place — its own paymentHoldingId
+    // signal would otherwise be enough to link it.
+    jest.clearAllMocks();
+    mockLoanHoldingsQuery.mockResolvedValue([loanHoldingRow]);
+    mockLoanLinkedPaymentsQuery.mockResolvedValue([
+      {
+        loanHoldingId: 'loan-1',
+        amountMinorUnits: candidateRow.amountMinorUnits,
+        time: candidateRow.time,
+      },
+    ]);
+    mockLoanMatchCandidatesQuery.mockResolvedValue([
+      { ...candidateRow, id: 'txn-rent', description: 'Monthly rent' },
+    ]);
+
+    await runLoanAutoLink(NOW);
+
+    expect(mockSetAutoLoanLinks).not.toHaveBeenCalled();
   });
 });

@@ -118,7 +118,7 @@ describe('transactionsRepo', () => {
   // joined against the payer holding's own currency (the matcher compares
   // that against each loan's own currency itself).
   it('scopes loanMatchCandidatesQuery to an eligible debit: unlinked, un-rejected, no exchange marker', () => {
-    const query = transactionsRepo.loanMatchCandidatesQuery();
+    const query = transactionsRepo.loanMatchCandidatesQuery({ minTime: 0, currencies: ['UAH'] });
     const { sql } = query.toSQL();
     const lower = sql.toLowerCase();
 
@@ -130,12 +130,55 @@ describe('transactionsRepo', () => {
   });
 
   it('projects every field the matcher reads: currency, counterIban, description, time', () => {
-    const { sql } = transactionsRepo.loanMatchCandidatesQuery().toSQL();
+    const { sql } = transactionsRepo
+      .loanMatchCandidatesQuery({ minTime: 0, currencies: ['UAH'] })
+      .toSQL();
 
     expect(sql).toContain('"holdings"."currency"');
     expect(sql).toContain('counter_iban');
     expect(sql).toContain('"transactions"."description"');
     expect(sql).toContain('"transactions"."time"');
+  });
+
+  // Item 4 (op-sqlite queue): a whole-table scan on every sync/import/
+  // loan-edit is wasteful once the ledger grows — bound the read to what the
+  // matcher could ever possibly use.
+  it('bounds loanMatchCandidatesQuery to transactions at/after minTime', () => {
+    const { sql, params } = transactionsRepo
+      .loanMatchCandidatesQuery({ minTime: 12_345, currencies: ['UAH'] })
+      .toSQL();
+
+    expect(sql.toLowerCase()).toContain('"transactions"."time" >=');
+    expect(params).toContain(12_345);
+  });
+
+  it('bounds loanMatchCandidatesQuery to the given loan currencies only', () => {
+    const { sql, params } = transactionsRepo
+      .loanMatchCandidatesQuery({ minTime: 0, currencies: ['UAH', 'USD'] })
+      .toSQL();
+
+    expect(sql.toLowerCase()).toContain('"holdings"."currency" in');
+    expect(params).toEqual(expect.arrayContaining(['UAH', 'USD']));
+  });
+
+  // Item 1's own read: every row already linked (manual or auto) to one of
+  // these loan holdings — the matcher's "taken installment" input.
+  it('scopes loanLinkedPaymentsQuery to the given loan holding ids', () => {
+    const { sql, params } = transactionsRepo.loanLinkedPaymentsQuery(['loan-1', 'loan-2']).toSQL();
+    const lower = sql.toLowerCase();
+
+    expect(lower).toContain('"transactions"."loan_holding_id" in');
+    expect(params).toEqual(expect.arrayContaining(['loan-1', 'loan-2']));
+  });
+
+  // Item 2: the loan holding-detail screen's own "Linked payments" section.
+  it('builds a newest-first query of every transaction linked to one loan holding', () => {
+    const { sql, params } = transactionsRepo.listLinkedToLoanQuery('loan-1').toSQL();
+    const lower = sql.toLowerCase();
+
+    expect(lower).toContain('"loan_holding_id" = ?');
+    expect(lower).toContain('order by');
+    expect(params).toContain('loan-1');
   });
 
   it('builds a DISTINCT manual-descriptions query ordered newest-first (for the description-suggestion autocomplete)', () => {

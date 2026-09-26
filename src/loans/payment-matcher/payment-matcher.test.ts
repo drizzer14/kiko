@@ -2,7 +2,12 @@ import { loanInstallments } from '../../holdings/loan-schedule';
 import type { LoanMeta } from '../../holdings/holding-metadata';
 import type { HoldingRow, TransactionRow } from '../../db/schema';
 
-import { matchLoanPayments, type MatchableTransaction } from './payment-matcher';
+import {
+  type LinkedLoanPayment,
+  matchLoanPayments,
+  type MatchableTransaction,
+  normalizeIban,
+} from './payment-matcher';
 
 const NOW = Date.UTC(2026, 8, 26);
 const START_DATE = Date.UTC(2025, 0, 15);
@@ -365,5 +370,147 @@ describe('matchLoanPayments', () => {
     expect(matches).toEqual([
       { transactionId: 'txn-1', loanHoldingId: 'loan-1', dueDate: thirdInstallment.dueDate },
     ]);
+  });
+});
+
+// Item 1 bug: `loanMatchCandidatesQuery` (the real caller) drops an
+// already-linked row from `transactions`, so without `linkedPayments` the
+// installment it paid would look unpaid again on the next run — a later
+// same-amount candidate (with its OWN valid third signal) would then take
+// its place, double-counting one installment across two real payments.
+describe('matchLoanPayments — an installment already taken (item 1)', () => {
+  it('does not link a later same-amount candidate for an installment a manually linked payment already took', () => {
+    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
+    // A same-size rent, paid from the SAME holding the loan is paid from —
+    // its own third signal would otherwise be enough to link it.
+    const rent = baseTransaction({
+      id: 'txn-rent',
+      holdingId: 'payer-1',
+      amountMinorUnits: -firstInstallment.paymentMinorUnits,
+      time: firstInstallment.dueDate,
+    });
+    const linkedPayments: LinkedLoanPayment[] = [
+      {
+        loanHoldingId: 'loan-1',
+        amountMinorUnits: -firstInstallment.paymentMinorUnits,
+        time: firstInstallment.dueDate,
+      },
+    ];
+
+    const matches = matchLoanPayments({
+      transactions: [rent],
+      loans: [loan],
+      linkedPayments,
+      now: NOW,
+    });
+
+    expect(matches).toEqual([]);
+  });
+
+  it('still links a fresh candidate when the only linked payment belongs to a DIFFERENT loan', () => {
+    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
+    const transaction = baseTransaction({
+      holdingId: 'payer-1',
+      amountMinorUnits: -firstInstallment.paymentMinorUnits,
+      time: firstInstallment.dueDate,
+    });
+    const linkedPayments: LinkedLoanPayment[] = [
+      {
+        loanHoldingId: 'some-other-loan',
+        amountMinorUnits: -firstInstallment.paymentMinorUnits,
+        time: firstInstallment.dueDate,
+      },
+    ];
+
+    const matches = matchLoanPayments({
+      transactions: [transaction],
+      loans: [loan],
+      linkedPayments,
+      now: NOW,
+    });
+
+    expect(matches).toHaveLength(1);
+  });
+
+  it('links normally when linkedPayments is omitted (backward-compatible default)', () => {
+    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
+    const transaction = baseTransaction({
+      holdingId: 'payer-1',
+      amountMinorUnits: -firstInstallment.paymentMinorUnits,
+      time: firstInstallment.dueDate,
+    });
+
+    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
+
+    expect(matches).toHaveLength(1);
+  });
+});
+
+// Item 5: the IBAN comparison must not false-negative on cosmetic
+// differences (case, grouping spaces) between what the user typed on the
+// loan form and what a bank feed's own counterIban carries; a lenderName
+// shorter than 3 characters is too likely to appear inside an unrelated
+// description by coincidence to count as a real signal.
+describe('matchLoanPayments — IBAN normalization and lender-name length (item 5)', () => {
+  it('matches a lenderIban stored with different case/whitespace against a clean counterIban', () => {
+    const loan = loanHolding({ lenderIban: ' ua123456789012345678901234567 ' });
+    const transaction = baseTransaction({
+      amountMinorUnits: -firstInstallment.paymentMinorUnits,
+      time: firstInstallment.dueDate,
+      counterIban: 'UA123456789012345678901234567',
+    });
+
+    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
+
+    expect(matches).toHaveLength(1);
+  });
+
+  it('matches a counterIban carrying grouping spaces against a clean lenderIban', () => {
+    const loan = loanHolding({ lenderIban: 'UA123456789012345678901234567' });
+    const transaction = baseTransaction({
+      amountMinorUnits: -firstInstallment.paymentMinorUnits,
+      time: firstInstallment.dueDate,
+      counterIban: 'ua12 3456 7890 1234 5678 9012 3456 7',
+    });
+
+    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
+
+    expect(matches).toHaveLength(1);
+  });
+
+  it('does not link on a lenderName shorter than 3 characters, even when it appears in the description', () => {
+    const loan = loanHolding({ lenderName: 'Jo' });
+    const transaction = baseTransaction({
+      amountMinorUnits: -firstInstallment.paymentMinorUnits,
+      time: firstInstallment.dueDate,
+      description: 'Payment to Jo',
+    });
+
+    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
+
+    expect(matches).toEqual([]);
+  });
+
+  it('links on a lenderName of exactly 3 characters', () => {
+    const loan = loanHolding({ lenderName: 'ICU' });
+    const transaction = baseTransaction({
+      amountMinorUnits: -firstInstallment.paymentMinorUnits,
+      time: firstInstallment.dueDate,
+      description: 'Payment to ICU',
+    });
+
+    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
+
+    expect(matches).toHaveLength(1);
+  });
+});
+
+describe('normalizeIban', () => {
+  it('trims, uppercases, and strips internal grouping whitespace', () => {
+    expect(normalizeIban(' ua12 3456 7890 ')).toBe('UA1234567890');
+  });
+
+  it('is a no-op on an already-normalized IBAN', () => {
+    expect(normalizeIban('UA123456789012345678901234567')).toBe('UA123456789012345678901234567');
   });
 });

@@ -1,7 +1,8 @@
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { asLoanMeta, type LoanMeta } from '@kiko/holdings/holding-metadata';
 
-import { matchLoanPayments } from '../payment-matcher';
+import { MS_PER_DAY, matchLoanPayments, WINDOW_BEFORE_DAYS } from '../payment-matcher';
 
 const warnLoanAutoLinkFailure = (reason: unknown): void => {
   // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) a failed loan-payment auto-link has no UI surface of its own — log it so a device log shows what silently failed; the next sync/import retries it, same precedent as refresh-market-data.ts's warnRefreshFailure.
@@ -40,7 +41,37 @@ export const runLoanAutoLink = async (now: number = Date.now()): Promise<void> =
       return;
     }
 
-    const candidateRows = await transactionsRepo.loanMatchCandidatesQuery();
+    // Item 4 (op-sqlite queue): bound the candidate read to what the matcher
+    // could ever possibly use, rather than a whole-table scan — every loan's
+    // own currency, and no earlier than the earliest loan's own start date
+    // minus the match window's own before-margin (the SAME constants
+    // `withinDateWindow` checks against, so this bound can never exclude an
+    // installment the matcher would otherwise have considered). A loan
+    // holding with unparseable metadata contributes neither a currency nor a
+    // start date here — `matchLoanPayments` itself already treats it as
+    // having no installments at all (`asLoanMeta` returning null), so
+    // omitting it from the bound changes nothing it would have matched.
+    const loanMetas = loanHoldingRows
+      .map((row) => asLoanMeta(row.metadata))
+      .filter((meta): meta is LoanMeta => meta !== null);
+
+    if (loanMetas.length === 0) {
+      return;
+    }
+
+    const earliestStartDate = Math.min(...loanMetas.map((meta) => meta.startDate));
+    const currencies = [...new Set(loanHoldingRows.map((row) => row.currency))];
+
+    const [candidateRows, linkedPaymentRows] = await Promise.all([
+      transactionsRepo.loanMatchCandidatesQuery({
+        minTime: earliestStartDate - WINDOW_BEFORE_DAYS * MS_PER_DAY,
+        currencies,
+      }),
+      // Item 1 bug: an already-linked row is excluded from `candidateRows`
+      // above, so the matcher needs this SEPARATE read to know which
+      // installments those rows already took (`installmentIsTaken`).
+      transactionsRepo.loanLinkedPaymentsQuery(loanHoldingRows.map((row) => row.id)),
+    ]);
 
     if (candidateRows.length === 0) {
       return;
@@ -58,6 +89,7 @@ export const runLoanAutoLink = async (now: number = Date.now()): Promise<void> =
         exchangeCounterpartHoldingId: null,
       })),
       loans: loanHoldingRows,
+      linkedPayments: linkedPaymentRows,
       now,
     });
 

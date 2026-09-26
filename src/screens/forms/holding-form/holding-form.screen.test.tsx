@@ -2260,6 +2260,9 @@ describe('HoldingFormScreen loan', () => {
         },
       }),
       { kind: 'none' },
+      // Item 1: the principal changed, so this edit clears the loan's own
+      // auto links (they may no longer match the new schedule).
+      true,
     );
     expect(updateLoanMock.mock.calls[0][1]).not.toHaveProperty('balanceMinorUnits');
     expect(updateDeltaMock).not.toHaveBeenCalled();
@@ -2301,6 +2304,8 @@ describe('HoldingFormScreen loan', () => {
         },
       }),
       { kind: 'none' },
+      // Item 1: nothing that matters to the matcher changed.
+      false,
     );
   });
 
@@ -2350,6 +2355,8 @@ describe('HoldingFormScreen loan', () => {
       'h1',
       expect.objectContaining({ metadata: expect.objectContaining({ schedule: 'none' }) }),
       { kind: 'upsert', day: today, price: '300000.00', currency: 'UAH' },
+      // Item 1: the schedule changed (annuity -> none).
+      true,
     );
   });
 
@@ -2392,6 +2399,8 @@ describe('HoldingFormScreen loan', () => {
         price: '500000.00',
         currency: 'UAH',
       },
+      // Item 1: the schedule changed (annuity -> none).
+      true,
     );
   });
 
@@ -2431,6 +2440,8 @@ describe('HoldingFormScreen loan', () => {
         price: '15000.00',
         currency: 'UAH',
       },
+      // Item 1: the principal changed.
+      true,
     );
   });
 
@@ -2463,6 +2474,8 @@ describe('HoldingFormScreen loan', () => {
       'h1',
       expect.objectContaining({ metadata: expect.objectContaining({ schedule: 'annuity' }) }),
       { kind: 'none' },
+      // Item 1: the schedule changed (none -> annuity).
+      true,
     );
   });
 

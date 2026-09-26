@@ -1,6 +1,6 @@
 import { match } from 'ts-pattern';
 import type { Repository } from '@kiko/db/repository';
-import { and, desc, eq, inArray, isNull, lt, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lt, ne, sql } from 'drizzle-orm';
 import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/repo';
 
 import {
@@ -13,6 +13,7 @@ import {
 } from '../../db/schema';
 import { id } from '../../db/id';
 import { database, write } from '../../db/client';
+import type { Currency } from '../../currency/currency';
 import { normalizeTransactionName } from '../normalize-name';
 import { chunkForTable, chunkRows } from '../../db/chunk-for-table';
 import type { ClosingBalance } from '../../statement-import/parser';
@@ -439,8 +440,18 @@ export const transactionsRepo = {
    * (P-NOWORK). Joined against the PAYER holding's own currency, which the
    * matcher compares against each loan's own currency itself (this query
    * makes no currency decision of its own).
+   *
+   * Item 4 (op-sqlite queue, a single-worker read queue every other app-open
+   * read shares): a plain, unbounded scan of every eligible debit ever
+   * recorded would grow with the WHOLE ledger, not with what the matcher
+   * could ever possibly use — bounded to `time >= minTime` (the caller
+   * passes each loan's own earliest `startDate` minus the match window's own
+   * before-margin, so no installment's candidate window is ever excluded)
+   * and to `currencies` (only a loan's own currency can ever match rule 1,
+   * the matcher's own per-pair check makes no currency decision of its own
+   * either way — this is a P-NOWORK narrowing, not a correctness change).
    */
-  loanMatchCandidatesQuery: () =>
+  loanMatchCandidatesQuery: (params: { minTime: number; currencies: readonly Currency[] }) =>
     database
       .select({
         id: transactions.id,
@@ -459,8 +470,41 @@ export const transactionsRepo = {
           isNull(transactions.loanHoldingId),
           eq(transactions.loanLinkRejected, false),
           isNull(transactions.exchangeCounterpartHoldingId),
+          gte(transactions.time, params.minTime),
+          inArray(holdings.currency, [...params.currencies]),
         ),
       ),
+  /**
+   * Every transaction already linked (manual or auto alike) to one of these
+   * loan holdings — the matcher's own "taken installment" input
+   * (`LinkedLoanPayment`, `src/loans/payment-matcher/`): a link already
+   * proven against rules 1+2 must keep its installment from being handed to
+   * a DIFFERENT, later transaction on a following run (item 1 bug —
+   * `loanMatchCandidatesQuery` above itself excludes an already-linked row,
+   * so without this separate read the matcher would never see it at all).
+   */
+  loanLinkedPaymentsQuery: (loanHoldingIds: readonly string[]) =>
+    database
+      .select({
+        loanHoldingId: transactions.loanHoldingId,
+        amountMinorUnits: transactions.amountMinorUnits,
+        time: transactions.time,
+      })
+      .from(transactions)
+      .where(inArray(transactions.loanHoldingId, [...loanHoldingIds])),
+  /**
+   * Every transaction linked (manual or auto) to one loan holding, newest
+   * first — the loan holding-detail screen's own "Linked payments" section
+   * (item 2): the loan itself is ledgerless (`isLedgerlessHoldingType`), so
+   * its own `listByHoldingQuery` would read nothing; a payment always lives
+   * on the PAYER holding instead, found only by this marker.
+   */
+  listLinkedToLoanQuery: (loanHoldingId: string) =>
+    database
+      .select()
+      .from(transactions)
+      .where(eq(transactions.loanHoldingId, loanHoldingId))
+      .orderBy(desc(transactions.time)),
   listAllWithContextQuery: () =>
     database
       .select({

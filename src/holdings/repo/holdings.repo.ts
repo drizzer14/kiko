@@ -468,10 +468,37 @@ export const holdingsRepo = {
    * `holding:<id>` series has to stay consistent with the SAME edit that
    * changes the metadata, or the two can drift on a partial failure. See
    * `LoanPricePointOp`'s own doc comment for what each op writes.
+   *
+   * `clearAutoLinks` (item 1, default `false` so the 3-arg call every other
+   * caller still uses is unaffected) clears ONLY this loan's own AUTO links
+   * (`loanLinkSource = 'auto'`) in the SAME transaction — a manual link or a
+   * rejected row is untouched. The caller (`use-loan-fields.ts`'s
+   * `saveEdit`) passes `true` only when the edit changed the loan's own
+   * principal, schedule, or `paymentHoldingId`: a previously-linked AUTO row
+   * proved rules 1/2 against the OLD schedule, and left in place it would
+   * count as "taken" (`installmentIsTaken`, `payment-matcher.ts`) under that
+   * stale schedule forever, even once it no longer corresponds to any real
+   * installment of the NEW one. Clearing it here, before the fire-and-forget
+   * matcher re-run that follows a loan edit, lets that re-run recompute
+   * cleanly against the new schedule.
    */
-  updateLoan: (holdingId: string, patch: Partial<HoldingRow>, pricePointOp: LoanPricePointOp) =>
+  updateLoan: (
+    holdingId: string,
+    patch: Partial<HoldingRow>,
+    pricePointOp: LoanPricePointOp,
+    clearAutoLinks = false,
+  ) =>
     write(async (databaseTransaction) => {
       await databaseTransaction.update(holdings).set(patch).where(eq(holdings.id, holdingId));
+
+      if (clearAutoLinks) {
+        await databaseTransaction
+          .update(transactions)
+          .set({ loanHoldingId: null, loanLinkSource: null })
+          .where(
+            and(eq(transactions.loanHoldingId, holdingId), eq(transactions.loanLinkSource, 'auto')),
+          );
+      }
 
       const point = await match(pricePointOp)
         .with({ kind: 'none' }, () => null)

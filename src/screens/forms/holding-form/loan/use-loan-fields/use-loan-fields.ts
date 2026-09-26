@@ -2,6 +2,7 @@ import type { RefObject } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useCallback, useRef, useState } from 'react';
 import type { TextInputInstance } from 'react-native';
+import { normalizeIban } from '@kiko/loans/payment-matcher';
 import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 import { holdingsRepo, type LoanPricePointOp } from '@kiko/holdings/repo';
 
@@ -195,7 +196,12 @@ const buildLoanMeta = (fields: LoanFieldsSnapshot, currency: Currency): LoanMeta
       }),
   paymentHoldingId: fields.paymentHoldingId ?? undefined,
   lenderName: fields.lenderName.trim() || undefined,
-  lenderIban: fields.lenderIban.trim() || undefined,
+  // Item 5: normalized (whitespace-stripped, uppercased) at save time, so the
+  // matcher's own IBAN compare never depends on cosmetic differences between
+  // what the user typed and what a bank feed's own counterIban carries. The
+  // typed field's OWN display value is untouched — only the stored value is
+  // normalized (see `LoanSection`'s own `lenderIban` TextField, unchanged).
+  lenderIban: fields.lenderIban.trim() === '' ? undefined : normalizeIban(fields.lenderIban),
 });
 
 // The loan CREATE payload: a zero stored balance (ledgerless — its
@@ -226,6 +232,24 @@ const buildLoanCreatePayload = (fields: LoanFieldsSnapshot, currency: Currency):
     },
   };
 };
+
+/**
+ * Item 1: whether a loan EDIT changed one of the three inputs a
+ * previously-computed AUTO link's own rules 1/2 (amount, date) were proven
+ * against — the loan's own `principalMinorUnits`/`schedule` (either changes
+ * every installment's own amount/due-date math, `loanInstallments`) or its
+ * `paymentHoldingId` (rule 3's own "paid from" signal, still checked here
+ * even though rule 3 itself is never re-verified when an installment is
+ * marked taken — see `installmentIsTaken`'s own doc comment — because a
+ * changed payer means a FUTURE re-run would no longer even consider that
+ * signal a match). A stale AUTO link left in place under the new schedule
+ * would otherwise count as "taken" forever, even once it no longer
+ * corresponds to any real installment.
+ */
+export const loanEditInvalidatesAutoLinks = (oldMeta: LoanMeta, newMeta: LoanMeta): boolean =>
+  oldMeta.principalMinorUnits !== newMeta.principalMinorUnits ||
+  oldMeta.schedule !== newMeta.schedule ||
+  oldMeta.paymentHoldingId !== newMeta.paymentHoldingId;
 
 /**
  * The `LoanPricePointOp` a loan EDIT's `holdingsRepo.updateLoan` call needs
@@ -396,6 +420,10 @@ export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult 
       holdingId,
       { name, color, metadata: newMeta },
       buildLoanPricePointOp({ oldMeta, newMeta, holdingId, currency, book, now: Date.now() }),
+      // Item 1: a fresh holding (`oldMeta === null`) has no prior auto links
+      // to invalidate — mirrors `buildLoanPricePointOp`'s own `oldMeta ===
+      // null` guard.
+      oldMeta !== null && loanEditInvalidatesAutoLinks(oldMeta, newMeta),
     );
   };
 

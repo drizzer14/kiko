@@ -7,9 +7,13 @@ import type { Currency } from '../../currency/currency';
 import { loanInstallments } from '../../holdings/loan-schedule';
 import { asLoanMeta, type LoanMeta } from '../../holdings/holding-metadata';
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+// Exported so `use-loan-auto-link.ts` can derive its own SQL-level lower
+// bound (item 4: "earliest loan start minus the window's own before-margin")
+// from the SAME constants this module's own date-window check uses, rather
+// than a second, driftable literal.
+export const MS_PER_DAY = 24 * 60 * 60 * 1000;
 // Spec 5.4 rule 2: "3 days before to 7 days after the due date".
-const WINDOW_BEFORE_DAYS = 3;
+export const WINDOW_BEFORE_DAYS = 3;
 const WINDOW_AFTER_DAYS = 7;
 
 // Spec 5.4 rule 3's fixed keyword list (Ukrainian + English), checked
@@ -26,11 +30,47 @@ const PAYMENT_KEYWORDS = [
   'repayment',
 ];
 
+// Item 5: a lenderName shorter than this is too likely to appear inside an
+// unrelated description by coincidence (e.g. "Jo" inside "Joe's Diner") to
+// count as a real third signal.
+const MIN_LENDER_NAME_LENGTH = 3;
+
+/**
+ * Item 5: strips whitespace (including the grouping spaces a user or a bank
+ * feed may insert every 4 characters) and uppercases, so a cosmetic
+ * difference between what the user typed on the loan form and what a bank's
+ * own `counterIban` carries never false-negatives rule 3's IBAN signal.
+ * Exported so the loan form's own save path (`use-loan-fields.ts`) can
+ * persist an already-normalized `lenderIban`, rather than duplicating this
+ * logic in a second place.
+ */
+export const normalizeIban = (value: string): string => value.replace(/\s+/g, '').toUpperCase();
+
 /** A loan holding as the matcher needs it — mirrors `loan-payments.ts`'s
  * `LoanHolding`, parsing `LoanMeta` internally so a caller hands it plain
  * holding rows straight off `holdingsRepo.loanHoldingsQuery()`, with no
  * intermediate mapping step of its own. */
 type MatchableLoanHolding = Pick<HoldingRow, 'id' | 'currency' | 'metadata'>;
+
+/**
+ * One transaction ALREADY linked (manual or auto alike) to a loan — the
+ * matcher's own "taken installment" input (item 1 fix). `loanMatchCandidatesQuery`
+ * excludes an already-linked row from `transactions` (P-NOWORK: never hand
+ * the matcher a row it can never (re-)link), so without this separate list
+ * the installment that row already paid would look UNPAID on the very next
+ * run, and a later same-amount transaction (a same-size monthly rent, say)
+ * could take its place — double-counting one installment across two real
+ * payments. `loanHoldingId: string | null` mirrors the raw stored column
+ * (nullable in the schema) rather than a narrowed `string` — every row this
+ * type actually describes carries a real loan id, but no unsafe cast is
+ * needed to say so: `string | null` still compares correctly against a
+ * `CandidateInstallment`'s own (never-null) `loanHoldingId`.
+ */
+export type LinkedLoanPayment = {
+  loanHoldingId: string | null;
+  amountMinorUnits: number;
+  time: number;
+};
 
 /** A transaction as the matcher needs it: every column its own candidate
  * filter (an eligible debit) and its third signal (rule 3) read. */
@@ -120,7 +160,7 @@ const hasThirdSignal = (
   if (
     installment.lenderIban !== undefined &&
     transaction.counterIban !== null &&
-    transaction.counterIban === installment.lenderIban
+    normalizeIban(transaction.counterIban) === normalizeIban(installment.lenderIban)
   ) {
     return true;
   }
@@ -133,10 +173,32 @@ const hasThirdSignal = (
 
   return (
     installment.lenderName !== undefined &&
-    installment.lenderName.trim() !== '' &&
+    installment.lenderName.trim().length >= MIN_LENDER_NAME_LENGTH &&
     description.includes(installment.lenderName.toLowerCase())
   );
 };
+
+// Item 1 fix: an installment already paid by a linked row (manual or auto)
+// must never be handed to a DIFFERENT, later transaction — `linkedPayments`
+// carries every row already linked to each loan, and an installment counts
+// as taken the moment ANY of them still passes rules 1 (amount) and 2 (date)
+// for it. The third signal is deliberately NOT re-checked here: the link
+// itself already proved it once, and re-checking it against `linkedPayments`
+// (which carries no description/holdingId/counterIban) is not even possible.
+const installmentIsTaken = (
+  installment: CandidateInstallment,
+  linkedPayments: readonly LinkedLoanPayment[],
+): boolean =>
+  linkedPayments.some(
+    (payment) =>
+      payment.loanHoldingId === installment.loanHoldingId &&
+      withinAmountTolerance(
+        installment.paymentMinorUnits,
+        Math.abs(payment.amountMinorUnits),
+        installment.currency,
+      ) &&
+      withinDateWindow(payment.time, installment.dueDate),
+  );
 
 // Every installment due on or before `now` (plus the window's own
 // before-margin, so a payment already made a few days ahead of an upcoming
@@ -190,16 +252,25 @@ const installmentKey = (installment: CandidateInstallment): string =>
 export const matchLoanPayments = (params: {
   transactions: readonly MatchableTransaction[];
   loans: readonly MatchableLoanHolding[];
+  // Every row already linked (manual or auto) to one of `loans` — item 1's
+  // "taken installment" input (see `installmentIsTaken`'s own doc comment).
+  // Optional, defaulting to none, so an existing caller that has no such
+  // list yet (or a test not exercising this path) keeps its prior behavior
+  // unchanged.
+  linkedPayments?: readonly LinkedLoanPayment[];
   now: number;
 }): LoanPaymentMatch[] => {
-  const { transactions, loans, now } = params;
+  const { transactions, loans, linkedPayments = [], now } = params;
 
   const candidates = transactions.filter(isEligibleTransaction);
-  const installments = loans.flatMap(
+  const everyInstallment = loans.flatMap(
     (loan) =>
       foldMap(maybe(asLoanMeta(loan.metadata)), (meta) =>
         candidateInstallmentsFor(loan, meta, now),
       ) ?? [],
+  );
+  const installments = everyInstallment.filter(
+    (installment) => !installmentIsTaken(installment, linkedPayments),
   );
 
   const pairs: { transactionId: string; installment: CandidateInstallment }[] = [];

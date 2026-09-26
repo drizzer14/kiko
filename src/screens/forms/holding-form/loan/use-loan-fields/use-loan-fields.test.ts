@@ -1,9 +1,33 @@
+const mockUpdateLoan = jest.fn();
+jest.mock('@kiko/holdings/repo', () => ({
+  holdingsRepo: { updateLoan: (...args: unknown[]) => mockUpdateLoan(...args) },
+}));
+
+import type { HoldingRow } from '@kiko/db/schema';
 import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 import { act, renderHook } from '@testing-library/react-native';
+import type { LoanMeta } from '@kiko/holdings/holding-metadata';
 
-import { loanFieldErrors, loanReasonKey, useLoanFields } from './use-loan-fields';
+import {
+  loanEditInvalidatesAutoLinks,
+  loanFieldErrors,
+  loanReasonKey,
+  useLoanFields,
+} from './use-loan-fields';
 
 const renderLoanFields = () => renderHook(() => useLoanFields({ currency: 'UAH' }));
+
+// A minimal EDIT-mode `editingHolding`, so `saveEdit` reads `oldMeta` off it
+// rather than seeding through `seed` first — the two are independent state
+// (`saveEdit` reads `context.editingHolding`, `seed` only sets the LIVE
+// field state), so a wiring test only needs this, never a `seed` call.
+const editingHoldingWith = (meta: LoanMeta): HoldingRow =>
+  ({
+    id: 'h-1',
+    currency: 'UAH',
+    metadata: meta,
+    // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture) `saveEdit` only reads `metadata` off `editingHolding` (via `asLoanMeta`); a full HoldingRow literal would be pure noise here, mirroring this file's own `seed` fixtures above.
+  }) as any;
 
 const baseArgs = () => ({
   principal: '1000',
@@ -230,6 +254,26 @@ describe('useLoanFields', () => {
     expect(result.current.lenderIban).toBe('');
   });
 
+  // Item 5: the CREATE payload normalizes lenderIban (strip whitespace,
+  // uppercase) so a cosmetic difference from what a bank feed's own
+  // counterIban carries never false-negatives the matcher's rule 3.
+  it('normalizes lenderIban (strip whitespace, uppercase) in the create payload, leaving the typed field display untouched', async () => {
+    const { result } = await renderLoanFields();
+
+    await act(async () => {
+      result.current.setPrincipal('1000');
+      result.current.setStartDate(1_700_000_000_000);
+      result.current.setAnnualRatePct('12');
+      result.current.setTermMonths('12');
+      result.current.setLenderIban(' ua12 3456 7890 ');
+    });
+
+    expect(result.current.lenderIban).toBe(' ua12 3456 7890 ');
+    expect(result.current.createPayload().metadata).toMatchObject({
+      lenderIban: 'UA1234567890',
+    });
+  });
+
   it('seeds a "none" loan with blank rate/term fields (both undefined in the stored metadata)', async () => {
     const { result } = await renderLoanFields();
 
@@ -342,5 +386,119 @@ describe('useLoanFields', () => {
 
       expect(result.current.scrollTargets.find((target) => target.invalid)).toBeUndefined();
     });
+  });
+});
+
+const baseMeta = (overrides: Partial<LoanMeta> = {}): LoanMeta => ({
+  kind: 'mortgage',
+  principalMinorUnits: 1_200_000,
+  startDate: 1_700_000_000_000,
+  schedule: 'annuity',
+  annualRatePct: 12,
+  termMonths: 12,
+  ...overrides,
+});
+
+describe('loanEditInvalidatesAutoLinks', () => {
+  it('is false when nothing rules 1/2/3 depend on changed', () => {
+    const oldMeta = baseMeta({ lenderName: 'PrivatBank' });
+    const newMeta = baseMeta({ lenderName: 'Oschadbank' });
+
+    expect(loanEditInvalidatesAutoLinks(oldMeta, newMeta)).toBe(false);
+  });
+
+  it('is true when the principal changed', () => {
+    expect(
+      loanEditInvalidatesAutoLinks(baseMeta(), baseMeta({ principalMinorUnits: 2_000_00 })),
+    ).toBe(true);
+  });
+
+  it('is true when the schedule changed', () => {
+    expect(loanEditInvalidatesAutoLinks(baseMeta(), baseMeta({ schedule: 'differentiated' }))).toBe(
+      true,
+    );
+  });
+
+  it('is true when paymentHoldingId changed', () => {
+    expect(
+      loanEditInvalidatesAutoLinks(baseMeta(), baseMeta({ paymentHoldingId: 'payer-2' })),
+    ).toBe(true);
+  });
+});
+
+describe('useLoanFields — saveEdit clearing auto links (item 1)', () => {
+  beforeEach(() => {
+    mockUpdateLoan.mockClear();
+    mockUpdateLoan.mockResolvedValue(undefined);
+  });
+
+  it('asks updateLoan to clear auto links when the principal changed', async () => {
+    const { result } = await renderLoanFields();
+
+    await act(async () => {
+      result.current.seed(editingHoldingWith(baseMeta()));
+    });
+    await act(async () => {
+      result.current.setPrincipal('2000');
+    });
+    await act(async () => {
+      await result.current.saveEdit({
+        holdingId: 'h-1',
+        name: 'Car loan',
+        color: null,
+        currency: 'UAH',
+        isSynced: false,
+        editingHolding: editingHoldingWith(baseMeta()),
+        book: new Map(),
+      });
+    });
+
+    expect(mockUpdateLoan).toHaveBeenCalledWith('h-1', expect.anything(), expect.anything(), true);
+  });
+
+  it('never asks updateLoan to clear auto links when only the lender name changed', async () => {
+    const { result } = await renderLoanFields();
+
+    await act(async () => {
+      result.current.seed(editingHoldingWith(baseMeta()));
+    });
+    await act(async () => {
+      result.current.setLenderName('Oschadbank');
+    });
+    await act(async () => {
+      await result.current.saveEdit({
+        holdingId: 'h-1',
+        name: 'Car loan',
+        color: null,
+        currency: 'UAH',
+        isSynced: false,
+        editingHolding: editingHoldingWith(baseMeta()),
+        book: new Map(),
+      });
+    });
+
+    expect(mockUpdateLoan).toHaveBeenCalledWith('h-1', expect.anything(), expect.anything(), false);
+  });
+
+  it('never asks updateLoan to clear auto links for a fresh holding (no prior metadata)', async () => {
+    const { result } = await renderLoanFields();
+
+    await act(async () => {
+      result.current.setPrincipal('1000');
+      result.current.setStartDate(1_700_000_000_000);
+    });
+    await act(async () => {
+      await result.current.saveEdit({
+        holdingId: 'h-1',
+        name: 'Car loan',
+        color: null,
+        currency: 'UAH',
+        isSynced: false,
+        editingHolding: undefined,
+        book: new Map(),
+      });
+    });
+
+    expect(mockUpdateLoan).toHaveBeenCalledWith('h-1', expect.anything(), expect.anything(), false);
   });
 });
