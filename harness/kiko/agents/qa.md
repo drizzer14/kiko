@@ -67,9 +67,9 @@ Rules:
   `onPickCouponFrequency`/`couponFrequencyError` props were defined on
   the hook and the section component but never threaded through the
   screen — invisible to `use-bond-isin-mode.test.ts` because it only
-  tests the hook in isolation (T25 review round 2, M6). Add a
+  tests the hook in isolation. Add a
   screen-level integration test (or do a manual "does every hook field
-  reach a prop" pass) in the SAME round as the extraction.
+  reach a prop" pass) in the SAME change as the extraction.
 - Jest cannot verify real navigator behavior (e.g. whether `navigate()`
   vs `popTo()` pushes a duplicate route on React Navigation 7 — a mocked
   navigation prop can't catch that) or native hit-testing geometry (e.g.

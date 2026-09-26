@@ -14,8 +14,7 @@ generic column-mapping fallback.
 `src/statement-import/registry/registry.ts` holds `statementFormats`,
 the ordered array of every shipped `StatementFormat` — read that file
 directly for the current member set rather than trusting a list
-restated here (it changes every time a bank is added; six formats as
-of T17). `detectFormat(input)` returns the FIRST format whose `detect`
+restated here (it changes every time a bank is added). `detectFormat(input)` returns the FIRST format whose `detect`
 accepts the input, or `undefined` when nothing matches — that
 `undefined` is a normal "we don't recognize this file" state, not an
 error. `supportedFormatNames` joins every registered format's
