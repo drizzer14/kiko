@@ -883,11 +883,10 @@ re-drive:
 - It ends the spinner when the FAST balance phase resolves — on the
   `fastPhaseDone` signal — NOT on the whole run. This is deliberate: the
   spinner shows a brief native spin while balances load, then hands the
-  slow per-card fetch to the progress bar. (An earlier R6-3 revision
-  ended the whole-run SIGNAL early and was reverted as R7; that concern
-  does not apply here — `isSyncing` still tracks the whole run and drives
+  slow per-card fetch to the progress bar. Do not end the whole-run
+  SIGNAL early — `isSyncing` must still track the whole run and drive
   the progress bar, so activity stays visible until "Last sync" lands.
-  Only the SPINNER ends early, by design.)
+  Only the SPINNER ends early, by design.
 - The flag clears on the FIRST of `fastPhaseDone` OR the run settling
   (`onRefresh`'s `.finally`). The settle path is the fallback for a
   fan-out with NO Monobank job (a crypto-only account, or no syncable
