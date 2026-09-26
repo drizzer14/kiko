@@ -30,6 +30,14 @@ jest.mock('@kiko/holdings/repo', () => ({
   },
 }));
 
+// The loan auto-link matcher itself is exhaustively unit-tested on its own
+// (`use-loan-auto-link.test.ts`); this file only proves the WIRING — that
+// every `importParsedStatement` caller runs it once the import commits.
+const mockRunLoanAutoLink = jest.fn().mockResolvedValue(undefined);
+jest.mock('../../loans/use-loan-auto-link', () => ({
+  runLoanAutoLink: () => mockRunLoanAutoLink(),
+}));
+
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import readXlsxFile from 'read-excel-file/node';
@@ -76,6 +84,7 @@ const readPrivatbankInput = async (): Promise<{
 
 beforeEach(() => {
   mockHoldingRows = [{ id: 'holding-1', currency: 'UAH' }];
+  mockRunLoanAutoLink.mockClear();
 });
 
 // Regression fixture for the occurrence-index bug: two rows identical on
@@ -677,5 +686,51 @@ describe('importStatement', () => {
       expect(store.transactions).toHaveLength(4);
       expect(captured.holdingSet).toBeUndefined();
     });
+  });
+});
+
+// Both `importParsedStatement` callers (the dedicated `importStatement`
+// above, and the generic column-mapping import, which calls
+// `importParsedStatement` directly) fan through this ONE function, so
+// wiring the matcher inside it alone covers both.
+describe('importParsedStatement runs the loan auto-link matcher', () => {
+  it('runs it once after a dedicated (importStatement) import commits', async () => {
+    const store: { transactions: StoredRow[] } = { transactions: [] };
+    const { databaseTransaction } = makeImportDatabaseTransaction({
+      store,
+      holding: defaultHolding(),
+      account: unsyncedAccount,
+    });
+    mockDatabaseTransaction = databaseTransaction;
+
+    await importStatement(monobankInput, 'holding-1');
+
+    expect(mockRunLoanAutoLink).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs it once after a column-mapping (direct importParsedStatement) import commits', async () => {
+    const store: { transactions: StoredRow[] } = { transactions: [] };
+    const { databaseTransaction } = makeImportDatabaseTransaction({
+      store,
+      holding: defaultHolding(),
+      account: unsyncedAccount,
+    });
+    mockDatabaseTransaction = databaseTransaction;
+    const parsed = {
+      formatId: 'column-mapping' as const,
+      account: { currency: 'UAH' as const },
+      transactions: [
+        {
+          currency: 'UAH' as const,
+          amountMinorUnits: -1_000,
+          timeSeconds: 1_700_000_000,
+          description: 'Coffee',
+        },
+      ],
+    };
+
+    await importParsedStatement(parsed, 'holding-1');
+
+    expect(mockRunLoanAutoLink).toHaveBeenCalledTimes(1);
   });
 });
