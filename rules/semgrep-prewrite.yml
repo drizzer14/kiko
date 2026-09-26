@@ -650,7 +650,9 @@ rules:
   # narrow the other's span — see below): the first covers every EXPLICIT
   # `variant="..."` shape (a bare `t(...)` call, and the
   # `isSyncing ? t('accountDetail.syncing') : t('accountDetail.syncNow')`
-  # ternary), capturing the attribute's own quoted
+  # ternary IN BOTH ARM ORDERS — syncNow read from either branch — since a
+  # bare ternary-shaped pattern only matches the branch order it names),
+  # capturing the attribute's own quoted
   # value as `$VARIANT` and filtering with a `metavariable-regex`
   # negative-lookahead to every value EXCEPT `secondaryTonal`; the second
   # covers a Button with NO `variant` attribute at all (`Button` defaults to
@@ -693,6 +695,10 @@ rules:
                   - pattern: |
                       <Button ... variant="$VARIANT" ...>
                         {$COND ? $A : t('accountDetail.syncNow')}
+                      </Button>
+                  - pattern: |
+                      <Button ... variant="$VARIANT" ...>
+                        {$COND ? t('accountDetail.syncNow') : $A}
                       </Button>
               - metavariable-regex:
                   metavariable: $VARIANT

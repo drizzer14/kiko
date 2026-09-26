@@ -24,6 +24,13 @@ export const ghostSyncButtonWithTernaryLabel = (
 );
 
 // EXPECT-FINDING
+export const ghostSyncButtonWithReversedTernaryLabel = (
+  <Button variant="ghost" size="small" fullWidth={false} onPress={() => undefined}>
+    {isSynchronizing ? t('accountDetail.syncNow') : t('accountDetail.syncing')}
+  </Button>
+);
+
+// EXPECT-FINDING
 export const noVariantSyncButton = (
   <Button size="small" fullWidth={false} onPress={() => undefined}>
     {t('accountDetail.syncNow')}
