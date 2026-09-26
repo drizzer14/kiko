@@ -42,7 +42,7 @@ const setup = async (overrides: Partial<Parameters<typeof AccountKindField>[0]> 
   const utils = await render(
     <AccountKindField
       label="Kind"
-      sheetTitle="Select an Account Kind"
+      sheetTitle="Account Kind"
       options={options}
       selected="bank"
       onSelect={onSelect}

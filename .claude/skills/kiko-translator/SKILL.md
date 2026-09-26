@@ -174,7 +174,10 @@ into `HEADING_PROPS`. Every picker sheet (`SelectField` and its wrappers,
 `CurrencyField`, `FilterMenu`, `ColumnSelectField`) takes a REQUIRED
 `sheetTitle` prop, never its `label` repeated: give each field-label key a
 `<labelKey>SheetTitle` twin (en Title Case, uk the label's own sentence-case
-text) and add it to `TITLE_KEYS` (sheet-title decision, 2026-09-26). Read the FAILURE MESSAGE'S key path before
+text) and add it to `TITLE_KEYS` (sheet-title decision, 2026-09-26). A
+sheet title is a noun ("Account Kind" / "Вид рахунку"), never an imperative
+"Select a …" / "Оберіть …" — that form belongs to the field's placeholder
+only (noun-title decision, 2026-09-26). Read the FAILURE MESSAGE'S key path before
 assuming a new string is miscased: add a new title key to
 `title-keys.ts`, not just to the catalogue.
 

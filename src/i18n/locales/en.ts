@@ -242,7 +242,7 @@ export const en = {
       kindPlaceholder: 'Select an account kind',
       // The account-kind SelectField's sheet header — Title Case, distinct
       // from the sentence-case field label (`kind` above).
-      kindSheetTitle: 'Select an Account Kind',
+      kindSheetTitle: 'Account Kind',
       kindSubtitle: {
         bank: 'Synced or imported from a bank statement.',
         cash: 'Cash you hold outside a bank.',
@@ -293,7 +293,7 @@ export const en = {
       couponFrequencyRequiredError: 'No coupon frequency selected.',
       // The bond coupon-frequency SelectField's sheet header — Title Case,
       // distinct from the sentence-case field label above.
-      couponFrequencySheetTitle: 'Select a Frequency',
+      couponFrequencySheetTitle: 'Frequency',
       couponPct: 'Coupon',
       couponPctError: 'Enter a coupon of 0 or higher.',
       couponPlaceholder: '8',
@@ -339,7 +339,7 @@ export const en = {
       loanKindPlaceholder: 'Select a loan kind',
       // The loan-kind SelectField's sheet header — Title Case, distinct from
       // the sentence-case field label (`loanKindLabel` above).
-      loanKindSheetTitle: 'Select a Loan Kind',
+      loanKindSheetTitle: 'Loan Kind',
       // The loan-payment matcher's own optional inputs — the "Paid from"
       // holding picker's field label + its synthetic "None" row, and the
       // lender's own name/IBAN text fields. None of these are required.
@@ -435,9 +435,9 @@ export const en = {
       // the SelectField contract's `selected: null` case, same as every
       // other select field's placeholder.
       typePlaceholder: 'Select a type',
-      // The holding-type SelectField's sheet header — Title Case, distinct
-      // from the sentence-case field label (`type` above).
-      typeSheetTitle: 'Select a Type',
+      // The holding-type SelectField's sheet header — its own Title Case
+      // key, never the sentence-case field label (`type` above) reused.
+      typeSheetTitle: 'Type',
     },
     lot: {
       addTitle: 'Add Lot',
@@ -531,7 +531,7 @@ export const en = {
       typePlaceholder: 'Select a transaction type',
       // The transaction-type SelectField's sheet header — Title Case,
       // distinct from the sentence-case field label (`type` above).
-      typeSheetTitle: 'Select a Transaction Type',
+      typeSheetTitle: 'Transaction Type',
       valueIn: 'Value in',
       valueInError: 'Amount must be greater than 0.',
       valueInPlaceholder: '100.00',
