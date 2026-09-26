@@ -18,9 +18,11 @@ fail() {
   exit 2
 }
 
-# Fast-tier, per-file mode (called from fast.sh with one edited file, or
-# directly by the pre-write guard's runNodeChecks). A non-.ts/.tsx target,
-# or no file at all, is silently out of scope.
+# Per-file mode (invoked directly by the pre-write guard's runNodeChecks
+# with one mirrored file — NOT called from fast.sh, since rule 12 needs the
+# file's real repo-relative path to resolve which screen owns it, which a
+# fast.sh invocation cannot supply). A non-.ts/.tsx target, or no file at
+# all, is silently out of scope.
 if [ -n "$TARGET" ]; then
   if [ ! -f "$TARGET" ]; then
     exit 0
@@ -43,7 +45,7 @@ if [ -n "$TARGET" ]; then
   exit 0
 fi
 
-# Project-wide mode (no npm script yet — this checker is not in check:all):
+# Project-wide mode (npm run check:screen-imports, wired into check:all):
 # every .ts/.tsx under src/, __tests__/, e2e/, plus App.tsx itself, the same
 # roots import-order.sh/blank-line-separation.sh scan.
 # SCREEN_IMPORTS_SOURCE_ROOT overrides the whole scanned-roots list with one
