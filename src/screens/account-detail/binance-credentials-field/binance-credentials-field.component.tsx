@@ -33,6 +33,15 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
   const [apiKey, setAPIKey] = useState('');
   const [secret, setSecret] = useState('');
   const [status, setStatus] = useState<SyncStatus>({ kind: 'idle' });
+  // Shown only after a Connect press finds either field blank — Connect is
+  // always enabled now (kiko-code-style's form validation model), so this
+  // gates each field's OWN required reason (computed from only its own
+  // value) rather than a standing disabled state.
+  const [attemptedConnect, setAttemptedConnect] = useState(false);
+  const apiKeyError =
+    attemptedConnect && apiKey.trim() === '' ? t('accountDetail.apiKeyRequiredError') : undefined;
+  const secretError =
+    attemptedConnect && secret.trim() === '' ? t('accountDetail.secretRequiredError') : undefined;
 
   // Also runs on a clipboard paste (`ClipboardTextField` calls it with the
   // already-trimmed pasted value), so typing and pasting reset the stale
@@ -52,6 +61,12 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
   };
 
   const handleConnect = (): void => {
+    if (apiKey.trim() === '' || secret.trim() === '') {
+      setAttemptedConnect(true);
+
+      return;
+    }
+
     setStatus({ kind: 'checking' });
     (async () => {
       try {
@@ -99,6 +114,7 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
         placeholder={t('accountDetail.binanceApiKeyPlaceholder')}
         pasteAccessibilityLabel={t('accountDetail.pasteApiKey')}
         secureTextEntry
+        error={apiKeyError}
       />
 
       <ClipboardTextField
@@ -108,6 +124,7 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
         placeholder={t('accountDetail.binanceApiSecretPlaceholder')}
         pasteAccessibilityLabel={t('accountDetail.pasteApiSecret')}
         secureTextEntry
+        error={secretError}
       />
 
       {/* Guideline 5.6 data-handling disclosure: the key pair never leaves the
@@ -122,7 +139,7 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
           size="small"
           fullWidth={false}
           onPress={handleConnect}
-          disabled={status.kind === 'checking' || apiKey.trim() === '' || secret.trim() === ''}
+          disabled={status.kind === 'checking'}
           icon="lock"
         >
           {t('accountDetail.connectBinance')}

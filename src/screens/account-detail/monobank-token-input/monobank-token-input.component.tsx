@@ -17,7 +17,7 @@ import type { MonobankTokenInputProps } from './monobank-token-input.props';
 // stay with `MonobankConnectField`. Both the account-detail edit surface and the
 // add-account create form consume this so the two entry surfaces stay identical
 // rather than drifting as two hand-rolled copies.
-const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText }) => {
+const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText, error }) => {
   const { t } = useTranslation();
 
   const handleOpenMonobank = (): void => {
@@ -44,6 +44,7 @@ const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText }
         placeholder={t('accountDetail.monobankTokenPlaceholder')}
         pasteAccessibilityLabel={t('accountDetail.pasteFromClipboard')}
         secureTextEntry
+        error={error}
       />
 
       {/* Guideline 5.6 data-handling disclosure: the token never leaves the

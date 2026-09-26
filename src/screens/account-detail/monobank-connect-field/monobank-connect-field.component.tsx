@@ -29,14 +29,26 @@ const MonobankConnectField: FC<MonobankConnectFieldProps> = ({ onConnect }) => {
   const { t } = useTranslation();
   const [token, setToken] = useState('');
   const [status, setStatus] = useState<SyncStatus>({ kind: 'idle' });
+  // Shown only after a Connect press finds a blank token — Connect is always
+  // enabled now (kiko-code-style's form validation model), so this surfaces
+  // the token-required reason on press rather than a standing disabled state.
+  const [showTokenRequiredError, setShowTokenRequiredError] = useState(false);
 
   const handleChangeToken = (value: string): void => {
     setToken(value);
     setStatus({ kind: 'idle' });
+    setShowTokenRequiredError(false);
   };
 
   const handleConnect = (): void => {
     const trimmed = token.trim();
+
+    if (trimmed === '') {
+      setShowTokenRequiredError(true);
+
+      return;
+    }
+
     setStatus({ kind: 'checking' });
     (async () => {
       let clientName: string;
@@ -69,7 +81,11 @@ const MonobankConnectField: FC<MonobankConnectFieldProps> = ({ onConnect }) => {
 
   return (
     <Box gap={3}>
-      <MonobankTokenInput value={token} onChangeText={handleChangeToken} />
+      <MonobankTokenInput
+        value={token}
+        onChangeText={handleChangeToken}
+        error={showTokenRequiredError ? t('accountDetail.tokenRequiredError') : undefined}
+      />
 
       <Box direction="row" gap={2} style={styles.statusLine}>
         <Button
@@ -77,7 +93,7 @@ const MonobankConnectField: FC<MonobankConnectFieldProps> = ({ onConnect }) => {
           size="small"
           fullWidth={false}
           onPress={handleConnect}
-          disabled={status.kind === 'checking' || token.trim() === ''}
+          disabled={status.kind === 'checking'}
           icon="lock"
         >
           {t('accountDetail.connectMonobank')}

@@ -107,17 +107,29 @@ describe('WalletAddressField', () => {
     expect(queryByText('Wallet connected')).toBeNull();
   });
 
-  it('disables Connect until an address is entered', async () => {
-    const { getByPlaceholderText, getByRole } = await render(
+  it('shows the wallet-address-required error and calls no network when Connect is pressed blank', async () => {
+    const { getByText, findByText } = await render(<WalletAddressField onConnect={onConnect} />);
+
+    await act(async () => {
+      await fireEvent.press(getByText('Connect wallet'));
+    });
+
+    expect(await findByText('Enter a wallet address.')).toBeTruthy();
+    expect(onConnect).not.toHaveBeenCalled();
+  });
+
+  it('clears the wallet-address-required error once an address is typed', async () => {
+    const { getByPlaceholderText, getByText, findByText, queryByText } = await render(
       <WalletAddressField onConnect={onConnect} />,
     );
 
-    // A blank address cannot be connected.
-    expect(getByRole('button', { name: 'Connect wallet' })).toBeDisabled();
+    await act(async () => {
+      await fireEvent.press(getByText('Connect wallet'));
+    });
+    expect(await findByText('Enter a wallet address.')).toBeTruthy();
 
-    // Any non-empty address enables the action (format is checked on press).
     await fireEvent.changeText(getByPlaceholderText('BTC address'), ADDRESS);
-    expect(getByRole('button', { name: 'Connect wallet' })).not.toBeDisabled();
+    expect(queryByText('Enter a wallet address.')).toBeNull();
   });
 
   it('shows Checking… and disables the action while onConnect is in flight', async () => {

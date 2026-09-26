@@ -80,23 +80,27 @@ describe('BinanceCredentialsField', () => {
     ).toBe(2);
   });
 
-  it('disables Connect until both the API key and secret are entered', async () => {
-    const { getByPlaceholderText, getByRole } = await render(
+  it('shows a required error per blank field and calls no network when Connect is pressed', async () => {
+    const { getByPlaceholderText, getByText, findByText, queryByText } = await render(
       <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
     );
-    const connect = (): ReturnType<typeof getByRole> =>
-      getByRole('button', { name: 'Connect Binance' });
 
     // Neither field entered.
-    expect(connect()).toBeDisabled();
+    await act(async () => {
+      await fireEvent.press(getByText('Connect Binance'));
+    });
+    expect(await findByText('Enter the API key.')).toBeTruthy();
+    expect(await findByText('Enter the secret key.')).toBeTruthy();
+    expect(mockFetchAccount).not.toHaveBeenCalled();
 
-    // Only the API key entered.
+    // Only the API key entered — its own reason clears, the secret's stays.
     await fireEvent.changeText(getByPlaceholderText('Binance API key'), 'api-key-fixture');
-    expect(connect()).toBeDisabled();
-
-    // Both fields entered enables the action.
-    await fireEvent.changeText(getByPlaceholderText('Binance API secret'), 'secret-fixture');
-    expect(connect()).not.toBeDisabled();
+    await act(async () => {
+      await fireEvent.press(getByText('Connect Binance'));
+    });
+    expect(queryByText('Enter the API key.')).toBeNull();
+    expect(await findByText('Enter the secret key.')).toBeTruthy();
+    expect(mockFetchAccount).not.toHaveBeenCalled();
   });
 
   it('renders the Binance link through the shared Text primitive with the accent tone', async () => {

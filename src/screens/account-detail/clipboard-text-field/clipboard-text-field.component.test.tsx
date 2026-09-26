@@ -130,6 +130,35 @@ describe('ClipboardTextField', () => {
     expect(onChangeText).toHaveBeenCalledWith('clipboard-value');
   });
 
+  it('renders no error message when error is omitted', async () => {
+    const { queryByText } = await render(
+      <ClipboardTextField
+        label="Token"
+        value=""
+        onChangeText={jest.fn()}
+        placeholder="Monobank token"
+        pasteAccessibilityLabel="Paste from clipboard"
+      />,
+    );
+
+    expect(queryByText('Enter your Monobank token.')).toBeNull();
+  });
+
+  it('shows the FieldError message under the field when error is set', async () => {
+    const { getByText } = await render(
+      <ClipboardTextField
+        label="Token"
+        value=""
+        onChangeText={jest.fn()}
+        placeholder="Monobank token"
+        pasteAccessibilityLabel="Paste from clipboard"
+        error="Enter your Monobank token."
+      />,
+    );
+
+    expect(getByText('Enter your Monobank token.')).toBeTruthy();
+  });
+
   it('emits typed text through onChangeText', async () => {
     const onChangeText = jest.fn();
     const { getByPlaceholderText } = await render(

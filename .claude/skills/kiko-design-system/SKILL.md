@@ -188,6 +188,14 @@ The established patterns grouped under this heading:
   `categoryOptions` and its twin, `trend-filter-field.component.tsx`'s
   `manualRows`, which has no display data for a hidden key and falls
   back to the bare slug as its label).
+- A field's own Connect (`MonobankConnectField`, `BinanceCredentialsField`,
+  `WalletAddressField`, `src/screens/account-detail/`) is a PRIMARY
+  action, so it follows the same form validation model as a Save
+  button: always enabled, never `disabled={... || field.trim() ===
+  ''}`. A blank required field shows its own `*RequiredError` message
+  (via the field's `error` prop) on a Connect press instead (review
+  decision 15) — `disabled` stays reserved for the field's own
+  in-flight `status.kind === 'checking'`.
 
 ## Field placeholder and error copy
 
