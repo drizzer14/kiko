@@ -37,56 +37,55 @@ type HoldingDetailSpec = {
   footerAction: (synced: boolean) => FooterAction;
   /** The breakdown table to show, or `null` to hide it. */
   breakdown: HoldingBreakdownSpec | null;
-  nextInstallment: (
+  upcomingInstallments: (
     holding: HoldingRow,
     book: PriceBook,
     now: number,
-  ) => LoanInstallment | undefined;
+  ) => readonly LoanInstallment[];
 };
 
-const noInstallment = (): undefined => undefined;
+const noInstallments = (): readonly LoanInstallment[] => [];
 
 // Shared by every ledger-backed (non-ledgerless) type below: a synced
 // (Monobank) holding's ledger is owned by the sync, so it offers no add
 // action; a manual one takes the generic "Add transaction". None of these
-// four show a breakdown or a next-installment panel. Also the fallback
+// four show a breakdown or upcoming payments. Also the fallback
 // `holdingDetailSpecFor` returns for a stored `type` this registry does not
 // recognize.
 const balanceSpec: HoldingDetailSpec = {
   footerAction: (synced) => (synced ? 'none' : 'transaction'),
   breakdown: null,
-  nextInstallment: noInstallment,
+  upcomingInstallments: noInstallments,
 };
 
-// The next upcoming amortization row for an `'annuity'`/`'differentiated'`
-// loan — the one this holding's next scheduled payment falls on, picked
-// as the first installment whose due day is on or after `now`'s own LOCAL day
-// (mirrors `price_points`' `dayKeyOf` day-key convention). `undefined` for an
-// invalid/absent `LoanMeta`, a `'none'` schedule (no installments at all —
-// `loanInstallments` already returns `[]` for it), once every installment has
-// already come due (a fully repaid loan), and once an overpaid correction has
-// already clamped the outstanding to 0, even while `loanInstallments` still
-// has future rows on the ORIGINAL schedule — the same outstanding every other
-// screen shows (`loanLedgerOutstandingMinorAt`), so linked payments that
-// repaid the loan hide it too.
-const loanNextInstallment = (
+// Every remaining amortization row of an `'annuity'`/`'differentiated'`
+// loan: each installment whose due day is on or after `now`'s own LOCAL day
+// (mirrors `price_points`' `dayKeyOf` day-key convention), in schedule
+// order. Empty for an invalid/absent `LoanMeta`, a `'none'` schedule (no
+// installments at all — `loanInstallments` already returns `[]` for it),
+// once every installment has already come due, and once the outstanding
+// reads 0 — the same outstanding every other screen shows
+// (`loanLedgerOutstandingMinorAt`), so an overpaid correction or linked
+// payments that repaid the loan hide the list even while `loanInstallments`
+// still has future rows on the ORIGINAL schedule.
+const loanUpcomingInstallments = (
   holding: HoldingRow,
   book: PriceBook,
   now: number,
-): LoanInstallment | undefined => {
+): readonly LoanInstallment[] => {
   const meta = asLoanMeta(holding.metadata);
 
   if (meta === null || meta.schedule === 'none') {
-    return undefined;
+    return [];
   }
 
   if (loanLedgerOutstandingMinorAt(meta, holding, book, now) <= 0) {
-    return undefined;
+    return [];
   }
 
   const todayStart = startOfLocalDay(now);
 
-  return loanInstallments(meta).find((row) => row.dueDate >= todayStart);
+  return loanInstallments(meta).filter((row) => row.dueDate >= todayStart);
 };
 
 // A bond's whole-life expected profit (net coupons + nominal redeemed, less
@@ -98,8 +97,8 @@ const bondExpectedProfit = (holding: HoldingRow): Money | null =>
 
 /**
  * The ONE place every holding type's detail-screen behavior is looked up:
- * its footer add action, its value-breakdown display, and its
- * next-loan-installment panel. Mirrors `holdingDescriptors`
+ * its footer add action, its value-breakdown display, and its upcoming
+ * loan payments. Mirrors `holdingDescriptors`
  * (`src/holdings/holding-descriptor/`) — the `satisfies Record<HoldingType,
  * HoldingDetailSpec>` gives a compile error the moment a new holding type is
  * added without an entry here. `card`/`cash`/`crypto_asset`/`jar` share one
@@ -113,7 +112,7 @@ export const holdingDetailSpecs = {
       principalLabelKey: 'holdingDetail.principal',
       expectedProfit: () => null,
     },
-    nextInstallment: noInstallment,
+    upcomingInstallments: noInstallments,
   },
   bond: {
     footerAction: () => 'none',
@@ -122,7 +121,7 @@ export const holdingDetailSpecs = {
       principalLabelKey: 'holdingDetail.cost',
       expectedProfit: bondExpectedProfit,
     },
-    nextInstallment: noInstallment,
+    upcomingInstallments: noInstallments,
   },
   // A priced type shows its cost basis, its current (priced) value, and the
   // gain between them — never the deposit/bond interest/tax table, which
@@ -131,7 +130,7 @@ export const holdingDetailSpecs = {
   property_item: {
     footerAction: () => 'updateValue',
     breakdown: { kind: 'priced' },
-    nextInstallment: noInstallment,
+    upcomingInstallments: noInstallments,
   },
   // `metal` opens the dedicated Lot form to record a buy/sell instead of the
   // generic price-point form: `metal` is ALSO a priced type, but its price
@@ -141,7 +140,7 @@ export const holdingDetailSpecs = {
   metal: {
     footerAction: () => 'addLot',
     breakdown: { kind: 'priced' },
-    nextInstallment: noInstallment,
+    upcomingInstallments: noInstallments,
   },
   // A loan is ledgerless but still takes the SAME `'updateValue'`
   // action as a priced holding — it reuses `PricePointForm` to write a
@@ -152,7 +151,7 @@ export const holdingDetailSpecs = {
   loan: {
     footerAction: () => 'updateValue',
     breakdown: { kind: 'loan' },
-    nextInstallment: loanNextInstallment,
+    upcomingInstallments: loanUpcomingInstallments,
   },
   card: balanceSpec,
   cash: balanceSpec,
@@ -162,7 +161,7 @@ export const holdingDetailSpecs = {
 
 /**
  * The tolerant lookup the detail screen reads for footer action, breakdown,
- * and next-installment behavior in one place: `Object.hasOwn`-guarded — the
+ * and upcoming-payments behavior in one place: `Object.hasOwn`-guarded — the
  * schema types `holdings.type` as this exact enum, but SQLite enforces no
  * such constraint, so a corrupted row could hold any string, including an
  * inherited `Object.prototype` key such as `'constructor'`, which a plain

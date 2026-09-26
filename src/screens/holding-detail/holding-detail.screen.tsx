@@ -28,6 +28,7 @@ import {
   resolveCategoryDisplay,
 } from '../../categories/category-display';
 import { Money } from '../../currency/money';
+import { formatTime } from '../../dates/format';
 import { formatMoney } from '../../currency/format';
 import Box from '../../design-system/components/box';
 import { useDataReady } from '../../db/use-data-ready';
@@ -39,7 +40,6 @@ import { activeLocale } from '../../i18n/active-locale';
 import type { Currency } from '../../currency/currency';
 import { usePriceBook } from '../../prices/use-price-book';
 import Button from '../../design-system/components/button';
-import { formatDate, formatTime } from '../../dates/format';
 import Divider from '../../design-system/components/divider';
 import { groupByDay } from '../../transactions/group-by-day';
 import { needsPriceBook } from '../../holdings/priced-value';
@@ -71,6 +71,7 @@ import {
   type HoldingBreakdownSpec,
   holdingDetailSpecFor,
 } from './holding-detail-spec';
+import UpcomingPayments from './upcoming-payments';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
 
@@ -697,10 +698,17 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // `holding-detail-spec/`) — `undefined` when there is no real holding
   // (`holdingDetailSpecFor` itself always tolerates an unrecognized type).
   const spec = foldMap(maybe(holding), (found) => holdingDetailSpecFor(found.type));
-  // An annuity/differentiated loan's next upcoming installment — its
-  // interest/principal split shown just below the Value header.
-  const nextInstallment = foldMap(maybe(holding), (found) =>
-    spec?.nextInstallment(found, priceBook, now),
+  const todayStart = startOfLocalDay(now);
+  // An annuity/differentiated loan's every remaining installment, listed just
+  // below the Value header. Keyed on the local DAY, not the per-render `now`
+  // millisecond (every input it reads is day-granular), so a 30-year
+  // mortgage's 360 rows are not rebuilt, nor re-rendered, on every render.
+  const upcomingInstallments = useMemo(
+    () =>
+      foldMap(maybe(holding), (found) =>
+        spec?.upcomingInstallments(found, priceBook, todayStart),
+      ) ?? [],
+    [holding, spec, priceBook, todayStart],
   );
 
   // The user's main currency, and the rate table that converts into it. A
@@ -741,7 +749,6 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // with that day's header title. Keyed on the local DAY (not the per-render
   // `now` millisecond) so it only recomputes when the ledger changes or the day
   // rolls over at midnight.
-  const todayStart = startOfLocalDay(now);
   const listData = useMemo<LedgerListItem[]>(
     () =>
       groupByDay(ledger, todayStart, t).flatMap((section) =>
@@ -869,34 +876,9 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
               />
             </Box>
           )}
-          {nextInstallment && (
+          {upcomingInstallments.length > 0 && (
             <Box style={styles.breakdown}>
-              <SummaryTable
-                title={t('holdingDetail.nextInstallment', {
-                  date: formatDate(nextInstallment.dueDate),
-                })}
-                rows={[
-                  {
-                    key: 'principal',
-                    label: t('holdingDetail.principal'),
-                    // Scoped testID: a test can assert the principal/interest
-                    // split per row, not just "both amounts appear somewhere",
-                    // which would still pass if the two values were swapped.
-                    testID: 'next-installment-principal',
-                    value: (
-                      <MoneyText money={Money.of(currency, nextInstallment.principalMinorUnits)} />
-                    ),
-                  },
-                  {
-                    key: 'interest',
-                    label: t('holdingDetail.interest'),
-                    testID: 'next-installment-interest',
-                    value: (
-                      <MoneyText money={Money.of(currency, nextInstallment.interestMinorUnits)} />
-                    ),
-                  },
-                ]}
-              />
+              <UpcomingPayments installments={upcomingInstallments} currency={currency} />
             </Box>
           )}
         </Box>

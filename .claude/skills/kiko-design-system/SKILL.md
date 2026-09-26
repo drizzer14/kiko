@@ -859,7 +859,10 @@ new component can land between reviews of this skill:
   column-mapping result section (`MappingResult`) reuse the SAME row
   layout/alignment/styling for their own summary rows (transaction count,
   currency, date span) — never the deposit table's value/percent/tax
-  COLUMNS, only its layout. `value` is always a caller-rendered `ReactNode`
+  COLUMNS, only its layout. The loan detail's ledger breakdown and its
+  "Upcoming payments" list (`UpcomingPayments`, one row per installment:
+  date label, payment over a principal / interest caption) are
+  `SummaryTable`s too. `value` is always a caller-rendered `ReactNode`
   (a plain `Text` or a `MoneyText`) — `SummaryTable` itself never formats a
   value. A row's own `testID` wraps ONLY that row's value (never its
   label), so a caller migrating an existing row's testID (e.g.

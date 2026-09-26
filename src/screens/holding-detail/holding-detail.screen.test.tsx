@@ -1304,58 +1304,70 @@ describe('HoldingDetailScreen', () => {
     );
   });
 
-  it("shows the next installment's interest/principal split for an annuity loan", async () => {
+  it('lists every remaining payment of an annuity loan, starting at the next installment', async () => {
     seed(annuityLoanHolding);
 
-    const { getByText, getByTestId } = await renderScreen();
+    const { getByText, getByTestId, getAllByTestId } = await renderScreen();
 
-    const next = loanInstallments(annuityLoanMeta).find(
+    const upcoming = loanInstallments(annuityLoanMeta).filter(
       (row) => row.dueDate >= startOfLocalDay(Date.now()),
     );
+    const [next] = upcoming;
 
     if (next === undefined) {
       throw new Error('fixture must have an upcoming installment for this test to mean anything');
     }
 
-    expect(getByText(`Next installment (${formatDate(next.dueDate)})`)).toBeTruthy();
-    // Scoped per row: a swapped principal/interest would fail here,
-    // unlike a bare `getByText` search over the whole screen.
-    expect(getByTestId('next-installment-principal')).toHaveTextContent(
-      formatMoney(Money.of('UAH', next.principalMinorUnits)),
-    );
-    expect(getByTestId('next-installment-interest')).toHaveTextContent(
-      formatMoney(Money.of('UAH', next.interestMinorUnits)),
+    expect(getByText('Upcoming payments')).toBeTruthy();
+    expect(getAllByTestId(/^upcoming-payment-/)).toHaveLength(upcoming.length);
+    // Scoped per row: a swapped principal/interest would fail here, unlike a
+    // bare `getByText` search over the whole screen.
+    expect(getByTestId(`upcoming-payment-${next.index}`)).toHaveTextContent(
+      formatMoney(Money.of('UAH', next.paymentMinorUnits)).concat(
+        `Principal ${formatMoney(Money.of('UAH', next.principalMinorUnits))}`,
+        ` · interest ${formatMoney(Money.of('UAH', next.interestMinorUnits))}`,
+      ),
     );
   });
 
-  it('shows no next-installment panel for a "none" schedule loan', async () => {
+  it('renders every remaining payment of a 30-year mortgage', async () => {
+    seed({
+      ...annuityLoanHolding,
+      metadata: { ...annuityLoanMeta, startDate: startMonthsAgo(0), termMonths: 360 },
+    });
+
+    const { getAllByTestId } = await renderScreen();
+
+    expect(getAllByTestId(/^upcoming-payment-/)).toHaveLength(360);
+  });
+
+  it('shows no upcoming payments for a "none" schedule loan', async () => {
     seed(noneLoanHolding);
 
     const { queryByText } = await renderScreen();
 
-    expect(queryByText(/Next installment/)).toBeNull();
+    expect(queryByText('Upcoming payments')).toBeNull();
   });
 
-  it('shows no next-installment panel for a non-loan holding', async () => {
+  it('shows no upcoming payments for a non-loan holding', async () => {
     seed(propertyHolding);
 
     const { queryByText } = await renderScreen();
 
-    expect(queryByText(/Next installment/)).toBeNull();
+    expect(queryByText('Upcoming payments')).toBeNull();
   });
 
-  // An overpaid correction clamps the
-  // outstanding to 0 even though `loanInstallments` still has future
-  // rows on the schedule — the panel must not keep showing a "next" payment
-  // once the debt is actually paid off.
-  it('shows no next-installment panel once a correction clamps the outstanding to 0', async () => {
+  // An overpaid correction clamps the outstanding to 0 even though
+  // `loanInstallments` still has future rows on the schedule — the list must
+  // not keep showing payments once the debt is actually paid off.
+  it('shows no upcoming payments once a correction clamps the outstanding to 0', async () => {
     seed(annuityLoanHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [
       { instrument: 'holding:h-1', day: dayKeyOf(Date.now()), price: '0.00', currency: 'UAH' },
     ]);
 
     const { queryByText } = await renderScreen();
 
-    expect(queryByText(/Next installment/)).toBeNull();
+    expect(queryByText('Upcoming payments')).toBeNull();
   });
 
   // The loan detail lists linked payments — the ONLY way to review an auto

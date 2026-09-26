@@ -664,13 +664,12 @@ export const en = {
     // loan, newest first.
     linkedPayments: 'Linked payments',
     militaryLevy: 'Military levy {{pct}}%',
-    // The loan detail screen's "next installment" panel (annuity/
-    // differentiated only); its principal/interest split reuses the shared
-    // labels below.
-    nextInstallment: 'Next installment ({{date}})',
     openingDeposit: 'Opening deposit',
     outstanding: 'Outstanding',
     paidSoFar: 'Paid so far',
+    // The caption under each upcoming loan payment: how much of it repays
+    // the principal and how much is interest.
+    paymentSplit: 'Principal {{principal}} · interest {{interest}}',
     principal: 'Principal',
     principalRepaid: 'Principal repaid',
     projected: 'Projected',
@@ -681,6 +680,9 @@ export const en = {
     taxWithheld: 'Tax withheld',
     topUp: 'Top-up',
     transactionsHeading: 'Transactions',
+    // The loan detail's list of every remaining scheduled payment
+    // (annuity/differentiated only).
+    upcomingPayments: 'Upcoming payments',
     // The loan footer action's label — writes a correction to the loan's
     // manual outstanding series via `PricePointForm` (same mechanism as
     // `updateValue` below, for a priced holding).

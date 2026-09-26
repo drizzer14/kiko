@@ -991,7 +991,7 @@ together.
 - `loanLedgerOutstandingMinorAt(meta, loan, book, instant)` — the ONE
   outstanding every site reads (the descriptor below: card, detail
   Value, Home/Accounts totals, statistics, every net-worth bucket; the
-  detail's next-installment guard; the form's schedule-to-`none`
+  detail's upcoming-payments guard; the form's schedule-to-`none`
   edit). No counted payment: exactly `loanOutstandingMinorAt` (pinned —
   a loan with no linked payment values as it always did). Otherwise:
   `loanAnchorAt` minus the principal part (`|amount|` minus
@@ -1068,16 +1068,22 @@ Principal repaid / Outstanding (`loanLedgerSummary`, above; testIDs
 `loan-ledger-principal`, `-paid-so-far`, `-interest-paid`,
 `-principal-repaid`, `-outstanding`). Its Outstanding row is the same
 number as the Value header, the card, and net worth.
-An `'annuity'`/`'differentiated'` loan additionally shows a "Next
-installment (`<date>`)" panel (the loan entry's own `nextInstallment` —
-the first `loanInstallments` row due on or after today's local day)
-with its principal/interest split; a `'none'` schedule and every other
-holding type render nothing there. That panel is also hidden once
-`loanLedgerOutstandingMinorAt` reads 0 at `now` (that same
-`nextInstallment`'s own `<= 0` guard) — a loan fully repaid by its
-linked payments, or overpaid/over-corrected, shows no next installment
-even while `loanInstallments` still has future rows on the loan's
-ORIGINAL schedule.
+An `'annuity'`/`'differentiated'` loan additionally lists EVERY remaining
+scheduled payment under an "Upcoming payments" heading (the loan entry's
+own `upcomingInstallments` — every `loanInstallments` row due on or after
+today's local day, in schedule order; its first row is the next
+installment). `UpcomingPayments`
+(`src/screens/holding-detail/upcoming-payments/`, memoized) renders them as
+ONE shared `SummaryTable`, one row per installment: the due date as the
+label, the payment as the value, and a `holdingDetail.paymentSplit`
+caption ("Principal X · interest Y") beneath it; row testID
+`upcoming-payment-<index>`. A 30-year mortgage lists all 360 rows (the
+screen memoizes the list on the local day, so it is not rebuilt on every
+render). A `'none'` schedule and every other holding type render nothing
+there. The list is also empty once `loanLedgerOutstandingMinorAt` reads 0
+(`upcomingInstallments`' own `<= 0` guard) — a loan fully repaid by its
+linked payments, or overpaid/over-corrected, lists nothing even while
+`loanInstallments` still has future rows on the loan's ORIGINAL schedule.
 
 A loan correction (the "Update outstanding" `PricePointForm` write
 above) accepts **0**, unlike every other holding type's "Update

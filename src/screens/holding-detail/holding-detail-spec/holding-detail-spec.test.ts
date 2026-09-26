@@ -115,20 +115,34 @@ describe('holdingDetailSpecs breakdown', () => {
   });
 });
 
-describe('holdingDetailSpecs nextInstallment', () => {
-  it('returns undefined for every non-loan type', () => {
+describe('holdingDetailSpecs upcomingInstallments', () => {
+  const structuredMeta = (overrides: Partial<LoanMeta> = {}): LoanMeta => ({
+    kind: 'car_loan',
+    principalMinorUnits: 100_000_00,
+    startDate: Date.UTC(2024, 6, 1),
+    schedule: 'annuity',
+    annualRatePct: 12,
+    termMonths: 120,
+    ...overrides,
+  });
+
+  it('returns no installment for every non-loan type', () => {
     for (const type of holdingTypes) {
       if (type === 'loan') {
         continue;
       }
 
       expect(
-        holdingDetailSpecs[type].nextInstallment(holding({ type }), EMPTY_PRICE_BOOK, Date.now()),
-      ).toBeUndefined();
+        holdingDetailSpecs[type].upcomingInstallments(
+          holding({ type }),
+          EMPTY_PRICE_BOOK,
+          Date.now(),
+        ),
+      ).toEqual([]);
     }
   });
 
-  it('returns undefined for a "none" schedule loan (its outstanding is a manual series, not a computed schedule)', () => {
+  it('returns no installment for a "none" schedule loan (its outstanding is a manual series, not a computed schedule)', () => {
     const loanHolding = holding({
       type: 'loan',
       metadata: {
@@ -140,48 +154,73 @@ describe('holdingDetailSpecs nextInstallment', () => {
     });
 
     expect(
-      holdingDetailSpecs.loan.nextInstallment(loanHolding, EMPTY_PRICE_BOOK, Date.now()),
-    ).toBeUndefined();
+      holdingDetailSpecs.loan.upcomingInstallments(loanHolding, EMPTY_PRICE_BOOK, Date.now()),
+    ).toEqual([]);
   });
 
-  it('returns the first installment due on/after today for a structured loan', () => {
-    // Deriving `expectedDueDate` straight from `addMonths` — not from
-    // `loanInstallments(meta).find(...)`, the SUT's own search — means a bug
-    // in that search's predicate would still be caught here.
+  it.each(['annuity', 'differentiated'] as const)(
+    'lists every remaining %s installment, starting at the first due on/after today',
+    (schedule) => {
+      // Deriving the due dates straight from `addMonths` — not from
+      // `loanInstallments(meta).filter(...)`, the SUT's own search — means a
+      // bug in that search's predicate would still be caught here.
+      // Installment 12 falls due 2025-07-01, before `now` (2025-07-15);
+      // installment 13 falls due 2025-08-01, the first still on/after `now`.
+      const now = Date.UTC(2025, 6, 15);
+      const meta = structuredMeta({ schedule });
+
+      const upcoming = holdingDetailSpecs.loan.upcomingInstallments(
+        holding({ type: 'loan', metadata: meta }),
+        EMPTY_PRICE_BOOK,
+        now,
+      );
+
+      expect(upcoming).toHaveLength(120 - 12);
+      expect(upcoming[0].index).toBe(13);
+      expect(upcoming[0].dueDate).toBe(addMonths(meta.startDate, 13));
+      expect(upcoming.at(-1)?.index).toBe(120);
+    },
+  );
+
+  it('lists all 360 installments of a 30-year mortgage that starts today', () => {
     const now = Date.UTC(2025, 6, 15);
-    const startDate = Date.UTC(2024, 6, 1);
-    const meta: LoanMeta = {
-      kind: 'car_loan',
-      principalMinorUnits: 100_000_00,
-      startDate,
-      schedule: 'annuity',
-      annualRatePct: 12,
-      termMonths: 120,
-    };
-    const loanHolding = holding({ type: 'loan', metadata: meta });
-    // Installment 12 falls due 2025-07-01, before `now` (2025-07-15); installment
-    // 13 falls due 2025-08-01, the first still on/after `now` — hence index 13.
-    const expectedDueDate = addMonths(startDate, 13);
+    const meta = structuredMeta({ startDate: now, termMonths: 360 });
 
-    const next = holdingDetailSpecs.loan.nextInstallment(loanHolding, EMPTY_PRICE_BOOK, now);
+    expect(
+      holdingDetailSpecs.loan.upcomingInstallments(
+        holding({ type: 'loan', metadata: meta }),
+        EMPTY_PRICE_BOOK,
+        now,
+      ),
+    ).toHaveLength(360);
+  });
 
-    expect(next).toBeDefined();
-    expect(next?.index).toBe(13);
-    expect(next?.dueDate).toBe(expectedDueDate);
+  it('returns no installment once a correction clamps the outstanding to 0', () => {
+    const now = Date.UTC(2025, 6, 15);
+    const book = buildPriceBook([
+      {
+        instrument: 'holding:h1',
+        day: Date.UTC(2025, 6, 1),
+        price: '0.00',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+
+    expect(
+      holdingDetailSpecs.loan.upcomingInstallments(
+        holding({ type: 'loan', metadata: structuredMeta() }),
+        book,
+        now,
+      ),
+    ).toEqual([]);
   });
 
   // The same outstanding every other screen shows: linked payments that
-  // repaid the whole loan hide the next payment too.
-  it('returns undefined once the linked payments have repaid the loan', () => {
+  // repaid the whole loan hide the upcoming payments too.
+  it('returns no installment once the linked payments have repaid the loan', () => {
     const now = Date.UTC(2025, 6, 15);
-    const meta: LoanMeta = {
-      kind: 'car_loan',
-      principalMinorUnits: 100_000_00,
-      startDate: Date.UTC(2024, 6, 1),
-      schedule: 'annuity',
-      annualRatePct: 12,
-      termMonths: 120,
-    };
+    const meta = structuredMeta();
     const book = buildPriceBook(
       [],
       [
@@ -195,8 +234,12 @@ describe('holdingDetailSpecs nextInstallment', () => {
     );
 
     expect(
-      holdingDetailSpecs.loan.nextInstallment(holding({ type: 'loan', metadata: meta }), book, now),
-    ).toBeUndefined();
+      holdingDetailSpecs.loan.upcomingInstallments(
+        holding({ type: 'loan', metadata: meta }),
+        book,
+        now,
+      ),
+    ).toEqual([]);
   });
 });
 
