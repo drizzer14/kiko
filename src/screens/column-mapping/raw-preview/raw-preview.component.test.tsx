@@ -157,9 +157,11 @@ describe('RawPreview', () => {
     const toggle = getByTestId('raw-preview-toggle');
     const { paddingVertical } = StyleSheet.flatten(toggle.props.style);
     const { top, bottom } = toggle.props.hitSlop;
-    const captionLineHeight = 16;
+    // The theme has no line-height token; the toggle's content row is at least
+    // as tall as its caption-step chevron, so that size is a safe lower bound.
+    const contentHeight = darkTheme.iconSizes.caption;
 
-    expect(captionLineHeight + 2 * paddingVertical + top + bottom).toBeGreaterThanOrEqual(44);
+    expect(contentHeight + 2 * paddingVertical + top + bottom).toBeGreaterThanOrEqual(44);
   });
 
   it('calls onSelectHeaderRow with the tapped row index', async () => {
