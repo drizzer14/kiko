@@ -215,6 +215,31 @@ describe('LotFormScreen', () => {
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
 
+  // 10 held in February, but the March sell of 5 must still be covered, so
+  // a backdated February sell of 8 would leave -3 in March.
+  it('rejects a backdated sell that a later recorded sell would overdraw', async () => {
+    seed({
+      ...metalHolding,
+      metadata: {
+        ...metalHolding.metadata,
+        lots: [
+          ...metalHolding.metadata.lots,
+          { day: dayKeyOf(Date.UTC(2025, 2, 1)), quantityDelta: '-5', costMinorUnits: -250_000_00 },
+        ],
+      },
+    });
+    const utils = await renderScreen();
+
+    await fireEvent.press(utils.getByText('Sell'));
+    await fireEvent.changeText(utils.getByLabelText('Quantity'), '8');
+    await pickDate(utils, 2025, 2, 1);
+    await fireEvent.press(utils.getByText('Save lot'));
+
+    expect(utils.getByText("You can't sell more than you currently hold.")).toBeTruthy();
+    expect(holdingsRepo.update).not.toHaveBeenCalled();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
   it('defaults the buy lot day to today when no date is picked', async () => {
     const utils = await renderScreen();
 

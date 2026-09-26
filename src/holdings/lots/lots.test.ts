@@ -1,4 +1,4 @@
-import { asLots, costBasisMinorAt, quantityAt } from './lots';
+import { asLots, costBasisMinorAt, quantityAt, sellableQuantityAt } from './lots';
 
 // Matches price-book.test.ts's own convention: a UTC-midnight anchor day, so
 // `dayKeyOf` (which reads local Y/M/D getters) resolves back to the same
@@ -36,6 +36,47 @@ describe('quantityAt', () => {
 
   it('returns "0" for an empty lot list', () => {
     expect(quantityAt([], day1)).toBe('0');
+  });
+});
+
+describe('sellableQuantityAt', () => {
+  const january = Date.UTC(2026, 0, 10);
+  const february = Date.UTC(2026, 1, 10);
+  const march = Date.UTC(2026, 2, 10);
+
+  it('is the quantity held on the day when no later lot sells', () => {
+    const lots = [{ day: january, quantityDelta: '10', costMinorUnits: 100_000 }];
+
+    expect(sellableQuantityAt(lots, february)).toBe('10');
+  });
+
+  // A backdated sell must leave enough for every sell already recorded after it.
+  it('is the lowest running quantity from the day onward', () => {
+    const lots = [
+      { day: january, quantityDelta: '10', costMinorUnits: 100_000 },
+      { day: march, quantityDelta: '-5', costMinorUnits: -50_000 },
+    ];
+
+    expect(sellableQuantityAt(lots, february)).toBe('5');
+  });
+
+  it('ignores a dip before the day that a later buy restored', () => {
+    const lots = [
+      { day: january, quantityDelta: '10', costMinorUnits: 100_000 },
+      { day: february, quantityDelta: '-10', costMinorUnits: -100_000 },
+      { day: march, quantityDelta: '4', costMinorUnits: 40_000 },
+    ];
+
+    expect(sellableQuantityAt(lots, march)).toBe('4');
+  });
+
+  it('never returns below "0"', () => {
+    const lots = [
+      { day: january, quantityDelta: '1', costMinorUnits: 10_000 },
+      { day: march, quantityDelta: '-3', costMinorUnits: 0 },
+    ];
+
+    expect(sellableQuantityAt(lots, february)).toBe('0');
   });
 });
 

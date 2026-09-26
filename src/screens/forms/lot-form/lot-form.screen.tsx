@@ -1,4 +1,11 @@
 import {
+  asLots,
+  quantityAt,
+  costBasisMinorAt,
+  sellableQuantityAt,
+  type Lot,
+} from '@kiko/holdings/lots';
+import {
   compareDecimal,
   multiplyToMinorUnits,
   normalizeDecimal,
@@ -16,7 +23,6 @@ import { asMetalMeta } from '@kiko/holdings/holding-metadata';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
-import { asLots, costBasisMinorAt, quantityAt, type Lot } from '@kiko/holdings/lots';
 import { type Currency, currencyScale, currencySymbol } from '@kiko/currency/currency';
 
 import DateField from '../date-field';
@@ -124,12 +130,15 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
 
   const quantity = normalizeDecimal(quantityText);
   const quantityValid = quantity !== null && compareDecimal(quantity, '0') > 0;
-  // The quantity currently held as of the picked day, from the holding's own
-  // lots — a sell delta larger than this is rejected, never
-  // written, and `quantityAt` itself never returns below "0".
+  // A sell is checked against the lowest quantity held from the picked day
+  // onward (`sellableQuantityAt`), not just on that day: a backdated sell
+  // must leave enough for every sell recorded after it. The quantity held on
+  // the day itself still sizes the share of cost basis the sell removes.
   const heldQuantity = quantityAt(existingLots, date);
   const sellExceeds =
-    direction === 'sell' && quantityValid && compareDecimal(quantity, heldQuantity) > 0;
+    direction === 'sell' &&
+    quantityValid &&
+    compareDecimal(quantity, sellableQuantityAt(existingLots, date)) > 0;
   const quantityErrorMessage = quantityErrorFor({ attemptedSave, quantityValid, sellExceeds, t });
   const costValid = parseAmount(costText) > 0;
 

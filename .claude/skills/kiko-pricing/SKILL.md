@@ -398,9 +398,14 @@ minor to major (`shiftDecimal`), then run through
 heldQuantity)` (the BigInt-backed decimal helper, `src/currency/decimal/`).
 Stored as a NEGATIVE `costMinorUnits` on the new lot entry, mirroring
 `quantityDelta`'s own negative-on-sale sign (`lots.ts`'s documented
-contract). A sell whose quantity exceeds `quantityAt(lots, date)` is
-rejected client-side before save (the `sellExceeds` check) and never
-written.
+contract). A sell whose quantity exceeds `sellableQuantityAt(lots, date)`
+— the LOWEST running quantity from the sell day onward, not just
+`quantityAt` on that day — is rejected client-side before save (the
+`sellExceeds` check) and never written. A backdated sell must leave enough
+for every sell already recorded after it: Jan +10, Mar −5, then a
+backdated Feb −8 is rejected (March would hold −3, and `quantityAt`'s
+clamp would hide it as 0 with a negative cost basis). `heldQuantity` (on
+the day) still sizes the cost-basis share.
 
 A metal holding's lots also surface as ledger-display rows: `metalEntries`
 (`src/holdings/holding-descriptor/metal/metal.descriptor.ts`, wired as
