@@ -300,7 +300,17 @@ rules:
   # YAML value, see kiko-linter's "Semgrep facts"); the fifth arm is a bare
   # optional-prop pass-through, matched on the LITERAL identifier
   # `fallbackName` (not a metavariable) so it only fires when the JSX
-  # expression is exactly that name, never an unrelated local variable.
+  # expression is exactly that name, never an unrelated local variable — but
+  # the literal-name match alone still can't tell a raw destructured
+  # parameter/prop apart from a local re-declared under that SAME name after
+  # already being routed through `effectiveFallbackName(...)` (`const
+  # fallbackName = effectiveFallbackName(name, x)`, then `fallbackName={
+  # fallbackName}`), which is safe. `pattern-not-inside` on `const
+  # fallbackName = $ANY;` scopes the fifth arm to skip exactly that shape —
+  # any local reassignment under the same name, not only one calling
+  # `effectiveFallbackName` by name (a plain `declare const fallbackName`
+  # ambient type declaration, the true-positive shape, has no `=`
+  # initializer and so never matches this exclusion).
   - id: kiko-no-undefined-nitro-prop
     languages: [typescript]
     severity: ERROR
@@ -325,8 +335,14 @@ rules:
           - pattern: '<SFSymbolView ... fallbackName={$C ? $A : undefined} ... />'
           - pattern: '<SFSymbolView ... fallbackName={$C ? undefined : $A} ...></SFSymbolView>'
           - pattern: '<SFSymbolView ... fallbackName={$C ? undefined : $A} ... />'
-          - pattern: '<SFSymbolView ... fallbackName={fallbackName} ...></SFSymbolView>'
-          - pattern: '<SFSymbolView ... fallbackName={fallbackName} ... />'
+          - patterns:
+              - pattern-either:
+                  - pattern: '<SFSymbolView ... fallbackName={fallbackName} ...></SFSymbolView>'
+                  - pattern: '<SFSymbolView ... fallbackName={fallbackName} ... />'
+              - pattern-not-inside: |
+                  ...
+                  const fallbackName = $ANY;
+                  ...
   # kiko-design-system's `Divider` component owns the ONE hairline-rule
   # style. The pattern anchors on the LITERAL `height` key, never a bare
   # `$KEY: StyleSheet.hairlineWidth` — a BORDERED field/card

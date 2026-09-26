@@ -14,3 +14,15 @@ export const guardedFallback = (name: string, fallbackName: string | undefined) 
 
   return <SFSymbolView name={name} fallbackName={resolvedFallback} />;
 };
+
+// A local re-declared under the SAME name as the prop it replaces, still
+// routed through `effectiveFallbackName` first — the bare pass-through arm
+// must not flag this local just because its own name is the literal
+// identifier `fallbackName`; it is not a raw, unguarded pass-through. A
+// top-level `const` (not a function's `return`), so this does not read as a
+// second component-like export under kiko-code-style's "One component per
+// file", the same reason `literalFallback` above is written this way.
+declare const incomingFallback: string | undefined;
+const fallbackName = effectiveFallbackName('star', incomingFallback);
+
+export const guardedFallbackSameName = <SFSymbolView name="star" fallbackName={fallbackName} />;
