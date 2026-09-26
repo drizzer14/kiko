@@ -3,6 +3,8 @@ import {
   ownershipAt,
   sharePercentText,
   ownershipApplies,
+  ownershipShareText,
+  ownershipShareDetailText,
   parsePercentShare,
   asOwnershipChanges,
   parseFractionShare,
@@ -182,6 +184,38 @@ describe('ownershipApplies', () => {
     expect(ownershipApplies('business_share')).toBe(true);
     expect(ownershipApplies('other')).toBe(true);
     expect(ownershipApplies('loan_given')).toBe(false);
+  });
+});
+
+describe('ownershipShareText', () => {
+  const third = { numerator: 1, denominator: 3 };
+
+  it('shows a percent-typed share as its percent', () => {
+    expect(ownershipShareText({ numerator: 1, denominator: 2 }, 'percent', 'en-US')).toBe('50%');
+    expect(ownershipShareText(third, 'percent', 'en-US')).toBe('33.33%');
+  });
+
+  it('shows a fraction-typed share as the fraction', () => {
+    expect(ownershipShareText(third, 'fraction', 'en-US')).toBe('1/3');
+  });
+
+  it('writes the percent with the locale decimal mark', () => {
+    expect(ownershipShareText(third, 'percent', 'uk-UA')).toBe('33,33%');
+  });
+});
+
+describe('ownershipShareDetailText', () => {
+  const third = { numerator: 1, denominator: 3 };
+
+  it('shows a percent-typed share as its percent', () => {
+    expect(ownershipShareDetailText({ numerator: 1, denominator: 2 }, 'percent', 'en-US')).toBe(
+      '50%',
+    );
+  });
+
+  it('shows a fraction-typed share as the fraction and its percent', () => {
+    expect(ownershipShareDetailText(third, 'fraction', 'en-US')).toBe('1/3 · 33.33%');
+    expect(ownershipShareDetailText(third, 'fraction', 'uk-UA')).toBe('1/3 · 33,33%');
   });
 });
 

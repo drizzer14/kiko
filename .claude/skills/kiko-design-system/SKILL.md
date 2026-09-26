@@ -862,7 +862,19 @@ new component can land between reviews of this skill:
   COLUMNS, only its layout. The loan detail's ledger breakdown and its
   "Upcoming payments" list (`UpcomingPayments`, one row per installment:
   date label, payment over a principal / interest caption) are
-  `SummaryTable`s too. `value` is always a caller-rendered `ReactNode`
+  `SummaryTable`s too. A property owned in part swaps the priced
+  Cost / Value / Gain rows for Whole value / Your share / Your value /
+  Cost (your share) / Gain (`sharedPropertyBreakdownRows`,
+  `holding-detail.screen.tsx`; testIDs `ownership-whole-value`,
+  `ownership-share`, `ownership-owned-value`, `ownership-owned-cost`,
+  `ownership-gain`); "Your share" is the one text row, a `body` `Text`
+  reading the share as typed plus its day (`1/3 · 33.33% since
+  01.06.2025`, or `50% since …` for a percent). The two-value display
+  on the holding card follows the converted-to-base line's shape: the
+  owned value stays the main `MoneyText`, and a `caption`
+  `textSecondary` line under it reads the share of the whole (`1/3 of
+  3,000,000.00 ₴`, testID `holding-card-whole`) — only when the
+  property is owned in part (`propertyOwnershipView`). `value` is always a caller-rendered `ReactNode`
   (a plain `Text` or a `MoneyText`) — `SummaryTable` itself never formats a
   value. A row's own `testID` wraps ONLY that row's value (never its
   label), so a caller migrating an existing row's testID (e.g.

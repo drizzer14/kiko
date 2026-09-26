@@ -10,6 +10,10 @@ import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { FlatList, Pressable } from 'react-native';
 import { categoriesRepo } from '@kiko/categories/repo';
+import {
+  propertyOwnershipView,
+  type PropertyOwnershipView,
+} from '@kiko/holdings/holding-descriptor/property-item';
 import type { PriceBook } from '@kiko/prices/price-book';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
@@ -19,6 +23,7 @@ import { loanLedgerSummary } from '@kiko/holdings/loan-ledger';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ownershipShareDetailText } from '@kiko/holdings/ownership';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, type ReactElement, type ReactNode, useLayoutEffect, useMemo } from 'react';
 
@@ -28,7 +33,6 @@ import {
   resolveCategoryDisplay,
 } from '../../categories/category-display';
 import { Money } from '../../currency/money';
-import { formatTime } from '../../dates/format';
 import { formatMoney } from '../../currency/format';
 import Box from '../../design-system/components/box';
 import { useDataReady } from '../../db/use-data-ready';
@@ -40,6 +44,7 @@ import { activeLocale } from '../../i18n/active-locale';
 import type { Currency } from '../../currency/currency';
 import { usePriceBook } from '../../prices/use-price-book';
 import Button from '../../design-system/components/button';
+import { formatDate, formatTime } from '../../dates/format';
 import Divider from '../../design-system/components/divider';
 import { groupByDay } from '../../transactions/group-by-day';
 import { needsPriceBook } from '../../holdings/priced-value';
@@ -101,7 +106,18 @@ const isZero = (minorUnits: number): boolean => minorUnits === 0;
 const ledgerTone = (tone: EntryTone, minorUnits: number): MoneyTextTone =>
   tone !== 'neutral' && isZero(minorUnits) ? 'muted' : tone;
 
-type BreakdownRow = { label: string; money: Money; tone?: MoneyTextTone; testID?: string };
+// A row reads an amount, or (a property's share) a plain text value.
+type BreakdownRow =
+  | { label: string; money: Money; tone?: MoneyTextTone; testID?: string }
+  | { label: string; text: string; testID?: string };
+
+const BreakdownValue: FC<{ row: BreakdownRow }> = ({ row }) => {
+  if ('text' in row) {
+    return <Text variant="body">{row.text}</Text>;
+  }
+
+  return <MoneyText money={row.money} tone={row.tone} />;
+};
 
 // The deposit/bond breakdown: principal-or-cost, gross, interest, tax, and a
 // bond's own whole-life expected profit. Only these two types accrue
@@ -162,6 +178,48 @@ const pricedBreakdownRows = (breakdown: HoldingValueBreakdown, t: TFunction): Br
   { label: t('holdingDetail.gain'), money: breakdown.gross.subtract(breakdown.principalOrCost) },
 ];
 
+// A property owned in part: the whole asset's value, the share (in the form
+// the user typed it) and the day it took effect, then the owned value, the
+// owned cost, and the owned gain — the same amounts the breakdown values it at.
+const sharedPropertyBreakdownRows = (
+  breakdown: HoldingValueBreakdown,
+  ownership: PropertyOwnershipView,
+  t: TFunction,
+): BreakdownRow[] => {
+  const shareText = ownershipShareDetailText(ownership.share, ownership.input, activeLocale());
+  const since = t('holdingDetail.shareSince', {
+    date: formatDate(ownership.since, { timeZone: 'UTC' }),
+  });
+
+  return [
+    {
+      label: t('holdingDetail.wholeValue'),
+      money: ownership.whole,
+      testID: 'ownership-whole-value',
+    },
+    {
+      label: t('holdingDetail.yourShare'),
+      text: `${shareText} ${since}`,
+      testID: 'ownership-share',
+    },
+    {
+      label: t('holdingDetail.ownedValue'),
+      money: breakdown.gross,
+      testID: 'ownership-owned-value',
+    },
+    {
+      label: t('holdingDetail.ownedCost'),
+      money: breakdown.principalOrCost,
+      testID: 'ownership-owned-cost',
+    },
+    {
+      label: t('holdingDetail.gain'),
+      money: breakdown.gross.subtract(breakdown.principalOrCost),
+      testID: 'ownership-gain',
+    },
+  ];
+};
+
 // A loan's breakdown: its principal and what its linked payments paid, split
 // into interest and principal (`loanLedgerSummary`), ending on the SAME
 // outstanding the Value header shows. Every amount is a positive magnitude,
@@ -221,7 +279,13 @@ const breakdownRows = (
     .with({ kind: 'interest' }, (interestSpec) =>
       interestBreakdownRows(breakdown, interestSpec, holding, t),
     )
-    .with({ kind: 'priced' }, () => pricedBreakdownRows(breakdown, t))
+    .with(
+      { kind: 'priced' },
+      () =>
+        foldMap(maybe(propertyOwnershipView(holding, now, book)), (ownership) =>
+          sharedPropertyBreakdownRows(breakdown, ownership, t),
+        ) ?? pricedBreakdownRows(breakdown, t),
+    )
     .with({ kind: 'loan' }, () => loanBreakdownRows(holding, book, now, t))
     .exhaustive();
 
@@ -870,7 +934,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                     key: detail.label,
                     label: detail.label,
                     testID: detail.testID,
-                    value: <MoneyText money={detail.money} tone={detail.tone} />,
+                    value: <BreakdownValue row={detail} />,
                   }),
                 )}
               />

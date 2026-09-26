@@ -1,12 +1,11 @@
 import maybe, { foldMap } from 'fnts/maybe';
 
 import { costBasisMinorAt } from '../../lots';
-import { WHOLE_SHARE } from '../../ownership';
 import { Money } from '../../../currency/money';
 import { holdingsRepo } from '../../repo/holdings.repo';
 import type { PricedHolding } from '../../priced-value';
+import { ownedMoney, WHOLE_SHARE } from '../../ownership';
 import type { ValuableHolding } from '../../holding-value';
-import { scaleMinorUnits } from '../../../currency/decimal';
 import type { PriceBook } from '../../../prices/price-book';
 import { flat, type HoldingValueBreakdown } from '../breakdown-parts';
 import type { HoldingDescriptor, PricedSpec } from '../holding-descriptor.d';
@@ -19,36 +18,55 @@ const pricedValueOrNull = (
   instant: number,
 ): Money | null => foldMap(maybe(spec), (found) => found.value(holding, book, instant)) ?? null;
 
-// Falls back to `costBasisMinorAt` when the priced value is null, or when its
-// currency disagrees with `holding.currency` (an invalid/restore-only row) —
-// never surfaced under the wrong currency label. `principalOrCost` is always
-// the cost basis; interest/tax stay zero. The value and the cost are each the
-// whole asset's scaled once by the share owned at `now`, so the gain is the
-// owned gain.
+/** The whole asset's value and cost basis, before any ownership share. */
+type PricedWholeParts = { value: Money; cost: Money };
+
+/**
+ * The whole asset's value and cost basis at `now`, or null when the metadata
+ * has no lots. Falls back to `costBasisMinorAt` when the priced value is
+ * null, or when its currency disagrees with `holding.currency` (an
+ * invalid/restore-only row) — never surfaced under the wrong currency label.
+ */
+export const pricedWholeParts = (
+  spec: PricedSpec,
+  holding: ValuableHolding,
+  now: number,
+  book: PriceBook,
+): PricedWholeParts | null => {
+  const lots = spec.lots(holding.metadata);
+
+  if (lots === undefined) {
+    return null;
+  }
+  const { currency } = holding;
+  const cost = Money.of(currency, costBasisMinorAt(lots, now));
+  const pricedMoney = pricedValueOrNull(spec, holding, book, now);
+  const usesPricedMoney = pricedMoney !== null && pricedMoney.currency === currency;
+
+  return { value: usesPricedMoney ? pricedMoney : cost, cost };
+};
+
+// `principalOrCost` is always the cost basis; interest/tax stay zero. The
+// value and the cost are each the whole asset's scaled once by the share
+// owned at `now`, so the gain is the owned gain.
 const pricedBreakdown = (
   spec: PricedSpec,
   holding: ValuableHolding,
   now: number,
   book: PriceBook,
 ): HoldingValueBreakdown => {
-  const lots = spec.lots(holding.metadata);
+  const whole = pricedWholeParts(spec, holding, now, book);
 
-  if (lots === undefined) {
+  if (whole === null) {
     return flat(holding.currency, holdingsRepo.balanceOf(holding).minorUnits);
   }
-  const { currency } = holding;
   const share = spec.share?.(holding.metadata, now) ?? WHOLE_SHARE;
-  const owned = (wholeMinorUnits: number): Money =>
-    Money.of(currency, scaleMinorUnits(wholeMinorUnits, share.numerator, share.denominator));
-  const costBasisMinor = costBasisMinorAt(lots, now);
-  const pricedMoney = pricedValueOrNull(spec, holding, book, now);
-  const usesPricedMoney = pricedMoney !== null && pricedMoney.currency === currency;
-  const value = owned(usesPricedMoney ? pricedMoney.minorUnits : costBasisMinor);
-  const zero = Money.of(currency, 0);
+  const value = ownedMoney(whole.value, share);
+  const zero = Money.of(holding.currency, 0);
 
   return {
     gross: value,
-    principalOrCost: owned(costBasisMinor),
+    principalOrCost: ownedMoney(whole.cost, share),
     interest: zero,
     tax: zero,
     net: value,

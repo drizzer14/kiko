@@ -855,6 +855,71 @@ describe('HoldingDetailScreen', () => {
     expect(queryByText('Tax withheld')).toBeNull();
   });
 
+  describe('a shared property', () => {
+    const sharedProperty = (share: { numerator: number; denominator: number }, input: string) => ({
+      ...propertyHolding,
+      metadata: {
+        ...propertyHolding.metadata,
+        ownership: [{ day: Date.UTC(2025, 5, 1), ...share }],
+        ownershipInput: input,
+      },
+    });
+    const wholePricePoint = {
+      instrument: 'holding:h-1',
+      day: Date.UTC(2024, 0, 1),
+      price: '3000000.01',
+      currency: 'UAH',
+      source: 'manual',
+    };
+    const seedShared = (share: { numerator: number; denominator: number }, input: string) =>
+      seed(sharedProperty(share, input), [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [
+        wholePricePoint,
+      ]);
+
+    it('breaks the value into the whole, the share, and the owned value, cost, and gain', async () => {
+      seedShared({ numerator: 1, denominator: 3 }, 'fraction');
+
+      const { getByTestId, getByText, queryByText } = await renderScreen();
+
+      expect(getByText('Whole value')).toBeTruthy();
+      expect(getByTestId('ownership-whole-value')).toHaveTextContent(
+        formatMoney(Money.of('UAH', 300_000_001)),
+      );
+      expect(getByText('Your share')).toBeTruthy();
+      expect(getByTestId('ownership-share')).toHaveTextContent('1/3 · 33.33% since 01.06.2025');
+      expect(getByText('Your value')).toBeTruthy();
+      expect(getByTestId('ownership-owned-value')).toHaveTextContent(
+        formatMoney(Money.of('UAH', 100_000_000)),
+      );
+      expect(getByText('Cost (your share)')).toBeTruthy();
+      expect(getByTestId('ownership-owned-cost')).toHaveTextContent(
+        formatMoney(Money.of('UAH', 66_666_667)),
+      );
+      expect(getByTestId('ownership-gain')).toHaveTextContent(
+        formatMoney(Money.of('UAH', 33_333_333)),
+      );
+      expect(queryByText('Cost')).toBeNull();
+    });
+
+    it('shows a percent-typed share as its percent', async () => {
+      seedShared({ numerator: 1, denominator: 2 }, 'percent');
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('ownership-share')).toHaveTextContent('50% since 01.06.2025');
+    });
+
+    it('keeps the plain Cost, Value, and Gain rows for a property owned whole', async () => {
+      seed(propertyHolding);
+
+      const { getByText, queryByText } = await renderScreen();
+
+      expect(getByText('Cost')).toBeTruthy();
+      expect(queryByText('Whole value')).toBeNull();
+      expect(queryByText('Your share')).toBeNull();
+    });
+  });
+
   it('renders the resolved category icon on a transaction row, tinted with its category color', async () => {
     seed(
       cardHolding,

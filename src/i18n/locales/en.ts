@@ -638,6 +638,10 @@ export const en = {
     walletAddressRequiredError: 'Enter a wallet address.',
     walletConnected: 'Wallet connected',
   },
+  holdingCard: {
+    // After the share on a property card owned in part: "1/3 of 3,000,000.00 ₴".
+    ofWhole: 'of {{whole}}',
+  },
   holdingDetail: {
     addLot: 'Add lot',
     addTransaction: 'Add transaction',
@@ -673,6 +677,9 @@ export const en = {
     militaryLevy: 'Military levy {{pct}}%',
     openingDeposit: 'Opening deposit',
     outstanding: 'Outstanding',
+    // A property owned in part: its cost basis and value times the share.
+    ownedCost: 'Cost (your share)',
+    ownedValue: 'Your value',
     paidSoFar: 'Paid so far',
     // The caption under each upcoming loan payment: how much of it repays
     // the principal and how much is interest.
@@ -683,6 +690,8 @@ export const en = {
     purchase: 'Purchase',
     redemption: 'Redemption',
     sale: 'Sale',
+    // After the share ("1/3 · 33.33% since 01.06.2025"): the day it took effect.
+    shareSince: 'since {{date}}',
     tax: 'Tax',
     taxWithheld: 'Tax withheld',
     topUp: 'Top-up',
@@ -701,6 +710,9 @@ export const en = {
     // distinction, since it withholds no tax).
     value: 'Value',
     valueLabel: 'Value',
+    // A property owned in part: the value of the whole asset, and the share.
+    wholeValue: 'Whole value',
+    yourShare: 'Your share',
   },
   home: {
     // The floating "+" action's accessibility label (the global add-transaction

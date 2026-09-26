@@ -5,6 +5,7 @@ import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 
 import type { HoldingRow } from '../../../db/schema';
 import '../../../design-system/unistyles';
+import '../../../i18n';
 import { darkTheme } from '../../../design-system/theme';
 import { EMPTY_PRICE_BOOK } from '../../../prices/price-book';
 import { entityIconTileGradient } from '../../../design-system/entity-tint';
@@ -49,6 +50,49 @@ describe('HoldingCard', () => {
     const { getByText } = await renderCard();
     expect(getByText('Black card')).toBeTruthy();
     expect(getByText(/1,000\.00 ₴/)).toBeTruthy();
+  });
+
+  describe('a shared property', () => {
+    const property = (metadata: Record<string, unknown> = {}): HoldingRow =>
+      holding({
+        name: 'Flat',
+        type: 'property_item',
+        metadata: {
+          category: 'real_estate',
+          lots: [{ day: NOW, quantityDelta: '1', costMinorUnits: 300_000_000 }],
+          ...metadata,
+        },
+      });
+
+    it('shows the owned value, then the share of the whole', async () => {
+      const { getByText, getByTestId } = await renderCard({
+        holding: property({
+          ownership: [{ day: NOW, numerator: 1, denominator: 3 }],
+          ownershipInput: 'fraction',
+        }),
+      });
+
+      expect(getByText(/^1,000,000\.00 ₴$/)).toBeTruthy();
+      expect(getByTestId('holding-card-whole')).toHaveTextContent('1/3 of 3,000,000.00 ₴');
+    });
+
+    it('shows a percent-typed share as its percent', async () => {
+      const { getByTestId } = await renderCard({
+        holding: property({
+          ownership: [{ day: NOW, numerator: 1, denominator: 2 }],
+          ownershipInput: 'percent',
+        }),
+      });
+
+      expect(getByTestId('holding-card-whole')).toHaveTextContent('50% of 3,000,000.00 ₴');
+    });
+
+    it('shows no second line for a property owned whole', async () => {
+      const { getByText, queryByTestId } = await renderCard({ holding: property() });
+
+      expect(getByText(/^3,000,000\.00 ₴$/)).toBeTruthy();
+      expect(queryByTestId('holding-card-whole')).toBeNull();
+    });
   });
 
   it('opens the holding detail on a plain tap', async () => {

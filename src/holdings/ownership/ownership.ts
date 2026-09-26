@@ -1,11 +1,15 @@
+import { match } from 'ts-pattern';
+import maybe, { foldMap } from 'fnts/maybe';
+
 import {
   trimDecimal,
   shiftDecimal,
   scaleMinorUnits,
   normalizeDecimal,
 } from '../../currency/decimal';
+import { Money } from '../../currency/money';
 import { dayKeyOf } from '../../prices/price-book';
-import type { PropertyCategory } from '../holding-metadata';
+import type { OwnershipInput, PropertyCategory } from '../holding-metadata';
 
 /** A reduced fraction of a whole asset, `0 < numerator <= denominator`. */
 export type OwnershipShare = { numerator: number; denominator: number };
@@ -140,24 +144,32 @@ export const parseFractionShare = (
 };
 
 /**
- * The share owned on `instant`'s local day: the latest change on or before
+ * The change in effect on `instant`'s local day: the latest one on or before
  * it. Before the first change the first one carries back, the same rule as
  * `priceAt`, so a holding created at a half reads a half on its back-dated
- * history too. No changes reads the whole asset.
+ * history too. Undefined with no changes.
  */
-export const ownershipAt = (
+export const ownershipChangeAt = (
   changes: readonly OwnershipChange[],
   instant: number,
-): OwnershipShare => {
+): OwnershipChange | undefined => {
   if (changes.length === 0) {
-    return WHOLE_SHARE;
+    return undefined;
   }
 
   const day = dayKeyOf(instant);
   const atOrBefore = changes.filter((change) => change.day <= day);
 
-  return shareOf(atOrBefore.length > 0 ? atOrBefore[atOrBefore.length - 1] : changes[0]);
+  return atOrBefore.length > 0 ? atOrBefore[atOrBefore.length - 1] : changes[0];
 };
+
+/** The share owned on `instant`'s local day; no changes reads the whole asset. */
+export const ownershipAt = (changes: readonly OwnershipChange[], instant: number): OwnershipShare =>
+  foldMap(maybe(ownershipChangeAt(changes, instant)), shareOf) ?? WHOLE_SHARE;
+
+/** The owned part of a whole-asset amount, rounded once. */
+export const ownedMoney = (whole: Money, share: OwnershipShare): Money =>
+  Money.of(whole.currency, scaleMinorUnits(whole.minorUnits, share.numerator, share.denominator));
 
 /**
  * Records `change`: it replaces a change on the same day, then the list is
@@ -202,3 +214,31 @@ export const sharePercentText = (share: OwnershipShare): string => {
 
   return trimDecimal(shiftDecimal(String(hundredths), -PERCENT_DECIMALS));
 };
+
+const percentLabel = (share: OwnershipShare, locale: string): string =>
+  `${Number(sharePercentText(share)).toLocaleString(locale)}%`;
+
+/** The share in the form the user typed it: `"50%"` or `"1/3"`, in `locale`'s decimal mark. */
+export const ownershipShareText = (
+  share: OwnershipShare,
+  input: OwnershipInput,
+  locale: string,
+): string =>
+  match(input)
+    .with('percent', () => percentLabel(share, locale))
+    .with('fraction', () => `${share.numerator}/${share.denominator}`)
+    .exhaustive();
+
+/** The typed form, and a fraction's percent after it: `"50%"` or `"1/3 · 33.33%"`. */
+export const ownershipShareDetailText = (
+  share: OwnershipShare,
+  input: OwnershipInput,
+  locale: string,
+): string =>
+  match(input)
+    .with('percent', () => percentLabel(share, locale))
+    .with(
+      'fraction',
+      () => `${ownershipShareText(share, input, locale)} · ${percentLabel(share, locale)}`,
+    )
+    .exhaustive();

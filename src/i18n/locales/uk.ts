@@ -552,6 +552,9 @@ export const uk: typeof en = {
     walletAddressRequiredError: 'Введіть адресу гаманця.',
     walletConnected: 'Гаманець підключено',
   },
+  holdingCard: {
+    ofWhole: 'з {{whole}}',
+  },
   holdingDetail: {
     addLot: 'Додати лот',
     addTransaction: 'Додати транзакцію',
@@ -572,6 +575,8 @@ export const uk: typeof en = {
     militaryLevy: 'Військовий збір {{pct}}%',
     openingDeposit: 'Відкриття депозиту',
     outstanding: 'Залишок боргу',
+    ownedCost: 'Вартість придбання (ваша частка)',
+    ownedValue: 'Вартість вашої частки',
     paidSoFar: 'Сплачено',
     paymentSplit: 'Основна сума {{principal}} · відсотки {{interest}}',
     principal: 'Основна сума',
@@ -580,6 +585,7 @@ export const uk: typeof en = {
     purchase: 'Купівля',
     redemption: 'Погашення',
     sale: 'Продаж',
+    shareSince: 'з {{date}}',
     tax: 'Податок',
     taxWithheld: 'Утримано податку',
     topUp: 'Поповнення',
@@ -589,6 +595,8 @@ export const uk: typeof en = {
     updateValue: 'Оновити вартість',
     value: 'Поточна вартість',
     valueLabel: 'Вартість',
+    wholeValue: 'Повна вартість',
+    yourShare: 'Ваша частка',
   },
   home: {
     addTransaction: 'Додати транзакцію',

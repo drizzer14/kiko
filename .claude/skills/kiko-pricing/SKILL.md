@@ -329,6 +329,13 @@ gets the share of its own instant through the same
 `breakdown(holding, now, book)` seam; there is no ownership query and
 no new parameter. A property with no `ownership` key values exactly as
 before (`src/holdings/ownership/existing-holdings-pin.test.ts`).
+The card and the detail read the whole value too, through
+`propertyOwnershipView(holding, now, book)`
+(`property-item.descriptor.ts`): `{ share, input, since, whole, owned }`
+from the same `pricedWholeParts` (`priced-parts.ts`) and `ownedMoney`
+the breakdown uses, so `owned` always equals the breakdown's value;
+null when the property is owned whole, is a loan given, or is not a
+property.
 
 **A priced holding writes no ledger (`Transaction`) rows for its
 revaluations.** Its lots array is the only source of quantity/cost-basis

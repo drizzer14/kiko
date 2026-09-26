@@ -1,5 +1,8 @@
 import type { FC } from 'react';
 import { Pressable } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { ownershipShareText } from '@kiko/holdings/ownership';
+import { propertyOwnershipView } from '@kiko/holdings/holding-descriptor/property-item';
 
 import type { HoldingRow } from '../../../db/schema';
 import { formatMoney } from '../../../currency/format';
@@ -47,8 +50,12 @@ const HoldingCard: FC<{
   priceBook: PriceBook;
   onOpen: () => void;
 }> = ({ holding, now, baseCurrency, rateTable, priceBook, onOpen }) => {
+  const { t } = useTranslation();
   const color = resolveEntityColor(holding.color, defaultHoldingColor[holding.type]);
   const value = holdingValue(holding, now, priceBook);
+  // A property owned in part reads its owned value as the main line, and the
+  // share of the whole asset beneath it.
+  const ownership = propertyOwnershipView(holding, now, priceBook);
   // The smaller base-currency figure below the value, shown ONLY for a holding
   // in a different currency that also has a cached rate to the base. `convert`
   // throws on a missing rate pair, so `canConvert` guards it — a currency with
@@ -72,6 +79,17 @@ const HoldingCard: FC<{
 
         <Box style={styles.valueColumn}>
           <MoneyText money={value} context="balance" />
+
+          {ownership && (
+            <Box testID="holding-card-whole">
+              <Text variant="caption" tone="textSecondary">
+                {`${ownershipShareText(ownership.share, ownership.input, activeLocale())} ${t(
+                  'holdingCard.ofWhole',
+                  { whole: formatMoney(ownership.whole, activeLocale()) },
+                )}`}
+              </Text>
+            </Box>
+          )}
 
           {convertedToBase && (
             <Box testID="holding-card-converted">
