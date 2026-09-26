@@ -10,6 +10,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"${CLAUDE_PROJECT_DIR}/scripts/checks/pre-write-guard.sh\"; [ -f \"$f\" ] || exit 0; exec bash \"$f\"",
+            "timeout": 30
+          }
+        ]
       }
     ],
     "PostToolUse": [
