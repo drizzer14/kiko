@@ -338,7 +338,7 @@ export const en = {
       loanLenderIban: 'Lender IBAN',
       loanLenderIbanPlaceholder: 'UA123456789012345678901234567',
       loanLenderName: 'Lender name',
-      loanLenderNamePlaceholder: 'e.g. PrivatBank',
+      loanLenderNamePlaceholder: 'PrivatBank',
       loanPaidFrom: 'Paid from',
       loanPaidFromNone: 'None',
       loanPrincipal: 'Principal',
