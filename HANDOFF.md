@@ -27,7 +27,7 @@ coordinator = SendMessage target).
    move intact: kiko-no-switch / kiko-no-nullable-map-ternary / kiko-no-use-animated-keyboard / kiko-no-history-id-comment only in
    rules/semgrep-prewrite.yml. Conflicted .ts/.tsx: after the plugin refresh the guard is active; Ruling X makes conflict files
    editable. Use a kiko:developer (model opus until 2026-09-27 16:00) — never edit app files inline.
-2. USER refreshes the kiko plugin ONCE (plugin 0.2.0 on main): `! claude plugin update kiko@kiko-marketplace`, then /reload-plugins
+2. DONE 2026-09-26 (plugin cache 0.2.0; coordinator + guard reloaded; pkill -0 probe DENIED in the coordinator = kill-guard live). Was: USER refreshes the kiko plugin ONCE (plugin 0.2.0 on main): `! claude plugin update kiko@kiko-marketplace`, then /reload-plugins
    in every running session. PROVE liveness with a harmless probe: `pkill -0 -f __nonexistent__` must be DENIED (verified 2026-09-26:
    kill-guard was NEVER live; the cache is still 0.1.0 from 09-04).
 3. Feat: S1, S2 (held for the guard merge), FB1-MECH (guard rules for FB1 findings incl. no-swipe; FB1-MECH.md), T43 whole-branch
