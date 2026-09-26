@@ -136,11 +136,13 @@ rules:
     patterns:
       - pattern: useAnimatedKeyboard(...)
   # User feedback FB1: swipe actions were removed on purpose; a row's
-  # edit/delete is the long-press `CardContextMenu`. The arms: an import
-  # whose module path carries "swipe" (gesture-handler's
-  # `ReanimatedSwipeable`, a swipe-list package), a named import carrying
-  # "swipe" or "fling" (`FlingGestureHandler`, v3's `useFlingGesture`), a
-  # fling recognizer call, and a JSX element named for a swipe or a fling.
+  # edit/delete is the long-press `CardContextMenu`. The arms: a default,
+  # named, or namespace import whose module path carries "swipe"
+  # (gesture-handler's `ReanimatedSwipeable`, a swipe-list package), a named
+  # import carrying "swipe" or "fling" (`FlingGestureHandler`, v3's
+  # `useFlingGesture`), a fling recognizer call, `PanResponder.create` (the
+  # app's own former swipe row was a PanResponder row; the app has no other
+  # PanResponder), and a JSX element named for a swipe or a fling.
   # The bottom sheet's drag-to-dismiss is a `Gesture.Pan()` and stays
   # allowed. AST arms, so a comment or a test-id string never matches.
   - id: kiko-no-swipe-action
@@ -149,9 +151,11 @@ rules:
     message: >
       Swipe actions are banned: they were removed on purpose. A row's
       edit/delete is the long-press `CardContextMenu` (Edit/Duplicate/Delete
-      menu), not a swipe gesture, a `Swipeable`, or a swipe-list component.
+      menu), not a swipe gesture, a `Swipeable`, a swipe-list component, or
+      a `PanResponder` row drag. For a drag that is not a row action, use a
+      gesture-handler `Gesture.Pan()` (the bottom sheet's drag-to-dismiss).
     metadata:
-      fix: "Wrap the row in `CardContextMenu` (onEdit/onDuplicate/onDelete) instead of a swipe gesture or a Swipeable component."
+      fix: "Wrap the row in `CardContextMenu` (onEdit/onDuplicate/onDelete) instead of a swipe gesture, a Swipeable component, or a PanResponder."
       skill: "kiko-gestures › No swipe actions — row edit/delete is the long-press CardContextMenu"
     pattern-either:
       - patterns:
@@ -165,12 +169,18 @@ rules:
               metavariable: $MODULE
               regex: "(?i).*swipe"
       - patterns:
+          - pattern: import * as $NAME from "$MODULE"
+          - metavariable-regex:
+              metavariable: $MODULE
+              regex: "(?i).*swipe"
+      - patterns:
           - pattern: import { $NAME } from "$MODULE"
           - metavariable-regex:
               metavariable: $NAME
               regex: "(?i).*(swipe|fling)"
       - pattern: Gesture.Fling(...)
       - pattern: useFlingGesture(...)
+      - pattern: PanResponder.create(...)
       - patterns:
           - pattern-either:
               - pattern: <$ELEMENT ...>...</$ELEMENT>

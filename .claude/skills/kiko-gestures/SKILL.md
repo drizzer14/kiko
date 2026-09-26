@@ -92,9 +92,11 @@ shares.
 Swipe actions were removed on purpose. A row's edit/delete is the
 long-press `CardContextMenu` (Edit/Duplicate/Delete), never a swipe
 gesture. Do not propose or add one: no gesture-handler `Swipeable` /
-`ReanimatedSwipeable`, no swipe-list package, no fling recognizer
+`ReanimatedSwipeable`, no swipe-list package (by default, named, or
+namespace import), no fling recognizer
 (`Gesture.Fling()`, `useFlingGesture`, `FlingGestureHandler`), no
-swipe-named row component. The bottom sheet's drag-to-dismiss
+swipe-named row component, and no `PanResponder.create` (the app's own
+former swipe row was a PanResponder row). The bottom sheet's drag-to-dismiss
 (`Gesture.Pan()`) stays allowed. Mechanized as `kiko-no-swipe-action`
 (ERROR, `rules/semgrep-prewrite.yml`).
 
