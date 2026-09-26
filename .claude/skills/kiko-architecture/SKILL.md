@@ -173,6 +173,19 @@ including a single-statement one — must be wrapped in
 `db.transaction()`. There is no exception for "it's just one
 statement."
 
+## No full-table select inside a write
+
+A `write(...)` callback holds op-sqlite's one worker thread (see "op-sqlite's
+ONE worker thread" below) until it commits. A where-less
+`select().from(<table>)` inside it reads the whole table and then filters in
+JS while every other read and write waits. Filter in SQL (`.where(...)`),
+read only the column you need (`selectDistinct`, as
+`upsertCategoryOverride` does for descriptions), or bound it with
+`.limit(...)`. The one-row `settings` table is exempt. Mechanized as
+`kiko-no-full-table-select-in-write` (ERROR, `rules/semgrep-prewrite.yml`).
+A full scan hidden behind a repo helper called inside the write is not
+caught; that stays a review item.
+
 ## The `useLiveQuery` pattern
 
 Drizzle's own `useLiveQuery` hook only supports `expo-sqlite`, not

@@ -37,6 +37,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-use-animated-keyboard',
   'kiko-no-swipe-action',
   'kiko-no-raw-category-title-in-message',
+  'kiko-no-full-table-select-in-write',
   'kiko-no-history-id-comment',
   'kiko-no-raw-color-literal',
   'kiko-glass-surface-nav-layer-only',

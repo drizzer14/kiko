@@ -207,6 +207,30 @@ rules:
       - pattern-not-inside: |
           const $CATEGORY = resolveCategoryDisplay(...);
           ...
+  # FB1 P4: a `write` callback holds op-sqlite's one worker thread, so a
+  # where-less select of a whole table inside it stalls every read and write
+  # for the scan plus the JS filter. Anything inside a `.where(...)` or
+  # `.limit(...)` chain is excluded, and so is `settings` (a one-row table).
+  # `selectDistinct` is a different method and never matches.
+  - id: kiko-no-full-table-select-in-write
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A where-less `select().from(<table>)` inside a `write` callback reads the
+      whole table while holding op-sqlite's single worker thread. Push the
+      filter into SQL (`.where(...)`), read only the column you need
+      (`selectDistinct`), or read before the write.
+    metadata:
+      fix: "Filter the select in SQL with `.where(...)` (or `selectDistinct` one column) instead of reading the whole table inside `write`."
+      skill: "kiko-architecture › No full-table select inside a write"
+    patterns:
+      - pattern-inside: write(...)
+      - pattern: $DATABASE.select(...).from($TABLE)
+      - pattern-not-inside: $QUERY.where(...)
+      - pattern-not-inside: $QUERY.limit(...)
+      - metavariable-regex:
+          metavariable: $TABLE
+          regex: "^(?!settings$)"
   # Mechanizes kiko-code-style's "Comments: WHY only, never history" —
   # Class A (ERROR): see kiko-linter's own "kiko-no-history-id-comment"
   # section for the id-family list, the string-skip anchor, the false
