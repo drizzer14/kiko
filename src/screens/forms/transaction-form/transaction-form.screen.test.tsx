@@ -1861,6 +1861,30 @@ describe('TransactionFormScreen — loan payment field', () => {
     expect(queryByLabelText('Loan payment')).toBeNull();
   });
 
+  // Item 3: a linked row later edited from debit to credit must not hide
+  // the field where None/Undo live — `selectedLoanHoldingId` bypasses the
+  // sign check entirely, the same "a filter never hides an active
+  // selection" rule the field's own currency/closed-loan union already
+  // follows.
+  it('keeps the field visible on a linked row even after its own amount turns positive (credit)', async () => {
+    setLiveData(
+      [PAYER_HOLDING, LOAN_HOLDING],
+      {
+        ...debitTransaction,
+        amountMinorUnits: 1234,
+        loanHoldingId: 'loan-1',
+        loanLinkSource: 'manual',
+      },
+      undefined,
+      [DEBT_ACCOUNT],
+    );
+
+    const { getByLabelText, getByText } = await renderEdit('txn-1');
+
+    expect(getByLabelText('Loan payment')).toBeTruthy();
+    expect(getByText('Car loan')).toBeTruthy();
+  });
+
   it('hides the field (data-driven) when no open loan holding exists', async () => {
     setLiveData([PAYER_HOLDING], debitTransaction, undefined, []);
 

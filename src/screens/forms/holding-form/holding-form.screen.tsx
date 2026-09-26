@@ -80,12 +80,20 @@ const runLoanAutoLinkIfLoan = (type: HoldingType): void => {
 // currency (mirrors `buildLoanOptions`'s identical currency filter on the
 // transaction form's own loan-payment field). A loan holding is itself
 // ledgerless, so this can never offer the loan as its own payer.
+//
+// A filter never hides an active selection (kiko-design-system, item 3): the
+// CURRENTLY selected `paymentHoldingId` is unioned back in even once it has
+// since closed or moved to another currency — mirrors `buildLoanOptions`'s
+// own union-back — or `PaymentHoldingField` would resolve no match for it
+// and silently show "None" for a link that still exists in the metadata,
+// with no way to see or clear it.
 const buildPaymentHoldingOptions = (
   holdings: readonly HoldingRow[],
   accountNameById: ReadonlyMap<string, string>,
   loanCurrency: Currency,
-): HoldingSelectOption[] =>
-  holdings
+  selectedHoldingId: string | null,
+): HoldingSelectOption[] => {
+  const openOptions = holdings
     .filter(
       (candidate) =>
         candidate.closedAt == null &&
@@ -100,6 +108,29 @@ const buildPaymentHoldingOptions = (
       currency: candidate.currency,
       accountName: accountNameById.get(candidate.accountId) ?? '',
     }));
+
+  if (selectedHoldingId === null || openOptions.some((option) => option.id === selectedHoldingId)) {
+    return openOptions;
+  }
+
+  const selectedHolding = holdings.find((candidate) => candidate.id === selectedHoldingId);
+
+  if (selectedHolding === undefined) {
+    return openOptions;
+  }
+
+  return [
+    ...openOptions,
+    {
+      id: selectedHolding.id,
+      name: selectedHolding.name,
+      icon: selectedHolding.icon ?? holdingTypeSymbol[selectedHolding.type],
+      color: resolveEntityColor(selectedHolding.color, defaultHoldingColor[selectedHolding.type]),
+      currency: selectedHolding.currency,
+      accountName: accountNameById.get(selectedHolding.accountId) ?? '',
+    },
+  ];
+};
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 
@@ -283,7 +314,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const { data: allHoldings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
   const { data: allAccounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
   const accountNameById = new Map(allAccounts.map((row) => [row.id, row.name] as const));
-  const paymentHoldingOptions = buildPaymentHoldingOptions(allHoldings, accountNameById, currency);
+  const paymentHoldingOptions = buildPaymentHoldingOptions(
+    allHoldings,
+    accountNameById,
+    currency,
+    loanFields.paymentHoldingId,
+  );
 
   // The one place every holding type's own form behaviour is looked up —
   // `active` is what `isValid`, the blocked-Save scroll, and the create/edit

@@ -2076,6 +2076,84 @@ describe('HoldingFormScreen loan', () => {
     expect(screen.queryByText('USD card')).toBeNull();
   });
 
+  // Item 3 (orchestrator ruling): a filter never hides an ACTIVE selection —
+  // `buildLoanOptions` (the transaction form's own loan-payment field)
+  // already unions a closed/mismatched selection back in; "Paid from" must
+  // do the same, or an edited loan's own payer silently reads as "None".
+  it('keeps a closed "Paid from" holding visible (not "None") in edit mode', async () => {
+    mockAllHoldings = [
+      {
+        id: 'h-payer',
+        accountId: 'acc-2',
+        name: 'Everyday card',
+        type: 'card',
+        currency: 'UAH',
+        closedAt: 1_700_000_000_000,
+        icon: null,
+        color: null,
+      },
+    ];
+    mockAllAccounts = [{ id: 'acc-2', name: 'Monobank' }];
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Car loan',
+      type: 'loan',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        kind: 'car_loan',
+        principalMinorUnits: 50_000_000,
+        startDate: localDay(2026, 1, 1),
+        schedule: 'annuity',
+        annualRatePct: 12,
+        termMonths: 24,
+        paymentHoldingId: 'h-payer',
+      },
+    });
+
+    expect(screen.getByText('Everyday card')).toBeTruthy();
+  });
+
+  it('keeps a different-currency "Paid from" holding visible (not "None") in edit mode', async () => {
+    mockAllHoldings = [
+      {
+        id: 'h-payer',
+        accountId: 'acc-2',
+        name: 'USD card',
+        type: 'card',
+        currency: 'USD',
+        closedAt: null,
+        icon: null,
+        color: null,
+      },
+    ];
+    mockAllAccounts = [{ id: 'acc-2', name: 'Monobank' }];
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Car loan',
+      type: 'loan',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        kind: 'car_loan',
+        principalMinorUnits: 50_000_000,
+        startDate: localDay(2026, 1, 1),
+        schedule: 'annuity',
+        annualRatePct: 12,
+        termMonths: 24,
+        paymentHoldingId: 'h-payer',
+      },
+    });
+
+    expect(screen.getByText('USD card')).toBeTruthy();
+  });
+
   it('creates a car-loan-kind loan under the tapped kind option', async () => {
     const screen = await renderScreen();
 

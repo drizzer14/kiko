@@ -1302,13 +1302,15 @@ const showsSaveButton = (
 // above.
 //
 // Also visible whenever the row already carries a link
-// (`selectedLoanHoldingId`), even with zero open loan options — a filter
-// never hides an active selection: the row stays a debit whose loan closed
-// or changed currency is still linked, and the user must be able to reach
-// the field to see that link, Undo it, or pick "None", not just a
-// currently-open loan. `buildLoanOptions` already unions that same loan back
-// into `loanOptions`, so this is a belt-and-suspenders direct check, not the
-// only guard.
+// (`selectedLoanHoldingId`), even with zero open loan options AND even once
+// the row is no longer a debit (item 3: a linked row later edited from debit
+// to credit must not hide the field where None/Undo live) — a filter never
+// hides an active selection: the row stays linked whose loan closed, moved
+// currency, or whose own amount sign changed, and the user must be able to
+// reach the field to see that link, Undo it, or pick "None", not just a
+// currently-open loan on a currently-eligible debit. `buildLoanOptions`
+// already unions that same loan back into `loanOptions`, so this is a
+// belt-and-suspenders direct check, not the only guard.
 const isLoanFieldVisible = (
   existingAmountMinorUnits: number | undefined,
   loanOptionCount: number,
@@ -1316,9 +1318,8 @@ const isLoanFieldVisible = (
   selectedLoanHoldingId: string | null,
 ): boolean =>
   existingAmountMinorUnits !== undefined &&
-  existingAmountMinorUnits < 0 &&
   !converting &&
-  (loanOptionCount > 0 || selectedLoanHoldingId !== null);
+  (selectedLoanHoldingId !== null || (existingAmountMinorUnits < 0 && loanOptionCount > 0));
 
 // The current loan link's own two pieces, resolved together so the screen
 // body reads one call instead of two separate `?? null` chains — kept
