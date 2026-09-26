@@ -85,6 +85,17 @@ function spawnAsync(command, args, options) {
       return;
     }
 
+    // Decodes as a UTF-8 STREAM (Node's StringDecoder, which holds back an
+    // incomplete multibyte sequence until the byte(s) that complete it
+    // arrive), never per-chunk: `stdout += chunk` on a raw Buffer chunk
+    // would coerce each chunk to a string on its own, so a multibyte
+    // character split across two `data` events decoded to a replacement
+    // character (U+FFFD) — a Node checker's matchedText could then differ
+    // BEFORE vs AFTER for the SAME on-disk text and read as a false new
+    // finding (M3).
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk) => {

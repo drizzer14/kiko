@@ -1420,6 +1420,80 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
   });
 });
 
+// M3: spawnAsync decoded each stdout/stderr `data` chunk on its own (the
+// implicit Buffer-to-string coercion in `stdout += chunk` defaults to
+// per-chunk UTF-8), so a multibyte character split across two chunks
+// decoded to a replacement character in one call but not the other. This
+// stub reports the SAME pre-existing finding (an accented "e", a 2-byte
+// UTF-8 sequence, inside the reported name) for both the BEFORE and AFTER
+// mirrored file, but only splits the AFTER call stdout into two separate
+// writes around a sleep — a real multibyte identifier read consistently on
+// both sides must never read as a NEW violation.
+describe('spawnAsync stdout decoding (M3: multibyte character split across chunks)', () => {
+  function writeMultibyteFullWordStub(directory: string): string {
+    const stubPath = join(directory, 'node-multibyte-stub.sh');
+    writeFileSync(
+      stubPath,
+      [
+        '#!/usr/bin/env bash',
+        'scriptPath="$1"',
+        'targetFile="$2"',
+        '',
+        'case "$scriptPath" in',
+        '  */full-word-identifiers.js) : ;;',
+        '  *) exit 0 ;;',
+        'esac',
+        '',
+        'case "$targetFile" in',
+        '  */after/*)',
+        '    # Splits the accented e 2-byte UTF-8 sequence across two separate',
+        '    # stdout writes with a sleep between them, so the AFTER call',
+        '    # stdout arrives as two separate data events -- the pre-fix',
+        '    # spawnAsync bug (M3) decodes each event on its own and corrupts',
+        '    # the split character, unlike the BEFORE call below (one single,',
+        '    # unsplit write).',
+        '    printf "%s:1: \\`caf" "$targetFile"',
+        '    printf "\\xc3"',
+        '    sleep 0.2',
+        '    printf "\\xa9\\` \\xe2\\x80\\x94 abbreviated word \\`abc\\` (write the full word)\\n"',
+        '    ;;',
+        '  *)',
+        '    printf "%s:1: \\`caf\\xc3\\xa9\\` \\xe2\\x80\\x94 abbreviated word \\`abc\\` (write the full word)\\n" "$targetFile"',
+        '    ;;',
+        'esac',
+        '',
+        'exit 1',
+        '',
+      ].join('\n'),
+    );
+    chmodSync(stubPath, 0o755);
+
+    return stubPath;
+  }
+
+  it('keeps a pre-existing multibyte finding from reading as new when only its AFTER read is chunk-split', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const semgrepStub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const nodeStub = writeMultibyteFullWordStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'example.ts');
+    writeFileSync(targetFile, 'export const value = 0;\n');
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: 'export const value = 1;\n' }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: semgrepStub,
+        KIKO_PREWRITE_RULES: rules,
+        KIKO_PREWRITE_NODE_BIN: nodeStub,
+      }),
+    );
+
+    expect(result.status).toBe(0);
+  });
+});
+
 // Rule 11: the REAL blank-line-separation.js checker against the mirrored
 // tree — only Semgrep is stubbed clean here, the same convention as the
 // rules 4/5/6 describe block above.
