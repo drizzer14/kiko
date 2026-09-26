@@ -87,19 +87,19 @@ describe('termDepositFieldErrors — annual rate', () => {
 describe('termDepositFieldErrors — term months', () => {
   it('rejects a blank term', () => {
     expect(termDepositFieldErrors({ ...baseParams(), term: '' }).termError).toBe(
-      'forms.holding.termError',
+      'forms.holding.termMonthsError',
     );
   });
 
   it('rejects a zero term', () => {
     expect(termDepositFieldErrors({ ...baseParams(), term: '0' }).termError).toBe(
-      'forms.holding.termError',
+      'forms.holding.termMonthsError',
     );
   });
 
   it('rejects a fractional term', () => {
     expect(termDepositFieldErrors({ ...baseParams(), term: '6.5' }).termError).toBe(
-      'forms.holding.termError',
+      'forms.holding.termMonthsError',
     );
   });
 

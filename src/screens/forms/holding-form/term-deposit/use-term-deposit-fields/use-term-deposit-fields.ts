@@ -10,11 +10,15 @@ import { useCallback, useRef, useState } from 'react';
 import type { TextInputInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
 
+import {
+  termInputFromMonths,
+  termMonthsFromInput,
+  type TermUnit,
+} from '../../../term-field/term-reasons';
 import { saveMetadataEdit } from '../../save-metadata-edit';
 import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
 import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
-import { termInputFromMonths, termMonthsFromInput, type TermUnit } from '../../../term-field';
 
 import {
   parsedContributions,

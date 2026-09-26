@@ -12,7 +12,7 @@ import {
   termInputFromMonths,
   termMonthsFromInput,
   type TermReasonKey,
-} from '../../../term-field';
+} from '../../../term-field/term-reasons';
 import {
   asLoanMeta,
   type LoanKind,
