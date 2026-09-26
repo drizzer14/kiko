@@ -736,6 +736,52 @@ describe('ColumnMappingScreen', () => {
     await waitFor(() => expect(mockImportParsedStatement).toHaveBeenCalledTimes(1));
   });
 
+  // The account and settings queries are uncached, so on the auto-replace path
+  // the file can be read before either lands; the one-shot pre-fill must wait
+  // for both instead of settling on a guessed header row.
+  it('still pre-fills the saved mapping when the file rows arrive before the settings', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    let queriesLoaded = false;
+    mockUseLiveQuery.mockImplementation((_query: { __kind?: string }, tables: string[]) => {
+      if (tables[0] === 'holdings') {
+        return { data: [monobankHolding], isLoading: false };
+      }
+
+      if (!queriesLoaded) {
+        return { data: [], isLoading: true };
+      }
+
+      return tables[0] === 'settings'
+        ? {
+            data: [
+              {
+                baseCurrency: 'UAH',
+                statementMappings: { 'bank:monobank': savedMonobankMapping() },
+              },
+            ],
+            isLoading: false,
+          }
+        : { data: [monobankAccount], isLoading: false };
+    });
+
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+
+    queriesLoaded = true;
+    await view.rerender(
+      <ColumnMappingScreen
+        route={asRouteProp<ColumnMappingProps['route']>('ColumnMapping', {
+          filePath: '/mock/statement.csv',
+          accountId: 'a',
+        })}
+        navigation={asNavigationProp<ColumnMappingProps['navigation']>(view.navigation)}
+      />,
+    );
+
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.savedApplied'))).toBeTruthy());
+  });
+
   // The optional Balance column role renders as a
   // field, and a saved mapping's `balanceColumn` pre-fills it — same
   // pattern as the exact-saved-mapping test above, plus this one field.

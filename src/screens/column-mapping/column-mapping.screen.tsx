@@ -571,10 +571,15 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   const headerInset = useHeaderInset();
   const contentHeightRef = useRef(0);
 
-  const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts']);
+  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
+    accountsRepo.byIdQuery(accountId),
+    ['accounts'],
+  );
   const account = accounts.at(0);
   const { data: holdings } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings']);
-  const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(settingsRepo.getQuery(), [
+    'settings',
+  ]);
   const savedMappings = settingsRows.at(0)?.statementMappings;
   const { options: holdingOptions, isLoading: holdingOptionsLoading } =
     useTargetHoldingOptions(accountId);
@@ -655,15 +660,17 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     : { rows: [] as TableCell[][], delimiter: undefined };
   const effectiveDelimiter = delimiterOverride ?? detectedDelimiter;
 
-  // Runs exactly once, the first time `rows` resolves: pre-fills a saved
-  // mapping when one is found (this only fills the FORM, it never
-  // imports), or falls back to guessing the header row. Later
+  // Runs exactly once, the first time `rows` resolves AND the account and
+  // settings queries have loaded (both uncached, so the file can be read
+  // first — the same wait `statement-import.screen.tsx`'s auto-replace check
+  // makes): pre-fills a saved mapping when one is found (this only fills the
+  // FORM, it never imports), or falls back to guessing the header row. Later
   // `rows` recomputations (an encoding/delimiter switch) never re-run this,
   // so the user's own picks are never clobbered.
   const initializedRef = useRef(false);
 
   useEffect(() => {
-    if (initializedRef.current || rows.length === 0) {
+    if (initializedRef.current || rows.length === 0 || accountsLoading || settingsLoading) {
       return;
     }
 
@@ -694,7 +701,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     setCounterpartyColumn(state.counterpartyColumn);
     setBalanceColumn(state.balanceColumn);
     setSavedApplied(saved.exact);
-  }, [rows, savedMappings, account?.bankId]);
+  }, [rows, savedMappings, account?.bankId, accountsLoading, settingsLoading]);
 
   const defaultCurrency: Currency = holdings.at(0)?.currency ?? 'UAH';
   const fixedCurrency = explicitFixedCurrency ?? defaultCurrency;

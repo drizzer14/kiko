@@ -199,6 +199,14 @@ entry for a fingerprint hit. Either way, `findSavedMapping` only
 PRE-FILLS the mapping form — a saved mapping never imports a file
 without the user tapping Import.
 
+The column-mapping screen's pre-fill is a ONE-SHOT effect, so it waits
+until the file rows exist AND the account and settings queries have loaded
+(`accountsLoading || settingsLoading` returns early) — both queries are
+uncached, so on the auto-replace path the file can be read first, and an
+early run settles on a guessed header row for good. Its twin,
+`statement-import.screen.tsx`'s auto-replace check, makes the same wait
+(`accountIsLoading || settingsIsLoading`).
+
 ## Entry points
 
 Two entry points reach the column-mapping screen: "Import statement"
