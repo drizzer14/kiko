@@ -5,11 +5,11 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
-import { holdingDescriptor } from '@kiko/holdings/holding-descriptor';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { ScrollViewInstance, TextInputInstance } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { holdingDescriptor, isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 
 import {
   creatableHoldingTypesForAccount,
@@ -24,6 +24,7 @@ import {
   type FieldInstance,
 } from '../scroll-to-field/scroll-to-field';
 import HoldingTypeField from '../holding-type-field';
+import type { HoldingRow } from '../../../db/schema';
 import Box from '../../../design-system/components/box';
 import { useLiveQuery } from '../../../db/use-live-query';
 import type { Currency } from '../../../currency/currency';
@@ -41,6 +42,7 @@ import { resolveEntityColor } from '../../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../../navigation/types';
 import CurrencyField from '../../../design-system/components/currency-field';
 import { isSyncedAccount, isSyncedHolding } from '../../../holdings/deletable';
+import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 
 import LoanFormBlock from './loan/loan-form-block';
@@ -71,6 +73,33 @@ const runLoanAutoLinkIfLoan = (type: HoldingType): void => {
     runLoanAutoLink();
   }
 };
+
+// The loan form's "Paid from" picker options: every OPEN, non-ledgerless
+// holding in the LOAN's own currency — a `paymentHoldingId` link is only
+// ever a meaningful matcher signal when the payer holding shares the loan's
+// currency (mirrors `buildLoanOptions`'s identical currency filter on the
+// transaction form's own loan-payment field). A loan holding is itself
+// ledgerless, so this can never offer the loan as its own payer.
+const buildPaymentHoldingOptions = (
+  holdings: readonly HoldingRow[],
+  accountNameById: ReadonlyMap<string, string>,
+  loanCurrency: Currency,
+): HoldingSelectOption[] =>
+  holdings
+    .filter(
+      (candidate) =>
+        candidate.closedAt == null &&
+        candidate.currency === loanCurrency &&
+        !isLedgerlessHoldingType(candidate.type),
+    )
+    .map((candidate) => ({
+      id: candidate.id,
+      name: candidate.name,
+      icon: candidate.icon ?? holdingTypeSymbol[candidate.type],
+      color: resolveEntityColor(candidate.color, defaultHoldingColor[candidate.type]),
+      currency: candidate.currency,
+      accountName: accountNameById.get(candidate.accountId) ?? '',
+    }));
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 
@@ -244,6 +273,17 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // Stays mounted across every type, not only while a balance type is
   // selected, so a value typed before switching away survives the switch.
   const balance = useBalanceFields({ currency });
+
+  // The loan form's own "Paid from" picker options — read here, alongside
+  // every other holdings-derived option list, the same way the transaction
+  // form reads its own `loanOptions`. Every OTHER holding type's form block
+  // needs neither the full holdings list nor the full account list, so
+  // these two queries are scoped to this ONE field rather than hoisted to
+  // the top of the component.
+  const { data: allHoldings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
+  const { data: allAccounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
+  const accountNameById = new Map(allAccounts.map((row) => [row.id, row.name] as const));
+  const paymentHoldingOptions = buildPaymentHoldingOptions(allHoldings, accountNameById, currency);
 
   // The one place every holding type's own form behaviour is looked up —
   // `active` is what `isValid`, the blocked-Save scroll, and the create/edit
@@ -572,7 +612,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           .with('metal', () => (
             <MetalFormBlock fields={metal} attemptedSave={attemptedSave} isEdit={isEdit} />
           ))
-          .with('loan', () => <LoanFormBlock fields={loanFields} attemptedSave={attemptedSave} />)
+          .with('loan', () => (
+            <LoanFormBlock
+              fields={loanFields}
+              attemptedSave={attemptedSave}
+              paymentHoldingOptions={paymentHoldingOptions}
+            />
+          ))
           .with('card', 'cash', 'crypto_asset', 'jar', () => (
             <BalanceFormBlock fields={balance} isSyncedEdit={isSyncedEdit} />
           ))

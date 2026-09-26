@@ -57,6 +57,7 @@ jest.mock('@kiko/holdings/repo', () => ({
       minorUnits: row.balanceMinorUnits,
     }),
     byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    allQuery: () => ({ __kind: 'all', toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
 
@@ -93,11 +94,24 @@ let mockBondRegisterFetchedAtRows: { value: number | null }[] = [{ value: 1 }];
 // correction to anchor the outstanding it preserves. Empty by default; only
 // the (a)-case test below seeds a correction.
 let mockPricePoints: unknown[] = [];
+// The loan form's own "Paid from" picker options source — every OTHER
+// holding, distinct from `mockEditHoldings` (the ONE holding being edited).
+// Both subscribe under the same `['holdings']` key, so `__kind` (set on the
+// mocked `holdingsRepo.allQuery` below) tells them apart, mirroring the
+// `bond_register` `fetchedAt`/`findByIsin` split above. Empty by default;
+// only a test exercising the "Paid from" field seeds it.
+let mockAllHoldings: unknown[] = [];
+// Every account, keyed the same way against `accountsRepo.byIdQuery`'s own
+// single-row subscription (both use the `['accounts']` key).
+let mockAllAccounts: unknown[] = [];
 
 const mockUseLiveQuery = jest.fn(
   (query: { __kind?: string }, keys: string[], _enabled?: boolean) => {
     if (keys[0] === 'holdings') {
-      return { data: mockEditHoldings };
+      return { data: query.__kind === 'all' ? mockAllHoldings : mockEditHoldings };
+    }
+    if (keys[0] === 'accounts' && query.__kind === 'list') {
+      return { data: mockAllAccounts };
     }
     if (keys[0] === 'bond_register') {
       return query.__kind === 'fetchedAt'
@@ -142,7 +156,10 @@ jest.mock('../../../bonds/bond-register-repo', () => ({
   refreshBondRegisterIfStale: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
-  accountsRepo: { byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+  accountsRepo: {
+    byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    listQuery: () => ({ __kind: 'list', toSQL: () => ({ sql: '', params: [] }) }),
+  },
 }));
 // The first-add refresh trigger (a create's own follow-up, kiko-architecture):
 // spied so a test can assert it runs after a CREATE and not after an EDIT,
@@ -186,6 +203,8 @@ beforeEach(() => {
   mockBondRegisterRows = [];
   mockBondRegisterFetchedAtRows = [{ value: 1 }];
   mockPricePoints = [];
+  mockAllHoldings = [];
+  mockAllAccounts = [];
 });
 
 const renderScreen = () =>
@@ -1997,6 +2016,64 @@ describe('HoldingFormScreen loan', () => {
     );
     expect(createMock.mock.calls[0][0]).not.toHaveProperty('firstPricePoint');
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('creates a loan with paymentHoldingId/lenderName/lenderIban, picked from the "Paid from" field', async () => {
+    mockAllHoldings = [
+      {
+        id: 'h-payer',
+        accountId: 'acc-2',
+        name: 'Everyday card',
+        type: 'card',
+        currency: 'UAH',
+        closedAt: null,
+        icon: null,
+        color: null,
+      },
+    ];
+    mockAllAccounts = [{ id: 'acc-2', name: 'Monobank' }];
+    const screen = await renderScreen();
+
+    await fillLoanFields(screen);
+    await fill(screen, 'Annual rate %', '12');
+    await fill(screen, 'Term (months)', '24');
+    await fireEvent.press(screen.getByTestId('loan-payment-holding-field'));
+    await fireEvent.press(screen.getByText('Everyday card'));
+    await fill(screen, 'Lender name', 'PrivatBank');
+    await fill(screen, 'Lender IBAN', 'UA123456789012345678901234567');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          paymentHoldingId: 'h-payer',
+          lenderName: 'PrivatBank',
+          lenderIban: 'UA123456789012345678901234567',
+        }),
+      }),
+    );
+  });
+
+  it('excludes a DIFFERENT-currency holding from the "Paid from" options', async () => {
+    mockAllHoldings = [
+      {
+        id: 'h-usd',
+        accountId: 'acc-2',
+        name: 'USD card',
+        type: 'card',
+        currency: 'USD',
+        closedAt: null,
+        icon: null,
+        color: null,
+      },
+    ];
+    mockAllAccounts = [{ id: 'acc-2', name: 'Monobank' }];
+    const screen = await renderScreen();
+
+    await fillLoanFields(screen);
+    await fireEvent.press(screen.getByTestId('loan-payment-holding-field'));
+
+    expect(screen.queryByText('USD card')).toBeNull();
   });
 
   it('creates a car-loan-kind loan under the tapped kind option', async () => {

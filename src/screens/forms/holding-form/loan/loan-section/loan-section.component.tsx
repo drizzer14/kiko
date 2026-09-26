@@ -11,6 +11,7 @@ import {
   type LoanSchedule,
 } from '../../../../../holdings/holding-metadata';
 import Box from '../../../../../design-system/components/box';
+import PaymentHoldingField from '../../../payment-holding-field';
 import TextField from '../../../../../design-system/components/text-field';
 import FieldLabel from '../../../../../design-system/components/field-label';
 import SelectField from '../../../../../design-system/components/select-field';
@@ -72,6 +73,13 @@ const LoanSection: FC<LoanSectionProps> = ({
   termMonthsError,
   termMonthsFieldRef,
   termMonthsInputRef,
+  paymentHoldingId,
+  onSelectPaymentHoldingId,
+  paymentHoldingOptions,
+  lenderName,
+  onChangeLenderName,
+  lenderIban,
+  onChangeLenderIban,
 }) => {
   const { t } = useTranslation();
 
@@ -152,6 +160,35 @@ const LoanSection: FC<LoanSectionProps> = ({
               inputRef={termMonthsInputRef}
             />
           </View>
+
+          {/* The loan-payment matcher's own optional inputs — hidden here
+            alongside rate/term (a 'none' schedule has no installments to
+            match against at all, so these would do nothing there). Neither
+            is required: the matcher is a convenience, not a blocking
+            data-entry step. */}
+          <PaymentHoldingField
+            label={t('forms.holding.loanPaidFrom')}
+            noneLabel={t('forms.holding.loanPaidFromNone')}
+            options={paymentHoldingOptions}
+            selectedId={paymentHoldingId}
+            onSelect={onSelectPaymentHoldingId}
+            testID="loan-payment-holding-field"
+          />
+
+          <TextField
+            label={t('forms.holding.loanLenderName')}
+            value={lenderName}
+            onChangeText={onChangeLenderName}
+            placeholder={t('forms.holding.loanLenderNamePlaceholder')}
+          />
+
+          <TextField
+            label={t('forms.holding.loanLenderIban')}
+            value={lenderIban}
+            onChangeText={onChangeLenderIban}
+            autoCapitalize="characters"
+            placeholder={t('forms.holding.loanLenderIbanPlaceholder')}
+          />
         </>
       )}
     </Box>

@@ -332,6 +332,15 @@ export const en = {
       // The loan-kind SelectField's sheet header — Title Case, distinct from
       // the sentence-case field label (`loanKindLabel` above).
       loanKindSheetTitle: 'Select a Loan Kind',
+      // The loan-payment matcher's own optional inputs — the "Paid from"
+      // holding picker's field label + its synthetic "None" row, and the
+      // lender's own name/IBAN text fields. None of these are required.
+      loanLenderIban: 'Lender IBAN',
+      loanLenderIbanPlaceholder: 'UA123456789012345678901234567',
+      loanLenderName: 'Lender name',
+      loanLenderNamePlaceholder: 'e.g. PrivatBank',
+      loanPaidFrom: 'Paid from',
+      loanPaidFromNone: 'None',
       loanPrincipal: 'Principal',
       loanPrincipalError: 'Principal must be greater than 0.',
       loanPrincipalPlaceholder: '1000.00',

@@ -30,7 +30,7 @@ const PAYMENT_KEYWORDS = [
  * `LoanHolding`, parsing `LoanMeta` internally so a caller hands it plain
  * holding rows straight off `holdingsRepo.loanHoldingsQuery()`, with no
  * intermediate mapping step of its own. */
-export type MatchableLoanHolding = Pick<HoldingRow, 'id' | 'currency' | 'metadata'>;
+type MatchableLoanHolding = Pick<HoldingRow, 'id' | 'currency' | 'metadata'>;
 
 /** A transaction as the matcher needs it: every column its own candidate
  * filter (an eligible debit) and its third signal (rule 3) read. */
@@ -47,7 +47,7 @@ export type MatchableTransaction = {
   exchangeCounterpartHoldingId: string | null;
 };
 
-export type LoanPaymentMatch = {
+type LoanPaymentMatch = {
   transactionId: string;
   loanHoldingId: string;
   dueDate: number;

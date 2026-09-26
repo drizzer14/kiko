@@ -132,6 +132,9 @@ describe('useLoanFields', () => {
     expect(result.current.startDate).toBeNull();
     expect(result.current.annualRatePct).toBe('');
     expect(result.current.termMonths).toBe('');
+    expect(result.current.paymentHoldingId).toBeNull();
+    expect(result.current.lenderName).toBe('');
+    expect(result.current.lenderIban).toBe('');
     expect(result.current.isValid).toBe(false);
     expect(result.current.reasonKey).toBe('forms.holding.loanPrincipalError');
     expect(result.current.fieldErrors.principalError).toBe('forms.holding.loanPrincipalError');
@@ -178,6 +181,53 @@ describe('useLoanFields', () => {
     expect(result.current.schedule).toBe('differentiated');
     expect(result.current.annualRatePct).toBe('9.5');
     expect(result.current.termMonths).toBe('24');
+  });
+
+  it('seeds paymentHoldingId/lenderName/lenderIban from stored metadata, defaulting to null/blank when absent', async () => {
+    const { result } = await renderLoanFields();
+
+    await act(async () => {
+      result.current.seed({
+        id: 'h1',
+        currency: 'UAH',
+        metadata: {
+          kind: 'mortgage',
+          principalMinorUnits: 500_000_00,
+          startDate: 1_700_000_000_000,
+          schedule: 'annuity',
+          annualRatePct: 9.5,
+          termMonths: 24,
+          paymentHoldingId: 'h-payer',
+          lenderName: 'PrivatBank',
+          lenderIban: 'UA123456789012345678901234567',
+        },
+        // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture) same as above.
+      } as any);
+    });
+
+    expect(result.current.paymentHoldingId).toBe('h-payer');
+    expect(result.current.lenderName).toBe('PrivatBank');
+    expect(result.current.lenderIban).toBe('UA123456789012345678901234567');
+
+    await act(async () => {
+      result.current.seed({
+        id: 'h2',
+        currency: 'UAH',
+        metadata: {
+          kind: 'mortgage',
+          principalMinorUnits: 500_000_00,
+          startDate: 1_700_000_000_000,
+          schedule: 'annuity',
+          annualRatePct: 9.5,
+          termMonths: 24,
+        },
+        // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture) same as above.
+      } as any);
+    });
+
+    expect(result.current.paymentHoldingId).toBeNull();
+    expect(result.current.lenderName).toBe('');
+    expect(result.current.lenderIban).toBe('');
   });
 
   it('seeds a "none" loan with blank rate/term fields (both undefined in the stored metadata)', async () => {

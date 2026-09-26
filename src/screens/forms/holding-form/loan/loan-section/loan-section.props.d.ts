@@ -3,6 +3,7 @@ import type { TextInputInstance } from 'react-native';
 
 import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
 import type { LoanKind, LoanSchedule } from '../../../../../holdings/holding-metadata';
+import type { HoldingSelectOption } from '../../../holding-select-field/holding-select-field.props';
 
 export type LoanSectionProps = {
   kind: LoanKind;
@@ -33,4 +34,17 @@ export type LoanSectionProps = {
   termMonthsError?: string;
   termMonthsFieldRef?: RefObject<FieldInstance | null>;
   termMonthsInputRef?: RefObject<TextInputInstance | null>;
+  // The loan-payment matcher's own optional inputs (kiko-domain) — never
+  // validated, hidden alongside rate/term for a `'none'` schedule (the
+  // matcher never links against an informal debt at all, so these would do
+  // nothing there). `paymentHoldingOptions` is every OPEN, non-ledgerless
+  // holding in this loan's own currency — built and filtered by the caller,
+  // mirroring every other holding-picker field in this app.
+  paymentHoldingId: string | null;
+  onSelectPaymentHoldingId: (id: string | null) => void;
+  paymentHoldingOptions: readonly HoldingSelectOption[];
+  lenderName: string;
+  onChangeLenderName: (text: string) => void;
+  lenderIban: string;
+  onChangeLenderIban: (text: string) => void;
 };
