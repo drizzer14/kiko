@@ -17,4 +17,11 @@ export type CalendarHeaderProps = {
   // Steps the visible month by `count` months (library-provided): +1/-1 for one
   // month, +12/-12 for a full year forward/back.
   addMonth?: (count: number) => void;
+  // The calendar's first weekday (library-provided — react-native-calendars
+  // forwards its own `firstDay` prop to a custom header automatically, see
+  // `extractHeaderProps`): `0` (Sunday, the library's own default) or `1`
+  // (Monday). Rotates this header's own weekday-label row so it stays
+  // aligned with the day grid below it, which react-native-calendars rotates
+  // by the SAME prop internally.
+  firstDay?: 0 | 1;
 };

@@ -208,6 +208,40 @@ adds its own key alongside them, in this same form:
 `forms.holding.loanStartDateError`,
 `forms.holding.couponFrequencyRequiredError`.
 
+## Calendar week start
+
+`KikoCalendar` (`src/calendar/kiko-calendar/`) starts its week on the
+DEVICE REGION's first weekday, like a native iOS calendar app — NOT
+the app language (review decision 23; the original plan's app-language
+ruling was superseded). `weekStartFor(region)`
+(`src/calendar/week-start/`) maps a 2-letter region code to `0`
+(Sunday) or `1` (Monday) off a small, hand-picked subset of CLDR's
+`weekData/firstDay` Sunday-first region list (`US`, `CA`, `BR`, `MX`,
+`JP`, `KR`, `TW`, `HK`, `PH`, `IL`, `ZA`, `IN`, `AU`); every other
+region — including Ukraine and Kiko's European host countries, and an
+unresolved region — falls back to Monday, CLDR's own default. It takes
+the region as a plain argument rather than reading it itself, so it
+stays a pure, directly unit-tested mapping; `deviceRegion()`
+(`src/i18n/device-region/`) is the actual device read, a dependency-free
+iOS-only `NativeModules.SettingsManager.settings.AppleLocale` parse —
+the sibling of `deviceLanguage()`'s `AppleLanguages` read, but a
+DIFFERENT NSLocale API (region, not display language) and a different
+identifier format (underscore-joined ICU style, not dash-joined
+BCP-47). `CalendarHeader`'s own weekday-label row rotates through the
+SAME `firstDay` prop react-native-calendars forwards to it, so the
+labels never drift out of alignment with the day grid, which the
+library rotates internally off the identical prop.
+
+Neither `deviceRegion()`'s `AppleLocale` read nor Hermes's
+`Intl.Locale().weekInfo` (a dependency-free ALTERNATIVE this skill
+considered and rejected — Node/V8 supports the `weekInfo` getter, but
+Hermes device support is unverified, and RN's Jest preset cannot tell
+either way) is device-verified; only the pure `weekStartFor` mapping
+and the region-table entries beyond `US`/`CA` carry a lower confidence
+(no live network/citation access at the time this landed) — a wrong
+table entry only ever misorders the calendar's cosmetic Sunday/Monday
+column choice, never a financial figure.
+
 ## Component set
 
 Every shared component here follows `kiko-code-style`'s "One component
