@@ -1145,10 +1145,15 @@ first):
    the installment's own `dueDate` — both bounds inclusive.
 3. **A third signal**, at least one of: the transaction's `holdingId`
    equals the loan's own `paymentHoldingId`; its `counterIban` equals the
-   loan's own `lenderIban`; or its `description` contains (case-insensitive)
-   one of a fixed keyword list (`кредит`, `погашення`, `іпотек`, `позик`,
-   `loan`, `mortgage`, `repayment`) or the loan's own `lenderName`. Amount +
-   date ALONE never links (a same-size monthly rent must not false-positive).
+   loan's own `lenderIban` (both compared through `normalizeIban` — strips
+   whitespace, uppercases, so a cosmetic difference between a typed IBAN and
+   a bank feed's own `counterIban` never false-negatives); or its
+   `description` contains (case-insensitive) one of a fixed keyword list
+   (`кредит`, `погашення`, `іпотек`, `позик`, `loan`, `mortgage`,
+   `repayment`) or the loan's own `lenderName` (only when
+   `lenderName.trim().length >= 3` — shorter is too likely to appear inside
+   an unrelated description by coincidence). Amount + date ALONE never links
+   (a same-size monthly rent must not false-positive).
 4. **Uniqueness**: exactly one candidate transaction per installment, and
    that transaction matches exactly one installment of one loan — two
    candidates for one installment, or one transaction matching two
@@ -1158,23 +1163,66 @@ The candidate transaction itself must be a debit, not already linked
 (`loanHoldingId` null), not previously rejected (`loanLinkRejected`
 false), and not one leg of an Exchange/Convert (the structural
 `exchangeCounterpartHoldingId` marker) — `transactionsRepo.
-loanMatchCandidatesQuery()` pre-filters all four in SQL (P-NOWORK: never
-read a row the matcher can never link), and the pure function also
-re-checks them itself, so it stays correct when unit-tested directly. An
-informal (`'none'`-schedule) loan is never matched: `loanInstallments`
-already returns `[]` for it, so it contributes no candidate installment at
-all — no separate schedule check is needed. `now` bounds installments to
-`dueDate <= now + 3 days` (the window's own before-margin) — a cheap UPPER
-bound only, never a lower one, so a freshly created/edited loan backfills
-its WHOLE past history the first time this runs.
+loanMatchCandidatesQuery({ minTime, currencies })` pre-filters all four in
+SQL (P-NOWORK: never read a row the matcher can never link) plus bounds the
+scan to `time >= minTime` and `currencies` (the caller derives `minTime`
+as the earliest open loan's own `startDate` minus the match window's
+own 3-day before-margin, and `currencies` as the open loans' own distinct
+currencies — never a whole-table scan), and the pure function also
+re-checks the four eligibility conditions itself, so it stays correct when
+unit-tested directly. An informal (`'none'`-schedule) loan is never
+matched: `loanInstallments` already returns `[]` for it, so it contributes
+no candidate installment at all — no separate schedule check is needed.
+`now` bounds installments to `dueDate <= now + 3 days` (the window's own
+before-margin) — a cheap UPPER bound only, never a lower one, so a freshly
+created/edited loan backfills its WHOLE past history the first time this
+runs.
+
+**An installment already taken by a linked row never accepts a second
+one.** `matchLoanPayments` takes an optional `linkedPayments` — every row
+ALREADY linked (manual or auto alike) to one of `loans`, read separately
+through `transactionsRepo.loanLinkedPaymentsQuery(loanHoldingIds)` — because
+`loanMatchCandidatesQuery` itself EXCLUDES an already-linked row from its
+own candidate read, so without this second list the installment that row
+already paid would look unpaid again on the very next run, and a LATER
+same-amount transaction (a same-size monthly rent, say, arriving with its
+own valid third signal) could take its place — silently double-counting one
+installment across two real payments. An installment counts as taken the
+moment ANY `linkedPayments` row for that SAME loan still passes rules 1
+(amount) and 2 (date) against it — the third signal is deliberately not
+re-checked (the link already proved it once, and `linkedPayments` carries
+no description/holdingId/counterIban to re-check it with anyway) — and a
+taken installment is removed from consideration entirely before the
+candidate matrix is built, so neither the real linked row (already excluded
+from candidates) nor any other transaction can claim it. `linkedPayments`
+defaults to none, so an existing caller/test that has no such list yet
+keeps its prior behavior unchanged.
+
+**A loan edit that changes what the matcher would now require clears that
+loan's own AUTO links first.** `holdingsRepo.updateLoan`'s optional 4th
+param `clearAutoLinks` (default `false`) clears ONLY this loan's
+`loanLinkSource = 'auto'` rows (never a manual link, never a rejected row)
+in the SAME transaction as the metadata patch. The loan form's own
+`saveEdit` (`use-loan-fields.ts`, `loanEditInvalidatesAutoLinks`) passes
+`true` when the edit changed the loan's own `principalMinorUnits`,
+`schedule`, or `paymentHoldingId` — any of these changes what
+`loanInstallments` or rule 3's own "paid from" signal would derive going
+forward, so a stale AUTO link proved against the OLD schedule would
+otherwise count as "taken" (above) forever, even once it no longer
+corresponds to any real installment of the new one. Clearing it here, before
+the fire-and-forget matcher re-run that follows every loan edit, lets that
+re-run recompute cleanly.
 
 `src/loans/use-loan-auto-link/` (`runLoanAutoLink`, a plain async
 function, not a hook — so a non-component caller, e.g.
 `import-statement.ts`, can call it directly): reads
 `holdingsRepo.loanHoldingsQuery()` (every OPEN loan) FIRST and returns
-before ever touching the transaction table when it is empty (P-NOWORK);
-otherwise reads `transactionsRepo.loanMatchCandidatesQuery()`, runs
-`matchLoanPayments`, and writes any result through
+before ever touching the transaction table when it is empty, or when every
+loan holding's own metadata fails to parse (P-NOWORK — there is then no
+installment, currency, or start date to bound the read with either);
+otherwise reads `transactionsRepo.loanMatchCandidatesQuery` (bounded, above)
+and `transactionsRepo.loanLinkedPaymentsQuery` (the taken-installment input,
+above) together, runs `matchLoanPayments`, and writes any result through
 `transactionsRepo.setAutoLoanLinks`. Never rejects — every failure is
 caught and logged, the same "log instead of drop" contract
 `refresh-market-data.ts` established for its own background refreshes, so
@@ -1183,7 +1231,10 @@ error. Called after: every sync completion path (`useSync`, `useSyncAll`,
 `useAutoSync` — the same three call sites `refreshMarketData` already
 established as "every sync surface"); `importParsedStatement` (ONE
 insertion point covers both its callers — the dedicated `importStatement`
-and the column-mapping screen's direct call); and a loan CREATE or EDIT in
+and the column-mapping screen's direct call); a `.kiko` backup restore
+(`data-transfer/import-data.ts`, fire-and-forget, right after the same
+gated market-data refresh a restore already triggers — a bulk restore
+bypasses every OTHER call site above); and a loan CREATE or EDIT in
 `holding-form.screen.tsx` (`runLoanAutoLinkIfLoan`, gated on `type ===
 'loan'`, fire-and-forget on both paths — unlike `refreshMarketData`, which
 never fires on an edit at all, a loan's principal/schedule/
@@ -1209,6 +1260,30 @@ they would do nothing there. None are required. `PaymentHoldingField`
 single-select holding-picker chrome `LoanPaymentField` (the transaction
 form's own loan-payment field) also composes, for its own auto-link
 caption + Undo on top.
+
+`buildPaymentHoldingOptions` (`holding-form.screen.tsx`) unions the loan's
+own CURRENTLY selected `paymentHoldingId` back into the "Paid from"
+picker's options even once that holding has since closed or moved
+currency — the same "a filter never hides an active selection" rule
+`buildLoanOptions` (below) already follows on the transaction form's own
+loan-payment field, or the picker would resolve no match for a link that
+still exists in the metadata and silently show "None". `isLoanFieldVisible`
+(`transaction-form.screen.tsx`) shows that field whenever the row already
+carries `selectedLoanHoldingId`, regardless of the row's own amount
+sign — a linked row later edited from debit to credit must still reach the
+field where None/Undo live.
+
+**The loan holding-detail screen's own "Linked payments" section is the
+only way to review an auto link** (a loan is ledgerless, so it carries no
+ledger of its own transactions worth reviewing there instead): every
+transaction linked (manual or auto) to that loan, newest first, via
+`transactionsRepo.listLinkedToLoanQuery(loanHoldingId)` — one live query,
+disabled outright for a non-loan holding. It reuses the same
+`LedgerRowItem` (and its own loan-link marker) the main ledger FlatList
+renders, as a plain `.map` rather than a second virtualized list (one
+loan's own linked payments is always small); tapping a row opens the
+transaction form, where None/Undo live. The section renders nothing at all
+once there are none — no placeholder heading over an empty list.
 
 ## Adding a holding type
 
