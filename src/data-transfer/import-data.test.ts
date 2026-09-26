@@ -15,15 +15,22 @@ jest.mock('./secrets/restore-secrets', () => ({
 // holdings directly, bypassing the sync fan-out that normally triggers a
 // rate/metal refresh — so a restored foreign-currency/metal/crypto holding
 // needs the SAME gated refresh triggered explicitly, right here.
-const mockRefreshRates = jest.fn().mockResolvedValue(undefined);
-const mockRefreshMetalPrices = jest.fn().mockResolvedValue(undefined);
-jest.mock('../rates/rates-refresh', () => ({
-  refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
-}));
-jest.mock('../prices/metal-refresh', () => ({
-  refreshMetalPrices: (...args: unknown[]) => mockRefreshMetalPrices(...args),
+const mockRefreshMarketData = jest.fn().mockResolvedValue(right(undefined));
+jest.mock('@kiko/sync/refresh-market-data', () => ({
+  refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),
 }));
 
+// A bulk restore bypasses the sync/import/loan-edit call sites that
+// normally trigger the auto-link matcher — trigger it explicitly here too,
+// the same "first-add refresh" reasoning as `refreshMarketData` above.
+// `runLoanAutoLink` itself returns early with no loan (its own doc comment),
+// so this is a no-op for a restore with none.
+const mockRunLoanAutoLink = jest.fn().mockResolvedValue(undefined);
+jest.mock('@kiko/loans/use-loan-auto-link', () => ({
+  runLoanAutoLink: (...args: unknown[]) => mockRunLoanAutoLink(...args),
+}));
+
+import { right } from 'fnts/either';
 import { utf8ToBytes } from '@noble/ciphers/utils.js';
 
 import { importData } from './import-data';
@@ -59,8 +66,10 @@ describe('importData', () => {
     mockReadFile.mockReset();
     mockRestoreDataSnapshot.mockReset().mockResolvedValue(undefined);
     mockRestoreExportSecrets.mockReset().mockResolvedValue(undefined);
-    mockRefreshRates.mockClear();
-    mockRefreshMetalPrices.mockClear();
+    mockRefreshMarketData.mockClear();
+    mockRefreshMarketData.mockResolvedValue(right(undefined));
+    mockRunLoanAutoLink.mockClear();
+    mockRunLoanAutoLink.mockResolvedValue(undefined);
   });
 
   it('decrypts a valid file, restores the snapshot and secrets, and returns row counts', async () => {
@@ -82,14 +91,41 @@ describe('importData', () => {
   // kiko-architecture: a restored foreign-currency/metal/crypto holding needs
   // its price/rate visible without an app restart — an import bulk-inserts
   // directly, bypassing the sync fan-out that normally triggers this.
-  it('triggers the gated rate/metal refresh after a successful restore', async () => {
+  it('triggers the gated rate/metal refresh after a successful restore, unthrottled', async () => {
     const { fileText, keyBase64 } = encryptedFixture();
     mockReadFile.mockResolvedValue(fileText);
 
     await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
 
-    expect(mockRefreshRates).toHaveBeenCalled();
-    expect(mockRefreshMetalPrices).toHaveBeenCalled();
+    expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: false, metals: true });
+  });
+
+  // Fire-and-forget, after a successful restore.
+  it('triggers the loan auto-link matcher after a successful restore', async () => {
+    const { fileText, keyBase64 } = encryptedFixture();
+    mockReadFile.mockResolvedValue(fileText);
+
+    await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+
+    expect(mockRunLoanAutoLink).toHaveBeenCalledWith();
+  });
+
+  it('resolves with the row-count summary without waiting for the loan auto-link matcher to settle', async () => {
+    const { fileText, keyBase64 } = encryptedFixture();
+    mockReadFile.mockResolvedValue(fileText);
+    let resolveAutoLink: () => void = () => {};
+    mockRunLoanAutoLink.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveAutoLink = resolve;
+        }),
+    );
+
+    const summary = await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+
+    expect(summary.accountsRestored).toBe(1);
+
+    resolveAutoLink();
   });
 
   // The refresh is a background nicety, not an import precondition —
@@ -99,10 +135,10 @@ describe('importData', () => {
     const { fileText, keyBase64 } = encryptedFixture();
     mockReadFile.mockResolvedValue(fileText);
     let resolveRefresh: () => void = () => {};
-    mockRefreshRates.mockImplementation(
+    mockRefreshMarketData.mockImplementation(
       () =>
-        new Promise<undefined>((resolve) => {
-          resolveRefresh = () => resolve(undefined);
+        new Promise((resolve) => {
+          resolveRefresh = () => resolve(right(undefined));
         }),
     );
 

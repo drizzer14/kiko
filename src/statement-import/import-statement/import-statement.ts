@@ -9,6 +9,7 @@ import {
   type ParsedStatementSource,
 } from '../parser';
 import { detectFormat } from '../registry';
+import { runLoanAutoLink } from '../../loans/use-loan-auto-link';
 import { computeDedupKey, mapParsedTransaction } from '../mapping';
 
 export type ImportResult = {
@@ -93,6 +94,14 @@ export const importParsedStatement = async (
     rows,
     closingBalance: parsed.closingBalance,
   });
+
+  // Every caller of this function — the dedicated `importStatement` below
+  // AND the generic column-mapping import, which calls this directly — gets
+  // the matcher run once, right after the new rows commit; a fresh import
+  // is exactly the kind of new debit the matcher exists to catch. Never
+  // rejects on its own (see its own doc comment), so a failed auto-link
+  // never turns a successful import into a shown error.
+  await runLoanAutoLink();
 
   return {
     formatId: parsed.formatId,

@@ -169,6 +169,17 @@ describe('holdingsRepo', () => {
     expect(sql.toLowerCase()).toContain('archived_at');
   });
 
+  // The loan-payment matcher's own gate query (P-NOWORK): every OPEN loan
+  // holding, so a caller can return early — before ever reading the (larger)
+  // transaction table — the moment this is empty.
+  it('builds an open-loan-holdings query, scoped to type "loan" and excluding closed holdings', () => {
+    const { sql, params } = holdingsRepo.loanHoldingsQuery().toSQL();
+
+    expect(sql).toContain('holdings');
+    expect(sql.toLowerCase()).toContain('closed_at');
+    expect(params).toContain('loan');
+  });
+
   it('create inserts the holding and resolves to the generated id', async () => {
     const { databaseTransaction, inserts } = makeCreateDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;
@@ -1268,27 +1279,36 @@ describe('holdingsRepo.closeMany', () => {
 });
 
 // A fake write-transaction handle for `updateLoan`. Captures the metadata
-// patch, whether `delete(pricePoints)` ran, and every `insert(pricePoints)`
-// payload — enough to prove the three `LoanPricePointOp` kinds each touch
-// exactly the tables each op promises, all inside the SAME transaction
-// (`mockDatabaseTransaction` is shared by every call the function makes).
+// patch, the item-1 auto-links clear (a SECOND, table-distinguished
+// `update` call — `tableNameOf` tells it apart from the metadata patch's own
+// `update(holdings)`), whether `delete(pricePoints)` ran, and every
+// `insert(pricePoints)` payload — enough to prove the three `LoanPricePointOp`
+// kinds each touch exactly the tables each op promises, all inside the SAME
+// transaction (`mockDatabaseTransaction` is shared by every call the
+// function makes).
 const makeUpdateLoanDatabaseTransaction = (): {
   databaseTransaction: unknown;
   captured: {
     holdingSet?: Record<string, unknown>;
+    transactionsSet?: Record<string, unknown>;
     deleteCalls: number;
     inserts: Record<string, unknown>[];
   };
 } => {
   const captured: {
     holdingSet?: Record<string, unknown>;
+    transactionsSet?: Record<string, unknown>;
     deleteCalls: number;
     inserts: Record<string, unknown>[];
   } = { deleteCalls: 0, inserts: [] };
   const databaseTransaction = {
-    update: () => ({
+    update: (table: unknown) => ({
       set: (values: Record<string, unknown>) => {
-        captured.holdingSet = values;
+        if (tableNameOf(table) === 'transactions') {
+          captured.transactionsSet = values;
+        } else {
+          captured.holdingSet = values;
+        }
 
         return { where: () => Promise.resolve() };
       },
@@ -1377,5 +1397,29 @@ describe('holdingsRepo.updateLoan', () => {
         source: 'manual',
       },
     ]);
+  });
+
+  // A loan edit that changes its amortization schedule or a third-signal
+  // input can invalidate a previously-computed AUTO link's own rules 1/2
+  // against the NEW schedule — the caller (`use-loan-fields.ts`'s `saveEdit`) detects
+  // this and asks `updateLoan` to clear this loan's own auto links, in the
+  // SAME transaction as the metadata patch, before the fire-and-forget
+  // matcher re-run that follows.
+  it('never clears auto links when clearAutoLinks is omitted (unchanged 3-arg call)', async () => {
+    const { databaseTransaction, captured } = makeUpdateLoanDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await holdingsRepo.updateLoan('h-1', { name: 'Renamed' }, { kind: 'none' });
+
+    expect(captured.transactionsSet).toBeUndefined();
+  });
+
+  it('clears this loan holding’s own auto links (manual and rejected untouched) when clearAutoLinks is true', async () => {
+    const { databaseTransaction, captured } = makeUpdateLoanDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await holdingsRepo.updateLoan('h-1', { name: 'Renamed' }, { kind: 'none' }, true);
+
+    expect(captured.transactionsSet).toEqual({ loanHoldingId: null, loanLinkSource: null });
   });
 });

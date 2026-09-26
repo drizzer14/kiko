@@ -1,12 +1,11 @@
-import either from 'fnts/either';
 import { useEffect, useRef } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
-import { ratesRepo } from '@kiko/rates/repo';
+import either, { bifold, isLeft } from 'fnts/either';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
+import { refreshMarketData, warnRefreshFailure } from '@kiko/sync/refresh-market-data';
 
-import { refreshRates } from '../../rates/rates-refresh';
-import { refreshMetalPrices } from '../../prices/metal-refresh';
 import { bankProviderRegistry } from '../../bank-sync/registry';
 import { type SyncableAccount, syncJobsFor } from '../sync-jobs';
 import { SYNC_CONCURRENCY_LIMIT, settleAllLimited } from '../settle-limited';
@@ -128,10 +127,15 @@ export const useAutoSync = (): void => {
       );
       const jobs = jobLists.flat();
 
-      // Only the sync FAN-OUT is gated on having jobs; the rate refresh is
-      // decoupled from it so a manual-only user still gets cross-rates cached.
-      // Running it unconditionally is safe: `refreshRates` is self-throttled by
-      // `lastRefreshAt` and hits only the PUBLIC, tokenless endpoint.
+      // Only the sync FAN-OUT is gated on having jobs; the refresh is
+      // decoupled from it so a manual-only user still gets cross-rates
+      // cached. Running it unconditionally is safe: `refreshMarketData` is
+      // self-throttled (its own `refreshRates` step) and hits only PUBLIC,
+      // tokenless endpoints. `refreshMarketData` runs rates and metals
+      // CONCURRENTLY under its own `Promise.allSettled` (twin of
+      // `useSyncAll`'s fan-out) and never rejects — it logs its own
+      // rates/metals failure and returns a Left, which this effect passes to
+      // `warnRefreshFailure` below instead of re-deriving it here.
       if (jobs.length > 0) {
         // Cap CONCURRENT syncs so a many-connection fan-out never fires N provider
         // requests at once (device load / provider rate limits) — see `settleAllLimited`.
@@ -140,20 +144,23 @@ export const useAutoSync = (): void => {
           SYNC_CONCURRENCY_LIMIT,
         );
       }
-      const lastRefreshAt = await ratesRepo.latestFetchedAt();
 
-      // Concurrent, not sequential: `refreshRates` (currency_rates) and
-      // `refreshMetalPrices` (price_points) read and write disjoint tables —
-      // neither depends on the other's result — so starting both at once
-      // shrinks the app-open DB-read burst's wall-clock span instead of
-      // making the metal fetch wait out the whole rates fetch first.
-      // `Promise.allSettled`, not `Promise.all` — twin of useSyncAll's
-      // identical fix: `Promise.all` settles (rejects) the instant EITHER
-      // promise rejects, leaving the other one running orphaned with nothing
-      // in this effect awaiting it further. `allSettled` never rejects, so a
-      // rejected step here is swallowed exactly as before by the enclosing
-      // `either` — only the wait-for-both timing changes.
-      await Promise.allSettled([refreshRates({ lastRefreshAt }), refreshMetalPrices()]);
+      await refreshMarketData({ throttled: true, metals: true });
+      // Same reasoning as `refreshMarketData` just above: an on-open sync can
+      // bring in a new loan-payment debit, so the matcher runs alongside it.
+      // Never rejects (its own doc comment), so a failed auto-link stays
+      // inside this SAME swallowed-and-logged `either`, never a crash.
+      await runLoanAutoLink();
+    }).then((result) => {
+      // The outer `either` still swallows every exception this effect can
+      // throw (reading accounts/sync-state/credentials) — this hook has no
+      // UI and must never crash the app on a background sync it did not ask
+      // the user about — but a Left is now LOGGED, not silently dropped, the
+      // same "log instead of drop" contract `refreshMarketData` established
+      // for its own rates/metals steps.
+      if (isLeft(result)) {
+        warnRefreshFailure('auto-sync', bifold(result));
+      }
     });
   }, []);
 };

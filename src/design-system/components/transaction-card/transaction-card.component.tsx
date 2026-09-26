@@ -28,11 +28,12 @@ const TransactionCard: FC<TransactionCardProps> = ({
   money,
   footerMeta,
   footerTrailing,
+  loanLinked,
   style,
   testID,
 }) => {
   const { theme } = useUnistyles();
-  const hasFooter = footerMeta !== undefined || footerTrailing !== undefined;
+  const hasFooter = footerMeta !== undefined || footerTrailing !== undefined || loanLinked === true;
 
   return (
     <Card padding={3} testID={testID} style={style}>
@@ -57,7 +58,10 @@ const TransactionCard: FC<TransactionCardProps> = ({
 
         {hasFooter && (
           <Box direction="row" gap={2} style={styles.rowFooter}>
-            <Box style={styles.rowFooterMeta}>
+            <Box direction="row" gap={1} style={styles.rowFooterMeta}>
+              {loanLinked === true && (
+                <SymbolIcon name="link" size={theme.iconSizes.caption} tone="textSecondary" />
+              )}
               {footerMeta !== undefined && (
                 <Text variant="caption" tone="textSecondary">
                   {footerMeta}

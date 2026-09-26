@@ -21,9 +21,10 @@ export const ratesRepo = {
   },
   /**
    * Distinct currencies with at least one stored row — a cheap presence
-   * check, never the full cross table. `buildPairs` composes every ordered
-   * pair among priced currencies, so a currency with any rate at all always
-   * appears as `base` too; checking that one column is enough. A one-shot
+   * check, never the full cross table. `buildUahRows` writes one row per
+   * priced currency, always as `base` (a star row's `quote` is always `UAH`,
+   * so `UAH` itself never appears here — the caller must treat `UAH` as
+   * always present, see `shouldThrottle`, `rates-refresh.ts`). A one-shot
    * read (not reactive) — `refreshRates`'s own throttle-skip check awaits it.
    */
   presentCurrenciesQuery: () =>
@@ -33,10 +34,11 @@ export const ratesRepo = {
       if (rates.length === 0) {
         return;
       }
-      // A full Monobank sync composes every cross pair across the supported
-      // currency set (~11,990 rows at 5 params/row), which overflows SQLite's
-      // SQLITE_MAX_VARIABLE_NUMBER (32766) in one insert — chunk it the same
-      // way `rateHistoryRepo.upsertMany` does, all inside this one transaction.
+      // A full Monobank sync now writes only ~109 rows (one X:UAH row per
+      // priced currency, not the ~11,990-row cross join a legacy write once
+      // composed) — well under SQLite's SQLITE_MAX_VARIABLE_NUMBER (32766),
+      // but a `.kiko` restore can still write a much larger legacy-shaped
+      // batch, so this chunking stays, the same way `rateHistoryRepo.upsertMany` does.
       for (const chunk of chunkForTable(currencyRates, rates)) {
         // Upsert on the (base, quote) unique index: a refreshed rate for an
         // existing pair overwrites its value, source, and timestamp in place.

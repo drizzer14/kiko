@@ -13,8 +13,9 @@ const holding = (over: Partial<HoldingRow> & Pick<HoldingRow, 'type'>): Breakdow
   ...over,
 });
 
-// 1 UAH = 0.025 USD (so 40 UAH = 1 USD). BTC has no rate: crypto is unconvertible.
-const rates: RateTable = { 'UAH:USD': 0.025 };
+// uahPer(UAH) = 1 (implicit), uahPer(USD) = 40 -> rateBetween(UAH, USD) =
+// 1 / 40 = 0.025, so 40 UAH = 1 USD. BTC has no rate: crypto is unconvertible.
+const rates: RateTable = { USD: 40 };
 
 describe('buildTypeBreakdown', () => {
   it('sums each type across accounts and currencies, converted to base', () => {

@@ -1,4 +1,4 @@
-import type { RateEntry } from '../conversion';
+import { rateBetween, type RateEntry } from '../conversion';
 import { composeRateTable } from '../monobank-feed-test-helper';
 import { type Currency, currencyOptions } from '../../currency/currency';
 import { canConvert, guardedBreakdown, guardedNetWorth } from '../net-worth-view';
@@ -92,15 +92,16 @@ describe('Crypto coverage — every added crypto reaches every base (no silent n
   });
 
   // USDT is priced via CoinGecko at its real market rate (~1.0007), not hard-
-  // pegged to 1. `buildUahPrice`/`buildPairs` (rates/rates-refresh.ts) compose
-  // USDT:USD by dividing USDT's UAH-anchored price by USD's — algebraically
-  // this cancels the (index-dependent, test-fixture) UAH/USD leg entirely and
-  // must reproduce the raw CoinGecko USD price exactly. If a future change
-  // special-cased a stablecoin to a literal 1:1 rate instead of composing it
-  // like every other crypto, this is the assertion that would catch it.
+  // pegged to 1. Only USDT:UAH is stored (`buildUahPrice`/`buildUahRows`,
+  // rates/rates-refresh.ts); `rateBetween` resolves USDT:USD at READ TIME by
+  // dividing USDT's UAH price by USD's — algebraically this cancels the
+  // (index-dependent, test-fixture) UAH/USD leg entirely and must reproduce
+  // the raw CoinGecko USD price exactly. If a future change special-cased a
+  // stablecoin to a literal 1:1 rate instead of composing it like every
+  // other crypto, this is the assertion that would catch it.
   it('prices USDT with its real drift, not a hardcoded 1:1 peg', async () => {
     const table = await composeTable();
-    const rate = table['USDT:USD'];
+    const rate = rateBetween(table, 'USDT', 'USD');
 
     expect(rate).toBeDefined();
     expect(rate).not.toBe(1);

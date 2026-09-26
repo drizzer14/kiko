@@ -41,11 +41,15 @@ const holding = (over: Partial<HoldingRow> & Pick<HoldingRow, 'id'>): SeriesHold
 
 type HistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate'>;
 
+// Every call site below still reads as "rate(UAH, USD)" (its historical
+// meaning) — the star model instead stores the RECIPROCAL as an `X:UAH` row
+// (`rate(USD, UAH) = 1 / rate`), so this is the one place that inverts it;
+// no call site or expected value below needed to change.
 const uahUsd = (day: number, rate: string): HistoryRow => ({
-  base: 'UAH',
-  quote: 'USD',
+  base: 'USD',
+  quote: 'UAH',
   day,
-  rate,
+  rate: String(1 / Number(rate)),
 });
 
 // Shared by every card->bond funding-recognition test below: the built
@@ -185,7 +189,7 @@ describe('buildNetWorthSeries', () => {
       historyRows,
       baseCurrency: 'USD',
       range: { from: D0, to: D1 },
-      liveRateTable: { 'UAH:USD': 0.05 },
+      liveRateTable: { USD: 20 }, // rate(UAH, USD) = 1 / 20 = 0.05, the live table's own reading
       today: D1,
     });
 

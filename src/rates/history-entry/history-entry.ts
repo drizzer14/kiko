@@ -2,8 +2,8 @@ import type { Currency } from '../../currency/currency';
 
 /**
  * One normalized historical rate point from a provider, before it is composed
- * into the stored UAH-anchored cross pairs. `day` is the UTC-midnight epoch-ms
- * of the rate's calendar day, matching `currency_rate_history.day`.
+ * into a stored `X:UAH` row. `day` is the UTC-midnight epoch-ms of the rate's
+ * calendar day, matching `currency_rate_history.day`.
  */
 export type HistoryRateEntry = {
   base: Currency;

@@ -195,15 +195,14 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // must re-render; it follows the ref, reset to false on a failed create so the
   // switch re-enables when no row actually exists.
   const [accountRowStarted, setAccountRowStarted] = useState(false);
-  // Mirrors contribution-form's attempted-flag pattern: the name-required
-  // reason stays hidden until the user actually tries to Connect or Save with
-  // an empty name, rather than showing as a standing hint the whole time.
-  const [showNameError, setShowNameError] = useState(false);
-  // Same attempted-flag pattern for the cash-only initial value field: hidden
-  // until a failed Save press, so a fresh create form shows no error before
-  // the user has tried to save (review decision 18 — the value used to be
+  // ONE shared attempted-submit flag for every validated field on this form
+  // (kiko-code-style's form validation model), set true by a blocked Connect
+  // OR a blocked Save — never a per-field flag: each field's own error below
+  // still derives from ONLY its own value, this just gates when either can
+  // first show, so a fresh create form shows no error before the user has
+  // tried to submit (review decision 18 for the initial value — it used to be
   // silently clamped to 0 instead of surfacing a reason).
-  const [showInitialValueError, setShowInitialValueError] = useState(false);
+  const [attemptedSave, setAttemptedSave] = useState(false);
   // DEVICE BUG fix (root cause): while the currency sheet's search field can
   // be focused, this screen's background ScrollView must NOT react to the
   // keyboard's frame change — it does not contain that responder, but
@@ -227,6 +226,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // below) — HoldingIdentityField's own `nameInputRef` prop already exposes
   // this same ref shape.
   const nameInputRef = useRef<TextInputInstance>(null);
+  // The cash-only initial-value field's own wrapper + inner TextInput refs —
+  // the SAME pair the name field above carries, so a blocked Save on it scrolls
+  // and focuses exactly like a blocked name does (it used to have no scroll
+  // target at all).
+  const initialValueFieldRef = useRef<FieldInstance>(null);
+  const initialValueInputRef = useRef<TextInputInstance>(null);
   const headerInset = useHeaderInset();
   // The ScrollView's own total content height, captured off `Screen`'s
   // `onContentSizeChange` (forwarded from its ScrollView) so `scrollToField`
@@ -246,7 +251,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     // started), so a retry after typing a name re-attempts cleanly. Save is
     // separately blocked on `!canSave`, so this also guards the programmatic path.
     if (!canSave) {
-      setShowNameError(true);
+      setAttemptedSave(true);
       scrollToField(
         scrollableRef,
         nameFieldRef,
@@ -392,21 +397,40 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
   const initialValueProblem = initialValueIssue(initialValue);
   const initialValueError =
-    showInitialValueError && initialValueProblem !== null
+    attemptedSave && initialValueProblem !== null
       ? t(INITIAL_VALUE_ERROR_KEY[initialValueProblem])
       : undefined;
 
+  // The initial-value field only exists for a NEW cash account (see its
+  // conditional render below), so it can never block Save in edit mode or
+  // for any other kind.
+  const initialValueInvalid = !isEdit && kind === 'cash' && initialValueProblem !== null;
+
   const save = async (): Promise<void> => {
-    // Block submit on an empty (or whitespace-only) name; Save is always
-    // enabled now, so this surfaces the name-required reason on press rather
-    // than a standing disabled state.
-    if (!canSave) {
-      setShowNameError(true);
+    // Every blocked field's own issue is computed up front — not one early
+    // return per field — so with BOTH the name and the initial value blank,
+    // both show together on the first Save press rather than the name error
+    // hiding the initial-value one until a second press (kiko-code-style's
+    // form validation model). Only the SCROLL target picks one: the first
+    // invalid field in the form's own top-to-bottom order (name, then
+    // initial value).
+    const scrollTargets = [
+      { invalid: !canSave, ref: nameFieldRef, focus: () => nameInputRef.current?.focus() },
+      {
+        invalid: initialValueInvalid,
+        ref: initialValueFieldRef,
+        focus: () => initialValueInputRef.current?.focus(),
+      },
+    ];
+    const firstInvalid = scrollTargets.find((target) => target.invalid);
+
+    if (firstInvalid !== undefined) {
+      setAttemptedSave(true);
       scrollToField(
         scrollableRef,
-        nameFieldRef,
+        firstInvalid.ref,
         { currentOffset: scrollOffset.value, headerInset, contentHeight: contentHeightRef.current },
-        () => nameInputRef.current?.focus(),
+        firstInvalid.focus,
       );
 
       return;
@@ -429,15 +453,10 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       }
 
       if (kind === 'cash') {
-        // Block submit on a blank or negative initial value; Save is always
-        // enabled, so this surfaces the field's own reason on press rather
-        // than the old silent zero-clamp (review decision 18).
-        if (initialValueProblem !== null) {
-          setShowInitialValueError(true);
-
-          return;
-        }
-
+        // `initialValueInvalid` (checked in `scrollTargets` above) already
+        // blocked Save on a blank or negative value (review decision 18: it
+        // used to be silently clamped to 0 instead of surfacing a reason), so
+        // reaching here means it is a valid amount.
         await accountsRepo.createCashAccount({
           name: trimmedName,
           currency,
@@ -519,7 +538,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             onRemoveIcon={() => setIcon(null)}
             namePlaceholder={t('forms.account.namePlaceholder')}
             required
-            error={showNameError && !canSave ? t('forms.fields.nameRequiredError') : undefined}
+            error={attemptedSave && !canSave ? t('forms.fields.nameRequiredError') : undefined}
             nameInputRef={nameInputRef}
             testID="holding-identity-name-field"
           />
@@ -563,15 +582,18 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
               testID="account-currency-field"
             />
 
-            <TextField
-              label={t('forms.account.initialValue')}
-              value={initialValue}
-              onChangeText={(text) => setInitialValue(groupAmount(text))}
-              keyboardType="decimal-pad"
-              placeholder={t('forms.account.initialValuePlaceholder')}
-              suffix={currencySymbol[currency]}
-              error={initialValueError}
-            />
+            <View ref={initialValueFieldRef}>
+              <TextField
+                label={t('forms.account.initialValue')}
+                value={initialValue}
+                onChangeText={(text) => setInitialValue(groupAmount(text))}
+                keyboardType="decimal-pad"
+                placeholder={t('forms.account.initialValuePlaceholder')}
+                suffix={currencySymbol[currency]}
+                error={initialValueError}
+                inputRef={initialValueInputRef}
+              />
+            </View>
           </>
         )}
 

@@ -60,6 +60,10 @@ jest.mock('@kiko/holdings/repo', () => ({
     update: jest.fn(),
     updateWithBalanceDelta: jest.fn(),
     byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    // The loan form's own "Paid from" picker options — read unconditionally
+    // by every holding type this screen renders, not just `loan` (see
+    // `HoldingFormScreen`'s own doc comment on that read).
+    allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
 
@@ -73,7 +77,10 @@ jest.mock('@kiko/db/use-live-query', () => ({
 }));
 
 jest.mock('@kiko/accounts/accounts.repo', () => ({
-  accountsRepo: { byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+  accountsRepo: {
+    byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    listQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+  },
 }));
 
 type HoldingFormProps = ComponentProps<typeof HoldingFormScreen>;

@@ -2,6 +2,7 @@ import type { RefObject } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useCallback, useRef, useState } from 'react';
 import type { TextInputInstance } from 'react-native';
+import { normalizeIban } from '@kiko/loans/payment-matcher';
 import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 import { holdingsRepo, type LoanPricePointOp } from '@kiko/holdings/repo';
 
@@ -16,10 +17,10 @@ import type { HoldingRow } from '../../../../../db/schema';
 import { parseAmount } from '../../../../../currency/parse';
 import { shiftDecimal } from '../../../../../currency/decimal';
 import { dayKeyOf, type PriceBook } from '../../../../../prices/price-book';
-import { loanOutstandingMinorAt } from '../../../../../holdings/loan-schedule';
 import { currencyScale, type Currency } from '../../../../../currency/currency';
 import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
+import { loanInstallments, loanOutstandingMinorAt } from '../../../../../holdings/loan-schedule';
 import type { FieldInstance } from '../../../../../design-system/scroll-to-field/scroll-to-field';
 
 // The literal i18n keys `loanReasonKey` below may return, so `t()` (typed
@@ -133,6 +134,14 @@ export type UseLoanFieldsResult = HoldingTypeForm & {
   setAnnualRatePct: (value: string) => void;
   termMonths: string;
   setTermMonths: (value: string) => void;
+  // The loan-payment matcher's own optional inputs — never validated, so
+  // they carry no field error of their own.
+  paymentHoldingId: string | null;
+  setPaymentHoldingId: (value: string | null) => void;
+  lenderName: string;
+  setLenderName: (value: string) => void;
+  lenderIban: string;
+  setLenderIban: (value: string) => void;
   reasonKey: LoanReasonKey | null;
   // Independent per-field errors for display — see `loanFieldErrors`'s own
   // doc comment for why the screen renders from this, not `reasonKey`.
@@ -156,12 +165,24 @@ type UseLoanFieldsParams = {
 // `Pick` off the hook's own result type, not a restated shape).
 type LoanFieldsSnapshot = Pick<
   UseLoanFieldsResult,
-  'kind' | 'principal' | 'startDate' | 'schedule' | 'annualRatePct' | 'termMonths'
+  | 'kind'
+  | 'principal'
+  | 'startDate'
+  | 'schedule'
+  | 'annualRatePct'
+  | 'termMonths'
+  | 'paymentHoldingId'
+  | 'lenderName'
+  | 'lenderIban'
 >;
 
 // A loan's `LoanMeta` — shared by the EDIT-mode `saveEdit` below
 // and `buildLoanCreatePayload`, so the two can never build a differently
-// shaped `LoanMeta` for the same field values.
+// shaped `LoanMeta` for the same field values. `paymentHoldingId`/
+// `lenderName`/`lenderIban` are independent of `schedule` (unlike rate/term,
+// which apply ONLY to a structured schedule) — an untyped blank text field
+// trims to `undefined`, matching `asLoanMeta`'s own optional-field
+// convention, rather than persisting an empty string.
 const buildLoanMeta = (fields: LoanFieldsSnapshot, currency: Currency): LoanMeta => ({
   kind: fields.kind,
   principalMinorUnits: Money.fromMajor(currency, parseAmount(fields.principal) || 0).minorUnits,
@@ -173,6 +194,14 @@ const buildLoanMeta = (fields: LoanFieldsSnapshot, currency: Currency): LoanMeta
         annualRatePct: parseAmount(fields.annualRatePct) || 0,
         termMonths: parseAmount(fields.termMonths) || 0,
       }),
+  paymentHoldingId: fields.paymentHoldingId ?? undefined,
+  lenderName: fields.lenderName.trim() || undefined,
+  // Normalized (whitespace-stripped, uppercased) at save time, so the
+  // matcher's own IBAN compare never depends on cosmetic differences between
+  // what the user typed and what a bank feed's own counterIban carries. The
+  // typed field's OWN display value is untouched — only the stored value is
+  // normalized (see `LoanSection`'s own `lenderIban` TextField, unchanged).
+  lenderIban: fields.lenderIban.trim() === '' ? undefined : normalizeIban(fields.lenderIban),
 });
 
 // The loan CREATE payload: a zero stored balance (ledgerless — its
@@ -203,6 +232,48 @@ const buildLoanCreatePayload = (fields: LoanFieldsSnapshot, currency: Currency):
     },
   };
 };
+
+// Whether the loan's own amortization schedule changed under the hood —
+// `loanInstallments`' `dueDate`/`paymentMinorUnits` shift with a principal,
+// schedule, annual-rate, term, OR start-date edit alike, so comparing the
+// two installment lists directly (rather than each of those inputs one at a
+// time) catches every one of them without drifting out of sync with
+// `loanInstallments`'s own math.
+const installmentsChanged = (oldMeta: LoanMeta, newMeta: LoanMeta): boolean => {
+  const oldRows = loanInstallments(oldMeta);
+  const newRows = loanInstallments(newMeta);
+
+  if (oldRows.length !== newRows.length) {
+    return true;
+  }
+
+  return oldRows.some(
+    (row, index) =>
+      row.dueDate !== newRows[index].dueDate ||
+      row.paymentMinorUnits !== newRows[index].paymentMinorUnits,
+  );
+};
+
+/**
+ * Whether a loan EDIT changed anything a previously-computed AUTO link's own
+ * rules 1/2/3 were proven against — either the amortization schedule rules
+ * 1/2 (amount, date) read (`installmentsChanged` above), or one of rule 3's
+ * own "paid from"/lender signals (`paymentHoldingId`, `lenderIban`,
+ * `lenderName`), still checked here even though rule 3 itself is never
+ * re-verified once an installment is marked taken (see
+ * `installmentIsTaken`'s own doc comment) — a changed signal means a FUTURE
+ * re-run would no longer even consider it a match. `lenderIban` is compared
+ * normalized (whitespace-stripped, uppercased) so a cosmetic-only edit (or a
+ * loan saved before that normalization existed) never trips this. A stale
+ * AUTO link left in place under the new terms would otherwise count as
+ * "taken" forever, even once it no longer corresponds to any real
+ * installment.
+ */
+export const loanEditInvalidatesAutoLinks = (oldMeta: LoanMeta, newMeta: LoanMeta): boolean =>
+  installmentsChanged(oldMeta, newMeta) ||
+  oldMeta.paymentHoldingId !== newMeta.paymentHoldingId ||
+  normalizeIban(oldMeta.lenderIban ?? '') !== normalizeIban(newMeta.lenderIban ?? '') ||
+  oldMeta.lenderName !== newMeta.lenderName;
 
 /**
  * The `LoanPricePointOp` a loan EDIT's `holdingsRepo.updateLoan` call needs
@@ -289,6 +360,9 @@ export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult 
   const [schedule, setSchedule] = useState<LoanSchedule>('annuity');
   const [annualRatePct, setAnnualRatePct] = useState('');
   const [termMonths, setTermMonths] = useState('');
+  const [paymentHoldingId, setPaymentHoldingId] = useState<string | null>(null);
+  const [lenderName, setLenderName] = useState('');
+  const [lenderIban, setLenderIban] = useState('');
 
   const principalFieldRef = useRef<FieldInstance>(null);
   const startDateFieldRef = useRef<FieldInstance>(null);
@@ -320,11 +394,24 @@ export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult 
     setSchedule(meta.schedule);
     setAnnualRatePct(meta.annualRatePct === undefined ? '' : String(meta.annualRatePct));
     setTermMonths(meta.termMonths === undefined ? '' : String(meta.termMonths));
+    setPaymentHoldingId(meta.paymentHoldingId ?? null);
+    setLenderName(meta.lenderName ?? '');
+    setLenderIban(meta.lenderIban ?? '');
   }, []);
 
   const createPayload = (): CreatePayload =>
     buildLoanCreatePayload(
-      { kind, principal, startDate, schedule, annualRatePct, termMonths },
+      {
+        kind,
+        principal,
+        startDate,
+        schedule,
+        annualRatePct,
+        termMonths,
+        paymentHoldingId,
+        lenderName,
+        lenderIban,
+      },
       currency,
     );
 
@@ -339,7 +426,17 @@ export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult 
     const oldMeta =
       foldMap(maybe(editingHolding), (holding) => asLoanMeta(holding.metadata)) ?? null;
     const newMeta = buildLoanMeta(
-      { kind, principal, startDate, schedule, annualRatePct, termMonths },
+      {
+        kind,
+        principal,
+        startDate,
+        schedule,
+        annualRatePct,
+        termMonths,
+        paymentHoldingId,
+        lenderName,
+        lenderIban,
+      },
       currency,
     );
 
@@ -347,6 +444,10 @@ export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult 
       holdingId,
       { name, color, metadata: newMeta },
       buildLoanPricePointOp({ oldMeta, newMeta, holdingId, currency, book, now: Date.now() }),
+      // A fresh holding (`oldMeta === null`) has no prior auto links to
+      // invalidate — mirrors `buildLoanPricePointOp`'s own `oldMeta === null`
+      // guard.
+      oldMeta !== null && loanEditInvalidatesAutoLinks(oldMeta, newMeta),
     );
   };
 
@@ -364,6 +465,12 @@ export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult 
     setAnnualRatePct,
     termMonths,
     setTermMonths,
+    paymentHoldingId,
+    setPaymentHoldingId,
+    lenderName,
+    setLenderName,
+    lenderIban,
+    setLenderIban,
     reasonKey,
     fieldErrors,
     isValid: reasonKey === null,

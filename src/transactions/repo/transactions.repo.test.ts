@@ -107,6 +107,81 @@ describe('transactionsRepo', () => {
     expect(sql).toContain('"transactions"."source"');
   });
 
+  it('includes the loan-link column in the joined all-transactions projection, so a list row can show its marker', () => {
+    const sql = transactionsRepo.listAllWithContextQuery().toSQL().sql;
+
+    expect(sql).toContain('loan_holding_id');
+  });
+
+  // The loan-payment matcher's own candidate read (P-NOWORK: filter what it
+  // can never link at the SQL level, not in JS) — a debit, not already
+  // linked, not previously rejected, not one leg of an Exchange/Convert,
+  // joined against the payer holding's own currency (the matcher compares
+  // that against each loan's own currency itself).
+  it('scopes loanMatchCandidatesQuery to an eligible debit: unlinked, un-rejected, no exchange marker', () => {
+    const query = transactionsRepo.loanMatchCandidatesQuery({ minTime: 0, currencies: ['UAH'] });
+    const { sql } = query.toSQL();
+    const lower = sql.toLowerCase();
+
+    expect(lower).toContain('join "holdings"');
+    expect(lower).toContain('"transactions"."amount_minor_units" <');
+    expect(lower).toContain('"transactions"."loan_holding_id" is null');
+    expect(lower).toContain('"transactions"."loan_link_rejected" = ?');
+    expect(lower).toContain('"transactions"."exchange_counterpart_holding_id" is null');
+  });
+
+  it('projects every field the matcher reads: currency, counterIban, description, time', () => {
+    const { sql } = transactionsRepo
+      .loanMatchCandidatesQuery({ minTime: 0, currencies: ['UAH'] })
+      .toSQL();
+
+    expect(sql).toContain('"holdings"."currency"');
+    expect(sql).toContain('counter_iban');
+    expect(sql).toContain('"transactions"."description"');
+    expect(sql).toContain('"transactions"."time"');
+  });
+
+  // A whole-table scan (op-sqlite queue) on every sync/import/loan-edit is
+  // wasteful once the ledger grows — bound the read to what the matcher
+  // could ever possibly use.
+  it('bounds loanMatchCandidatesQuery to transactions at/after minTime', () => {
+    const { sql, params } = transactionsRepo
+      .loanMatchCandidatesQuery({ minTime: 12_345, currencies: ['UAH'] })
+      .toSQL();
+
+    expect(sql.toLowerCase()).toContain('"transactions"."time" >=');
+    expect(params).toContain(12_345);
+  });
+
+  it('bounds loanMatchCandidatesQuery to the given loan currencies only', () => {
+    const { sql, params } = transactionsRepo
+      .loanMatchCandidatesQuery({ minTime: 0, currencies: ['UAH', 'USD'] })
+      .toSQL();
+
+    expect(sql.toLowerCase()).toContain('"holdings"."currency" in');
+    expect(params).toEqual(expect.arrayContaining(['UAH', 'USD']));
+  });
+
+  // Every row already linked (manual or auto) to one of these loan
+  // holdings — the matcher's "taken installment" input.
+  it('scopes loanLinkedPaymentsQuery to the given loan holding ids', () => {
+    const { sql, params } = transactionsRepo.loanLinkedPaymentsQuery(['loan-1', 'loan-2']).toSQL();
+    const lower = sql.toLowerCase();
+
+    expect(lower).toContain('"transactions"."loan_holding_id" in');
+    expect(params).toEqual(expect.arrayContaining(['loan-1', 'loan-2']));
+  });
+
+  // The loan holding-detail screen's own "Linked payments" section.
+  it('builds a newest-first query of every transaction linked to one loan holding', () => {
+    const { sql, params } = transactionsRepo.listLinkedToLoanQuery('loan-1').toSQL();
+    const lower = sql.toLowerCase();
+
+    expect(lower).toContain('"loan_holding_id" = ?');
+    expect(lower).toContain('order by');
+    expect(params).toContain('loan-1');
+  });
+
   it('builds a DISTINCT manual-descriptions query ordered newest-first (for the description-suggestion autocomplete)', () => {
     const { sql } = transactionsRepo.distinctDescriptionsQuery().toSQL();
     const lower = sql.toLowerCase();
@@ -1154,12 +1229,24 @@ describe('transactionsRepo.setLoanPayment', () => {
 // matches no row), so the test proves the PREDICATE carries both guards
 // rather than emulating SQLite's row filtering in JS.
 describe('transactionsRepo.setAutoLoanLinks', () => {
-  const captureBatchUpdateDatabaseTransaction = (): {
+  // `existingLoanHoldingIds` seeds the existence re-check's own `select` —
+  // the matcher computes its candidates from a snapshot read moments
+  // earlier, so a loan holding can be deleted before this write runs; the
+  // re-check happens INSIDE this same transaction so that race can never
+  // leave a dangling `loanHoldingId` behind.
+  const captureBatchUpdateDatabaseTransaction = (
+    existingLoanHoldingIds: string[],
+  ): {
     databaseTransaction: unknown;
     captured: { set: Record<string, unknown>; whereArg: unknown }[];
   } => {
     const captured: { set: Record<string, unknown>; whereArg: unknown }[] = [];
     const databaseTransaction = {
+      select: () => ({
+        from: () => ({
+          where: () => Promise.resolve(existingLoanHoldingIds.map((id) => ({ id }))),
+        }),
+      }),
       update: (_table: unknown) => ({
         set: (values: Record<string, unknown>) => ({
           where: (whereArg: unknown) => {
@@ -1175,7 +1262,7 @@ describe('transactionsRepo.setAutoLoanLinks', () => {
   };
 
   it('writes every link in one transaction, each guarded against an already-linked or already-rejected row', async () => {
-    const { databaseTransaction, captured } = captureBatchUpdateDatabaseTransaction();
+    const { databaseTransaction, captured } = captureBatchUpdateDatabaseTransaction(['loan-1']);
     mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.setAutoLoanLinks([
@@ -1195,12 +1282,25 @@ describe('transactionsRepo.setAutoLoanLinks', () => {
   });
 
   it('is a no-op for an empty link list', async () => {
-    const { databaseTransaction, captured } = captureBatchUpdateDatabaseTransaction();
+    const { databaseTransaction, captured } = captureBatchUpdateDatabaseTransaction([]);
     mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.setAutoLoanLinks([]);
 
     expect(captured).toHaveLength(0);
+  });
+
+  it('skips a link whose loan holding no longer exists, writing every other link', async () => {
+    const { databaseTransaction, captured } = captureBatchUpdateDatabaseTransaction(['loan-1']);
+    mockDatabaseTransaction = databaseTransaction;
+
+    await transactionsRepo.setAutoLoanLinks([
+      { transactionId: 'txn-deleted-loan', loanHoldingId: 'loan-gone' },
+      { transactionId: 'txn-1', loanHoldingId: 'loan-1' },
+    ]);
+
+    expect(captured).toHaveLength(1);
+    expect(renderCondition(captured[0].whereArg).params).toEqual(['txn-1', 0]);
   });
 });
 

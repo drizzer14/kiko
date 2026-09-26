@@ -184,7 +184,7 @@ The established patterns grouped under this heading:
   it drops out of that scope — union it back in from wherever its
   display data lives (Statistics: `categoryByKey`), rather than pruning
   the selection or letting the row vanish so the user can never find
-  it to uncheck (review decision 17: `statistics.screen.tsx`'s
+  it to uncheck (`statistics.screen.tsx`'s
   `categoryOptions` and its twin, `trend-filter-field.component.tsx`'s
   `manualRows`, which has no display data for a hidden key and falls
   back to the bare slug as its label).
@@ -193,8 +193,8 @@ The established patterns grouped under this heading:
   action, so it follows the same form validation model as a Save
   button: always enabled, never `disabled={... || field.trim() ===
   ''}`. A blank required field shows its own `*RequiredError` message
-  (via the field's `error` prop) on a Connect press instead (review
-  decision 15) — `disabled` stays reserved for the field's own
+  (via the field's `error` prop) on a Connect press instead —
+  `disabled` stays reserved for the field's own
   in-flight `status.kind === 'checking'`.
 
 ## Field placeholder and error copy
@@ -220,8 +220,7 @@ adds its own key alongside them, in this same form:
 
 `KikoCalendar` (`src/calendar/kiko-calendar/`) starts its week on the
 DEVICE REGION's first weekday, like a native iOS calendar app — NOT
-the app language (review decision 23; the original plan's app-language
-ruling was superseded). `weekStartFor(region)`
+the app language. `weekStartFor(region)`
 (`src/calendar/week-start/`) maps a 2-letter region code to `0`
 (Sunday) or `1` (Monday) off the FULL current CLDR `weekData/firstDay`
 Sunday-first territory list (unicode-org/cldr-json,
@@ -283,8 +282,8 @@ new component can land between reviews of this skill:
   EXCEPTION to the ordinary "use `footer` only for a pinned
   always-reachable action" rule: it renders through the pinned
   `footer` slot even though it is not an action, because App Store
-  Guideline 5.6 review needs it reachable without scrolling (review
-  decision 21). There is no `fillHeight` prop — a screen whose content
+  Guideline 5.6 review needs it reachable without scrolling. There is
+  no `fillHeight` prop — a screen whose content
   is shorter than the viewport just leaves it top-anchored; nothing in
   this codebase pins non-footer content to the bottom.
 - **LoadingState** (`src/design-system/components/loading-state/`) —
@@ -732,8 +731,8 @@ new component can land between reviews of this skill:
   own field (`Text variant="caption" tone="negative"`, the same tone
   `FieldLabel`'s required asterisk uses) — never next to a footer Save
   button, and never a reserved-height slot: it fades in on failure and
-  the layout reflows, so a valid field shows no error node at all
-  (Option A, the current validation pattern; F4 Q1 answer). Every
+  the layout reflows, so a valid field shows no error node at all.
+  Every
   invalid field shows its OWN error at the same Save/Import press —
   each field's message is computed from ONLY that field's own inputs,
   gated by the attempted-save flag, never by comparing against a
@@ -767,8 +766,8 @@ new component can land between reviews of this skill:
   one shared "label left, value right" summary block: an optional `title`
   heading row, then a stack of `rows` (`{ key, label, value: ReactNode,
   testID? }`), each split `space-between`. Extracted from the
-  holding-detail deposit/bond value-breakdown block (device-feedback-
-  round-F1 item 3) — `HoldingDetailScreen` now renders its own
+  holding-detail deposit/bond value-breakdown block —
+  `HoldingDetailScreen` renders its own
   principal/gross/interest/tax/expected-profit rows through this, passing
   `<MoneyText money={...} tone={...} />` as each row's `value`, with NO
   visual change from before the extraction. The statement-import preview
@@ -826,18 +825,16 @@ new component can land between reviews of this skill:
   a rounded track one elevation step above the screen background
   (`theme.colors.surface`), holding N equal-width segments, with the
   SELECTED segment raised to `theme.colors.segmentSelected` — its own
-  token (F3 fix round 1, I3), not `surfaceHigh`, which fails the WCAG
+  token, not `surfaceHigh`, which fails the WCAG
   1.4.11 3:1 non-text-contrast floor against `surface`; read `theme.ts`'s
   own doc comment on `segmentSelected` for the current hex and measured
-  ratio rather than trusting a copy of either restated here (they drift —
-  a duplicate here was itself a documented fix-round-1 skill-drift finding,
-  N2). This is still NOT the app's other filled-accent selection
+  ratio rather than trusting a copy of either restated here (they drift).
+  This is still NOT the app's other filled-accent selection
   vocabulary (`ChipRow`/`SelectableRow`) — a segmented
   control reads as its own distinct iOS control. No segmented-control
-  NATIVE library is a dependency of this app (checked at F3 item 9); this
+  NATIVE library is a dependency of this app; this
   renders the same visual/interaction contract in plain
-  `Pressable`/`Box`/`Text` instead of adding one. Touch target (F3 fix
-  rounds 3-4): each segment `Pressable` is a REAL layout box with
+  `Pressable`/`Box`/`Text` instead of adding one. Touch target: each segment `Pressable` is a REAL layout box with
   `minHeight` 44pt and no `hitSlop` (`minHeight`, not `height`, so
   Dynamic Type can grow it). The native-matching visible track (32pt)
   and selected pill (24pt, a 4pt ring of track around it) are
@@ -865,12 +862,12 @@ new component can land between reviews of this skill:
   confirmed on a real device.
   Props: `options`/`selected`/`onSelect`/`labels`/`accessibilityLabel`
   (required — every segment folds it into its own `accessibilityHint`)
-  /`testID`. Accessibility (F3 fix round 2, M4): each segment keeps
+  /`testID`. Accessibility: each segment keeps
   `accessibilityRole="button"` with `accessibilityState={{ selected }}`
   — NOT `"tab"`/`"tablist"`, which RN 0.87 maps to NO accessibility trait
   on iOS (confirmed against `RCTViewManager`/Fabric's
-  `accessibilityPropsConversions` — only `"tabbar"` maps to a trait there
-  — a round-1 version of this component used `"tab"`/`"tablist"` and lost
+  `accessibilityPropsConversions` — only `"tabbar"` maps to a trait there.
+  A `"tab"`/`"tablist"` role loses
   the Button trait VoiceOver needs to announce "can be activated"); each
   segment's own `accessibilityLabel` is its visible text, and its
   `accessibilityHint` folds in the group's `accessibilityLabel` plus a

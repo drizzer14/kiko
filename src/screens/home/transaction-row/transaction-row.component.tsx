@@ -87,6 +87,7 @@ const TransactionRow: FC<TransactionRowProps> = ({
           footerTrailing={
             isTimeExemptHoldingType(item.holdingType) ? undefined : formatTime(item.time)
           }
+          loanLinked={item.loanHoldingId !== null}
           style={styles.rowCard}
           testID="transaction-row"
         />

@@ -382,6 +382,20 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
                       )}
                       accessibilityLabel={category.title}
                     />
+                    {/* A small "loan payment" marker, uniform with Home's
+                      list row — shown regardless of `loanLinkSource` ('auto'
+                      or 'manual' read the same marker). No accessibility
+                      label: decorative, mirroring `SelectableRow`'s own
+                      checkmark glyph — the row's own accessible content
+                      already fully describes the transaction. */}
+                    {transactionRow.transaction.loanHoldingId != null && (
+                      <SymbolIcon
+                        name="link"
+                        size={theme.iconSizes.caption}
+                        tone="textSecondary"
+                        testID="ledger-row-loan-link-marker"
+                      />
+                    )}
                     <Box style={styles.rowDescription}>
                       <Text variant="body">{description}</Text>
                     </Box>
@@ -407,6 +421,41 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
       );
     })
     .exhaustive();
+};
+
+// The loan detail's own "Linked payments" section — every transaction the
+// matcher (or a manual pick) linked to THIS loan, in the order the query
+// hands them (newest first). Hidden entirely (returns null) once there are
+// none, rather than an empty heading with nothing beneath it. Reuses the
+// shared `LedgerRowItem` (and its own loan-link marker) exactly as the
+// ledger FlatList does, but as a plain `.map` here rather than a second
+// FlatList — this list is always small (one loan's own payments), never a
+// synced card's thousands of rows. Each row's OWN `holdingName` is
+// resolved from the PAYER holding it actually belongs to (never the loan
+// being viewed), matching `transactionRowDescription`'s own blank-description
+// fallback convention.
+const LinkedPaymentsSection: FC<{
+  title: string;
+  payments: readonly TransactionRow[];
+  holdingNameById: ReadonlyMap<string, string>;
+  context: LedgerRowContext;
+}> = ({ title, payments, holdingNameById, context }) => {
+  if (payments.length === 0) {
+    return null;
+  }
+
+  return (
+    <Box gap={2}>
+      <Text variant="heading">{title}</Text>
+      {payments.map((transaction) => (
+        <LedgerRowItem
+          key={transaction.id}
+          row={{ kind: 'transaction', time: transaction.time, transaction }}
+          context={{ ...context, holdingName: holdingNameById.get(transaction.holdingId) ?? '' }}
+        />
+      ))}
+    </Box>
+  );
 };
 
 // The footer's per-type primary action, extracted to module scope (mirroring
@@ -535,6 +584,17 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
 
   const holding = holdings.find((candidate) => candidate.id === holdingId);
+  // The loan detail's own "Linked payments" section: the transactions the
+  // matcher (or a manual pick) linked to THIS loan, newest first — a loan
+  // is ledgerless, so its own `transactions` query above never finds them
+  // (a payment always lives on the payer holding instead). Disabled outright
+  // for every other holding type (kiko-architecture: never read data a
+  // disabled caller does not need).
+  const { data: linkedPayments, isLoading: linkedPaymentsLoading } = useLiveQuery(
+    transactionsRepo.listLinkedToLoanQuery(holdingId),
+    ['transactions'],
+    holding?.type === 'loan',
+  );
   const currency: Currency = holding?.currency ?? 'UAH';
   const now = Date.now();
   const breakdown = holding ? holdingValueBreakdown(holding, now, priceBook) : null;
@@ -559,6 +619,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     ratesLoading,
     priceBookLoading,
     accountsLoading,
+    linkedPaymentsLoading,
   );
   // This holding's detail-screen behavior (`HoldingDetailSpec`,
   // `holding-detail-spec/`) — `undefined` when there is no real holding
@@ -675,6 +736,24 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // row (accountId is NOT NULL); the header Edit action is gated on it.
   const holdingAccountId = holding?.accountId;
 
+  // The per-row read context, threaded into each ledger row so the row
+  // component stays at module scope. `holdingName` is always a string (the
+  // route param seeds it), so the old `?? ''` fallback is no longer needed.
+  // Built here (rather than after `listHeader`, where this used to sit) so
+  // the Linked-payments section below can read it too.
+  const rowContext: LedgerRowContext = {
+    currency,
+    showTime,
+    categoryByKey,
+    defaultCategoryKey,
+    holdingName,
+    holdingNameById,
+    onPressTransaction: (transactionId) =>
+      navigation.navigate('TransactionForm', { transactionId }),
+    onDuplicateTransaction: (transactionId) =>
+      navigation.navigate('TransactionForm', { duplicateOfTransactionId: transactionId }),
+  };
+
   // The header/summary block that scrolls above the ledger: the Value amount +
   // identity icon, the optional converted (main-currency) caption tucked
   // directly under that amount, the optional breakdown lines, the hairline
@@ -748,6 +827,13 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         </Box>
       )}
 
+      <LinkedPaymentsSection
+        title={t('holdingDetail.linkedPayments')}
+        payments={linkedPayments}
+        holdingNameById={holdingNameById}
+        context={rowContext}
+      />
+
       <Divider spacing={2} />
 
       <Text variant="heading">{t('holdingDetail.transactionsHeading')}</Text>
@@ -768,22 +854,6 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       }),
     });
   }, [navigation, holdingName, holdingAccountId, holdingId]);
-
-  // The per-row read context, threaded into each ledger row so the row
-  // component stays at module scope. `holdingName` is always a string (the
-  // route param seeds it), so the old `?? ''` fallback is no longer needed.
-  const rowContext: LedgerRowContext = {
-    currency,
-    showTime,
-    categoryByKey,
-    defaultCategoryKey,
-    holdingName,
-    holdingNameById,
-    onPressTransaction: (transactionId) =>
-      navigation.navigate('TransactionForm', { transactionId }),
-    onDuplicateTransaction: (transactionId) =>
-      navigation.navigate('TransactionForm', { duplicateOfTransactionId: transactionId }),
-  };
 
   const ledgerReadyView = resolveLedgerReadyView(
     isReady,

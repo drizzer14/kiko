@@ -367,21 +367,14 @@ describe('TrendFilterField grouped sections', () => {
   });
 });
 
-describe('TrendFilterField a saved manual key missing from the current options', () => {
-  it('still lists a hidden saved key, checked, so the user can uncheck it (the FilterMenu twin, decision 17)', async () => {
-    const { getByTestId } = await renderField({
+describe('TrendFilterField a saved manual key missing from categoryOptions', () => {
+  it('renders no row for it — the caller (statistics.screen.tsx) is responsible for unioning a saved key back into categoryOptions before it reaches this component', async () => {
+    const { getByTestId, queryByTestId } = await renderField({
       filter: { mode: 'manual', keys: ['archived'] },
     });
     await press(getByTestId(TEST_ID));
 
-    const hidden = getByTestId(`${TEST_ID}-option-archived`);
-
-    expect(hidden.props.accessibilityState.checked).toBe(true);
-    expect(getByTestId(`${TEST_ID}-save`)).toBeDisabled();
-
-    await press(hidden);
-
-    expect(getByTestId(`${TEST_ID}-save`)).not.toBeDisabled();
+    expect(queryByTestId(`${TEST_ID}-option-archived`)).toBeNull();
   });
 });
 

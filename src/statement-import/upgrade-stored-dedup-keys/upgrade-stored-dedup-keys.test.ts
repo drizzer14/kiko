@@ -127,6 +127,104 @@ describe('upgradeStoredDedupKeys', () => {
     expect(captured.filter((update) => update.table === settings)).toHaveLength(1);
   });
 
+  it('awaits each rewrite ONE AT A TIME, never issuing the next before the previous settles (no Promise.all)', async () => {
+    const legacyRowA = {
+      id: 'txn-a',
+      ...IMPORT_ROW_FIELDS,
+      description: 'A',
+      externalId: 'holding-1 1700000000 -4599 a 1',
+    };
+    const legacyRowB = {
+      id: 'txn-b',
+      ...IMPORT_ROW_FIELDS,
+      description: 'B',
+      externalId: 'holding-1 1700000000 -4599 b 1',
+    };
+
+    const issueOrder: string[] = [];
+    const pendingResolvers: (() => void)[] = [];
+    const databaseTransaction = {
+      select: () => ({
+        from: (table: unknown) => ({
+          where: () =>
+            Promise.resolve(
+              table === settings ? [{ dedupKeysUpgraded: false }] : [legacyRowA, legacyRowB],
+            ),
+        }),
+      }),
+      update: (table: unknown) => ({
+        set: (values: Record<string, unknown>) => ({
+          where: () => {
+            if (table !== transactions) {
+              return Promise.resolve();
+            }
+            issueOrder.push(values.externalId as string);
+
+            return new Promise<void>((resolve) => {
+              pendingResolvers.push(resolve);
+            });
+          },
+        }),
+      }),
+    };
+    mockDatabaseTransaction = databaseTransaction;
+
+    const upgrade = upgradeStoredDedupKeys();
+
+    // A `Promise.all` would have issued BOTH row updates synchronously before
+    // either settles; the sequential fix issues only the first until it
+    // resolves.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(issueOrder).toEqual(['holding-1 1700000000 -4599 a␟1']);
+
+    pendingResolvers[0]?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(issueOrder).toEqual([
+      'holding-1 1700000000 -4599 a␟1',
+      'holding-1 1700000000 -4599 b␟1',
+    ]);
+
+    pendingResolvers[1]?.();
+    await upgrade;
+  });
+
+  it('never reaches the flag update when a rewrite rejects, so the flag stays false for the next launch to retry', async () => {
+    const legacyRow = {
+      id: 'txn-legacy',
+      ...IMPORT_ROW_FIELDS,
+      description: 'Top up',
+      externalId: 'holding-1 1700000000 -4599 top up 1',
+    };
+    const databaseTransaction = {
+      select: () => ({
+        from: (table: unknown) => ({
+          where: () =>
+            Promise.resolve(table === settings ? [{ dedupKeysUpgraded: false }] : [legacyRow]),
+        }),
+      }),
+      update: (table: unknown) => ({
+        set: () => ({
+          where: () => {
+            if (table === transactions) {
+              return Promise.reject(new Error('disk full'));
+            }
+
+            // The flag-update statement runs after every row rewrite (see the
+            // source's own doc comment) — reaching it at all here would mean
+            // the rejection above did not stop the run, so the flag would
+            // flip to true despite an unrewritten row.
+            throw new Error('the flag update must never run after a rewrite rejects');
+          },
+        }),
+      }),
+    };
+    mockDatabaseTransaction = databaseTransaction;
+
+    await expect(upgradeStoredDedupKeys()).rejects.toThrow('disk full');
+  });
+
   it('selects only import-source transaction rows', async () => {
     let capturedWhereArg: unknown;
     const databaseTransaction = {

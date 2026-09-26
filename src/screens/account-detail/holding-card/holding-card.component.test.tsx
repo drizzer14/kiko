@@ -127,7 +127,7 @@ describe('HoldingCard', () => {
       const { getByText, getByTestId } = await renderCard({
         holding: holding({ currency: 'USD', balanceMinorUnits: 10000 }),
         baseCurrency: 'UAH',
-        rateTable: { 'USD:UAH': 40 },
+        rateTable: { USD: 40 },
       });
 
       // The primary value stays in the holding's own currency.
@@ -142,7 +142,7 @@ describe('HoldingCard', () => {
       const { queryByTestId } = await renderCard({
         holding: holding({ currency: 'UAH' }),
         baseCurrency: 'UAH',
-        rateTable: { 'USD:UAH': 40 },
+        rateTable: { USD: 40 },
       });
 
       expect(queryByTestId('holding-card-converted')).toBeNull();

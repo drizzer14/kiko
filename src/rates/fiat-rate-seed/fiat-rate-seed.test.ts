@@ -37,7 +37,7 @@ describe('FIAT_RATE_SEED_TABLE', () => {
     expect(canConvert('GBP', 'PLN', FIAT_RATE_SEED_TABLE)).toBe(true);
   });
 
-  it('never composes a pair a currency against itself', () => {
-    expect(FIAT_RATE_SEED_TABLE['USD:USD']).toBeUndefined();
+  it('never stores UAH as a key — its own UAH price is implicit 1', () => {
+    expect(FIAT_RATE_SEED_TABLE.UAH).toBeUndefined();
   });
 });

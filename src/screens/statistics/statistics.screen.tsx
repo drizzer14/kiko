@@ -753,6 +753,18 @@ const StatisticsScreen: FC = () => {
     ],
   );
 
+  // The APPLIED trend filter: the saved config resolved against the categories
+  // that still exist (manual keys pruned, top amount clamped), falling
+  // back to the default (top 3 by contribution) when nothing is saved. Save
+  // persists it and the value flows back through the settings live query — there
+  // is no seed effect any more. Computed here (ahead of `categoryOptions`
+  // below, which unions its manual keys back in) since it depends on neither.
+  const appliedTrendFilter = useMemo(() => {
+    const existingKeys = new Set(categories.map((category) => category.key.toLowerCase()));
+
+    return resolveTrendFilter(settingsRows.at(0)?.trendFilter ?? null, existingKeys);
+  }, [settingsRows, categories]);
+
   // The FilterMenu matches/stores by the STABLE `categories.key` slug, never by
   // the resolved display title: the title is language-dependent (a default
   // category's title changes under a live language switch — see
@@ -780,12 +792,16 @@ const StatisticsScreen: FC = () => {
       });
     }
 
-    // A category the user already SELECTED can drop out of the range-scoped
-    // slices above (e.g. the range moves to a week with no spending in it) —
-    // union it back in from `categoryByKey` so the menu still lists it,
-    // checked, rather than silently hiding a selection the user can then never
-    // find and uncheck (review decision 17: KEEP a hidden selection visible).
-    for (const key of selectedCategories) {
+    // A category the user already SELECTED (or already SAVED as a manual trend
+    // key — the trend Filters sheet reuses this same list, `TrendFilterField`'s
+    // own `categoryOptions` prop) can drop out of the range-scoped slices
+    // above (e.g. the range moves to a week with no spending in it) — union it
+    // back in from `categoryByKey` so both menus still list it, checked,
+    // rather than silently hiding a selection the user can then never find and
+    // uncheck (review decision 17: KEEP a hidden selection visible).
+    const manualTrendKeys = appliedTrendFilter.mode === 'manual' ? appliedTrendFilter.keys : [];
+
+    for (const key of new Set([...selectedCategories, ...manualTrendKeys])) {
       if (byKey.has(key)) {
         continue;
       }
@@ -821,7 +837,7 @@ const StatisticsScreen: FC = () => {
     const rank = (key: string): number => orderByKey.get(key.toLowerCase()) ?? categories.length;
 
     return Array.from(byKey.values()).sort((a, b) => rank(a.value) - rank(b.value));
-  }, [allCategorySlices, categories, selectedCategories, categoryByKey]);
+  }, [allCategorySlices, categories, selectedCategories, categoryByKey, appliedTrendFilter]);
 
   const excludedCategoryKeys = useMemo(() => {
     if (selectedCategories.size === 0) {
@@ -856,17 +872,6 @@ const StatisticsScreen: FC = () => {
       excludedTransactionIds,
     ],
   );
-
-  // The APPLIED trend filter: the saved config resolved against the categories
-  // that still exist (manual keys pruned, top amount clamped), falling
-  // back to the default (top 3 by contribution) when nothing is saved. Save
-  // persists it and the value flows back through the settings live query — there
-  // is no seed effect any more.
-  const appliedTrendFilter = useMemo(() => {
-    const existingKeys = new Set(categories.map((category) => category.key.toLowerCase()));
-
-    return resolveTrendFilter(settingsRows.at(0)?.trendFilter ?? null, existingKeys);
-  }, [settingsRows, categories]);
 
   // The per-category ranking measures over the SAME range/bucket set the
   // trend line and the net-worth line both use — the universe both the Top-N

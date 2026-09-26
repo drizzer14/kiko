@@ -140,6 +140,26 @@ describe('MigrationsGate', () => {
     expect(order).toEqual(['binance-credential', 'dedup-key-upgrade']);
   });
 
+  it('still renders children when the dedup-key upgrade rejects, rather than sending the whole launch to the error state', async () => {
+    mockUpgradeStoredDedupKeys.mockRejectedValue(new Error('disk full'));
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { findByText, queryByTestId } = await render(
+      <MigrationsGate>
+        <Text>ready</Text>
+      </MigrationsGate>,
+    );
+
+    // Non-critical, unlike every other migration above it in the chain: the
+    // dedup-key upgrade is the one step whose own failure must not lock the
+    // user out. Its own `write()` transaction (upgrade-stored-dedup-keys.ts)
+    // leaves the flag at `false` on any rejection, so the next launch
+    // retries — this gate just must not block on it meanwhile.
+    expect(await findByText('ready')).toBeTruthy();
+    expect(queryByTestId('migrations-gate-error')).toBeNull();
+    warnSpy.mockRestore();
+  });
+
   it('passes undefined to the per-account migration when no Monobank account is connected', async () => {
     mockConnectedQuery.mockResolvedValue([]);
 

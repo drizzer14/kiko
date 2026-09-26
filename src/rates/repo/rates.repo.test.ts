@@ -104,9 +104,11 @@ const makeUpsertDatabaseTransaction = (store: NewRate[], chunkSizes: number[]): 
   }),
 });
 
-// 110 currencies x 109 cross pairs each = 11,990 rows — the exact shape a
-// live Monobank sync's `buildPairs` (`rates-refresh.ts`) produces across
-// `currencyOptions` (`src/currency/currency/currency.ts`).
+// 110 currencies x 109 cross pairs each = 11,990 rows — the legacy cross-join
+// shape a live Monobank sync stored before the UAH-star rewrite (a live sync
+// now writes ~109 rows, one `X:UAH` per priced currency); still the largest
+// batch `upsertMany`'s chunking must survive, since a `.kiko` restore of a
+// pre-star export can still hand it a legacy-shaped batch this size.
 const buildRates = (): NewRate[] => {
   const rows: NewRate[] = [];
 

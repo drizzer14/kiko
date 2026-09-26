@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import { ratesRepo } from '@kiko/rates/repo';
 import either, { bifold, isLeft } from 'fnts/either';
+import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
+import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 
 import { runSync } from '../../monobank/sync';
-import { refreshRates } from '../../rates/rates-refresh';
 
 export type SyncAction<Input> = {
   isSyncing: boolean;
   error: string | undefined;
-  /** Resolves `true` on success, `false` when the run or the rate refresh failed (the failure is in `error`). */
+  /** Resolves `true` on success, `false` when the run failed (the failure is in `error`). */
   sync: (input: Input) => Promise<boolean>;
 };
 
@@ -47,14 +47,17 @@ export const useSyncAction = <Input>(
       return false;
     }
 
-    // One rate refresh per sync, run only after a SUCCESSFUL account sync and
-    // wrapped in its OWN either — so a rate-refresh failure never turns a
-    // successful sync into a reported failure, mirroring `useSyncAll`'s
-    // `fanOutAndRefresh`.
-    await either(async () => {
-      const lastRefreshAt = await ratesRepo.latestFetchedAt();
-      await refreshRates({ lastRefreshAt });
-    });
+    // One rate refresh per sync, run only after a SUCCESSFUL account sync —
+    // a single sync keeps rates-only scope (`metals: false`), unchanged from
+    // before this refactor. `refreshMarketData` never rejects and logs its
+    // own failure with no UI surface, so a rate-refresh failure never turns
+    // a successful sync into a reported error here.
+    await refreshMarketData({ throttled: true, metals: false });
+    // A sync can bring in a new loan-payment debit, so the matcher runs
+    // right alongside the rate refresh — never rejects either (its own doc
+    // comment), so a failed auto-link never turns a successful sync into a
+    // reported error here.
+    await runLoanAutoLink();
 
     setIsSyncing(false);
 

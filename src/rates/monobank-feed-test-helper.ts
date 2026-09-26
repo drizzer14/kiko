@@ -24,8 +24,8 @@ type MonoRate = {
 // A deterministic, distinct UAH price per fiat so no cross-rate collapses to 1
 // (which would hide a broken pivot). Every fiat is quoted against UAH (980) the
 // same way Monobank's real feed shapes it — currencyCodeA is the foreign leg,
-// currencyCodeB is UAH — so `buildUahPrice` can anchor it and `buildPairs` can
-// compose every cross pair from it.
+// currencyCodeB is UAH — so `buildUahPrice` can anchor it and `buildUahRows` can
+// compose each currency's own `X:UAH` row from it.
 const buildMonobankFeed = (): MonoRate[] => {
   const feed: MonoRate[] = [];
   let index = 1;

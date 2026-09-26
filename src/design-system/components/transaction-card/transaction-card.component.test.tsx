@@ -79,4 +79,35 @@ describe('TransactionCard', () => {
     expect(getByText('Monobank · Dining')).toBeTruthy();
     expect(getByText('14:32')).toBeTruthy();
   });
+
+  it('shows a loan-link marker glyph in the footer when loanLinked is true', async () => {
+    const { toJSON } = await render(
+      <TransactionCard
+        title="Loan payment"
+        categoryIcon="banknote"
+        categoryIconColor="#8E44AD"
+        categoryAccessibilityLabel="Debt"
+        money={Money.of('UAH', -1_000)}
+        footerMeta="Debts · Loan payment"
+        loanLinked
+      />,
+    );
+
+    expect(JSON.stringify(toJSON())).toContain('link');
+  });
+
+  it('renders no loan-link marker when loanLinked is omitted', async () => {
+    const { toJSON } = await render(
+      <TransactionCard
+        title="Coffee"
+        categoryIcon="cup.and.saucer"
+        categoryIconColor="#8E44AD"
+        categoryAccessibilityLabel="Dining"
+        money={Money.of('UAH', -1_000)}
+        footerMeta="Monobank · Dining"
+      />,
+    );
+
+    expect(JSON.stringify(toJSON())).not.toContain('link');
+  });
 });

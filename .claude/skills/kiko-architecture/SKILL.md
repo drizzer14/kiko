@@ -101,8 +101,7 @@ project-level pointer to this section.
   never proceed past a failed migration.
 - The count-based runner makes migration `idx` a SHARED NAMESPACE
   across branches, not a per-branch sequence — two branches that each
-  add a migration at the same next `idx` are NOT independent (review
-  I3, merge commit `86c4838`): `fix/import-balance`'s own
+  add a migration at the same next `idx` are NOT independent: `fix/import-balance`'s own
   `0034_add_balance_set_at` must NEVER reach `main` as-is. That fix
   lands on `main` only through `feat/assets-debts`, where it was
   renumbered to `0036` (after that branch's own `0034`/`0035`) at merge
@@ -142,6 +141,24 @@ project-level pointer to this section.
   transaction before flipping the flag, so a crash mid-run retries the
   WHOLE upgrade on the next launch instead of leaving some rows
   unrewritten.
+- **A data-only cleanup migration needs a restore mirror, not a schema
+  change.** Migration `0042_uah_star_rates` is hand-authored SQL, no
+  snapshot JSON (same as `0040`/`0039`): it removes every stored
+  cross/inverse rate row (`currency_rates`/`currency_rate_history`,
+  `quote <> 'UAH' OR base = 'UAH'`) now that every A->B conversion
+  resolves at read time through the UAH pivot (kiko-pricing's
+  "Currency-rate fallback chain"). Crash-safe, derive-then-delete order
+  (same shape as `0040`'s snapshot-then-mutate): two additive
+  `INSERT OR IGNORE` steps first — one X:UAH row from an inverse
+  `UAH:X` row, one from a legacy `X:Y * Y:UAH` cross pair — so a
+  currency whose only pre-star row was an inverse or a cross pair still
+  ends up with its own star row before the final, irreversible DELETE
+  runs; idempotent (a second run derives and deletes nothing).
+  `src/data-transfer/snapshot/restore-snapshot.ts`'s
+  `withRatesNormalizedToUah` applies the IDENTICAL rule to a `.kiko`
+  restore, so a pre-star export normalizes exactly like a live device
+  upgrade rather than reintroducing dead cross rows. Next free
+  migration index: `0043`.
 
 ## Hard rule: every write goes through `db.transaction()`
 
@@ -359,7 +376,12 @@ gate says there is nothing to do.
   `shouldThrottle` (`src/rates/rates-refresh/rates-refresh.ts`) skips
   its own throttle window when a held currency has no rate row yet —
   a "never fetched" escape so the data-presence gate can never hide a
-  currency's rate entirely.
+  currency's rate entirely. `UAH` is filtered out of that presence
+  check first: a star row's `quote` is always `UAH` and its `base`
+  never is, so `presentCurrenciesQuery` (a distinct `base` read) can
+  never list `UAH` — without the filter, a base-USD user who holds
+  UAH would read as permanently "unrated" and bypass the throttle on
+  every sync instead of only a genuine gap.
   The history backfill resumes per currency: a newly held currency
   with no history rows forces a run from the earliest day
   (`src/rates/history-backfill/history-backfill.ts`). A create/restore
@@ -383,14 +405,17 @@ gate says there is nothing to do.
   metal/foreign-currency/crypto holding (`holding-form.screen.tsx`'s
   manual create) or restoring a `.kiko` export (`importData`,
   `src/data-transfer/import-data.ts`) triggers
-  `Promise.allSettled([refreshRates(), refreshMetalPrices()])`
-  explicitly right after its own write commits, since neither path
-  runs through the sync fan-out that otherwise triggers this — so the
-  price/rate appears without an app restart. Both calls gate
-  themselves, so this is a no-op when neither is needed;
-  `Promise.allSettled` never rejects, so a refresh failure never turns
-  a successful create/import into a shown error. An EDIT never needs
-  this trigger — a holding's type and currency are immutable once
+  `refreshMarketData({ throttled: false, metals: true })`
+  (`src/sync/refresh-market-data/`) explicitly right after its own
+  write commits, since neither path runs through the sync fan-out that
+  otherwise triggers this — so the price/rate appears without an app
+  restart. Both underlying steps gate themselves, so this is a no-op
+  when neither is needed; `refreshMarketData` never rejects, and a
+  failure is only logged (`warnRefreshFailure`), never shown, so it
+  never turns a successful create/import into a shown error. `throttled:
+  false`: a manual create/import is a deliberate user action, not a
+  background poll, so it never reads the throttle cursor. An EDIT never
+  needs this trigger — a holding's type and currency are immutable once
   created.
 
 ## Bulk insert: chunk when row count is caller- or API-controlled
@@ -400,8 +425,13 @@ SQLite (op-sqlite's bundled SQLCipher) caps bound parameters at
 whose row count comes from an external source (an API page, a
 user-picked file) can blow past that — the insert throws, the
 transaction rolls back, and a swallowed error can make the failure
-silent (this happened: a live Monobank refresh, ~11,990 rate pairs x
-5 params, overflowed the limit and rates never saved).
+silent (this happened: a live Monobank refresh, back when it wrote
+every ordered cross pair rather than one `X:UAH` row per priced
+currency — ~11,990 rows x 5 params, overflowed the limit and rates
+never saved). The chunking stays even though a live write is now only
+~109 rows (kiko-pricing's "Currency-rate fallback chain"): a `.kiko`
+restore of a pre-star export can still hand `upsertMany` a
+legacy-shaped batch that size.
 
 Rule: chunk with `chunkForTable(table, rows)`
 (`src/db/chunk-for-table.ts`) — it derives the safe row-per-chunk
@@ -852,11 +882,10 @@ re-drive:
 - It ends the spinner when the FAST balance phase resolves — on the
   `fastPhaseDone` signal — NOT on the whole run. This is deliberate: the
   spinner shows a brief native spin while balances load, then hands the
-  slow per-card fetch to the progress bar. (An earlier R6-3 revision
-  ended the whole-run SIGNAL early and was reverted as R7; that concern
-  does not apply here — `isSyncing` still tracks the whole run and drives
+  slow per-card fetch to the progress bar. Do not end the whole-run
+  SIGNAL early — `isSyncing` must still track the whole run and drive
   the progress bar, so activity stays visible until "Last sync" lands.
-  Only the SPINNER ends early, by design.)
+  Only the SPINNER ends early, by design.
 - The flag clears on the FIRST of `fastPhaseDone` OR the run settling
   (`onRefresh`'s `.finally`). The settle path is the fallback for a
   fan-out with NO Monobank job (a crypto-only account, or no syncable

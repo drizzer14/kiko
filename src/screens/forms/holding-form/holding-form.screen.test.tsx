@@ -1,3 +1,4 @@
+import { right } from 'fnts/either';
 import type { ComponentProps } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
@@ -57,6 +58,7 @@ jest.mock('@kiko/holdings/repo', () => ({
       minorUnits: row.balanceMinorUnits,
     }),
     byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    allQuery: () => ({ __kind: 'all', toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
 
@@ -93,11 +95,24 @@ let mockBondRegisterFetchedAtRows: { value: number | null }[] = [{ value: 1 }];
 // correction to anchor the outstanding it preserves. Empty by default; only
 // the (a)-case test below seeds a correction.
 let mockPricePoints: unknown[] = [];
+// The loan form's own "Paid from" picker options source — every OTHER
+// holding, distinct from `mockEditHoldings` (the ONE holding being edited).
+// Both subscribe under the same `['holdings']` key, so `__kind` (set on the
+// mocked `holdingsRepo.allQuery` below) tells them apart, mirroring the
+// `bond_register` `fetchedAt`/`findByIsin` split above. Empty by default;
+// only a test exercising the "Paid from" field seeds it.
+let mockAllHoldings: unknown[] = [];
+// Every account, keyed the same way against `accountsRepo.byIdQuery`'s own
+// single-row subscription (both use the `['accounts']` key).
+let mockAllAccounts: unknown[] = [];
 
 const mockUseLiveQuery = jest.fn(
   (query: { __kind?: string }, keys: string[], _enabled?: boolean) => {
     if (keys[0] === 'holdings') {
-      return { data: mockEditHoldings };
+      return { data: query.__kind === 'all' ? mockAllHoldings : mockEditHoldings };
+    }
+    if (keys[0] === 'accounts' && query.__kind === 'list') {
+      return { data: mockAllAccounts };
     }
 
     if (keys[0] === 'bond_register') {
@@ -145,18 +160,23 @@ jest.mock('../../../bonds/bond-register-repo', () => ({
   refreshBondRegisterIfStale: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
-  accountsRepo: { byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+  accountsRepo: {
+    byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    listQuery: () => ({ __kind: 'list', toSQL: () => ({ sql: '', params: [] }) }),
+  },
 }));
 // The first-add refresh trigger (a create's own follow-up, kiko-architecture):
 // spied so a test can assert it runs after a CREATE and not after an EDIT,
 // without exercising the real gated repos.
-const mockRefreshRates = jest.fn().mockResolvedValue(undefined);
-const mockRefreshMetalPrices = jest.fn().mockResolvedValue(undefined);
-jest.mock('../../../rates/rates-refresh', () => ({
-  refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
+const mockRefreshMarketData = jest.fn().mockResolvedValue(right(undefined));
+jest.mock('@kiko/sync/refresh-market-data', () => ({
+  refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),
 }));
-jest.mock('../../../prices/metal-refresh', () => ({
-  refreshMetalPrices: (...args: unknown[]) => mockRefreshMetalPrices(...args),
+// The loan auto-link matcher's own follow-up after a loan create/edit —
+// spied the same way, so a test can assert it fires only for `type: 'loan'`.
+const mockRunLoanAutoLink = jest.fn().mockResolvedValue(undefined);
+jest.mock('@kiko/loans/use-loan-auto-link', () => ({
+  runLoanAutoLink: (...args: unknown[]) => mockRunLoanAutoLink(...args),
 }));
 // Auto-mocked so the scroll-order tests below can assert on WHICH field ref a
 // rejected Save targets, without a real ScrollView/measureLayout in the test
@@ -187,6 +207,8 @@ beforeEach(() => {
   mockBondRegisterRows = [];
   mockBondRegisterFetchedAtRows = [{ value: 1 }];
   mockPricePoints = [];
+  mockAllHoldings = [];
+  mockAllAccounts = [];
 });
 
 const renderScreen = () =>
@@ -2002,6 +2024,142 @@ describe('HoldingFormScreen loan', () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
+  it('creates a loan with paymentHoldingId/lenderName/lenderIban, picked from the "Paid from" field', async () => {
+    mockAllHoldings = [
+      {
+        id: 'h-payer',
+        accountId: 'acc-2',
+        name: 'Everyday card',
+        type: 'card',
+        currency: 'UAH',
+        closedAt: null,
+        icon: null,
+        color: null,
+      },
+    ];
+    mockAllAccounts = [{ id: 'acc-2', name: 'Monobank' }];
+    const screen = await renderScreen();
+
+    await fillLoanFields(screen);
+    await fill(screen, 'Annual rate %', '12');
+    await fill(screen, 'Term (months)', '24');
+    await fireEvent.press(screen.getByTestId('loan-payment-holding-field'));
+    await fireEvent.press(screen.getByText('Everyday card'));
+    await fill(screen, 'Lender name', 'PrivatBank');
+    await fill(screen, 'Lender IBAN', 'UA123456789012345678901234567');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          paymentHoldingId: 'h-payer',
+          lenderName: 'PrivatBank',
+          lenderIban: 'UA123456789012345678901234567',
+        }),
+      }),
+    );
+  });
+
+  it('excludes a DIFFERENT-currency holding from the "Paid from" options', async () => {
+    mockAllHoldings = [
+      {
+        id: 'h-usd',
+        accountId: 'acc-2',
+        name: 'USD card',
+        type: 'card',
+        currency: 'USD',
+        closedAt: null,
+        icon: null,
+        color: null,
+      },
+    ];
+    mockAllAccounts = [{ id: 'acc-2', name: 'Monobank' }];
+    const screen = await renderScreen();
+
+    await fillLoanFields(screen);
+    await fireEvent.press(screen.getByTestId('loan-payment-holding-field'));
+
+    expect(screen.queryByText('USD card')).toBeNull();
+  });
+
+  // A filter never hides an ACTIVE selection —
+  // `buildLoanOptions` (the transaction form's own loan-payment field)
+  // already unions a closed/mismatched selection back in; "Paid from" must
+  // do the same, or an edited loan's own payer silently reads as "None".
+  it('keeps a closed "Paid from" holding visible (not "None") in edit mode', async () => {
+    mockAllHoldings = [
+      {
+        id: 'h-payer',
+        accountId: 'acc-2',
+        name: 'Everyday card',
+        type: 'card',
+        currency: 'UAH',
+        closedAt: 1_700_000_000_000,
+        icon: null,
+        color: null,
+      },
+    ];
+    mockAllAccounts = [{ id: 'acc-2', name: 'Monobank' }];
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Car loan',
+      type: 'loan',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        kind: 'car_loan',
+        principalMinorUnits: 50_000_000,
+        startDate: localDay(2026, 1, 1),
+        schedule: 'annuity',
+        annualRatePct: 12,
+        termMonths: 24,
+        paymentHoldingId: 'h-payer',
+      },
+    });
+
+    expect(screen.getByText('Everyday card')).toBeTruthy();
+  });
+
+  it('keeps a different-currency "Paid from" holding visible (not "None") in edit mode', async () => {
+    mockAllHoldings = [
+      {
+        id: 'h-payer',
+        accountId: 'acc-2',
+        name: 'USD card',
+        type: 'card',
+        currency: 'USD',
+        closedAt: null,
+        icon: null,
+        color: null,
+      },
+    ];
+    mockAllAccounts = [{ id: 'acc-2', name: 'Monobank' }];
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Car loan',
+      type: 'loan',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        kind: 'car_loan',
+        principalMinorUnits: 50_000_000,
+        startDate: localDay(2026, 1, 1),
+        schedule: 'annuity',
+        annualRatePct: 12,
+        termMonths: 24,
+        paymentHoldingId: 'h-payer',
+      },
+    });
+
+    expect(screen.getByText('USD card')).toBeTruthy();
+  });
+
   it('creates a car-loan-kind loan under the tapped kind option', async () => {
     const screen = await renderScreen();
 
@@ -2186,6 +2344,9 @@ describe('HoldingFormScreen loan', () => {
         },
       }),
       { kind: 'none' },
+      // The principal changed, so this edit clears the loan's own auto
+      // links (they may no longer match the new schedule).
+      true,
     );
     expect(updateLoanMock.mock.calls[0][1]).not.toHaveProperty('balanceMinorUnits');
     expect(updateDeltaMock).not.toHaveBeenCalled();
@@ -2227,6 +2388,8 @@ describe('HoldingFormScreen loan', () => {
         },
       }),
       { kind: 'none' },
+      // Nothing that matters to the matcher changed.
+      false,
     );
   });
 
@@ -2276,6 +2439,8 @@ describe('HoldingFormScreen loan', () => {
       'h1',
       expect.objectContaining({ metadata: expect.objectContaining({ schedule: 'none' }) }),
       { kind: 'upsert', day: today, price: '300000.00', currency: 'UAH' },
+      // The schedule changed (annuity -> none).
+      true,
     );
   });
 
@@ -2318,6 +2483,8 @@ describe('HoldingFormScreen loan', () => {
         price: '500000.00',
         currency: 'UAH',
       },
+      // The schedule changed (annuity -> none).
+      true,
     );
   });
 
@@ -2357,6 +2524,10 @@ describe('HoldingFormScreen loan', () => {
         price: '15000.00',
         currency: 'UAH',
       },
+      // A 'none' schedule has no installments at all (`loanInstallments`
+      // returns `[]` regardless of principal), so it never receives an AUTO
+      // link in the first place — nothing for this edit to invalidate.
+      false,
     );
   });
 
@@ -2389,7 +2560,52 @@ describe('HoldingFormScreen loan', () => {
       'h1',
       expect.objectContaining({ metadata: expect.objectContaining({ schedule: 'annuity' }) }),
       { kind: 'none' },
+      // The schedule changed (none -> annuity).
+      true,
     );
+  });
+
+  // The matcher backfills from the loan's own start date, so both a fresh
+  // loan and an edited one (principal/schedule/paymentHoldingId/lenderName/
+  // lenderIban can all change) need a fresh run — unlike `refreshMarketData`
+  // just above, which only ever fires on create (type/currency are
+  // immutable in edit mode, so it has nothing new to react to there).
+  it('runs the loan auto-link matcher after a loan CREATE', async () => {
+    mockRunLoanAutoLink.mockClear();
+    const screen = await renderScreen();
+
+    await fillLoanFields(screen);
+    await fill(screen, 'Annual rate %', '12');
+    await fill(screen, 'Term (months)', '24');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(mockRunLoanAutoLink).toHaveBeenCalled();
+  });
+
+  it('runs the loan auto-link matcher after a loan EDIT too', async () => {
+    mockRunLoanAutoLink.mockClear();
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Car loan',
+      type: 'loan',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        kind: 'car_loan',
+        principalMinorUnits: 50_000_000,
+        startDate: localDay(2026, 1, 1),
+        schedule: 'annuity',
+        annualRatePct: 12,
+        termMonths: 24,
+      },
+    });
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(mockRunLoanAutoLink).toHaveBeenCalled();
   });
 });
 
@@ -3149,19 +3365,19 @@ describe('HoldingFormScreen — the price_points gate', () => {
 // once created) never needs to.
 describe('HoldingFormScreen — the first-add refresh trigger', () => {
   beforeEach(() => {
-    mockRefreshRates.mockClear();
-    mockRefreshMetalPrices.mockClear();
+    mockRefreshMarketData.mockClear();
+    mockRefreshMarketData.mockResolvedValue(right(undefined));
+    mockRunLoanAutoLink.mockClear();
   });
 
-  it('triggers the gated rate/metal refresh after a successful create', async () => {
+  it('triggers the gated rate/metal refresh after a successful create, unthrottled', async () => {
     mockAccountKind = 'cash';
     const screen = await renderScreen();
 
     await fill(screen, 'Name', 'My cash');
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(mockRefreshRates).toHaveBeenCalled();
-    expect(mockRefreshMetalPrices).toHaveBeenCalled();
+    expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: false, metals: true });
   });
 
   it('navigates back immediately, without waiting for the refresh to settle', async () => {
@@ -3170,10 +3386,10 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
     // refresh promise proves navigation already fired without it.
     mockAccountKind = 'cash';
     let resolveRefresh: () => void = () => {};
-    mockRefreshRates.mockImplementation(
+    mockRefreshMarketData.mockImplementation(
       () =>
-        new Promise<undefined>((resolve) => {
-          resolveRefresh = () => resolve(undefined);
+        new Promise((resolve) => {
+          resolveRefresh = () => resolve(right(undefined));
         }),
     );
 
@@ -3201,7 +3417,20 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
     await fill(screen, 'Name', 'Renamed card');
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(mockRefreshRates).not.toHaveBeenCalled();
-    expect(mockRefreshMetalPrices).not.toHaveBeenCalled();
+    expect(mockRefreshMarketData).not.toHaveBeenCalled();
+    expect(mockRunLoanAutoLink).not.toHaveBeenCalled();
+  });
+
+  // P-NOWORK: a non-loan create/edit never runs the loan auto-link matcher
+  // at all — see `HoldingFormScreen loan`'s own describe block for the
+  // matching POSITIVE loan create/edit cases.
+  it('does not trigger the loan auto-link matcher for a non-loan create', async () => {
+    mockAccountKind = 'cash';
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'My cash');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(mockRunLoanAutoLink).not.toHaveBeenCalled();
   });
 });

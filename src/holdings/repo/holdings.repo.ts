@@ -249,6 +249,20 @@ export const holdingsRepo = {
       .innerJoin(accounts, eq(holdings.accountId, accounts.id))
       .where(and(isNull(holdings.closedAt), isNull(accounts.archivedAt))),
   /**
+   * Every OPEN loan holding — the loan-payment matcher's own gate query
+   * (`src/loans/payment-matcher/`, `src/loans/use-loan-auto-link/`): it reads
+   * this FIRST and returns early when it is empty, so a user with no debts
+   * never pays for the (larger) transaction-candidate query the matcher would
+   * otherwise run next (P-NOWORK). A CLOSED loan is excluded: a closed loan
+   * has nothing left to backfill, mirroring `buildLoanOptions`'s own
+   * (transaction-form) closed-holding exclusion.
+   */
+  loanHoldingsQuery: () =>
+    database
+      .select()
+      .from(holdings)
+      .where(and(eq(holdings.type, 'loan'), isNull(holdings.closedAt))),
+  /**
    * Converts a stored row's raw `balanceMinorUnits` column into `Money`, in
    * the row's own currency — kiko-domain's "Money at the boundary" (a repo
    * is the only place that conversion may happen). Every non-repo reader
@@ -454,10 +468,39 @@ export const holdingsRepo = {
    * `holding:<id>` series has to stay consistent with the SAME edit that
    * changes the metadata, or the two can drift on a partial failure. See
    * `LoanPricePointOp`'s own doc comment for what each op writes.
+   *
+   * `clearAutoLinks` (default `false` so the 3-arg call every other caller
+   * still uses is unaffected) clears ONLY this loan's own AUTO links
+   * (`loanLinkSource = 'auto'`) in the SAME transaction — a manual link or a
+   * rejected row is untouched. The caller (`use-loan-fields.ts`'s
+   * `saveEdit`) passes `true` when the edit changed the loan's own
+   * amortization schedule (`loanEditInvalidatesAutoLinks`'s installment
+   * comparison) or one of rule 3's own signals (`paymentHoldingId`,
+   * `lenderIban`, `lenderName`): a previously-linked AUTO row proved rules
+   * 1/2 against the OLD schedule, and left in place it would count as
+   * "taken" (`installmentIsTaken`, `payment-matcher.ts`) under that stale
+   * schedule forever, even once it no longer corresponds to any real
+   * installment of the NEW one. Clearing it here, before the fire-and-forget
+   * matcher re-run that follows a loan edit, lets that re-run recompute
+   * cleanly against the new schedule.
    */
-  updateLoan: (holdingId: string, patch: Partial<HoldingRow>, pricePointOp: LoanPricePointOp) =>
+  updateLoan: (
+    holdingId: string,
+    patch: Partial<HoldingRow>,
+    pricePointOp: LoanPricePointOp,
+    clearAutoLinks = false,
+  ) =>
     write(async (databaseTransaction) => {
       await databaseTransaction.update(holdings).set(patch).where(eq(holdings.id, holdingId));
+
+      if (clearAutoLinks) {
+        await databaseTransaction
+          .update(transactions)
+          .set({ loanHoldingId: null, loanLinkSource: null })
+          .where(
+            and(eq(transactions.loanHoldingId, holdingId), eq(transactions.loanLinkSource, 'auto')),
+          );
+      }
 
       const point = await match(pricePointOp)
         .with({ kind: 'none' }, () => null)

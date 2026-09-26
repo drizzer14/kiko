@@ -14,7 +14,11 @@ import type { LoanFormBlockProps } from './loan-form-block.props';
 
 // The `type === 'loan'` details block as its own leaf component, keeping
 // its own cognitive-complexity budget separate from the screen's.
-const LoanFormBlock: FC<LoanFormBlockProps> = ({ fields, attemptedSave }) => {
+const LoanFormBlock: FC<LoanFormBlockProps> = ({
+  fields,
+  attemptedSave,
+  paymentHoldingOptions,
+}) => {
   const { t } = useTranslation();
   const { fieldErrors, refs } = fields;
 
@@ -51,6 +55,13 @@ const LoanFormBlock: FC<LoanFormBlockProps> = ({ fields, attemptedSave }) => {
         })}
         termMonthsFieldRef={refs.termMonthsFieldRef}
         termMonthsInputRef={refs.termMonthsInputRef}
+        paymentHoldingId={fields.paymentHoldingId}
+        onSelectPaymentHoldingId={fields.setPaymentHoldingId}
+        paymentHoldingOptions={paymentHoldingOptions}
+        lenderName={fields.lenderName}
+        onChangeLenderName={fields.setLenderName}
+        lenderIban={fields.lenderIban}
+        onChangeLenderIban={fields.setLenderIban}
       />
     </Box>
   );

@@ -110,7 +110,10 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
     // per-account move for the Binance credentials. The dedup-key upgrade runs
     // last of the one-shot migrations, since it only needs the settings row
     // (already ensured above) and touches no Keychain state the credential
-    // migrations depend on.
+    // migrations depend on — its own `.catch` below (unlike every migration
+    // ahead of it) keeps its failure from reaching the chain's own `.catch`,
+    // since it is the one non-critical step here (see that `.catch`'s doc
+    // comment).
     initDatabase()
       .then(runMigrations)
       .then(() => settingsRepo.ensure())
@@ -118,7 +121,21 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
       .then(migrateLegacyToken)
       .then(migratePerAccountMonobankToken)
       .then(migratePerAccountBinanceCredential)
-      .then(upgradeStoredDedupKeys)
+      .then(() =>
+        upgradeStoredDedupKeys().catch((error: unknown) => {
+          // Non-critical, unlike every migration above: a failed rewrite must
+          // never send the WHOLE launch to this gate's error state — the row
+          // it upgrades is already reachable through the legacy dedup key, so
+          // the app stays fully usable without it. Its own `write()`
+          // transaction leaves `settings.dedupKeysUpgraded` at `false` on any
+          // failure (upgrade-stored-dedup-keys.ts's own doc comment), so the
+          // NEXT launch retries automatically — caught and reported here the
+          // same way every other best-effort background failure in this app
+          // is (console.warn), never a new UI state.
+          // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) this catch is what keeps the failure from surfacing anywhere else (see the doc comment above) — logging it here is the only trace a failed rewrite leaves.
+          console.warn('[migrations-gate] dedup-key upgrade failed, will retry next launch', error);
+        }),
+      )
       .then(() => {
         if (!cancelled) {
           setState({ status: 'success' });

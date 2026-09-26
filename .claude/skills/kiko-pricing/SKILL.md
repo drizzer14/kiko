@@ -6,7 +6,7 @@ description: Invoke whenever you touch src/prices/** or src/rates/**, or work on
 # Kiko pricing
 
 Source of truth: `docs/superpowers/specs/2026-08-30-kiko-foundation-design.md`
-("Data collection" section) plus this branch's own T11/T17 work. This
+("Data collection" section). This
 skill covers both currency-rate resolution and the separate
 non-currency `price_points` store.
 
@@ -27,17 +27,42 @@ non-currency `price_points` store.
   capture date — it is a real, fixed date, not "current"). In
   `buildRateTable` (`src/rates/net-worth-view/net-worth-view.ts`) the
   seed is overlaid by live DB rows — `{ ...FIAT_RATE_SEED_TABLE,
-  ...liveRows }` — so a live rate always wins per pair and the seed
-  only fills a gap. This is a read-time overlay, never written to the
-  DB, and is why a non-UAH fiat holding values correctly immediately,
-  even fully offline on a fresh install before any live refresh has
-  ever run. Crypto has no seed entry — see below.
+  ...liveRows }` — so a live UAH price always wins PER CURRENCY and the
+  seed only fills a gap. This is a read-time overlay, never written to
+  the DB, and is why a non-UAH fiat holding values correctly
+  immediately, even fully offline on a fresh install before any live
+  refresh has ever run. Crypto has no seed entry — see below.
 - BTC price: CoinGecko free API, quoted in USD; derive other pairs
   from it. No offline seed for crypto; an unrated crypto holding is
-  excluded until a live CoinGecko price lands.
-- Store live results in `CurrencyRate`. Refresh on sync, throttled to
-  respect each provider's own cache window — do not poll faster than
-  the upstream cache refreshes.
+  excluded until a live CoinGecko price lands. `rate(BTC, UAH) =
+  rate(BTC, USD) x rate(USD, UAH)` from the SAME run's fiat anchor
+  (Monobank buy rate, else NBU) — stored as ONE `BTC:UAH` row, always
+  `source = 'coingecko'`; no fiat anchor that run (both fiat providers
+  failed) means no crypto row at all, exactly as before, until a run
+  with a fiat anchor lands. `ETH`/`USDT` derive the same way.
+- Store live results in `CurrencyRate`, one `X:UAH` row per priced
+  currency (`buildUahRows`, `rates-refresh.ts`) — never a cross row
+  between two non-UAH currencies, since a cross rate resolves at READ
+  TIME through `rateBetween` (below). A full Monobank sync writes
+  ~109 rows (106 fiat + 3 crypto), not the ~11,990-row cross join a
+  legacy write once composed (kiko-architecture's "Bulk insert" section).
+  Refresh on sync, throttled to respect each provider's own cache
+  window — do not poll faster than the upstream cache refreshes.
+- **`RateTable` is a currency -> UAH-price map, resolved at READ TIME
+  through the UAH pivot, not a stored cross-pair lookup.**
+  `src/rates/conversion/conversion.ts`'s `RateTable =
+  Partial<Record<Currency, number>>` holds each currency's price in
+  ONE UAH (`rate(X, UAH)`); `UAH` itself is never a key — its own price
+  is implicit `1`. Every A->B conversion resolves through
+  `rateBetween(rates, from, to)`: the same currency is always `1`
+  (even with nothing stored), otherwise `uahPer(from) / uahPer(to)`
+  when BOTH legs resolve to a finite, positive UAH price, else
+  `undefined` — `convert` and `canConvert` both read this ONE function
+  rather than indexing a `${base}:${quote}` string key. `rateTableFromRows`
+  (parsing a live DB row, or the seed) keeps only an `X:UAH` star row
+  (`quote === 'UAH'`, `base !== 'UAH'`) and drops a stray cross row —
+  a legacy `X:Y` pair, or `UAH` itself as `base` — unread rather than
+  corrupting the table.
 
 ## Rate history
 
@@ -47,17 +72,41 @@ the latest-only `CurrencyRate` cache — this is what backs the
 historical net-worth chart. `rateHistoryRepo.upsertMany` chunks at
 2000 rows (10000 bound params, under SQLite's
 `SQLITE_MAX_VARIABLE_NUMBER`) and upserts on the `(base, quote, day)`
-unique index. Two read helpers build a flat `RateTable` for a given
-`day` from a row set: `rateTableAt` resolves each pair to its NEAREST
-row AT OR BEFORE `day` (carry-forward across a gap, e.g. a Friday rate
-covers the weekend), omitting a pair with no row at or before `day`;
-`earliestRateTable` instead takes each pair's EARLIEST stored row, so
-a bucket before a pair's first history row still prices that holding
-(flat at the oldest known rate) instead of dropping it from the
-leading buckets. `price_points`' own `priceAt` (below) mirrors this
-same nearest-at-or-before / earliest-fallback shape.
+unique index. Two read helpers build a per-currency `RateTable` for a
+given `day` from a row set, reading only an `X:UAH` star row
+(`quote === 'UAH'`, `base !== 'UAH'`) and ignoring a stray cross row
+the same way `rateTableFromRows` does: `rateTableAt` resolves each
+CURRENCY to its NEAREST row AT OR BEFORE `day` (carry-forward across a
+gap, e.g. a Friday rate covers the weekend), omitting a currency with
+no row at or before `day`; `earliestRateTable` instead takes each
+currency's EARLIEST stored row, so a bucket before a currency's first
+history row still prices that holding (flat at the oldest known rate)
+instead of dropping it from the leading buckets. `price_points`' own
+`priceAt` (below) mirrors this same nearest-at-or-before /
+earliest-fallback shape.
+
+A legacy stored cross/inverse row (any row with `quote !== 'UAH'` or
+`base === 'UAH'`) is removed both at upgrade and at restore: migration
+`0042_uah_star_rates` deletes one from a live device (deriving a
+missing star row first, from an inverse or a legacy cross pair, so no
+currency loses its conversion), and
+`restore-snapshot.ts`'s `withRatesNormalizedToUah` applies the
+identical rule to a `.kiko` import — see kiko-architecture's
+migrations section for the full derive-then-delete shape.
 
 ### History backfill
+
+`composeHistoryRows` writes one `X:UAH` row per priced currency per
+day (`USD`, `EUR`, plus every held crypto) — never a cross row
+between two non-UAH currencies, mirroring `rates-refresh.ts`'s own
+`buildUahRows` but once per historical day instead of once per live
+run. A gap in one provider's own series (NBU has no weekend/holiday
+quote; CoinGecko prices every calendar day) no longer stalls the
+OTHER currency's row: each currency's own `X:UAH` row carries forward
+from ITS OWN nearest earlier anchor independently, rather than a
+single stored cross pair carrying both legs forward as one joint
+unit — coverage is a strict superset of the old cross-join shape,
+never fewer converting buckets on a gap day.
 
 The Statistics screen drives an incremental, non-blocking backfill of
 `currency_rate_history` (`src/rates/history-backfill/history-backfill.ts`):
@@ -157,9 +206,8 @@ earliest-point fallback exists for "no earlier point yet" callers; a
 caller that requires a correction to never anchor a query for BEFORE
 that correction's own date needs its own guard, since the shared
 fallback will otherwise hand back a later point to an earlier query.
-This bit `loanOutstandingMinorAt`, which anchored on ANY stored
-correction point, including one dated after the queried instant (T26
-review I1, fixed `9cf5791`→`6901d27`) — read
+`loanOutstandingMinorAt` must guard against this: never anchor on a
+stored correction point dated after the queried instant — read
 `loan-schedule.ts`'s `loanOutstandingMinorAt` for the fix shape.
 
 ## Priced holdings
@@ -317,17 +365,16 @@ transaction), so a deleted holding never leaves an orphaned series
 behind. This create/remove symmetry only applies to a holding's own
 `holding:<id>` series — a `metal` holding shares its instrument with
 every other holding of that metal, so removing one metal holding must
-NOT clear `metal:<XAU|...>`'s series (nothing else consumes it yet as
-of T17; watch for this the moment a metal-specific remove path is
-added).
+NOT clear `metal:<XAU|...>`'s series (nothing else consumes it yet;
+watch for this the moment a metal-specific remove path is added).
 
 A `metal` holding's create payload is the one documented exception
 that never sets `firstPricePoint`: `buildMetalCreatePayload`
-(`src/screens/forms/holding-form/metal/use-metal-fields/`, R3 Phase C)
+(`src/screens/forms/holding-form/metal/use-metal-fields/`)
 writes a zero stored balance and one lot, but no manual price point — a
 metal's price comes from the shared `metal:<XAU|XAG|XPT|XPD>`
 instrument, priced separately by `refreshMetalPrices` (see "NBU metal
-prices — current and history (T19)" below), never a per-holding one.
+prices — current and history" below), never a per-holding one.
 `property_item`, by contrast, always writes `firstPricePoint` equal to
 its entered cost. See that hook's own comment on the metal CREATE
 payload for the current rationale.
@@ -389,10 +436,18 @@ bank to check).
 Rate and price refresh runs on sync, throttled to respect each
 provider's own cache window (see "Currency-rate fallback chain"
 above) — do not poll faster than the upstream cache refreshes. No
-dedicated quota-guard or once-per-day scheduler exists yet as of T17;
+dedicated quota-guard or once-per-day scheduler exists yet;
 do not assume one when reading a refresh call site.
 
-## NBU metal prices — current and history (T19)
+`shouldThrottle` (`rates-refresh.ts`) treats `UAH` as always present
+in its "does every held currency already have a rate" check: a star
+row's `quote` is always `UAH` and its `base` never is, so
+`presentCurrenciesQuery` (a distinct `base` read) can never list
+`UAH` itself. Without this exception a base-USD user who holds UAH
+would read as permanently "unrated" and bypass the throttle on every
+single sync, not just a genuine gap.
+
+## NBU metal prices — current and history
 
 `src/prices/nbu-metals/` is the metals client, mirroring `nbu-rates.ts`/
 `nbu-history.ts`'s pattern (fetch + `guard`-based validation + recorded
@@ -417,26 +472,40 @@ new pinning (kiko-compliance: this host stays keyless and unpinned).
   fallback. Returns `{ metal, day, price }[]`.
 
 `src/prices/metal-refresh/refreshMetalPrices({ now, fetchImpl, ... })`
-is the scheduler, run CONCURRENTLY with `refreshRates` from both
-`useAutoSync` and `useSyncAll` — `await Promise.allSettled([refreshRates(...),
-refreshMetalPrices()])`, inside the SAME `either(...)` wrapper each
-hook already used around `refreshRates` alone. The two share no data
-dependency (`refreshMetalPrices` reads/writes `price_points` only,
-`refreshRates` reads/writes `currency_rates` only), so running them
-concurrently — rather than strictly sequentially, `refreshMetalPrices`
-not even STARTING until `refreshRates` had settled — overlaps their
-network + DB work and shrinks the app-open DB-read burst's wall-clock
-span; see `kiko-architecture`'s "op-sqlite's ONE worker thread"
-section for why that burst matters to every OTHER screen's own reads.
-`allSettled`, not `all`: `Promise.all` settles (rejects) the instant
-EITHER promise rejects, which would let the enclosing `either(...)`
-call — and, in `useSyncAll`, the single-flight lock around the whole
-fan-out — resolve/release while the OTHER promise keeps running
-orphaned; a pull that then arrives sees the lock already free and
-starts a SECOND fan-out (caught in review, not a shipped production bug).
-`allSettled` never rejects, so a rejected step is swallowed exactly as
-before by the same catch-all `either` — only the release TIMING
-changes, not which failures are silent.
+is the scheduler, run CONCURRENTLY with `refreshRates` through
+`src/sync/refresh-market-data/` — every sync surface (`useSync`,
+`useSyncAll`, `useAutoSync`) and every fire-and-forget "first add"
+trigger (`holding-form.screen.tsx`, `import-data.ts`) now calls
+`refreshMarketData({ throttled, metals })` instead of orchestrating
+`Promise.allSettled([refreshRates(...), refreshMetalPrices()])`
+directly. The two share no data dependency (`refreshMetalPrices`
+reads/writes `price_points` only, `refreshRates` reads/writes
+`currency_rates` only), so running them concurrently — rather than
+strictly sequentially, `refreshMetalPrices` not even STARTING until
+`refreshRates` had settled — overlaps their network + DB work and
+shrinks the app-open DB-read burst's wall-clock span; see
+`kiko-architecture`'s "op-sqlite's ONE worker thread" section for why
+that burst matters to every OTHER screen's own reads. `allSettled`,
+not `all`: `Promise.all` settles (rejects) the instant EITHER promise
+rejects, which would let `refreshMarketData` itself resolve — and, in
+`useSyncAll`, the single-flight lock around the whole fan-out —
+release while the OTHER promise keeps running orphaned; a pull that
+then arrives sees the lock already free and starts a SECOND fan-out
+(caught in review, not a shipped production bug).
+
+`refreshMarketData` never rejects, but a rejected step (or
+`refreshRates`'s own `'failed'`/`'partial'` `RatesRefreshOutcome`, mirroring
+`BackfillStatus`) is no longer silently dropped: it is collected,
+logged through the ONE exported `warnRefreshFailure(step, reason)`
+(a justified `console.warn`, no UI, no new string — the narrowest
+default), and returned as a `Left`. `throttled` reads
+`ratesRepo.latestFetchedAt()` first (a failed read is logged too and
+the run proceeds unthrottled); `metals` gates whether
+`refreshMetalPrices` runs at all. `useAutoSync` also passes its OWN
+outer catch-all's Left (reading accounts/sync-state/credentials) to
+the SAME `warnRefreshFailure`, tagged `'auto-sync'`, instead of
+dropping it — but never double-logs a `refreshMarketData` Left, since
+that failure was already logged inside `refreshMarketData` itself.
 It refreshes ONLY currently held metals — scanned from every `metal`
 holding's `asMetalMeta(...).metal`, never a metal nobody owns, and
 INCLUDING a closed holding's own lots (the history chart still needs
@@ -474,8 +543,8 @@ rates.
 ## Later (not built yet — do not invent detail)
 
 An EODHD quotes client for shares, a request-quota guard, and a
-scheduled backfill for non-metal instruments are planned for
-T38-T41 but do not exist in code yet. When one of those lands, extend
+scheduled backfill for non-metal instruments are planned but do not
+exist in code yet. When one of those lands, extend
 this skill's "Currency-rate fallback chain" / "`price_points`"
 sections rather than writing a new one — do not leave the future work
 as a stale placeholder once it ships.

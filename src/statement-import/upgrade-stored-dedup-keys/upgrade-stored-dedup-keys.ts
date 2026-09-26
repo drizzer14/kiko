@@ -6,10 +6,15 @@ import { settings, transactions } from '../../db/schema';
 import { SETTINGS_ID } from '../../settings/settings.repo';
 import { upgradeLegacyDedupKey } from '../mapping/upgrade-dedup-key';
 
-// Bounds how many rewrites are issued between yields to the DB's single
-// worker queue — the row count itself is unbounded (a heavy statement-import
-// user), so this keeps one very large device's upgrade from building one
-// enormous batch of pending update calls before any of them are awaited.
+// Bounds how many rewrites this loop groups together before moving on to the
+// next slice of the (already fully loaded) `importRows` array — the row
+// count itself is unbounded (a heavy statement-import user). Each rewrite
+// inside a chunk is still awaited ONE AT A TIME below (never `Promise.all`,
+// which would issue every rewrite in the chunk concurrently before any of
+// them resolves, the same enormous-pending-batch shape this chunking
+// exists to avoid), so at most one write is ever outstanding against the
+// DB's single worker queue — the sequential-await precedent
+// restore-snapshot.ts's own chunked insert loops already follow.
 const UPGRADE_CHUNK_SIZE = 500;
 
 /**
@@ -60,14 +65,12 @@ export const upgradeStoredDedupKeys = (): Promise<void> =>
           (rewrite): rewrite is { id: string; externalId: string } => rewrite.externalId !== null,
         );
 
-      await Promise.all(
-        rewrites.map((rewrite) =>
-          databaseTransaction
-            .update(transactions)
-            .set({ externalId: rewrite.externalId })
-            .where(eq(transactions.id, rewrite.id)),
-        ),
-      );
+      for (const rewrite of rewrites) {
+        await databaseTransaction
+          .update(transactions)
+          .set({ externalId: rewrite.externalId })
+          .where(eq(transactions.id, rewrite.id));
+      }
     }
 
     await databaseTransaction

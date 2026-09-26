@@ -43,6 +43,7 @@ import {
 } from '../../../holdings/exchange-destination';
 import ExchangeFields from '../exchange-fields';
 import ModeSelectField from '../mode-select-field';
+import LoanPaymentField from '../loan-payment-field';
 import { parseAmount } from '../../../currency/parse';
 import Box from '../../../design-system/components/box';
 import HoldingSelectField from '../holding-select-field';
@@ -562,6 +563,61 @@ const buildReturnOptions = (
       !pickedElsewhere.has(option.id) &&
       !syncableIds.has(option.id),
   );
+};
+
+// The loan-payment picker's options: every OPEN loan holding in the
+// payment's own currency — a link is only ever valid same-currency;
+// `transactionsRepo.setLoanPayment` itself refuses a cross-currency write,
+// so this filter simply keeps the picker from ever OFFERING one. No
+// synced-holding exclusion: a `debt` account (the only
+// account kind a `loan` holding lives under) has no sync concept at all
+// (see kiko-domain), so every loan holding is manual-owned already.
+//
+// A filter never hides an active selection (kiko-design-system): the row's
+// OWN already-linked loan is unioned back in even when it has since closed
+// or moved to another currency — `buildExchangeOptions` would otherwise drop
+// it (closed) or the currency filter above would (a currency change), and
+// the picker would then show no value at all for a link that still exists in
+// the database, with no way for the user to see what it is or clear it.
+const buildLoanOptions = (
+  holdings: readonly HoldingRow[],
+  accountNameById: ReadonlyMap<string, string>,
+  accountOrderById: ReadonlyMap<string, number>,
+  paymentCurrency: Currency,
+  selectedLoanHoldingId: string | null,
+): HoldingSelectOption[] => {
+  const openOptions = buildExchangeOptions(
+    holdings,
+    accountNameById,
+    accountOrderById,
+    undefined,
+    (type) => type === 'loan',
+  ).filter((option) => option.currency === paymentCurrency);
+
+  if (
+    selectedLoanHoldingId === null ||
+    openOptions.some((option) => option.id === selectedLoanHoldingId)
+  ) {
+    return openOptions;
+  }
+
+  const selectedHolding = holdings.find((candidate) => candidate.id === selectedLoanHoldingId);
+
+  if (selectedHolding === undefined) {
+    return openOptions;
+  }
+
+  return [
+    ...openOptions,
+    {
+      id: selectedHolding.id,
+      name: selectedHolding.name,
+      icon: selectedHolding.icon ?? holdingTypeSymbol[selectedHolding.type],
+      color: resolveEntityColor(selectedHolding.color, defaultHoldingColor[selectedHolding.type]),
+      currency: selectedHolding.currency,
+      accountName: accountNameById.get(selectedHolding.accountId) ?? '',
+    },
+  ];
 };
 
 // Order two holdings the way the Accounts screen shows them: primary by
@@ -1234,6 +1290,48 @@ const showsSaveButton = (
   converting: boolean,
 ): boolean => !isReadOnly || categoryChanged || converting;
 
+// Whether the loan-payment field renders: an EXISTING debit row only (manual
+// or synced alike — `setLoanPayment`/`undoAutoLoanLink` carry no source
+// gate, same as the category field), data-driven on `loanOptions` rather
+// than a flag (a currency with no open loan holding at all simply never
+// offers the field — Guideline 5.6), and never while converting (that swaps
+// the whole field group for the convert-only inputs). Keyed off the
+// PERSISTED amount, not the live in-progress `mode` toggle, so the link's
+// own visibility never flip-flops before Save. Kept module-level and pure
+// for the same cognitive-complexity-budget reason as `showsSaveButton`
+// above.
+//
+// Also visible whenever the row already carries a link
+// (`selectedLoanHoldingId`), even with zero open loan options AND even once
+// the row is no longer a debit (a linked row later edited from debit
+// to credit must not hide the field where None/Undo live) — a filter never
+// hides an active selection: the row stays linked whose loan closed, moved
+// currency, or whose own amount sign changed, and the user must be able to
+// reach the field to see that link, Undo it, or pick "None", not just a
+// currently-open loan on a currently-eligible debit. `buildLoanOptions`
+// already unions that same loan back into `loanOptions`, so this is a
+// belt-and-suspenders direct check, not the only guard.
+const isLoanFieldVisible = (
+  existingAmountMinorUnits: number | undefined,
+  loanOptionCount: number,
+  converting: boolean,
+  selectedLoanHoldingId: string | null,
+): boolean =>
+  existingAmountMinorUnits !== undefined &&
+  !converting &&
+  (selectedLoanHoldingId !== null || (existingAmountMinorUnits < 0 && loanOptionCount > 0));
+
+// The current loan link's own two pieces, resolved together so the screen
+// body reads one call instead of two separate `?? null` chains — kept
+// module-level for the same cognitive-complexity-budget reason as
+// `isLoanFieldVisible` above.
+const resolveLoanLinkState = (
+  existing: Pick<TransactionRow, 'loanHoldingId' | 'loanLinkSource'> | undefined,
+): { selectedLoanHoldingId: string | null; loanLinkSource: 'auto' | 'manual' | null } => ({
+  selectedLoanHoldingId: existing?.loanHoldingId ?? null,
+  loanLinkSource: existing?.loanLinkSource ?? null,
+});
+
 // The category picker and "Convert to exchange" action: everything below the
 // main field group EXCEPT while converting (a convert has no category — just
 // the convert group and Save). Deleting a transaction is offered only through
@@ -1259,6 +1357,12 @@ type ModeAndActionsProps = {
   // wrapped in `categoryFieldRef` for scroll-to-invalid.
   categoryError?: string;
   categoryFieldRef?: RefObject<FieldInstance | null>;
+  loanFieldVisible: boolean;
+  loanOptions: readonly HoldingSelectOption[];
+  selectedLoanHoldingId: string | null;
+  onSelectLoanPayment: (loanHoldingId: string | null) => void;
+  loanLinkSource: 'auto' | 'manual' | null;
+  onUndoLoanLink: () => void;
 };
 
 const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null => {
@@ -1296,6 +1400,28 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
             {props.categoryError !== undefined && <FieldError message={props.categoryError} />}
           </Box>
         </View>
+      )}
+
+      {/* Shown for BOTH a manual and a synced row — an existing debit's own
+        loan link is user state, not a mutation of bank-owned ledger data
+        (`transactionsRepo.setLoanPayment`/`undoAutoLoanLink` carry no source
+        gate, same as the category field above), so a read-only synced row
+        stays writable here too. Data-driven visibility, not a flag: hidden
+        outright whenever `loanOptions` is empty — see `isLoanFieldVisible`'s
+        own doc comment. */}
+      {props.loanFieldVisible && (
+        <LoanPaymentField
+          label={props.t('forms.transaction.loanPayment')}
+          noneLabel={props.t('forms.transaction.loanPaymentNone')}
+          testID="transaction-loan-payment-field"
+          options={props.loanOptions}
+          selectedId={props.selectedLoanHoldingId}
+          onSelect={props.onSelectLoanPayment}
+          linkSource={props.loanLinkSource}
+          autoLinkedCaption={props.t('forms.transaction.loanLinkedAuto')}
+          undoLabel={props.t('forms.transaction.loanLinkUndo')}
+          onUndo={props.onUndoLoanLink}
+        />
       )}
 
       {/* Shown for BOTH a manual and a synced row — the action never mutates
@@ -1527,6 +1653,23 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     holdingId,
     isExchangeCreateDestinationType,
   );
+  // The row's current loan link, resolved once and reused everywhere below
+  // (options, visibility, and the field's own render props) rather than
+  // recomputed inline at each site — that keeps every extra `??`/`?.` this
+  // task adds inside the already-budgeted `resolveLoanLinkState` helper
+  // instead of this component's own cognitive-complexity count.
+  const loanLinkState = resolveLoanLinkState(existing);
+  // The loan-payment picker's own eligible options, scoped to the payment's
+  // holding currency (see `buildLoanOptions`'s own doc comment). Read here,
+  // ahead of the field's `converting`-gated visibility below, alongside every
+  // other holdings-derived option list on this screen.
+  const loanOptions = buildLoanOptions(
+    holdings,
+    accountNameById,
+    accountOrderById,
+    currency,
+    loanLinkState.selectedLoanHoldingId,
+  );
 
   const convertView = resolveConvertView(
     existing,
@@ -1750,6 +1893,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const originalCategoryKey = existing?.category ? existing.category.toLowerCase() : null;
   const categoryChanged = selectedCategory !== null && selectedCategory !== originalCategoryKey;
 
+  const loanFieldVisible = isLoanFieldVisible(
+    existing?.amountMinorUnits,
+    loanOptions.length,
+    converting,
+    loanLinkState.selectedLoanHoldingId,
+  );
+
   // The description field's placeholder previews the label the row would carry
   // if left blank (see `resolveDescriptionPlaceholder`), and the Save button is
   // disabled for a create still missing its amount or category (see
@@ -1875,6 +2025,42 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // call this rather than repeating the same two catalog keys three times.
   const showSaveErrorAlert = (): void => {
     alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
+  };
+
+  // The loan-payment link persists AT ONCE — no Save-button gating, unlike
+  // the category field above (see `LoanPaymentField`'s own doc comment).
+  // Both handlers are guarded on `existing` even though the field itself
+  // only ever renders once it is defined, so a stray press during the row's
+  // own unmount can never throw. A real pick is always `source: 'manual'`;
+  // "None" clears the link AND rejects it (`loanLinkRejected`), so the
+  // matcher never re-proposes a link the user just explicitly removed — see
+  // `transactionsRepo.setLoanPayment`'s own doc comment for the full
+  // contract.
+  const selectLoanPayment = async (loanHoldingId: string | null): Promise<void> => {
+    if (existing === undefined) {
+      return;
+    }
+
+    try {
+      await transactionsRepo.setLoanPayment({ transactionId: existing.id, loanHoldingId });
+    } catch {
+      showSaveErrorAlert();
+    }
+  };
+
+  // Undo an auto-suggested link (the matcher's own path): clears it and
+  // rejects it too, exactly like a manual "None" — see
+  // `transactionsRepo.undoAutoLoanLink`'s own doc comment.
+  const undoLoanLink = async (): Promise<void> => {
+    if (existing === undefined) {
+      return;
+    }
+
+    try {
+      await transactionsRepo.undoAutoLoanLink(existing.id);
+    } catch {
+      showSaveErrorAlert();
+    }
   };
 
   // Editing a category ALWAYS propagates to every same-name transaction (and to
@@ -2431,6 +2617,11 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             t,
             categoryError: fieldError('selectedCategory'),
             categoryFieldRef,
+            loanFieldVisible,
+            loanOptions,
+            ...loanLinkState,
+            onSelectLoanPayment: selectLoanPayment,
+            onUndoLoanLink: undoLoanLink,
           })}
 
           {/* After description AND category — the top of the form (above

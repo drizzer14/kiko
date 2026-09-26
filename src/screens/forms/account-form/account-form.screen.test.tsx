@@ -572,6 +572,34 @@ describe('AccountFormScreen', () => {
     expect(scrollToField).toHaveBeenCalled();
   });
 
+  it('shows both the name-required and initial-value-required errors on one blocked Save press when both are blank', async () => {
+    const { getByTestId, getByText } = await renderForm();
+
+    await selectKind(getByTestId, 'cash');
+    await fireEvent.press(getByText('Save'));
+
+    expect(getByText('Enter a name.')).toBeTruthy();
+    expect(getByText('Enter an initial value.')).toBeTruthy();
+    expect(mockCreateCashAccount).not.toHaveBeenCalled();
+  });
+
+  it('scrolls to a DIFFERENT field target once the name is fixed but the initial value is still blank', async () => {
+    const scrollToFieldMock = scrollToField as jest.Mock;
+    const { getByTestId, getByLabelText, getByText } = await renderForm();
+
+    await selectKind(getByTestId, 'cash');
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByText('Save'));
+    const [, nameFieldRef] = scrollToFieldMock.mock.calls[0];
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByText('Save'));
+    const [, initialValueFieldRef] = scrollToFieldMock.mock.calls[0];
+
+    expect(initialValueFieldRef).not.toBe(nameFieldRef);
+  });
+
   it('shows an initial-value-required error and saves nothing when the field is blank', async () => {
     const { getByLabelText, getByTestId, getByText } = await renderForm();
 

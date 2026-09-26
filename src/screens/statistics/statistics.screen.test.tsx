@@ -1536,6 +1536,46 @@ describe('StatisticsScreen', () => {
     expect(mockSetTrendFilter).toHaveBeenCalledWith({ mode: 'manual', keys: ['transport'] });
   });
 
+  it('shows a saved manual trend key with no spending in the range with its real label and icon, still checked (not a bare slug row)', async () => {
+    // `utilities` is a seeded default category (so its title translates), but
+    // THREE_EXPENSES never spends against it — it never reaches
+    // `allCategorySlices`, the same gap `selectedCategories` already handles
+    // for the category donut (review decision 17).
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: THREE_EXPENSES,
+      history: HISTORY,
+      categories: [...CATEGORIES, { key: 'utilities', title: 'Utilities', icon: 'bolt' }],
+      settings: [{ baseCurrency: 'UAH', trendFilter: { mode: 'manual', keys: ['utilities'] } }],
+    });
+
+    const { getByTestId } = await renderScreen();
+    await act(async () => {
+      fireEvent.press(getByTestId('statistics-trend-filter'));
+    });
+
+    const row = getByTestId('statistics-trend-filter-option-utilities');
+
+    expect(within(row).getByText('Utilities')).toBeTruthy();
+    expect(row.queryAll((node) => node.props.name === 'bolt')).not.toHaveLength(0);
+    expect(row.props.accessibilityState.checked).toBe(true);
+
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const rowAfterSwitch = getByTestId('statistics-trend-filter-option-utilities');
+
+    expect(within(rowAfterSwitch).getByText('Комунальні послуги')).toBeTruthy();
+    expect(rowAfterSwitch.props.accessibilityState.checked).toBe(true);
+
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
   it('shows the spending-trend empty state when there is no spending', async () => {
     // The default `seedFull` transactions are all income, so the trend has no
     // line to draw and falls back to its empty state.

@@ -19,6 +19,22 @@ const baseProps = {
   onChangeAnnualRatePct: jest.fn(),
   termMonths: '',
   onChangeTermMonths: jest.fn(),
+  paymentHoldingId: null,
+  onSelectPaymentHoldingId: jest.fn(),
+  paymentHoldingOptions: [],
+  lenderName: '',
+  onChangeLenderName: jest.fn(),
+  lenderIban: '',
+  onChangeLenderIban: jest.fn(),
+};
+
+const CARD_OPTION = {
+  id: 'h1',
+  name: 'Everyday card',
+  icon: 'creditcard.fill',
+  color: '#3366CC',
+  currency: 'UAH' as const,
+  accountName: 'Monobank',
 };
 
 describe('LoanSection', () => {
@@ -157,5 +173,57 @@ describe('LoanSection', () => {
 
     expect(getByText('Enter a rate of 0 or higher.')).toBeTruthy();
     expect(getByText('Enter a whole number of months greater than 0.')).toBeTruthy();
+  });
+
+  it('shows the Paid from / lender fields for a structured schedule', async () => {
+    const { getByText, getByLabelText } = await render(<LoanSection {...baseProps} />);
+
+    expect(getByText('Paid from')).toBeTruthy();
+    expect(getByLabelText('Lender name')).toBeTruthy();
+    expect(getByLabelText('Lender IBAN')).toBeTruthy();
+  });
+
+  it('hides the Paid from / lender fields for a "none" schedule', async () => {
+    const { queryByText, queryByLabelText } = await render(
+      <LoanSection {...baseProps} schedule="none" />,
+    );
+
+    expect(queryByText('Paid from')).toBeNull();
+    expect(queryByLabelText('Lender name')).toBeNull();
+    expect(queryByLabelText('Lender IBAN')).toBeNull();
+  });
+
+  it('reports the picked Paid-from holding', async () => {
+    const onSelectPaymentHoldingId = jest.fn();
+    const { getByLabelText, getByText } = await render(
+      <LoanSection
+        {...baseProps}
+        paymentHoldingOptions={[CARD_OPTION]}
+        onSelectPaymentHoldingId={onSelectPaymentHoldingId}
+      />,
+    );
+
+    await fireEvent.press(getByLabelText('Paid from'));
+    await fireEvent.press(getByText('Everyday card'));
+
+    expect(onSelectPaymentHoldingId).toHaveBeenCalledWith('h1');
+  });
+
+  it('reports the entered lender name and IBAN', async () => {
+    const onChangeLenderName = jest.fn();
+    const onChangeLenderIban = jest.fn();
+    const { getByLabelText } = await render(
+      <LoanSection
+        {...baseProps}
+        onChangeLenderName={onChangeLenderName}
+        onChangeLenderIban={onChangeLenderIban}
+      />,
+    );
+
+    await fireEvent.changeText(getByLabelText('Lender name'), 'PrivatBank');
+    await fireEvent.changeText(getByLabelText('Lender IBAN'), 'UA123456789012345678901234567');
+
+    expect(onChangeLenderName).toHaveBeenCalledWith('PrivatBank');
+    expect(onChangeLenderIban).toHaveBeenCalledWith('UA123456789012345678901234567');
   });
 });

@@ -180,6 +180,14 @@ jest.mock('@kiko/transactions/repo', () => ({
     listByHoldingQuery: (holdingId: string) => ({
       toSQL: () => ({ sql: '', params: [holdingId] }),
     }),
+    // A distinct `sql` marker (never a real table name) so the shared
+    // `mockUseLiveQuery` below can tell this call apart from every OTHER
+    // `['transactions']`-keyed call and answer it from its own seeded data
+    // instead — the real query already differs (a WHERE on loan_holding_id
+    // vs. holding_id), this mock just needs an equally distinguishable shape.
+    listLinkedToLoanQuery: (loanHoldingId: string) => ({
+      toSQL: () => ({ sql: 'linked-loan-payments', params: [loanHoldingId] }),
+    }),
     remove: jest.fn(),
   },
 }));
@@ -283,6 +291,10 @@ const seed = (
   // key defaults to `false` (an already-resolved query), so every existing
   // call site above keeps behaving exactly as before.
   isLoading: Partial<Record<string, boolean>> = {},
+  // The rows `listLinkedToLoanQuery` resolves to — the loan detail's own
+  // "Linked payments" section. Defaults to none, so every existing
+  // call site above keeps rendering no such section, unaffected.
+  linkedLoanPayments: unknown[] = [],
 ): void => {
   // A per-table result map, keyed the same way the old if-chain branched — a
   // lookup instead of a chain keeps this well under the cognitive-complexity
@@ -308,10 +320,33 @@ const seed = (
       isLoading: isLoading.transactions ?? false,
     },
   };
+  const linkedLoanPaymentsResult = {
+    data: linkedLoanPayments.map((row) => ({
+      exchangeCounterpartHoldingId: null,
+      ...(row as Record<string, unknown>),
+    })),
+    isLoading: isLoading.linkedLoanPayments ?? false,
+  };
 
-  mockUseLiveQuery.mockImplementation(
-    (_query: unknown, keys: string[]) => resultByTable[keys[0]] ?? resultByTable.transactions,
-  );
+  // `listLinkedToLoanQuery` shares the `['transactions']` reactive key with
+  // `listByHoldingQuery` (both really do listen on the same table), so a
+  // lookup keyed on `keys[0]` alone cannot tell the two calls apart — this
+  // reads the query's own `toSQL().sql` marker instead (mocked above) to
+  // route it to its own seeded data.
+  mockUseLiveQuery.mockImplementation((query: unknown, keys: string[], enabled = true) => {
+    // Mirrors the real hook's own disabled contract (`use-live-query.ts`):
+    // `false` reads as `[]`/not-loading, never the seeded data — the
+    // Linked-payments query is disabled outright for a non-loan holding.
+    if (!enabled) {
+      return { data: [], isLoading: false };
+    }
+
+    const sql = (query as { toSQL: () => { sql: string } }).toSQL().sql;
+
+    return sql === 'linked-loan-payments'
+      ? linkedLoanPaymentsResult
+      : (resultByTable[keys[0]] ?? resultByTable.transactions);
+  });
 };
 
 const renderScreen = () =>
@@ -547,6 +582,35 @@ describe('HoldingDetailScreen', () => {
     const { getByText } = await renderScreen();
 
     expect(getByText('09:05')).toBeTruthy();
+  });
+
+  it('shows a loan-link marker on a row carrying a loan link', async () => {
+    seed(cardHolding, [
+      {
+        id: 'x1',
+        amountMinorUnits: -5000,
+        time: 1,
+        description: 'Loan payment',
+        source: 'manual',
+        loanHoldingId: 'loan-1',
+      },
+    ]);
+
+    const { getAllByTestId } = await renderScreen();
+    const ledgerRow = getAllByTestId('ledger-row')[0];
+
+    expect(within(ledgerRow).queryByTestId('ledger-row-loan-link-marker')).toBeTruthy();
+  });
+
+  it('shows no loan-link marker on an unlinked row', async () => {
+    seed(cardHolding, [
+      { id: 'x1', amountMinorUnits: -5000, time: 1, description: 'Coffee', source: 'manual' },
+    ]);
+
+    const { getAllByTestId } = await renderScreen();
+    const ledgerRow = getAllByTestId('ledger-row')[0];
+
+    expect(within(ledgerRow).queryByTestId('ledger-row-loan-link-marker')).toBeNull();
   });
 
   it('right-aligns the stored transaction row timestamp so it sits below the value, like Home', async () => {
@@ -1207,6 +1271,117 @@ describe('HoldingDetailScreen', () => {
     const { queryByText } = await renderScreen();
 
     expect(queryByText(/Next installment/)).toBeNull();
+  });
+
+  // The loan detail lists linked payments — the ONLY way to review an auto
+  // link, since a loan itself carries no ledger of its own
+  // (isLedgerlessHoldingType). Reuses the shared ledger row component and
+  // its own "linked automatically" marker.
+  it('lists linked payments newest first, with the loan-link marker', async () => {
+    seed(
+      annuityLoanHolding,
+      [],
+      [],
+      [{ id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' }],
+      [],
+      [{ baseCurrency: 'UAH' }],
+      undefined,
+      [],
+      {},
+      [
+        {
+          id: 'txn-older',
+          holdingId: 'payer-1',
+          amountMinorUnits: -100_000,
+          time: 1_000,
+          description: 'First installment',
+          source: 'manual',
+          loanHoldingId: 'h-1',
+          loanLinkSource: 'manual',
+        },
+        {
+          id: 'txn-newer',
+          holdingId: 'payer-1',
+          amountMinorUnits: -100_000,
+          time: 2_000,
+          description: 'Second installment',
+          source: 'manual',
+          loanHoldingId: 'h-1',
+          loanLinkSource: 'auto',
+        },
+      ],
+    );
+
+    const { getByText, getAllByTestId } = await renderScreen();
+
+    expect(getByText('Linked payments')).toBeTruthy();
+    expect(getByText('First installment')).toBeTruthy();
+    expect(getByText('Second installment')).toBeTruthy();
+    // The query already orders newest-first — the screen renders the rows
+    // in the order it receives them, so the newer row's own cell comes
+    // first among the linked-payment markers.
+    expect(getAllByTestId('ledger-row-loan-link-marker').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('hides the Linked payments section entirely when there are none', async () => {
+    seed(annuityLoanHolding);
+
+    const { queryByText } = await renderScreen();
+
+    expect(queryByText('Linked payments')).toBeNull();
+  });
+
+  it('never shows a Linked payments section for a non-loan holding, even if seeded', async () => {
+    seed(propertyHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [], {}, [
+      {
+        id: 'txn-1',
+        holdingId: 'payer-1',
+        amountMinorUnits: -100_000,
+        time: 1_000,
+        description: 'Unrelated',
+        source: 'manual',
+        loanHoldingId: 'h-1',
+        loanLinkSource: 'manual',
+      },
+    ]);
+
+    const { queryByText } = await renderScreen();
+
+    expect(queryByText('Linked payments')).toBeNull();
+  });
+
+  it('tapping a linked-payment row opens the transaction form for that row', async () => {
+    seed(
+      annuityLoanHolding,
+      [],
+      [],
+      [{ id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' }],
+      [],
+      [{ baseCurrency: 'UAH' }],
+      undefined,
+      [],
+      {},
+      [
+        {
+          id: 'txn-linked',
+          holdingId: 'payer-1',
+          amountMinorUnits: -100_000,
+          time: 1_000,
+          description: 'First installment',
+          source: 'manual',
+          loanHoldingId: 'h-1',
+          loanLinkSource: 'manual',
+        },
+      ],
+    );
+
+    const { getByText } = await renderScreen();
+
+    await fireEvent.press(getByText('First installment'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('TransactionForm', {
+      transactionId: 'txn-linked',
+    });
   });
 
   it('hides the footer add action for a synced Monobank holding', async () => {

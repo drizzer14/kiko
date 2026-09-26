@@ -1,11 +1,11 @@
+import { left, right } from 'fnts/either';
 import { renderHook, waitFor } from '@testing-library/react-native';
 
-const mockRefreshRates = jest.fn();
-const mockRefreshMetalPrices = jest.fn();
-const mockLatestFetchedAt = jest.fn();
+const mockRefreshMarketData = jest.fn();
 const mockSyncStateGetQuery = jest.fn();
 const mockListQuery = jest.fn();
 const mockMonobankHasCredentials = jest.fn();
+const mockRunLoanAutoLink = jest.fn();
 
 // Controllable per-institution job runs, so a test can assert which accounts the
 // app-open fan-out actually synced without exercising the real sync pipelines
@@ -31,17 +31,13 @@ jest.mock('../../bank-sync/registry', () => ({
     monobank: { hasCredentials: (...args: unknown[]) => mockMonobankHasCredentials(...args) },
   },
 }));
-jest.mock('../../rates/rates-refresh', () => ({
-  refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
-}));
-jest.mock('../../prices/metal-refresh', () => ({
-  refreshMetalPrices: (...args: unknown[]) => mockRefreshMetalPrices(...args),
-}));
-jest.mock('@kiko/rates/repo', () => ({
-  ratesRepo: {
-    latestFetchedAt: (...args: unknown[]) => mockLatestFetchedAt(...args),
-  },
-}));
+jest.mock('@kiko/sync/refresh-market-data', () => {
+  const actual = jest.requireActual('@kiko/sync/refresh-market-data');
+  return {
+    ...actual,
+    refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),
+  };
+});
 jest.mock('@kiko/sync-state/sync-state.repo', () => ({
   syncStateRepo: {
     getQuery: (...args: unknown[]) => mockSyncStateGetQuery(...args),
@@ -51,6 +47,9 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
     listQuery: (...args: unknown[]) => mockListQuery(...args),
   },
+}));
+jest.mock('@kiko/loans/use-loan-auto-link', () => ({
+  runLoanAutoLink: (...args: unknown[]) => mockRunLoanAutoLink(...args),
 }));
 
 import { AUTO_SYNC_INTERVAL_MS, throttleElapsed, useAutoSync } from './use-auto-sync';
@@ -72,73 +71,55 @@ describe('throttleElapsed', () => {
 });
 
 describe('useAutoSync', () => {
+  let warnSpy: jest.SpyInstance;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     mockMonobankRun.mockResolvedValue(undefined);
     mockCryptoRun.mockResolvedValue(undefined);
-    mockRefreshRates.mockResolvedValue(undefined);
-    mockRefreshMetalPrices.mockResolvedValue(undefined);
-    mockLatestFetchedAt.mockResolvedValue(null);
+    mockRefreshMarketData.mockResolvedValue(right(undefined));
     mockSyncStateGetQuery.mockResolvedValue([{ lastSyncAt: null }]);
     mockListQuery.mockResolvedValue([]);
     mockMonobankHasCredentials.mockResolvedValue(true);
+    mockRunLoanAutoLink.mockResolvedValue(undefined);
   });
 
-  it('refreshes live rates but runs no sync for a manual-only user (no connected sync account)', async () => {
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  it('runs the loan auto-link matcher once after the on-open refresh', async () => {
+    await renderHook(() => useAutoSync());
+
+    await waitFor(() => expect(mockRunLoanAutoLink).toHaveBeenCalledTimes(1));
+  });
+
+  it('refreshes rates and metals but runs no sync for a manual-only user (no connected sync account)', async () => {
     // A manual-only user has no connected sync account, so the fan-out is empty.
     // The live currencyRates table must STILL be populated, or a
     // non-base-currency holding is dropped from every net-worth aggregation
     // (`canConvert` in net-worth-view). The sync fan-out stays gated on jobs; the
-    // rate refresh must not be — `refreshRates` is itself self-throttled.
+    // refresh must not be — `refreshMarketData` is itself self-throttled.
     mockListQuery.mockResolvedValue([]);
-    mockLatestFetchedAt.mockResolvedValue(7);
 
     await renderHook(() => useAutoSync());
 
-    await waitFor(() => expect(mockRefreshRates).toHaveBeenCalledWith({ lastRefreshAt: 7 }));
+    await waitFor(() =>
+      expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: true, metals: true }),
+    );
 
     expect(mockMonobankRun).not.toHaveBeenCalled();
     expect(mockCryptoRun).not.toHaveBeenCalled();
   });
 
-  it('refreshes metal prices next to rates, same as the fan-out flow', async () => {
-    mockListQuery.mockResolvedValue([]);
+  it('does not double-log a refreshMarketData Left — it already logged its own rates/metals failure', async () => {
+    mockRefreshMarketData.mockResolvedValue(left([{ step: 'rates', reason: 'boom' }]));
 
     await renderHook(() => useAutoSync());
 
-    await waitFor(() => expect(mockRefreshMetalPrices).toHaveBeenCalled());
-  });
-
-  it('runs refreshRates and refreshMetalPrices CONCURRENTLY — the metal call fires before rates settles', async () => {
-    // They share no data dependency (refreshMetalPrices reads/writes
-    // price_points only; refreshRates reads/writes currency_rates only), so
-    // starting both at once — rather than awaiting rates before even
-    // CALLING refreshMetalPrices — shrinks the app-open DB burst's wall-clock
-    // span. A controllable rates promise proves this: if the two ran
-    // sequentially, refreshMetalPrices would not be called until AFTER
-    // rates resolves.
-    mockListQuery.mockResolvedValue([]);
-    let resolveRates!: () => void;
-    mockRefreshRates.mockReturnValue(
-      new Promise<void>((resolve) => {
-        resolveRates = resolve;
-      }),
-    );
-
-    renderHook(() => useAutoSync());
-
-    await waitFor(() => expect(mockRefreshMetalPrices).toHaveBeenCalled());
-
-    resolveRates();
-  });
-
-  it('still calls refreshMetalPrices when refreshRates rejects (allSettled, not Promise.all)', async () => {
-    mockListQuery.mockResolvedValue([]);
-    mockRefreshRates.mockRejectedValue(new Error('rates fetch failed'));
-
-    await expect(renderHook(() => useAutoSync())).resolves.toBeDefined();
-
-    await waitFor(() => expect(mockRefreshMetalPrices).toHaveBeenCalled());
+    await waitFor(() => expect(mockRefreshMarketData).toHaveBeenCalled());
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 
   it('does nothing when the connected Monobank account synced within the throttle window', async () => {
@@ -152,17 +133,18 @@ describe('useAutoSync', () => {
 
     expect(mockMonobankRun).not.toHaveBeenCalled();
     expect(mockCryptoRun).not.toHaveBeenCalled();
-    expect(mockRefreshRates).not.toHaveBeenCalled();
+    expect(mockRefreshMarketData).not.toHaveBeenCalled();
   });
 
-  it('syncs the Monobank account then refreshes rates when tokened and past the throttle window', async () => {
+  it('syncs the Monobank account then refreshes rates + metals when tokened and past the throttle window', async () => {
     mockListQuery.mockResolvedValue([monobank]);
-    mockLatestFetchedAt.mockResolvedValue(42);
 
     await renderHook(() => useAutoSync());
 
     await waitFor(() => expect(mockMonobankRun).toHaveBeenCalled());
-    await waitFor(() => expect(mockRefreshRates).toHaveBeenCalledWith({ lastRefreshAt: 42 }));
+    await waitFor(() =>
+      expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: true, metals: true }),
+    );
   });
 
   it('skips the Monobank account but still syncs crypto when no token is stored', async () => {
@@ -175,10 +157,10 @@ describe('useAutoSync', () => {
 
     await waitFor(() => expect(mockCryptoRun).toHaveBeenCalled());
     expect(mockMonobankRun).not.toHaveBeenCalled();
-    await waitFor(() => expect(mockRefreshRates).toHaveBeenCalled());
+    await waitFor(() => expect(mockRefreshMarketData).toHaveBeenCalled());
   });
 
-  it('runs no sync but still refreshes rates when the only connected account is a tokenless Monobank one', async () => {
+  it('runs no sync but still refreshes when the only connected account is a tokenless Monobank one', async () => {
     mockListQuery.mockResolvedValue([monobank]);
     mockMonobankHasCredentials.mockResolvedValue(false);
 
@@ -188,9 +170,9 @@ describe('useAutoSync', () => {
     // through the registry.
     await waitFor(() => expect(mockMonobankHasCredentials).toHaveBeenCalledWith('acc-mono'));
 
-    // The tokenless account yields no job, so nothing syncs — but the live-rate
-    // refresh is decoupled from the fan-out and still runs.
-    await waitFor(() => expect(mockRefreshRates).toHaveBeenCalled());
+    // The tokenless account yields no job, so nothing syncs — but the refresh
+    // is decoupled from the fan-out and still runs.
+    await waitFor(() => expect(mockRefreshMarketData).toHaveBeenCalled());
     expect(mockMonobankRun).not.toHaveBeenCalled();
     expect(mockCryptoRun).not.toHaveBeenCalled();
   });
@@ -222,7 +204,7 @@ describe('useAutoSync', () => {
 
     await waitFor(() => expect(mockCryptoRun).toHaveBeenCalled());
     expect(mockMonobankRun).not.toHaveBeenCalled();
-    await waitFor(() => expect(mockRefreshRates).toHaveBeenCalled());
+    await waitFor(() => expect(mockRefreshMarketData).toHaveBeenCalled());
   });
 
   it('fans out to BOTH the Monobank and the crypto account when both are connected', async () => {
@@ -234,22 +216,25 @@ describe('useAutoSync', () => {
     await waitFor(() => expect(mockCryptoRun).toHaveBeenCalled());
   });
 
-  it('isolates a failing job (partial success) and still refreshes rates', async () => {
+  it('isolates a failing job (partial success) and still refreshes', async () => {
     mockListQuery.mockResolvedValue([monobank, binance]);
     mockMonobankRun.mockRejectedValue(new Error('sync boom'));
 
     await expect(renderHook(() => useAutoSync())).resolves.toBeDefined();
 
     await waitFor(() => expect(mockCryptoRun).toHaveBeenCalled());
-    await waitFor(() => expect(mockRefreshRates).toHaveBeenCalled());
+    await waitFor(() => expect(mockRefreshMarketData).toHaveBeenCalled());
   });
 
-  it('swallows an error thrown while reading the connected accounts', async () => {
+  it('swallows an error thrown while reading the connected accounts (but still logs it)', async () => {
     mockListQuery.mockRejectedValue(new Error('read boom'));
 
     await expect(renderHook(() => useAutoSync())).resolves.toBeDefined();
 
     await waitFor(() => expect(mockListQuery).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('auto-sync'), expect.anything()),
+    );
 
     expect(mockMonobankRun).not.toHaveBeenCalled();
     expect(mockCryptoRun).not.toHaveBeenCalled();

@@ -19,6 +19,13 @@ export type TransactionCardProps = {
   // renders when at least one is given.
   footerMeta?: string;
   footerTrailing?: string;
+  // Shows a small "loan payment" marker glyph beside `footerMeta`, so a
+  // linked payment reads as one at a glance regardless of how it was linked
+  // (`loanLinkSource`: 'auto' or 'manual' alike — both read the same
+  // marker). The caller (Home's `TransactionRow`, the holding-detail ledger
+  // row) resolves whether the row is linked; omitted/false renders nothing,
+  // matching every other optional footer prop's "no prop -> no output" shape.
+  loanLinked?: boolean;
   // Forwarded to the underlying Card — e.g. Home's own inter-row spacing.
   style?: StyleProp<ViewStyle>;
   testID?: string;

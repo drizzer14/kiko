@@ -19,7 +19,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 // The fiat anchors NBU quotes (USD/EUR against UAH) plus every crypto, derived
 // from currency.ts so a newly added crypto composes chart history automatically.
-const allCurrencies: Currency[] = ['USD', 'EUR', 'UAH', ...currencyOptions.filter(isCrypto)];
+// UAH itself is never listed: it is the implicit pivot, never a stored `X:UAH`
+// row's own `base`.
+const allCurrencies: Currency[] = ['USD', 'EUR', ...currencyOptions.filter(isCrypto)];
 
 /** A row ready for `rateHistoryRepo.upsertMany` (rate stored as text). */
 type NewHistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate' | 'source'>;
@@ -148,9 +150,9 @@ export const planBackfillRun = (
   return { run: false, resumeFrom: null };
 };
 
-/** Choose the stored source for a composed pair — crypto legs come from CoinGecko. */
-const pairSource = (base: Currency, quote: Currency): NewHistoryRow['source'] =>
-  isCrypto(base) || isCrypto(quote) ? 'coingecko' : 'nbu';
+/** Choose the stored source for a currency's own `X:UAH` row — crypto comes from CoinGecko. */
+const pairSource = (base: Currency): NewHistoryRow['source'] =>
+  isCrypto(base) ? 'coingecko' : 'nbu';
 
 /** Each currency's value expressed in UAH — the pivot for composing pairs. */
 type UahPrice = Partial<Record<Currency, number>>;
@@ -228,11 +230,12 @@ const uahPriceAt = (timelines: Map<string, HistoryRateEntry[]>, day: number): Ua
 };
 
 /**
- * Compose every ordered cross pair among the priced currencies (USD/EUR/UAH plus
- * every crypto) for each target day from the day's UAH-anchored prices (mirrors
- * the per-current-day pivot in
- * `rates-refresh.ts`, per historical day). A pair is emitted only when both
- * currencies are priced for that day. Rates are stored as strings, never floats.
+ * Compose one `X:UAH` row per priced currency (USD/EUR plus every crypto) for
+ * each target day from the day's UAH-anchored prices (mirrors the per-run
+ * pivot in `rates-refresh.ts`, per historical day instead) — never a cross
+ * row between two non-UAH currencies; a cross rate resolves at READ TIME
+ * through the UAH pivot (`rateBetween`/`rateTableAt`). A row is emitted only
+ * when that day's own price resolves. Rates are stored as strings, never floats.
  */
 export const composeHistoryRows = (
   entries: HistoryRateEntry[],
@@ -245,15 +248,12 @@ export const composeHistoryRows = (
     const price = uahPriceAt(timelines, day);
 
     for (const base of allCurrencies) {
-      for (const quote of allCurrencies) {
-        const from = price[base];
-        const to = price[quote];
+      const rate = price[base];
 
-        if (base === quote || from === undefined || to === undefined) {
-          continue;
-        }
-        rows.push({ base, quote, day, rate: String(from / to), source: pairSource(base, quote) });
+      if (rate === undefined) {
+        continue;
       }
+      rows.push({ base, quote: 'UAH', day, rate: String(rate), source: pairSource(base) });
     }
   }
 

@@ -56,7 +56,7 @@ appId: com.dmytro-vasylkivskyi.kiko
 # 1. Accounts tab -> an account's detail screen
 # ---------------------------------------------------------------------------
 - tapOn:
-    id: "wallet.pass.fill"
+    id: "tray"
 - assertVisible:
     id: "accounts-grid"
 - tapOn:

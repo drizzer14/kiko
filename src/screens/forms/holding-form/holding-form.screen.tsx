@@ -3,11 +3,13 @@ import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { holdingDescriptor } from '@kiko/holdings/holding-descriptor';
+import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
+import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { ScrollViewInstance, TextInputInstance } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { holdingDescriptor, isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 
 import {
   creatableHoldingTypesForAccount,
@@ -16,10 +18,10 @@ import {
   holdingTypesForAccountKind,
 } from '../../../holdings/holding-type';
 import HoldingTypeField from '../holding-type-field';
+import type { HoldingRow } from '../../../db/schema';
 import Box from '../../../design-system/components/box';
 import { useLiveQuery } from '../../../db/use-live-query';
 import type { Currency } from '../../../currency/currency';
-import { refreshRates } from '../../../rates/rates-refresh';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import { usePriceBook } from '../../../prices/use-price-book';
@@ -30,7 +32,6 @@ import {
 } from '../../../design-system/scroll-to-field/scroll-to-field';
 import Divider from '../../../design-system/components/divider';
 import { needsPriceBook } from '../../../holdings/priced-value';
-import { refreshMetalPrices } from '../../../prices/metal-refresh';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
@@ -41,6 +42,7 @@ import CurrencyField from '../../../design-system/components/currency-field';
 import { isSyncedAccount, isSyncedHolding } from '../../../holdings/deletable';
 import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
 import HoldingIdentityField from '../../../design-system/components/holding-identity-field';
+import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 
 import LoanFormBlock from './loan/loan-form-block';
@@ -57,6 +59,78 @@ import { usePropertyFields } from './property/use-property-fields';
 import type { ScrollTarget, HoldingTypeForm } from './holding-type-form';
 import TermDepositFormBlock from './term-deposit/term-deposit-form-block';
 import { useTermDepositFields } from './term-deposit/use-term-deposit-fields';
+
+// Fire-and-forget, only for a loan: the matcher backfills from the loan's
+// own start date, so a create OR an edit (principal/schedule/
+// paymentHoldingId/lenderName/lenderIban can all change) needs a fresh run —
+// unlike `refreshMarketData`, which never fires on an edit at all
+// (type/currency are read-only there). Never rejects (its own doc comment),
+// so `save` never awaits or catches it. Extracted to a module-level function
+// (a plain call, not an inline `if`) so this ONE extra branch stays out of
+// `save`'s own cognitive-complexity budget.
+const runLoanAutoLinkIfLoan = (type: HoldingType): void => {
+  if (type === 'loan') {
+    runLoanAutoLink();
+  }
+};
+
+// The loan form's "Paid from" picker options: every OPEN, non-ledgerless
+// holding in the LOAN's own currency — a `paymentHoldingId` link is only
+// ever a meaningful matcher signal when the payer holding shares the loan's
+// currency (mirrors `buildLoanOptions`'s identical currency filter on the
+// transaction form's own loan-payment field). A loan holding is itself
+// ledgerless, so this can never offer the loan as its own payer.
+//
+// A filter never hides an active selection (kiko-design-system): the
+// CURRENTLY selected `paymentHoldingId` is unioned back in even once it has
+// since closed or moved to another currency — mirrors `buildLoanOptions`'s
+// own union-back — or `PaymentHoldingField` would resolve no match for it
+// and silently show "None" for a link that still exists in the metadata,
+// with no way to see or clear it.
+const buildPaymentHoldingOptions = (
+  holdings: readonly HoldingRow[],
+  accountNameById: ReadonlyMap<string, string>,
+  loanCurrency: Currency,
+  selectedHoldingId: string | null,
+): HoldingSelectOption[] => {
+  const openOptions = holdings
+    .filter(
+      (candidate) =>
+        candidate.closedAt == null &&
+        candidate.currency === loanCurrency &&
+        !isLedgerlessHoldingType(candidate.type),
+    )
+    .map((candidate) => ({
+      id: candidate.id,
+      name: candidate.name,
+      icon: candidate.icon ?? holdingTypeSymbol[candidate.type],
+      color: resolveEntityColor(candidate.color, defaultHoldingColor[candidate.type]),
+      currency: candidate.currency,
+      accountName: accountNameById.get(candidate.accountId) ?? '',
+    }));
+
+  if (selectedHoldingId === null || openOptions.some((option) => option.id === selectedHoldingId)) {
+    return openOptions;
+  }
+
+  const selectedHolding = holdings.find((candidate) => candidate.id === selectedHoldingId);
+
+  if (selectedHolding === undefined) {
+    return openOptions;
+  }
+
+  return [
+    ...openOptions,
+    {
+      id: selectedHolding.id,
+      name: selectedHolding.name,
+      icon: selectedHolding.icon ?? holdingTypeSymbol[selectedHolding.type],
+      color: resolveEntityColor(selectedHolding.color, defaultHoldingColor[selectedHolding.type]),
+      currency: selectedHolding.currency,
+      accountName: accountNameById.get(selectedHolding.accountId) ?? '',
+    },
+  ];
+};
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 
@@ -231,6 +305,22 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // selected, so a value typed before switching away survives the switch.
   const balance = useBalanceFields({ currency });
 
+  // The loan form's own "Paid from" picker options — read here, alongside
+  // every other holdings-derived option list, the same way the transaction
+  // form reads its own `loanOptions`. Every OTHER holding type's form block
+  // needs neither the full holdings list nor the full account list, so
+  // these two queries are scoped to this ONE field rather than hoisted to
+  // the top of the component.
+  const { data: allHoldings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
+  const { data: allAccounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
+  const accountNameById = new Map(allAccounts.map((row) => [row.id, row.name] as const));
+  const paymentHoldingOptions = buildPaymentHoldingOptions(
+    allHoldings,
+    accountNameById,
+    currency,
+    loanFields.paymentHoldingId,
+  );
+
   // The one place every holding type's own form behaviour is looked up —
   // `active` is what `isValid`, the blocked-Save scroll, and the create/edit
   // writes below all read through, so none of them need their own
@@ -359,6 +449,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         });
         await holdingsRepo.setIcon(holdingId, icon);
 
+        // Unlike `refreshMarketData` below (type/currency are read-only in
+        // edit mode, so it never fires here), a loan's principal, schedule,
+        // paymentHoldingId, lenderName, and lenderIban all stay editable —
+        // any of them can change what the matcher would now link, so an
+        // EDIT backfills too (see `runLoanAutoLinkIfLoan`'s own doc comment).
+        runLoanAutoLinkIfLoan(type);
+
         navigation.goBack();
 
         return;
@@ -388,14 +485,19 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
       // The FIRST metal, foreign-currency, or crypto holding needs its
       // price/rate visible without an app restart — trigger the SAME gated
-      // refresh app-open runs. Both calls gate themselves on data presence
-      // (kiko-architecture), so this is a no-op for a type/currency that
-      // needs neither. `Promise.allSettled` never rejects, so a refresh
-      // failure here never turns a successful create into a shown error.
-      // Fire-and-forget (not awaited): the refresh is a background nicety,
-      // not a save precondition — Save must not sit on the network before
-      // navigating back; only fire the refresh after the write commits.
-      Promise.allSettled([refreshRates(), refreshMetalPrices()]);
+      // refresh app-open runs, unthrottled (a manual create is a deliberate
+      // user action, not a background poll). Both steps gate themselves on
+      // data presence (kiko-architecture), so this is a no-op for a
+      // type/currency that needs neither. `refreshMarketData` never rejects
+      // and logs its own failure, so it never turns a successful create into
+      // a shown error. Fire-and-forget (not awaited): the refresh is a
+      // background nicety, not a save precondition — Save must not sit on
+      // the network before navigating back; only fire the refresh after the
+      // write commits.
+      refreshMarketData({ throttled: false, metals: true });
+      // A freshly created loan can already have past ledger history worth
+      // backfilling (see `runLoanAutoLinkIfLoan`'s own doc comment).
+      runLoanAutoLinkIfLoan(type);
 
       // A `returnTo` route param (set only by the "Create new holding" entry
       // points on StatementImport/ColumnMapping) carries that screen's own
@@ -546,7 +648,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           .with('metal', () => (
             <MetalFormBlock fields={metal} attemptedSave={attemptedSave} isEdit={isEdit} />
           ))
-          .with('loan', () => <LoanFormBlock fields={loanFields} attemptedSave={attemptedSave} />)
+          .with('loan', () => (
+            <LoanFormBlock
+              fields={loanFields}
+              attemptedSave={attemptedSave}
+              paymentHoldingOptions={paymentHoldingOptions}
+            />
+          ))
           .with('card', 'cash', 'crypto_asset', 'jar', () => (
             <BalanceFormBlock fields={balance} isSyncedEdit={isSyncedEdit} />
           ))
