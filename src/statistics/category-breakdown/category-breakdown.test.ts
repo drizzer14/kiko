@@ -116,7 +116,7 @@ describe('buildCategoryBreakdown', () => {
         makeTransaction({ category: 'groceries', amountMinorUnits: -10_00, currency: 'USD' }),
       ],
       categoryDisplay: DISPLAY,
-      rateTable: { 'USD:UAH': 40 },
+      rateTable: { USD: 40 },
       baseCurrency: 'UAH',
       defaultCategoryKey: 'other',
     });

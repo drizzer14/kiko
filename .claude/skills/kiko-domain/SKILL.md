@@ -588,8 +588,12 @@ special-casing was needed there either (see `kiko-charts` for the pie
 chart and net-worth line's own T27 rules). An archived account's or
 closed holding's balance is excluded. The headline total
 (`guardedNetWorth`) and the per-currency breakdown shown beneath it
-(`guardedBreakdown`) share one `canConvert` filter in `src/rates/`, so
-a currency with no resolvable rate is dropped from both — never
+(`guardedBreakdown`) share one `canConvert` filter in `src/rates/`,
+which is `true` exactly when BOTH the holding's currency and the base
+currency resolve a finite, positive UAH price through the same
+`rateBetween` pivot (`kiko-pricing`'s "`RateTable` is a currency ->
+UAH-price map" paragraph) — never a direct stored cross-pair lookup —
+so a currency with no resolvable rate is dropped from both — never
 included in the breakdown after being excluded from the total. See
 `kiko-pricing`'s "Currency-rate fallback chain" section for how a rate
 is resolved (Monobank → NBU → bundled fiat seed); today CRYPTO is the

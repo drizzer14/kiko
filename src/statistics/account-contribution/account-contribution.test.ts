@@ -38,7 +38,7 @@ describe('buildAccountContribution', () => {
       holding({ accountId: 'b', currency: 'USD', balanceMinorUnits: 10_000 }), // 100 * 40 = 400_000
       holding({ accountId: 'c', currency: 'EUR', balanceMinorUnits: 20_000 }), // 200 * 45 = 900_000
     ];
-    const rateTable = { 'USD:UAH': 40, 'EUR:UAH': 45 };
+    const rateTable = { USD: 40, EUR: 45 };
 
     const slices = buildAccountContribution({
       accounts,
@@ -92,7 +92,7 @@ describe('buildAccountContribution', () => {
     const slices = buildAccountContribution({
       accounts,
       holdings,
-      rateTable: { 'USD:UAH': 40 },
+      rateTable: { USD: 40 },
       baseCurrency: 'UAH',
       now: NOW,
     });
@@ -341,7 +341,7 @@ describe('buildDebtTotal', () => {
     // so each loan's own held value is exactly `-principal`.
     const total = buildDebtTotal({
       holdings,
-      rateTable: { 'USD:UAH': 40 },
+      rateTable: { USD: 40 },
       baseCurrency: 'UAH',
       now: NOW,
     });

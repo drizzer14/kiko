@@ -2,17 +2,19 @@ import { Money } from '../../currency/money';
 import { buildPriceBook } from '../../prices/price-book';
 import { holdingInstrument } from '../../prices/instrument';
 
-import { convert, netWorth, rateTableFromRows } from './conversion';
+import { convert, netWorth, rateBetween, rateTableFromRows } from './conversion';
 
 // A fixed evaluation instant. Every holding in these cases is plain cash (no
 // `type`), so `holdingValue` takes its flat branch and the instant cannot
 // affect a total — it is pinned only to keep the call deterministic.
 const NOW = Date.UTC(2026, 0, 1);
 
+// A `RateTable` is now a currency -> its price in ONE UAH map; `UAH` itself
+// is never a key (implicit 1, read through `rateBetween`).
 const rates = {
-  'USD:UAH': 40,
-  'EUR:UAH': 43,
-  'BTC:UAH': 4_000_000,
+  USD: 40,
+  EUR: 43,
+  BTC: 4_000_000,
 };
 
 describe('convert', () => {
@@ -27,8 +29,8 @@ describe('convert', () => {
     expect(result.minorUnits).toBe(500);
   });
 
-  it('throws when the rate for the pair is missing', () => {
-    expect(() => convert(Money.of('EUR', 10_000), 'USD', rates)).toThrow('Missing rate EUR->USD');
+  it('throws when the target currency has no stored UAH price at all', () => {
+    expect(() => convert(Money.of('EUR', 10_000), 'GBP', rates)).toThrow('Missing rate EUR->GBP');
   });
 });
 
@@ -109,9 +111,9 @@ describe('netWorth', () => {
 });
 
 describe('rateTableFromRows', () => {
-  it('parses the string rate column into a numeric RateTable', () => {
+  it('parses the string rate column into a numeric RateTable, keyed by base', () => {
     const table = rateTableFromRows([{ base: 'USD', quote: 'UAH', rate: '40.5' }]);
-    expect(table).toEqual({ 'USD:UAH': 40.5 });
+    expect(table).toEqual({ USD: 40.5 });
   });
 
   it('drops a row whose rate does not parse to a finite number', () => {
@@ -119,7 +121,7 @@ describe('rateTableFromRows', () => {
       { base: 'USD', quote: 'UAH', rate: '40' },
       { base: 'EUR', quote: 'UAH', rate: 'not-a-number' },
     ]);
-    expect(table).toEqual({ 'USD:UAH': 40 });
+    expect(table).toEqual({ USD: 40 });
   });
 
   it('drops a row whose rate parses to zero', () => {
@@ -127,6 +129,46 @@ describe('rateTableFromRows', () => {
       { base: 'USD', quote: 'UAH', rate: '40' },
       { base: 'EUR', quote: 'UAH', rate: '0' },
     ]);
-    expect(table).toEqual({ 'USD:UAH': 40 });
+    expect(table).toEqual({ USD: 40 });
+  });
+
+  it('ignores a stray cross row (quote other than UAH), it is never read', () => {
+    const table = rateTableFromRows([
+      { base: 'USD', quote: 'UAH', rate: '40' },
+      { base: 'USD', quote: 'EUR', rate: '0.93' },
+    ]);
+    expect(table).toEqual({ USD: 40 });
+  });
+
+  it('ignores a row with base UAH — UAH is never a key, its price is implicit 1', () => {
+    const table = rateTableFromRows([{ base: 'UAH', quote: 'USD', rate: '0.025' }]);
+    expect(table).toEqual({});
+  });
+});
+
+describe('rateBetween', () => {
+  it('resolves A->B as the ratio of each currency’s UAH price', () => {
+    expect(rateBetween({ USD: 40, EUR: 44 }, 'USD', 'EUR')).toBe(40 / 44);
+  });
+
+  it('treats UAH as an implicit 1, never a stored key', () => {
+    expect(rateBetween({ USD: 40 }, 'UAH', 'USD')).toBe(1 / 40);
+    expect(rateBetween({ USD: 40 }, 'USD', 'UAH')).toBe(40);
+  });
+
+  it('is 1 for the same currency, even with no stored price at all', () => {
+    expect(rateBetween({}, 'USD', 'USD')).toBe(1);
+    expect(rateBetween({}, 'UAH', 'UAH')).toBe(1);
+  });
+
+  it('is undefined when a leg is missing', () => {
+    expect(rateBetween({ USD: 40 }, 'USD', 'EUR')).toBeUndefined();
+    expect(rateBetween({ USD: 40 }, 'EUR', 'USD')).toBeUndefined();
+  });
+
+  it('is undefined when a leg is zero, negative, or NaN', () => {
+    expect(rateBetween({ USD: 40, EUR: 0 }, 'USD', 'EUR')).toBeUndefined();
+    expect(rateBetween({ USD: 40, EUR: -1 }, 'USD', 'EUR')).toBeUndefined();
+    expect(rateBetween({ USD: 40, EUR: Number.NaN }, 'USD', 'EUR')).toBeUndefined();
   });
 });

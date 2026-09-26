@@ -66,7 +66,7 @@ describe('fetchFiatRates', () => {
     // midpoint (44.6455) would overvalue the holding by ~742 UAH.
     expect(usdUah).toEqual({ base: 'USD', quote: 'UAH', rate: 44.46, source: 'monobank' });
 
-    const rates = { [`${usdUah.base}:${usdUah.quote}`]: usdUah.rate };
+    const rates = { [usdUah.base]: usdUah.rate };
     const converted = convert(Money.fromMajor('USD', 4000), 'UAH', rates);
 
     expect(converted).toEqual(Money.fromMajor('UAH', 177840));

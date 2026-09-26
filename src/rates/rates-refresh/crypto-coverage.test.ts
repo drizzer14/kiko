@@ -1,4 +1,4 @@
-import type { RateEntry } from '../conversion';
+import { rateBetween, type RateEntry } from '../conversion';
 import { composeRateTable } from '../monobank-feed-test-helper';
 import { type Currency, currencyOptions } from '../../currency/currency';
 import { canConvert, guardedBreakdown, guardedNetWorth } from '../net-worth-view';
@@ -97,7 +97,7 @@ describe('Crypto coverage — every added crypto reaches every base (no silent n
   // like every other crypto, this is the assertion that would catch it.
   it('prices USDT with its real drift, not a hardcoded 1:1 peg', async () => {
     const table = await composeTable();
-    const rate = table['USDT:USD'];
+    const rate = rateBetween(table, 'USDT', 'USD');
 
     expect(rate).toBeDefined();
     expect(rate).not.toBe(1);

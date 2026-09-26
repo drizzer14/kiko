@@ -27,17 +27,32 @@ non-currency `price_points` store.
   capture date — it is a real, fixed date, not "current"). In
   `buildRateTable` (`src/rates/net-worth-view/net-worth-view.ts`) the
   seed is overlaid by live DB rows — `{ ...FIAT_RATE_SEED_TABLE,
-  ...liveRows }` — so a live rate always wins per pair and the seed
-  only fills a gap. This is a read-time overlay, never written to the
-  DB, and is why a non-UAH fiat holding values correctly immediately,
-  even fully offline on a fresh install before any live refresh has
-  ever run. Crypto has no seed entry — see below.
+  ...liveRows }` — so a live UAH price always wins PER CURRENCY and the
+  seed only fills a gap. This is a read-time overlay, never written to
+  the DB, and is why a non-UAH fiat holding values correctly
+  immediately, even fully offline on a fresh install before any live
+  refresh has ever run. Crypto has no seed entry — see below.
 - BTC price: CoinGecko free API, quoted in USD; derive other pairs
   from it. No offline seed for crypto; an unrated crypto holding is
   excluded until a live CoinGecko price lands.
 - Store live results in `CurrencyRate`. Refresh on sync, throttled to
   respect each provider's own cache window — do not poll faster than
   the upstream cache refreshes.
+- **`RateTable` is a currency -> UAH-price map, resolved at READ TIME
+  through the UAH pivot, not a stored cross-pair lookup.**
+  `src/rates/conversion/conversion.ts`'s `RateTable =
+  Partial<Record<Currency, number>>` holds each currency's price in
+  ONE UAH (`rate(X, UAH)`); `UAH` itself is never a key — its own price
+  is implicit `1`. Every A->B conversion resolves through
+  `rateBetween(rates, from, to)`: the same currency is always `1`
+  (even with nothing stored), otherwise `uahPer(from) / uahPer(to)`
+  when BOTH legs resolve to a finite, positive UAH price, else
+  `undefined` — `convert` and `canConvert` both read this ONE function
+  rather than indexing a `${base}:${quote}` string key. `rateTableFromRows`
+  (parsing a live DB row, or the seed) keeps only an `X:UAH` star row
+  (`quote === 'UAH'`, `base !== 'UAH'`) and drops a stray cross row —
+  a legacy `X:Y` pair, or `UAH` itself as `base` — unread rather than
+  corrupting the table.
 
 ## Rate history
 
@@ -47,15 +62,18 @@ the latest-only `CurrencyRate` cache — this is what backs the
 historical net-worth chart. `rateHistoryRepo.upsertMany` chunks at
 2000 rows (10000 bound params, under SQLite's
 `SQLITE_MAX_VARIABLE_NUMBER`) and upserts on the `(base, quote, day)`
-unique index. Two read helpers build a flat `RateTable` for a given
-`day` from a row set: `rateTableAt` resolves each pair to its NEAREST
-row AT OR BEFORE `day` (carry-forward across a gap, e.g. a Friday rate
-covers the weekend), omitting a pair with no row at or before `day`;
-`earliestRateTable` instead takes each pair's EARLIEST stored row, so
-a bucket before a pair's first history row still prices that holding
-(flat at the oldest known rate) instead of dropping it from the
-leading buckets. `price_points`' own `priceAt` (below) mirrors this
-same nearest-at-or-before / earliest-fallback shape.
+unique index. Two read helpers build a per-currency `RateTable` for a
+given `day` from a row set, reading only an `X:UAH` star row
+(`quote === 'UAH'`, `base !== 'UAH'`) and ignoring a stray cross row
+the same way `rateTableFromRows` does: `rateTableAt` resolves each
+CURRENCY to its NEAREST row AT OR BEFORE `day` (carry-forward across a
+gap, e.g. a Friday rate covers the weekend), omitting a currency with
+no row at or before `day`; `earliestRateTable` instead takes each
+currency's EARLIEST stored row, so a bucket before a currency's first
+history row still prices that holding (flat at the oldest known rate)
+instead of dropping it from the leading buckets. `price_points`' own
+`priceAt` (below) mirrors this same nearest-at-or-before /
+earliest-fallback shape.
 
 ### History backfill
 

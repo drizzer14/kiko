@@ -142,15 +142,9 @@ const pairSource = (
  * UAH-anchored prices actually fed `price` — `refreshRates` below passes
  * `'nbu'` when the Monobank fetch failed and NBU's fallback rows supplied the
  * pivot instead, so a stored row's provenance stays accurate. Defaults to
- * `'monobank'` for every other caller (a live Monobank-sourced run, and
- * `fiat-rate-seed.ts`'s static snapshot, which was itself captured from Monobank).
- *
- * Exported so `fiat-rate-seed.ts` composes the bundled offline fiat fallback
- * table through this SAME logic, from a static UAH-price snapshot instead of
- * a live fetch — the seed's shape is then guaranteed identical to what a live
- * refresh would have produced, rather than a second, drift-prone reimplementation.
+ * `'monobank'` for every other caller (a live Monobank-sourced run).
  */
-export const buildPairs = (
+const buildPairs = (
   price: UahPrice,
   fetchedAt: number,
   fiatSource: 'monobank' | 'nbu' = 'monobank',
