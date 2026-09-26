@@ -180,7 +180,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // React Navigation 7 pushes a duplicate of this already-on-stack route
   // instead of reusing it; see `returnTo` on
   // `HoldingForm`'s route type, and
-  // `src/navigation/statement-import-return.navigator.test.tsx` for the
+  // `src/navigation/root-navigator/statement-import-return.navigator.test.tsx` for the
   // real-router proof). This effect selects it the moment it arrives.
   useEffect(() => {
     if (holdingId !== undefined) {
@@ -418,7 +418,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   //
   // `navigation.popTo` — NOT `navigate`, which on React Navigation 7 pushes
   // a DUPLICATE of an already-on-stack route instead of reusing it — see
-  // `src/navigation/statement-import-return.navigator.test.tsx` for the
+  // `src/navigation/root-navigator/statement-import-return.navigator.test.tsx` for the
   // real-router proof) — finds the existing `AccountDetail` instance
   // already on the stack (this screen, and Map Columns before it, were both
   // pushed FROM there) and pops back to it in place, regardless of how many

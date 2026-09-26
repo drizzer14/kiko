@@ -71,7 +71,7 @@ App Store screenshots by hand, following this checklist.
        (language, base currency).
 5. **Navigation.** Every "return to a tab's root" step is a tab switch,
    not `back` — each of the 4 tab stacks pops itself to root on blur
-   (`src/navigation/reset-tab-stack-on-blur.ts`), so switching away and
+   (`src/navigation/reset-tab-stack-on-blur/reset-tab-stack-on-blur.ts`), so switching away and
    back always lands on that tab's root screen.
 6. **Destination.** Save each shot as `screenshots/appstore/<size>/uk/<name>.png`,
    overwriting the existing file of the same name.

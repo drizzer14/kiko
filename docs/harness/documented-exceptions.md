@@ -76,7 +76,7 @@ verified usage, not dead weight:
   `@bottom-tabs/react-navigation` — its `NativeBottomTabView` imports
   the real `TabView` component from `react-native-bottom-tabs` to
   render the tab bar on-device; only `@bottom-tabs/react-navigation`
-  is imported from app code, in `src/navigation/root.navigator.tsx`,
+  is imported from app code, in `src/navigation/root-navigator/root.navigator.tsx`,
   so depcheck's static scan cannot see `react-native-bottom-tabs`
   itself being used). Also `react-native-dotenv` — a Babel plugin referenced only
   as the string `'module:react-native-dotenv'` in `babel.config.js`,

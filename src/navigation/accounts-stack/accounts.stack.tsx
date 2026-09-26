@@ -1,22 +1,21 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
+import AccountsScreen from '@kiko/screens/accounts/accounts.screen';
+import LotFormScreen from '@kiko/screens/forms/lot-form/lot-form.screen';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import OwnershipChangeFormScreen from '@kiko/screens/forms/ownership-change-form';
+import AccountDetailScreen from '@kiko/screens/account-detail/account-detail.screen';
+import AccountFormScreen from '@kiko/screens/forms/account-form/account-form.screen';
+import HoldingFormScreen from '@kiko/screens/forms/holding-form/holding-form.screen';
+import HoldingDetailScreen from '@kiko/screens/holding-detail/holding-detail.screen';
+import ColumnMappingScreen from '@kiko/screens/column-mapping/column-mapping.screen';
+import StatementImportScreen from '@kiko/screens/statement-import/statement-import.screen';
+import PricePointFormScreen from '@kiko/screens/forms/price-point-form/price-point-form.screen';
+import TransactionFormScreen from '@kiko/screens/forms/transaction-form/transaction-form.screen';
+import ContributionFormScreen from '@kiko/screens/forms/contribution-form/contribution-form.screen';
 
-import AccountsScreen from '../screens/accounts/accounts.screen';
-import LotFormScreen from '../screens/forms/lot-form/lot-form.screen';
-import OwnershipChangeFormScreen from '../screens/forms/ownership-change-form';
-import AccountDetailScreen from '../screens/account-detail/account-detail.screen';
-import AccountFormScreen from '../screens/forms/account-form/account-form.screen';
-import HoldingFormScreen from '../screens/forms/holding-form/holding-form.screen';
-import HoldingDetailScreen from '../screens/holding-detail/holding-detail.screen';
-import ColumnMappingScreen from '../screens/column-mapping/column-mapping.screen';
-import StatementImportScreen from '../screens/statement-import/statement-import.screen';
-import PricePointFormScreen from '../screens/forms/price-point-form/price-point-form.screen';
-import TransactionFormScreen from '../screens/forms/transaction-form/transaction-form.screen';
-import ContributionFormScreen from '../screens/forms/contribution-form/contribution-form.screen';
-
-import type { AccountsStackParamList } from './types';
-import { resetTabStackOnBlur } from './reset-tab-stack-on-blur';
+import type { AccountsStackParamList } from '../types';
+import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
 
 const Stack = createNativeStackNavigator<AccountsStackParamList>();
 

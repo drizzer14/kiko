@@ -1,11 +1,10 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
+import StatisticsScreen from '@kiko/screens/statistics/statistics.screen';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-import StatisticsScreen from '../screens/statistics/statistics.screen';
-
-import type { StatisticsStackParamList } from './types';
-import { resetTabStackOnBlur } from './reset-tab-stack-on-blur';
+import type { StatisticsStackParamList } from '../types';
+import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
 
 const Stack = createNativeStackNavigator<StatisticsStackParamList>();
 

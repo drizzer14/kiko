@@ -37,7 +37,7 @@ jest.mock('react-native-bottom-tabs', () => ({
 // assert the screen hands it its scroll view's ref (the same animated ref the
 // grid auto-scrolls off).
 const mockUseScrollToTopOnTabPress = jest.fn();
-jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
+jest.mock('@kiko/navigation/use-scroll-to-top-on-tab-press', () => ({
   useScrollToTopOnTabPress: (ref: unknown, scrollOffset: unknown) =>
     mockUseScrollToTopOnTabPress(ref, scrollOffset),
 }));

@@ -181,7 +181,7 @@ Instead:
 1. Mechanize the layer boundary (#14) with Semgrep. This catches the only
    actionable fact in section 2 at every edit.
 2. Add a "Navigation reachability" step to `kiko:release` Part B: generate
-   the screen list from `src/navigation/*.stack.tsx` and the root navigator
+   the screen list from `src/navigation/*-stack/*.stack.tsx` and the root navigator
    with a small zero-dependency script (grep the `Stack.Screen`/`Tab.Screen`
    names), and paste it into the App Store review notes. This keeps the 5.6
    evidence current per build without madge.

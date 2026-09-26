@@ -114,7 +114,7 @@ jest.mock('../../monobank/sync-status', () => ({
 // a standalone screen render has none of; stand it in with a spy so this test
 // can assert the screen hands it the transaction list's own ref.
 const mockUseScrollToTopOnTabPress = jest.fn();
-jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
+jest.mock('@kiko/navigation/use-scroll-to-top-on-tab-press', () => ({
   useScrollToTopOnTabPress: (ref: unknown) => mockUseScrollToTopOnTabPress(ref),
 }));
 

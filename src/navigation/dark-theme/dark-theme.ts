@@ -1,6 +1,5 @@
 import { DarkTheme } from '@react-navigation/native';
-
-import { darkTheme } from '../design-system/theme';
+import { darkTheme } from '@kiko/design-system/theme';
 
 /**
  * React Navigation theme for the app's dark-only chrome, so the true-black

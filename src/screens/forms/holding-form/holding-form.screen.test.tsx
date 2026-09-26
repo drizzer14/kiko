@@ -1860,7 +1860,7 @@ describe('HoldingFormScreen create-and-return', () => {
   // `NAVIGATE` case). This spy assertion proves PRODUCTION calls `popTo`
   // with the right args; the real-router proof that `popTo` itself reuses
   // the existing instance (no duplicate, its own state kept) lives in
-  // `src/navigation/statement-import-return.navigator.test.tsx`.
+  // `src/navigation/root-navigator/statement-import-return.navigator.test.tsx`.
   it('pops back to the StatementImport caller with holdingId merged in, instead of goBack or a duplicating navigate', async () => {
     const returnRoute = asRouteProp<HoldingFormProps['route']>('HoldingForm', {
       accountId: 'acc-1',

@@ -12,6 +12,7 @@ import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
+import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 
 import {
   type BackfillStatus,
@@ -80,7 +81,6 @@ import type { SeriesTransaction } from '../../statistics/holding-value-at';
 import DateRangeField from '../../design-system/components/date-range-field';
 import { exchangeExcludedTransactionIds } from '../../statistics/exchange-exclusion';
 import { internalTransferTransactionIds } from '../../statistics/internal-transfers';
-import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '../../categories/category-display';
 import { useFocusRefreshedNow } from '../../design-system/use-focus-refreshed-now/use-focus-refreshed-now';
 

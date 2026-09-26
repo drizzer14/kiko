@@ -4,7 +4,7 @@ import type { ReactElement } from 'react';
 // The real screens wired into this stack pull in db/client, which opens a real
 // op-sqlite connection at module load. op-sqlite has no Jest binary, so stub it
 // the same way the root-navigator and repo tests do.
-import '../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 
 // AccountsStack() is called directly below (a plain function call, not a real
 // React render — see titleByScreen), so its own useTranslation() call would
@@ -17,7 +17,7 @@ jest.mock('react-i18next', () => ({
   ...jest.requireActual('react-i18next'),
   useTranslation: () => ({
     t: (key: string) => {
-      const { en } = require('../i18n/locales/en');
+      const { en } = require('@kiko/i18n/locales/en');
 
       // The accumulator is a NESTED catalogue node, not a string, and it becomes
       // `undefined` the moment a key part is missing — so the reduce is typed over

@@ -63,7 +63,7 @@ export type AccountsStackParamList = {
   // duplicate of a route already on the stack instead of reusing it —
   // `popTo` reuses the existing instance in place, keeping its own local
   // state, and merges the fresh `holdingId` into its
-  // params); see `src/navigation/statement-import-return.navigator.test.tsx`
+  // params); see `src/navigation/root-navigator/statement-import-return.navigator.test.tsx`
   // for the real-router proof. Instead of a bare `goBack()`, which hands
   // back no id at all. Absent for every other HoldingForm entry point
   // (account-detail's "Add holding", holding-detail's "Edit"), which keep

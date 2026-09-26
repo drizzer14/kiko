@@ -9,6 +9,7 @@ import { settingsRepo } from '@kiko/settings/settings.repo';
 import { Pressable, type ScrollViewInstance } from 'react-native';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 
 import Box from '../../design-system/components/box';
 import Card from '../../design-system/components/card';
@@ -32,7 +33,6 @@ import LoadingState from '../../design-system/components/loading-state';
 import EntityIconTile from '../../design-system/components/entity-icon-tile';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
 import CardContextMenu from '../../design-system/components/card-context-menu';
-import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 import { useFocusRefreshedNow } from '../../design-system/use-focus-refreshed-now/use-focus-refreshed-now';
 
 import { styles } from './accounts.styles';

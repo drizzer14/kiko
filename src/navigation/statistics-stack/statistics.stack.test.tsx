@@ -4,7 +4,7 @@ import type { ReactElement } from 'react';
 // The real Statistics screen wired into this stack pulls in db/client, which
 // opens a real op-sqlite connection at module load. op-sqlite has no Jest
 // binary, so stub it the same way the root-navigator and repo tests do.
-import '../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 
 // StatisticsStack() is called directly below (a plain function call, not a
 // real React render — see screenNames), so its own useTranslation() call

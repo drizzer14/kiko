@@ -72,7 +72,7 @@ jest.mock('@kiko/categories/repo', () => ({
 // a standalone screen render lacks; stand it in with a spy so this test can
 // assert the screen hands it the scroll view's own ref.
 const mockUseScrollToTopOnTabPress = jest.fn();
-jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
+jest.mock('@kiko/navigation/use-scroll-to-top-on-tab-press', () => ({
   useScrollToTopOnTabPress: (ref: unknown, scrollOffset: unknown) =>
     mockUseScrollToTopOnTabPress(ref, scrollOffset),
 }));

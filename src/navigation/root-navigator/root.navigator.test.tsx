@@ -1,6 +1,3 @@
-import { NavigationContainer } from '@react-navigation/native';
-import { render, within } from '@testing-library/react-native';
-
 // The real Settings screen (wired into RootNavigator) pulls in db/client,
 // which opens a real op-sqlite connection at module load. op-sqlite has no
 // Jest binary, so stub it the same way every repo test does.
@@ -8,10 +5,12 @@ import { render, within } from '@testing-library/react-native';
 // manual mock at `__mocks__/@bottom-tabs/react-navigation.tsx`, which Jest
 // applies automatically for every test that pulls it in transitively — see
 // that file for why and what it renders.
-import { darkTheme } from '../design-system/theme';
+import { darkTheme } from '@kiko/design-system/theme';
+import { NavigationContainer } from '@react-navigation/native';
+import { render, within } from '@testing-library/react-native';
 
-import { navigationDarkTheme } from './dark-theme';
-import '../design-system/unistyles';
+import { navigationDarkTheme } from '../dark-theme';
+import '@kiko/design-system/unistyles';
 import RootNavigator from './root.navigator';
 
 describe('RootNavigator', () => {

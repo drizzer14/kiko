@@ -837,7 +837,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   // `navigatedAwayRef` so a repeated call navigates at most once.
   // `navigation.popTo` — NOT `navigate`, which on React Navigation 7 pushes
   // a DUPLICATE of an already-on-stack route instead of reusing it — see
-  // `src/navigation/statement-import-return.navigator.test.tsx` for the
+  // `src/navigation/root-navigator/statement-import-return.navigator.test.tsx` for the
   // real-router proof) — finds the existing `AccountDetail` instance
   // already on the stack (this screen was pushed from StatementImport,
   // itself pushed FROM there) and pops back to it in one hop.

@@ -58,7 +58,7 @@ blur, system controls, the native date picker) on the dark appearance
 regardless of the device's own OS setting — there is no
 `Appearance.setColorScheme` call anywhere driving it live. React
 Navigation's own native chrome uses `navigationDarkTheme`
-(`src/navigation/dark-theme.ts`), which now sources its `colors` from
+(`src/navigation/dark-theme/dark-theme.ts`), which now sources its `colors` from
 concrete dark hex values matching the design-system dark tokens
 directly, rather than an OS-trait-resolving `PlatformColor` — with a
 single fixed appearance there is nothing for a semantic color to
@@ -334,7 +334,7 @@ new component can land between reviews of this skill:
   ScrollView is also the tab-root scroll container an active-tab
   re-tap returns to the top, where `HeaderHeightContext` is the LIVE
   header height — see
-  `src/navigation/use-scroll-to-top-on-tab-press.ts`, which targets
+  `src/navigation/use-scroll-to-top-on-tab-press/use-scroll-to-top-on-tab-press.ts`, which targets
   the tracked expanded height rather than a live height plus a band.
   Settings' About block (app name/version, copyright, links) is an
   EXCEPTION to the ordinary "use `footer` only for a pinned

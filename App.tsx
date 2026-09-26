@@ -7,15 +7,15 @@ import './src/design-system/unistyles';
 import './src/i18n';
 
 import type { FC } from 'react';
+import RootNavigator from '@kiko/navigation/root-navigator';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { navigationDarkTheme } from '@kiko/navigation/dark-theme';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useAutoSync } from './src/sync/use-auto-sync';
-import RootNavigator from './src/navigation/root.navigator';
 import MigrationsGate from './src/migration/migrations-gate';
 import LockGate from './src/auth/lock-gate/lock-gate.component';
-import { navigationDarkTheme } from './src/navigation/dark-theme';
 import { useSyncLanguageWithSettings } from './src/i18n/use-sync-language-with-settings';
 
 /**

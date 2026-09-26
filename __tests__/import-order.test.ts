@@ -158,7 +158,7 @@ describe('scripts/checks/import-order.sh', () => {
         "import type { FC } from 'react';\n" +
         "import { NavigationContainer } from '@react-navigation/native';\n" +
         '\n' +
-        "import RootNavigator from './src/navigation/root.navigator';\n" +
+        "import { useAutoSync } from './src/sync/use-auto-sync';\n" +
         '\n' +
         'export const Foo = 1;\n',
     );

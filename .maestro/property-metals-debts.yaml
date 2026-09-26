@@ -28,7 +28,7 @@
 # seed, nothing here forces one locale over the other.
 #
 # TAB BAR IDENTIFIERS: `house.fill` (Home) and `tray` (Accounts) are read
-# straight off `src/navigation/root.navigator.tsx`'s current
+# straight off `src/navigation/root-navigator/root.navigator.tsx`'s current
 # `tabBarIcon`/`genericEntitySymbol.account` values.
 #
 # THIS FLOW WAS AUTHORED WITHOUT A LIVE MAESTRO RUN (orchestrator ruling:

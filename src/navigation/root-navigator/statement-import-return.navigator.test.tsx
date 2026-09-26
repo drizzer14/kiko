@@ -6,9 +6,9 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 
-import '../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 
-import type { AccountsStackParamList } from './types';
+import type { AccountsStackParamList } from '../types';
 
 /**
  * `navigation.navigate(name, params)` on React Navigation 7.3.17 PUSHES a

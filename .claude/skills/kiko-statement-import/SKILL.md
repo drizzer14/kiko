@@ -230,7 +230,7 @@ target route may already be on the stack (e.g. returning to
 `AccountDetail` after column-mapping/statement-import finishes). See
 `statement-import.screen.tsx`'s `navigation.popTo` call site comment
 for the canonical explanation and the real-router proof
-(`src/navigation/statement-import-return.navigator.test.tsx`); the same
+(`src/navigation/root-navigator/statement-import-return.navigator.test.tsx`); the same
 rule is applied at `column-mapping.screen.tsx` and
 `holding-form.screen.tsx`. Jest's shallow navigation mocks cannot catch
 a `navigate`-vs-`popTo` regression — verify a fix here with a real

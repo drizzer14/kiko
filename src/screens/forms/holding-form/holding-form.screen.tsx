@@ -549,7 +549,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       // existing StatementImport/ColumnMapping instance in place (its own
       // local React state, e.g. the user's already-picked columns, survives)
       // and merges `holdingId` into its params; see
-      // `src/navigation/statement-import-return.navigator.test.tsx` for the
+      // `src/navigation/root-navigator/statement-import-return.navigator.test.tsx` for the
       // real-router proof a `navigationSpy` test cannot give. `ts-pattern`'s
       // exhaustive match narrows the union so each branch's `params`
       // type-checks against its own screen (kiko-code-style). Every other

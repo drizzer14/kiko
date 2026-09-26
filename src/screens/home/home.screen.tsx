@@ -14,6 +14,7 @@ import type { CompositeScreenProps } from '@react-navigation/native';
 import { RefreshControl, ScrollView, SectionList } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
+import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 
 import {
   buildCategoryDisplayMap,
@@ -44,7 +45,6 @@ import type { HomeStackParamList, TabParamList } from '../../navigation/types';
 import type { FilterOption } from '../../design-system/components/filter-menu';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
 import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
-import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 import { buildRateTable, guardedBreakdown, guardedNetWorth } from '../../rates/net-worth-view';
 
 import { styles } from './home.styles';

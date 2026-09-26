@@ -759,9 +759,11 @@ the domain's own glyph map (see `kiko-domain`'s "Entity glyphs" rule).
 - A screen: `<name>.screen.tsx`.
 - A repository: `<name>.repo.ts`.
 - A navigation stack component: `<name>.stack.tsx` — the stacks under
-  `src/navigation/` (`home.stack.tsx`, `accounts.stack.tsx`, and their
-  siblings) are components, just named for what React Navigation calls
-  them rather than generically.
+  `src/navigation/`, each in its own `<name>-stack/` folder with an
+  `index.ts` barrel (`home-stack/home.stack.tsx`,
+  `accounts-stack/accounts.stack.tsx`, and their siblings), are
+  components, just named for what React Navigation calls them rather
+  than generically.
 - A gate component: `<name>.gate.tsx` — an early-return guard component
   such as `migrations.gate.tsx` (`src/migration/`, the lock gate).
 
