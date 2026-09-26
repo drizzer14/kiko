@@ -129,6 +129,8 @@ function writeCapturingSemgrepStub(directory: string, captureDirectory: string):
 // `KIKO_PREWRITE_TEST_ARGV_FILE` are set, it also records one call (an
 // appended line) and the exact target list the guard passed it, so a test
 // can assert the guard spent exactly ONE Semgrep process on a given edit.
+// `STUB_PARSE_ERROR_PATHS` (a JSON array of target paths) makes it report a
+// real-shaped `PartialParsing` error for each of those targets.
 function writeFindingsStub(directory: string): string {
   const stubPath = join(directory, 'semgrep-findings-stub.js');
   writeFileSync(
@@ -142,13 +144,22 @@ function writeFindingsStub(directory: string): string {
       'const results = before',
       '  .concat(after)',
       '  .filter((result) => targets.includes(result.path));',
+      'const errors = JSON.parse(process.env.STUB_PARSE_ERROR_PATHS || "[]")',
+      '  .filter((target) => targets.includes(target))',
+      '  .map((target) => ({',
+      '    code: 3,',
+      '    level: "warn",',
+      '    type: ["PartialParsing", [{ path: target, start: { line: 1, col: 1, offset: 0 } }]],',
+      '    message: "Syntax error at line " + target + ":1: `<<<<<<<` was unexpected",',
+      '    path: target,',
+      '  }));',
       'if (process.env.KIKO_PREWRITE_TEST_COUNTER_FILE) {',
       '  fs.appendFileSync(process.env.KIKO_PREWRITE_TEST_COUNTER_FILE, "1\\n");',
       '}',
       'if (process.env.KIKO_PREWRITE_TEST_ARGV_FILE) {',
       '  fs.writeFileSync(process.env.KIKO_PREWRITE_TEST_ARGV_FILE, JSON.stringify(targets));',
       '}',
-      'process.stdout.write(JSON.stringify({ results, errors: [], paths: { scanned: targets } }));',
+      'process.stdout.write(JSON.stringify({ results, errors, paths: { scanned: targets } }));',
       'process.exitCode = process.env.STUB_EXIT ? Number(process.env.STUB_EXIT) : 0;',
       '',
     ].join('\n'),
@@ -2106,6 +2117,66 @@ describe('runNodeChecks concurrency (speed mitigation)', () => {
     '',
   ].join('\n');
 
+  // A baseline finding of one rule can only ever match an AFTER finding of
+  // the same rule, so on a large file the baselines re-run only the rules
+  // that found something in AFTER.
+  it.each([
+    ['a file on disk', 'export const value = 0;\n', ['before']],
+    [
+      'a conflicted file on disk',
+      '<<<<<<< HEAD\nexport const value = 0;\n=======\nexport const value = 2;\n>>>>>>> feature\n',
+      ['ours', 'theirs'],
+    ],
+  ])(
+    're-runs on the baselines of %s only the Node rules that found something in AFTER',
+    (_label, beforeContent, baselineTrees) => {
+      const project = createTempDirectory('kiko-prewrite-project-');
+      const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+      const logFile = join(captureDirectory, 'node-calls.txt');
+      const nodeStub = join(project, 'node-logging-stub.sh');
+      writeFileSync(
+        nodeStub,
+        [
+          '#!/usr/bin/env bash',
+          'scriptName="$(basename "$1")"',
+          'tree="$(printf \'%s\' "$2" | sed -E \'s#^.*/kiko-prewrite-[^/]+/([^/]+)/.*$#\\1#\')"',
+          'printf \'%s %s\\n\' "$scriptName" "$tree" >> "$NODE_STUB_LOG"',
+          'if [ "$scriptName" = full-word-identifiers.js ] && [ "$tree" = after ]; then',
+          '  printf \'%s:1: `err` — abbreviated word `err` (write the full word)\\n\' "$2"',
+          '  exit 1',
+          'fi',
+          'exit 0',
+          '',
+        ].join('\n'),
+      );
+      chmodSync(nodeStub, 0o755);
+      mkdirSync(join(project, 'src'), { recursive: true });
+      const targetFile = join(project, 'src', 'example.ts');
+      writeFileSync(targetFile, beforeContent);
+
+      const result = runGuard(
+        payloadFor('Write', { file_path: targetFile, content: 'export const err = 1;\n' }),
+        baseEnv({
+          CLAUDE_PROJECT_DIR: project,
+          KIKO_PREWRITE_SEMGREP_BIN: writeSemgrepStub(project),
+          KIKO_PREWRITE_RULES: writeRulesStub(project),
+          KIKO_PREWRITE_NODE_BIN: nodeStub,
+          NODE_STUB_LOG: logFile,
+        }),
+      );
+
+      expect(result.status).toBe(2);
+      const baselineCalls = readFileSync(logFile, 'utf8')
+        .trim()
+        .split('\n')
+        .filter((call) => !call.endsWith(' after'))
+        .sort();
+      expect(baselineCalls).toEqual(
+        baselineTrees.map((tree) => `full-word-identifiers.js ${tree}`).sort(),
+      );
+    },
+  );
+
   it('runs the 4 spawned AFTER-tree Node checkers concurrently, not one after another', () => {
     const project = createTempDirectory('kiko-prewrite-project-');
     const semgrepStub = writeSemgrepStub(project);
@@ -2214,6 +2285,132 @@ describe('temp root lifetime vs a fast-rejecting sibling', () => {
     const markerContent = readFileSync(marker, 'utf8');
     expect(markerContent).not.toContain('missing');
     expect(markerContent).toContain('existed');
+  });
+});
+
+// A file on disk with git conflict markers is checked against two rebuilt
+// baselines, one per side of the conflict, because the file itself never
+// parses. The stub stands in for Semgrep so each case can decide which tree
+// fails to parse; __tests__/pre-write-guard-conflict.test.ts proves the same
+// behavior against real Semgrep.
+describe('conflicted file on disk (ours/theirs baselines)', () => {
+  const CONFLICTED_BEFORE = [
+    '<<<<<<< HEAD',
+    'switch (x) {',
+    '};',
+    '=======',
+    'switch (x) {',
+    '};',
+    '>>>>>>> feature',
+    '',
+  ].join('\n');
+  const RESOLVED_AFTER = 'switch (x) {\n};\n';
+  const NEEDLE = 'switch (x) {';
+
+  function switchResult(tree: string): Record<string, unknown> {
+    return rawResult({
+      checkId: 'rules.kiko-no-switch',
+      path: `${tree}/src/example.ts`,
+      line: 1,
+      offsetStart: 0,
+      offsetEnd: NEEDLE.length,
+      fix: 'use ts-pattern match(...).exhaustive()',
+      skill: 'kiko-code-style › No switch',
+    });
+  }
+
+  function runConflictScenario(overrides: Record<string, string>, afterContent = RESOLVED_AFTER) {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'example.ts');
+    writeFileSync(targetFile, CONFLICTED_BEFORE);
+
+    return runGuard(
+      payloadFor('Write', { file_path: targetFile, content: afterContent }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: writeFindingsStub(project),
+        KIKO_PREWRITE_RULES: writeRulesStub(project),
+        STUB_RESULTS_AFTER: JSON.stringify([switchResult('after')]),
+        ...overrides,
+      }),
+    );
+  }
+
+  it('scans the ours, theirs and after trees in one semgrep process', () => {
+    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const counterFile = join(captureDirectory, 'counter.txt');
+    const argvFile = join(captureDirectory, 'argv.json');
+
+    const result = runConflictScenario({
+      STUB_RESULTS_BEFORE: JSON.stringify([switchResult('ours'), switchResult('theirs')]),
+      KIKO_PREWRITE_TEST_COUNTER_FILE: counterFile,
+      KIKO_PREWRITE_TEST_ARGV_FILE: argvFile,
+    });
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(counterFile, 'utf8').trim().split('\n')).toEqual(['1']);
+    expect(JSON.parse(readFileSync(argvFile, 'utf8'))).toEqual([
+      'ours/src/example.ts',
+      'theirs/src/example.ts',
+      'after/src/example.ts',
+    ]);
+  });
+
+  it('keeps the other side as the baseline when one side does not parse', () => {
+    const result = runConflictScenario({
+      STUB_RESULTS_BEFORE: JSON.stringify([switchResult('theirs')]),
+      STUB_PARSE_ERROR_PATHS: JSON.stringify(['ours/src/example.ts']),
+    });
+
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+  });
+
+  it('drops the findings of a side that does not parse from the baseline', () => {
+    const result = runConflictScenario({
+      STUB_RESULTS_BEFORE: JSON.stringify([switchResult('ours')]),
+      STUB_PARSE_ERROR_PATHS: JSON.stringify(['ours/src/example.ts']),
+    });
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-no-switch');
+    expect(reason).toContain('would add 1 new violation');
+  });
+
+  it('allows when neither side parses', () => {
+    const result = runConflictScenario({
+      STUB_PARSE_ERROR_PATHS: JSON.stringify(['ours/src/example.ts', 'theirs/src/example.ts']),
+    });
+
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+  });
+
+  it('still denies when the resolved content does not parse', () => {
+    const result = runConflictScenario({
+      STUB_PARSE_ERROR_PATHS: JSON.stringify(['after/src/example.ts']),
+    });
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('could not check');
+    expect(reason).toContain('syntactically complete');
+  });
+
+  it('runs no semgrep process when the write keeps the conflict markers', () => {
+    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const counterFile = join(captureDirectory, 'counter.txt');
+
+    const result = runConflictScenario(
+      { KIKO_PREWRITE_TEST_COUNTER_FILE: counterFile },
+      CONFLICTED_BEFORE.replace('>>>>>>> feature', '>>>>>>> feature\n// still merging'),
+    );
+
+    expect(result.stdout).toBe('');
+    expect(result.status).toBe(0);
+    expect(existsSync(counterFile)).toBe(false);
   });
 });
 

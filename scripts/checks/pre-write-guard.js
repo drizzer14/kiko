@@ -13,19 +13,19 @@
 // `runSemgrep` runs ONE Semgrep process over the trees that can possibly
 // matter (an empty BEFORE tree is skipped — it can have no findings, so
 // scanning it would only waste the one process this hook is allowed);
-// `runNodeChecks` runs the hand-rolled checkers Semgrep cannot express
-// (import-order.js, full-word-identifiers.js, and, `.tsx` only,
-// one-component-per-file.ts's `exportedComponentNames`) via the same
-// AFTER-first, BEFORE-only-if-AFTER-has-findings staging; `findingKeys`/
-// `newFindings` diff the two finding sets — Semgrep's and the Node
-// checkers' combined — so only a finding the edit ADDS ever blocks the
-// write, never one already on disk. `overrideState` recognizes a rule-
-// specific `nosemgrep`/`kiko-override` comment that exempts a finding: a
-// justified one (carrying `OVERRIDE(...)`) drops the finding from BOTH
-// trees before the diff, and a bare one (naming the rule with no
-// `OVERRIDE(...)`) never suppresses anything — Semgrep itself runs with
-// `--disable-nosem`, so this file is the only place a suppression is ever
-// honored. Fail closed throughout: the top-level try/catch below turns ANY
+// `runNodeChecks` runs the hand-rolled checkers Semgrep cannot express (the
+// `NODE_RULES` rows) on AFTER first, and on BEFORE only the rules that found
+// something in AFTER; `findingKeys`/`newFindings` diff the finding sets —
+// Semgrep's and the Node checkers' combined — so only a finding the edit
+// ADDS ever blocks the write, never one already on disk. A file on disk
+// with git conflict markers never parses, so `conflictSides` rebuilds the
+// two sides it stands between and both serve as BEFORE. `overrideState`
+// recognizes a rule-specific `nosemgrep`/`kiko-override` comment that
+// exempts a finding: a justified one (carrying `OVERRIDE(...)`) drops the
+// finding from BOTH trees before the diff, and a bare one (naming the rule
+// with no `OVERRIDE(...)`) never suppresses anything — Semgrep itself runs
+// with `--disable-nosem`, so this file is the only place a suppression is
+// ever honored. Fail closed throughout: the top-level try/catch below turns ANY
 // throw — a malformed payload, a missing/unreadable rules file, an
 // unexpected Semgrep or Node-checker exit code, a finding whose rule is
 // missing its required `metadata.skill`, or an internal timeout killing a
@@ -239,23 +239,82 @@ function rebuildContents(toolName, toolInput, beforeText) {
   throw new RebuildError(`unsupported tool_name: ${toolName}`);
 }
 
-// Mirrors BEFORE and AFTER into one mkdtemp root, each under its own
-// repo-relative path, so a path-keyed Semgrep rule still evaluates
-// correctly when pointed at the scratch tree instead of the real one (see
-// the spec's "Rebuilding the proposed content" section). Both trees are
-// always written: the new-findings-only comparison scans "before" too
-// whenever the file already has content on disk.
-function writeMirroredTrees(relativePath, beforeText, afterText) {
+// Git writes each conflict marker as seven characters at the start of a
+// line, then a space and a label or the end of the line (`\r` too, in a
+// CRLF file).
+const CONFLICT_OURS_MARKER = /^<{7}(?: |\r?$)/;
+const CONFLICT_BASE_MARKER = /^\|{7}(?: |\r?$)/;
+const CONFLICT_SEPARATOR_MARKER = /^={7}\r?$/;
+const CONFLICT_THEIRS_MARKER = /^>{7}(?: |\r?$)/;
+
+// Per section of a conflicted file: the markers that end it, each with the
+// section that follows, and the sides that keep its lines. A diff3 base
+// section is kept by neither side, since the merge result can keep neither
+// side's copy of it.
+const CONFLICT_SECTIONS = {
+  shared: { transitions: [[CONFLICT_OURS_MARKER, 'ours']], keptBy: ['ours', 'theirs'] },
+  ours: {
+    transitions: [
+      [CONFLICT_BASE_MARKER, 'base'],
+      [CONFLICT_SEPARATOR_MARKER, 'theirs'],
+    ],
+    keptBy: ['ours'],
+  },
+  base: { transitions: [[CONFLICT_SEPARATOR_MARKER, 'theirs']], keptBy: [] },
+  theirs: { transitions: [[CONFLICT_THEIRS_MARKER, 'shared']], keptBy: ['theirs'] },
+};
+
+// Rebuilds the two files a merge conflict stands between: `ours` keeps the
+// first section of every conflict block, `theirs` the last one. Only a
+// complete block (ours marker, separator, theirs marker, in that order)
+// counts in `blockCount`, so one stray marker-like line never makes a file
+// read as conflicted.
+function conflictSides(text) {
+  const sides = { ours: [], theirs: [] };
+  let section = 'shared';
+  let blockCount = 0;
+
+  for (const line of text.split('\n')) {
+    const { transitions, keptBy } = CONFLICT_SECTIONS[section];
+    const transition = transitions.find(([marker]) => marker.test(line));
+
+    if (transition) {
+      if (section === 'theirs') blockCount += 1;
+      section = transition[1];
+      continue;
+    }
+
+    for (const side of keptBy) sides[side].push(line);
+  }
+
+  return { blockCount, ours: sides.ours.join('\n'), theirs: sides.theirs.join('\n') };
+}
+
+// The trees an AFTER finding is compared against to tell a new finding from
+// one already on disk. A conflicted file never parses, so it is replaced by
+// the two sides it stands between.
+function baselineTextsFor(beforeText, beforeSides) {
+  if (beforeSides.blockCount > 0) {
+    return { ours: beforeSides.ours, theirs: beforeSides.theirs };
+  }
+
+  return { before: beforeText };
+}
+
+// Mirrors every tree (the baselines and AFTER) into one mkdtemp root, each
+// under its own repo-relative path, so a path-keyed Semgrep rule still
+// evaluates correctly when pointed at the scratch tree instead of the real
+// one (see the spec's "Rebuilding the proposed content" section).
+function writeMirroredTrees(relativePath, textsByTree) {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kiko-prewrite-'));
-  const beforePath = path.join(temporaryRoot, 'before', relativePath);
-  const afterPath = path.join(temporaryRoot, 'after', relativePath);
 
-  fs.mkdirSync(path.dirname(beforePath), { recursive: true });
-  fs.mkdirSync(path.dirname(afterPath), { recursive: true });
-  fs.writeFileSync(beforePath, beforeText);
-  fs.writeFileSync(afterPath, afterText);
+  for (const [tree, text] of Object.entries(textsByTree)) {
+    const treePath = path.join(temporaryRoot, tree, relativePath);
+    fs.mkdirSync(path.dirname(treePath), { recursive: true });
+    fs.writeFileSync(treePath, text);
+  }
 
-  return { temporaryRoot, beforePath, afterPath };
+  return temporaryRoot;
 }
 
 // This Semgrep version reports a rule from rules/semgrep-prewrite.yml as
@@ -312,9 +371,15 @@ function isParseError(semgrepError) {
   return PARSE_ERROR_TYPES.has(typeName);
 }
 
+function treeOfSemgrepPath(semgrepPath) {
+  return String(semgrepPath || '').split('/')[0];
+}
+
 // A parse failure is almost always a half-applied multi-part change, which
 // an agent fixes only if it knows where the file broke — so the reason names
 // each file:line and Semgrep's own message, not just "could not check".
+// When only the on-disk file fails, the edit is not at fault, so the "make
+// each edit complete" advice would send the agent the wrong way.
 function describeParseErrors(parseErrors) {
   const locations = parseErrors.map((semgrepError) => {
     const [tree, ...pathParts] = String(semgrepError.path || '').split('/');
@@ -324,12 +389,17 @@ function describeParseErrors(parseErrors) {
 
     return `${pathParts.join('/')}:${line} (${label}): ${normalizeText(semgrepError.message || '')}`;
   });
-
-  return (
-    `the file does not parse, so no rule could run on it — ${locations.join('; ')}. ` +
-    'Make each edit syntactically complete on its own; for a change that spans several ' +
-    'places, use MultiEdit so every part lands in one checked write.'
+  const afterFailed = parseErrors.some(
+    (semgrepError) => treeOfSemgrepPath(semgrepError.path) === 'after',
   );
+  const advice = afterFailed
+    ? 'Make each edit syntactically complete on its own; for a change that spans several ' +
+      'places, use MultiEdit so every part lands in one checked write.'
+    : 'This edit did not cause it: the file on disk already does not parse, so the guard ' +
+      'cannot tell a new violation from one already there, and denies every write to it ' +
+      'until the file on disk parses again. Ask the user how to repair it.';
+
+  return `the file does not parse, so no rule could run on it — ${locations.join('; ')}. ${advice}`;
 }
 
 // Semgrep runs with cwd = temporaryRoot and targets relative to it
@@ -340,8 +410,11 @@ function describeParseErrors(parseErrors) {
 // Semgrep did not check the whole target throws rather than returning an
 // empty result: an unreadable rules file, an exit code other than 0/1, a
 // non-empty `errors[]`, a target missing from `paths.scanned` (a
-// `paths.exclude` or `.semgrepignore` skip), or a timeout kill.
-async function runSemgrep(temporaryRoot, relativePath, trees) {
+// `paths.exclude` or `.semgrepignore` skip), or a timeout kill. The one
+// exception is a parse error in a `tolerantTrees` tree (a rebuilt side of a
+// merge conflict, which the merge itself may have left unparseable): that
+// tree is returned in `unparsedTrees` for the caller to drop, not thrown.
+async function runSemgrep(temporaryRoot, relativePath, trees, tolerantTrees) {
   const rulesPath =
     process.env.KIKO_PREWRITE_RULES || path.join(ROOT, 'rules', 'semgrep-prewrite.yml');
   fs.accessSync(rulesPath, fs.constants.R_OK);
@@ -386,12 +459,19 @@ async function runSemgrep(temporaryRoot, relativePath, trees) {
 
   const parsed = JSON.parse(childResult.stdout);
   const errors = parsed.errors || [];
-  const parseErrors = errors.filter(isParseError);
-  if (parseErrors.length > 0) {
-    throw new Error(describeParseErrors(parseErrors));
+  const isTolerated = (semgrepError) =>
+    isParseError(semgrepError) && tolerantTrees.includes(treeOfSemgrepPath(semgrepError.path));
+  const fatalParseErrors = errors.filter(
+    (semgrepError) => isParseError(semgrepError) && !isTolerated(semgrepError),
+  );
+  if (fatalParseErrors.length > 0) {
+    throw new Error(describeParseErrors(fatalParseErrors));
   }
-  if (errors.length > 0) {
-    throw new Error(`semgrep reported ${errors.length} error(s): ${JSON.stringify(errors)}`);
+  const otherErrors = errors.filter((semgrepError) => !isParseError(semgrepError));
+  if (otherErrors.length > 0) {
+    throw new Error(
+      `semgrep reported ${otherErrors.length} error(s): ${JSON.stringify(otherErrors)}`,
+    );
   }
 
   const scannedTargets = new Set(parsed.paths?.scanned || []);
@@ -400,7 +480,12 @@ async function runSemgrep(temporaryRoot, relativePath, trees) {
     throw new Error(`semgrep did not scan ${unscannedTarget}`);
   }
 
-  return (parsed.results || []).map((result) => buildFinding(temporaryRoot, result));
+  const unparsedTrees = new Set(
+    errors.filter(isTolerated).map((semgrepError) => treeOfSemgrepPath(semgrepError.path)),
+  );
+  const findings = (parsed.results || []).map((result) => buildFinding(temporaryRoot, result));
+
+  return { findings, unparsedTrees };
 }
 
 // Spawns one Node checker script against one mirrored file (the `.ts`
@@ -611,16 +696,19 @@ const NODE_RULES = [
   },
 ];
 
-// Runs the NODE_RULES rows for this extension against ONE tree. `run`
-// calls it for AFTER first and for BEFORE only when AFTER has findings,
-// since a clean AFTER cannot add a finding. The rules start together (each
-// only reads the same mirrored file) and settle through
-// allSettledOrThrowFirst; findings stay in NODE_RULES order, not
-// completion order, so `findingKeys`' occurrence numbering is stable.
-async function runNodeChecks(temporaryRoot, relativePath, tree) {
+// Runs the NODE_RULES rows for this extension against ONE tree (only the
+// rows in `ruleIds`, when given). `run` calls it for AFTER first and for
+// the baselines only when AFTER has findings, since a clean AFTER cannot
+// add a finding. The rules start together (each only reads the same
+// mirrored file) and settle through allSettledOrThrowFirst; findings stay
+// in NODE_RULES order, not completion order, so `findingKeys`' occurrence
+// numbering is stable.
+async function runNodeChecks(temporaryRoot, relativePath, tree, ruleIds) {
   const filePath = path.join(temporaryRoot, tree, relativePath);
   const extension = path.extname(relativePath);
-  const applicableRules = NODE_RULES.filter((rule) => rule.extensions.includes(extension));
+  const applicableRules = NODE_RULES.filter(
+    (rule) => rule.extensions.includes(extension) && (!ruleIds || ruleIds.has(rule.ruleId)),
+  );
 
   const resultsByRule = await allSettledOrThrowFirst(
     applicableRules.map((rule) => rule.run(filePath)),
@@ -643,6 +731,20 @@ async function runNodeChecks(temporaryRoot, relativePath, tree) {
   });
 
   return findings;
+}
+
+// The Node checks on every baseline tree, one list per tree in `trees`
+// order. A baseline finding can only match an AFTER finding of the same
+// rule, so only the rules that found something in AFTER re-run — on a large
+// file each checker costs over a second. The trees are checked together.
+async function runBaselineNodeChecks(temporaryRoot, relativePath, trees, afterNodeFindings) {
+  const ruleIds = new Set(afterNodeFindings.map((finding) => finding.ruleId));
+
+  if (ruleIds.size === 0) return trees.map(() => []);
+
+  return allSettledOrThrowFirst(
+    trees.map((tree) => runNodeChecks(temporaryRoot, relativePath, tree, ruleIds)),
+  );
 }
 
 // Collapses every whitespace run in `text` to a single space and trims the
@@ -698,20 +800,43 @@ function overrideState(sourceLines, line, ruleId) {
   return 'none';
 }
 
+// Annotates every finding with its override state against the text of the
+// tree it belongs to, then drops every JUSTIFIED one. Doing this for every
+// tree before diffing both lets an added justified override suppress a new
+// finding, and makes deleting a justified override that suppressed a
+// baseline finding turn that finding "new" again (it is dropped from the
+// AFTER set only when it is STILL justified there). A 'bare' override is
+// left in place — it never suppresses anything — so `buildFindingBlock` can
+// still name it when the finding it decorates ends up in the diff.
+function nonJustifiedFindings(findings, sourceText) {
+  const sourceLines = sourceText.split('\n');
+
+  return findings
+    .map((finding) => ({
+      ...finding,
+      overrideState: overrideState(sourceLines, finding.line, finding.ruleId),
+    }))
+    .filter((finding) => finding.overrideState !== 'justified');
+}
+
 // A finding the proposed edit ADDS: present in the AFTER key set, absent
-// from the BEFORE one. A pre-existing violation (present in both) is never
-// reported here — it stays visible to check:rules/check:all, which this
-// hook does not affect. The one exception is a BARE override: a bare
-// comment naming nosemgrep or kiko-override never suppresses anything, so an
-// edit that adds one over an EXISTING finding must still deny — the finding
-// itself need not be new for the added bare comment to be the reason to
-// block.
-function newFindings(beforeFindings, afterFindings) {
-  const beforeKeys = findingKeys(beforeFindings);
+// from every baseline's. A pre-existing violation is never reported here —
+// it stays visible to check:rules/check:all, which this hook does not
+// affect. A conflicted file has two baselines, one per side; a key found in
+// either is pre-existing, and since the occurrence rank is part of the key,
+// a repeated violation is allowed up to the larger of the two sides' counts.
+// The one exception is a BARE override: a bare comment naming nosemgrep or
+// kiko-override never suppresses anything, so an edit that adds one over an
+// EXISTING finding must still deny — the finding itself need not be new for
+// the added bare comment to be the reason to block.
+function newFindings(baselineFindingSets, afterFindings) {
+  const baselineKeys = new Set(
+    baselineFindingSets.flatMap((findings) => [...findingKeys(findings).keys()]),
+  );
   const afterKeys = findingKeys(afterFindings);
   const added = [];
   for (const [key, finding] of afterKeys) {
-    if (!beforeKeys.has(key) || finding.overrideState === 'bare') added.push(finding);
+    if (!baselineKeys.has(key) || finding.overrideState === 'bare') added.push(finding);
   }
   return added;
 }
@@ -785,60 +910,68 @@ async function run() {
     const beforeText = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : '';
     const afterText = rebuildContents(toolName, toolInput, beforeText);
 
-    const mirrored = writeMirroredTrees(relativePath, beforeText, afterText);
-    temporaryRoot = mirrored.temporaryRoot;
+    const beforeSides = conflictSides(beforeText);
+    const beforeIsConflicted = beforeSides.blockCount > 0;
 
-    // An empty BEFORE tree can have no findings at all — skip scanning it
-    // and spend the ONE Semgrep process this hook budgets for on the AFTER
-    // tree alone, which is trivially every new finding there is.
-    //
-    // The Node checkers (rules 4, 5, 6, 11, 12) run AFTER first; a clean
-    // AFTER can have no new finding, so BEFORE is only worth the extra
-    // process when AFTER already found something to diff against. Semgrep
-    // and the AFTER-tree Node checkers are independent of each other (both
-    // only read the mirrored trees `writeMirroredTrees` already wrote, and
-    // their findings are only ever concatenated, never order-dependent), so
-    // they run TOGETHER here, for speed, instead of one waiting on the
-    // other.
-    const trees = beforeText === '' ? ['after'] : ['before', 'after'];
-    const [rawFindings, afterNodeFindings] = await allSettledOrThrowFirst([
-      runSemgrep(temporaryRoot, relativePath, trees),
+    // A merge is resolved one step at a time, and a step that leaves any
+    // conflict block in place cannot parse, so it has nothing checkable
+    // yet. The step that removes the last block is checked in full; the
+    // project-wide gates check the finished file too.
+    if (beforeIsConflicted && conflictSides(afterText).blockCount > 0) {
+      emitAllow();
+      return;
+    }
+
+    const baselineTexts = baselineTextsFor(beforeText, beforeSides);
+    const baselineTrees = Object.keys(baselineTexts);
+    temporaryRoot = writeMirroredTrees(relativePath, { ...baselineTexts, after: afterText });
+
+    // Every non-empty tree goes to the ONE Semgrep process this hook
+    // budgets for; an empty baseline can have no findings, so scanning it
+    // would only cost time. The Node checkers (the NODE_RULES rows) run on
+    // AFTER first, and on the baselines only when AFTER has a finding (see
+    // runBaselineNodeChecks). Semgrep and the AFTER-tree Node checkers only
+    // read the mirrored trees and their findings are only concatenated, so
+    // they run TOGETHER, for speed.
+    const semgrepTrees = baselineTrees.filter((tree) => baselineTexts[tree] !== '');
+    const tolerantTrees = beforeIsConflicted ? baselineTrees : [];
+    const [semgrepOutcome, afterNodeFindings] = await allSettledOrThrowFirst([
+      runSemgrep(temporaryRoot, relativePath, [...semgrepTrees, 'after'], tolerantTrees),
       runNodeChecks(temporaryRoot, relativePath, 'after'),
     ]);
-    const beforeFindings = rawFindings.filter((finding) => finding.tree === 'before');
-    const afterFindings = rawFindings.filter((finding) => finding.tree === 'after');
-    const beforeNodeFindings =
-      afterNodeFindings.length > 0
-        ? await runNodeChecks(temporaryRoot, relativePath, 'before')
-        : [];
+    const { findings: semgrepFindings, unparsedTrees } = semgrepOutcome;
+    const parsedBaselineTrees = baselineTrees.filter((tree) => !unparsedTrees.has(tree));
 
-    // Annotate every finding with its override state against the tree it
-    // belongs to (BEFORE findings against beforeText's own lines, AFTER
-    // findings against afterText's own lines), then drop
-    // every JUSTIFIED finding from both trees before diffing: this is what
-    // both lets an added justified override suppress a new finding, and
-    // makes deleting a justified override that suppressed a BEFORE finding
-    // turn that finding "new" again (it is dropped from the AFTER set only
-    // when it is STILL justified there). A 'bare' override is left in place
-    // — it never suppresses anything — so `buildFindingBlock` can still name
-    // it when the finding it decorates ends up in the diff.
-    const beforeLines = beforeText.split('\n');
-    const afterLines = afterText.split('\n');
-    const annotate = (findings, sourceLines) =>
-      findings.map((finding) => ({
-        ...finding,
-        overrideState: overrideState(sourceLines, finding.line, finding.ruleId),
-      }));
-    const annotatedBefore = annotate(beforeFindings.concat(beforeNodeFindings), beforeLines);
-    const annotatedAfter = annotate(afterFindings.concat(afterNodeFindings), afterLines);
-    const nonJustifiedBefore = annotatedBefore.filter(
-      (finding) => finding.overrideState !== 'justified',
-    );
-    const nonJustifiedAfter = annotatedAfter.filter(
-      (finding) => finding.overrideState !== 'justified',
+    // With neither side of the conflict parseable there is no baseline, so
+    // every violation the merge already carried would read as new and block
+    // the resolution. Allow it; check:rules and check:all still check the
+    // finished file.
+    if (beforeIsConflicted && parsedBaselineTrees.length === 0) {
+      emitAllow();
+      return;
+    }
+
+    const baselineNodeFindings = await runBaselineNodeChecks(
+      temporaryRoot,
+      relativePath,
+      parsedBaselineTrees,
+      afterNodeFindings,
     );
 
-    const addedFindings = newFindings(nonJustifiedBefore, nonJustifiedAfter);
+    const baselineFindingSets = parsedBaselineTrees.map((tree, treeIndex) =>
+      nonJustifiedFindings(
+        semgrepFindings
+          .filter((finding) => finding.tree === tree)
+          .concat(baselineNodeFindings[treeIndex]),
+        baselineTexts[tree],
+      ),
+    );
+    const nonJustifiedAfter = nonJustifiedFindings(
+      semgrepFindings.filter((finding) => finding.tree === 'after').concat(afterNodeFindings),
+      afterText,
+    );
+
+    const addedFindings = newFindings(baselineFindingSets, nonJustifiedAfter);
 
     if (addedFindings.length === 0) {
       emitAllow();
