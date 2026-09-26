@@ -455,3 +455,15 @@ verified usage, not dead weight:
   read the rule there rather than duplicating the list here, since a
   new rule's exclude would otherwise drift this bullet out of date.
 
+- **`kiko-worklet-directive-required` (`rules/semgrep-prewrite.yml`)
+  excludes every test file (`*.test.ts`, `*.test.tsx`, `__tests__/**`,
+  `e2e/**`).** Jest mocks `react-native-reanimated`, so no worklet runtime
+  ever captures a helper in a test file and the Release-only SIGABRT the
+  rule guards against cannot happen there. The rule's `$F(...)` x
+  statement-sequence match is also quadratic on a large test file whose
+  "Gesture" substrings (`fireGestureHandler`, `GestureRootWrapper`) defeat
+  Semgrep's prefilter: it crossed Semgrep's per-rule timeout under load, so
+  the pre-write guard denied "could not check" at random. The rule's
+  `rules/fixtures/` pair is not named like a test file and still proves the
+  rule in `check:rules`; `__tests__/pre-write-guard-rules.test.ts` proves
+  the exclusion.

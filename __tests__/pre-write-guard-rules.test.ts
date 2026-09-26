@@ -168,6 +168,38 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     }
   });
 
+  // kiko-worklet-directive-required excludes every test file: Jest mocks
+  // reanimated, so the Release-only SIGABRT it guards against cannot happen
+  // there, and its statement-sequence patterns are slow enough on a large
+  // test file to hit Semgrep's per-rule timeout (a random "could not check"
+  // deny). The rule's own positive fixture, written as a co-located test
+  // file, must therefore be allowed.
+  it.each([
+    'src/probe/worklet-probe.test.ts',
+    '__tests__/worklet-probe.ts',
+    'e2e/worklet-probe.ts',
+  ])(
+    'allows the kiko-worklet-directive-required positive fixture written to test path %s',
+    (relativeTarget) => {
+      const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-worklet-test-'));
+      try {
+        const targetFile = join(project, ...relativeTarget.split('/'));
+        mkdirSync(join(targetFile, '..'), { recursive: true });
+        const badContent = readFileSync(
+          join(FIXTURES, 'kiko-worklet-directive-required.bad.ts'),
+          'utf8',
+        );
+
+        const result = runGuard(payloadFor(targetFile, badContent), project);
+
+        expect(result.stdout).toBe('');
+        expect(result.status).toBe(0);
+      } finally {
+        rmSync(project, { recursive: true, force: true });
+      }
+    },
+  );
+
   // I3: proves, THROUGH the dispatcher and the REAL guard, that a worktree
   // edit is still checked when CLAUDE_PROJECT_DIR points at a DIFFERENT
   // checkout (the exact shape the dispatcher exists to fix — see

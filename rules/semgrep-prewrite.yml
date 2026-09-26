@@ -586,10 +586,22 @@ rules:
   # further-chained gesture builders (`.minDuration(...).runOnJS(true)
   # .onStart(...)`, see `card-context-menu.component.tsx`/
   # `bottom-sheet.component.tsx`), both accepted per the heuristic — a real
-  # sweep of `src App.tsx __tests__ e2e` drew 0 findings.
+  # sweep of `src App.tsx __tests__ e2e` drew 0 findings. Test files are
+  # excluded: Jest mocks reanimated, so no worklet runtime ever captures a
+  # helper there and the Release-only SIGABRT cannot happen; and the
+  # `$F(...)` x statement-sequence match is quadratic on a large test file
+  # whose "Gesture" substrings (`fireGestureHandler`, `GestureRootWrapper`)
+  # defeat Semgrep's prefilter, which crossed the per-rule timeout under
+  # load and made the guard deny "could not check" at random.
   - id: kiko-worklet-directive-required
     languages: [typescript]
     severity: ERROR
+    paths:
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"
+        - "__tests__/**"
+        - "e2e/**"
     message: >
       A same-file helper called inside a reanimated worklet-hook callback
       (`useAnimatedStyle`, `useDerivedValue`, `useAnimatedReaction`,
