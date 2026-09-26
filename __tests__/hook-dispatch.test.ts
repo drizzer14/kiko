@@ -11,7 +11,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
+import { type SpawnSyncReturns, spawn, spawnSync } from 'node:child_process';
 
 // harness/kiko/hooks/dispatch.sh is the plugin's own hook dispatcher: every
 // hooks.json entry now invokes `dispatch.sh <script-name>` instead of a
@@ -455,6 +455,48 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
       expect(result.stdout).toBe('');
       expect(result.stderr).toBe('');
     });
+  });
+
+  // M6: the dispatcher used to run the target script as a CHILD process
+  // (`bash "$targetScript" < "$stdinFile"`), unlike the old pre-dispatcher
+  // guard wiring, which used `exec`. A hook timeout kills only the
+  // dispatcher's own PID — running the target as a child then orphans a
+  // still-running script (a real risk for medium.sh, which holds
+  // medium.lock for a long time) instead of taking it down with it. Once
+  // dispatch.sh execs the target, the target INHERITS the dispatcher's own
+  // PID (there is no separate child process at all), which this proves by
+  // comparing the PID node's own `spawn` observed for the dispatcher
+  // against the PID the target script recorded for itself via `$$`.
+  it("execs the target script (same PID as the dispatcher itself), so a kill can't orphan it (M6)", async () => {
+    const repository = initGitRepository('kiko-dispatch-exec-pid-');
+    const marker = join(repository, 'marker.txt');
+    const checksDirectory = join(repository, 'scripts', 'checks');
+    mkdirSync(checksDirectory, { recursive: true });
+    const scriptPath = join(checksDirectory, 'fast.sh');
+    writeFileSync(
+      scriptPath,
+      [
+        '#!/usr/bin/env bash',
+        'cat > /dev/null',
+        `printf '%s' "$$" > "${marker}"`,
+        'exit 0',
+        '',
+      ].join('\n'),
+    );
+    chmodSync(scriptPath, 0o755);
+    const targetFile = join(repository, 'src', 'example.ts');
+    mkdirSync(join(repository, 'src'), { recursive: true });
+
+    const child = spawn('bash', [DISPATCH, 'fast.sh'], { env: { ...process.env } });
+    child.stdin?.write(payloadForFile(targetFile));
+    child.stdin?.end();
+    const exitCode: number | null = await new Promise((resolve) => {
+      child.on('exit', (code) => resolve(code));
+    });
+
+    expect(exitCode).toBe(0);
+    const recordedPid = readFileSync(marker, 'utf8').trim();
+    expect(recordedPid).toBe(String(child.pid));
   });
 
   it.each(['../evil.sh', 'a/b.sh', 'no-suffix', '', 'evil..sh', 'has space.sh'])(

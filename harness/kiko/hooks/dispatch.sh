@@ -263,5 +263,18 @@ if [ ! -f "$targetScript" ]; then
   exit 0
 fi
 
-CLAUDE_PROJECT_DIR="$resolvedRoot" bash "$targetScript" < "$stdinFile"
-exit $?
+# M6: exec the target script (replacing THIS process) instead of running
+# it as a child, matching the old pre-dispatcher guard wiring's own `exec`.
+# A hook timeout kills only the dispatcher's own PID; running the target as
+# a plain child would then orphan it still running (a real risk for
+# medium.sh, which holds medium.lock for a long time) instead of the kill
+# taking the whole thing down. Redirect stdin from the buffered file onto
+# fd 0 first (a bare `exec` with only a redirection changes the CURRENT
+# shell's own fds, no new process), then remove the temp file — the
+# already-open fd keeps working after its directory entry is gone — before
+# handing off. The EXIT trap above never fires past this point (there is
+# no shell left to run it once `exec` replaces the process), which is fine:
+# the temp file is already removed by then.
+exec 0< "$stdinFile"
+rm -f "$stdinFile"
+CLAUDE_PROJECT_DIR="$resolvedRoot" exec bash "$targetScript"
