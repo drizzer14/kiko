@@ -20,3 +20,10 @@ export const primaryChangeBankButton = (
     {t('accountDetail.changeBankAction')}
   </Button>
 );
+
+// EXPECT-FINDING
+export const noVariantChangeBankButton = (
+  <Button size="small" fullWidth={false} onPress={() => undefined}>
+    {t('accountDetail.changeBankAction')}
+  </Button>
+);

@@ -22,3 +22,10 @@ export const ghostSyncButtonWithTernaryLabel = (
     {isSynchronizing ? t('accountDetail.syncing') : t('accountDetail.syncNow')}
   </Button>
 );
+
+// EXPECT-FINDING
+export const noVariantSyncButton = (
+  <Button size="small" fullWidth={false} onPress={() => undefined}>
+    {t('accountDetail.syncNow')}
+  </Button>
+);

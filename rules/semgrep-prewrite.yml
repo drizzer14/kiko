@@ -644,25 +644,32 @@ rules:
   # kiko-design-system's "Component set (Button)" — the account-detail Sync
   # button ("accountDetail.syncNow") is pinned to `variant="secondaryTonal"`
   # everywhere it appears (the bank-sync and crypto-sync sections' shared
-  # style), replacing an earlier `primary`/`ghost` mix. Two `pattern-either`
-  # arms cover the label's two real shapes — a bare `t(...)` call, and the
+  # style), replacing an earlier `primary`/`ghost` mix. The outer
+  # `pattern-either` has two top-level alternatives, each its own
+  # self-contained `patterns:` sub-list (so neither's text-based filter can
+  # narrow the other's span — see below): the first covers every EXPLICIT
+  # `variant="..."` shape (a bare `t(...)` call, and the
   # `isSyncing ? t('accountDetail.syncing') : t('accountDetail.syncNow')`
-  # ternary — each capturing the JSX attribute's own quoted value as
-  # `$VARIANT`, filtered by a `metavariable-regex` negative-lookahead to
-  # every value EXCEPT `secondaryTonal`. This deliberately AVOIDS combining a
-  # `pattern-regex` (a text-based positive containment check) with a
-  # `pattern-not-regex`/exclusion filter in the SAME `patterns:` list: verified
-  # empirically that once one text-based regex narrows the overall matched
-  # span down to just its own matched text, a SIBLING negative filter (whether
-  # `pattern-not-regex` or a structural `pattern-not`) is checked against that
-  # SAME narrowed span instead of the original `<Button>` node — so the
-  # exclusion silently never finds anything to exclude, and every variant
-  # (including the already-correct `secondaryTonal` one) wrongly matches. The
-  # `variant=$VARIANT`-plus-`metavariable-regex` shape above has no such
-  # interaction (only one text-based filter participates) and, as a bonus,
-  # reports the finding at the whole `export const ... = (...)` statement
-  # rather than a narrowed child line, which is what makes `// EXPECT-FINDING`
-  # line-pinning work on this fixture (contrast
+  # ternary), capturing the attribute's own quoted
+  # value as `$VARIANT` and filtering with a `metavariable-regex`
+  # negative-lookahead to every value EXCEPT `secondaryTonal`; the second
+  # covers a Button with NO `variant` attribute at all (`Button` defaults to
+  # `variant="primary"`, so an omitted variant is itself a violation) via a
+  # structural `pattern-not` sibling in its own arm. This deliberately AVOIDS
+  # combining a `pattern-regex` (a text-based positive containment check)
+  # with a `pattern-not-regex`/exclusion filter in the SAME `patterns:` list:
+  # verified empirically that once one text-based regex narrows the overall
+  # matched span down to just its own matched text, a SIBLING negative filter
+  # (whether `pattern-not-regex` or a structural `pattern-not`) is checked
+  # against that SAME narrowed span instead of the original `<Button>` node —
+  # so the exclusion silently never finds anything to exclude, and every
+  # variant (including the already-correct `secondaryTonal` one) wrongly
+  # matches. The `variant=$VARIANT`-plus-`metavariable-regex` shape above has
+  # no such interaction (only one text-based filter participates, and it does
+  # not narrow the matched span the way `pattern-regex` does) and, as a
+  # bonus, reports the finding at the whole `export const ... = (...)`
+  # statement rather than a narrowed child line, which is what makes
+  # `// EXPECT-FINDING` line-pinning work on this fixture (contrast
   # `kiko-no-hand-built-selectable-row`'s own fixture, which cannot pin at
   # all for exactly the narrowing reason above).
   - id: kiko-pinned-sync-button-variant
@@ -677,24 +684,36 @@ rules:
       skill: "kiko-design-system › Component set (Button)"
     patterns:
       - pattern-either:
-          - pattern: |
-              <Button ... variant="$VARIANT" ...>
-                {t('accountDetail.syncNow')}
-              </Button>
-          - pattern: |
-              <Button ... variant="$VARIANT" ...>
-                {$COND ? $A : t('accountDetail.syncNow')}
-              </Button>
-      - metavariable-regex:
-          metavariable: $VARIANT
-          regex: "^(?!secondaryTonal$).*$"
+          - patterns:
+              - pattern-either:
+                  - pattern: |
+                      <Button ... variant="$VARIANT" ...>
+                        {t('accountDetail.syncNow')}
+                      </Button>
+                  - pattern: |
+                      <Button ... variant="$VARIANT" ...>
+                        {$COND ? $A : t('accountDetail.syncNow')}
+                      </Button>
+              - metavariable-regex:
+                  metavariable: $VARIANT
+                  regex: "^(?!secondaryTonal$).*$"
+          - patterns:
+              - pattern: |
+                  <Button ...>
+                    {t('accountDetail.syncNow')}
+                  </Button>
+              - pattern-not: |
+                  <Button ... variant=$VARIANT ...>
+                    {t('accountDetail.syncNow')}
+                  </Button>
   # kiko-design-system's "Component set (Button)" — the account-detail Change
   # bank button ("accountDetail.changeBankAction") is pinned to
   # `variant="secondaryTonal"`, the same treatment as the Sync button above,
   # replacing its earlier `ghost` styling. Same `$VARIANT`/`metavariable-regex`
   # shape as `kiko-pinned-sync-button-variant` above (see that rule's own
-  # comment for why), minus the ternary arm — this label has no "in
-  # progress" alternate text, always a bare `t(...)` call.
+  # comment for why, including the two-arm split for a no-`variant` Button),
+  # minus the ternary arm — this label has no "in progress" alternate text,
+  # always a bare `t(...)` call.
   - id: kiko-pinned-change-bank-button-variant
     languages: [typescript]
     severity: ERROR
@@ -706,18 +725,29 @@ rules:
       fix: 'Use `variant="secondaryTonal"` on the Change bank Button instead of any other variant.'
       skill: "kiko-design-system › Component set (Button)"
     patterns:
-      - pattern: |
-          <Button ... variant="$VARIANT" ...>
-            {t('accountDetail.changeBankAction')}
-          </Button>
-      - metavariable-regex:
-          metavariable: $VARIANT
-          regex: "^(?!secondaryTonal$).*$"
+      - pattern-either:
+          - patterns:
+              - pattern: |
+                  <Button ... variant="$VARIANT" ...>
+                    {t('accountDetail.changeBankAction')}
+                  </Button>
+              - metavariable-regex:
+                  metavariable: $VARIANT
+                  regex: "^(?!secondaryTonal$).*$"
+          - patterns:
+              - pattern: |
+                  <Button ...>
+                    {t('accountDetail.changeBankAction')}
+                  </Button>
+              - pattern-not: |
+                  <Button ... variant=$VARIANT ...>
+                    {t('accountDetail.changeBankAction')}
+                  </Button>
   # kiko-design-system's "Component set (Button)" — every sheet's Cancel
   # button is pinned to ONE style everywhere: `variant="ghost"` AND
   # `textColor={theme.colors.negative}` together, the
   # `confirm-sheet.component.tsx` shape. A violation is "either half of the
-  # pair is missing", expressed as a top-level `pattern-either` of two
+  # pair is missing", expressed as a top-level `pattern-either` of three
   # INDEPENDENT arms rather than one combined negation (each arm is its own
   # `patterns:` sub-list, so neither arm's own text-based filter can narrow
   # the other's span — see `kiko-pinned-sync-button-variant`'s own comment on
@@ -726,14 +756,15 @@ rules:
   # captured `$VARIANT`, regardless of `textColor`); the second is a Cancel
   # Button that IS `variant="ghost"` but whose own text does not contain
   # `textColor={theme.colors.negative}` (a plain `pattern-not-regex`, safe
-  # here since it is the ONLY text-based filter in its own arm). Verified
+  # here since it is the ONLY text-based filter in its own arm); the third
+  # covers a Button with NO `variant` attribute at all (`Button` defaults to
+  # `variant="primary"`, so an omitted variant is itself a violation) via a
+  # structural `pattern-not` sibling, the same shape as
+  # `kiko-pinned-sync-button-variant`'s own no-variant arm. Verified
   # empirically against both fixtures: fires on a non-ghost variant, on a
-  # bare ghost Button with no `textColor` at all, and stays silent on the
-  # `variant="ghost"` + `textColor={theme.colors.negative}` pair in either
-  # attribute order. `add-category-row.component.tsx`'s own Cancel is
-  # excluded: its Cancel sits beside an equal-weight Save action in an inline
-  # expandable form row, not a sheet dismiss, so the sheet-Cancel ruling does
-  # not apply there and it keeps its existing `variant="secondary"` pairing.
+  # bare ghost Button with no `textColor` at all, on a Button with no
+  # `variant` attribute at all, and stays silent on the `variant="ghost"` +
+  # `textColor={theme.colors.negative}` pair in either attribute order.
   - id: kiko-pinned-cancel-button-style
     languages: [typescript]
     severity: ERROR
@@ -764,3 +795,12 @@ rules:
                     {t('common.cancel')}
                   </Button>
               - pattern-not-regex: 'textColor=\{theme\.colors\.negative\}'
+          - patterns:
+              - pattern: |
+                  <Button ...>
+                    {t('common.cancel')}
+                  </Button>
+              - pattern-not: |
+                  <Button ... variant=$VARIANT ...>
+                    {t('common.cancel')}
+                  </Button>

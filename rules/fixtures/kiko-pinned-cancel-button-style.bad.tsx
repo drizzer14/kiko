@@ -29,3 +29,8 @@ export const negativeTextColorCancelButtonWithoutGhostVariant = (
     {t('common.cancel')}
   </Button>
 );
+
+// EXPECT-FINDING
+export const noVariantCancelButton = (
+  <Button onPress={() => undefined}>{t('common.cancel')}</Button>
+);
