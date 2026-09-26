@@ -436,3 +436,41 @@ describe('asLoanMeta', () => {
     expect(asLoanMeta(null)).toBeNull();
   });
 });
+
+describe('asLoanMeta paymentHoldingId/lenderName/lenderIban', () => {
+  const valid = {
+    kind: 'mortgage' as const,
+    principalMinorUnits: 120_000_00,
+    startDate: 1_700_000_000_000,
+    annualRatePct: 12,
+    termMonths: 240,
+    schedule: 'annuity' as const,
+  };
+
+  it('leaves all three undefined when absent (a loan saved before this task)', () => {
+    const result = asLoanMeta(valid);
+
+    expect(result?.paymentHoldingId).toBeUndefined();
+    expect(result?.lenderName).toBeUndefined();
+    expect(result?.lenderIban).toBeUndefined();
+  });
+
+  it('accepts a present, valid paymentHoldingId/lenderName/lenderIban', () => {
+    const result = asLoanMeta({
+      ...valid,
+      paymentHoldingId: 'h1',
+      lenderName: 'PrivatBank',
+      lenderIban: 'UA123456789012345678901234567',
+    });
+
+    expect(result?.paymentHoldingId).toBe('h1');
+    expect(result?.lenderName).toBe('PrivatBank');
+    expect(result?.lenderIban).toBe('UA123456789012345678901234567');
+  });
+
+  it('rejects the whole record when a present field is the wrong type', () => {
+    expect(asLoanMeta({ ...valid, paymentHoldingId: 5 })).toBeNull();
+    expect(asLoanMeta({ ...valid, lenderName: 5 })).toBeNull();
+    expect(asLoanMeta({ ...valid, lenderIban: 5 })).toBeNull();
+  });
+});

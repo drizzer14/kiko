@@ -406,6 +406,17 @@ export type LoanMeta = {
   annualRatePct?: number;
   termMonths?: number;
   schedule: LoanSchedule;
+  // The three inputs the automatic loan-payment matcher's own "third
+  // signal" reads (`src/loans/payment-matcher/`) — every one optional,
+  // entered on the loan form, and `undefined` for every loan saved before
+  // this field existed (the same optional-field convention as
+  // `BondMeta.isin` above). `paymentHoldingId` is the holding the user
+  // usually pays this loan FROM; `lenderIban` is compared against a
+  // candidate payment's own `counterIban`. `lenderIban` is the lender's
+  // bank IBAN, not the user's own — never logged (kiko-compliance).
+  paymentHoldingId?: string;
+  lenderName?: string;
+  lenderIban?: string;
 };
 
 export const asLoanMeta = (value: unknown): LoanMeta | null => {
@@ -426,6 +437,16 @@ export const asLoanMeta = (value: unknown): LoanMeta | null => {
     return null;
   }
 
+  const { paymentHoldingId, lenderName, lenderIban } = value;
+
+  if (
+    (paymentHoldingId !== undefined && typeof paymentHoldingId !== 'string') ||
+    (lenderName !== undefined && typeof lenderName !== 'string') ||
+    (lenderIban !== undefined && typeof lenderIban !== 'string')
+  ) {
+    return null;
+  }
+
   return {
     kind,
     principalMinorUnits,
@@ -433,5 +454,8 @@ export const asLoanMeta = (value: unknown): LoanMeta | null => {
     annualRatePct,
     termMonths,
     schedule,
+    paymentHoldingId,
+    lenderName,
+    lenderIban,
   };
 };
