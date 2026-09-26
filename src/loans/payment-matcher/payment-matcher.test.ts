@@ -378,7 +378,7 @@ describe('matchLoanPayments', () => {
 // installment it paid would look unpaid again on the next run — a later
 // same-amount candidate (with its OWN valid third signal) would then take
 // its place, double-counting one installment across two real payments.
-describe('matchLoanPayments — an installment already taken (item 1)', () => {
+describe('matchLoanPayments — an installment already taken', () => {
   it('does not link a later same-amount candidate for an installment a manually linked payment already took', () => {
     const loan = loanHolding({ paymentHoldingId: 'payer-1' });
     // A same-size rent, paid from the SAME holding the loan is paid from —
@@ -451,7 +451,7 @@ describe('matchLoanPayments — an installment already taken (item 1)', () => {
 // loan form and what a bank feed's own counterIban carries; a lenderName
 // shorter than 3 characters is too likely to appear inside an unrelated
 // description by coincidence to count as a real signal.
-describe('matchLoanPayments — IBAN normalization and lender-name length (item 5)', () => {
+describe('matchLoanPayments — IBAN normalization and lender-name length', () => {
   it('matches a lenderIban stored with different case/whitespace against a clean counterIban', () => {
     const loan = loanHolding({ lenderIban: ' ua123456789012345678901234567 ' });
     const transaction = baseTransaction({

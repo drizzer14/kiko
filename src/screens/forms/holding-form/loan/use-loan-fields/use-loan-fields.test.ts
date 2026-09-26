@@ -467,7 +467,7 @@ describe('loanEditInvalidatesAutoLinks', () => {
   });
 });
 
-describe('useLoanFields — saveEdit clearing auto links (item 1)', () => {
+describe('useLoanFields — saveEdit clearing auto links', () => {
   beforeEach(() => {
     mockUpdateLoan.mockClear();
     mockUpdateLoan.mockResolvedValue(undefined);
