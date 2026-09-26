@@ -25,6 +25,7 @@ import {
   encodeBytesToBase64,
 } from '@kiko/data-transfer';
 import { join } from 'node:path';
+import { accounts, holdings } from '@kiko/db';
 import type { AppLanguage } from '@kiko/i18n/device-language';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
@@ -66,6 +67,24 @@ describe('buildDemoEnvelopeJson (always runs — proves the encoder itself, not 
     expect(payload.appVersion).toBe('1.0.0');
     expect(payload.secrets).toBeUndefined();
   });
+});
+
+// The App Store reviewer reaches every feature through this dataset
+// (Guideline 5.6), so an account kind or holding type missing from it is a
+// feature the reviewer cannot see.
+describe('the demo dataset covers every account kind and holding type', () => {
+  for (const { language } of LANGUAGES) {
+    it(`${language}: holds at least one account of every kind and one holding of every type`, () => {
+      const snapshot = buildDemoSnapshot(buildScreenshotDataset(language));
+
+      expect(new Set(snapshot.accounts.map((account) => account.kind))).toEqual(
+        new Set(accounts.kind.enumValues),
+      );
+      expect(new Set(snapshot.holdings.map((holding) => holding.type))).toEqual(
+        new Set(holdings.type.enumValues),
+      );
+    });
+  }
 });
 
 if (process.env.KIKO_REGEN_DEMO === '1') {

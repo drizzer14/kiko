@@ -43,6 +43,21 @@ catch a differently-named visibility flag (e.g. `ENABLE_*`) or a demo
 import reached through a path alias that omits `e2e/` — that gap is
 why this is still a reviewer question, not only a CI gate.
 
+**Reviewability — the demo dataset must reach every feature.** The App
+Store reviewer imports `e2e/screenshot/fixtures/kiko-demo-en.kiko`
+(built from `e2e/screenshot/seed/screenshot-seed.ts`, see that folder's
+README) through the real Import UI; a feature the dataset never shows is
+one the reviewer cannot reach. Mechanized: `generate-demo-kiko.test.ts`
+fails unless every `accounts.kind` and every `holdings.type` enum member
+appears, and `build-demo-snapshot.test.ts` fails unless every holding
+with no ledger of its own (deposit, bond, property, metal, loan) values
+to non-zero through the app's own valuation. A diff that adds an account
+kind or a holding type must add it to the dataset and regenerate both
+`.kiko` files (`KIKO_REGEN_DEMO=1 npx jest
+e2e/screenshot/fixtures/generate-demo-kiko.test.ts`). A new visible
+feature that is not a new kind or type (a new metadata option, a new
+linked-row flow) is still a judgment question: does the dataset show it?
+
 ## 2.1 completeness / 4.2 minimum functionality
 
 Ask: does this diff ship a placeholder screen, a button or action that

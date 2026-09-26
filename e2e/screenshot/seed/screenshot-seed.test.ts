@@ -25,13 +25,13 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     expect(buildScreenshotDataset('uk').baseCurrency).toBe('UAH');
   });
 
-  it('seeds five plain manual accounts spread across UAH/USD/EUR/BTC', () => {
+  it('seeds eight plain manual accounts spread across UAH/USD/EUR/BTC', () => {
     const { accounts } = buildScreenshotDataset('uk');
     const currencies = accounts.flatMap((account) =>
       account.holdings.map((holding) => holding.currency),
     );
 
-    expect(accounts).toHaveLength(5);
+    expect(accounts).toHaveLength(8);
     expect(new Set(currencies)).toEqual(new Set(['UAH', 'USD', 'EUR', 'BTC']));
   });
 
@@ -114,8 +114,10 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     expect(Object.keys(dataset).sort()).toEqual([
       'accounts',
       'baseCurrency',
+      'bondRegister',
       'history',
       'language',
+      'pricePoints',
       'rates',
     ]);
   });
@@ -134,16 +136,18 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     const table = buildRateTable(dataset.rates);
     const total = guardedNetWorth(holdings, 'UAH', table, Date.UTC(2026, 8, 10, 9, 0, 0));
 
-    // Every holding's flat value is just its summed balance (no deposits/bonds).
+    // With the metadata left out, every holding's flat value is just its
+    // summed balance, so this measures the cash ledger alone (a deposit, bond,
+    // property, metal or loan holds no transactions and reads 0 here).
     for (const holding of holdings) {
       expect(holdingValue(holding, 0).minorUnits).toBe(holding.balanceMinorUnits);
     }
 
-    // A realistic, DOWN-TO-EARTH multi-currency net worth: over ₴120k, under
-    // ₴180k. The deterministic dataset totals ₴151,450 (₴37,250 UAH card +
-    // ₴5,500 cash + $1,220≈₴50,020 + €600≈₴26,700 + 0.012 BTC≈₴31,980); the
-    // bracket is tight enough to catch a scale regression, loose enough to
-    // survive a single amount tweak.
+    // A realistic, DOWN-TO-EARTH multi-currency cash ledger: over ₴120k, under
+    // ₴180k. The deterministic dataset totals ₴136,650 (₴16,450 UAH card after
+    // two ₴10,400 car-loan payments + ₴6,000 jar + ₴5,500 cash + $1,220≈₴50,020
+    // + €600≈₴26,700 + 0.012 BTC≈₴31,980); the bracket is tight enough to catch
+    // a scale regression, loose enough to survive a single amount tweak.
     expect(total.minorUnits).toBeGreaterThan(Money.of('UAH', 12_000_000).minorUnits);
     expect(total.minorUnits).toBeLessThan(Money.of('UAH', 18_000_000).minorUnits);
   });
