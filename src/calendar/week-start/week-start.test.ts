@@ -20,4 +20,20 @@ describe('weekStartFor', () => {
   it('falls back to Monday for a region outside the Sunday-first table', () => {
     expect(weekStartFor('DE')).toBe(1);
   });
+
+  it('starts the week on Monday for Australia, per current CLDR', () => {
+    expect(weekStartFor('AU')).toBe(1);
+  });
+
+  it('starts the week on Sunday for Portugal', () => {
+    expect(weekStartFor('PT')).toBe(0);
+  });
+
+  it('falls back to Monday for Poland', () => {
+    expect(weekStartFor('PL')).toBe(1);
+  });
+
+  it('falls back to Monday for the United Kingdom', () => {
+    expect(weekStartFor('GB')).toBe(1);
+  });
 });
