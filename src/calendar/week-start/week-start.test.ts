@@ -36,4 +36,12 @@ describe('weekStartFor', () => {
   it('falls back to Monday for the United Kingdom', () => {
     expect(weekStartFor('GB')).toBe(1);
   });
+
+  it('starts the week on Sunday for Honduras', () => {
+    expect(weekStartFor('HN')).toBe(0);
+  });
+
+  it('starts the week on Sunday for Iceland', () => {
+    expect(weekStartFor('IS')).toBe(0);
+  });
 });
