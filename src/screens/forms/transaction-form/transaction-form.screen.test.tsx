@@ -61,6 +61,8 @@ const mockUpdate = jest.fn();
 const mockRemove = jest.fn();
 const mockUpsertCategoryOverride = jest.fn();
 const mockSetCategory = jest.fn();
+const mockSetLoanPayment = jest.fn();
+const mockUndoAutoLoanLink = jest.fn();
 const mockUseLiveQuery = jest.fn();
 
 jest.mock('@kiko/transactions/repo', () => ({
@@ -72,6 +74,8 @@ jest.mock('@kiko/transactions/repo', () => ({
     update: (...args: unknown[]) => mockUpdate(...args),
     remove: (...args: unknown[]) => mockRemove(...args),
     setCategory: (...args: unknown[]) => mockSetCategory(...args),
+    setLoanPayment: (...args: unknown[]) => mockSetLoanPayment(...args),
+    undoAutoLoanLink: (...args: unknown[]) => mockUndoAutoLoanLink(...args),
     getByIdQuery: (transactionId: string) => ({
       toSQL: () => ({ sql: '', params: [transactionId] }),
     }),
@@ -141,6 +145,8 @@ type Transaction = {
   source: 'manual' | 'monobank' | 'binance';
   category?: string | null;
   comment?: string | null;
+  loanHoldingId?: string | null;
+  loanLinkSource?: 'auto' | 'manual' | null;
 };
 
 // The category options the picker renders in every test; a stable set so the
@@ -1788,6 +1794,181 @@ describe('TransactionFormScreen — category editing', () => {
     expect(mockUpdate).toHaveBeenCalled();
     expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+});
+
+describe('TransactionFormScreen — loan payment field', () => {
+  const PAYER_HOLDING: Holding = {
+    id: 'h1',
+    currency: 'UAH',
+    balanceMinorUnits: 5000,
+    type: 'card',
+  };
+  const LOAN_HOLDING: Holding = {
+    id: 'loan-1',
+    currency: 'UAH',
+    balanceMinorUnits: -100000,
+    type: 'loan',
+    name: 'Car loan',
+    accountId: 'acc-debt',
+  };
+  const DEBT_ACCOUNT: Account = { id: 'acc-debt', name: 'Debts' };
+
+  const debitTransaction: Transaction = {
+    id: 'txn-1',
+    holdingId: 'h1',
+    amountMinorUnits: -1234,
+    time: 42,
+    description: 'Coffee',
+    source: 'manual',
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('shows the field on an existing manual debit row when an open loan holding exists', async () => {
+    setLiveData([PAYER_HOLDING, LOAN_HOLDING], debitTransaction, undefined, [DEBT_ACCOUNT]);
+
+    const { getByLabelText } = await renderEdit('txn-1');
+
+    expect(getByLabelText('Loan payment')).toBeTruthy();
+  });
+
+  it('shows the field on an existing SYNCED debit row too', async () => {
+    setLiveData(
+      [PAYER_HOLDING, LOAN_HOLDING],
+      { ...debitTransaction, source: 'monobank' },
+      undefined,
+      [DEBT_ACCOUNT],
+    );
+
+    const { getByLabelText } = await renderEdit('txn-1');
+
+    expect(getByLabelText('Loan payment')).toBeTruthy();
+  });
+
+  it('hides the field on an existing CREDIT (income) row', async () => {
+    setLiveData(
+      [PAYER_HOLDING, LOAN_HOLDING],
+      { ...debitTransaction, amountMinorUnits: 1234 },
+      undefined,
+      [DEBT_ACCOUNT],
+    );
+
+    const { queryByLabelText } = await renderEdit('txn-1');
+
+    expect(queryByLabelText('Loan payment')).toBeNull();
+  });
+
+  it('hides the field (data-driven) when no open loan holding exists', async () => {
+    setLiveData([PAYER_HOLDING], debitTransaction, undefined, []);
+
+    const { queryByLabelText } = await renderEdit('txn-1');
+
+    expect(queryByLabelText('Loan payment')).toBeNull();
+  });
+
+  it('hides the field when the only loan holding is closed', async () => {
+    setLiveData([PAYER_HOLDING, { ...LOAN_HOLDING, closedAt: 1 }], debitTransaction, undefined, [
+      DEBT_ACCOUNT,
+    ]);
+
+    const { queryByLabelText } = await renderEdit('txn-1');
+
+    expect(queryByLabelText('Loan payment')).toBeNull();
+  });
+
+  it('hides the field when the only loan holding is a different currency', async () => {
+    setLiveData(
+      [PAYER_HOLDING, { ...LOAN_HOLDING, currency: 'USD' }],
+      debitTransaction,
+      undefined,
+      [DEBT_ACCOUNT],
+    );
+
+    const { queryByLabelText } = await renderEdit('txn-1');
+
+    expect(queryByLabelText('Loan payment')).toBeNull();
+  });
+
+  it('persists a picked loan as a MANUAL link at once, with no Save press', async () => {
+    setLiveData([PAYER_HOLDING, LOAN_HOLDING], debitTransaction, undefined, [DEBT_ACCOUNT]);
+    mockSetLoanPayment.mockResolvedValue(undefined);
+
+    const { getByLabelText, getByText } = await renderEdit('txn-1');
+
+    await fireEvent.press(getByLabelText('Loan payment'));
+    await fireEvent.press(getByText('Car loan'));
+
+    expect(mockSetLoanPayment).toHaveBeenCalledWith({
+      transactionId: 'txn-1',
+      loanHoldingId: 'loan-1',
+    });
+  });
+
+  it('picking "None" persists a cleared link at once', async () => {
+    setLiveData(
+      [PAYER_HOLDING, LOAN_HOLDING],
+      { ...debitTransaction, loanHoldingId: 'loan-1', loanLinkSource: 'manual' },
+      undefined,
+      [DEBT_ACCOUNT],
+    );
+    mockSetLoanPayment.mockResolvedValue(undefined);
+
+    const { getByLabelText, getAllByText } = await renderEdit('txn-1');
+
+    await fireEvent.press(getByLabelText('Loan payment'));
+    await fireEvent.press(getAllByText('None')[0]);
+
+    expect(mockSetLoanPayment).toHaveBeenCalledWith({
+      transactionId: 'txn-1',
+      loanHoldingId: null,
+    });
+  });
+
+  it('shows the auto-linked caption and Undo for an auto-sourced link', async () => {
+    setLiveData(
+      [PAYER_HOLDING, LOAN_HOLDING],
+      { ...debitTransaction, loanHoldingId: 'loan-1', loanLinkSource: 'auto' },
+      undefined,
+      [DEBT_ACCOUNT],
+    );
+
+    const { getByText } = await renderEdit('txn-1');
+
+    expect(getByText('Linked automatically.')).toBeTruthy();
+    expect(getByText('Undo')).toBeTruthy();
+  });
+
+  it('hides the auto-linked caption and Undo for a manual link', async () => {
+    setLiveData(
+      [PAYER_HOLDING, LOAN_HOLDING],
+      { ...debitTransaction, loanHoldingId: 'loan-1', loanLinkSource: 'manual' },
+      undefined,
+      [DEBT_ACCOUNT],
+    );
+
+    const { queryByText } = await renderEdit('txn-1');
+
+    expect(queryByText('Linked automatically.')).toBeNull();
+    expect(queryByText('Undo')).toBeNull();
+  });
+
+  it('pressing Undo clears an auto-sourced link through undoAutoLoanLink', async () => {
+    setLiveData(
+      [PAYER_HOLDING, LOAN_HOLDING],
+      { ...debitTransaction, loanHoldingId: 'loan-1', loanLinkSource: 'auto' },
+      undefined,
+      [DEBT_ACCOUNT],
+    );
+    mockUndoAutoLoanLink.mockResolvedValue(undefined);
+
+    const { getByText } = await renderEdit('txn-1');
+
+    await fireEvent.press(getByText('Undo'));
+
+    expect(mockUndoAutoLoanLink).toHaveBeenCalledWith('txn-1');
   });
 });
 
