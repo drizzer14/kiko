@@ -27,7 +27,7 @@ clean-ios: ## Remove the iOS build output (forces a clean rebuild + pod install 
 
 # --- Quality gates ---
 
-gate: ## Full fast+medium gate: lint, dup, knip, deps, security, rules, plist, secrets, overrides, typecheck
+gate: ## Full fast+medium gate: every check in package.json check:all
 	npm run check:all
 
 verify: ## Fail-fast end-of-work check: lint, then full jest, then gate — stops at first failure

@@ -272,8 +272,8 @@ follow the same layout conventions as every other Kiko screen:
   under the summary table on both screens from `PreviewStats.firstTransaction`
   (the first `ParsedTransaction` in ON-FILE order, not chronological order
   — `previewStats` sets it via `parsed.transactions.at(0)`, optional
-  since an existing `PreviewStats` object literal predates the field). As
-  of F3 fix round 1 (C1) it renders through the shared `TransactionCard`
+  since an existing `PreviewStats` object literal predates the field). It
+  renders through the shared `TransactionCard`
   (`src/design-system/components/transaction-card/`) — the SAME
   presentational card Home's own `TransactionRow` uses, extracted out of
   that component, NOT a rebuilt card wrapping the base `Card` primitive

@@ -46,7 +46,9 @@ called SYNCHRONOUSLY inside a reanimated worklet hook (`useAnimatedStyle`,
 `useDerivedValue`, `useAnimatedReaction`, `useAnimatedScrollHandler`, or a
 `Gesture.*` worklet callback) MUST carry its own `'worklet'` directive at
 its definition, or be defined inline in the worklet — otherwise the
-worklets runtime captures it as a "remote function." See
+worklets runtime captures it as a "remote function." The pre-write guard
+(`kiko-worklet-directive-required`) catches only a SAME-FILE helper; an
+imported helper is still a review item. See
 `src/design-system/components/bottom-sheet/bottom-sheet.keyboard.ts`'s
 `resolveKeyboardLift`/`resolveKeyboardAwareMaxHeight`/
 `resolveKeyboardAwareBottomPadding` for the worked example: each carries

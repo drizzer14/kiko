@@ -760,6 +760,13 @@ new component can land between reviews of this skill:
   `screens/forms/` where it used to sit — a design-system component
   must never import from `src/screens/**`, enforced by the
   `kiko-no-import-screens-outside-ui` Semgrep rule (see `kiko-linter`).
+- **No imports across screen folders.** A file under
+  `src/screens/<a>/` must never import from `src/screens/<b>/**`
+  (relative path, `@kiko/` alias, or `jest.mock`). Move shared code to
+  `src/design-system/`, a shared hook/util directory, or a barrel
+  outside `src/screens/`. Enforced by `kiko-no-cross-screen-import`
+  (`scripts/checks/screen-imports.js`, the guard and
+  `check:screen-imports`).
 - **CurrencyBreakdown** — a two-column per-currency amount grid (code
   left, formatted `MoneyText` right), filled row-major.
 - **SummaryTable** (`src/design-system/components/summary-table/`) — the
