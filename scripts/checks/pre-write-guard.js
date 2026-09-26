@@ -215,7 +215,12 @@ class RebuildError extends Error {}
 // a plain literal string.
 function applySingleEdit(sourceText, oldString, newString, replaceAll) {
   if (!sourceText.includes(oldString)) {
-    throw new RebuildError('old_string not found; re-read the file and retry');
+    throw new RebuildError(
+      'old_string was not found in the file. The match is byte-exact: a curly quote ' +
+        "(\u2019 U+2019 vs ' U+0027), a CRLF vs LF line ending, tabs vs spaces, or a change " +
+        'since your last read all break it, so re-read the file and copy old_string from ' +
+        'its exact current bytes; retrying the same old_string fails the same way.',
+    );
   }
   if (replaceAll) {
     return sourceText.split(oldString).join(newString);
@@ -880,6 +885,12 @@ async function run() {
 
     emitDeny(denyReason(relativePath, addedFindings));
   } catch (error) {
+    // A missing old_string is the agent's edit, not a guard failure: say so
+    // plainly, so the agent re-reads instead of retrying the same edit.
+    if (error instanceof RebuildError) {
+      emitDeny(`pre-write guard: ${error.message}`);
+      return;
+    }
     emitDeny(`pre-write guard could not check this edit: ${error.message}`);
   } finally {
     if (temporaryRoot) {

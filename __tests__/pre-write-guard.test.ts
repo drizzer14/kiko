@@ -713,7 +713,14 @@ describe('rebuildContents (BEFORE/AFTER reconstruction for Write/Edit/MultiEdit)
     expect(result.status).toBe(2);
     const parsed = JSON.parse(result.stdout);
     expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
-    expect(parsed.hookSpecificOutput.permissionDecisionReason).toContain('re-read');
+    const reason = parsed.hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('re-read');
+    // Retrying the same edit fails the same way; the reason must say the
+    // match is byte-exact and name the usual culprits so the agent copies
+    // the real bytes instead.
+    expect(reason).toContain('byte-exact');
+    expect(reason).toContain('U+2019');
+    expect(reason).toContain('CRLF');
   });
 
   it('mirrors the repo-relative path under before/ and after/', () => {
