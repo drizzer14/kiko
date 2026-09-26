@@ -536,6 +536,7 @@ export const uk: typeof en = {
     interest: 'Відсотки',
     interestAccrual: 'Нарахування відсотків',
     interestEarned: 'Отримані відсотки',
+    linkedPayments: 'Пов’язані платежі',
     militaryLevy: 'Військовий збір {{pct}}%',
     nextInstallment: 'Наступний платіж ({{date}})',
     openingDeposit: 'Відкриття депозиту',
