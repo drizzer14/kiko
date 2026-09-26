@@ -113,8 +113,8 @@ From `biome.json`'s `linter.rules`:
   score entirely, because Biome measures each declared function
   independently and does not walk into what it CALLS.** This is why a
   custom hook (`useBondIsinMode`,
-  `src/screens/forms/holding-form/bond/use-bond-isin-mode/`, T25
-  review round 1, I4) or a sibling section component
+  `src/screens/forms/holding-form/bond/use-bond-isin-mode/`) or a
+  sibling section component
   (`MetalSection`/`PropertySection`/`BondIsinSection`/
   `ManualBondFields`) is the right fix for a screen that is exhausting
   its budget: pull the state/effects/JSX that belong to one concern
@@ -162,7 +162,7 @@ another rule's side effect. `useBondIsinMode`
 apply + purchase-date default + register refresh into one effect: a
 picked date or a mode flip re-ran the whole thing, silently
 overwriting a typed name/currency, and the same re-fire put the form
-in a Manual/ISIN loop on repeated taps (T25 review round 1, I1/I3).
+in a Manual/ISIN loop on repeated taps.
 The fix was splitting into three effects, each with its own narrow
 dependency array — not narrowing the dependency array on the merged
 effect. Split BEFORE it ships, not after a review catches the
