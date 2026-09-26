@@ -3,15 +3,84 @@ import { startOfLocalDay } from '@kiko/dates';
 import { dayKeyOf, type LoanLedgerPayment, type PriceBook } from '@kiko/prices/price-book';
 
 import {
+  loanPlanOf,
   loanAnchorAt,
   loanOutstandingMinorAt,
   loanInterestForPaymentMinor,
+  type LoanPlan,
   type LoanAnchor,
 } from '../loan-schedule';
 import type { LoanMeta } from '../holding-metadata';
 
 /** The loan holding a ledger reads its own payments for. */
 type LedgerLoan = Pick<HoldingRow, 'id' | 'currency'>;
+
+/** A linked payment that pays the loan down, with its day key and interest part. */
+type LedgerEntry = {
+  payment: LoanLedgerPayment;
+  dayKey: number;
+  interestMinorUnits: number;
+};
+
+/** A loan's installment table plus every payment that can pay it down, time ascending. */
+type Ledger = {
+  plan: LoanPlan;
+  entries: readonly LedgerEntry[];
+};
+
+// A book is read-only once built and one book serves every net-worth bucket,
+// so a loan's ledger is built once per book instead of once per payment per
+// bucket; the metadata is part of the key because the loan form reads the
+// same book with the old and the new terms.
+const ledgersByBook = new WeakMap<PriceBook, Map<string, Ledger>>();
+
+const ledgerKeyOf = (meta: LoanMeta, loan: LedgerLoan): string =>
+  JSON.stringify([
+    loan.id,
+    loan.currency,
+    meta.schedule,
+    meta.principalMinorUnits,
+    meta.startDate,
+    meta.annualRatePct,
+    meta.termMonths,
+  ]);
+
+// A linked payment pays this loan down only as a debit in the loan's own
+// currency (the rule the spending pie's loan-payment exclusion applies).
+const buildLedger = (meta: LoanMeta, loan: LedgerLoan, book: PriceBook): Ledger => {
+  const plan = loanPlanOf(meta);
+  const entries = (book.loanPayments.get(loan.id) ?? [])
+    .filter((payment) => payment.currency === loan.currency && payment.amountMinorUnits < 0)
+    .map((payment) => ({
+      payment,
+      dayKey: dayKeyOf(payment.time),
+      interestMinorUnits: loanInterestForPaymentMinor(
+        meta,
+        payment.time,
+        Math.abs(payment.amountMinorUnits),
+        plan,
+      ),
+    }));
+
+  return { plan, entries };
+};
+
+const ledgerOf = (meta: LoanMeta, loan: LedgerLoan, book: PriceBook): Ledger => {
+  const ledgers = ledgersByBook.get(book) ?? new Map<string, Ledger>();
+  const key = ledgerKeyOf(meta, loan);
+  const cached = ledgers.get(key);
+
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const ledger = buildLedger(meta, loan, book);
+
+  ledgers.set(key, ledger);
+  ledgersByBook.set(book, ledgers);
+
+  return ledger;
+};
 
 /** The loan detail's breakdown table, every amount in the loan's own minor units. */
 type LoanLedgerSummary = {
@@ -22,28 +91,19 @@ type LoanLedgerSummary = {
   outstandingMinorUnits: number;
 };
 
-// A linked payment pays this loan down only as a debit in the loan's own
-// currency (the rule the spending pie's loan-payment exclusion applies), and
-// counts for `instant` when its LOCAL day is on or before `instant`'s — the
-// local-day rule the payer holding's own running balance follows, so a
-// net-worth bucket sees the card's debit and the loan's drop together.
-const countedPayments = (
-  loan: LedgerLoan,
-  book: PriceBook,
-  instant: number,
-): readonly LoanLedgerPayment[] =>
-  (book.loanPayments.get(loan.id) ?? []).filter(
-    (payment) =>
-      payment.currency === loan.currency &&
-      payment.amountMinorUnits < 0 &&
-      dayKeyOf(payment.time) <= dayKeyOf(instant),
-  );
+// A payment counts for `instant` when its LOCAL day is on or before
+// `instant`'s — the local-day rule the payer holding's own running balance
+// follows, so a net-worth bucket sees the card's debit and the loan's drop
+// together.
+const countedEntries = (ledger: Ledger, instant: number): readonly LedgerEntry[] => {
+  const instantDayKey = dayKeyOf(instant);
 
-const interestOf = (meta: LoanMeta, payment: LoanLedgerPayment): number =>
-  loanInterestForPaymentMinor(meta, payment.time, Math.abs(payment.amountMinorUnits));
+  return ledger.entries.filter((entry) => entry.dayKey <= instantDayKey);
+};
 
-const principalOf = (meta: LoanMeta, payment: LoanLedgerPayment): number =>
-  Math.abs(payment.amountMinorUnits) - interestOf(meta, payment);
+const paidOf = (entry: LedgerEntry): number => Math.abs(entry.payment.amountMinorUnits);
+
+const principalOf = (entry: LedgerEntry): number => paidOf(entry) - entry.interestMinorUnits;
 
 // With no correction to count down from, a scheduled loan starts from what
 // its schedule says was outstanding on the day before its first linked
@@ -57,7 +117,8 @@ const ledgerAnchorAt = (
   loan: LedgerLoan,
   book: PriceBook,
   instant: number,
-  payments: readonly LoanLedgerPayment[],
+  ledger: Ledger,
+  counted: readonly LedgerEntry[],
 ): LoanAnchor => {
   const anchor = loanAnchorAt(meta, loan.id, book, instant);
 
@@ -65,7 +126,7 @@ const ledgerAnchorAt = (
     return anchor;
   }
 
-  const firstPaymentTime = Math.min(...payments.map((payment) => payment.time));
+  const firstPaymentTime = Math.min(...counted.map((entry) => entry.payment.time));
   const endOfDayBeforeFirstPayment = startOfLocalDay(firstPaymentTime) - 1;
   const dayKey = dayKeyOf(endOfDayBeforeFirstPayment);
 
@@ -75,7 +136,13 @@ const ledgerAnchorAt = (
 
   return {
     dayKey,
-    valueMinorUnits: loanOutstandingMinorAt(meta, loan.id, book, endOfDayBeforeFirstPayment),
+    valueMinorUnits: loanOutstandingMinorAt(
+      meta,
+      loan.id,
+      book,
+      endOfDayBeforeFirstPayment,
+      ledger.plan,
+    ),
     fromCorrection: false,
   };
 };
@@ -98,20 +165,21 @@ export const loanLedgerOutstandingMinorAt = (
   book: PriceBook,
   instant: number,
 ): number => {
-  const payments = countedPayments(loan, book, instant);
+  const ledger = ledgerOf(meta, loan, book);
+  const counted = countedEntries(ledger, instant);
 
-  if (payments.length === 0) {
-    return loanOutstandingMinorAt(meta, loan.id, book, instant);
+  if (counted.length === 0) {
+    return loanOutstandingMinorAt(meta, loan.id, book, instant, ledger.plan);
   }
 
   if (dayKeyOf(instant) < dayKeyOf(meta.startDate)) {
     return 0;
   }
 
-  const anchor = ledgerAnchorAt(meta, loan, book, instant, payments);
-  const principalRepaidAfterAnchor = payments
-    .filter((payment) => dayKeyOf(payment.time) > anchor.dayKey)
-    .reduce((sum, payment) => sum + principalOf(meta, payment), 0);
+  const anchor = ledgerAnchorAt(meta, loan, book, instant, ledger, counted);
+  const principalRepaidAfterAnchor = counted
+    .filter((entry) => entry.dayKey > anchor.dayKey)
+    .reduce((sum, entry) => sum + principalOf(entry), 0);
 
   return Math.max(0, anchor.valueMinorUnits - principalRepaidAfterAnchor);
 };
@@ -128,15 +196,9 @@ export const loanLedgerSummary = (
   book: PriceBook,
   now: number,
 ): LoanLedgerSummary => {
-  const payments = countedPayments(loan, book, now);
-  const paidSoFarMinorUnits = payments.reduce(
-    (sum, payment) => sum + Math.abs(payment.amountMinorUnits),
-    0,
-  );
-  const interestPaidMinorUnits = payments.reduce(
-    (sum, payment) => sum + interestOf(meta, payment),
-    0,
-  );
+  const counted = countedEntries(ledgerOf(meta, loan, book), now);
+  const paidSoFarMinorUnits = counted.reduce((sum, entry) => sum + paidOf(entry), 0);
+  const interestPaidMinorUnits = counted.reduce((sum, entry) => sum + entry.interestMinorUnits, 0);
 
   return {
     principalMinorUnits: meta.principalMinorUnits,

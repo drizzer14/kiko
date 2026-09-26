@@ -2,7 +2,7 @@ import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { Currency } from '@kiko/currency/currency';
 import { asLoanMeta } from '@kiko/holdings/holding-metadata';
-import { loanInterestForPaymentMinor } from '@kiko/holdings/loan-schedule';
+import { loanPlanOf, loanInterestForPaymentMinor } from '@kiko/holdings/loan-schedule';
 
 import type { TrendTransaction } from '../category-trend';
 
@@ -101,11 +101,15 @@ export const loanInterestEntries = (input: {
 }): TrendTransaction[] => {
   const { transactions, loanHoldings } = input;
   const holdingById = new Map(loanHoldings.map((holding) => [holding.id, holding] as const));
-  const metaById = new Map(
+  const termsById = new Map(
     loanHoldings.flatMap((holding) => {
       const meta = asLoanMeta(holding.metadata);
 
-      return foldMap(maybe(meta), (found) => [[holding.id, found] as const]) ?? [];
+      return (
+        foldMap(maybe(meta), (found) => [
+          [holding.id, { meta: found, plan: loanPlanOf(found) }] as const,
+        ]) ?? []
+      );
     }),
   );
 
@@ -115,16 +119,17 @@ export const loanInterestEntries = (input: {
     }
 
     const holding = holdingById.get(transaction.loanHoldingId);
-    const meta = metaById.get(transaction.loanHoldingId);
+    const terms = termsById.get(transaction.loanHoldingId);
 
-    if (holding === undefined || meta === undefined || holding.currency !== transaction.currency) {
+    if (holding === undefined || terms === undefined || holding.currency !== transaction.currency) {
       return [];
     }
 
     const interest = loanInterestForPaymentMinor(
-      meta,
+      terms.meta,
       transaction.time,
       Math.abs(transaction.amountMinorUnits),
+      terms.plan,
     );
 
     if (interest <= 0) {

@@ -1181,6 +1181,15 @@ decimal-string rule.
   `addMonths(startDate, installments.length + 1)`) counts 0 instead of
   still mapping to the nearest boundary installment — both bounds are
   inclusive, only a payment strictly beyond one counts 0.
+- `loanPlanOf(meta)` → `LoanPlan` (`{ installments, dueDayKeys }`): the
+  table plus each row's day key, built ONCE per loan. `loanOutstandingMinorAt`
+  and `loanInterestForPaymentMinor` take it as an optional last argument
+  (default: build it); every caller that repeats a read for the same loan
+  (each linked payment, each net-worth bucket, each statistics
+  transaction) builds it once and passes it. Rebuilding it per payment per
+  bucket froze Statistics (a 30-year loan with 60 linked payments over 260
+  weekly buckets took ~5-8 s; now ~16 ms — pinned by a budget test in
+  `net-worth-series.test.ts`).
 
 **The loan ledger — linked payments drive the outstanding everywhere
 (user-approved).** `src/holdings/loan-ledger/` reads the loan's linked
@@ -1212,7 +1221,11 @@ together.
   then drops by each linked payment's principal part. A `none` loan
   (no schedule), or a first link on or before the start day, keeps the
   principal at the start day. A payment on or before a correction's day
-  is already inside that correction.
+  is already inside that correction. The ledger (the `LoanPlan` plus
+  every paying-down payment with its day key and interest part) is built
+  once per `PriceBook` and cached in a `WeakMap` keyed by the book, then
+  by loan id + currency + the schedule terms (the loan form reads one
+  book with the old AND the new terms, so the terms must be in the key).
 - `loanLedgerSummary(meta, loan, book, now)` — the detail's breakdown:
   `principalMinorUnits`, `paidSoFarMinorUnits` (Σ `|amount|`),
   `interestPaidMinorUnits` (Σ `loanInterestForPaymentMinor`; 0 for

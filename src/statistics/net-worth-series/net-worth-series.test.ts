@@ -1155,4 +1155,45 @@ describe('buildNetWorthSeries', () => {
 
     expect(series.points[0]?.amount).toBe(0);
   });
+
+  // Every weekly bucket re-reads the same loan against the same book, so the
+  // installment table and each linked payment's interest must be built once,
+  // not once per payment per bucket.
+  it('values a 30-year loan with 60 linked payments over 260 weekly buckets within budget', () => {
+    const startDate = new Date(2001, 0, 15).getTime();
+    const loan = holding({
+      id: 'loan',
+      currency: 'UAH',
+      type: 'loan',
+      metadata: {
+        kind: 'mortgage',
+        principalMinorUnits: 3_000_000_00,
+        startDate,
+        annualRatePct: 12,
+        termMonths: 360,
+        schedule: 'annuity',
+      },
+    });
+    const payments = Array.from({ length: 60 }, (_, index) => ({
+      loanHoldingId: 'loan',
+      time: new Date(2021, index, 15, 10).getTime(),
+      amountMinorUnits: -30_000_00,
+      currency: 'UAH' as const,
+    }));
+    const from = new Date(2021, 0, 1).getTime();
+    const startedAt = performance.now();
+
+    const series = buildNetWorthSeries({
+      holdings: [loan],
+      transactionsByHolding: new Map(),
+      historyRows: [],
+      baseCurrency: 'UAH',
+      range: { from, to: from + 259 * 7 * DAY },
+      bucketDays: 7,
+      book: buildPriceBook([], payments),
+    });
+
+    expect(series.points).toHaveLength(260);
+    expect(performance.now() - startedAt).toBeLessThan(1_000);
+  });
 });

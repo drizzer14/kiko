@@ -93,6 +93,23 @@ export const loanInstallments = (meta: LoanMeta): LoanInstallment[] => {
 };
 
 /**
+ * A loan's installment table with each row's due-date day key alongside it.
+ * Build it once per loan and pass it to every read below that repeats for
+ * the same loan (each net-worth bucket, each linked payment): building the
+ * table and its day keys is the expensive part of every one of those reads.
+ */
+export type LoanPlan = {
+  installments: readonly LoanInstallment[];
+  dueDayKeys: readonly number[];
+};
+
+export const loanPlanOf = (meta: LoanMeta): LoanPlan => {
+  const installments = loanInstallments(meta);
+
+  return { installments, dueDayKeys: installments.map((row) => dayKeyOf(row.dueDate)) };
+};
+
+/**
  * `annuity`/`differentiated` outstanding is computed AT READ TIME from the
  * schedule: the latest manual correction point on the holding's own
  * `holding:<id>` instrument, WHEN ITS DAY IS ON OR BEFORE `instant`'s local
@@ -126,6 +143,7 @@ export const loanOutstandingMinorAt = (
   holdingId: string,
   book: PriceBook,
   instant: number,
+  plan: LoanPlan = loanPlanOf(meta),
 ): number => {
   if (dayKeyOf(instant) < dayKeyOf(meta.startDate)) {
     return 0;
@@ -141,9 +159,9 @@ export const loanOutstandingMinorAt = (
 
   const instantDayKey = dayKeyOf(instant);
   const anchor = loanAnchorAt(meta, holdingId, book, instant);
-  const principalDueAfterAnchor = loanInstallments(meta)
-    .filter((row) => {
-      const dueDayKey = dayKeyOf(row.dueDate);
+  const principalDueAfterAnchor = plan.installments
+    .filter((_, index) => {
+      const dueDayKey = plan.dueDayKeys[index];
 
       return dueDayKey > anchor.dayKey && dueDayKey <= instantDayKey;
     })
@@ -219,8 +237,9 @@ export const loanInterestForPaymentMinor = (
   meta: LoanMeta,
   paymentTime: number,
   paymentAbsMinor: number,
+  plan: LoanPlan = loanPlanOf(meta),
 ): number => {
-  const installments = loanInstallments(meta);
+  const { installments, dueDayKeys } = plan;
 
   if (installments.length === 0) {
     return 0;
@@ -234,12 +253,13 @@ export const loanInterestForPaymentMinor = (
     return 0;
   }
 
-  const nearest = installments.reduce((closest, candidate) =>
-    Math.abs(dayKeyOf(candidate.dueDate) - paymentDayKey) <
-    Math.abs(dayKeyOf(closest.dueDate) - paymentDayKey)
-      ? candidate
-      : closest,
+  const nearestIndex = dueDayKeys.reduce(
+    (closest, dueDayKey, index) =>
+      Math.abs(dueDayKey - paymentDayKey) < Math.abs(dueDayKeys[closest] - paymentDayKey)
+        ? index
+        : closest,
+    0,
   );
 
-  return Math.min(nearest.interestMinorUnits, paymentAbsMinor);
+  return Math.min(installments[nearestIndex].interestMinorUnits, paymentAbsMinor);
 };

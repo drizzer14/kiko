@@ -117,6 +117,24 @@ describe('loanLedgerOutstandingMinorAt', () => {
     );
   });
 
+  // The loan form reads one book with the old and the new terms.
+  it('reads the same book with different terms as two different loans', () => {
+    const freshBook = (): PriceBook => bookWith([onSchedule(0), onSchedule(1)]);
+    const book = freshBook();
+    const cheaperMeta: LoanMeta = { ...annuityMeta, annualRatePct: 6 };
+    const instant = installments[5].dueDate;
+
+    expect(loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, instant)).toBe(
+      loanLedgerOutstandingMinorAt(annuityMeta, LOAN, freshBook(), instant),
+    );
+    expect(loanLedgerOutstandingMinorAt(cheaperMeta, LOAN, book, instant)).toBe(
+      loanLedgerOutstandingMinorAt(cheaperMeta, LOAN, freshBook(), instant),
+    );
+    expect(loanLedgerOutstandingMinorAt(cheaperMeta, LOAN, book, instant)).not.toBe(
+      loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, instant),
+    );
+  });
+
   it('clamps an overpaid loan to 0', () => {
     const book = bookWith([{ time: installments[0].dueDate, amountMinorUnits: -20_000_000 }]);
 
