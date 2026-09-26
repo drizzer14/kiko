@@ -1,6 +1,6 @@
 import { match } from 'ts-pattern';
 import type { Repository } from '@kiko/db/repository';
-import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt, ne, sql } from 'drizzle-orm';
 import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/repo';
 
 import {
@@ -429,6 +429,38 @@ export const transactionsRepo = {
       .selectDistinct({ holdingId: transactions.holdingId })
       .from(transactions)
       .where(and(eq(transactions.source, 'monobank'), eq(transactions.hold, true))),
+  /**
+   * The loan-payment matcher's own candidate read
+   * (`src/loans/payment-matcher/`): every debit, not already linked, not
+   * previously rejected (a manual "None" or Undo must stick), and not one leg
+   * of an Exchange/Convert (the structural `exchangeCounterpartHoldingId`
+   * marker, same check `exchange-exclusion.ts` makes) — filtered here in SQL,
+   * not in JS, so the matcher never even reads a row it can never link
+   * (P-NOWORK). Joined against the PAYER holding's own currency, which the
+   * matcher compares against each loan's own currency itself (this query
+   * makes no currency decision of its own).
+   */
+  loanMatchCandidatesQuery: () =>
+    database
+      .select({
+        id: transactions.id,
+        holdingId: transactions.holdingId,
+        currency: holdings.currency,
+        amountMinorUnits: transactions.amountMinorUnits,
+        time: transactions.time,
+        description: transactions.description,
+        counterIban: transactions.counterIban,
+      })
+      .from(transactions)
+      .innerJoin(holdings, eq(transactions.holdingId, holdings.id))
+      .where(
+        and(
+          lt(transactions.amountMinorUnits, 0),
+          isNull(transactions.loanHoldingId),
+          eq(transactions.loanLinkRejected, false),
+          isNull(transactions.exchangeCounterpartHoldingId),
+        ),
+      ),
   listAllWithContextQuery: () =>
     database
       .select({
@@ -864,10 +896,34 @@ export const transactionsRepo = {
    * can never be silently overwritten. A link whose row fails that WHERE is
    * simply not updated — no error, no partial side effect. An empty
    * `links` array is a no-op.
+   *
+   * Every target loan holding is ALSO re-checked to still exist, inside this
+   * SAME transaction, before any write: the matcher computes its candidates
+   * from a snapshot read moments earlier, so a loan holding can be deleted in
+   * the gap between that read and this write — `holdingsRepo.remove` clears
+   * every link that ALREADY points at a holding the instant it is deleted,
+   * but cannot clear a link this call has not written yet. A link whose loan
+   * fails that check is simply skipped, the same no-error/no-partial-effect
+   * contract the per-row WHERE above already gives every other skip.
    */
   setAutoLoanLinks: (links: { transactionId: string; loanHoldingId: string }[]) =>
     write(async (databaseTransaction) => {
+      if (links.length === 0) {
+        return;
+      }
+
+      const loanHoldingIds = Array.from(new Set(links.map((link) => link.loanHoldingId)));
+      const existingLoanHoldingRows = await databaseTransaction
+        .select({ id: holdings.id })
+        .from(holdings)
+        .where(inArray(holdings.id, loanHoldingIds));
+      const existingLoanHoldingIds = new Set(existingLoanHoldingRows.map((row) => row.id));
+
       for (const link of links) {
+        if (!existingLoanHoldingIds.has(link.loanHoldingId)) {
+          continue;
+        }
+
         await databaseTransaction
           .update(transactions)
           .set({ loanHoldingId: link.loanHoldingId, loanLinkSource: 'auto' })

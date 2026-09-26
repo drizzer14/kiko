@@ -112,6 +112,32 @@ describe('transactionsRepo', () => {
     expect(sql).toContain('loan_holding_id');
   });
 
+  // The loan-payment matcher's own candidate read (P-NOWORK: filter what it
+  // can never link at the SQL level, not in JS) — a debit, not already
+  // linked, not previously rejected, not one leg of an Exchange/Convert,
+  // joined against the payer holding's own currency (the matcher compares
+  // that against each loan's own currency itself).
+  it('scopes loanMatchCandidatesQuery to an eligible debit: unlinked, un-rejected, no exchange marker', () => {
+    const query = transactionsRepo.loanMatchCandidatesQuery();
+    const { sql } = query.toSQL();
+    const lower = sql.toLowerCase();
+
+    expect(lower).toContain('join "holdings"');
+    expect(lower).toContain('"transactions"."amount_minor_units" <');
+    expect(lower).toContain('"transactions"."loan_holding_id" is null');
+    expect(lower).toContain('"transactions"."loan_link_rejected" = ?');
+    expect(lower).toContain('"transactions"."exchange_counterpart_holding_id" is null');
+  });
+
+  it('projects every field the matcher reads: currency, counterIban, description, time', () => {
+    const { sql } = transactionsRepo.loanMatchCandidatesQuery().toSQL();
+
+    expect(sql).toContain('"holdings"."currency"');
+    expect(sql).toContain('counter_iban');
+    expect(sql).toContain('"transactions"."description"');
+    expect(sql).toContain('"transactions"."time"');
+  });
+
   it('builds a DISTINCT manual-descriptions query ordered newest-first (for the description-suggestion autocomplete)', () => {
     const { sql } = transactionsRepo.distinctDescriptionsQuery().toSQL();
     const lower = sql.toLowerCase();
@@ -1151,12 +1177,24 @@ describe('transactionsRepo.setLoanPayment', () => {
 // matches no row), so the test proves the PREDICATE carries both guards
 // rather than emulating SQLite's row filtering in JS.
 describe('transactionsRepo.setAutoLoanLinks', () => {
-  const captureBatchUpdateDatabaseTransaction = (): {
+  // `existingLoanHoldingIds` seeds the existence re-check's own `select` —
+  // the matcher computes its candidates from a snapshot read moments
+  // earlier, so a loan holding can be deleted before this write runs; the
+  // re-check happens INSIDE this same transaction so that race can never
+  // leave a dangling `loanHoldingId` behind.
+  const captureBatchUpdateDatabaseTransaction = (
+    existingLoanHoldingIds: string[],
+  ): {
     databaseTransaction: unknown;
     captured: { set: Record<string, unknown>; whereArg: unknown }[];
   } => {
     const captured: { set: Record<string, unknown>; whereArg: unknown }[] = [];
     const databaseTransaction = {
+      select: () => ({
+        from: () => ({
+          where: () => Promise.resolve(existingLoanHoldingIds.map((id) => ({ id }))),
+        }),
+      }),
       update: (_table: unknown) => ({
         set: (values: Record<string, unknown>) => ({
           where: (whereArg: unknown) => {
@@ -1171,7 +1209,7 @@ describe('transactionsRepo.setAutoLoanLinks', () => {
   };
 
   it('writes every link in one transaction, each guarded against an already-linked or already-rejected row', async () => {
-    const { databaseTransaction, captured } = captureBatchUpdateDatabaseTransaction();
+    const { databaseTransaction, captured } = captureBatchUpdateDatabaseTransaction(['loan-1']);
     mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.setAutoLoanLinks([
@@ -1191,12 +1229,25 @@ describe('transactionsRepo.setAutoLoanLinks', () => {
   });
 
   it('is a no-op for an empty link list', async () => {
-    const { databaseTransaction, captured } = captureBatchUpdateDatabaseTransaction();
+    const { databaseTransaction, captured } = captureBatchUpdateDatabaseTransaction([]);
     mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.setAutoLoanLinks([]);
 
     expect(captured).toHaveLength(0);
+  });
+
+  it('skips a link whose loan holding no longer exists, writing every other link', async () => {
+    const { databaseTransaction, captured } = captureBatchUpdateDatabaseTransaction(['loan-1']);
+    mockDatabaseTransaction = databaseTransaction;
+
+    await transactionsRepo.setAutoLoanLinks([
+      { transactionId: 'txn-deleted-loan', loanHoldingId: 'loan-gone' },
+      { transactionId: 'txn-1', loanHoldingId: 'loan-1' },
+    ]);
+
+    expect(captured).toHaveLength(1);
+    expect(renderCondition(captured[0].whereArg).params).toEqual(['txn-1', 0]);
   });
 });
 

@@ -165,6 +165,17 @@ describe('holdingsRepo', () => {
     expect(sql.toLowerCase()).toContain('archived_at');
   });
 
+  // The loan-payment matcher's own gate query (P-NOWORK): every OPEN loan
+  // holding, so a caller can return early — before ever reading the (larger)
+  // transaction table — the moment this is empty.
+  it('builds an open-loan-holdings query, scoped to type "loan" and excluding closed holdings', () => {
+    const { sql, params } = holdingsRepo.loanHoldingsQuery().toSQL();
+
+    expect(sql).toContain('holdings');
+    expect(sql.toLowerCase()).toContain('closed_at');
+    expect(params).toContain('loan');
+  });
+
   it('create inserts the holding and resolves to the generated id', async () => {
     const { databaseTransaction, inserts } = makeCreateDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;

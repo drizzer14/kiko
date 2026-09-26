@@ -249,6 +249,20 @@ export const holdingsRepo = {
       .innerJoin(accounts, eq(holdings.accountId, accounts.id))
       .where(and(isNull(holdings.closedAt), isNull(accounts.archivedAt))),
   /**
+   * Every OPEN loan holding — the loan-payment matcher's own gate query
+   * (`src/loans/payment-matcher/`, `src/loans/use-loan-auto-link/`): it reads
+   * this FIRST and returns early when it is empty, so a user with no debts
+   * never pays for the (larger) transaction-candidate query the matcher would
+   * otherwise run next (P-NOWORK). A CLOSED loan is excluded: a closed loan
+   * has nothing left to backfill, mirroring `buildLoanOptions`'s own
+   * (transaction-form) closed-holding exclusion.
+   */
+  loanHoldingsQuery: () =>
+    database
+      .select()
+      .from(holdings)
+      .where(and(eq(holdings.type, 'loan'), isNull(holdings.closedAt))),
+  /**
    * Converts a stored row's raw `balanceMinorUnits` column into `Money`, in
    * the row's own currency — kiko-domain's "Money at the boundary" (a repo
    * is the only place that conversion may happen). Every non-repo reader
