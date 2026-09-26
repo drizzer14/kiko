@@ -1196,9 +1196,13 @@ below until it is added there too. Seven steps, in order:
    ships them (see `kiko-translator`).
 5. Add an entry to `holdingDetailSpecs`
    (`src/screens/holding-detail/holding-detail-spec/`): its footer add
-   action, its value-breakdown display (or `null` to hide it), and its
-   next-loan-installment panel (or `noInstallment` for every type but a
-   scheduled loan). The `satisfies Record<HoldingType, HoldingDetailSpec>`
+   action, its value-breakdown display, and its next-loan-installment
+   panel (or `noInstallment` for every type but a scheduled loan). The
+   breakdown is one of `{ kind: 'interest', principalLabelKey, expectedProfit }`
+   (the deposit/bond principal-or-cost/gross/interest/tax table), `{ kind:
+   'priced' }` (the cost/value/gain table a priced type shows — see
+   `kiko-pricing`'s "Priced holdings" section), or `null` to hide the
+   breakdown entirely. The `satisfies Record<HoldingType, HoldingDetailSpec>`
    there is the fourth compile error a missed type produces.
 6. Fill in the new descriptor's own `exchange` row (`receivePath`,
    `source`, `createSource`, `createDestination` — `HoldingDescriptor`'s

@@ -231,9 +231,15 @@ never silently mis-parses into the flat stored balance. For a priced
 type,
 `gross = net =` the resolved value and `principalOrCost` is ALWAYS the
 cost basis (even when gross also equals the cost basis on the
-no-price-point path) — the holding-detail breakdown needs cost basis
-available separately to show a live gain/loss. `interest`/`tax` are
-always zero: a priced holding never accrues interest or withholds tax.
+no-price-point path) — cost basis is kept separate from the resolved
+value for exactly this reason: `property_item`/`metal`'s own
+`holdingDetailSpecs` entry (`holding-detail-spec/`) is `{ kind: 'priced' }`,
+which `holding-detail.screen.tsx`'s `pricedBreakdownRows` renders as
+Cost / Value / Gain (`gross.subtract(principalOrCost)`, MoneyText's own
+sign-based tone — never a hardcoded green) — no interest/tax row, since
+`interest`/`tax` are always zero: a priced holding never accrues
+interest or withholds tax, so those rows would only ever read a
+misleading zero.
 
 **A priced holding writes no ledger (`Transaction`) rows for its
 revaluations.** Its lots array is the only source of quantity/cost-basis

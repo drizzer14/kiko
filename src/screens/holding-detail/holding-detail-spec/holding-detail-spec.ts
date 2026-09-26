@@ -15,17 +15,28 @@ import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor/bond'
 /** Which add action the detail screen's footer offers. */
 export type FooterAction = 'contribution' | 'transaction' | 'updateValue' | 'addLot' | 'none';
 
+// The two breakdown shapes the detail screen renders (`holding-detail.screen.tsx`'s
+// own `breakdownRows` dispatches on `kind`). `interest` is the
+// principal-or-cost/gross/interest/tax table a deposit or bond accrues.
+// `priced` is the cost/value/gain table a priced type (`property_item`,
+// `metal`) shows instead — it has no interest or tax to withhold, so those
+// rows would only ever read a misleading zero.
+export type HoldingBreakdownSpec =
+  | {
+      kind: 'interest';
+      principalLabelKey: 'holdingDetail.principal' | 'holdingDetail.cost';
+      expectedProfit: (holding: HoldingRow) => Money | null;
+    }
+  | { kind: 'priced' };
+
 // What the detail screen shows per holding type. Not exported: every
 // consumer reads a value of this shape through `holdingDetailSpecFor` below
 // rather than naming the type directly.
 type HoldingDetailSpec = {
   /** `synced` = `isSyncedHolding(holding, account)`. */
   footerAction: (synced: boolean) => FooterAction;
-  /** The principal/gross/interest/tax table, or `null` to hide it. */
-  breakdown: {
-    principalLabelKey: 'holdingDetail.principal' | 'holdingDetail.cost';
-    expectedProfit: (holding: HoldingRow) => Money | null;
-  } | null;
+  /** The breakdown table to show, or `null` to hide it. */
+  breakdown: HoldingBreakdownSpec | null;
   nextInstallment: (
     holding: HoldingRow,
     book: PriceBook,
@@ -95,17 +106,29 @@ const bondExpectedProfit = (holding: HoldingRow): Money | null =>
 export const holdingDetailSpecs = {
   term_deposit: {
     footerAction: () => 'contribution',
-    breakdown: { principalLabelKey: 'holdingDetail.principal', expectedProfit: () => null },
+    breakdown: {
+      kind: 'interest',
+      principalLabelKey: 'holdingDetail.principal',
+      expectedProfit: () => null,
+    },
     nextInstallment: noInstallment,
   },
   bond: {
     footerAction: () => 'none',
-    breakdown: { principalLabelKey: 'holdingDetail.cost', expectedProfit: bondExpectedProfit },
+    breakdown: {
+      kind: 'interest',
+      principalLabelKey: 'holdingDetail.cost',
+      expectedProfit: bondExpectedProfit,
+    },
     nextInstallment: noInstallment,
   },
+  // A priced type shows its cost basis, its current (priced) value, and the
+  // gain between them — never the deposit/bond interest/tax table, which
+  // would only ever read a misleading zero (a priced type accrues no
+  // interest and withholds no tax).
   property_item: {
     footerAction: () => 'updateValue',
-    breakdown: null,
+    breakdown: { kind: 'priced' },
     nextInstallment: noInstallment,
   },
   // `metal` opens the dedicated Lot form to record a buy/sell instead of the
@@ -115,7 +138,7 @@ export const holdingDetailSpecs = {
   // adds lots rather than updating a value.
   metal: {
     footerAction: () => 'addLot',
-    breakdown: null,
+    breakdown: { kind: 'priced' },
     nextInstallment: noInstallment,
   },
   // A loan is ledgerless but still takes the SAME `'updateValue'`

@@ -717,9 +717,64 @@ describe('HoldingDetailScreen', () => {
       },
     ]);
 
-    const { getByText } = await renderScreen();
+    const { getAllByText } = await renderScreen();
 
-    expect(getByText(formatMoney(Money.of('UAH', 80_296_490)))).toBeTruthy();
+    // The priced value now appears twice: the headline Value amount and its
+    // own "Value" breakdown row below it — both must read it.
+    expect(getAllByText(formatMoney(Money.of('UAH', 80_296_490))).length).toBe(2);
+  });
+
+  it('shows a metal holding its cost basis, priced value, and gain in the breakdown, with no interest/tax row', async () => {
+    // Cost basis (the stored lot): 10g at 5_000_000 minor units total ->
+    // 50 000,00 ₴. Priced value (the same metal:XAU point as above): 80
+    // 296 490 minor units -> 802 964,90 ₴. Gain = value - cost.
+    seed(metalHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [
+      {
+        instrument: 'metal:XAU',
+        day: Date.UTC(2024, 0, 1),
+        price: '2500000.00',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+    ]);
+
+    const { getByText, getAllByText, queryByText } = await renderScreen();
+
+    expect(getByText('Cost')).toBeTruthy();
+    expect(amountForLabel(getByText('Cost'))).toHaveTextContent(
+      formatMoney(Money.of('UAH', 5_000_000)),
+    );
+    // "Value" also labels the headline amount above the breakdown (index 0);
+    // the breakdown's own "Value" row is the second match.
+    expect(amountForLabel(getAllByText('Value')[1])).toHaveTextContent(
+      formatMoney(Money.of('UAH', 80_296_490)),
+    );
+    expect(getByText('Gain')).toBeTruthy();
+    expect(amountForLabel(getByText('Gain'))).toHaveTextContent(
+      formatMoney(Money.of('UAH', 75_296_490)),
+    );
+    expect(queryByText('Interest earned')).toBeNull();
+    expect(queryByText('Tax withheld')).toBeNull();
+  });
+
+  it('shows a property_item its cost basis, priced value, and gain in the breakdown, with no interest/tax row', async () => {
+    // propertyHolding's stored lot cost: 200_000_000 minor units -> 2 000
+    // 000,00 ₴. No price_points row is seeded, so `pricedBreakdown` falls
+    // back to that same cost basis for the priced value too — the "no price
+    // point yet" case — so the gain reads exactly 0,00 ₴.
+    seed(propertyHolding);
+
+    const { getByText, getAllByText, queryByText } = await renderScreen();
+
+    expect(amountForLabel(getByText('Cost'))).toHaveTextContent(
+      formatMoney(Money.of('UAH', 200_000_000)),
+    );
+    expect(amountForLabel(getAllByText('Value')[1])).toHaveTextContent(
+      formatMoney(Money.of('UAH', 200_000_000)),
+    );
+    expect(amountForLabel(getByText('Gain'))).toHaveTextContent(formatMoney(Money.of('UAH', 0)));
+    expect(queryByText('Interest earned')).toBeNull();
+    expect(queryByText('Tax withheld')).toBeNull();
   });
 
   it('renders the resolved category icon on a transaction row, tinted with its category color', async () => {
@@ -1334,6 +1389,23 @@ describe('HoldingDetailScreen — localization', () => {
     expect(getByText('Транзакції')).toBeTruthy();
     expect(queryByText('Value')).toBeNull();
     expect(queryByText('Transactions')).toBeNull();
+  });
+
+  it('renders the priced breakdown labels from the Ukrainian catalog', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    seed(propertyHolding);
+    const { getAllByText, getByText, queryByText } = await renderScreen();
+
+    // "Вартість" also labels the headline amount above the breakdown; the
+    // breakdown's own Cost row is one of its matches.
+    expect(getAllByText('Вартість').length).toBeGreaterThanOrEqual(2);
+    expect(getByText('Поточна вартість')).toBeTruthy();
+    expect(getByText('Прибуток')).toBeTruthy();
+    expect(queryByText('Cost')).toBeNull();
+    expect(queryByText('Gain')).toBeNull();
   });
 
   it('renders the Add transaction footer action from the Ukrainian catalog for a non-deposit holding', async () => {

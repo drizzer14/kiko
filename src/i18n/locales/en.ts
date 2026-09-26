@@ -605,6 +605,10 @@ export const en = {
     // "Transactions" heading with nothing below it.
     emptyTransactions: 'No transactions',
     expectedProfit: 'Expected profit',
+    // A priced type's (property, metal) breakdown gain row: gross value minus
+    // cost basis. Reads green for a gain, red for a loss (MoneyText's own
+    // sign-based tone, no explicit override — see `pricedBreakdownRows`).
+    gain: 'Gain',
     grossValue: 'Gross value',
     incomeTax: 'Income tax {{pct}}%',
     interest: 'Interest',
@@ -630,6 +634,11 @@ export const en = {
     // `updateValue` below, for a priced holding).
     updateOutstanding: 'Update outstanding',
     updateValue: 'Update value',
+    // A priced type's (property, metal) breakdown value row — its current
+    // priced value, distinct from `grossValue` (the deposit/bond breakdown's
+    // OWN row, which reads wrong here: a priced type has no gross-vs-net
+    // distinction, since it withholds no tax).
+    value: 'Value',
     valueLabel: 'Value',
   },
   home: {

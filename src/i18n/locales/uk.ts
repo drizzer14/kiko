@@ -519,6 +519,7 @@ export const uk: typeof en = {
     cost: 'Вартість',
     emptyTransactions: 'Немає транзакцій',
     expectedProfit: 'Очікуваний прибуток',
+    gain: 'Прибуток',
     grossValue: 'Валова вартість',
     incomeTax: 'Податок на доходи {{pct}}%',
     interest: 'Відсотки',
@@ -538,6 +539,7 @@ export const uk: typeof en = {
     transactionsHeading: 'Транзакції',
     updateOutstanding: 'Оновити залишок',
     updateValue: 'Оновити вартість',
+    value: 'Поточна вартість',
     valueLabel: 'Вартість',
   },
   home: {
