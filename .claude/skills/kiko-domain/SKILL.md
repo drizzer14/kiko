@@ -893,8 +893,11 @@ kind-and-type icon/color reuse `property`/`property_item` and
 `annualRatePct?`/`termMonths?` — both OPTIONAL, since a `none`
 (informal) loan carries no known rate/term; the create form is
 expected to require them for `annuity`/`differentiated`, not
-`asLoanMeta` itself, which accepts either shape. A loan the user GAVE
-to someone (not owed BY them) is not a `loan` holding at all — it
+`asLoanMeta` itself, which accepts either shape. Three more OPTIONAL
+fields — `paymentHoldingId?`, `lenderName?`, `lenderIban?` — are the
+automatic loan-payment matcher's own inputs (below); `undefined` for
+every loan saved before they existed, same convention. A loan the user
+GAVE to someone (not owed BY them) is not a `loan` holding at all — it
 stays the existing `property` category `loan_given`, which is
 an ASSET, not a debt.
 
@@ -947,15 +950,17 @@ accrues either AT VALUATION time) backs the net-worth assets-minus-debt
 rule. The `loanHoldingId` link column + its repo
 functions are covered in their own subsection below. Interest-only
 spending is wired through the "Spending-exclusion pipeline" section's
-loan-payments module, above. NOT YET WIRED: an automatic transaction-form
-field and payment-linking matcher — do not assume either exists
-without checking the code first.
+loan-payments module, above. The transaction-form field (`LoanPaymentField`)
+and the automatic payment-linking matcher are BOTH wired — see "The
+automatic loan-payment matcher" subsection below for the matcher's own
+rules and every call site.
 
 ### Loan form + detail
 
 `src/screens/forms/holding-form/loan/loan-section/` (kind `SelectField`,
-principal, start date, schedule SegmentedControl, rate/term hidden for
-`'none'`) and its own `use-loan-fields/` hook — a full `HoldingTypeForm`
+principal, start date, schedule SegmentedControl, rate/term AND the
+matcher's own optional "Paid from"/lender-name/lender-IBAN fields all
+hidden for `'none'`) and its own `use-loan-fields/` hook — a full `HoldingTypeForm`
 (`src/screens/forms/holding-form/holding-type-form/`): state,
 per-schedule `loanReasonKey` validation, edit-mode `seed`,
 `createPayload`, and `saveEdit` — mirror `useBondIsinMode`'s
@@ -1122,6 +1127,88 @@ the row count per chunk from the TARGET table's own column count
 instead of a fixed row constant, so a future column added to any of these
 tables can never silently repeat this — the widest table just gets a
 smaller chunk automatically.
+
+### The automatic loan-payment matcher
+
+`matchLoanPayments` (`src/loans/payment-matcher/`) is a pure, idempotent
+function: `{ transactions, loans, now } -> { transactionId, loanHoldingId,
+dueDate }[]`. `loans` takes plain holding rows (`Pick<HoldingRow, 'id' |
+'currency' | 'metadata'>`) and parses `LoanMeta` internally, mirroring
+`loan-payments.ts`'s own `LoanHolding` convention. A link is proposed only
+when ALL of these hold, checked over the FULL candidate matrix (never a
+sequential filter, so an ambiguity check never depends on which one runs
+first):
+
+1. **Amount**: within the LARGER of ±1% or ±1.00 (the loan's own currency)
+   of the scheduled installment's own payment.
+2. **Date**: the transaction's local day is 3 days before to 7 days after
+   the installment's own `dueDate` — both bounds inclusive.
+3. **A third signal**, at least one of: the transaction's `holdingId`
+   equals the loan's own `paymentHoldingId`; its `counterIban` equals the
+   loan's own `lenderIban`; or its `description` contains (case-insensitive)
+   one of a fixed keyword list (`кредит`, `погашення`, `іпотек`, `позик`,
+   `loan`, `mortgage`, `repayment`) or the loan's own `lenderName`. Amount +
+   date ALONE never links (a same-size monthly rent must not false-positive).
+4. **Uniqueness**: exactly one candidate transaction per installment, and
+   that transaction matches exactly one installment of one loan — two
+   candidates for one installment, or one transaction matching two
+   installments (same loan or different), links neither.
+
+The candidate transaction itself must be a debit, not already linked
+(`loanHoldingId` null), not previously rejected (`loanLinkRejected`
+false), and not one leg of an Exchange/Convert (the structural
+`exchangeCounterpartHoldingId` marker) — `transactionsRepo.
+loanMatchCandidatesQuery()` pre-filters all four in SQL (P-NOWORK: never
+read a row the matcher can never link), and the pure function also
+re-checks them itself, so it stays correct when unit-tested directly. An
+informal (`'none'`-schedule) loan is never matched: `loanInstallments`
+already returns `[]` for it, so it contributes no candidate installment at
+all — no separate schedule check is needed. `now` bounds installments to
+`dueDate <= now + 3 days` (the window's own before-margin) — a cheap UPPER
+bound only, never a lower one, so a freshly created/edited loan backfills
+its WHOLE past history the first time this runs.
+
+`src/loans/use-loan-auto-link/` (`runLoanAutoLink`, a plain async
+function, not a hook — so a non-component caller, e.g.
+`import-statement.ts`, can call it directly): reads
+`holdingsRepo.loanHoldingsQuery()` (every OPEN loan) FIRST and returns
+before ever touching the transaction table when it is empty (P-NOWORK);
+otherwise reads `transactionsRepo.loanMatchCandidatesQuery()`, runs
+`matchLoanPayments`, and writes any result through
+`transactionsRepo.setAutoLoanLinks`. Never rejects — every failure is
+caught and logged, the same "log instead of drop" contract
+`refresh-market-data.ts` established for its own background refreshes, so
+a failed auto-link never turns a successful sync/import/save into a shown
+error. Called after: every sync completion path (`useSync`, `useSyncAll`,
+`useAutoSync` — the same three call sites `refreshMarketData` already
+established as "every sync surface"); `importParsedStatement` (ONE
+insertion point covers both its callers — the dedicated `importStatement`
+and the column-mapping screen's direct call); and a loan CREATE or EDIT in
+`holding-form.screen.tsx` (`runLoanAutoLinkIfLoan`, gated on `type ===
+'loan'`, fire-and-forget on both paths — unlike `refreshMarketData`, which
+never fires on an edit at all, a loan's principal/schedule/
+paymentHoldingId/lenderName/lenderIban all stay editable, so an edit needs
+a fresh run too).
+
+`transactionsRepo.setAutoLoanLinks` additionally re-checks that each
+link's target loan holding still exists, INSIDE its own write
+transaction, before writing it — the matcher computes its candidates from
+a snapshot read moments earlier, so a loan holding can be deleted in the
+gap between that read and this write; a link whose loan fails that check
+is simply skipped (no error), closing the one race
+`clearLoanLinksForHoldingsDatabaseTransaction` cannot: that cascade only
+clears a link that ALREADY exists at delete time, not one this call has
+not written yet.
+
+`paymentHoldingId`/`lenderName`/`lenderIban` are entered in the loan
+form's own `LoanSection` (`PaymentHoldingField`'s "Paid from" picker plus
+two plain text fields), hidden alongside rate/term for a `'none'`
+schedule — the matcher never links against an informal debt at all, so
+they would do nothing there. None are required. `PaymentHoldingField`
+(`src/screens/forms/payment-holding-field/`) is the clearable
+single-select holding-picker chrome `LoanPaymentField` (the transaction
+form's own loan-payment field) also composes, for its own auto-link
+caption + Undo on top.
 
 ## Adding a holding type
 
