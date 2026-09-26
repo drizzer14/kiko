@@ -21,3 +21,18 @@ export const unrelatedDisabledPressable = (
     <Text variant="body">Retry</Text>
   </Pressable>
 );
+
+// A segmented-control-style tab pill: it carries `accessibilityState={{
+// selected: ... }}` like SelectableRow, but renders no checkmark at all — a
+// genuinely different selection vocabulary (an accent-tinted pill, not a
+// leading checkmark), not a hand-built copy of SelectableRow's own row
+// layout.
+export const tabPillNoCheckmark = (
+  <Pressable
+    accessibilityRole="tab"
+    accessibilityState={{ selected: true }}
+    onPress={() => undefined}
+  >
+    <Text variant="body">1W</Text>
+  </Pressable>
+);

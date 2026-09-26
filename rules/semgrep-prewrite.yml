@@ -399,44 +399,55 @@ rules:
   # list row (leading checkmark, optional icon/leadingText, label, optional
   # description/trailing). A hand-built `Pressable` reproducing its
   # selection semantics — `accessibilityState={{ selected: $S }}` or
-  # `accessibilityRole="checkbox"` — duplicates it. Excluded:
-  # `selectable-row/**` (the real implementation); `chip-row/**` and
-  # `segmented-control/**` (each its own established selection primitive — a
-  # pill row and a JS `UISegmentedControl` clone, per kiko-design-system's
-  # "Component set" — not a copy of SelectableRow's row layout);
-  # `icon-picker-modal/**` (a square icon-only grid tile with no label at
-  # all — SelectableRow's row layout does not fit). `src/screens/forms/
-  # color-picker/**` (a circular color-swatch grid, no label) and
-  # `src/screens/column-mapping/raw-preview/**` (a multi-column table row
-  # with per-column cell widths) are real, distinct layouts SelectableRow
-  # cannot reproduce, checked against their own component files rather than
-  # forced to fit.
+  # `accessibilityRole="checkbox"` — duplicates it, but ONLY when it also
+  # renders SelectableRow's own distinguishing leading checkmark
+  # (`name="checkmark"` somewhere in the Pressable's own body, via a
+  # `pattern-regex` ANDed onto each AST arm — Semgrep restricts a
+  # `pattern-regex` ANDed with a `pattern` to that pattern's own matched
+  # span, verified empirically: a second `Pressable` in the SAME file with
+  # `selected`/`checkbox` but no checkmark of its own stays silent even
+  # though the word "checkmark" appears elsewhere in the file). A tab pill,
+  # a segmented control, a chip, or an icon-only grid tile all carry
+  # `accessibilityState={{ selected: ... }}` too, but with a DIFFERENT
+  # selection vocabulary (an accent-tinted fill, not a leading checkmark) —
+  # this filter is what silences those without a `paths.exclude` entry per
+  # component. Self-closing `Pressable` forms are dropped entirely: a
+  # checkmark is a CHILD, so a self-closing (childless) Pressable can never
+  # carry one. `selectable-row/**` stays excluded regardless — the real
+  # implementation renders its own `name="checkmark"` too (see
+  # `selectable-row.component.tsx`), so this filter alone would not
+  # otherwise protect it against a future refactor of its own
+  # `accessibilityState` ternary into a shape this rule's AST arms match.
   - id: kiko-no-hand-built-selectable-row
     languages: [typescript]
     severity: ERROR
     message: >
       Hand-built selectable-row Pressable. A `Pressable` carrying
       `accessibilityState={{ selected: ... }}` or
-      `accessibilityRole="checkbox"` duplicates the shared `SelectableRow`
-      component — render `<SelectableRow ... />` instead when the row is a
-      labeled single-select list item.
+      `accessibilityRole="checkbox"`, and rendering its own leading
+      checkmark, duplicates the shared `SelectableRow` component — render
+      `<SelectableRow ... />` instead when the row is a labeled
+      single-select list item.
     metadata:
       fix: "Render `<SelectableRow ... />` instead of a bespoke selection Pressable, when the row is a labeled single-select list item."
       skill: "kiko-design-system › Component set"
     paths:
       exclude:
         - "src/design-system/components/selectable-row/**"
-        - "src/design-system/components/chip-row/**"
-        - "src/design-system/components/segmented-control/**"
-        - "src/design-system/components/icon-picker-modal/**"
-        - "src/screens/forms/color-picker/**"
-        - "src/screens/column-mapping/raw-preview/**"
     patterns:
       - pattern-either:
-          - pattern: '<Pressable ... accessibilityState={{ selected: $S }} ...></Pressable>'
-          - pattern: '<Pressable ... accessibilityState={{ selected: $S }} ... />'
-          - pattern: '<Pressable ... accessibilityRole="checkbox" ...></Pressable>'
-          - pattern: '<Pressable ... accessibilityRole="checkbox" ... />'
+          - patterns:
+              - pattern: |
+                  <Pressable ... accessibilityState={{ selected: $S }} ...>
+                    ...
+                  </Pressable>
+              - pattern-regex: 'name="checkmark"'
+          - patterns:
+              - pattern: |
+                  <Pressable ... accessibilityRole="checkbox" ...>
+                    ...
+                  </Pressable>
+              - pattern-regex: 'name="checkmark"'
   # kiko-translator's never-hardcode-a-user-facing-string rule, scoped to the
   # two sync/provider trees whose `throw new Error(...)` text reaches the
   # user (an Alert body, a toast) without ever going through `i18n.t`. `$MSG`
