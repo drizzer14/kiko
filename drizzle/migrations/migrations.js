@@ -42,6 +42,7 @@ import m0037 from './0037_add_bond_register.sql';
 import m0038 from './0038_add_loan_link.sql';
 import m0039 from './0039_seed_loan_interest_category.sql';
 import m0040 from './0040_cleanup_stray_deposit_bond_balance.sql';
+import m0041 from './0041_add_dedup_key_upgraded.sql';
 
 export default {
   journal,
@@ -87,5 +88,6 @@ export default {
     m0038,
     m0039,
     m0040,
+    m0041,
   },
 };

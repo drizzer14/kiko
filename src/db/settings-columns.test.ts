@@ -34,6 +34,10 @@ const DOCUMENTED_READERLESS_COLUMNS = [
   // deliberately not dropped (same additive-only class) — see the comment on
   // the column in schema.ts.
   'trendCategoryKeys',
+  // TEMPORARY, this batch only: migration 0041 (this commit) adds the
+  // column; the launch step that reads and writes it lands in the next
+  // commit (`MigrationsGate`'s dedup-key upgrade). Remove this entry there.
+  'dedupKeysUpgraded',
 ];
 
 const SCHEMA_PATH = join(__dirname, 'schema.ts');
