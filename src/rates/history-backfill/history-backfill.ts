@@ -74,7 +74,27 @@ export type BackfillDeps = {
    * skip it forever. Defaults to `[]` (nothing known present).
    */
   presentCurrencies?: Currency[];
+  /**
+   * Injectable override for `knownEmptyCurrenciesThisRun` below, so a test
+   * can isolate its own set instead of sharing this module's per-app-run
+   * singleton across unrelated cases. Production never passes this.
+   */
+  knownEmptyCurrencies?: Set<Currency>;
 };
+
+/**
+ * Per-app-run, IN-MEMORY set of newly-held currencies (no stored history
+ * row) whose providers all answered for the whole span yet returned no row
+ * for them — e.g. a held coin CoinGecko never returns. Without it, such a
+ * currency stays absent from `presentCurrencies` forever, so
+ * `resolveResumeCursor` resets to the whole span and re-fetches it on every
+ * Statistics focus. Same trade-off as `metal-refresh.ts`'s
+ * `emptyBackwardFloorByMetal`: forgotten on app restart, so at most one
+ * wasted full-span fetch per currency per app session, never persisted
+ * state for a rare case. A currency whose leg REJECTED is never recorded —
+ * a network failure is retried, not remembered as empty.
+ */
+const knownEmptyCurrenciesThisRun = new Set<Currency>();
 
 /** Every currency that appears as either `base` or `quote` in at least one stored row. */
 export const derivePresentCurrencies = (
@@ -262,21 +282,53 @@ const runCryptoLeg = (
  * The global `lastBackfilledDay` cursor can already sit at `today` from a
  * PRIOR run's currently-held set, while a currency held NOW has never itself
  * been backfilled — a coin first added after that run, or fiat conversion
- * needed for the first time. This resolves the cursor to use for THIS run:
- * `null` (recompute the whole span) whenever that gap exists, so `missingDays`
- * never silently skips the new currency forever; unchanged otherwise.
+ * needed for the first time. This lists those currencies (fiat as its `USD`
+ * anchor), minus any this app run already fetched the whole span for and got
+ * nothing back (`knownEmpty`) — re-asking would only repeat the same empty
+ * answer.
  */
-const resolveResumeCursor = (
-  lastBackfilledDay: number | null,
+const unbackfilledCurrencies = (
   needsFiat: boolean,
   cryptoCurrencies: CryptoCurrency[],
   presentCurrencies: Currency[] | undefined,
-): number | null => {
+  knownEmpty: ReadonlySet<Currency>,
+): Currency[] => {
   const present = new Set(presentCurrencies ?? []);
-  const hasNewCrypto = cryptoCurrencies.some((currency) => !present.has(currency));
-  const hasNewFiat = needsFiat && !present.has('USD');
+  const held: Currency[] = needsFiat ? ['USD', ...cryptoCurrencies] : cryptoCurrencies;
 
-  return hasNewCrypto || hasNewFiat ? null : lastBackfilledDay;
+  return held.filter((currency) => !present.has(currency) && !knownEmpty.has(currency));
+};
+
+/**
+ * The cursor to use for THIS run: `null` (recompute the whole span) whenever
+ * a held currency has never been backfilled, so `missingDays` never silently
+ * skips it forever; unchanged otherwise.
+ */
+const resolveResumeCursor = (
+  lastBackfilledDay: number | null,
+  unbackfilled: Currency[],
+): number | null => (unbackfilled.length > 0 ? null : lastBackfilledDay);
+
+/**
+ * Adds to `knownEmpty` every `unbackfilled` currency this whole-span run
+ * composed no row for — only when EVERY provider leg answered, since a
+ * rejected leg is a network failure to retry, not an empty answer.
+ */
+const recordKnownEmpty = (
+  legs: PromiseSettledResult<HistoryRateEntry[]>[],
+  unbackfilled: Currency[],
+  rows: NewHistoryRow[],
+  knownEmpty: Set<Currency>,
+): void => {
+  if (legs.some((leg) => leg.status === 'rejected')) {
+    return;
+  }
+
+  const composedBases = new Set(rows.map((row) => row.base));
+
+  for (const currency of unbackfilled.filter((candidate) => !composedBases.has(candidate))) {
+    knownEmpty.add(currency);
+  }
 };
 
 /**
@@ -303,12 +355,14 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
     return { state: 'complete', lastDay: lastBackfilledDay };
   }
 
-  const effectiveLastBackfilledDay = resolveResumeCursor(
-    lastBackfilledDay,
+  const knownEmpty = deps.knownEmptyCurrencies ?? knownEmptyCurrenciesThisRun;
+  const unbackfilled = unbackfilledCurrencies(
     needsFiat,
     cryptoCurrencies,
     deps.presentCurrencies,
+    knownEmpty,
   );
+  const effectiveLastBackfilledDay = resolveResumeCursor(lastBackfilledDay, unbackfilled);
 
   const days = missingDays(deps.earliestDay, effectiveLastBackfilledDay, today);
   if (days.length === 0) {
@@ -348,6 +402,9 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
   const crypto = cryptoResult.status === 'fulfilled' ? cryptoResult.value : [];
 
   const rows = composeHistoryRows([...nbu, ...crypto], days);
+
+  recordKnownEmpty([nbuResult, cryptoResult], unbackfilled, rows, knownEmpty);
+
   if (rows.length === 0) {
     // Nothing composed (both providers empty for the span), so nothing is
     // persisted. Leave the resume cursor where it was rather than claiming the

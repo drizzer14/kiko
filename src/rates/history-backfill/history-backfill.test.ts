@@ -1,4 +1,5 @@
 import { Money, toMajor } from '../../currency/money';
+import type { Currency } from '../../currency/currency';
 import type { HistoryRateEntry } from '../history-entry';
 import type { SeriesHolding } from '../../statistics/holding-value-at';
 import { buildNetWorthSeries } from '../../statistics/net-worth-series';
@@ -409,6 +410,62 @@ describe('runBackfill — a newly-held currency with no stored history yet', () 
     expect(nbuCalls).toEqual([[day(0), day(2)]]);
     expect(captured).toHaveLength(1);
     expect(status).toEqual({ state: 'complete', lastDay: day(2) });
+  });
+
+  // Per app run, a newly-held currency the provider answered EMPTY for is
+  // remembered, so the fully-backfilled cursor is not reset to the whole span
+  // on every Statistics focus for a coin that can never gain rows.
+  const unreturnedCoinDeps = (
+    knownEmptyCurrencies: Set<Currency>,
+    fetchCryptoHistory: BackfillDeps['fetchCryptoHistory'],
+  ) => {
+    const nbuCalls: [number, number][] = [];
+    const deps: BackfillDeps = {
+      earliestDay: day(0),
+      lastBackfilledDay: day(2),
+      today: day(2),
+      fetchNbuHistory: async (start, end) => {
+        nbuCalls.push([start, end]);
+        return nbu;
+      },
+      fetchCryptoHistory,
+      upsertMany: async () => {},
+      openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC', 'ETH'] }),
+      presentCurrencies: ['USD', 'EUR', 'BTC'],
+      knownEmptyCurrencies,
+    };
+
+    return { deps, nbuCalls };
+  };
+
+  it('does not re-fetch the whole span on every run for a held coin the provider never returns', async () => {
+    const knownEmptyCurrencies = new Set<Currency>();
+    const cryptoCalls: number[] = [];
+    const { deps, nbuCalls } = unreturnedCoinDeps(knownEmptyCurrencies, async (days) => {
+      cryptoCalls.push(days);
+      return crypto.filter((entry) => entry.base === 'BTC');
+    });
+
+    await runBackfill(deps);
+    const second = await runBackfill(deps);
+
+    expect(nbuCalls).toEqual([[day(0), day(2)]]);
+    expect(cryptoCalls).toEqual([3]);
+    expect(second).toEqual({ state: 'complete', lastDay: day(2) });
+  });
+
+  it('still retries the whole span when the provider leg for the new coin rejected', async () => {
+    const knownEmptyCurrencies = new Set<Currency>();
+    const cryptoCalls: number[] = [];
+    const { deps } = unreturnedCoinDeps(knownEmptyCurrencies, async (days) => {
+      cryptoCalls.push(days);
+      throw new Error('401');
+    });
+
+    await runBackfill(deps);
+    await runBackfill(deps);
+
+    expect(cryptoCalls).toEqual([3, 3]);
   });
 });
 

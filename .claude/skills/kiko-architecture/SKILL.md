@@ -407,7 +407,12 @@ gate says there is nothing to do.
   every sync instead of only a genuine gap.
   The history backfill resumes per currency: a newly held currency
   with no history rows forces a run from the earliest day
-  (`src/rates/history-backfill/history-backfill.ts`). A create/restore
+  (`src/rates/history-backfill/history-backfill.ts`) — once per app
+  run: a currency whose providers all answered for the whole span but
+  returned no row for it (a held coin CoinGecko never returns) is kept
+  in an in-memory `knownEmptyCurrenciesThisRun` set and no longer
+  resets the cursor, so Statistics does not refetch the full span on
+  every focus (a rejected leg is never recorded — it retries). A create/restore
   that may add the first holding of a new currency or type triggers
   these gated refreshes WITHOUT awaiting them, so Save never blocks on
   the network.
