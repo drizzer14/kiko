@@ -278,15 +278,17 @@ export const loanEditInvalidatesAutoLinks = (oldMeta: LoanMeta, newMeta: LoanMet
 
 /**
  * The `LoanPricePointOp` a loan EDIT's `holdingsRepo.updateLoan` call needs
- * — the three-case ruling in kiko-domain's "Loan form + detail": (a) a
+ * — the ruling in kiko-domain's "Loan form + detail": (a) a
  * schedule change INTO `'none'` preserves the OLD schedule's current
  * outstanding as a manual point, so the debt never silently reads as 0 the
  * instant the schedule is cleared; (b) a `'none'` loan's principal/start-date
- * edit moves its start-day point (any later correction stays); (c) every
- * other transition (including `'none'` OUT to a schedule) leaves the manual
- * series untouched — a correction point is still valid for a scheduled loan.
- * `oldMeta === null` (a fresh holding, or unparsed metadata) has nothing to
- * reconcile.
+ * edit moves its start-day point (any later correction stays); (c) a
+ * `'none'` loan moving OUT to a schedule drops the start-day point its create
+ * wrote — it holds the old principal, and a scheduled loan would read it as a
+ * correction and count down from it instead of the new principal (any later
+ * correction stays); (d) every other transition leaves the manual series
+ * untouched. `oldMeta === null` (a fresh holding, or unparsed metadata) has
+ * nothing to reconcile.
  */
 const buildLoanPricePointOp = (params: {
   oldMeta: LoanMeta | null;
@@ -338,6 +340,10 @@ const buildLoanPricePointOp = (params: {
       price: shiftDecimal(String(newMeta.principalMinorUnits), -currencyScale[currency]),
       currency,
     };
+  }
+
+  if (oldMeta.schedule === 'none' && newMeta.schedule !== 'none') {
+    return { kind: 'delete', day: dayKeyOf(oldMeta.startDate) };
   }
 
   return { kind: 'none' };
@@ -419,7 +425,7 @@ export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult 
 
   // The EDIT-mode write: a loan's manual `holding:<id>` series is reconciled
   // in the SAME transaction as its metadata patch — see
-  // `buildLoanPricePointOp`'s own doc comment for the three-case ruling.
+  // `buildLoanPricePointOp`'s own doc comment for the ruling.
   // `oldMeta` reads the STILL-STORED (pre-edit) metadata off the live-queried
   // `editingHolding`, so `buildLoanPricePointOp` can tell what actually
   // changed.

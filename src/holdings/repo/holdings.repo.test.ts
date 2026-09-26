@@ -1559,6 +1559,22 @@ describe('holdingsRepo.updateLoan', () => {
     ]);
   });
 
+  // A 'none' loan moving to a schedule drops its start-day point, which would
+  // otherwise anchor the schedule as a correction.
+  it("(c) deletes the day and inserts nothing for a 'delete' op", async () => {
+    const { databaseTransaction, captured } = makeUpdateLoanDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await holdingsRepo.updateLoan(
+      'h-1',
+      { metadata: { schedule: 'annuity' } },
+      { kind: 'delete', day: 18_000 },
+    );
+
+    expect(captured.deleteCalls).toBe(1);
+    expect(captured.inserts).toHaveLength(0);
+  });
+
   // A loan edit that changes its amortization schedule or a third-signal
   // input can invalidate a previously-computed AUTO link's own rules 1/2
   // against the NEW schedule — the caller (`use-loan-fields.ts`'s `saveEdit`) detects

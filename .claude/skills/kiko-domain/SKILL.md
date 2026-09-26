@@ -1353,9 +1353,16 @@ series against what the metadata edit just changed:
   untouched (an edge case: if the new start day lands on or after an
   existing correction's day, that correction is overwritten or
   shadowed — rare, and the ruling is written this way deliberately).
-- (c) every other transition (including `'none'` OUT to a schedule)
-  leaves the manual series untouched — a correction point is still
-  valid for a scheduled loan (see `loanOutstandingMinorAt` above).
+- (c) a `'none'` loan moving OUT to a schedule DELETES the point at its
+  OLD start day (`{ kind: 'delete', day }`) — the first point its create
+  wrote, holding the OLD principal. Left in place, `loanAnchorAt` reads
+  it as a correction and the schedule counts down from the old principal
+  (100,000 informal -> annuity 120,000 read 63,138.55 instead of
+  83,138.55). Moving it to the new start day is NOT equivalent: a
+  correction anchor (`fromCorrection: true`) skips the ledger's
+  "schedule before the first link" anchor. Any later correction stays —
+  it is still valid for a scheduled loan.
+- (d) every other transition leaves the manual series untouched.
 
 A fresh holding (`oldMeta === null`) has nothing to reconcile.
 

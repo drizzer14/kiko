@@ -2894,9 +2894,10 @@ describe('HoldingFormScreen loan', () => {
     );
   });
 
-  // 'none' -> a schedule leaves the manual series untouched — a
-  // correction point is still valid for a scheduled loan.
-  it('(c) switching a "none" loan to annuity keeps the manual series untouched', async () => {
+  // 'none' -> a schedule drops the start-day point the informal loan's create
+  // wrote: it holds the old principal, and a scheduled loan would count down
+  // from it as a correction.
+  it('(c) switching a "none" loan to annuity drops its start-day point', async () => {
     const screen = await renderEdit({
       id: 'h1',
       accountId: 'acc-1',
@@ -2922,7 +2923,7 @@ describe('HoldingFormScreen loan', () => {
     expect(updateLoanMock).toHaveBeenCalledWith(
       'h1',
       expect.objectContaining({ metadata: expect.objectContaining({ schedule: 'annuity' }) }),
-      { kind: 'none' },
+      { kind: 'delete', day: dayKeyOf(localDay(2026, 1, 1)) },
       // The schedule changed (none -> annuity).
       true,
     );

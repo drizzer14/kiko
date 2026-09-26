@@ -4,10 +4,13 @@ jest.mock('@kiko/holdings/repo', () => ({
 }));
 
 import type { HoldingRow } from '@kiko/db';
+import { holdingInstrument } from '@kiko/prices/instrument';
+import type { LoanPricePointOp } from '@kiko/holdings/repo';
 import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 import { act, renderHook } from '@testing-library/react-native';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
-import { buildPriceBook, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
+import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
+import { buildPriceBook, dayKeyOf, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 
 import {
   loanEditInvalidatesAutoLinks,
@@ -636,5 +639,89 @@ describe('useLoanFields — saveEdit into a "none" schedule', () => {
       expect.objectContaining({ kind: 'upsert', price: '7120.00', currency: 'UAH' }),
       expect.anything(),
     );
+  });
+});
+
+describe('useLoanFields — saveEdit out of a "none" schedule', () => {
+  const informalStart = new Date(2026, 0, 15).getTime();
+  const informalMeta: LoanMeta = {
+    kind: 'personal',
+    principalMinorUnits: 10_000_000,
+    startDate: informalStart,
+    schedule: 'none',
+  };
+  const startDayBook = buildPriceBook([
+    {
+      instrument: holdingInstrument('h-1'),
+      day: dayKeyOf(informalStart),
+      price: '100000.00',
+      currency: 'UAH',
+      source: 'manual',
+    },
+  ]);
+
+  beforeEach(() => {
+    mockUpdateLoan.mockClear();
+    mockUpdateLoan.mockResolvedValue(undefined);
+  });
+
+  // Returns the metadata and the price-point op the edit handed the repo.
+  const editIntoAnnuity = async (startDate: number): Promise<[LoanMeta, LoanPricePointOp]> => {
+    const { result } = await renderLoanFields();
+
+    await act(async () => {
+      result.current.seed(editingHoldingWith(informalMeta));
+    });
+    await act(async () => {
+      result.current.setSchedule('annuity');
+      result.current.setPrincipal('120000');
+      result.current.setStartDate(startDate);
+      result.current.setAnnualRatePct('12');
+      result.current.setTerm('24');
+    });
+    await act(async () => {
+      await result.current.saveEdit({
+        holdingId: 'h-1',
+        name: 'Loan',
+        color: null,
+        currency: 'UAH',
+        isSynced: false,
+        editingHolding: editingHoldingWith(informalMeta),
+        book: startDayBook,
+      });
+    });
+
+    const [, patch, op] = mockUpdateLoan.mock.calls[0] as [
+      string,
+      { metadata: LoanMeta },
+      LoanPricePointOp,
+    ];
+
+    return [patch.metadata, op];
+  };
+
+  // The informal loan's start-day point holds the OLD principal; left in
+  // place it anchors the schedule as a correction (63,138.55 instead of
+  // 83,138.55 on 27 Sep).
+  it('drops the start-day point, so the schedule counts down from the new principal', async () => {
+    const [newMeta, op] = await editIntoAnnuity(informalStart);
+
+    expect(op).toEqual({ kind: 'delete', day: dayKeyOf(informalStart) });
+    expect(
+      loanLedgerOutstandingMinorAt(
+        newMeta,
+        { id: 'h-1', currency: 'UAH' },
+        EMPTY_PRICE_BOOK,
+        new Date(2026, 8, 27).getTime(),
+      ),
+    ).toBe(8_313_855);
+  });
+
+  it('drops the old start-day point when the schedule starts earlier', async () => {
+    const earlierStart = new Date(2025, 11, 15).getTime();
+    const [newMeta, op] = await editIntoAnnuity(earlierStart);
+
+    expect(op).toEqual({ kind: 'delete', day: dayKeyOf(informalStart) });
+    expect(newMeta.startDate).toBe(earlierStart);
   });
 });

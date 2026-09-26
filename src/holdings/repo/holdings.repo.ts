@@ -105,11 +105,14 @@ export type ExchangeHolding = SyncBalanceHolding & {
  * detail screen reads). `'none'`: no write needed. `'upsert'`: a schedule
  * change into `'none'` writes today's outstanding so the debt never silently
  * reads as 0. `'move'`: a `'none'` loan's principal/start-date edit relocates
- * its start-day point, leaving any later correction alone. See
- * `kiko-domain`'s "Loan form + detail" for the full three-case ruling.
+ * its start-day point, leaving any later correction alone. `'delete'`: a
+ * `'none'` loan moving to a schedule drops its start-day point, which would
+ * otherwise anchor the schedule as a correction. See `kiko-domain`'s "Loan
+ * form + detail" for the full ruling.
  */
 export type LoanPricePointOp =
   | { kind: 'none' }
+  | { kind: 'delete'; day: number }
   | { kind: 'upsert'; day: number; price: string; currency: HoldingRow['currency'] }
   | {
       kind: 'move';
@@ -564,22 +567,27 @@ export const holdingsRepo = {
           );
       }
 
+      const deletePointOn = (day: number) =>
+        databaseTransaction
+          .delete(pricePoints)
+          .where(
+            and(eq(pricePoints.instrument, holdingInstrument(holdingId)), eq(pricePoints.day, day)),
+          );
+
       const point = await match(pricePointOp)
         .with({ kind: 'none' }, () => null)
+        .with({ kind: 'delete' }, async (operation) => {
+          await deletePointOn(operation.day);
+
+          return null;
+        })
         .with({ kind: 'upsert' }, (operation) => ({
           day: operation.day,
           price: operation.price,
           currency: operation.currency,
         }))
         .with({ kind: 'move' }, async (operation) => {
-          await databaseTransaction
-            .delete(pricePoints)
-            .where(
-              and(
-                eq(pricePoints.instrument, holdingInstrument(holdingId)),
-                eq(pricePoints.day, operation.oldDay),
-              ),
-            );
+          await deletePointOn(operation.oldDay);
 
           return { day: operation.newDay, price: operation.price, currency: operation.currency };
         })
