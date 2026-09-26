@@ -226,20 +226,37 @@ execs that worktree's own `scripts/checks/<script-name>.sh` with
 `CLAUDE_PROJECT_DIR` set to that SAME resolved root, replaying the
 original stdin bytes unchanged and passing stdout/stderr/exit code
 through untouched. `CLAUDE_PLUGIN_ROOT` (not `CLAUDE_PROJECT_DIR`)
-locates the dispatcher itself, because the plugin installs once and
-`CLAUDE_PLUGIN_ROOT` stays the same physical `harness/kiko/` directory
-regardless of which checkout started the session — only the resolved
-`CLAUDE_PROJECT_DIR` varies per invocation now. The "script absent ->
+locates the dispatcher itself — but it is NOT the physical
+`harness/kiko/` directory in this checkout. Claude Code resolves it to
+the plugin's CACHE copy (`~/.claude/plugins/cache/kiko-marketplace/
+kiko/<version>/`), a materialized copy the plugin system makes from
+the marketplace source, refreshed only on a plugin reinstall or a
+version bump in `harness/kiko/.claude-plugin/plugin.json` — not on
+every commit to this checkout. Only the resolved `CLAUDE_PROJECT_DIR`
+varies per invocation regardless of checkout; `CLAUDE_PLUGIN_ROOT`
+itself is stable ACROSS checkouts but stale until that cache is
+refreshed (see "Rollout" below for what this means for THIS change).
+The "script absent ->
 exit 0" no-op described above generalizes to all four hooks (fail-open
-by DELEGATION: a malformed payload, a `git rev-parse` failure, or
-`node` itself being unavailable all degrade to "extract nothing, fall
-back to `CLAUDE_PROJECT_DIR`, still invoke the target script," letting
-each script's own already-tested contract — this guard denies on
-malformed JSON or a node crash; `kill-guard.sh` always allows — decide
-the outcome, rather than a second copy of that logic in the
-dispatcher). See `harness/kiko/hooks/dispatch.sh`'s own header comment
-and `__tests__/hook-dispatch.test.ts` for the full behavior and its
-tests.
+by DELEGATION: a malformed payload, or `node` itself being
+unavailable, degrades to "extract nothing, fall back to
+`CLAUDE_PROJECT_DIR`, still invoke the target script," letting each
+script's own already-tested contract — this guard denies on malformed
+JSON or a node crash; `kill-guard.sh` always allows — decide the
+outcome, rather than a second copy of that logic in the dispatcher). A
+`git rev-parse` failure is NOT delegated uniformly (fix round 2, g5b):
+only a "not a git repository" failure (a plain non-repo directory)
+falls back this way; any OTHER git failure (the `git` binary itself
+broken, a corrupt `.git`, a permission error) is treated as a genuine
+dispatcher crash — denying for `pre-write-guard.sh`, and keeping every
+other hook's own kept semantics — since silently falling back on THAT
+case could let an unchecked write through. The resolved root is also
+bound to `CLAUDE_PROJECT_DIR`'s own repository (same repo, or a linked
+worktree of it, by `git rev-parse --git-common-dir`); an unrelated
+repository falls back to `CLAUDE_PROJECT_DIR` instead of running its
+own scripts against `CLAUDE_PROJECT_DIR`'s rules. See
+`harness/kiko/hooks/dispatch.sh`'s own header comment and
+`__tests__/hook-dispatch.test.ts` for the full behavior and its tests.
 
 ## File scope
 
@@ -564,6 +581,18 @@ either branch); the feature then reaches `main` whenever
 `feat/assets-debts` itself merges to `main`, following the same
 rolling-per-track-integration path every other track on this repo
 already uses.
+
+**Task 21b's own rollout need:** `harness/kiko/hooks/dispatch.sh` and
+its `hooks.json` wiring only take effect once `CLAUDE_PLUGIN_ROOT`'s
+plugin CACHE copy is refreshed (see "Trigger and wiring" above) — a
+plain merge into a running track's checkout is not enough, since the
+cache is a separate materialized copy, not a symlink into this repo.
+`harness/kiko/.claude-plugin/plugin.json`'s `version` has never been
+bumped in this repo's history (checked via `git log` on that file), so
+bumping it is not this repo's convention; the refresh instead comes
+from a plugin reinstall (or an equivalent forced cache rebuild) after
+the merge, before `/reload-plugins` can pick up the new dispatcher in
+any running session.
 
 ## Risks
 
