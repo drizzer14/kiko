@@ -367,11 +367,6 @@ export const en = {
         platinum: 'Platinum',
         silver: 'Silver',
       },
-      // The metal-element ChipRow's own field label (MetalSection) — distinct
-      // from `metal` above (the Type chip's OWN chip-text label "Precious
-      // metal"), since both render on screen together the instant metal is
-      // selected and an identical string would read as a duplicate.
-      metalKindLabel: 'Metal',
       metalUnit: 'Unit',
       metalUnitG: 'Grams',
       metalUnitOz: 'Troy ounces',

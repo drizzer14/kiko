@@ -235,7 +235,7 @@ builds from it on save, via `holdingsRepo.create`'s
 a priced holding's price series" section for the create/remove
 symmetry.
 `src/screens/forms/holding-form/metal/metal-section/metal-section.component.tsx`
-is the `metal` create-form section: a metal-element `ChipRow`, a
+is the `metal` create-form section: a
 physical-form `ChipRow`, a unit `ChipRow`, a Purity `TextField`
 (pre-filled `"0.9999"`), and the first-lot Quantity/Total-cost fields
 (create-only — see `MetalSectionProps.showFirstLot`'s own doc
@@ -248,6 +248,18 @@ series" section, and `useMetalFields`'s own comment
 on the metal CREATE payload). The metal/form/unit/purity fields stay
 user-editable in EDIT mode (metadata patch), mirroring
 `property_item`'s category-editable pattern.
+
+The metal itself is picked in the Type slot, not in `MetalSection`:
+`MetalTypeField` (`src/screens/forms/holding-form/metal/metal-type-field/`)
+is a `SelectField` whose rows are the account's other creatable types
+followed by Gold/Silver/Platinum/Palladium (no generic "Metal" row); a
+picked metal sets type `metal` plus `MetalMeta.metal`. `HoldingFormScreen`'s
+`typeSlotFor` renders it on a `metals` account, on a CREATE under a bank
+whose creatable types include `metal` (the sellsMetals allow-list — see
+kiko-pricing), and on the EDIT of a `metal` holding (metals only — the
+type is locked, the metal stays editable). The edit of any other type,
+even on a bank that sells metals, keeps the disabled generic
+`HoldingTypeField`.
 
 ## Sync-only holding types are not manually creatable
 

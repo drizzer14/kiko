@@ -307,17 +307,17 @@ export const asPropertyMeta = (value: unknown): PropertyMeta | null => {
 // The closed set of precious metals Kiko prices via NBU, keyed by the
 // same slug `metalInstrument` namespaces its `price_points.instrument` under
 // (`metal:<XAU|XAG|XPT|XPD>` — `src/prices/instrument/`). Exported so the
-// metal-section form can build its metal ChipRow's `options`
-// directly, mirroring `propertyCategories`.
+// holding form's Type select (`MetalTypeField`) can list each metal as its
+// own row, mirroring `propertyCategories`.
 export const preciousMetals = ['XAU', 'XAG', 'XPT', 'XPD'] as const;
 
 export type Metal = (typeof preciousMetals)[number];
 
-const isMetal = (value: unknown): value is Metal =>
+export const isMetal = (value: unknown): value is Metal =>
   typeof value === 'string' && (preciousMetals as readonly string[]).includes(value);
 
-// How the metal is physically held. Exported for the same ChipRow reason
-// as `preciousMetals` above.
+// How the metal is physically held. Exported so the metal section can build
+// its Form ChipRow's `options`.
 export const metalForms = ['bar', 'coin', 'bank_account'] as const;
 
 export type MetalForm = (typeof metalForms)[number];

@@ -1,10 +1,8 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
 import {
-  preciousMetals,
   metalForms,
   metalUnits,
-  type Metal,
   type MetalForm,
   type MetalUnit,
 } from '@kiko/holdings/holding-metadata';
@@ -15,8 +13,8 @@ import TextField from '@kiko/design-system/components/text-field';
 
 import type { MetalSectionProps } from './metal-section.props';
 
-// The `metal` create-form section: a metal-element ChipRow, a physical
-// Form ChipRow, a Unit ChipRow, a Purity field (pre-filled `"0.9999"` — the
+// The `metal` create-form section (the metal itself is picked in the Type
+// slot, `MetalTypeField`): a physical Form ChipRow, a Unit ChipRow, a Purity field (pre-filled `"0.9999"` — the
 // standard bar/coin fineness, validated on Save as 0 < purity <= 1 in both
 // create and edit mode), and the first-lot Quantity/Total cost
 // fields (create-only — see `MetalSectionProps.showFirstLot`'s own doc
@@ -24,8 +22,6 @@ import type { MetalSectionProps } from './metal-section.props';
 // on save; this component only collects and reports the fields, mirroring
 // PropertySection's shape.
 const MetalSection: FC<MetalSectionProps> = ({
-  metal,
-  onSelectMetal,
   form,
   onSelectForm,
   unit,
@@ -50,13 +46,6 @@ const MetalSection: FC<MetalSectionProps> = ({
 }) => {
   const { t } = useTranslation();
 
-  const metalLabels: Record<Metal, string> = {
-    XAU: t('forms.holding.metalKind.gold'),
-    XAG: t('forms.holding.metalKind.silver'),
-    XPT: t('forms.holding.metalKind.platinum'),
-    XPD: t('forms.holding.metalKind.palladium'),
-  };
-
   const formLabels: Record<MetalForm, string> = {
     bar: t('forms.holding.metalFormBar'),
     coin: t('forms.holding.metalFormCoin'),
@@ -70,14 +59,6 @@ const MetalSection: FC<MetalSectionProps> = ({
 
   return (
     <Box gap={4}>
-      <ChipRow
-        label={t('forms.holding.metalKindLabel')}
-        options={preciousMetals}
-        selected={metal}
-        onSelect={onSelectMetal}
-        labels={metalLabels}
-      />
-
       <ChipRow
         label={t('forms.holding.metalForm')}
         options={metalForms}

@@ -429,7 +429,9 @@ rather than sync-gated (unlike the `syncOnlyHoldingTypes` rule in
 `kiko-domain`): `creatableHoldingTypesForAccount(kind, isSynced,
 bankId?)` gates `metal` on `bankSellsMetals(bankId)` ONLY when `kind
 === 'bank'`; a standalone `metals`-kind account is never gated (no
-bank to check).
+bank to check). Where `metal` is creatable, the holding form's Type
+select lists the four metals in its place (`MetalTypeField` — see
+kiko-domain's "`property_item` / `metal` create-form sections").
 
 ## Refresh throttles
 

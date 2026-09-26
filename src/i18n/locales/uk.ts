@@ -313,7 +313,6 @@ export const uk: typeof en = {
         platinum: 'Платина',
         silver: 'Срібло',
       },
-      metalKindLabel: 'Метал',
       metalUnit: 'Одиниця',
       metalUnitG: 'Грами',
       metalUnitOz: 'Тройські унції',

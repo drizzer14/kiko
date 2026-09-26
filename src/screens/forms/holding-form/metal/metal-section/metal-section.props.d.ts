@@ -1,12 +1,10 @@
 import type { RefObject } from 'react';
 import type { TextInputInstance } from 'react-native';
-import type { Metal, MetalForm, MetalUnit } from '@kiko/holdings/holding-metadata';
+import type { MetalForm, MetalUnit } from '@kiko/holdings/holding-metadata';
 
 import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
 
 export type MetalSectionProps = {
-  metal: Metal;
-  onSelectMetal: (metal: Metal) => void;
   form: MetalForm;
   onSelectForm: (form: MetalForm) => void;
   unit: MetalUnit;

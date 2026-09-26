@@ -24,8 +24,6 @@ const MetalFormBlock: FC<MetalFormBlockProps> = ({ fields, attemptedSave, isEdit
       <Text variant="heading">{t('forms.holding.details')}</Text>
 
       <MetalSection
-        metal={fields.metal}
-        onSelectMetal={fields.setMetal}
         form={fields.form}
         onSelectForm={fields.setForm}
         unit={fields.unit}

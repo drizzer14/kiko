@@ -15,6 +15,7 @@ import {
 } from '../../../test-support/navigation-props';
 import { dayKeyOf } from '../../../prices/price-book';
 import { darkTheme } from '../../../design-system/theme';
+import type { Metal } from '../../../holdings/holding-metadata';
 import type { HoldingType } from '../../../holdings/holding-type';
 import { scrollToField } from '../scroll-to-field/scroll-to-field';
 import { refreshBondRegisterIfStale } from '../../../bonds/bond-register-repo';
@@ -236,9 +237,22 @@ const openHoldingTypeSheet = async (screen: Screen): Promise<void> => {
   await fireEvent.press(screen.getByTestId('holding-type-field'));
 };
 
-const selectHoldingType = async (screen: Screen, type: HoldingType): Promise<void> => {
+// A metal shows as its own row in the Type sheet (`MetalTypeField`), so a
+// metal is picked by its element code instead of the generic `metal` type.
+const typeOptionIds = (screen: Screen): string[] =>
+  screen.getAllByTestId(/^holding-type-field-option-/).map((row) => String(row.props.testID));
+
+const metalOptionIds = ['XAU', 'XAG', 'XPT', 'XPD'].map(
+  (metal) => `holding-type-field-option-${metal}`,
+);
+
+const selectHoldingTypeOption = async (screen: Screen, option: HoldingType | Metal) => {
+  await fireEvent.press(screen.getByTestId(`holding-type-field-option-${option}`));
+};
+
+const selectHoldingType = async (screen: Screen, type: HoldingType | Metal): Promise<void> => {
   await openHoldingTypeSheet(screen);
-  await fireEvent.press(screen.getByTestId(`holding-type-field-option-${type}`));
+  await selectHoldingTypeOption(screen, type);
 };
 
 // A local-midnight timestamp for the given calendar day, matching what the
@@ -1727,7 +1741,7 @@ describe('HoldingFormScreen metal', () => {
     // tests).
     await fireEvent.changeText(screen.getByPlaceholderText('Search by code or name'), 'USD');
     await fireEvent.press(screen.getByTestId('currency-option-USD'));
-    await selectHoldingType(screen, 'metal');
+    await selectHoldingType(screen, 'XAU');
     await fill(screen, 'Name', 'Gold bar');
     await fill(screen, 'Quantity', '1');
     await fill(screen, 'Total cost', '80000');
@@ -1736,12 +1750,12 @@ describe('HoldingFormScreen metal', () => {
     expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ currency: 'UAH' }));
   });
 
-  it('shows the metal-section fields once Precious metal is selected on an allow-listed bank account', async () => {
+  it('shows the metal-section fields once a metal is selected on an allow-listed bank account', async () => {
     mockAccountKind = 'bank';
     mockAccountBankId = 'privatbank';
     const screen = await renderScreen();
 
-    await selectHoldingType(screen, 'metal');
+    await selectHoldingType(screen, 'XAU');
 
     expect(screen.getByText('Form')).toBeTruthy();
     expect(screen.getByText('Unit')).toBeTruthy();
@@ -1971,7 +1985,13 @@ describe('HoldingFormScreen metal', () => {
       },
     });
 
-    await fireEvent.press(screen.getByText('Silver'));
+    expect(screen.getByTestId('holding-type-field')).toHaveTextContent('Gold');
+
+    await openHoldingTypeSheet(screen);
+
+    expect(typeOptionIds(screen)).toEqual(metalOptionIds);
+
+    await selectHoldingTypeOption(screen, 'XAG');
     await fireEvent.press(screen.getByText('Save'));
 
     expect(updateDeltaMock).toHaveBeenCalledWith(
@@ -2854,16 +2874,14 @@ describe('HoldingFormScreen type options are constrained by the account kind', (
     expect(screen.getByLabelText('Icon bitcoinsign.circle')).toBeTruthy();
   });
 
-  it('offers only the metal holding type on a metals account', async () => {
+  it('offers only the four metals on a metals account', async () => {
     mockAccountKind = 'metals';
     mockAccountInstitution = null;
 
     const screen = await renderScreen();
     await openHoldingTypeSheet(screen);
 
-    expect(screen.getByTestId('holding-type-field-option-metal')).toBeTruthy();
-    expect(screen.queryByTestId('holding-type-field-option-card')).toBeNull();
-    expect(screen.queryByTestId('holding-type-field-option-term_deposit')).toBeNull();
+    expect(typeOptionIds(screen)).toEqual(metalOptionIds);
   });
 
   it('drops metal from a bank account with no bankId (the metal allow-list)', async () => {
@@ -2888,15 +2906,50 @@ describe('HoldingFormScreen type options are constrained by the account kind', (
     expect(screen.queryByTestId('holding-type-field-option-metal')).toBeNull();
   });
 
-  it('offers metal on a bank account whose bankId is allow-listed (privatbank)', async () => {
+  it('lists the bank types, then the four metals, on a bank account whose bankId is allow-listed (privatbank)', async () => {
     mockAccountKind = 'bank';
-    mockAccountInstitution = null;
+    mockAccountInstitution = 'monobank';
     mockAccountBankId = 'privatbank';
 
     const screen = await renderScreen();
     await openHoldingTypeSheet(screen);
 
-    expect(screen.getByTestId('holding-type-field-option-metal')).toBeTruthy();
+    expect(typeOptionIds(screen)).toEqual([
+      'holding-type-field-option-term_deposit',
+      'holding-type-field-option-bond',
+      ...metalOptionIds,
+    ]);
+  });
+
+  it('creates a silver holding when Silver is picked on an allow-listed bank account', async () => {
+    mockAccountKind = 'bank';
+    mockAccountInstitution = null;
+    mockAccountBankId = 'privatbank';
+
+    const screen = await renderScreen();
+    await selectHoldingType(screen, 'XAG');
+    await fill(screen, 'Name', 'Silver bar');
+    await fill(screen, 'Quantity', '1');
+    await fill(screen, 'Total cost', '100');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'metal',
+        metadata: expect.objectContaining({ metal: 'XAG' }),
+      }),
+    );
+  });
+
+  it('keeps the disabled generic Type field when editing a term deposit on an allow-listed bank account', async () => {
+    mockAccountKind = 'bank';
+    mockAccountInstitution = null;
+    mockAccountBankId = 'privatbank';
+
+    const screen = await renderEdit(depositHolding);
+
+    expect(screen.getByTestId('holding-type-field')).toHaveTextContent('Deposit');
+    expect(screen.getByTestId('holding-type-field').props.accessibilityState.disabled).toBe(true);
   });
 });
 

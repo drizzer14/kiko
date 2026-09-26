@@ -24,7 +24,6 @@ import {
   type FieldInstance,
 } from '../scroll-to-field/scroll-to-field';
 import HoldingTypeField from '../holding-type-field';
-import type { HoldingRow } from '../../../db/schema';
 import Box from '../../../design-system/components/box';
 import { useLiveQuery } from '../../../db/use-live-query';
 import type { Currency } from '../../../currency/currency';
@@ -34,6 +33,7 @@ import Screen from '../../../design-system/components/screen';
 import { usePriceBook } from '../../../prices/use-price-book';
 import Divider from '../../../design-system/components/divider';
 import { needsPriceBook } from '../../../holdings/priced-value';
+import type { AccountRow, HoldingRow } from '../../../db/schema';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
@@ -48,6 +48,7 @@ import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-pick
 import LoanFormBlock from './loan/loan-form-block';
 import BondFormBlock from './bond/bond-form-block';
 import MetalFormBlock from './metal/metal-form-block';
+import MetalTypeField from './metal/metal-type-field';
 import { useLoanFields } from './loan/use-loan-fields';
 import { useBondFields } from './bond/use-bond-fields';
 import { useMetalFields } from './metal/use-metal-fields';
@@ -130,6 +131,39 @@ const buildPaymentHoldingOptions = (
       accountName: accountNameById.get(selectedHolding.accountId) ?? '',
     },
   ];
+};
+
+// Which field fills the Type slot. A `property` account's only type IS its
+// category, so the category picker takes the slot. Wherever a `metal` holding
+// can be created — a metals account, or a bank that sells metals — or one is
+// being edited, each metal is its own row (`MetalTypeField`), after the
+// account's other creatable types; an edit locks the type, so it lists the
+// metals alone. Everything else, including the edit of a non-metal holding on
+// a bank that sells metals, keeps the generic field.
+type TypeSlot =
+  | { kind: 'property' }
+  | { kind: 'metal'; otherTypes: readonly HoldingType[] }
+  | { kind: 'generic' };
+
+const typeSlotFor = (
+  accountKind: AccountRow['kind'] | undefined,
+  typeOptions: readonly HoldingType[],
+  isEdit: boolean,
+  type: HoldingType,
+): TypeSlot => {
+  if (accountKind === 'property') {
+    return { kind: 'property' };
+  }
+
+  if (isEdit) {
+    return type === 'metal' ? { kind: 'metal', otherTypes: [] } : { kind: 'generic' };
+  }
+
+  if (typeOptions.includes('metal')) {
+    return { kind: 'metal', otherTypes: typeOptions.filter((option) => option !== 'metal') };
+  }
+
+  return { kind: 'generic' };
 };
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
@@ -227,8 +261,9 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // The icon is null until the user picks one ("not dirty"): while null, the
   // chip shows the selected type's default glyph (`defaultHoldingSymbol`, a
   // property's own category glyph) and switching type or category re-derives
-  // it, so an untouched icon follows the selection. Once the user picks (icon !== null, "dirty"), that choice overrides the default
-  // and type changes no longer move it.
+  // it, so an untouched icon follows the selection. Once the user picks (icon
+  // !== null, "dirty"), that choice overrides the default and type changes no
+  // longer move it.
   const [icon, setIcon] = useState<string | null>(null);
   // The color mirrors the icon's dirty pattern: null until the user taps a
   // swatch ("not dirty"). While null, the effective color follows the selected
@@ -595,31 +630,41 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             bank create offers only term_deposit / bond. Edit mode uses the full
             set so an existing synced card/jar row still displays its (read-only)
             type. */}
-        {/* A `property` account's only holding type IS its category
-            (`holdingTypesForAccountKind`), so its Type field is the
-            category picker itself (`PropertyTypeField`) rather than the
-            generic single-option sheet every other kind renders below. A
-            select sheet, mirroring AccountKindField — up to 9 long type
-            names (e.g. "Строковий депозит") run too wide for a chip row,
-            the same label-width reasoning that moved LoanSection's kind
-            onto `SelectField`. */}
-        {accountKind === 'property' ? (
-          <PropertyTypeField
-            selected={property.category}
-            onSelect={property.setCategory}
-            testID="property-category-field"
-          />
-        ) : (
-          <HoldingTypeField
-            options={typeOptions}
-            selected={type}
-            onSelect={setType}
-            labels={typeLabels}
-            icons={holdingTypeSymbol}
-            disabled={isEdit}
-            testID="holding-type-field"
-          />
-        )}
+        {/* A select sheet, mirroring AccountKindField — up to 9 long type
+            names (e.g. "Строковий депозит") run too wide for a chip row, the
+            same label-width reasoning that moved LoanSection's kind onto
+            `SelectField`. `typeSlotFor` picks which field fills the slot. */}
+        {match(typeSlotFor(accountKind, typeOptions, isEdit, type))
+          .with({ kind: 'property' }, () => (
+            <PropertyTypeField
+              selected={property.category}
+              onSelect={property.setCategory}
+              testID="property-category-field"
+            />
+          ))
+          .with({ kind: 'metal' }, ({ otherTypes }) => (
+            <MetalTypeField
+              otherTypes={otherTypes}
+              typeLabels={typeLabels}
+              type={type}
+              metal={metal.metal}
+              onSelectType={setType}
+              onSelectMetal={metal.setMetal}
+              testID="holding-type-field"
+            />
+          ))
+          .with({ kind: 'generic' }, () => (
+            <HoldingTypeField
+              options={typeOptions}
+              selected={type}
+              onSelect={setType}
+              labels={typeLabels}
+              icons={holdingTypeSymbol}
+              disabled={isEdit}
+              testID="holding-type-field"
+            />
+          ))
+          .exhaustive()}
 
         {/* A holding type with a fixed currency (today, only `metal` — NBU
             quotes precious metals only in UAH, kiko-pricing) offers no

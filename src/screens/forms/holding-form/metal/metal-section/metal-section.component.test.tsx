@@ -6,8 +6,6 @@ import '@kiko/i18n';
 import MetalSection from './metal-section.component';
 
 const baseProps = {
-  metal: 'XAU' as const,
-  onSelectMetal: jest.fn(),
   form: 'bar' as const,
   onSelectForm: jest.fn(),
   unit: 'oz' as const,
@@ -23,25 +21,10 @@ const baseProps = {
 };
 
 describe('MetalSection', () => {
-  it('renders every metal as a chip, under the Metal label', async () => {
-    const { getByText } = await render(<MetalSection {...baseProps} />);
+  it('leaves the metal itself to the Type slot', async () => {
+    const { queryByText } = await render(<MetalSection {...baseProps} />);
 
-    expect(getByText('Metal')).toBeTruthy();
-    expect(getByText('Gold')).toBeTruthy();
-    expect(getByText('Silver')).toBeTruthy();
-    expect(getByText('Platinum')).toBeTruthy();
-    expect(getByText('Palladium')).toBeTruthy();
-  });
-
-  it('reports the tapped metal', async () => {
-    const onSelectMetal = jest.fn();
-    const { getByText } = await render(
-      <MetalSection {...baseProps} onSelectMetal={onSelectMetal} />,
-    );
-
-    await fireEvent.press(getByText('Silver'));
-
-    expect(onSelectMetal).toHaveBeenCalledWith('XAG');
+    expect(queryByText('Gold')).toBeNull();
   });
 
   it('renders every form as a chip, under a Form label', async () => {
