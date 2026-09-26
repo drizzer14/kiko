@@ -154,7 +154,15 @@ is actually a button or a field label would otherwise be silently
 exempted from the sentence-case check); every
 other key defaults to sentence case, so a genuinely new
 title/heading/sheet-title key fails this test until it is added to
-`TITLE_KEYS` on purpose. Read the FAILURE MESSAGE'S key path before
+`TITLE_KEYS` on purpose. The reverse direction is its own invariant,
+`src/i18n/locales/title-keys.call-sites.test.ts`: it parses every app
+`.tsx` and fails when a `t('key')` rendered as a heading is missing from
+`TITLE_KEYS` — a `<Text variant="heading">` child, a `title=` on
+`SummaryTable`/`ConfirmSheet`/`LinkedPaymentsSection`, any `sheetTitle=`,
+or a bare `BottomSheet` `header={t(...)}`. A non-literal key there must be
+listed with its keys in the test's `DYNAMIC_HEADING_KEYS`. A new component
+that renders its own `title` prop as a heading goes into the test's
+`TITLE_PROP_COMPONENTS`. Read the FAILURE MESSAGE'S key path before
 assuming a new string is miscased: add a new title key to
 `title-keys.ts`, not just to the catalogue.
 

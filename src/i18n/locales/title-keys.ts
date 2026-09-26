@@ -18,6 +18,7 @@
 // or a field label would otherwise be silently exempted from BOTH checks).
 export const TITLE_KEYS = new Set([
   'accountDetail.addBankSheetTitle',
+  'accountDetail.disconnectMonobank',
   'accountDetail.disconnectProvider',
   'accountDetail.holdingsHeading',
   'accountDetail.synchronization',
