@@ -445,7 +445,7 @@ category the seeded `loan_interest` key
 the NEGATIVE interest portion only (never the principal) — mapping
 the payment to the installment whose due date is nearest to its own
 local day and capping at the payment's own amount
-(`loanInterestForPaymentMinor`, `src/holdings/loan-schedule/`, N10b).
+(`loanInterestForPaymentMinor`, `src/holdings/loan-schedule/`).
 `statistics.screen.tsx` feeds these derived entries into BOTH
 `buildCategoryBreakdown` and the category trend, alongside every real
 row — not into the exclusion-RULE inputs themselves (a synthetic
