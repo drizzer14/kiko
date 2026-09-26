@@ -9,7 +9,7 @@ export type CashFlow = {
 };
 
 /** One purchase: the day, the total paid (null when unknown), and the flows it earns. */
-export type YieldLot = {
+type YieldLot = {
   date: number;
   paidMinorUnits: number | null;
   cashFlows: readonly CashFlow[];
