@@ -1,6 +1,6 @@
+import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { useCallback, useEffect, useState } from 'react';
-import { settingsRepo } from '@kiko/settings/settings.repo';
 
 import { useLiveQuery } from '../db/use-live-query';
 

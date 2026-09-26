@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
+import { accountsRepo } from '@kiko/accounts';
+import { syncStateRepo } from '@kiko/sync-state';
 import either, { bifold, isLeft } from 'fnts/either';
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
-import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 import { refreshMarketData, warnRefreshFailure } from '@kiko/sync/refresh-market-data';
 
 import { bankProviderRegistry } from '../../bank-sync/registry';

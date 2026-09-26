@@ -1,7 +1,7 @@
 import { StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
-import { formatTime } from '../../../dates/format';
+import { formatTime } from '@kiko/dates';
 
 import TimeField from './time-field.component';
 import type { TimeFieldProps } from './time-field.props';

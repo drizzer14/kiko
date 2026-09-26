@@ -19,7 +19,7 @@ declare module 'react-native-svg' {
   }
 }
 
-import { formatDayMonth } from '../../../dates/format';
+import { formatDayMonth } from '@kiko/dates';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import { activeLocale } from '@kiko/i18n/active-locale';

@@ -1,7 +1,5 @@
 import type { TFunction } from 'i18next';
-
-import { formatDate } from '../../dates/format';
-import { startOfLocalDay } from '../../dates/local-day';
+import { formatDate, startOfLocalDay } from '@kiko/dates';
 
 import { groupByDay } from './group-by-day';
 

@@ -1,7 +1,7 @@
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
+import { startOfLocalDay } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db/schema';
-import { startOfLocalDay } from '@kiko/dates/local-day';
 import type { PriceBook } from '@kiko/prices/price-book';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import { asBondMeta, asLoanMeta } from '@kiko/holdings/holding-metadata';

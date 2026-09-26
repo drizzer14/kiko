@@ -1,11 +1,11 @@
 import { type FC, useMemo } from 'react';
 import { ratesRepo } from '@kiko/rates/repo';
 import Sortable from 'react-native-sortables';
+import { accountsRepo } from '@kiko/accounts';
+import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { useUnistyles } from 'react-native-unistyles';
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { settingsRepo } from '@kiko/settings/settings.repo';
 import { Pressable, type ScrollViewInstance } from 'react-native';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';

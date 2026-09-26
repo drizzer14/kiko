@@ -17,12 +17,10 @@ jest.mock('../../rates/history-backfill', () => {
 });
 
 import { i18n } from '@kiko/i18n/init';
+import { formatDate, startOfLocalDay, defaultDateRange } from '@kiko/dates';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 
-import { formatDate } from '../../dates/format';
-import { startOfLocalDay } from '../../dates/local-day';
 import { toUtcMidnight } from '../../rates/history-entry';
-import { defaultDateRange } from '../../dates/default-range';
 import type { TrendFilter } from '../../statistics/trend-filter';
 import type { BackfillStatus } from '../../rates/history-backfill';
 import { categoryColor } from '../../statistics/category-breakdown';

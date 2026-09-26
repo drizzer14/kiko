@@ -1,8 +1,8 @@
 import { useSync } from '@kiko/sync/use-sync';
 import either, { isRight } from 'fnts/either';
+import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';

@@ -1,6 +1,6 @@
 import type { FC } from 'react';
+import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
-import { settingsRepo } from '@kiko/settings/settings.repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type AppLanguage, deviceLanguage } from '@kiko/i18n/device-language';
 

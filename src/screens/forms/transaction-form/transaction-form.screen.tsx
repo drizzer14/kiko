@@ -11,11 +11,11 @@ import {
 import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import { ratesRepo } from '@kiko/rates/repo';
+import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { categoriesRepo } from '@kiko/categories/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';

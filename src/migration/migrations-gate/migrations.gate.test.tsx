@@ -2,8 +2,8 @@ import { StyleSheet, Text } from 'react-native';
 import { act, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { settingsRepo } from '@kiko/settings';
 import { darkTheme } from '@kiko/design-system/theme';
-import { settingsRepo } from '@kiko/settings/settings.repo';
 
 import MigrationsGate from './migrations.gate';
 

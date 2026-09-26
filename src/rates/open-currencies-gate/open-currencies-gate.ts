@@ -1,5 +1,5 @@
+import { settingsRepo } from '@kiko/settings';
 import { holdingsRepo } from '@kiko/holdings/repo';
-import { settingsRepo } from '@kiko/settings/settings.repo';
 
 import { isCrypto, type Currency, type CryptoCurrency } from '../../currency/currency';
 

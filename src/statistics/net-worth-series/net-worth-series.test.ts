@@ -4,10 +4,10 @@
 // `sync.ts` itself imports the repos, which open the op-sqlite connection at
 // load — `jest/setup.js` mocks `@op-engineering/op-sqlite` globally, so this
 // module graph loads safely under Jest and `mapStatementItem` runs for real.
+import { startOfLocalDay } from '@kiko/dates';
 import type { MonobankStatementItem } from '@kiko/monobank/monobank-types';
 
 import { mapStatementItem } from '../../monobank/sync';
-import { startOfLocalDay } from '../../dates/local-day';
 import { buildPriceBook } from '../../prices/price-book';
 import type { SeriesHolding } from '../holding-value-at';
 import type { CurrencyRateHistoryRow, HoldingRow } from '../../db/schema';

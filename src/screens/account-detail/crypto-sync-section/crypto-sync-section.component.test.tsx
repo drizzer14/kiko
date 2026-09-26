@@ -3,8 +3,8 @@ import { StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { formatDateTime } from '@kiko/dates';
 
-import { formatDateTime } from '../../../dates/format';
 import type { AccountRow, HoldingRow } from '../../../db/schema';
 
 import CryptoSyncSection from './crypto-sync-section.component';

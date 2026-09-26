@@ -15,6 +15,7 @@ import {
   type PropertyCategory,
 } from '@kiko/holdings/holding-metadata';
 import { Money } from '@kiko/currency/money';
+import { startOfLocalDay } from '@kiko/dates';
 import type { Lot } from '@kiko/holdings/lots';
 import type { HoldingRow } from '@kiko/db/schema';
 import { parseAmount } from '@kiko/currency/parse';
@@ -22,7 +23,6 @@ import { dayKeyOf } from '@kiko/prices/price-book';
 import { useCallback, useRef, useState } from 'react';
 import { shiftDecimal } from '@kiko/currency/decimal';
 import type { TextInputInstance } from 'react-native';
-import { startOfLocalDay } from '@kiko/dates/local-day';
 import { currencyScale, type Currency } from '@kiko/currency/currency';
 
 import { saveMetadataEdit } from '../../save-metadata-edit';

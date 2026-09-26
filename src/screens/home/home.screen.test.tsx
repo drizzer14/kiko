@@ -3,12 +3,10 @@ import type { ComponentProps } from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { DAY_MS, formatDate, defaultDateRange } from '@kiko/dates';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 
-import { DAY_MS } from '../../dates/duration';
-import { formatDate } from '../../dates/format';
 import { darkTheme } from '../../design-system/theme';
-import { defaultDateRange } from '../../dates/default-range';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
 // resolved MoneyText `tone` via a testID — see the module for the full rationale.
 import mockTextTone from '../../test-support/mock-text-tone';

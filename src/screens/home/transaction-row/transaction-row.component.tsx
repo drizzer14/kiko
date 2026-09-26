@@ -1,8 +1,8 @@
 import { type FC, memo } from 'react';
 import { Pressable } from 'react-native';
+import { formatTime } from '@kiko/dates';
 import { Money } from '@kiko/currency/money';
 import { useTranslation } from 'react-i18next';
-import { formatTime } from '@kiko/dates/format';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { isSyncedTransaction } from '@kiko/holdings/deletable';
 import { resolveCategoryDisplay } from '@kiko/categories/category-display';

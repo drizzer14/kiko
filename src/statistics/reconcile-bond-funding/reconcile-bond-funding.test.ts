@@ -1,4 +1,5 @@
-import { startOfLocalDay } from '../../dates/local-day';
+import { startOfLocalDay } from '@kiko/dates';
+
 import type { BondMeta } from '../../holdings/holding-metadata';
 import type { SeriesHolding, SeriesTransaction } from '../holding-value-at';
 

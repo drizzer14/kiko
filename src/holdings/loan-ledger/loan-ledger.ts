@@ -1,5 +1,5 @@
+import { startOfLocalDay } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db/schema';
-import { startOfLocalDay } from '@kiko/dates/local-day';
 import { dayKeyOf, type LoanLedgerPayment, type PriceBook } from '@kiko/prices/price-book';
 
 import {

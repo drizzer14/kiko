@@ -7,14 +7,13 @@ import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-han
 import '../../design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import { formatDate, startOfLocalDay } from '@kiko/dates';
 import { transactionsRepo } from '@kiko/transactions/repo';
 
 import { Money } from '../../currency/money';
-import { formatDate } from '../../dates/format';
 import { dayKeyOf } from '../../prices/price-book';
 import { formatMoney } from '../../currency/format';
 import { darkTheme } from '../../design-system/theme';
-import { startOfLocalDay } from '../../dates/local-day';
 import {
   EDIT_ACTION_TEST_ID,
   HOLD_GESTURE_TEST_ID,

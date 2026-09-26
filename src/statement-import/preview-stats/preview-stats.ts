@@ -1,4 +1,5 @@
-import { formatDate } from '../../dates/format';
+import { formatDate } from '@kiko/dates';
+
 import type { ParsedStatement, ParsedTransaction } from '../parser';
 
 export type PreviewStats = {

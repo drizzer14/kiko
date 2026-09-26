@@ -1,9 +1,9 @@
 import Sortable from 'react-native-sortables';
+import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { categoriesRepo } from '@kiko/categories/repo';
 import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
-import { settingsRepo } from '@kiko/settings/settings.repo';
 import { type FC, useCallback, useRef, useState } from 'react';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';

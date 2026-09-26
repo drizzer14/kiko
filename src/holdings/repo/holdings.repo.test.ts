@@ -24,7 +24,7 @@ jest.mock('../../db/client', () => {
 import { write } from '@kiko/db/client';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { accountsRepo } from '@kiko/accounts';
 import { captureSetDatabaseTransaction } from '@kiko/db/capture-set-tx';
 import { inArrayClauseFromCondition } from '@kiko/db/in-array-clause-test-helper';
 

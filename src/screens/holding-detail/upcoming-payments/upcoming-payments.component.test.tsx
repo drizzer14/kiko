@@ -1,5 +1,5 @@
+import { formatDate } from '@kiko/dates';
 import { Money } from '@kiko/currency/money';
-import { formatDate } from '@kiko/dates/format';
 import { formatMoney } from '@kiko/currency/format';
 import { render } from '@testing-library/react-native';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';

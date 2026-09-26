@@ -3,7 +3,7 @@ import type { FC, ReactNode } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useSync } from '@kiko/sync/use-sync';
 import { useTranslation } from 'react-i18next';
-import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
+import { syncStateRepo } from '@kiko/sync-state';
 
 import {
   bankProviderIdOf,

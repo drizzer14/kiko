@@ -1,3 +1,4 @@
+import { formatDate } from '@kiko/dates';
 import type { TFunction } from 'i18next';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -12,7 +13,6 @@ import Button from '../button';
 import SymbolIcon from '../symbol';
 import BottomSheet from '../bottom-sheet';
 import SheetFooter from '../sheet-footer';
-import { formatDate } from '../../../dates/format';
 
 import { styles } from './date-range-field.styles';
 import type { DateRangeFieldProps } from './date-range-field.props';

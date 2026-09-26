@@ -7,6 +7,7 @@ import './src/design-system/unistyles';
 import '@kiko/i18n/init';
 
 import type { FC } from 'react';
+import { LockGate } from '@kiko/auth';
 import RootNavigator from '@kiko/navigation/root-navigator';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -16,7 +17,6 @@ import { useSyncLanguageWithSettings } from '@kiko/i18n/use-sync-language-with-s
 
 import { useAutoSync } from './src/sync/use-auto-sync';
 import MigrationsGate from './src/migration/migrations-gate';
-import LockGate from './src/auth/lock-gate/lock-gate.component';
 
 /**
  * Rendered only once `MigrationsGate` reports success, so its mount is the

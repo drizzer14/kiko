@@ -3,13 +3,13 @@ import { useLayoutEffect } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
 import Sortable from 'react-native-sortables';
+import { accountsRepo } from '@kiko/accounts';
+import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { useUnistyles } from 'react-native-unistyles';
 import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { settingsRepo } from '@kiko/settings/settings.repo';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 

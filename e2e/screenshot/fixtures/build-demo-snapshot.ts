@@ -4,6 +4,9 @@
 // restore-snapshot.ts`) REPLACES every row in all 9 logical tables on
 // import, so this populates every one of them — an incomplete snapshot would
 // leave the imported app with no categories and no settings row.
+import { SETTINGS_ID } from '@kiko/settings';
+import type { DataSnapshot } from '@kiko/data-transfer';
+
 import type {
   AccountRow,
   CategoryRow,
@@ -11,10 +14,8 @@ import type {
   SettingsRow,
   TransactionRow,
 } from '../../../src/db/schema';
-import { SETTINGS_ID } from '../../../src/settings/settings.repo';
 import { ANCHOR, type ScreenshotDataset } from '../seed/screenshot-seed';
 import { SEEDED_CATEGORIES } from '../../../src/db/__fixtures__/seeded-categories';
-import type { DataSnapshot } from '../../../src/data-transfer/snapshot/data-snapshot';
 import { readSeedCategoryColors } from '../../../src/db/__fixtures__/seed-category-colors';
 
 /**

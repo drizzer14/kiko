@@ -1,8 +1,8 @@
 import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
+import { accountsRepo } from '@kiko/accounts';
+import { syncStateRepo } from '@kiko/sync-state';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 import { holdingsRepo, type MonobankHolding } from '@kiko/holdings/repo';
 
 import {

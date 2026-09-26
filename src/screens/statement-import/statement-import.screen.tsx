@@ -2,6 +2,8 @@ import type { FC } from 'react';
 import { match } from 'ts-pattern';
 import * as RNFS from 'react-native-fs';
 import maybe, { foldMap } from 'fnts/maybe';
+import { accountsRepo } from '@kiko/accounts';
+import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { bifoldr, eitherSync } from 'fnts/either';
 import { useRef, useEffect, useState } from 'react';
@@ -32,8 +34,6 @@ import Box from '../../design-system/components/box';
 import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
 import Screen from '../../design-system/components/screen';
-import { accountsRepo } from '../../accounts/accounts.repo';
-import { settingsRepo } from '../../settings/settings.repo';
 import {
   scrollToField,
   useHeaderInset,

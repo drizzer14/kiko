@@ -7,7 +7,7 @@ import { darkTheme } from '../../../../design-system/theme';
 import AppLockSetting from './app-lock-setting.component';
 
 const mockIsSensorAvailable = jest.fn();
-jest.mock('../../../../auth/biometrics', () => ({
+jest.mock('@kiko/auth/biometrics', () => ({
   isSensorAvailable: () => mockIsSensorAvailable(),
 }));
 

@@ -1,7 +1,7 @@
 import { match } from 'ts-pattern';
 import { type FC, useState } from 'react';
+import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
-import { settingsRepo } from '@kiko/settings/settings.repo';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { PRIVACY_POLICY_URL_EN, PRIVACY_POLICY_URL_UK } from '@env';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';

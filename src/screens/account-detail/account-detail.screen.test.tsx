@@ -5,8 +5,8 @@ import { act, fireEvent, render, waitFor, within } from '@testing-library/react-
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { formatDateTime } from '@kiko/dates';
 
-import { formatDateTime } from '../../dates/format';
 import { darkTheme } from '../../design-system/theme';
 import {
   DELETE_CONFIRM_TEST_ID,

@@ -1,9 +1,9 @@
 import type { FC } from 'react';
 import { Share } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { exportData } from '@kiko/data-transfer';
 import { useEffect, useRef, useState } from 'react';
 import Clipboard from '@react-native-clipboard/clipboard';
-import { exportData } from '@kiko/data-transfer/export-data';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import SettingsRow from '../settings-row';

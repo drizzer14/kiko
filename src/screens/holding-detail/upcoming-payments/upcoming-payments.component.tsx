@@ -1,7 +1,7 @@
 import { type FC, memo } from 'react';
+import { formatDate } from '@kiko/dates';
 import { Money } from '@kiko/currency/money';
 import { useTranslation } from 'react-i18next';
-import { formatDate } from '@kiko/dates/format';
 import { formatMoney } from '@kiko/currency/format';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';

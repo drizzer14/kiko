@@ -1,9 +1,9 @@
 import { i18n } from '@kiko/i18n/init';
 import type { ReactNode } from 'react';
+import { formatDate } from '@kiko/dates';
 import { StyleSheet } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 
-import { formatDate } from '../../../dates/format';
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 import '../../../design-system/unistyles';
 

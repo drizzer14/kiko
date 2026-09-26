@@ -1,11 +1,11 @@
 import { Pressable } from 'react-native';
+import { formatDate } from '@kiko/dates';
 import { type FC, useState } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useUnistyles } from 'react-native-unistyles';
 import type { DateData } from 'react-native-calendars';
 import KikoCalendar from '@kiko/calendar/kiko-calendar';
 
-import { formatDate } from '../../../dates/format';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import SymbolIcon from '../../../design-system/components/symbol';

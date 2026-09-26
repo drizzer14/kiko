@@ -1,9 +1,9 @@
+import { formatDate } from '@kiko/dates';
 import { StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 import '../../../design-system/unistyles';
-import { formatDate } from '../../../dates/format';
 
 import DateField from './date-field.component';
 import type { DateFieldProps } from './date-field.props';

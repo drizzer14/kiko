@@ -3,6 +3,8 @@ import * as RNFS from 'react-native-fs';
 import type { TFunction } from 'i18next';
 import type { FC, RefObject } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
+import { accountsRepo } from '@kiko/accounts';
+import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { bifoldr, eitherSync } from 'fnts/either';
 import { useEffect, useRef, useState } from 'react';
@@ -41,8 +43,6 @@ import Text from '../../design-system/components/text';
 import type { Currency } from '../../currency/currency';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
-import { accountsRepo } from '../../accounts/accounts.repo';
-import { settingsRepo } from '../../settings/settings.repo';
 import {
   previewStats,
   type PreviewStats,

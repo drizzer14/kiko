@@ -1,6 +1,6 @@
 import type { FC } from 'react';
+import { formatDate } from '@kiko/dates';
 import { useTranslation } from 'react-i18next';
-import { formatDate } from '@kiko/dates/format';
 import Box from '@kiko/design-system/components/box';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';

@@ -16,10 +16,10 @@ jest.mock('../../db/client', () => {
 
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
+import { accountsRepo } from '@kiko/accounts';
 import { drizzle } from 'drizzle-orm/sqlite-proxy';
 import { renderCondition } from '@kiko/db/render-condition-test-helper';
 
-import { accountsRepo } from '../../accounts/accounts.repo';
 import { accounts, categoryOverrides, holdings, transactions } from '../../db/schema';
 
 import { transactionsRepo } from './transactions.repo';

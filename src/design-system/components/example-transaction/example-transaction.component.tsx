@@ -1,5 +1,7 @@
 import type { FC } from 'react';
+import { formatDate } from '@kiko/dates';
 import maybe, { foldMap } from 'fnts/maybe';
+import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 
 import Box from '../box';
@@ -14,11 +16,9 @@ import {
 } from '../../../categories/category-display';
 import { Money } from '../../../currency/money';
 import TransactionCard from '../transaction-card';
-import { formatDate } from '../../../dates/format';
 import { categoriesRepo } from '../../../categories/repo';
 import { useDataReady } from '../../../db/use-data-ready';
 import { useLiveQuery } from '../../../db/use-live-query';
-import { settingsRepo } from '../../../settings/settings.repo';
 import { categoryForMcc } from '../../../monobank/mcc-category';
 import { resolveCategoryColor } from '../../../statistics/category-breakdown';
 import { transactionRowDescription } from '../../../transactions/row-description';

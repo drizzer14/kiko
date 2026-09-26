@@ -1,9 +1,9 @@
 import { Pressable } from 'react-native';
+import { formatTime } from '@kiko/dates';
 import { type FC, useState } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
-import { formatTime } from '../../../dates/format';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import SymbolIcon from '../../../design-system/components/symbol';

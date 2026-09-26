@@ -14,7 +14,7 @@ jest.mock('../src/migration/migrations-gate', () => ({
 
 // LockGate reads settings through useLiveQuery; stub it as a passthrough so the
 // boot smoke test reaches Home exactly as MigrationsGate is stubbed.
-jest.mock('../src/auth/lock-gate/lock-gate.component', () => ({
+jest.mock('@kiko/auth/lock-gate/lock-gate.component', () => ({
   __esModule: true,
   default: ({ children }: { children: ReactNode }) => children,
 }));

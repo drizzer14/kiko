@@ -4,8 +4,8 @@ import '../../../design-system/unistyles';
 import '@kiko/i18n/init';
 
 import { i18n } from '@kiko/i18n/init';
+import { formatDate } from '@kiko/dates';
 
-import { formatDate } from '../../../dates/format';
 import type { ParsedTransaction } from '../../../statement-import/parser';
 
 import ExampleTransaction from './example-transaction.component';

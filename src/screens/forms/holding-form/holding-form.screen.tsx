@@ -1,8 +1,8 @@
 import { match } from 'ts-pattern';
 import { View } from 'react-native';
+import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 import { holdingCurrencyOptions } from '@kiko/holdings/holding-currency';
