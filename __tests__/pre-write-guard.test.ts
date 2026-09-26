@@ -2122,15 +2122,24 @@ describe('temp root lifetime vs a fast-rejecting sibling (I2)', () => {
   });
 });
 
-// Task 21: harness/kiko/hooks/hooks.json wires this script onto PreToolUse
+// Task 21b: harness/kiko/hooks/hooks.json wires this script onto PreToolUse
 // for Edit/Write/MultiEdit, alongside the existing Bash matcher
-// (kill-guard.sh). These tests parse the real hooks.json and execute the
-// wired command string itself via `bash -c`, rather than the script
-// directly, so a wiring regression (a typo in the command, a missing
-// matcher, the guard-presence check dropped) fails here even though every
-// other describe block above already covers the script's own behavior.
+// (kill-guard.sh), through the plugin's own dispatch.sh — every entry reads
+// "${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh <script-name>" rather than a
+// hardcoded "${CLAUDE_PROJECT_DIR}/scripts/checks/<script-name>", so a
+// subagent whose CLAUDE_PROJECT_DIR is a DIFFERENT checkout than the file it
+// is editing still reaches THAT file's own worktree script (see
+// harness/kiko/hooks/dispatch.sh's own header and
+// __tests__/hook-dispatch.test.ts for the dispatcher's own behavior). These
+// tests parse the real hooks.json and execute the wired command string
+// itself via `bash -c`, so a wiring regression (a typo in the command, a
+// missing matcher, the dispatcher path dropped) fails here even though
+// every other describe block above already covers the script's own
+// behavior.
 describe('PreToolUse wiring in harness/kiko/hooks/hooks.json', () => {
   const hooksJsonPath = join(__dirname, '../harness/kiko/hooks/hooks.json');
+  const repoRoot = join(__dirname, '..');
+  const pluginRoot = join(repoRoot, 'harness', 'kiko');
 
   function readHooksConfig(): {
     hooks: { PreToolUse: Array<{ matcher: string; hooks: Array<{ command: string }> }> };
@@ -2155,42 +2164,48 @@ describe('PreToolUse wiring in harness/kiko/hooks/hooks.json', () => {
     expect(matchers).toContain('Edit|Write|MultiEdit');
   });
 
-  it('exits 0 with empty stdout when the guard script is absent from CLAUDE_PROJECT_DIR', () => {
+  it('exits 0 with empty stdout when the resolved root has no guard script', () => {
     const command = preToolUseCommand('Edit|Write|MultiEdit');
     const missingProject = createTempDirectory('kiko-prewrite-wiring-');
 
+    // Malformed (empty) stdin resolves neither a file_path nor a cwd, so the
+    // dispatcher falls back to CLAUDE_PROJECT_DIR — this exercises that same
+    // fallback path, landing on a root with no scripts/checks/ at all.
     const result = spawnSync('bash', ['-c', command], {
       input: '',
       encoding: 'utf8',
-      env: baseEnv({ CLAUDE_PROJECT_DIR: missingProject }),
+      env: baseEnv({ CLAUDE_PLUGIN_ROOT: pluginRoot, CLAUDE_PROJECT_DIR: missingProject }),
     });
 
     expect(result.status).toBe(0);
     expect(result.stdout).toBe('');
   });
 
-  it('reaches the guard script when CLAUDE_PROJECT_DIR is this repo', () => {
+  it('reaches the guard script for a file in this repo', () => {
     const command = preToolUseCommand('Edit|Write|MultiEdit');
-    const repoRoot = join(__dirname, '..');
     const targetFile = join(repoRoot, 'README.md');
 
     // A non-.ts/.tsx target lets the real guard allow the write without
     // ever invoking semgrep — this alone proves the wired command reached
-    // scripts/checks/pre-write-guard.sh, not that semgrep behaves.
+    // scripts/checks/pre-write-guard.sh, not that semgrep behaves. The
+    // dispatcher resolves the root from this repo's own `git rev-parse
+    // --show-toplevel`, not from CLAUDE_PROJECT_DIR.
     const allowResult = spawnSync('bash', ['-c', command], {
       input: payloadFor('Write', { file_path: targetFile, content: 'hello' }),
       encoding: 'utf8',
-      env: baseEnv({ CLAUDE_PROJECT_DIR: repoRoot }),
+      env: baseEnv({ CLAUDE_PLUGIN_ROOT: pluginRoot }),
     });
 
     expect(allowResult.status).toBe(0);
 
-    // A malformed stdin payload denies before the guard ever reaches
-    // semgrep, so this is safe to run unstubbed against the real repo too.
+    // A malformed stdin payload cannot resolve a file_path, so the
+    // dispatcher falls back to CLAUDE_PROJECT_DIR here; the guard itself
+    // then denies before it ever reaches semgrep, so this is safe to run
+    // unstubbed against the real repo too.
     const denyResult = spawnSync('bash', ['-c', command], {
       input: '{not valid json',
       encoding: 'utf8',
-      env: baseEnv({ CLAUDE_PROJECT_DIR: repoRoot }),
+      env: baseEnv({ CLAUDE_PLUGIN_ROOT: pluginRoot, CLAUDE_PROJECT_DIR: repoRoot }),
     });
 
     expect(denyResult.status).toBe(2);

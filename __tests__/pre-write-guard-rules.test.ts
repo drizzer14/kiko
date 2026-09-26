@@ -125,4 +125,34 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
       }
     },
   );
+
+  // kiko-no-history-id-comment's own paths.exclude only names "__tests__/**"
+  // and "e2e/**" (the legacy top-level test directories), never a bare
+  // "*.test.tsx" — unlike kiko-no-raw-color-literal, which excludes every
+  // test file. A co-located test file under src/ (this project's own
+  // folder-per-thing convention) is therefore in scope, and a brand-new one
+  // has no BEFORE tree at all, so every finding in it is new by definition.
+  // This closes the gap: nothing else in this suite writes a NEW file under
+  // src/ with a history-id comment.
+  it('denies a Write of a new co-located test file containing a history-id comment', () => {
+    const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-history-'));
+    try {
+      const targetDirectory = join(project, 'src', 'screens', 'statistics');
+      mkdirSync(targetDirectory, { recursive: true });
+      const targetFile = join(targetDirectory, 'new-probe.test.tsx');
+      const content = [
+        '// T12 review round 3: this probe pins the regression the fix covers.',
+        'export const probeValue = 1;',
+        '',
+      ].join('\n');
+
+      const result = runGuard(payloadFor(targetFile, content), project);
+
+      expect(result.status).toBe(2);
+      const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+      expect(reason).toContain('kiko-no-history-id-comment');
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
 });
