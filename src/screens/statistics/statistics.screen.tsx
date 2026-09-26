@@ -209,18 +209,18 @@ const StatisticsScreen: FC = () => {
     true,
     { cached: true },
   );
-  const { data: transactions, isLoading: transactionsLoading } = useLiveQuery(
-    transactionsRepo.listAllQuery(),
-    ['transactions'],
-    true,
-    { cached: true },
-  );
-  const { data: historyRows, isLoading: historyLoading } = useLiveQuery(
-    rateHistoryRepo.historyRowsQuery(),
-    ['currency_rate_history'],
-    true,
-    { cached: true },
-  );
+  const {
+    data: transactions,
+    isLoading: transactionsLoading,
+    isFresh: transactionsFresh,
+  } = useLiveQuery(transactionsRepo.listAllQuery(), ['transactions'], true, { cached: true });
+  const {
+    data: historyRows,
+    isLoading: historyLoading,
+    isFresh: historyFresh,
+  } = useLiveQuery(rateHistoryRepo.historyRowsQuery(), ['currency_rate_history'], true, {
+    cached: true,
+  });
   const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
     categoriesRepo.allQuery(),
     ['categories'],
@@ -396,7 +396,7 @@ const StatisticsScreen: FC = () => {
   const runTokenRef = useRef(0);
 
   useEffect(() => {
-    // `historyLoading` guards against the exact same "empty reads as no data
+    // `historyFresh` guards against the exact same "empty reads as no data
     // yet" trap kiko-architecture's useLiveQuery consumer rule covers for a
     // rendered empty state: `historyRows` is `[]` — indistinguishable from
     // "genuinely nothing backfilled yet" — for as long as its OWN query is
@@ -404,7 +404,11 @@ const StatisticsScreen: FC = () => {
     // settled. Without this guard the effect re-fetches and re-writes the
     // whole span on first open, adding to the app-open DB-read burst, then
     // runs a SECOND time once history's real (possibly non-empty) rows land.
-    if (transactions.length === 0 || historyLoading) {
+    // Both guards also wait out the cached rows of a cached mount: a run
+    // marks its span covered for the rest of the mount, so a run planned from
+    // a cached, one-read-old resume point would stop the fresh read's own run
+    // from ever starting (kiko-architecture).
+    if (transactions.length === 0 || !transactionsFresh || !historyFresh) {
       return;
     }
 
@@ -461,7 +465,15 @@ const StatisticsScreen: FC = () => {
       }
       setBackfillStatus(settled);
     });
-  }, [transactions.length, spanStart, lastBackfilledDay, now, historyLoading, presentCurrencies]);
+  }, [
+    transactions.length,
+    transactionsFresh,
+    historyFresh,
+    spanStart,
+    lastBackfilledDay,
+    now,
+    presentCurrencies,
+  ]);
 
   // Bar + pie value "now" on the current rate table; the line values each day on
   // the historical table. All three are memoized on their real inputs so they no

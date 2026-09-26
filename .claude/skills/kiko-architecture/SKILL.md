@@ -394,6 +394,23 @@ of the rows on screen. A new write from a display screen picks one of
 the two, never neither. Tests call `clearLiveQueryCache()` in
 `beforeEach` so one `it`'s rows never seed the next.
 
+**Local state on a cached display screen follows the row; it is never
+seeded once.** A list row keyed by its ID never remounts when the fresh
+row replaces the cached one, so a `useState(row.field)` seed keeps the
+cached value, and a later write can put it back over a change made
+elsewhere (a `.kiko` restore). Categories' rename field syncs its local
+title from `category.title` whenever the stored title changes while the
+field is not being edited, and commits only text the user changed (not
+the title the edit started from). Syncing on a change, rather than
+rendering the row field directly, keeps a just-committed rename on
+screen until its write flows back. An effect that writes from rows and
+records what it covered in a ref waits for `isFresh` too: Statistics'
+history backfill does not start until `transactions` and
+`currency_rate_history` are both fresh, because its
+`backfillRanForSpanRef` marks the span covered for the rest of the
+mount, so a run planned from a cached resume point would stop the fresh
+read's own run from ever starting.
+
 ## App-open and refresh work is gated on data presence
 
 Standing rule: the app never performs a request or a query for data

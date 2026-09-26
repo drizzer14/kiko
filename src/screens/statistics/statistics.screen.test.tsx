@@ -129,6 +129,9 @@ type LiveData = {
   // key defaults to `false` (an already-resolved query), so every existing
   // call site above keeps behaving exactly as before.
   isLoading?: Partial<Record<string, boolean>>;
+  // Per-table cached-rows overrides: `true` = the table still shows the cached
+  // rows of a cached display mount, before its own fresh read has applied.
+  isCached?: Partial<Record<string, boolean>>;
 };
 
 // Feed each `useLiveQuery` call by the first table name it watches — the screen's
@@ -152,11 +155,17 @@ const setLiveData = (data: LiveData): void => {
     price_points: [],
   };
   const isLoadingByTable = data.isLoading ?? {};
+  const isCachedByTable = data.isCached ?? {};
 
-  mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => ({
-    data: byTable[tables[0]] ?? [],
-    isLoading: isLoadingByTable[tables[0]] ?? false,
-  }));
+  mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => {
+    const isLoading = isLoadingByTable[tables[0]] ?? false;
+
+    return {
+      data: byTable[tables[0]] ?? [],
+      isLoading,
+      isFresh: !isLoading && !(isCachedByTable[tables[0]] ?? false),
+    };
+  });
 };
 
 const DAY = 86_400_000;
@@ -708,6 +717,35 @@ describe('StatisticsScreen', () => {
 
     expect(mockRunBackfill).toHaveBeenCalled();
   });
+
+  // kiko-architecture: a cached display mount's rows can be one read old, and
+  // a run marks its span covered for the rest of the mount. A run planned from
+  // the cached resume point (for example, history a .kiko restore replaced)
+  // would stop the fresh read's own run from ever starting.
+  it.each(['transactions', 'currency_rate_history'])(
+    'runs the backfill only once %s has its own fresh read, never from the cached rows',
+    async (table) => {
+      const liveData: LiveData = {
+        accounts: [CASH, BANK],
+        holdings: [UAH_HOLDING, USD_HOLDING],
+        rates: [USD_UAH_RATE],
+        transactions: TRANSACTIONS,
+        history: [],
+      };
+      setLiveData({ ...liveData, isCached: { [table]: true } });
+
+      const { rerender } = await renderScreen();
+
+      expect(mockRunBackfill).not.toHaveBeenCalled();
+
+      setLiveData(liveData);
+      await act(async () => {
+        rerender(<StatisticsScreen />);
+      });
+
+      expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it('does not report the backfill complete after a failed run, and retries the same span once now advances', async () => {
     setLiveData({
