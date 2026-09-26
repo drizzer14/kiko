@@ -1,12 +1,11 @@
 import type { TransactionRow } from '../../db/schema';
 
-import { computeDedupKeyBase } from './mapping';
+import { computeDedupKeyBase, DEDUP_OCCURRENCE_SEPARATOR } from './mapping';
 
 // The literal join `computeDedupKey` used before the `␟` separator existed —
 // see `mapping.ts`'s `DEDUP_OCCURRENCE_SEPARATOR` doc comment for the full
 // collision this upgrade fixes.
 const LEGACY_OCCURRENCE_SEPARATOR = ' ';
-const DEDUP_OCCURRENCE_SEPARATOR = '␟';
 
 type LegacyDedupCandidate = Pick<
   TransactionRow,

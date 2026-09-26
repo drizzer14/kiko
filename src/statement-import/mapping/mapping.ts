@@ -30,7 +30,7 @@ type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 't
 // occurrence 1 of "Top up" collide with occurrence 0 of "Top up 1" (review
 // :2321) — both produced the literal string "... top up 1". The upgrade
 // path for a key an old build already wrote lives in `upgrade-dedup-key.ts`.
-const DEDUP_OCCURRENCE_SEPARATOR = '␟';
+export const DEDUP_OCCURRENCE_SEPARATOR = '␟';
 
 /**
  * The (holding, time, amount, normalized-description) part of a dedup key,
