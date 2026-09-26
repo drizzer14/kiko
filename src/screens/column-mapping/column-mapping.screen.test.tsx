@@ -66,7 +66,7 @@ jest.mock('@kiko/settings/settings.repo', () => ({
 }));
 
 const mockUseLiveQuery = jest.fn();
-jest.mock('../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
 jest.mock('@kiko/holdings/repo', () => ({

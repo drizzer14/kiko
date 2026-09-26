@@ -1,6 +1,6 @@
 import { i18n } from '@kiko/i18n/init';
+import type { HoldingRow } from '@kiko/db';
 
-import type { HoldingRow } from '../../db/schema';
 import type { BalanceProvider } from '../provider';
 import { walletAddressOf } from '../../holdings/holding-metadata';
 

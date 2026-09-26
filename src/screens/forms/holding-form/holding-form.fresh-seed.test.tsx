@@ -2,6 +2,7 @@ import type { ComponentProps } from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import '@kiko/i18n/init';
+import { clearLiveQueryCache } from '@kiko/db';
 import { holdingsRepo } from '@kiko/holdings/repo';
 
 import {
@@ -9,7 +10,6 @@ import {
   asRouteProp,
   navigationSpy,
 } from '../../../test-support/navigation-props';
-import { clearLiveQueryCache } from '../../../db/use-live-query';
 
 import HoldingFormScreen from './holding-form.screen';
 
@@ -40,7 +40,7 @@ const mockQuery = (sql: string, params: unknown[], read: () => unknown[]) => ({
 
 // The native trigger only: no reactive fire ever arrives, which is exactly the
 // unmounted-form case (a write with no subscriber for the form's key).
-jest.mock('../../../db/client', () => ({
+jest.mock('@kiko/db/client', () => ({
   rawDatabase: { reactiveExecute: () => () => undefined },
 }));
 jest.mock('@kiko/holdings/repo', () => ({

@@ -1,7 +1,7 @@
 import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
+import type { HoldingRow } from '@kiko/db';
 
-import type { HoldingRow } from '../../db/schema';
 import type { ExchangeMetadataField } from '../../holdings/holding-metadata';
 
 /**

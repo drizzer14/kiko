@@ -1,5 +1,6 @@
 import { match } from 'ts-pattern';
 import * as RNFS from 'react-native-fs';
+import { useLiveQuery } from '@kiko/db';
 import type { TFunction } from 'i18next';
 import type { FC, RefObject } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
@@ -38,7 +39,6 @@ import {
   deleteLocalStatementCopy,
 } from '../../statement-import/read-statement-file';
 import Box from '../../design-system/components/box';
-import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
 import type { Currency } from '../../currency/currency';
 import Button from '../../design-system/components/button';

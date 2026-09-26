@@ -16,7 +16,7 @@ jest.mock('@kiko/db/client', () => {
   };
 });
 
-import { holdings } from '../../db/schema';
+import { holdings } from '@kiko/db';
 
 import { transactionsRepo } from './transactions.repo';
 

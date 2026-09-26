@@ -1,4 +1,5 @@
-import type { HoldingRow } from '../../db/schema';
+import type { HoldingRow } from '@kiko/db';
+
 import type { HoldingType } from '../holding-type';
 import { holdingDescriptorOrUndefined } from '../holding-descriptor';
 

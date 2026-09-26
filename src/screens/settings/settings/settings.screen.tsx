@@ -2,6 +2,7 @@ import { match } from 'ts-pattern';
 import { type FC, useState } from 'react';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
+import { useDataReady, useLiveQuery } from '@kiko/db';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { PRIVACY_POLICY_URL_EN, PRIVACY_POLICY_URL_UK } from '@env';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
@@ -12,8 +13,6 @@ import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-
 import SettingsRow from '../settings-row';
 import pkg from '../../../../package.json';
 import Box from '../../../design-system/components/box';
-import { useDataReady } from '../../../db/use-data-ready';
-import { useLiveQuery } from '../../../db/use-live-query';
 import Text from '../../../design-system/components/text';
 import Card from '../../../design-system/components/card';
 import Screen from '../../../design-system/components/screen';

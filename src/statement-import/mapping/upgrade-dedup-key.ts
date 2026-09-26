@@ -1,4 +1,4 @@
-import type { TransactionRow } from '../../db/schema';
+import type { TransactionRow } from '@kiko/db';
 
 import { computeDedupKeyBase, DEDUP_OCCURRENCE_SEPARATOR } from './mapping';
 

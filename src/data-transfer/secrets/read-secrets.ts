@@ -1,6 +1,7 @@
+import type { AccountRow } from '@kiko/db';
+
 import type { ExportSecrets } from '../payload';
 import { readToken } from '../../monobank/token';
-import type { AccountRow } from '../../db/schema';
 import { readCredentials } from '../../crypto-sync/binance/binance.credentials';
 
 /**

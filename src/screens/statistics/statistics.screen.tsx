@@ -5,6 +5,7 @@ import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import either, { bifold, isLeft } from 'fnts/either';
+import { useDataReady, useLiveQuery } from '@kiko/db';
 import { categoriesRepo } from '@kiko/categories/repo';
 import type { ScrollViewInstance } from 'react-native';
 import { transactionsRepo } from '@kiko/transactions/repo';
@@ -57,8 +58,6 @@ import FilterMenu, {
   type FilterOption,
 } from '../../design-system/components/filter-menu';
 import Box from '../../design-system/components/box';
-import { useDataReady } from '../../db/use-data-ready';
-import { useLiveQuery } from '../../db/use-live-query';
 import Card from '../../design-system/components/card';
 import Text from '../../design-system/components/text';
 import type { Currency } from '../../currency/currency';

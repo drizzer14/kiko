@@ -117,7 +117,7 @@ jest.mock('@kiko/categories/category-overrides-repo', () => ({
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
-jest.mock('../../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
 

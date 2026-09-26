@@ -1,8 +1,7 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import '@kiko/i18n/init';
-
-import type { AccountRow } from '../../../db/schema';
+import type { AccountRow } from '@kiko/db';
 
 import BankSyncSection from './bank-sync-section.component';
 
@@ -12,7 +11,7 @@ const mockUseSync = jest.fn();
 const mockSaveToken = jest.fn();
 const mockDisconnectMonobank = jest.fn();
 
-jest.mock('../../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
 jest.mock('@kiko/sync-state/sync-state.repo', () => ({

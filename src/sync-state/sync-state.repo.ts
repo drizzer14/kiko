@@ -1,8 +1,5 @@
 import { eq } from 'drizzle-orm';
-import type { Repository } from '@kiko/db/repository';
-
-import { syncState } from '../db/schema';
-import { database, write } from '../db/client';
+import { type Repository, syncState, database, write } from '@kiko/db';
 
 /**
  * The per-connection Monobank sync cursor repository. It de-globalizes the

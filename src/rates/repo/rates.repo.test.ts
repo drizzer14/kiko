@@ -24,7 +24,7 @@ jest.mock('@op-engineering/op-sqlite', () => ({
 // key is async), so the executing reads below need a live connection. Mock the
 // encrypted-open to hand back the same op-sqlite fake this file already models,
 // then `initDatabase()` once so `rawDatabase` forwards `executeRaw` to the mock.
-jest.mock('../../db/encrypted-database', () => ({
+jest.mock('@kiko/db/encrypted-database', () => ({
   openEncryptedDatabase: async () => ({
     execute: async () => ({ rows: [], rowsAffected: 0 }),
     executeRaw: (...args: unknown[]) => mockExecuteRaw(...args),
@@ -38,8 +38,8 @@ jest.mock('../../db/encrypted-database', () => ({
 // `rateHistoryRepo`'s own chunking test uses (`rate-history.repo.test.ts`).
 let mockDatabaseTransaction: unknown;
 let writeCalls = 0;
-jest.mock('../../db/client', () => {
-  const actual = jest.requireActual('../../db/client');
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
 
   return {
     ...actual,
@@ -51,8 +51,8 @@ jest.mock('../../db/client', () => {
   };
 });
 
-import { initDatabase } from '../../db/client';
-import type { CurrencyRateRow } from '../../db/schema';
+import { initDatabase, type CurrencyRateRow } from '@kiko/db';
+
 import { currencyOptions } from '../../currency/currency';
 
 import { ratesRepo } from './rates.repo';

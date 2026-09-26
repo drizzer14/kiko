@@ -1,6 +1,7 @@
+import type { AccountRow, HoldingRow } from '@kiko/db';
+
 import type { HoldingType } from '../holding-type';
 import { recordByType } from '../holding-descriptor';
-import type { AccountRow, HoldingRow } from '../../db/schema';
 import { type PropertyCategory, propertyCategoryOf } from '../holding-metadata';
 
 // The default SF Symbol shown for an account/holding icon, keyed by its

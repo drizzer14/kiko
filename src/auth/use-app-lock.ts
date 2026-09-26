@@ -1,8 +1,7 @@
+import { useLiveQuery } from '@kiko/db';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { useCallback, useEffect, useState } from 'react';
-
-import { useLiveQuery } from '../db/use-live-query';
 
 import { type AuthResult, authenticate } from './biometrics';
 

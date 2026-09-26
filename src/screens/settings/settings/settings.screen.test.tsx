@@ -45,7 +45,7 @@ jest.mock('@kiko/settings/settings.repo', () => ({
     setBaseCurrency: (...args: unknown[]) => mockSetBaseCurrency(...args),
   },
 }));
-jest.mock('../../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: () => ({ data: mockLiveQueryData, isLoading: mockLiveQueryIsLoading }),
 }));
 

@@ -1,7 +1,6 @@
 import { right } from 'fnts/either';
+import type { AccountRow } from '@kiko/db';
 import { act, renderHook } from '@testing-library/react-native';
-
-import type { AccountRow } from '../../db/schema';
 
 const mockRunSync = jest.fn();
 const mockRunCryptoSync = jest.fn();

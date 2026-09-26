@@ -1,4 +1,5 @@
-import type { AccountRow } from '../../db/schema';
+import type { AccountRow } from '@kiko/db';
+
 import type { BankProviderId } from '../../bank-sync/provider';
 import { bankProviderRegistry } from '../../bank-sync/registry';
 import { isBalanceProviderId } from '../../crypto-sync/provider';

@@ -4,8 +4,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { formatDateTime } from '@kiko/dates';
-
-import type { AccountRow, HoldingRow } from '../../../db/schema';
+import type { AccountRow, HoldingRow } from '@kiko/db';
 
 import CryptoSyncSection from './crypto-sync-section.component';
 
@@ -14,7 +13,7 @@ const mockSync = jest.fn();
 const mockUseCryptoSync = jest.fn();
 const mockDisconnect = jest.fn();
 
-jest.mock('../../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
 jest.mock('@kiko/sync/use-crypto-sync', () => ({

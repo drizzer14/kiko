@@ -3,6 +3,7 @@ import { formatDate } from '@kiko/dates';
 import maybe, { foldMap } from 'fnts/maybe';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
+import { useDataReady, useLiveQuery } from '@kiko/db';
 
 import Box from '../box';
 import Text from '../text';
@@ -17,8 +18,6 @@ import {
 import { Money } from '../../../currency/money';
 import TransactionCard from '../transaction-card';
 import { categoriesRepo } from '../../../categories/repo';
-import { useDataReady } from '../../../db/use-data-ready';
-import { useLiveQuery } from '../../../db/use-live-query';
 import { categoryForMcc } from '../../../monobank/mcc-category';
 import { resolveCategoryColor } from '../../../statistics/category-breakdown';
 import { transactionRowDescription } from '../../../transactions/row-description';

@@ -1,4 +1,5 @@
-import type { AccountRow } from '../../db/schema';
+import type { AccountRow } from '@kiko/db';
+
 import type { HoldingType } from '../holding-type';
 import { recordByType } from '../holding-descriptor';
 import { entityColorsDark } from '../../design-system/palette';

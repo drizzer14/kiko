@@ -1,7 +1,7 @@
 import maybe, { foldMap } from 'fnts/maybe';
+import type { TransactionRow } from '@kiko/db';
 
 import type { ParsedTransaction } from '../parser';
-import type { TransactionRow } from '../../db/schema';
 import { categoryForMcc } from '../../monobank/mcc-category';
 import { normalizeTransactionName } from '../../transactions/normalize-name';
 

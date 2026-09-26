@@ -4,7 +4,7 @@ import {
   type CompoundingFrequency,
   type TermDepositMeta,
 } from '@kiko/holdings/holding-metadata';
-import type { HoldingRow } from '@kiko/db/schema';
+import type { HoldingRow } from '@kiko/db';
 import { parseAmount } from '@kiko/currency/parse';
 import { useCallback, useRef, useState } from 'react';
 import type { TextInputInstance } from 'react-native';

@@ -34,8 +34,8 @@ jest.mock('../use-app-lock', () => ({
 // `settingsRepo` stub is only reached by `MigrationsGate` itself.
 type SettingsRow = { language?: string | null };
 const mockGetSettings = jest.fn<Promise<SettingsRow[]>, []>();
-jest.mock('../../db/client', () => ({ initDatabase: () => Promise.resolve() }));
-jest.mock('../../db/run-migrations', () => ({ runMigrations: () => Promise.resolve() }));
+jest.mock('@kiko/db/client', () => ({ initDatabase: () => Promise.resolve() }));
+jest.mock('@kiko/db/run-migrations', () => ({ runMigrations: () => Promise.resolve() }));
 jest.mock('../../monobank/token', () => ({ migrateLegacyToken: () => Promise.resolve() }));
 jest.mock('@kiko/monobank/migrate-credential', () => ({
   migrateSingleTokenToPerAccount: () => Promise.resolve(),

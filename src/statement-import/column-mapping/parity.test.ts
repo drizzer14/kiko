@@ -6,8 +6,8 @@
 // upsert logic — the real (source, external_id) dedup, without a live
 // database.
 let mockDatabaseTransaction: unknown;
-jest.mock('../../db/client', () => {
-  const actual = jest.requireActual('../../db/client');
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
 
   return {
     ...actual,
@@ -26,6 +26,7 @@ jest.mock('@kiko/holdings/repo', () => ({
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import readXlsxFile from 'read-excel-file/node';
+import { accounts, categoryOverrides, holdings, transactions } from '@kiko/db';
 
 import {
   monobankFixtureInput,
@@ -39,7 +40,6 @@ import { privatbankXlsxFormat } from '../formats/privatbank-xlsx';
 import type { ParsedTransaction, StatementFormatInput } from '../parser';
 import { importParsedStatement, importStatement } from '../import-statement';
 import { procreditBusinessCsvFormat } from '../formats/procredit-business-csv';
-import { accounts, categoryOverrides, holdings, transactions } from '../../db/schema';
 
 import { readTableRows } from './table-rows';
 import { applyColumnMapping } from './apply-column-mapping';

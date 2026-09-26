@@ -1,4 +1,5 @@
 import type { RefObject } from 'react';
+import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useCallback, useRef, useState } from 'react';
 import type { TextInputInstance } from 'react-native';
@@ -21,7 +22,6 @@ import {
   type LoanSchedule,
 } from '../../../../../holdings/holding-metadata';
 import { Money } from '../../../../../currency/money';
-import type { HoldingRow } from '../../../../../db/schema';
 import { parseAmount } from '../../../../../currency/parse';
 import { shiftDecimal } from '../../../../../currency/decimal';
 import { loanInstallments } from '../../../../../holdings/loan-schedule';

@@ -3,8 +3,8 @@
 // fake transaction handle so the test can capture every insert issued
 // inside that single transaction.
 let mockDatabaseTransaction: unknown;
-jest.mock('../db/client', () => {
-  const actual = jest.requireActual('../db/client');
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
 
   return {
     ...actual,
@@ -13,11 +13,11 @@ jest.mock('../db/client', () => {
 });
 
 import { Money } from '@kiko/currency/money';
+import { accounts, holdings, transactions } from '@kiko/db';
 import { captureSetDatabaseTransaction } from '@kiko/db/capture-set-tx';
 import { renderCondition } from '@kiko/db/render-condition-test-helper';
 import { inArrayClauseFromCondition } from '@kiko/db/in-array-clause-test-helper';
 
-import { accounts, holdings, transactions } from '../db/schema';
 import { isSyncedAccount, isSyncedHolding } from '../holdings/deletable';
 
 import { accountsRepo } from './accounts.repo';

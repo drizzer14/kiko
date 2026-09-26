@@ -6,7 +6,7 @@ jest.mock('../../crypto-sync/binance/binance.credentials', () => ({
   readCredentials: (id: string) => mockReadCredentials(id),
 }));
 
-import type { AccountRow } from '../../db/schema';
+import type { AccountRow } from '@kiko/db';
 
 import { readExportSecrets } from './read-secrets';
 

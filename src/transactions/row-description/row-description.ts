@@ -1,6 +1,6 @@
 import type { TFunction } from 'i18next';
+import type { TransactionRow } from '@kiko/db';
 
-import type { TransactionRow } from '../../db/schema';
 import { exchangeLegDescription } from '../exchange-description';
 import { defaultTransactionDescription } from '../default-description';
 

@@ -1,5 +1,6 @@
+import type { HoldingRow } from '@kiko/db';
+
 import { holdingValue } from '../holding-value';
-import type { HoldingRow } from '../../db/schema';
 import { buildPriceBook } from '../../prices/price-book';
 import { holdingInstrument } from '../../prices/instrument';
 import { buildNetWorthSeries } from '../../statistics/net-worth-series';

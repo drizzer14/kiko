@@ -5,8 +5,8 @@
 // write of the balance happens inside the same unit and uses the DB-read
 // base (5000) + amount, not a caller-supplied snapshot.
 let mockDatabaseTransaction: unknown;
-jest.mock('../../db/client', () => {
-  const actual = jest.requireActual('../../db/client');
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
 
   return {
     ...actual,
@@ -19,8 +19,7 @@ import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
 import { drizzle } from 'drizzle-orm/sqlite-proxy';
 import { renderCondition } from '@kiko/db/render-condition-test-helper';
-
-import { accounts, categoryOverrides, holdings, transactions } from '../../db/schema';
+import { accounts, categoryOverrides, holdings, transactions } from '@kiko/db';
 
 import { transactionsRepo } from './transactions.repo';
 

@@ -1,6 +1,5 @@
+import type { PricePointRow } from '@kiko/db';
 import type { Currency } from '@kiko/currency/currency';
-
-import type { PricePointRow } from '../../db/schema';
 
 /**
  * A transaction linked to a loan (`transactions.loanHoldingId`), with the

@@ -3,8 +3,8 @@
 // callback against a fake transaction handle backed by an in-memory store —
 // mirrors `src/prices/price-points-repo/price-points.repo.test.ts`.
 let mockDatabaseTransaction: unknown;
-jest.mock('../../db/client', () => {
-  const actual = jest.requireActual('../../db/client');
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
 
   return {
     ...actual,

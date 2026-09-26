@@ -2,8 +2,8 @@
 // transaction). Override `write` to run the callback against a fake transaction
 // handle so the test can capture the update payload.
 let mockDatabaseTransaction: unknown;
-jest.mock('../db/client', () => {
-  const actual = jest.requireActual('../db/client');
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
 
   return {
     ...actual,
@@ -11,7 +11,8 @@ jest.mock('../db/client', () => {
   };
 });
 
-import { database } from '../db/client';
+import { database } from '@kiko/db';
+
 import type { SavedColumnMapping } from '../statement-import/column-mapping';
 
 import { settingsRepo } from './settings.repo';

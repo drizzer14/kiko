@@ -6,6 +6,7 @@ import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { useUnistyles } from 'react-native-unistyles';
+import { useDataReady, useLiveQuery } from '@kiko/db';
 import { Pressable, type ScrollViewInstance } from 'react-native';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -13,8 +14,6 @@ import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-
 
 import Box from '../../design-system/components/box';
 import Card from '../../design-system/components/card';
-import { useDataReady } from '../../db/use-data-ready';
-import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
 import type { Currency } from '../../currency/currency';
 import { usePriceBook } from '../../prices/use-price-book';

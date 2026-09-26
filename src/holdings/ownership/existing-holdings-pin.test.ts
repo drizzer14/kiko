@@ -1,6 +1,7 @@
+import type { HoldingRow } from '@kiko/db';
+
 import { holdingValue } from '../holding-value';
 import { netWorth } from '../../rates/conversion';
-import type { HoldingRow } from '../../db/schema';
 import { buildPriceBook } from '../../prices/price-book';
 import { holdingInstrument } from '../../prices/instrument';
 import { sumByCurrency } from '../../rates/currency-totals';

@@ -141,7 +141,7 @@ const mockUseLiveQuery = jest.fn(
   },
 );
 
-jest.mock('../../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   // Key on the subscribed table: the holdings query drives edit-mode hydration,
   // the accounts query drives the allowed-type filter and the sync gate, and
   // the bond_register query drives the ISIN-mode lookup. Both

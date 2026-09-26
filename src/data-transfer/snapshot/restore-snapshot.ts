@@ -1,6 +1,4 @@
 // src/data-transfer/snapshot/restore-snapshot.ts
-import { isCurrencyAllowedForHoldingType } from '@kiko/holdings/holding-currency';
-
 import {
   accounts,
   bondRegister,
@@ -17,10 +15,12 @@ import {
   syncState,
   type TransactionRow,
   transactions,
-} from '../../db/schema';
-import { write } from '../../db/client';
+  write,
+  chunkForTable,
+} from '@kiko/db';
+import { isCurrencyAllowedForHoldingType } from '@kiko/holdings/holding-currency';
+
 import type { Currency } from '../../currency/currency';
-import { chunkForTable } from '../../db/chunk-for-table';
 import { entityColorsDark } from '../../design-system/palette';
 import { upgradeLegacyDedupKey } from '../../statement-import/mapping/upgrade-dedup-key';
 

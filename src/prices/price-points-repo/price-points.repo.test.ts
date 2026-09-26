@@ -5,8 +5,8 @@
 // than inserting a duplicate — mirrors
 // `src/rates/rate-history-repo/rate-history.repo.test.ts`.
 let mockDatabaseTransaction: unknown;
-jest.mock('../../db/client', () => {
-  const actual = jest.requireActual('../../db/client');
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
 
   return {
     ...actual,
@@ -14,7 +14,7 @@ jest.mock('../../db/client', () => {
   };
 });
 
-import type { PricePointRow } from '../../db/schema';
+import type { PricePointRow } from '@kiko/db';
 
 import { pricePointsRepo } from './price-points.repo';
 

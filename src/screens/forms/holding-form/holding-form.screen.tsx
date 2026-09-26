@@ -7,6 +7,7 @@ import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 import { holdingCurrencyOptions } from '@kiko/holdings/holding-currency';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import { useLiveQuery, type AccountRow, type HoldingRow } from '@kiko/db';
 import type { ScrollViewInstance, TextInputInstance } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -20,7 +21,6 @@ import {
 } from '../../../holdings/holding-type';
 import HoldingTypeField from '../holding-type-field';
 import Box from '../../../design-system/components/box';
-import { useLiveQuery } from '../../../db/use-live-query';
 import type { Currency } from '../../../currency/currency';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
@@ -32,7 +32,6 @@ import {
 } from '../../../design-system/scroll-to-field/scroll-to-field';
 import Divider from '../../../design-system/components/divider';
 import { needsPriceBook } from '../../../holdings/priced-value';
-import type { AccountRow, HoldingRow } from '../../../db/schema';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import { resolveEntityColor } from '../../../design-system/entity-tint';

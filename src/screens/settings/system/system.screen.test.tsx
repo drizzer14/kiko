@@ -41,7 +41,7 @@ jest.mock('@kiko/settings/settings.repo', () => ({
     setLockEnabled: (...args: unknown[]) => mockSetLockEnabled(...args),
   },
 }));
-jest.mock('../../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: () => ({ data: mockLiveQueryData, isLoading: mockLiveQueryIsLoading }),
 }));
 

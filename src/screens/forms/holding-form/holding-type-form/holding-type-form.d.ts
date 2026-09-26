@@ -1,6 +1,6 @@
 import type { RefObject } from 'react';
+import type { HoldingRow } from '@kiko/db';
 import type { Money } from '@kiko/currency/money';
-import type { HoldingRow } from '@kiko/db/schema';
 import type { Currency } from '@kiko/currency/currency';
 import type { PriceBook } from '@kiko/prices/price-book';
 

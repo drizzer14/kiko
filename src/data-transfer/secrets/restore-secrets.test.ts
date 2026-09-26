@@ -12,7 +12,7 @@ jest.mock('../../crypto-sync/binance/binance.credentials', () => ({
 // module at all — if a future edit adds a `storeDbKey(...)` call, THIS mock
 // is what makes the "never restores the DB key" test below able to fail.
 const mockStoreDbKey = jest.fn();
-jest.mock('../../db/keys/db-key', () => ({ storeDbKey: (key: string) => mockStoreDbKey(key) }));
+jest.mock('@kiko/db/keys/db-key', () => ({ storeDbKey: (key: string) => mockStoreDbKey(key) }));
 
 import type { ExportSecrets } from '../payload';
 

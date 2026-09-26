@@ -4,6 +4,7 @@
 // fully injected through BalanceSyncDeps, so the real repos are never exercised
 // here.
 import { i18n } from '@kiko/i18n/init';
+import type { AccountRow, HoldingRow } from '@kiko/db';
 
 import {
   getProgressSnapshot,
@@ -12,7 +13,6 @@ import {
   setSyncProgress,
   subscribeProgress,
 } from '../../monobank/sync-status';
-import type { AccountRow, HoldingRow } from '../../db/schema';
 import type { BalanceProvider, ProviderBalance, SyncTarget } from '../provider';
 
 import { type BalanceSyncDeps, runBalanceSync } from './sync';

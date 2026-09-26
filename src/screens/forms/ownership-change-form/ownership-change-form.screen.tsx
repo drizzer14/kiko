@@ -1,7 +1,7 @@
+import { useLiveQuery } from '@kiko/db';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
-import { useLiveQuery } from '@kiko/db/use-live-query';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { type FC, useEffect, useRef, useState } from 'react';

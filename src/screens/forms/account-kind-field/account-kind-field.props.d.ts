@@ -1,4 +1,4 @@
-import type { AccountRow } from '../../../db/schema';
+import type { AccountRow } from '@kiko/db';
 
 // The account-form's own `Kind` re-exports this — the SAME `accounts.kind`
 // union the schema owns (`db/schema.ts`), so a later widening (metals, debt,

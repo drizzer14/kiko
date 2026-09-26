@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { match } from 'ts-pattern';
 import * as RNFS from 'react-native-fs';
+import { useLiveQuery } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
@@ -31,7 +32,6 @@ import {
   deleteLocalStatementCopy,
 } from '../../statement-import/read-statement-file';
 import Box from '../../design-system/components/box';
-import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
 import Screen from '../../design-system/components/screen';
 import {

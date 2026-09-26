@@ -6,17 +6,11 @@
 // leave the imported app with no categories and no settings row.
 import { SETTINGS_ID } from '@kiko/settings';
 import type { DataSnapshot } from '@kiko/data-transfer';
+import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
+import { readSeedCategoryColors } from '@kiko/db/__fixtures__/seed-category-colors';
+import type { AccountRow, CategoryRow, HoldingRow, SettingsRow, TransactionRow } from '@kiko/db';
 
-import type {
-  AccountRow,
-  CategoryRow,
-  HoldingRow,
-  SettingsRow,
-  TransactionRow,
-} from '../../../src/db/schema';
 import { ANCHOR, type ScreenshotDataset } from '../seed/screenshot-seed';
-import { SEEDED_CATEGORIES } from '../../../src/db/__fixtures__/seeded-categories';
-import { readSeedCategoryColors } from '../../../src/db/__fixtures__/seed-category-colors';
 
 /**
  * The 10 default categories, sourced from the same fixture the repo tests

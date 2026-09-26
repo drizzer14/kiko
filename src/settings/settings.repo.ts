@@ -1,9 +1,7 @@
 import { eq } from 'drizzle-orm';
-import type { Repository } from '@kiko/db/repository';
 import type { AppLanguage } from '@kiko/i18n/device-language';
+import { type Repository, settings, database, write } from '@kiko/db';
 
-import { settings } from '../db/schema';
-import { database, write } from '../db/client';
 import type { Currency } from '../currency/currency';
 import type { TrendFilter } from '../statistics/trend-filter';
 import type { SavedColumnMapping } from '../statement-import/column-mapping';

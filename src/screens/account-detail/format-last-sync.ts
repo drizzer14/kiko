@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next';
+import type { HoldingRow } from '@kiko/db';
 import { formatDateTime } from '@kiko/dates';
 
-import type { HoldingRow } from '../../db/schema';
 import { syncedAtOf } from '../../holdings/holding-metadata';
 
 /**

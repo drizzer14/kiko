@@ -2,8 +2,9 @@
 // path applies, so `refreshMetalPrices`'s backfill branch calls
 // `fetchNbuMetalHistory` (one range call per metal), and its already-priced
 // branch calls `fetchNbuMetalsCurrent` (the shared current-exchange payload).
+import type { HoldingRow, PricePointRow } from '@kiko/db';
+
 import type { Metal } from '../../holdings/holding-metadata';
-import type { HoldingRow, PricePointRow } from '../../db/schema';
 import type { NbuMetalHistoryPoint, NbuMetalRate } from '../nbu-metals';
 
 import { type MetalRefreshDeps, refreshMetalPrices } from './metal-refresh';

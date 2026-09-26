@@ -1,8 +1,9 @@
+import type { AccountRow, HoldingRow } from '@kiko/db';
+
 import { Money } from '../../currency/money';
 import { canConvert } from '../../rates/net-worth-view';
 import type { Currency } from '../../currency/currency';
 import { holdingValue } from '../../holdings/holding-value';
-import type { AccountRow, HoldingRow } from '../../db/schema';
 import { convert, type RateTable } from '../../rates/conversion';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import { resolveEntityColor } from '../../design-system/entity-tint';

@@ -1,8 +1,6 @@
 import { inArray, sql } from 'drizzle-orm';
-import type { Repository } from '@kiko/db/repository';
+import { type Repository, database, write, categoryOverrides, transactions } from '@kiko/db';
 
-import { database, write } from '../../db/client';
-import { categoryOverrides, transactions } from '../../db/schema';
 import { normalizeTransactionName } from '../../transactions/normalize-name';
 
 export const categoryOverridesRepo = {

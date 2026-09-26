@@ -1,9 +1,8 @@
 import { StyleSheet } from 'react-native';
+import type { HoldingRow } from '@kiko/db';
 import type { ComponentProps } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
-
-import type { HoldingRow } from '../../../db/schema';
 import '../../../design-system/unistyles';
 import '@kiko/i18n/init';
 import { darkTheme } from '../../../design-system/theme';

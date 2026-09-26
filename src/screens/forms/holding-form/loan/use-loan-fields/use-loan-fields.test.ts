@@ -3,7 +3,7 @@ jest.mock('@kiko/holdings/repo', () => ({
   holdingsRepo: { updateLoan: (...args: unknown[]) => mockUpdateLoan(...args) },
 }));
 
-import type { HoldingRow } from '@kiko/db/schema';
+import type { HoldingRow } from '@kiko/db';
 import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 import { act, renderHook } from '@testing-library/react-native';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';

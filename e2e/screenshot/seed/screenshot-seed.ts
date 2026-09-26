@@ -7,10 +7,10 @@
 // Jest and never through the app. It still imports `../../../src/*` type
 // helpers (schema row types, `Currency`, `AppLanguage`, the palette) because
 // the shape it builds mirrors the real app's own types.
+import type { AccountRow, HoldingRow } from '@kiko/db';
 import type { AppLanguage } from '@kiko/i18n/device-language';
 
 import type { Currency } from '../../../src/currency/currency';
-import type { AccountRow, HoldingRow } from '../../../src/db/schema';
 import { entityColorsDark } from '../../../src/design-system/palette';
 
 // ---------------------------------------------------------------------------

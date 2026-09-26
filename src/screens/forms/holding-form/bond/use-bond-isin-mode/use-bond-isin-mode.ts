@@ -1,6 +1,6 @@
 import either from 'fnts/either';
+import { useLiveQuery } from '@kiko/db';
 import { startOfLocalDay } from '@kiko/dates';
-import { useLiveQuery } from '@kiko/db/use-live-query';
 import type { Currency } from '@kiko/currency/currency';
 import type { BondTerms } from '@kiko/bonds/nbu-register';
 import { normalizeIsin, validateIsin } from '@kiko/bonds/isin';

@@ -1,5 +1,6 @@
+import type { HoldingRow } from '@kiko/db';
+
 import type { SyncTarget } from '../provider';
-import type { HoldingRow } from '../../db/schema';
 
 import {
   type BitcoinWalletDeps,

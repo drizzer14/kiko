@@ -58,7 +58,7 @@ const mockUseLiveQuery = jest.fn();
 const mockAccountRemove = jest.fn();
 const mockAccountReorder = jest.fn();
 
-jest.mock('../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({

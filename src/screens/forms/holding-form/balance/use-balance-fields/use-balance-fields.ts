@@ -1,6 +1,6 @@
+import type { HoldingRow } from '@kiko/db';
 import { Money } from '@kiko/currency/money';
 import { useCallback, useState } from 'react';
-import type { HoldingRow } from '@kiko/db/schema';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { parseAmount } from '@kiko/currency/parse';
 import type { Currency } from '@kiko/currency/currency';

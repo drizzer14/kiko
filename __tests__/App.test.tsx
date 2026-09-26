@@ -60,7 +60,7 @@ jest.mock('@kiko/accounts/accounts.repo', () => {
 // useLiveQuery). This boot smoke test only asserts the screen mounts, so stub
 // the hook to return empty data rather than opening a real op-sqlite reactive
 // subscription.
-jest.mock('../src/db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: () => ({ data: [] }),
 }));
 

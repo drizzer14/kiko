@@ -1,3 +1,4 @@
+import { useLiveQuery } from '@kiko/db';
 import { useTranslation } from 'react-i18next';
 import { type FC, useRef, useState } from 'react';
 import { holdingsRepo } from '@kiko/holdings/repo';
@@ -9,7 +10,6 @@ import DateField from '../date-field';
 import { Money } from '../../../currency/money';
 import { parseAmount } from '../../../currency/parse';
 import Box from '../../../design-system/components/box';
-import { useLiveQuery } from '../../../db/use-live-query';
 import { groupAmount } from '../amount-format/amount-format';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';

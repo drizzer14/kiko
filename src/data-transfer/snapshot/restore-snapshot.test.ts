@@ -1,12 +1,10 @@
 // src/data-transfer/snapshot/restore-snapshot.test.ts
 let mockDatabaseTransaction: unknown;
-jest.mock('../../db/client', () => {
-  const actual = jest.requireActual('../../db/client');
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
 
   return { ...actual, write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction) };
 });
-
-import { getTableColumns } from 'drizzle-orm';
 
 import {
   accounts,
@@ -20,7 +18,9 @@ import {
   settings,
   syncState,
   transactions,
-} from '../../db/schema';
+} from '@kiko/db';
+import { getTableColumns } from 'drizzle-orm';
+
 import { holdingValue } from '../../holdings/holding-value';
 import { computeDedupKeyBase } from '../../statement-import/mapping/mapping';
 

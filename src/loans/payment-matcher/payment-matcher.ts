@@ -1,7 +1,7 @@
+import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 
 import { Money } from '../../currency/money';
-import type { HoldingRow } from '../../db/schema';
 import { dayKeyOf } from '../../prices/price-book';
 import type { Currency } from '../../currency/currency';
 import { loanInstallments } from '../../holdings/loan-schedule';

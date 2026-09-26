@@ -4,8 +4,8 @@
 // Modeled on rates-refresh/crypto-coverage.test.ts: drive the real logic
 // through fast seams, no simulator.
 let mockDatabaseTransaction: unknown;
-jest.mock('../../db/client', () => {
-  const actual = jest.requireActual('../../db/client');
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
 
   return {
     ...actual,
@@ -13,7 +13,8 @@ jest.mock('../../db/client', () => {
   };
 });
 
-import { holdings, transactions } from '../../db/schema';
+import { holdings, transactions } from '@kiko/db';
+
 import { buildCategoryTrend } from '../../statistics/category-trend';
 import { seedCounterpartMinorUnits } from '../../holdings/exchange-prefill';
 import { buildCategoryBreakdown } from '../../statistics/category-breakdown';

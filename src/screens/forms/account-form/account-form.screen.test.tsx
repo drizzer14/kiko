@@ -72,7 +72,7 @@ const mockFetchAccount = jest.fn();
 // the hoisted factory may close over it; create-mode tests leave it empty.
 let mockAccounts: unknown[] = [];
 
-jest.mock('../../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: () => ({ data: mockAccounts }),
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({

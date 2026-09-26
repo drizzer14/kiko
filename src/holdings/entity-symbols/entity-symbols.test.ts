@@ -1,4 +1,5 @@
-import type { AccountRow } from '../../db/schema';
+import type { AccountRow } from '@kiko/db';
+
 import { propertyCategories } from '../holding-metadata';
 import { holdingTypes, holdingTypesForAccountKind } from '../holding-type';
 

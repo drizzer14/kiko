@@ -4,6 +4,7 @@ import { accountsRepo } from '@kiko/accounts';
 import { syncStateRepo } from '@kiko/sync-state';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { holdingsRepo, type MonobankHolding } from '@kiko/holdings/repo';
+import type { AccountRow, HoldingRow, SyncStateRow, TransactionRow } from '@kiko/db';
 
 import {
   beginProgressSession,
@@ -18,7 +19,6 @@ import { categoryForMcc } from '../mcc-category';
 import { currencyFromCode } from '../currency-code';
 import { fetchClientInfo, fetchStatement } from '../client';
 import { createRequestGate, type RequestGate } from '../throttle';
-import type { AccountRow, HoldingRow, SyncStateRow, TransactionRow } from '../../db/schema';
 import type { MonobankAccount, MonobankJar, MonobankStatementItem } from '../monobank-types';
 
 type NewHolding = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &

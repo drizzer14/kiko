@@ -101,7 +101,7 @@ jest.mock('@kiko/settings/settings.repo', () => ({
     setDefaultCategoryKey: (...args: unknown[]) => mockSetDefault(...args),
   },
 }));
-jest.mock('../../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (_query: unknown, keys: string[]) =>
     keys?.[0] === 'settings'
       ? { data: mockSettingsRows, isLoading: mockSettingsIsLoading }

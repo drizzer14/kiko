@@ -13,15 +13,14 @@
 // `balanceSetAt` was already live in the database, not recovered from a
 // legacy restore.
 let mockDatabaseTransaction: unknown;
-jest.mock('../../db/client', () => {
-  const actual = jest.requireActual('../../db/client');
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
 
   return { ...actual, write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction) };
 });
 
 import { transactionsRepo } from '@kiko/transactions/repo';
-
-import { accounts, categoryOverrides, holdings, transactions } from '../../db/schema';
+import { accounts, categoryOverrides, holdings, transactions } from '@kiko/db';
 
 import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';

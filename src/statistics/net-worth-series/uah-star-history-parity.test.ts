@@ -1,10 +1,10 @@
+import type { CurrencyRateHistoryRow } from '@kiko/db';
 import { runBackfill } from '@kiko/rates/history-backfill';
 
 import { Money, toMajor } from '../../currency/money';
 import type { Currency } from '../../currency/currency';
 import type { SeriesHolding } from '../holding-value-at';
 import { toUtcMidnight } from '../../rates/history-entry';
-import type { CurrencyRateHistoryRow } from '../../db/schema';
 
 import { buildNetWorthSeries } from './net-worth-series';
 

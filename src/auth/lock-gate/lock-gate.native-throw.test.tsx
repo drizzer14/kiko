@@ -30,7 +30,7 @@ type SettingsRow = { lockEnabled: boolean };
 const mockLiveQuery: { current: { data: SettingsRow[]; isLoading: boolean } } = {
   current: { data: [{ lockEnabled: true }], isLoading: false },
 };
-jest.mock('../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: () => mockLiveQuery.current,
 }));
 jest.mock('@kiko/settings/settings.repo', () => ({

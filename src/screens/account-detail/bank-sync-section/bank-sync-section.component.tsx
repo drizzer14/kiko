@@ -4,6 +4,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { useSync } from '@kiko/sync/use-sync';
 import { useTranslation } from 'react-i18next';
 import { syncStateRepo } from '@kiko/sync-state';
+import { type AccountRow, useLiveQuery } from '@kiko/db';
 
 import {
   bankProviderIdOf,
@@ -13,11 +14,9 @@ import {
 import { styles } from '../account-detail.styles';
 import { saveToken } from '../../../monobank/token';
 import AddBankProviderSheet from '../add-bank-sheet';
-import type { AccountRow } from '../../../db/schema';
 import { formatLastSyncAt } from '../format-last-sync';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
-import { useLiveQuery } from '../../../db/use-live-query';
 import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
 import { bankProviderRegistry } from '../../../bank-sync/registry';

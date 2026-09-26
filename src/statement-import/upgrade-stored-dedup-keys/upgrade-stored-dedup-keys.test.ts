@@ -1,6 +1,6 @@
 let mockDatabaseTransaction: unknown;
-jest.mock('../../db/client', () => {
-  const actual = jest.requireActual('../../db/client');
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
 
   return {
     ...actual,
@@ -8,8 +8,8 @@ jest.mock('../../db/client', () => {
   };
 });
 
-import { settings, transactions } from '../../db/schema';
-import { renderCondition } from '../../db/render-condition-test-helper';
+import { settings, transactions } from '@kiko/db';
+import { renderCondition } from '@kiko/db/render-condition-test-helper';
 
 import { upgradeStoredDedupKeys } from './upgrade-stored-dedup-keys';
 

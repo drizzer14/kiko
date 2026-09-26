@@ -1,6 +1,6 @@
+import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 
-import type { HoldingRow } from '../../db/schema';
 import type { Currency } from '../../currency/currency';
 import type { TrendTransaction } from '../category-trend';
 import { asLoanMeta } from '../../holdings/holding-metadata';

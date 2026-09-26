@@ -1,12 +1,12 @@
 import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
+import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 import '../../unistyles';
 import '@kiko/i18n/init';
 import { darkTheme } from '../../theme';
-import { SEEDED_CATEGORIES } from '../../../db/__fixtures__/seeded-categories';
 
 import IconPickerModal from '.';
 import { KIKO_CATEGORIES_ICONS, KIKO_ENTITIES_ICONS } from './icon-pools';

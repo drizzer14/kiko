@@ -1,7 +1,7 @@
+import type { HoldingRow } from '@kiko/db';
 import { holdingDescriptor } from '@kiko/holdings/holding-descriptor';
 
 import { Money } from '../../currency/money';
-import type { HoldingRow } from '../../db/schema';
 import { canConvert } from '../../rates/net-worth-view';
 import type { Currency } from '../../currency/currency';
 import { holdingValue } from '../../holdings/holding-value';

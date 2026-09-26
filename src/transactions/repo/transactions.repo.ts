@@ -1,21 +1,23 @@
-import { match } from 'ts-pattern';
-import type { Repository } from '@kiko/db/repository';
-import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/repo';
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
-
 import {
+  type Repository,
   accounts,
   categoryOverrides,
   type HoldingRow,
   holdings,
   type TransactionRow,
   transactions,
-} from '../../db/schema';
-import { id } from '../../db/id';
-import { database, write } from '../../db/client';
+  id,
+  database,
+  write,
+  chunkForTable,
+  chunkRows,
+} from '@kiko/db';
+import { match } from 'ts-pattern';
+import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/repo';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
+
 import type { Currency } from '../../currency/currency';
 import { normalizeTransactionName } from '../normalize-name';
-import { chunkForTable, chunkRows } from '../../db/chunk-for-table';
 import type { ClosingBalance } from '../../statement-import/parser';
 import { exchangeReceivePath } from '../../holdings/exchange-destination';
 import type { DepositContribution } from '../../holdings/holding-metadata';

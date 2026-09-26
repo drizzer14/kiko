@@ -1,5 +1,6 @@
+import type { HoldingRow } from '@kiko/db';
+
 import type { Money } from '../../currency/money';
-import type { HoldingRow } from '../../db/schema';
 import { holdingsRepo } from '../repo/holdings.repo';
 import { holdingDescriptorOrUndefined } from '../holding-descriptor';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';

@@ -5,8 +5,8 @@ import {
   type BondMeta,
   type BondCouponFrequency,
 } from '@kiko/holdings/holding-metadata';
+import type { HoldingRow } from '@kiko/db';
 import { Money } from '@kiko/currency/money';
-import type { HoldingRow } from '@kiko/db/schema';
 import { parseAmount } from '@kiko/currency/parse';
 import { useCallback, useRef, useState } from 'react';
 import type { TextInputInstance } from 'react-native';

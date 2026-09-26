@@ -5,9 +5,9 @@ import {
   type MetalForm,
   type MetalUnit,
 } from '@kiko/holdings/holding-metadata';
+import type { HoldingRow } from '@kiko/db';
 import { Money } from '@kiko/currency/money';
 import type { Lot } from '@kiko/holdings/lots';
-import type { HoldingRow } from '@kiko/db/schema';
 import { parseAmount } from '@kiko/currency/parse';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { useCallback, useRef, useState } from 'react';

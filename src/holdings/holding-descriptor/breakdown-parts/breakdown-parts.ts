@@ -1,5 +1,6 @@
+import type { HoldingRow } from '@kiko/db';
+
 import { Money } from '../../../currency/money';
-import type { HoldingRow } from '../../../db/schema';
 
 export type HoldingValueBreakdown = {
   gross: Money;

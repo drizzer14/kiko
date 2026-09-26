@@ -1,4 +1,4 @@
-import type { HoldingRow } from '../../db/schema';
+import type { HoldingRow } from '@kiko/db';
 
 import {
   BINANCE_REQUEST_INTERVAL_MS,

@@ -1,9 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { SETTINGS_ID } from '@kiko/settings';
+import { write, chunkRows, settings, transactions } from '@kiko/db';
 
-import { write } from '../../db/client';
-import { chunkRows } from '../../db/chunk-for-table';
-import { settings, transactions } from '../../db/schema';
 import { upgradeLegacyDedupKey } from '../mapping/upgrade-dedup-key';
 
 // Bounds how many rewrites this loop groups together before moving on to the

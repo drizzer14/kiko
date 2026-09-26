@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { type LiveQueryOptions, useLiveQuery } from '@kiko/db';
 
 import { pricePointsRepo } from '../price-points-repo';
 import { buildPriceBook, type PriceBook } from '../price-book';
-import { type LiveQueryOptions, useLiveQuery } from '../../db/use-live-query';
 
 type UsePriceBookResult = { book: PriceBook; isLoading: boolean };
 

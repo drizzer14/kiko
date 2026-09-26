@@ -11,7 +11,7 @@ import type {
   SettingsRow,
   SyncStateRow,
   TransactionRow,
-} from '../../db/schema';
+} from '@kiko/db';
 
 /**
  * Every logical table in the app, as a flat row-array snapshot. This is the

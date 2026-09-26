@@ -1,6 +1,5 @@
 import { join } from 'node:path';
 import { readdirSync, readFileSync } from 'node:fs';
-import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 
 import { darkTheme } from '../design-system/theme';
 
@@ -8,6 +7,7 @@ import {
   parseSeedCategoryColors,
   readSeedCategoryColorMigration,
 } from './__fixtures__/seed-category-colors';
+import { SEEDED_CATEGORIES } from './__fixtures__/seeded-categories';
 
 const migrationsDir = join(__dirname, '../../drizzle/migrations');
 const sqlFiles = (): string[] =>

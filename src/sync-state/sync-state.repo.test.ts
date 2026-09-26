@@ -5,8 +5,8 @@
 // fake handle interprets the `where(eq(syncState.accountId, id))` clause: a
 // setter must touch only the row for the given account id.
 let mockDatabaseTransaction: unknown;
-jest.mock('../db/client', () => {
-  const actual = jest.requireActual('../db/client');
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
 
   return {
     ...actual,
@@ -14,8 +14,7 @@ jest.mock('../db/client', () => {
   };
 });
 
-import { database } from '../db/client';
-import type { syncState } from '../db/schema';
+import { database, type syncState } from '@kiko/db';
 
 import { syncStateRepo } from './sync-state.repo';
 

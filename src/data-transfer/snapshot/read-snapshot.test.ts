@@ -1,7 +1,7 @@
 // src/data-transfer/snapshot/read-snapshot.test.ts
 let mockResultQueue: unknown[][] = [];
 
-jest.mock('../../db/client', () => ({
+jest.mock('@kiko/db/client', () => ({
   database: {
     select: () => ({
       from: () => ({

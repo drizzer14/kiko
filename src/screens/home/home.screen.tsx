@@ -5,6 +5,7 @@ import type { FC, ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { useSyncAll } from '@kiko/sync/use-sync-all';
+import { useDataReady, useLiveQuery } from '@kiko/db';
 import { categoriesRepo } from '@kiko/categories/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -24,8 +25,6 @@ import {
   resolveCategoryKey,
 } from '../../categories/category-display';
 import Box from '../../design-system/components/box';
-import { useDataReady } from '../../db/use-data-ready';
-import { useLiveQuery } from '../../db/use-live-query';
 import Card from '../../design-system/components/card';
 import Text from '../../design-system/components/text';
 import type { Currency } from '../../currency/currency';

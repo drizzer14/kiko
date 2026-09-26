@@ -1,10 +1,16 @@
+import {
+  type Repository,
+  id,
+  database,
+  write,
+  categories,
+  categoryOverrides,
+  settings,
+  transactions,
+} from '@kiko/db';
 import { asc, eq, sql } from 'drizzle-orm';
-import type { Repository } from '@kiko/db/repository';
 
-import { id } from '../../db/id';
-import { database, write } from '../../db/client';
 import { DEFAULT_CATEGORY_KEY } from '../category-display';
-import { categories, categoryOverrides, settings, transactions } from '../../db/schema';
 
 // The next free slot for a new category: one past the current highest
 // `sortOrder` (or 0 when there are no categories yet), so a freshly created

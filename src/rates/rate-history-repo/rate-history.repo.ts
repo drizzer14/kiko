@@ -1,10 +1,14 @@
+import {
+  type Repository,
+  database,
+  write,
+  type CurrencyRateHistoryRow,
+  currencyRateHistory,
+} from '@kiko/db';
 import { sql } from 'drizzle-orm';
-import type { Repository } from '@kiko/db/repository';
 
 import type { RateTable } from '../conversion';
-import { database, write } from '../../db/client';
 import type { Currency } from '../../currency/currency';
-import { type CurrencyRateHistoryRow, currencyRateHistory } from '../../db/schema';
 
 type NewHistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate' | 'source'>;
 

@@ -6,13 +6,11 @@ import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import { type FC, useCallback, useRef, useState } from 'react';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { type CategoryRow, useDataReady, useLiveQuery } from '@kiko/db';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
 
-import type { CategoryRow } from '../../../db/schema';
 import Box from '../../../design-system/components/box';
-import { useDataReady } from '../../../db/use-data-ready';
-import { useLiveQuery } from '../../../db/use-live-query';
 import Card from '../../../design-system/components/card';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';

@@ -4,8 +4,8 @@
 // both the rule payload and the id-filtered category update issued inside that
 // single transaction.
 let mockDatabaseTransaction: unknown;
-jest.mock('../../db/client', () => {
-  const actual = jest.requireActual('../../db/client');
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
 
   return {
     ...actual,
@@ -14,9 +14,8 @@ jest.mock('../../db/client', () => {
 });
 
 import type { SQL } from 'drizzle-orm';
-
-import { categoryOverrides, transactions } from '../../db/schema';
-import { renderCondition } from '../../db/render-condition-test-helper';
+import { categoryOverrides, transactions } from '@kiko/db';
+import { renderCondition } from '@kiko/db/render-condition-test-helper';
 
 import { categoryOverridesRepo } from './category-overrides.repo';
 

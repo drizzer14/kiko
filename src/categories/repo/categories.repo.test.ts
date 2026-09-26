@@ -6,8 +6,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 // transaction handle so the test can capture the update payload issued inside
 // that single transaction.
 let mockDatabaseTransaction: unknown;
-jest.mock('../../db/client', () => {
-  const actual = jest.requireActual('../../db/client');
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
 
   return {
     ...actual,
@@ -26,7 +26,7 @@ import {
 } from '@kiko/db/__fixtures__/seeded-categories';
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
 
-import { categories, categoryOverrides, transactions } from '../../db/schema';
+import { categories, categoryOverrides, transactions } from '@kiko/db';
 
 import { categoriesRepo } from './categories.repo';
 

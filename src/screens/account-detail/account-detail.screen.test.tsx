@@ -113,7 +113,7 @@ jest.mock('@react-navigation/native', () => ({
     goBack: jest.fn(),
   }),
 }));
-jest.mock('../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
 // `BankSyncSection` (real, unmocked here) calls `useSync` once per render for

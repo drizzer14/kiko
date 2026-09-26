@@ -1,10 +1,8 @@
 import { eq, max } from 'drizzle-orm';
-import type { Repository } from '@kiko/db/repository';
+import { type Repository, database, write, type BondRegisterRow, bondRegister } from '@kiko/db';
 
-import { database, write } from '../../db/client';
 import { dayKeyOf } from '../../prices/price-book';
 import { fetchNbuRegister, type BondTerms } from '../nbu-register';
-import { type BondRegisterRow, bondRegister } from '../../db/schema';
 
 type NewBondRegisterRow = Pick<BondRegisterRow, 'isin' | 'terms' | 'fetchedAt'>;
 

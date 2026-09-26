@@ -1,6 +1,7 @@
+import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
+import { readSeedCategoryColors } from '@kiko/db/__fixtures__/seed-category-colors';
+
 import { buildScreenshotDataset } from '../seed/screenshot-seed';
-import { SEEDED_CATEGORIES } from '../../../src/db/__fixtures__/seeded-categories';
-import { readSeedCategoryColors } from '../../../src/db/__fixtures__/seed-category-colors';
 
 import { buildDemoSnapshot } from './build-demo-snapshot';
 

@@ -39,7 +39,7 @@ jest.mock('../transaction-card', () => ({
 // below keeps behaving exactly as before.
 let mockCategoriesLoading = false;
 let mockSettingsLoading = false;
-jest.mock('../../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (_query: unknown, tables: string[]) =>
     tables[0] === 'settings'
       ? { data: [], isLoading: mockSettingsLoading }

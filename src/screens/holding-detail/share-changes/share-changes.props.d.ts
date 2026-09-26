@@ -1,4 +1,4 @@
-import type { HoldingRow } from '@kiko/db/schema';
+import type { HoldingRow } from '@kiko/db';
 
 export type ShareChangesProps = {
   // Undefined until the holding loads.

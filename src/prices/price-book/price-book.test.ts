@@ -1,5 +1,6 @@
+import type { PricePointRow } from '@kiko/db';
+
 import { shareInstrument } from '../instrument';
-import type { PricePointRow } from '../../db/schema';
 
 import { dayKeyOf, priceAt, buildPriceBook, latestPoint, EMPTY_PRICE_BOOK } from './price-book';
 

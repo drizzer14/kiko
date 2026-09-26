@@ -1,7 +1,8 @@
+import type { AccountRow, HoldingRow, TransactionRow } from '@kiko/db';
+
 import { bankProviderIds } from '../../bank-sync/provider';
 import { syncedMetadataFields } from '../holding-metadata';
 import { balanceProviderIds } from '../../crypto-sync/provider';
-import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
 
 /**
  * Every `accounts.institution` value that marks an account as owned by a

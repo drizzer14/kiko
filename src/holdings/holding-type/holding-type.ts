@@ -1,4 +1,5 @@
-import type { AccountRow, HoldingRow } from '../../db/schema';
+import type { AccountRow, HoldingRow } from '@kiko/db';
+
 import { bankSellsMetals } from '../../bank-sync/bank-catalog';
 
 // Runtime tuple mirroring the `holdings.type` enum in db/schema.ts. The

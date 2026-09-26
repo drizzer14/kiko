@@ -8,8 +8,8 @@
 // calls in the re-import test below, the same way that file spans one store
 // across a disconnect-then-reconnect sequence.
 let mockDatabaseTransaction: unknown;
-jest.mock('../../db/client', () => {
-  const actual = jest.requireActual('../../db/client');
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
 
   return {
     ...actual,
@@ -43,12 +43,12 @@ import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import readXlsxFile from 'read-excel-file/node';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { accounts, categoryOverrides, holdings, transactions } from '@kiko/db';
 
 import { StatementParseError } from '../parser';
 import { applyColumnMapping } from '../column-mapping';
 import type { ColumnMapping } from '../column-mapping';
 import { ukrsibBusinessFixtureInput } from '../formats/format-test-fixtures';
-import { accounts, categoryOverrides, holdings, transactions } from '../../db/schema';
 
 import { importStatement, importParsedStatement } from './import-statement';
 

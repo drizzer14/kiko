@@ -1,4 +1,5 @@
-import type { HoldingRow } from '../../db/schema';
+import type { HoldingRow } from '@kiko/db';
+
 import type { RateTable } from '../../rates/conversion';
 import { buildPriceBook } from '../../prices/price-book';
 import { holdingInstrument } from '../../prices/instrument';

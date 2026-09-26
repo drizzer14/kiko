@@ -9,8 +9,8 @@
 // transaction. The query-builder tests below use `database` directly, which the
 // spread of the real module leaves untouched.
 let mockDatabaseTransaction: unknown;
-jest.mock('../../db/client', () => {
-  const actual = jest.requireActual('../../db/client');
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
 
   return {
     ...actual,
@@ -21,15 +21,14 @@ jest.mock('../../db/client', () => {
   };
 });
 
-import { write } from '@kiko/db/client';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
 import { captureSetDatabaseTransaction } from '@kiko/db/capture-set-tx';
+import { write, accounts, holdings, pricePoints, transactions } from '@kiko/db';
 import { inArrayClauseFromCondition } from '@kiko/db/in-array-clause-test-helper';
 
 import { holdingValueAt } from '../../statistics/holding-value-at';
-import { accounts, holdings, pricePoints, transactions } from '../../db/schema';
 
 import { holdingsRepo, type LoanPricePointOp } from './holdings.repo';
 

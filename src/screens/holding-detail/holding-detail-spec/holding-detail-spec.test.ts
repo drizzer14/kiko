@@ -1,4 +1,4 @@
-import type { HoldingRow } from '@kiko/db/schema';
+import type { HoldingRow } from '@kiko/db';
 import { addMonths } from '@kiko/holdings/interest';
 import type { BondMeta, LoanMeta } from '@kiko/holdings/holding-metadata';
 import { buildPriceBook, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';

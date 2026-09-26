@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
+import type { AccountRow, HoldingRow } from '@kiko/db';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 
 import {
@@ -13,7 +14,6 @@ import {
 import { styles } from '../account-detail.styles';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
-import type { AccountRow, HoldingRow } from '../../../db/schema';
 import SymbolIcon from '../../../design-system/components/symbol';
 import { resyncRequest } from '../../../crypto-sync/resync-request';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';

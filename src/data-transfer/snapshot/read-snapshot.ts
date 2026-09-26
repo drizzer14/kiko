@@ -1,6 +1,4 @@
 // src/data-transfer/snapshot/read-snapshot.ts
-import { asc } from 'drizzle-orm';
-
 import {
   accounts,
   bondRegister,
@@ -13,8 +11,9 @@ import {
   settings,
   syncState,
   transactions,
-} from '../../db/schema';
-import { database } from '../../db/client';
+  database,
+} from '@kiko/db';
+import { asc } from 'drizzle-orm';
 
 import type { DataSnapshot } from './data-snapshot';
 

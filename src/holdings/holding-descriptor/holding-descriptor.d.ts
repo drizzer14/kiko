@@ -1,8 +1,8 @@
 import type { TFunction } from 'i18next';
+import type { HoldingRow } from '@kiko/db';
 
 import type { Lot } from '../lots';
 import type { Money } from '../../currency/money';
-import type { HoldingRow } from '../../db/schema';
 import type { OwnershipShare } from '../ownership';
 import type { PricedHolding } from '../priced-value';
 import type { DerivedEntry } from '../derived-entries';

@@ -22,6 +22,7 @@ import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
 import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
 import { type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
+import { useLiveQuery, type AccountRow, type HoldingRow, type TransactionRow } from '@kiko/db';
 
 import DateTimeRow from '../date-time-row';
 import {
@@ -48,7 +49,6 @@ import LoanPaymentField from '../loan-payment-field';
 import { parseAmount } from '../../../currency/parse';
 import Box from '../../../design-system/components/box';
 import HoldingSelectField from '../holding-select-field';
-import { useLiveQuery } from '../../../db/use-live-query';
 import Text from '../../../design-system/components/text';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
@@ -77,7 +77,6 @@ import { resolveCategoryColor } from '../../../statistics/category-breakdown';
 import { groupAmount, majorAmountText } from '../amount-format/amount-format';
 import { seedCounterpartMinorUnits } from '../../../holdings/exchange-prefill';
 import { normalizeTransactionName } from '../../../transactions/normalize-name';
-import type { AccountRow, HoldingRow, TransactionRow } from '../../../db/schema';
 import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
 import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 

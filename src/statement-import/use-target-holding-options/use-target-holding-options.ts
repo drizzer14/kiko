@@ -1,9 +1,9 @@
+import { useLiveQuery } from '@kiko/db';
 import { accountsRepo } from '@kiko/accounts';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
 
-import { useLiveQuery } from '../../db/use-live-query';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import type { TargetHoldingOption } from '../../design-system/components/target-holding-sheet/target-holding-sheet.props';
 
