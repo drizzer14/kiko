@@ -116,6 +116,10 @@ const CategoryListRow: FC<{
   // native `ActionSheetIOS`; a scrim/back dismiss behaves like Cancel.
   const [deletePending, setDeletePending] = useState(false);
   const displayTitle = isEditing ? title : resolveDefaultCategoryTitle(category.key, title);
+  // The committed name as the user sees it (translated for an un-renamed
+  // default): every accessibility label and the delete sheet title name the
+  // category this way, never by its raw stored seed title.
+  const displayName = resolveDefaultCategoryTitle(category.key, category.title);
   // The category's EFFECTIVE color: its stored hex when picked, else the
   // stable per-key palette hash — computed once and shared by the row icon
   // and the color picker's ringed swatch, so both always agree on what "this
@@ -184,11 +188,11 @@ const CategoryListRow: FC<{
               // still gets a hue (the same stable hash the chart already uses for it)
               // rather than staying neutral.
               iconColor={color}
-              iconAccessibilityLabel={t('categories.changeIconLabel', { title: category.title })}
+              iconAccessibilityLabel={t('categories.changeIconLabel', { title: displayName })}
               onSelectIcon={selectIcon}
               name={displayTitle}
               onChangeName={setTitle}
-              nameAccessibilityLabel={t('categories.titleFieldLabel', { title: category.title })}
+              nameAccessibilityLabel={t('categories.titleFieldLabel', { title: displayName })}
               // Swap to the raw stored title the instant the field gains focus —
               // before any keystroke can land — so what the user actually edits
               // (and what `commitTitle` diffs and persists) is always the raw
@@ -217,7 +221,7 @@ const CategoryListRow: FC<{
               fullWidth={false}
               disabled
               icon="star.fill"
-              accessibilityLabel={t('categories.isDefaultLabel', { title: category.title })}
+              accessibilityLabel={t('categories.isDefaultLabel', { title: displayName })}
               // A permanently-disabled static marker: the press never fires, so
               // it carries an inert no-op rather than the dead `setAsDefault`.
               onPress={() => {}}
@@ -228,7 +232,7 @@ const CategoryListRow: FC<{
               size="compact"
               fullWidth={false}
               icon="star"
-              accessibilityLabel={t('categories.setAsDefaultLabel', { title: category.title })}
+              accessibilityLabel={t('categories.setAsDefaultLabel', { title: displayName })}
               onPress={setAsDefault}
             />
           )}
@@ -245,7 +249,7 @@ const CategoryListRow: FC<{
         <ColorPicker
           value={color}
           onSelect={selectColor}
-          accessibilityLabelPrefix={t('categories.rowColorPrefix', { title: category.title })}
+          accessibilityLabelPrefix={t('categories.rowColorPrefix', { title: displayName })}
         />
 
         {/* The card's bottom row: the labelled destructive Delete on the left
@@ -267,7 +271,7 @@ const CategoryListRow: FC<{
             fullWidth={false}
             disabled={isDefault}
             icon="trash"
-            accessibilityLabel={t('categories.deleteLabel', { title: category.title })}
+            accessibilityLabel={t('categories.deleteLabel', { title: displayName })}
             onPress={openDeleteConfirm}
           >
             {t('common.delete')}
@@ -292,7 +296,7 @@ const CategoryListRow: FC<{
               fullWidth={false}
               icon="arrow.up.to.line"
               textColor={theme.colors.textSecondary}
-              accessibilityLabel={t('categories.moveToTopLabel', { title: category.title })}
+              accessibilityLabel={t('categories.moveToTopLabel', { title: displayName })}
               onPress={onMoveToTop}
             />
 
@@ -302,7 +306,7 @@ const CategoryListRow: FC<{
               fullWidth={false}
               icon="arrow.down.to.line"
               textColor={theme.colors.textSecondary}
-              accessibilityLabel={t('categories.moveToBottomLabel', { title: category.title })}
+              accessibilityLabel={t('categories.moveToBottomLabel', { title: displayName })}
               onPress={onMoveToBottom}
             />
           </Box>
@@ -316,7 +320,7 @@ const CategoryListRow: FC<{
           Cancel. */}
       <ConfirmSheet
         visible={deletePending}
-        title={t('common.deleteNamed', { name: category.title })}
+        title={t('common.deleteNamed', { name: displayName })}
         confirmLabel={t('common.delete')}
         onConfirm={removeCategory}
         onCancel={cancelDelete}

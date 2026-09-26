@@ -653,7 +653,7 @@ describe('CategoriesScreen', () => {
 
       const { getByLabelText } = await renderScreen();
 
-      const field = getByLabelText('Назва Groceries');
+      const field = getByLabelText('Назва Продукти');
       await fireEvent(field, 'focus');
       await fireEvent(field, 'endEditing');
 
@@ -667,11 +667,74 @@ describe('CategoriesScreen', () => {
 
       const { getByLabelText, getByDisplayValue } = await renderScreen();
 
-      const field = getByLabelText('Назва Groceries');
+      const field = getByLabelText('Назва Продукти');
       await fireEvent(field, 'focus');
       await fireEvent(field, 'endEditing');
 
       expect(getByDisplayValue('Продукти')).toBeTruthy();
+    });
+
+    // Every per-card accessibility label names the category as the user SEES
+    // it — the translated default name, never the raw English seed title.
+    it('names an un-renamed default by its translated title in every card accessibility label under uk', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByLabelText, queryByLabelText } = await renderScreen();
+
+      for (const label of [
+        'Змінити іконку Продукти',
+        'Назва Продукти',
+        'Зробити Продукти категорією за замовчуванням',
+        'Видалити Продукти',
+        'Перемістити Продукти нагору',
+        'Перемістити Продукти вниз',
+        'Інше — категорія за замовчуванням',
+      ]) {
+        expect(getByLabelText(label)).toBeTruthy();
+      }
+
+      expect(queryByLabelText(/Groceries|Other/)).toBeNull();
+    });
+
+    it('prefixes the per-card color swatches with the translated title under uk', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getAllByLabelText, queryAllByLabelText } = await renderScreen();
+
+      expect(getAllByLabelText(/^Колір Продукти /).length).toBeGreaterThan(0);
+      expect(queryAllByLabelText(/^Колір Groceries /)).toHaveLength(0);
+    });
+
+    it('titles the delete confirm sheet with the translated name under uk', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByLabelText, getByText, queryByText } = await renderScreen();
+
+      await fireEvent.press(getByLabelText('Видалити Продукти'));
+
+      expect(getByText('Видалити «Продукти»')).toBeTruthy();
+      expect(queryByText('Видалити «Groceries»')).toBeNull();
+    });
+
+    it('keeps a renamed category verbatim in its accessibility labels and delete title under uk', async () => {
+      mockLiveQueryData = mockLiveQueryData.map((category) =>
+        category.key === 'groceries' ? { ...category, title: 'Овочі' } : category,
+      );
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByLabelText, getByText } = await renderScreen();
+
+      await fireEvent.press(getByLabelText('Видалити Овочі'));
+
+      expect(getByText('Видалити «Овочі»')).toBeTruthy();
     });
 
     it('still renames a category via updateTitle when the field is actually edited under uk', async () => {
@@ -681,7 +744,7 @@ describe('CategoriesScreen', () => {
 
       const { getByLabelText } = await renderScreen();
 
-      const field = getByLabelText('Назва Groceries');
+      const field = getByLabelText('Назва Продукти');
       await fireEvent(field, 'focus');
       await fireEvent.changeText(field, 'Овочі');
       await fireEvent(field, 'endEditing');

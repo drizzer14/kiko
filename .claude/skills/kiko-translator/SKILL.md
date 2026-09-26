@@ -31,6 +31,20 @@ to a column. The same rule applies to a placeholder like "Never" for
 last-sync (T-17, `src/screens/account-detail/format-last-sync.ts`): add
 a catalogue key and thread `t` through, don't hardcode the fallback.
 
+## A seeded default category is named by its displayed title everywhere
+
+A seeded default category's stored title is its English seed text
+(`Groceries`); the user sees the translated one (`Продукти`) through
+`resolveDefaultCategoryTitle` (`src/i18n/default-category-title/`), which
+leaves a renamed or custom title verbatim. EVERY place that names a
+category — the visible label, each accessibility label that interpolates
+the name, and a confirm sheet title (`common.deleteNamed`) — takes that
+resolved title, never the raw `category.title`. The categories screen's
+card resolves it once (`displayName`) for all of them; list rows go
+through `resolveCategoryDisplay`/`buildCategoryDisplayMap`
+(`src/categories/category-display/`). A test asserts the labels under
+`uk`, where a raw seed title would show English.
+
 ## The two catalogues change together; a parity test enforces it
 
 `src/i18n/locales/en.ts` and `src/i18n/locales/uk.ts` must carry the
