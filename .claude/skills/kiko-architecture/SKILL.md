@@ -429,9 +429,12 @@ silent (this happened: a live Monobank refresh, back when it wrote
 every ordered cross pair rather than one `X:UAH` row per priced
 currency — ~11,990 rows x 5 params, overflowed the limit and rates
 never saved). The chunking stays even though a live write is now only
-~109 rows (kiko-pricing's "Currency-rate fallback chain"): a `.kiko`
-restore of a pre-star export can still hand `upsertMany` a
-legacy-shaped batch that size.
+~109 rows (kiko-pricing's "Currency-rate fallback chain") — it costs
+nothing at this size and keeps the function safe against the same
+bound-parameter limit regardless of row count. This is NOT because a
+`.kiko` restore routes through `ratesRepo.upsertMany` — it doesn't:
+`restore-snapshot.ts` normalizes and chunks `currencyRates` rows
+itself, with its own `chunkForTable` call (see "Examples" below).
 
 Rule: chunk with `chunkForTable(table, rows)`
 (`src/db/chunk-for-table.ts`) — it derives the safe row-per-chunk

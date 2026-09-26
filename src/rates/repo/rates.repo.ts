@@ -35,9 +35,13 @@ export const ratesRepo = {
       }
       // A full Monobank sync now writes only ~109 rows (one X:UAH row per
       // priced currency, not the ~11,990-row cross join a legacy write once
-      // composed) — well under SQLite's SQLITE_MAX_VARIABLE_NUMBER (32766),
-      // but a `.kiko` restore can still write a much larger legacy-shaped
-      // batch, so this chunking stays, the same way `rateHistoryRepo.upsertMany` does.
+      // composed) — well under SQLite's SQLITE_MAX_VARIABLE_NUMBER (32766).
+      // The chunking stays anyway: it costs nothing at this size and keeps
+      // this function safe against that same bound-parameter limit
+      // regardless of row count, the way `chunkForTable` is used everywhere
+      // else in the app — NOT because a `.kiko` restore routes through this
+      // function (it doesn't: `restore-snapshot.ts` normalizes and chunks
+      // `currencyRates` rows itself, with its own `chunkForTable` call).
       for (const chunk of chunkForTable(currencyRates, rates)) {
         // Upsert on the (base, quote) unique index: a refreshed rate for an
         // existing pair overwrites its value, source, and timestamp in place.
