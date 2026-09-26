@@ -493,7 +493,13 @@ rules:
   # generic "any string literal" wildcard (see `kiko-no-literal-sync-error`
   # above), so `cancelLabel: i18n.t(...)`/`cancelLabel: someVariable` both
   # stay silent. Not scoped by `paths.include` — this shape is not
-  # confined to one tree, so its fixture pair stays FLAT.
+  # confined to one tree, so its fixture pair stays FLAT. `paths.exclude`
+  # on `*.test.ts` (mirroring `kiko-no-literal-sync-error` above) — without
+  # it, `biometrics.test.ts` asserting the real rendered label text (its own
+  # oracle) got denied by this very rule, which forced the test to assert
+  # `i18n.t(...)` instead — the SAME call the source makes, so a wrong key
+  # mapping would pass both sides identically and the test would prove
+  # nothing.
   - id: kiko-no-literal-biometric-label
     languages: [typescript]
     severity: ERROR
@@ -506,6 +512,9 @@ rules:
     metadata:
       fix: "Route the label through `i18n.t(...)`, reusing an existing key (e.g. `common.cancel`, `auth.usePasscode`) rather than adding a near-duplicate."
       skill: "kiko-code-style › Externalize hardcoded config"
+    paths:
+      exclude:
+        - "*.test.ts"
     patterns:
       - pattern-either:
           - pattern: "cancelLabel: '...'"
