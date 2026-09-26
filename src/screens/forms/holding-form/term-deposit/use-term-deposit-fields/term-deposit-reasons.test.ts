@@ -17,7 +17,8 @@ const row = (overrides: Partial<Contribution> = {}): Contribution => ({
 const baseParams = () => ({
   contributions: [row()],
   annualRate: '12',
-  termMonths: '12',
+  term: '12',
+  termUnit: 'months' as const,
   currency: 'UAH' as const,
 });
 
@@ -85,49 +86,58 @@ describe('termDepositFieldErrors — annual rate', () => {
 
 describe('termDepositFieldErrors — term months', () => {
   it('rejects a blank term', () => {
-    expect(termDepositFieldErrors({ ...baseParams(), termMonths: '' }).termMonthsError).toBe(
-      'forms.holding.termMonthsError',
+    expect(termDepositFieldErrors({ ...baseParams(), term: '' }).termError).toBe(
+      'forms.holding.termError',
     );
   });
 
   it('rejects a zero term', () => {
-    expect(termDepositFieldErrors({ ...baseParams(), termMonths: '0' }).termMonthsError).toBe(
-      'forms.holding.termMonthsError',
+    expect(termDepositFieldErrors({ ...baseParams(), term: '0' }).termError).toBe(
+      'forms.holding.termError',
     );
   });
 
   it('rejects a fractional term', () => {
-    expect(termDepositFieldErrors({ ...baseParams(), termMonths: '6.5' }).termMonthsError).toBe(
-      'forms.holding.termMonthsError',
+    expect(termDepositFieldErrors({ ...baseParams(), term: '6.5' }).termError).toBe(
+      'forms.holding.termError',
     );
   });
 
   it('accepts a whole positive term', () => {
-    expect(
-      termDepositFieldErrors({ ...baseParams(), termMonths: '12' }).termMonthsError,
-    ).toBeNull();
+    expect(termDepositFieldErrors({ ...baseParams(), term: '12' }).termError).toBeNull();
   });
 
   it('names the maximum once a term exceeds the shared MAX_TERM_MONTHS cap', () => {
     expect(
-      termDepositFieldErrors({ ...baseParams(), termMonths: String(MAX_TERM_MONTHS + 1) })
-        .termMonthsError,
+      termDepositFieldErrors({ ...baseParams(), term: String(MAX_TERM_MONTHS + 1) }).termError,
     ).toBe('forms.holding.termMonthsMaxError');
   });
 
   it('accepts a term of exactly MAX_TERM_MONTHS', () => {
     expect(
-      termDepositFieldErrors({ ...baseParams(), termMonths: String(MAX_TERM_MONTHS) })
-        .termMonthsError,
+      termDepositFieldErrors({ ...baseParams(), term: String(MAX_TERM_MONTHS) }).termError,
     ).toBeNull();
+  });
+});
+
+describe('termDepositFieldErrors — term in years', () => {
+  it('names years when a years term is not a whole number', () => {
+    expect(
+      termDepositFieldErrors({ ...baseParams(), term: '1.5', termUnit: 'years' }).termError,
+    ).toBe('forms.holding.termYearsError');
+  });
+
+  it('names the years maximum once a years term exceeds the cap', () => {
+    expect(
+      termDepositFieldErrors({ ...baseParams(), term: '51', termUnit: 'years' }).termError,
+    ).toBe('forms.holding.termYearsMaxError');
   });
 });
 
 describe('termDepositFieldErrors — term months, just below the cap', () => {
   it('accepts a term one below the shared MAX_TERM_MONTHS cap', () => {
     expect(
-      termDepositFieldErrors({ ...baseParams(), termMonths: String(MAX_TERM_MONTHS - 1) })
-        .termMonthsError,
+      termDepositFieldErrors({ ...baseParams(), term: String(MAX_TERM_MONTHS - 1) }).termError,
     ).toBeNull();
   });
 });
@@ -143,13 +153,13 @@ describe('termDepositReasonKey', () => {
         ...baseParams(),
         contributions: [row({ amount: '', date: null })],
         annualRate: '',
-        termMonths: '',
+        term: '',
       }),
     ).toBe('forms.holding.contributionsRequiredError');
   });
 
   it('prioritizes the annual-rate reason over term months once contributions pass', () => {
-    expect(termDepositReasonKey({ ...baseParams(), annualRate: '', termMonths: '' })).toBe(
+    expect(termDepositReasonKey({ ...baseParams(), annualRate: '', term: '' })).toBe(
       'forms.holding.annualRateError',
     );
   });

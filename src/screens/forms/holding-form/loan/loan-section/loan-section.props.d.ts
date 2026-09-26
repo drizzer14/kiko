@@ -1,6 +1,7 @@
 import type { RefObject } from 'react';
 import type { TextInputInstance } from 'react-native';
 
+import type { TermUnit } from '../../../term-field';
 import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
 import type { LoanKind, LoanSchedule } from '../../../../../holdings/holding-metadata';
 import type { HoldingSelectOption } from '../../../holding-select-field/holding-select-field.props';
@@ -29,11 +30,13 @@ export type LoanSectionProps = {
   annualRatePctError?: string;
   annualRatePctFieldRef?: RefObject<FieldInstance | null>;
   annualRatePctInputRef?: RefObject<TextInputInstance | null>;
-  termMonths: string;
-  onChangeTermMonths: (text: string) => void;
-  termMonthsError?: string;
-  termMonthsFieldRef?: RefObject<FieldInstance | null>;
-  termMonthsInputRef?: RefObject<TextInputInstance | null>;
+  term: string;
+  onChangeTerm: (text: string) => void;
+  termUnit: TermUnit;
+  onSelectTermUnit: (unit: TermUnit) => void;
+  termError?: string;
+  termFieldRef?: RefObject<FieldInstance | null>;
+  termInputRef?: RefObject<TextInputInstance | null>;
   // The loan-payment matcher's own optional inputs (kiko-domain) — never
   // validated, hidden alongside rate/term for a `'none'` schedule (the
   // matcher never links against an informal debt at all, so these would do

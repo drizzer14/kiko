@@ -1,7 +1,8 @@
 import { Money } from '@kiko/currency/money';
 import { parseAmount } from '@kiko/currency/parse';
 import type { Currency } from '@kiko/currency/currency';
-import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
+
+import { termReasonKey, type TermReasonKey, type TermUnit } from '../../../term-field';
 
 // `saved` marks a contribution that is already persisted in the holding's
 // stored metadata (an edit-mode hydrated row) versus one the user just added
@@ -18,7 +19,8 @@ export type Contribution = { id: number; amount: string; date: number | null; sa
 type TermDepositValidationParams = {
   contributions: Contribution[];
   annualRate: string;
-  termMonths: string;
+  term: string;
+  termUnit: TermUnit;
   currency: Currency;
 };
 
@@ -28,8 +30,7 @@ export type TermDepositReasonKey =
   | 'forms.holding.contributionsRequiredError'
   | 'forms.holding.contributionIncompleteError'
   | 'forms.holding.annualRateError'
-  | 'forms.holding.termMonthsError'
-  | 'forms.holding.termMonthsMaxError';
+  | TermReasonKey;
 
 export type TermDepositFieldErrors = {
   contributionsError:
@@ -37,7 +38,7 @@ export type TermDepositFieldErrors = {
     | 'forms.holding.contributionIncompleteError'
     | null;
   annualRateError: 'forms.holding.annualRateError' | null;
-  termMonthsError: 'forms.holding.termMonthsError' | 'forms.holding.termMonthsMaxError' | null;
+  termError: TermReasonKey | null;
 };
 
 // Drop blank/partial rows: keep only a positive amount paired with a picked date.
@@ -92,25 +93,6 @@ const annualRateFieldReasonKey = (
   return annualRate.trim() === '' || !(rate >= 0) ? 'forms.holding.annualRateError' : null;
 };
 
-// The term-months field's OWN reason, independent of the fields above it.
-// Capped at `MAX_TERM_MONTHS`, the same cap `loanFieldErrors` applies: an
-// uncapped value (e.g. "99999999", still a valid positive integer) makes the
-// compounding math build an unbounded number of periods, hanging the app. A
-// term above the cap gets its OWN key (naming the maximum) rather than the
-// same generic key a non-integer/non-positive term shows — see
-// `loanFieldErrors`'s twin check for the same split.
-const termMonthsFieldReasonKey = (
-  termMonths: string,
-): TermDepositFieldErrors['termMonthsError'] => {
-  const months = parseAmount(termMonths);
-
-  if (!(Number.isInteger(months) && months > 0)) {
-    return 'forms.holding.termMonthsError';
-  }
-
-  return months > MAX_TERM_MONTHS ? 'forms.holding.termMonthsMaxError' : null;
-};
-
 // Every field's OWN blocking reason, each derived from ONLY that field's own
 // input — mirrors `loanFieldErrors`'s own doc comment on why the screen
 // renders from this, never from `termDepositReasonKey` below.
@@ -119,11 +101,12 @@ export const termDepositFieldErrors = (
 ): TermDepositFieldErrors => ({
   contributionsError: contributionsFieldReasonKey(params),
   annualRateError: annualRateFieldReasonKey(params.annualRate),
-  termMonthsError: termMonthsFieldReasonKey(params.termMonths),
+  termError: termReasonKey(params.term, params.termUnit),
 });
 
 // A term deposit needs a valid contributions group, a non-negative annual
-// rate that was actually entered, and a whole-month term greater than zero.
+// rate that was actually entered, and a whole-number term greater than zero
+// (in months or years — `termReasonKey`).
 // Recapitalization and compounding always carry defaults. Derived from
 // `termDepositFieldErrors` above, in the SAME priority order each field
 // itself displays, so this can never drift from what any one field shows —
@@ -133,7 +116,5 @@ export const termDepositReasonKey = (
 ): TermDepositReasonKey | null => {
   const fieldErrors = termDepositFieldErrors(params);
 
-  return (
-    fieldErrors.contributionsError ?? fieldErrors.annualRateError ?? fieldErrors.termMonthsError
-  );
+  return fieldErrors.contributionsError ?? fieldErrors.annualRateError ?? fieldErrors.termError;
 };

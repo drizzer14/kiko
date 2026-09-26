@@ -1070,9 +1070,21 @@ A fresh holding (`oldMeta === null`) has nothing to reconcile.
 600 months / 50 years — comfortably above any real mortgage/car-loan
 term): an uncapped value would make `loanInstallments` build an
 unbounded row count for a degenerate but technically-valid positive
-integer. A term deposit's own `termMonths` field is capped at the SAME
-shared constant (`term-deposit-reasons.ts`), for the identical reason
-on its compounding math; there is no separate deposit-specific cap.
+integer. A term deposit's own `termMonths` is capped at the SAME
+shared constant, for the identical reason on its compounding math;
+there is no separate deposit-specific cap.
+
+Both terms are ENTERED in months or years and STORED as `termMonths`:
+the deposit and loan forms share one `TermField`
+(`src/screens/forms/term-field/`) — a number field whose suffix follows
+a Months/Years `ChipRow` (a unit choice that leaves the form the same,
+like the metal Unit chips). Its `term-reasons.ts` is the ONE term
+check both twins call: `termReasonKey(value, unit)` (a whole number
+above 0, at most `termMaxFor(unit)` — 600 months or 50 years, each
+with its own error key naming the unit), `termMonthsFromInput` (years
+x 12) for the payload, and `termInputFromMonths` for the edit seed (a
+whole number of years seeds Years, anything else Months). Switching the
+unit keeps the typed number and revalidates it in the new unit.
 
 ### Loan-payment link column + repo
 

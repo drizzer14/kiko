@@ -4,9 +4,9 @@ import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import { currencySymbol } from '@kiko/currency/currency';
 import Divider from '@kiko/design-system/components/divider';
-import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 
 import LoanSection from '../loan-section';
+import { termMaxFor } from '../../../term-field';
 import { fieldErrorMessage } from '../../field-error-message';
 import { groupAmount } from '../../../amount-format/amount-format';
 
@@ -48,13 +48,15 @@ const LoanFormBlock: FC<LoanFormBlockProps> = ({
         annualRatePctError={fieldErrorMessage(t, attemptedSave, fieldErrors.annualRateError)}
         annualRatePctFieldRef={refs.annualRateFieldRef}
         annualRatePctInputRef={refs.annualRateInputRef}
-        termMonths={fields.termMonths}
-        onChangeTermMonths={fields.setTermMonths}
-        termMonthsError={fieldErrorMessage(t, attemptedSave, fieldErrors.termMonthsError, {
-          max: MAX_TERM_MONTHS,
+        term={fields.term}
+        onChangeTerm={fields.setTerm}
+        termUnit={fields.termUnit}
+        onSelectTermUnit={fields.setTermUnit}
+        termError={fieldErrorMessage(t, attemptedSave, fieldErrors.termError, {
+          max: termMaxFor(fields.termUnit),
         })}
-        termMonthsFieldRef={refs.termMonthsFieldRef}
-        termMonthsInputRef={refs.termMonthsInputRef}
+        termFieldRef={refs.termFieldRef}
+        termInputRef={refs.termInputRef}
         paymentHoldingId={fields.paymentHoldingId}
         onSelectPaymentHoldingId={fields.setPaymentHoldingId}
         paymentHoldingOptions={paymentHoldingOptions}

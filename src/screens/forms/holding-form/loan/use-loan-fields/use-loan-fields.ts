@@ -3,9 +3,16 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { useCallback, useRef, useState } from 'react';
 import type { TextInputInstance } from 'react-native';
 import { normalizeIban } from '@kiko/loans/payment-matcher';
-import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 import { holdingsRepo, type LoanPricePointOp } from '@kiko/holdings/repo';
 
+import {
+  termReasonKey,
+  type TermInput,
+  type TermUnit,
+  termInputFromMonths,
+  termMonthsFromInput,
+  type TermReasonKey,
+} from '../../../term-field';
 import {
   asLoanMeta,
   type LoanKind,
@@ -30,8 +37,7 @@ export type LoanReasonKey =
   | 'forms.holding.loanPrincipalError'
   | 'forms.holding.loanStartDateError'
   | 'forms.holding.annualRateError'
-  | 'forms.holding.termMonthsError'
-  | 'forms.holding.termMonthsMaxError';
+  | TermReasonKey;
 
 // The shared shape both `loanFieldErrors` and `loanReasonKey` validate —
 // kept as one type so the two can never drift apart on WHAT they read.
@@ -40,51 +46,39 @@ type LoanValidationParams = {
   startDate: number | null;
   schedule: LoanSchedule;
   annualRatePct: string;
-  termMonths: string;
+  term: string;
+  termUnit: TermUnit;
 };
 
 // Every field's OWN blocking reason, each derived from ONLY that field's own
 // input (plus the schedule gate rate/term already share). A loan needs a
 // positive principal and a picked start date UNCONDITIONALLY;
-// `annualRatePct`/`termMonths` are required ONLY while `schedule` is
+// `annualRatePct`/`term` are required ONLY while `schedule` is
 // `'annuity'`/`'differentiated'` — `'none'` (an informal debt)
 // carries no schedule at all, so Save never blocks on them there.
-// `termMonths` must be a WHOLE number >= 1: a degenerate term (0, negative,
-// fractional) would give `loanInstallments` a schedule that never reduces
-// the balance to exactly 0. Capped at `MAX_TERM_MONTHS`: an uncapped value
-// (e.g. "99999999", still a valid positive integer) makes `loanInstallments`
-// build ~1e8 rows on every render, hanging the app.
+// The term must be a WHOLE number >= 1 in its unit: a degenerate term (0,
+// negative, fractional) would give `loanInstallments` a schedule that never
+// reduces the balance to exactly 0. Capped at `MAX_TERM_MONTHS` (see
+// `termReasonKey`): an uncapped value makes `loanInstallments` build ~1e8
+// rows on every render, hanging the app.
 export type LoanFieldErrors = {
   principalError: 'forms.holding.loanPrincipalError' | null;
   startDateError: 'forms.holding.loanStartDateError' | null;
   annualRateError: 'forms.holding.annualRateError' | null;
-  termMonthsError: 'forms.holding.termMonthsError' | 'forms.holding.termMonthsMaxError' | null;
+  termError: TermReasonKey | null;
 };
 
-// The term-months field's OWN reason, gated the same way the schedule check
-// above gates rate/term — 'none' never blocks Save on either. A term above
-// `MAX_TERM_MONTHS` gets its OWN key (naming the maximum) rather than the
-// same generic key a non-integer/non-positive term shows — the twin split
-// `termDepositFieldErrors`'s own `termMonthsFieldReasonKey` makes.
-const termMonthsFieldReasonKey = (
+// The term field's OWN reason, gated the same way the schedule check above
+// gates rate/term — 'none' never blocks Save on either. The shared
+// `termReasonKey` is the deposit twin's check too.
+const termFieldReasonKey = (
   isStructuredSchedule: boolean,
-  termMonths: string,
-): LoanFieldErrors['termMonthsError'] => {
-  if (!isStructuredSchedule) {
-    return null;
-  }
-
-  const months = parseAmount(termMonths);
-
-  if (!(Number.isInteger(months) && months > 0)) {
-    return 'forms.holding.termMonthsError';
-  }
-
-  return months > MAX_TERM_MONTHS ? 'forms.holding.termMonthsMaxError' : null;
-};
+  term: string,
+  termUnit: TermUnit,
+): LoanFieldErrors['termError'] => (isStructuredSchedule ? termReasonKey(term, termUnit) : null);
 
 export const loanFieldErrors = (params: LoanValidationParams): LoanFieldErrors => {
-  const { principal, startDate, schedule, annualRatePct, termMonths } = params;
+  const { principal, startDate, schedule, annualRatePct, term, termUnit } = params;
   // 'none' (an informal debt) carries no schedule at all, so rate/term never
   // block Save there — the same gate `loanReasonKey` applies.
   const isStructuredSchedule = schedule !== 'none';
@@ -97,7 +91,7 @@ export const loanFieldErrors = (params: LoanValidationParams): LoanFieldErrors =
       isStructuredSchedule && (annualRatePct.trim() === '' || !(rate >= 0))
         ? 'forms.holding.annualRateError'
         : null,
-    termMonthsError: termMonthsFieldReasonKey(isStructuredSchedule, termMonths),
+    termError: termFieldReasonKey(isStructuredSchedule, term, termUnit),
   };
 };
 
@@ -116,7 +110,7 @@ export const loanReasonKey = (params: LoanValidationParams): LoanReasonKey | nul
     fieldErrors.principalError ??
     fieldErrors.startDateError ??
     fieldErrors.annualRateError ??
-    fieldErrors.termMonthsError
+    fieldErrors.termError
   );
 };
 
@@ -132,8 +126,10 @@ export type UseLoanFieldsResult = HoldingTypeForm & {
   setSchedule: (value: LoanSchedule) => void;
   annualRatePct: string;
   setAnnualRatePct: (value: string) => void;
-  termMonths: string;
-  setTermMonths: (value: string) => void;
+  term: string;
+  setTerm: (value: string) => void;
+  termUnit: TermUnit;
+  setTermUnit: (value: TermUnit) => void;
   // The loan-payment matcher's own optional inputs — never validated, so
   // they carry no field error of their own.
   paymentHoldingId: string | null;
@@ -150,12 +146,15 @@ export type UseLoanFieldsResult = HoldingTypeForm & {
     principalFieldRef: RefObject<FieldInstance | null>;
     startDateFieldRef: RefObject<FieldInstance | null>;
     annualRateFieldRef: RefObject<FieldInstance | null>;
-    termMonthsFieldRef: RefObject<FieldInstance | null>;
+    termFieldRef: RefObject<FieldInstance | null>;
     principalInputRef: RefObject<TextInputInstance | null>;
     annualRateInputRef: RefObject<TextInputInstance | null>;
-    termMonthsInputRef: RefObject<TextInputInstance | null>;
+    termInputRef: RefObject<TextInputInstance | null>;
   };
 };
+
+// A loan with no stored term (a 'none' schedule) seeds a blank term in months.
+const EMPTY_TERM: TermInput = { value: '', unit: 'months' };
 
 type UseLoanFieldsParams = {
   currency: Currency;
@@ -170,7 +169,8 @@ type LoanFieldsSnapshot = Pick<
   | 'startDate'
   | 'schedule'
   | 'annualRatePct'
-  | 'termMonths'
+  | 'term'
+  | 'termUnit'
   | 'paymentHoldingId'
   | 'lenderName'
   | 'lenderIban'
@@ -192,7 +192,7 @@ const buildLoanMeta = (fields: LoanFieldsSnapshot, currency: Currency): LoanMeta
     ? {}
     : {
         annualRatePct: parseAmount(fields.annualRatePct) || 0,
-        termMonths: parseAmount(fields.termMonths) || 0,
+        termMonths: termMonthsFromInput(fields.term, fields.termUnit) ?? 0,
       }),
   paymentHoldingId: fields.paymentHoldingId ?? undefined,
   lenderName: fields.lenderName.trim() || undefined,
@@ -359,7 +359,8 @@ export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult 
   // the user toward entering the fuller amortization terms.
   const [schedule, setSchedule] = useState<LoanSchedule>('annuity');
   const [annualRatePct, setAnnualRatePct] = useState('');
-  const [termMonths, setTermMonths] = useState('');
+  const [term, setTerm] = useState('');
+  const [termUnit, setTermUnit] = useState<TermUnit>('months');
   const [paymentHoldingId, setPaymentHoldingId] = useState<string | null>(null);
   const [lenderName, setLenderName] = useState('');
   const [lenderIban, setLenderIban] = useState('');
@@ -367,19 +368,14 @@ export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult 
   const principalFieldRef = useRef<FieldInstance>(null);
   const startDateFieldRef = useRef<FieldInstance>(null);
   const annualRateFieldRef = useRef<FieldInstance>(null);
-  const termMonthsFieldRef = useRef<FieldInstance>(null);
+  const termFieldRef = useRef<FieldInstance>(null);
   const principalInputRef = useRef<TextInputInstance>(null);
   const annualRateInputRef = useRef<TextInputInstance>(null);
-  const termMonthsInputRef = useRef<TextInputInstance>(null);
+  const termInputRef = useRef<TextInputInstance>(null);
 
-  const reasonKey = loanReasonKey({ principal, startDate, schedule, annualRatePct, termMonths });
-  const fieldErrors = loanFieldErrors({
-    principal,
-    startDate,
-    schedule,
-    annualRatePct,
-    termMonths,
-  });
+  const validation = { principal, startDate, schedule, annualRatePct, term, termUnit };
+  const reasonKey = loanReasonKey(validation);
+  const fieldErrors = loanFieldErrors(validation);
 
   const seed = useCallback((holding: HoldingRow): void => {
     const meta = asLoanMeta(holding.metadata);
@@ -393,7 +389,9 @@ export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult 
     setStartDate(meta.startDate);
     setSchedule(meta.schedule);
     setAnnualRatePct(meta.annualRatePct === undefined ? '' : String(meta.annualRatePct));
-    setTermMonths(meta.termMonths === undefined ? '' : String(meta.termMonths));
+    const seededTerm = foldMap(maybe(meta.termMonths), termInputFromMonths) ?? EMPTY_TERM;
+    setTerm(seededTerm.value);
+    setTermUnit(seededTerm.unit);
     setPaymentHoldingId(meta.paymentHoldingId ?? null);
     setLenderName(meta.lenderName ?? '');
     setLenderIban(meta.lenderIban ?? '');
@@ -407,7 +405,8 @@ export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult 
         startDate,
         schedule,
         annualRatePct,
-        termMonths,
+        term,
+        termUnit,
         paymentHoldingId,
         lenderName,
         lenderIban,
@@ -432,7 +431,8 @@ export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult 
         startDate,
         schedule,
         annualRatePct,
-        termMonths,
+        term,
+        termUnit,
         paymentHoldingId,
         lenderName,
         lenderIban,
@@ -463,8 +463,10 @@ export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult 
     setSchedule,
     annualRatePct,
     setAnnualRatePct,
-    termMonths,
-    setTermMonths,
+    term,
+    setTerm,
+    termUnit,
+    setTermUnit,
     paymentHoldingId,
     setPaymentHoldingId,
     lenderName,
@@ -487,9 +489,9 @@ export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult 
         focus: () => annualRateInputRef.current?.focus(),
       },
       {
-        invalid: fieldErrors.termMonthsError !== null,
-        ref: termMonthsFieldRef,
-        focus: () => termMonthsInputRef.current?.focus(),
+        invalid: fieldErrors.termError !== null,
+        ref: termFieldRef,
+        focus: () => termInputRef.current?.focus(),
       },
     ],
     createPayload,
@@ -499,10 +501,10 @@ export const useLoanFields = (params: UseLoanFieldsParams): UseLoanFieldsResult 
       principalFieldRef,
       startDateFieldRef,
       annualRateFieldRef,
-      termMonthsFieldRef,
+      termFieldRef,
       principalInputRef,
       annualRateInputRef,
-      termMonthsInputRef,
+      termInputRef,
     },
   };
 };

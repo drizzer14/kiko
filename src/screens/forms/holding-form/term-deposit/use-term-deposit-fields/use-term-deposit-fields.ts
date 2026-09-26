@@ -14,6 +14,7 @@ import { saveMetadataEdit } from '../../save-metadata-edit';
 import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
 import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
+import { termInputFromMonths, termMonthsFromInput, type TermUnit } from '../../../term-field';
 
 import {
   parsedContributions,
@@ -51,8 +52,10 @@ export type UseTermDepositFieldsResult = HoldingTypeForm & {
   updateContributionDate: (index: number, next: number) => void;
   annualRate: string;
   setAnnualRate: (value: string) => void;
-  termMonths: string;
-  setTermMonths: (value: string) => void;
+  term: string;
+  setTerm: (value: string) => void;
+  termUnit: TermUnit;
+  setTermUnit: (value: TermUnit) => void;
   recapitalization: boolean;
   setRecap: (value: boolean) => void;
   compounding: CompoundingFrequency;
@@ -63,9 +66,9 @@ export type UseTermDepositFieldsResult = HoldingTypeForm & {
     contributionsFieldRef: RefObject<FieldInstance | null>;
     lastContributionFieldRef: RefObject<FieldInstance | null>;
     annualRateFieldRef: RefObject<FieldInstance | null>;
-    termMonthsFieldRef: RefObject<FieldInstance | null>;
+    termFieldRef: RefObject<FieldInstance | null>;
     annualRateInputRef: RefObject<TextInputInstance | null>;
-    termMonthsInputRef: RefObject<TextInputInstance | null>;
+    termInputRef: RefObject<TextInputInstance | null>;
   };
 };
 
@@ -86,7 +89,8 @@ export const useTermDepositFields = (
     { id: 0, amount: '', date: null, saved: false },
   ]);
   const [annualRate, setAnnualRate] = useState('');
-  const [termMonths, setTermMonths] = useState('');
+  const [term, setTerm] = useState('');
+  const [termUnit, setTermUnit] = useState<TermUnit>('months');
   const [recapitalization, setRecap] = useState(false);
   const [compounding, setCompounding] = useState<CompoundingFrequency>('bi-weekly');
 
@@ -97,9 +101,9 @@ export const useTermDepositFields = (
   // `scrollTo` the screen's blocked-Save path uses.
   const lastContributionFieldRef = useRef<FieldInstance>(null);
   const annualRateFieldRef = useRef<FieldInstance>(null);
-  const termMonthsFieldRef = useRef<FieldInstance>(null);
+  const termFieldRef = useRef<FieldInstance>(null);
   const annualRateInputRef = useRef<TextInputInstance>(null);
-  const termMonthsInputRef = useRef<TextInputInstance>(null);
+  const termInputRef = useRef<TextInputInstance>(null);
 
   const addContribution = (): void => {
     const id = nextContributionId.current++;
@@ -138,14 +142,15 @@ export const useTermDepositFields = (
     return {
       contributions: rows,
       annualRatePct: parseAmount(annualRate) || 0,
-      termMonths: parseAmount(termMonths) || 0,
+      termMonths: termMonthsFromInput(term, termUnit) ?? 0,
       recapitalization,
       compounding,
     };
   };
 
-  const fieldErrors = termDepositFieldErrors({ contributions, annualRate, termMonths, currency });
-  const reasonKey = termDepositReasonKey({ contributions, annualRate, termMonths, currency });
+  const validation = { contributions, annualRate, term, termUnit, currency };
+  const fieldErrors = termDepositFieldErrors(validation);
+  const reasonKey = termDepositReasonKey(validation);
 
   const seed = useCallback((holding: HoldingRow): void => {
     const meta = asTermDepositMeta(holding.metadata);
@@ -158,7 +163,9 @@ export const useTermDepositFields = (
     setContributions(rows);
     nextContributionId.current = rows.length;
     setAnnualRate(String(meta.annualRatePct));
-    setTermMonths(String(meta.termMonths));
+    const seededTerm = termInputFromMonths(meta.termMonths);
+    setTerm(seededTerm.value);
+    setTermUnit(seededTerm.unit);
     setRecap(meta.recapitalization);
     setCompounding(meta.compounding);
   }, []);
@@ -182,8 +189,10 @@ export const useTermDepositFields = (
     updateContributionDate,
     annualRate,
     setAnnualRate,
-    termMonths,
-    setTermMonths,
+    term,
+    setTerm,
+    termUnit,
+    setTermUnit,
     recapitalization,
     setRecap,
     compounding,
@@ -199,9 +208,9 @@ export const useTermDepositFields = (
         focus: () => annualRateInputRef.current?.focus(),
       },
       {
-        invalid: fieldErrors.termMonthsError !== null,
-        ref: termMonthsFieldRef,
-        focus: () => termMonthsInputRef.current?.focus(),
+        invalid: fieldErrors.termError !== null,
+        ref: termFieldRef,
+        focus: () => termInputRef.current?.focus(),
       },
     ],
     createPayload,
@@ -211,9 +220,9 @@ export const useTermDepositFields = (
       contributionsFieldRef,
       lastContributionFieldRef,
       annualRateFieldRef,
-      termMonthsFieldRef,
+      termFieldRef,
       annualRateInputRef,
-      termMonthsInputRef,
+      termInputRef,
     },
   };
 };

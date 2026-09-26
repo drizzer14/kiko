@@ -954,8 +954,8 @@ new component can land between reviews of this skill:
     elsewhere in the same sheet).
   - `ChipRow` (leaves the form the same): the column-mapping screen's
     encoding, delimiter, and decimal-separator pickers; the holding
-    form's metal form/unit chips and the term-deposit
-    Compounding chips; the Manual-mode bond-kind chips
+    form's metal form/unit chips, the deposit/loan term's Months/Years
+    chips (`TermField`), and the term-deposit Compounding chips; the Manual-mode bond-kind chips
     (`ManualBondFields`); the Statistics trend-filter sheet's amount
     (1-5) and by-measure pills; the Settings `LanguageSwitch`.
   - `SelectField` (long list, regardless of field-change): the

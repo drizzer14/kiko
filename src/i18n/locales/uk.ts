@@ -350,6 +350,10 @@ export const uk: typeof en = {
       termMonthsError: 'Введіть цілу кількість місяців більше 0.',
       termMonthsMaxError: 'Введіть цілу кількість місяців від 1 до {{max}}.',
       termMonthsPlaceholder: '12',
+      termUnitMonths: 'Місяці',
+      termUnitYears: 'Роки',
+      termYearsError: 'Введіть цілу кількість років більше 0.',
+      termYearsMaxError: 'Введіть цілу кількість років від 1 до {{max}}.',
       terms: 'Умови',
       type: 'Тип',
       typePlaceholder: 'Оберіть тип',
@@ -441,6 +445,7 @@ export const uk: typeof en = {
       percent: '%',
       pieces: 'шт.',
       troyOunces: 'унц.',
+      years: 'р.',
     },
   },
   accounts: {

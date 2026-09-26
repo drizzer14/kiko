@@ -19,8 +19,10 @@ const baseProps = {
   onSelectSchedule: jest.fn(),
   annualRatePct: '',
   onChangeAnnualRatePct: jest.fn(),
-  termMonths: '',
-  onChangeTermMonths: jest.fn(),
+  term: '',
+  onChangeTerm: jest.fn(),
+  termUnit: 'months' as const,
+  onSelectTermUnit: jest.fn(),
   paymentHoldingId: null,
   onSelectPaymentHoldingId: jest.fn(),
   paymentHoldingOptions: [],
@@ -155,12 +157,12 @@ describe('LoanSection', () => {
 
   it('reports the entered rate and term', async () => {
     const onChangeAnnualRatePct = jest.fn();
-    const onChangeTermMonths = jest.fn();
+    const onChangeTerm = jest.fn();
     const { getByLabelText } = await render(
       <LoanSection
         {...baseProps}
         onChangeAnnualRatePct={onChangeAnnualRatePct}
-        onChangeTermMonths={onChangeTermMonths}
+        onChangeTerm={onChangeTerm}
       />,
     );
 
@@ -168,15 +170,15 @@ describe('LoanSection', () => {
     await fireEvent.changeText(getByLabelText('Term'), '24');
 
     expect(onChangeAnnualRatePct).toHaveBeenCalledWith('12');
-    expect(onChangeTermMonths).toHaveBeenCalledWith('24');
+    expect(onChangeTerm).toHaveBeenCalledWith('24');
   });
 
-  it('renders annualRatePctError and termMonthsError directly after their fields', async () => {
+  it('renders annualRatePctError and termError directly after their fields', async () => {
     const { getByText } = await render(
       <LoanSection
         {...baseProps}
         annualRatePctError="Enter a rate of 0 or higher."
-        termMonthsError="Enter a whole number of months greater than 0."
+        termError="Enter a whole number of months greater than 0."
       />,
     );
 

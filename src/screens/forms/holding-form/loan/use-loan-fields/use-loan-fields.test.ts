@@ -34,7 +34,8 @@ const baseArgs = () => ({
   startDate: 1_700_000_000_000,
   schedule: 'annuity' as const,
   annualRatePct: '12',
-  termMonths: '12',
+  term: '12',
+  termUnit: 'months' as const,
 });
 
 describe('loanReasonKey', () => {
@@ -55,7 +56,7 @@ describe('loanReasonKey', () => {
 
   it('is valid for a "none" (informal) loan with no rate or term entered', () => {
     expect(
-      loanReasonKey({ ...baseArgs(), schedule: 'none', annualRatePct: '', termMonths: '' }),
+      loanReasonKey({ ...baseArgs(), schedule: 'none', annualRatePct: '', term: '' }),
     ).toBeNull();
   });
 
@@ -78,13 +79,9 @@ describe('loanReasonKey', () => {
   // A degenerate term must not silently
   // pass — the schedule it produces would never reduce the balance to 0.
   it('rejects a zero, negative, or fractional term for a structured schedule', () => {
-    expect(loanReasonKey({ ...baseArgs(), termMonths: '0' })).toBe('forms.holding.termMonthsError');
-    expect(loanReasonKey({ ...baseArgs(), termMonths: '-3' })).toBe(
-      'forms.holding.termMonthsError',
-    );
-    expect(loanReasonKey({ ...baseArgs(), termMonths: '6.5' })).toBe(
-      'forms.holding.termMonthsError',
-    );
+    expect(loanReasonKey({ ...baseArgs(), term: '0' })).toBe('forms.holding.termMonthsError');
+    expect(loanReasonKey({ ...baseArgs(), term: '-3' })).toBe('forms.holding.termMonthsError');
+    expect(loanReasonKey({ ...baseArgs(), term: '6.5' })).toBe('forms.holding.termMonthsError');
   });
 
   it('is valid once every field is filled for a structured schedule', () => {
@@ -95,13 +92,22 @@ describe('loanReasonKey', () => {
   // build ~1e8 rows on every render (a valid positive integer, e.g.
   // "99999999", still passed the old check).
   it('names the maximum once a term exceeds the shared MAX_TERM_MONTHS cap', () => {
-    expect(loanReasonKey({ ...baseArgs(), termMonths: String(MAX_TERM_MONTHS + 1) })).toBe(
+    expect(loanReasonKey({ ...baseArgs(), term: String(MAX_TERM_MONTHS + 1) })).toBe(
       'forms.holding.termMonthsMaxError',
     );
   });
 
   it('accepts a term of exactly MAX_TERM_MONTHS', () => {
-    expect(loanReasonKey({ ...baseArgs(), termMonths: String(MAX_TERM_MONTHS) })).toBeNull();
+    expect(loanReasonKey({ ...baseArgs(), term: String(MAX_TERM_MONTHS) })).toBeNull();
+  });
+
+  it('names years for a years term that is not whole or exceeds the cap', () => {
+    expect(loanReasonKey({ ...baseArgs(), term: '1.5', termUnit: 'years' })).toBe(
+      'forms.holding.termYearsError',
+    );
+    expect(loanReasonKey({ ...baseArgs(), term: '51', termUnit: 'years' })).toBe(
+      'forms.holding.termYearsMaxError',
+    );
   });
 });
 
@@ -127,11 +133,11 @@ describe('loanFieldErrors', () => {
       startDate: null,
       schedule: 'none',
       annualRatePct: '',
-      termMonths: '',
+      term: '',
     });
 
     expect(errors.annualRateError).toBeNull();
-    expect(errors.termMonthsError).toBeNull();
+    expect(errors.termError).toBeNull();
   });
 
   it('reports every field valid once every field is filled for a structured schedule', () => {
@@ -141,7 +147,7 @@ describe('loanFieldErrors', () => {
       principalError: null,
       startDateError: null,
       annualRateError: null,
-      termMonthsError: null,
+      termError: null,
     });
   });
 });
@@ -155,7 +161,7 @@ describe('useLoanFields', () => {
     expect(result.current.principal).toBe('');
     expect(result.current.startDate).toBeNull();
     expect(result.current.annualRatePct).toBe('');
-    expect(result.current.termMonths).toBe('');
+    expect(result.current.term).toBe('');
     expect(result.current.paymentHoldingId).toBeNull();
     expect(result.current.lenderName).toBe('');
     expect(result.current.lenderIban).toBe('');
@@ -204,7 +210,8 @@ describe('useLoanFields', () => {
     expect(result.current.startDate).toBe(1_700_000_000_000);
     expect(result.current.schedule).toBe('differentiated');
     expect(result.current.annualRatePct).toBe('9.5');
-    expect(result.current.termMonths).toBe('24');
+    expect(result.current.term).toBe('2');
+    expect(result.current.termUnit).toBe('years');
   });
 
   it('seeds paymentHoldingId/lenderName/lenderIban from stored metadata, defaulting to null/blank when absent', async () => {
@@ -257,6 +264,20 @@ describe('useLoanFields', () => {
   // The CREATE payload normalizes lenderIban (strip whitespace,
   // uppercase) so a cosmetic difference from what a bank feed's own
   // counterIban carries never false-negatives the matcher's rule 3.
+  it('stores a term typed in years as months in the create payload', async () => {
+    const { result } = await renderLoanFields();
+
+    await act(async () => {
+      result.current.setPrincipal('1000');
+      result.current.setStartDate(1_700_000_000_000);
+      result.current.setAnnualRatePct('12');
+      result.current.setTerm('3');
+      result.current.setTermUnit('years');
+    });
+
+    expect(result.current.createPayload().metadata).toMatchObject({ termMonths: 36 });
+  });
+
   it('normalizes lenderIban (strip whitespace, uppercase) in the create payload, leaving the typed field display untouched', async () => {
     const { result } = await renderLoanFields();
 
@@ -264,7 +285,7 @@ describe('useLoanFields', () => {
       result.current.setPrincipal('1000');
       result.current.setStartDate(1_700_000_000_000);
       result.current.setAnnualRatePct('12');
-      result.current.setTermMonths('12');
+      result.current.setTerm('12');
       result.current.setLenderIban(' ua12 3456 7890 ');
     });
 
@@ -293,7 +314,7 @@ describe('useLoanFields', () => {
 
     expect(result.current.schedule).toBe('none');
     expect(result.current.annualRatePct).toBe('');
-    expect(result.current.termMonths).toBe('');
+    expect(result.current.term).toBe('');
   });
 
   it('leaves every field untouched for a holding with invalid/absent loan metadata', async () => {
@@ -322,7 +343,7 @@ describe('useLoanFields', () => {
         refs.principalFieldRef,
         refs.startDateFieldRef,
         refs.annualRateFieldRef,
-        refs.termMonthsFieldRef,
+        refs.termFieldRef,
       ]);
     });
 
@@ -370,7 +391,7 @@ describe('useLoanFields', () => {
 
       const firstInvalid = result.current.scrollTargets.find((target) => target.invalid);
 
-      expect(firstInvalid?.ref).toBe(result.current.refs.termMonthsFieldRef);
+      expect(firstInvalid?.ref).toBe(result.current.refs.termFieldRef);
     });
 
     it('finds no invalid target for a fully valid "none" schedule (rate/term never block)', async () => {

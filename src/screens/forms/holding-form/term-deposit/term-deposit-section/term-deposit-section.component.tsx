@@ -8,7 +8,6 @@ import { currencySymbol } from '@kiko/currency/currency';
 import Button from '@kiko/design-system/components/button';
 import Switch from '@kiko/design-system/components/switch';
 import Divider from '@kiko/design-system/components/divider';
-import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 import ChipRow from '@kiko/design-system/components/chip-row';
 import TextField from '@kiko/design-system/components/text-field';
 import FieldError from '@kiko/design-system/components/field-error';
@@ -19,6 +18,7 @@ import {
   isContributionRowValid,
   type TermDepositFieldErrors,
 } from '../use-term-deposit-fields/term-deposit-reasons';
+import TermField, { termMaxFor } from '../../../term-field';
 import { fieldErrorMessage } from '../../field-error-message';
 import { groupAmount } from '../../../amount-format/amount-format';
 
@@ -181,21 +181,17 @@ const TermDepositSection: FC<TermDepositSectionProps> = ({ fields, attemptedSave
         />
       </View>
 
-      <View ref={refs.termMonthsFieldRef}>
-        <TextField
-          label={t('forms.holding.termMonths')}
-          value={fields.termMonths}
-          onChangeText={fields.setTermMonths}
-          keyboardType="number-pad"
-          placeholder={t('forms.holding.termMonthsPlaceholder')}
-          suffix={t('forms.units.months')}
-          required
-          error={fieldErrorMessage(t, attemptedSave, fieldErrors.termMonthsError, {
-            max: MAX_TERM_MONTHS,
-          })}
-          inputRef={refs.termMonthsInputRef}
-        />
-      </View>
+      <TermField
+        value={fields.term}
+        onChangeValue={fields.setTerm}
+        unit={fields.termUnit}
+        onSelectUnit={fields.setTermUnit}
+        error={fieldErrorMessage(t, attemptedSave, fieldErrors.termError, {
+          max: termMaxFor(fields.termUnit),
+        })}
+        fieldRef={refs.termFieldRef}
+        inputRef={refs.termInputRef}
+      />
 
       <Switch
         label={t('forms.holding.recapitalization')}

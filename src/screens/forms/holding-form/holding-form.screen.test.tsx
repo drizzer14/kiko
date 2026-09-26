@@ -251,6 +251,10 @@ const selectHoldingTypeOption = async (screen: Screen, option: HoldingType | Met
   await fireEvent.press(screen.getByTestId(`holding-type-field-option-${option}`));
 };
 
+// Whether the term's Months/Years chip with this label is the selected one.
+const unitChipSelected = (screen: Screen, label: 'Months' | 'Years'): boolean =>
+  screen.getByText(label).parent?.props.accessibilityState.selected === true;
+
 const selectHoldingType = async (screen: Screen, type: HoldingType | Metal): Promise<void> => {
   await openHoldingTypeSheet(screen);
   await selectHoldingTypeOption(screen, type);
@@ -1131,6 +1135,60 @@ describe('HoldingFormScreen save validation', () => {
     expect(screen.getByText('Enter a whole number of months greater than 0.')).toBeTruthy();
     const flatStyle = StyleSheet.flatten(screen.getByLabelText('Term').props.style);
     expect(flatStyle.borderColor).not.toBe('#FF453A');
+  });
+
+  it('saves a deposit term typed in years as months', async () => {
+    const screen = await renderScreen();
+
+    await fillTermDepositFields(screen);
+    await fill(screen, 'Term', '2');
+    await fireEvent.press(screen.getByText('Years'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(metadataOfFirstCreate().termMonths).toBe(24);
+  });
+
+  it('rejects a fractional number of years', async () => {
+    const screen = await renderScreen();
+
+    await fillTermDepositFields(screen);
+    await fill(screen, 'Term', '1.5');
+    await fireEvent.press(screen.getByText('Years'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Enter a whole number of years greater than 0.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the typed number across a unit switch and revalidates it in the new unit', async () => {
+    const screen = await renderScreen();
+
+    await fillTermDepositFields(screen);
+    await fill(screen, 'Term', '60');
+    await fireEvent.press(screen.getByText('Years'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Enter a whole number of years from 1 to 50.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByText('Months'));
+
+    expect(screen.getByLabelText('Term').props.value).toBe('60');
+    expect(screen.queryByText('Enter a whole number of years from 1 to 50.')).toBeNull();
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(metadataOfFirstCreate().termMonths).toBe(60);
+  });
+
+  it('seeds a 36-month deposit term as 3 years', async () => {
+    const screen = await renderEdit({
+      ...depositHolding,
+      metadata: { ...depositHolding.metadata, termMonths: 36 },
+    });
+
+    expect(screen.getByLabelText('Term').props.value).toBe('3');
+    expect(unitChipSelected(screen, 'Years')).toBe(true);
   });
 
   it('names the maximum once the term deposit term exceeds MAX_TERM_MONTHS', async () => {
@@ -2300,6 +2358,43 @@ describe('HoldingFormScreen loan', () => {
     expect(createMock).not.toHaveBeenCalled();
   });
 
+  it('rejects a loan term above the years maximum, naming it in years', async () => {
+    const screen = await renderScreen();
+
+    await fillLoanFields(screen);
+    await fill(screen, 'Annual rate', '12');
+    await fill(screen, 'Term', '51');
+    await fireEvent.press(screen.getByText('Years'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Enter a whole number of years from 1 to 50.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('seeds an 18-month loan term in months', async () => {
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Car loan',
+      type: 'loan',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        kind: 'car_loan',
+        principalMinorUnits: 50_000_000,
+        startDate: localDay(2026, 1, 1),
+        schedule: 'annuity',
+        annualRatePct: 12,
+        termMonths: 18,
+      },
+    });
+
+    expect(screen.getByLabelText('Term').props.value).toBe('18');
+    expect(unitChipSelected(screen, 'Months')).toBe(true);
+  });
+
   it('names the maximum once the loan term exceeds MAX_TERM_MONTHS', async () => {
     const screen = await renderScreen();
 
@@ -2347,7 +2442,10 @@ describe('HoldingFormScreen loan', () => {
 
     expect(screen.getByLabelText('Principal').props.value).toBe('500 000');
     expect(screen.getByLabelText('Annual rate').props.value).toBe('12');
-    expect(screen.getByLabelText('Term').props.value).toBe('24');
+    // A whole number of years seeds in years; saving it untouched writes the
+    // same 24 months back.
+    expect(screen.getByLabelText('Term').props.value).toBe('2');
+    expect(unitChipSelected(screen, 'Years')).toBe(true);
 
     await fill(screen, 'Principal', '600000');
     await fireEvent.press(screen.getByText('Save'));
@@ -3274,7 +3372,7 @@ describe('HoldingFormScreen edit mode', () => {
     // The stored contribution/rate/term seed the fields.
     expect(screen.getByDisplayValue('1 000')).toBeTruthy();
     expect(screen.getByDisplayValue('12')).toBeTruthy();
-    expect(screen.getByDisplayValue('24')).toBeTruthy();
+    expect(screen.getByLabelText('Term').props.value).toBe('2');
 
     await fill(screen, 'Annual rate', '15');
     await fireEvent.press(screen.getByText('Save'));

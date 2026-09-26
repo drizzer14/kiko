@@ -4,6 +4,7 @@ import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
 import DateField from '../../../date-field';
+import TermField from '../../../term-field';
 import {
   loanKinds,
   loanSchedules,
@@ -68,11 +69,13 @@ const LoanSection: FC<LoanSectionProps> = ({
   annualRatePctError,
   annualRatePctFieldRef,
   annualRatePctInputRef,
-  termMonths,
-  onChangeTermMonths,
-  termMonthsError,
-  termMonthsFieldRef,
-  termMonthsInputRef,
+  term,
+  onChangeTerm,
+  termUnit,
+  onSelectTermUnit,
+  termError,
+  termFieldRef,
+  termInputRef,
   paymentHoldingId,
   onSelectPaymentHoldingId,
   paymentHoldingOptions,
@@ -149,19 +152,15 @@ const LoanSection: FC<LoanSectionProps> = ({
             />
           </View>
 
-          <View ref={termMonthsFieldRef}>
-            <TextField
-              label={t('forms.holding.termMonths')}
-              value={termMonths}
-              onChangeText={onChangeTermMonths}
-              keyboardType="number-pad"
-              placeholder={t('forms.holding.termMonthsPlaceholder')}
-              suffix={t('forms.units.months')}
-              required
-              error={termMonthsError}
-              inputRef={termMonthsInputRef}
-            />
-          </View>
+          <TermField
+            value={term}
+            onChangeValue={onChangeTerm}
+            unit={termUnit}
+            onSelectUnit={onSelectTermUnit}
+            error={termError}
+            fieldRef={termFieldRef}
+            inputRef={termInputRef}
+          />
 
           {/* The loan-payment matcher's own optional inputs — hidden here
             alongside rate/term (a 'none' schedule has no installments to

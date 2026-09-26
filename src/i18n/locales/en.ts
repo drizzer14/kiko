@@ -404,6 +404,10 @@ export const en = {
       termMonthsError: 'Enter a whole number of months greater than 0.',
       termMonthsMaxError: 'Enter a whole number of months from 1 to {{max}}.',
       termMonthsPlaceholder: '12',
+      termUnitMonths: 'Months',
+      termUnitYears: 'Years',
+      termYearsError: 'Enter a whole number of years greater than 0.',
+      termYearsMaxError: 'Enter a whole number of years from 1 to {{max}}.',
       terms: 'Terms',
       type: 'Type',
       // The holding-type SelectField's placeholder — unreachable today (a
@@ -514,6 +518,7 @@ export const en = {
       percent: '%',
       pieces: 'pcs',
       troyOunces: 'oz',
+      years: 'yr',
     },
   },
   accounts: {
