@@ -31,7 +31,38 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-hand-built-divider',
   'kiko-no-raw-field-error-text',
   'kiko-no-hand-built-selectable-row',
+  'kiko-no-literal-sync-error',
 ] as const;
+
+// kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
+// `src/crypto-sync/**`/`src/monobank/**`), so its fixture pair is NESTED
+// (rules/fixtures/<rule-id>/<mirrored path>/, per semgrep-rules.sh's own
+// nested-fixture support) rather than flat at `rules/fixtures/<rule-id>.*` —
+// this maps a rule id to that pair's path prefix, relative to FIXTURES, with
+// no `.bad`/`.good`/extension suffix. A rule absent here uses the flat,
+// same-name-as-the-rule-id default.
+const NESTED_FIXTURE_PREFIXES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[number], string>> = {
+  'kiko-no-literal-sync-error': 'kiko-no-literal-sync-error/src/monobank/sync-example',
+};
+
+// A rule scoped by `paths.include` only fires when the guard's OWN probe
+// target sits under a matching path — this maps such a rule id to the
+// probe directory (relative to the temp project root) that satisfies its
+// scope. A rule absent here probes at the default `src/probe`.
+const PROBE_DIRECTORIES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[number], string>> = {
+  'kiko-no-literal-sync-error': 'src/monobank',
+};
+
+function fixturePrefix(ruleId: string): string {
+  return NESTED_FIXTURE_PREFIXES[ruleId as (typeof RULE_IDS_WITH_FIXTURES)[number]] ?? ruleId;
+}
+
+function probeDirectorySegments(ruleId: string): string[] {
+  const directory =
+    PROBE_DIRECTORIES[ruleId as (typeof RULE_IDS_WITH_FIXTURES)[number]] ?? 'src/probe';
+
+  return directory.split('/');
+}
 
 // Most rules have no JSX shape, so their fixtures are plain `.ts`; a rule
 // whose pattern needs a real JSX element (e.g. `kiko-no-placeholder-equal-
@@ -39,7 +70,7 @@ const RULE_IDS_WITH_FIXTURES = [
 // the probe target the guard scans it as, so the guard's TypeScript parser
 // picks the JSX-aware grammar.
 function fixtureExtension(ruleId: string): 'ts' | 'tsx' {
-  return existsSync(join(FIXTURES, `${ruleId}.bad.tsx`)) ? 'tsx' : 'ts';
+  return existsSync(join(FIXTURES, `${fixturePrefix(ruleId)}.bad.tsx`)) ? 'tsx' : 'ts';
 }
 
 function payloadFor(filePath: string, content: string): string {
@@ -69,18 +100,19 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     (ruleId) => {
       const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-rules-'));
       try {
-        const probeDirectory = join(project, 'src', 'probe');
+        const probeDirectory = join(project, ...probeDirectorySegments(ruleId));
         mkdirSync(probeDirectory, { recursive: true });
         const extension = fixtureExtension(ruleId);
         const targetFile = join(probeDirectory, `${ruleId}.${extension}`);
+        const prefix = fixturePrefix(ruleId);
 
-        const badContent = readFileSync(join(FIXTURES, `${ruleId}.bad.${extension}`), 'utf8');
+        const badContent = readFileSync(join(FIXTURES, `${prefix}.bad.${extension}`), 'utf8');
         const badResult = runGuard(payloadFor(targetFile, badContent), project);
         expect(badResult.status).toBe(2);
         const reason = JSON.parse(badResult.stdout).hookSpecificOutput.permissionDecisionReason;
         expect(reason).toContain(ruleId);
 
-        const goodContent = readFileSync(join(FIXTURES, `${ruleId}.good.${extension}`), 'utf8');
+        const goodContent = readFileSync(join(FIXTURES, `${prefix}.good.${extension}`), 'utf8');
         const goodResult = runGuard(payloadFor(targetFile, goodContent), project);
         expect(goodResult.status).toBe(0);
       } finally {

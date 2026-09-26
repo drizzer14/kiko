@@ -426,3 +426,50 @@ rules:
           - pattern: '<Pressable ... accessibilityState={{ selected: $S }} ... />'
           - pattern: '<Pressable ... accessibilityRole="checkbox" ...></Pressable>'
           - pattern: '<Pressable ... accessibilityRole="checkbox" ... />'
+  # kiko-translator's never-hardcode-a-user-facing-string rule, scoped to the
+  # two sync/provider trees whose `throw new Error(...)` text reaches the
+  # user (an Alert body, a toast) without ever going through `i18n.t`. `$MSG`
+  # is filtered to a plain string OR template literal via `metavariable-
+  # pattern` — a bare `throw new Error($MSG)` pattern alone would ALSO match
+  # a legitimate `throw new Error(error.message)`/`throw new Error(someVar)`
+  # rethrow, which is not a hardcoded literal at all (verified empirically:
+  # the unfiltered pattern matched both). `"..."` and `` `...` `` are
+  # Semgrep's generic "any string literal"/"any template literal" wildcards —
+  # the latter matches a template literal WITH interpolation too (verified
+  # empirically against a `` `status ${x}` `` probe; a literal `` `$MSG` ``
+  # pattern does not). `pattern-not` on `i18n.t(...)` is the one shape that
+  # must stay silent — see `src/crypto-sync/sync/sync.ts`'s existing
+  # `i18n.t('accountDetail.noConnectionFound', ...)` throws for the pattern
+  # every sweep site now follows. `paths.include` is deliberately
+  # path-prefixed (`src/crypto-sync/**`/`src/monobank/**`), so this rule's
+  # own fixture pair is NESTED under a mirrored path — a path-prefixed
+  # include draws nothing against a fixture placed directly in
+  # rules/fixtures/ (kiko-linter's "Semgrep facts") — see
+  # `scripts/checks/semgrep-rules.sh`'s nested-fixture support.
+  - id: kiko-no-literal-sync-error
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A hardcoded literal or template string reaches `throw new Error(...)`
+      in a sync/provider module. Route it through `i18n.t('<namespace>.<key>')`
+      instead (add the key to both `src/i18n/locales/en.ts` and `uk.ts`), the
+      way `src/crypto-sync/sync/sync.ts` already does — see kiko-code-style's
+      "Externalize hardcoded config".
+    metadata:
+      fix: "Route the message through `i18n.t('<namespace>.<key>')` instead of a literal or template string, adding the key to both en.ts and uk.ts."
+      skill: "kiko-code-style › Externalize hardcoded config"
+    paths:
+      include:
+        - "src/crypto-sync/**"
+        - "src/monobank/**"
+      exclude:
+        - "*.test.ts"
+    patterns:
+      - pattern: "throw new Error($MSG)"
+      - pattern-not: "throw new Error(i18n.t(...))"
+      - metavariable-pattern:
+          metavariable: $MSG
+          patterns:
+            - pattern-either:
+                - pattern: '"..."'
+                - pattern: '`...`'

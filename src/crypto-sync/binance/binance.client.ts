@@ -2,6 +2,8 @@ import { guard } from 'fnts';
 import { BINANCE_API_ENDPOINT } from '@env';
 import either, { bifoldr } from 'fnts/either';
 
+import { i18n } from '../../i18n';
+
 import { signQuery } from './binance.hmac';
 
 /** One spot balance from `/api/v3/account` — decimal strings, per Binance. */
@@ -44,7 +46,12 @@ const readBody = guard(
   [
     (response: Response) => !response.ok,
     async (response: Response): Promise<never> => {
-      throw new Error(`Binance request failed: ${response.status}${await errorSuffix(response)}`);
+      throw new Error(
+        i18n.t('accountDetail.binanceRequestFailed', {
+          status: response.status,
+          detail: await errorSuffix(response),
+        }),
+      );
     },
   ],
   (response: Response): Promise<unknown> => response.json(),

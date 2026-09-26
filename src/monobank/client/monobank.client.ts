@@ -63,7 +63,7 @@ const readBody = guard(
   [
     (response: Response) => !response.ok,
     (response: Response): never => {
-      throw new Error(`Monobank request failed: ${response.status}`);
+      throw new Error(i18n.t('accountDetail.monobankRequestFailed', { status: response.status }));
     },
   ],
   (response: Response): Promise<unknown> => response.json(),
