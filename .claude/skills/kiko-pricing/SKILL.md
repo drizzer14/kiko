@@ -432,26 +432,38 @@ starts a SECOND fan-out (caught in review, not a shipped production bug).
 before by the same catch-all `either` — only the release TIMING
 changes, not which failures are silent.
 It refreshes ONLY currently held metals — scanned from every `metal`
-holding's `asMetalMeta(...).metal`, never a metal nobody owns — at
-most once per LOCAL day per metal, resolved by comparing
-`dayKeyOf(now())` against the latest stored `metal:<X>`
-`price_points.day`. This is already write-minimal, verified by test
-rather than changed: **zero network calls and zero writes** when there
-are no held metal holdings at all (the `earliestDays.size === 0` early
-return, before either fetch function is ever referenced) and equally
-when every held metal already has today's point stored (`planRefresh`
-drops it from both the `backfill` and `current` work lists). A metal
-with no stored point yet is backfilled in ONE `fetchNbuMetalHistory`
-call spanning its earliest lot day (the minimum `day` across that
-metal's holdings' `metadata.lots`) through today; an already-priced
-metal instead takes a single SHARED `fetchNbuMetalsCurrent` call for
-just today's point, regardless of how many metals need it that run.
-Every row is accumulated in memory first and written through exactly
-ONE final `pricePointsRepo.upsertMany` call — a fetch failure for any
-held metal rejects before that call is ever reached, so a failed run
-writes NOTHING (never a partial write), matching the "fails closed"
-convention `kiko-pricing`'s "Refresh throttles" section already
-documents for rates.
+holding's `asMetalMeta(...).metal`, never a metal nobody owns, and
+INCLUDING a closed holding's own lots (the history chart still needs
+its pre-close prices, so `listHoldings`' default, `holdingsRepo.allQuery()`,
+is never filtered down to open holdings only here) — at most once per
+LOCAL day per metal for the ordinary one-day-forward case, resolved by
+comparing `dayKeyOf(now())` against the stored `metal:<X>`
+`price_points.day` range. This is already write-minimal, verified by
+test rather than changed: **zero network calls and zero writes** when
+there are no held metal holdings at all (the `earliestDays.size === 0`
+early return, before either fetch function is ever referenced) and
+equally when every held metal already fully covers its earliest lot
+through today (`planRefresh` drops it from both the `backfill` and
+`current` work lists). `planRefresh` mirrors `history-backfill.ts`'s
+`missingDays` idea: a metal is backfilled via ONE `fetchNbuMetalHistory`
+range call per missing span whenever it has never been priced at all, a
+lot is added dated BEFORE its earliest stored point (the range from
+that lot's day through the day before the first stored day), or more
+than one day is missing since its last stored point (the whole gap in
+one range call, not just today) — the earlier-lot check runs
+UNCONDITIONALLY, never short-circuited by the "already refreshed today"
+guard, since that guard covers only the forward gap and a stale earlier
+gap must still fill in even once today's point is stored. Only a metal
+that already covers back to its earliest lot AND is short exactly one
+day (yesterday's point is the newest stored) takes the cheap path: a
+single SHARED `fetchNbuMetalsCurrent` call for just today's point,
+regardless of how many metals need it that run. Every row is
+accumulated in memory first and written through exactly ONE final
+`pricePointsRepo.upsertMany` call — a fetch failure for any held metal
+rejects before that call is ever reached, so a failed run writes
+NOTHING (never a partial write), matching the "fails closed" convention
+`kiko-pricing`'s "Refresh throttles" section already documents for
+rates.
 
 ## Later (not built yet — do not invent detail)
 
