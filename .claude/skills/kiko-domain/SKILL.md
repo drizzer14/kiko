@@ -1022,8 +1022,9 @@ decimal-string rule.
   is simply the loan's own principal at `startDate`. Either path
   clamps to 0 — an overpaid/over-corrected loan reads as paid off,
   never negative. The anchor itself is `loanAnchorAt(meta, holdingId,
-  book, instant)` — `{ dayKey, valueMinorUnits }` — shared with the
-  loan ledger below, so both anchor on the exact same point.
+  book, instant)` — `LoanAnchor`, `{ dayKey, valueMinorUnits,
+  fromCorrection }` — shared with the loan ledger below, so both anchor
+  on the exact same correction.
 - `loanInterestForPaymentMinor(meta, paymentTime, paymentAbsMinor)`
   ("interest-only spending" — the derived-entry wiring itself is the
   "Spending-exclusion pipeline" section above): `none` always counts 0 interest
@@ -1055,20 +1056,30 @@ together.
   detail's upcoming-payments guard; the form's schedule-to-`none`
   edit). No counted payment: exactly `loanOutstandingMinorAt` (pinned —
   a loan with no linked payment values as it always did). Otherwise:
-  `loanAnchorAt` minus the principal part (`|amount|` minus
+  the anchor minus the principal part (`|amount|` minus
   `loanInterestForPaymentMinor`) of each counted payment dated strictly
-  after the anchor's day, clamped at 0; 0 before the start day. A
-  payment on or before a correction's day is already inside that
-  correction.
+  after the anchor's day, clamped at 0; 0 before the start day. The
+  anchor (`ledgerAnchorAt`) is the latest correction on or before the
+  instant (`loanAnchorAt`); with none, an `annuity`/`differentiated`
+  loan anchors on the SCHEDULE outstanding (`loanOutstandingMinorAt`)
+  at the end of the local day before its FIRST linked payment, because
+  auto-links only reach back as far as the bank sync window and a
+  loan's earlier payments are often never linked. So the history never
+  steps up at the first link: it follows the schedule up to that day,
+  then drops by each linked payment's principal part. A `none` loan
+  (no schedule), or a first link on or before the start day, keeps the
+  principal at the start day. A payment on or before a correction's day
+  is already inside that correction.
 - `loanLedgerSummary(meta, loan, book, now)` — the detail's breakdown:
   `principalMinorUnits`, `paidSoFarMinorUnits` (Σ `|amount|`),
   `interestPaidMinorUnits` (Σ `loanInterestForPaymentMinor`; 0 for
   `none`), `principalRepaidMinorUnits` (paid − interest), and
   `outstandingMinorUnits` (the function above at `now`).
 
-Known limit: with linked payments and no correction, the anchor is the
-original principal, so a loan whose earlier payments were never linked
-reads too high until the user records a correction ("Update
+Known limit: with linked payments and no correction, the outstanding
+before the first link is the schedule's, so a loan paid off faster or
+slower than its schedule before the first link reads off by that
+difference until the user records a correction ("Update
 outstanding").
 
 `holding-descriptor/loan/loan.descriptor.ts`'s valuation branch (`gross = net = -outstanding`,

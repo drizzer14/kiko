@@ -145,6 +145,88 @@ describe('loanLedgerOutstandingMinorAt', () => {
     expect(loanLedgerOutstandingMinorAt(noneMeta, LOAN, book, local(2024, 3, 1))).toBe(4_000_000);
   });
 
+  describe('a loan whose early payments were never linked', () => {
+    const mortgageMeta: LoanMeta = {
+      kind: 'mortgage',
+      principalMinorUnits: 60_000_000,
+      startDate: local(2021, 0, 15),
+      annualRatePct: 10,
+      termMonths: 120,
+      schedule: 'annuity',
+    };
+    const schedule = loanInstallments(mortgageMeta);
+    const [firstLinked, secondLinked] = [schedule[48], schedule[49]];
+    // Each linked payment is 1000.00 above the scheduled one, so the ledger
+    // and the schedule disagree after the first link.
+    const extra = 100_000;
+    const book = bookWith([
+      { time: firstLinked.dueDate, amountMinorUnits: -(firstLinked.paymentMinorUnits + extra) },
+      { time: secondLinked.dueDate, amountMinorUnits: -(secondLinked.paymentMinorUnits + extra) },
+    ]);
+    const dayBeforeFirstLink = addDays(firstLinked.dueDate, -1);
+    const scheduleBeforeFirstLink = loanOutstandingMinorAt(
+      mortgageMeta,
+      LOAN.id,
+      bookWith([]),
+      dayBeforeFirstLink,
+    );
+
+    it('anchors on the schedule outstanding the day before the first link', () => {
+      const linkedPrincipal =
+        firstLinked.principalMinorUnits + secondLinked.principalMinorUnits + 2 * extra;
+
+      expect(loanLedgerOutstandingMinorAt(mortgageMeta, LOAN, book, secondLinked.dueDate)).toBe(
+        scheduleBeforeFirstLink - linkedPrincipal,
+      );
+    });
+
+    it('never steps the history up at the first link', () => {
+      const before = loanLedgerOutstandingMinorAt(mortgageMeta, LOAN, book, dayBeforeFirstLink);
+      const onLink = loanLedgerOutstandingMinorAt(mortgageMeta, LOAN, book, firstLinked.dueDate);
+
+      expect(before).toBe(scheduleBeforeFirstLink);
+      expect(onLink).toBe(before - firstLinked.principalMinorUnits - extra);
+    });
+
+    it('still re-anchors on a correction dated after the first link', () => {
+      const correctionDay = addDays(firstLinked.dueDate, 3);
+      const corrected = bookWith(
+        [
+          {
+            time: firstLinked.dueDate,
+            amountMinorUnits: -(firstLinked.paymentMinorUnits + extra),
+          },
+          {
+            time: secondLinked.dueDate,
+            amountMinorUnits: -(secondLinked.paymentMinorUnits + extra),
+          },
+        ],
+        [{ day: correctionDay, price: '300000.00' }],
+      );
+
+      expect(
+        loanLedgerOutstandingMinorAt(mortgageMeta, LOAN, corrected, secondLinked.dueDate),
+      ).toBe(30_000_000 - secondLinked.principalMinorUnits - extra);
+    });
+  });
+
+  it('anchors on the principal when the first link is on the start day', () => {
+    const book = bookWith([
+      { time: annuityMeta.startDate, amountMinorUnits: -100_000 },
+      onSchedule(0),
+    ]);
+
+    expect(loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, installments[0].dueDate)).toBe(
+      annuityMeta.principalMinorUnits - installments[0].principalMinorUnits,
+    );
+  });
+
+  it('anchors a "none" schedule loan with no correction on its principal', () => {
+    const book = bookWith([{ time: local(2024, 2, 1), amountMinorUnits: -1_000_000 }]);
+
+    expect(loanLedgerOutstandingMinorAt(noneMeta, LOAN, book, local(2024, 3, 1))).toBe(4_000_000);
+  });
+
   it('is 0 before the loan start date', () => {
     const book = bookWith([onSchedule(0)]);
 

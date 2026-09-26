@@ -151,6 +151,13 @@ export const loanOutstandingMinorAt = (
   return Math.max(0, anchor.valueMinorUnits - principalDueAfterAnchor);
 };
 
+/** The day and value a loan's outstanding is counted down from. */
+export type LoanAnchor = {
+  dayKey: number;
+  valueMinorUnits: number;
+  fromCorrection: boolean;
+};
+
 /**
  * The baseline a loan's outstanding is counted down from at `instant`: the
  * latest manual correction on the loan's own `holding:<id>` series whose day
@@ -166,16 +173,21 @@ export const loanAnchorAt = (
   holdingId: string,
   book: PriceBook,
   instant: number,
-): { dayKey: number; valueMinorUnits: number } => {
+): LoanAnchor => {
   const correction = priceAt(book, holdingInstrument(holdingId), instant);
 
   if (correction === undefined || correction.day > dayKeyOf(instant)) {
-    return { dayKey: dayKeyOf(meta.startDate), valueMinorUnits: meta.principalMinorUnits };
+    return {
+      dayKey: dayKeyOf(meta.startDate),
+      valueMinorUnits: meta.principalMinorUnits,
+      fromCorrection: false,
+    };
   }
 
   return {
     dayKey: correction.day,
     valueMinorUnits: multiplyToMinorUnits([correction.price], correction.currency),
+    fromCorrection: true,
   };
 };
 

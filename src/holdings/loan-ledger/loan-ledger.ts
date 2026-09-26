@@ -1,10 +1,12 @@
 import type { HoldingRow } from '@kiko/db/schema';
+import { startOfLocalDay } from '@kiko/dates/local-day';
 import { dayKeyOf, type LoanLedgerPayment, type PriceBook } from '@kiko/prices/price-book';
 
 import {
   loanAnchorAt,
-  loanInterestForPaymentMinor,
   loanOutstandingMinorAt,
+  loanInterestForPaymentMinor,
+  type LoanAnchor,
 } from '../loan-schedule';
 import type { LoanMeta } from '../holding-metadata';
 
@@ -43,12 +45,48 @@ const interestOf = (meta: LoanMeta, payment: LoanLedgerPayment): number =>
 const principalOf = (meta: LoanMeta, payment: LoanLedgerPayment): number =>
   Math.abs(payment.amountMinorUnits) - interestOf(meta, payment);
 
+// With no correction to count down from, a scheduled loan starts from what
+// its schedule says was outstanding on the day before its first linked
+// payment, not from the original principal: auto-links only reach back as far
+// as the bank sync window, so a loan's earlier payments are often never
+// linked and the principal would read far too high. A `none` loan has no
+// schedule to read, and a first payment on or before the start day leaves
+// nothing scheduled before it, so both keep the principal.
+const ledgerAnchorAt = (
+  meta: LoanMeta,
+  loan: LedgerLoan,
+  book: PriceBook,
+  instant: number,
+  payments: readonly LoanLedgerPayment[],
+): LoanAnchor => {
+  const anchor = loanAnchorAt(meta, loan.id, book, instant);
+
+  if (anchor.fromCorrection || meta.schedule === 'none') {
+    return anchor;
+  }
+
+  const firstPaymentTime = Math.min(...payments.map((payment) => payment.time));
+  const endOfDayBeforeFirstPayment = startOfLocalDay(firstPaymentTime) - 1;
+  const dayKey = dayKeyOf(endOfDayBeforeFirstPayment);
+
+  if (dayKey < anchor.dayKey) {
+    return anchor;
+  }
+
+  return {
+    dayKey,
+    valueMinorUnits: loanOutstandingMinorAt(meta, loan.id, book, endOfDayBeforeFirstPayment),
+    fromCorrection: false,
+  };
+};
+
 /**
  * A loan's outstanding at `instant`, the ONE number every valuation site
  * reads (card, detail, totals, statistics, net-worth history). With no
  * counted linked payment it is the schedule's `loanOutstandingMinorAt`,
- * unchanged. Otherwise it is the anchor (`loanAnchorAt`: the latest
- * correction on or before `instant`, else the principal at the start day)
+ * unchanged. Otherwise it is the anchor (`ledgerAnchorAt`: the latest
+ * correction on or before `instant`, else the schedule outstanding on the day
+ * before the first linked payment, else the principal at the start day)
  * minus the principal part of each counted payment dated strictly after the
  * anchor's day — what was actually repaid, not what the schedule says was
  * due — clamped to never go below 0. 0 before the loan's start day, the same
@@ -70,7 +108,7 @@ export const loanLedgerOutstandingMinorAt = (
     return 0;
   }
 
-  const anchor = loanAnchorAt(meta, loan.id, book, instant);
+  const anchor = ledgerAnchorAt(meta, loan, book, instant, payments);
   const principalRepaidAfterAnchor = payments
     .filter((payment) => dayKeyOf(payment.time) > anchor.dayKey)
     .reduce((sum, payment) => sum + principalOf(meta, payment), 0);
