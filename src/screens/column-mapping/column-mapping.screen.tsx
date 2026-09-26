@@ -604,6 +604,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
 
         if (isLegacyXlsFile(name)) {
           setLoadState({ kind: 'xlsNotSupported' });
+
           return;
         }
 
@@ -670,6 +671,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
 
     if (saved === undefined) {
       setHeaderRowIndex(guessHeaderRowIndex(rows));
+
       return;
     }
 

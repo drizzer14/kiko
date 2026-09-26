@@ -66,9 +66,11 @@ const AddBankProviderSheet: FC<AddBankProviderSheetProps> = ({ visible, onDismis
             <Text variant="body" tone="textPrimary">
               {entry.displayName}
             </Text>
+
             <Text variant="caption" tone="textSecondary">
               {t(entry.aboutKey)}
             </Text>
+
             <Text variant="caption" tone="textSecondary">
               {t(entry.eligibilityKey)}
             </Text>

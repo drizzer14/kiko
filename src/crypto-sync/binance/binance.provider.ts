@@ -157,6 +157,7 @@ const fundingSatoshis = (assets: BinanceFundingAsset[]): number => {
 
   for (const asset of btcAssets) {
     const fields = [asset.free, asset.locked, asset.freeze, asset.withdrawing];
+
     if (fields.some((field) => !isFiniteAmount(field))) {
       throw new Error(i18n.t('accountDetail.binanceNonNumericFundingAmount'));
     }
@@ -223,12 +224,15 @@ const walletSatoshis = async (
 /** The `binanceAsset` match keys already present among a target's holdings. */
 const existingBinanceKeys = (holdings: HoldingRow[]): Set<string> => {
   const keys = new Set<string>();
+
   for (const holding of holdings) {
     const key = (holding.metadata as { binanceAsset?: unknown } | null)?.binanceAsset;
+
     if (typeof key === 'string') {
       keys.add(key);
     }
   }
+
   return keys;
 };
 
@@ -253,6 +257,7 @@ const appendWallet = (
   if (satoshis === null) {
     return;
   }
+
   if (satoshis === 0 && !existingKeys.has(metadataKey)) {
     return;
   }
@@ -309,6 +314,7 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
         await deps.fetchLockedPosition(apiKey, secret, options),
         'amount',
       );
+
       return flexible + locked;
     });
     appendWallet(balances, earn, EARN_KEY, EARN_HOLDING_NAME, existingKeys);

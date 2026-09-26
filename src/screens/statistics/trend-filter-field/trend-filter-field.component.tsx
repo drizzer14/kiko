@@ -143,6 +143,7 @@ const isDraftDirty = (draft: Draft, filter: TrendFilter): boolean => {
 // Toggle one category key in an immutable copy of the selection.
 const toggleKey = (keys: Set<string>, key: string): Set<string> => {
   const next = new Set(keys);
+
   if (next.has(key)) {
     next.delete(key);
   } else {

@@ -93,6 +93,7 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
     // A loan's outstanding can reach exactly 0 (repaid) — every other
     // priced holding's value must stay strictly positive.
     const isValidValue = isDebt ? majorValue >= 0 : majorValue > 0;
+
     if (!isValidValue) {
       setAttemptedSave(true);
       scrollToField(
@@ -120,6 +121,7 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
       // Mirrors contribution-form's Alert pattern: a write failure keeps the
       // screen open with the entered values intact.
       alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
+
       return;
     }
     navigation.goBack();

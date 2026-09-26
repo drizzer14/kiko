@@ -155,6 +155,7 @@ export const buildNetWorthSeries = (input: {
     }
     const meta = asBondMeta(holding.metadata);
     const recognition = bondRecognitions.get(holding.id);
+
     if (meta === null || recognition === undefined) {
       return holding;
     }
@@ -189,6 +190,7 @@ export const buildNetWorthSeries = (input: {
             t,
             book,
           );
+
           return sum.add(convert(Money.of(holding.currency, value), baseCurrency, table));
         },
         Money.of(baseCurrency, 0),

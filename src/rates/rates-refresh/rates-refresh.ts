@@ -110,6 +110,7 @@ const withRetry = async <T>(
  */
 const buildUahPrice = (fiat: RateEntry[], crypto: RateEntry[]): UahPrice => {
   const price: UahPrice = { UAH: 1 };
+
   for (const entry of fiat) {
     if (entry.quote === 'UAH') {
       price[entry.base] = entry.rate;
@@ -118,6 +119,7 @@ const buildUahPrice = (fiat: RateEntry[], crypto: RateEntry[]): UahPrice => {
     }
   }
   const usdPrice = price.USD;
+
   if (usdPrice !== undefined) {
     for (const entry of crypto) {
       if (entry.quote === 'USD' && isCrypto(entry.base)) {
@@ -125,6 +127,7 @@ const buildUahPrice = (fiat: RateEntry[], crypto: RateEntry[]): UahPrice => {
       }
     }
   }
+
   return price;
 };
 
@@ -156,10 +159,12 @@ export const buildPairs = (
   fiatSource: 'monobank' | 'nbu' = 'monobank',
 ): StoredRate[] => {
   const pairs: StoredRate[] = [];
+
   for (const base of allCurrencies) {
     for (const quote of allCurrencies) {
       const from = price[base];
       const to = price[quote];
+
       if (base === quote || from === undefined || to === undefined) {
         continue;
       }
@@ -172,6 +177,7 @@ export const buildPairs = (
       });
     }
   }
+
   return pairs;
 };
 
@@ -194,6 +200,7 @@ const runCryptoLeg = (
 /** Every currency with at least one stored row in `currency_rates`, base or quote. */
 const defaultPresentCurrencies = async (): Promise<Currency[]> => {
   const rows = await ratesRepo.presentCurrenciesQuery();
+
   return rows.map((row) => row.currency);
 };
 
@@ -213,6 +220,7 @@ const shouldThrottle = async (
 ): Promise<boolean> => {
   const lastRefreshAt = deps.lastRefreshAt ?? null;
   const withinWindow = lastRefreshAt !== null && at - lastRefreshAt < FIVE_MINUTES_MS;
+
   if (!withinWindow) {
     return false;
   }
@@ -269,6 +277,7 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<void> => {
 
     if (isLeft(attempt)) {
       fiatSource = 'nbu';
+
       return loadNbuFiat();
     }
 

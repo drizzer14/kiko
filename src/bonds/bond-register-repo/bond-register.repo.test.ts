@@ -5,6 +5,7 @@
 let mockDatabaseTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
+
   return {
     ...actual,
     write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
@@ -46,11 +47,13 @@ describe('bondRegisterRepo', () => {
     mockDatabaseTransaction = {
       delete: () => {
         calls.push('delete');
+
         return Promise.resolve();
       },
       insert: () => ({
         values: (rows: unknown[]) => {
           calls.push(`insert:${rows.length}`);
+
           return Promise.resolve();
         },
       }),
@@ -66,11 +69,13 @@ describe('bondRegisterRepo', () => {
     mockDatabaseTransaction = {
       delete: () => {
         calls.push('delete');
+
         return Promise.resolve();
       },
       insert: () => ({
         values: () => {
           calls.push('insert');
+
           return Promise.resolve();
         },
       }),

@@ -547,6 +547,7 @@ export const holdingsRepo = {
         .from(holdings)
         .where(eq(holdings.id, holdingId));
       const row = rows.at(0);
+
       if (!row) {
         return;
       }

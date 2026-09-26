@@ -49,24 +49,29 @@ export const rateTableAt = (
   day: number,
 ): RateTable => {
   const nearest = new Map<string, { day: number; rate: string }>();
+
   for (const row of rows) {
     if (row.day > day) {
       continue;
     }
     const key = `${row.base}:${row.quote}`;
     const current = nearest.get(key);
+
     if (current === undefined || row.day > current.day) {
       nearest.set(key, { day: row.day, rate: row.rate });
     }
   }
 
   const table: RateTable = {};
+
   for (const [key, { rate }] of nearest) {
     const parsed = Number(rate);
+
     if (Number.isFinite(parsed)) {
       table[key] = parsed;
     }
   }
+
   return table;
 };
 
@@ -83,20 +88,25 @@ export const earliestRateTable = (
   rows: Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate'>[],
 ): RateTable => {
   const earliest = new Map<string, { day: number; rate: string }>();
+
   for (const row of rows) {
     const key = `${row.base}:${row.quote}`;
     const current = earliest.get(key);
+
     if (current === undefined || row.day < current.day) {
       earliest.set(key, { day: row.day, rate: row.rate });
     }
   }
 
   const table: RateTable = {};
+
   for (const [key, { rate }] of earliest) {
     const parsed = Number(rate);
+
     if (Number.isFinite(parsed)) {
       table[key] = parsed;
     }
   }
+
   return table;
 };

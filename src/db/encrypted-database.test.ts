@@ -138,6 +138,7 @@ describe('openEncryptedDatabase', () => {
           options.name === LIVE_PLAINTEXT_DATABASE_NAME ||
           options.name === LEGACY_PLAINTEXT_DATABASE_NAME,
       );
+
       for (const [options] of plaintextOpens) {
         expect(options.failOnCreate).toBe(true);
       }

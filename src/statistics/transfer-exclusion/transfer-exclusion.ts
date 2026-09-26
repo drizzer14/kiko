@@ -33,9 +33,11 @@ export const isMccExcludedTransfer = (
   ownIbans: ReadonlySet<string>,
 ): boolean => {
   const { mcc, counterIban } = transaction;
+
   if (mcc === null) {
     return false;
   }
+
   if (ALWAYS_EXCLUDED.has(mcc)) {
     return true;
   }
@@ -98,6 +100,7 @@ export const descriptionExcludedTransferTransactionIds = (
   transactions: readonly { id: string; description: string | null | undefined }[],
 ): Set<string> => {
   const ids = new Set<string>();
+
   for (const transaction of transactions) {
     if (isDescriptionExcludedTransfer(transaction.description)) {
       ids.add(transaction.id);
@@ -118,6 +121,7 @@ export const mccExcludedTransferTransactionIds = (
   ownIbans: ReadonlySet<string>,
 ): Set<string> => {
   const ids = new Set<string>();
+
   for (const transaction of transactions) {
     if (isMccExcludedTransfer(transaction, ownIbans)) {
       ids.add(transaction.id);

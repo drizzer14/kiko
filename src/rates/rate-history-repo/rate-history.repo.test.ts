@@ -6,6 +6,7 @@
 let mockDatabaseTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
+
   return {
     ...actual,
     write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
@@ -33,12 +34,14 @@ const makeUpsertDatabaseTransaction = (store: HistoryRow[]): unknown => ({
               existing.quote === row.quote &&
               existing.day === row.day,
           );
+
           if (index >= 0) {
             store[index] = { ...row };
           } else {
             store.push({ ...row });
           }
         }
+
         return Promise.resolve();
       },
     }),
@@ -82,6 +85,7 @@ describe('rateHistoryRepo', () => {
       insert: () => ({
         values: (rows: HistoryRow[]) => {
           chunkSizes.push(rows.length);
+
           return (upsertStore as { insert: () => { values: (r: HistoryRow[]) => unknown } })
             .insert()
             .values(rows);
@@ -101,6 +105,7 @@ describe('rateHistoryRepo', () => {
 
     // Every chunk stays well under the 32766 variable ceiling (chunk * 5 params).
     expect(chunkSizes.length).toBeGreaterThan(1);
+
     for (const size of chunkSizes) {
       expect(size).toBeLessThanOrEqual(2000);
       expect(size * 5).toBeLessThan(32_766);
@@ -116,6 +121,7 @@ describe('rateHistoryRepo', () => {
     mockDatabaseTransaction = {
       insert: () => {
         insertCalled = true;
+
         return { values: () => ({ onConflictDoUpdate: () => Promise.resolve() }) };
       },
     };

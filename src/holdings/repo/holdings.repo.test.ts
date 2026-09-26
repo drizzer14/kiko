@@ -11,6 +11,7 @@
 let mockDatabaseTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
+
   return {
     ...actual,
     // A jest.fn wrapper (not a bare function): `upsertExchangeMany`'s own test
@@ -65,10 +66,12 @@ const makeCreateDatabaseTransaction = (
       values: (values: Record<string, unknown>) => {
         inserts.push(values);
         insertTables.push(tableNameOf(table));
+
         return Promise.resolve();
       },
     }),
   };
+
   return { databaseTransaction, inserts, insertTables };
 };
 
@@ -100,6 +103,7 @@ const makeDatabaseTransaction = (store: Store) => {
 
     return table === pricePoints ? 'pricePoints' : 'transactions';
   };
+
   return {
     select: () => ({
       from: (table: unknown) => ({
@@ -367,6 +371,7 @@ describe('holdingsRepo.reorder', () => {
         set: (set: Record<string, unknown>) => ({
           where: () => {
             sortOrders.push(set.sortOrder);
+
             return Promise.resolve();
           },
         }),
@@ -519,6 +524,7 @@ const makeUpsertDatabaseTransaction = (
       from: () => ({
         where: () => {
           const rows = selectResults.shift() ?? [];
+
           return Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
         },
       }),
@@ -526,6 +532,7 @@ const makeUpsertDatabaseTransaction = (
     insert: () => ({
       values: (values: Record<string, unknown>) => {
         inserts.push(values);
+
         return Promise.resolve();
       },
     }),
@@ -533,11 +540,13 @@ const makeUpsertDatabaseTransaction = (
       set: (values: Record<string, unknown>) => ({
         where: () => {
           updates.push(values);
+
           return Promise.resolve();
         },
       }),
     }),
   };
+
   return { databaseTransaction, inserts, updates };
 };
 
@@ -684,6 +693,7 @@ describe('holdingsRepo.upsertExchangeMany', () => {
         from: () => ({
           where: () => {
             const rows = [{ id: 'h-existing' }];
+
             return Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
           },
         }),
@@ -692,6 +702,7 @@ describe('holdingsRepo.upsertExchangeMany', () => {
         set: (values: Record<string, unknown>) => ({
           where: () => {
             updates.push(values);
+
             return Promise.resolve();
           },
         }),

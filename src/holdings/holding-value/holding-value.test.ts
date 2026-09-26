@@ -262,6 +262,7 @@ describe('holdingValue', () => {
   it('reproduces the screenshot expected profit (16,657.00)', () => {
     const meta = asBondMeta(screenshotBond().metadata);
     expect(meta).not.toBeNull();
+
     if (meta !== null) {
       // 3 * 8,175.00 net coupons + 100,000.00 nominal - 107,868.00 paid.
       expect(bondExpectedProfitMinor(meta, 'UAH')).toBe(1_665_700);
@@ -569,6 +570,7 @@ describe('holdingValueBreakdown — metal (priced)', () => {
 function addMonthsMs(start: number, months: number): number {
   const date = new Date(start);
   date.setMonth(date.getMonth() + months);
+
   return date.getTime();
 }
 

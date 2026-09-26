@@ -51,9 +51,11 @@ const toRateEntry = (row: NbuExchangeRow): RateEntry[] => {
     return [];
   }
   const units = row.units ?? 1;
+
   if (!Number.isFinite(row.rate) || units <= 0) {
     return [];
   }
+
   return [{ base: row.cc, quote: 'UAH', rate: row.rate / units, source: 'nbu' }];
 };
 
@@ -67,5 +69,6 @@ const toRateEntry = (row: NbuExchangeRow): RateEntry[] => {
 export const fetchNbuFiatRates = async (fetchImpl: typeof fetch = fetch): Promise<RateEntry[]> => {
   const response = await fetchImpl(EXCHANGE_ENDPOINT);
   const rows = await readExchange(response);
+
   return rows.flatMap(toRateEntry);
 };

@@ -65,6 +65,7 @@ export const guardedNetWorth = (
   book: PriceBook = EMPTY_PRICE_BOOK,
 ): Money => {
   const convertible = holdings.filter((holding) => canConvert(holding.currency, base, rates));
+
   return netWorth(convertible, base, rates, now, book);
 };
 

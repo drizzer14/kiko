@@ -309,6 +309,7 @@ describe('CategoriesScreen', () => {
       .spyOn(globalThis, 'requestAnimationFrame')
       .mockImplementation((callback) => {
         callback(0);
+
         return 0;
       });
 

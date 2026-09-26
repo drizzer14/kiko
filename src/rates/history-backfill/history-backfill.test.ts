@@ -178,10 +178,12 @@ describe('runBackfill', () => {
       today: day(0),
       fetchNbuHistory: async (start, end) => {
         nbuCalls.push([start, end]);
+
         return nbu;
       },
       fetchCryptoHistory: async (days) => {
         btcCalls.push(days);
+
         return btc;
       },
       upsertMany: async (rows: StoredRow[]) => {
@@ -199,6 +201,7 @@ describe('runBackfill', () => {
       presentCurrencies: ['USD', 'EUR', 'BTC'],
       ...overrides,
     };
+
     return { deps, captured, nbuCalls, btcCalls };
   };
 
@@ -352,6 +355,7 @@ describe('runBackfill — a newly-held currency with no stored history yet', () 
       today: day(2),
       fetchNbuHistory: async (start, end) => {
         nbuCalls.push([start, end]);
+
         return nbu;
       },
       fetchCryptoHistory: async () => crypto,
@@ -382,6 +386,7 @@ describe('runBackfill — a newly-held currency with no stored history yet', () 
       today: day(2),
       fetchNbuHistory: async (start, end) => {
         nbuCalls.push([start, end]);
+
         return nbu;
       },
       fetchCryptoHistory: async () => [],
@@ -430,10 +435,12 @@ describe('runBackfill — the data-presence gate', () => {
     const deps = makeDeps({
       fetchNbuHistory: async () => {
         nbuCalled = true;
+
         return nbu;
       },
       fetchCryptoHistory: async () => {
         cryptoCalled = true;
+
         return btc;
       },
       upsertMany: async (rows: StoredRow[]) => {
@@ -455,6 +462,7 @@ describe('runBackfill — the data-presence gate', () => {
     const deps = makeDeps({
       fetchCryptoHistory: async () => {
         cryptoCalled = true;
+
         return btc;
       },
       openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: [] }),
@@ -470,6 +478,7 @@ describe('runBackfill — the data-presence gate', () => {
     const deps = makeDeps({
       fetchNbuHistory: async () => {
         nbuCalled = true;
+
         return nbu;
       },
       openCurrencies: async () => ({ needsFiat: false, cryptoCurrencies: ['BTC'] }),
@@ -485,6 +494,7 @@ describe('runBackfill — the data-presence gate', () => {
     const deps = makeDeps({
       fetchCryptoHistory: async (_days, currencies) => {
         receivedCurrencies = currencies ?? [];
+
         return btc;
       },
       openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC'] }),

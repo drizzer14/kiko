@@ -267,9 +267,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         color,
         bankId,
       });
+
       if (icon !== null) {
         await accountsRepo.setIcon(pendingAccountId, icon);
       }
+
       return pendingAccountId;
     })().catch((error: unknown) => {
       // A failed insert (DB locked, disk full) must not poison the session: clear
@@ -282,6 +284,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       throw error;
     });
     setAccountRowStarted(true);
+
     return accountCreate.current;
   };
 

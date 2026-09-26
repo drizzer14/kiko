@@ -117,6 +117,7 @@ const toggleFilter =
 
     setSelected((previous) => {
       const next = new Set(previous);
+
       if (next.has(value)) {
         next.delete(value);
       } else {
@@ -433,6 +434,7 @@ const StatisticsScreen: FC = () => {
       // rejecting) when every provider failed for the span — treated
       // identically to the `isLeft` arm above: retry on the next focus.
       const settled: BackfillStatus = bifold(result);
+
       if (settled.state === 'failed') {
         backfillRanForSpanRef.current = null;
       }
@@ -546,6 +548,7 @@ const StatisticsScreen: FC = () => {
 
     return transactions.flatMap((transaction) => {
       const currency = currencyByHolding.get(transaction.holdingId);
+
       if (currency === undefined) {
         return [];
       }
@@ -665,8 +668,10 @@ const StatisticsScreen: FC = () => {
   // spending pie); a 4829 to any other IBAN is a genuine P2P payment (kept).
   const ownIbans = useMemo(() => {
     const ibans = new Set<string>();
+
     for (const holding of holdings) {
       const iban = ibanOf(holding.metadata);
+
       if (iban !== undefined) {
         ibans.add(iban);
       }
@@ -762,6 +767,7 @@ const StatisticsScreen: FC = () => {
   // KEY is not selected is excluded. De-duplicated by key, first-seen-wins.
   const categoryOptions = useMemo(() => {
     const byKey = new Map<string, FilterOption>();
+
     for (const slice of allCategorySlices) {
       if (byKey.has(slice.key)) {
         continue;
@@ -785,6 +791,7 @@ const StatisticsScreen: FC = () => {
       }
 
       const display = categoryByKey.get(key);
+
       if (display === undefined) {
         continue;
       }

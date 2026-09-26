@@ -135,14 +135,17 @@ const accumulateSpend = (input: {
     if (transaction.amountMinorUnits >= 0) {
       continue;
     }
+
     if (excludedIds.has(transaction.id)) {
       continue;
     }
+
     if (!canConvert(transaction.currency, baseCurrency, rateTable)) {
       continue;
     }
 
     const key = groupKey(transaction.category, defaultCategoryKey);
+
     if (excluded.has(key)) {
       continue;
     }
@@ -296,6 +299,7 @@ export type CategoryMeasure = {
 // than two points, or a zero-variance x (unreachable for n >= 2), yields 0.
 const linearRegressionSlope = (ys: number[]): number => {
   const n = ys.length;
+
   if (n < 2) {
     return 0;
   }
@@ -304,6 +308,7 @@ const linearRegressionSlope = (ys: number[]): number => {
   let sumY = 0;
   let sumXY = 0;
   let sumXX = 0;
+
   for (let i = 0; i < n; i += 1) {
     sumX += i;
     sumY += ys[i];

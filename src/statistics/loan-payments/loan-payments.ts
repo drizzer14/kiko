@@ -116,6 +116,7 @@ export const loanInterestEntries = (input: {
 
     const holding = holdingById.get(transaction.loanHoldingId);
     const meta = metaById.get(transaction.loanHoldingId);
+
     if (holding === undefined || meta === undefined || holding.currency !== transaction.currency) {
       return [];
     }

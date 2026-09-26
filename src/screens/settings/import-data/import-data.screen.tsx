@@ -75,6 +75,7 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
         setFileUri(undefined);
         setFileName(undefined);
         setWrongFileTypeError(true);
+
         return;
       }
 

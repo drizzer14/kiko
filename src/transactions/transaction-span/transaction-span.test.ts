@@ -23,6 +23,7 @@ describe('transactionSpan', () => {
   it('handles a very large array that a spread call would overflow the stack on', () => {
     const size = 500_000;
     const times = new Array<number>(size);
+
     for (let index = 0; index < size; index += 1) {
       // A deterministic non-monotonic fill so the min and max are interior, not
       // the endpoints: values wrap so the smallest and largest sit mid-array.

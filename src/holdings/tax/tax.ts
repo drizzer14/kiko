@@ -45,6 +45,7 @@ export const splitInterestTaxMinor = (grossMinor: number, priorGrossMinor = 0): 
   const cumFrom = Math.max(priorGrossMinor, 0);
   const incomeMinor = cumulativeLevyMinor(grossMinor, cumFrom, INCOME_TAX_RATE_PCT);
   const militaryMinor = cumulativeLevyMinor(grossMinor, cumFrom, MILITARY_LEVY_RATE_PCT);
+
   return { incomeMinor, militaryMinor, totalMinor: incomeMinor + militaryMinor };
 };
 

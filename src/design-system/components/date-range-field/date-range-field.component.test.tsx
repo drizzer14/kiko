@@ -70,6 +70,7 @@ const pickAndApply = async (minDate: Date, maxDate: Date, taps: Date[]): Promise
   });
 
   const calendar = getByTestId('date-range-calendar');
+
   for (const tap of taps) {
     await act(async () => {
       (calendar.props as ReactTestInstanceProps).onDayPress(dayData(tap));
@@ -112,6 +113,7 @@ const pickRangeAndApply = async (
   });
 
   const calendar = getByTestId('date-range-calendar');
+
   for (const tap of taps) {
     await act(async () => {
       (calendar.props as ReactTestInstanceProps).onDayPress(dayData(tap));

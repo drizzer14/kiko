@@ -17,6 +17,7 @@ const buildNavigation = (parentFocused: boolean | undefined, stackIndex = 1) => 
   const navigation = { dispatch, getParent, getState } as unknown as Parameters<
     typeof resetTabStackOnBlur
   >[0]['navigation'];
+
   return { dispatch, navigation };
 };
 

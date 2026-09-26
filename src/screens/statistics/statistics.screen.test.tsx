@@ -513,6 +513,7 @@ const flattenPreOrder = (node: JSONNode): JSONNode[] => [
 
 const renderOrder = (root: Awaited<ReturnType<typeof render>>): JSONNode[] => {
   const tree = root.toJSON();
+
   if (tree === null) {
     return [];
   }
@@ -1600,6 +1601,7 @@ describe('StatisticsScreen', () => {
     const startDate = (() => {
       const date = new Date(now);
       date.setMonth(date.getMonth() - 1);
+
       return date.getTime();
     })();
     const LOAN_META = {

@@ -93,6 +93,7 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
 // `statement-import.screen.test.tsx`'s own precedent.
 jest.mock('../../design-system/components/target-holding-sheet', () => {
   const { Pressable, Text: RNText } = require('react-native');
+
   return {
     __esModule: true,
     default: ({
@@ -160,6 +161,7 @@ const renderScreen = async (params: {
       navigation={asNavigationProp<ColumnMappingProps['navigation']>(navigation)}
     />,
   );
+
   return { ...view, navigation };
 };
 
@@ -203,6 +205,7 @@ const renderMonobankScreen = async (
 ): ReturnType<typeof renderScreen> => {
   const view = await renderScreen(params);
   await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+
   return view;
 };
 
@@ -822,6 +825,7 @@ describe('ColumnMappingScreen', () => {
       const utf8RowErrorCount = await waitFor(() => {
         const errors = view.queryAllByTestId(/^column-mapping-row-error-/);
         expect(errors.length).toBeGreaterThan(2);
+
         return errors.length;
       });
 

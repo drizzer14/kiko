@@ -127,6 +127,7 @@ describe('parseLocalDate', () => {
   it('does not match plain Date.parse (which reads the string as UTC midnight)', () => {
     // Guards the fix: in a non-UTC zone the two disagree by the zone offset.
     const offsetMinutes = new Date(2026, 8, 2).getTimezoneOffset();
+
     if (offsetMinutes !== 0) {
       expect(parseLocalDate('2026-09-02')).not.toBe(Date.parse('2026-09-02'));
     }

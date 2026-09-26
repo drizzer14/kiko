@@ -44,6 +44,7 @@ const makeDeps = (overrides: Partial<RefreshDeps> = {}) => {
     sleep: async () => {},
     ...overrides,
   };
+
   return { deps, captured };
 };
 
@@ -103,6 +104,7 @@ describe('refreshRates', () => {
     const { deps, captured } = makeDeps({
       fetchFiatRates: async () => {
         fiatCalled = true;
+
         return fiat;
       },
       now: () => 1000 + 60_000, // 1 minute after the last refresh
@@ -197,6 +199,7 @@ describe('refreshRates', () => {
         if (!isCurrency(row.base) || !isCurrency(row.quote)) {
           throw new Error(`expected a known currency pair, got ${row.base}:${row.quote}`);
         }
+
         return { base: row.base, quote: row.quote, rate: row.rate };
       }),
     );
@@ -222,9 +225,11 @@ describe('refreshRates — retry on a failed live fetch (Part B)', () => {
     const { deps, captured } = makeDeps({
       fetchFiatRates: async () => {
         callCount += 1;
+
         if (callCount === 1) {
           throw new Error('network blip');
         }
+
         return fiat;
       },
       sleep: async (ms: number) => {
@@ -292,6 +297,7 @@ describe('refreshRates — NBU fallback when Monobank is unreachable', () => {
       fetchFiatRates: () => Promise.reject(new Error('cert pinning blocked')),
       fetchNbuRates: async () => {
         nbuCalled = true;
+
         return nbuFiat;
       },
     });
@@ -318,6 +324,7 @@ describe('refreshRates — NBU fallback when Monobank is unreachable', () => {
     const { deps, captured } = makeDeps({
       fetchNbuRates: async () => {
         nbuCalled = true;
+
         return nbuFiat;
       },
     });
@@ -371,10 +378,12 @@ describe('refreshRates — the data-presence gate', () => {
     const { deps, captured } = makeDeps({
       fetchFiatRates: async () => {
         fiatCalled = true;
+
         return fiat;
       },
       fetchCryptoPrices: async () => {
         cryptoCalled = true;
+
         return btc;
       },
       openCurrencies: async () => ({ needsFiat: false, cryptoCurrencies: [] }),
@@ -392,6 +401,7 @@ describe('refreshRates — the data-presence gate', () => {
     const { deps, captured } = makeDeps({
       fetchCryptoPrices: async () => {
         cryptoCalled = true;
+
         return btc;
       },
       openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: [] }),
@@ -410,6 +420,7 @@ describe('refreshRates — the data-presence gate', () => {
     const { deps, captured } = makeDeps({
       fetchFiatRates: async () => {
         fiatCalled = true;
+
         return fiat;
       },
       openCurrencies: async () => ({ needsFiat: false, cryptoCurrencies: ['BTC'] }),
@@ -429,6 +440,7 @@ describe('refreshRates — the data-presence gate', () => {
     const { deps } = makeDeps({
       fetchCryptoPrices: async (currencies) => {
         receivedCurrencies = currencies;
+
         return btc;
       },
       openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC'] }),
@@ -451,6 +463,7 @@ describe('refreshRates — an unrated held currency skips the throttle', () => {
     const { deps, captured } = makeDeps({
       fetchFiatRates: async () => {
         fiatCalled = true;
+
         return fiat;
       },
       now: () => 1000 + 60_000, // 1 minute after the last refresh — inside the window
@@ -475,6 +488,7 @@ describe('refreshRates — an unrated held currency skips the throttle', () => {
     const { deps, captured } = makeDeps({
       fetchFiatRates: async () => {
         fiatCalled = true;
+
         return fiat;
       },
       now: () => 1000 + 60_000,
@@ -501,6 +515,7 @@ describe('refreshRates — an unrated held currency skips the throttle', () => {
     const { deps, captured } = makeDeps({
       fetchFiatRates: async () => {
         fiatCalled = true;
+
         return fiat;
       },
       now: () => 1000 + 60_000,

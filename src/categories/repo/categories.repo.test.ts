@@ -8,6 +8,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 let mockDatabaseTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
+
   return {
     ...actual,
     write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
@@ -52,9 +53,11 @@ describe('categoriesRepo', () => {
       update: () => ({
         set: (values: Record<string, unknown>) => {
           captured.set = values;
+
           return {
             where: () => {
               captured.whereCalled = true;
+
               return Promise.resolve();
             },
           };
@@ -86,6 +89,7 @@ describe('categoriesRepo', () => {
         },
       }),
     };
+
     return { databaseTransaction, captured };
   };
 
@@ -129,9 +133,11 @@ describe('categoriesRepo', () => {
       update: () => ({
         set: (values: Record<string, unknown>) => {
           captured.set = values;
+
           return {
             where: () => {
               captured.whereCalled = true;
+
               return Promise.resolve();
             },
           };
@@ -153,9 +159,11 @@ describe('categoriesRepo', () => {
       update: () => ({
         set: (values: Record<string, unknown>) => {
           captured.set = values;
+
           return {
             where: () => {
               captured.whereCalled = true;
+
               return Promise.resolve();
             },
           };
@@ -176,6 +184,7 @@ describe('categoriesRepo', () => {
       insert: () => ({
         values: (values: Record<string, unknown>) => {
           captured.values = values;
+
           return Promise.resolve();
         },
       }),
@@ -197,6 +206,7 @@ describe('categoriesRepo.reorder', () => {
         set: (set: Record<string, unknown>) => ({
           where: () => {
             sortOrders.push(set.sortOrder);
+
             return Promise.resolve();
           },
         }),
@@ -231,10 +241,12 @@ describe('categoriesRepo.delete', () => {
               captured.transactionUpdate = values;
               captured.transactionWhere = predicate;
             }
+
             if (table === categoryOverrides) {
               captured.overrideUpdate = values;
               captured.overrideWhere = predicate;
             }
+
             return Promise.resolve();
           },
         }),
@@ -242,6 +254,7 @@ describe('categoriesRepo.delete', () => {
       delete: (table: unknown) => ({
         where: () => {
           captured.deletedTable = table;
+
           return Promise.resolve();
         },
       }),
@@ -354,9 +367,11 @@ describe('categories seed migration', () => {
 
   const createMigration = (): { name: string; sql: string } => {
     const file = migrationFiles().find(({ sql }) => sql.includes('CREATE TABLE `categories`'));
+
     if (file === undefined) {
       throw new Error('No migration creates the categories table');
     }
+
     return file;
   };
 
@@ -364,9 +379,11 @@ describe('categories seed migration', () => {
     const file = migrationFiles().find(
       ({ sql }) => sql.includes('INSERT') && sql.includes('`categories`'),
     );
+
     if (file === undefined) {
       throw new Error('No migration seeds the categories table');
     }
+
     return file;
   };
 

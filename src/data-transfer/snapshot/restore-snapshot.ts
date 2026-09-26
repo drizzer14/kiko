@@ -49,6 +49,7 @@ const balanceSetAtBoundariesByHoldingId = (
     }
 
     const current = boundaries.get(row.holdingId);
+
     if (current === undefined || row.time > current) {
       boundaries.set(row.holdingId, row.time);
     }
@@ -102,14 +103,17 @@ const strayOpeningTransactionFor = (
   if (!STRAY_DEPOSIT_BOND_TYPES.has(holding.type)) {
     return undefined;
   }
+
   if (holding.balanceMinorUnits === 0 || holding.balanceSetAt === null) {
     return undefined;
   }
+
   if (transactionsForHolding.length !== 1) {
     return undefined;
   }
 
   const [candidate] = transactionsForHolding;
+
   if (
     candidate === undefined ||
     !isBalanceSetShapedRow(candidate) ||
@@ -131,6 +135,7 @@ const transactionsByHoldingId = (
 
   for (const row of allTransactions) {
     const bucket = buckets.get(row.holdingId);
+
     if (bucket === undefined) {
       buckets.set(row.holdingId, [row]);
       continue;
@@ -157,11 +162,13 @@ const withStrayDepositBondBalanceCleaned = (
 
   const cleanedHoldings = snapshotHoldings.map((holding) => {
     const stray = strayOpeningTransactionFor(holding, buckets.get(holding.id) ?? []);
+
     if (stray === undefined) {
       return holding;
     }
 
     strayTransactionIds.add(stray.id);
+
     return { ...holding, balanceMinorUnits: 0, balanceSetAt: null };
   });
 
@@ -226,12 +233,14 @@ const withLegacyDedupKeysUpgraded = (
   snapshotTransactions: TransactionRow[],
 ): { settings: SettingsRow[]; transactions: TransactionRow[] } => {
   const [settingsRow] = snapshotSettings;
+
   if (settingsRow === undefined || Object.hasOwn(settingsRow, 'dedupKeysUpgraded')) {
     return { settings: snapshotSettings, transactions: snapshotTransactions };
   }
 
   const upgradedTransactions = snapshotTransactions.map((row) => {
     const upgradedExternalId = upgradeLegacyDedupKey(row);
+
     return upgradedExternalId === null ? row : { ...row, externalId: upgradedExternalId };
   });
 
@@ -312,9 +321,11 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
       for (const part of chunkForTable(accounts, snapshot.accounts)) {
         await databaseTransaction.insert(accounts).values(part);
       }
+
       for (const part of chunkForTable(holdings, holdingsToInsert)) {
         await databaseTransaction.insert(holdings).values(part);
       }
+
       for (const part of chunkForTable(categories, withLoanInterestReseeded(snapshot.categories))) {
         await databaseTransaction.insert(categories).values(part);
       }
@@ -324,9 +335,11 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
       for (const part of chunkForTable(categoryOverrides, snapshot.categoryOverrides)) {
         await databaseTransaction.insert(categoryOverrides).values(part);
       }
+
       for (const part of chunkForTable(transactions, transactionsToInsert)) {
         await databaseTransaction.insert(transactions).values(part);
       }
+
       for (const part of chunkForTable(syncState, snapshot.syncState)) {
         await databaseTransaction.insert(syncState).values(part);
       }
@@ -336,9 +349,11 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
       for (const part of chunkForTable(currencyRates, snapshot.currencyRates)) {
         await databaseTransaction.insert(currencyRates).values(part);
       }
+
       for (const part of chunkForTable(currencyRateHistory, snapshot.currencyRateHistory)) {
         await databaseTransaction.insert(currencyRateHistory).values(part);
       }
+
       for (const part of chunkForTable(settings, settingsToInsert)) {
         await databaseTransaction.insert(settings).values(part);
       }

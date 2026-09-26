@@ -209,6 +209,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
 
       setSelected((previous) => {
         const next = new Set(previous);
+
         if (next.has(value)) {
           next.delete(value);
         } else {
@@ -275,6 +276,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // first-seen-wins, preserving the old `Set`-based distinctness.
   const accountOptions = useMemo(() => {
     const byName = new Map<string, FilterOption>();
+
     for (const account of accounts) {
       if (account.archivedAt != null || byName.has(account.name)) {
         continue;
@@ -285,6 +287,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
         color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
       });
     }
+
     return Array.from(byName.values());
   }, [accounts]);
   // Group and match the category filter by the STABLE `categories.key` slug,
@@ -312,8 +315,10 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(localized label) `resolveCategoryDisplay` resolves a default category's title through i18n INTERNALLY (not via a captured variable Biome can see), so `i18n.language` is a real dependency — without it a live language switch leaves the option labels in the previous language.
   const categoryOptions = useMemo(() => {
     const byKey = new Map<string, FilterOption>();
+
     for (const row of transactions) {
       const key = categoryKeyForRow(row.category);
+
       if (byKey.has(key)) {
         continue;
       }
@@ -335,6 +340,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     categories.forEach((category, index) => {
       orderByKey.set(category.key, index);
     });
+
     return Array.from(byKey.values()).sort((a, b) => {
       const orderA = orderByKey.get(a.value) ?? Number.POSITIVE_INFINITY;
       const orderB = orderByKey.get(b.value) ?? Number.POSITIVE_INFINITY;
@@ -498,7 +504,9 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             <Text variant="caption" tone="textSecondary">
               {t('home.netWorth')}
             </Text>
+
             <MoneyText money={total} context="balance" style={styles.balance} />
+
             <Box style={styles.breakdown}>
               <CurrencyBreakdown items={breakdown} />
             </Box>

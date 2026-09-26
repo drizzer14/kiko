@@ -24,9 +24,11 @@ const SAFE_BOUND_PARAMETER_LIMIT = 32000;
  * column count to derive a size from. */
 export const chunkRows = <T>(rows: T[], size: number): T[][] => {
   const parts: T[][] = [];
+
   for (let start = 0; start < rows.length; start += size) {
     parts.push(rows.slice(start, start + size));
   }
+
   return parts;
 };
 
@@ -43,5 +45,6 @@ export const chunkRows = <T>(rows: T[], size: number): T[][] => {
 export const chunkForTable = <T>(table: Table, rows: T[]): T[][] => {
   const columnCount = Object.keys(getTableColumns(table)).length;
   const rowsPerChunk = Math.max(1, Math.floor(SAFE_BOUND_PARAMETER_LIMIT / columnCount));
+
   return chunkRows(rows, rowsPerChunk);
 };

@@ -264,11 +264,13 @@ export const mapAccountToHolding = (
   monobankAccountId: string,
 ): NewHolding => {
   const currency = currencyFromCode(account.currencyCode);
+
   if (!currency) {
     throw new Error(
       i18n.t('accountDetail.unsupportedCurrencyCode', { code: account.currencyCode }),
     );
   }
+
   return {
     accountId: monobankAccountId,
     name: account.maskedPan?.[0] ?? account.type,
@@ -281,9 +283,11 @@ export const mapAccountToHolding = (
 
 const mapJarToHolding = (jar: MonobankJar, monobankAccountId: string): NewHolding => {
   const currency = currencyFromCode(jar.currencyCode);
+
   if (!currency) {
     throw new Error(i18n.t('accountDetail.unsupportedCurrencyCode', { code: jar.currencyCode }));
   }
+
   return {
     accountId: monobankAccountId,
     name: jar.title,
@@ -327,8 +331,10 @@ const monobankIdOf = (metadata: unknown): string | undefined =>
 // translated (matching every other Monobank-branded catalog entry).
 const resolveMonobankAccountId = async (deps: SyncDeps): Promise<string> => {
   const accounts = await deps.accountsRepo.listQuery();
+
   if (deps.targetAccountId !== undefined) {
     const target = accounts.find((account) => account.id === deps.targetAccountId);
+
     if (!target) {
       throw new Error(i18n.t('accountDetail.noMonobankConnection'));
     }
@@ -336,9 +342,11 @@ const resolveMonobankAccountId = async (deps: SyncDeps): Promise<string> => {
     return deps.targetAccountId;
   }
   const existing = accounts.find((account) => account.institution === 'monobank');
+
   if (!existing) {
     throw new Error(i18n.t('accountDetail.noMonobankConnection'));
   }
+
   return existing.id;
 };
 
@@ -408,6 +416,7 @@ const upsertAllHoldings = async (
     }
     holdings.push({ ...mapAccountToHolding(account, accountId), monobankId: account.id });
   }
+
   for (const jar of jars ?? []) {
     // Same unrepresentable-currency carve-out as the accounts loop above: a
     // foreign-currency jar is excluded from net worth, not a fatal error.
@@ -485,6 +494,7 @@ const fetchAllStatements = async (
       windowTo = windowFrom - 1;
     }
   }
+
   return collected;
 };
 
@@ -502,12 +512,15 @@ const mapFetched = (
 /** Index a run's holdings by their Monobank id, skipping any without one. */
 const indexByMonobankId = (holdings: HoldingRow[]): Map<string, HoldingRow> => {
   const map = new Map<string, HoldingRow>();
+
   for (const holding of holdings) {
     const monobankId = monobankIdOf(holding.metadata);
+
     if (monobankId !== undefined) {
       map.set(monobankId, holding);
     }
   }
+
   return map;
 };
 
@@ -561,11 +574,13 @@ const isBalanceDiffSkip = (
   if (context.isFullFetch) {
     return false;
   }
+
   if (context.failedSet.has(account.id)) {
     return false;
   }
   const priorSynced = context.priorHoldingByMonobankId.get(account.id)?.syncedBalanceMinorUnits;
   const balanceUnchanged = priorSynced != null && priorSynced === account.balance;
+
   return balanceUnchanged && !context.holdIds.has(holding.id);
 };
 
@@ -605,13 +620,16 @@ const orderStatementQueue = (
 ): MonobankAccount[] => {
   const priority = (account: MonobankAccount): number => {
     const prior = context.priorHoldingByMonobankId.get(account.id);
+
     if (prior != null && holdingsRepo.balanceOf(prior).minorUnits !== account.balance) {
       return 0;
     }
     const holding = context.holdingByMonobankId.get(account.id);
+
     if ((holding != null && context.holdIds.has(holding.id)) || context.failedSet.has(account.id)) {
       return 1;
     }
+
     return 2;
   };
 
@@ -633,11 +651,14 @@ const selectCardsToFetch = (
 ): { toFetch: { account: MonobankAccount; holding: HoldingRow }[]; skipped: number } => {
   const toFetch: { account: MonobankAccount; holding: HoldingRow }[] = [];
   let skipped = 0;
+
   for (const account of orderedAccounts) {
     const holding = holdingByMonobankId.get(account.id);
+
     if (!holding) {
       continue;
     }
+
     if (isBalanceDiffSkip(account, holding, skipContext)) {
       skipped += 1;
       continue;
@@ -663,16 +684,19 @@ export const nextFailedSet = (
 ): string[] => {
   const succeededSet = new Set(succeeded);
   const result = new Set<string>();
+
   for (const id of prior) {
     if (!succeededSet.has(id) && currentIds.has(id)) {
       result.add(id);
     }
   }
+
   for (const id of failed) {
     if (currentIds.has(id)) {
       result.add(id);
     }
   }
+
   return [...result];
 };
 
@@ -682,6 +706,7 @@ const sameIdSet = (a: string[], b: string[]): boolean => {
     return false;
   }
   const set = new Set(a);
+
   return b.every((id) => set.has(id));
 };
 
@@ -700,6 +725,7 @@ const fromCursorSeconds = (
   toSeconds: number,
 ): number => {
   const cursor = isFullFetch ? lastFullSyncAt : lastSyncAt;
+
   return cursor ? Math.floor(cursor / 1000) : toSeconds - DEFAULT_LOOKBACK_SECONDS;
 };
 
@@ -886,6 +912,7 @@ const reconcileClosedHoldings = async (
   const staleIds = current
     .filter((holding) => {
       const holdingMonobankId = monobankIdOf(holding.metadata);
+
       return (
         holdingMonobankId !== undefined &&
         !present.has(holdingMonobankId) &&
@@ -942,6 +969,7 @@ const inFlightSyncs = new Map<string, Promise<SyncResult>>();
 export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> => {
   const key = overrides.targetAccountId ?? 'institution:monobank';
   const joined = inFlightSyncs.get(key);
+
   if (joined) {
     return joined;
   }
@@ -974,6 +1002,7 @@ export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> 
   // Release on both settle paths; the returned `run` still carries the real
   // result/rejection to the caller (and to every joined trigger).
   run.then(release, release);
+
   return run;
 };
 
@@ -993,6 +1022,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   await deps.syncStateRepo.ensure(accountId);
 
   const token = await deps.readToken(accountId);
+
   if (!token) {
     throw new Error(i18n.t('accountDetail.noMonobankToken'));
   }
@@ -1090,6 +1120,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
       return false;
     }
     const prior = priorHoldingByMonobankId.get(jar.id);
+
     return prior === undefined || holdingsRepo.balanceOf(prior).minorUnits !== jar.balance;
   }).length;
 
@@ -1105,6 +1136,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
       lastFullSyncAt,
       toSeconds,
     });
+
     return { account, holding, fromSeconds, windows: estimateWindows(fromSeconds, toSeconds) };
   });
 
@@ -1119,6 +1151,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   const cardWork = toFetchPlan.reduce((sum, card) => sum + card.windows, 0);
   const syncingHoldings = fetched + changedJars;
   const totalWork = cardWork + changedJars;
+
   if (totalWork > 0) {
     registerWork(syncingHoldings, totalWork);
     // Changed jars have no statements — their balances landed in the fast-phase
@@ -1204,6 +1237,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // path where both sets are empty.
   const currentIds = new Set(accounts.map((account) => account.id));
   const newFailedIds = nextFailedSet(priorFailedIds, succeededIds, failedIds, currentIds);
+
   if (!sameIdSet(priorFailedIds, newFailedIds)) {
     await deps.syncStateRepo.setFailedSyncMonobankIds(accountId, failedIdsToPersist(newFailedIds));
   }
@@ -1248,5 +1282,6 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // right, because it is overwritten from /client-info). Advanced ONLY on a
   // fully clean run (see the partial-failure branch above).
   await deps.syncStateRepo.setLastSyncAt(accountId, toSeconds * 1000);
+
   return { importedTransactions };
 };

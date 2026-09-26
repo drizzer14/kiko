@@ -34,6 +34,7 @@ const selectedSwatchHex = (
       return hex;
     }
   }
+
   return undefined;
 };
 
@@ -114,6 +115,7 @@ jest.mock('@kiko/sync/use-crypto-sync', () => ({
 // field).
 jest.mock('../../../design-system/components/wallet-address-field', () => {
   const { Pressable, Text } = require('react-native');
+
   return {
     __esModule: true,
     default: ({ onConnect }: { onConnect: (address: string) => Promise<boolean> }) => (
@@ -128,6 +130,7 @@ jest.mock('../../../design-system/components/wallet-address-field', () => {
 });
 jest.mock('../../../design-system/components/binance-credentials-field', () => {
   const { Pressable, Text } = require('react-native');
+
   return {
     __esModule: true,
     default: ({ onConnect }: { onConnect: () => Promise<boolean> }) => (
@@ -145,6 +148,7 @@ jest.mock('../../../design-system/components/binance-credentials-field', () => {
 jest.mock('../../../design-system/components/monobank-connect-field', () => {
   const { useState } = require('react');
   const { Pressable, Text } = require('react-native');
+
   return {
     __esModule: true,
     // Unlike the wallet/binance mocks above, this one also surfaces the boolean
@@ -154,6 +158,7 @@ jest.mock('../../../design-system/components/monobank-connect-field', () => {
     // `true` or losing a rejection inside the try/catch).
     default: ({ onConnect }: { onConnect: (token: string) => Promise<boolean> }) => {
       const [result, setResult] = useState('');
+
       return (
         <Pressable
           accessibilityLabel="monobank-field"
@@ -182,6 +187,7 @@ const renderForm = async (
       route={route}
     />,
   );
+
   return { ...view, navigation };
 };
 

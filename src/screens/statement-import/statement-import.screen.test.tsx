@@ -181,6 +181,7 @@ const sensebankDetectFormatCalls: string[] = [];
 
 jest.mock('../../statement-import/registry', () => {
   const actual = jest.requireActual('../../statement-import/registry');
+
   return {
     ...actual,
     detectFormat: (input: { text: string; fileName: string }) => {
@@ -190,6 +191,7 @@ jest.mock('../../statement-import/registry', () => {
 
       if (input.fileName === SENSEBANK_TRIGGER_FILE_NAME) {
         sensebankDetectFormatCalls.push(input.text);
+
         return sensebankFormatStub.detect(input) ? sensebankFormatStub : undefined;
       }
 
@@ -205,6 +207,7 @@ jest.mock('../../statement-import/registry', () => {
 // mocking a sub-section under its own test elsewhere (`crypto-sync-section`).
 jest.mock('../../design-system/components/target-holding-sheet', () => {
   const { Pressable, Text: RNText } = require('react-native');
+
   return {
     __esModule: true,
     default: ({
@@ -249,6 +252,7 @@ const renderScreen = async (params: {
       navigation={asNavigationProp<StatementImportProps['navigation']>(navigation)}
     />,
   );
+
   return { ...view, navigation };
 };
 

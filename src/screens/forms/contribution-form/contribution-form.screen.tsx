@@ -82,6 +82,7 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
     // field, and `!(NaN > 0)` rejects it: require a strictly positive major
     // amount before persisting anything.
     const majorAmount = parseAmount(amount);
+
     if (!(majorAmount > 0)) {
       setAttemptedSave(true);
       scrollToField(
@@ -103,6 +104,7 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
     } catch {
       // Keep the screen open on failure so the entered values are not lost.
       alertOnCatch(t, 'forms.contribution.errorTitle', 'forms.contribution.errorMessage');
+
       return;
     }
     navigation.goBack();

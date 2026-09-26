@@ -67,9 +67,11 @@ export const internalTransferTransactionIds = (
 
     for (let index = 0; index < transactions.length; index += 1) {
       const credit = transactions[index];
+
       if (consumedCredits.has(index) || credit.amountMinorUnits <= 0) {
         continue;
       }
+
       if (isMatchingCredit(debit, credit)) {
         consumedCredits.add(index);
         matchedIds.add(debit.id);

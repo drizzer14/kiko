@@ -20,10 +20,12 @@ const propertyItemValue = (
   instant: number,
 ): Money | null => {
   const meta = asPropertyMeta(holding.metadata);
+
   if (meta === null) {
     return null;
   }
   const point = priceAt(book, holdingInstrument(holding.id), instant);
+
   if (point === undefined) {
     return null;
   }

@@ -24,6 +24,7 @@ const local = (year: number, monthIndex: number, day: number): number =>
 // offset never crosses a DST transition.
 const addDays = (instant: number, days: number): number => {
   const d = new Date(instant);
+
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days).getTime();
 };
 
@@ -94,6 +95,7 @@ describe('loanInstallments — differentiated', () => {
 
   it('keeps the principal portion constant across every installment but the last', () => {
     const firstPrincipal = installments[0].principalMinorUnits;
+
     for (const row of installments.slice(0, -1)) {
       expect(row.principalMinorUnits).toBe(firstPrincipal);
     }

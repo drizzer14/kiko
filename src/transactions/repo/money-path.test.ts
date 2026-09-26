@@ -6,6 +6,7 @@
 let mockDatabaseTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
+
   return {
     ...actual,
     write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
@@ -38,6 +39,7 @@ const makeDatabaseTransaction = (
       from: () => ({
         where: () => {
           const rows = queue.shift() ?? [];
+
           return Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
         },
       }),
@@ -45,12 +47,14 @@ const makeDatabaseTransaction = (
     insert: () => ({
       values: (values: Record<string, unknown>) => {
         inserts.push(values);
+
         return Promise.resolve();
       },
     }),
     update: (table: unknown) => ({
       set: (values: Record<string, unknown>) => {
         updates.push({ table, values });
+
         return { where: () => Promise.resolve() };
       },
     }),

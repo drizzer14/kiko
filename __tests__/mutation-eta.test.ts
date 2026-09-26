@@ -23,6 +23,7 @@ const sh = (script: string, temporaryDirectory: string): string => {
     env: { ...process.env, TMPDIR: temporaryDirectory },
     encoding: 'utf8',
   });
+
   return result.stdout.trim();
 };
 

@@ -50,6 +50,7 @@ describe('fiat / crypto classification', () => {
       expect(isCrypto(code)).toBe(true);
       expect(isFiat(code)).toBe(false);
     }
+
     for (const code of fiatCurrencyOptions) {
       expect(isCrypto(code)).toBe(false);
       expect(isFiat(code)).toBe(true);
@@ -61,6 +62,7 @@ describe('fiat / crypto classification', () => {
     expect([...fiatCurrencyOptions]).toEqual(
       currencyOptions.filter((code) => !cryptoBlock.has(code)),
     );
+
     for (const code of ['BTC', 'ETH', 'USDT'] as const) {
       expect(fiatCurrencyOptions).not.toContain(code);
     }
@@ -68,6 +70,7 @@ describe('fiat / crypto classification', () => {
 
   it('exposes the crypto subset (BTC, ETH, USDT), order-preserving', () => {
     expect([...cryptoCurrencyOptions]).toEqual(['BTC', 'ETH', 'USDT']);
+
     for (const code of cryptoCurrencyOptions) {
       expect(isCrypto(code)).toBe(true);
     }

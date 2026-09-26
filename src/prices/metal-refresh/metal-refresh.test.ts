@@ -40,6 +40,7 @@ const makeDeps = (overrides: Partial<MetalRefreshDeps> = {}) => {
     },
     ...overrides,
   };
+
   return { deps, upserted };
 };
 
@@ -60,6 +61,7 @@ describe('refreshMetalPrices', () => {
       },
       fetchHistory: async (metal, start, end) => {
         historyArgs = [metal, start, end];
+
         return history;
       },
     });
@@ -115,10 +117,12 @@ describe('refreshMetalPrices', () => {
       loadPoints: async () => existingPoints,
       fetchCurrent: async (): Promise<NbuMetalRate[]> => {
         fetchCalled = true;
+
         return [{ metal: 'XAU', price: '101000' }];
       },
       fetchHistory: async (): Promise<NbuMetalHistoryPoint[]> => {
         fetchCalled = true;
+
         return [];
       },
     });
@@ -165,6 +169,7 @@ describe('refreshMetalPrices', () => {
       listHoldings: async () => [{ type: 'property_item', metadata: null }],
       loadPoints: async () => {
         pointsRead = true;
+
         return [];
       },
     });
@@ -225,6 +230,7 @@ describe('refreshMetalPrices', () => {
       ],
       fetchHistory: async (metal, start, end) => {
         historyArgs = [metal, start, end];
+
         return [{ metal: 'XAU', day: start, price: '50000' }];
       },
       fetchCurrent: async (): Promise<NbuMetalRate[]> => {
@@ -260,6 +266,7 @@ describe('refreshMetalPrices', () => {
       loadPoints: async () => [{ instrument: 'metal:XAU', day: day1 }],
       fetchHistory: async (metal, start, end) => {
         historyArgs = [metal, start, end];
+
         return [{ metal: 'XAU', day: end, price: '105000' }];
       },
       fetchCurrent: async (): Promise<NbuMetalRate[]> => {

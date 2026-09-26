@@ -23,6 +23,7 @@ import { useKeyboardDoneAccessory } from './use-keyboard-done-accessory';
 // scope.
 jest.mock('@callstack/liquid-glass', () => {
   const { View } = require('react-native');
+
   return { LiquidGlassView: View, isLiquidGlassSupported: false };
 });
 

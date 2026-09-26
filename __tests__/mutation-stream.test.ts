@@ -62,6 +62,7 @@ const makeStub = (temporaryDirectory: string, body: string): string => {
   const bin = join(temporaryDirectory, 'stryker-stub');
   writeFileSync(bin, body, { mode: 0o755 });
   chmodSync(bin, 0o755);
+
   return bin;
 };
 
@@ -79,6 +80,7 @@ const run = (bin: string, temporaryDirectory: string, callLog: string): Run => {
     },
     encoding: 'utf8',
   });
+
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 };
 
@@ -334,6 +336,7 @@ const buildRepo = (): { root: string; script: string } => {
 function mkAndReturn(root: string, rel: string): string {
   const abs = join(root, rel);
   mkdirSync(dirname(abs), { recursive: true });
+
   return abs;
 }
 
@@ -361,6 +364,7 @@ const runInRepo = (script: string, env: Record<string, string>): DiffRun => {
   const args = existsSync(argsFile)
     ? readFileSync(argsFile, 'utf8').split('\n').filter(Boolean)
     : null;
+
   return { code: result.status, args };
 };
 

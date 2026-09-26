@@ -11,21 +11,26 @@ const ROOT = join(__dirname, '..');
 const declaredEnvDtsKeys = (): Set<string> => {
   const content = readFileSync(join(ROOT, 'src/env.d.ts'), 'utf8');
   const keys = new Set<string>();
+
   for (const match of content.matchAll(/export const ([A-Z][A-Z0-9_]*):/g)) {
     keys.add(match[1]);
   }
+
   return keys;
 };
 
 const declaredEnvFileKeys = (fileName: string): Set<string> => {
   const content = readFileSync(join(ROOT, fileName), 'utf8');
   const keys = new Set<string>();
+
   for (const line of content.split('\n')) {
     const match = /^([A-Z][A-Z0-9_]*)=/.exec(line);
+
     if (match) {
       keys.add(match[1]);
     }
   }
+
   return keys;
 };
 

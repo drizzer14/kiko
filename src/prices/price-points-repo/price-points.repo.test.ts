@@ -7,6 +7,7 @@
 let mockDatabaseTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
+
   return {
     ...actual,
     write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
@@ -27,12 +28,14 @@ const makeUpsertDatabaseTransaction = (store: Row[]): unknown => ({
           const index = store.findIndex(
             (existing) => existing.instrument === row.instrument && existing.day === row.day,
           );
+
           if (index >= 0) {
             store[index] = { ...row };
           } else {
             store.push({ ...row });
           }
         }
+
         return Promise.resolve();
       },
     }),
@@ -84,6 +87,7 @@ describe('pricePointsRepo', () => {
       insert: () => ({
         values: (rows: Row[]) => {
           chunkSizes.push(rows.length);
+
           return (upsertStore as { insert: () => { values: (r: Row[]) => unknown } })
             .insert()
             .values(rows);
@@ -102,6 +106,7 @@ describe('pricePointsRepo', () => {
     await pricePointsRepo.upsertMany(rows);
 
     expect(chunkSizes.length).toBeGreaterThan(1);
+
     for (const size of chunkSizes) {
       expect(size).toBeLessThanOrEqual(2000);
     }
@@ -114,6 +119,7 @@ describe('pricePointsRepo', () => {
     mockDatabaseTransaction = {
       insert: () => {
         insertCalled = true;
+
         return { values: () => ({ onConflictDoUpdate: () => Promise.resolve() }) };
       },
     };
@@ -129,6 +135,7 @@ describe('pricePointsRepo', () => {
       delete: () => ({
         where: () => {
           deleted.push({ instrument: 'called' });
+
           return Promise.resolve();
         },
       }),

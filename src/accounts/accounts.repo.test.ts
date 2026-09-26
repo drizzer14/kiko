@@ -5,6 +5,7 @@
 let mockDatabaseTransaction: unknown;
 jest.mock('../db/client', () => {
   const actual = jest.requireActual('../db/client');
+
   return {
     ...actual,
     write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
@@ -63,6 +64,7 @@ const makeCreateDatabaseTransaction = (
       values: (values: Record<string, unknown>) => {
         inserts.push(values);
         insertTables.push(tableNameOf(table));
+
         return Promise.resolve();
       },
     }),
@@ -70,15 +72,18 @@ const makeCreateDatabaseTransaction = (
       set: (values: Record<string, unknown>) => {
         const entry = { set: values, whereCalled: false };
         updates.push(entry);
+
         return {
           where: () => {
             entry.whereCalled = true;
+
             return Promise.resolve();
           },
         };
       },
     }),
   };
+
   return { databaseTransaction, inserts, insertTables, updates };
 };
 
@@ -244,6 +249,7 @@ describe('accountsRepo', () => {
         set: (values: Record<string, unknown>) => ({
           where: () => {
             const delta = renderCondition(values.sortOrder).params[0] as number;
+
             for (const row of store) {
               if (row.kind === 'debt') {
                 row.sortOrder += delta;
@@ -440,6 +446,7 @@ describe('accountsRepo.reorder', () => {
         set: (set: Record<string, unknown>) => ({
           where: () => {
             sortOrders.push(set.sortOrder);
+
             return Promise.resolve();
           },
         }),
@@ -504,6 +511,7 @@ const makeRemoveDatabaseTransaction = (options: {
     }),
     delete: (table: unknown) => {
       captured.deletedFrom.push(table);
+
       return { where: () => Promise.resolve() };
     },
     update: (_table: unknown) => ({
@@ -511,11 +519,13 @@ const makeRemoveDatabaseTransaction = (options: {
         where: (whereArg: unknown) => {
           captured.linkClearSet = values;
           captured.linkClearWhereArg = whereArg;
+
           return Promise.resolve();
         },
       }),
     }),
   };
+
   return { databaseTransaction, captured };
 };
 
@@ -540,6 +550,7 @@ const makeDisconnectDatabaseTransaction = (
       set: (values: Record<string, unknown>) => ({
         where: () => {
           captured.updates.push({ table, set: values });
+
           return Promise.resolve();
         },
       }),
@@ -548,6 +559,7 @@ const makeDisconnectDatabaseTransaction = (
       from: () => ({ where: () => Promise.resolve(holdingRows) }),
     }),
   };
+
   return { databaseTransaction, captured };
 };
 
@@ -630,6 +642,7 @@ describe('accountsRepo.disconnect', () => {
     const [accountUpdate] = captured.updates;
     const disconnectedAccount = { institution: accountUpdate.set.institution as string | null };
     expect(isSyncedAccount(disconnectedAccount)).toBe(false);
+
     for (const holdingRow of holdingRows) {
       expect(typeof holdingRow.metadata.monobankId).toBe('string');
       expect(isSyncedHolding(holdingRow, disconnectedAccount)).toBe(false);

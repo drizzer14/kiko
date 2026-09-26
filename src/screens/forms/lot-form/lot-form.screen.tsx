@@ -69,6 +69,7 @@ const quantityErrorFor = (params: {
   if (!attemptedSave) {
     return undefined;
   }
+
   if (!quantityValid) {
     return t('forms.lot.quantityError');
   }
@@ -128,6 +129,7 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
     if (!holding) {
       return;
     }
+
     if (!quantityValid || sellExceeds) {
       setAttemptedSave(true);
       scrollToField(
@@ -200,6 +202,7 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
       // uses (account-form, holding-form, price-point-form, transaction-form)
       // — a write failure keeps the screen open with the entered values intact.
       alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
+
       return;
     }
     navigation.goBack();

@@ -15,6 +15,7 @@
 let mockDatabaseTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
+
   return { ...actual, write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction) };
 });
 

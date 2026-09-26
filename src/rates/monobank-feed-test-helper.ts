@@ -36,6 +36,7 @@ const buildMonobankFeed = (): MonoRate[] => {
     }
 
     const code = codeFromCurrency(currency);
+
     if (code === undefined) {
       throw new Error(`fiat ${currency} has no ISO numeric code`);
     }

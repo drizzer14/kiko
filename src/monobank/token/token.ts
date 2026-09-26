@@ -60,6 +60,7 @@ export const saveToken = async (accountId: string, token: string): Promise<void>
  */
 export const readToken = async (accountId: string): Promise<string | undefined> => {
   const credentials = await Keychain.getGenericPassword({ service: serviceFor(accountId) });
+
   return credentials ? credentials.password : undefined;
 };
 
@@ -105,11 +106,13 @@ export const hasToken = async (accountId: string): Promise<boolean> => {
  */
 export const migrateLegacyToken = async (): Promise<void> => {
   const existing = await Keychain.getGenericPassword({ service: MONOBANK_TOKEN_SERVICE });
+
   if (existing) {
     return;
   }
 
   const legacy = await Keychain.getGenericPassword({ service: LEGACY_SERVICE });
+
   if (!legacy) {
     return;
   }

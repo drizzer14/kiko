@@ -42,22 +42,27 @@ const deriveRate = (entry: MonobankCurrencyRate): number | undefined => {
   if (entry.rateBuy !== undefined && entry.rateSell !== undefined) {
     return entry.rateBuy;
   }
+
   if (entry.rateCross !== undefined) {
     return entry.rateCross;
   }
+
   return entry.rateSell ?? entry.rateBuy;
 };
 
 const toRateEntry = (entry: MonobankCurrencyRate): RateEntry[] => {
   const base = currencyFromCode(entry.currencyCodeA);
   const quote = currencyFromCode(entry.currencyCodeB);
+
   if (!isFiat(base) || !isFiat(quote)) {
     return [];
   }
   const rate = deriveRate(entry);
+
   if (rate === undefined) {
     return [];
   }
+
   return [{ base, quote, rate, source: 'monobank' }];
 };
 
@@ -68,9 +73,11 @@ const toRateEntry = (entry: MonobankCurrencyRate): RateEntry[] => {
  */
 export const fetchFiatRates = async (fetchImpl: typeof fetch = fetch): Promise<RateEntry[]> => {
   const response = await fetchImpl(CURRENCY_ENDPOINT);
+
   if (!response.ok) {
     throw new Error(`Monobank currency request failed: ${response.status}`);
   }
   const raw = (await response.json()) as MonobankCurrencyRate[];
+
   return raw.flatMap(toRateEntry);
 };

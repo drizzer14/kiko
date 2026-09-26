@@ -87,6 +87,7 @@ const runSyncAllOnce = (jobs: SyncJob[]): Promise<string[]> => {
     }
   };
   run.then(release, release);
+
   return run;
 };
 

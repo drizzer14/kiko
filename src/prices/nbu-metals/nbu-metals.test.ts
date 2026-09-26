@@ -31,6 +31,7 @@ describe('fetchNbuMetalsCurrent', () => {
     let sentUrl = '';
     const spyFetch = (async (url: string) => {
       sentUrl = url;
+
       return { ok: true, json: async () => currentFixture, status: 200 };
     }) as unknown as typeof fetch;
 
@@ -91,6 +92,7 @@ describe('fetchNbuMetalHistory', () => {
     let sentUrl = '';
     const spyFetch = (async (url: string) => {
       sentUrl = url;
+
       return { ok: true, status: 200, json: async () => xauRows };
     }) as unknown as typeof fetch;
 

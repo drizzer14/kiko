@@ -18,9 +18,11 @@ jest.mock('../sync-jobs', () => ({
     if (account.institution === 'monobank') {
       return [{ name: account.name, run: mockMonobankRun }];
     }
+
     if (account.institution === 'binance' || account.institution === 'btc_wallet') {
       return [{ name: account.name, run: mockCryptoRun }];
     }
+
     return [];
   },
 }));

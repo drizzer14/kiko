@@ -46,6 +46,7 @@ const collectRenderedText = (node: RenderedNode | string | null): string[] => {
   if (node === null) {
     return [];
   }
+
   if (typeof node === 'string') {
     return [node];
   }
@@ -1917,6 +1918,7 @@ describe('TransactionFormScreen — Exchange mode', () => {
     if (valueOut !== '') {
       await fireEvent.changeText(getByLabelText('Value out'), valueOut);
     }
+
     if (valueIn !== '') {
       await fireEvent.changeText(getByLabelText('Value in'), valueIn);
     }
@@ -2803,6 +2805,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
       .spyOn(globalThis, 'requestAnimationFrame')
       .mockImplementation((callback) => {
         callback(0);
+
         return 0;
       });
 
@@ -2830,6 +2833,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
       .spyOn(globalThis, 'requestAnimationFrame')
       .mockImplementation((callback) => {
         callback(0);
+
         return 0;
       });
 

@@ -135,6 +135,7 @@ export const runBalanceSync = <Deps>(
 ): Promise<BalanceSyncResult> => {
   const key = overrides.targetAccountId ?? `institution:${provider.id}`;
   const joined = inFlightBalanceSyncs.get(key);
+
   if (joined) {
     return joined;
   }
@@ -148,6 +149,7 @@ export const runBalanceSync = <Deps>(
   // Release on both settle paths; `run` still carries the real result/rejection
   // to the caller and to every joined trigger.
   run.then(release, release);
+
   return run;
 };
 

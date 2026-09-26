@@ -16,5 +16,6 @@ export const renderCondition = (condition: unknown): { sql: string; params: unkn
   // that no caller here cares about — dropped so a test's expected object
   // only has to name `sql` and `params`.
   const { sql, params } = dialect.sqlToQuery(condition as SQL);
+
   return { sql, params };
 };

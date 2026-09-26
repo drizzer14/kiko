@@ -25,6 +25,7 @@ const loanBreakdown = (
   book: PriceBook,
 ): HoldingValueBreakdown => {
   const meta = asLoanMeta(holding.metadata);
+
   if (meta === null) {
     // A debt must never read as a positive asset — missing/malformed
     // metadata values the loan at 0, NOT `holding.balanceMinorUnits` (the

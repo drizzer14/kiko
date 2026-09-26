@@ -37,6 +37,7 @@ describe('fetchFiatRates', () => {
     let sentUrl = '';
     const spyFetch = (async (url: string) => {
       sentUrl = url;
+
       return { ok: true, json: async () => fixture, status: 200 };
     }) as unknown as typeof fetch;
 

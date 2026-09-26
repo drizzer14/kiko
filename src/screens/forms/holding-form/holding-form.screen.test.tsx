@@ -41,6 +41,7 @@ const selectedSwatchHex = (
       return hex;
     }
   }
+
   return undefined;
 };
 
@@ -98,14 +99,17 @@ const mockUseLiveQuery = jest.fn(
     if (keys[0] === 'holdings') {
       return { data: mockEditHoldings };
     }
+
     if (keys[0] === 'bond_register') {
       return query.__kind === 'fetchedAt'
         ? { data: mockBondRegisterFetchedAtRows }
         : { data: mockBondRegisterRows };
     }
+
     if (keys[0] === 'price_points') {
       return { data: mockPricePoints };
     }
+
     return {
       data: [
         {
@@ -463,6 +467,7 @@ describe('HoldingFormScreen term deposit', () => {
       .spyOn(globalThis, 'requestAnimationFrame')
       .mockImplementation((callback) => {
         callback(0);
+
         return 0;
       });
     const screen = await renderScreen();
@@ -489,6 +494,7 @@ describe('HoldingFormScreen term deposit', () => {
       .spyOn(globalThis, 'requestAnimationFrame')
       .mockImplementation((callback) => {
         callback(0);
+
         return 0;
       });
     const screen = await renderScreen();

@@ -33,8 +33,10 @@ const isCoinGeckoPrices = (value: unknown, ids: readonly string[]): value is Coi
     return false;
   }
   const record = value as Record<string, unknown>;
+
   for (const id of ids) {
     const entry = record[id];
+
     if (
       typeof entry !== 'object' ||
       entry === null ||
@@ -45,6 +47,7 @@ const isCoinGeckoPrices = (value: unknown, ids: readonly string[]): value is Coi
       return false;
     }
   }
+
   return true;
 };
 

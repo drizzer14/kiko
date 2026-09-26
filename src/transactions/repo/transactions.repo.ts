@@ -277,6 +277,7 @@ const insertDedupRowsDatabaseTransaction = async (
     new Set(batch.map((input) => normalizeTransactionName(input.description ?? ''))),
   ).filter((key) => key !== '');
   const rules: { normalizedName: string; category: string }[] = [];
+
   for (const keyChunk of chunkRows(keys, IN_CLAUSE_CHUNK_SIZE)) {
     rules.push(
       ...(await databaseTransaction
@@ -318,6 +319,7 @@ const insertDedupRowsDatabaseTransaction = async (
   // ON CONFLICT resolves independently, with identical semantics to the
   // old single-statement insert.
   const rows = withOverrides.map((input) => ({ id: id(), ...input }));
+
   for (const part of chunkForTable(transactions, rows)) {
     await databaseTransaction
       .insert(transactions)
@@ -686,6 +688,7 @@ export const transactionsRepo = {
         .where(eq(transactions.id, transactionId))
         .limit(1);
       const existing = existingRows.at(0);
+
       if (existing?.source !== 'manual') {
         return;
       }
@@ -694,6 +697,7 @@ export const transactionsRepo = {
         .set({ amountMinorUnits, time, description: description ?? '' })
         .where(eq(transactions.id, transactionId));
       const delta = amountMinorUnits - existing.amountMinorUnits;
+
       if (delta === 0) {
         return;
       }
@@ -724,9 +728,11 @@ export const transactionsRepo = {
         .from(transactions)
         .where(eq(transactions.id, transactionId));
       const row = rows.at(0);
+
       if (!row) {
         return;
       }
+
       if (isSyncedTransaction(row)) {
         throw new Error('transactionsRepo.remove: cannot delete a synced transaction');
       }
@@ -736,6 +742,7 @@ export const transactionsRepo = {
         .from(holdings)
         .where(eq(holdings.id, row.holdingId));
       const holding = holdingRows.at(0);
+
       if (holding) {
         await databaseTransaction
           .update(holdings)

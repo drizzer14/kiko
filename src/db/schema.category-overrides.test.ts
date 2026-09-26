@@ -129,6 +129,7 @@ describe('seed-category-colors migration', () => {
 
     expect(keys.sort()).toEqual([...COLORED_CATEGORY_KEYS].sort());
     expect(new Set(keys).size).toBe(COLORED_CATEGORY_KEYS.length);
+
     for (const uncoloredKey of UNCOLORED_CATEGORY_KEYS) {
       expect(keys).not.toContain(uncoloredKey);
     }
@@ -162,6 +163,7 @@ describe('seed-category-colors migration', () => {
       .filter((statement) => statement.includes('SET `color`'));
 
     expect(statements).toHaveLength(8);
+
     for (const statement of statements) {
       expect(statement).toContain('`color` IS NULL');
     }
@@ -195,6 +197,7 @@ const applyGuardedIconUpdate = (
   const match = sql.match(
     /UPDATE `[a-z_]+` SET `icon` = '([^']+)' WHERE `([a-z_]+)` = '([^']+)' AND `icon` = '([^']+)'/,
   );
+
   if (match === null) {
     throw new Error('No guarded icon UPDATE found in migration SQL');
   }
@@ -381,6 +384,7 @@ describe('exchange-marker migration', () => {
     const backfills = sql.split('UPDATE `transactions`').slice(1);
 
     expect(backfills).toHaveLength(2);
+
     for (const statement of backfills) {
       expect(statement).toContain('`exchange_counterpart_holding_id` IS NULL');
       expect(statement).toContain("`description` = ''");

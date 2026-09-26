@@ -182,6 +182,7 @@ const fetchAllPositions = async <Row>(
 
     const pageRows = page.rows ?? [];
     rows.push(...pageRows);
+
     if (typeof page.total === 'number') {
       total = page.total;
     }

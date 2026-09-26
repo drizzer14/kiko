@@ -35,6 +35,7 @@ jest.mock('../../../monobank/disconnect', () => ({
 // under test.
 jest.mock('../../../design-system/components/monobank-connect-field', () => {
   const { Pressable, Text } = require('react-native');
+
   return {
     __esModule: true,
     default: ({ onConnect }: { onConnect: (token: string) => Promise<boolean> }) => (

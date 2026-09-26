@@ -20,6 +20,7 @@ function writeTempFile(content: string): string {
   createdPaths.push(directory);
   const filePath = join(directory, 'example.ts');
   writeFileSync(filePath, content);
+
   return filePath;
 }
 
@@ -30,6 +31,7 @@ function runGuard(paths: string[]): SpawnSyncReturns<string> {
 afterEach(() => {
   while (createdPaths.length > 0) {
     const directory = createdPaths.pop();
+
     if (directory) rmSync(directory, { recursive: true, force: true });
   }
 });

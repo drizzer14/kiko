@@ -150,6 +150,7 @@ export const loanOutstandingMinorAt = (
   const principalDueAfterAnchor = loanInstallments(meta)
     .filter((row) => {
       const dueDayKey = dayKeyOf(row.dueDate);
+
       return dueDayKey > anchorDayKey && dueDayKey <= instantDayKey;
     })
     .reduce((sum, row) => sum + row.principalMinorUnits, 0);

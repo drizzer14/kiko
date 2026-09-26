@@ -52,6 +52,7 @@ const frameCallbacks: FrameCallback[] = [];
 
 const flushFrames = () => {
   const pending = frameCallbacks.splice(0);
+
   for (const callback of pending) {
     callback(0);
   }
@@ -89,8 +90,10 @@ const setup = async (ref: RefObject<TabRootScrollable | null>, options: SetupOpt
       if (event === 'tabPress') {
         handlers.push(callback);
       }
+
       return () => {
         const index = handlers.indexOf(callback);
+
         if (index >= 0) {
           handlers.splice(index, 1);
         }
@@ -148,6 +151,7 @@ const setup = async (ref: RefObject<TabRootScrollable | null>, options: SetupOpt
     // Drop any frame callbacks queued during mount so we flush only the hook's
     // own deferred scroll below.
     frameCallbacks.length = 0;
+
     for (const handler of handlers) {
       handler({ defaultPrevented });
     }
@@ -174,6 +178,7 @@ describe('useScrollToTopOnTabPress', () => {
     // can flush it deterministically without re-entering React's `act` flush.
     jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((callback) => {
       frameCallbacks.push(callback);
+
       return frameCallbacks.length;
     });
   });

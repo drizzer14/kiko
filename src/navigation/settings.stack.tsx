@@ -27,21 +27,25 @@ const SettingsStack: FC = () => {
         component={SettingsScreen}
         options={{ title: t('settings.title') }}
       />
+
       <Stack.Screen
         name="System"
         component={SystemScreen}
         options={{ title: t('settings.system') }}
       />
+
       <Stack.Screen
         name="Categories"
         component={CategoriesScreen}
         options={{ title: t('settings.categories') }}
       />
+
       <Stack.Screen
         name="ExportData"
         component={ExportDataScreen}
         options={{ title: t('settings.dataExport.title') }}
       />
+
       <Stack.Screen
         name="ImportData"
         component={ImportDataScreen}

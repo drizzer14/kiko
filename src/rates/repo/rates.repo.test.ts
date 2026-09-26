@@ -40,10 +40,12 @@ let mockDatabaseTransaction: unknown;
 let writeCalls = 0;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
+
   return {
     ...actual,
     write: (work: (db: unknown) => unknown) => {
       writeCalls += 1;
+
       return work(mockDatabaseTransaction);
     },
   };
@@ -80,18 +82,21 @@ const makeUpsertDatabaseTransaction = (store: NewRate[], chunkSizes: number[]): 
         throw new Error('too many SQL variables');
       }
       chunkSizes.push(rows.length);
+
       return {
         onConflictDoUpdate: () => {
           for (const row of rows) {
             const index = store.findIndex(
               (existing) => existing.base === row.base && existing.quote === row.quote,
             );
+
             if (index >= 0) {
               store[index] = { ...row };
             } else {
               store.push({ ...row });
             }
           }
+
           return Promise.resolve();
         },
       };
@@ -104,6 +109,7 @@ const makeUpsertDatabaseTransaction = (store: NewRate[], chunkSizes: number[]): 
 // `currencyOptions` (`src/currency/currency/currency.ts`).
 const buildRates = (): NewRate[] => {
   const rows: NewRate[] = [];
+
   for (const base of currencyOptions) {
     for (const quote of currencyOptions) {
       if (base === quote) {
@@ -112,6 +118,7 @@ const buildRates = (): NewRate[] => {
       rows.push({ base, quote, rate: '1.5', source: 'monobank', fetchedAt: 1_700_000_000_000 });
     }
   }
+
   return rows;
 };
 
@@ -161,6 +168,7 @@ describe('ratesRepo', () => {
       // transaction above throws otherwise), more than one chunk was needed, and no
       // row was lost or duplicated across the chunk boundaries.
       expect(chunkSizes.length).toBeGreaterThan(1);
+
       for (const size of chunkSizes) {
         expect(size * PARAMS_PER_ROW).toBeLessThanOrEqual(SQLITE_MAX_VARIABLE_NUMBER);
       }

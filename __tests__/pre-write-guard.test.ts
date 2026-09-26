@@ -30,6 +30,7 @@ const createdPaths: string[] = [];
 function createTempDirectory(prefix: string): string {
   const directory = mkdtempSync(join(tmpdir(), prefix));
   createdPaths.push(directory);
+
   return directory;
 }
 
@@ -67,12 +68,14 @@ function writeSemgrepStub(directory: string): string {
     ].join('\n'),
   );
   chmodSync(stubPath, 0o755);
+
   return stubPath;
 }
 
 function writeRulesStub(directory: string): string {
   const rulesPath = join(directory, 'rules-stub.yml');
   writeFileSync(rulesPath, 'rules: []\n');
+
   return rulesPath;
 }
 
@@ -114,6 +117,7 @@ function writeCapturingSemgrepStub(directory: string, captureDirectory: string):
   );
   chmodSync(stubPath, 0o755);
   mkdirSync(captureDirectory, { recursive: true });
+
   return stubPath;
 }
 
@@ -151,6 +155,7 @@ function writeFindingsStub(directory: string): string {
     ].join('\n'),
   );
   chmodSync(stubPath, 0o755);
+
   return stubPath;
 }
 
@@ -170,8 +175,11 @@ function rawResult(options: {
   skill?: string;
 }): Record<string, unknown> {
   const metadata: Record<string, string> = {};
+
   if (options.fix !== undefined) metadata.fix = options.fix;
+
   if (options.skill !== undefined) metadata.skill = options.skill;
+
   return {
     check_id: options.checkId,
     path: options.path,
@@ -196,6 +204,7 @@ function runGuard(input: string, env: NodeJS.ProcessEnv): SpawnSyncReturns<strin
 afterEach(() => {
   while (createdPaths.length > 0) {
     const directory = createdPaths.pop();
+
     if (directory) rmSync(directory, { recursive: true, force: true });
   }
 });

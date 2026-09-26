@@ -141,6 +141,7 @@ const asContribution = (value: unknown): DepositContribution | null => {
     return null;
   }
   const { amountMinorUnits, date } = value;
+
   if (!isNumber(amountMinorUnits) || !isNumber(date)) {
     return null;
   }
@@ -150,14 +151,17 @@ const asContribution = (value: unknown): DepositContribution | null => {
 
 const readContributions = (value: Record<string, unknown>): DepositContribution[] | null => {
   const { contributions, principalMinorUnits, startDate } = value;
+
   if (Array.isArray(contributions)) {
     const parsed = contributions.map(asContribution);
+
     if (parsed.length > 0 && parsed.every((c): c is DepositContribution => c !== null)) {
       return [...parsed].sort((a, b) => a.date - b.date);
     }
 
     return null;
   }
+
   if (isNumber(principalMinorUnits) && isNumber(startDate)) {
     return [{ amountMinorUnits: principalMinorUnits, date: startDate }];
   }
@@ -199,6 +203,7 @@ export const asBondMeta = (value: unknown): BondMeta | null => {
   }
   const { quantity, faceValueMinorUnits, couponPct, purchaseDate, maturityDate, bondKind, isin } =
     value;
+
   if (
     !isNumber(quantity) ||
     !isNumber(faceValueMinorUnits) ||

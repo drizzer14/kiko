@@ -17,6 +17,7 @@ const mockGet = jest.fn();
 jest.mock('react-native-keychain', () => {
   const store: Record<string, { username: string; password: string }> = {};
   const key = (options?: { service?: string }): string => options?.service ?? 'default';
+
   return {
     ACCESS_CONTROL: { BIOMETRY_CURRENT_SET: 'BiometryCurrentSet' },
     ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
@@ -24,15 +25,18 @@ jest.mock('react-native-keychain', () => {
       async (username: string, password: string, options?: { service?: string }) => {
         mockSet(username, password, options);
         store[key(options)] = { username, password };
+
         return true;
       },
     ),
     getGenericPassword: jest.fn(async (options?: { service?: string }) => {
       mockGet(options);
+
       return store[key(options)] ?? false;
     }),
     resetGenericPassword: jest.fn(async (options?: { service?: string }) => {
       delete store[key(options)];
+
       return true;
     }),
   };

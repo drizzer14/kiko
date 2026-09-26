@@ -176,6 +176,7 @@ jest.mock('@kiko/sync-state/sync-state.repo', () => ({
 // so the screen's kind-gating is what is under test.
 jest.mock('./crypto-sync-section', () => {
   const { View } = require('react-native');
+
   return {
     __esModule: true,
     default: ({ account }: { account: { id: string } }) => (
@@ -302,6 +303,7 @@ const renderScreen = async () => {
     />,
     { wrapper: GestureRootWrapper },
   );
+
   return { ...view, navigation };
 };
 
@@ -573,6 +575,7 @@ describe('AccountDetailScreen', () => {
     expect(navigation.setOptions).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Ukrsibbank Card' }),
     );
+
     for (const [options] of (navigation.setOptions as jest.Mock).mock.calls) {
       expect(options.headerTitle).toBeUndefined();
       expect(options.headerLargeTitle).toBeUndefined();
@@ -645,9 +648,11 @@ describe('AccountDetailScreen', () => {
     async ({ account: testAccount, visible, hidden }) => {
       setLiveData({ accounts: testAccount ? [testAccount] : [], holdings: [] });
       const { getByText, queryByText } = await renderScreen();
+
       for (const text of visible) {
         expect(getByText(text)).toBeTruthy();
       }
+
       for (const text of hidden) {
         expect(queryByText(text)).toBeNull();
       }

@@ -47,6 +47,7 @@ export const parsedContributions = (
 ): { amountMinorUnits: number; date: number }[] =>
   contributions.flatMap(({ amount, date }) => {
     const amountValue = parseAmount(amount);
+
     if (!(amountValue > 0) || date === null) {
       return [];
     }

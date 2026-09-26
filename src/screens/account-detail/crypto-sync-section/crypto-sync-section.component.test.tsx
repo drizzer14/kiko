@@ -36,6 +36,7 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
 // under test.
 jest.mock('../../../design-system/components/wallet-address-field', () => {
   const { Pressable, Text } = require('react-native');
+
   return {
     __esModule: true,
     default: ({ onConnect }: { onConnect: (address: string) => Promise<boolean> }) => (
@@ -50,6 +51,7 @@ jest.mock('../../../design-system/components/wallet-address-field', () => {
 });
 jest.mock('../../../design-system/components/binance-credentials-field', () => {
   const { Pressable, Text } = require('react-native');
+
   return {
     __esModule: true,
     default: ({ onConnect }: { onConnect: () => Promise<boolean> }) => (

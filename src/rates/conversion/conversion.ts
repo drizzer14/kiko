@@ -33,10 +33,12 @@ export const rateTableFromRows = (rows: RateRow[]): RateTable => {
 
   for (const row of rows) {
     const rate = Number(row.rate);
+
     if (Number.isFinite(rate) && rate > 0) {
       table[rateKey(row.base, row.quote)] = rate;
     }
   }
+
   return table;
 };
 
@@ -45,10 +47,12 @@ export const convert = (money: Money, target: Currency, rates: RateTable): Money
     return money;
   }
   const rate = rates[rateKey(money.currency, target)];
+
   if (rate === undefined) {
     throw new Error(`Missing rate ${money.currency}->${target}`);
   }
   const sourceMajor = money.minorUnits / 10 ** currencyScale[money.currency];
+
   return Money.fromMajor(target, sourceMajor * rate);
 };
 

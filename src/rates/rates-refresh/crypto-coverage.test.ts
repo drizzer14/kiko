@@ -23,6 +23,7 @@ const composeTable = () => composeRateTable(async () => cryptoRates());
 describe('Crypto coverage — every added crypto reaches every base (no silent net-worth drop)', () => {
   it('composes a convertible path from every crypto to every base currency', async () => {
     const table = await composeTable();
+
     for (const crypto of CRYPTO) {
       for (const base of currencyOptions) {
         if (base === crypto) {
@@ -35,6 +36,7 @@ describe('Crypto coverage — every added crypto reaches every base (no silent n
 
   it('includes a holding of every crypto in the net-worth total for every base leg', async () => {
     const table = await composeTable();
+
     for (const crypto of CRYPTO) {
       for (const base of ['UAH', 'USD', 'EUR'] as Currency[]) {
         const total = guardedNetWorth(
@@ -65,6 +67,7 @@ describe('Crypto coverage — every added crypto reaches every base (no silent n
   // separate call site if that call site filtered differently.
   it('includes every crypto in the per-currency breakdown Home renders (guardedBreakdown)', async () => {
     const table = await composeTable();
+
     for (const crypto of CRYPTO) {
       for (const base of ['UAH', 'USD', 'EUR'] as Currency[]) {
         const breakdown = guardedBreakdown(
