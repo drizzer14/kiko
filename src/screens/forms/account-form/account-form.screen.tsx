@@ -79,6 +79,30 @@ const INITIAL_KIND: Kind = 'bank';
 // `square.grid.2x2`, per the icon rework's generic-account decision (§2.1).
 const FALLBACK_ICON = genericEntitySymbol.account;
 
+// The cash-only initial value field's own two error reasons — a blank or
+// unparseable typed value is "missing", distinct from a valid but negative one
+// (a cash balance can never be negative, but 0 is a valid typed value). Pure —
+// no closure — kept at module scope per kiko-code-style's helper placement
+// rule, and to keep this branching out of AccountFormScreen's own cognitive
+// complexity score (review decision 18).
+type InitialValueIssue = 'missing' | 'negative' | null;
+
+const initialValueIssue = (rawValue: string): InitialValueIssue => {
+  const trimmed = rawValue.trim();
+  const parsed = parseAmount(trimmed);
+
+  if (trimmed === '' || Number.isNaN(parsed)) {
+    return 'missing';
+  }
+
+  return parsed < 0 ? 'negative' : null;
+};
+
+const INITIAL_VALUE_ERROR_KEY = {
+  missing: 'forms.account.initialValueRequiredError',
+  negative: 'forms.account.initialValueNegativeError',
+} as const;
+
 const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) => {
   // An `accountId` in the route params switches the form to EDIT mode: the same
   // fields, seeded from the existing account, saving through the update path
@@ -175,6 +199,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // reason stays hidden until the user actually tries to Connect or Save with
   // an empty name, rather than showing as a standing hint the whole time.
   const [showNameError, setShowNameError] = useState(false);
+  // Same attempted-flag pattern for the cash-only initial value field: hidden
+  // until a failed Save press, so a fresh create form shows no error before
+  // the user has tried to save (review decision 18 — the value used to be
+  // silently clamped to 0 instead of surfacing a reason).
+  const [showInitialValueError, setShowInitialValueError] = useState(false);
   // DEVICE BUG fix (root cause): while the currency sheet's search field can
   // be focused, this screen's background ScrollView must NOT react to the
   // keyboard's frame change — it does not contain that responder, but
@@ -358,6 +387,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const trimmedName = name.trim();
   const canSave = trimmedName !== '';
 
+  const initialValueProblem = initialValueIssue(initialValue);
+  const initialValueError =
+    showInitialValueError && initialValueProblem !== null
+      ? t(INITIAL_VALUE_ERROR_KEY[initialValueProblem])
+      : undefined;
+
   const save = async (): Promise<void> => {
     // Block submit on an empty (or whitespace-only) name; Save is always
     // enabled now, so this surfaces the name-required reason on press rather
@@ -391,13 +426,19 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       }
 
       if (kind === 'cash') {
-        // Clamp a negative initial value to zero — a cash balance can never be
-        // negative, and parseAmount('') is NaN so `|| 0` also covers a blank field.
-        const initialMajor = Math.max(0, parseAmount(initialValue) || 0);
+        // Block submit on a blank or negative initial value; Save is always
+        // enabled, so this surfaces the field's own reason on press rather
+        // than the old silent zero-clamp (review decision 18).
+        if (initialValueProblem !== null) {
+          setShowInitialValueError(true);
+
+          return;
+        }
+
         await accountsRepo.createCashAccount({
           name: trimmedName,
           currency,
-          initialBalance: Money.fromMajor(currency, initialMajor),
+          initialBalance: Money.fromMajor(currency, parseAmount(initialValue)),
           icon,
           color,
         });
@@ -526,6 +567,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
               keyboardType="decimal-pad"
               placeholder={t('forms.account.initialValuePlaceholder')}
               suffix={currencySymbol[currency]}
+              error={initialValueError}
             />
           </>
         )}

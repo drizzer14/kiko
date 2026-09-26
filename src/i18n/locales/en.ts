@@ -224,7 +224,9 @@ export const en = {
       editTitle: 'Edit Account',
       importOnlyBankHint: 'You can import a statement for this bank after saving.',
       initialValue: 'Initial value',
+      initialValueNegativeError: 'Initial value must be 0 or greater.',
       initialValuePlaceholder: '1000.00',
+      initialValueRequiredError: 'Enter an initial value.',
       kind: 'Kind',
       // The account-kind SelectField's placeholder — unreachable today (an
       // account's kind is always a concrete value, never `null`), kept for
