@@ -177,6 +177,17 @@ The established patterns grouped under this heading:
 - The capability-icon transparency principle — its own heading further
   down this file.
 - Field placeholder and error copy — below.
+- A filter never hides an active selection: a checkable filter's
+  option list is scoped to the current data (e.g. the statistics
+  category filter is scoped to the active date range), but a value
+  the user has already SELECTED must stay listed and checked even once
+  it drops out of that scope — union it back in from wherever its
+  display data lives (Statistics: `categoryByKey`), rather than pruning
+  the selection or letting the row vanish so the user can never find
+  it to uncheck (review decision 17: `statistics.screen.tsx`'s
+  `categoryOptions` and its twin, `trend-filter-field.component.tsx`'s
+  `manualRows`, which has no display data for a hidden key and falls
+  back to the bare slug as its label).
 
 ## Field placeholder and error copy
 

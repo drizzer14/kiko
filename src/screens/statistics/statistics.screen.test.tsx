@@ -1351,6 +1351,59 @@ describe('StatisticsScreen', () => {
     expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
   });
 
+  it('keeps a selected category checked and listed in the filter menu after the range moves away from its spending', async () => {
+    seedSpending();
+
+    const { getByTestId, getByLabelText, getByText, queryByTestId } = await renderScreen();
+
+    await pressFilter(getByTestId, CATEGORY_FILTER, 'groceries');
+
+    // Narrow the range to TODAY — outside the EXPENSES' `now - 2 * DAY`
+    // timestamp — so every category (groceries included) drops out of the
+    // range-scoped slices. The selection itself is untouched by the narrowing.
+    await act(async () => {
+      fireEvent.press(getByLabelText('Date range'));
+    });
+    const today = new Date(now);
+    const calendar = getByTestId('date-range-calendar').props as {
+      onDayPress: (day: unknown) => void;
+    };
+    await act(async () => {
+      calendar.onDayPress({
+        year: today.getFullYear(),
+        month: today.getMonth() + 1,
+        day: today.getDate(),
+      });
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Apply'));
+    });
+
+    expect(getByTestId('category-pie-empty')).toBeTruthy();
+
+    // The menu still lists groceries, still checked, even though it has no
+    // spending in the narrowed range — hiding it would leave the selection
+    // impossible to find and uncheck.
+    await act(async () => {
+      fireEvent.press(getByTestId(CATEGORY_FILTER));
+    });
+    expect(
+      getByTestId(`${CATEGORY_FILTER}-option-groceries`).props.accessibilityState?.checked,
+    ).toBe(true);
+
+    // The user can still uncheck it, same as any other option.
+    await act(async () => {
+      fireEvent.press(getByTestId(`${CATEGORY_FILTER}-option-groceries`));
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId(`${CATEGORY_FILTER}-backdrop`));
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId(CATEGORY_FILTER));
+    });
+    expect(queryByTestId(`${CATEGORY_FILTER}-option-groceries`)).toBeNull();
+  });
+
   it('excludes an expense outside the active date range from the donut center total', async () => {
     // One expense inside the default 30-day window, one 60 days back (well
     // outside it). If the donut summed the whole ledger instead of the active

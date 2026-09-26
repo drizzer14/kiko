@@ -39,6 +39,7 @@ import {
   type BreakdownTransaction,
   buildCategoryBreakdown,
   type CategorySlice,
+  resolveCategoryColor,
 } from '../../statistics/category-breakdown';
 import {
   descriptionExcludedTransferTransactionIds,
@@ -770,6 +771,29 @@ const StatisticsScreen: FC = () => {
       });
     }
 
+    // A category the user already SELECTED can drop out of the range-scoped
+    // slices above (e.g. the range moves to a week with no spending in it) —
+    // union it back in from `categoryByKey` so the menu still lists it,
+    // checked, rather than silently hiding a selection the user can then never
+    // find and uncheck (review decision 17: KEEP a hidden selection visible).
+    for (const key of selectedCategories) {
+      if (byKey.has(key)) {
+        continue;
+      }
+
+      const display = categoryByKey.get(key);
+      if (display === undefined) {
+        continue;
+      }
+
+      byKey.set(key, {
+        value: key,
+        label: display.title,
+        icon: display.icon,
+        color: resolveCategoryColor(display.color, key),
+      });
+    }
+
     // Present the options in the user's CUSTOM category order — the live
     // `categories` query is already sorted `asc(sortOrder), asc(key)` (see
     // categories.repo's allQuery) — not in the spending-magnitude order the
@@ -787,7 +811,7 @@ const StatisticsScreen: FC = () => {
     const rank = (key: string): number => orderByKey.get(key.toLowerCase()) ?? categories.length;
 
     return Array.from(byKey.values()).sort((a, b) => rank(a.value) - rank(b.value));
-  }, [allCategorySlices, categories]);
+  }, [allCategorySlices, categories, selectedCategories, categoryByKey]);
 
   const excludedCategoryKeys = useMemo(() => {
     if (selectedCategories.size === 0) {
