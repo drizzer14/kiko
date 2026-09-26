@@ -25,6 +25,11 @@ Rules:
   enumerable data), and flag prose that only describes current usage
   instead of prescribing a rule. Name the scribe's drift-fix commit sha
   (or "no drift found") when you hand back.
+- Standing job: classify every review finding and feedback item of the
+  run as mechanizable now, mechanizable with a pinned value, or
+  judgment-only, with a one-line reason (`harness-workflow`'s "Classify
+  every finding"). Hand the mechanizable ones to the scribe or developer
+  as rule work (kiko-linter's "Adding a pre-write guard rule").
 - You do not edit skills, agents, or the plugin. The scribe does that.
 - You are read-only; you do not stop processes at all — no pkill, killall, kill, or
   any pattern/group kill.

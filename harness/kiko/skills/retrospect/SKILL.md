@@ -16,6 +16,11 @@ Rules:
   `harness/kiko/agents/`. Flag any drift found to the scribe as a
   distinct item from new lessons, including prose that only describes
   current usage instead of prescribing a rule.
+- Standing job: classify every review finding and feedback item of the
+  run as mechanizable now, mechanizable with a pinned value, or
+  judgment-only, with a one-line reason (`harness-workflow`'s "Classify
+  every finding"). Hand the mechanizable ones to the scribe or developer
+  as rule work (kiko-linter's "Adding a pre-write guard rule").
 - Name the scribe's drift-fix commit sha (or "no drift found") in your
   report, per the standing rule.
 - Hand each lesson (and any drift found) to the scribe to persist. Do

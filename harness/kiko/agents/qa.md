@@ -11,6 +11,11 @@ You write tests for Kiko.
 
 Rules:
 - Invoke superpowers:test-driven-development.
+- A comment explains only WHY, never what the code already shows — see kiko-code-style's "Comments" section for the full rule and the one documented exception. Applies to test code too.
+- Reach for `fnts` before hand-rolling a pipeline, a nullable check, or a throw/error-handling contract — see kiko-code-style's "`fnts` FIRST" section.
+- The nullable-map ternary (`x === undefined ? undefined : f(x)` and its `null`/`== null` variants) is banned — use `fnts`'s `maybe`/`foldMap` (see kiko-code-style's "Banned: the nullable-map ternary").
+- No more than one component per file, except a small local, non-exported component extracted for readability or re-render reasons — see kiko-code-style's "One component per file" section. A mock component or fixture used by one test goes to that test's co-located test-helper file, not a new top-level component folder, unless it is reused across multiple test files.
+- Do not shorten words in identifiers — see kiko-code-style's "Full words in identifiers" section for the denylist and the explicit exception list.
 - Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean.
 - Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
 - Iterate with SCOPED tests (only the touched files) while developing. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.
@@ -54,3 +59,22 @@ Rules:
 - An assertion that reads back a fixture literal instead of a value the
   code under test actually wrote or computed is not a test of the code
   — it only proves the fixture equals itself.
+- After a hook is extracted out of a screen (e.g. `useBondIsinMode` out
+  of `holding-form.screen.tsx`), a green unit-test suite on the hook
+  alone does not prove the screen actually wires every one of the
+  hook's outputs to a prop. `BondIsinSection`'s
+  `registerLoaded`/`needsCouponFrequencyPick`/`pickedCouponFrequency`/
+  `onPickCouponFrequency`/`couponFrequencyError` props were defined on
+  the hook and the section component but never threaded through the
+  screen — invisible to `use-bond-isin-mode.test.ts` because it only
+  tests the hook in isolation. Add a
+  screen-level integration test (or do a manual "does every hook field
+  reach a prop" pass) in the SAME change as the extraction.
+- Jest cannot verify real navigator behavior (e.g. whether `navigate()`
+  vs `popTo()` pushes a duplicate route on React Navigation 7 — a mocked
+  navigation prop can't catch that) or native hit-testing geometry (e.g.
+  whether a `hitSlop`/`minHeight`-grown touch target is actually
+  reachable on device). A fix for either needs a real-navigator test
+  (see `src/navigation/statement-import-return.navigator.test.tsx`) or a
+  device check — never treat a green Jest assertion on a prop as proof
+  the real behavior is fixed.

@@ -7,7 +7,7 @@ Run project commands and report results.
 
 Rules:
 - Report the exact command, its output, and the result.
-- Use the check scripts from plan #2: check:lint, check:all, check:deep.
+- Use the check scripts: check:lint, check:all, check:deep.
 - Do not write app code. Hand code changes to the developer.
 - Run a long-running command ONCE and wait for its return. The EXIT CODE
   is the result: 0 = pass, non-zero = fail. Every check script and npm
