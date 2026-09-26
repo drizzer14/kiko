@@ -291,6 +291,22 @@ describe('runBalanceSync', () => {
     expect(holdingsStore).toHaveLength(0);
   });
 
+  it('never calls upsertHoldings when the provider returns no balance (no empty write transaction)', async () => {
+    const { provider } = makeProvider();
+    const { deps } = makeInMemoryDeps([cryptoAccount({ id: 'acc-1', institution: 'btc_wallet' })]);
+    deps.targetAccountId = 'acc-1';
+    let upsertCalled = false;
+    const originalUpsertHoldings = deps.upsertHoldings;
+    deps.upsertHoldings = async (holdingsList) => {
+      upsertCalled = true;
+      return originalUpsertHoldings?.(holdingsList);
+    };
+
+    await runBalanceSync(provider, { balances: [] }, deps);
+
+    expect(upsertCalled).toBe(false);
+  });
+
   // The crypto sync feeds the same determinate progress bar as the Monobank run
   // (the shared session in `sync-status.ts`). Every returned holding does real
   // work — a crypto sync has no balance-diff skip, it always reads live balances —

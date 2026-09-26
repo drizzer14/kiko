@@ -181,20 +181,24 @@ const runBalanceSyncInner = async <Deps>(
 
     // Every balance upserts in ONE transaction (mirrors the Monobank fast-phase
     // batch, `upsertMonobankMany`) rather than one op-sqlite transaction per
-    // balance, so the reactive `holdings` callback fires once per sync.
-    await deps.upsertHoldings(
-      balances.map(({ name, balanceMinorUnits, metadataKey, renameFromDefault }) => ({
-        accountId,
-        name,
-        type: 'crypto_asset',
-        currency: 'BTC',
-        balanceMinorUnits,
-        metadata: { syncedAt },
-        metadataField: provider.metadataField,
-        metadataKey,
-        renameFromDefault,
-      })),
-    );
+    // balance, so the reactive `holdings` callback fires once per sync. A
+    // provider that returns no balance has nothing to write, so this skips the
+    // call entirely rather than opening an empty write transaction.
+    if (balances.length > 0) {
+      await deps.upsertHoldings(
+        balances.map(({ name, balanceMinorUnits, metadataKey, renameFromDefault }) => ({
+          accountId,
+          name,
+          type: 'crypto_asset',
+          currency: 'BTC',
+          balanceMinorUnits,
+          metadata: { syncedAt },
+          metadataField: provider.metadataField,
+          metadataKey,
+          renameFromDefault,
+        })),
+      );
+    }
 
     // One crypto holding's balance has committed: advance the bar one work unit
     // and complete the holding for the label, once per returned balance.
