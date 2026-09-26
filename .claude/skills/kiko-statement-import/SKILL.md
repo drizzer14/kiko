@@ -310,7 +310,12 @@ follow the same layout conventions as every other Kiko screen:
   (`raw-preview/column-widths.ts`'s `computeColumnWidths`, keyed off
   the longest cell text seen in that column across the previewed
   rows) instead of a flat per-cell minimum, takes more vertical
-  breathing room (`gap={2}` between rows, up from `1`), and paints the
+  breathing room (`gap={2}` between rows, up from `1`), keeps each row
+  a real 44pt layout box (`ROW_MIN_HEIGHT`, `raw-preview.styles.ts`) —
+  every row is a tap target (it sets the header row), and the rows sit
+  too close together for `hitSlop` to reach 44pt without overlapping
+  the next row, the one documented exception to `kiko-design-system`'s
+  "hitSlop, never a bigger visual" touch-target rule — and paints the
   tapped header row with the theme's accent BLUE
   (`theme.colors.accent`) with `onAccent` cell text — replacing the
   former neutral `surfaceHigh` tint — matching the app's standard
@@ -344,6 +349,9 @@ follow the same layout conventions as every other Kiko screen:
   currency-mode DO change the visible fields. Never move
   encoding/decimal-separator to `SegmentedControl` as a DEFAULT the
   user did not ask for — tabs are ONLY for amount and currency modes.
+  All three keep `ChipRow`'s approved compact chip look (34pt visible,
+  44pt tap target via `hitSlop` — see `kiko-design-system`'s `ChipRow`
+  entry); never grow a chip's visible size to meet the tap-target floor.
   Each `ChipRow` composes its own visible
   `FieldLabel` above it (`label` prop) since encoding/delimiter/decimal-
   separator sit inside a shared "File Format" section alongside each

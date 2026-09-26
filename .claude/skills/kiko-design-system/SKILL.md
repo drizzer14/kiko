@@ -24,8 +24,15 @@ Kiko is a native iOS app, so Apple's iOS Human Interface Guidelines
 (HIG) are the standing reference for every token, size, surface, and
 control. Apply HIG on every design task, on four axes:
 
-- **Touch targets** — every control is at least 44pt x 44pt. A small
-  glyph needs padding or `hitSlop` to reach it.
+- **Touch targets** — every control's TAP target is at least 44pt x
+  44pt, reached through `hitSlop`, never through a bigger visual: an
+  approved compact look (a `small` Button, a `ChipRow` chip) keeps its
+  visible size, and `hitSlop` restores the 44pt target around it. Never
+  grow a control's visible height or padding to meet the floor. The one
+  exception is a row whose neighbours sit too close for `hitSlop` to
+  reach 44pt without overlapping the next row's target (the raw-preview
+  header rows, `raw-preview.styles.ts`'s `ROW_MIN_HEIGHT`); there a
+  `minHeight` on the row's own layout box is the fallback.
 - **SF Symbol sizing** — a symbol reads as a peer of the text beside
   it (see `iconSizes` under "Token categories"); it scales with its
   paired type step.
@@ -795,10 +802,13 @@ new component can land between reviews of this skill:
   nothing; `labels` is an optional value -> display-text map;
   `labelVariant` (default `'body'`) drops the chip label a type step
   for a value sitting under its own larger section label (the
-  trend-filter sheet's amount/measure rows pass `'caption'`); at every
-  step, the chip also holds a real 44pt tap target — `minHeight: 44` at
-  the default `'body'` step, a compact visible size restored to 44pt
-  via `hitSlop` at `'caption'` (mirroring `Button`'s `small` size). See
+  trend-filter sheet's amount/measure rows pass `'caption'`). The chip
+  keeps the approved compact look at EVERY step — a 34pt visible
+  `minHeight` with `spacing(1)` vertical padding (`chip-row.styles.ts`),
+  the same visible height as `Button`'s `small` size — and restores the
+  44pt tap target with vertical `hitSlop` (`CHIP_HIT_SLOP`,
+  `chip-row.component.tsx`), never with a taller chip. `labelVariant`
+  only changes the label's type step, not the chip's size. See
   `kiko-statement-import`'s column-mapping section for the fullest
   worked comparison against `SegmentedControl` below. Because a
   design-system component may never import from `src/screens/**`

@@ -9,12 +9,10 @@ import FieldLabel from '../field-label';
 import { styles } from './chip-row.styles';
 import type { ChipRowProps } from './chip-row.props';
 
-// The compact (`labelVariant="caption"`) chip's visible height sits below the
-// 44pt HIG tap-target floor on purpose, so it reads as clearly smaller around
-// a caption label sitting under its own larger section label. This hitSlop
-// restores the 44pt tap target the same way Button's `small` size does:
-// (44 - 34) / 2 = 5pt per edge.
-const CAPTION_HIT_SLOP = { top: 5, bottom: 5 } as const;
+// The chip's visible height sits below the 44pt HIG tap-target floor on
+// purpose (the compact chip look). This hitSlop restores the 44pt tap target
+// the same way Button's `small` size does: (44 - 34) / 2 = 5pt per edge.
+const CHIP_HIT_SLOP = { top: 5, bottom: 5 } as const;
 
 // A labeled single-select chip row: the kind and currency pickers are otherwise
 // identical Pressable/Text JSX, so this reusable component renders either from
@@ -34,10 +32,6 @@ const ChipRow = <Option extends string | number>({
   labelVariant = 'body',
 }: ChipRowProps<Option>): ReactElement => {
   const { theme } = useUnistyles();
-  // Only the caption label variant compacts the chip visually (a value
-  // sitting under its own larger section label); the default body variant
-  // keeps the chip's full 44pt minHeight.
-  const isCompact = labelVariant === 'caption';
 
   return (
     <Box gap={1}>
@@ -53,14 +47,9 @@ const ChipRow = <Option extends string | number>({
               accessibilityRole="button"
               accessibilityState={{ selected: isSelected }}
               onPress={() => onSelect(option)}
-              // The compact chip's visible height sits below the 44pt HIG
-              // floor on purpose (see CAPTION_HIT_SLOP above); this hitSlop
-              // restores the tap target. The default (body) chip already
-              // holds 44pt via its own minHeight, so it needs none.
-              hitSlop={isCompact ? CAPTION_HIT_SLOP : undefined}
+              hitSlop={CHIP_HIT_SLOP}
               style={[
                 styles.chip,
-                isCompact && styles.chipCompact,
                 { backgroundColor: isSelected ? theme.colors.accent : theme.colors.surface },
               ]}
             >
