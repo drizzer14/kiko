@@ -501,3 +501,91 @@ rules:
           - pattern: 'cancelLabel: "..."'
           - pattern: "fallbackLabel: '...'"
           - pattern: 'fallbackLabel: "..."'
+  # kiko-linter's "Backlog: a rule for a plain function called inside a
+  # worklet" / kiko-gestures' "Every function called inside a worklet needs
+  # its own 'worklet' directive". A same-file helper (a `const` arrow or a
+  # `function`) called synchronously inside a reanimated worklet-hook
+  # callback (`useAnimatedStyle`, `useDerivedValue`, `useAnimatedReaction`,
+  # `useAnimatedScrollHandler`, `runOnUI`, or a `Gesture.$G().$ON(...)`
+  # worklet callback) that has no `'worklet'` directive as ITS OWN first
+  # statement is captured as a "remote function" by the worklets runtime —
+  # invisible to `tsc` and Jest (the worklet runtime is mocked there, and a
+  # DEBUG build only warns), and it only SIGABRTs on first render in a
+  # RELEASE build (builds 15/16 shipped exactly this bug, see memory
+  # `worklet-directive-debug-swallows-release-aborts`). A heuristic (spec
+  # rule 15): false negatives are accepted, but false positives must stay
+  # rare. The "$F declared somewhere in this file" half is NOT expressed
+  # with a `pattern-inside` wrapping the hook (pattern-inside requires the
+  # CALL to be a descendant of the declaration, which is never true for two
+  # sibling statements) — it is a leading/trailing `...`-bounded statement
+  # sequence instead (`... const $F = (...) => { ... } ...`), which Semgrep
+  # matches against ANY enclosing statement list, verified empirically. That
+  # same generality is exactly why a helper defined INLINE, directly inside
+  # the worklet callback (safe — already part of that worklet's own closure,
+  # never captured remotely, per kiko-gestures), would otherwise ALSO match
+  # this sequence pattern (its own immediately-enclosing block IS such a
+  # statement list) and false-positive: the two block-shaped
+  # `pattern-not-inside` arms at the bottom exist to exclude precisely that
+  # shape (a `(...) => { ... }` whose OWN body directly declares `$F`),
+  # verified empirically against a throwaway inline-arrow probe before
+  # writing this. A function imported from ANOTHER file is a known false
+  # negative — no local declaration to match — and `Gesture.$G().$ON(...)`
+  # only matches that literal two-hop chain, not this codebase's real,
+  # further-chained gesture builders (`.minDuration(...).runOnJS(true)
+  # .onStart(...)`, see `card-context-menu.component.tsx`/
+  # `bottom-sheet.component.tsx`), both accepted per the heuristic — a real
+  # sweep of `src App.tsx __tests__ e2e` drew 0 findings.
+  - id: kiko-worklet-directive-required
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A same-file helper called inside a reanimated worklet-hook callback
+      (`useAnimatedStyle`, `useDerivedValue`, `useAnimatedReaction`,
+      `useAnimatedScrollHandler`, `runOnUI`, or a `Gesture...onStart`/
+      `onUpdate`/`onEnd`/`onFinalize`-style worklet callback) has no
+      `'worklet'` directive as its own first statement. The worklets runtime
+      captures it as a "remote function" instead — invisible to `tsc` and
+      Jest, and it only SIGABRTs on first render in a RELEASE build — see
+      kiko-gestures' "Every function called inside a worklet needs its own
+      'worklet' directive".
+    metadata:
+      fix: "Add `'worklet';` as the helper's own first statement, or inline the logic directly in the worklet callback instead."
+      skill: "kiko-gestures › Every function called inside a worklet needs its own 'worklet' directive"
+    patterns:
+      - pattern-either:
+          - pattern-inside: "useAnimatedStyle(...)"
+          - pattern-inside: "useDerivedValue(...)"
+          - pattern-inside: "useAnimatedReaction(...)"
+          - pattern-inside: "useAnimatedScrollHandler(...)"
+          - pattern-inside: "runOnUI(...)"
+          - pattern-inside: "Gesture.$G().$ON(...)"
+      - pattern: $F(...)
+      - pattern-either:
+          - pattern-inside: |
+              ...
+              const $F = (...) => { ... }
+              ...
+          - pattern-inside: |
+              ...
+              function $F(...) { ... }
+              ...
+      - pattern-not-inside: |
+          ...
+          const $F = (...) => { 'worklet'; ... }
+          ...
+      - pattern-not-inside: |
+          ...
+          function $F(...) { 'worklet'; ... }
+          ...
+      - pattern-not-inside: |
+          (...) => {
+            ...
+            const $F = (...) => { ... }
+            ...
+          }
+      - pattern-not-inside: |
+          (...) => {
+            ...
+            function $F(...) { ... }
+            ...
+          }

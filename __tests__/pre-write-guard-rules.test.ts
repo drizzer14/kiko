@@ -33,6 +33,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-hand-built-selectable-row',
   'kiko-no-literal-sync-error',
   'kiko-no-literal-biometric-label',
+  'kiko-worklet-directive-required',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
