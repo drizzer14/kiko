@@ -178,6 +178,35 @@ rules:
           - metavariable-regex:
               metavariable: $ELEMENT
               regex: "(?i).*(swipe|fling)"
+  # FB1 P3a: a seeded default category's stored title is its English seed
+  # text, so a message interpolating the raw `<...category>.title` shows
+  # English under `uk`. `$CATEGORY` is any expression ending in `category`
+  # (`category`, `row.category`, `selectedCategory`). A `resolveCategoryDisplay`
+  # result bound to the same name is already translated, so it is excluded.
+  - id: kiko-no-raw-category-title-in-message
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A raw stored category title is fed into a translated message. A seeded
+      default's stored title is its English seed text, so this reads English
+      under `uk`. Pass the displayed title instead:
+      `resolveDefaultCategoryTitle(category.key, category.title)`, or a
+      `resolveCategoryDisplay(...)` / `buildCategoryDisplayMap(...)` result.
+    metadata:
+      fix: "Interpolate `resolveDefaultCategoryTitle(category.key, category.title)` (or a resolveCategoryDisplay result), never the raw `category.title`."
+      skill: "kiko-translator › A seeded default category is named by its displayed title everywhere"
+    patterns:
+      - pattern-either:
+          - pattern: "t($KEY, {..., title: $CATEGORY.title, ...})"
+          - pattern: "t($KEY, {..., name: $CATEGORY.title, ...})"
+          - pattern: "i18n.t($KEY, {..., title: $CATEGORY.title, ...})"
+          - pattern: "i18n.t($KEY, {..., name: $CATEGORY.title, ...})"
+      - metavariable-regex:
+          metavariable: $CATEGORY
+          regex: "(?i).*category$"
+      - pattern-not-inside: |
+          const $CATEGORY = resolveCategoryDisplay(...);
+          ...
   # Mechanizes kiko-code-style's "Comments: WHY only, never history" —
   # Class A (ERROR): see kiko-linter's own "kiko-no-history-id-comment"
   # section for the id-family list, the string-skip anchor, the false

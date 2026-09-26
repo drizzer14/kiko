@@ -43,7 +43,10 @@ resolved title, never the raw `category.title`. The categories screen's
 card resolves it once (`displayName`) for all of them; list rows go
 through `resolveCategoryDisplay`/`buildCategoryDisplayMap`
 (`src/categories/category-display/`). A test asserts the labels under
-`uk`, where a raw seed title would show English.
+`uk`, where a raw seed title would show English. Mechanized as
+`kiko-no-raw-category-title-in-message` (ERROR,
+`rules/semgrep-prewrite.yml`): a `t(key, { title|name: <...category>.title })`
+is denied unless that `category` is a `resolveCategoryDisplay(...)` result.
 
 ## The two catalogues change together; a parity test enforces it
 
