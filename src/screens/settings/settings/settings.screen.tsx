@@ -3,6 +3,7 @@ import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { PRIVACY_POLICY_URL_EN, PRIVACY_POLICY_URL_UK } from '@env';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { Linking, Pressable, type ScrollViewInstance } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -24,9 +25,6 @@ import { useScrollToTopOnTabPress } from '../../../navigation/use-scroll-to-top-
 import { chevronSize, chevronTrailingWhitespace } from '../settings-row/settings-row.chevron';
 
 type SettingsScreenProps = NativeStackScreenProps<SettingsStackParamList, 'Settings'>;
-
-const PRIVACY_POLICY_URL_EN = 'https://drizzer14.github.io/kiko/en.html';
-const PRIVACY_POLICY_URL_UK = 'https://drizzer14.github.io/kiko';
 
 // The privacy-policy link opens the page matching the CURRENT app language,
 // not the device locale — mirrors `activeLocale()`'s uk/otherwise shape

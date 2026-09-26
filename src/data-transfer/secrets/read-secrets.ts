@@ -1,19 +1,15 @@
 import type { ExportSecrets } from '../payload';
-import { readDbKey } from '../../db/keys/db-key';
 import { readToken } from '../../monobank/token';
 import type { AccountRow } from '../../db/schema';
 import { readCredentials } from '../../crypto-sync/binance/binance.credentials';
 
 /**
- * Reads the three Keychain secrets this feature bundles behind the "include
- * saved credentials" toggle: the SQLCipher DB key (display-only, see
- * `payload.d.ts`), and every CONNECTED account's Monobank token / Binance
- * credentials. An account with no stored secret (never connected, or
+ * Reads the two Keychain secrets this feature bundles behind the "include
+ * saved credentials" toggle: every CONNECTED account's Monobank token /
+ * Binance credentials. An account with no stored secret (never connected, or
  * disconnected) is skipped rather than producing an `undefined` entry.
  */
 export const readExportSecrets = async (accounts: AccountRow[]): Promise<ExportSecrets> => {
-  const dbKeyHex = await readDbKey();
-
   const monobankTokens: ExportSecrets['monobankTokens'] = [];
   for (const account of accounts.filter((row) => row.institution === 'monobank')) {
     const token = await readToken(account.id);
@@ -34,5 +30,5 @@ export const readExportSecrets = async (accounts: AccountRow[]): Promise<ExportS
     }
   }
 
-  return { dbKeyHex, monobankTokens, binanceCredentials };
+  return { monobankTokens, binanceCredentials };
 };

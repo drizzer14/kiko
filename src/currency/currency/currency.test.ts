@@ -7,6 +7,7 @@ import {
   currencyOptions,
   fiatCurrencyOptions,
   applySymbolPlacement,
+  cryptoCurrencyOptions,
 } from './currency';
 
 describe('currencyOptions', () => {
@@ -62,6 +63,13 @@ describe('fiat / crypto classification', () => {
     );
     for (const code of ['BTC', 'ETH', 'USDT'] as const) {
       expect(fiatCurrencyOptions).not.toContain(code);
+    }
+  });
+
+  it('exposes the crypto subset (BTC, ETH, USDT), order-preserving', () => {
+    expect([...cryptoCurrencyOptions]).toEqual(['BTC', 'ETH', 'USDT']);
+    for (const code of cryptoCurrencyOptions) {
+      expect(isCrypto(code)).toBe(true);
     }
   });
 

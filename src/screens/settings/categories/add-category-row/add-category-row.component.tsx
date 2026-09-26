@@ -1,16 +1,17 @@
 import { useTranslation } from 'react-i18next';
-import { type FC, useRef, useState } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
+import type { TextInputInstance } from 'react-native';
 import { categoriesRepo } from '@kiko/categories/repo';
-import { Pressable, type TextInputInstance } from 'react-native';
+import { type FC, useEffect, useRef, useState } from 'react';
 
 import ColorPicker from '../../../forms/color-picker';
 import Box from '../../../../design-system/components/box';
 import Card from '../../../../design-system/components/card';
-import Text from '../../../../design-system/components/text';
 import Button from '../../../../design-system/components/button';
-import SymbolIcon from '../../../../design-system/components/symbol';
+import { alertOnCatch } from '../../../../design-system/alert-on-catch';
 import HoldingIdentityField from '../../../forms/holding-identity-field';
+import FieldError from '../../../../design-system/components/field-error';
+import { useSubmitOnce } from '../../../forms/use-submit-once/use-submit-once';
 import { resolveCategoryColor } from '../../../../statistics/category-breakdown';
 import { KIKO_CATEGORIES_ICONS } from '../../../../design-system/components/icon-picker-modal/icon-pools';
 
@@ -21,29 +22,33 @@ import { styles } from './add-category-row.styles';
 const DEFAULT_ICON = 'tag';
 
 type AddCategoryRowProps = {
-  // Fired the moment the collapsed row expands its form. The Categories screen
-  // uses it to scroll its ScrollView to the newly revealed fields (the form is
-  // appended below the last category), so the auto-focused name field lands in
-  // view rather than under the fold.
-  onExpand?: () => void;
+  // Runs once the form has saved or been cancelled, so the Categories screen
+  // (which owns whether this form is mounted at all — review decision 19)
+  // collapses back to its footer "Add category" action.
+  onCollapse: () => void;
 };
 
-// The inline "Add category" row pinned below the category list. Collapsed, it is
-// a single tappable row; expanded, it reveals an icon-picker chip, a name field,
-// and a Save/Cancel action pair. Save inserts the category and clears the form
+// The "Add category" form. The Categories screen mounts this only while its
+// footer action is active, so this component owns no collapsed affordance of
+// its own — an icon-picker chip, a name field, and a Save/Cancel action pair,
+// always revealed. Save inserts the category and hands back to the screen
 // (the new row then appears through the list's existing live query); Cancel
-// collapses the form back so the action is never a dead end.
-const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
+// hands back with nothing persisted.
+const AddCategoryRow: FC<AddCategoryRowProps> = ({ onCollapse }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const [expanded, setExpanded] = useState(false);
   const [name, setName] = useState('');
   const [icon, setIcon] = useState(DEFAULT_ICON);
   // Null until the user taps a swatch — an honest "no color picked yet" that
   // persists as null so the row falls back to the stable per-key palette hash,
   // mirroring accounts/holdings' nullable color.
   const [color, setColor] = useState<string | null>(null);
-  // The name field's ref, so expanding the form can focus it imperatively
+  // Mirrors account-form's attempted-flag pattern: the name-required reason
+  // stays hidden until a failed Save press, so a fresh form shows no error
+  // before the user has tried to save — Save is always enabled, never a
+  // standing `disabled={!canSave}` gate with no visible reason at all.
+  const [attemptedSave, setAttemptedSave] = useState(false);
+  // The name field's ref, so the form can focus it imperatively on mount
   // instead of relying on the native `autoFocus` prop — see
   // HoldingIdentityField's `nameInputRef` doc comment for why.
   const nameInputRef = useRef<TextInputInstance | null>(null);
@@ -64,64 +69,40 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
   // tapped entityColors hex, which resolveCategoryColor then rings verbatim.
   const previewColor = resolveCategoryColor(color, trimmedName || 'new-category');
 
-  // Reset the form to its pristine state and collapse it — shared by a
-  // successful save and an explicit Cancel.
-  const collapse = (): void => {
-    setName('');
-    setIcon(DEFAULT_ICON);
-    setColor(null);
-    setExpanded(false);
-  };
-
-  const save = async (): Promise<void> => {
+  const submit = async (): Promise<void> => {
+    // Block submit on an empty (or whitespace-only) name; Save is always
+    // enabled now, so this surfaces the name-required reason on press rather
+    // than a standing disabled state.
     if (!canSave) {
+      setAttemptedSave(true);
+
       return;
     }
 
-    await categoriesRepo.create({ title: trimmedName, icon, color });
-    collapse();
+    try {
+      await categoriesRepo.create({ title: trimmedName, icon, color });
+      onCollapse();
+    } catch {
+      // A DB write failure (disk full, locked) must not vanish silently — the
+      // form was about to hand back with nothing saved. Keep it open and say
+      // so, mirroring every other form's established Alert pattern.
+      alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
+    }
   };
 
-  // Focus the name field once it mounts. Deferred to the next frame so the
-  // sibling keyboard InputAccessoryView (mounted in the same commit as this
-  // field) has registered before `.focus()` fires `becomeFirstResponder` — iOS
-  // captures `inputAccessoryView` at that exact moment, so a same-commit native
-  // `autoFocus` would race it and open the keyboard with no Done accessory.
-  // Same deferred-RAF pattern as the categories screen's own
-  // `scrollToAddCategoryForm`.
-  const focusNameField = (): void => {
+  const { onPress: onSave, isSubmitting } = useSubmitOnce(submit);
+
+  // Focus the name field the moment the form mounts. Deferred to the next
+  // frame so the sibling keyboard InputAccessoryView (mounted in the same
+  // commit as this field) has registered before `.focus()` fires
+  // `becomeFirstResponder` — iOS captures `inputAccessoryView` at that exact
+  // moment, so a same-commit native `autoFocus` would race it and open the
+  // keyboard with no Done accessory.
+  useEffect(() => {
     requestAnimationFrame(() => {
       nameInputRef.current?.focus();
     });
-  };
-
-  if (!expanded) {
-    return (
-      // The collapsed affordance is its own card too — the same `Card`
-      // treatment as every category card above it — so it reads as the final
-      // item in the stack rather than a leftover list row. No gradient: it has
-      // no entity color of its own yet.
-      <Card testID="add-category-card" padding={4}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t('categories.addCategory')}
-          onPress={() => {
-            setExpanded(true);
-            focusNameField();
-            onExpand?.();
-          }}
-        >
-          <Box direction="row" gap={3} style={styles.addRow}>
-            <SymbolIcon name="plus" tone="textPrimary" />
-
-            <Text variant="body" tone="textPrimary">
-              {t('categories.addCategory')}
-            </Text>
-          </Box>
-        </Pressable>
-      </Card>
-    );
-  }
+  }, []);
 
   return (
     <Card testID="add-category-card" padding={4}>
@@ -144,11 +125,14 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
           name={name}
           onChangeName={setName}
           namePlaceholder={t('categories.namePlaceholder')}
-          // The field mounts only once the form expands; `focusNameField` above
-          // focuses it imperatively once mounted, deferred to the next frame, so
-          // the keyboard accessory has registered before focus lands.
           nameInputRef={nameInputRef}
         />
+
+        {/* Dense (captionless) mode never renders HoldingIdentityField's own
+            error slot (see its doc comment), so this form renders the shared
+            FieldError directly below the row instead — the same REFLOW,
+            not-reserve contract every other field uses. */}
+        {attemptedSave && !canSave && <FieldError message={t('forms.fields.nameRequiredError')} />}
 
         {/* value is the resolved DISPLAY color (previewColor), so a swatch is
             ringed from open — a stable decorative default, mirroring the accounts
@@ -156,7 +140,7 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
             hashes a random UUID key). `color` (what persists) stays null until a
             swatch is tapped; onSelect writes the picked hex into it. The prefix
             scopes the swatch a11y labels so they never collide with the per-row
-            pickers above (e.g. "New category color yellow"). */}
+            pickers already on screen. */}
         <ColorPicker
           label={t('categories.colorLabel')}
           value={previewColor}
@@ -168,13 +152,13 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
           <Box style={styles.action}>
             {/* The shared red ghost Cancel treatment, the confirm-sheet.component.tsx
                 shape — see kiko-design-system's "Component set (Button)". */}
-            <Button variant="ghost" textColor={theme.colors.negative} onPress={collapse}>
+            <Button variant="ghost" textColor={theme.colors.negative} onPress={onCollapse}>
               {t('common.cancel')}
             </Button>
           </Box>
 
           <Box style={styles.action}>
-            <Button onPress={save} disabled={!canSave}>
+            <Button onPress={onSave} disabled={isSubmitting}>
               {t('common.save')}
             </Button>
           </Box>

@@ -2,7 +2,9 @@ import type { ComponentProps } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
+import { Money } from '@kiko/currency/money';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 
 import { i18n } from '../../../i18n';
 import {
@@ -49,6 +51,10 @@ jest.mock('@kiko/holdings/repo', () => ({
     update: jest.fn(),
     updateWithBalanceDelta: jest.fn(),
     updateLoan: jest.fn(),
+    balanceOf: (row: { currency: string; balanceMinorUnits: number }) => ({
+      currency: row.currency,
+      minorUnits: row.balanceMinorUnits,
+    }),
     byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
@@ -87,14 +93,8 @@ let mockBondRegisterFetchedAtRows: { value: number | null }[] = [{ value: 1 }];
 // the (a)-case test below seeds a correction.
 let mockPricePoints: unknown[] = [];
 
-jest.mock('../../../db/use-live-query', () => ({
-  // Key on the subscribed table: the holdings query drives edit-mode hydration,
-  // the accounts query drives the allowed-type filter and the sync gate, and
-  // the bond_register query drives the ISIN-mode lookup. Both
-  // `findByIsinQuery` and `fetchedAtQuery` subscribe under the SAME
-  // 'bond_register' key, so the query object's own `__kind` (set by the
-  // mocked `bondRegisterRepo` below) tells them apart.
-  useLiveQuery: (query: { __kind?: string }, keys: string[]) => {
+const mockUseLiveQuery = jest.fn(
+  (query: { __kind?: string }, keys: string[], _enabled?: boolean) => {
     if (keys[0] === 'holdings') {
       return { data: mockEditHoldings };
     }
@@ -117,6 +117,16 @@ jest.mock('../../../db/use-live-query', () => ({
       ],
     };
   },
+);
+
+jest.mock('../../../db/use-live-query', () => ({
+  // Key on the subscribed table: the holdings query drives edit-mode hydration,
+  // the accounts query drives the allowed-type filter and the sync gate, and
+  // the bond_register query drives the ISIN-mode lookup. Both
+  // `findByIsinQuery` and `fetchedAtQuery` subscribe under the SAME
+  // 'bond_register' key, so the query object's own `__kind` (set by the
+  // mocked `bondRegisterRepo` below) tells them apart.
+  useLiveQuery: (...args: [{ __kind?: string }, string[], boolean?]) => mockUseLiveQuery(...args),
 }));
 // `findByIsinQuery`/`fetchedAtQuery`'s return values are opaque to the
 // mocked `useLiveQuery` above (it only reads `__kind`), so a bare stub is
@@ -132,6 +142,17 @@ jest.mock('../../../bonds/bond-register-repo', () => ({
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+}));
+// The first-add refresh trigger (a create's own follow-up, kiko-architecture):
+// spied so a test can assert it runs after a CREATE and not after an EDIT,
+// without exercising the real gated repos.
+const mockRefreshRates = jest.fn().mockResolvedValue(undefined);
+const mockRefreshMetalPrices = jest.fn().mockResolvedValue(undefined);
+jest.mock('../../../rates/rates-refresh', () => ({
+  refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
+}));
+jest.mock('../../../prices/metal-refresh', () => ({
+  refreshMetalPrices: (...args: unknown[]) => mockRefreshMetalPrices(...args),
 }));
 // Auto-mocked so the scroll-order tests below can assert on WHICH field ref a
 // rejected Save targets, without a real ScrollView/measureLayout in the test
@@ -1075,6 +1096,22 @@ describe('HoldingFormScreen save validation', () => {
     expect(flatStyle.borderColor).not.toBe('#FF453A');
   });
 
+  it('names the maximum once the term deposit term exceeds MAX_TERM_MONTHS', async () => {
+    const screen = await renderScreen();
+
+    await selectHoldingType(screen, 'term_deposit');
+    await fill(screen, 'Name', 'My deposit');
+    await fill(screen, 'Contribution 1 amount', '1000');
+    await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
+    await fill(screen, 'Annual rate %', '12');
+    await fill(screen, 'Term (months)', String(MAX_TERM_MONTHS + 1));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(
+      screen.getByText(`Enter a whole number of months from 1 to ${MAX_TERM_MONTHS}.`),
+    ).toBeTruthy();
+  });
+
   it('shows the contributions-required reason inside the contributions group, anchored to the first row', async () => {
     const screen = await renderScreen();
 
@@ -1354,7 +1391,6 @@ describe('HoldingFormScreen property', () => {
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'property_item',
-        balanceMinorUnits: 0,
         metadata: {
           category: 'real_estate',
           lots: [{ day: expect.any(Number), quantityDelta: '1', costMinorUnits: 500_000 }],
@@ -1369,6 +1405,62 @@ describe('HoldingFormScreen property', () => {
     const screen = await renderScreen();
 
     expect(screen.queryByLabelText('Balance')).toBeNull();
+  });
+
+  it('renders the Type field as the category picker, never the generic single-option Type sheet, and pre-selects Real estate', async () => {
+    const screen = await renderScreen();
+
+    expect(screen.queryByTestId('holding-type-field')).toBeNull();
+    expect(screen.getByTestId('property-category-field')).toHaveTextContent('Real estate');
+
+    await fireEvent.press(screen.getByTestId('property-category-field'));
+
+    expect(screen.getByTestId('property-category-field-option-real_estate')).toBeTruthy();
+    expect(screen.getByTestId('property-category-field-option-vehicle')).toBeTruthy();
+    expect(screen.getByTestId('property-category-field-option-valuable')).toBeTruthy();
+    expect(screen.getByTestId('property-category-field-option-business_share')).toBeTruthy();
+    expect(screen.getByTestId('property-category-field-option-loan_given')).toBeTruthy();
+    expect(screen.getByTestId('property-category-field-option-other')).toBeTruthy();
+  });
+
+  it('keeps the Type-as-category field editable (not disabled) in edit mode, unlike the generic Type field', async () => {
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Apartment',
+      type: 'property_item',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 500_000 }],
+      },
+    });
+
+    expect(
+      screen.getByTestId('property-category-field').props.accessibilityState?.disabled,
+    ).not.toBe(true);
+  });
+
+  it('pre-selects Other when editing a property holding whose stored category is unrecognized', async () => {
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Weird row',
+      type: 'property_item',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        category: 'nonsense',
+        lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 500_000 }],
+      },
+    });
+
+    expect(screen.getByTestId('property-category-field')).toHaveTextContent('Other');
   });
 
   it('creates the holding under the tapped category', async () => {
@@ -1426,7 +1518,7 @@ describe('HoldingFormScreen property', () => {
       }),
       expect.any(Number),
     );
-    expect(updateDeltaMock.mock.calls[0][1]).not.toHaveProperty('balanceMinorUnits');
+    expect(updateDeltaMock.mock.calls[0][1]).not.toHaveProperty('balance');
   });
 
   it('edits a property holding onto a different category, preserving its stored lots', async () => {
@@ -1563,7 +1655,6 @@ describe('HoldingFormScreen metal', () => {
       expect.objectContaining({
         type: 'metal',
         currency: 'UAH',
-        balanceMinorUnits: 0,
         metadata: {
           metal: 'XAU',
           form: 'bar',
@@ -1761,7 +1852,7 @@ describe('HoldingFormScreen metal', () => {
       }),
       expect.any(Number),
     );
-    expect(updateDeltaMock.mock.calls[0][1]).not.toHaveProperty('balanceMinorUnits');
+    expect(updateDeltaMock.mock.calls[0][1]).not.toHaveProperty('balance');
   });
 
   // Writes the exact normalized purity the user typed, never the value the
@@ -1891,7 +1982,6 @@ describe('HoldingFormScreen loan', () => {
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'loan',
-        balanceMinorUnits: 0,
         metadata: {
           kind: 'mortgage',
           principalMinorUnits: 50_000_000,
@@ -1931,7 +2021,6 @@ describe('HoldingFormScreen loan', () => {
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'loan',
-        balanceMinorUnits: 0,
         metadata: {
           kind: 'mortgage',
           principalMinorUnits: 50_000_000,
@@ -2018,6 +2107,20 @@ describe('HoldingFormScreen loan', () => {
     await fireEvent.press(screen.getByText('Save'));
 
     expect(screen.getByText('Enter a whole number of months greater than 0.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('names the maximum once the loan term exceeds MAX_TERM_MONTHS', async () => {
+    const screen = await renderScreen();
+
+    await fillLoanFields(screen);
+    await fill(screen, 'Annual rate %', '12');
+    await fill(screen, 'Term (months)', String(MAX_TERM_MONTHS + 1));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(
+      screen.getByText(`Enter a whole number of months from 1 to ${MAX_TERM_MONTHS}.`),
+    ).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
   });
 
@@ -2321,7 +2424,11 @@ describe('HoldingFormScreen icon', () => {
     // transaction (see holdings.repo.ts, and its tests for the row's shape), so
     // a new holding's balance is explained by its ledger from the first render.
     expect(createMock).toHaveBeenCalledWith(
-      expect.objectContaining({ accountId: 'acc-1', currency: 'UAH', balanceMinorUnits: 500_00 }),
+      expect.objectContaining({
+        accountId: 'acc-1',
+        currency: 'UAH',
+        openingBalance: Money.of('UAH', 500_00),
+      }),
     );
     expect(updateDeltaMock).not.toHaveBeenCalled();
     expect(updateMock).not.toHaveBeenCalled();
@@ -2390,24 +2497,24 @@ describe('HoldingFormScreen create-mode hidden opening balance', () => {
     mockAccountInstitution = null;
   });
 
-  it('writes a zero balance for a term deposit created after typing a balance on Card', async () => {
+  it('writes no opening balance for a term deposit created after typing a balance on Card', async () => {
     const screen = await renderScreen();
 
     await fill(screen, 'Balance', '100');
     await fillTermDepositFields(screen);
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ balanceMinorUnits: 0 }));
+    expect(createMock.mock.calls[0][0]).not.toHaveProperty('openingBalance');
   });
 
-  it('writes a zero balance for a bond created after typing a balance on Card', async () => {
+  it('writes no opening balance for a bond created after typing a balance on Card', async () => {
     const screen = await renderScreen();
 
     await fill(screen, 'Balance', '100');
     await fillBondFields(screen);
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ balanceMinorUnits: 0 }));
+    expect(createMock.mock.calls[0][0]).not.toHaveProperty('openingBalance');
   });
 
   it('still writes the typed balance for a card-only create', async () => {
@@ -2417,7 +2524,9 @@ describe('HoldingFormScreen create-mode hidden opening balance', () => {
     await fill(screen, 'Balance', '100');
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ balanceMinorUnits: 100_00 }));
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({ openingBalance: Money.of('UAH', 100_00) }),
+    );
   });
 });
 
@@ -2774,7 +2883,7 @@ describe('HoldingFormScreen edit mode', () => {
 
     expect(updateDeltaMock).toHaveBeenCalledWith(
       'h-1',
-      { name: 'Renamed card', color: entityColors.teal, balanceMinorUnits: 300_00 },
+      { name: 'Renamed card', color: entityColors.teal, balance: Money.of('UAH', 300_00) },
       expect.any(Number),
     );
     expect(setIconMock).toHaveBeenCalledWith('h-1', 'banknote');
@@ -2794,7 +2903,7 @@ describe('HoldingFormScreen edit mode', () => {
 
     expect(updateDeltaMock).toHaveBeenCalledWith(
       'h-1',
-      expect.objectContaining({ balanceMinorUnits: 500_00 }),
+      expect.objectContaining({ balance: Money.of('UAH', 500_00) }),
       expect.any(Number),
     );
     expect(updateMock).not.toHaveBeenCalled();
@@ -2831,7 +2940,7 @@ describe('HoldingFormScreen edit mode', () => {
     expect(screen.queryByLabelText('Balance')).not.toBeNull();
   });
 
-  it('does not write balanceMinorUnits when editing a synced holding', async () => {
+  it('does not write a balance when editing a synced holding', async () => {
     mockAccountInstitution = 'monobank';
     const screen = await renderEdit(syncedCardHolding);
 
@@ -2841,7 +2950,7 @@ describe('HoldingFormScreen edit mode', () => {
     const patch = updateDeltaMock.mock.calls[0][1];
     expect(patch.name).toBe('Renamed monobank');
     // The synced balance must stay untouched until the next sync.
-    expect(patch.balanceMinorUnits).toBeUndefined();
+    expect(patch.balance).toBeUndefined();
   });
 
   it('seeds a term deposit and saves its edited metadata through update', async () => {
@@ -2863,7 +2972,7 @@ describe('HoldingFormScreen edit mode', () => {
       { amountMinorUnits: 100_000, date: localDay(2026, 1, 1) },
     ]);
     // A deposit's value derives from metadata, so no balance is written.
-    expect(patch.balanceMinorUnits).toBeUndefined();
+    expect(patch.balance).toBeUndefined();
   });
 
   it('seeds a bond and saves its edited metadata through update', async () => {
@@ -2881,7 +2990,7 @@ describe('HoldingFormScreen edit mode', () => {
     expect(patch.metadata.couponPct).toBe(11);
     expect(patch.metadata.quantity).toBe(10);
     expect(patch.metadata.bondKind).toBe('corporate');
-    expect(patch.balanceMinorUnits).toBeUndefined();
+    expect(patch.balance).toBeUndefined();
   });
 
   it('resolves a stored empty-string color to a real swatch, not blank', async () => {
@@ -2961,5 +3070,132 @@ describe('HoldingFormScreen — localization', () => {
     expect(getByText('Дата погашення')).toBeTruthy();
     expect(getByText('Тип облігації')).toBeTruthy();
     expect(getByText('Державна')).toBeTruthy();
+  });
+});
+
+// kiko-architecture: no request or query for data the user does not have —
+// usePriceBook's price_points read is disabled while the active type (the
+// row being edited, or the currently selected type in create mode) never
+// reads it.
+describe('HoldingFormScreen — the price_points gate', () => {
+  it('disables the price_points read for the create-mode default type (card is not priced)', async () => {
+    await renderScreen();
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(false);
+  });
+
+  it('enables the price_points read once the create-mode default type snaps to metal', async () => {
+    // A metals-kind account offers ONLY metal, so the create-mode default-type
+    // effect snaps straight to it (a LATER render than the initial 'card'
+    // default) — no bank to gate the allow-list on.
+    mockAccountKind = 'metals';
+    await renderScreen();
+
+    const priceCalls = mockUseLiveQuery.mock.calls.filter((call) => call[1][0] === 'price_points');
+    expect(priceCalls.at(-1)?.[2]).toBe(true);
+  });
+
+  it('enables the price_points read for a metal holding in edit mode', async () => {
+    await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Gold bar',
+      type: 'metal',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: { metal: 'XAU', form: 'bar', unit: 'g', purity: '0.9999', lots: [] },
+    });
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(true);
+  });
+
+  it('enables the price_points read for a loan holding in edit mode (not priced, but reads the same series)', async () => {
+    await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Car loan',
+      type: 'loan',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        principalMinorUnits: 100_000_00,
+        startDate: Date.now(),
+        annualRatePct: '10',
+        termMonths: 12,
+        schedule: 'none',
+      },
+    });
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(true);
+  });
+});
+
+// kiko-architecture: the FIRST metal/foreign-currency/crypto holding needs
+// its price/rate visible without an app restart — a create triggers the
+// same gated refresh app-open runs; an edit (type/currency are immutable
+// once created) never needs to.
+describe('HoldingFormScreen — the first-add refresh trigger', () => {
+  beforeEach(() => {
+    mockRefreshRates.mockClear();
+    mockRefreshMetalPrices.mockClear();
+  });
+
+  it('triggers the gated rate/metal refresh after a successful create', async () => {
+    mockAccountKind = 'cash';
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'My cash');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(mockRefreshRates).toHaveBeenCalled();
+    expect(mockRefreshMetalPrices).toHaveBeenCalled();
+  });
+
+  it('navigates back immediately, without waiting for the refresh to settle', async () => {
+    // The refresh is a background nicety, not a save precondition — Save must
+    // not sit on the network before returning to the account. A still-pending
+    // refresh promise proves navigation already fired without it.
+    mockAccountKind = 'cash';
+    let resolveRefresh: () => void = () => {};
+    mockRefreshRates.mockImplementation(
+      () =>
+        new Promise<undefined>((resolve) => {
+          resolveRefresh = () => resolve(undefined);
+        }),
+    );
+
+    const screen = await renderScreen();
+    await fill(screen, 'Name', 'My cash');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(navigation.goBack).toHaveBeenCalled();
+
+    resolveRefresh();
+  });
+
+  it('does not trigger the refresh after an edit (type/currency cannot change)', async () => {
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Everyday card',
+      type: 'card',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+    });
+
+    await fill(screen, 'Name', 'Renamed card');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(mockRefreshRates).not.toHaveBeenCalled();
+    expect(mockRefreshMetalPrices).not.toHaveBeenCalled();
   });
 });

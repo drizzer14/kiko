@@ -1,4 +1,5 @@
 import { guard } from 'fnts';
+import { NBU_API_ENDPOINT } from '@env';
 import maybe, { foldMap } from 'fnts/maybe';
 
 import { decimalFromJsonNumber } from '../../currency/decimal';
@@ -11,16 +12,16 @@ import { type Metal, preciousMetals } from '../../holdings/holding-metadata';
  * every fiat currency, so a dedicated metals endpoint is never needed for
  * "today's" price. Deliberately UNPINNED (`ios/Kiko/Info.plist`'s
  * `NSPinnedDomains`), keyless, public — same host as `nbu-rates.ts`/
- * `nbu-history.ts`.
+ * `nbu-history.ts` (`NBU_API_ENDPOINT`).
  */
-const EXCHANGE_ENDPOINT = 'https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json';
+const EXCHANGE_ENDPOINT = `${NBU_API_ENDPOINT}/NBUStatService/v1/statdirectory/exchange?json`;
 
 /**
  * NBU's date-RANGE endpoint — the SAME URL `nbu-history.ts`'s
  * `RANGE_ENDPOINT` reads for USD/EUR. One call returns a single metal's
  * daily official UAH price across a `[start, end]` span, auth-free.
  */
-const RANGE_ENDPOINT = 'https://bank.gov.ua/NBU_Exchange/exchange_site';
+const RANGE_ENDPOINT = `${NBU_API_ENDPOINT}/NBU_Exchange/exchange_site`;
 
 /**
  * One row of the current-rate payload for a precious metal. Unlike a fiat

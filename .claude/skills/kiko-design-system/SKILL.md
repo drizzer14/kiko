@@ -177,6 +177,25 @@ The established patterns grouped under this heading:
 - The capability-icon transparency principle — its own heading further
   down this file.
 - Field placeholder and error copy — below.
+- A filter never hides an active selection: a checkable filter's
+  option list is scoped to the current data (e.g. the statistics
+  category filter is scoped to the active date range), but a value
+  the user has already SELECTED must stay listed and checked even once
+  it drops out of that scope — union it back in from wherever its
+  display data lives (Statistics: `categoryByKey`), rather than pruning
+  the selection or letting the row vanish so the user can never find
+  it to uncheck (review decision 17: `statistics.screen.tsx`'s
+  `categoryOptions` and its twin, `trend-filter-field.component.tsx`'s
+  `manualRows`, which has no display data for a hidden key and falls
+  back to the bare slug as its label).
+- A field's own Connect (`MonobankConnectField`, `BinanceCredentialsField`,
+  `WalletAddressField`, `src/screens/account-detail/`) is a PRIMARY
+  action, so it follows the same form validation model as a Save
+  button: always enabled, never `disabled={... || field.trim() ===
+  ''}`. A blank required field shows its own `*RequiredError` message
+  (via the field's `error` prop) on a Connect press instead (review
+  decision 15) — `disabled` stays reserved for the field's own
+  in-flight `status.kind === 'checking'`.
 
 ## Field placeholder and error copy
 
@@ -196,6 +215,43 @@ adds its own key alongside them, in this same form:
 `src/i18n/locales/uk.ts`), `statementImport.chooseHoldingError`,
 `forms.holding.loanStartDateError`,
 `forms.holding.couponFrequencyRequiredError`.
+
+## Calendar week start
+
+`KikoCalendar` (`src/calendar/kiko-calendar/`) starts its week on the
+DEVICE REGION's first weekday, like a native iOS calendar app — NOT
+the app language (review decision 23; the original plan's app-language
+ruling was superseded). `weekStartFor(region)`
+(`src/calendar/week-start/`) maps a 2-letter region code to `0`
+(Sunday) or `1` (Monday) off the FULL current CLDR `weekData/firstDay`
+Sunday-first territory list (unicode-org/cldr-json,
+cldr-core/supplemental/weekData.json — see the constant's own doc
+comment for the source URL and check date); every other region —
+including Ukraine and Kiko's European host countries, AU (Monday-first
+as of CLDR-14795, ~v40), and an unresolved region — falls back to
+Monday, CLDR's own default. It takes
+the region as a plain argument rather than reading it itself, so it
+stays a pure, directly unit-tested mapping; `deviceRegion()`
+(`src/i18n/device-region/`) is the actual device read, a dependency-free
+iOS-only `NativeModules.SettingsManager.settings.AppleLocale` parse —
+the sibling of `deviceLanguage()`'s `AppleLanguages` read, but a
+DIFFERENT NSLocale API (region, not display language) and a different
+identifier format (underscore-joined ICU style, not dash-joined
+BCP-47). `CalendarHeader`'s own weekday-label row rotates through the
+SAME `firstDay` prop react-native-calendars forwards to it, so the
+labels never drift out of alignment with the day grid, which the
+library rotates internally off the identical prop.
+
+The `weekStartFor` table now follows current CLDR `weekData` (source
+URL and check date in the constant's own doc comment). Hermes's
+`Intl.Locale().weekInfo` (a dependency-free ALTERNATIVE this skill
+considered and rejected — Node/V8 supports the `weekInfo` getter, but
+Hermes device support is unverified, and RN's Jest preset cannot tell
+either way) stays unverified, with no primary source, which is why the
+table path is kept. The remaining device-unverified point is only
+`deviceRegion()`'s `AppleLocale` format — a wrong table entry only ever
+misorders the calendar's cosmetic Sunday/Monday column choice, never a
+financial figure.
 
 ## Component set
 
@@ -223,18 +279,14 @@ new component can land between reviews of this skill:
   header height — see
   `src/navigation/use-scroll-to-top-on-tab-press.ts`, which targets
   the tracked expanded height rather than a live height plus a band.
-  A `scroll`-mode screen also takes a `fillHeight` prop (default
-  `false`) for content — such as Settings' bottom-anchored About
-  footer (app name/version, copyright, links) — that must sit pinned
-  to the screen's true bottom edge when shorter than the viewport, yet
-  still scroll normally once it overflows: it grows the ScrollView's
-  content container (`flexGrow: 1`) so a `flex: 1` spacer among the
-  children can push trailing content down, and reserves the same
-  floating-tab-bar clearance the plain branch already reserves. This is
-  page CONTENT that scrolls away, not a pinned always-reachable action
-  — use the existing `footer` slot for that instead; read
-  `screen.props.d.ts`'s `fillHeight` doc comment for the exact
-  interaction with `footer` if both are ever passed together.
+  Settings' About block (app name/version, copyright, links) is an
+  EXCEPTION to the ordinary "use `footer` only for a pinned
+  always-reachable action" rule: it renders through the pinned
+  `footer` slot even though it is not an action, because App Store
+  Guideline 5.6 review needs it reachable without scrolling (review
+  decision 21). There is no `fillHeight` prop — a screen whose content
+  is shorter than the viewport just leaves it top-anchored; nothing in
+  this codebase pins non-footer content to the bottom.
 - **LoadingState** (`src/design-system/components/loading-state/`) —
   the shared "this screen's own data has not loaded yet" visual: a
   plain centered native `ActivityIndicator`, no text at all — a
@@ -243,7 +295,13 @@ new component can land between reviews of this skill:
   render, or a single component gating one value inside an
   already-loaded parent (e.g. statement-import's
   `example-transaction`), never has to add one. Takes an optional
-  `testID`, conventionally `<screen>-loading`.
+  `testID`, conventionally `<screen>-loading`. The spinner itself is
+  delayed by `SPINNER_DELAY_MS` (200ms): the container (the plain
+  background) renders immediately, but the `ActivityIndicator` only
+  mounts once the delay elapses, so a screen whose first read resolves
+  quickly (the common case, off the local op-sqlite worker) never
+  flashes a spinner at all — readiness (`useDataReady`) itself is
+  never delayed, only the visual spinner.
 - **Box** — a generic layout container reading spacing/color/direction
   tokens (padding, gap, background, `direction="row"`).
 - **Text** — the base text primitive reading the typography and tone
@@ -580,8 +638,11 @@ new component can land between reviews of this skill:
   GENERIC version of this shape — `label`/`sheetTitle`/`options`/
   `selected` (nullable — see below)/`onSelect`/`labels`/optional
   `subtitles`/optional `icons`/`placeholder`/`required`/`disabled`/
-  `error`/`testID` — and is now the ONE shared implementation:
-  `PropertySection`'s category field, `LoanSection`'s kind field (6 and
+  `error`/`testID` — and is now the ONE shared implementation: a
+  `property` account's Type-as-category field (`PropertyTypeField`,
+  replacing the generic holding-type picker for that one account
+  kind — see `kiko-domain`'s "`property_item`/`metal` create-form
+  sections"), `LoanSection`'s kind field (6 and
   4 long option names, too wide for a `ChipRow`), the Bond form's
   coupon-frequency picker (shared by both `BondIsinSection`'s ISIN-mode
   unmapped-frequency picker and `ManualBondFields`'s own frequency

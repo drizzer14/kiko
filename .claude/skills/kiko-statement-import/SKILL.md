@@ -90,15 +90,30 @@ routes use, not statement import).
 Every studied format ships with no bank-issued per-row id, so
 `mapping.ts`'s `computeDedupKey(holdingId, transaction,
 occurrenceIndex)` derives a deterministic key from `(holdingId, time,
-amount, normalized-description)`, with `occurrenceIndex` (the Nth time
-that exact tuple has been seen in this parse) appended only when
-non-zero, so the common unique case's key stays stable.
+amount, normalized-description)` — `computeDedupKeyBase` — with
+`occurrenceIndex` (the Nth time that exact tuple has been seen in this
+parse) appended only when non-zero, joined by `␟` (U+241F), so the
+common unique case's key stays stable. The separator is INJECTIVE on
+purpose: `normalizeTransactionName` is JS-only (never in SQL), so SQL
+alone cannot tell an occurrence suffix from a description that itself
+ends in a digit — a plain-space join let occurrence 1 of "Top up"
+collide with occurrence 0 of "Top up 1" (both produced the literal
+string "... top up 1"); `␟` can never appear in a real description.
 `mapParsedTransaction` writes rows with `source: 'import'` and this
 key as `externalId` (or the format's own `externalId` when one is
 present), and `importParsedStatement` hands the whole batch to
 `transactionsRepo.importRows` in one call — see "Detect → import
 pipeline" above; `addManyDedup` is the separate, still-live
-dedup-write path every sync route uses instead.
+dedup-write path every sync route uses instead. A key an old build
+already wrote with the plain-space join is upgraded once, in place:
+`upgrade-dedup-key.ts`'s pure `upgradeLegacyDedupKey(row)` recomputes
+`computeDedupKeyBase` from a STORED row and rewrites an exact
+`base + ' ' + digits` match to `base + '␟' + digits`, leaving anything
+else (an edited description, a bank-issued id) untouched.
+`upgrade-stored-dedup-keys.ts`'s `upgradeStoredDedupKeys` is the launch
+step `MigrationsGate` runs it under — see `kiko-architecture`'s
+"Storage" section for the migration/gate mechanism and "Data transfer"
+for the restore-side mirror.
 
 ## Column mapping
 

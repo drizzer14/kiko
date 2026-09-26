@@ -40,7 +40,13 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { listQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 jest.mock('@kiko/holdings/repo', () => ({
-  holdingsRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+  holdingsRepo: {
+    allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    balanceOf: (row: { currency: string; balanceMinorUnits: number }) => ({
+      currency: row.currency,
+      minorUnits: row.balanceMinorUnits,
+    }),
+  },
 }));
 jest.mock('@kiko/rates/repo', () => ({
   ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
@@ -585,11 +591,11 @@ describe('StatisticsScreen', () => {
   });
 
   it('renders a by-type bar, the net-worth polyline, and a pie arc per account', async () => {
-    const { getByTestId, getAllByTestId } = await renderScreen();
+    const { getByTestId } = await renderScreen();
 
     expect(getByTestId('bar-chart-bar-cash')).toBeTruthy();
     expect(getByTestId('bar-chart-bar-card')).toBeTruthy();
-    expect(getAllByTestId(/^net-worth-line-polyline-/).length).toBeGreaterThan(0);
+    expect(getByTestId('net-worth-line-polyline')).toBeTruthy();
     expect(getByTestId('pie-chart-arc-a')).toBeTruthy();
     expect(getByTestId('pie-chart-arc-b')).toBeTruthy();
   });
@@ -652,7 +658,7 @@ describe('StatisticsScreen', () => {
 
     expect(mockRunBackfill).toHaveBeenCalled();
     expect(getByTestId('net-worth-line-loading')).toBeTruthy();
-    expect(queryByTestId(/^net-worth-line-polyline-/)).toBeNull();
+    expect(queryByTestId('net-worth-line-polyline')).toBeNull();
   });
 
   it('does not run the backfill while history is still on its own first load (only transactions have settled)', async () => {
@@ -1345,6 +1351,59 @@ describe('StatisticsScreen', () => {
     expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
   });
 
+  it('keeps a selected category checked and listed in the filter menu after the range moves away from its spending', async () => {
+    seedSpending();
+
+    const { getByTestId, getByLabelText, getByText, queryByTestId } = await renderScreen();
+
+    await pressFilter(getByTestId, CATEGORY_FILTER, 'groceries');
+
+    // Narrow the range to TODAY — outside the EXPENSES' `now - 2 * DAY`
+    // timestamp — so every category (groceries included) drops out of the
+    // range-scoped slices. The selection itself is untouched by the narrowing.
+    await act(async () => {
+      fireEvent.press(getByLabelText('Date range'));
+    });
+    const today = new Date(now);
+    const calendar = getByTestId('date-range-calendar').props as {
+      onDayPress: (day: unknown) => void;
+    };
+    await act(async () => {
+      calendar.onDayPress({
+        year: today.getFullYear(),
+        month: today.getMonth() + 1,
+        day: today.getDate(),
+      });
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Apply'));
+    });
+
+    expect(getByTestId('category-pie-empty')).toBeTruthy();
+
+    // The menu still lists groceries, still checked, even though it has no
+    // spending in the narrowed range — hiding it would leave the selection
+    // impossible to find and uncheck.
+    await act(async () => {
+      fireEvent.press(getByTestId(CATEGORY_FILTER));
+    });
+    expect(
+      getByTestId(`${CATEGORY_FILTER}-option-groceries`).props.accessibilityState?.checked,
+    ).toBe(true);
+
+    // The user can still uncheck it, same as any other option.
+    await act(async () => {
+      fireEvent.press(getByTestId(`${CATEGORY_FILTER}-option-groceries`));
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId(`${CATEGORY_FILTER}-backdrop`));
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId(CATEGORY_FILTER));
+    });
+    expect(queryByTestId(`${CATEGORY_FILTER}-option-groceries`)).toBeNull();
+  });
+
   it('excludes an expense outside the active date range from the donut center total', async () => {
     // One expense inside the default 30-day window, one 60 days back (well
     // outside it). If the donut summed the whole ledger instead of the active
@@ -1817,5 +1876,36 @@ describe('StatisticsScreen — localization', () => {
     // legend entry — so assert at least one instance rather than a single
     // unique match.
     expect(getAllByText('Продукти').length).toBeGreaterThan(0);
+  });
+});
+
+// kiko-architecture: no request or query for data the user does not have —
+// usePriceBook's price_points read is disabled while nothing on this screen
+// is a priced type (property_item/metal) or a loan.
+describe('StatisticsScreen — the price_points gate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('disables the price_points read when no holding needs it', async () => {
+    setLiveData({
+      holdings: [{ id: 'h1', accountId: 'a', currency: 'UAH', type: 'card', balanceMinorUnits: 0 }],
+    });
+    await renderScreen();
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(false);
+  });
+
+  it('enables the price_points read once a priced holding is present', async () => {
+    setLiveData({
+      holdings: [
+        { id: 'h1', accountId: 'a', currency: 'UAH', type: 'metal', balanceMinorUnits: 0 },
+      ],
+    });
+    await renderScreen();
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(true);
   });
 });

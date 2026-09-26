@@ -13,12 +13,12 @@ type TargetHoldingOptions = {
 };
 
 /**
- * Joins the holding rows this screen is scoped to (per `accountId`, or every
- * holding when absent) against the account rows this device knows about, so
- * `TargetHoldingSheet` gets a fully-formed `accountName` per row without
- * owning any repo dependency of its own. Extracted out of
- * `statement-import.screen.tsx` so `column-mapping.screen.tsx` can share it
- * rather than reimplementing the same join.
+ * Joins the holding rows this screen is scoped to (`accountId`'s own) against
+ * the account rows this device knows about, so `TargetHoldingSheet` gets a
+ * fully-formed `accountName` per row without owning any repo dependency of
+ * its own. Extracted out of `statement-import.screen.tsx` so
+ * `column-mapping.screen.tsx` can share it rather than reimplementing the
+ * same join.
  *
  * `isLoading` is true while either query is still on its own first load
  * (kiko-architecture's useLiveQuery consumer rule) — a caller must not treat
@@ -26,9 +26,9 @@ type TargetHoldingOptions = {
  * target-holding picker briefly shows only "Create new holding" for an
  * account that genuinely has holdings not yet loaded.
  */
-export const useTargetHoldingOptions = (accountId: string | undefined): TargetHoldingOptions => {
+export const useTargetHoldingOptions = (accountId: string): TargetHoldingOptions => {
   const { data: holdingRows, isLoading: holdingsLoading } = useLiveQuery(
-    accountId ? holdingsRepo.listByAccountQuery(accountId) : holdingsRepo.allQuery(),
+    holdingsRepo.listByAccountQuery(accountId),
     ['holdings'],
   );
   const { data: accountRows, isLoading: accountsLoading } = useLiveQuery(accountsRepo.listQuery(), [

@@ -5,7 +5,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import SettingsRow from '../settings-row';
 import Box from '../../../design-system/components/box';
-import { APP_LOCK_ENABLED } from '../../../db/db-config';
 import { useDataReady } from '../../../db/use-data-ready';
 import { useLiveQuery } from '../../../db/use-live-query';
 import Card from '../../../design-system/components/card';
@@ -63,15 +62,7 @@ const SystemScreen: FC<SystemScreenProps> = () => {
           </SettingsRow>
         </Card>
 
-        {/* Gated behind APP_LOCK_ENABLED (a build-time kill switch, hardcoded on):
-            flipping it off is the escape hatch for a build without the
-            biometrics pod, so it shows no non-functional App Lock toggle. */}
-        {APP_LOCK_ENABLED && (
-          <AppLockSetting
-            lockEnabled={settings?.lockEnabled ?? false}
-            onToggle={handleToggleLock}
-          />
-        )}
+        <AppLockSetting lockEnabled={settings?.lockEnabled ?? false} onToggle={handleToggleLock} />
       </Box>
     </Screen>
   );

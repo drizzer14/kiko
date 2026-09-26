@@ -125,6 +125,23 @@ project-level pointer to this section.
   migration with a fresh number at THAT time, checked against whatever
   `main`'s own journal tail is then — never assume a branch's own next
   `idx` is still free by the time it lands.
+- **A key/column whose backfill can only run in JS, not SQL, is a
+  flag-adding migration plus a launch-time upgrade step.** Migration
+  `0041_add_dedup_key_upgraded` only adds `settings.dedup_keys_upgraded`
+  (defaulting to `false`) — the actual rewrite can't be SQL:
+  `normalizeTransactionName` is JS-only, never in SQL, so SQL alone
+  cannot tell a statement-import dedup key's occurrence suffix from a
+  description that itself ends in a digit. `MigrationsGate` performs
+  the rewrite: `upgradeStoredDedupKeys`
+  (`statement-import/upgrade-stored-dedup-keys/`) runs after
+  `runMigrations` and `settingsRepo.ensure()`, next to the credential
+  migrations, reads the flag, and — only when it's still `false` —
+  recomputes and rewrites every legacy `source = 'import'` transaction's
+  `externalId` (the pure `upgradeLegacyDedupKey`,
+  `statement-import/mapping/upgrade-dedup-key.ts`) inside ONE `write()`
+  transaction before flipping the flag, so a crash mid-run retries the
+  WHOLE upgrade on the next launch instead of leaving some rows
+  unrewritten.
 
 ## Hard rule: every write goes through `db.transaction()`
 
@@ -303,11 +320,78 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
   against the SAME key that was already applied keeps that previous
   data, matching what a same-key success does.
 
-`usePriceBook()` (`src/prices/use-price-book/`) returns `{ book,
+`usePriceBook(enabled?)` (`src/prices/use-price-book/`) returns `{ book,
 isLoading }`, not a bare `PriceBook` — every consumer destructures
 `const { book: priceBook } = usePriceBook();` (or additionally
 `isLoading: priceBookLoading` when gating). See `kiko-pricing` for the
-full contract.
+full contract, and the section below for its `enabled` argument.
+
+## App-open and refresh work is gated on data presence
+
+Standing rule: the app never performs a request or a query for data
+the user does not have. Every app-open/refresh step reads one cheap
+gate first — an `EXISTS`/`LIMIT 1` check or a small `SELECT DISTINCT`,
+never a per-holding loop — and skips its own work entirely when the
+gate says there is nothing to do.
+
+- **Rate/price refresh**: `openCurrencies()`
+  (`src/rates/open-currencies-gate/`) is the ONE gate implementation
+  `refreshRates` (`rates-refresh.ts`) and `runBackfill`
+  (`history-backfill.ts`) both read — the same gate pattern for every
+  refresh, not a per-call-site copy. It resolves `{ needsFiat,
+  cryptoCurrencies }` from a single `settings` read plus
+  `holdingsRepo.openCurrenciesQuery()` (a `SELECT DISTINCT currency`
+  over ACTIVE holdings — open, and whose account is not archived,
+  mirroring `activeHoldings`). The fiat leg (Monobank/NBU, or NBU
+  history) runs only when `needsFiat` — some active holding's currency
+  differs from the base (display) currency, which also covers the
+  crypto leg's own USD:UAH anchor need, since a held crypto currency
+  always differs from a fiat base. The crypto leg (CoinGecko current
+  price or history) runs only for `cryptoCurrencies`, and
+  `fetchCryptoPrices`/`fetchCryptoHistory` fetch only those currencies,
+  never the full supported set. `refreshMetalPrices`
+  (`src/prices/metal-refresh/`) is the original template this
+  generalizes: `earliestDays.size === 0` (no held metal) is a zero-
+  network, zero-write early return, verified by test. It also reads
+  the cheap presence input first and returns before any heavier read
+  — `holdings` before `price_points` — the same order every gated
+  refresh follows.
+  `shouldThrottle` (`src/rates/rates-refresh/rates-refresh.ts`) skips
+  its own throttle window when a held currency has no rate row yet —
+  a "never fetched" escape so the data-presence gate can never hide a
+  currency's rate entirely.
+  The history backfill resumes per currency: a newly held currency
+  with no history rows forces a run from the earliest day
+  (`src/rates/history-backfill/history-backfill.ts`). A create/restore
+  that may add the first holding of a new currency or type triggers
+  these gated refreshes WITHOUT awaiting them, so Save never blocks on
+  the network.
+- **`usePriceBook`'s `enabled` argument**: `useLiveQuery`'s own
+  `enabled` parameter (default `true`) skips BOTH the query and the
+  reactive subscription while `false`, reporting `data: []` and
+  `isLoading: false` — ready, never stuck (a gated-off screen must
+  still flip its overall readiness, never spin forever on a query it
+  deliberately never ran). `usePriceBook(enabled)` forwards straight
+  through; a screen passes `holdings.some((holding) =>
+  needsPriceBook(holding.type))` (or the one displayed holding, for a
+  detail screen) — never a conditional call to the hook itself, which
+  Rules of Hooks forbids. `needsPriceBook` (`src/holdings/priced-value/`)
+  is true for a priced type (`property_item`/`metal`) OR `loan` (not
+  priced, but reads its own `holding:<id>` series the same way,
+  kiko-pricing) — the one predicate every call site uses.
+- **The first add triggers the gated refresh**: creating the FIRST
+  metal/foreign-currency/crypto holding (`holding-form.screen.tsx`'s
+  manual create) or restoring a `.kiko` export (`importData`,
+  `src/data-transfer/import-data.ts`) triggers
+  `Promise.allSettled([refreshRates(), refreshMetalPrices()])`
+  explicitly right after its own write commits, since neither path
+  runs through the sync fan-out that otherwise triggers this — so the
+  price/rate appears without an app restart. Both calls gate
+  themselves, so this is a no-op when neither is needed;
+  `Promise.allSettled` never rejects, so a refresh failure never turns
+  a successful create/import into a shown error. An EDIT never needs
+  this trigger — a holding's type and currency are immutable once
+  created.
 
 ## Bulk insert: chunk when row count is caller- or API-controlled
 
@@ -353,7 +437,10 @@ plain module of exported functions, not a class.
   return once it's durable — every write function body is (or calls
   into) a `db.transaction()` call, per the hard rule above.
 - Repositories are the only place raw Drizzle rows are converted
-  to/from domain types (e.g. `balanceMinorUnits` -> `Money`,
+  to/from domain types (e.g. `balanceMinorUnits` -> `Money` via
+  `holdingsRepo.balanceOf`, and a write input's `Money` -> minor
+  units in `holdingsRepo.create`/`updateWithBalanceDelta`/
+  `setSyncedBalance` and `accountsRepo.createCashAccount`,
   see `kiko-domain`).
 - A full-list `sortOrder` rewrite (persisting a drag-and-drop reorder)
   is one `db.transaction()` wrapping a loop that updates every row's
@@ -813,22 +900,24 @@ re-imported. Kiko has no per-CARD cursor — that would need a schema
 change — so a partial failure does re-fetch the cards that already
 finished; the dedup layer keeps that correct, only slower.
 
-## DB encryption + app lock (always on)
+## DB encryption (always on)
 
-The SQLCipher database-encryption migration and the app-lock gate are
-**always on** — `DB_ENCRYPTION_ENABLED` and `APP_LOCK_ENABLED`
-(`src/db/db-config.ts`) are both `true` today, not a rollout flag a
-build can ship off. This is a security invariant, not a feature toggle
-(Guideline 5.6 sensitivity: a build/env flag that changes what a user's
-data protection looks like must never ship in the "off"/hidden state).
-Read these files directly rather than trusting a restated summary here,
-since the exact migration steps are the kind of thing that can still
-change:
+The SQLCipher database-encryption migration is **always on** —
+`DB_ENCRYPTION_ENABLED` (`src/db/db-config.ts`) is `true` today, not a
+rollout flag a build can ship off. This is a security invariant, not a
+feature toggle (Guideline 5.6 sensitivity: a build/env flag that
+changes what a user's data protection looks like must never ship in
+the "off"/hidden state). Read these files directly rather than
+trusting a restated summary here, since the exact migration steps are
+the kind of thing that can still change:
 
-- `src/db/db-config.ts` — `DB_ENCRYPTION_ENABLED` and
-  `APP_LOCK_ENABLED`, the two master switches; read the live values
-  there rather than trusting this line if it drifts. Read the comment
-  above each for what it gates.
+- `src/db/db-config.ts` — `DB_ENCRYPTION_ENABLED`, the master switch;
+  read the live value there rather than trusting this line if it
+  drifts. Read the comment above it for what it gates. The app lock
+  has no build-time switch of its own: it is a live `settings.lockEnabled`
+  toggle read by `useAppLock` (`src/auth/use-app-lock.ts`) and the
+  `AppLockSetting` settings card — see kiko-domain "App lock / security
+  settings".
 - `src/db/encrypted-database.ts` — `openEncryptedDatabase()`, the
   one-time plaintext -> SQLCipher export. Its crash-safety ordering is
   the load-bearing fact: export first, persist the key second, delete
@@ -1084,17 +1173,19 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   one side but not the other. Read that file for the current field list and
   its (currently empty) documented-exclusion array — do not copy the table
   list here.
-- **Every Keychain secret class is read and restored — except one, on
-  purpose.** `payload.d.ts`'s `ExportSecrets` covers `dbKeyHex`,
-  `monobankTokens`, and `binanceCredentials`. `secrets/read-secrets.ts` reads
-  all three from the Keychain (skipping an account with no stored secret).
-  `secrets/restore-secrets.ts` restores ONLY the Monobank tokens and Binance
-  credentials, each back to its original account id — never `dbKeyHex`. Read
-  the safety comment on `restoreExportSecrets` for why: the exported DB key is
-  display-only; re-storing a FOREIGN device's SQLCipher key into this device's
-  own `kiko.db.key` Keychain item would not affect the already-open session,
-  but would brick the importing device's own encrypted database on its very
-  next launch (wrong key at `resolveDbKey()`).
+- **Every Keychain secret class the export carries is read and restored.**
+  `payload.d.ts`'s `ExportSecrets` covers `monobankTokens` and
+  `binanceCredentials` only — the export never carries the SQLCipher DB key
+  at all. `secrets/read-secrets.ts` reads both from the Keychain (skipping an
+  account with no stored secret) and `secrets/restore-secrets.ts` restores
+  both, each back to its original account id. `restoreExportSecrets` still
+  never imports `db/keys/db-key.ts`: an older file that still carries a
+  `dbKeyHex` field (from before that field was dropped) is read through
+  as an unknown, unrestored property — re-storing a FOREIGN device's
+  SQLCipher key into this device's own `kiko.db.key` Keychain item would
+  brick the importing device's own encrypted database on its very next
+  launch (wrong key at `resolveDbKey()`), which is why the field was
+  dropped rather than kept display-only.
 - **A legacy export missing a newer field must still restore.**
   `restoreExportSecrets` treats an entirely absent `secrets` object (an export
   written before the credentials toggle, or with it off) as a no-op, not an
@@ -1114,6 +1205,48 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   and the restore/import path (`restoreDataSnapshot`) — never only one.
   Follow the `balanceSetAt` / `loan_interest` re-seed precedent above for the
   next such column.
+- **A data-only cleanup migration follows the SAME two-path rule.**
+  Migration `0040_cleanup_stray_deposit_bond_balance.sql` removes a
+  pre-existing stray create-time artifact (a term_deposit/bond holding whose
+  hidden Card balance field was carried into `balanceMinorUnits` before
+  63f9073's fix, plus its matching `'manual'` opening transaction and
+  `balanceSetAt` stamp) — data-only, no schema change, so it carries no
+  `meta/NNNN_snapshot.json` (same as `0039_seed_loan_interest_category.sql`).
+  It snapshots the qualifying set into a `CREATE TEMP TABLE ... AS SELECT`
+  first so neither of the two mutating statements (the holding reset, the
+  transaction delete) needs the ORIGINAL, about-to-be-mutated columns to
+  still match — read the migration's own doc comment for the exact
+  predicate and why it can only ever match the pre-fix bug, never a real
+  balance (term_deposit/bond are ledgerless; every current write path either
+  writes 0 unconditionally or never touches `balanceMinorUnits` at all).
+  `restoreDataSnapshot`'s `withStrayDepositBondBalanceCleaned` mirrors the
+  identical predicate in JS, applied AFTER `withLegacyBalanceSetAtBackfilled`
+  so a legacy (pre-0036) snapshot's freshly-backfilled boundary still gets
+  cleaned. Proven against the ACTUAL shipped SQL (not a restated predicate)
+  by `drizzle/migrations/0040-cleanup-stray-deposit-bond-balance.test.ts`,
+  which runs the real migration statements through `node:sqlite`
+  (`DatabaseSync`, built into the Node 22 runtime this project already
+  requires) — the strongest available evidence for a migration that
+  deletes real rows, since op-sqlite itself is a native module unavailable
+  under Jest; every other migration's test coverage here stays at the
+  plumbing level (`run-migrations.test.ts`) or the restore-side JS mirror.
+- **A launch-time upgrade step (not a migration) needs the SAME restore-side
+  mirror as a migration's own backfill.** Migration 0041's flag
+  (`settings.dedupKeysUpgraded`) and its launch-time rewrite
+  (`upgradeStoredDedupKeys`) only run on live data — a `.kiko` restore
+  REPLACES the whole `transactions`/`settings` tables, so a pre-0041
+  export's legacy statement-import dedup keys need the identical rewrite
+  applied on restore too. `restoreDataSnapshot`'s
+  `withLegacyDedupKeysUpgraded` mirrors it: `Object.hasOwn` on the settings
+  row detects the `dedupKeysUpgraded` key's PRESENCE (a pre-0041 export
+  carries none at all), not its value — an already-0041-shaped snapshot's
+  `false` (a device that hadn't upgraded yet) is left exactly as exported,
+  since that device's own next launch runs the identical rewrite anyway.
+  Applied AFTER `withStrayDepositBondBalanceCleaned`, to the FINAL
+  transaction set that cleanup produces (a different table than the
+  balanceSetAt/stray-balance backfills above, so order between them
+  doesn't matter — it runs last only because it has to act on what's
+  actually being inserted).
 - **No `TextDecoder`/`TextEncoder`.** Hermes has no working `TextDecoder`
   (confirmed on device — see `utf8/utf8.ts`'s header comment); use the
   hand-rolled `utf8Encode`/`utf8Decode` and `encodeBytesToBase64`/

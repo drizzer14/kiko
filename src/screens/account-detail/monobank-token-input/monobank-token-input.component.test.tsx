@@ -96,6 +96,14 @@ describe('MonobankTokenInput', () => {
     expect(onChangeText).toHaveBeenCalledWith('clipboard-token');
   });
 
+  it('forwards an error to the shared ClipboardTextField as the field message', async () => {
+    const { getByText } = await render(
+      <MonobankTokenInput value="" onChangeText={jest.fn()} error="Enter your Monobank token." />,
+    );
+
+    expect(getByText('Enter your Monobank token.')).toBeTruthy();
+  });
+
   it('emits typed text through onChangeText', async () => {
     const onChangeText = jest.fn();
     const { getByPlaceholderText } = await render(

@@ -1,4 +1,5 @@
 import type { FC } from 'react';
+import { MONOBANK_API_ENDPOINT } from '@env';
 import { useTranslation } from 'react-i18next';
 import { Linking, Pressable } from 'react-native';
 
@@ -9,8 +10,6 @@ import Text from '../../../design-system/components/text';
 
 import type { MonobankTokenInputProps } from './monobank-token-input.props';
 
-const MONOBANK_API_URL = 'https://api.monobank.ua/';
-
 // The shared, presentational Monobank token-entry surface: the
 // "Open api.monobank.ua" link, the token TextField, and its trailing paste-icon
 // button (which reads the clipboard into the field). It owns NO Connect button,
@@ -18,11 +17,11 @@ const MONOBANK_API_URL = 'https://api.monobank.ua/';
 // stay with `MonobankConnectField`. Both the account-detail edit surface and the
 // add-account create form consume this so the two entry surfaces stay identical
 // rather than drifting as two hand-rolled copies.
-const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText }) => {
+const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText, error }) => {
   const { t } = useTranslation();
 
   const handleOpenMonobank = (): void => {
-    Linking.openURL(MONOBANK_API_URL);
+    Linking.openURL(`${MONOBANK_API_ENDPOINT}/`);
   };
 
   return (
@@ -45,6 +44,7 @@ const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText }
         placeholder={t('accountDetail.monobankTokenPlaceholder')}
         pasteAccessibilityLabel={t('accountDetail.pasteFromClipboard')}
         secureTextEntry
+        error={error}
       />
 
       {/* Guideline 5.6 data-handling disclosure: the token never leaves the

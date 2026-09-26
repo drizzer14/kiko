@@ -1,10 +1,10 @@
 import { StyleSheet } from 'react-native-unistyles';
 
 export const styles = StyleSheet.create(() => ({
-  // The Debts section heading row — the "Debts" label on
-  // the left, the section total on the right, same space-between shape the
+  // A section heading row (Property, Debts) — the section's own label on
+  // the left, its section total on the right, same space-between shape the
   // account card's own `row` style below uses.
-  debtsHeadingRow: {
+  sectionHeadingRow: {
     justifyContent: 'space-between',
     alignItems: 'center',
   },

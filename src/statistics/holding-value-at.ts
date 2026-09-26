@@ -1,3 +1,4 @@
+import { holdingsRepo } from '@kiko/holdings/repo';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 
 import type { HoldingRow } from '../db/schema';
@@ -43,7 +44,7 @@ export const holdingValueAt = (
     return holdingValueBreakdown(holding, t, book).net.minorUnits;
   }
   const openingBalance =
-    holding.balanceMinorUnits -
+    holdingsRepo.balanceOf(holding).minorUnits -
     transactions.reduce((sum, transaction) => sum + transaction.amountMinorUnits, 0);
   const applied = transactions
     .filter((transaction) => startOfLocalDay(transaction.time) <= startOfLocalDay(t))

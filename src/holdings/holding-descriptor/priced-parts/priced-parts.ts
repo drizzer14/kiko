@@ -2,34 +2,25 @@ import maybe, { foldMap } from 'fnts/maybe';
 
 import { costBasisMinorAt } from '../../lots';
 import { Money } from '../../../currency/money';
+import { holdingsRepo } from '../../repo/holdings.repo';
 import type { PricedHolding } from '../../priced-value';
 import type { ValuableHolding } from '../../holding-value';
 import type { PriceBook } from '../../../prices/price-book';
 import { flat, type HoldingValueBreakdown } from '../breakdown-parts';
 import type { HoldingDescriptor, PricedSpec } from '../holding-descriptor.d';
 
-/**
- * Dispatches to the spec's own `value` with no id guard here: whether a
- * missing `id` matters is per-spec — `property_item` reads its own
- * `holding:<id>` instrument and must guard it itself, `metal` reads a SHARED
- * instrument and needs no id at all.
- */
-export const pricedValueOrNull = (
+/** Dispatches to the spec's own `value`, or `null` when there is no spec. */
+const pricedValueOrNull = (
   spec: PricedSpec | null,
   holding: PricedHolding,
   book: PriceBook,
   instant: number,
 ): Money | null => foldMap(maybe(spec), (found) => found.value(holding, book, instant)) ?? null;
 
-// A priced holding's gross/net are its `pricedValueOrNull` (a `PriceBook`
-// lookup), falling back to its lots' cost basis when there is no stored price
-// point yet — never 0 — OR when the priced Money's own currency disagrees
-// with the holding's (an invalid/restore-only row): a mismatch is never
-// surfaced under the holding's currency label, since that would silently
-// relabel the amount rather than convert it. `principalOrCost` is ALWAYS the
-// cost basis (not the priced value), so the holding-detail breakdown can show
-// a live gain/loss against it. It never accrues interest or withholds tax, so
-// both stay zero.
+// Falls back to `costBasisMinorAt` when the priced value is null, or when its
+// currency disagrees with `holding.currency` (an invalid/restore-only row) —
+// never surfaced under the wrong currency label. `principalOrCost` is always
+// the cost basis; interest/tax stay zero.
 const pricedBreakdown = (
   spec: PricedSpec,
   holding: ValuableHolding,
@@ -38,7 +29,7 @@ const pricedBreakdown = (
 ): HoldingValueBreakdown => {
   const lots = spec.lots(holding.metadata);
   if (lots === undefined) {
-    return flat(holding.currency, holding.balanceMinorUnits);
+    return flat(holding.currency, holdingsRepo.balanceOf(holding).minorUnits);
   }
   const { currency } = holding;
   const costBasisMinor = costBasisMinorAt(lots, now);

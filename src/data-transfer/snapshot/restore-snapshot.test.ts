@@ -20,6 +20,7 @@ import {
   syncState,
   transactions,
 } from '../../db/schema';
+import { computeDedupKeyBase } from '../../statement-import/mapping/mapping';
 
 import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
@@ -581,6 +582,220 @@ describe('restoreDataSnapshot', () => {
       expect(insertedHoldings()).toEqual([
         { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: null },
       ]);
+    });
+  });
+
+  // Migration 0040's cleanup (`drizzle/migrations/0040_cleanup_stray_deposit_
+  // bond_balance.sql`), mirrored here for a `.kiko` restore: a term_deposit/
+  // bond holding carrying a stray create-time opening balance (fixed in
+  // 63f9073) restores with that balance zeroed and its one matching
+  // transaction dropped — real data (a different type, an edited row, or
+  // extra rows) restores byte-identical.
+  describe('stray deposit/bond opening-balance cleanup (migration 0040)', () => {
+    const strayHolding = (overrides: Partial<Record<string, unknown>> = {}) => ({
+      id: 'h1',
+      type: 'term_deposit',
+      balanceMinorUnits: 50_000,
+      balanceSetAt: 1_000,
+      ...overrides,
+    });
+
+    const strayTransaction = (overrides: Partial<Record<string, unknown>> = {}) => ({
+      id: 't1',
+      holdingId: 'h1',
+      source: 'manual',
+      description: '',
+      category: null,
+      exchangeCounterpartHoldingId: null,
+      changeGroupId: null,
+      amountMinorUnits: 50_000,
+      time: 1_000,
+      ...overrides,
+    });
+
+    it('zeroes the holding and drops the one matching transaction', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        holdings: [strayHolding()] as never,
+        transactions: [strayTransaction()] as never,
+      });
+
+      expect(insertedRows.holdings).toEqual([
+        { id: 'h1', type: 'term_deposit', balanceMinorUnits: 0, balanceSetAt: null },
+      ]);
+      expect(insertedRows.transactions ?? []).toEqual([]);
+    });
+
+    it('applies the identical cleanup to the bond twin', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        holdings: [strayHolding({ type: 'bond' })] as never,
+        transactions: [strayTransaction()] as never,
+      });
+
+      expect(insertedRows.holdings).toEqual([
+        { id: 'h1', type: 'bond', balanceMinorUnits: 0, balanceSetAt: null },
+      ]);
+      expect(insertedRows.transactions ?? []).toEqual([]);
+    });
+
+    it('never touches a non-ledgerless holding with the identical numeric shape', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+      const cardHolding = strayHolding({ type: 'card' });
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        holdings: [cardHolding] as never,
+        transactions: [strayTransaction()] as never,
+      });
+
+      expect(insertedRows.holdings).toEqual([cardHolding]);
+      expect(insertedRows.transactions).toEqual([strayTransaction()]);
+    });
+
+    it('leaves a deposit/bond holding whose opening row was edited (a real, differently-shaped row)', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+      const editedTransaction = strayTransaction({ description: 'Edited note' });
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        holdings: [strayHolding()] as never,
+        transactions: [editedTransaction] as never,
+      });
+
+      expect(insertedRows.holdings).toEqual([strayHolding()]);
+      expect(insertedRows.transactions).toEqual([editedTransaction]);
+    });
+
+    it('leaves a deposit/bond holding untouched when more than one transaction row exists', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+      const secondTransaction = strayTransaction({ id: 't2', amountMinorUnits: 1, time: 5_000 });
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        holdings: [strayHolding()] as never,
+        transactions: [strayTransaction(), secondTransaction] as never,
+      });
+
+      expect(insertedRows.holdings).toEqual([strayHolding()]);
+      expect(insertedRows.transactions).toEqual([strayTransaction(), secondTransaction]);
+    });
+
+    it('cleans a LEGACY (pre-0036) snapshot too, once the balanceSetAt backfill fills in the boundary the cleanup then matches', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+      // No `balanceSetAt` key at all — a build-25-shaped export.
+      const legacyHolding = { id: 'h1', type: 'term_deposit', balanceMinorUnits: 50_000 };
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        holdings: [legacyHolding] as never,
+        transactions: [strayTransaction()] as never,
+      });
+
+      expect(insertedRows.holdings).toEqual([
+        { id: 'h1', type: 'term_deposit', balanceMinorUnits: 0, balanceSetAt: null },
+      ]);
+      expect(insertedRows.transactions ?? []).toEqual([]);
+    });
+
+    it('leaves an already-clean (post-fix) deposit/bond holding untouched (no-op)', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+      const cleanHolding = strayHolding({ balanceMinorUnits: 0, balanceSetAt: null });
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        holdings: [cleanHolding] as never,
+      });
+
+      expect(insertedRows.holdings).toEqual([cleanHolding]);
+    });
+  });
+
+  // Migration 0041's flag (`settings.dedupKeysUpgraded`) and the launch-time
+  // rewrite it gates (`upgradeStoredDedupKeys`) only run on LIVE data — a
+  // `.kiko` restore REPLACES the whole `transactions`/`settings` tables, so a
+  // pre-0041 export's legacy keys must be upgraded HERE too, mirroring
+  // migration 0036's `withLegacyBalanceSetAtBackfilled` above:
+  // `Object.hasOwn` on the settings row detects an entirely absent
+  // `dedupKeysUpgraded` key (a pre-0041 export), not its value — an
+  // already-0041-shaped snapshot's `false` (a device that hadn't run its own
+  // upgrade yet) is left for THAT device's next launch to handle, the same
+  // as any other live `false`.
+  describe('legacy dedup-key upgrade (a pre-0041 snapshot has no dedupKeysUpgraded key)', () => {
+    const legacyBase = computeDedupKeyBase('h1', 100, 5_000, 'Top up');
+    const legacyImportTransaction = (overrides: Partial<Record<string, unknown>> = {}) => ({
+      id: 't1',
+      holdingId: 'h1',
+      time: 100_000,
+      amountMinorUnits: 5_000,
+      description: 'Top up',
+      source: 'import',
+      externalId: `${legacyBase} 1`,
+      ...overrides,
+    });
+
+    it('rewrites a legacy occurrence key and marks the settings row upgraded', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+      // No `dedupKeysUpgraded` key at all — a pre-0041 export.
+      const legacySettingsRow = { id: 1, baseCurrency: 'UAH' };
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        settings: [legacySettingsRow] as never,
+        transactions: [legacyImportTransaction()] as never,
+      });
+
+      expect(insertedRows.transactions).toEqual([
+        legacyImportTransaction({ externalId: `${legacyBase}␟1` }),
+      ]);
+      expect(insertedRows.settings).toEqual([
+        { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true },
+      ]);
+    });
+
+    it("leaves a row that isn't shaped like a legacy key unchanged, even while upgrading the settings row", async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+      const editedTransaction = legacyImportTransaction({ description: 'Top up (edited note)' });
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        settings: [{ id: 1, baseCurrency: 'UAH' }] as never,
+        transactions: [editedTransaction] as never,
+      });
+
+      expect(insertedRows.transactions).toEqual([editedTransaction]);
+      expect(insertedRows.settings).toEqual([
+        { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true },
+      ]);
+    });
+
+    it('leaves a snapshot that ALREADY carries dedupKeysUpgraded unchanged (a post-0041 export)', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+      const alreadyMigratedSettingsRow = { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: false };
+      const legacyShapedTransaction = legacyImportTransaction();
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        settings: [alreadyMigratedSettingsRow] as never,
+        transactions: [legacyShapedTransaction] as never,
+      });
+
+      expect(insertedRows.transactions).toEqual([legacyShapedTransaction]);
+      expect(insertedRows.settings).toEqual([alreadyMigratedSettingsRow]);
     });
   });
 });

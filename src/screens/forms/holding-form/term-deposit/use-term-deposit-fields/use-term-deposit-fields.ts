@@ -167,7 +167,6 @@ export const useTermDepositFields = (
   // contributions/schedule, never a typed opening balance — the stored
   // balance is always 0, the same as property/metal/loan.
   const createPayload = (): CreatePayload => ({
-    balanceMinorUnits: 0,
     metadata: buildDepositMetadata(),
   });
 

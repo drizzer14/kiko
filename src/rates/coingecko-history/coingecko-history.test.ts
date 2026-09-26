@@ -96,4 +96,32 @@ describe('fetchCryptoHistory', () => {
   it('references DAY_MS-aligned days in its fixtures', () => {
     expect(d2 - d1).toBe(DAY_MS);
   });
+
+  // kiko-architecture: no request for data the user does not have — a caller
+  // that holds only a subset of the supported crypto currencies fetches only
+  // that subset's history, never a market_chart call for a coin nobody holds.
+  describe('a scoped currency list', () => {
+    it('requests market_chart for only the given currencies', async () => {
+      const requestedIds: string[] = [];
+      const fetchImpl = (async (url: string) => {
+        requestedIds.push(/coins\/([a-z]+)\/market_chart/.exec(url)?.[1] ?? '');
+        return { ok: true, status: 200, json: async () => ({ prices: [[d1, 78_552]] }) };
+      }) as unknown as typeof fetch;
+
+      await fetchCryptoHistory(1, fetchImpl, ['BTC']);
+
+      expect(requestedIds).toEqual(['bitcoin']);
+    });
+
+    it('makes no request at all for an empty currency list', async () => {
+      let called = false;
+      const fetchImpl = (async () => {
+        called = true;
+        return { ok: true, status: 200, json: async () => ({ prices: [] }) };
+      }) as unknown as typeof fetch;
+
+      await expect(fetchCryptoHistory(1, fetchImpl, [])).resolves.toEqual([]);
+      expect(called).toBe(false);
+    });
+  });
 });

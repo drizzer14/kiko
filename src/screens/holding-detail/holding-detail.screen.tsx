@@ -41,13 +41,13 @@ import Button from '../../design-system/components/button';
 import { formatDate, formatTime } from '../../dates/format';
 import Divider from '../../design-system/components/divider';
 import { groupByDay } from '../../transactions/group-by-day';
+import { needsPriceBook } from '../../holdings/priced-value';
 import SymbolIcon from '../../design-system/components/symbol';
 import { convert, type RateTable } from '../../rates/conversion';
 import MoneyText from '../../design-system/components/money-text';
 import { holdingTypeSymbol } from '../../holdings/entity-symbols';
 import type { HoldingRow, TransactionRow } from '../../db/schema';
 import { defaultHoldingColor } from '../../holdings/entity-colors';
-import { priceAsOfCaption } from '../../prices/price-as-of-caption';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../navigation/types';
 import SummaryTable from '../../design-system/components/summary-table';
@@ -63,7 +63,11 @@ import type { MoneyTextTone } from '../../design-system/components/money-text/mo
 import { type HoldingValueBreakdown, holdingValueBreakdown } from '../../holdings/holding-value';
 import { type DerivedEntry, derivedEntries, type EntryTone } from '../../holdings/derived-entries';
 
-import { type FooterAction, holdingDetailSpecFor } from './holding-detail-spec';
+import {
+  type FooterAction,
+  type HoldingBreakdownSpec,
+  holdingDetailSpecFor,
+} from './holding-detail-spec';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
 
@@ -93,48 +97,83 @@ const isZero = (minorUnits: number): boolean => minorUnits === 0;
 const ledgerTone = (tone: EntryTone, minorUnits: number): MoneyTextTone =>
   tone !== 'neutral' && isZero(minorUnits) ? 'muted' : tone;
 
-// Rows that break the headline net value into its parts. Only the deposit and
-// bond types accrue interest/tax, so the breakdown is meaningful there; other
-// types render a flat value where gross == net and these would all read zero.
-const breakdownRows = (
+// The deposit/bond breakdown: principal-or-cost, gross, interest, tax, and a
+// bond's own whole-life expected profit. Only these two types accrue
+// interest/withhold tax, so this table is meaningful there.
+const interestBreakdownRows = (
   breakdown: HoldingValueBreakdown,
-  principalLabelKey: 'holdingDetail.principal' | 'holdingDetail.cost',
-  expectedProfit: Money | null,
+  spec: Extract<HoldingBreakdownSpec, { kind: 'interest' }>,
+  holding: HoldingRow,
+  t: TFunction,
+): { label: string; money: Money; tone?: MoneyTextTone }[] => {
+  const expectedProfit = spec.expectedProfit(holding);
+
+  return [
+    {
+      label: t(spec.principalLabelKey),
+      money: breakdown.principalOrCost,
+    },
+    { label: t('holdingDetail.grossValue'), money: breakdown.gross },
+    // Interest and tax carry a fixed tone by KIND (interest always green, tax
+    // always red), the same rule the derived ledger rows use — not the
+    // sign-only balance coloring, which would leave a positive interest/tax
+    // magnitude white — except when the amount is exactly zero, where
+    // `ledgerTone` mutes it to gray instead.
+    {
+      label: t('holdingDetail.interestEarned'),
+      money: breakdown.interest,
+      tone: ledgerTone('positive', breakdown.interest.minorUnits),
+    },
+    {
+      label: t('holdingDetail.taxWithheld'),
+      money: breakdown.tax,
+      tone: ledgerTone('negative', breakdown.tax.minorUnits),
+    },
+    // Bonds surface the whole-life expected profit: sum of net coupons +
+    // nominal redeemed, less the price paid (the figure the bank statement
+    // shows). It reads green as the holding's expected gain.
+    ...(expectedProfit
+      ? [
+          {
+            label: t('holdingDetail.expectedProfit'),
+            money: expectedProfit,
+            tone: 'positive' as const,
+          },
+        ]
+      : []),
+  ];
+};
+
+// A priced type's (`property_item`, `metal`) breakdown: its cost basis, its
+// current priced value, and the gain between them. No interest/tax rows — a
+// priced type accrues neither, so those would only ever read a misleading
+// zero. Gain carries no explicit tone: MoneyText's own sign-based fallback
+// already reads a loss red and a gain green, the same as every other bare
+// signed amount in this screen.
+const pricedBreakdownRows = (
+  breakdown: HoldingValueBreakdown,
   t: TFunction,
 ): { label: string; money: Money; tone?: MoneyTextTone }[] => [
-  {
-    label: t(principalLabelKey),
-    money: breakdown.principalOrCost,
-  },
-  { label: t('holdingDetail.grossValue'), money: breakdown.gross },
-  // Interest and tax carry a fixed tone by KIND (interest always green, tax
-  // always red), the same rule the derived ledger rows use — not the sign-only
-  // balance coloring, which would leave a positive interest/tax magnitude
-  // white — except when the amount is exactly zero, where `ledgerTone` mutes
-  // it to gray instead.
-  {
-    label: t('holdingDetail.interestEarned'),
-    money: breakdown.interest,
-    tone: ledgerTone('positive', breakdown.interest.minorUnits),
-  },
-  {
-    label: t('holdingDetail.taxWithheld'),
-    money: breakdown.tax,
-    tone: ledgerTone('negative', breakdown.tax.minorUnits),
-  },
-  // Bonds surface the whole-life expected profit: sum of net coupons + nominal
-  // redeemed, less the price paid (the figure the bank statement shows). It
-  // reads green as the holding's expected gain.
-  ...(expectedProfit
-    ? [
-        {
-          label: t('holdingDetail.expectedProfit'),
-          money: expectedProfit,
-          tone: 'positive' as const,
-        },
-      ]
-    : []),
+  { label: t('holdingDetail.cost'), money: breakdown.principalOrCost },
+  { label: t('holdingDetail.value'), money: breakdown.gross },
+  { label: t('holdingDetail.gain'), money: breakdown.gross.subtract(breakdown.principalOrCost) },
 ];
+
+// Rows that break the headline net value into its parts, dispatched off the
+// holding type's own breakdown spec (kiko-code-style: ts-pattern for a closed
+// set constructed locally, never a switch).
+const breakdownRows = (
+  breakdown: HoldingValueBreakdown,
+  spec: HoldingBreakdownSpec,
+  holding: HoldingRow,
+  t: TFunction,
+): { label: string; money: Money; tone?: MoneyTextTone }[] =>
+  match(spec)
+    .with({ kind: 'interest' }, (interestSpec) =>
+      interestBreakdownRows(breakdown, interestSpec, holding, t),
+    )
+    .with({ kind: 'priced' }, () => pricedBreakdownRows(breakdown, t))
+    .exhaustive();
 
 // The holding's Value converted into the user's main (base) currency, for the
 // smaller caption beneath the amount — the same second line the holding card
@@ -162,36 +201,23 @@ const convertedBaseValue = (
 };
 
 // The Value header's secondary caption slot (`EntityAmountHeader`'s
-// `secondary` prop): the converted-to-base line, the "Value as of <date>"
-// line, or both stacked — a module-scope component (mirroring `LedgerRowItem`
-// below) so the conditional JSX does not count against the screen component's
-// own cognitive-complexity budget. Renders nothing (null) when neither
-// applies, the same as the screen previously passing `secondary={undefined}`.
+// `secondary` prop): the converted-to-base line — a module-scope component
+// (mirroring `LedgerRowItem` below) so the conditional JSX does not count
+// against the screen component's own cognitive-complexity budget. Renders
+// nothing (null) without a converted value, the same as the screen
+// previously passing `secondary={undefined}`.
 const ValueHeaderSecondary: FC<{
   convertedToBase: Money | null;
-  valueAsOf: string | undefined;
-}> = ({ convertedToBase, valueAsOf }) => {
-  if (!convertedToBase && !valueAsOf) {
+}> = ({ convertedToBase }) => {
+  if (!convertedToBase) {
     return null;
   }
 
   return (
-    <Box gap={1}>
-      {convertedToBase && (
-        <Box testID="holding-detail-converted">
-          <Text variant="caption" tone="textSecondary">
-            {formatMoney(convertedToBase, activeLocale())}
-          </Text>
-        </Box>
-      )}
-
-      {valueAsOf && (
-        <Box testID="holding-detail-value-as-of">
-          <Text variant="caption" tone="textSecondary">
-            {valueAsOf}
-          </Text>
-        </Box>
-      )}
+    <Box testID="holding-detail-converted">
+      <Text variant="caption" tone="textSecondary">
+        {formatMoney(convertedToBase, activeLocale())}
+      </Text>
     </Box>
   );
 };
@@ -494,7 +520,12 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const { data: rates, isLoading: ratesLoading } = useLiveQuery(ratesRepo.allQuery(), [
     'currency_rates',
   ]);
-  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook();
+  // kiko-architecture: skip the price_points read while this specific
+  // holding's type never reads it — a type carrying no priced spec and not
+  // a loan (`needsPriceBook`) never touches `price_points`.
+  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
+    holdings.some((candidate) => candidate.id === holdingId && needsPriceBook(candidate.type)),
+  );
 
   // Resolve each transaction row's stored category to its display (icon + title)
   // through the same shared mapping Home uses, so a rename flows through here too.
@@ -547,10 +578,6 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   const rateTable = buildRateTable(rates);
   const convertedToBase = convertedBaseValue(holding, breakdown, baseCurrency, rateTable);
-  // A priced holding's (property_item) "Value as of <date>" caption, from its
-  // latest stored price point — undefined for every other type, or a priced
-  // one with no point yet.
-  const valueAsOf = priceAsOfCaption(holding, priceBook, t);
 
   // The transaction ledger merges the holding's real (stored) transactions with
   // the computed entries a deposit/bond accrues (contributions, interest, tax,
@@ -670,9 +697,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
             // used to render as a disconnected caption at the BOTTOM of the whole
             // summary block, which on a deposit/bond floated below the whole
             // breakdown, detached from the value it converts.
-            secondary={
-              <ValueHeaderSecondary convertedToBase={convertedToBase} valueAsOf={valueAsOf} />
-            }
+            secondary={<ValueHeaderSecondary convertedToBase={convertedToBase} />}
           />
           {spec?.breakdown && (
             <Box style={styles.breakdown}>
@@ -682,12 +707,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                   LAYOUT of, never these value/percent/tax COLUMNS
                   themselves. */}
               <SummaryTable
-                rows={breakdownRows(
-                  breakdown,
-                  spec.breakdown.principalLabelKey,
-                  spec.breakdown.expectedProfit(holding),
-                  t,
-                ).map((detail) => ({
+                rows={breakdownRows(breakdown, spec.breakdown, holding, t).map((detail) => ({
                   key: detail.label,
                   label: detail.label,
                   value: <MoneyText money={detail.money} tone={detail.tone} />,

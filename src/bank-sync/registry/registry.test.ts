@@ -12,7 +12,6 @@ describe('bank provider registry', () => {
     expect(entry?.runSync).toBe(monobankRunSync);
     expect(entry?.hasCredentials).toBe(hasToken);
     expect(entry?.disconnect).toBe(disconnectMonobank);
-    expect(entry?.catalog.id).toBe('monobank');
   });
 
   it('carries exactly the one shipped provider (Guideline 5.6 remediation: Monobank-only)', () => {

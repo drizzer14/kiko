@@ -41,11 +41,6 @@ const unlockLabel = (
  * and runs the biometric/passcode sheet on mount and on every retry tap.
  * `Screen` is not used here on purpose — it reads the bottom tab bar height,
  * which only exists inside the tab navigator this gate wraps.
- *
- * SAFETY: the gate leans entirely on `useAppLock`, which is inert while
- * `APP_LOCK_ENABLED` is off (it reports `isReady: true, isLocked: false` and
- * never loads the native biometrics module). So on a build with the flag off
- * this is a pure pass-through that renders `children` and never prompts.
  */
 const LockGate: FC<{ children: ReactNode }> = ({ children }) => {
   const { t } = useTranslation();

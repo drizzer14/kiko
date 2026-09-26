@@ -9,6 +9,7 @@ import {
   metalForms,
   metalUnits,
   preciousMetals,
+  propertyCategoryOf,
   syncedAtOf,
   walletAddressOf,
 } from './holding-metadata';
@@ -124,6 +125,14 @@ describe('asBondMeta', () => {
     const { purchasePriceMinorUnits, ...withoutPrice } = valid;
     expect(asBondMeta(withoutPrice)?.purchasePriceMinorUnits).toBe(10 * 100_000);
   });
+
+  it('rejects a present but wrong-type purchase price rather than defaulting it', () => {
+    // Bad input (a stored purchase price of the wrong type) is rejected, not
+    // silently replaced by the nominal default — that default is reserved for
+    // a genuinely ABSENT field (a stored pre-field row).
+    expect(asBondMeta({ ...valid, purchasePriceMinorUnits: '12' })).toBeNull();
+    expect(asBondMeta({ ...valid, purchasePriceMinorUnits: Number.NaN })).toBeNull();
+  });
 });
 
 describe('asBondMeta bondKind', () => {
@@ -139,9 +148,12 @@ describe('asBondMeta bondKind', () => {
     expect(asBondMeta({ ...base, bondKind: 'corporate' })?.bondKind).toBe('corporate');
   });
 
-  it('defaults a missing or invalid kind to government', () => {
+  it('defaults a missing kind to government (a stored pre-field row)', () => {
     expect(asBondMeta({ ...base })?.bondKind).toBe('government');
-    expect(asBondMeta({ ...base, bondKind: 'nonsense' })?.bondKind).toBe('government');
+  });
+
+  it('rejects a present but invalid kind rather than defaulting it', () => {
+    expect(asBondMeta({ ...base, bondKind: 'nonsense' })).toBeNull();
   });
 });
 
@@ -162,8 +174,8 @@ describe('asBondMeta isin', () => {
     expect(asBondMeta({ ...base })?.isin).toBeUndefined();
   });
 
-  it('leaves isin undefined when the stored value is not a string', () => {
-    expect(asBondMeta({ ...base, isin: 12345 })?.isin).toBeUndefined();
+  it('rejects a present but non-string isin rather than dropping it', () => {
+    expect(asBondMeta({ ...base, isin: 12345 })).toBeNull();
   });
 });
 
@@ -185,9 +197,12 @@ describe('asBondMeta couponFrequency', () => {
     );
   });
 
-  it('defaults a missing or invalid frequency to annually (back-compat)', () => {
+  it('defaults a missing frequency to annually (a stored pre-field row)', () => {
     expect(asBondMeta({ ...base })?.couponFrequency).toBe('annually');
-    expect(asBondMeta({ ...base, couponFrequency: 'weekly' })?.couponFrequency).toBe('annually');
+  });
+
+  it('rejects a present but invalid frequency rather than defaulting it', () => {
+    expect(asBondMeta({ ...base, couponFrequency: 'weekly' })).toBeNull();
   });
 });
 
@@ -265,6 +280,25 @@ describe('asPropertyMeta', () => {
 
   it('returns null for null', () => {
     expect(asPropertyMeta(null)).toBeNull();
+  });
+});
+
+describe('propertyCategoryOf', () => {
+  it('reads a valid category off the metadata', () => {
+    expect(propertyCategoryOf({ category: 'vehicle', lots: [] })).toBe('vehicle');
+  });
+
+  it('falls back to other for an unrecognized category', () => {
+    expect(propertyCategoryOf({ category: 'nonsense', lots: [] })).toBe('other');
+  });
+
+  it('falls back to other for a missing category', () => {
+    expect(propertyCategoryOf({ lots: [] })).toBe('other');
+  });
+
+  it('falls back to other for a non-record metadata value', () => {
+    expect(propertyCategoryOf(null)).toBe('other');
+    expect(propertyCategoryOf(undefined)).toBe('other');
   });
 });
 

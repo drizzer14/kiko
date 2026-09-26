@@ -5,10 +5,9 @@ import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 
 import type { HoldingRow } from '../../../db/schema';
 import '../../../design-system/unistyles';
-import { formatDate } from '../../../dates/format';
 import { darkTheme } from '../../../design-system/theme';
+import { EMPTY_PRICE_BOOK } from '../../../prices/price-book';
 import { entityIconTileGradient } from '../../../design-system/entity-tint';
-import { buildPriceBook, EMPTY_PRICE_BOOK } from '../../../prices/price-book';
 
 import HoldingCard from './holding-card.component';
 
@@ -157,70 +156,6 @@ describe('HoldingCard', () => {
       });
 
       expect(queryByTestId('holding-card-converted')).toBeNull();
-    });
-  });
-
-  // A priced holding (property_item — isPricedHoldingType) shows the
-  // LATEST stored price point's own day beneath its value, so the user sees
-  // how current its revaluation is — the same caption holding-detail renders.
-  describe('the "Value as of" caption', () => {
-    const propertyHolding = holding({
-      type: 'property_item',
-      metadata: {
-        category: 'real_estate',
-        lots: [{ day: Date.UTC(2024, 0, 1), quantityDelta: '1', costMinorUnits: 100_000 }],
-      },
-    });
-
-    it('shows "Value as of <date>" for a priced holding with a stored price point', async () => {
-      const day = Date.UTC(2024, 0, 1);
-      const priceBook = buildPriceBook([
-        { instrument: 'holding:h1', day, price: '1000.00', currency: 'UAH', source: 'manual' },
-      ]);
-
-      const { getByText, getByTestId } = await renderCard({
-        holding: propertyHolding,
-        priceBook,
-      });
-
-      expect(getByTestId('holding-card-value-as-of')).toBeTruthy();
-      expect(getByText(`Value as of ${formatDate(day, { timeZone: 'UTC' })}`)).toBeTruthy();
-    });
-
-    it('omits the caption for a priced holding with no stored price point yet', async () => {
-      const { queryByTestId } = await renderCard({
-        holding: propertyHolding,
-        priceBook: EMPTY_PRICE_BOOK,
-      });
-
-      expect(queryByTestId('holding-card-value-as-of')).toBeNull();
-    });
-
-    it('omits the caption for a non-priced holding type', async () => {
-      const { queryByTestId } = await renderCard();
-
-      expect(queryByTestId('holding-card-value-as-of')).toBeNull();
-    });
-
-    // Divergent twins — this card's own copy of the caption
-    // helper used to lack the metal branch entirely, so a metal holding's
-    // card showed NO caption at all (its `holding:<id>` instrument never
-    // resolves for a metal — only the shared `metal:<slug>` one does). Now
-    // shared with holding-detail via `priceAsOfCaption`.
-    it('shows "Price as of <date>" for a metal holding, via its own SHARED metal:<slug> instrument', async () => {
-      const day = Date.UTC(2024, 0, 1);
-      const priceBook = buildPriceBook([
-        { instrument: 'metal:XAU', day, price: '2000.00', currency: 'USD', source: 'manual' },
-      ]);
-      const metalHolding = holding({
-        type: 'metal',
-        currency: 'USD',
-        metadata: { metal: 'XAU', form: 'bar', unit: 'g', purity: '0.9999', lots: [] },
-      });
-
-      const { getByText } = await renderCard({ holding: metalHolding, priceBook });
-
-      expect(getByText(`Price as of ${formatDate(day, { timeZone: 'UTC' })}`)).toBeTruthy();
     });
   });
 });

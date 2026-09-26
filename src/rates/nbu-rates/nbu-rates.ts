@@ -1,4 +1,5 @@
 import { guard } from 'fnts';
+import { NBU_API_ENDPOINT } from '@env';
 
 import type { RateEntry } from '../conversion';
 import { isCurrency, isFiat } from '../../currency/currency';
@@ -10,9 +11,10 @@ import { isCurrency, isFiat } from '../../currency/currency';
  * fiat source `rates-refresh.ts` reaches for when the cert-pinned Monobank
  * host is unreachable. Sibling to `nbu-history.ts`'s date-RANGE endpoint,
  * which this is NOT — that one serves one currency's history over a span,
- * this one serves every currency for a single (today's) date.
+ * this one serves every currency for a single (today's) date. The host
+ * (`NBU_API_ENDPOINT`) is shared config; this path is specific to this call.
  */
-const EXCHANGE_ENDPOINT = 'https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json';
+const EXCHANGE_ENDPOINT = `${NBU_API_ENDPOINT}/NBUStatService/v1/statdirectory/exchange?json`;
 
 /**
  * One row of the current-rate payload. `rate` is UAH per `units` of `cc`

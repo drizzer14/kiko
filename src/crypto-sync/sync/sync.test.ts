@@ -75,45 +75,42 @@ const makeInMemoryDeps = (initialAccounts: AccountRow[]) => {
   const holdingsStore: HoldingRow[] = [];
   let sequence = 0;
 
-  const upsertHolding: BalanceSyncDeps['upsertHolding'] = async ({
-    metadataField,
-    metadataKey,
-    metadata,
-    ...rest
-  }) => {
-    const merged = {
-      ...(metadata as Record<string, unknown> | null),
-      [metadataField]: metadataKey,
-    };
-    const existing = holdingsStore.find(
-      (holding) =>
-        holding.accountId === rest.accountId &&
-        (holding.metadata as Record<string, unknown>)[metadataField] === metadataKey,
-    );
+  const upsertHoldings: BalanceSyncDeps['upsertHoldings'] = async (holdingsList) => {
+    for (const { metadataField, metadataKey, metadata, ...rest } of holdingsList) {
+      const merged = {
+        ...(metadata as Record<string, unknown> | null),
+        [metadataField]: metadataKey,
+      };
+      const existing = holdingsStore.find(
+        (holding) =>
+          holding.accountId === rest.accountId &&
+          (holding.metadata as Record<string, unknown>)[metadataField] === metadataKey,
+      );
 
-    if (existing) {
-      existing.balanceMinorUnits = rest.balanceMinorUnits ?? 0;
-      existing.metadata = merged;
+      if (existing) {
+        existing.balanceMinorUnits = rest.balanceMinorUnits ?? 0;
+        existing.metadata = merged;
 
-      return;
+        continue;
+      }
+
+      sequence += 1;
+      holdingsStore.push({
+        id: `h-${sequence}`,
+        icon: null,
+        color: null,
+        sortOrder: 0,
+        closedAt: null,
+        createdAt: 0,
+        balanceMinorUnits: rest.balanceMinorUnits ?? 0,
+        // The Monobank-only crash-safe statement-import marker; a crypto holding
+        // never carries one (it imports no statements).
+        syncedBalanceMinorUnits: null,
+        balanceSetAt: null,
+        ...rest,
+        metadata: merged,
+      });
     }
-
-    sequence += 1;
-    holdingsStore.push({
-      id: `h-${sequence}`,
-      icon: null,
-      color: null,
-      sortOrder: 0,
-      closedAt: null,
-      createdAt: 0,
-      balanceMinorUnits: rest.balanceMinorUnits ?? 0,
-      // The Monobank-only crash-safe statement-import marker; a crypto holding
-      // never carries one (it imports no statements).
-      syncedBalanceMinorUnits: null,
-      balanceSetAt: null,
-      ...rest,
-      metadata: merged,
-    });
   };
 
   const deps: Partial<BalanceSyncDeps> = {
@@ -130,7 +127,7 @@ const makeInMemoryDeps = (initialAccounts: AccountRow[]) => {
       holdingsStore
         .filter((holding) => holding.accountId === accountId)
         .map((holding) => ({ ...holding })),
-    upsertHolding,
+    upsertHoldings,
   };
 
   return { deps, accountsStore, holdingsStore };

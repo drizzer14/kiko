@@ -16,7 +16,7 @@ import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor'
 import {
   type BackfillStatus,
   deriveLastBackfilledDay,
-  missingDays,
+  derivePresentCurrencies,
   planBackfillRun,
   runBackfill,
 } from '../../rates/history-backfill';
@@ -39,6 +39,7 @@ import {
   type BreakdownTransaction,
   buildCategoryBreakdown,
   type CategorySlice,
+  resolveCategoryColor,
 } from '../../statistics/category-breakdown';
 import {
   descriptionExcludedTransferTransactionIds,
@@ -60,6 +61,7 @@ import { ibanOf } from '../../holdings/holding-metadata';
 import Screen from '../../design-system/components/screen';
 import { usePriceBook } from '../../prices/use-price-book';
 import { buildRateTable } from '../../rates/net-worth-view';
+import { needsPriceBook } from '../../holdings/priced-value';
 import { defaultDateRange } from '../../dates/default-range';
 import { bucketDaysForSpan } from '../../statistics/buckets';
 import MoneyText from '../../design-system/components/money-text';
@@ -244,7 +246,12 @@ const StatisticsScreen: FC = () => {
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
 
   const rateTable = useMemo(() => buildRateTable(rates), [rates]);
-  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook();
+  // kiko-architecture: skip the price_points read while nothing rendered on
+  // this screen ever reads it — a holding whose type carries no priced spec
+  // and is not a loan (`needsPriceBook`) never touches `price_points`.
+  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
+    holdings.some((holding) => needsPriceBook(holding.type)),
+  );
   // Every chart (bar/pie/trend) must never render an empty state while any of
   // this screen's own queries is still on its first load (kiko-architecture's
   // useLiveQuery consumer rule) — gated below, right at the return. This is
@@ -317,6 +324,11 @@ const StatisticsScreen: FC = () => {
   // The resume point for the backfill: the newest day already stored, derived
   // from the history table itself (no extra persistence). Null when empty.
   const lastBackfilledDay = useMemo(() => deriveLastBackfilledDay(historyRows), [historyRows]);
+  // Every currency with at least one stored row — `runBackfill`'s own gap
+  // check against a currency held NOW but never itself backfilled (a new
+  // coin, or fiat conversion needed for the first time), derived from this
+  // SAME already-loaded `historyRows` read, no new query.
+  const presentCurrencies = useMemo(() => derivePresentCurrencies(historyRows), [historyRows]);
 
   // Drive the incremental, non-blocking backfill and surface its status to the
   // line. It runs when there is a bounded span (transactions exist) with days
@@ -387,15 +399,18 @@ const StatisticsScreen: FC = () => {
     runTokenRef.current += 1;
     const token = runTokenRef.current;
 
-    if (missingDays(spanStart, resumeFrom, now).length === 0) {
-      setBackfillStatus({ state: 'complete', lastDay: lastBackfilledDay });
-
-      return;
-    }
-
+    // No local "nothing missing" shortcut here any more: `runBackfill` itself
+    // owns that decision now, since it also has to check a newly-held
+    // currency against `presentCurrencies` — a check this screen cannot
+    // replicate without `openCurrencies`'s own async read.
     setBackfillStatus({ state: 'loading', lastDay: lastBackfilledDay });
     either<unknown, BackfillStatus>(() =>
-      runBackfill({ earliestDay: spanStart, lastBackfilledDay: resumeFrom, today: now }),
+      runBackfill({
+        earliestDay: spanStart,
+        lastBackfilledDay: resumeFrom,
+        today: now,
+        presentCurrencies,
+      }),
     ).then((result) => {
       if (!isMountedRef.current || token !== runTokenRef.current) {
         return;
@@ -420,7 +435,7 @@ const StatisticsScreen: FC = () => {
       }
       setBackfillStatus(settled);
     });
-  }, [transactions.length, spanStart, lastBackfilledDay, now, historyLoading]);
+  }, [transactions.length, spanStart, lastBackfilledDay, now, historyLoading, presentCurrencies]);
 
   // Bar + pie value "now" on the current rate table; the line values each day on
   // the historical table. All three are memoized on their real inputs so they no
@@ -756,6 +771,29 @@ const StatisticsScreen: FC = () => {
       });
     }
 
+    // A category the user already SELECTED can drop out of the range-scoped
+    // slices above (e.g. the range moves to a week with no spending in it) —
+    // union it back in from `categoryByKey` so the menu still lists it,
+    // checked, rather than silently hiding a selection the user can then never
+    // find and uncheck (review decision 17: KEEP a hidden selection visible).
+    for (const key of selectedCategories) {
+      if (byKey.has(key)) {
+        continue;
+      }
+
+      const display = categoryByKey.get(key);
+      if (display === undefined) {
+        continue;
+      }
+
+      byKey.set(key, {
+        value: key,
+        label: display.title,
+        icon: display.icon,
+        color: resolveCategoryColor(display.color, key),
+      });
+    }
+
     // Present the options in the user's CUSTOM category order — the live
     // `categories` query is already sorted `asc(sortOrder), asc(key)` (see
     // categories.repo's allQuery) — not in the spending-magnitude order the
@@ -773,7 +811,7 @@ const StatisticsScreen: FC = () => {
     const rank = (key: string): number => orderByKey.get(key.toLowerCase()) ?? categories.length;
 
     return Array.from(byKey.values()).sort((a, b) => rank(a.value) - rank(b.value));
-  }, [allCategorySlices, categories]);
+  }, [allCategorySlices, categories, selectedCategories, categoryByKey]);
 
   const excludedCategoryKeys = useMemo(() => {
     if (selectedCategories.size === 0) {

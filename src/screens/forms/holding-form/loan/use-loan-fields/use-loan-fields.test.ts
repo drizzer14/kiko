@@ -70,9 +70,9 @@ describe('loanReasonKey', () => {
   // An uncapped term makes loanInstallments
   // build ~1e8 rows on every render (a valid positive integer, e.g.
   // "99999999", still passed the old check).
-  it('rejects a term beyond the shared MAX_TERM_MONTHS cap', () => {
+  it('names the maximum once a term exceeds the shared MAX_TERM_MONTHS cap', () => {
     expect(loanReasonKey({ ...baseArgs(), termMonths: String(MAX_TERM_MONTHS + 1) })).toBe(
-      'forms.holding.termMonthsError',
+      'forms.holding.termMonthsMaxError',
     );
   });
 

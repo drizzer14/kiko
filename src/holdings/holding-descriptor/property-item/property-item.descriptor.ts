@@ -1,7 +1,6 @@
 import { quantityAt } from '../../lots';
 import { Money } from '../../../currency/money';
 import { pricedDescriptor } from '../priced-parts';
-import type { HoldingRow } from '../../../db/schema';
 import { asPropertyMeta } from '../../holding-metadata';
 import type { PricedHolding } from '../../priced-value';
 import { holdingInstrument } from '../../../prices/instrument';
@@ -34,14 +33,9 @@ const propertyItemValue = (
   return Money.of(holding.currency, minorUnits);
 };
 
-// `captionInstrument` reads this holding's OWN `holding:<id>` series (never a
-// shared one — unlike `metal`'s), so `captionKey` reads "Value as of" (a
-// per-holding manual revaluation, not a market price).
 const propertyItemPricedSpec: PricedSpec = {
   lots: (metadata) => asPropertyMeta(metadata)?.lots,
   value: propertyItemValue,
-  captionInstrument: (holding: HoldingRow) => holdingInstrument(holding.id),
-  captionKey: 'holdingDetail.valueAsOf',
 };
 
 export const propertyItemDescriptor: HoldingDescriptor = pricedDescriptor(propertyItemPricedSpec, {

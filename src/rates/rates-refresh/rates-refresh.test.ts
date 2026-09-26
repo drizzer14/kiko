@@ -21,6 +21,19 @@ const makeDeps = (overrides: Partial<RefreshDeps> = {}) => {
     // test that overrides `fetchFiatRates` to fail exercises this.
     fetchNbuRates: async () => [],
     fetchCryptoPrices: async () => btc,
+    // The data-presence gate (kiko-architecture): every existing test below
+    // exercises a run that DOES need both legs, so the default reports both
+    // as needed; the "data-presence gate" describe block below overrides this
+    // to exercise the skip paths.
+    openCurrencies: async () => ({
+      needsFiat: true,
+      cryptoCurrencies: ['BTC'],
+      nonBaseCurrencies: ['USD', 'EUR', 'BTC'],
+    }),
+    // Every held non-base currency already has a stored rate by default, so
+    // the throttle tests below behave exactly as before; the "unrated
+    // currency" describe block overrides this to exercise the skip-through.
+    presentCurrencies: async () => ['USD', 'EUR', 'BTC'],
     upsertMany: async (rates: StoredRate[]) => {
       captured.push(rates);
     },
@@ -343,5 +356,166 @@ describe('refreshRates — NBU fallback when Monobank is unreachable', () => {
       source: 'coingecko',
       fetchedAt: 1000,
     });
+  });
+});
+
+// kiko-architecture: app-open and refresh work is gated on data presence —
+// no request or query for data the user does not have. `openCurrencies`
+// reports whether any held currency differs from the base (needsFiat) and
+// which crypto currencies are held; each leg fetches only when its own
+// gate says so.
+describe('refreshRates — the data-presence gate', () => {
+  it('fetches and writes nothing when nothing needs converting and no crypto is held', async () => {
+    let fiatCalled = false;
+    let cryptoCalled = false;
+    const { deps, captured } = makeDeps({
+      fetchFiatRates: async () => {
+        fiatCalled = true;
+        return fiat;
+      },
+      fetchCryptoPrices: async () => {
+        cryptoCalled = true;
+        return btc;
+      },
+      openCurrencies: async () => ({ needsFiat: false, cryptoCurrencies: [] }),
+    });
+
+    await refreshRates(deps);
+
+    expect(fiatCalled).toBe(false);
+    expect(cryptoCalled).toBe(false);
+    expect(captured).toHaveLength(0);
+  });
+
+  it('fetches only the fiat leg when nothing crypto is held', async () => {
+    let cryptoCalled = false;
+    const { deps, captured } = makeDeps({
+      fetchCryptoPrices: async () => {
+        cryptoCalled = true;
+        return btc;
+      },
+      openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: [] }),
+    });
+
+    await refreshRates(deps);
+
+    expect(cryptoCalled).toBe(false);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].some((pair) => pair.base === 'BTC')).toBe(false);
+    expect(captured[0].some((pair) => pair.base === 'USD' && pair.quote === 'UAH')).toBe(true);
+  });
+
+  it('fetches only the crypto leg when every held currency already matches the base', async () => {
+    let fiatCalled = false;
+    const { deps, captured } = makeDeps({
+      fetchFiatRates: async () => {
+        fiatCalled = true;
+        return fiat;
+      },
+      openCurrencies: async () => ({ needsFiat: false, cryptoCurrencies: ['BTC'] }),
+    });
+
+    await refreshRates(deps);
+
+    expect(fiatCalled).toBe(false);
+    // No fiat leg means no USD anchor, so the crypto leg's own fetch still ran
+    // (asserted below) but composed no pair — the existing "no USD anchor"
+    // behavior (see the describe block above), not a bug in the gate itself.
+    expect(captured).toHaveLength(0);
+  });
+
+  it('passes only the held crypto currencies to fetchCryptoPrices, never the full supported set', async () => {
+    let receivedCurrencies: string[] = [];
+    const { deps } = makeDeps({
+      fetchCryptoPrices: async (currencies) => {
+        receivedCurrencies = currencies;
+        return btc;
+      },
+      openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC'] }),
+    });
+
+    await refreshRates(deps);
+
+    expect(receivedCurrencies).toEqual(['BTC']);
+  });
+});
+
+// The throttle exists to respect Monobank's own ~5-minute cache window, not
+// to leave a currently-held currency permanently unrated. A Monobank connect
+// at t0 writes fiat only; a Binance connect moments later (inside that same
+// window) must not have its crypto currency's rate suppressed until the
+// window elapses.
+describe('refreshRates — an unrated held currency skips the throttle', () => {
+  it('still refreshes inside the cache window when a held crypto currency has no rate at all', async () => {
+    let fiatCalled = false;
+    const { deps, captured } = makeDeps({
+      fetchFiatRates: async () => {
+        fiatCalled = true;
+        return fiat;
+      },
+      now: () => 1000 + 60_000, // 1 minute after the last refresh — inside the window
+      lastRefreshAt: 1000,
+      openCurrencies: async () => ({
+        needsFiat: true,
+        cryptoCurrencies: ['BTC'],
+        nonBaseCurrencies: ['USD', 'EUR', 'BTC'],
+      }),
+      // USD/EUR already rated; BTC — the just-synced crypto holding — is not.
+      presentCurrencies: async () => ['USD', 'EUR'],
+    });
+
+    await refreshRates(deps);
+
+    expect(fiatCalled).toBe(true);
+    expect(captured).toHaveLength(1);
+  });
+
+  it('still refreshes inside the cache window when a held fiat currency has no rate at all', async () => {
+    let fiatCalled = false;
+    const { deps, captured } = makeDeps({
+      fetchFiatRates: async () => {
+        fiatCalled = true;
+        return fiat;
+      },
+      now: () => 1000 + 60_000,
+      lastRefreshAt: 1000,
+      openCurrencies: async () => ({
+        needsFiat: true,
+        cryptoCurrencies: [],
+        // EUR — a base-currency-only user's first foreign holding — has no
+        // stored rate at all yet, even though the throttle's own clock is
+        // still inside the window.
+        nonBaseCurrencies: ['EUR'],
+      }),
+      presentCurrencies: async () => [],
+    });
+
+    await refreshRates(deps);
+
+    expect(fiatCalled).toBe(true);
+    expect(captured).toHaveLength(1);
+  });
+
+  it('still respects the throttle when every held currency already has a rate', async () => {
+    let fiatCalled = false;
+    const { deps, captured } = makeDeps({
+      fetchFiatRates: async () => {
+        fiatCalled = true;
+        return fiat;
+      },
+      now: () => 1000 + 60_000,
+      lastRefreshAt: 1000,
+      openCurrencies: async () => ({
+        needsFiat: true,
+        cryptoCurrencies: ['BTC'],
+        nonBaseCurrencies: ['USD', 'EUR', 'BTC'],
+      }),
+      presentCurrencies: async () => ['USD', 'EUR', 'BTC'],
+    });
+
+    await refreshRates(deps);
+
+    expect(fiatCalled).toBe(false);
+    expect(captured).toHaveLength(0);
   });
 });

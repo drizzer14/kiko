@@ -1,8 +1,14 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n';
 
 import CalendarHeader from './calendar-header.component';
+
+const WEEKDAY_ROW_TEST_ID = 'calendar-header-weekdays';
+const weekdayLabels = (view: Awaited<ReturnType<typeof render>>): readonly string[] =>
+  within(view.getByTestId(WEEKDAY_ROW_TEST_ID))
+    .getAllByText(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)$/)
+    .map((node) => node.props.children as string);
 
 describe('CalendarHeader', () => {
   // react-native-calendars hands its custom header an XDate whose getMonth /
@@ -67,6 +73,32 @@ describe('CalendarHeader', () => {
 
     expect(addMonth).toHaveBeenNthCalledWith(1, -12);
     expect(addMonth).toHaveBeenNthCalledWith(2, 12);
+  });
+});
+
+describe('CalendarHeader — first weekday', () => {
+  const march2026 = new Date(2026, 2, 1);
+
+  it('starts the weekday row on Sunday when firstDay is 0', async () => {
+    const view = await render(
+      <CalendarHeader month={march2026} addMonth={jest.fn()} firstDay={0} />,
+    );
+
+    expect(weekdayLabels(view)).toEqual(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
+  });
+
+  it('starts the weekday row on Sunday when firstDay is omitted (the library default)', async () => {
+    const view = await render(<CalendarHeader month={march2026} addMonth={jest.fn()} />);
+
+    expect(weekdayLabels(view)).toEqual(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
+  });
+
+  it('rotates the weekday row to start on Monday when firstDay is 1', async () => {
+    const view = await render(
+      <CalendarHeader month={march2026} addMonth={jest.fn()} firstDay={1} />,
+    );
+
+    expect(weekdayLabels(view)).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
   });
 });
 

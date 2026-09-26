@@ -1,6 +1,5 @@
 import type { FC } from 'react';
 import { Pressable } from 'react-native';
-import { useTranslation } from 'react-i18next';
 
 import type { HoldingRow } from '../../../db/schema';
 import { formatMoney } from '../../../currency/format';
@@ -16,7 +15,6 @@ import { convert, type RateTable } from '../../../rates/conversion';
 import MoneyText from '../../../design-system/components/money-text';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
-import { priceAsOfCaption } from '../../../prices/price-as-of-caption';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import EntityIconTile from '../../../design-system/components/entity-icon-tile';
 
@@ -49,7 +47,6 @@ const HoldingCard: FC<{
   priceBook: PriceBook;
   onOpen: () => void;
 }> = ({ holding, now, baseCurrency, rateTable, priceBook, onOpen }) => {
-  const { t } = useTranslation();
   const color = resolveEntityColor(holding.color, defaultHoldingColor[holding.type]);
   const value = holdingValue(holding, now, priceBook);
   // The smaller base-currency figure below the value, shown ONLY for a holding
@@ -60,9 +57,6 @@ const HoldingCard: FC<{
     holding.currency !== baseCurrency && canConvert(holding.currency, baseCurrency, rateTable)
       ? convert(value, baseCurrency, rateTable)
       : null;
-  // A priced holding's (property_item) "Value as of <date>" caption, from its
-  // latest stored price point.
-  const valueAsOf = priceAsOfCaption(holding, priceBook, t);
 
   return (
     <Card testID="holding-card" padding={4}>
@@ -83,14 +77,6 @@ const HoldingCard: FC<{
             <Box testID="holding-card-converted">
               <Text variant="caption" tone="textSecondary">
                 {formatMoney(convertedToBase, activeLocale())}
-              </Text>
-            </Box>
-          )}
-
-          {valueAsOf && (
-            <Box testID="holding-card-value-as-of">
-              <Text variant="caption" tone="textSecondary">
-                {valueAsOf}
               </Text>
             </Box>
           )}

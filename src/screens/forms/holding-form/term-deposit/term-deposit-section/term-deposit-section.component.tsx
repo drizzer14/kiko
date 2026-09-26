@@ -8,6 +8,7 @@ import { currencySymbol } from '@kiko/currency/currency';
 import Button from '@kiko/design-system/components/button';
 import Switch from '@kiko/design-system/components/switch';
 import Divider from '@kiko/design-system/components/divider';
+import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 import ChipRow from '@kiko/design-system/components/chip-row';
 import TextField from '@kiko/design-system/components/text-field';
 import FieldError from '@kiko/design-system/components/field-error';
@@ -187,7 +188,9 @@ const TermDepositSection: FC<TermDepositSectionProps> = ({ fields, attemptedSave
           keyboardType="number-pad"
           placeholder={t('forms.holding.termMonthsPlaceholder')}
           required
-          error={fieldErrorMessage(t, attemptedSave, fieldErrors.termMonthsError)}
+          error={fieldErrorMessage(t, attemptedSave, fieldErrors.termMonthsError, {
+            max: MAX_TERM_MONTHS,
+          })}
           inputRef={refs.termMonthsInputRef}
         />
       </View>

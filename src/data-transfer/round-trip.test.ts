@@ -1,8 +1,8 @@
 import { utf8ToBytes } from '@noble/ciphers/utils.js';
 
 import { utf8Decode } from './utf8/utf8';
-import type { ExportPayload } from './payload';
 import { generateExportKey } from './crypto/generate-key';
+import type { ExportPayload, ExportSecrets } from './payload';
 import { decryptEnvelope, encryptEnvelope } from './crypto/envelope';
 import { decodeBase64ToBytes, encodeBytesToBase64 } from './base64/base64';
 
@@ -139,7 +139,6 @@ const fixturePayload = (): ExportPayload => ({
     ],
   },
   secrets: {
-    dbKeyHex: 'a'.repeat(64),
     monobankTokens: [{ accountId: 'a1', token: 'mono-token' }],
     binanceCredentials: [],
   },
@@ -185,6 +184,20 @@ describe('data-transfer full-pipeline round trip', () => {
     const roundTripped = JSON.parse(utf8Decode(decryptEnvelope(envelope, key))) as ExportPayload;
 
     expect(roundTripped.tables.settings[0]).not.toHaveProperty('statementMappings');
+  });
+
+  it('round-trips an old export whose secrets block still carries the retired DB key unchanged', () => {
+    const key = generateExportKey();
+    const payload = fixturePayload();
+    const legacyPayload = {
+      ...payload,
+      secrets: { ...(payload.secrets as ExportSecrets), dbKeyHex: 'a'.repeat(64) },
+    } as unknown as ExportPayload;
+
+    const envelope = encryptEnvelope(utf8ToBytes(JSON.stringify(legacyPayload)), key);
+    const roundTripped = JSON.parse(utf8Decode(decryptEnvelope(envelope, key))) as ExportPayload;
+
+    expect(roundTripped).toEqual(legacyPayload);
   });
 
   it('rejects a tampered ciphertext', () => {

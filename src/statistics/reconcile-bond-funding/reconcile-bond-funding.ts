@@ -21,6 +21,20 @@ import type { SeriesHolding, SeriesTransaction } from '../holding-value-at';
  */
 const AMOUNT_TOLERANCE_FRACTION = 0.05;
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How far (in local days, either direction) a candidate funding debit may
+ * sit from the typed `purchaseDate` and still be accepted as that bond's
+ * funding outflow: 7 days. A debit further away than this is nearly always
+ * an UNRELATED spend that happens to land within the amount-tolerance band
+ * by coincidence, not the bond's own funding move — the bank statement's
+ * "Купівля облігацій" row lands within days of the typed date in every
+ * observed case, never weeks. Combined with the amount band above, this is
+ * the second axis that keeps the match specific to the real funding debit.
+ */
+const FUNDING_WINDOW_DAYS = 7;
+
 /** How a bond's held cost should be recognized in the net-worth series. */
 type BondRecognition = {
   /** The local day the bond's held cost should START counting. */
@@ -73,28 +87,42 @@ type BondRecognition = {
  * the SERIES. Coupons, maturity, and the redemption ledger stay keyed off the real
  * `purchaseDate` / `purchasePriceMinorUnits` on the real holding (unchanged) — the
  * series does not compute them from this copy.
+ *
+ * `claimed` is a set of candidate keys (`holdingId:index`, one per transaction
+ * array slot) shared across every bond `buildNetWorthSeries` reconciles in one
+ * run: a candidate already claimed by an earlier bond is filtered out here, and
+ * the winning candidate's own key is added to `claimed` before returning, so
+ * two bonds priced the same week never both claim the SAME debit (the second
+ * one falls back to its own typed day/price instead). Defaults to a fresh,
+ * unshared set for a standalone call (e.g. every test above).
  */
 export const reconcileBondFunding = (
   meta: BondMeta,
   bondCurrency: Currency,
   holdings: SeriesHolding[],
   transactionsByHolding: Map<string, SeriesTransaction[]>,
+  claimed: Set<string> = new Set(),
 ): BondRecognition => {
   const typedDay = startOfLocalDay(meta.purchaseDate);
   const typedPrice = meta.purchasePriceMinorUnits;
   const tolerance = typedPrice * AMOUNT_TOLERANCE_FRACTION;
+  const windowMs = FUNDING_WINDOW_DAYS * DAY_MS;
 
   const candidates = holdings.flatMap((holding) =>
     holding.currency === bondCurrency
       ? (transactionsByHolding.get(holding.id) ?? [])
+          .map((transaction, index) => ({ transaction, key: `${holding.id}:${index}` }))
           .filter(
-            (transaction) =>
+            ({ transaction, key }) =>
               transaction.amountMinorUnits < 0 &&
-              Math.abs(Math.abs(transaction.amountMinorUnits) - typedPrice) <= tolerance,
+              Math.abs(Math.abs(transaction.amountMinorUnits) - typedPrice) <= tolerance &&
+              Math.abs(startOfLocalDay(transaction.time) - typedDay) <= windowMs &&
+              !claimed.has(key),
           )
-          .map((transaction) => ({
+          .map(({ transaction, key }) => ({
             day: startOfLocalDay(transaction.time),
             costMinorUnits: Math.abs(transaction.amountMinorUnits),
+            key,
           }))
       : [],
   );
@@ -121,6 +149,8 @@ export const reconcileBondFunding = (
 
     return amountDelta < 0 ? candidate : chosen;
   });
+
+  claimed.add(best.key);
 
   return { recognitionDay: best.day, recognitionCostMinorUnits: best.costMinorUnits };
 };

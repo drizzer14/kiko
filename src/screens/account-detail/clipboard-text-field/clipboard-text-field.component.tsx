@@ -51,6 +51,7 @@ const ClipboardTextField: FC<ClipboardTextFieldProps> = ({
   placeholder,
   pasteAccessibilityLabel,
   secureTextEntry,
+  error,
 }) => {
   const { theme } = useUnistyles();
 
@@ -62,7 +63,7 @@ const ClipboardTextField: FC<ClipboardTextFieldProps> = ({
 
   return (
     <Box gap={1}>
-      <FieldLabel label={label} />
+      <FieldLabel label={label} invalid={error !== undefined && error !== ''} />
 
       <Box direction="row" gap={3} style={styles.inputRow}>
         <Box style={styles.tokenFieldColumn}>
@@ -74,6 +75,7 @@ const ClipboardTextField: FC<ClipboardTextFieldProps> = ({
             accessibilityLabel={label}
             autoCapitalize="none"
             autoCorrect={false}
+            error={error}
           />
         </Box>
 

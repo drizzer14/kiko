@@ -1,12 +1,20 @@
 import { ratesRepo } from '@kiko/rates/repo';
 import either, { bifold, isLeft } from 'fnts/either';
 
+import {
+  openCurrencies as defaultOpenCurrencies,
+  type OpenCurrencies,
+} from '../open-currencies-gate';
+import {
+  isCrypto,
+  currencyOptions,
+  type Currency,
+  type CryptoCurrency,
+} from '../../currency/currency';
 import type { RateEntry } from '../conversion';
 import { fetchCryptoPrices } from '../coingecko';
 import { fetchNbuFiatRates } from '../nbu-rates';
 import { fetchFiatRates } from '../monobank-rates';
-import type { Currency } from '../../currency/currency';
-import { currencyOptions, isCrypto } from '../../currency/currency';
 
 // Monobank's `/bank/currency` is cached upstream ~5 minutes, so refreshing more
 // often than that only re-fetches identical data.
@@ -35,11 +43,27 @@ export type RefreshDeps = {
    * `fetchFiatRates` has failed every retry — see `refreshRates` below.
    */
   fetchNbuRates?: () => Promise<RateEntry[]>;
-  fetchCryptoPrices?: () => Promise<RateEntry[]>;
+  fetchCryptoPrices?: (currencies: CryptoCurrency[]) => Promise<RateEntry[]>;
   upsertMany?: (rates: StoredRate[]) => Promise<void>;
   now?: () => number;
   lastRefreshAt?: number | null;
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * The data-presence gate (kiko-architecture: app-open/refresh work is
+   * gated on data presence — no request or query for data the user does not
+   * have), shared with `runBackfill` (`history-backfill.ts`) — see
+   * `open-currencies-gate.ts`. Defaults to a real read of `settingsRepo` +
+   * `holdingsRepo`'s one cheap `openCurrenciesQuery`.
+   */
+  openCurrencies?: () => Promise<OpenCurrencies>;
+  /**
+   * Distinct currencies with at least one stored row in `currency_rates` —
+   * the cheap presence check the throttle below reads before honoring the
+   * cache window, so a currently-held currency (crypto or fiat) with NO rate
+   * at all is never left stuck behind another connection's throttle window.
+   * Defaults to a real read of `ratesRepo.presentCurrenciesQuery()`.
+   */
+  presentCurrencies?: () => Promise<Currency[]>;
 };
 
 // Part B: a small, bounded backoff for a FAILED live fetch — two retries, so a
@@ -151,6 +175,53 @@ export const buildPairs = (
   return pairs;
 };
 
+/** The fiat leg, gated on `needsFiat` — `[]` without ever calling `loadFiatWithFallback`. */
+const runFiatLeg = (
+  needsFiat: boolean,
+  loadFiatWithFallback: () => Promise<RateEntry[]>,
+): Promise<RateEntry[]> => (needsFiat ? loadFiatWithFallback() : Promise.resolve([]));
+
+/** The crypto leg, gated on a non-empty held set — `[]` without ever calling `loadCrypto`. */
+const runCryptoLeg = (
+  cryptoCurrencies: CryptoCurrency[],
+  loadCrypto: (currencies: CryptoCurrency[]) => Promise<RateEntry[]>,
+  sleep: (ms: number) => Promise<void>,
+): Promise<RateEntry[]> =>
+  cryptoCurrencies.length > 0
+    ? withRetry(() => loadCrypto(cryptoCurrencies), sleep)
+    : Promise.resolve([]);
+
+/** Every currency with at least one stored row in `currency_rates`, base or quote. */
+const defaultPresentCurrencies = async (): Promise<Currency[]> => {
+  const rows = await ratesRepo.presentCurrenciesQuery();
+  return rows.map((row) => row.currency);
+};
+
+/**
+ * The throttle exists to respect Monobank's own ~5-minute cache window, not
+ * to leave a currently-held currency permanently unrated — a Monobank
+ * connect at t0 writes fiat only, and a Binance connect inside that window
+ * must not have BTC's rate suppressed until the window elapses. Resolves
+ * `true` only when the cache window is active AND every held currency
+ * (crypto or fiat) already has a `currency_rates` row — a real gap (a held
+ * currency with none at all) always skips the throttle.
+ */
+const shouldThrottle = async (
+  at: number,
+  deps: RefreshDeps,
+  nonBaseCurrencies: Currency[] | undefined,
+): Promise<boolean> => {
+  const lastRefreshAt = deps.lastRefreshAt ?? null;
+  const withinWindow = lastRefreshAt !== null && at - lastRefreshAt < FIVE_MINUTES_MS;
+  if (!withinWindow) {
+    return false;
+  }
+  const loadPresentCurrencies = deps.presentCurrencies ?? defaultPresentCurrencies;
+  const present = new Set(await loadPresentCurrencies());
+
+  return (nonBaseCurrencies ?? []).every((currency) => present.has(currency));
+};
+
 /**
  * Fetch fiat and BTC rates, compose all cross pairs the app can convert
  * between, and upsert them. Skips work while the last refresh is still inside
@@ -159,13 +230,26 @@ export const buildPairs = (
 export const refreshRates = async (deps: RefreshDeps = {}): Promise<void> => {
   const now = deps.now ?? Date.now;
   const at = now();
-  const lastRefreshAt = deps.lastRefreshAt ?? null;
-  if (lastRefreshAt !== null && at - lastRefreshAt < FIVE_MINUTES_MS) {
+
+  const openCurrencies = deps.openCurrencies ?? defaultOpenCurrencies;
+  const { needsFiat, cryptoCurrencies, nonBaseCurrencies } = await openCurrencies();
+
+  // kiko-architecture: no request or query for data the user does not have —
+  // nothing open that differs from the base currency, and no crypto held,
+  // means neither leg has anything to fetch this run.
+  if (!needsFiat && cryptoCurrencies.length === 0) {
     return;
   }
+
+  if (await shouldThrottle(at, deps, nonBaseCurrencies)) {
+    return;
+  }
+
   const loadFiat = deps.fetchFiatRates ?? (() => fetchFiatRates());
   const loadNbuFiat = deps.fetchNbuRates ?? (() => fetchNbuFiatRates());
-  const loadCrypto = deps.fetchCryptoPrices ?? (() => fetchCryptoPrices());
+  const loadCrypto =
+    deps.fetchCryptoPrices ??
+    ((currencies: CryptoCurrency[]) => fetchCryptoPrices(fetch, currencies));
   const upsertMany = deps.upsertMany ?? ratesRepo.upsertMany;
   const sleep =
     deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
@@ -197,10 +281,12 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<void> => {
   // or returned a malformed body, left the stale rate table in place, and
   // propagated the rejection through `useSyncAction` — so a fiat import that
   // fully succeeded was reported to the user as a failed sync. Whichever
-  // pipeline survives still contributes its anchors.
+  // pipeline survives still contributes its anchors. Each leg is ALSO gated
+  // individually on `openCurrencies`'s own verdict: a leg with nothing to
+  // convert/hold resolves to `[]` without ever calling its fetch function.
   const [fiatResult, cryptoResult] = await Promise.allSettled([
-    loadFiatWithFallback(),
-    withRetry(loadCrypto, sleep),
+    runFiatLeg(needsFiat, loadFiatWithFallback),
+    runCryptoLeg(cryptoCurrencies, loadCrypto, sleep),
   ]);
   const fiat = fiatResult.status === 'fulfilled' ? fiatResult.value : [];
   const crypto = cryptoResult.status === 'fulfilled' ? cryptoResult.value : [];

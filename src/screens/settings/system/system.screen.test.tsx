@@ -24,11 +24,6 @@ const renderScreen = () =>
     />,
   );
 
-// APP_LOCK_ENABLED pinned ON so the Face ID (App Lock) card mounts — matching
-// the app-lock test setup relocated from the main Settings screen. The
-// flag-off / card-hidden path is covered in system.screen.app-lock.test.tsx.
-jest.mock('../../../db/db-config', () => ({ APP_LOCK_ENABLED: true }));
-
 const mockSetLanguage = jest.fn();
 const mockSetLockEnabled = jest.fn();
 let mockLiveQueryData: Array<{
@@ -72,7 +67,7 @@ describe('SystemScreen', () => {
     expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
   });
 
-  it('renders the Face ID (App Lock) card while APP_LOCK_ENABLED is on', async () => {
+  it('renders the Face ID (App Lock) card', async () => {
     const { getByTestId } = await renderScreen();
     expect(getByTestId('settings-card-app-lock')).toBeTruthy();
   });

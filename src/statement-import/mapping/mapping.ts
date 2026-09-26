@@ -22,11 +22,40 @@ type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 't
     >
   >;
 
+// U+241F (SYMBOL FOR UNIT SEPARATOR) joins `base` to its occurrence suffix —
+// a character that can never appear in a real, normalized description,
+// unlike the plain space the key used before. `normalizeTransactionName` is
+// JS-only (never in SQL), so SQL alone cannot tell an occurrence suffix from
+// a description that itself ends in a digit; a plain-space join made
+// occurrence 1 of "Top up" collide with occurrence 0 of "Top up 1" (review
+// :2321) — both produced the literal string "... top up 1". The upgrade
+// path for a key an old build already wrote lives in `upgrade-dedup-key.ts`.
+const DEDUP_OCCURRENCE_SEPARATOR = '␟';
+
 /**
- * Deterministic, order-stable dedup key for a row with no bank-issued id —
- * see `docs/plans/statement-import.md` section D for the full algorithm and
- * its accepted limitation. Every format studied for this plan needs this:
- * NONE carries a unique per-row id.
+ * The (holding, time, amount, normalized-description) part of a dedup key,
+ * shared by `computeDedupKey` below and `upgradeLegacyDedupKey`
+ * (`upgrade-dedup-key.ts`), which recomputes the identical value from a
+ * STORED row rather than a freshly parsed one.
+ */
+export const computeDedupKeyBase = (
+  holdingId: string,
+  timeSeconds: number,
+  amountMinorUnits: number,
+  description: string,
+): string =>
+  [
+    holdingId,
+    String(timeSeconds),
+    String(amountMinorUnits),
+    normalizeTransactionName(description),
+  ].join(' ');
+
+/**
+ * Deterministic, order-stable, INJECTIVE dedup key for a row with no
+ * bank-issued id — see `docs/plans/statement-import.md` section D for the
+ * full algorithm and its accepted limitation. Every format studied for this
+ * plan needs this: NONE carries a unique per-row id.
  *
  * `occurrenceIndex` is the Nth time this exact (holding, time, amount,
  * normalized-description) tuple has been seen so far in this parse — `0` is
@@ -37,15 +66,14 @@ export const computeDedupKey = (
   transaction: ParsedTransaction,
   occurrenceIndex: number,
 ): string => {
-  const normalizedDescription = normalizeTransactionName(transaction.description);
-  const base = [
+  const base = computeDedupKeyBase(
     holdingId,
-    String(transaction.timeSeconds),
-    String(transaction.amountMinorUnits),
-    normalizedDescription,
-  ].join(' ');
+    transaction.timeSeconds,
+    transaction.amountMinorUnits,
+    transaction.description,
+  );
 
-  return occurrenceIndex === 0 ? base : `${base} ${occurrenceIndex}`;
+  return occurrenceIndex === 0 ? base : `${base}${DEDUP_OCCURRENCE_SEPARATOR}${occurrenceIndex}`;
 };
 
 export const mapParsedTransaction = (

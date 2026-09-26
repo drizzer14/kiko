@@ -10,7 +10,6 @@ jest.mock('@kiko/holdings/repo', () => ({
       __kind: 'holdings-by-account',
       toSQL: () => ({ sql: '', params: [accountId] }),
     }),
-    allQuery: () => ({ __kind: 'holdings-all', toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
@@ -51,49 +50,6 @@ describe('useTargetHoldingOptions', () => {
         name: 'Black card',
         accountId: 'a',
         accountName: 'Monobank',
-        icon: CARD_ICON,
-        color: CARD_COLOR,
-      },
-    ]);
-  });
-
-  it('lists every holding, across accounts, when accountId is undefined', async () => {
-    mockUseLiveQuery.mockImplementation((query: { __kind?: string }) => {
-      if (query.__kind === 'holdings-all') {
-        return {
-          data: [
-            { id: 'h1', name: 'Black card', accountId: 'a', type: 'card' },
-            { id: 'h2', name: 'Cold storage', accountId: 'b', type: 'card' },
-          ],
-          isLoading: false,
-        };
-      }
-
-      return {
-        data: [
-          { id: 'a', name: 'Monobank' },
-          { id: 'b', name: 'Ledger' },
-        ],
-        isLoading: false,
-      };
-    });
-
-    const { result } = await renderHook(() => useTargetHoldingOptions(undefined));
-
-    expect(result.current.options).toEqual([
-      {
-        id: 'h1',
-        name: 'Black card',
-        accountId: 'a',
-        accountName: 'Monobank',
-        icon: CARD_ICON,
-        color: CARD_COLOR,
-      },
-      {
-        id: 'h2',
-        name: 'Cold storage',
-        accountId: 'b',
-        accountName: 'Ledger',
         icon: CARD_ICON,
         color: CARD_COLOR,
       },

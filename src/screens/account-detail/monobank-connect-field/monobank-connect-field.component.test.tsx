@@ -28,12 +28,30 @@ const pressConnect = async (view: View): Promise<void> => {
   });
 };
 
-it('disables Connect until a non-blank token is entered, then enables it', async () => {
+it('shows the token-required error and calls no network when Connect is pressed blank', async () => {
+  const onConnect = jest.fn();
+  const view = await render(<MonobankConnectField onConnect={onConnect} />);
+  expect(view.getByRole('button', { name: connectLabel })).not.toBeDisabled();
+
+  await pressConnect(view);
+
+  await waitFor(() =>
+    expect(view.getByText(i18n.t('accountDetail.tokenRequiredError'))).toBeTruthy(),
+  );
+  expect(mockFetchClientInfo).not.toHaveBeenCalled();
+  expect(onConnect).not.toHaveBeenCalled();
+});
+
+it('clears the token-required error once a token is typed', async () => {
   const view = await render(<MonobankConnectField onConnect={jest.fn()} />);
-  expect(view.getByRole('button', { name: connectLabel })).toBeDisabled();
+
+  await pressConnect(view);
+  await waitFor(() =>
+    expect(view.getByText(i18n.t('accountDetail.tokenRequiredError'))).toBeTruthy(),
+  );
 
   await type(view, 'tok-123');
-  expect(view.getByRole('button', { name: connectLabel })).not.toBeDisabled();
+  expect(view.queryByText(i18n.t('accountDetail.tokenRequiredError'))).toBeNull();
 });
 
 it('gives the Connect action a lock glyph', async () => {

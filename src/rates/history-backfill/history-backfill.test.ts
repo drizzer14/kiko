@@ -187,6 +187,16 @@ describe('runBackfill', () => {
       upsertMany: async (rows: StoredRow[]) => {
         captured.push(rows);
       },
+      // The data-presence gate (kiko-architecture): every existing test below
+      // exercises a run that DOES need both legs, so the default reports both
+      // as needed; the "data-presence gate" describe block overrides this to
+      // exercise the skip paths.
+      openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC'] }),
+      // Every existing test below models a world where USD/EUR/BTC have
+      // already been backfilled together up to `lastBackfilledDay` — the
+      // "a newly-held currency" describe block overrides this to exercise the
+      // per-currency gap the default here would otherwise mask.
+      presentCurrencies: ['USD', 'EUR', 'BTC'],
       ...overrides,
     };
     return { deps, captured, nbuCalls, btcCalls };
@@ -312,5 +322,176 @@ describe('runBackfill', () => {
       [day(0), day(0)],
       [day(0), day(0)],
     ]);
+  });
+});
+
+// A regression on the global resume cursor: it is one max(day) across ALL
+// stored pairs, so once it reaches `today` (from whatever was held before), a
+// currency that becomes newly held afterward — a coin nobody held during that
+// earlier run, or the first foreign holding for a base-currency-only user —
+// has NO stored row of its own at all, yet the day-based gate alone would
+// still report the whole run "nothing missing" and skip it forever.
+describe('runBackfill — a newly-held currency with no stored history yet', () => {
+  const nbu: HistoryRateEntry[] = [
+    { base: 'USD', quote: 'UAH', day: day(0), rate: 40, source: 'nbu' },
+    { base: 'EUR', quote: 'UAH', day: day(0), rate: 43, source: 'nbu' },
+  ];
+  const crypto: HistoryRateEntry[] = [
+    { base: 'BTC', quote: 'USD', day: day(0), rate: 65_000, source: 'coingecko' },
+    { base: 'ETH', quote: 'USD', day: day(0), rate: 3_500, source: 'coingecko' },
+  ];
+
+  it('still backfills a coin held now but absent from the already-fully-backfilled history', async () => {
+    const nbuCalls: [number, number][] = [];
+    const captured: StoredRow[][] = [];
+    // The global cursor already sits at `today` (BTC's own prior run reached
+    // it), but ETH itself was never held before and has no stored row.
+    const deps: BackfillDeps = {
+      earliestDay: day(0),
+      lastBackfilledDay: day(2),
+      today: day(2),
+      fetchNbuHistory: async (start, end) => {
+        nbuCalls.push([start, end]);
+        return nbu;
+      },
+      fetchCryptoHistory: async () => crypto,
+      upsertMany: async (rows: StoredRow[]) => {
+        captured.push(rows);
+      },
+      openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC', 'ETH'] }),
+      presentCurrencies: ['USD', 'EUR', 'BTC'],
+    };
+
+    const status = await runBackfill(deps);
+
+    expect(nbuCalls).toEqual([[day(0), day(2)]]);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].some((row) => row.base === 'ETH' || row.quote === 'ETH')).toBe(true);
+    expect(status).toEqual({ state: 'complete', lastDay: day(2) });
+  });
+
+  it('still backfills fiat conversion needed for the first time after the cursor already reached today', async () => {
+    // The symmetric fiat gap: the global cursor sits at `today` (from some
+    // OTHER now-removed currency's earlier run), but no fiat anchor has ever
+    // been stored, and a holding now needs fiat conversion for the first time.
+    const nbuCalls: [number, number][] = [];
+    const captured: StoredRow[][] = [];
+    const deps: BackfillDeps = {
+      earliestDay: day(0),
+      lastBackfilledDay: day(2),
+      today: day(2),
+      fetchNbuHistory: async (start, end) => {
+        nbuCalls.push([start, end]);
+        return nbu;
+      },
+      fetchCryptoHistory: async () => [],
+      upsertMany: async (rows: StoredRow[]) => {
+        captured.push(rows);
+      },
+      openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: [] }),
+      presentCurrencies: [],
+    };
+
+    const status = await runBackfill(deps);
+
+    expect(nbuCalls).toEqual([[day(0), day(2)]]);
+    expect(captured).toHaveLength(1);
+    expect(status).toEqual({ state: 'complete', lastDay: day(2) });
+  });
+});
+
+// kiko-architecture: app-open and refresh work is gated on data presence —
+// no request or query for data the user does not have. `openCurrencies`
+// (shared with `refreshRates`) reports whether any active holding's
+// currency differs from the base (needsFiat) and which crypto currencies
+// are held; each leg fetches only when its own gate says so.
+describe('runBackfill — the data-presence gate', () => {
+  const nbu: HistoryRateEntry[] = [
+    { base: 'USD', quote: 'UAH', day: day(0), rate: 40, source: 'nbu' },
+  ];
+  const btc: HistoryRateEntry[] = [
+    { base: 'BTC', quote: 'USD', day: day(0), rate: 65_000, source: 'coingecko' },
+  ];
+
+  const makeDeps = (overrides: Partial<BackfillDeps> = {}): BackfillDeps => ({
+    earliestDay: day(0),
+    lastBackfilledDay: null,
+    today: day(0),
+    fetchNbuHistory: async () => nbu,
+    fetchCryptoHistory: async () => btc,
+    upsertMany: async () => {},
+    ...overrides,
+  });
+
+  it('fetches and writes nothing when nothing needs converting and no crypto is held', async () => {
+    let nbuCalled = false;
+    let cryptoCalled = false;
+    const captured: StoredRow[][] = [];
+    const deps = makeDeps({
+      fetchNbuHistory: async () => {
+        nbuCalled = true;
+        return nbu;
+      },
+      fetchCryptoHistory: async () => {
+        cryptoCalled = true;
+        return btc;
+      },
+      upsertMany: async (rows: StoredRow[]) => {
+        captured.push(rows);
+      },
+      openCurrencies: async () => ({ needsFiat: false, cryptoCurrencies: [] }),
+    });
+
+    const status = await runBackfill(deps);
+
+    expect(nbuCalled).toBe(false);
+    expect(cryptoCalled).toBe(false);
+    expect(captured).toHaveLength(0);
+    expect(status).toEqual({ state: 'complete', lastDay: null });
+  });
+
+  it('fetches only NBU when nothing crypto is held', async () => {
+    let cryptoCalled = false;
+    const deps = makeDeps({
+      fetchCryptoHistory: async () => {
+        cryptoCalled = true;
+        return btc;
+      },
+      openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: [] }),
+    });
+
+    await runBackfill(deps);
+
+    expect(cryptoCalled).toBe(false);
+  });
+
+  it('fetches only CoinGecko when every held currency already matches the base', async () => {
+    let nbuCalled = false;
+    const deps = makeDeps({
+      fetchNbuHistory: async () => {
+        nbuCalled = true;
+        return nbu;
+      },
+      openCurrencies: async () => ({ needsFiat: false, cryptoCurrencies: ['BTC'] }),
+    });
+
+    await runBackfill(deps);
+
+    expect(nbuCalled).toBe(false);
+  });
+
+  it('passes only the held crypto currencies to fetchCryptoHistory, never the full supported set', async () => {
+    let receivedCurrencies: string[] = [];
+    const deps = makeDeps({
+      fetchCryptoHistory: async (_days, currencies) => {
+        receivedCurrencies = currencies ?? [];
+        return btc;
+      },
+      openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC'] }),
+    });
+
+    await runBackfill(deps);
+
+    expect(receivedCurrencies).toEqual(['BTC']);
   });
 });

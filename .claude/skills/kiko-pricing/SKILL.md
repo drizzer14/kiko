@@ -164,60 +164,51 @@ review I1, fixed `9cf5791`→`6901d27`) — read
 
 ## Priced holdings
 
-A **priced holding type** (`isPricedHoldingType` —
-`src/holdings/priced-value/`; `property_item` and `metal` are members
-today, more land later — a type is priced when its own descriptor's
-`priced` spec is non-null; read the flag-table test in
-`holding-descriptors.test.ts` rather than trusting a member list
-restated here) is valued through the `PriceBook`, not through an
-interest engine or its raw stored balance. `quantityAt(lots, instant)`
-and `costBasisMinorAt(lots, instant)` (`src/holdings/lots/`) read the
-holding's `metadata.lots` array — one entry per buy/sell, `{ day,
-quantityDelta, costMinorUnits }` — to derive the quantity and cost
-basis held as of an instant; `quantityAt` never returns below `"0"`.
-`pricedValue(holding, book, instant)` (`src/holdings/priced-value/`)
-reads the holding's own descriptor off the registry
-(`holdingDescriptorOrUndefined`, `src/holdings/holding-descriptor/`) and
-dispatches to its `priced` spec (`src/holdings/holding-descriptor/property-item/`,
-`.../metal/`) through `pricedValueOrNull`
-(`src/holdings/holding-descriptor/priced-parts/`), which runs NO id guard
-of its own — whether a missing `id` matters is per-spec. Each spec's
-`value` returns a `Money`, not a bare number, in the spec's OWN
-currency — not necessarily `holding.currency`:
+A **priced holding type** — `property_item` and `metal` are members
+today, more land later — is one whose own descriptor's `priced` spec
+is non-null; read the flag-table test in `holding-descriptors.test.ts`
+rather than trusting a member list restated here. It is valued through
+the `PriceBook`, not through an interest engine or its raw stored
+balance. `quantityAt(lots, instant)` and `costBasisMinorAt(lots,
+instant)` (`src/holdings/lots/`) read the holding's `metadata.lots`
+array — one entry per buy/sell, `{ day, quantityDelta, costMinorUnits
+}` — to derive the quantity and cost basis held as of an instant;
+`quantityAt` never returns below `"0"`. Each priced type's own
+descriptor (`src/holdings/holding-descriptor/property-item/`,
+`.../metal/`) is built through `pricedDescriptor`
+(`src/holdings/holding-descriptor/priced-parts/`), which wires the
+type's own `priced` spec to its `breakdown`. `PricedHolding`
+(`src/holdings/priced-value/`) always carries an `id` — every real
+caller already has a full row (see "`id` is required on the value
+read types" below) — but only `property_item`'s `value` reads it;
+`metal`'s reads a SHARED instrument and never touches `holding.id` at
+all. Each spec's `value` returns a `Money`, not a bare number, in the
+spec's OWN currency — not necessarily `holding.currency`:
 
 - `property_item` multiplies `quantityAt(...)` by the price point for
   the holding's OWN `holding:<id>` instrument (`multiplyToMinorUnits`,
   the BigInt-backed decimal helper in `src/currency/decimal/` — never
   a float multiply), returned as Money in the HOLDING's currency (a
   per-holding manual revaluation, always entered in that currency).
-  Its OWN `value` guards a missing `id` first (returns `null`) — it
-  cannot resolve a per-holding instrument key without one.
 - `metal` multiplies `quantityAt(...)` by `purity` by the price point
   for the metal's SHARED `metal:<XAU|XAG|XPT|XPD>` instrument — NOT a
   per-holding instrument; every holding of the same metal reads the
-  same NBU points, so `metal`'s `value` needs no `id` at all and
-  prices an id-less holding exactly the same as an identified one.
-  `unit === 'g'` additionally divides by 31.1034768 (one troy ounce in
-  grams — NBU quotes precious metals per troy ounce). The returned
-  Money carries the PRICE POINT ROW's own stored `currency` (always
-  UAH in practice — NBU quotes precious metals only in UAH), NOT
-  `holding.currency`; the two can disagree for an invalid/restore-only
+  same NBU points, so `metal`'s `value` never reads `holding.id` at
+  all. `unit === 'g'` additionally divides by 31.1034768 (one troy
+  ounce in grams — NBU quotes precious metals per troy ounce). The
+  returned Money carries the PRICE POINT ROW's own stored `currency`
+  (always UAH in practice — NBU quotes precious metals only in UAH),
+  NOT `holding.currency`; the two can disagree for an invalid/restore-only
   row, and `pricedBreakdown` below is the one place that decides
   whether such a mismatch is safe to surface.
 
 Either descriptor's `value` returns `null` when the holding has no
-`lots`/metal metadata or no stored price point yet; only
-`property_item`'s also returns `null` for a missing `id`. A `loan`
-holding (not priced, `priced: null`) reads its own `holding:<id>`
-manual-correction series the same "id matters" way `property_item`
-does — `loan.descriptor.ts`'s `loanBreakdown` reads the id through
-`foldMap(maybe(holding.id), ...)`, falling back to
-`loanOutstandingMinorAt(meta, '', EMPTY_PRICE_BOOK, now)` (never a
-lookup on the real `book` under an empty/fabricated id) when there is
-none — an empty book, not the bare principal, so the pre-`startDate`
-guard, the amortization schedule and `'none'`'s own "no correction
-found" baseline all still apply to an id-less loan exactly as they do
-for an identified one with no correction found.
+`lots`/metal metadata or no stored price point yet. A `loan` holding
+(not priced, `priced: null`) reads its own `holding:<id>`
+manual-correction series the same way `property_item` does —
+`loan.descriptor.ts`'s `loanBreakdown` calls
+`loanOutstandingMinorAt(meta, holding.id, book, now)` directly, since
+`ValuableHolding` guarantees an `id` too.
 
 **A priced holding with no price point — or an invalid one — values at
 its lots' cost basis, never 0** — `pricedDescriptor(spec, rest)`
@@ -240,9 +231,15 @@ never silently mis-parses into the flat stored balance. For a priced
 type,
 `gross = net =` the resolved value and `principalOrCost` is ALWAYS the
 cost basis (even when gross also equals the cost basis on the
-no-price-point path) — the holding-detail breakdown needs cost basis
-available separately to show a live gain/loss. `interest`/`tax` are
-always zero: a priced holding never accrues interest or withholds tax.
+no-price-point path) — cost basis is kept separate from the resolved
+value for exactly this reason: `property_item`/`metal`'s own
+`holdingDetailSpecs` entry (`holding-detail-spec/`) is `{ kind: 'priced' }`,
+which `holding-detail.screen.tsx`'s `pricedBreakdownRows` renders as
+Cost / Value / Gain (`gross.subtract(principalOrCost)`, MoneyText's own
+sign-based tone — never a hardcoded green) — no interest/tax row, since
+`interest`/`tax` are always zero: a priced holding never accrues
+interest or withholds tax, so those rows would only ever read a
+misleading zero.
 
 **A priced holding writes no ledger (`Transaction`) rows for its
 revaluations.** Its lots array is the only source of quantity/cost-basis
@@ -264,16 +261,14 @@ ledger reconstruction.
 (`src/statistics/type-breakdown/`), and `ContributionHolding`
 (`src/statistics/account-contribution/`) all include `id` as a plain
 required member of their `Pick<HoldingRow, ...>` — every real caller
-already has a full row. `property_item`'s own `value` no longer guards
-a missing `id` (that branch was dead once the type required one); a
-test that needs to exercise an id-less object at runtime (never a real
-stored row) builds it and casts it back to the read type, rather than
-widening the type back to optional — see the loan case next.
-`loan.descriptor.ts`'s `loanBreakdown` is the one place that still
-reads `holding.id` defensively (`foldMap(maybe(...))`) despite the
-type now guaranteeing it, precisely because a value built from a
-source looser than a real `HoldingRow` can still omit it at runtime;
-that guard stays.
+already has a full row. Neither `property_item`'s nor `loan`'s own
+value reader guards a missing `id` any longer (both branches were dead
+once the type required one) — `loan.descriptor.ts`'s `loanBreakdown`
+calls `loanOutstandingMinorAt(meta, holding.id, book, now)` directly. A
+test that needs to exercise a runtime shape looser than a real
+`HoldingRow` (never a real stored row) builds an id-less object and
+casts it back to the read type, rather than widening the type back to
+optional.
 
 ## Recording a lot: LotForm and the sell cost rule
 
@@ -337,23 +332,25 @@ prices — current and history (T19)" below), never a per-holding one.
 its entered cost. See that hook's own comment on the metal CREATE
 payload for the current rationale.
 
-`priceAsOfCaption` (`src/prices/price-as-of-caption/`) reads its
-"Value as of" / "Price as of" wording off the holding's own
-descriptor: `captionInstrument` resolves the series to read the
-latest point from, and `captionKey` picks the wording. `metal`'s spec
-sets `captionInstrument` to the SHARED `metal:<XAU|...>` series and
-`captionKey` to `holdingDetail.priceAsOf` (distinct from the generic
-`holdingDetail.valueAsOf` every other priced holding type uses), since
-it is showing the metal's shared market price, not a holding-specific
-value.
+**No "price as of" / "value as of" caption anywhere (user decision).** A priced holding's card and detail screen show only
+its computed value, never a caption naming the date of the underlying
+price point — this was removed from the holding card, the holding
+detail Value header, and `property_item`'s (which has no feed — a
+user-entered price) descriptor alike; `PricedSpec` carries no
+`captionInstrument`/`captionKey` any longer. Behavior instead: each
+refresh fetches today's price/rate for the held set only (see
+kiko-architecture's gate rule); if today's value cannot be fetched,
+the newest known value is used silently, with no caption surfacing
+how stale it is, and the next refresh tries again.
 
 ## `PricePointForm` — "Update value"
 
 `src/screens/forms/price-point-form/price-point-form.screen.tsx`,
 reached from `holding-detail.screen.tsx`'s `updateValue` footer action
-(gated by `isPricedHoldingType`/`isLedgerlessHoldingType` — a priced
-holding takes neither the `contribution` nor `transaction` footer
-action, an entirely separate branch), writes a new `manual` price
+(`property_item`/`metal`'s own `holdingDetailSpecs` entry,
+`holding-detail-spec/` — a priced holding takes neither the
+`contribution` nor `transaction` footer action, an entirely separate
+branch), writes a new `manual` price
 point through `pricePointsRepo.upsertMany` directly on the holding's
 own `holding:<id>` instrument — it does not go through
 `holdingsRepo`. It mirrors `contribution-form`'s shape: a grouped-
@@ -441,26 +438,38 @@ starts a SECOND fan-out (caught in review, not a shipped production bug).
 before by the same catch-all `either` — only the release TIMING
 changes, not which failures are silent.
 It refreshes ONLY currently held metals — scanned from every `metal`
-holding's `asMetalMeta(...).metal`, never a metal nobody owns — at
-most once per LOCAL day per metal, resolved by comparing
-`dayKeyOf(now())` against the latest stored `metal:<X>`
-`price_points.day`. This is already write-minimal, verified by test
-rather than changed: **zero network calls and zero writes** when there
-are no held metal holdings at all (the `earliestDays.size === 0` early
-return, before either fetch function is ever referenced) and equally
-when every held metal already has today's point stored (`planRefresh`
-drops it from both the `backfill` and `current` work lists). A metal
-with no stored point yet is backfilled in ONE `fetchNbuMetalHistory`
-call spanning its earliest lot day (the minimum `day` across that
-metal's holdings' `metadata.lots`) through today; an already-priced
-metal instead takes a single SHARED `fetchNbuMetalsCurrent` call for
-just today's point, regardless of how many metals need it that run.
-Every row is accumulated in memory first and written through exactly
-ONE final `pricePointsRepo.upsertMany` call — a fetch failure for any
-held metal rejects before that call is ever reached, so a failed run
-writes NOTHING (never a partial write), matching the "fails closed"
-convention `kiko-pricing`'s "Refresh throttles" section already
-documents for rates.
+holding's `asMetalMeta(...).metal`, never a metal nobody owns, and
+INCLUDING a closed holding's own lots (the history chart still needs
+its pre-close prices, so `listHoldings`' default, `holdingsRepo.allQuery()`,
+is never filtered down to open holdings only here) — at most once per
+LOCAL day per metal for the ordinary one-day-forward case, resolved by
+comparing `dayKeyOf(now())` against the stored `metal:<X>`
+`price_points.day` range. This is already write-minimal, verified by
+test rather than changed: **zero network calls and zero writes** when
+there are no held metal holdings at all (the `earliestDays.size === 0`
+early return, before either fetch function is ever referenced) and
+equally when every held metal already fully covers its earliest lot
+through today (`planRefresh` drops it from both the `backfill` and
+`current` work lists). `planRefresh` mirrors `history-backfill.ts`'s
+`missingDays` idea: a metal is backfilled via ONE `fetchNbuMetalHistory`
+range call per missing span whenever it has never been priced at all, a
+lot is added dated BEFORE its earliest stored point (the range from
+that lot's day through the day before the first stored day), or more
+than one day is missing since its last stored point (the whole gap in
+one range call, not just today) — the earlier-lot check runs
+UNCONDITIONALLY, never short-circuited by the "already refreshed today"
+guard, since that guard covers only the forward gap and a stale earlier
+gap must still fill in even once today's point is stored. Only a metal
+that already covers back to its earliest lot AND is short exactly one
+day (yesterday's point is the newest stored) takes the cheap path: a
+single SHARED `fetchNbuMetalsCurrent` call for just today's point,
+regardless of how many metals need it that run. Every row is
+accumulated in memory first and written through exactly ONE final
+`pricePointsRepo.upsertMany` call — a fetch failure for any held metal
+rejects before that call is ever reached, so a failed run writes
+NOTHING (never a partial write), matching the "fails closed" convention
+`kiko-pricing`'s "Refresh throttles" section already documents for
+rates.
 
 ## Later (not built yet — do not invent detail)
 

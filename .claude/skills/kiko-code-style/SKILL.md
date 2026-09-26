@@ -907,12 +907,17 @@ inferred type at all.
 A hardcoded config value — including a plain public URL, not just a
 secret — belongs in `.env`, loaded through `react-native-dotenv`'s
 `@env` module with a typed `@env` declaration, not inlined as a
-string literal at its call site. Commit `.env` itself when its values
-are genuinely public (not secret): that way Jest and CI resolve
-`@env` with no mock setup required. Gitignore only `.env.local` for
-anything that must stay private. A dependency this introduces (for
-example an unused-looking `.env` import under knip or depcheck) gets
-documented as an ignore entry in the root `CLAUDE.md`, per that file's
+string literal at its call site. `.env` itself is gitignored (never
+committed, even though its values are genuinely public, not secret);
+`.env.example` (the template) and `.env.test` (Jest's hermetic
+default, via `jest.config.js`'s `ENVFILE`) are the tracked, public-only
+files, so Jest and CI resolve `@env` with no mock setup required. The
+`postinstall` step (`scripts/ensure-env.js`) copies `.env.example` to
+a missing `.env`, and appends any key `.env.example` has gained that
+an existing `.env` still lacks — an existing value is never
+overwritten. A dependency this introduces (for example an
+unused-looking `.env` import under knip or depcheck) gets documented
+as an ignore entry in the root `CLAUDE.md`, per that file's
 "Documented exceptions" convention — not silently suppressed.
 
 ## Testing a native/ESM dependency

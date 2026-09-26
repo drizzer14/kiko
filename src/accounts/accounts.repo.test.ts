@@ -11,6 +11,7 @@ jest.mock('../db/client', () => {
   };
 });
 
+import { Money } from '@kiko/currency/money';
 import { captureSetDatabaseTransaction } from '@kiko/db/capture-set-tx';
 import { renderCondition } from '@kiko/db/render-condition-test-helper';
 import { inArrayClauseFromCondition } from '@kiko/db/in-array-clause-test-helper';
@@ -318,7 +319,7 @@ describe('accountsRepo', () => {
     await accountsRepo.createCashAccount({
       name: 'Wallet',
       currency: 'EUR',
-      initialBalanceMinorUnits: 25050,
+      initialBalance: Money.of('EUR', 25050),
       color: '#BDB76B',
     });
 
@@ -333,7 +334,7 @@ describe('accountsRepo', () => {
     await accountsRepo.createCashAccount({
       name: 'Wallet',
       currency: 'EUR',
-      initialBalanceMinorUnits: 1000,
+      initialBalance: Money.of('EUR', 1000),
     });
 
     expect(inserts[0]).toMatchObject({ kind: 'cash', sortOrder: 3 });
@@ -346,7 +347,7 @@ describe('accountsRepo', () => {
     await accountsRepo.createCashAccount({
       name: 'Wallet',
       currency: 'EUR',
-      initialBalanceMinorUnits: 25050,
+      initialBalance: Money.of('EUR', 25050),
     });
 
     // Account, holding, and the holding's opening ledger row — one transaction.
@@ -374,7 +375,7 @@ describe('accountsRepo', () => {
     await accountsRepo.createCashAccount({
       name: 'Wallet',
       currency: 'UAH',
-      initialBalanceMinorUnits: 250_00,
+      initialBalance: Money.of('UAH', 250_00),
     });
 
     // The initial balance is a manual adjustment like any other: without its own
@@ -409,12 +410,25 @@ describe('accountsRepo', () => {
     await accountsRepo.createCashAccount({
       name: 'Wallet',
       currency: 'UAH',
-      initialBalanceMinorUnits: 0,
+      initialBalance: Money.of('UAH', 0),
     });
 
     expect(inserts).toHaveLength(2);
     expect(insertTables).toEqual(['accounts', 'holdings']);
     expect(inserts[1].balanceSetAt).toBeNull();
+  });
+
+  it('createCashAccount throws when the initial balance currency does not match the account currency', async () => {
+    const { databaseTransaction } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await expect(
+      accountsRepo.createCashAccount({
+        name: 'Wallet',
+        currency: 'UAH',
+        initialBalance: Money.of('USD', 100_00),
+      }),
+    ).rejects.toThrow(/currency/);
   });
 });
 

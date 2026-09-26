@@ -224,7 +224,9 @@ export const en = {
       editTitle: 'Edit Account',
       importOnlyBankHint: 'You can import a statement for this bank after saving.',
       initialValue: 'Initial value',
+      initialValueNegativeError: 'Initial value must be 0 or greater.',
       initialValuePlaceholder: '1000.00',
+      initialValueRequiredError: 'Enter an initial value.',
       kind: 'Kind',
       // The account-kind SelectField's placeholder — unreachable today (an
       // account's kind is always a concrete value, never `null`), kept for
@@ -270,16 +272,6 @@ export const en = {
       bond: 'Bond',
       bondKind: 'Bond kind',
       card: 'Card',
-      category: 'Category',
-      // The property-category select field's placeholder — unreachable
-      // today (the field always starts with a concrete default category),
-      // kept for the `SelectField` contract's `selected: null` case, same as
-      // every other select field's placeholder.
-      categoryPlaceholder: 'Select a category',
-      // The property-category SelectField's sheet header — Title Case, a
-      // distinct string from the sentence-case field label (`category`
-      // above), the sheet-title UI role.
-      categorySheetTitle: 'Select a Category',
       compounding: 'Compounding',
       contributionAmount: 'Contribution {{index}} amount',
       contributionDate: 'Contribution {{index}} date',
@@ -406,6 +398,7 @@ export const en = {
       switchToManual: 'Switch to manual',
       termMonths: 'Term (months)',
       termMonthsError: 'Enter a whole number of months greater than 0.',
+      termMonthsMaxError: 'Enter a whole number of months from 1 to {{max}}.',
       termMonthsPlaceholder: '12',
       terms: 'Terms',
       type: 'Type',
@@ -506,19 +499,20 @@ export const en = {
     debtsSection: 'Debts',
     emptyState: 'No accounts yet',
     icon: '{{name}} icon',
+    // The accounts list's own "Property" section heading, above the
+    // property accounts' own drag-and-drop grid — mirrors `debtsSection`.
+    propertySection: 'Property',
     title: 'Accounts',
   },
   // The "add a bank" catalog copy (src/bank-sync/provider-catalog/): one
-  // about/dataProvided/eligibility triple per native provider, shown on the
-  // picker before any credential is entered. Guideline 5.6 remediation:
-  // PrivatBank, bunq, and Starling entries were removed — Monobank is the
-  // sole shipped provider.
+  // about/eligibility pair per native provider, shown on the picker before
+  // any credential is entered. Guideline 5.6 remediation: PrivatBank, bunq,
+  // and Starling entries were removed — Monobank is the sole shipped
+  // provider.
   addBank: {
     monobank: {
       about:
         'Monobank is a Ukrainian mobile-only bank. Kiko connects with a personal API token you generate in the Monobank app.',
-      dataProvided:
-        'Balances, jars, and transaction history, refreshed automatically and on pull-to-refresh. Read-only — Kiko cannot move money.',
       eligibility: 'Works with any personal Monobank account. No business or FOP account needed.',
     },
   },
@@ -531,6 +525,7 @@ export const en = {
     addHolding: 'Add holding',
     addressLabel: 'Address',
     apiKeyLabel: 'API key',
+    apiKeyRequiredError: 'Enter the API key.',
     apiSecretLabel: 'API secret',
     balanceLabel: 'Balance',
     binance: 'Binance',
@@ -593,14 +588,17 @@ export const en = {
     pasteApiKey: 'Paste API key from clipboard',
     pasteApiSecret: 'Paste API secret from clipboard',
     pasteFromClipboard: 'Paste from clipboard',
+    secretRequiredError: 'Enter the secret key.',
     sourceLabel: 'Source',
     synchronization: 'Synchronization',
     syncing: 'Syncing…',
     syncNow: 'Sync',
     tokenLabel: 'Token',
+    tokenRequiredError: 'Enter your Monobank token.',
     tryAgainMessage: 'Please try again.',
     unsupportedCurrencyCode: 'Unsupported Monobank currency code: {{code}}.',
     wallet: 'Wallet',
+    walletAddressRequiredError: 'Enter a wallet address.',
     walletConnected: 'Wallet connected',
   },
   holdingDetail: {
@@ -618,6 +616,10 @@ export const en = {
     // "Transactions" heading with nothing below it.
     emptyTransactions: 'No transactions',
     expectedProfit: 'Expected profit',
+    // A priced type's (property, metal) breakdown gain row: gross value minus
+    // cost basis. Reads green for a gain, red for a loss (MoneyText's own
+    // sign-based tone, no explicit override — see `pricedBreakdownRows`).
+    gain: 'Gain',
     grossValue: 'Gross value',
     incomeTax: 'Income tax {{pct}}%',
     interest: 'Interest',
@@ -629,7 +631,6 @@ export const en = {
     // labels below.
     nextInstallment: 'Next installment ({{date}})',
     openingDeposit: 'Opening deposit',
-    priceAsOf: 'Price as of {{date}}',
     principal: 'Principal',
     projected: 'Projected',
     purchase: 'Purchase',
@@ -644,7 +645,11 @@ export const en = {
     // `updateValue` below, for a priced holding).
     updateOutstanding: 'Update outstanding',
     updateValue: 'Update value',
-    valueAsOf: 'Value as of {{date}}',
+    // A priced type's (property, metal) breakdown value row — its current
+    // priced value, distinct from `grossValue` (the deposit/bond breakdown's
+    // OWN row, which reads wrong here: a priced type has no gross-vs-net
+    // distinction, since it withholds no tax).
+    value: 'Value',
     valueLabel: 'Value',
   },
   home: {

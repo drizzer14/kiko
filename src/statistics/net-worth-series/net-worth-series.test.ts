@@ -609,6 +609,58 @@ describe('buildNetWorthSeries', () => {
     expect(amountAt(series, D2)).toBe(300);
   });
 
+  it('lets only ONE of two same-price, same-week bonds claim the shared funding debit', () => {
+    // Two bonds typed on the SAME day at the SAME price, but only ONE real
+    // funding debit exists in the ledger. Without claiming, both bonds would
+    // match that single debit and each recognize its cost from the debit's
+    // day — a phantom $100 appearing from nowhere. Claiming forces the two
+    // bonds to a FIXED order (typed purchaseDate, then id): 'bond-a' sorts
+    // before 'bond-b', so 'bond-a' claims the debit and 'bond-b' falls back
+    // to its own typed day/price instead of double-claiming it.
+    const dayDm1 = startOfLocalDay(Date.UTC(2026, 0, 5, 12)); // a winter day (no DST step)
+    const dayD = addLocalDays(dayDm1, 1); // the one funding debit lands here
+    const dayD2 = addLocalDays(dayDm1, 3); // both bonds' typed purchaseDate
+
+    const debitTime = dayD + 6 * HOUR;
+    const purchaseDate = dayD2 + 18 * HOUR;
+
+    // Card started at $100 and was debited $100 ONCE, so its current balance is 0.
+    const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
+    const bondA = bondFor({
+      id: 'bond-a',
+      currency: 'USD',
+      faceValueMinorUnits: 10_000, // nominal $100.00
+      purchaseDate,
+      purchasePriceMinorUnits: 10_000, // paid $100.00 — same price as bond-b
+    });
+    const bondB = bondFor({
+      id: 'bond-b',
+      currency: 'USD',
+      faceValueMinorUnits: 10_000,
+      purchaseDate,
+      purchasePriceMinorUnits: 10_000,
+    });
+
+    const series = buildNetWorthSeries({
+      holdings: [card, bondA, bondB],
+      transactionsByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
+      historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
+      baseCurrency: 'USD',
+      range: { from: dayDm1, to: dayD2 },
+    });
+
+    // Before the debit: card full ($100), neither bond has turned on yet.
+    expect(amountAt(series, dayDm1)).toBe(100);
+    // On the debit day: 'bond-a' claims it and turns on at cost ($100),
+    // netting the card's -$100 to zero — flat, NOT $200 (which double-claiming
+    // would produce). 'bond-b' has not turned on yet (its typed day is later).
+    expect(amountAt(series, dayD)).toBe(100);
+    // On the typed purchase day: 'bond-b' had no debit left to claim, so it
+    // falls back to its own typed day/price and STEPS net worth up by $100 —
+    // a real, additional, unfunded-in-this-ledger cost, not absorbed twice.
+    expect(amountAt(series, dayD2)).toBe(200);
+  });
+
   describe('under an explicit non-host timezone (Kiritimati, UTC+14)', () => {
     // Every cross-day fixture above relies on the IMPLICIT host process
     // timezone (this repo's dev machine runs Europe/Kyiv, UTC+2/+3) via
@@ -661,11 +713,73 @@ describe('buildNetWorthSeries', () => {
     });
   });
 
-  it('returns an empty series when no history has been backfilled yet', () => {
-    const holdings = [holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 })];
+  // A base-currency-only user (no foreign holding, ever) never gets a
+  // `currency_rate_history` row at all — the backfill gate has nothing
+  // cross-currency to fetch — so gating the whole series on `historyRows.length`
+  // left that user's "Net worth over time" line empty forever. A same-currency
+  // holding needs no cross-rate conversion (`canConvert` returns true whenever
+  // `currency === base`), so it must still produce points with zero history rows.
+  it('produces points for a base-currency-only (UAH) user with no history rows', () => {
+    const holdings = [holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 })]; // 4000.00 UAH
 
     const series: NetWorthSeries = buildNetWorthSeries({
       holdings,
+      transactionsByHolding: new Map(),
+      historyRows: [],
+      baseCurrency: 'UAH',
+      range: { from: D0, to: D2 },
+    });
+
+    expect(series.points.map((point) => point.amount)).toEqual([4000, 4000, 4000]);
+    expect(series.startReference).toBe(4000);
+  });
+
+  it('produces points for a base-currency-only (USD) user with no history rows', () => {
+    const holdings = [holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 })]; // $100.00
+
+    const series: NetWorthSeries = buildNetWorthSeries({
+      holdings,
+      transactionsByHolding: new Map(),
+      historyRows: [],
+      baseCurrency: 'USD',
+      range: { from: D0, to: D2 },
+    });
+
+    expect(series.points.map((point) => point.amount)).toEqual([100, 100, 100]);
+    expect(series.startReference).toBe(100);
+  });
+
+  // With no history rows yet (the backfill still running or offline), a
+  // mixed-currency user's foreign holding would otherwise just drop out of
+  // every past point while today's point (valued at the live rate table)
+  // keeps it — a misleading jump, not the loading/empty state the user saw
+  // before. Only a base-currency-only user (no holding ever needs a
+  // cross-rate) still gets points with no history rows.
+  it('returns an empty series for mixed holdings with no history rows, even though one holding shares the base currency', () => {
+    const holdings = [
+      holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 }), // $100.00, base
+      holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 }), // foreign, no rate yet
+    ];
+
+    const series: NetWorthSeries = buildNetWorthSeries({
+      holdings,
+      transactionsByHolding: new Map(),
+      historyRows: [],
+      baseCurrency: 'USD',
+      range: { from: D0, to: D0 },
+    });
+
+    expect(series).toEqual({ points: [], startReference: 0 });
+  });
+
+  // A holding-less user (no accounts at all yet) must still see the genuine
+  // empty state, never a spurious flat-zero line: `bucketTimes` produces a
+  // bucket regardless of whether any holding exists, so with zero holdings
+  // the reduce below would otherwise sum to a real (if zero) point for every
+  // bucket instead of reporting nothing to plot.
+  it('returns an empty series when there are no holdings at all', () => {
+    const series: NetWorthSeries = buildNetWorthSeries({
+      holdings: [],
       transactionsByHolding: new Map(),
       historyRows: [],
       baseCurrency: 'USD',

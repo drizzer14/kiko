@@ -30,7 +30,8 @@ export interface BalanceSyncDeps {
   listAccounts: () => Promise<AccountRow[]>;
   updateAccount: (accountId: string, patch: Partial<AccountRow>) => Promise<unknown>;
   listHoldingsByAccount: (accountId: string) => Promise<HoldingRow[]>;
-  upsertHolding: (holding: ExchangeHolding) => Promise<unknown>;
+  /** Every returned balance upserted in ONE transaction — see `upsertExchangeMany`. */
+  upsertHoldings: (holdings: ExchangeHolding[]) => Promise<unknown>;
 }
 
 export type BalanceSyncResult = { syncedHoldings: number };
@@ -40,7 +41,7 @@ const defaultDeps: BalanceSyncDeps = {
   listAccounts: async () => accountsRepo.listQuery(),
   updateAccount: (accountId, patch) => accountsRepo.update(accountId, patch),
   listHoldingsByAccount: async (accountId) => holdingsRepo.listByAccountQuery(accountId),
-  upsertHolding: (holding) => holdingsRepo.upsertExchange(holding),
+  upsertHoldings: (holdingsList) => holdingsRepo.upsertExchangeMany(holdingsList),
 };
 
 /**
@@ -178,23 +179,29 @@ const runBalanceSyncInner = async <Deps>(
       registerWork(balances.length, balances.length);
     }
 
-    for (const balance of balances) {
-      await deps.upsertHolding({
+    // Every balance upserts in ONE transaction (mirrors the Monobank fast-phase
+    // batch, `upsertMonobankMany`) rather than one op-sqlite transaction per
+    // balance, so the reactive `holdings` callback fires once per sync.
+    await deps.upsertHoldings(
+      balances.map(({ name, balanceMinorUnits, metadataKey, renameFromDefault }) => ({
         accountId,
-        name: balance.name,
+        name,
         type: 'crypto_asset',
         currency: 'BTC',
-        balanceMinorUnits: balance.balanceMinorUnits,
+        balanceMinorUnits,
         metadata: { syncedAt },
         metadataField: provider.metadataField,
-        metadataKey: balance.metadataKey,
-        renameFromDefault: balance.renameFromDefault,
-      });
-      // One crypto holding's balance has committed: advance the bar one work unit
-      // and complete the holding for the label.
+        metadataKey,
+        renameFromDefault,
+      })),
+    );
+
+    // One crypto holding's balance has committed: advance the bar one work unit
+    // and complete the holding for the label, once per returned balance.
+    balances.forEach(() => {
       commitWork();
       commitHolding();
-    }
+    });
 
     return { syncedHoldings: balances.length };
   } finally {

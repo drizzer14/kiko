@@ -2,8 +2,8 @@ import { guard } from 'fnts';
 import { PRICE_ENDPOINT } from '@env';
 
 import type { RateEntry } from '../conversion';
-import type { Currency } from '../../currency/currency';
-import { coinGeckoIds, cryptoCoinGeckoId } from '../coingecko-ids';
+import { cryptoCoinGeckoId } from '../coingecko-ids';
+import { cryptoCurrencyOptions, type CryptoCurrency } from '../../currency/currency';
 
 /** The `/simple/price` body: one `{ usd }` object per requested coin id. */
 type CoinGeckoPrices = Record<string, { usd: number }>;
@@ -24,15 +24,16 @@ const readPrice = guard(
 );
 
 // A 200 with an unexpected body is as real a failure as a 429 — CoinGecko's free
-// tier returns `{}` (and sometimes an error object) under load. Every requested
+// tier returns `{}` (and sometimes an error object) under load. Every REQUESTED
 // coin id must carry a finite `usd`, else the body is rejected with a typed error
-// rather than throwing a bare TypeError downstream.
-const isCoinGeckoPrices = (value: unknown): value is CoinGeckoPrices => {
+// rather than throwing a bare TypeError downstream — never the full supported
+// set: a scoped request (see `currencies` below) never needed a coin outside it.
+const isCoinGeckoPrices = (value: unknown, ids: readonly string[]): value is CoinGeckoPrices => {
   if (typeof value !== 'object' || value === null) {
     return false;
   }
   const record = value as Record<string, unknown>;
-  for (const id of Object.values(cryptoCoinGeckoId)) {
+  for (const id of ids) {
     const entry = record[id];
     if (
       typeof entry !== 'object' ||
@@ -47,25 +48,38 @@ const isCoinGeckoPrices = (value: unknown): value is CoinGeckoPrices => {
   return true;
 };
 
-const priceUrl = (): string => `${PRICE_ENDPOINT}?ids=${coinGeckoIds()}&vs_currencies=usd`;
+const priceUrl = (ids: readonly string[]): string =>
+  `${PRICE_ENDPOINT}?ids=${ids.join(',')}&vs_currencies=usd`;
 
 /**
- * Fetch the current USD price of every supported crypto from CoinGecko's public
- * simple-price endpoint. Returns one `<crypto>->USD` entry per coin; other crypto
- * pairs are composed downstream from the fiat cross rates (`rates-refresh.ts`).
+ * Fetch the current USD price of every HELD crypto (`currencies`, defaulting
+ * to every supported one) from CoinGecko's public simple-price endpoint —
+ * never a coin nobody holds (kiko-architecture: no request for data the user
+ * does not have). Returns one `<crypto>->USD` entry per requested coin; other
+ * crypto pairs are composed downstream from the fiat cross rates
+ * (`rates-refresh.ts`). An empty `currencies` list makes no request at all
+ * and resolves to `[]`.
  */
-export const fetchCryptoPrices = async (fetchImpl: typeof fetch = fetch): Promise<RateEntry[]> => {
-  const response = await fetchImpl(priceUrl());
+export const fetchCryptoPrices = async (
+  fetchImpl: typeof fetch = fetch,
+  currencies: readonly CryptoCurrency[] = cryptoCurrencyOptions,
+): Promise<RateEntry[]> => {
+  if (currencies.length === 0) {
+    return [];
+  }
+
+  const ids = currencies.map((currency) => cryptoCoinGeckoId[currency]);
+  const response = await fetchImpl(priceUrl(ids));
   const data: unknown = await readPrice(response);
 
-  if (!isCoinGeckoPrices(data)) {
+  if (!isCoinGeckoPrices(data, ids)) {
     throw new Error('CoinGecko price response did not contain a finite usd value for every coin');
   }
 
-  return (Object.entries(cryptoCoinGeckoId) as [Currency, string][]).map(([base, id]) => ({
+  return currencies.map((base) => ({
     base,
     quote: 'USD',
-    rate: (data as CoinGeckoPrices)[id].usd,
+    rate: (data as CoinGeckoPrices)[cryptoCoinGeckoId[base]].usd,
     source: 'coingecko',
   }));
 };

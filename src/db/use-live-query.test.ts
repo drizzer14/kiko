@@ -387,3 +387,50 @@ describe('useLiveQuery', () => {
     warnSpy.mockRestore();
   });
 });
+
+// kiko-architecture: no request or query for data the user does not have. A
+// caller (e.g. usePriceBook) can disable the query entirely — never a
+// per-holding loop, and never a screen stuck "not ready" forever.
+describe('useLiveQuery — the enabled argument', () => {
+  beforeEach(() => {
+    mockRows.current = [{ id: 'a' }];
+    mockReactiveCallback.current = undefined;
+    mockReactiveExecute.mockClear();
+  });
+
+  it('never runs the query and never subscribes while disabled', async () => {
+    const { result } = await renderHook(() => useLiveQuery(fakeQuery, ['accounts'], false));
+
+    expect(mockReactiveExecute).not.toHaveBeenCalled();
+    expect(result.current.data).toEqual([]);
+  });
+
+  it('reports ready (isLoading=false), never stuck loading, while disabled', async () => {
+    const { result } = await renderHook(() => useLiveQuery(fakeQuery, ['accounts'], false));
+
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it('starts the query once enabled flips true, and reports the real data', async () => {
+    const { result, rerender } = await renderHook(
+      ({ enabled }: { enabled: boolean }) => useLiveQuery(fakeQuery, ['accounts'], enabled),
+      { initialProps: { enabled: false } },
+    );
+
+    expect(mockReactiveExecute).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await rerender({ enabled: true });
+    });
+
+    expect(mockReactiveExecute).toHaveBeenCalled();
+    expect(result.current.data).toEqual([{ id: 'a' }]);
+  });
+
+  it('defaults to enabled when the argument is omitted (backward compatible)', async () => {
+    const { result } = await renderHook(() => useLiveQuery(fakeQuery, ['accounts']));
+
+    expect(mockReactiveExecute).toHaveBeenCalled();
+    expect(result.current.data).toEqual([{ id: 'a' }]);
+  });
+});

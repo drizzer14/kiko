@@ -108,10 +108,12 @@ and immediately if a sync starts failing with a TLS error.
   gates the repair write behind a module-level `hasRepairedAccessPolicy`
   latch, set only after the write succeeds; every read after the first
   repair is a pure Keychain read, matching `readToken` and `readDbKey`.
-- **`db-config.ts`'s doc comments now match the shipped flag values.**
-  `DB_ENCRYPTION_ENABLED` and `APP_LOCK_ENABLED` are both documented as
-  "ON in every shipping build, and it must stay on", matching their `true`
-  values, and both are asserted by `src/db/db-config.test.ts`.
+- **`db-config.ts`'s doc comment matches the shipped flag value.**
+  `DB_ENCRYPTION_ENABLED` is documented as "ON in every shipping build, and
+  it must stay on", matching its `true` value, and is asserted by
+  `src/db/db-config.test.ts`. The app lock has no build-time switch; it is
+  the live `settings.lockEnabled` toggle (see kiko-domain's "App lock /
+  security settings" section).
 
 ## Accepted risks (not mitigated by design)
 

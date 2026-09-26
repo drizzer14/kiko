@@ -2,20 +2,21 @@ import type { TFunction } from 'i18next';
 
 import { makeEntry } from '../entry-parts';
 import { taxOnInterestMinor } from '../../tax';
+import { holdingsRepo } from '../../repo/holdings.repo';
 import { Money, toMajor } from '../../../currency/money';
 import type { DerivedEntry } from '../../derived-entries';
 import { startOfLocalDay } from '../../../dates/local-day';
 import type { ValuableHolding } from '../../holding-value';
+import type { HoldingDescriptor } from '../holding-descriptor.d';
 import { entityColorsDark } from '../../../design-system/palette';
 import { bondCouponDates, bondCouponMajor } from '../../interest';
 import { asBondMeta, type BondMeta } from '../../holding-metadata';
 import { flat, type HoldingValueBreakdown } from '../breakdown-parts';
-import type { HoldingDescriptor, IdentifiedHolding } from '../holding-descriptor.d';
 
 const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreakdown => {
   const meta = asBondMeta(holding.metadata);
   if (meta === null) {
-    return flat(holding.currency, holding.balanceMinorUnits);
+    return flat(holding.currency, holdingsRepo.balanceOf(holding).minorUnits);
   }
   const { currency } = holding;
   const costMoney = Money.of(currency, meta.purchasePriceMinorUnits);
@@ -82,7 +83,7 @@ export const bondExpectedProfitMinor = (
   return netCouponMinor * couponCount + nominalMinor - meta.purchasePriceMinorUnits;
 };
 
-const bondEntries = (holding: IdentifiedHolding, now: number, t: TFunction): DerivedEntry[] => {
+const bondEntries = (holding: ValuableHolding, now: number, t: TFunction): DerivedEntry[] => {
   const meta = asBondMeta(holding.metadata);
   if (meta === null) {
     return [];

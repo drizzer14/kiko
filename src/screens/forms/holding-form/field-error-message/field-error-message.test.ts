@@ -22,4 +22,14 @@ describe('fieldErrorMessage', () => {
       'translated:forms.holding.quantityError',
     );
   });
+
+  it('threads an interpolation options object through to t()', () => {
+    const t = jest.fn(
+      (key: string, options?: Record<string, unknown>) => `${key}:${options?.max}`,
+    ) as unknown as TFunction;
+
+    expect(fieldErrorMessage(t, true, 'forms.holding.termMonthsMaxError', { max: 600 })).toBe(
+      'forms.holding.termMonthsMaxError:600',
+    );
+  });
 });

@@ -74,7 +74,6 @@ jest.mock('@kiko/holdings/repo', () => ({
       __kind: 'holdings-by-account',
       toSQL: () => ({ sql: '', params: [accountId] }),
     }),
-    allQuery: () => ({ __kind: 'holdings-all', toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
@@ -239,7 +238,7 @@ type StatementImportProps = ComponentProps<typeof StatementImportScreen>;
 
 const renderScreen = async (params: {
   filePath: string;
-  accountId?: string;
+  accountId: string;
   expectedFormatId?: string;
 }) => {
   const navigation = navigationSpy();
@@ -344,8 +343,7 @@ describe('StatementImportScreen', () => {
   // valid, tested state the account-form edit picker can now return an
   // account to). With no `expectedFormatId` at all this screen must still
   // fall back to the multi-format `detectFormat` auto-detect AND still offer
-  // the "Map columns manually" escape hatch, exactly as it does today for the
-  // Share Extension entry point (which also carries no `expectedFormatId`).
+  // the "Map columns manually" escape hatch.
   it('detects a dedicated format via multi-format auto-detect, and still offers "Map columns manually", with no expectedFormatId at all', async () => {
     mockReadFile.mockResolvedValue(fixtureBase64);
 

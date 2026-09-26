@@ -49,12 +49,25 @@ describe('holdingDetailSpecs footerAction', () => {
   );
 });
 
+// Narrows a breakdown spec to its `interest` variant, or fails the test
+// loudly — every case below expects one, so a wrongly-shaped spec should
+// never silently read `undefined` off a mismatched property access.
+const asInterestBreakdown = (
+  spec: ReturnType<typeof holdingDetailSpecFor>['breakdown'],
+): Extract<NonNullable<typeof spec>, { kind: 'interest' }> => {
+  if (spec?.kind !== 'interest') {
+    throw new Error('expected an interest breakdown spec');
+  }
+
+  return spec;
+};
+
 describe('holdingDetailSpecs breakdown', () => {
   it('shows the deposit its principal label with no expected-profit line', () => {
-    const spec = holdingDetailSpecFor('term_deposit').breakdown;
+    const spec = asInterestBreakdown(holdingDetailSpecFor('term_deposit').breakdown);
 
-    expect(spec?.principalLabelKey).toBe('holdingDetail.principal');
-    expect(spec?.expectedProfit(holding({ type: 'term_deposit' }))).toBeNull();
+    expect(spec.principalLabelKey).toBe('holdingDetail.principal');
+    expect(spec.expectedProfit(holding({ type: 'term_deposit' }))).toBeNull();
   });
 
   it("shows a bond its cost label with the bond's whole-life expected profit", () => {
@@ -69,24 +82,28 @@ describe('holdingDetailSpecs breakdown', () => {
       maturityDate: Date.UTC(2027, 0, 1),
     };
     const bondHolding = holding({ type: 'bond', currency: 'UAH', metadata: meta });
-    const spec = holdingDetailSpecs.bond.breakdown;
+    const spec = asInterestBreakdown(holdingDetailSpecs.bond.breakdown);
 
-    expect(spec?.principalLabelKey).toBe('holdingDetail.cost');
-    expect(spec?.expectedProfit(bondHolding)?.minorUnits).toBe(
-      bondExpectedProfitMinor(meta, 'UAH'),
-    );
+    expect(spec.principalLabelKey).toBe('holdingDetail.cost');
+    expect(spec.expectedProfit(bondHolding)?.minorUnits).toBe(bondExpectedProfitMinor(meta, 'UAH'));
   });
 
   it('returns null for a bond with unparsable metadata', () => {
-    const spec = holdingDetailSpecs.bond.breakdown;
+    const spec = asInterestBreakdown(holdingDetailSpecs.bond.breakdown);
 
-    expect(spec?.expectedProfit(holding({ type: 'bond', metadata: null }))).toBeNull();
+    expect(spec.expectedProfit(holding({ type: 'bond', metadata: null }))).toBeNull();
+  });
+
+  // property_item and metal show the cost/value/gain breakdown instead of the
+  // deposit/bond interest/tax table (they accrue no interest and withhold no
+  // tax, so those rows would only ever read a misleading zero).
+  it('shows property_item and metal the priced breakdown', () => {
+    expect(holdingDetailSpecs.property_item.breakdown).toEqual({ kind: 'priced' });
+    expect(holdingDetailSpecs.metal.breakdown).toEqual({ kind: 'priced' });
   });
 
   it('hides the breakdown for every other type', () => {
     const noBreakdownTypes: readonly HoldingType[] = [
-      'property_item',
-      'metal',
       'loan',
       'card',
       'cash',

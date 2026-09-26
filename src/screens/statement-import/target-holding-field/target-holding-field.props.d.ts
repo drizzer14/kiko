@@ -4,7 +4,7 @@ export type TargetHoldingFieldProps = {
   label: string;
   required?: boolean;
   holdings: TargetHoldingOption[];
-  accountId?: string;
+  accountId: string;
   selectedId: string | undefined;
   onSelect: (holdingId: string) => void;
   onCreateNew: () => void;

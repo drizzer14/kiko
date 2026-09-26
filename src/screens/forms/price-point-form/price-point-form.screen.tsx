@@ -41,7 +41,7 @@ const startOfToday = (): number => {
 };
 
 // Records a new `manual` price point for a priced holding (property_item,
-// metal — `isPricedHoldingType`), reached from holding-detail's "Update value"
+// metal), reached from holding-detail's "Update value"
 // footer action. Mirrors contribution-form's shape: a grouped-amount TextField
 // plus the shared calendar DateField, writing through the same
 // `pricePointsRepo.upsertMany` the PriceBook itself reads.

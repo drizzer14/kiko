@@ -1,4 +1,9 @@
 import type { RefObject } from 'react';
+import {
+  asPropertyMeta,
+  propertyCategoryOf,
+  type PropertyCategory,
+} from '@kiko/holdings/holding-metadata';
 import { Money } from '@kiko/currency/money';
 import type { Lot } from '@kiko/holdings/lots';
 import type { HoldingRow } from '@kiko/db/schema';
@@ -8,7 +13,6 @@ import { useCallback, useRef, useState } from 'react';
 import { shiftDecimal } from '@kiko/currency/decimal';
 import type { TextInputInstance } from 'react-native';
 import { currencyScale, type Currency } from '@kiko/currency/currency';
-import { asPropertyMeta, type PropertyCategory } from '@kiko/holdings/holding-metadata';
 
 import { saveMetadataEdit } from '../../save-metadata-edit';
 import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
@@ -41,7 +45,6 @@ const buildPropertyCreatePayload = (params: {
   const lot: Lot = { day, quantityDelta: '1', costMinorUnits };
 
   return {
-    balanceMinorUnits: 0,
     metadata: { category, lots: [lot] },
     firstPricePoint: {
       day,
@@ -96,13 +99,18 @@ export const usePropertyFields = (params: UsePropertyFieldsParams): UsePropertyF
   const reasonKey = propertyReasonKey({ isEdit, cost });
 
   const seed = useCallback((holding: HoldingRow): void => {
+    // The Type-as-category field must pre-select SOMETHING sensible even
+    // when the metadata's `lots` are otherwise unparseable — read leniently
+    // (falls back to 'other'), independent of the strict all-or-nothing
+    // `asPropertyMeta` parse below.
+    setCategory(propertyCategoryOf(holding.metadata));
+
     const meta = asPropertyMeta(holding.metadata);
 
     if (meta === null) {
       return;
     }
 
-    setCategory(meta.category);
     setLots(meta.lots);
   }, []);
 

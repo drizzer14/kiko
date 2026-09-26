@@ -4,6 +4,7 @@ import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import { currencySymbol } from '@kiko/currency/currency';
 import Divider from '@kiko/design-system/components/divider';
+import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 
 import LoanSection from '../loan-section';
 import { fieldErrorMessage } from '../../field-error-message';
@@ -45,7 +46,9 @@ const LoanFormBlock: FC<LoanFormBlockProps> = ({ fields, attemptedSave }) => {
         annualRatePctInputRef={refs.annualRateInputRef}
         termMonths={fields.termMonths}
         onChangeTermMonths={fields.setTermMonths}
-        termMonthsError={fieldErrorMessage(t, attemptedSave, fieldErrors.termMonthsError)}
+        termMonthsError={fieldErrorMessage(t, attemptedSave, fieldErrors.termMonthsError, {
+          max: MAX_TERM_MONTHS,
+        })}
         termMonthsFieldRef={refs.termMonthsFieldRef}
         termMonthsInputRef={refs.termMonthsInputRef}
       />

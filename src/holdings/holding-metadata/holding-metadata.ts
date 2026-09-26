@@ -58,10 +58,8 @@ const normalizeCompounding = (value: string): CompoundingFrequency =>
 
 const bondCouponFrequencySet = new Set<string>(bondCouponFrequencies);
 
-const asBondCouponFrequency = (value: unknown): BondCouponFrequency =>
-  typeof value === 'string' && bondCouponFrequencySet.has(value)
-    ? (value as BondCouponFrequency)
-    : 'annually';
+const isBondCouponFrequency = (value: unknown): value is BondCouponFrequency =>
+  typeof value === 'string' && bondCouponFrequencySet.has(value);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -210,12 +208,28 @@ export const asBondMeta = (value: unknown): BondMeta | null => {
   ) {
     return null;
   }
+
+  const { couponFrequency, purchasePriceMinorUnits } = value;
+
+  // A PRESENT bondKind/couponFrequency/purchasePriceMinorUnits/isin that fails
+  // its own check is BAD INPUT — reject the whole record, same as any other
+  // wrong-type field above. An ABSENT (undefined) field is the legacy shape
+  // every stored pre-field row still has, and keeps its documented default
+  // below — the decision targets bad input, not missing input.
+  if (
+    (bondKind !== undefined && bondKind !== 'government' && bondKind !== 'corporate') ||
+    (couponFrequency !== undefined && !isBondCouponFrequency(couponFrequency)) ||
+    (purchasePriceMinorUnits !== undefined && !isNumber(purchasePriceMinorUnits)) ||
+    (isin !== undefined && typeof isin !== 'string')
+  ) {
+    return null;
+  }
+
   // `purchasePriceMinorUnits` is the total actually paid (separate from nominal
   // = quantity * faceValue). Legacy bonds predate this field; default it to the
   // nominal so the purchase ledger entry and expected-profit both read as
   // break-even until the user edits the real price in.
   const nominalMinorUnits = quantity * faceValueMinorUnits;
-  const { purchasePriceMinorUnits } = value;
 
   return {
     quantity,
@@ -227,7 +241,7 @@ export const asBondMeta = (value: unknown): BondMeta | null => {
       : nominalMinorUnits,
     maturityDate,
     bondKind: bondKind === 'corporate' ? 'corporate' : 'government',
-    couponFrequency: asBondCouponFrequency(value.couponFrequency),
+    couponFrequency: isBondCouponFrequency(couponFrequency) ? couponFrequency : 'annually',
     isin: typeof isin === 'string' ? isin : undefined,
   };
 };
@@ -251,6 +265,24 @@ export type PropertyCategory = (typeof propertyCategories)[number];
 
 const isPropertyCategory = (value: unknown): value is PropertyCategory =>
   typeof value === 'string' && (propertyCategories as readonly string[]).includes(value);
+
+/**
+ * The `property_item`'s category, read LENIENTLY: a missing or unrecognized
+ * value falls back to `'other'` rather than treating the whole metadata blob
+ * as invalid the way `asPropertyMeta` does (mirrors `walletAddressOf`'s
+ * tolerant-reader shape). This is what pre-selects the property form's Type
+ * field in edit mode, independent of whether the metadata's `lots` also
+ * happen to parse.
+ */
+export const propertyCategoryOf = (metadata: unknown): PropertyCategory => {
+  if (!isRecord(metadata)) {
+    return 'other';
+  }
+
+  const { category } = metadata;
+
+  return isPropertyCategory(category) ? category : 'other';
+};
 
 export type PropertyMeta = {
   category: PropertyCategory;

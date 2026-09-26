@@ -1,4 +1,5 @@
 import { guard } from 'fnts';
+import { NBU_API_ENDPOINT } from '@env';
 
 import { Money } from '../../currency/money';
 import { type Currency, currencyOptions } from '../../currency/currency';
@@ -6,11 +7,12 @@ import type { BondCouponFrequency } from '../../holdings/holding-metadata';
 
 /**
  * NBU's public, tokenless securities-register endpoint — the
- * same `bank.gov.ua` host `nbu-metals.ts`/`nbu-rates.ts`/`nbu-history.ts`
- * already read. Deliberately UNPINNED (`ios/Kiko/Info.plist`'s
- * `NSPinnedDomains`), keyless, public: it carries no credential.
+ * same `bank.gov.ua` host (`NBU_API_ENDPOINT`)
+ * `nbu-metals.ts`/`nbu-rates.ts`/`nbu-history.ts` already read. Deliberately
+ * UNPINNED (`ios/Kiko/Info.plist`'s `NSPinnedDomains`), keyless, public: it
+ * carries no credential.
  */
-const REGISTER_ENDPOINT = 'https://bank.gov.ua/depo_securities?json';
+const REGISTER_ENDPOINT = `${NBU_API_ENDPOINT}/depo_securities?json`;
 
 /**
  * One record of the register payload, trimmed to the fields

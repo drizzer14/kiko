@@ -35,7 +35,7 @@ const holdings: TargetHoldingOption[] = [
 ];
 
 describe('TargetHoldingSheet', () => {
-  it('lists only the holdings scoped to accountId when it is provided', async () => {
+  it('lists only the holdings scoped to accountId', async () => {
     const view = await render(
       <TargetHoldingSheet
         visible
@@ -50,26 +50,6 @@ describe('TargetHoldingSheet', () => {
     expect(view.getByText('Black card')).toBeTruthy();
     expect(view.getByText('Dollar jar')).toBeTruthy();
     expect(view.queryByText('Savings')).toBeNull();
-  });
-
-  it('lists every holding, grouped by account name, when accountId is absent', async () => {
-    const view = await render(
-      <TargetHoldingSheet
-        visible
-        onDismiss={jest.fn()}
-        holdings={holdings}
-        onSelect={jest.fn()}
-        onCreateNew={jest.fn()}
-      />,
-    );
-
-    expect(view.getByText('Black card')).toBeTruthy();
-    expect(view.getByText('Dollar jar')).toBeTruthy();
-    expect(view.getByText('Savings')).toBeTruthy();
-    // The cross-account (unscoped) list is grouped by account name — each
-    // distinct account contributes its own group header.
-    expect(view.getByText('Monobank')).toBeTruthy();
-    expect(view.getByText('Ukrsibbank')).toBeTruthy();
   });
 
   it('reports the chosen holding and closes the sheet on selection', async () => {

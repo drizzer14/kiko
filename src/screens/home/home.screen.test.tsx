@@ -968,6 +968,23 @@ describe('HomeScreen', () => {
     ]);
   });
 
+  // kiko-architecture: no request or query for data the user does not have —
+  // usePriceBook's price_points read is disabled while nothing on Home is a
+  // priced type (property_item/metal) or a loan.
+  it('gates the price_points read on whether any holding ever reads it', async () => {
+    setLiveData({ holdings: [{ ...UAH_HOLDING, type: 'card' }] });
+    await renderHome();
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(false);
+  });
+
+  it('enables the price_points read once a priced holding is present', async () => {
+    setLiveData({ holdings: [{ ...UAH_HOLDING, type: 'metal' }] });
+    await renderHome();
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(true);
+  });
+
   it('clears the tab bar without double-counting the safe-area inset', async () => {
     const { getByTestId } = await renderHome();
 

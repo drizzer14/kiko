@@ -137,4 +137,62 @@ describe('reconcileBondFunding', () => {
       recognitionCostMinorUnits: meta.purchasePriceMinorUnits,
     });
   });
+
+  it('matches a debit exactly at the 7-day funding window boundary', () => {
+    const meta = bondMeta();
+    const typedDay = startOfLocalDay(meta.purchaseDate);
+    const boundaryDay = typedDay - 7 * DAY;
+    const holdings = [cardHolding('card', 'USD')];
+    const transactionsByHolding = new Map([
+      ['card', [transaction(boundaryDay + 7 * HOUR, -meta.purchasePriceMinorUnits)]],
+    ]);
+
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toEqual({
+      recognitionDay: boundaryDay,
+      recognitionCostMinorUnits: meta.purchasePriceMinorUnits,
+    });
+  });
+
+  it('never matches a debit more than 7 days from the typed purchase day', () => {
+    const meta = bondMeta();
+    const typedDay = startOfLocalDay(meta.purchaseDate);
+    const farDay = typedDay - 8 * DAY;
+    const holdings = [cardHolding('card', 'USD')];
+    // Same amount as the typed price (Q == P), so only the day window can be
+    // the reason this is rejected.
+    const transactionsByHolding = new Map([
+      ['card', [transaction(farDay + 7 * HOUR, -meta.purchasePriceMinorUnits)]],
+    ]);
+
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toEqual({
+      recognitionDay: typedDay,
+      recognitionCostMinorUnits: meta.purchasePriceMinorUnits,
+    });
+  });
+
+  it('claims the matched debit so a second bond cannot also match it', () => {
+    const meta = bondMeta();
+    const holdings = [cardHolding('card', 'USD')];
+    // A day distinct from the typed purchase day, so a claimed-vs-fallback
+    // second call resolves to a visibly DIFFERENT day/price than the first.
+    const debitDay = startOfLocalDay(meta.purchaseDate) - 2 * DAY;
+    const transactionsByHolding = new Map([
+      ['card', [transaction(debitDay + 7 * HOUR, -meta.purchasePriceMinorUnits)]],
+    ]);
+    const claimed = new Set<string>();
+
+    const first = reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding, claimed);
+    expect(first).toEqual({
+      recognitionDay: debitDay,
+      recognitionCostMinorUnits: meta.purchasePriceMinorUnits,
+    });
+
+    // The one debit is already claimed: a second bond with the SAME candidate
+    // pool falls back to its own typed day/price instead of double-claiming it.
+    const second = reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding, claimed);
+    expect(second).toEqual({
+      recognitionDay: startOfLocalDay(meta.purchaseDate),
+      recognitionCostMinorUnits: meta.purchasePriceMinorUnits,
+    });
+  });
 });

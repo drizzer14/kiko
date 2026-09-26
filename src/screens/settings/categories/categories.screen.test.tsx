@@ -136,12 +136,17 @@ describe('CategoriesScreen', () => {
     }
   });
 
-  it('renders each category as its own card, plus one trailing add-category card', async () => {
-    const { getAllByTestId, getByTestId } = await renderScreen();
+  it('renders each category as its own card, with no add-category card until the footer expands it', async () => {
+    const { getAllByTestId, getByText, getByTestId, queryByTestId } = await renderScreen();
 
     // One Card per category — not a single shared surface housing every row.
     expect(getAllByTestId('category-card')).toHaveLength(SEEDED_CATEGORIES.length);
-    // The add-category affordance is its own trailing card in the same stack.
+    // The add-category form is not mounted until the footer action is tapped
+    // (review decision 19 — the inline collapsed row is gone).
+    expect(queryByTestId('add-category-card')).toBeNull();
+
+    await fireEvent.press(getByText('Add category'));
+
     expect(getByTestId('add-category-card')).toBeTruthy();
   });
 
@@ -269,13 +274,13 @@ describe('CategoriesScreen', () => {
     expect(queryAllByTestId('category-icon-edit-badge')).toHaveLength(0);
   });
 
-  it('reveals the inline add-category form when the add row is tapped', async () => {
-    const { getByLabelText, queryByLabelText } = await renderScreen();
+  it('reveals the add-category form when the footer action is tapped', async () => {
+    const { getByLabelText, getByText, queryByLabelText } = await renderScreen();
 
-    // The name field is absent until the collapsed "Add category" row is tapped.
+    // The name field is absent until the footer's "Add category" action is tapped.
     expect(queryByLabelText('Name')).toBeNull();
 
-    await fireEvent.press(getByLabelText('Add category'));
+    await fireEvent.press(getByText('Add category'));
 
     expect(getByLabelText('Name')).toBeTruthy();
   });
@@ -283,9 +288,9 @@ describe('CategoriesScreen', () => {
   it('focuses the name field when the add-category form is revealed, without native autoFocus', async () => {
     const focusSpy = jest.spyOn(TextInput.prototype, 'focus');
 
-    const { getByLabelText } = await renderScreen();
+    const { getByLabelText, getByText } = await renderScreen();
 
-    await fireEvent.press(getByLabelText('Add category'));
+    await fireEvent.press(getByText('Add category'));
 
     // The name field never sets native autoFocus (it would race the sibling
     // keyboard InputAccessoryView's registration) — AddCategoryRow instead
@@ -297,7 +302,7 @@ describe('CategoriesScreen', () => {
     focusSpy.mockRestore();
   });
 
-  it('scrolls the ScrollView to the newly revealed form when the add row expands', async () => {
+  it('scrolls the ScrollView to the newly revealed form when the add form expands', async () => {
     // The scroll is deferred to the next frame so the just-revealed fields are
     // measured first; run that frame synchronously to assert the effect.
     const rafSpy = jest
@@ -307,9 +312,9 @@ describe('CategoriesScreen', () => {
         return 0;
       });
 
-    const { getByLabelText } = await renderScreen();
+    const { getByText } = await renderScreen();
 
-    await fireEvent.press(getByLabelText('Add category'));
+    await fireEvent.press(getByText('Add category'));
 
     expect(mockScrollToEnd).toHaveBeenCalledWith({ animated: true });
 
@@ -319,7 +324,7 @@ describe('CategoriesScreen', () => {
   it('creates a category via categoriesRepo.create and clears the form after saving', async () => {
     const { getByLabelText, getByText, queryByLabelText } = await renderScreen();
 
-    await fireEvent.press(getByLabelText('Add category'));
+    await fireEvent.press(getByText('Add category'));
     await fireEvent.changeText(getByLabelText('Name'), 'Travel');
     await fireEvent.press(getByText('Save'));
 
@@ -337,7 +342,7 @@ describe('CategoriesScreen', () => {
   it('creates a category with the picked color when a swatch is tapped', async () => {
     const { getByLabelText, getByText } = await renderScreen();
 
-    await fireEvent.press(getByLabelText('Add category'));
+    await fireEvent.press(getByText('Add category'));
     await fireEvent.changeText(getByLabelText('Name'), 'Travel');
     // The add-form picker scopes its swatch labels with its own prefix, so this
     // targets it unambiguously despite the per-row pickers already on screen.
@@ -359,10 +364,15 @@ describe('CategoriesScreen', () => {
     expect(mockUpdateColor).toHaveBeenCalledWith('groceries', expect.stringMatching(/^#/));
   });
 
-  it('does not create a category when the name is empty', async () => {
-    const { getByLabelText, getByText } = await renderScreen();
+  it('shows a name-required error and creates nothing when the name is blank', async () => {
+    const { getByLabelText, getByText, findByText } = await renderScreen();
 
-    await fireEvent.press(getByLabelText('Add category'));
+    await fireEvent.press(getByText('Add category'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(await findByText('Enter a name.')).toBeTruthy();
+    expect(mockCreate).not.toHaveBeenCalled();
+
     await fireEvent.changeText(getByLabelText('Name'), '   ');
     await fireEvent.press(getByText('Save'));
 
@@ -372,14 +382,14 @@ describe('CategoriesScreen', () => {
   it('collapses the add-category form (and writes nothing) when Cancel is pressed', async () => {
     const { getByLabelText, getByText, queryByLabelText } = await renderScreen();
 
-    await fireEvent.press(getByLabelText('Add category'));
+    await fireEvent.press(getByText('Add category'));
     // Enter a name, then back out — Cancel must be a real escape hatch.
     await fireEvent.changeText(getByLabelText('Name'), 'Travel');
     await fireEvent.press(getByText('Cancel'));
 
-    // The form collapses back to the single "Add category" affordance...
+    // The form collapses back to the single footer "Add category" action...
     expect(queryByLabelText('Name')).toBeNull();
-    expect(getByLabelText('Add category')).toBeTruthy();
+    expect(getByText('Add category')).toBeTruthy();
     // ...without persisting anything.
     expect(mockCreate).not.toHaveBeenCalled();
   });

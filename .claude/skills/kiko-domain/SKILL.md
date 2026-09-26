@@ -206,11 +206,27 @@ rather than trusting a restated summary here.
 
 ## `property_item` / `metal` create-form sections
 
-`src/screens/forms/holding-form/property/property-section/` is the
-`property_item` create-form section: a category `SelectField`
-(`propertyCategories` from `src/holdings/holding-metadata`, editable
-in both create and edit mode — too many long category names for a
-`ChipRow`) plus a Cost field (create-only). One lot
+A `property` account's Type field IS its category picker
+(`PropertyTypeField`, `src/screens/forms/holding-form/property/property-type-field/`):
+`property_item` is that account kind's only holding type
+(`holdingTypesForAccountKind`), so `HoldingFormScreen` renders this
+`SelectField` wrapper — over `propertyCategories` from
+`src/holdings/holding-metadata`, in the fixed display order Real
+estate/Vehicle/Valuable/Business share/Loan given/Other, distinct from
+`propertyCategories`' own declaration order — in the generic
+`HoldingTypeField`'s slot instead, for every OTHER account kind's
+holding form untouched. Editable in both create and edit mode (never
+disabled, unlike the generic Type field), reusing the SAME "Type"
+label/sheet-title/placeholder catalog keys. Editing an existing
+holding pre-selects the stored category via `propertyCategoryOf`
+(`holding-metadata.ts`), a LENIENT reader that falls back to `'other'`
+for a missing/unrecognized value — independent of the strict
+all-or-nothing `asPropertyMeta` parse `usePropertyFields`'s `seed`
+still uses for the holding's `lots`.
+`src/screens/forms/holding-form/property/property-section/` is now
+just the Cost field (create-only); `PropertyFormBlock` mounts it (and
+its own "Details" heading) only in create mode, since nothing else is
+left to show there in edit mode. One lot
 plus one manual price point equal to that cost is what
 `usePropertyFields`'s own `createPayload`
 (`src/screens/forms/holding-form/property/use-property-fields/`, R3
@@ -312,7 +328,19 @@ why this is the deliberate exception to functional-first). It holds
 - Any table column holding an amount is an integer minor-units
   column (`balanceMinorUnits`, `amountMinorUnits`), never a decimal
   or float column. Convert to/from `Money` at the repository
-  boundary.
+  boundary — a raw `row.balanceMinorUnits` read for a VALUE goes
+  through `holdingsRepo.balanceOf(row): Money`, never a direct
+  member read outside a repository (mechanized, Class B:
+  `kiko-balance-through-repo` in `rules/semgrep-mobile.yml`); a WRITE
+  input takes `Money` and converts inside the repo, throwing on a
+  currency mismatch — `holdingsRepo.create`'s optional
+  `openingBalance`, `updateWithBalanceDelta`'s patch `balance`,
+  `setSyncedBalance`'s `balance`, and `accountsRepo.createCashAccount`'s
+  `initialBalance`. The sync upserts (`upsertMonobank(Many)` /
+  `upsertExchange(Many)`) are the one exception: they write a raw
+  provider-given balance straight through every run, never a typed
+  opening balance, so their own input keeps a plain
+  `balanceMinorUnits: number`.
 
 ## Currencies
 
@@ -600,8 +628,40 @@ own "Debts" section (`accounts.screen.tsx`) computes its OWN section
 total independently, via `guardedNetWorth` of just the debt-kind
 accounts' holdings (M2 — every debt-kind account holds only `loan`
 holdings, so this total is always <= 0); it does not call
-`buildDebtTotal`, which sums across every account kind. Read
-`kiko-charts` for the pie/line-specific rules.
+`buildDebtTotal`, which sums across every account kind. A
+property-kind account gets the SAME treatment: its own "Property"
+section, its own `guardedNetWorth`-summed section total over just the
+property-kind accounts' holdings, rendered between the main grid and
+the Debts section. Read `kiko-charts` for the pie/line-specific rules.
+
+### Bond funding recognition (net-worth series only)
+
+`reconcileBondFunding` (`src/statistics/reconcile-bond-funding/`) aligns a
+bond's held-cost recognition, INSIDE `buildNetWorthSeries` only, to the real
+funding money that left another holding — never the real holding's own
+`purchaseDate`/`purchasePriceMinorUnits` (unchanged; coupons, maturity, and
+the redemption ledger still read those). It matches a DEBIT (negative
+amount) in the bond's own currency whose amount is within 5% of the typed
+price (`AMOUNT_TOLERANCE_FRACTION`) AND whose local day is within
+`FUNDING_WINDOW_DAYS` (7) of the typed `purchaseDate`'s local day — both
+axes are needed: the transaction store carries no reliable structured bond
+marker, so amount alone would false-match an unrelated same-week debit, and
+day alone would false-match an unrelated same-price one. Among candidates
+within both bands, the nearest DAY wins, tie-broken by the closest amount;
+none match → falls back to the typed day/price (a legacy, FX-funded, or
+genuinely manual bond — no regression).
+
+Each candidate carries a key (`holdingId:index`), and `buildNetWorthSeries`
+(`bondRecognitionsFor`) shares ONE `claimed: Set<string>` across every bond
+in the run, so two bonds priced the same week never both claim the SAME
+debit — the reducer filters an already-claimed candidate out, and adds the
+winner's key before returning. Because the match is a greedy per-bond
+nearest-day pick, not a global optimum, WHICH bond claims a shared candidate
+is order-dependent — bonds are reconciled in a FIXED order (typed
+`purchaseDate`, then `id`) so the result is deterministic regardless of the
+holdings array's own (user-controlled sort) order. A bond that loses the
+claim falls back to its own typed day/price, same as a genuinely unmatched
+bond.
 
 ## Price series and priced holdings
 
@@ -624,6 +684,23 @@ epoch-ms instants (often mid-day, e.g. `Date.now()`), read through
 (`holding-descriptor/bond/bond.descriptor.ts`), NOT through
 `dayKeyOf`'s "a local calendar date encoded as UTC midnight"
 convention — do not conflate the two.
+
+**`asBondMeta`'s parser contract: reject bad input, default missing
+input.** `bondKind`, `couponFrequency`, `purchasePriceMinorUnits`, and
+`isin` are each optional in a STORED record (a bond saved before that
+field existed never wrote it). A genuinely ABSENT field (`undefined`)
+keeps today's documented default (`bondKind` → `'government'`,
+`couponFrequency` → `'annually'`, `purchasePriceMinorUnits` → the
+nominal `quantity * faceValueMinorUnits`, `isin` → `undefined`) — a
+stored pre-field row must still parse. A PRESENT field that fails its
+own check (an unrecognized `bondKind`/`couponFrequency` string, a
+non-number `purchasePriceMinorUnits` including `NaN`, a non-string
+`isin`) instead rejects the WHOLE record (`asBondMeta` returns `null`),
+the same as any other wrong-type field — silently defaulting corrupt
+data would hide a real bug in whatever wrote it. Every sibling parser in
+this file (`asTermDepositMeta`, `asPropertyMeta`, `asMetalMeta`,
+`asLoanMeta`) already rejects a present-but-invalid field the same way;
+`asBondMeta` used to be the one exception that defaulted instead.
 
 `src/bonds/isin/` (T23) validates an ISIN with no side effects:
 `normalizeIsin` trims/uppercases; `validateIsin` checks the ISO 6166
@@ -1119,9 +1196,13 @@ below until it is added there too. Seven steps, in order:
    ships them (see `kiko-translator`).
 5. Add an entry to `holdingDetailSpecs`
    (`src/screens/holding-detail/holding-detail-spec/`): its footer add
-   action, its value-breakdown display (or `null` to hide it), and its
-   next-loan-installment panel (or `noInstallment` for every type but a
-   scheduled loan). The `satisfies Record<HoldingType, HoldingDetailSpec>`
+   action, its value-breakdown display, and its next-loan-installment
+   panel (or `noInstallment` for every type but a scheduled loan). The
+   breakdown is one of `{ kind: 'interest', principalLabelKey, expectedProfit }`
+   (the deposit/bond principal-or-cost/gross/interest/tax table), `{ kind:
+   'priced' }` (the cost/value/gain table a priced type shows — see
+   `kiko-pricing`'s "Priced holdings" section), or `null` to hide the
+   breakdown entirely. The `satisfies Record<HoldingType, HoldingDetailSpec>`
    there is the fourth compile error a missed type produces.
 6. Fill in the new descriptor's own `exchange` row (`receivePath`,
    `source`, `createSource`, `createDestination` — `HoldingDescriptor`'s

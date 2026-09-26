@@ -6,7 +6,7 @@ import { endOfLocalDay, startOfLocalDay } from '../../../dates/local-day';
 import type { NetWorthPoint } from '../../../statistics/net-worth-series';
 import '../../../design-system/unistyles';
 import NetWorthLine from './index';
-import { buildLineSegments, buildTicks, toAreaPath } from './net-worth-line.component';
+import { buildTicks, toAreaPath } from './net-worth-line.component';
 
 // Every "y,x" coordinate's Y value in a path `d` string — every number that
 // follows a comma. The area builders clamp these to `referenceY`, so a test can
@@ -24,15 +24,6 @@ const polylineYs = (raw: string): number[] =>
     .trim()
     .split(' ')
     .map((pair) => Number(pair.split(',')[1]));
-
-// The stroke splits into one <Polyline> per sign-contiguous segment
-// (testID `net-worth-line-polyline-<key>`) instead of a single polyline —
-// this flattens every segment's points into one Y array, the same shape
-// `polylineYs` used to return from the old single polyline, so the
-// gradient-anchoring math below (which only cares about the SET of plotted
-// Y's, not which segment carried which) is unchanged.
-const allSegmentYs = (segments: { props: Record<string, unknown> }[]): number[] =>
-  segments.flatMap((segment) => polylineYs(String(segment.props.points)));
 
 // Flatten a (possibly nested/array) style prop into its plain object layers so a
 // test can assert a single directive regardless of how Unistyles composed it.
@@ -118,84 +109,6 @@ describe('toAreaPath', () => {
       expect(path.startsWith('M ')).toBe(true);
       expect(path.trimEnd().endsWith(`L 2,${referenceY} L 0,${referenceY} Z`)).toBe(true);
     }
-  });
-});
-
-// The stroke's per-sign segmentation. Reuses the exact same identity
-// scale, `crossing` fixture, and `referenceY` as the `toAreaPath` suite
-// above — proving the STROKE's crossing x's (0.5, 1.625) are the FILL's own,
-// not independently re-derived.
-describe('buildLineSegments', () => {
-  const scales = {
-    x: (t: number) => t,
-    y: (v: number) => v,
-    minTime: 0,
-    maxTime: 2,
-  };
-  const crossing: NetWorthPoint[] = [
-    { t: 0, amount: 10 },
-    { t: 1, amount: 20 },
-    { t: 2, amount: 12 },
-  ];
-  const referenceY = 15;
-
-  it('splits into one segment per contiguous side, at the SAME crossing x as toAreaPath (0.5, 1.625)', () => {
-    const segments = buildLineSegments(crossing, scales, referenceY);
-
-    expect(segments).toHaveLength(3);
-    expect(segments.map((segment) => segment.side)).toEqual(['above', 'below', 'above']);
-
-    // Down crossing at x = 0.5 — matches toAreaPath's "M 0,10 L 0.5,15 ..."
-    // above; the first (above) segment ends there, the second (below) starts
-    // there, so the stroke and fill agree exactly at the split.
-    expect(segments[0].points).toBe('0,10 0.5,15');
-    expect(segments[1].points).toBe('0.5,15 1,20 1.625,15');
-    // Up crossing at x = 1.625 — matches toAreaPath's "... 1.625,15 L 2,12
-    // ..." above; the third (above) segment starts there.
-    expect(segments[2].points).toBe('1.625,15 2,12');
-  });
-
-  it('collapses to exactly one segment when the series never crosses the reference', () => {
-    const neverCrosses: NetWorthPoint[] = [
-      { t: 0, amount: 20 },
-      { t: 1, amount: 25 },
-      { t: 2, amount: 22 },
-    ];
-
-    const segments = buildLineSegments(neverCrosses, scales, referenceY);
-
-    expect(segments).toHaveLength(1);
-    expect(segments[0].side).toBe('below');
-    expect(segments[0].points).toBe('0,20 1,25 2,22');
-  });
-
-  it('renders exactly one point (no visible line, no crash) for a single-point series', () => {
-    const onePoint: NetWorthPoint[] = [{ t: 0, amount: 10 }];
-
-    const segments = buildLineSegments(onePoint, scales, referenceY);
-
-    expect(segments).toHaveLength(1);
-    expect(segments[0].points).toBe('0,10');
-  });
-
-  it('does not double up a vertex that sits exactly ON the reference', () => {
-    // The middle point sits exactly at referenceY: sideOfY ties it to
-    // 'above' (the same inclusive `y <= referenceY` convention
-    // bandExtremes' aboveYs filter uses), so the crossing-x formula
-    // degenerates to that vertex's OWN x (y1 === referenceY -> xCross ===
-    // x1) — pushVertex must not push it twice in a row.
-    const touchesReference: NetWorthPoint[] = [
-      { t: 0, amount: 10 },
-      { t: 1, amount: 15 },
-      { t: 2, amount: 20 },
-    ];
-
-    const segments = buildLineSegments(touchesReference, scales, referenceY);
-
-    expect(segments).toHaveLength(2);
-    expect(segments.map((segment) => segment.side)).toEqual(['above', 'below']);
-    expect(segments[0].points).toBe('0,10 1,15');
-    expect(segments[1].points).toBe('1,15 2,20');
   });
 });
 
@@ -308,26 +221,22 @@ describe('NetWorthLine', () => {
     expect(getByText('1 236 ₴')).toBeTruthy();
   });
 
-  // The stroke changed from a single always-white polyline to sign-colored
-  // segments (see "colors the net-worth stroke by sign" below); this guard
-  // now covers only the non-crossing case, where the segmentation collapses
-  // back to exactly one polyline carrying one coordinate pair per point —
-  // the crossing case is covered separately below.
-  it('renders one stroke segment with one coordinate pair per point when nothing crosses the reference', async () => {
-    const nonCrossingPoints: NetWorthPoint[] = [
+  it('renders one white stroke with one coordinate pair per point', async () => {
+    const somePoints: NetWorthPoint[] = [
       { t: 0, amount: 220 },
       { t: 86_400_000, amount: 260 },
       { t: 172_800_000, amount: 240 },
     ];
-    const { getAllByTestId } = await render(
-      <NetWorthLine points={nonCrossingPoints} startReference={200} baseCurrency="USD" />,
+    const { getByTestId } = await render(
+      <NetWorthLine points={somePoints} startReference={200} baseCurrency="USD" />,
     );
 
-    const segments = getAllByTestId(/^net-worth-line-polyline-/);
-    expect(segments).toHaveLength(1);
+    const polyline = getByTestId('net-worth-line-polyline');
+    expect(polyline.props.stroke).toBe(darkTheme.colors.entityColors.white);
+    expect(polyline.props.fill).toBe('none');
 
-    const pairs = segments[0].props.points.trim().split(' ');
-    expect(pairs).toHaveLength(nonCrossingPoints.length);
+    const pairs = polyline.props.points.trim().split(' ');
+    expect(pairs).toHaveLength(somePoints.length);
     for (const pair of pairs) {
       expect(pair).toMatch(/^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/);
     }
@@ -703,7 +612,7 @@ describe('NetWorthLine', () => {
 
   it('anchors each gradient to the ACTUAL filled band, not the whole plot half', async () => {
     const height = 200;
-    const { getByTestId, getAllByTestId } = await render(
+    const { getByTestId } = await render(
       <NetWorthLine
         points={crossingPoints}
         startReference={200}
@@ -714,7 +623,7 @@ describe('NetWorthLine', () => {
 
     const referenceY = getByTestId('net-worth-line-reference').props.y1;
     const baselineY = height - 12;
-    const ys = allSegmentYs(getAllByTestId(/^net-worth-line-polyline-/));
+    const ys = polylineYs(getByTestId('net-worth-line-polyline').props.points);
     // greenTopY: the highest pixel (smallest y) among points at or above the
     // reference. redBottomY: the lowest pixel (largest y) among points at or
     // below it. These are the true filled-band extremes the component anchors to.
@@ -746,13 +655,13 @@ describe('NetWorthLine', () => {
       { t: 1, amount: 199 },
       { t: 2, amount: 250 },
     ];
-    const { getByTestId, getAllByTestId } = await render(
+    const { getByTestId } = await render(
       <NetWorthLine points={shallow} startReference={200} baseCurrency="USD" height={height} />,
     );
 
     const referenceY = getByTestId('net-worth-line-reference').props.y1;
     const baselineY = height - 12;
-    const ys = allSegmentYs(getAllByTestId(/^net-worth-line-polyline-/));
+    const ys = polylineYs(getByTestId('net-worth-line-polyline').props.points);
     const redBottomY = Math.max(...ys.filter((y) => y >= referenceY));
 
     const negGrad = getByTestId('net-worth-line-gradient-negative');
@@ -766,11 +675,10 @@ describe('NetWorthLine', () => {
     expect(redBottomY).toBeLessThan(baselineY);
     expect(redBottomY - referenceY).toBeLessThan((baselineY - referenceY) / 2);
 
-    // The opaque stop is pinned at redBottomY (offset 1). Tests render on the
-    // default (dark) theme — see unistyles.ts — where the red/negative stop
-    // is boosted to 0.5 (not the shared 0.3 green/positive uses) so the fill
-    // still reads clearly composited over OLED true-black; see
-    // NEGATIVE_AREA_OPACITY_DARK in net-worth-line.component.tsx.
+    // The opaque stop is pinned at redBottomY (offset 1). The red/negative
+    // stop is boosted to 0.5 (not the shared 0.3 green/positive uses) so the
+    // fill still reads clearly composited over OLED true-black; see
+    // NEGATIVE_AREA_OPACITY in net-worth-line.component.tsx.
     const negLine = getByTestId('net-worth-line-gradient-negative-stop-line');
     expect(negLine.props.offset).toBe('1');
     expect(negLine.props.stopOpacity).toBe(0.5);
@@ -792,61 +700,6 @@ describe('NetWorthLine', () => {
     expect(getByTestId('net-worth-line-gradient-positive')).toBeTruthy();
     expect(queryByTestId('net-worth-line-area-negative')).toBeNull();
     expect(queryByTestId('net-worth-line-gradient-negative')).toBeNull();
-  });
-
-  // Exploratory — kept as one cohesive block in the component, so it
-  // reverts in a single edit if dropped: the stroke is no longer a single
-  // fixed white polyline — it is sign-colored per contiguous segment,
-  // matching the fill's own green-above/red-below convention.
-  it('colors the net-worth stroke by sign per segment, not a fixed white', async () => {
-    const { getAllByTestId } = await render(
-      <NetWorthLine points={crossingPoints} startReference={200} baseCurrency="USD" height={200} />,
-    );
-
-    const segments = getAllByTestId(/^net-worth-line-polyline-/);
-    // crossingPoints goes above -> below -> above (see its own comment
-    // above), so it crosses TWICE: three contiguous same-sign segments,
-    // colored green/red/green — the same theme tokens the fill uses.
-    expect(segments).toHaveLength(3);
-    expect(segments[0].props.stroke).toBe(darkTheme.colors.positive);
-    expect(segments[1].props.stroke).toBe(darkTheme.colors.negative);
-    expect(segments[2].props.stroke).toBe(darkTheme.colors.positive);
-    expect(segments[0].props.fill).toBe('none');
-
-    // Every segment keeps the SAME stroke width the single polyline used to
-    // (LINE_STROKE_WIDTH is not exported; consistency across segments is
-    // the observable contract for "preserve the current stroke width").
-    const widths = new Set(segments.map((segment) => segment.props.strokeWidth));
-    expect(widths.size).toBe(1);
-
-    // Each segment CONNECTS to the next at the exact same vertex — the last
-    // "x,y" of one segment equals the first "x,y" of the next — so the
-    // stroke still reads as one continuous line, not disjoint dashes.
-    const lastVertexOf = (raw: string): string => raw.trim().split(' ').at(-1) as string;
-    const firstVertexOf = (raw: string): string => raw.trim().split(' ').at(0) as string;
-    expect(lastVertexOf(segments[0].props.points)).toBe(firstVertexOf(segments[1].props.points));
-    expect(lastVertexOf(segments[1].props.points)).toBe(firstVertexOf(segments[2].props.points));
-  });
-
-  it('splits the stroke at the SAME crossing x the fill uses, so line and fill agree', async () => {
-    const { getAllByTestId, getByTestId } = await render(
-      <NetWorthLine points={crossingPoints} startReference={200} baseCurrency="USD" height={200} />,
-    );
-
-    const referenceY = getByTestId('net-worth-line-reference').props.y1;
-    const segments = getAllByTestId(/^net-worth-line-polyline-/);
-    // The stroke's split vertex (end of segment 0 / start of segment 1) sits
-    // exactly at referenceY, the boundary every crossing vertex rides.
-    const splitVertex = segments[0].props.points.trim().split(' ').at(-1) as string;
-    const [splitX, splitY] = splitVertex.split(',');
-    expect(Number(splitY)).toBeCloseTo(referenceY);
-
-    // The fill's negative area path inserts a vertex at the IDENTICAL x —
-    // both toAreaPath and buildLineSegments compute it with the exact same
-    // formula from the exact same x1/y1/x2/y2/referenceY, so the rendered
-    // string is bit-identical, not just numerically close.
-    const negativeAreaD: string = getByTestId('net-worth-line-area-negative').props.d;
-    expect(negativeAreaD).toContain(`${splitX},${referenceY}`);
   });
 
   it('reserves a fixed-width Y-axis column so its value labels are fully visible', async () => {
@@ -930,7 +783,7 @@ describe('NetWorthLine', () => {
     );
 
     expect(getByTestId('net-worth-line-loading')).toBeTruthy();
-    expect(queryByTestId(/^net-worth-line-polyline-/)).toBeNull();
+    expect(queryByTestId('net-worth-line-polyline')).toBeNull();
   });
 
   it('renders an empty state when there are no points and not loading', async () => {
@@ -939,7 +792,7 @@ describe('NetWorthLine', () => {
     );
 
     expect(getByTestId('net-worth-line-empty')).toBeTruthy();
-    expect(queryByTestId(/^net-worth-line-polyline-/)).toBeNull();
+    expect(queryByTestId('net-worth-line-polyline')).toBeNull();
   });
 
   // Renders the loading placeholder at the given plot height and returns its

@@ -3,6 +3,7 @@ import type { ComponentProps } from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import { i18n } from '../../../i18n';
+import { Money } from '../../../currency/money';
 import {
   asNavigationProp,
   asRouteProp,
@@ -375,6 +376,7 @@ describe('AccountFormScreen', () => {
 
     await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
     await selectKind(getByTestId, 'cash');
+    await fireEvent.changeText(getByLabelText('Initial value'), '100');
 
     const save = getByText('Save');
 
@@ -427,6 +429,7 @@ describe('AccountFormScreen', () => {
 
     await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
     await selectKind(getByTestId, 'cash');
+    await fireEvent.changeText(getByLabelText('Initial value'), '100');
     await fireEvent.press(getByLabelText('Change Icon'));
     await fireEvent.press(getByLabelText('Choose icon banknote'));
     await fireEvent.press(getByText('Save'));
@@ -563,7 +566,18 @@ describe('AccountFormScreen', () => {
     expect(scrollToField).toHaveBeenCalled();
   });
 
-  it('clamps a negative cash initial value to zero', async () => {
+  it('shows an initial-value-required error and saves nothing when the field is blank', async () => {
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
+    await selectKind(getByTestId, 'cash');
+    await fireEvent.press(getByText('Save'));
+
+    expect(getByText('Enter an initial value.')).toBeTruthy();
+    expect(mockCreateCashAccount).not.toHaveBeenCalled();
+  });
+
+  it('shows an initial-value-negative error and saves nothing for a negative value', async () => {
     const { getByLabelText, getByTestId, getByText } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
@@ -571,8 +585,20 @@ describe('AccountFormScreen', () => {
     await fireEvent.changeText(getByLabelText('Initial value'), '-50');
     await fireEvent.press(getByText('Save'));
 
+    expect(getByText('Initial value must be 0 or greater.')).toBeTruthy();
+    expect(mockCreateCashAccount).not.toHaveBeenCalled();
+  });
+
+  it('saves a typed zero initial value', async () => {
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
+    await selectKind(getByTestId, 'cash');
+    await fireEvent.changeText(getByLabelText('Initial value'), '0');
+    await fireEvent.press(getByText('Save'));
+
     expect(mockCreateCashAccount).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'Wallet', initialBalanceMinorUnits: 0 }),
+      expect.objectContaining({ name: 'Wallet', initialBalance: Money.of('UAH', 0) }),
     );
   });
 
@@ -600,7 +626,7 @@ describe('AccountFormScreen', () => {
       // No color was picked either, so the create passes an explicit null and the
       // row follows its cash kind default at display time.
       color: null,
-      initialBalanceMinorUnits: 25050,
+      initialBalance: Money.of('EUR', 25050),
     });
     expect(mockCreate).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
@@ -634,6 +660,7 @@ describe('AccountFormScreen', () => {
 
     await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
     await selectKind(getByTestId, 'cash');
+    await fireEvent.changeText(getByLabelText('Initial value'), '100');
     await fireEvent.press(getByText('Save'));
 
     await waitFor(() =>
@@ -701,6 +728,7 @@ describe('AccountFormScreen color follows kind until dirty', () => {
 
     await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
     await selectKind(getByTestId, 'cash');
+    await fireEvent.changeText(getByLabelText('Initial value'), '100');
     await fireEvent.press(getByLabelText('Color violet'));
     await fireEvent.press(getByText('Save'));
 

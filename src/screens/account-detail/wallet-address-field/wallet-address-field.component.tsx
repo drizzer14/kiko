@@ -27,6 +27,11 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
   const { t } = useTranslation();
   const [address, setAddress] = useState('');
   const [status, setStatus] = useState<SyncStatus>({ kind: 'idle' });
+  // Shown only after a Connect press finds a blank address — Connect is
+  // always enabled now (kiko-code-style's form validation model), so this
+  // surfaces the address-required reason on press rather than a standing
+  // disabled state.
+  const [showAddressRequiredError, setShowAddressRequiredError] = useState(false);
 
   // Also runs on a clipboard paste (`ClipboardTextField` calls it with the
   // already-trimmed pasted value), so typing and pasting reset the stale
@@ -34,10 +39,17 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
   const handleChangeAddress = (value: string): void => {
     setAddress(value);
     setStatus({ kind: 'idle' });
+    setShowAddressRequiredError(false);
   };
 
   const handleConnect = (): void => {
     const trimmed = address.trim();
+
+    if (trimmed === '') {
+      setShowAddressRequiredError(true);
+
+      return;
+    }
 
     if (!isValidBitcoinAddress(trimmed)) {
       setStatus({ kind: 'invalid', message: t('accountDetail.invalidBTCAddress') });
@@ -63,6 +75,7 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
         onChangeText={handleChangeAddress}
         placeholder={t('accountDetail.btcAddressPlaceholder')}
         pasteAccessibilityLabel={t('accountDetail.pasteFromClipboard')}
+        error={showAddressRequiredError ? t('accountDetail.walletAddressRequiredError') : undefined}
       />
 
       <Box direction="row" gap={2} style={styles.statusLine}>
@@ -71,7 +84,7 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
           size="small"
           fullWidth={false}
           onPress={handleConnect}
-          disabled={status.kind === 'checking' || address.trim() === ''}
+          disabled={status.kind === 'checking'}
           icon="lock"
         >
           {t('accountDetail.connectWallet')}

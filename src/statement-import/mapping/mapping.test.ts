@@ -121,7 +121,7 @@ describe('computeDedupKey', () => {
     const second = computeDedupKey('holding-1', groceryTransaction, 1);
 
     expect(first).not.toBe(second);
-    expect(second).toBe(`${first} 1`);
+    expect(second).toBe(`${first}␟1`);
   });
 
   it('differs across two different holdings for the same transaction', () => {
@@ -137,5 +137,50 @@ describe('computeDedupKey', () => {
     const second = computeDedupKey('holding-1', variant, 0);
 
     expect(first).toBe(second);
+  });
+
+  // Review's collision scenario (:2321): "Top up", "Top up", "Top up 1" at the
+  // same second and amount. The occurrence-1 key for the second "Top up" row
+  // and the occurrence-0 key for "Top up 1" must stay distinct — the plain-
+  // space join the OLD key used made them collide, since a description
+  // ending in a digit is indistinguishable in SQL from an occurrence suffix
+  // (`normalizeTransactionName` is JS-only). The `␟` separator fixes this: it
+  // can never appear in a real description, unlike a space.
+  it('keeps three same-second, same-amount "Top up"/"Top up 1" rows distinct', () => {
+    const topUp: ParsedTransaction = {
+      currency: 'UAH',
+      amountMinorUnits: 1_000,
+      timeSeconds: 1_700_000_000,
+      description: 'Top up',
+    };
+    const topUpOne: ParsedTransaction = { ...topUp, description: 'Top up 1' };
+
+    const first = computeDedupKey('holding-1', topUp, 0);
+    const second = computeDedupKey('holding-1', topUp, 1);
+    const third = computeDedupKey('holding-1', topUpOne, 0);
+
+    expect(new Set([first, second, third]).size).toBe(3);
+  });
+
+  // A property test over random descriptions that end in digits: no pair of
+  // (occurrenceIndex, description) combinations the mapper can produce for
+  // ONE (holding, time, amount) tuple collides onto the same key.
+  it('stays injective across random descriptions ending in digits and any occurrenceIndex', () => {
+    const keys = new Set<string>();
+
+    for (let occurrenceIndex = 0; occurrenceIndex < 5; occurrenceIndex += 1) {
+      for (let trailingDigits = 0; trailingDigits < 20; trailingDigits += 1) {
+        const transaction: ParsedTransaction = {
+          currency: 'UAH',
+          amountMinorUnits: 500,
+          timeSeconds: 1_700_000_000,
+          description: `Top up ${trailingDigits}`,
+        };
+
+        keys.add(computeDedupKey('holding-1', transaction, occurrenceIndex));
+      }
+    }
+
+    expect(keys.size).toBe(5 * 20);
   });
 });

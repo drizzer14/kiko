@@ -20,6 +20,7 @@ import { usePriceBook } from '../../prices/use-price-book';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import { isSyncedAccount } from '../../holdings/deletable';
+import { needsPriceBook } from '../../holdings/priced-value';
 import Divider from '../../design-system/components/divider';
 import MoneyText from '../../design-system/components/money-text';
 import { accountKindSymbol } from '../../holdings/entity-symbols';
@@ -53,7 +54,12 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(settingsRepo.getQuery(), [
     'settings',
   ]);
-  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook();
+  // kiko-architecture: skip the price_points read while nothing rendered on
+  // this screen ever reads it — a holding whose type carries no priced spec
+  // and is not a loan (`needsPriceBook`) never touches `price_points`.
+  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
+    holdings.some((holding) => needsPriceBook(holding.type)),
+  );
   // The empty-accounts text must never render while any of this screen's own
   // queries is still on its first load (kiko-architecture's useLiveQuery
   // consumer rule) — gated below, right at the return.
@@ -79,21 +85,29 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     [accounts],
   );
 
-  // A debt account gets its OWN "Debts" section, in its own
+  // A property or debt account gets its OWN section, in its own
   // drag-and-drop grid below the main one — never mixed into it, so a drag
-  // reorder in either grid can only ever reorder within that same section
-  // (`Sortable.Grid`'s `data` is scoped per grid). Both stay in the query's
-  // `sortOrder` order, same as the single grid did before this split. One
-  // partition pass over `activeAccounts` rather than two separate filters.
-  const { mainAccounts, debtAccounts } = useMemo(() => {
+  // reorder in any grid can only ever reorder within that same section
+  // (`Sortable.Grid`'s `data` is scoped per grid). All three stay in the
+  // query's `sortOrder` order, same as the single grid did before this
+  // split. One partition pass over `activeAccounts` rather than three
+  // separate filters.
+  const { mainAccounts, propertyAccounts, debtAccounts } = useMemo(() => {
     const main: typeof activeAccounts = [];
+    const property: typeof activeAccounts = [];
     const debt: typeof activeAccounts = [];
 
     for (const account of activeAccounts) {
-      (account.kind === 'debt' ? debt : main).push(account);
+      if (account.kind === 'debt') {
+        debt.push(account);
+      } else if (account.kind === 'property') {
+        property.push(account);
+      } else {
+        main.push(account);
+      }
     }
 
-    return { mainAccounts: main, debtAccounts: debt };
+    return { mainAccounts: main, propertyAccounts: property, debtAccounts: debt };
   }, [activeAccounts]);
 
   // Group every open holding by its account id in ONE O(H) pass, so each card
@@ -120,6 +134,23 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
 
     return byAccount;
   }, [holdings]);
+
+  // The Property section shows a SECTION total, the same "sum every member
+  // account's holdings through guardedNetWorth" pattern the Debts section
+  // below uses. Every property-kind account holds only `property_item`
+  // holdings (`holdingTypesForAccountKind`), so this total is always the sum
+  // the section's own cards already individually show.
+  const propertyTotal = useMemo(
+    () =>
+      guardedNetWorth(
+        propertyAccounts.flatMap((account) => holdingsByAccount.get(account.id) ?? []),
+        baseCurrency,
+        rateTable,
+        now,
+        priceBook,
+      ),
+    [propertyAccounts, holdingsByAccount, baseCurrency, rateTable, now, priceBook],
+  );
 
   // The Debts section shows a SECTION total
   // (negative), not just each card's own balance. Every debt-kind account holds
@@ -271,18 +302,51 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
               // parent list.
               // `accountsRepo.reorder` rewrites `sortOrder`
               // for ONLY the ids it is given. Persisting just this grid's own
-              // reordered ids would restart both sections at 0, so a later
+              // reordered ids would restart every section at 0, so a later
               // read of the FULL account list (Statistics' account filter,
               // the transaction-form account rank, Home, statement import —
-              // every other `listQuery` consumer) interleaves the two
-              // sections instead of keeping assets first, then debts. Always
-              // persist the WHOLE order: this grid's new order, then every
-              // debt account's id unchanged.
+              // every other `listQuery` consumer) interleaves the sections
+              // instead of keeping assets first, then property, then debts.
+              // Always persist the WHOLE order: this grid's new order, then
+              // every property and debt account's id unchanged.
               <Box testID="accounts-grid">
                 {renderGrid(mainAccounts, (ids) =>
-                  accountsRepo.reorder([...ids, ...debtAccounts.map((account) => account.id)]),
+                  accountsRepo.reorder([
+                    ...ids,
+                    ...propertyAccounts.map((account) => account.id),
+                    ...debtAccounts.map((account) => account.id),
+                  ]),
                 )}
               </Box>
+            )}
+
+            {propertyAccounts.length > 0 && (
+              // The "Property" section — its own heading + its
+              // own grid, so a drag reorder here can never move a property
+              // account into the main grid above (or vice versa). Rendered
+              // only when the user actually has a property account
+              // (data-driven, not a build flag — Guideline 5.6).
+              <>
+                {mainAccounts.length > 0 && <Divider spacing={2} />}
+                <Box gap={3}>
+                  <Box direction="row" style={styles.sectionHeadingRow}>
+                    <Text variant="heading">{t('accounts.propertySection')}</Text>
+                    <Box testID="accounts-property-total">
+                      <MoneyText money={propertyTotal} context="balance" />
+                    </Box>
+                  </Box>
+                  <Box testID="accounts-property-grid">
+                    {/* Mirrors the main grid's persist-order fix above. */}
+                    {renderGrid(propertyAccounts, (ids) =>
+                      accountsRepo.reorder([
+                        ...mainAccounts.map((account) => account.id),
+                        ...ids,
+                        ...debtAccounts.map((account) => account.id),
+                      ]),
+                    )}
+                  </Box>
+                </Box>
+              </>
             )}
 
             {debtAccounts.length > 0 && (
@@ -292,9 +356,11 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
               // the user actually has a debt account (data-driven, not a
               // build flag — Guideline 5.6).
               <>
-                {mainAccounts.length > 0 && <Divider spacing={2} />}
+                {(mainAccounts.length > 0 || propertyAccounts.length > 0) && (
+                  <Divider spacing={2} />
+                )}
                 <Box gap={3}>
-                  <Box direction="row" style={styles.debtsHeadingRow}>
+                  <Box direction="row" style={styles.sectionHeadingRow}>
                     <Text variant="heading">{t('accounts.debtsSection')}</Text>
                     <Box testID="accounts-debts-total">
                       <MoneyText money={debtsTotal} context="balance" />
@@ -303,7 +369,11 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                   <Box testID="accounts-debts-grid">
                     {/* Mirrors the main grid's persist-order fix above. */}
                     {renderGrid(debtAccounts, (ids) =>
-                      accountsRepo.reorder([...mainAccounts.map((account) => account.id), ...ids]),
+                      accountsRepo.reorder([
+                        ...mainAccounts.map((account) => account.id),
+                        ...propertyAccounts.map((account) => account.id),
+                        ...ids,
+                      ]),
                     )}
                   </Box>
                 </Box>

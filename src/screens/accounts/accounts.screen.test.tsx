@@ -644,6 +644,119 @@ describe('AccountsScreen', () => {
     });
   });
 
+  describe('Property section', () => {
+    // No price point is mocked anywhere in this file (`price_points` always
+    // resolves empty — see `setLiveData`), so a `property_item`'s value falls
+    // back to its lot's own cost basis (`priced-parts.ts`'s
+    // `pricedValueOrNull` -> null -> `costBasisMinorAt`) rather than needing a
+    // real priced instrument — 500_000 minor UAH -> 5,000.00 ₴.
+    const propertyAccount = (over: Partial<Account> = {}): Account => ({
+      id: 'p',
+      name: 'Apartment',
+      kind: 'property',
+      ...over,
+    });
+    const propertyHolding = (over: Partial<Holding> = {}): Holding => ({
+      accountId: 'p',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      type: 'property_item',
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 500_000 }],
+      },
+      ...over,
+    });
+
+    it('renders no Property section when there is no property account', async () => {
+      const { queryByText } = await renderAccounts();
+      expect(queryByText('Property')).toBeNull();
+    });
+
+    it('renders a Property section with the property account and its own section total', async () => {
+      setLiveData({
+        accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }, propertyAccount()],
+        holdings: [
+          { accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_000 },
+          propertyHolding(),
+        ],
+      });
+
+      const { getByText, getAllByText } = await renderAccounts();
+
+      // "Property" reads twice on purpose — the section heading AND the
+      // card's own kind caption (`forms.account.property`) share the exact
+      // same word, unlike "Debts"/"Debt".
+      expect(getAllByText('Property').length).toBe(2);
+      expect(getByText('Apartment')).toBeTruthy();
+      // The card's own value AND the section total (one property account ->
+      // the same figure) both read 5,000.00 ₴.
+      expect(getAllByText(/5,000\.00 ₴/).length).toBe(2);
+    });
+
+    it('shows a Property section total next to the heading, summing every property account', async () => {
+      setLiveData({
+        accounts: [propertyAccount(), propertyAccount({ id: 'q', name: 'Car' })],
+        holdings: [propertyHolding(), propertyHolding({ accountId: 'q' })],
+      });
+
+      const { getByTestId } = await renderAccounts();
+
+      expect(within(getByTestId('accounts-property-total')).getByText(/10,000\.00 ₴/)).toBeTruthy();
+    });
+
+    it('keeps the property account out of the main and Debts grids, in its own section grid', async () => {
+      setLiveData({
+        accounts: [
+          { id: 'a', name: 'Monobank', kind: 'bank' },
+          propertyAccount(),
+          { id: 'd', name: 'Mortgage', kind: 'debt' },
+        ],
+        holdings: [
+          { accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_000 },
+          propertyHolding(),
+        ],
+      });
+
+      const { getByTestId } = await renderAccounts();
+
+      const mainGrid = within(getByTestId('accounts-grid')).getByTestId('sortable-grid');
+      expect(within(mainGrid).queryByText('Apartment')).toBeNull();
+      const propertyGrid = within(getByTestId('accounts-property-grid')).getByTestId(
+        'sortable-grid',
+      );
+      expect(within(propertyGrid).getByText('Apartment')).toBeTruthy();
+    });
+
+    it('persists the FULL account order (main, then property, then debts) when the Property grid is reordered', async () => {
+      setLiveData({
+        accounts: [
+          { id: 'a', name: 'Monobank', kind: 'bank' },
+          propertyAccount(),
+          propertyAccount({ id: 'q', name: 'Car' }),
+          { id: 'd', name: 'Mortgage', kind: 'debt' },
+        ],
+        holdings: [propertyHolding(), propertyHolding({ accountId: 'q' })],
+      });
+
+      const { getByTestId } = await renderAccounts();
+      const propertyGrid = within(getByTestId('accounts-property-grid')).getByTestId(
+        'sortable-grid',
+      );
+
+      await act(async () => {
+        propertyGrid.props.onDragEnd({
+          key: 'q',
+          fromIndex: 1,
+          toIndex: 0,
+          indexToKey: ['q', 'p'],
+        });
+      });
+
+      expect(mockAccountReorder).toHaveBeenCalledWith(['a', 'q', 'p', 'd']);
+    });
+  });
+
   describe('localization', () => {
     afterEach(async () => {
       await act(async () => {
@@ -712,5 +825,36 @@ describe('AccountsScreen — loading gate', () => {
 
     expect(getByText('Monobank')).toBeTruthy();
     expect(queryByTestId('accounts-loading')).toBeNull();
+  });
+});
+
+// kiko-architecture: no request or query for data the user does not have —
+// usePriceBook's price_points read is disabled while nothing on this screen
+// is a priced type (property_item/metal) or a loan.
+describe('AccountsScreen — the price_points gate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('disables the price_points read when no holding needs it', async () => {
+    setLiveData({
+      accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }],
+      holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 0, type: 'card' }],
+    });
+    await renderAccounts();
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(false);
+  });
+
+  it('enables the price_points read once a priced holding is present', async () => {
+    setLiveData({
+      accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }],
+      holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 0, type: 'metal' }],
+    });
+    await renderAccounts();
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(true);
   });
 });

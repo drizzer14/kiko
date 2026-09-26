@@ -59,6 +59,11 @@ const buildSettings = (dataset: ScreenshotDataset): SettingsRow[] => [
     trendFilter: null,
     failedSyncMonobankIds: null,
     statementMappings: null,
+    // This dataset never wrote a statement-import dedup key at all (every
+    // transaction here is built by `buildLedger` below, not imported), so
+    // there is nothing for `upgradeLegacyDedupKey` to rewrite — `true` skips
+    // that pass entirely on import, the same as a real post-upgrade device.
+    dedupKeysUpgraded: true,
   },
 ];
 

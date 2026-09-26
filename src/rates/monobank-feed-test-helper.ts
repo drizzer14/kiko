@@ -77,6 +77,11 @@ export const composeRateTable = async (
       captured.push(rates);
     },
     now: () => 1000,
+    // Both suites assert on FULL coverage across every fiat/crypto pair, so
+    // the data-presence gate (kiko-architecture) must never skip a leg here —
+    // this is not a real held-holding set, just a fixture forcing both legs
+    // to run regardless of the gate.
+    openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC', 'ETH', 'USDT'] }),
   };
 
   await refreshRates(deps);

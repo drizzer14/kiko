@@ -372,6 +372,15 @@ export const settings = sqliteTable('settings', {
   statementMappings: text('statement_mappings', { mode: 'json' }).$type<
     Record<string, SavedColumnMapping>
   >(),
+  // One-shot flag: has this device already rewritten its stored statement-
+  // import dedup keys from the pre-`␟`-separator format to the injective one
+  // (`statement-import/mapping/upgrade-dedup-key.ts`'s `upgradeLegacyDedupKey`)?
+  // Migration 0041 adds this column defaulting to `false` (unrun);
+  // `MigrationsGate` flips it to `true` after the one-time rewrite, the same
+  // shape every other one-shot migration-adjacent flag in this table uses.
+  // `restoreDataSnapshot` treats an entirely absent key (a pre-0041 `.kiko`
+  // export) as `false` too — see `restore-snapshot.ts`.
+  dedupKeysUpgraded: integer('dedup_keys_upgraded', { mode: 'boolean' }).notNull().default(false),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;

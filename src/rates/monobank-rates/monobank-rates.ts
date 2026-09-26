@@ -1,9 +1,13 @@
+import { MONOBANK_API_ENDPOINT } from '@env';
+
 import type { RateEntry } from '../conversion';
 import type { Currency } from '../../currency/currency';
 import { fiatCurrencyOptions } from '../../currency/currency';
 import { currencyFromCode } from '../../monobank/currency-code';
 
-const CURRENCY_ENDPOINT = 'https://api.monobank.ua/bank/currency';
+// The public, tokenless fiat cross-rate path on the same host
+// `MONOBANK_API_ENDPOINT` names for client-info/statement requests.
+const CURRENCY_ENDPOINT = `${MONOBANK_API_ENDPOINT}/bank/currency`;
 
 /** The public `/bank/currency` payload shape. Codes are ISO 4217 numeric. */
 type MonobankCurrencyRate = {

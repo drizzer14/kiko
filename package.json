@@ -96,7 +96,7 @@
     "typescript": "^6.0.3"
   },
   "engines": {
-    "node": ">= 22.11.0"
+    "node": ">= 22.13.0"
   },
   "overrides": {
     "@babel/core": "^7.29.6",
