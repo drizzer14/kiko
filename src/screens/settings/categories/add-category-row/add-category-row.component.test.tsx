@@ -180,6 +180,16 @@ describe('AddCategoryRow', () => {
     ).toBe(false);
   });
 
+  it('styles the Cancel label with the shared red ghost treatment (the confirm-sheet Cancel shape)', async () => {
+    const { getByLabelText, getByText } = await render(<AddCategoryRow />);
+
+    await fireEvent.press(getByLabelText('Add category'));
+
+    expect(StyleSheet.flatten(getByText('Cancel').props.style).color).toBe(
+      darkTheme.colors.negative,
+    );
+  });
+
   it('sizes the Cancel action the same as the primary Save (full-width regular half)', async () => {
     const { getByLabelText, getByRole } = await render(<AddCategoryRow />);
 

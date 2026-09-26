@@ -776,9 +776,6 @@ rules:
     metadata:
       fix: 'Use `variant="ghost"` and `textColor={theme.colors.negative}` together, the confirm-sheet.component.tsx shape.'
       skill: "kiko-design-system › Component set (Button)"
-    paths:
-      exclude:
-        - "src/screens/settings/categories/add-category-row/**"
     patterns:
       - pattern-either:
           - patterns:

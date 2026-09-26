@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { type FC, useRef, useState } from 'react';
+import { useUnistyles } from 'react-native-unistyles';
 import { categoriesRepo } from '@kiko/categories/repo';
 import { Pressable, type TextInputInstance } from 'react-native';
 
@@ -34,6 +35,7 @@ type AddCategoryRowProps = {
 // collapses the form back so the action is never a dead end.
 const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
   const { t } = useTranslation();
+  const { theme } = useUnistyles();
   const [expanded, setExpanded] = useState(false);
   const [name, setName] = useState('');
   const [icon, setIcon] = useState(DEFAULT_ICON);
@@ -164,7 +166,9 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
 
         <Box direction="row" gap={3}>
           <Box style={styles.action}>
-            <Button variant="secondary" onPress={collapse}>
+            {/* The shared red ghost Cancel treatment, the confirm-sheet.component.tsx
+                shape — see kiko-design-system's "Component set (Button)". */}
+            <Button variant="ghost" textColor={theme.colors.negative} onPress={collapse}>
               {t('common.cancel')}
             </Button>
           </Box>
