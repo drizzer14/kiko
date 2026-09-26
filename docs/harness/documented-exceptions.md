@@ -440,4 +440,18 @@ verified usage, not dead weight:
   `kiko-appgroup-write-needs-protection`) and their fixtures were removed
   2026-09-23 (`4e66dd7`) as dead — re-add both, with fixtures, the moment
   any code (a Share Extension or otherwise) writes to the App Group again.
+- **The pre-write guard's override comment (`// nosemgrep: <rule-id>
+  OVERRIDE(<reason>) <justification>`, or `kiko-override:` for a
+  Node-checked rule) is the same shape as the Biome override protocol
+  above, applied to `rules/semgrep-prewrite.yml` and the
+  `NODE_RULES` in `scripts/checks/pre-write-guard.js`.** A bare
+  `nosemgrep`/`kiko-override` comment with no `OVERRIDE(...)` never
+  suppresses a finding — see `pre-write-guard.js`'s
+  `OVERRIDE_COMMENT_PATTERN` and its surrounding comments for the
+  exact match rule. Every `paths.exclude` scope added to
+  `rules/semgrep-prewrite.yml` (one per rule, pointing at the real
+  implementation a rule's own pattern would otherwise also flag) is
+  documented inline in that file's own comments next to each rule —
+  read the rule there rather than duplicating the list here, since a
+  new rule's exclude would otherwise drift this bullet out of date.
 
