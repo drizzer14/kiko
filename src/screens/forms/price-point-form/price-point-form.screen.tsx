@@ -7,11 +7,6 @@ import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor'
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
 import DateField from '../date-field';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '../scroll-to-field/scroll-to-field';
 import { Money } from '../../../currency/money';
 import { parseAmount } from '../../../currency/parse';
 import { dayKeyOf } from '../../../prices/price-book';
@@ -22,11 +17,16 @@ import { groupAmount } from '../amount-format/amount-format';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import { holdingInstrument } from '../../../prices/instrument';
-import { useSubmitOnce } from '../use-submit-once/use-submit-once';
+import {
+  useHeaderInset,
+  scrollToField,
+  type FieldInstance,
+} from '../../../design-system/scroll-to-field/scroll-to-field';
 import { pricePointsRepo } from '../../../prices/price-points-repo';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import TextField from '../../../design-system/components/text-field';
 import type { AccountsStackParamList } from '../../../navigation/types';
+import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
 import { type Currency, currencyScale, currencySymbol } from '../../../currency/currency';
 
 type PricePointFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'PricePointForm'>;

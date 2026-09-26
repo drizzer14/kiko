@@ -15,32 +15,32 @@ import {
   holdingTypes,
   holdingTypesForAccountKind,
 } from '../../../holdings/holding-type';
-import ColorPicker from '../color-picker';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '../scroll-to-field/scroll-to-field';
 import HoldingTypeField from '../holding-type-field';
 import Box from '../../../design-system/components/box';
 import { useLiveQuery } from '../../../db/use-live-query';
 import type { Currency } from '../../../currency/currency';
 import { refreshRates } from '../../../rates/rates-refresh';
-import HoldingIdentityField from '../holding-identity-field';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import { usePriceBook } from '../../../prices/use-price-book';
+import {
+  useHeaderInset,
+  scrollToField,
+  type FieldInstance,
+} from '../../../design-system/scroll-to-field/scroll-to-field';
 import Divider from '../../../design-system/components/divider';
 import { needsPriceBook } from '../../../holdings/priced-value';
 import { refreshMetalPrices } from '../../../prices/metal-refresh';
-import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../../navigation/types';
+import ColorPicker from '../../../design-system/components/color-picker';
 import CurrencyField from '../../../design-system/components/currency-field';
 import { isSyncedAccount, isSyncedHolding } from '../../../holdings/deletable';
+import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
+import HoldingIdentityField from '../../../design-system/components/holding-identity-field';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 
 import LoanFormBlock from './loan/loan-form-block';

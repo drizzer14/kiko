@@ -10,7 +10,7 @@ import {
   asRouteProp,
   navigationSpy,
 } from '../../../test-support/navigation-props';
-import { scrollToField } from '../scroll-to-field/scroll-to-field';
+import { scrollToField } from '../../../design-system/scroll-to-field/scroll-to-field';
 
 import ContributionFormScreen from './contribution-form.screen';
 
@@ -27,7 +27,7 @@ jest.mock('@kiko/holdings/repo', () => ({
     appendDepositContribution: jest.fn(),
   },
 }));
-jest.mock('../scroll-to-field/scroll-to-field');
+jest.mock('../../../design-system/scroll-to-field/scroll-to-field');
 
 const navigation = navigationSpy();
 const route = asRouteProp<ContributionFormProps['route']>('ContributionForm', {

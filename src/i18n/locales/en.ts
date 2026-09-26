@@ -657,8 +657,8 @@ export const en = {
     // FAB pinned over the Home list).
     addTransaction: 'Add transaction',
     // The shared Home/Statistics date-range sheet (see
-    // src/screens/home/date-range-field) — its own literals, namespaced under
-    // Home since that is where the component lives.
+    // src/design-system/components/date-range-field) — its own literals,
+    // namespaced under Home since that is the copy's original owner.
     dateRangeField: {
       apply: 'Apply',
       clear: 'Clear',

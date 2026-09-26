@@ -41,6 +41,7 @@ import LoadingState from '../../design-system/components/loading-state';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import { type DaySection, groupByDay } from '../../transactions/group-by-day';
 import type { HomeStackParamList, TabParamList } from '../../navigation/types';
+import type { FilterOption } from '../../design-system/components/filter-menu';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
 import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
 import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
@@ -49,7 +50,6 @@ import { buildRateTable, guardedBreakdown, guardedNetWorth } from '../../rates/n
 import { styles } from './home.styles';
 import TransactionRow from './transaction-row';
 import SyncProgressBar from './sync-progress-bar';
-import type { FilterOption } from './filter-menu';
 import AddTransactionFab from './add-transaction-fab';
 import { useRefreshControlSignal } from './use-refresh-control-signal';
 import TransactionFilterBar, { FILTER_ALL } from './transaction-filter-bar';

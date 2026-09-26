@@ -10,7 +10,6 @@ import {
   isBalanceProviderId,
   providerDisplayName,
 } from '../../../crypto-sync/provider';
-import CryptoSyncForm from '../crypto-sync-form';
 import { styles } from '../account-detail.styles';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
@@ -22,6 +21,7 @@ import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
 import { formatLastSyncAt, latestSyncedAt } from '../format-last-sync';
 import { disconnectCryptoAccount } from '../../../crypto-sync/disconnect';
 import ConfirmSheet from '../../../design-system/components/confirm-sheet';
+import CryptoSyncForm from '../../../design-system/components/crypto-sync-form';
 
 type CryptoSyncSectionProps = {
   account: AccountRow;

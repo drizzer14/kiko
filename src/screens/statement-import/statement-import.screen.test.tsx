@@ -203,7 +203,7 @@ jest.mock('../../statement-import/registry', () => {
 // here to a minimal stand-in exposing one `onSelect` trigger per holding the
 // screen hands it, following `account-detail.screen.test.tsx`'s precedent of
 // mocking a sub-section under its own test elsewhere (`crypto-sync-section`).
-jest.mock('./target-holding-sheet', () => {
+jest.mock('../../design-system/components/target-holding-sheet', () => {
   const { Pressable, Text: RNText } = require('react-native');
   return {
     __esModule: true,

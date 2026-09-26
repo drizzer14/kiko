@@ -6,7 +6,7 @@ import Text from '@kiko/design-system/components/text';
 import Divider from '@kiko/design-system/components/divider';
 import ChipRow from '@kiko/design-system/components/chip-row';
 import type { TableDelimiter } from '@kiko/statement-import/column-mapping';
-import TargetHoldingField from '@kiko/screens/statement-import/target-holding-field';
+import TargetHoldingField from '@kiko/design-system/components/target-holding-field';
 
 import RawPreview from '../raw-preview';
 import AmountFields from '../amount-fields';

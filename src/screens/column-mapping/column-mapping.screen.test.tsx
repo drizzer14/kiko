@@ -91,7 +91,7 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
 // The target-holding picker has its own dedicated test file — mocked here to
 // a minimal stand-in exposing one `onSelect` trigger per holding, mirroring
 // `statement-import.screen.test.tsx`'s own precedent.
-jest.mock('./../statement-import/target-holding-sheet', () => {
+jest.mock('../../design-system/components/target-holding-sheet', () => {
   const { Pressable, Text: RNText } = require('react-native');
   return {
     __esModule: true,

@@ -16,11 +16,11 @@ import type { HoldingRow } from '../../../../../db/schema';
 import { parseAmount } from '../../../../../currency/parse';
 import { shiftDecimal } from '../../../../../currency/decimal';
 import { dayKeyOf, type PriceBook } from '../../../../../prices/price-book';
-import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
 import { loanOutstandingMinorAt } from '../../../../../holdings/loan-schedule';
 import { currencyScale, type Currency } from '../../../../../currency/currency';
 import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
+import type { FieldInstance } from '../../../../../design-system/scroll-to-field/scroll-to-field';
 
 // The literal i18n keys `loanReasonKey` below may return, so `t()` (typed
 // from src/i18n/locales/en.ts) accepts them — mirrors `PropertyReasonKey`/

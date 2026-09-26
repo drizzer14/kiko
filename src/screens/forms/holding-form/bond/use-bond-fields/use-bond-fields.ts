@@ -16,10 +16,10 @@ import type { HoldingType } from '@kiko/holdings/holding-type';
 
 import { saveMetadataEdit } from '../../save-metadata-edit';
 import { useBondIsinMode, type IsinReasonKey } from '../use-bond-isin-mode';
-import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
 import type { BondEntryMode } from '../bond-isin-section/bond-isin-section.props';
 import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
+import type { FieldInstance } from '../../../../../design-system/scroll-to-field/scroll-to-field';
 
 import {
   bondFieldErrors,

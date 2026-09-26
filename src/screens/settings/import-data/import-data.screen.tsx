@@ -14,9 +14,9 @@ import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import FieldError from '../../../design-system/components/field-error';
 import type { SettingsStackParamList } from '../../../navigation/types';
-import ClipboardTextField from '../../account-detail/clipboard-text-field';
 import ConfirmSheet from '../../../design-system/components/confirm-sheet';
-import { useSubmitOnce } from '../../forms/use-submit-once/use-submit-once';
+import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
+import ClipboardTextField from '../../../design-system/components/clipboard-text-field';
 
 type ImportDataScreenProps = NativeStackScreenProps<SettingsStackParamList, 'ImportData'>;
 

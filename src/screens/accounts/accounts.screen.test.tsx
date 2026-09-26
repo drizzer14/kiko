@@ -48,7 +48,7 @@ jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
 // and held STABLE across re-renders (no focus event fires in a standalone
 // screen render), so a re-render test can prove the screen no longer reads
 // its own fresh `Date.now()` per render.
-jest.mock('../statistics/use-focus-refreshed-now', () => {
+jest.mock('../../design-system/use-focus-refreshed-now/use-focus-refreshed-now', () => {
   const { useState } = jest.requireActual('react');
 
   return { useFocusRefreshedNow: () => useState(() => Date.now())[0] };

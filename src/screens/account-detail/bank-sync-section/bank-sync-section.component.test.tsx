@@ -33,7 +33,7 @@ jest.mock('../../../monobank/disconnect', () => ({
 // pressable that fires `onConnect` with a fixture, so the section's wiring
 // (which field renders, and where its `onConnect` result goes) is what is
 // under test.
-jest.mock('../monobank-connect-field', () => {
+jest.mock('../../../design-system/components/monobank-connect-field', () => {
   const { Pressable, Text } = require('react-native');
   return {
     __esModule: true,

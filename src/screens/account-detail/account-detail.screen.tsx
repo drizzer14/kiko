@@ -15,12 +15,10 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { AccountRow } from '../../db/schema';
 import Box from '../../design-system/components/box';
-import EntityHeaderIcon from '../entity-header-icon';
 import { useDataReady } from '../../db/use-data-ready';
 import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
 import type { Currency } from '../../currency/currency';
-import EntityAmountHeader from '../entity-amount-header';
 import { usePriceBook } from '../../prices/use-price-book';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
@@ -37,8 +35,10 @@ import LoadingState from '../../design-system/components/loading-state';
 import { fileNameOf } from '../../statement-import/read-statement-file';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
 import CardContextMenu from '../../design-system/components/card-context-menu';
+import EntityHeaderIcon from '../../design-system/components/entity-header-icon';
 import EditHeaderButton from '../../design-system/components/edit-header-button';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
+import EntityAmountHeader from '../../design-system/components/entity-amount-header';
 import { isConnectableBank, statementFormatIdForBank } from '../../bank-sync/bank-catalog';
 
 import HoldingCard from './holding-card';

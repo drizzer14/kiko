@@ -34,7 +34,7 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
 // The two fields are tested on their own; here each collapses to one pressable
 // that fires `onConnect` with a fixture, so the section's wiring is what is
 // under test.
-jest.mock('../wallet-address-field', () => {
+jest.mock('../../../design-system/components/wallet-address-field', () => {
   const { Pressable, Text } = require('react-native');
   return {
     __esModule: true,
@@ -48,7 +48,7 @@ jest.mock('../wallet-address-field', () => {
     ),
   };
 });
-jest.mock('../binance-credentials-field', () => {
+jest.mock('../../../design-system/components/binance-credentials-field', () => {
   const { Pressable, Text } = require('react-native');
   return {
     __esModule: true,

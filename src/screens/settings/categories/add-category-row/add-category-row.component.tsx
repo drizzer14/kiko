@@ -4,15 +4,15 @@ import type { TextInputInstance } from 'react-native';
 import { categoriesRepo } from '@kiko/categories/repo';
 import { type FC, useEffect, useRef, useState } from 'react';
 
-import ColorPicker from '../../../forms/color-picker';
 import Box from '../../../../design-system/components/box';
 import Card from '../../../../design-system/components/card';
 import Button from '../../../../design-system/components/button';
 import { alertOnCatch } from '../../../../design-system/alert-on-catch';
-import HoldingIdentityField from '../../../forms/holding-identity-field';
 import FieldError from '../../../../design-system/components/field-error';
-import { useSubmitOnce } from '../../../forms/use-submit-once/use-submit-once';
+import ColorPicker from '../../../../design-system/components/color-picker';
 import { resolveCategoryColor } from '../../../../statistics/category-breakdown';
+import { useSubmitOnce } from '../../../../design-system/use-submit-once/use-submit-once';
+import HoldingIdentityField from '../../../../design-system/components/holding-identity-field';
 import { KIKO_CATEGORIES_ICONS } from '../../../../design-system/components/icon-picker-modal/icon-pools';
 
 import { styles } from './add-category-row.styles';

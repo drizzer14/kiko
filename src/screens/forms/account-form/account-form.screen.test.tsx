@@ -11,7 +11,7 @@ import {
   navigationSpy,
 } from '../../../test-support/navigation-props';
 import { darkTheme } from '../../../design-system/theme';
-import { scrollToField } from '../scroll-to-field/scroll-to-field';
+import { scrollToField } from '../../../design-system/scroll-to-field/scroll-to-field';
 import { accountKindSymbol, genericEntitySymbol } from '../../../holdings/entity-symbols';
 
 import AccountFormScreen from './account-form.screen';
@@ -91,7 +91,7 @@ jest.mock('../../../crypto-sync/binance/binance.credentials', () => ({
 jest.mock('../../../crypto-sync/binance/binance.client', () => ({
   fetchAccount: (...args: unknown[]) => mockFetchAccount(...args),
 }));
-jest.mock('../scroll-to-field/scroll-to-field');
+jest.mock('../../../design-system/scroll-to-field/scroll-to-field');
 jest.mock('@kiko/sync/use-sync', () => ({
   useSync: () => ({
     isSyncing: false,
@@ -112,7 +112,7 @@ jest.mock('@kiko/sync/use-crypto-sync', () => ({
 // pressable that fires the screen's `onConnect*` closure, so what is under test
 // is the create screen's wiring (create-first, no duplicate, secret stays in the
 // field).
-jest.mock('../../account-detail/wallet-address-field', () => {
+jest.mock('../../../design-system/components/wallet-address-field', () => {
   const { Pressable, Text } = require('react-native');
   return {
     __esModule: true,
@@ -126,7 +126,7 @@ jest.mock('../../account-detail/wallet-address-field', () => {
     ),
   };
 });
-jest.mock('../../account-detail/binance-credentials-field', () => {
+jest.mock('../../../design-system/components/binance-credentials-field', () => {
   const { Pressable, Text } = require('react-native');
   return {
     __esModule: true,
@@ -142,7 +142,7 @@ jest.mock('../../account-detail/binance-credentials-field', () => {
 // status (covered by its own test); here it collapses to one pressable that fires
 // the screen's `connectMonobank` closure with a token, so what is under test is
 // the create screen's wiring (create-first, no duplicate, secret via the closure).
-jest.mock('../../account-detail/monobank-connect-field', () => {
+jest.mock('../../../design-system/components/monobank-connect-field', () => {
   const { useState } = require('react');
   const { Pressable, Text } = require('react-native');
   return {

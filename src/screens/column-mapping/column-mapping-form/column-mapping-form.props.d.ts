@@ -6,9 +6,9 @@ import type {
   ColumnMappingRowError,
 } from '@kiko/statement-import/column-mapping';
 import type { Currency } from '@kiko/currency/currency';
-import type { FieldInstance } from '@kiko/screens/forms/scroll-to-field/scroll-to-field';
-import type { PreviewStats } from '@kiko/screens/statement-import/preview-stats/preview-stats';
-import type { TargetHoldingOption } from '@kiko/screens/statement-import/target-holding-sheet/target-holding-sheet.props';
+import type { PreviewStats } from '@kiko/statement-import/preview-stats/preview-stats';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field/scroll-to-field';
+import type { TargetHoldingOption } from '@kiko/design-system/components/target-holding-sheet/target-holding-sheet.props';
 
 import type { AmountMode } from '../amount-fields/amount-fields.props';
 import type { CurrencyMode } from '../currency-fields/currency-fields.props';
