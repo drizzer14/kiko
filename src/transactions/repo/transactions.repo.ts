@@ -455,6 +455,10 @@ export const transactionsRepo = {
         // Home reads the holding type to drop the HH:MM stamp on a
         // term_deposit/bond row (those are day-granular events).
         holdingType: holdings.type,
+        // The loan-link marker travels too: Home shows a small glyph on any
+        // row still carrying a link, regardless of `loanLinkSource` ('auto'
+        // or 'manual' read the same marker).
+        loanHoldingId: transactions.loanHoldingId,
       })
       .from(transactions)
       .innerJoin(holdings, eq(transactions.holdingId, holdings.id))

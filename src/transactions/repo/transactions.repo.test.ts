@@ -106,6 +106,12 @@ describe('transactionsRepo', () => {
     expect(sql).toContain('"transactions"."source"');
   });
 
+  it('includes the loan-link column in the joined all-transactions projection, so a list row can show its marker', () => {
+    const sql = transactionsRepo.listAllWithContextQuery().toSQL().sql;
+
+    expect(sql).toContain('loan_holding_id');
+  });
+
   it('builds a DISTINCT manual-descriptions query ordered newest-first (for the description-suggestion autocomplete)', () => {
     const { sql } = transactionsRepo.distinctDescriptionsQuery().toSQL();
     const lower = sql.toLowerCase();

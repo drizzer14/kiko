@@ -42,6 +42,7 @@ const baseItem: HomeTransactionRow = {
   holdingName: 'Card',
   holdingType: 'card',
   source: 'manual',
+  loanHoldingId: null,
 };
 
 const renderRow = (item: HomeTransactionRow, onPress = jest.fn(), onDuplicate = jest.fn()) =>
@@ -61,6 +62,18 @@ const renderRow = (item: HomeTransactionRow, onPress = jest.fn(), onDuplicate = 
 describe('TransactionRow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('shows the loan-link marker when the row carries a loan link', async () => {
+    const { toJSON } = await renderRow({ ...baseItem, loanHoldingId: 'loan-1' });
+
+    expect(JSON.stringify(toJSON())).toContain('link');
+  });
+
+  it('shows no loan-link marker when the row carries none', async () => {
+    const { toJSON } = await renderRow(baseItem);
+
+    expect(JSON.stringify(toJSON())).not.toContain('"link"');
   });
 
   it('wires a manual row to the shared long-press context menu and deletes via transactionsRepo.remove', async () => {
