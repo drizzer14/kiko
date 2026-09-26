@@ -1051,6 +1051,50 @@ describe('Semgrep pass + new-findings-only diff', () => {
   // errors[] Timeout — a "could not check" deny at random under load. The
   // guard hands Semgrep its own remaining budget instead, in whole seconds,
   // so a slow rule finishes; the guard's own deadline still ends the child.
+  // Semgrep also reports a parse failure as a plain-string `Syntax error`
+  // type with `spans`, not only as `["PartialParsing", [...]]` (the shape
+  // pre-write-guard-rules.test.ts proves against real Semgrep).
+  it('names a string-typed Syntax error by file:line in the deny reason', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = join(project, 'semgrep-syntax-error-stub.js');
+    writeFileSync(
+      stub,
+      [
+        '#!/usr/bin/env node',
+        'const targets = process.argv.slice(11);',
+        'const errors = [{',
+        '  code: 3,',
+        '  level: "warn",',
+        '  type: "Syntax error",',
+        '  message: "Syntax error at line after/src/broken.ts:7: `{` was unexpected",',
+        '  path: "after/src/broken.ts",',
+        '  spans: [{ file: "after/src/broken.ts", start: { line: 7, col: 1 }, end: { line: 7, col: 2 } }],',
+        '}];',
+        'process.stdout.write(JSON.stringify({ results: [], errors, paths: { scanned: targets } }));',
+        '',
+      ].join('\n'),
+    );
+    chmodSync(stub, 0o755);
+
+    const result = runGuard(
+      payloadFor('Write', {
+        file_path: join(project, 'src', 'broken.ts'),
+        content: 'export const value = 1;\n',
+      }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: writeRulesStub(project),
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('src/broken.ts:7');
+    expect(reason).toContain('`{` was unexpected');
+    expect(reason).toContain('syntactically complete');
+  });
+
   it('passes semgrep a --timeout of whole seconds within the remaining budget', () => {
     const project = createTempDirectory('kiko-prewrite-project-');
     const captureDirectory = createTempDirectory('kiko-prewrite-capture-');

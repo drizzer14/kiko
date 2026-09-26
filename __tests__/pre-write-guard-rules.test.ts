@@ -200,6 +200,37 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     },
   );
 
+  // Content that does not parse cannot be checked, so it is denied; the
+  // reason must name the parse error's file:line and Semgrep's own message,
+  // and tell the agent to make each edit syntactically complete — a
+  // half-applied multi-part change is the usual cause.
+  it('names the parse error when the proposed content does not parse', () => {
+    const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-parse-'));
+    try {
+      const targetDirectory = join(project, 'src', 'probe');
+      mkdirSync(targetDirectory, { recursive: true });
+      const content = [
+        'export const value = 1;',
+        '',
+        'export function broken( {',
+        '  return value +;',
+        '}',
+        '',
+      ].join('\n');
+
+      const result = runGuard(payloadFor(join(targetDirectory, 'broken.ts'), content), project);
+
+      expect(result.status).toBe(2);
+      const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+      expect(reason).toContain('src/probe/broken.ts:3');
+      expect(reason).toContain('was unexpected');
+      expect(reason).toContain('syntactically complete');
+      expect(reason).toContain('MultiEdit');
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
   // I3: proves, THROUGH the dispatcher and the REAL guard, that a worktree
   // edit is still checked when CLAUDE_PROJECT_DIR points at a DIFFERENT
   // checkout (the exact shape the dispatcher exists to fix — see

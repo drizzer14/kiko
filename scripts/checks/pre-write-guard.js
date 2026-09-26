@@ -329,6 +329,46 @@ function buildFinding(temporaryRoot, result) {
   };
 }
 
+// Semgrep's own names for "this target did not parse": a plain-string
+// `type`, or the first element of an array one (`["PartialParsing", [...]]`).
+const PARSE_ERROR_TYPES = new Set([
+  'Syntax error',
+  'Lexical error',
+  'Other syntax error',
+  'PartialParsing',
+]);
+
+const TREE_LABELS = {
+  after: 'the content this edit would write',
+  before: 'the file as it is on disk',
+};
+
+function isParseError(semgrepError) {
+  const typeName = Array.isArray(semgrepError.type) ? semgrepError.type[0] : semgrepError.type;
+
+  return PARSE_ERROR_TYPES.has(typeName);
+}
+
+// A parse failure is almost always a half-applied multi-part change, which
+// an agent fixes only if it knows where the file broke — so the reason names
+// each file:line and Semgrep's own message, not just "could not check".
+function describeParseErrors(parseErrors) {
+  const locations = parseErrors.map((semgrepError) => {
+    const [tree, ...pathParts] = String(semgrepError.path || '').split('/');
+    const arrayLocation = Array.isArray(semgrepError.type) ? semgrepError.type[1]?.[0] : undefined;
+    const line = (semgrepError.spans?.[0] ?? arrayLocation)?.start?.line ?? '?';
+    const label = TREE_LABELS[tree] || tree;
+
+    return `${pathParts.join('/')}:${line} (${label}): ${normalizeText(semgrepError.message || '')}`;
+  });
+
+  return (
+    `the file does not parse, so no rule could run on it — ${locations.join('; ')}. ` +
+    'Make each edit syntactically complete on its own; for a change that spans several ' +
+    'places, use MultiEdit so every part lands in one checked write.'
+  );
+}
+
 // Runs Semgrep against the requested trees ('after', or ['before','after'])
 // with the pre-write rule set. Async (spawnAsync, never spawnSync — see
 // `run` below, which starts this alongside the AFTER-tree `runNodeChecks`
@@ -397,6 +437,10 @@ async function runSemgrep(temporaryRoot, relativePath, trees) {
 
   const parsed = JSON.parse(childResult.stdout);
   const errors = parsed.errors || [];
+  const parseErrors = errors.filter(isParseError);
+  if (parseErrors.length > 0) {
+    throw new Error(describeParseErrors(parseErrors));
+  }
   if (errors.length > 0) {
     throw new Error(`semgrep reported ${errors.length} error(s): ${JSON.stringify(errors)}`);
   }
