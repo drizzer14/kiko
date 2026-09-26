@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import either, { bifold, isLeft } from 'fnts/either';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 import { refreshMarketData, warnRefreshFailure } from '@kiko/sync/refresh-market-data';
 
@@ -145,6 +146,11 @@ export const useAutoSync = (): void => {
       }
 
       await refreshMarketData({ throttled: true, metals: true });
+      // Same reasoning as `refreshMarketData` just above: an on-open sync can
+      // bring in a new loan-payment debit, so the matcher runs alongside it.
+      // Never rejects (its own doc comment), so a failed auto-link stays
+      // inside this SAME swallowed-and-logged `either`, never a crash.
+      await runLoanAutoLink();
     }).then((result) => {
       // The outer `either` still swallows every exception this effect can
       // throw (reading accounts/sync-state/credentials) — this hook has no

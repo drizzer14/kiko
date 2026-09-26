@@ -5,6 +5,7 @@ const mockRefreshMarketData = jest.fn();
 const mockSyncStateGetQuery = jest.fn();
 const mockListQuery = jest.fn();
 const mockMonobankHasCredentials = jest.fn();
+const mockRunLoanAutoLink = jest.fn();
 
 // Controllable per-institution job runs, so a test can assert which accounts the
 // app-open fan-out actually synced without exercising the real sync pipelines
@@ -45,6 +46,9 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
     listQuery: (...args: unknown[]) => mockListQuery(...args),
   },
 }));
+jest.mock('@kiko/loans/use-loan-auto-link', () => ({
+  runLoanAutoLink: (...args: unknown[]) => mockRunLoanAutoLink(...args),
+}));
 
 import { AUTO_SYNC_INTERVAL_MS, throttleElapsed, useAutoSync } from './use-auto-sync';
 
@@ -76,10 +80,17 @@ describe('useAutoSync', () => {
     mockSyncStateGetQuery.mockResolvedValue([{ lastSyncAt: null }]);
     mockListQuery.mockResolvedValue([]);
     mockMonobankHasCredentials.mockResolvedValue(true);
+    mockRunLoanAutoLink.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
     warnSpy.mockRestore();
+  });
+
+  it('runs the loan auto-link matcher once after the on-open refresh', async () => {
+    await renderHook(() => useAutoSync());
+
+    await waitFor(() => expect(mockRunLoanAutoLink).toHaveBeenCalledTimes(1));
   });
 
   it('refreshes rates and metals but runs no sync for a manual-only user (no connected sync account)', async () => {

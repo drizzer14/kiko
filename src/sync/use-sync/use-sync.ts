@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import either, { bifold, isLeft } from 'fnts/either';
+import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 
 import { runSync } from '../../monobank/sync';
@@ -52,6 +53,11 @@ export const useSyncAction = <Input>(
     // own failure with no UI surface, so a rate-refresh failure never turns
     // a successful sync into a reported error here.
     await refreshMarketData({ throttled: true, metals: false });
+    // A sync can bring in a new loan-payment debit, so the matcher runs
+    // right alongside the rate refresh — never rejects either (its own doc
+    // comment), so a failed auto-link never turns a successful sync into a
+    // reported error here.
+    await runLoanAutoLink();
 
     setIsSyncing(false);
 

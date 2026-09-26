@@ -6,6 +6,7 @@ import type { AccountRow } from '../../db/schema';
 const mockRunSync = jest.fn();
 const mockRunCryptoSync = jest.fn();
 const mockRefreshMarketData = jest.fn();
+const mockRunLoanAutoLink = jest.fn();
 
 jest.mock('../../monobank/sync', () => ({
   runSync: (...args: unknown[]) => mockRunSync(...args),
@@ -15,6 +16,9 @@ jest.mock('../../crypto-sync/run-crypto-sync', () => ({
 }));
 jest.mock('@kiko/sync/refresh-market-data', () => ({
   refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),
+}));
+jest.mock('@kiko/loans/use-loan-auto-link', () => ({
+  runLoanAutoLink: (...args: unknown[]) => mockRunLoanAutoLink(...args),
 }));
 
 import { useSyncAll } from './use-sync-all';
@@ -49,6 +53,17 @@ describe('useSyncAll', () => {
     mockRunSync.mockResolvedValue({ importedTransactions: 0 });
     mockRunCryptoSync.mockResolvedValue({ syncedHoldings: 1 });
     mockRefreshMarketData.mockResolvedValue(right(undefined));
+    mockRunLoanAutoLink.mockResolvedValue(undefined);
+  });
+
+  it('runs the loan auto-link matcher once per fan-out, after the refresh', async () => {
+    const { result } = await renderHook(() => useSyncAll([MONOBANK, WALLET, BINANCE, MANUAL]));
+
+    await act(async () => {
+      await result.current.syncAll();
+    });
+
+    expect(mockRunLoanAutoLink).toHaveBeenCalledTimes(1);
   });
 
   it('syncs the Monobank and every connected crypto account, then refreshes rates + metals once', async () => {

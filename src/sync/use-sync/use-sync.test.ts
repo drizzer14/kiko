@@ -3,12 +3,16 @@ import { act, renderHook } from '@testing-library/react-native';
 
 const mockRunSync = jest.fn();
 const mockRefreshMarketData = jest.fn();
+const mockRunLoanAutoLink = jest.fn();
 
 jest.mock('../../monobank/sync', () => ({
   runSync: (...args: unknown[]) => mockRunSync(...args),
 }));
 jest.mock('@kiko/sync/refresh-market-data', () => ({
   refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),
+}));
+jest.mock('@kiko/loans/use-loan-auto-link', () => ({
+  runLoanAutoLink: (...args: unknown[]) => mockRunLoanAutoLink(...args),
 }));
 
 import { useSync } from './use-sync';
@@ -18,6 +22,7 @@ describe('useSync', () => {
     jest.clearAllMocks();
     mockRunSync.mockResolvedValue(undefined);
     mockRefreshMarketData.mockResolvedValue(right(undefined));
+    mockRunLoanAutoLink.mockResolvedValue(undefined);
   });
 
   it('refreshes rates-only, throttled, after a successful sync', async () => {
@@ -29,6 +34,27 @@ describe('useSync', () => {
 
     expect(mockRunSync).toHaveBeenCalled();
     expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: true, metals: false });
+  });
+
+  it('runs the loan auto-link matcher once after a successful sync', async () => {
+    const { result } = await renderHook(() => useSync());
+
+    await act(async () => {
+      await result.current.sync();
+    });
+
+    expect(mockRunLoanAutoLink).toHaveBeenCalledTimes(1);
+  });
+
+  it('never runs the loan auto-link matcher when the sync itself fails', async () => {
+    mockRunSync.mockRejectedValue(new Error('sync boom'));
+    const { result } = await renderHook(() => useSync());
+
+    await act(async () => {
+      await result.current.sync();
+    });
+
+    expect(mockRunLoanAutoLink).not.toHaveBeenCalled();
   });
 
   it('passes the target account id through to runSync', async () => {

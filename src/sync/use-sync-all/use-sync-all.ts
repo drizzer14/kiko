@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 
 import { SYNC_CONCURRENCY_LIMIT, settleAllLimited } from '../settle-limited';
@@ -44,6 +45,10 @@ const fanOutAndRefresh = async (jobs: SyncJob[]): Promise<string[]> => {
   // refresh a lone sync does — `metals: true` since a pull-to-refresh also
   // needs metal prices, unlike a single Monobank/crypto sync.
   await refreshMarketData({ throttled: true, metals: true });
+  // One matcher run for the whole fan-out too — any account's sync can bring
+  // in a new loan-payment debit. Never rejects (its own doc comment), so a
+  // failed auto-link never turns a successful fan-out into a reported one.
+  await runLoanAutoLink();
 
   return failed;
 };
