@@ -8,14 +8,14 @@ import TextField from '../../src/design-system/components/text-field';
 // whose `placeholder`/`label` string attributes are equal, in both
 // attribute orders.
 
-// EXPECT-FINDING
 export const labelBeforePlaceholder = {
+  // EXPECT-FINDING
   categoryLabel: 'Groceries',
   categoryPlaceholder: 'Groceries',
 };
 
-// EXPECT-FINDING
 export const placeholderBeforeLabel = {
+  // EXPECT-FINDING
   categoryPlaceholder: 'Groceries',
   categoryLabel: 'Groceries',
 };
@@ -29,3 +29,12 @@ export const jsxPlaceholderThenLabel = (
 export const jsxLabelThenPlaceholder = (
   <TextField label="Groceries" placeholder="Groceries" value="" onChangeText={() => undefined} />
 );
+
+// A BARE stem key (no `Label` suffix) paired with its own `*Placeholder`
+// key, same value — most of the catalogue's real keys are named this way
+// (`kind`/`kindPlaceholder`), not `kindLabel`/`kindPlaceholder`.
+export const kindCopy = {
+  // EXPECT-FINDING
+  kind: 'Kind',
+  kindPlaceholder: 'Kind',
+};

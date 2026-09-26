@@ -42,3 +42,16 @@ export const jsxDifferentCopySwapped = (
 export const jsxSharedParameter = (value: string) => (
   <TextField label={value} placeholder={value} value={value} onChangeText={() => undefined} />
 );
+
+export const kindCopy = {
+  kind: 'Kind',
+  kindPlaceholder: 'Select an account kind',
+};
+
+// The stem (`groceries`) and the placeholder's OWN stem (`name`) differ —
+// not a field repeating its own label, even though the two values happen to
+// share the same English word.
+export const groceriesCopy = {
+  groceries: 'Groceries',
+  namePlaceholder: 'Groceries',
+};
