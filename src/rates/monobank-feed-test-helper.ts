@@ -1,5 +1,6 @@
+import { type Currency, currencyOptions, isCurrency, isFiat } from '@kiko/currency/currency';
+
 import { codeFromCurrency } from '../monobank/currency-code';
-import { type Currency, currencyOptions, isCurrency, isFiat } from '../currency/currency';
 
 import type { RateTable } from './conversion';
 import { fetchFiatRates } from './monobank-rates';

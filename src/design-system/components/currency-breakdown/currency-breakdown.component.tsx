@@ -1,9 +1,9 @@
 import type { FC } from 'react';
+import type { Money } from '@kiko/currency/money';
 
 import Box from '../box';
 import Text from '../text';
 import MoneyText from '../money-text';
-import type { Money } from '../../../currency/money';
 
 import { styles } from './currency-breakdown.styles';
 import type { CurrencyBreakdownProps } from './currency-breakdown.props';

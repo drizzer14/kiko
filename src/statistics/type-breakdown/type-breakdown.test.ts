@@ -1,8 +1,7 @@
 import type { HoldingRow } from '@kiko/db';
-
-import type { RateTable } from '../../rates/conversion';
-import { buildPriceBook } from '../../prices/price-book';
-import { holdingInstrument } from '../../prices/instrument';
+import type { RateTable } from '@kiko/rates/conversion';
+import { buildPriceBook } from '@kiko/prices/price-book';
+import { holdingInstrument } from '@kiko/prices/instrument';
 
 import { type BreakdownHolding, buildTypeBreakdown, type TypeSlice } from './type-breakdown';
 

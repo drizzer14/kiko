@@ -1,3 +1,9 @@
+import {
+  isCrypto,
+  currencyOptions,
+  type Currency,
+  type CryptoCurrency,
+} from '@kiko/currency/currency';
 import { ratesRepo } from '@kiko/rates/repo';
 import either, { bifold, isLeft } from 'fnts/either';
 
@@ -5,12 +11,6 @@ import {
   openCurrencies as defaultOpenCurrencies,
   type OpenCurrencies,
 } from '../open-currencies-gate';
-import {
-  isCrypto,
-  currencyOptions,
-  type Currency,
-  type CryptoCurrency,
-} from '../../currency/currency';
 import type { RateEntry } from '../conversion';
 import { fetchCryptoPrices } from '../coingecko';
 import { fetchNbuFiatRates } from '../nbu-rates';

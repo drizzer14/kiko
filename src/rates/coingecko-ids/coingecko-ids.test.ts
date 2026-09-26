@@ -1,4 +1,4 @@
-import { currencyOptions, isCrypto } from '../../currency/currency';
+import { currencyOptions, isCrypto } from '@kiko/currency/currency';
 
 import { coinGeckoIds, cryptoCoinGeckoId } from './coingecko-ids';
 

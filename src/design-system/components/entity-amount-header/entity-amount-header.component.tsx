@@ -1,10 +1,10 @@
 import type { FC, ReactNode } from 'react';
+import type { Money } from '@kiko/currency/money';
 import type { StyleProp, ViewStyle } from 'react-native';
 
 import Box from '../box';
 import Text from '../text';
 import MoneyText from '../money-text';
-import type { Money } from '../../../currency/money';
 import type { MoneyTextContext } from '../money-text/money-text.props';
 
 import { styles } from './entity-amount-header.styles';

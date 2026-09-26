@@ -1,3 +1,8 @@
+import { Money } from '@kiko/currency/money';
+import { holdingInstrument } from '@kiko/prices/instrument';
+import { multiplyToMinorUnits } from '@kiko/currency/decimal';
+import { priceAt, type PriceBook } from '@kiko/prices/price-book';
+
 import {
   sameShare,
   ownedMoney,
@@ -9,13 +14,9 @@ import {
   type OwnershipChange,
 } from '../../ownership';
 import { quantityAt } from '../../lots';
-import { Money } from '../../../currency/money';
 import type { PricedHolding } from '../../priced-value';
 import type { ValuableHolding } from '../../holding-value';
-import { holdingInstrument } from '../../../prices/instrument';
-import { multiplyToMinorUnits } from '../../../currency/decimal';
 import { entityColorsDark } from '../../../design-system/palette';
-import { priceAt, type PriceBook } from '../../../prices/price-book';
 import { pricedDescriptor, pricedWholeParts } from '../priced-parts';
 import { asPropertyMeta, type OwnershipInput } from '../../holding-metadata';
 import type { HoldingDescriptor, PricedSpec } from '../holding-descriptor.d';

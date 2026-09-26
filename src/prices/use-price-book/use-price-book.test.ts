@@ -4,7 +4,7 @@ const mockUseLiveQuery = jest.fn();
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
-jest.mock('../price-points-repo', () => ({
+jest.mock('@kiko/prices/price-points-repo', () => ({
   pricePointsRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 jest.mock('@kiko/transactions/repo', () => ({

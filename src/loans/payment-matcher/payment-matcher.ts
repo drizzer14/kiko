@@ -1,9 +1,9 @@
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
+import { Money } from '@kiko/currency/money';
+import { dayKeyOf } from '@kiko/prices/price-book';
+import type { Currency } from '@kiko/currency/currency';
 
-import { Money } from '../../currency/money';
-import { dayKeyOf } from '../../prices/price-book';
-import type { Currency } from '../../currency/currency';
 import { loanInstallments } from '../../holdings/loan-schedule';
 import { asLoanMeta, type LoanMeta } from '../../holdings/holding-metadata';
 

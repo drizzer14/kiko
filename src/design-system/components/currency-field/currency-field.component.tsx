@@ -1,3 +1,10 @@
+import {
+  type Currency,
+  currencyOptions,
+  currencySymbol,
+  isCrypto,
+  isFiat,
+} from '@kiko/currency/currency';
 import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
@@ -6,13 +13,6 @@ import { type FC, useEffect, useState } from 'react';
 
 import Box from '../box';
 import Text from '../text';
-import {
-  type Currency,
-  currencyOptions,
-  currencySymbol,
-  isCrypto,
-  isFiat,
-} from '../../../currency/currency';
 import TextField from '../text-field';
 import BottomSheet from '../bottom-sheet';
 import FieldTrigger from '../field-trigger';

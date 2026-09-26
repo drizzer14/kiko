@@ -6,13 +6,13 @@ import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { Money } from '@kiko/currency/money';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import { dayKeyOf } from '@kiko/prices/price-book';
+import { formatMoney } from '@kiko/currency/format';
 import { formatDate, startOfLocalDay } from '@kiko/dates';
 import { transactionsRepo } from '@kiko/transactions/repo';
 
-import { Money } from '../../currency/money';
-import { dayKeyOf } from '../../prices/price-book';
-import { formatMoney } from '../../currency/format';
 import { darkTheme } from '../../design-system/theme';
 import {
   EDIT_ACTION_TEST_ID,
@@ -40,7 +40,7 @@ type HoldingDetailProps = ComponentProps<typeof HoldingDetailScreen>;
 // lines pass an explicit tone, which is exactly what these tests assert.
 jest.mock('../../design-system/components/money-text', () => {
   const { Text: RNText } = require('react-native');
-  const { formatMoney } = require('../../currency/format');
+  const { formatMoney } = require('@kiko/currency/format');
 
   return {
     __esModule: true,

@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { bifoldr, eitherSync } from 'fnts/either';
 import { useEffect, useRef, useState } from 'react';
 import type { ScrollViewInstance } from 'react-native';
+import type { Currency } from '@kiko/currency/currency';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -40,7 +41,6 @@ import {
 } from '../../statement-import/read-statement-file';
 import Box from '../../design-system/components/box';
 import Text from '../../design-system/components/text';
-import type { Currency } from '../../currency/currency';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import {

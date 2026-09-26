@@ -3,12 +3,12 @@ import { View } from 'react-native';
 import { type FC, memo } from 'react';
 import type { TFunction } from 'i18next';
 import { Rect, Svg } from 'react-native-svg';
+import { Money } from '@kiko/currency/money';
 import { useTranslation } from 'react-i18next';
+import type { Currency } from '@kiko/currency/currency';
 
-import { Money } from '../../../currency/money';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
-import type { Currency } from '../../../currency/currency';
 import type { HoldingType } from '../../../holdings/holding-type';
 import type { TypeSlice } from '../../../statistics/type-breakdown';
 import MoneyText from '../../../design-system/components/money-text';

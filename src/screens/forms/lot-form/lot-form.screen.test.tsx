@@ -3,13 +3,13 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import '@kiko/i18n/init';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import { dayKeyOf } from '@kiko/prices/price-book';
 
 import {
   asNavigationProp,
   asRouteProp,
   navigationSpy,
 } from '../../../test-support/navigation-props';
-import { dayKeyOf } from '../../../prices/price-book';
 import { fieldSuffix } from '../../../test-support/field-suffix';
 
 import LotFormScreen from './lot-form.screen';

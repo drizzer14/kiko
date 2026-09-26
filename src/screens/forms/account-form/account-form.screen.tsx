@@ -1,19 +1,20 @@
+import { Money } from '@kiko/currency/money';
 import { useSync } from '@kiko/sync/use-sync';
 import either, { isRight } from 'fnts/either';
 import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
+import { parseAmount } from '@kiko/currency/parse';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import { id, type AccountRow, useLiveQuery } from '@kiko/db';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type Currency, currencySymbol, fiatCurrencyOptions } from '@kiko/currency/currency';
 
 import BankTypeField from '../bank-type-field';
-import { Money } from '../../../currency/money';
 import { saveToken } from '../../../monobank/token';
 import AccountKindField from '../account-kind-field';
-import { parseAmount } from '../../../currency/parse';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import { groupAmount } from '../amount-format/amount-format';
@@ -38,7 +39,6 @@ import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit
 import { accountKindSymbol, genericEntitySymbol } from '../../../holdings/entity-symbols';
 import HoldingIdentityField from '../../../design-system/components/holding-identity-field';
 import MonobankConnectField from '../../../design-system/components/monobank-connect-field';
-import { type Currency, currencySymbol, fiatCurrencyOptions } from '../../../currency/currency';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 
 type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;

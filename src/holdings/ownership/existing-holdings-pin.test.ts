@@ -1,10 +1,10 @@
 import type { HoldingRow } from '@kiko/db';
+import { netWorth } from '@kiko/rates/conversion';
+import { buildPriceBook } from '@kiko/prices/price-book';
+import { holdingInstrument } from '@kiko/prices/instrument';
+import { sumByCurrency } from '@kiko/rates/currency-totals';
 
 import { holdingValue } from '../holding-value';
-import { netWorth } from '../../rates/conversion';
-import { buildPriceBook } from '../../prices/price-book';
-import { holdingInstrument } from '../../prices/instrument';
-import { sumByCurrency } from '../../rates/currency-totals';
 import { buildTypeBreakdown } from '../../statistics/type-breakdown';
 import { buildNetWorthSeries } from '../../statistics/net-worth-series';
 

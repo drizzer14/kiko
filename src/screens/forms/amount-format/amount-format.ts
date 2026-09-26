@@ -9,7 +9,7 @@
 // leading-zero run ("007"), and a lone separator (",") are all preserved rather
 // than reformatted, so typing never drops a character or reshuffles digits.
 
-import { type Currency, currencyScale } from '../../../currency/currency';
+import { type Currency, currencyScale } from '@kiko/currency/currency';
 
 // Inserts a grouping space every three digits from the right. A run of pure
 // digits (no separators) — the integer part — is all this needs to handle.

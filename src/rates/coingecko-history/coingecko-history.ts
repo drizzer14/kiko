@@ -1,9 +1,9 @@
 import { guard } from 'fnts';
 import { COINGECKO_MARKET_CHART_ENDPOINT } from '@env';
+import { cryptoCurrencyOptions, type CryptoCurrency } from '@kiko/currency/currency';
 
 import { cryptoCoinGeckoId } from '../coingecko-ids';
 import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
-import { cryptoCurrencyOptions, type CryptoCurrency } from '../../currency/currency';
 
 // CoinGecko's free/demo tier caps `market_chart` at ~365 days and 401s on a
 // longer span, so the request is clamped to this ceiling. A multi-year account

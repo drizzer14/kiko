@@ -11,12 +11,16 @@ import {
 import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import { ratesRepo } from '@kiko/rates/repo';
+import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import { parseAmount } from '@kiko/currency/parse';
 import { categoriesRepo } from '@kiko/categories/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { buildRateTable } from '@kiko/rates/net-worth-view';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
@@ -36,7 +40,6 @@ import {
   resolveCategoryDisplay,
 } from '../../../categories/category-display';
 import CategoryField from '../category-field';
-import { Money } from '../../../currency/money';
 import {
   isExchangeCreateDestinationType,
   isExchangeCreateSourceType,
@@ -46,14 +49,12 @@ import {
 import ExchangeFields from '../exchange-fields';
 import ModeSelectField from '../mode-select-field';
 import LoanPaymentField from '../loan-payment-field';
-import { parseAmount } from '../../../currency/parse';
 import Box from '../../../design-system/components/box';
 import HoldingSelectField from '../holding-select-field';
 import Text from '../../../design-system/components/text';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import { isSyncedHolding } from '../../../holdings/deletable';
-import { buildRateTable } from '../../../rates/net-worth-view';
 import ConvertExchangeFields from '../convert-exchange-fields';
 import {
   useHeaderInset,
@@ -71,7 +72,6 @@ import type { TransactionFormParams } from '../../../navigation/types';
 import { defaultHoldingSymbol } from '../../../holdings/entity-symbols';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
-import { type Currency, currencySymbol } from '../../../currency/currency';
 import type { FormMode } from '../mode-select-field/mode-select-field.props';
 import { resolveCategoryColor } from '../../../statistics/category-breakdown';
 import { groupAmount, majorAmountText } from '../amount-format/amount-format';

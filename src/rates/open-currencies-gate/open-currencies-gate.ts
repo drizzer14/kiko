@@ -1,7 +1,6 @@
 import { settingsRepo } from '@kiko/settings';
 import { holdingsRepo } from '@kiko/holdings/repo';
-
-import { isCrypto, type Currency, type CryptoCurrency } from '../../currency/currency';
+import { isCrypto, type Currency, type CryptoCurrency } from '@kiko/currency/currency';
 
 /** The data-presence gate result a rate/price refresh reads before running. */
 export type OpenCurrencies = {

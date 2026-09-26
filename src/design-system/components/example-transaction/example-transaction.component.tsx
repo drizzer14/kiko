@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { formatDate } from '@kiko/dates';
 import maybe, { foldMap } from 'fnts/maybe';
+import { Money } from '@kiko/currency/money';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { useDataReady, useLiveQuery } from '@kiko/db';
@@ -15,7 +16,6 @@ import {
   resolveCategoryDisplay,
   resolveCategoryKey,
 } from '../../../categories/category-display';
-import { Money } from '../../../currency/money';
 import TransactionCard from '../transaction-card';
 import { categoriesRepo } from '../../../categories/repo';
 import { categoryForMcc } from '../../../monobank/mcc-category';

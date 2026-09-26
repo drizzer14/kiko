@@ -1,8 +1,8 @@
 import { guard } from 'fnts';
 import { NBU_API_ENDPOINT } from '@env';
+import { Money } from '@kiko/currency/money';
+import { type Currency, currencyOptions } from '@kiko/currency/currency';
 
-import { Money } from '../../currency/money';
-import { type Currency, currencyOptions } from '../../currency/currency';
 import type { BondCouponFrequency } from '../../holdings/holding-metadata';
 
 /**

@@ -1,10 +1,10 @@
 import type { TFunction } from 'i18next';
 import { startOfLocalDay } from '@kiko/dates';
+import { Money, toMajor } from '@kiko/currency/money';
 
 import { makeEntry } from '../entry-parts';
 import { taxOnInterestMinor } from '../../tax';
 import { holdingsRepo } from '../../repo/holdings.repo';
-import { Money, toMajor } from '../../../currency/money';
 import type { DerivedEntry } from '../../derived-entries';
 import type { ValuableHolding } from '../../holding-value';
 import type { HoldingDescriptor } from '../holding-descriptor.d';

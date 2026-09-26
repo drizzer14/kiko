@@ -6,11 +6,11 @@
 // `createColumnarBusinessCsvFormat` factory, but its row reading, currency
 // resolution, and NaN-guarded amount parsing are identical).
 import Papa from 'papaparse';
+import { parseAmount } from '@kiko/currency/parse';
+import { isCurrency } from '@kiko/currency/currency';
+import type { Currency } from '@kiko/currency/currency';
 
 import { StatementParseError } from '../../parser';
-import { parseAmount } from '../../../currency/parse';
-import { isCurrency } from '../../../currency/currency';
-import type { Currency } from '../../../currency/currency';
 
 // Splits `text` into `;`-delimited rows — `papaparse` de-quotes a
 // double-quoted field (Ukrsib) transparently with no extra config, so the

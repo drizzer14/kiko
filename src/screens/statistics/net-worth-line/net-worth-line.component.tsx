@@ -23,9 +23,9 @@ import { formatDayMonth } from '@kiko/dates';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import { activeLocale } from '@kiko/i18n/active-locale';
-import type { Currency } from '../../../currency/currency';
+import type { Currency } from '@kiko/currency/currency';
 import type { NetWorthPoint } from '../../../statistics/net-worth-series';
-import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact';
+import { chooseCompactUnit, formatCompactMoney } from '@kiko/currency/compact';
 
 import { styles } from './net-worth-line.styles';
 

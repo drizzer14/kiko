@@ -5,8 +5,9 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import '../../../design-system/unistyles';
 import '@kiko/i18n/init';
+import { EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
+
 import { darkTheme } from '../../../design-system/theme';
-import { EMPTY_PRICE_BOOK } from '../../../prices/price-book';
 import { entityIconTileGradient } from '../../../design-system/entity-tint';
 
 import HoldingCard from './holding-card.component';

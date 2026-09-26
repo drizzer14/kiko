@@ -1,9 +1,9 @@
 import type { HoldingRow } from '@kiko/db';
+import type { Money } from '@kiko/currency/money';
+import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
 
-import type { Money } from '../../currency/money';
 import { holdingsRepo } from '../repo/holdings.repo';
 import { holdingDescriptorOrUndefined } from '../holding-descriptor';
-import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
 import { flat, type HoldingValueBreakdown } from '../holding-descriptor/breakdown-parts';
 
 /** Every real holding row has an `id`; this `Pick` requires it too. */

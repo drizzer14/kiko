@@ -1,8 +1,8 @@
 import { guard } from 'fnts';
 import { NBU_API_ENDPOINT } from '@env';
+import { isCurrency, isFiat } from '@kiko/currency/currency';
 
 import type { RateEntry } from '../conversion';
-import { isCurrency, isFiat } from '../../currency/currency';
 
 /**
  * NBU's public, tokenless CURRENT-rate endpoint — one request returns every

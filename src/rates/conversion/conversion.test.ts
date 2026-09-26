@@ -1,6 +1,6 @@
-import { Money } from '../../currency/money';
-import { buildPriceBook } from '../../prices/price-book';
-import { holdingInstrument } from '../../prices/instrument';
+import { Money } from '@kiko/currency/money';
+import { buildPriceBook } from '@kiko/prices/price-book';
+import { holdingInstrument } from '@kiko/prices/instrument';
 
 import { convert, netWorth, rateBetween, rateTableFromRows } from './conversion';
 

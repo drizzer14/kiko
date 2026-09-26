@@ -1,3 +1,8 @@
+import { Money, toMajor } from '@kiko/currency/money';
+import { canConvert } from '@kiko/rates/net-worth-view';
+import type { Currency } from '@kiko/currency/currency';
+import { convert, type RateTable } from '@kiko/rates/conversion';
+
 import {
   type BreakdownTransaction,
   netMagnitudeOf,
@@ -5,10 +10,6 @@ import {
   sumReturnsByGroup,
 } from '../category-breakdown';
 import { bucketTimes } from '../buckets';
-import { Money, toMajor } from '../../currency/money';
-import { canConvert } from '../../rates/net-worth-view';
-import type { Currency } from '../../currency/currency';
-import { convert, type RateTable } from '../../rates/conversion';
 import { resolveCategoryDisplay } from '../../categories/category-display';
 
 /**

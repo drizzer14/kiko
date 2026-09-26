@@ -1,5 +1,5 @@
-import { dayKeyOf } from '../../prices/price-book';
-import { addDecimal, compareDecimal } from '../../currency/decimal';
+import { dayKeyOf } from '@kiko/prices/price-book';
+import { addDecimal, compareDecimal } from '@kiko/currency/decimal';
 
 /**
  * One quantity/cost event against a priced, ledgerless holding

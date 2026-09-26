@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
+import { currencyOptions } from '@kiko/currency/currency';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
-import { currencyOptions } from '../currency/currency';
 import type { BondTerms } from '../bonds/nbu-register';
 import type { TrendFilter } from '../statistics/trend-filter';
 import type { SavedColumnMapping } from '../statement-import/column-mapping/saved-mapping';

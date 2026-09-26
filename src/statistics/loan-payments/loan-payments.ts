@@ -1,7 +1,7 @@
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
+import type { Currency } from '@kiko/currency/currency';
 
-import type { Currency } from '../../currency/currency';
 import type { TrendTransaction } from '../category-trend';
 import { asLoanMeta } from '../../holdings/holding-metadata';
 import { loanInterestForPaymentMinor } from '../../holdings/loan-schedule';

@@ -7,6 +7,8 @@
 // (`__fixtures__/uabean-alfa-business-sample.csv`) IS uabean's own real
 // sample — confirmed SYNTHETIC (`XYZ COMPANY`/`JOHN DOE` placeholders,
 // all-1s IBANs/EDRPOU, literal `[REDACTED]` markers in description text).
+import { Money } from '@kiko/currency/money';
+
 import type {
   ParsedStatement,
   ParsedTransaction,
@@ -19,7 +21,6 @@ import {
   resolveRowCurrency,
   resolveSoleColumnValue,
 } from '../business-csv';
-import { Money } from '../../../currency/money';
 import { StatementParseError } from '../../parser';
 import { parseDateTimeSeconds } from '../../parse-date-time';
 

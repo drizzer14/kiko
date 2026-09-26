@@ -1,7 +1,8 @@
-import { Money } from '../../../currency/money';
+import { Money } from '@kiko/currency/money';
+import type { PriceBook } from '@kiko/prices/price-book';
+
 import { asLoanMeta } from '../../holding-metadata';
 import type { ValuableHolding } from '../../holding-value';
-import type { PriceBook } from '../../../prices/price-book';
 import { loanLedgerOutstandingMinorAt } from '../../loan-ledger';
 import type { HoldingDescriptor } from '../holding-descriptor.d';
 import { entityColorsDark } from '../../../design-system/palette';

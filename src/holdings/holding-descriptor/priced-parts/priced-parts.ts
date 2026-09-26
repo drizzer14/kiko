@@ -1,12 +1,12 @@
 import maybe, { foldMap } from 'fnts/maybe';
+import { Money } from '@kiko/currency/money';
+import type { PriceBook } from '@kiko/prices/price-book';
 
 import { costBasisMinorAt } from '../../lots';
-import { Money } from '../../../currency/money';
 import { holdingsRepo } from '../../repo/holdings.repo';
 import type { PricedHolding } from '../../priced-value';
 import { ownedMoney, WHOLE_SHARE } from '../../ownership';
 import type { ValuableHolding } from '../../holding-value';
-import type { PriceBook } from '../../../prices/price-book';
 import { flat, type HoldingValueBreakdown } from '../breakdown-parts';
 import type { HoldingDescriptor, PricedSpec } from '../holding-descriptor.d';
 

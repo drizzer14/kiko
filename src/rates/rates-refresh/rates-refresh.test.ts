@@ -1,6 +1,7 @@
+import { currencyOptions, isCrypto, isCurrency } from '@kiko/currency/currency';
+
 import type { RateEntry } from '../conversion';
 import { buildRateTable, canConvert } from '../net-worth-view';
-import { currencyOptions, isCrypto, isCurrency } from '../../currency/currency';
 
 import { type RefreshDeps, refreshRates } from './rates-refresh';
 

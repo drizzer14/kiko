@@ -1,7 +1,7 @@
 import type { AccountRow, HoldingRow } from '@kiko/db';
+import { buildPriceBook } from '@kiko/prices/price-book';
+import { holdingInstrument } from '@kiko/prices/instrument';
 
-import { buildPriceBook } from '../../prices/price-book';
-import { holdingInstrument } from '../../prices/instrument';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 
 import {

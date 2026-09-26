@@ -1,4 +1,4 @@
-import type { Currency } from '../../../currency/currency';
+import type { Currency } from '@kiko/currency/currency';
 
 export type HoldingSelectOption = {
   id: string;

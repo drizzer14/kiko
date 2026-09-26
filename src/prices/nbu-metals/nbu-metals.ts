@@ -1,8 +1,8 @@
 import { guard } from 'fnts';
 import { NBU_API_ENDPOINT } from '@env';
 import maybe, { foldMap } from 'fnts/maybe';
+import { decimalFromJsonNumber } from '@kiko/currency/decimal';
 
-import { decimalFromJsonNumber } from '../../currency/decimal';
 import { type Metal, preciousMetals } from '../../holdings/holding-metadata';
 
 /**

@@ -1,7 +1,7 @@
 import { guard } from 'fnts';
 import { NBU_API_ENDPOINT } from '@env';
+import type { Currency } from '@kiko/currency/currency';
 
-import type { Currency } from '../../currency/currency';
 import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
 
 /**

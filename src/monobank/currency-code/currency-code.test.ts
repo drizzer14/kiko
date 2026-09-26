@@ -1,4 +1,4 @@
-import { currencyOptions, isCrypto } from '../../currency/currency';
+import { currencyOptions, isCrypto } from '@kiko/currency/currency';
 
 import { codeFromCurrency, currencyFromCode } from './currency-code';
 

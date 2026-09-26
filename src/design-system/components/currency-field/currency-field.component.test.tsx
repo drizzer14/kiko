@@ -7,7 +7,7 @@ import '../../unistyles';
 // so the search placeholder's `t(...)` resolves under test the same way it
 // does at runtime.
 import '@kiko/i18n/init';
-import { fiatCurrencyOptions } from '../../../currency/currency';
+import { fiatCurrencyOptions } from '@kiko/currency/currency';
 
 import CurrencyField from '.';
 import type { CurrencyFieldProps } from './currency-field.props';

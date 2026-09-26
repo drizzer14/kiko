@@ -13,10 +13,10 @@ import {
   chunkRows,
 } from '@kiko/db';
 import { match } from 'ts-pattern';
+import type { Currency } from '@kiko/currency/currency';
 import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/repo';
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
 
-import type { Currency } from '../../currency/currency';
 import { normalizeTransactionName } from '../normalize-name';
 import type { ClosingBalance } from '../../statement-import/parser';
 import { exchangeReceivePath } from '../../holdings/exchange-destination';

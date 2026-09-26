@@ -6,6 +6,7 @@ import '../../../design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import { dayKeyOf } from '@kiko/prices/price-book';
 import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 
 import {
@@ -13,7 +14,6 @@ import {
   asRouteProp,
   navigationSpy,
 } from '../../../test-support/navigation-props';
-import { dayKeyOf } from '../../../prices/price-book';
 import { darkTheme } from '../../../design-system/theme';
 import type { Metal } from '../../../holdings/holding-metadata';
 import { fieldSuffix } from '../../../test-support/field-suffix';

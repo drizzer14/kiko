@@ -1,23 +1,24 @@
-import { useLiveQuery } from '@kiko/db';
-import maybe, { foldMap } from 'fnts/maybe';
-import { useTranslation } from 'react-i18next';
-import { type FC, useRef, useState } from 'react';
-import { holdingsRepo } from '@kiko/holdings/repo';
-import { asMetalMeta } from '@kiko/holdings/holding-metadata';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
-
 import {
   compareDecimal,
   multiplyToMinorUnits,
   normalizeDecimal,
   shiftDecimal,
-} from '../../../currency/decimal';
+} from '@kiko/currency/decimal';
+import { useLiveQuery } from '@kiko/db';
+import maybe, { foldMap } from 'fnts/maybe';
+import { Money } from '@kiko/currency/money';
+import { useTranslation } from 'react-i18next';
+import { type FC, useRef, useState } from 'react';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { parseAmount } from '@kiko/currency/parse';
+import { dayKeyOf } from '@kiko/prices/price-book';
+import { asMetalMeta } from '@kiko/holdings/holding-metadata';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
+import { type Currency, currencyScale, currencySymbol } from '@kiko/currency/currency';
+
 import DateField from '../date-field';
-import { Money } from '../../../currency/money';
-import { parseAmount } from '../../../currency/parse';
-import { dayKeyOf } from '../../../prices/price-book';
 import { metalUnitSuffix } from '../metal-unit-suffix';
 import Box from '../../../design-system/components/box';
 import { groupAmount } from '../amount-format/amount-format';
@@ -35,7 +36,6 @@ import type { AccountsStackParamList } from '../../../navigation/types';
 import SegmentedControl from '../../../design-system/components/segmented-control';
 import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
 import { asLots, costBasisMinorAt, quantityAt, type Lot } from '../../../holdings/lots';
-import { type Currency, currencyScale, currencySymbol } from '../../../currency/currency';
 
 type LotFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'LotForm'>;
 

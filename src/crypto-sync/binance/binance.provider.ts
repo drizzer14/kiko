@@ -1,9 +1,9 @@
 import { identity } from 'fnts';
 import { i18n } from '@kiko/i18n/init';
 import type { HoldingRow } from '@kiko/db';
+import { Money } from '@kiko/currency/money';
 import either, { bifoldMap } from 'fnts/either';
 
-import { Money } from '../../currency/money';
 import type { BalanceProvider, ProviderBalance } from '../provider';
 
 import {

@@ -1,8 +1,8 @@
 import type { TFunction } from 'i18next';
+import { Money, toMajor } from '@kiko/currency/money';
 
 import { makeEntry } from '../entry-parts';
 import { holdingsRepo } from '../../repo/holdings.repo';
-import { Money, toMajor } from '../../../currency/money';
 import type { DerivedEntry } from '../../derived-entries';
 import { asTermDepositMeta } from '../../holding-metadata';
 import type { ValuableHolding } from '../../holding-value';

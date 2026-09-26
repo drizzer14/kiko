@@ -10,19 +10,19 @@ const mockRunBackfill = jest.fn(
   (..._args: unknown[]): Promise<BackfillStatus> => new Promise<never>(() => {}),
 );
 
-jest.mock('../../rates/history-backfill', () => {
-  const actual = jest.requireActual('../../rates/history-backfill');
+jest.mock('@kiko/rates/history-backfill', () => {
+  const actual = jest.requireActual('@kiko/rates/history-backfill');
 
   return { ...actual, runBackfill: (...args: unknown[]) => mockRunBackfill(...args) };
 });
 
 import { i18n } from '@kiko/i18n/init';
+import { toUtcMidnight } from '@kiko/rates/history-entry';
+import type { BackfillStatus } from '@kiko/rates/history-backfill';
 import { formatDate, startOfLocalDay, defaultDateRange } from '@kiko/dates';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 
-import { toUtcMidnight } from '../../rates/history-entry';
 import type { TrendFilter } from '../../statistics/trend-filter';
-import type { BackfillStatus } from '../../rates/history-backfill';
 import { categoryColor } from '../../statistics/category-breakdown';
 import '../../design-system/unistyles';
 import { FILTER_ALL } from '../../design-system/components/filter-menu';

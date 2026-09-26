@@ -1,6 +1,6 @@
-import type { Currency } from '../../currency/currency';
-import { buildPriceBook } from '../../prices/price-book';
-import { holdingInstrument, metalInstrument } from '../../prices/instrument';
+import type { Currency } from '@kiko/currency/currency';
+import { buildPriceBook } from '@kiko/prices/price-book';
+import { holdingInstrument, metalInstrument } from '@kiko/prices/instrument';
 
 import { buildRateTable, canConvert, guardedBreakdown, guardedNetWorth } from './net-worth-view';
 

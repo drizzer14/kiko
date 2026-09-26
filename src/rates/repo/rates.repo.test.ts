@@ -51,9 +51,8 @@ jest.mock('@kiko/db/client', () => {
   };
 });
 
+import { currencyOptions } from '@kiko/currency/currency';
 import { initDatabase, type CurrencyRateRow } from '@kiko/db';
-
-import { currencyOptions } from '../../currency/currency';
 
 import { ratesRepo } from './rates.repo';
 

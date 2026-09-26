@@ -1,6 +1,7 @@
-import { Money } from '../../../src/currency/money';
+import { Money } from '@kiko/currency/money';
+import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
+
 import { holdingValue } from '../../../src/holdings/holding-value';
-import { buildRateTable, guardedNetWorth } from '../../../src/rates/net-worth-view';
 
 import { buildScreenshotDataset } from './screenshot-seed';
 

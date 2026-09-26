@@ -1,3 +1,9 @@
+import {
+  isCrypto,
+  currencyOptions,
+  type Currency,
+  type CryptoCurrency,
+} from '@kiko/currency/currency';
 import type { CurrencyRateHistoryRow } from '@kiko/db';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 
@@ -5,12 +11,6 @@ import {
   openCurrencies as defaultOpenCurrencies,
   type OpenCurrencies,
 } from '../open-currencies-gate';
-import {
-  isCrypto,
-  currencyOptions,
-  type Currency,
-  type CryptoCurrency,
-} from '../../currency/currency';
 import { fetchNbuHistory } from '../nbu-history';
 import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
 import { type CryptoHistory, fetchCryptoHistory } from '../coingecko-history';

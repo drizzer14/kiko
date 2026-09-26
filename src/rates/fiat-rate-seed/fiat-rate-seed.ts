@@ -1,4 +1,5 @@
-import type { Currency } from '../../currency/currency';
+import type { Currency } from '@kiko/currency/currency';
+
 import { type RateTable, rateTableFromRows } from '../conversion';
 
 /**

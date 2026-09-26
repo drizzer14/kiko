@@ -6,9 +6,9 @@ import {
   currencyRateHistory,
 } from '@kiko/db';
 import { sql } from 'drizzle-orm';
+import type { Currency } from '@kiko/currency/currency';
 
 import type { RateTable } from '../conversion';
-import type { Currency } from '../../currency/currency';
 
 type NewHistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate' | 'source'>;
 

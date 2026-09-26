@@ -7,7 +7,10 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import { useSyncAll } from '@kiko/sync/use-sync-all';
 import { useDataReady, useLiveQuery } from '@kiko/db';
 import { categoriesRepo } from '@kiko/categories/repo';
+import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { usePriceBook } from '@kiko/prices/use-price-book';
+import { activeHoldings } from '@kiko/rates/active-holdings';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,6 +20,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { defaultDateRange, endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
+import { buildRateTable, guardedBreakdown, guardedNetWorth } from '@kiko/rates/net-worth-view';
 
 import {
   buildCategoryDisplayMap,
@@ -27,10 +31,7 @@ import {
 import Box from '../../design-system/components/box';
 import Card from '../../design-system/components/card';
 import Text from '../../design-system/components/text';
-import type { Currency } from '../../currency/currency';
-import { usePriceBook } from '../../prices/use-price-book';
 import Divider from '../../design-system/components/divider';
-import { activeHoldings } from '../../rates/active-holdings';
 import { needsPriceBook } from '../../holdings/priced-value';
 import MoneyText from '../../design-system/components/money-text';
 import { defaultAccountColor } from '../../holdings/entity-colors';
@@ -43,7 +44,6 @@ import type { HomeStackParamList, TabParamList } from '../../navigation/types';
 import type { FilterOption } from '../../design-system/components/filter-menu';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
 import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
-import { buildRateTable, guardedBreakdown, guardedNetWorth } from '../../rates/net-worth-view';
 
 import { styles } from './home.styles';
 import TransactionRow from './transaction-row';

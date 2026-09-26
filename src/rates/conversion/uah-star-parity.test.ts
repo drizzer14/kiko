@@ -1,12 +1,12 @@
+import { Money, toMajor } from '@kiko/currency/money';
+import { buildPriceBook } from '@kiko/prices/price-book';
+import { metalInstrument } from '@kiko/prices/instrument';
 import { holdingValue } from '@kiko/holdings/holding-value';
 import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
+import { isCurrency, type Currency, type CryptoCurrency } from '@kiko/currency/currency';
 
-import { Money, toMajor } from '../../currency/money';
 import { FIAT_UAH_PRICE_SEED } from '../fiat-rate-seed';
-import { buildPriceBook } from '../../prices/price-book';
-import { metalInstrument } from '../../prices/instrument';
 import { type RefreshDeps, refreshRates } from '../rates-refresh';
-import { isCurrency, type Currency, type CryptoCurrency } from '../../currency/currency';
 import { buildRateTable, canConvert, guardedBreakdown, guardedNetWorth } from '../net-worth-view';
 
 import { convert, type RateEntry, type RateTable } from './conversion';

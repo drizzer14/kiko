@@ -1,7 +1,8 @@
+import { holdingInstrument } from '@kiko/prices/instrument';
+import { buildPriceBook, dayKeyOf, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
+
 import { addMonths } from '../interest';
 import type { LoanMeta } from '../holding-metadata';
-import { holdingInstrument } from '../../prices/instrument';
-import { buildPriceBook, dayKeyOf, EMPTY_PRICE_BOOK } from '../../prices/price-book';
 
 import {
   loanInstallments,

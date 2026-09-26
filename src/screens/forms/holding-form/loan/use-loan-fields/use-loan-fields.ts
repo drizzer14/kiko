@@ -1,9 +1,14 @@
 import type { RefObject } from 'react';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
+import { Money } from '@kiko/currency/money';
+import { parseAmount } from '@kiko/currency/parse';
 import { useCallback, useRef, useState } from 'react';
+import { shiftDecimal } from '@kiko/currency/decimal';
 import type { TextInputInstance } from 'react-native';
 import { normalizeIban } from '@kiko/loans/payment-matcher';
+import { dayKeyOf, type PriceBook } from '@kiko/prices/price-book';
+import { currencyScale, type Currency } from '@kiko/currency/currency';
 import { holdingsRepo, type LoanPricePointOp } from '@kiko/holdings/repo';
 import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
 
@@ -21,12 +26,7 @@ import {
   type LoanMeta,
   type LoanSchedule,
 } from '../../../../../holdings/holding-metadata';
-import { Money } from '../../../../../currency/money';
-import { parseAmount } from '../../../../../currency/parse';
-import { shiftDecimal } from '../../../../../currency/decimal';
 import { loanInstallments } from '../../../../../holdings/loan-schedule';
-import { dayKeyOf, type PriceBook } from '../../../../../prices/price-book';
-import { currencyScale, type Currency } from '../../../../../currency/currency';
 import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
 import type { FieldInstance } from '../../../../../design-system/scroll-to-field/scroll-to-field';

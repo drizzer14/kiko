@@ -1,13 +1,13 @@
+import { Money } from '@kiko/currency/money';
 import type { AccountRow, HoldingRow } from '@kiko/db';
+import { canConvert } from '@kiko/rates/net-worth-view';
+import type { Currency } from '@kiko/currency/currency';
+import { convert, type RateTable } from '@kiko/rates/conversion';
+import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
 
-import { Money } from '../../currency/money';
-import { canConvert } from '../../rates/net-worth-view';
-import type { Currency } from '../../currency/currency';
 import { holdingValue } from '../../holdings/holding-value';
-import { convert, type RateTable } from '../../rates/conversion';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import { resolveEntityColor } from '../../design-system/entity-tint';
-import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
 
 /**
  * An account as the pie chart needs it: identity, display name, and the two

@@ -1,6 +1,7 @@
-import { Money } from '../../currency/money';
-import { buildPriceBook } from '../../prices/price-book';
-import { holdingInstrument } from '../../prices/instrument';
+import { Money } from '@kiko/currency/money';
+import { buildPriceBook } from '@kiko/prices/price-book';
+import { holdingInstrument } from '@kiko/prices/instrument';
+
 import { holdingValue, type ValuableHolding } from '../../holdings/holding-value';
 
 import { sumByCurrency } from './currency-totals';

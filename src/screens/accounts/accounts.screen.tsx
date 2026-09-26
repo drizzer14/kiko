@@ -7,16 +7,17 @@ import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { useUnistyles } from 'react-native-unistyles';
 import { useDataReady, useLiveQuery } from '@kiko/db';
+import type { Currency } from '@kiko/currency/currency';
+import { usePriceBook } from '@kiko/prices/use-price-book';
 import { Pressable, type ScrollViewInstance } from 'react-native';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 
 import Box from '../../design-system/components/box';
 import Card from '../../design-system/components/card';
 import Text from '../../design-system/components/text';
-import type { Currency } from '../../currency/currency';
-import { usePriceBook } from '../../prices/use-price-book';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import { isSyncedAccount } from '../../holdings/deletable';
@@ -30,7 +31,6 @@ import { onGridDragEnd } from '../../design-system/grid-interaction';
 import type { AccountsStackParamList } from '../../navigation/types';
 import LoadingState from '../../design-system/components/loading-state';
 import EntityIconTile from '../../design-system/components/entity-icon-tile';
-import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
 import CardContextMenu from '../../design-system/components/card-context-menu';
 import { useFocusRefreshedNow } from '../../design-system/use-focus-refreshed-now/use-focus-refreshed-now';
 

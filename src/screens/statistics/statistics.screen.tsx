@@ -1,5 +1,13 @@
 import { match } from 'ts-pattern';
+import {
+  type BackfillStatus,
+  deriveLastBackfilledDay,
+  derivePresentCurrencies,
+  planBackfillRun,
+  runBackfill,
+} from '@kiko/rates/history-backfill';
 import { ratesRepo } from '@kiko/rates/repo';
+import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
@@ -8,7 +16,10 @@ import either, { bifold, isLeft } from 'fnts/either';
 import { useDataReady, useLiveQuery } from '@kiko/db';
 import { categoriesRepo } from '@kiko/categories/repo';
 import type { ScrollViewInstance } from 'react-native';
+import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { usePriceBook } from '@kiko/prices/use-price-book';
+import { buildRateTable } from '@kiko/rates/net-worth-view';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
@@ -16,13 +27,6 @@ import { defaultDateRange, endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 
-import {
-  type BackfillStatus,
-  deriveLastBackfilledDay,
-  derivePresentCurrencies,
-  planBackfillRun,
-  runBackfill,
-} from '../../rates/history-backfill';
 import {
   resolveTrendFilter,
   selectTopCategories,
@@ -37,7 +41,6 @@ import {
   buildCategoryTrend,
   type TrendTransaction,
 } from '../../statistics/category-trend';
-import { Money } from '../../currency/money';
 import {
   type BreakdownTransaction,
   buildCategoryBreakdown,
@@ -60,11 +63,8 @@ import FilterMenu, {
 import Box from '../../design-system/components/box';
 import Card from '../../design-system/components/card';
 import Text from '../../design-system/components/text';
-import type { Currency } from '../../currency/currency';
 import { ibanOf } from '../../holdings/holding-metadata';
 import Screen from '../../design-system/components/screen';
-import { usePriceBook } from '../../prices/use-price-book';
-import { buildRateTable } from '../../rates/net-worth-view';
 import { needsPriceBook } from '../../holdings/priced-value';
 import { bucketDaysForSpan } from '../../statistics/buckets';
 import MoneyText from '../../design-system/components/money-text';

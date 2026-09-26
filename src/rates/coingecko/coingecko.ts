@@ -1,9 +1,9 @@
 import { guard } from 'fnts';
 import { PRICE_ENDPOINT } from '@env';
+import { cryptoCurrencyOptions, type CryptoCurrency } from '@kiko/currency/currency';
 
 import type { RateEntry } from '../conversion';
 import { cryptoCoinGeckoId } from '../coingecko-ids';
-import { cryptoCurrencyOptions, type CryptoCurrency } from '../../currency/currency';
 
 /** The `/simple/price` body: one `{ usd }` object per requested coin id. */
 type CoinGeckoPrices = Record<string, { usd: number }>;

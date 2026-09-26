@@ -8,9 +8,9 @@
 // helpers (schema row types, `Currency`, `AppLanguage`, the palette) because
 // the shape it builds mirrors the real app's own types.
 import type { AccountRow, HoldingRow } from '@kiko/db';
+import type { Currency } from '@kiko/currency/currency';
 import type { AppLanguage } from '@kiko/i18n/device-language';
 
-import type { Currency } from '../../../src/currency/currency';
 import { entityColorsDark } from '../../../src/design-system/palette';
 
 // ---------------------------------------------------------------------------

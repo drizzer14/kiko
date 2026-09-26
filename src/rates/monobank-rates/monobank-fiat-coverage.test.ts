@@ -1,5 +1,6 @@
+import { currencyOptions, isFiat } from '@kiko/currency/currency';
+
 import { canConvert, guardedNetWorth } from '../net-worth-view';
-import { currencyOptions, isFiat } from '../../currency/currency';
 import { BASE_LEGS, composeRateTable } from '../monobank-feed-test-helper';
 
 const NOW = Date.UTC(2026, 0, 1);

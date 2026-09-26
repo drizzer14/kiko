@@ -7,6 +7,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { PRIVACY_POLICY_URL_EN, PRIVACY_POLICY_URL_UK } from '@env';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { Linking, Pressable, type ScrollViewInstance } from 'react-native';
+import { type Currency, fiatCurrencyOptions } from '@kiko/currency/currency';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 
@@ -20,7 +21,6 @@ import Divider from '../../../design-system/components/divider';
 import type { SettingsStackParamList } from '../../../navigation/types';
 import LoadingState from '../../../design-system/components/loading-state';
 import CurrencyField from '../../../design-system/components/currency-field';
-import { type Currency, fiatCurrencyOptions } from '../../../currency/currency';
 import { chevronSize, chevronTrailingWhitespace } from '../settings-row/settings-row.chevron';
 
 type SettingsScreenProps = NativeStackScreenProps<SettingsStackParamList, 'Settings'>;

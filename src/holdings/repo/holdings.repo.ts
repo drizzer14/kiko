@@ -10,6 +10,8 @@ import {
   transactions,
 } from '@kiko/db';
 import { match } from 'ts-pattern';
+import { Money } from '@kiko/currency/money';
+import { holdingInstrument } from '@kiko/prices/instrument';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import {
@@ -27,9 +29,7 @@ import {
   type ExchangeMetadataField,
   type SyncedMetadataField,
 } from '../holding-metadata';
-import { Money } from '../../currency/money';
 import { isSyncedHolding } from '../deletable';
-import { holdingInstrument } from '../../prices/instrument';
 import { isCurrencyAllowedForHoldingType } from '../holding-currency';
 
 // The next free grid slot for a new holding under one account: one past that

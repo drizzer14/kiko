@@ -18,9 +18,9 @@ import {
   write,
   chunkForTable,
 } from '@kiko/db';
+import type { Currency } from '@kiko/currency/currency';
 import { isCurrencyAllowedForHoldingType } from '@kiko/holdings/holding-currency';
 
-import type { Currency } from '../../currency/currency';
 import { entityColorsDark } from '../../design-system/palette';
 import { upgradeLegacyDedupKey } from '../../statement-import/mapping/upgrade-dedup-key';
 

@@ -1,7 +1,6 @@
 import { render } from '@testing-library/react-native';
 import '../../unistyles';
-
-import { Money } from '../../../currency/money';
+import { Money } from '@kiko/currency/money';
 
 import TransactionCard from '.';
 

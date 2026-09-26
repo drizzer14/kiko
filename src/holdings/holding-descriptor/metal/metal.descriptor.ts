@@ -1,19 +1,19 @@
 import type { TFunction } from 'i18next';
+import { Money } from '@kiko/currency/money';
+import type { Currency } from '@kiko/currency/currency';
+import { metalInstrument } from '@kiko/prices/instrument';
+import { priceAt, type PriceBook } from '@kiko/prices/price-book';
+import { compareDecimal, multiplyToMinorUnits } from '@kiko/currency/decimal';
 
 import { quantityAt } from '../../lots';
 import { makeEntry } from '../entry-parts';
-import { Money } from '../../../currency/money';
 import { pricedDescriptor } from '../priced-parts';
 import { asMetalMeta } from '../../holding-metadata';
 import type { PricedHolding } from '../../priced-value';
 import type { DerivedEntry } from '../../derived-entries';
 import type { ValuableHolding } from '../../holding-value';
-import type { Currency } from '../../../currency/currency';
-import { metalInstrument } from '../../../prices/instrument';
 import { entityColorsDark } from '../../../design-system/palette';
-import { priceAt, type PriceBook } from '../../../prices/price-book';
 import type { HoldingDescriptor, PricedSpec } from '../holding-descriptor.d';
-import { compareDecimal, multiplyToMinorUnits } from '../../../currency/decimal';
 
 // The create form's fixed currency for a metal holding — UAH, matching NBU's
 // own metal quotes.

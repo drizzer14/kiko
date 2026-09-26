@@ -1,6 +1,6 @@
+import { Money } from '@kiko/currency/money';
 import { render } from '@testing-library/react-native';
 
-import { Money } from '../../../currency/money';
 import type { RenderedElement } from '../../../test-support/rendered-element';
 import '../../unistyles';
 import CurrencyBreakdown from './currency-breakdown.component';

@@ -1,14 +1,14 @@
-import { match } from 'ts-pattern';
-import maybe, { foldMap } from 'fnts/maybe';
-
 import {
   trimDecimal,
   shiftDecimal,
   scaleMinorUnits,
   normalizeDecimal,
-} from '../../currency/decimal';
-import { Money } from '../../currency/money';
-import { dayKeyOf } from '../../prices/price-book';
+} from '@kiko/currency/decimal';
+import { match } from 'ts-pattern';
+import maybe, { foldMap } from 'fnts/maybe';
+import { Money } from '@kiko/currency/money';
+import { dayKeyOf } from '@kiko/prices/price-book';
+
 import type { PropertyMeta, OwnershipInput, PropertyCategory } from '../holding-metadata';
 
 /** A reduced fraction of a whole asset, `0 < numerator <= denominator`. */

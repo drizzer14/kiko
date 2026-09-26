@@ -1,10 +1,10 @@
 import type { FC } from 'react';
 import { match } from 'ts-pattern';
 import { useTranslation } from 'react-i18next';
+import { formatMoney } from '@kiko/currency/format';
 import { activeLocale } from '@kiko/i18n/active-locale';
 
 import Text from '../text';
-import { formatMoney } from '../../../currency/format';
 
 import type { MoneyTextContext, MoneyTextProps, MoneyTextTone } from './money-text.props';
 

@@ -9,6 +9,10 @@
 // confirmed synthetic (placeholder IBAN, test-card Visa number, year-2000
 // dates), unlike PrivatBank XLSX's hand-authored one.
 import Papa from 'papaparse';
+import { Money } from '@kiko/currency/money';
+import { parseAmount } from '@kiko/currency/parse';
+import { isCurrency } from '@kiko/currency/currency';
+import type { Currency } from '@kiko/currency/currency';
 
 import type {
   ParsedStatement,
@@ -16,11 +20,7 @@ import type {
   StatementFormat,
   StatementFormatInput,
 } from '../../parser';
-import { Money } from '../../../currency/money';
 import { StatementParseError } from '../../parser';
-import { parseAmount } from '../../../currency/parse';
-import { isCurrency } from '../../../currency/currency';
-import type { Currency } from '../../../currency/currency';
 
 // Section C.2: "Detect signature — file content starts with the literal
 // preamble line `Виписка за рахунком;;;;;;;`". Verified byte-for-byte

@@ -6,10 +6,10 @@
 // identically to a recognized bank export.
 import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
+import { Money } from '@kiko/currency/money';
+import { isCurrency } from '@kiko/currency/currency';
+import type { Currency } from '@kiko/currency/currency';
 
-import { Money } from '../../currency/money';
-import { isCurrency } from '../../currency/currency';
-import type { Currency } from '../../currency/currency';
 import { CURRENCY_WORD_MAP } from '../formats/privatbank-xlsx';
 import { StatementParseError, type ParsedStatement } from '../parser';
 import type { ClosingBalance, ParsedAccountHint, ParsedTransaction } from '../parser';

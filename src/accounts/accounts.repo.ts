@@ -9,11 +9,11 @@ import {
   transactions,
 } from '@kiko/db';
 import { asc, eq, sql } from 'drizzle-orm';
+import type { Money } from '@kiko/currency/money';
+import type { Currency } from '@kiko/currency/currency';
 import { isCurrencyAllowedForHoldingType } from '@kiko/holdings/holding-currency';
 import { clearLoanLinksForHoldingsDatabaseTransaction } from '@kiko/holdings/repo';
 
-import type { Money } from '../currency/money';
-import type { Currency } from '../currency/currency';
 import { SYNCED_AT_FIELD } from '../holdings/holding-metadata';
 import { isSyncedAccount, type SyncedInstitution } from '../holdings/deletable';
 

@@ -66,7 +66,7 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
     listQuery: () => mockQuery('all accounts', [], () => mockTables.accounts),
   },
 }));
-jest.mock('../../../prices/price-points-repo', () => ({
+jest.mock('@kiko/prices/price-points-repo', () => ({
   pricePointsRepo: { allQuery: () => mockQuery('all price points', [], () => []) },
 }));
 jest.mock('@kiko/transactions/repo', () => ({

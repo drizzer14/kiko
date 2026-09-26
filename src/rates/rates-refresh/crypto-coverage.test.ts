@@ -1,6 +1,7 @@
+import { type Currency, currencyOptions } from '@kiko/currency/currency';
+
 import { rateBetween, type RateEntry } from '../conversion';
 import { composeRateTable } from '../monobank-feed-test-helper';
-import { type Currency, currencyOptions } from '../../currency/currency';
 import { canConvert, guardedBreakdown, guardedNetWorth } from '../net-worth-view';
 
 // Every crypto MUST reach every base leg by a live cross-rate, or a holding in it

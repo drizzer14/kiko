@@ -1,5 +1,6 @@
+import { Money } from '@kiko/currency/money';
+
 import { convert } from '../conversion';
-import { Money } from '../../currency/money';
 
 import { fetchFiatRates } from './monobank-rates';
 

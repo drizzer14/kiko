@@ -1,6 +1,5 @@
 import { bifold, isLeft, isRight } from 'fnts/either';
-
-import type { RatesRefreshOutcome } from '../../rates/rates-refresh';
+import type { RatesRefreshOutcome } from '@kiko/rates/rates-refresh';
 
 import { type RefreshMarketDataDeps, refreshMarketData } from './refresh-market-data';
 
