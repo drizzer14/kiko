@@ -7,6 +7,7 @@ import type { HoldingRow } from '@kiko/db/schema';
 import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 import { act, renderHook } from '@testing-library/react-native';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
+import { buildPriceBook, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 
 import {
   loanEditInvalidatesAutoLinks,
@@ -511,7 +512,7 @@ describe('useLoanFields — saveEdit clearing auto links', () => {
         currency: 'UAH',
         isSynced: false,
         editingHolding: editingHoldingWith(baseMeta()),
-        book: new Map(),
+        book: EMPTY_PRICE_BOOK,
       });
     });
 
@@ -535,7 +536,7 @@ describe('useLoanFields — saveEdit clearing auto links', () => {
         currency: 'UAH',
         isSynced: false,
         editingHolding: editingHoldingWith(baseMeta()),
-        book: new Map(),
+        book: EMPTY_PRICE_BOOK,
       });
     });
 
@@ -556,7 +557,7 @@ describe('useLoanFields — saveEdit clearing auto links', () => {
         currency: 'UAH',
         isSynced: false,
         editingHolding: editingHoldingWith(baseMeta()),
-        book: new Map(),
+        book: EMPTY_PRICE_BOOK,
       });
     });
 
@@ -578,10 +579,62 @@ describe('useLoanFields — saveEdit clearing auto links', () => {
         currency: 'UAH',
         isSynced: false,
         editingHolding: undefined,
-        book: new Map(),
+        book: EMPTY_PRICE_BOOK,
       });
     });
 
     expect(mockUpdateLoan).toHaveBeenCalledWith('h-1', expect.anything(), expect.anything(), false);
+  });
+});
+
+describe('useLoanFields — saveEdit into a "none" schedule', () => {
+  beforeEach(() => {
+    mockUpdateLoan.mockClear();
+    mockUpdateLoan.mockResolvedValue(undefined);
+  });
+
+  // The loan keeps the value every screen showed before the edit: with linked
+  // payments that is their outstanding, not the schedule's (which reads the
+  // one-year loan below as fully repaid by now).
+  it('keeps the linked-payments outstanding as the manual point it writes today', async () => {
+    const { result } = await renderLoanFields();
+    // 10 days after the start: the first installment's interest is 1% of
+    // 12,000.00 (120.00), so 4,880.00 of the 5,000.00 repays principal.
+    const book = buildPriceBook(
+      [],
+      [
+        {
+          loanHoldingId: 'h-1',
+          time: baseMeta().startDate + 10 * 86_400_000,
+          amountMinorUnits: -500_000,
+          currency: 'UAH',
+        },
+      ],
+    );
+
+    await act(async () => {
+      result.current.seed(editingHoldingWith(baseMeta()));
+    });
+    await act(async () => {
+      result.current.setSchedule('none');
+    });
+    await act(async () => {
+      await result.current.saveEdit({
+        holdingId: 'h-1',
+        name: 'Car loan',
+        color: null,
+        currency: 'UAH',
+        isSynced: false,
+        editingHolding: editingHoldingWith(baseMeta()),
+        book,
+      });
+    });
+
+    expect(mockUpdateLoan).toHaveBeenCalledWith(
+      'h-1',
+      expect.anything(),
+      expect.objectContaining({ kind: 'upsert', price: '7120.00', currency: 'UAH' }),
+      expect.anything(),
+    );
   });
 });

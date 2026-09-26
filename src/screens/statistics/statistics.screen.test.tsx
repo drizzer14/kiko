@@ -59,7 +59,10 @@ jest.mock('@kiko/settings/settings.repo', () => ({
   },
 }));
 jest.mock('@kiko/transactions/repo', () => ({
-  transactionsRepo: { listAllQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+  transactionsRepo: {
+    listAllQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    loanLedgerPaymentsQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+  },
 }));
 jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
@@ -2003,5 +2006,21 @@ describe('StatisticsScreen — the price_points gate', () => {
 
     const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
     expect(priceCall?.[2]).toBe(true);
+  });
+
+  // Only a loan reads its linked payments, so a priced-only screen never
+  // runs the linked-payments read.
+  it('reads the linked loan payments only once a loan is present', async () => {
+    const loanPaymentsCall = () =>
+      mockUseLiveQuery.mock.calls.find((call) => call[1].join(',') === 'transactions,holdings');
+
+    setLiveData({ holdings: [{ ...UAH_HOLDING, type: 'metal' }] });
+    await renderScreen();
+    expect(loanPaymentsCall()?.[2]).toBe(false);
+
+    mockUseLiveQuery.mockClear();
+    setLiveData({ holdings: [{ ...UAH_HOLDING, type: 'loan' }] });
+    await renderScreen();
+    expect(loanPaymentsCall()?.[2]).toBe(true);
   });
 });

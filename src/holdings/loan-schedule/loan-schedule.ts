@@ -139,23 +139,44 @@ export const loanOutstandingMinorAt = (
   }
 
   const instantDayKey = dayKeyOf(instant);
-  const scheduledCorrection =
-    correction !== undefined && correction.day <= instantDayKey ? correction : undefined;
-  const anchorDayKey =
-    scheduledCorrection === undefined ? dayKeyOf(meta.startDate) : scheduledCorrection.day;
-  const anchorValueMinor =
-    scheduledCorrection === undefined
-      ? meta.principalMinorUnits
-      : multiplyToMinorUnits([scheduledCorrection.price], scheduledCorrection.currency);
+  const anchor = loanAnchorAt(meta, holdingId, book, instant);
   const principalDueAfterAnchor = loanInstallments(meta)
     .filter((row) => {
       const dueDayKey = dayKeyOf(row.dueDate);
 
-      return dueDayKey > anchorDayKey && dueDayKey <= instantDayKey;
+      return dueDayKey > anchor.dayKey && dueDayKey <= instantDayKey;
     })
     .reduce((sum, row) => sum + row.principalMinorUnits, 0);
 
-  return Math.max(0, anchorValueMinor - principalDueAfterAnchor);
+  return Math.max(0, anchor.valueMinorUnits - principalDueAfterAnchor);
+};
+
+/**
+ * The baseline a loan's outstanding is counted down from at `instant`: the
+ * latest manual correction on the loan's own `holding:<id>` series whose day
+ * is on or before `instant`'s local day, else the principal at the start
+ * day. A correction dated AFTER `instant` never anchors it — `priceAt`'s
+ * earliest-point fallback is deliberately not trusted (see
+ * `loanOutstandingMinorAt` above). Shared by the schedule branch above and
+ * the linked-payments ledger (`src/holdings/loan-ledger/`), so both anchor on
+ * the exact same point.
+ */
+export const loanAnchorAt = (
+  meta: LoanMeta,
+  holdingId: string,
+  book: PriceBook,
+  instant: number,
+): { dayKey: number; valueMinorUnits: number } => {
+  const correction = priceAt(book, holdingInstrument(holdingId), instant);
+
+  if (correction === undefined || correction.day > dayKeyOf(instant)) {
+    return { dayKey: dayKeyOf(meta.startDate), valueMinorUnits: meta.principalMinorUnits };
+  }
+
+  return {
+    dayKey: correction.day,
+    valueMinorUnits: multiplyToMinorUnits([correction.price], correction.currency),
+  };
 };
 
 /**

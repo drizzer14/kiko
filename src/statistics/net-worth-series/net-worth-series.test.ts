@@ -992,6 +992,55 @@ describe('buildNetWorthSeries', () => {
     expect(series.points.map((point) => point.amount)).toEqual([-100_000, -90_000]);
   });
 
+  // A linked payment moves money from the payer card to the loan: each bucket
+  // counts only the payments dated at or before it, on the same local day the
+  // card's own running balance drops, so net worth stays flat.
+  it('stays flat across a linked loan payment: the card and the loan move in the same bucket', () => {
+    const loan = holding({
+      id: 'loan',
+      currency: 'UAH',
+      type: 'loan',
+      metadata: {
+        kind: 'personal',
+        principalMinorUnits: 100_000_00,
+        startDate: D0,
+        schedule: 'none',
+      },
+    });
+    const card = holding({
+      id: 'card',
+      currency: 'UAH',
+      type: 'card',
+      balanceMinorUnits: 40_000_00,
+    });
+    const paymentTime = D1 + 5 * HOUR;
+    const book = buildPriceBook(
+      [
+        {
+          instrument: holdingInstrument('loan'),
+          day: D0,
+          price: '100000',
+          currency: 'UAH',
+          source: 'manual',
+        },
+      ],
+      [{ loanHoldingId: 'loan', time: paymentTime, amountMinorUnits: -10_000_00, currency: 'UAH' }],
+    );
+
+    const series = buildNetWorthSeries({
+      holdings: [loan, card],
+      transactionsByHolding: new Map([
+        ['card', [{ time: paymentTime, amountMinorUnits: -10_000_00 }]],
+      ]),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'UAH',
+      range: { from: D0, to: D2 },
+      book,
+    });
+
+    expect(series.points.map((point) => point.amount)).toEqual([-50_000, -50_000, -50_000]);
+  });
+
   // A correction dated AFTER the queried instant must never retroactively
   // anchor it — the loan contributes exactly 0 before its own `startDate`,
   // the same rule `holding-value.test.ts` covers at the single-holding level,

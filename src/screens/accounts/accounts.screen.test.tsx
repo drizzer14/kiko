@@ -900,4 +900,32 @@ describe('AccountsScreen — the price_points gate', () => {
     const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
     expect(priceCall?.[2]).toBe(true);
   });
+
+  // Only a loan reads its linked payments, so a priced-only screen never
+  // runs the linked-payments read.
+  it('reads the linked loan payments only once a loan is present', async () => {
+    const loanPaymentsCall = () =>
+      mockUseLiveQuery.mock.calls.find((call) => call[1].join(',') === 'transactions,holdings');
+    const holdingOfType = (type: string) => ({
+      accountId: 'a',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      type,
+    });
+
+    setLiveData({
+      accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }],
+      holdings: [holdingOfType('metal')],
+    });
+    await renderAccounts();
+    expect(loanPaymentsCall()?.[2]).toBe(false);
+
+    mockUseLiveQuery.mockClear();
+    setLiveData({
+      accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }],
+      holdings: [holdingOfType('loan')],
+    });
+    await renderAccounts();
+    expect(loanPaymentsCall()?.[2]).toBe(true);
+  });
 });

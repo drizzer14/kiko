@@ -338,11 +338,16 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
   against the SAME key that was already applied keeps that previous
   data, matching what a same-key success does.
 
-`usePriceBook(enabled?)` (`src/prices/use-price-book/`) returns `{ book,
-isLoading }`, not a bare `PriceBook` — every consumer destructures
+`usePriceBook(enabled?, options?, loanPaymentsEnabled?)`
+(`src/prices/use-price-book/`) returns `{ book, isLoading }`, not a bare
+`PriceBook` — every consumer destructures
 `const { book: priceBook } = usePriceBook();` (or additionally
-`isLoading: priceBookLoading` when gating). See `kiko-pricing` for the
-full contract, and the section below for its `enabled` argument.
+`isLoading: priceBookLoading` when gating). It runs TWO live reads —
+`price_points` and every linked loan payment
+(`transactionsRepo.loanLedgerPaymentsQuery()`, ONE read across all loans,
+never one per holding: the one worker thread above) — and its `isLoading`
+is true while either is on its first load. See `kiko-pricing` for the
+full contract, and the section below for its two gate arguments.
 
 ### The live-query cache: a reopened screen shows its data on the first frame
 
@@ -482,7 +487,12 @@ gate says there is nothing to do.
   parallel and price_points disables afterwards if nothing needs it. `needsPriceBook` (`src/holdings/priced-value/`)
   is true for a priced type (`property_item`/`metal`) OR `loan` (not
   priced, but reads its own `holding:<id>` series the same way,
-  kiko-pricing) — the one predicate every call site uses.
+  kiko-pricing) — the one predicate every call site uses. The third
+  argument, `loanPaymentsEnabled` (default: `enabled`), gates the
+  linked-loan-payments read the same way: every display screen passes
+  `holdingsLoading || holdings.some((holding) => holding.type === 'loan')`
+  (or the one displayed holding), so a metal- or property-only user never
+  runs it. It never runs while `enabled` is `false`.
 - **The first add triggers the gated refresh**: creating the FIRST
   metal/foreign-currency/crypto holding (`holding-form.screen.tsx`'s
   manual create) or restoring a `.kiko` export (`importData`,

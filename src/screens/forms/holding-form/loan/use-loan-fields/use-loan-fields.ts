@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 import type { TextInputInstance } from 'react-native';
 import { normalizeIban } from '@kiko/loans/payment-matcher';
 import { holdingsRepo, type LoanPricePointOp } from '@kiko/holdings/repo';
+import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
 
 import {
   termReasonKey,
@@ -23,11 +24,11 @@ import { Money } from '../../../../../currency/money';
 import type { HoldingRow } from '../../../../../db/schema';
 import { parseAmount } from '../../../../../currency/parse';
 import { shiftDecimal } from '../../../../../currency/decimal';
+import { loanInstallments } from '../../../../../holdings/loan-schedule';
 import { dayKeyOf, type PriceBook } from '../../../../../prices/price-book';
 import { currencyScale, type Currency } from '../../../../../currency/currency';
 import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
-import { loanInstallments, loanOutstandingMinorAt } from '../../../../../holdings/loan-schedule';
 import type { FieldInstance } from '../../../../../design-system/scroll-to-field/scroll-to-field';
 
 // The literal i18n keys `loanReasonKey` below may return, so `t()` (typed
@@ -302,17 +303,19 @@ const buildLoanPricePointOp = (params: {
   }
 
   if (oldMeta.schedule !== 'none' && newMeta.schedule === 'none') {
-    // (a) normally dates the preserved point today. But `loanOutstandingMinorAt`
-    // reads 0 for any instant before the loan's own `startDate` (a future-start
-    // loan), so dating it today would write a permanent 0 that outlives the
-    // start date once it arrives. Write the principal at the start day instead
-    // — mirroring the create-mode `'none'` first point — whenever today is
-    // still before that day.
+    // (a) normally dates the preserved point today, at the outstanding every
+    // screen showed before the edit (`loanLedgerOutstandingMinorAt`: the
+    // linked payments' when any count, else the schedule's), so the value
+    // does not jump. But it reads 0 for any instant before the loan's own
+    // `startDate` (a future-start loan), so dating it today would write a
+    // permanent 0 that outlives the start date once it arrives. Write the
+    // principal at the start day instead — mirroring the create-mode `'none'`
+    // first point — whenever today is still before that day.
     const beforeStart = dayKeyOf(now) < dayKeyOf(newMeta.startDate);
     const day = beforeStart ? dayKeyOf(newMeta.startDate) : dayKeyOf(now);
     const outstanding = beforeStart
       ? newMeta.principalMinorUnits
-      : loanOutstandingMinorAt(oldMeta, holdingId, book, now);
+      : loanLedgerOutstandingMinorAt(oldMeta, { id: holdingId, currency }, book, now);
 
     return {
       kind: 'upsert',

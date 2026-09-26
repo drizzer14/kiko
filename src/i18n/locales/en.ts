@@ -655,6 +655,10 @@ export const en = {
     interest: 'Interest',
     interestAccrual: 'Interest accrual',
     interestEarned: 'Interest earned',
+    // The loan detail breakdown's rows (`loanLedgerSummary`): the interest
+    // and principal parts of the linked payments, their total, and the
+    // outstanding every other screen shows for the loan.
+    interestPaid: 'Interest paid',
     // The loan detail screen's own "Linked payments" section heading: the
     // transactions the auto-link matcher (or a manual pick) linked to this
     // loan, newest first.
@@ -665,7 +669,10 @@ export const en = {
     // labels below.
     nextInstallment: 'Next installment ({{date}})',
     openingDeposit: 'Opening deposit',
+    outstanding: 'Outstanding',
+    paidSoFar: 'Paid so far',
     principal: 'Principal',
+    principalRepaid: 'Principal repaid',
     projected: 'Projected',
     purchase: 'Purchase',
     redemption: 'Redemption',

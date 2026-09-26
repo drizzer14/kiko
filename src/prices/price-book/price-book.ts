@@ -1,33 +1,83 @@
+import type { Currency } from '@kiko/currency/currency';
+
 import type { PricePointRow } from '../../db/schema';
 
 /**
- * Every stored price point, grouped by `instrument` and sorted day ascending
- * within each group — the shape `priceAt`/`latestPoint` read.
+ * A transaction linked to a loan (`transactions.loanHoldingId`), with the
+ * PAYER holding's currency — the one loan valuation input that lives outside
+ * both the holding row and `price_points`.
  */
-export type PriceBook = ReadonlyMap<string, readonly PricePointRow[]>;
+export type LoanLedgerPayment = {
+  loanHoldingId: string | null;
+  time: number;
+  amountMinorUnits: number;
+  currency: Currency;
+};
 
-export const EMPTY_PRICE_BOOK: PriceBook = new Map();
+/**
+ * Every valuation input a holding row does not carry itself: each stored
+ * price point, grouped by `instrument` and sorted day ascending (the shape
+ * `priceAt`/`latestPoint` read), and each loan's linked payments, grouped by
+ * loan id and sorted time ascending. One book reaches every valuation site,
+ * so a loan's payment-based outstanding reads the same on every screen and
+ * in every net-worth bucket.
+ */
+export type PriceBook = {
+  points: ReadonlyMap<string, readonly PricePointRow[]>;
+  loanPayments: ReadonlyMap<string, readonly LoanLedgerPayment[]>;
+};
 
-/** Groups a flat `price_points` row set into a `PriceBook`. */
-export const buildPriceBook = (rows: readonly PricePointRow[]): PriceBook => {
-  const byInstrument = new Map<string, PricePointRow[]>();
+export const EMPTY_PRICE_BOOK: PriceBook = { points: new Map(), loanPayments: new Map() };
+
+const groupSorted = <Row>(
+  rows: readonly Row[],
+  keyOf: (row: Row) => string | null,
+  orderOf: (row: Row) => number,
+): Map<string, Row[]> => {
+  const byKey = new Map<string, Row[]>();
 
   for (const row of rows) {
-    const existing = byInstrument.get(row.instrument);
+    const key = keyOf(row);
+
+    if (key === null) {
+      continue;
+    }
+
+    const existing = byKey.get(key);
 
     if (existing) {
       existing.push(row);
     } else {
-      byInstrument.set(row.instrument, [row]);
+      byKey.set(key, [row]);
     }
   }
 
-  for (const points of byInstrument.values()) {
-    points.sort((a, b) => a.day - b.day);
+  for (const group of byKey.values()) {
+    group.sort((first, second) => orderOf(first) - orderOf(second));
   }
 
-  return byInstrument;
+  return byKey;
 };
+
+/**
+ * Groups a flat `price_points` row set, and the linked-loan-payment rows, into
+ * a `PriceBook`. A payment row whose link is null is skipped.
+ */
+export const buildPriceBook = (
+  rows: readonly PricePointRow[],
+  payments: readonly LoanLedgerPayment[] = [],
+): PriceBook => ({
+  points: groupSorted(
+    rows,
+    (row) => row.instrument,
+    (row) => row.day,
+  ),
+  loanPayments: groupSorted(
+    payments,
+    (payment) => payment.loanHoldingId,
+    (payment) => payment.time,
+  ),
+});
 
 /**
  * Maps an instant to its LOCAL calendar date, normalized to a UTC-midnight
@@ -56,7 +106,7 @@ export const priceAt = (
   instrument: string,
   instant: number,
 ): PricePointRow | undefined => {
-  const points = book.get(instrument);
+  const points = book.points.get(instrument);
 
   if (points === undefined || points.length === 0) {
     return undefined;
@@ -70,7 +120,7 @@ export const priceAt = (
 
 /** The most recent stored price point for `instrument`, or undefined if none. */
 export const latestPoint = (book: PriceBook, instrument: string): PricePointRow | undefined => {
-  const points = book.get(instrument);
+  const points = book.points.get(instrument);
 
   return points === undefined || points.length === 0 ? undefined : points[points.length - 1];
 };

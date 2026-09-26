@@ -5,6 +5,8 @@ jest.mock('@kiko/holdings/repo', () => ({
   },
 }));
 
+import { EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
+
 import type { EditContext } from '../holding-type-form';
 
 import { saveMetadataEdit } from './save-metadata-edit';
@@ -16,7 +18,7 @@ const baseContext = (): EditContext => ({
   currency: 'UAH',
   isSynced: false,
   editingHolding: undefined,
-  book: new Map(),
+  book: EMPTY_PRICE_BOOK,
 });
 
 describe('saveMetadataEdit', () => {

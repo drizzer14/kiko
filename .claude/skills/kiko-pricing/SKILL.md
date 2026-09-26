@@ -170,8 +170,17 @@ rows to stay under SQLite's bound-parameter limit, upserts on the
 `(instrument, day)` unique index — a re-fetched price overwrites in
 place), `removeInstrument`.
 
-`PriceBook` (`src/prices/price-book/`) groups the flat row set by
-`instrument`, sorted `day` ascending. `priceAt(book, instrument,
+`PriceBook` (`src/prices/price-book/`) is `{ points, loanPayments }`:
+every valuation input a holding row does not carry itself.
+`points` groups the flat `price_points` row set by `instrument`, sorted
+`day` ascending. `loanPayments` groups every linked loan payment
+(`LoanLedgerPayment`: `loanHoldingId`, `time`, `amountMinorUnits`, and the
+PAYER holding's `currency`) by loan id, sorted `time` ascending — the input
+a loan's outstanding reads (`loanLedgerOutstandingMinorAt`, kiko-domain's
+"Debts" section), so the card, detail, totals, statistics, and every
+net-worth bucket read the same number with no new parameter.
+`buildPriceBook(points, payments = [])` builds both; a payment row whose
+link is null is skipped. `priceAt(book, instrument,
 instant)` is a CARRY-FORWARD lookup: the nearest point at or before
 `instant`'s local day, falling back to the EARLIEST point when every
 stored point is later than the requested day (mirrors
@@ -179,8 +188,12 @@ stored point is later than the requested day (mirrors
 
 **`usePriceBook()` contract: `{ book, isLoading }`, not a bare
 `PriceBook`.** (`src/prices/use-price-book/`) wraps `allQuery` in
-`useLiveQuery(..., ['price_points'])` and threads that call's own
-`isLoading` straight through — every consumer destructures `const {
+`useLiveQuery(..., ['price_points'])`, and
+`transactionsRepo.loanLedgerPaymentsQuery()` (one read across every loan,
+joined to the payer holding for its currency) in
+`useLiveQuery(..., ['transactions', 'holdings'])`, gated by its third
+argument `loanPaymentsEnabled` (kiko-architecture). Its `isLoading` is
+true while either read is on its first load — every consumer destructures `const {
 book: priceBook } = usePriceBook();`, and a screen that gates its own
 empty state additionally destructures `isLoading: priceBookLoading`
 and folds it into its `useDataReady(...)` call (see
@@ -193,7 +206,9 @@ reactive entry point every value reader (`holdingValueBreakdown`,
 `holding-detail`, `statistics`, `holding-form`) threads through, same
 pattern as the existing rate-table threading; `EMPTY_PRICE_BOOK` is
 the default for a caller with none available (e.g. a test fixture), so
-the default resolves to "no price," never a crash. A snapshot
+the default resolves to "no price, no loan payment," never a crash. A
+test builds a book through `buildPriceBook`/`EMPTY_PRICE_BOOK`, never a
+bare `new Map()` (the book is an object, not a map). A snapshot
 export/restore (`src/data-transfer/snapshot/`) includes `pricePoints`
 alongside the other tables; a legacy export with no `pricePoints` key
 restores with an EMPTY `price_points` table (`?? []` defensive read in
@@ -255,7 +270,8 @@ Either descriptor's `value` returns `null` when the holding has no
 (not priced, `priced: null`) reads its own `holding:<id>`
 manual-correction series the same way `property_item` does —
 `loan.descriptor.ts`'s `loanBreakdown` calls
-`loanOutstandingMinorAt(meta, holding.id, book, now)` directly, since
+`loanLedgerOutstandingMinorAt(meta, holding, book, now)` directly (the
+same book also carries the loan's linked payments), since
 `ValuableHolding` guarantees an `id` too.
 
 **A priced holding with no price point — or an invalid one — values at
@@ -312,7 +328,7 @@ required member of their `Pick<HoldingRow, ...>` — every real caller
 already has a full row. Neither `property_item`'s nor `loan`'s own
 value reader guards a missing `id` any longer (both branches were dead
 once the type required one) — `loan.descriptor.ts`'s `loanBreakdown`
-calls `loanOutstandingMinorAt(meta, holding.id, book, now)` directly. A
+calls `loanLedgerOutstandingMinorAt(meta, holding, book, now)` directly. A
 test that needs to exercise a runtime shape looser than a real
 `HoldingRow` (never a real stored row) builds an id-less object and
 casts it back to the read type, rather than widening the type back to

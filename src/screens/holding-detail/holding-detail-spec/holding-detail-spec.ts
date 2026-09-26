@@ -1,8 +1,3 @@
-import {
-  loanInstallments,
-  loanOutstandingMinorAt,
-  type LoanInstallment,
-} from '@kiko/holdings/loan-schedule';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import type { HoldingRow } from '@kiko/db/schema';
@@ -10,24 +5,29 @@ import { startOfLocalDay } from '@kiko/dates/local-day';
 import type { PriceBook } from '@kiko/prices/price-book';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import { asBondMeta, asLoanMeta } from '@kiko/holdings/holding-metadata';
+import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
 import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor/bond';
+import { loanInstallments, type LoanInstallment } from '@kiko/holdings/loan-schedule';
 
 /** Which add action the detail screen's footer offers. */
 export type FooterAction = 'contribution' | 'transaction' | 'updateValue' | 'addLot' | 'none';
 
-// The two breakdown shapes the detail screen renders (`holding-detail.screen.tsx`'s
+// The three breakdown shapes the detail screen renders (`holding-detail.screen.tsx`'s
 // own `breakdownRows` dispatches on `kind`). `interest` is the
 // principal-or-cost/gross/interest/tax table a deposit or bond accrues.
 // `priced` is the cost/value/gain table a priced type (`property_item`,
 // `metal`) shows instead — it has no interest or tax to withhold, so those
-// rows would only ever read a misleading zero.
+// rows would only ever read a misleading zero. `loan` is the
+// principal/paid/interest paid/principal repaid/outstanding table read from
+// the loan's linked payments (`loanLedgerSummary`).
 export type HoldingBreakdownSpec =
   | {
       kind: 'interest';
       principalLabelKey: 'holdingDetail.principal' | 'holdingDetail.cost';
       expectedProfit: (holding: HoldingRow) => Money | null;
     }
-  | { kind: 'priced' };
+  | { kind: 'priced' }
+  | { kind: 'loan' };
 
 // What the detail screen shows per holding type. Not exported: every
 // consumer reads a value of this shape through `holdingDetailSpecFor` below
@@ -66,7 +66,9 @@ const balanceSpec: HoldingDetailSpec = {
 // `loanInstallments` already returns `[]` for it), once every installment has
 // already come due (a fully repaid loan), and once an overpaid correction has
 // already clamped the outstanding to 0, even while `loanInstallments` still
-// has future rows on the ORIGINAL schedule.
+// has future rows on the ORIGINAL schedule — the same outstanding every other
+// screen shows (`loanLedgerOutstandingMinorAt`), so linked payments that
+// repaid the loan hide it too.
 const loanNextInstallment = (
   holding: HoldingRow,
   book: PriceBook,
@@ -78,7 +80,7 @@ const loanNextInstallment = (
     return undefined;
   }
 
-  if (loanOutstandingMinorAt(meta, holding.id, book, now) <= 0) {
+  if (loanLedgerOutstandingMinorAt(meta, holding, book, now) <= 0) {
     return undefined;
   }
 
@@ -144,12 +146,12 @@ export const holdingDetailSpecs = {
   // A loan is ledgerless but still takes the SAME `'updateValue'`
   // action as a priced holding — it reuses `PricePointForm` to write a
   // correction onto its own `holding:<id>` manual series
-  // (`loanOutstandingMinorAt` reads a correction there for every schedule,
-  // not just `'none'`). The screen swaps the button's own label to "Update
+  // (`loanAnchorAt` reads a correction there for every schedule, not just
+  // `'none'`). The screen swaps the button's own label to "Update
   // outstanding" for this type; the navigation target is identical.
   loan: {
     footerAction: () => 'updateValue',
-    breakdown: null,
+    breakdown: { kind: 'loan' },
     nextInstallment: loanNextInstallment,
   },
   card: balanceSpec,

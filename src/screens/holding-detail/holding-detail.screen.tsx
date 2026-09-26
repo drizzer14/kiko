@@ -10,9 +10,12 @@ import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { FlatList, Pressable } from 'react-native';
 import { categoriesRepo } from '@kiko/categories/repo';
+import type { PriceBook } from '@kiko/prices/price-book';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
+import { asLoanMeta } from '@kiko/holdings/holding-metadata';
+import { loanLedgerSummary } from '@kiko/holdings/loan-ledger';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -97,6 +100,8 @@ const isZero = (minorUnits: number): boolean => minorUnits === 0;
 const ledgerTone = (tone: EntryTone, minorUnits: number): MoneyTextTone =>
   tone !== 'neutral' && isZero(minorUnits) ? 'muted' : tone;
 
+type BreakdownRow = { label: string; money: Money; tone?: MoneyTextTone; testID?: string };
+
 // The deposit/bond breakdown: principal-or-cost, gross, interest, tax, and a
 // bond's own whole-life expected profit. Only these two types accrue
 // interest/withhold tax, so this table is meaningful there.
@@ -105,7 +110,7 @@ const interestBreakdownRows = (
   spec: Extract<HoldingBreakdownSpec, { kind: 'interest' }>,
   holding: HoldingRow,
   t: TFunction,
-): { label: string; money: Money; tone?: MoneyTextTone }[] => {
+): BreakdownRow[] => {
   const expectedProfit = spec.expectedProfit(holding);
 
   return [
@@ -150,14 +155,55 @@ const interestBreakdownRows = (
 // zero. Gain carries no explicit tone: MoneyText's own sign-based fallback
 // already reads a loss red and a gain green, the same as every other bare
 // signed amount in this screen.
-const pricedBreakdownRows = (
-  breakdown: HoldingValueBreakdown,
-  t: TFunction,
-): { label: string; money: Money; tone?: MoneyTextTone }[] => [
+const pricedBreakdownRows = (breakdown: HoldingValueBreakdown, t: TFunction): BreakdownRow[] => [
   { label: t('holdingDetail.cost'), money: breakdown.principalOrCost },
   { label: t('holdingDetail.value'), money: breakdown.gross },
   { label: t('holdingDetail.gain'), money: breakdown.gross.subtract(breakdown.principalOrCost) },
 ];
+
+// A loan's breakdown: its principal and what its linked payments paid, split
+// into interest and principal (`loanLedgerSummary`), ending on the SAME
+// outstanding the Value header shows. Every amount is a positive magnitude,
+// so no row carries a tone. Unparsable metadata shows no rows, the same way
+// the descriptor values such a loan at 0.
+const loanBreakdownRows = (
+  holding: HoldingRow,
+  book: PriceBook,
+  now: number,
+  t: TFunction,
+): BreakdownRow[] =>
+  foldMap(maybe(asLoanMeta(holding.metadata)), (meta) => {
+    const summary = loanLedgerSummary(meta, holding, book, now);
+    const money = (minorUnits: number): Money => Money.of(holding.currency, minorUnits);
+
+    return [
+      {
+        label: t('holdingDetail.principal'),
+        money: money(summary.principalMinorUnits),
+        testID: 'loan-ledger-principal',
+      },
+      {
+        label: t('holdingDetail.paidSoFar'),
+        money: money(summary.paidSoFarMinorUnits),
+        testID: 'loan-ledger-paid-so-far',
+      },
+      {
+        label: t('holdingDetail.interestPaid'),
+        money: money(summary.interestPaidMinorUnits),
+        testID: 'loan-ledger-interest-paid',
+      },
+      {
+        label: t('holdingDetail.principalRepaid'),
+        money: money(summary.principalRepaidMinorUnits),
+        testID: 'loan-ledger-principal-repaid',
+      },
+      {
+        label: t('holdingDetail.outstanding'),
+        money: money(summary.outstandingMinorUnits),
+        testID: 'loan-ledger-outstanding',
+      },
+    ];
+  }) ?? [];
 
 // Rows that break the headline net value into its parts, dispatched off the
 // holding type's own breakdown spec (kiko-code-style: ts-pattern for a closed
@@ -166,13 +212,16 @@ const breakdownRows = (
   breakdown: HoldingValueBreakdown,
   spec: HoldingBreakdownSpec,
   holding: HoldingRow,
+  book: PriceBook,
+  now: number,
   t: TFunction,
-): { label: string; money: Money; tone?: MoneyTextTone }[] =>
+): BreakdownRow[] =>
   match(spec)
     .with({ kind: 'interest' }, (interestSpec) =>
       interestBreakdownRows(breakdown, interestSpec, holding, t),
     )
     .with({ kind: 'priced' }, () => pricedBreakdownRows(breakdown, t))
+    .with({ kind: 'loan' }, () => loanBreakdownRows(holding, book, now, t))
     .exhaustive();
 
 // The holding's Value converted into the user's main (base) currency, for the
@@ -586,11 +635,14 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // holding's type never reads it — a type carrying no priced spec and not
   // a loan (`needsPriceBook`) never touches `price_points`. It stays enabled
   // while holdings are still on their first load, so the two reads run in
-  // parallel instead of price_points waiting on holdings.
+  // parallel instead of price_points waiting on holdings. Only a loan reads
+  // the linked-payments half of the book.
   const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
     holdingsLoading ||
       holdings.some((candidate) => candidate.id === holdingId && needsPriceBook(candidate.type)),
     { cached: true },
+    holdingsLoading ||
+      holdings.some((candidate) => candidate.id === holdingId && candidate.type === 'loan'),
   );
 
   // Resolve each transaction row's stored category to its display (icon + title)
@@ -806,11 +858,14 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                   LAYOUT of, never these value/percent/tax COLUMNS
                   themselves. */}
               <SummaryTable
-                rows={breakdownRows(breakdown, spec.breakdown, holding, t).map((detail) => ({
-                  key: detail.label,
-                  label: detail.label,
-                  value: <MoneyText money={detail.money} tone={detail.tone} />,
-                }))}
+                rows={breakdownRows(breakdown, spec.breakdown, holding, priceBook, now, t).map(
+                  (detail) => ({
+                    key: detail.label,
+                    label: detail.label,
+                    testID: detail.testID,
+                    value: <MoneyText money={detail.money} tone={detail.tone} />,
+                  }),
+                )}
               />
             </Box>
           )}

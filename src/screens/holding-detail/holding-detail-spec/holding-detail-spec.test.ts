@@ -1,7 +1,7 @@
 import type { HoldingRow } from '@kiko/db/schema';
 import { addMonths } from '@kiko/holdings/interest';
-import { EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 import type { BondMeta, LoanMeta } from '@kiko/holdings/holding-metadata';
+import { buildPriceBook, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { holdingTypes, type HoldingType } from '@kiko/holdings/holding-type';
 import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor/bond';
@@ -102,14 +102,12 @@ describe('holdingDetailSpecs breakdown', () => {
     expect(holdingDetailSpecs.metal.breakdown).toEqual({ kind: 'priced' });
   });
 
+  it('shows a loan the ledger breakdown', () => {
+    expect(holdingDetailSpecs.loan.breakdown).toEqual({ kind: 'loan' });
+  });
+
   it('hides the breakdown for every other type', () => {
-    const noBreakdownTypes: readonly HoldingType[] = [
-      'loan',
-      'card',
-      'cash',
-      'crypto_asset',
-      'jar',
-    ];
+    const noBreakdownTypes: readonly HoldingType[] = ['card', 'cash', 'crypto_asset', 'jar'];
 
     for (const type of noBreakdownTypes) {
       expect(holdingDetailSpecs[type].breakdown).toBeNull();
@@ -170,6 +168,35 @@ describe('holdingDetailSpecs nextInstallment', () => {
     expect(next).toBeDefined();
     expect(next?.index).toBe(13);
     expect(next?.dueDate).toBe(expectedDueDate);
+  });
+
+  // The same outstanding every other screen shows: linked payments that
+  // repaid the whole loan hide the next payment too.
+  it('returns undefined once the linked payments have repaid the loan', () => {
+    const now = Date.UTC(2025, 6, 15);
+    const meta: LoanMeta = {
+      kind: 'car_loan',
+      principalMinorUnits: 100_000_00,
+      startDate: Date.UTC(2024, 6, 1),
+      schedule: 'annuity',
+      annualRatePct: 12,
+      termMonths: 120,
+    };
+    const book = buildPriceBook(
+      [],
+      [
+        {
+          loanHoldingId: 'h1',
+          time: Date.UTC(2025, 5, 1),
+          amountMinorUnits: -200_000_00,
+          currency: 'UAH',
+        },
+      ],
+    );
+
+    expect(
+      holdingDetailSpecs.loan.nextInstallment(holding({ type: 'loan', metadata: meta }), book, now),
+    ).toBeUndefined();
   });
 });
 

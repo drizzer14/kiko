@@ -27,18 +27,48 @@ describe('buildPriceBook', () => {
       point(MSFT, monday, '410'),
     ]);
 
-    expect(book.get(AAPL)?.map((row) => row.day)).toEqual([monday, friday]);
-    expect(book.get(MSFT)?.map((row) => row.day)).toEqual([monday]);
+    expect(book.points.get(AAPL)?.map((row) => row.day)).toEqual([monday, friday]);
+    expect(book.points.get(MSFT)?.map((row) => row.day)).toEqual([monday]);
   });
 
   it('is empty for no rows', () => {
-    expect(buildPriceBook([]).size).toBe(0);
+    const book = buildPriceBook([]);
+
+    expect(book.points.size).toBe(0);
+    expect(book.loanPayments.size).toBe(0);
+  });
+
+  it('groups linked loan payments by loan id, sorted by time ascending', () => {
+    const book = buildPriceBook(
+      [],
+      [
+        { loanHoldingId: 'loan-1', time: friday, amountMinorUnits: -200, currency: 'UAH' },
+        { loanHoldingId: 'loan-2', time: monday, amountMinorUnits: -300, currency: 'USD' },
+        { loanHoldingId: 'loan-1', time: monday, amountMinorUnits: -100, currency: 'UAH' },
+      ],
+    );
+
+    expect(book.loanPayments.get('loan-1')).toEqual([
+      { loanHoldingId: 'loan-1', time: monday, amountMinorUnits: -100, currency: 'UAH' },
+      { loanHoldingId: 'loan-1', time: friday, amountMinorUnits: -200, currency: 'UAH' },
+    ]);
+    expect(book.loanPayments.get('loan-2')?.map((payment) => payment.time)).toEqual([monday]);
+  });
+
+  it('skips a payment row whose loan link is null', () => {
+    const book = buildPriceBook(
+      [],
+      [{ loanHoldingId: null, time: monday, amountMinorUnits: -100, currency: 'UAH' }],
+    );
+
+    expect(book.loanPayments.size).toBe(0);
   });
 });
 
 describe('EMPTY_PRICE_BOOK', () => {
-  it('is an empty map', () => {
-    expect(EMPTY_PRICE_BOOK.size).toBe(0);
+  it('holds no points and no loan payments', () => {
+    expect(EMPTY_PRICE_BOOK.points.size).toBe(0);
+    expect(EMPTY_PRICE_BOOK.loanPayments.size).toBe(0);
   });
 });
 

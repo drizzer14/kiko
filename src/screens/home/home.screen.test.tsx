@@ -84,7 +84,10 @@ jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 jest.mock('@kiko/transactions/repo', () => ({
-  transactionsRepo: { listAllWithContextQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+  transactionsRepo: {
+    listAllWithContextQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    loanLedgerPaymentsQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+  },
 }));
 jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
@@ -957,16 +960,17 @@ describe('HomeScreen', () => {
     expect(getByText('No transactions')).toBeTruthy();
   });
 
-  it('reads accounts, holdings, rates, prices, settings, then transactions in that order', async () => {
+  it('reads accounts, holdings, rates, prices with the linked loan payments, settings, then transactions in that order', async () => {
     await renderHome();
-    const tablesInOrder = mockUseLiveQuery.mock.calls.slice(0, 6).map((call) => call[1][0]);
+    const tablesInOrder = mockUseLiveQuery.mock.calls.slice(0, 7).map((call) => call[1].join(','));
     expect(tablesInOrder).toEqual([
       'accounts',
       'holdings',
       'currency_rates',
       'price_points',
+      'transactions,holdings',
       'settings',
-      'transactions',
+      'transactions,holdings,accounts',
     ]);
   });
 
@@ -993,6 +997,22 @@ describe('HomeScreen', () => {
 
     const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
     expect(priceCall?.[2]).toBe(true);
+  });
+
+  // Only a loan reads its linked payments, so a priced-only Home never runs
+  // the linked-payments read.
+  it('reads the linked loan payments only once a loan is present', async () => {
+    const loanPaymentsCall = () =>
+      mockUseLiveQuery.mock.calls.find((call) => call[1].join(',') === 'transactions,holdings');
+
+    setLiveData({ holdings: [{ ...UAH_HOLDING, type: 'metal' }] });
+    await renderHome();
+    expect(loanPaymentsCall()?.[2]).toBe(false);
+
+    mockUseLiveQuery.mockClear();
+    setLiveData({ holdings: [{ ...UAH_HOLDING, type: 'loan' }] });
+    await renderHome();
+    expect(loanPaymentsCall()?.[2]).toBe(true);
   });
 
   it('clears the tab bar without double-counting the safe-area inset', async () => {

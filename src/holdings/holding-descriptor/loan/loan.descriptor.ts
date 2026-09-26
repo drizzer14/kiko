@@ -2,17 +2,19 @@ import { Money } from '../../../currency/money';
 import { asLoanMeta } from '../../holding-metadata';
 import type { ValuableHolding } from '../../holding-value';
 import type { PriceBook } from '../../../prices/price-book';
-import { loanOutstandingMinorAt } from '../../loan-schedule';
+import { loanLedgerOutstandingMinorAt } from '../../loan-ledger';
 import type { HoldingDescriptor } from '../holding-descriptor.d';
 import { entityColorsDark } from '../../../design-system/palette';
 import { flat, type HoldingValueBreakdown } from '../breakdown-parts';
 
 // A loan's held value is NEGATIVE: it is debt, not an asset, so
 // `holdingValue`/net-worth subtract it by simply summing every holding's own
-// signed value. `gross`/`net` are minus the outstanding balance at `now`
-// (`loanOutstandingMinorAt` already returns 0 before the loan's own
-// `startDate`, so a not-yet-taken loan contributes nothing, mirroring a
-// priced holding before its first lot). `principalOrCost` is minus the
+// signed value. `gross`/`net` are minus the outstanding balance at `now` —
+// from the loan's linked payments when any count by `now`, else the schedule
+// (`loanLedgerOutstandingMinorAt`), so every site reading this breakdown
+// shows the same number. It is 0 before the loan's own `startDate`, so a
+// not-yet-taken loan contributes nothing, mirroring a priced holding before
+// its first lot. `principalOrCost` is minus the
 // ORIGINAL principal, flat, regardless of how much has been paid down —
 // mirroring `principalOrCost`'s role elsewhere as the reference point a
 // gain/loss (here, a payoff progress) is measured against, not the current
@@ -34,8 +36,8 @@ const loanBreakdown = (
     return flat(holding.currency, 0);
   }
   const { currency } = holding;
-  const outstandingMinor = loanOutstandingMinorAt(meta, holding.id, book, now);
-  // `outstandingMinor` is always clamped >= 0 (`loanOutstandingMinorAt`);
+  const outstandingMinor = loanLedgerOutstandingMinorAt(meta, holding, book, now);
+  // `outstandingMinor` is always clamped >= 0 (`loanLedgerOutstandingMinorAt`);
   // negating it directly would produce `-0` for a paid-off loan (`Object.is`
   // distinguishes `-0` from `0`, which a `toBe(0)` assertion catches), so the
   // `|| 0` normalizes the zero case back to a plain `0`.

@@ -1,7 +1,7 @@
 import { match } from 'ts-pattern';
 import type { Repository } from '@kiko/db/repository';
-import { and, desc, eq, gte, inArray, isNull, lt, ne, sql } from 'drizzle-orm';
 import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/repo';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
 
 import {
   accounts,
@@ -494,6 +494,27 @@ export const transactionsRepo = {
       })
       .from(transactions)
       .where(inArray(transactions.loanHoldingId, [...loanHoldingIds])),
+  /**
+   * Every linked loan payment across EVERY loan, in one read, with the
+   * PAYER holding's currency — the price book's loan-payment input
+   * (`usePriceBook`, `src/prices/`), which every valuation site reads a
+   * loan's outstanding from. One query for all loans, never one per
+   * holding: op-sqlite serves the whole app from one worker thread
+   * (kiko-architecture). The currency lets the loan ledger count only a
+   * payment in the loan's own currency, the same rule the spending pie's
+   * loan-payment exclusion applies.
+   */
+  loanLedgerPaymentsQuery: () =>
+    database
+      .select({
+        loanHoldingId: transactions.loanHoldingId,
+        time: transactions.time,
+        amountMinorUnits: transactions.amountMinorUnits,
+        currency: holdings.currency,
+      })
+      .from(transactions)
+      .innerJoin(holdings, eq(transactions.holdingId, holdings.id))
+      .where(isNotNull(transactions.loanHoldingId)),
   /**
    * Every transaction linked (manual or auto) to one loan holding, newest
    * first — the loan holding-detail screen's own "Linked payments" section:

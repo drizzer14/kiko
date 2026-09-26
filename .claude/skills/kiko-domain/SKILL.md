@@ -601,8 +601,9 @@ currency — it is not assets-only. It is the sum of every non-archived holding'
 (`holdingValue`/`holdingValueBreakdown`, `src/holdings/holding-value/`),
 each converted to the user's selected base currency (stored in
 `Settings.baseCurrency`). A `loan` holding's own value is NEGATIVE —
-minus its outstanding balance (`loanOutstandingMinorAt`,
-`src/holdings/loan-schedule/`) — so **no debt-aware branch exists
+minus its outstanding balance (`loanLedgerOutstandingMinorAt`,
+`src/holdings/loan-ledger/`: from its linked payments when any count,
+else the schedule — see "Debts" below) — so **no debt-aware branch exists
 anywhere in the summation path**: `netWorth`/`guardedNetWorth`
 (`src/rates/conversion/`, `src/rates/net-worth-view/`) and
 `buildNetWorthSeries` (`src/statistics/net-worth-series/`) simply add
@@ -959,7 +960,9 @@ decimal-string rule.
   is subtracted from it. With no correction ever recorded, the anchor
   is simply the loan's own principal at `startDate`. Either path
   clamps to 0 — an overpaid/over-corrected loan reads as paid off,
-  never negative.
+  never negative. The anchor itself is `loanAnchorAt(meta, holdingId,
+  book, instant)` — `{ dayKey, valueMinorUnits }` — shared with the
+  loan ledger below, so both anchor on the exact same point.
 - `loanInterestForPaymentMinor(meta, paymentTime, paymentAbsMinor)`
   ("interest-only spending" — the derived-entry wiring itself is the
   "Spending-exclusion pipeline" section above): `none` always counts 0 interest
@@ -973,6 +976,39 @@ decimal-string rule.
   `addMonths(startDate, installments.length + 1)`) counts 0 instead of
   still mapping to the nearest boundary installment — both bounds are
   inclusive, only a payment strictly beyond one counts 0.
+
+**The loan ledger — linked payments drive the outstanding everywhere
+(user-approved).** `src/holdings/loan-ledger/` reads the loan's linked
+payments from the `PriceBook` (`book.loanPayments`, kiko-pricing — one
+live read of every linked payment across all loans, never a query per
+holding). A payment COUNTS for an instant when it is a debit, in the
+loan's own currency (the rule `loanPaymentExcludedTransactionIds`
+applies), and its LOCAL day is on or before the instant's local day —
+the local-day rule a ledger holding's running balance follows, so a
+net-worth bucket sees the payer card's debit and the loan's drop
+together.
+
+- `loanLedgerOutstandingMinorAt(meta, loan, book, instant)` — the ONE
+  outstanding every site reads (the descriptor below: card, detail
+  Value, Home/Accounts totals, statistics, every net-worth bucket; the
+  detail's next-installment guard; the form's schedule-to-`none`
+  edit). No counted payment: exactly `loanOutstandingMinorAt` (pinned —
+  a loan with no linked payment values as it always did). Otherwise:
+  `loanAnchorAt` minus the principal part (`|amount|` minus
+  `loanInterestForPaymentMinor`) of each counted payment dated strictly
+  after the anchor's day, clamped at 0; 0 before the start day. A
+  payment on or before a correction's day is already inside that
+  correction.
+- `loanLedgerSummary(meta, loan, book, now)` — the detail's breakdown:
+  `principalMinorUnits`, `paidSoFarMinorUnits` (Σ `|amount|`),
+  `interestPaidMinorUnits` (Σ `loanInterestForPaymentMinor`; 0 for
+  `none`), `principalRepaidMinorUnits` (paid − interest), and
+  `outstandingMinorUnits` (the function above at `now`).
+
+Known limit: with linked payments and no correction, the anchor is the
+original principal, so a loan whose earlier payments were never linked
+reads too high until the user records a correction ("Update
+outstanding").
 
 `holding-descriptor/loan/loan.descriptor.ts`'s valuation branch (`gross = net = -outstanding`,
 `principalOrCost = -principal`, interest/tax always 0 — a loan never
@@ -1024,15 +1060,24 @@ manual series every schedule reads a correction from (not just
 outstanding" (`holdingDetail.updateOutstanding`) for that type, and
 `PricePointFormScreen` itself overriding the stack's static "Update
 Value" title to "Update Outstanding" once the holding loads as a loan.
+Every loan (any schedule, `none` included) shows the ledger breakdown
+table under the Value header — its spec entry's `breakdown` is
+`{ kind: 'loan' }`, rendered by the screen's `loanBreakdownRows` through
+the shared `SummaryTable`: Principal / Paid so far / Interest paid /
+Principal repaid / Outstanding (`loanLedgerSummary`, above; testIDs
+`loan-ledger-principal`, `-paid-so-far`, `-interest-paid`,
+`-principal-repaid`, `-outstanding`). Its Outstanding row is the same
+number as the Value header, the card, and net worth.
 An `'annuity'`/`'differentiated'` loan additionally shows a "Next
 installment (`<date>`)" panel (the loan entry's own `nextInstallment` —
 the first `loanInstallments` row due on or after today's local day)
 with its principal/interest split; a `'none'` schedule and every other
 holding type render nothing there. That panel is also hidden once
-`loanOutstandingMinorAt` reads 0 at `now` (that same `nextInstallment`'s
-own `<= 0` guard) — a fully repaid, or overpaid/over-corrected, loan
-shows no next installment even while `loanInstallments` still has
-future rows on the loan's ORIGINAL schedule.
+`loanLedgerOutstandingMinorAt` reads 0 at `now` (that same
+`nextInstallment`'s own `<= 0` guard) — a loan fully repaid by its
+linked payments, or overpaid/over-corrected, shows no next installment
+even while `loanInstallments` still has future rows on the loan's
+ORIGINAL schedule.
 
 A loan correction (the "Update outstanding" `PricePointForm` write
 above) accepts **0**, unlike every other holding type's "Update
@@ -1051,7 +1096,9 @@ series against what the metadata edit just changed:
 - (a) a schedule change INTO `'none'` (from `'annuity'`/
   `'differentiated'`) preserves the OLD schedule's current outstanding
   as a manual point, so the debt never silently reads as 0 the instant
-  the schedule is cleared. Normally that point is dated TODAY. But
+  the schedule is cleared — the outstanding every screen showed before
+  the edit (`loanLedgerOutstandingMinorAt`: the linked payments' when
+  any count, else the schedule's), so the value does not jump. Normally that point is dated TODAY. But
   `loanOutstandingMinorAt` reads 0 for any instant before the loan's
   own `startDate` (a future-start loan) — dating it today would then
   write a PERMANENT 0 that outlives the start date once it arrives.

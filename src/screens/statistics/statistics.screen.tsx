@@ -272,10 +272,12 @@ const StatisticsScreen: FC = () => {
   // this screen ever reads it — a holding whose type carries no priced spec
   // and is not a loan (`needsPriceBook`) never touches `price_points`. It
   // stays enabled while holdings are still on their first load, so the two
-  // reads run in parallel instead of price_points waiting on holdings.
+  // reads run in parallel instead of price_points waiting on holdings. Only a
+  // loan reads the linked-payments half of the book.
   const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
     holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
     { cached: true },
+    holdingsLoading || holdings.some((holding) => holding.type === 'loan'),
   );
   // Every chart (bar/pie/trend) must never render an empty state while any of
   // this screen's own queries is still on its first load (kiko-architecture's

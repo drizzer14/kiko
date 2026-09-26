@@ -656,6 +656,33 @@ describe('holdingValueBreakdown — loan', () => {
     expect(atStart.gross.minorUnits).toBe(-12_000_000);
   });
 
+  // With linked payments the loan values at what was actually repaid, on
+  // every site that reads this breakdown (card, totals, statistics, history).
+  it('values a loan with linked payments at minus the principal less the principal they repaid', () => {
+    const paymentDay = local(2020, 1, 15);
+    const book = buildPriceBook(
+      [],
+      [
+        {
+          loanHoldingId: 'loan-1',
+          time: paymentDay,
+          amountMinorUnits: -3_000_000,
+          currency: 'UAH',
+        },
+      ],
+    );
+    // The first installment's interest: 1% a month of the full principal.
+    const interest = 1_200_000;
+
+    expect(holdingValueBreakdown(loan(), paymentDay, book).net.minorUnits).toBe(
+      -(120_000_000 - (3_000_000 - interest)),
+    );
+    // A bucket before the payment day still reads the schedule.
+    expect(holdingValueBreakdown(loan(), local(2020, 1, 14), book).net.minorUnits).toBe(
+      holdingValueBreakdown(loan(), local(2020, 1, 14), EMPTY_PRICE_BOOK).net.minorUnits,
+    );
+  });
+
   // Missing/malformed loan metadata must value the loan at 0, never
   // `+balanceMinorUnits` — a debt must never read as a positive asset.
   // Harmless in practice today (the form always writes balance 0), but the

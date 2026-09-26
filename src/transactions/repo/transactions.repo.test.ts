@@ -172,6 +172,18 @@ describe('transactionsRepo', () => {
     expect(params).toEqual(expect.arrayContaining(['loan-1', 'loan-2']));
   });
 
+  // The price book's loan-payment input: every linked row across every loan
+  // in one read, with the payer holding's currency for the same-currency rule.
+  it('builds one query of every linked loan payment, joined to its payer holding for the currency', () => {
+    const { sql, params } = transactionsRepo.loanLedgerPaymentsQuery().toSQL();
+    const lower = sql.toLowerCase();
+
+    expect(lower).toContain('"transactions"."loan_holding_id" is not null');
+    expect(lower).toContain('inner join "holdings"');
+    expect(lower).toContain('"holdings"."currency"');
+    expect(params).toEqual([]);
+  });
+
   // The loan holding-detail screen's own "Linked payments" section.
   it('builds a newest-first query of every transaction linked to one loan holding', () => {
     const { sql, params } = transactionsRepo.listLinkedToLoanQuery('loan-1').toSQL();

@@ -188,6 +188,11 @@ jest.mock('@kiko/transactions/repo', () => ({
     listLinkedToLoanQuery: (loanHoldingId: string) => ({
       toSQL: () => ({ sql: 'linked-loan-payments', params: [loanHoldingId] }),
     }),
+    // The price book's own read of every loan's linked payments — answered
+    // from the SAME seeded linked rows, as on device.
+    loanLedgerPaymentsQuery: () => ({
+      toSQL: () => ({ sql: 'loan-ledger-payments', params: [] }),
+    }),
     remove: jest.fn(),
   },
 }));
@@ -343,7 +348,7 @@ const seed = (
 
     const sql = (query as { toSQL: () => { sql: string } }).toSQL().sql;
 
-    return sql === 'linked-loan-payments'
+    return sql === 'linked-loan-payments' || sql === 'loan-ledger-payments'
       ? linkedLoanPaymentsResult
       : (resultByTable[keys[0]] ?? resultByTable.transactions);
   });
@@ -1227,6 +1232,78 @@ describe('HoldingDetailScreen', () => {
     expect(getByText(formatMoney(Money.of('UAH', -750_000)))).toBeTruthy();
   });
 
+  it('shows the loan ledger breakdown from the linked payments, with the same outstanding as the Value', async () => {
+    const [first] = loanInstallments(annuityLoanMeta);
+    seed(
+      annuityLoanHolding,
+      [],
+      [],
+      [{ id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' }],
+      [],
+      [{ baseCurrency: 'UAH' }],
+      undefined,
+      [],
+      {},
+      [
+        {
+          id: 'txn-first',
+          holdingId: 'payer-1',
+          amountMinorUnits: -first.paymentMinorUnits,
+          currency: 'UAH',
+          time: first.dueDate,
+          description: 'First installment',
+          source: 'manual',
+          loanHoldingId: 'h-1',
+          loanLinkSource: 'auto',
+        },
+      ],
+    );
+
+    const { getByTestId, getByText } = await renderScreen();
+    const outstanding = annuityLoanMeta.principalMinorUnits - first.principalMinorUnits;
+    const money = (minorUnits: number) => formatMoney(Money.of('UAH', minorUnits));
+
+    expect(getByText('Paid so far')).toBeTruthy();
+    expect(getByTestId('loan-ledger-principal')).toHaveTextContent(
+      money(annuityLoanMeta.principalMinorUnits),
+    );
+    expect(getByTestId('loan-ledger-paid-so-far')).toHaveTextContent(
+      money(first.paymentMinorUnits),
+    );
+    expect(getByTestId('loan-ledger-interest-paid')).toHaveTextContent(
+      money(first.interestMinorUnits),
+    );
+    expect(getByTestId('loan-ledger-principal-repaid')).toHaveTextContent(
+      money(first.principalMinorUnits),
+    );
+    expect(getByTestId('loan-ledger-outstanding')).toHaveTextContent(money(outstanding));
+    expect(within(getByTestId('holding-value-header')).getByText(money(-outstanding))).toBeTruthy();
+  });
+
+  it('shows the ledger breakdown for a "none" schedule loan too', async () => {
+    seed(noneLoanHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [
+      {
+        instrument: 'holding:h-1',
+        day: Date.UTC(2020, 0, 1),
+        price: '7500.00',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+
+    const { getByTestId } = await renderScreen();
+
+    expect(getByTestId('loan-ledger-principal')).toHaveTextContent(
+      formatMoney(Money.of('UAH', 10_000_00)),
+    );
+    expect(getByTestId('loan-ledger-paid-so-far')).toHaveTextContent(
+      formatMoney(Money.of('UAH', 0)),
+    );
+    expect(getByTestId('loan-ledger-outstanding')).toHaveTextContent(
+      formatMoney(Money.of('UAH', 7_500_00)),
+    );
+  });
+
   it("shows the next installment's interest/principal split for an annuity loan", async () => {
     seed(annuityLoanHolding);
 
@@ -1634,5 +1711,21 @@ describe('HoldingDetailScreen — the price_points gate', () => {
 
     const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
     expect(priceCall?.[2]).toBe(true);
+  });
+
+  // Only a loan reads its linked payments, so a priced holding's detail never
+  // runs the linked-payments read.
+  it('reads the linked loan payments only for a loan', async () => {
+    const loanPaymentsCall = () =>
+      mockUseLiveQuery.mock.calls.find((call) => call[1].join(',') === 'transactions,holdings');
+
+    seed(metalHolding);
+    await renderScreen();
+    expect(loanPaymentsCall()?.[2]).toBe(false);
+
+    mockUseLiveQuery.mockClear();
+    seed(annuityLoanHolding);
+    await renderScreen();
+    expect(loanPaymentsCall()?.[2]).toBe(true);
   });
 });
