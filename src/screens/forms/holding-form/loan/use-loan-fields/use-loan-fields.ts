@@ -18,10 +18,10 @@ import { parseAmount } from '../../../../../currency/parse';
 import { shiftDecimal } from '../../../../../currency/decimal';
 import { dayKeyOf, type PriceBook } from '../../../../../prices/price-book';
 import type { FieldInstance } from '../../../scroll-to-field/scroll-to-field';
-import { loanOutstandingMinorAt } from '../../../../../holdings/loan-schedule';
 import { currencyScale, type Currency } from '../../../../../currency/currency';
 import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
+import { loanInstallments, loanOutstandingMinorAt } from '../../../../../holdings/loan-schedule';
 
 // The literal i18n keys `loanReasonKey` below may return, so `t()` (typed
 // from src/i18n/locales/en.ts) accepts them — mirrors `PropertyReasonKey`/
@@ -233,23 +233,47 @@ const buildLoanCreatePayload = (fields: LoanFieldsSnapshot, currency: Currency):
   };
 };
 
+// Whether the loan's own amortization schedule changed under the hood —
+// `loanInstallments`' `dueDate`/`paymentMinorUnits` shift with a principal,
+// schedule, annual-rate, term, OR start-date edit alike, so comparing the
+// two installment lists directly (rather than each of those inputs one at a
+// time) catches every one of them without drifting out of sync with
+// `loanInstallments`'s own math.
+const installmentsChanged = (oldMeta: LoanMeta, newMeta: LoanMeta): boolean => {
+  const oldRows = loanInstallments(oldMeta);
+  const newRows = loanInstallments(newMeta);
+
+  if (oldRows.length !== newRows.length) {
+    return true;
+  }
+
+  return oldRows.some(
+    (row, index) =>
+      row.dueDate !== newRows[index].dueDate ||
+      row.paymentMinorUnits !== newRows[index].paymentMinorUnits,
+  );
+};
+
 /**
- * Item 1: whether a loan EDIT changed one of the three inputs a
- * previously-computed AUTO link's own rules 1/2 (amount, date) were proven
- * against — the loan's own `principalMinorUnits`/`schedule` (either changes
- * every installment's own amount/due-date math, `loanInstallments`) or its
- * `paymentHoldingId` (rule 3's own "paid from" signal, still checked here
- * even though rule 3 itself is never re-verified when an installment is
- * marked taken — see `installmentIsTaken`'s own doc comment — because a
- * changed payer means a FUTURE re-run would no longer even consider that
- * signal a match). A stale AUTO link left in place under the new schedule
- * would otherwise count as "taken" forever, even once it no longer
- * corresponds to any real installment.
+ * Whether a loan EDIT changed anything a previously-computed AUTO link's own
+ * rules 1/2/3 were proven against — either the amortization schedule rules
+ * 1/2 (amount, date) read (`installmentsChanged` above), or one of rule 3's
+ * own "paid from"/lender signals (`paymentHoldingId`, `lenderIban`,
+ * `lenderName`), still checked here even though rule 3 itself is never
+ * re-verified once an installment is marked taken (see
+ * `installmentIsTaken`'s own doc comment) — a changed signal means a FUTURE
+ * re-run would no longer even consider it a match. `lenderIban` is compared
+ * normalized (whitespace-stripped, uppercased) so a cosmetic-only edit (or a
+ * loan saved before that normalization existed) never trips this. A stale
+ * AUTO link left in place under the new terms would otherwise count as
+ * "taken" forever, even once it no longer corresponds to any real
+ * installment.
  */
 export const loanEditInvalidatesAutoLinks = (oldMeta: LoanMeta, newMeta: LoanMeta): boolean =>
-  oldMeta.principalMinorUnits !== newMeta.principalMinorUnits ||
-  oldMeta.schedule !== newMeta.schedule ||
-  oldMeta.paymentHoldingId !== newMeta.paymentHoldingId;
+  installmentsChanged(oldMeta, newMeta) ||
+  oldMeta.paymentHoldingId !== newMeta.paymentHoldingId ||
+  normalizeIban(oldMeta.lenderIban ?? '') !== normalizeIban(newMeta.lenderIban ?? '') ||
+  oldMeta.lenderName !== newMeta.lenderName;
 
 /**
  * The `LoanPricePointOp` a loan EDIT's `holdingsRepo.updateLoan` call needs

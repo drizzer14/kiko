@@ -2518,8 +2518,10 @@ describe('HoldingFormScreen loan', () => {
         price: '15000.00',
         currency: 'UAH',
       },
-      // Item 1: the principal changed.
-      true,
+      // A 'none' schedule has no installments at all (`loanInstallments`
+      // returns `[]` regardless of principal), so it never receives an AUTO
+      // link in the first place — nothing for this edit to invalidate.
+      false,
     );
   });
 

@@ -1204,13 +1204,20 @@ param `clearAutoLinks` (default `false`) clears ONLY this loan's
 `loanLinkSource = 'auto'` rows (never a manual link, never a rejected row)
 in the SAME transaction as the metadata patch. The loan form's own
 `saveEdit` (`use-loan-fields.ts`, `loanEditInvalidatesAutoLinks`) passes
-`true` when the edit changed the loan's own `principalMinorUnits`,
-`schedule`, or `paymentHoldingId` — any of these changes what
-`loanInstallments` or rule 3's own "paid from" signal would derive going
-forward, so a stale AUTO link proved against the OLD schedule would
-otherwise count as "taken" (above) forever, even once it no longer
-corresponds to any real installment of the new one. Clearing it here, before
-the fire-and-forget matcher re-run that follows every loan edit, lets that
+`true` when EITHER the amortization schedule itself changed — compared as
+`loanInstallments(oldMeta)` vs `loanInstallments(newMeta)` (`dueDate` +
+`paymentMinorUnits`, so a `principalMinorUnits`, `schedule`,
+`annualRatePct`, `termMonths`, OR `startDate` edit is all caught the same
+way, with no per-field list to drift out of sync with `loanInstallments`'s
+own math) — OR one of rule 3's own "paid from"/lender signals changed
+(`paymentHoldingId`, `lenderIban` compared normalized, `lenderName`): any of
+these changes what `loanInstallments` or rule 3 would derive going forward,
+so a stale AUTO link proved against the OLD terms would otherwise count as
+"taken" (above) forever, even once it no longer corresponds to any real
+installment of the new ones. A `'none'`-schedule loan has no installments at
+all regardless of principal, so it never receives an AUTO link to begin
+with — an edit to one never clears anything. Clearing it here, before the
+fire-and-forget matcher re-run that follows every loan edit, lets that
 re-run recompute cleanly.
 
 `src/loans/use-loan-auto-link/` (`runLoanAutoLink`, a plain async

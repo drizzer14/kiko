@@ -401,8 +401,8 @@ const baseMeta = (overrides: Partial<LoanMeta> = {}): LoanMeta => ({
 
 describe('loanEditInvalidatesAutoLinks', () => {
   it('is false when nothing rules 1/2/3 depend on changed', () => {
-    const oldMeta = baseMeta({ lenderName: 'PrivatBank' });
-    const newMeta = baseMeta({ lenderName: 'Oschadbank' });
+    const oldMeta = baseMeta({ kind: 'mortgage' });
+    const newMeta = baseMeta({ kind: 'car_loan' });
 
     expect(loanEditInvalidatesAutoLinks(oldMeta, newMeta)).toBe(false);
   });
@@ -419,9 +419,50 @@ describe('loanEditInvalidatesAutoLinks', () => {
     );
   });
 
+  it('is true when the annual rate changed', () => {
+    expect(loanEditInvalidatesAutoLinks(baseMeta(), baseMeta({ annualRatePct: 18 }))).toBe(true);
+  });
+
+  it('is true when the term changed', () => {
+    expect(loanEditInvalidatesAutoLinks(baseMeta(), baseMeta({ termMonths: 24 }))).toBe(true);
+  });
+
+  it('is true when the start date moved', () => {
+    expect(
+      loanEditInvalidatesAutoLinks(baseMeta(), baseMeta({ startDate: 1_702_000_000_000 })),
+    ).toBe(true);
+  });
+
   it('is true when paymentHoldingId changed', () => {
     expect(
       loanEditInvalidatesAutoLinks(baseMeta(), baseMeta({ paymentHoldingId: 'payer-2' })),
+    ).toBe(true);
+  });
+
+  it('is true when the lenderIban changed', () => {
+    expect(
+      loanEditInvalidatesAutoLinks(
+        baseMeta({ lenderIban: 'UA213223130000260072355660001' }),
+        baseMeta({ lenderIban: 'UA999999130000260072355660002' }),
+      ),
+    ).toBe(true);
+  });
+
+  it('is false when the lenderIban only differs by whitespace/case', () => {
+    expect(
+      loanEditInvalidatesAutoLinks(
+        baseMeta({ lenderIban: 'UA213223130000260072355660001' }),
+        baseMeta({ lenderIban: 'ua21 3223 1300 0026 0072 3556 6000 1' }),
+      ),
+    ).toBe(false);
+  });
+
+  it('is true when the lenderName changed', () => {
+    expect(
+      loanEditInvalidatesAutoLinks(
+        baseMeta({ lenderName: 'PrivatBank' }),
+        baseMeta({ lenderName: 'Oschadbank' }),
+      ),
     ).toBe(true);
   });
 });
@@ -456,7 +497,7 @@ describe('useLoanFields — saveEdit clearing auto links (item 1)', () => {
     expect(mockUpdateLoan).toHaveBeenCalledWith('h-1', expect.anything(), expect.anything(), true);
   });
 
-  it('never asks updateLoan to clear auto links when only the lender name changed', async () => {
+  it('asks updateLoan to clear auto links when only the lender name changed', async () => {
     const { result } = await renderLoanFields();
 
     await act(async () => {
@@ -470,6 +511,27 @@ describe('useLoanFields — saveEdit clearing auto links (item 1)', () => {
         holdingId: 'h-1',
         name: 'Car loan',
         color: null,
+        currency: 'UAH',
+        isSynced: false,
+        editingHolding: editingHoldingWith(baseMeta()),
+        book: new Map(),
+      });
+    });
+
+    expect(mockUpdateLoan).toHaveBeenCalledWith('h-1', expect.anything(), expect.anything(), true);
+  });
+
+  it('never asks updateLoan to clear auto links when only the holding name/color changed', async () => {
+    const { result } = await renderLoanFields();
+
+    await act(async () => {
+      result.current.seed(editingHoldingWith(baseMeta()));
+    });
+    await act(async () => {
+      await result.current.saveEdit({
+        holdingId: 'h-1',
+        name: 'Renamed car loan',
+        color: '#FF0000',
         currency: 'UAH',
         isSynced: false,
         editingHolding: editingHoldingWith(baseMeta()),
