@@ -685,6 +685,23 @@ epoch-ms instants (often mid-day, e.g. `Date.now()`), read through
 `dayKeyOf`'s "a local calendar date encoded as UTC midnight"
 convention — do not conflate the two.
 
+**`asBondMeta`'s parser contract: reject bad input, default missing
+input.** `bondKind`, `couponFrequency`, `purchasePriceMinorUnits`, and
+`isin` are each optional in a STORED record (a bond saved before that
+field existed never wrote it). A genuinely ABSENT field (`undefined`)
+keeps today's documented default (`bondKind` → `'government'`,
+`couponFrequency` → `'annually'`, `purchasePriceMinorUnits` → the
+nominal `quantity * faceValueMinorUnits`, `isin` → `undefined`) — a
+stored pre-field row must still parse. A PRESENT field that fails its
+own check (an unrecognized `bondKind`/`couponFrequency` string, a
+non-number `purchasePriceMinorUnits` including `NaN`, a non-string
+`isin`) instead rejects the WHOLE record (`asBondMeta` returns `null`),
+the same as any other wrong-type field — silently defaulting corrupt
+data would hide a real bug in whatever wrote it. Every sibling parser in
+this file (`asTermDepositMeta`, `asPropertyMeta`, `asMetalMeta`,
+`asLoanMeta`) already rejects a present-but-invalid field the same way;
+`asBondMeta` used to be the one exception that defaulted instead.
+
 `src/bonds/isin/` (T23) validates an ISIN with no side effects:
 `normalizeIsin` trims/uppercases; `validateIsin` checks the ISO 6166
 shape (`^[A-Z]{2}[A-Z0-9]{9}[0-9]$`) and Luhn check digit, returning
