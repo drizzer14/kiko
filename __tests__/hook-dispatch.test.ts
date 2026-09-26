@@ -1,5 +1,6 @@
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -82,6 +83,24 @@ function payloadForFile(filePath: string, content = 'stub content'): string {
 
 function payloadForCwd(cwd: string): string {
   return JSON.stringify({ cwd });
+}
+
+function payloadForBashCommand(cwd: string, command: string): string {
+  return JSON.stringify({ cwd, tool_input: { command } });
+}
+
+// C1: proves the real production bug end to end, not just a stub — copies
+// the REAL kill-guard.sh/kill-guard.js pair (kill-guard.sh only ever
+// `require`s its own sibling kill-guard.js, so the pair is self-contained)
+// into a disposable repo, so the dispatcher's cwd resolution is exercised
+// against the exact script the hook wires today.
+function copyRealKillGuardScript(repositoryRoot: string): void {
+  const checksDirectory = join(repositoryRoot, 'scripts', 'checks');
+  mkdirSync(checksDirectory, { recursive: true });
+  const realChecksDirectory = join(__dirname, '../scripts/checks');
+  copyFileSync(join(realChecksDirectory, 'kill-guard.sh'), join(checksDirectory, 'kill-guard.sh'));
+  copyFileSync(join(realChecksDirectory, 'kill-guard.js'), join(checksDirectory, 'kill-guard.js'));
+  chmodSync(join(checksDirectory, 'kill-guard.sh'), 0o755);
 }
 
 function runDispatch(
@@ -200,7 +219,12 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
 
     expect(result.status).toBe(0);
     expect(existsSync(marker)).toBe(true);
-    expect(readFileSync(marker, 'utf8')).toContain(`CLAUDE_PROJECT_DIR=${repository}`);
+    // C1: cwd now resolves through `git rev-parse --show-toplevel`, which
+    // realpath-resolves a macOS /tmp -> /private/tmp symlink, so compare
+    // against the realpath the same way the file_path-based tests do.
+    expect(readFileSync(marker, 'utf8')).toContain(
+      `CLAUDE_PROJECT_DIR=${realpathSync(repository)}`,
+    );
   });
 
   it('falls back to CLAUDE_PROJECT_DIR when neither file_path nor cwd resolves (empty payload)', () => {
@@ -288,6 +312,50 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toBe('');
+  });
+
+  // C1: before this fix, a Bash/Stop payload's `cwd` was used AS-IS with no
+  // git-root resolution. A subdirectory cwd (e.g. `<root>/ios`) then made
+  // the dispatcher look for `<root>/ios/scripts/checks/kill-guard.sh`, which
+  // never exists, so it silently no-opped (exit 0, empty stdout) instead of
+  // finding the REAL script one level up at the repo root — the kill-guard
+  // failed OPEN on exactly the payload shape kill-guard.test.ts's own
+  // BLOCKED_COMMANDS prove it must deny. This copies the real kill-guard.sh/
+  // kill-guard.js pair so the fix is proven end to end, not just against a
+  // stub.
+  it('resolves a subdirectory cwd up to its own git root, so a banned command still denies', () => {
+    const repository = initGitRepository('kiko-dispatch-cwd-subdir-');
+    copyRealKillGuardScript(repository);
+    const subdirectory = join(repository, 'ios');
+    mkdirSync(subdirectory, { recursive: true });
+
+    const result = runDispatch(
+      'kill-guard.sh',
+      payloadForBashCommand(subdirectory, 'pkill -f "cat"'),
+      { ...process.env },
+    );
+
+    expect(result.status).toBe(0);
+    const stdout = result.stdout.trim();
+    expect(stdout).not.toBe('');
+    const parsed = JSON.parse(stdout);
+    expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
+  });
+
+  it('falls back to CLAUDE_PROJECT_DIR when cwd is outside any git repository', () => {
+    const fallbackRepository = initGitRepository('kiko-dispatch-cwd-nogit-fallback-');
+    const marker = join(fallbackRepository, 'marker.txt');
+    writeStubScript(fallbackRepository, 'kill-guard.sh', marker);
+    const outsideDirectory = createTempDirectory('kiko-dispatch-cwd-plain-dir-');
+
+    const result = runDispatch('kill-guard.sh', payloadForCwd(outsideDirectory), {
+      ...process.env,
+      CLAUDE_PROJECT_DIR: fallbackRepository,
+    });
+
+    expect(result.status).toBe(0);
+    expect(existsSync(marker)).toBe(true);
+    expect(readFileSync(marker, 'utf8')).toContain(`CLAUDE_PROJECT_DIR=${fallbackRepository}`);
   });
 
   it.each(['../evil.sh', 'a/b.sh', 'no-suffix', '', 'evil..sh', 'has space.sh'])(

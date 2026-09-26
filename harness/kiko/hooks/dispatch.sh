@@ -166,7 +166,19 @@ if [ -n "$filePath" ]; then
     fi
   fi
 elif [ -n "$cwd" ]; then
-  resolvedRoot="$cwd"
+  # C1: `cwd` used to be trusted as-is. A Bash/Stop payload's own `cwd` can
+  # be a SUBDIRECTORY of the repo (e.g. `<root>/ios`, which the scope
+  # excludes but a session can still `cd` into) — trusting it verbatim then
+  # looks for `<root>/ios/scripts/checks/<script>`, which never exists, so
+  # the hook silently no-ops (fails OPEN) instead of finding the real script
+  # one level up. Resolve `cwd`'s own git root the same way file_path's
+  # directory is resolved above.
+  if [ -d "$cwd" ]; then
+    gitRoot="$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)"
+    if [ -n "$gitRoot" ]; then
+      resolvedRoot="$gitRoot"
+    fi
+  fi
 fi
 
 if [ -z "$resolvedRoot" ]; then
