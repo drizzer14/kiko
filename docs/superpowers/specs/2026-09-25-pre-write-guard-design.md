@@ -206,6 +206,41 @@ there is no second "rule set present but script missing" case to
 handle, because the script itself will not exist without its rule set
 in the same commit (see "Rollout").
 
+**Approved deviation (Task 21b, 2026-09-26):** every `hooks.json`
+command above now reads `bash
+"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh" <script-name>.sh` instead of
+the literal `${CLAUDE_PROJECT_DIR}/scripts/checks/<script-name>.sh`
+shown in the JSON block. `CLAUDE_PROJECT_DIR` is the COORDINATOR's own
+checkout for a subagent's hook call, not necessarily the checkout that
+owns the file being edited — a subagent started in the main repo but
+editing a file in a different worktree ran the main repo's rules
+against a file it did not own (a real Class A finding was missed on
+the fast tier this way, and this guard would have treated every such
+worktree edit as "outside the project" and allowed it unchecked).
+`harness/kiko/hooks/dispatch.sh` resolves the edited file's own
+worktree (`git rev-parse --show-toplevel` from `tool_input.file_path`,
+walking up to the nearest existing ancestor for a brand-new file's own
+not-yet-created directory; the payload's own `cwd` for a hook with no
+`tool_input`; `CLAUDE_PROJECT_DIR` as the last-resort fallback), then
+execs that worktree's own `scripts/checks/<script-name>.sh` with
+`CLAUDE_PROJECT_DIR` set to that SAME resolved root, replaying the
+original stdin bytes unchanged and passing stdout/stderr/exit code
+through untouched. `CLAUDE_PLUGIN_ROOT` (not `CLAUDE_PROJECT_DIR`)
+locates the dispatcher itself, because the plugin installs once and
+`CLAUDE_PLUGIN_ROOT` stays the same physical `harness/kiko/` directory
+regardless of which checkout started the session — only the resolved
+`CLAUDE_PROJECT_DIR` varies per invocation now. The "script absent ->
+exit 0" no-op described above generalizes to all four hooks (fail-open
+by DELEGATION: a malformed payload, a `git rev-parse` failure, or
+`node` itself being unavailable all degrade to "extract nothing, fall
+back to `CLAUDE_PROJECT_DIR`, still invoke the target script," letting
+each script's own already-tested contract — this guard denies on
+malformed JSON or a node crash; `kill-guard.sh` always allows — decide
+the outcome, rather than a second copy of that logic in the
+dispatcher). See `harness/kiko/hooks/dispatch.sh`'s own header comment
+and `__tests__/hook-dispatch.test.ts` for the full behavior and its
+tests.
+
 ## File scope
 
 Only `.ts`/`.tsx` files are in scope, matching the file types every
