@@ -54,17 +54,27 @@ finding, `metadata.fix` (the concrete fix), and `metadata.skill` (which
 skill section explains why) — read all three before acting, and go to
 the skill section named if the reason for the rule is unclear. Fix the
 write per `metadata.fix` and re-issue it; never retry the identical,
-unchanged write — it will deny again the same way. Two override
-comment forms suppress a specific finding, each naming the rule id and
-a concrete reason: `// nosemgrep: <rule-id> OVERRIDE(<reason>) <why>`
-for a Semgrep rule, `// kiko-override: <rule-id> OVERRIDE(<reason>)
-<why>` for a Node-checker rule — a bare comment with no `OVERRIDE(...)`
-never suppresses anything (see `kiko-linter`'s wrapper-contract
-exceptions section for the full mechanism). A deny that says the guard
+unchanged write — it will deny again the same way. Use `// nosemgrep: <rule-id> OVERRIDE(<reason>) <why>` for a Semgrep
+rule and `// kiko-override: <rule-id> OVERRIDE(<reason>) <why>` for a
+Node-checker rule; a bare comment with no `OVERRIDE(...)` never
+suppresses anything. A `kiko-override:` only passes the guard:
+`check:all` still fails on that line, because the project-wide Node
+checkers have no inline override. A Node-rule exception needs a
+checker-level exemption (developer work). See kiko-linter's "Override
+forms and where each is honored". A deny that says the guard
 itself "could not check" the write (a Semgrep/Node crash, a timeout,
 malformed input) is fail-closed by design — it means fix the guard's
 own input or report the guard bug, never bypass it with an override
 comment.
+
+## Merge conflicts vs the pre-write guard
+
+Resolve conflict markers with Edit/Write as usual. The guard allows a
+write that still leaves a complete conflict block, checks the final
+marker-free file against both sides as the baseline, and denies a write
+that adds markers to a clean file. If the guard denies because a file
+without markers does not parse on disk, stop and ask the user how to
+repair it. See kiko-linter's "Pre-write guard and merge-conflict files".
 
 ## Run verbose commands through an Orca terminal
 
@@ -115,6 +125,22 @@ Before fixing a round of UI feedback, run a UX-consistency audit of
 the affected screens against `kiko-design-system` and against how
 the same pattern is already built elsewhere; fix the pattern
 everywhere it appears, then distill new rules into the skill.
+Then classify every finding (see "Classify every finding").
+
+## Classify every finding
+
+After each UI feedback round and each phase or whole-branch review,
+classify EVERY finding, with a one-line reason:
+
+- (a) mechanizable now: add a pre-write guard rule in the same round;
+- (b) mechanizable with a pinned value: add a pinned-value rule in the
+  same round;
+- (c) judgment-only: stays with the reviewer.
+
+The round's report lists the classification. The scribe or developer
+adds the rules, following kiko-linter's "Adding a pre-write guard rule"
+and "Pinned-value rules for locked user-approved visuals". The
+reviewer's `mechanizable: yes/pinned/no` tag is the first draft.
 
 ## The Stop-hook dup check is scoped
 

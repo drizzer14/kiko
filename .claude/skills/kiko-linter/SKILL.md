@@ -1,6 +1,6 @@
 ---
 name: kiko-linter
-description: Invoke when adding or changing a harness check (scripts/checks/*.sh), a Semgrep rule in rules/semgrep-mobile.yml, a fixture under rules/fixtures, a Biome rule, a plist assertion, or a Jest invariant test that mechanizes a review finding.
+description: Invoke when adding or changing a harness check (scripts/checks/*.sh), a Semgrep rule in rules/semgrep-mobile.yml or rules/semgrep-prewrite.yml, a pre-write guard rule (pre-write-guard.js NODE_RULES), a Node checker (scripts/checks/*.js), a fixture under rules/fixtures, a Biome rule, a plist assertion, or a Jest invariant test that mechanizes a review finding.
 ---
 
 # Kiko linter and harness-check authoring
@@ -279,14 +279,16 @@ reasoning.
   fixture directory scanned directly) — the guard's per-write scan runs
   Semgrep against a temp copy of the proposed content, not the repo tree,
   and the same include/exclude patterns still resolved correctly there.
-- `extra.lines` on a Semgrep JSON finding is the literal source line(s)
-  the finding matched, not a synthesized summary — `pre-write-guard.js`'s
-  message builder can safely quote it verbatim (verified against a rule
-  whose match line was literally the string "requires login").
+- Never read `extra.lines` from Semgrep JSON: this Semgrep version
+  reports it as the literal string "requires login". Slice the matched
+  text from the scanned file by the UTF-8 BYTE offsets
+  (`start.offset`/`end.offset` on a Buffer), as `buildFinding` in
+  `pre-write-guard.js` does.
 - A `// nosemgrep: <rule-id> OVERRIDE(<reason>) <justification>` comment
   is honored by Semgrep's own suppression even with trailing text after
-  the rule id (the `OVERRIDE(...)` and justification) — Semgrep does not
-  require the comment to end at the rule id.
+  the rule id. That holds for `check:security` only. The pre-write guard
+  runs Semgrep with `--disable-nosem` and applies its own override
+  matcher instead — see "Override forms and where each is honored".
 - Inside ONE `patterns:` list, a text-based `pattern-regex` narrows the
   matched span to its own matched text, and a sibling negative filter
   (`pattern-not-regex` or a structural `pattern-not`) is then checked
@@ -309,6 +311,11 @@ findings-handling for the exact mechanism, not restated here):
 - **Class A (ERROR)** — a deterministic, always-a-bug pattern (e.g.
   TLS validation disabled, a secret written to AsyncStorage). Any
   Class A finding fails the check; there is no override path.
+- **Semgrep errors fail the check too.** A Semgrep exit code other than
+  0/1, output that is not valid JSON, or an `errors[]` entry at level
+  `error` or of type `Timeout` (Semgrep reports a timeout at warn level
+  with exit 0) fails `check:security`. Other warn-level errors stay
+  non-blocking. Read `scripts/checks/security.sh` for the exact test.
 - **Class B (WARNING)** — a pattern that is usually right but can have
   a legitimate exception (e.g. taint mode also flags a value merely
   *derived* from a secret, which is a judgment call, not a
@@ -351,10 +358,15 @@ with no test-behavior delta.
 
 Formerly a documented backlog item, now IMPLEMENTED:
 `kiko-worklet-directive-required` (`rules/semgrep-prewrite.yml`) flags
-a plain, non-`'worklet'`-tagged function called synchronously inside a
-reanimated worklet hook (`useAnimatedStyle`, `useDerivedValue`,
-`useAnimatedReaction`, `useAnimatedScrollHandler`, a `Gesture.*`
-worklet callback). This is a real, previously-shipped bug class (see
+a call to a SAME-FILE helper (declared as `const $F = (...) => ...` or
+`function $F`) without a `'worklet'` directive, made inside the callback
+argument of a reanimated worklet hook, `runOnUI`, or a
+`Gesture.$G().$ON(...)` callback — read the rule for the closed hook
+list. It does NOT catch an imported helper (that stays a review item),
+excludes a helper declared inside the callback itself, and excludes
+test files (Jest mocks reanimated; the rule's comment states the
+timeout reason). Known false positive: a call in the deps argument of
+`useAnimatedStyle` is flagged too. This is a real, previously-shipped bug class (see
 `kiko-gestures`'s "Every function called inside a worklet needs its
 own `'worklet'` directive" and memory
 `worklet-directive-debug-swallows-release-aborts`): the missing
@@ -369,9 +381,9 @@ row.
 The nullable-ternary rule is `kiko-no-nullable-map-ternary` (Semgrep
 ERROR, `rules/semgrep-prewrite.yml`) — see "Semgrep pattern strings need
 quoting" below for the one gotcha that cost the most time writing it.
-The one-exported-component-per-`.tsx` check is a Jest invariant, not
-Semgrep — see "One exported component per `.tsx` — a Jest invariant,
-not Semgrep" below. The import-length-sort check is a hand-rolled
+The one-exported-component-per-`.tsx` check is a Jest invariant plus a
+pre-write guard Node rule, not Semgrep — see "One exported component per
+`.tsx` — a Jest invariant and a guard rule" below. The import-length-sort check is a hand-rolled
 shell+JS checker/fixer at the fast tier — see "Import length-sort — a
 hand-rolled checker (and fixer)" below. The comment-history check is
 `kiko-no-history-id-comment` (Semgrep ERROR, `rules/semgrep-prewrite.yml`)
@@ -443,7 +455,8 @@ citation, and every `round-N`/`device[- ]feedback`/`on-device review`
 history-word cousin the id regex family covers) fixed that residual
 class by rewording the handful of real collisions rather than
 loosening the rule, and the rule is now **ERROR**: `semgrep --config
-rules/semgrep-mobile.yml src` reports 0 findings for it.
+rules/semgrep-prewrite.yml src` reports 0 findings for it (run it as
+`semgrep --metrics off --quiet --config rules/semgrep-prewrite.yml src`).
 
 The same standalone-token collision applies to the `R\d`/`F\d`/`G\d`/
 `C\d` families (added for review-round/audit ids like `R2-1`, `F3`,
@@ -490,7 +503,12 @@ adjective use, no "the"/"per the" at all). Fixture pair: the `.bad.ts`
 positive shapes ("per the brief, …", "the brief's residual gap …")
 and the `.good.ts` negative probe covering both adjective shapes.
 
-## One exported component per `.tsx` — a Jest invariant, not Semgrep
+## One exported component per `.tsx` — a Jest invariant and a guard rule
+
+The pre-write guard also runs it in-process as the Node rule
+`kiko-one-component-per-file` (`.tsx` only; it reports each exported
+component after the first). The Jest invariant below stays the
+project-wide check.
 
 `scripts/checks/one-component-per-file.ts` mechanizes kiko-code-style's
 "One component per file". It lives alongside the other check tooling
@@ -726,10 +744,192 @@ name) still needed the ordinary rename. Every entry needs a concrete,
 verified external-format citation, the same standard as every other
 ignore-list exception in this repo — see
 `docs/harness/documented-exceptions.md` for the full, individually-cited
-list (18 entries: the drizzle migration-journal shape, NBU register's
-`val_code`, Binance's `{code, msg}` error body and its `txId`
-history-record field, Esplora's `tx_count`, and React Native
-`FlatList`'s own `initialNumToRender` prop).
+list; read `EXEMPTIONS` in `scripts/checks/full-word-identifiers.js`
+for the current set.
+
+## Override forms and where each is honored
+
+- Semgrep rule: `// nosemgrep: <rule-id> OVERRIDE(<reason>) <why>`.
+- Node rule (a `NODE_RULES` row): `// kiko-override: <rule-id> OVERRIDE(<reason>) <why>`.
+- Put the comment on the finding's line or the line above.
+  `check:overrides` fails any `biome-ignore`, `nosemgrep`, or
+  `kiko-override:` comment without `OVERRIDE(`.
+- The pre-write guard accepts either spelling for any rule id (its
+  `OVERRIDE_COMMENT_PATTERN` in `pre-write-guard.js`).
+- `check:security` honors only Semgrep's own `nosemgrep`.
+- The project-wide Node checkers (`check:import-order`,
+  `check:full-word-identifiers`, `check:screen-imports`,
+  `check:blank-line-separation`) have NO inline override. A
+  `kiko-override:` gets a write past the guard, and `check:all` still
+  fails on that line. A Node-rule exception needs a checker-level
+  exemption (like `EXEMPTIONS` in `full-word-identifiers.js`), which is
+  developer code work. Decide how a justified exception passes both the
+  guard and the project-wide checker before a new Node rule ships.
+
+## Node checkers: blank-line separation and cross-screen imports
+
+Both run as `node scripts/checks/<name>.js <file>`, as a guard
+`NODE_RULES` row, and project-wide through a `.sh` wrapper in
+`check:all`. Both are in `knip.json`'s `ignore` (reached only via
+`node`).
+
+- `blank-line-separation.js` (`kiko-blank-line-separation`) enforces
+  kiko-code-style's "Blank lines before statement blocks" and "Blank
+  line between adjacent JSX sibling nodes". Read the checker for its
+  keyword set and its exemptions; kiko-code-style states the rule.
+  `--write` inserts the missing blank lines, then re-checks its own
+  output.
+- `screen-imports.js` (`kiko-no-cross-screen-import`) enforces
+  the "No imports across screen folders" bullet in
+  kiko-design-system's "Component set". It resolves
+  relative specifiers against the importing file, which Semgrep cannot
+  do. No `--write`.
+
+## Pre-write guard and merge-conflict files
+
+The guard reads the file on disk (BEFORE) and the proposed content
+(AFTER). For a file with merge-conflict markers:
+
+- BEFORE with conflict markers never causes a deny from its own parse
+  error.
+- An AFTER that still has a complete block (`<<<<<<<`, `=======`,
+  `>>>>>>>`) is allowed without checks. Resolve blocks one at a time
+  with Edit if you need to.
+- A marker-free AFTER is checked against the union of the ours and
+  theirs sides as the baseline. A finding in either side counts as
+  pre-existing.
+- A write that adds conflict markers to a clean file is denied.
+- A file WITHOUT markers that does not parse on disk is denied on every
+  write. The deny says to ask the user how to repair it. Do not work
+  around it with a Bash write.
+
+The baseline pass re-runs only the Node rules that found something in
+AFTER. See `conflictSides` and `baselineTextsFor` in
+`pre-write-guard.js`.
+
+## Adding a pre-write guard rule
+
+Use this for every review finding or user feedback item classified as
+mechanizable (see harness-workflow's "Classify every finding").
+
+1. **Choose the engine.**
+   - Semgrep: a syntactic pattern in one file. Add it to
+     `rules/semgrep-prewrite.yml`, never `rules/semgrep-mobile.yml`.
+   - Node: cross-line layout, path resolution, or word splitting that
+     Semgrep cannot express. Add a `NODE_RULES` row in
+     `scripts/checks/pre-write-guard.js`.
+   - The guard only checks `.ts`/`.tsx` outside `rules/fixtures/`,
+     `node_modules/`, `ios/`, and `android/` (`isInScope`).
+2. **Semgrep rule.**
+   - `severity: ERROR`, a `message`, `metadata.fix` (one line), and
+     `metadata.skill` (`"<skill> › <heading>"`). A finding without
+     `metadata.skill` makes the guard deny "could not check".
+   - The guard, `check:security`, and `check:rules` load the whole file.
+     Nothing else needs wiring.
+   - Fixture pair: `rules/fixtures/<rule-id>.bad.<ext>` and
+     `.good.<ext>` (see "The fixture contract"). A rule with a
+     path-prefixed `paths.include` needs the nested layout
+     `rules/fixtures/<rule-id>/<mirrored path>/<name>.(bad|good).<ext>`.
+   - Add the id to `RULE_IDS_WITH_FIXTURES` in
+     `__tests__/pre-write-guard-rules.test.ts`; a path-scoped rule also
+     needs `NESTED_FIXTURE_PREFIXES` and `PROBE_DIRECTORIES` entries.
+3. **Node rule.**
+   - Write `scripts/checks/<name>.js`: exit 0 clean, exit 1 with
+     findings on stdout. Any other exit, a signal, stderr output, or
+     exit 1 with no parseable finding makes the guard deny.
+   - Add `parse<Name>CheckerOutput(stdout)` returning
+     `[{ line, matchedText, detailText? }]`. `matchedText` is the
+     new-finding key: keep it stable under unrelated edits (no line
+     numbers). Put display-only text in `detailText`.
+   - Add one `NODE_RULES` row: `ruleId`, `extensions`, `fix`, `skill`,
+     `run`. `pre-write-guard.sh` needs no change.
+   - Node rules have no `rules/fixtures/` pair. Prove them with
+     `__tests__/<name>.test.ts` and a case in
+     `__tests__/pre-write-guard.test.ts`.
+   - Project-wide gate: `scripts/checks/<name>.sh` (copy
+     `screen-imports.sh`), `package.json` `check:<name>` plus a
+     `check:all` entry, and a `knip.json` `ignore` entry.
+4. **Sweep in the same commit.** Fix every existing violation in the
+   commit that adds the gate. A gate without its sweep breaks
+   `check:all`. If the sweep is too big for one dispatch, land the guard
+   row first with no gate (it blocks only NEW findings), then the sweep
+   plus the gate wiring together.
+5. **Deny message.** The author controls the rule id, `fix` (the correct
+   pattern, one line), and `skill`. The `skill` section must exist and
+   state the rule. Read `denyReason` in `pre-write-guard.js`
+   for the full shape.
+6. **Override form.** See "Override forms and where each is honored".
+7. **Docs.**
+   - A row in `docs/harness/review-to-biome-inventory.md` (always).
+   - `docs/harness/documented-exceptions.md` for any new exclude or
+     allowlist entry.
+   - The CLAUDE.md checks table and `check:all` list only for a new
+     `check:*` gate.
+8. **Speed check.** Guard p95 must stay under 3 s. Run 20 guard calls on
+   the largest real `.tsx` under `src/screens/` and take the 19th sorted
+   time:
+
+   ```bash
+   F=$PWD/src/screens/forms/transaction-form/transaction-form.screen.tsx
+   S=<your scratchpad>
+   node -e 'const fs=require("fs");const f=process.argv[1];const line=fs.readFileSync(f,"utf8").split("\n").find(l=>/^\s*const \w+ = /.test(l));process.stdout.write(JSON.stringify({tool_name:"Edit",tool_input:{file_path:f,old_string:line,new_string:line}}))' "$F" > "$S/b.json"
+   for i in $(seq 20); do CLAUDE_PROJECT_DIR=$PWD /usr/bin/time -p bash scripts/checks/pre-write-guard.sh < "$S/b.json" 2>&1 >/dev/null | awk '/^real/{print $2}'; done | sort -n | sed -n '10p;19p'
+   ```
+
+   It prints p50, then p95. A pattern that can go quadratic (a
+   statement-sequence `pattern-inside` with a weak prefilter) must
+   exclude files where it cannot apply; a Semgrep timeout becomes a
+   "could not check" deny.
+
+## Pinned-value rules for locked user-approved visuals
+
+When the user approves a specific visual value at a known site, pin it
+with a Semgrep rule so a change needs an override that names the
+approval. Model: the `kiko-pinned-*` rules in
+`rules/semgrep-prewrite.yml`.
+
+Shape:
+
+- Anchor on a UNIQUE site marker, such as the i18n label child or a
+  named style key.
+- One `patterns:` arm per way the pin can break, under a top-level
+  `pattern-either`:
+  - the value is present but different: capture it as a metavariable
+    and reject everything else with `metavariable-regex`;
+  - the attribute is absent and the default differs: `pattern` plus
+    `pattern-not` with the attribute.
+- Never combine `pattern-regex` with a negative filter in one arm (see
+  "Semgrep facts verified on 2026-09-25").
+- `metadata.skill` points at the skill section that states the pinned
+  value.
+
+Worked example (illustrative, not a real rule): pin the Summary table
+preview to 5 rows.
+
+```yaml
+  - id: kiko-pinned-summary-preview-rows
+    languages: [typescript]
+    severity: ERROR
+    message: The Summary preview table is pinned to previewRowCount={5}.
+    metadata:
+      fix: 'Use `previewRowCount={5}` on the Summary preview table.'
+      skill: "kiko-design-system › <section that states the pin>"
+    pattern-either:
+      - patterns:
+          - pattern: <SummaryTable ... testID="summary-preview" ... previewRowCount={$COUNT} ... />
+          - metavariable-regex:
+              metavariable: $COUNT
+              regex: "^(?!5$).*$"
+      - patterns:
+          - pattern: <SummaryTable ... testID="summary-preview" ... />
+          - pattern-not: <SummaryTable ... previewRowCount={$COUNT} ... />
+```
+
+To change a pinned value, do one of these:
+
+- add `// nosemgrep: <rule-id> OVERRIDE(user-approved <date>) <why>`
+  that names the user approval; or
+- edit the rule in the same commit as the approved design change.
 
 ## Every mechanized finding gets an inventory row
 
