@@ -3,7 +3,7 @@
 
 
 ## OVERNIGHT 2026-09-27 (user directive 00:58: work overnight, deep gate if in time, DEPLOY 09:30)
-Feat session 7 = shares-assets-research-5d (term_aa4a5fe0-e7f2-4e28-8298-7b4108f938a3) in overnight mode: device fix round 3 -> IMPORTS T9-T17 + review -> T43 (read-only in parallel; fixes between IMPORTS tasks) -> drift. FREEZE CANDIDATE sha by 04:30 at the latest.
+02:30: session 7 handed over at 51%; feat SESSION 8 = shares-assets-research-c2 (term_845005f8-4411-4d77-9ef6-8c0953196049), tip 5ea2f805, in overnight mode (brief scratchpad brief-feat8.txt): device fix round 3 -> IMPORTS T9-T17 + review -> T43 (read-only in parallel; fixes between IMPORTS tasks) -> drift. FREEZE CANDIDATE sha by 04:30 at the latest.
 Deep gate: separate checkout ~/orca/workspaces/pff-ios/deep-gate (detached worktree, npm ci done at 6c56d31f); run KIKO_MUTATION_BASE=next make deep there on the freeze sha (best effort; no rate history -> unknown duration). Coordinator crons: 04:37 freeze fallback + deep gate start; 08:43 deploy prep (kiko:ops, standard brief) + morning summary. Overnight keys ship unapproved in the 09:30 device build; review in the morning. Silent watcher scratchpad trackwatch.sh (gauge >= 50% or idle > 60 min).
 
 ## ⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-09-26 12:55) — READ THIS FIRST
