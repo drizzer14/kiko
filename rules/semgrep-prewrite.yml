@@ -473,3 +473,31 @@ rules:
             - pattern-either:
                 - pattern: '"..."'
                 - pattern: '`...`'
+  # kiko-translator's never-hardcode-a-user-facing-string rule, applied to the
+  # one native LocalAuthentication prompt whose button labels bypass i18n
+  # entirely (`src/auth/biometrics.ts`'s `authenticateWithOptions` call).
+  # Anchors on the LITERAL property name (`cancelLabel`/`fallbackLabel`), not
+  # a metavariable — an object literal's OTHER properties (`title`,
+  # `allowDeviceCredentials`) are out of scope, and `"..."` is Semgrep's
+  # generic "any string literal" wildcard (see `kiko-no-literal-sync-error`
+  # above), so `cancelLabel: i18n.t(...)`/`cancelLabel: someVariable` both
+  # stay silent. Not scoped by `paths.include` — this shape is not
+  # confined to one tree, so its fixture pair stays FLAT.
+  - id: kiko-no-literal-biometric-label
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A hardcoded string literal reaches `cancelLabel`/`fallbackLabel` on the
+      native biometric prompt. Route it through `i18n.t(...)` instead — reuse
+      an existing key (e.g. `common.cancel`, `auth.usePasscode`) rather than
+      adding a near-duplicate — see kiko-code-style's "Externalize hardcoded
+      config".
+    metadata:
+      fix: "Route the label through `i18n.t(...)`, reusing an existing key (e.g. `common.cancel`, `auth.usePasscode`) rather than adding a near-duplicate."
+      skill: "kiko-code-style › Externalize hardcoded config"
+    patterns:
+      - pattern-either:
+          - pattern: "cancelLabel: '...'"
+          - pattern: 'cancelLabel: "..."'
+          - pattern: "fallbackLabel: '...'"
+          - pattern: 'fallbackLabel: "..."'

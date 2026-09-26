@@ -3,6 +3,8 @@ import {
   isSensorAvailable as nativeIsSensorAvailable,
 } from '@sbaiahmed1/react-native-biometrics';
 
+import { i18n } from '../i18n';
+
 import { authenticate, isSensorAvailable } from './biometrics';
 
 jest.mock('@sbaiahmed1/react-native-biometrics', () => ({
@@ -80,8 +82,8 @@ describe('authenticate', () => {
     expect(mockAuthenticate).toHaveBeenCalledWith({
       title: 'Unlock Kiko',
       allowDeviceCredentials: true,
-      cancelLabel: 'Cancel',
-      fallbackLabel: 'Use Passcode',
+      cancelLabel: i18n.t('common.cancel'),
+      fallbackLabel: i18n.t('auth.usePasscode'),
     });
   });
 
