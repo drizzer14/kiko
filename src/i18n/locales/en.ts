@@ -461,6 +461,17 @@ export const en = {
       from: 'From',
       holding: 'Holding',
       income: 'Income',
+      // The auto-suggested loan-payment link's own caption, shown above its
+      // Undo action — a caption, so it carries the final "." (see
+      // `loanLinkUndo` below, a button label, which does not).
+      loanLinkedAuto: 'Linked automatically.',
+      loanLinkUndo: 'Undo',
+      loanPayment: 'Loan payment',
+      // The loan-payment picker's own "clear the link" row/value — distinct
+      // wording from `noBank`'s "Free" (a different field's own "no pick"
+      // copy), since this field's "no loan" state is itself a MEANINGFUL,
+      // stored choice (`loanLinkRejected`), not just an empty default.
+      loanPaymentNone: 'None',
       remove: 'Remove',
       removeReturn: 'Remove return {{index}}',
       returnAmount: 'Return {{index}}',
@@ -472,7 +483,7 @@ export const en = {
       selectHolding: 'Select holding',
       split: 'Split',
       splitInvalidError: 'Enter a payment amount and at least one valid return.',
-      syncedNotice: 'This was synced, so only the category can be changed.',
+      syncedNotice: 'This was synced, so only the category and loan link can be changed.',
       title: 'Transaction',
       to: 'To',
       type: 'Type',
