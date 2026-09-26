@@ -7,13 +7,6 @@ import ChipRow from '.';
 
 const options = ['bank', 'cash', 'crypto'] as const;
 
-// The visible chip height plus its vertical hitSlop: the real tap target.
-const tapTargetHeight = (chip: { props: { style: unknown; hitSlop?: unknown } } | null) => {
-  const slop = (chip?.props.hitSlop ?? { top: 0, bottom: 0 }) as { top: number; bottom: number };
-
-  return StyleSheet.flatten(chip?.props.style).minHeight + slop.top + slop.bottom;
-};
-
 // A chip keeps the compact visible size at every labelVariant, and reaches the
 // HIG 44pt tap target through vertical hitSlop, never through a taller visual,
 // mirroring Button's `small` size.
@@ -35,7 +28,10 @@ describe('ChipRow tap target', () => {
       expect(style.minHeight).toBe(34);
       expect(style.paddingVertical).toBe(4);
       expect(chip?.props.hitSlop).toEqual({ top: 5, bottom: 5 });
-      expect(tapTargetHeight(chip)).toBe(44);
+
+      // The visible chip height plus its vertical hitSlop: the real tap target.
+      const slop = chip?.props.hitSlop as { top: number; bottom: number };
+      expect(Number(style.minHeight) + slop.top + slop.bottom).toBe(44);
     },
   );
 });
