@@ -59,7 +59,7 @@ const EXCLUDED_PREFIXES = ['rules/fixtures/', 'node_modules/', 'ios/', 'android/
 // rejects, letting the caller's fail-closed try/catch run its `finally`
 // (which rmSync's the one shared mkdtemp root both Semgrep and every Node
 // checker read from) while a slower SIBLING promise is still a real child
-// process reading a file under that same root (I2): a fast rejection (a
+// process reading a file under that same root: a fast rejection (a
 // synchronous throw, like runSemgrep's own `fs.accessSync` on an unreadable
 // rules file, rejects on the same tick it is called) must never race a
 // slower sibling still spawning or mid-read for the tree out from under it.
@@ -79,7 +79,7 @@ async function allSettledOrThrowFirst(promises) {
 // check below (error/signal/status/stderr validation in runSemgrep and
 // runSpawnedNodeChecker) keeps working unchanged against it. This is what
 // lets Semgrep's one process and every Node-checker child run CONCURRENTLY
-// (Task 20's speed mitigation — see runNodeChecks below) instead of one
+// (see runNodeChecks below) instead of one
 // blocking the event loop for its own full lifetime before the next one even
 // starts: `spawnSync` cannot overlap two children in one process, `spawn`
 // can. `options.timeout`/`options.killSignal` behave exactly as they do for
@@ -112,7 +112,7 @@ function spawnAsync(command, args, options) {
     // character split across two `data` events decoded to a replacement
     // character (U+FFFD) — a Node checker's matchedText could then differ
     // BEFORE vs AFTER for the SAME on-disk text and read as a false new
-    // finding (M3).
+    // finding.
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
 
@@ -168,9 +168,9 @@ function resolveNearestExisting(candidate) {
   }
 }
 
-// Resolves both `filePath` and `projectDirectory` with realpath (Review
-// Focus 2: a symlinked project directory, or a file_path reached through
-// one, must not be mistaken for "outside the project") before relativizing.
+// Resolves both `filePath` and `projectDirectory` with realpath (a
+// symlinked project directory, or a file_path reached through one, must not
+// be mistaken for "outside the project") before relativizing.
 // Returns null when `filePath` sits outside `projectDirectory`. Fails
 // closed on any OTHER realpath failure (an unresolvable
 // `CLAUDE_PROJECT_DIR`, or EACCES/ELOOP/ENOTDIR on `filePath`) by letting it
@@ -201,9 +201,9 @@ function isInScope(relativePath) {
 
 // Thrown by rebuildContents when an old_string cannot be found verbatim in
 // the running text — for example after a curly-quote or CRLF normalization
-// changed the on-disk bytes since the agent last read them (Review Focus 1:
-// the caller's fail-closed try/catch turns this into a deny that tells the
-// agent to re-read the file, never an unchecked write).
+// changed the on-disk bytes since the agent last read them (the caller's
+// fail-closed try/catch turns this into a deny that tells the agent to
+// re-read the file, never an unchecked write).
 class RebuildError extends Error {}
 
 // Applies one old_string/new_string edit to sourceText, exactly as the real
@@ -372,11 +372,11 @@ function describeParseErrors(parseErrors) {
 // Runs Semgrep against the requested trees ('after', or ['before','after'])
 // with the pre-write rule set. Async (spawnAsync, never spawnSync — see
 // `run` below, which starts this alongside the AFTER-tree `runNodeChecks`
-// call and awaits both together with `allSettledOrThrowFirst`, Task 20's
-// speed mitigation: Semgrep and the Node checkers read the SAME
+// call and awaits both together with `allSettledOrThrowFirst`, for speed:
+// Semgrep and the Node checkers read the SAME
 // already-written mirrored trees and report independently of each other, so
 // overlapping them changes nothing about the result, only the wall time
-// (I2: `allSettledOrThrowFirst`, not a bare `Promise.all`, is what lets the
+// (`allSettledOrThrowFirst`, not a bare `Promise.all`, is what lets the
 // slower sibling still finish reading the mirrored trees before the caller's
 // `finally` removes them, even when this one rejects first). The child runs
 // with cwd = temporaryRoot and is given targets RELATIVE to it
@@ -461,9 +461,9 @@ async function runSemgrep(temporaryRoot, relativePath, trees) {
 // fires every applicable rule's `run` at once and awaits them together with
 // `allSettledOrThrowFirst`, which is what lets 2 or more checkers overlap on
 // the same mirrored file INSTEAD OF one blocking the event loop for its own
-// full runtime before the next one even starts — the Task 20 speed
-// mitigation (a large real .tsx file's checkers otherwise summed past the 3s
-// target) — without a fast-crashing sibling (I2) racing a slower one for the
+// full runtime before the next one even starts (a large real .tsx file's
+// checkers otherwise summed past the 3s target) — without a fast-crashing
+// sibling racing a slower one for the
 // mirrored tree out from under it.
 // Mirrors runSemgrep's exit-code contract: 0 is clean, 1 means `parseOutput`
 // should read the checker's own stdout; any other code (a crash, a stub
@@ -538,7 +538,7 @@ function parseFullWordIdentifiersCheckerOutput(stdout) {
 // is always one bare lowercase word (`return`/`if`/`for`/`while`/`jsx`), so
 // the pattern anchors on the LAST `:<digits>: <word>: ` run for the same
 // path-can-contain-colons reason as the full-word-identifiers pattern above.
-// `matchedText` is the KIND alone (M1): the new-findings-only diff keys on
+// `matchedText` is the KIND alone: the new-findings-only diff keys on
 // (ruleId, matchedText, occurrence), so keying it on the full statement text
 // would read editing the TEXT of an already-unseparated statement (renaming
 // a variable it returns, say) as a brand-new violation. The full statement
@@ -689,8 +689,7 @@ const NODE_RULES = [
 // need — see the "New-findings-only comparison" section normalizeText/
 // findingKeys implement for Semgrep, applied the same way here). The
 // applicable rules' `run` calls are started together and awaited with
-// `allSettledOrThrowFirst` (Task 20's speed mitigation, I2's fix over a bare
-// `Promise.all`) rather than one after another in a loop — each rule only
+// `allSettledOrThrowFirst` (not a bare `Promise.all`) rather than one after another in a loop — each rule only
 // ever reads the SAME already-written mirrored file and reports its own
 // findings independently of every other rule, so running them concurrently
 // changes nothing about the result, only the wall time, and letting every
@@ -783,7 +782,7 @@ function overrideState(sourceLines, line, ruleId) {
 // A finding the proposed edit ADDS: present in the AFTER key set, absent
 // from the BEFORE one. A pre-existing violation (present in both) is never
 // reported here — it stays visible to check:rules/check:all, which this
-// hook does not affect. The one exception is a BARE override (I1): a bare
+// hook does not affect. The one exception is a BARE override: a bare
 // comment naming nosemgrep or kiko-override never suppresses anything, so an
 // edit that adds one over an EXISTING finding must still deny — the finding
 // itself need not be new for the added bare comment to be the reason to
@@ -880,8 +879,8 @@ async function run() {
     // and the AFTER-tree Node checkers are independent of each other (both
     // only read the mirrored trees `writeMirroredTrees` already wrote, and
     // their findings are only ever concatenated, never order-dependent), so
-    // they run TOGETHER here (Task 20's speed mitigation) instead of one
-    // waiting on the other.
+    // they run TOGETHER here, for speed, instead of one waiting on the
+    // other.
     const trees = beforeText === '' ? ['after'] : ['before', 'after'];
     const [rawFindings, afterNodeFindings] = await allSettledOrThrowFirst([
       runSemgrep(temporaryRoot, relativePath, trees),
@@ -896,7 +895,7 @@ async function run() {
 
     // Annotate every finding with its override state against the tree it
     // belongs to (BEFORE findings against beforeText's own lines, AFTER
-    // findings against afterText's own lines — Review Focus 5), then drop
+    // findings against afterText's own lines), then drop
     // every JUSTIFIED finding from both trees before diffing: this is what
     // both lets an added justified override suppress a new finding, and
     // makes deleting a justified override that suppressed a BEFORE finding

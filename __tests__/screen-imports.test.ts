@@ -6,8 +6,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 // scripts/checks/screen-imports.sh mechanizes the pre-write-guard design
 // spec's rule 12 ("No import from another screen's folder"): a file under
 // `src/screens/<screen-a>/` must not import from `src/screens/<screen-b>/**`
-// for any `screen-b !== screen-a`. This is a Node check, not a Semgrep rule
-// (spec deviation 1) — Semgrep has no way to resolve a RELATIVE specifier
+// for any `screen-b !== screen-a`. This is a Node check, not a Semgrep
+// rule — Semgrep has no way to resolve a RELATIVE specifier
 // (`../../b/y`) against the importing file's own path, which is exactly
 // what deciding "screen-a" vs "screen-b" requires.
 const SCRIPT = join(__dirname, '../scripts/checks/screen-imports.sh');

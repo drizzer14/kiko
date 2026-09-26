@@ -13,7 +13,7 @@
 // This is a NODE check, not a Semgrep rule, because Semgrep has no way to
 // resolve a RELATIVE specifier ('../../b/y') against the importing file's
 // own path — deciding "screen-a" vs "screen-b" requires exactly that
-// resolution (see the design spec's "deviation 1").
+// resolution.
 //
 // A line/regex scanner, not a parser, in the same class as import-order.js
 // and blank-line-separation.js: every import/export-from/require/dynamic-

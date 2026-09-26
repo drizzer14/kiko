@@ -17,7 +17,7 @@ const SCRIPT = join(__dirname, '../scripts/checks/pre-write-guard.sh');
 const DISPATCH = join(__dirname, '../harness/kiko/hooks/dispatch.sh');
 const FIXTURES = join(__dirname, '../rules/fixtures');
 const REPOSITORY_ROOT = join(__dirname, '..');
-// I3: the coordinator's own session (and any subagent it starts) can have
+// The coordinator's own session (and any subagent it starts) can have
 // CLAUDE_PROJECT_DIR pointed at a DIFFERENT checkout than the file being
 // edited — a subagent driven from the main checkout, editing a file in
 // THIS worktree, being the real case this guards against (see
@@ -231,7 +231,7 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     }
   });
 
-  // I3: proves, THROUGH the dispatcher and the REAL guard, that a worktree
+  // Proves, THROUGH the dispatcher and the REAL guard, that a worktree
   // edit is still checked when CLAUDE_PROJECT_DIR points at a DIFFERENT
   // checkout (the exact shape the dispatcher exists to fix — see
   // harness/kiko/hooks/dispatch.sh's own header). file_path sits inside

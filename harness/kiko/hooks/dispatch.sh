@@ -78,12 +78,11 @@ denyOrNoop() {
 # operation — a hard, unconditional reject (never delegated to
 # denyOrNoop's per-script table) is correct here because an invalid argument
 # is a dispatcher MISCONFIGURATION, not a runtime payload to gracefully
-# degrade from. One validity check, one error message (M7): a valid
+# degrade from. One validity check, one error message: a valid
 # script-name is empty of "/" and ".." and every character outside
 # [A-Za-z0-9._-], and ends in ".sh" — every other shape (missing, a path
 # segment, a ".." traversal, a disallowed character, or a missing ".sh"
-# suffix) is rejected identically, rather than five separate case/esac
-# blocks each printing its own bespoke message.
+# suffix) is rejected identically.
 isValidScriptName=1
 case "$scriptName" in
   '' | */* | *..* | *[!A-Za-z0-9._-]*)
@@ -139,8 +138,8 @@ cwd="$(printf '%s\n' "$resolverOutput" | sed -n '2p')"
 # a git repository" (a plain, non-repo directory is not a dispatcher
 # crash, so the caller falls back to CLAUDE_PROJECT_DIR below). Returns 2
 # on any OTHER git failure (the git binary itself misbehaving, a corrupt
-# .git, a permission error) — I2: silently falling back on THIS case used
-# to let an unchecked write through for pre-write-guard.sh, so the caller
+# .git, a permission error) — silently falling back on THIS case would let
+# an unchecked write through for pre-write-guard.sh, so the caller
 # escalates it to denyOrNoop instead of treating it the same as "no repo
 # here".
 resolveGitRootOrFail() {
@@ -190,11 +189,11 @@ if [ -n "$filePath" ]; then
     esac
   fi
 elif [ -n "$cwd" ]; then
-  # C1: `cwd` used to be trusted as-is. A Bash/Stop payload's own `cwd` can
-  # be a SUBDIRECTORY of the repo (e.g. `<root>/ios`, which the scope
-  # excludes but a session can still `cd` into) — trusting it verbatim then
-  # looks for `<root>/ios/scripts/checks/<script>`, which never exists, so
-  # the hook silently no-ops (fails OPEN) instead of finding the real script
+  # A Bash/Stop payload's own `cwd` can be a SUBDIRECTORY of the repo (e.g.
+  # `<root>/ios`, which the scope excludes but a session can still `cd`
+  # into) — trusting it verbatim would look for
+  # `<root>/ios/scripts/checks/<script>`, which never exists, so the hook
+  # would silently no-op (fail OPEN) instead of finding the real script
   # one level up. Resolve `cwd`'s own git root the same way file_path's
   # directory is resolved above.
   if [ -d "$cwd" ]; then
@@ -214,7 +213,7 @@ if [ -z "$resolvedRoot" ]; then
   resolvedRoot="${CLAUDE_PROJECT_DIR:-}"
 fi
 
-# M4: a resolved root from file_path/cwd is trusted only when it shares
+# A resolved root from file_path/cwd is trusted only when it shares
 # CLAUDE_PROJECT_DIR's own repository — same repo, or a linked worktree of
 # it (same `git rev-parse --git-common-dir`, realpath-compared so a macOS
 # /tmp -> /private/tmp symlink never causes a false mismatch). This keeps
@@ -251,10 +250,9 @@ if [ ! -f "$targetScript" ]; then
   exit 0
 fi
 
-# M6: exec the target script (replacing THIS process) instead of running
-# it as a child, matching the old pre-dispatcher guard wiring's own `exec`.
-# A hook timeout kills only the dispatcher's own PID; running the target as
-# a plain child would then orphan it still running (a real risk for
+# Exec the target script (replacing THIS process) instead of running it as
+# a child. A hook timeout kills only the dispatcher's own PID; running the
+# target as a plain child would then orphan it still running (a real risk for
 # medium.sh, which holds medium.lock for a long time) instead of the kill
 # taking the whole thing down. Redirect stdin from the buffered file onto
 # fd 0 first (a bare `exec` with only a redirection changes the CURRENT

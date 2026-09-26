@@ -89,7 +89,7 @@ function payloadForBashCommand(cwd: string, command: string): string {
   return JSON.stringify({ cwd, tool_input: { command } });
 }
 
-// I2: a fake `git` (prepended onto PATH) that fails EVERY `rev-parse
+// A fake `git` (prepended onto PATH) that fails EVERY `rev-parse
 // --show-toplevel` call with a genuine, OTHER git error (deliberately
 // avoiding the literal substring "not a git repository" in its own message,
 // since the dispatcher's own check is a plain substring match) so the
@@ -124,7 +124,7 @@ function writeFakeGitOtherFailure(directory: string, realGitPath: string): strin
   return fakeGitPath;
 }
 
-// C1: proves the real production bug end to end, not just a stub — copies
+// Proves the subdirectory-cwd case end to end, not just a stub — copies
 // the REAL kill-guard.sh/kill-guard.js pair (kill-guard.sh only ever
 // `require`s its own sibling kill-guard.js, so the pair is self-contained)
 // into a disposable repo, so the dispatcher's cwd resolution is exercised
@@ -155,7 +155,7 @@ afterEach(() => {
 });
 
 describe('harness/kiko/hooks/dispatch.sh', () => {
-  // M4: a resolved root is only trusted when it shares CLAUDE_PROJECT_DIR's
+  // A resolved root is only trusted when it shares CLAUDE_PROJECT_DIR's
   // OWN git-common-dir (i.e. the same repository, or a linked worktree of
   // it) — an UNRELATED repository (a different .git entirely, as these two
   // disposable repos are) must fall back to CLAUDE_PROJECT_DIR instead,
@@ -181,7 +181,7 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
     expect(existsSync(unrelatedMarker)).toBe(false);
     expect(existsSync(projectMarker)).toBe(true);
     const marker = readFileSync(projectMarker, 'utf8');
-    // The M4 fallback assigns CLAUDE_PROJECT_DIR verbatim (no git rev-parse
+    // The unrelated-repository fallback assigns CLAUDE_PROJECT_DIR verbatim (no git rev-parse
     // involved, unlike a resolved root), matching the existing "falls back
     // to CLAUDE_PROJECT_DIR when the file_path directory is outside any
     // git repo" test's own raw-path comparison below.
@@ -262,7 +262,7 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
 
     expect(result.status).toBe(0);
     expect(existsSync(marker)).toBe(true);
-    // C1: cwd now resolves through `git rev-parse --show-toplevel`, which
+    // cwd resolves through `git rev-parse --show-toplevel`, which
     // realpath-resolves a macOS /tmp -> /private/tmp symlink, so compare
     // against the realpath the same way the file_path-based tests do.
     expect(readFileSync(marker, 'utf8')).toContain(
@@ -357,15 +357,15 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
     expect(result.stdout).toBe('');
   });
 
-  // C1: before this fix, a Bash/Stop payload's `cwd` was used AS-IS with no
-  // git-root resolution. A subdirectory cwd (e.g. `<root>/ios`) then made
-  // the dispatcher look for `<root>/ios/scripts/checks/kill-guard.sh`, which
-  // never exists, so it silently no-opped (exit 0, empty stdout) instead of
+  // A Bash/Stop payload's `cwd` used AS-IS, with no git-root resolution,
+  // would make a subdirectory cwd (e.g. `<root>/ios`) look for
+  // `<root>/ios/scripts/checks/kill-guard.sh`, which never exists, so the
+  // dispatcher would silently no-op (exit 0, empty stdout) instead of
   // finding the REAL script one level up at the repo root — the kill-guard
-  // failed OPEN on exactly the payload shape kill-guard.test.ts's own
+  // would fail OPEN on exactly the payload shape kill-guard.test.ts's own
   // BLOCKED_COMMANDS prove it must deny. This copies the real kill-guard.sh/
-  // kill-guard.js pair so the fix is proven end to end, not just against a
-  // stub.
+  // kill-guard.js pair so the behavior is proven end to end, not just
+  // against a stub.
   it('resolves a subdirectory cwd up to its own git root, so a banned command still denies', () => {
     const repository = initGitRepository('kiko-dispatch-cwd-subdir-');
     copyRealKillGuardScript(repository);
@@ -401,14 +401,14 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
     expect(readFileSync(marker, 'utf8')).toContain(`CLAUDE_PROJECT_DIR=${fallbackRepository}`);
   });
 
-  // I2: a git failure that is NOT "not a git repository" (the git binary
-  // itself misbehaving, a corrupt .git, a permission error) used to fall
+  // A git failure that is NOT "not a git repository" (the git binary
+  // itself misbehaving, a corrupt .git, a permission error) must not fall
   // back to CLAUDE_PROJECT_DIR the same as a genuine non-repo directory —
-  // for a main-rooted session this silently ALLOWED a write the guard
-  // should have denied. Only "not a git repository" may fall back; any
+  // for a main-rooted session that would silently ALLOW a write the guard
+  // should deny. Only "not a git repository" may fall back; any
   // OTHER git failure must deny for pre-write-guard.sh and keep each other
   // hook's own kept semantics.
-  describe('a git failure OTHER than "not a git repository" (I2)', () => {
+  describe('a git failure OTHER than "not a git repository"', () => {
     const realGitPath = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim();
 
     it('denies (deny JSON, exit 2) for pre-write-guard.sh', () => {
@@ -457,17 +457,15 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
     });
   });
 
-  // M6: the dispatcher used to run the target script as a CHILD process
-  // (`bash "$targetScript" < "$stdinFile"`), unlike the old pre-dispatcher
-  // guard wiring, which used `exec`. A hook timeout kills only the
-  // dispatcher's own PID — running the target as a child then orphans a
-  // still-running script (a real risk for medium.sh, which holds
+  // A hook timeout kills only the dispatcher's own PID — running the
+  // target script as a CHILD process (`bash "$targetScript" < "$stdinFile"`)
+  // would orphan a still-running script (a real risk for medium.sh, which holds
   // medium.lock for a long time) instead of taking it down with it. Once
   // dispatch.sh execs the target, the target INHERITS the dispatcher's own
   // PID (there is no separate child process at all), which this proves by
   // comparing the PID node's own `spawn` observed for the dispatcher
   // against the PID the target script recorded for itself via `$$`.
-  it("execs the target script (same PID as the dispatcher itself), so a kill can't orphan it (M6)", async () => {
+  it("execs the target script (same PID as the dispatcher itself), so a kill can't orphan it", async () => {
     const repository = initGitRepository('kiko-dispatch-exec-pid-');
     const marker = join(repository, 'marker.txt');
     const checksDirectory = join(repository, 'scripts', 'checks');
@@ -510,11 +508,9 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
     },
   );
 
-  // M7 (ponytail): the script-name validation used to be five separate
-  // case/esac blocks, each with its own bespoke error message. Collapsed
-  // into one validity check with one shared error message, so every
-  // rejection reason now reads identically regardless of WHICH shape of
-  // argument tripped it.
+  // The script-name validation is one validity check with one shared
+  // error message, so every rejection reason reads identically regardless
+  // of WHICH shape of argument tripped it.
   it('rejects every invalid script-name shape with the SAME error message wording', () => {
     const slashResult = runDispatch('../evil.sh', '{}', { ...process.env });
     const suffixResult = runDispatch('no-suffix', '{}', { ...process.env });

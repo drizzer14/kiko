@@ -132,10 +132,10 @@ describe('scripts/checks/blank-line-separation.sh', () => {
 
   it('flags an if preceded by a non-blank line even when an earlier regex literal contains a quote', () => {
     // src/db/schema.category-overrides.test.ts's real shape: a regex literal
-    // holding `'`s (matched against `'([^']+)'` groups) used to flip the
-    // scanner's string-quote parity, and the flipped parity swallowed this
-    // `if` clean out of the scan — so the missing blank line above it was
-    // never reported.
+    // holding `'`s (matched against `'([^']+)'` groups) must not flip the
+    // scanner's string-quote parity: a flipped parity swallows this `if`
+    // clean out of the scan, so the missing blank line above it is never
+    // reported.
     const result = runCheck(
       'function applyGuardedIconUpdate(sql) {\n' +
         '  const match = sql.match(\n' +
@@ -152,12 +152,11 @@ describe('scripts/checks/blank-line-separation.sh', () => {
   });
 
   it('never inserts a blank line inside a template literal when an earlier regex literal contains a quote', () => {
-    // The exact probe from the review finding: `/'/g` used to flip the
-    // scanner's quote parity, running a fake "string" across the following
-    // template literal until it hit the apostrophe in "it's" — leaving
-    // "return window.x;" read as ordinary code and (mis)flagged, which
-    // --write would then have corrupted by inserting a blank line INSIDE
-    // the template.
+    // A `/'/g` that flips the scanner's quote parity runs a fake "string"
+    // across the following template literal until it hits the apostrophe in
+    // "it's" — leaving "return window.x;" read as ordinary code and
+    // (mis)flagged, which --write would then corrupt by inserting a blank
+    // line INSIDE the template.
     const file = join(directory, 'fixture.ts');
     const source =
       "const cleaned = value.replace(/'/g, '');\n" +

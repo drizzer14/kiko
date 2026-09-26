@@ -14,15 +14,14 @@ import { join } from 'node:path';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
 // scripts/checks/pre-write-guard.sh is the PreToolUse hook for Edit/Write/
-// MultiEdit (wired in harness/kiko/hooks/hooks.json in a later task). It
-// reads the hook's tool_input JSON payload from stdin, rebuilds the file's
-// proposed content, and denies the write when the rebuilt content is out of
-// scope, malformed, or the internal check fails for any reason (fail
-// closed — see scripts/checks/pre-write-guard.js). This task only wires the
-// scope check, the fail-closed shell, and the deny JSON shape; the real
-// Semgrep/Node rule findings land in later tasks, so every scenario here
-// that reaches the checker exercises a stubbed semgrep binary that always
-// reports zero findings.
+// MultiEdit (wired in harness/kiko/hooks/hooks.json). It reads the hook's
+// tool_input JSON payload from stdin, rebuilds the file's proposed content,
+// and denies the write when the rebuilt content adds a new violation, the
+// payload is malformed, or the internal check fails for any reason (fail
+// closed — see scripts/checks/pre-write-guard.js). Every scenario that
+// reaches Semgrep here uses a stub binary (clean, or a fixed findings set),
+// so it pins one guard behavior without depending on the real rule set;
+// __tests__/pre-write-guard-rules.test.ts runs the real rules.
 const SCRIPT = join(__dirname, '../scripts/checks/pre-write-guard.sh');
 
 const createdPaths: string[] = [];
@@ -506,8 +505,7 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
     });
   });
 
-  // Not one of the brief's named cases, but required by the same brief's
-  // fail-closed wrapper contract (Step 3: "Any other code, or node missing,
+  // The wrapper's fail-closed contract ("any other code, or node missing,
   // means the wrapper prints its own deny JSON") — left untested, this
   // branch of pre-write-guard.sh would ship unverified.
   it("denies via the wrapper's own JSON when node exits with an unexpected code, even with a multi-line stderr", () => {
@@ -1258,7 +1256,7 @@ describe('Semgrep pass + new-findings-only diff', () => {
 // Rules 4, 5, 6 run the REAL checker scripts (scripts/checks/import-order.js,
 // full-word-identifiers.js, one-component-per-file.ts) against the mirrored
 // tree — only Semgrep is stubbed clean here (writeSemgrepStub/writeRulesStub),
-// per the brief's "use real checkers, stub Semgrep clean". The
+// so each finding comes from the real checker it names. The
 // new-findings-only diff (allow when a pre-existing violation survives
 // unchanged) mirrors the Semgrep describe block above, proven here against a
 // Node-checker finding instead of a Semgrep one.
@@ -1518,16 +1516,16 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
   });
 });
 
-// M3: spawnAsync decoded each stdout/stderr `data` chunk on its own (the
-// implicit Buffer-to-string coercion in `stdout += chunk` defaults to
-// per-chunk UTF-8), so a multibyte character split across two chunks
-// decoded to a replacement character in one call but not the other. This
+// Decoding each stdout/stderr `data` chunk on its own (the implicit
+// Buffer-to-string coercion in `stdout += chunk` defaults to per-chunk
+// UTF-8) turns a multibyte character split across two chunks into a
+// replacement character in one call but not the other. This
 // stub reports the SAME pre-existing finding (an accented "e", a 2-byte
 // UTF-8 sequence, inside the reported name) for both the BEFORE and AFTER
 // mirrored file, but only splits the AFTER call stdout into two separate
 // writes around a sleep — a real multibyte identifier read consistently on
 // both sides must never read as a NEW violation.
-describe('spawnAsync stdout decoding (M3: multibyte character split across chunks)', () => {
+describe('spawnAsync stdout decoding (multibyte character split across chunks)', () => {
   function writeMultibyteFullWordStub(directory: string): string {
     const stubPath = join(directory, 'node-multibyte-stub.sh');
     writeFileSync(
@@ -1546,10 +1544,10 @@ describe('spawnAsync stdout decoding (M3: multibyte character split across chunk
         '  */after/*)',
         '    # Splits the accented e 2-byte UTF-8 sequence across two separate',
         '    # stdout writes with a sleep between them, so the AFTER call',
-        '    # stdout arrives as two separate data events -- the pre-fix',
-        '    # spawnAsync bug (M3) decodes each event on its own and corrupts',
-        '    # the split character, unlike the BEFORE call below (one single,',
-        '    # unsplit write).',
+        '    # stdout arrives as two separate data events -- a per-chunk',
+        '    # decoder decodes each event on its own and corrupts the split',
+        '    # character, unlike the BEFORE call below (one single, unsplit',
+        '    # write).',
         '    printf "%s:1: \\`caf" "$targetFile"',
         '    printf "\\xc3"',
         '    sleep 0.2',
@@ -1626,8 +1624,8 @@ describe('runNodeChecks (rule 11: blank-line-separation)', () => {
     expect(reason).toContain('return doubled;');
   });
 
-  it('allows renaming an identifier inside an already-unseparated return (M1)', () => {
-    // M1: the diff key must be the violation's KIND (return/if/for/while/
+  it('allows renaming an identifier inside an already-unseparated return', () => {
+    // The diff key must be the violation's KIND (return/if/for/while/
     // jsx), not the statement text itself — otherwise editing the text of an
     // EXISTING unseparated statement (renaming a variable it returns) reads
     // as a brand-new violation and denies an edit that changes nothing about
@@ -1668,9 +1666,8 @@ describe('runNodeChecks (rule 11: blank-line-separation)', () => {
 // Rule 12: the REAL screen-imports.js checker against the mirrored tree —
 // only Semgrep is stubbed clean here, the same convention as rule 11 above.
 // This rule is Node-checked, not Semgrep, because Semgrep cannot resolve a
-// RELATIVE specifier ('../../b/y') against the importing file's own path
-// (spec deviation 1) — deciding "screen-a" vs "screen-b" requires exactly
-// that resolution.
+// RELATIVE specifier ('../../b/y') against the importing file's own path —
+// deciding "screen-a" vs "screen-b" requires exactly that resolution.
 describe('runNodeChecks (rule 12: no-cross-screen-import)', () => {
   it('denies an edit that adds a cross-screen import (kiko-no-cross-screen-import)', () => {
     const project = createTempDirectory('kiko-prewrite-project-');
@@ -1779,7 +1776,7 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
   });
 
   it('allows a new finding with a block-comment `/* nosemgrep: <id> OVERRIDE(...) */` override', () => {
-    // I2: the only comment form JSX allows (`{/* ... */}`) must justify a
+    // The only comment form JSX allows (`{/* ... */}`) must justify a
     // finding exactly like the `//` line-comment form does.
     const project = createTempDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);
@@ -2015,7 +2012,7 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
   });
 
   it('denies when an edit adds a bare override above a pre-existing finding', () => {
-    // I1: the finding itself is NOT new (it exists in both before and
+    // The finding itself is NOT new (it exists in both before and
     // after), but the bare override the edit adds above it never suppresses
     // anything — check:security still honours it as a blanket comment, so
     // leaving it un-flagged just because the underlying finding is old would
@@ -2075,7 +2072,7 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
   });
 });
 
-// Task 20 (speed measurement): on a large real .tsx file, the 4 spawned Node
+// Speed: on a large real .tsx file, the 4 spawned Node
 // checkers (import-order, full-word-identifiers, blank-line-separation,
 // screen-imports) running one after another via spawnSync pushed p50/p95
 // past the 3s target. The mitigation is to run them concurrently instead
@@ -2085,7 +2082,7 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
 // tell "ran one after another" (roughly 4x the sleep) from "ran together"
 // (roughly ONE sleep) by wall-clock alone, without depending on real
 // checker runtimes that could vary by machine.
-describe('runNodeChecks concurrency (Task 20 speed mitigation)', () => {
+describe('runNodeChecks concurrency (speed mitigation)', () => {
   function writeSleepingNodeStub(directory: string): string {
     const stubPath = join(directory, 'node-sleep-stub.sh');
     writeFileSync(
@@ -2166,15 +2163,15 @@ describe('runNodeChecks concurrency (Task 20 speed mitigation)', () => {
   });
 });
 
-// I2: Promise.all rejects the moment its FIRST promise rejects, without
+// Promise.all rejects the moment its FIRST promise rejects, without
 // waiting for its still-running siblings — so a fast rejection (Semgrep's
 // own `fs.accessSync` throwing synchronously on an unreadable rules file,
-// before it even spawns) let `run`'s fail-closed catch/finally rmSync the
-// shared mkdtemp root while the 4 spawned Node checkers, real child
+// before it even spawns) would let `run`'s fail-closed catch/finally rmSync
+// the shared mkdtemp root while the 4 spawned Node checkers, real child
 // processes still mid-flight, were reading files under it. This describe
 // block never configures a Semgrep binary at all: an unreadable rules file
 // makes runSemgrep throw before it would ever spawn one.
-describe('temp root lifetime vs a fast-rejecting sibling (I2)', () => {
+describe('temp root lifetime vs a fast-rejecting sibling', () => {
   function writeExistenceCheckingNodeStub(directory: string, markerPath: string): string {
     const stubPath = join(directory, 'node-existence-stub.sh');
     writeFileSync(
@@ -2220,7 +2217,7 @@ describe('temp root lifetime vs a fast-rejecting sibling (I2)', () => {
   });
 });
 
-// Task 21b: harness/kiko/hooks/hooks.json wires this script onto PreToolUse
+// harness/kiko/hooks/hooks.json wires this script onto PreToolUse
 // for Edit/Write/MultiEdit, alongside the existing Bash matcher
 // (kill-guard.sh), through the plugin's own dispatch.sh — every entry reads
 // "${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh <script-name>" rather than a
