@@ -18,11 +18,10 @@ fail() {
   exit 2
 }
 
-# Per-file mode (invoked directly by the pre-write guard's runNodeChecks
-# with one mirrored file — NOT called from fast.sh, since rule 12 needs the
-# file's real repo-relative path to resolve which screen owns it, which a
-# fast.sh invocation cannot supply). A non-.ts/.tsx target, or no file at
-# all, is silently out of scope.
+# Per-file mode (one file argument). fast.sh does not call it, and the
+# pre-write guard's runNodeChecks spawns screen-imports.js itself, not this
+# wrapper, so only the tests exercise this branch. A non-.ts/.tsx target, or
+# no file at all, is silently out of scope.
 if [ -n "$TARGET" ]; then
   if [ ! -f "$TARGET" ]; then
     exit 0

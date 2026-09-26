@@ -7,7 +7,7 @@
 // the wrapper that invokes this script and its own exit-code contract (0
 // allow, 2 deny, anything else means the wrapper itself denies), and
 // docs/superpowers/specs/2026-09-25-pre-write-guard-design.md for the full
-// design this file implements incrementally.
+// design.
 //
 // `rebuildContents` rebuilds Write/Edit/MultiEdit into the BEFORE/AFTER pair;
 // `runSemgrep` runs ONE Semgrep process over the trees that can possibly
@@ -267,8 +267,8 @@ function rebuildContents(toolName, toolInput, beforeText) {
 // repo-relative path, so a path-keyed Semgrep rule still evaluates
 // correctly when pointed at the scratch tree instead of the real one (see
 // the spec's "Rebuilding the proposed content" section). Both trees are
-// always written, even though this task only scans "after" — a later
-// task's new-findings-only comparison needs "before" scanned too.
+// always written: the new-findings-only comparison scans "before" too
+// whenever the file already has content on disk.
 function writeMirroredTrees(relativePath, beforeText, afterText) {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kiko-prewrite-'));
   const beforePath = path.join(temporaryRoot, 'before', relativePath);

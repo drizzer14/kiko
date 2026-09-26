@@ -23,12 +23,15 @@
 #      not exist on disk yet, so this walks up until it finds one that
 #      does).
 #   2. Anything else (Bash, Stop, SubagentStop — no tool_input.file_path):
-#      the payload's own `cwd` field, used as-is (Claude Code already sets
-#      it to the session's own working directory; no git resolution needed
-#      there).
+#      the `git rev-parse --show-toplevel` of the payload's own `cwd` field
+#      (a session can `cd` into a subdirectory, so `cwd` is not always the
+#      root).
 #   3. Fallback: CLAUDE_PROJECT_DIR, when neither of the above yields a
 #      value (a missing field, or `git rev-parse` failing because the
 #      directory is not inside any repository at all).
+#   A root resolved in step 1 or 2 is kept only when it shares
+#   CLAUDE_PROJECT_DIR's own repository (see the bound check below);
+#   otherwise CLAUDE_PROJECT_DIR is used.
 #
 # Once resolved: exec the target script (scripts/checks/<script-name> under
 # that root) with CLAUDE_PROJECT_DIR set to that SAME root, replaying the
@@ -38,18 +41,19 @@
 # guard's own `[ -f "$f" ] || exit 0` convention generalized to all four.
 #
 # Fail-closed by DELEGATION, not duplication: a malformed JSON payload, a
-# `git rev-parse` failure, or `node` itself being unavailable all degrade to
-# "extract nothing, fall back to CLAUDE_PROJECT_DIR, still invoke the target
-# script" rather than a bespoke deny path here — each target script already
+# "not a git repository" result, or `node` itself being unavailable all
+# degrade to "extract nothing, fall back to CLAUDE_PROJECT_DIR, still invoke
+# the target script" rather than a bespoke deny path here — each target script already
 # has its own tested contract for exactly that input (pre-write-guard.sh
 # already denies on malformed JSON or a node crash; kill-guard.sh already
 # always exits 0). Replaying the same bytes through the fallback root reaches
 # that SAME contract, so the required outcome (a crash denies for
 # pre-write-guard.sh; the other hooks keep their current fail-open semantics)
-# holds without a second copy of that logic here. The one genuine
-# dispatcher-own crash this cannot delegate away is failing to even BUFFER
-# stdin (mktemp itself failing) — see the stdinFile check below, the only
-# spot with bespoke per-script-name behavior.
+# holds without a second copy of that logic here. The dispatcher-own
+# crashes this cannot delegate away — failing to even BUFFER stdin (mktemp
+# itself failing), or any OTHER git failure while resolving the root — go
+# through denyOrNoop below, the only spot with bespoke per-script-name
+# behavior.
 set -uo pipefail
 
 scriptName="${1:-}"

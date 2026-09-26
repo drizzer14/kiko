@@ -18,12 +18,11 @@ fail() {
   exit 2
 }
 
-# Fast-tier, per-file mode (called from fast.sh with one edited file). A
-# non-.ts/.tsx target, or no file at all, is silently out of scope. This
-# checker is guard-mode only for now (scripts/checks/pre-write-guard.js) —
-# it is not yet wired into fast.sh/check:all, so this branch exists for the
-# same per-file shape as import-order.sh but is exercised directly by tests,
-# not by the PostToolUse hook yet.
+# Per-file mode (one file argument), the same shape as import-order.sh's.
+# fast.sh does not call it, and the pre-write guard spawns
+# blank-line-separation.js itself, not this wrapper, so only the tests
+# exercise this branch. A non-.ts/.tsx target, or no file at all, is
+# silently out of scope.
 if [ -n "$TARGET" ]; then
   if [ ! -f "$TARGET" ]; then
     exit 0
@@ -46,7 +45,8 @@ if [ -n "$TARGET" ]; then
   exit 0
 fi
 
-# Project-wide mode (no npm script yet — this checker is not in check:all):
+# Project-wide mode (npm run check:blank-line-separation, wired into
+# check:all):
 # every .ts/.tsx under src/, __tests__/, e2e/, plus App.tsx itself, the same
 # roots import-order.sh scans. BLANK_LINE_SOURCE_ROOT overrides the whole
 # scanned-roots list with one directory — used only by

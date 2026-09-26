@@ -3,8 +3,8 @@
 # payload from stdin and forwards it to pre-write-guard.js, which rebuilds
 # the proposed file content and denies the write when it introduces a known
 # violation. See pre-write-guard.js for the checks it runs and
-# CLAUDE.md's "Automatic wiring" note for the hook wiring (wired in a later
-# task once the rule set that makes this guard useful lands alongside it).
+# CLAUDE.md's "Automatic wiring" note for the hook wiring
+# (harness/kiko/hooks/hooks.json, through hooks/dispatch.sh).
 #
 # Fail closed: pre-write-guard.js already exits 0 (allow) or 2 (deny — with
 # the deny JSON on its own stdout and the reason on its own stderr). This
