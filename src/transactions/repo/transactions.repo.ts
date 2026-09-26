@@ -941,14 +941,18 @@ export const transactionsRepo = {
    * simply not updated — no error, no partial side effect. An empty
    * `links` array is a no-op.
    *
-   * Every target loan holding is ALSO re-checked to still exist, inside this
-   * SAME transaction, before any write: the matcher computes its candidates
-   * from a snapshot read moments earlier, so a loan holding can be deleted in
-   * the gap between that read and this write — `holdingsRepo.remove` clears
-   * every link that ALREADY points at a holding the instant it is deleted,
-   * but cannot clear a link this call has not written yet. A link whose loan
-   * fails that check is simply skipped, the same no-error/no-partial-effect
-   * contract the per-row WHERE above already gives every other skip.
+   * Every target loan holding is ALSO re-checked to still exist AS AN OPEN
+   * LOAN — `type = 'loan'` AND `closedAt IS NULL`, not merely that its id is
+   * still present — inside this SAME transaction, before any write: the
+   * matcher computes its candidates from a snapshot read moments earlier, so
+   * a loan holding can be deleted, closed, or (in principle) re-typed in the
+   * gap between that read and this write. `holdingsRepo.remove` clears every
+   * link that ALREADY points at a holding the instant it is deleted, but
+   * cannot clear a link this call has not written yet, and neither a close
+   * nor a re-type touches an existing link at all — only THIS re-check does.
+   * A link whose loan fails that check is simply skipped, the same
+   * no-error/no-partial-effect contract the per-row WHERE above already
+   * gives every other skip.
    */
   setAutoLoanLinks: (links: { transactionId: string; loanHoldingId: string }[]) =>
     write(async (databaseTransaction) => {
@@ -960,7 +964,13 @@ export const transactionsRepo = {
       const existingLoanHoldingRows = await databaseTransaction
         .select({ id: holdings.id })
         .from(holdings)
-        .where(inArray(holdings.id, loanHoldingIds));
+        .where(
+          and(
+            inArray(holdings.id, loanHoldingIds),
+            eq(holdings.type, 'loan'),
+            isNull(holdings.closedAt),
+          ),
+        );
       const existingLoanHoldingIds = new Set(existingLoanHoldingRows.map((row) => row.id));
 
       for (const link of links) {

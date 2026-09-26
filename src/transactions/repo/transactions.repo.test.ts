@@ -1230,12 +1230,17 @@ describe('transactionsRepo.setAutoLoanLinks', () => {
   ): {
     databaseTransaction: unknown;
     captured: { set: Record<string, unknown>; whereArg: unknown }[];
+    selectWhereArgs: unknown[];
   } => {
     const captured: { set: Record<string, unknown>; whereArg: unknown }[] = [];
+    const selectWhereArgs: unknown[] = [];
     const databaseTransaction = {
       select: () => ({
         from: () => ({
-          where: () => Promise.resolve(existingLoanHoldingIds.map((id) => ({ id }))),
+          where: (whereArg: unknown) => {
+            selectWhereArgs.push(whereArg);
+            return Promise.resolve(existingLoanHoldingIds.map((id) => ({ id })));
+          },
         }),
       }),
       update: (_table: unknown) => ({
@@ -1248,7 +1253,7 @@ describe('transactionsRepo.setAutoLoanLinks', () => {
       }),
     };
 
-    return { databaseTransaction, captured };
+    return { databaseTransaction, captured, selectWhereArgs };
   };
 
   it('writes every link in one transaction, each guarded against an already-linked or already-rejected row', async () => {
@@ -1291,6 +1296,21 @@ describe('transactionsRepo.setAutoLoanLinks', () => {
 
     expect(captured).toHaveLength(1);
     expect(renderCondition(captured[0].whereArg).params).toEqual(['txn-1', 0]);
+  });
+
+  it('re-checks the target holding is still an OPEN loan, not merely that its id exists', async () => {
+    const { databaseTransaction, selectWhereArgs } = captureBatchUpdateDatabaseTransaction([
+      'loan-1',
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
+
+    await transactionsRepo.setAutoLoanLinks([{ transactionId: 'txn-1', loanHoldingId: 'loan-1' }]);
+
+    expect(selectWhereArgs).toHaveLength(1);
+    const rendered = renderCondition(selectWhereArgs[0]);
+    expect(rendered.sql).toContain('"holdings"."type" = ?');
+    expect(rendered.sql).toContain('"holdings"."closed_at" is null');
+    expect(rendered.params).toContain('loan');
   });
 });
 
