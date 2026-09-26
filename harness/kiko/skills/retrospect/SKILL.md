@@ -20,3 +20,4 @@ Rules:
   report, per the standing rule.
 - Hand each lesson (and any drift found) to the scribe to persist. Do
   not edit the plugin yourself.
+- Verify a negative claim ("does not exist", "none found") with `ls -a` and a whole-tree grep that includes hidden paths before you report it.

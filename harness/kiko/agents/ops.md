@@ -25,3 +25,7 @@ Rules:
   is the coordinator's own background job, not an ops subagent's. A
   watching subagent only polls the run, burns tokens, and cannot be
   stopped mid-flight.
+- Always pass the physical iPhone UDID explicitly (`deploy-device.sh <udid>` or
+  `DEVICE_ID`); never pick "the connected device" (a booted simulator shows as
+  connected). Build with the configuration `deploy-device.sh` uses. After install,
+  compare the app data container UUID with the prior install before you report success.

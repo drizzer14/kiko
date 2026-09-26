@@ -28,3 +28,4 @@ Rules:
 - You do not edit skills, agents, or the plugin. The scribe does that.
 - You are read-only; you do not stop processes at all — no pkill, killall, kill, or
   any pattern/group kill.
+- Verify a negative claim ("does not exist", "none found") with `ls -a` and a whole-tree grep that includes hidden paths before you report it.

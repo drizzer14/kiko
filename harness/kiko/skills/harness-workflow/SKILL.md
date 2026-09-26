@@ -77,6 +77,36 @@ the terminal kills them mid-work), then the coordinator closes the
 old terminal and starts a new claude session in the same worktree
 that reads the handoff file.
 
+## Harness hook changes go live only after a plugin update
+
+- Hooks run from the plugin CACHE copy
+  (`~/.claude/plugins/cache/kiko-marketplace/kiko/<version>`), not the
+  checkout. A change under `harness/kiko/` is live only after: bump the
+  `plugin.json` version, the user runs
+  `claude plugin update kiko@kiko-marketplace`, then `/reload-plugins`.
+- Verify liveness with a harmless probe (for example
+  `pkill -0 -f <nonexistent>` must be denied). Never assume a hook is
+  live because `hooks.json` on main says so.
+- Every hook entry goes through `harness/kiko/hooks/dispatch.sh
+  <script>`. No hook command hardcodes `${CLAUDE_PROJECT_DIR}`: for a
+  subagent of a main-rooted session it is the MAIN checkout, so main's
+  scripts would check worktree files. Read `dispatch.sh`'s header for
+  the resolution order.
+
+## Approved visuals and open user requests
+
+- Never change or revert a user-approved visual without explicit user
+  approval, including in a cleanup that calls it "exploratory". Locked
+  visual decisions live in `kiko-design-system`.
+- Track every open user request until it is device-verified.
+
+## Review cadence
+
+- One `kiko:reviewer` pass per phase or task group, plus one
+  whole-branch pass before merge. Never a review after every step.
+- Run a fix round only for Critical/Important findings. Batch minors
+  into the next phase.
+
 ## Orchestrator defaults never widen or contradict
 
 An orchestrator's default choices never contradict an established

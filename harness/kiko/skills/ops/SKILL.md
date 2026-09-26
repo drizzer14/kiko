@@ -92,6 +92,17 @@ motivated it. Summary — every step is required, not optional:
    `ios/DerivedData` — those trip the repo's gitleaks secrets scan (see
    root `CLAUDE.md`'s "Documented exceptions").
 
+Always pass the physical iPhone UDID explicitly (`deploy-device.sh
+<udid>` or `DEVICE_ID`). Never pick "the connected device" — a booted
+simulator also shows as connected. Build with the configuration
+`deploy-device.sh` uses. After install, compare the app data container
+UUID with the prior install before you report success.
+
+A change under `harness/kiko/` (hooks, scripts it calls) is live only
+after a plugin update — see `harness-workflow`'s "Harness hook changes
+go live only after a plugin update". Verify with a harmless probe
+before you rely on a hook.
+
 ## Device-test checkout
 
 Build device-test installs from the dedicated detached checkout
@@ -107,12 +118,10 @@ first build is clean (`rm ios/build`, `pod install`).
 Ops owns device builds, so this checklist lives here; the orchestrator
 copies it into the device-test request it sends the user.
 
-- **Build type.** Release, not Debug, for anything touching a
-  worklet directive or Hermes-only behavior (`TextDecoder`, etc.) —
-  these crash classes reproduce ONLY in Release (see `kiko-architecture`'s
-  "Native iOS shell" section). Use the EMBEDDED-bundle Release recipe
-  (`FORCE_BUNDLING=1`, no Metro) unless the task specifically needs a
-  Debug/Metro session.
+- **Build type.** Build with the configuration in
+  `scripts/deploy-device.sh`'s `CONFIGURATION` (currently
+  `Release-AdHoc`; re-verify there). Never Release or Distribution for a
+  device-test install.
 - **Install/launch.** Follow the Device-deploy recipe above — do not
   re-derive the steps.
 - **Standing regression list** (derived from real app areas; run the

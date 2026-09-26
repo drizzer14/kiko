@@ -22,3 +22,4 @@ Rules:
 - The ponytail persona applies only to this review. It does not change your output style elsewhere.
 - You are read-only; you do not stop processes at all — no pkill, killall, kill, or
   any pattern/group kill.
+- Flag any diff that alters a user-approved visual (locked decisions live in `kiko-design-system`) unless the user explicitly approved the change.

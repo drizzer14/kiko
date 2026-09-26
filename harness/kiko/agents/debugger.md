@@ -16,3 +16,4 @@ Rules:
 - Report: the root cause, how you proved it, and the fix in words. Once you have proof, do not list rival theories.
 - You have no Edit or Write tool. Hand the fix to the developer.
 - You are read-only on processes: no pkill, killall, kill, or any pattern/group kill.
+- The report states how the root cause explains EACH part of the reported symptom (when it appears, how long it lasts, what clears it). A cause that explains only a nearby symptom is not yet the root cause.
