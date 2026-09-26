@@ -6,7 +6,7 @@ description: Invoke whenever you touch src/prices/** or src/rates/**, or work on
 # Kiko pricing
 
 Source of truth: `docs/superpowers/specs/2026-08-30-kiko-foundation-design.md`
-("Data collection" section) plus this branch's own T11/T17 work. This
+("Data collection" section). This
 skill covers both currency-rate resolution and the separate
 non-currency `price_points` store.
 
@@ -206,9 +206,8 @@ earliest-point fallback exists for "no earlier point yet" callers; a
 caller that requires a correction to never anchor a query for BEFORE
 that correction's own date needs its own guard, since the shared
 fallback will otherwise hand back a later point to an earlier query.
-This bit `loanOutstandingMinorAt`, which anchored on ANY stored
-correction point, including one dated after the queried instant (T26
-review I1, fixed `9cf5791`→`6901d27`) — read
+`loanOutstandingMinorAt` must guard against this: never anchor on a
+stored correction point dated after the queried instant — read
 `loan-schedule.ts`'s `loanOutstandingMinorAt` for the fix shape.
 
 ## Priced holdings
@@ -366,17 +365,16 @@ transaction), so a deleted holding never leaves an orphaned series
 behind. This create/remove symmetry only applies to a holding's own
 `holding:<id>` series — a `metal` holding shares its instrument with
 every other holding of that metal, so removing one metal holding must
-NOT clear `metal:<XAU|...>`'s series (nothing else consumes it yet as
-of T17; watch for this the moment a metal-specific remove path is
-added).
+NOT clear `metal:<XAU|...>`'s series (nothing else consumes it yet;
+watch for this the moment a metal-specific remove path is added).
 
 A `metal` holding's create payload is the one documented exception
 that never sets `firstPricePoint`: `buildMetalCreatePayload`
-(`src/screens/forms/holding-form/metal/use-metal-fields/`, R3 Phase C)
+(`src/screens/forms/holding-form/metal/use-metal-fields/`)
 writes a zero stored balance and one lot, but no manual price point — a
 metal's price comes from the shared `metal:<XAU|XAG|XPT|XPD>`
 instrument, priced separately by `refreshMetalPrices` (see "NBU metal
-prices — current and history (T19)" below), never a per-holding one.
+prices — current and history" below), never a per-holding one.
 `property_item`, by contrast, always writes `firstPricePoint` equal to
 its entered cost. See that hook's own comment on the metal CREATE
 payload for the current rationale.
@@ -438,7 +436,7 @@ bank to check).
 Rate and price refresh runs on sync, throttled to respect each
 provider's own cache window (see "Currency-rate fallback chain"
 above) — do not poll faster than the upstream cache refreshes. No
-dedicated quota-guard or once-per-day scheduler exists yet as of T17;
+dedicated quota-guard or once-per-day scheduler exists yet;
 do not assume one when reading a refresh call site.
 
 `shouldThrottle` (`rates-refresh.ts`) treats `UAH` as always present
@@ -449,7 +447,7 @@ row's `quote` is always `UAH` and its `base` never is, so
 would read as permanently "unrated" and bypass the throttle on every
 single sync, not just a genuine gap.
 
-## NBU metal prices — current and history (T19)
+## NBU metal prices — current and history
 
 `src/prices/nbu-metals/` is the metals client, mirroring `nbu-rates.ts`/
 `nbu-history.ts`'s pattern (fetch + `guard`-based validation + recorded
@@ -545,8 +543,8 @@ rates.
 ## Later (not built yet — do not invent detail)
 
 An EODHD quotes client for shares, a request-quota guard, and a
-scheduled backfill for non-metal instruments are planned for
-T38-T41 but do not exist in code yet. When one of those lands, extend
+scheduled backfill for non-metal instruments are planned but do not
+exist in code yet. When one of those lands, extend
 this skill's "Currency-rate fallback chain" / "`price_points`"
 sections rather than writing a new one — do not leave the future work
 as a stale placeholder once it ships.
