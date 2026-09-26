@@ -24,7 +24,7 @@ absent** — this skill states the shape and non-enum facts only:
 - **Account** — a bank, cash stash, crypto wallet, standalone property
   holder, standalone precious-metals holder, or debt holder. `id`,
   `name`, `kind` (see `schema.ts`'s `accounts.kind` enum for the
-  current member set — as of T26 this includes `property`, `metals`,
+  current member set — this includes `property`, `metals`,
   and `debt` alongside `bank`/`cash`/`crypto`; all three of the
   non-`bank`/`cash`/`crypto` kinds are manually-created-only kinds
   with no sync concept), `institution` (nullable, e.g. `monobank` —
@@ -229,13 +229,13 @@ its own "Details" heading) only in create mode, since nothing else is
 left to show there in edit mode. One lot
 plus one manual price point equal to that cost is what
 `usePropertyFields`'s own `createPayload`
-(`src/screens/forms/holding-form/property/use-property-fields/`, R3
-Phase C) builds from it on save, via `holdingsRepo.create`'s
+(`src/screens/forms/holding-form/property/use-property-fields/`)
+builds from it on save, via `holdingsRepo.create`'s
 `firstPricePoint` param — see `kiko-pricing`'s "Creating and clearing
 a priced holding's price series" section for the create/remove
 symmetry.
 `src/screens/forms/holding-form/metal/metal-section/metal-section.component.tsx`
-is the `metal` create-form section (T20): a metal-element `ChipRow`, a
+is the `metal` create-form section: a metal-element `ChipRow`, a
 physical-form `ChipRow`, a unit `ChipRow`, a Purity `TextField`
 (pre-filled `"0.9999"`), and the first-lot Quantity/Total-cost fields
 (create-only — see `MetalSectionProps.showFirstLot`'s own doc
@@ -244,7 +244,7 @@ comment). Unlike `property_item`, `metal`'s create payload writes NO
 `metal:<XAU|XAG|XPT|XPD>` instrument, not a per-holding one (see
 `kiko-pricing`'s "Creating and clearing a priced holding's price
 series" section, and `useMetalFields`'s own comment
-(`src/screens/forms/holding-form/metal/use-metal-fields/`, R3 Phase C)
+(`src/screens/forms/holding-form/metal/use-metal-fields/`)
 on the metal CREATE payload). The metal/form/unit/purity fields stay
 user-editable in EDIT mode (metadata patch), mirroring
 `property_item`'s category-editable pattern.
@@ -427,15 +427,15 @@ the exchange-exclusion module (`src/statistics/`, the exchange-marker rule)
 directly rather than trusting a restated MCC list here; see
 `kiko-architecture` for the same pointer.
 
-A linked loan payment (T29/T30, spec 5, D14 — "interest-only
+A linked loan payment ("interest-only
 spending") is excluded the same way, but REPLACED rather than simply
 dropped: the loan-payments module (`src/statistics/loan-payments/`)
 exports `loanPaymentExcludedTransactionIds(transactions, loanHoldings)`, which
 drops a row from the pie/trend the same way every other exclusion
 rule does, IF AND ONLY IF its `transactions.loanHoldingId` marker
-(T29) points at a holding present in `loanHoldings` — a dangling link (its loan holding was
+points at a holding present in `loanHoldings` — a dangling link (its loan holding was
 deleted — `holdingsRepo.remove`/`accountsRepo.remove` already clear
-the marker transactionally the moment that happens, T29) is NOT
+the marker transactionally the moment that happens) is NOT
 excluded, so it counts as ordinary spending under its own category,
 exactly like an unlinked row. The same module's
 `loanInterestEntries({ transactions, loanHoldings })` derives one
@@ -550,7 +550,7 @@ get-date convention before picking UTC vs. local for the parse.
 `BondMeta.maturityDate` was first parsed from the NBU register's
 `pgs_date` as UTC midnight, but every consumer reads it through
 device-local getters — silently shifting maturity (and every derived
-coupon date) back a day west of UTC (T24 review I1, fixed `33333c1`).
+coupon date) back a day west of UTC.
 
 Do not pin `process.env.TZ` mid-test to simulate a different
 timezone: in this project's `jest-environment-node`, a `TZ` mutation
@@ -561,15 +561,13 @@ test files — `price-book.test.ts`, `local-day.test.ts`,
 net-worth-line component tests, `statistics.screen.test.tsx`,
 `net-worth-series.test.ts`). These tests may not prove what they claim
 about local-day boundaries. Build fixed instants through the local
-`Date` constructor directly instead (the working pattern from T24's
-fix, `33333c1`) — never add a new test that pins `TZ` to simulate a
-timezone.
+`Date` constructor directly instead — never add a new test that pins
+`TZ` to simulate a timezone.
 
 ## Net worth
 
-**T27 (spec §5.2) changed this rule: net worth = Σ asset values − Σ
-debt outstanding**, in the base currency — it is no longer
-assets-only. It is the sum of every non-archived holding's value
+**Net worth = Σ asset values − Σ debt outstanding**, in the base
+currency — it is not assets-only. It is the sum of every non-archived holding's value
 (`holdingValue`/`holdingValueBreakdown`, `src/holdings/holding-value/`),
 each converted to the user's selected base currency (stored in
 `Settings.baseCurrency`). A `loan` holding's own value is NEGATIVE —
@@ -585,7 +583,7 @@ a loan is just the second holding shape whose value can be negative.
 The headline can now render negative; `MoneyText` already renders a
 negative `Money` with a minus sign through `formatMoney`, so no
 special-casing was needed there either (see `kiko-charts` for the pie
-chart and net-worth line's own T27 rules). An archived account's or
+chart and net-worth line's own rules). An archived account's or
 closed holding's balance is excluded. The headline total
 (`guardedNetWorth`) and the per-currency breakdown shown beneath it
 (`guardedBreakdown`) share one `canConvert` filter in `src/rates/`,
@@ -610,8 +608,7 @@ netted into it, so it can never reduce a positive holding of the same
 type. Debt has its own total (see below).
 
 **The account pie (`buildAccountContribution`,
-`src/statistics/account-contribution/`) is ASSETS ONLY (T27 round 1,
-I2 — spec §5.2/§5.3):** an account's slice sums only its POSITIVE
+`src/statistics/account-contribution/`) is ASSETS ONLY:** an account's slice sums only its POSITIVE
 holding values; a negative holding (a `loan`'s own value, or a
 non-loan holding in debit, e.g. a credit card) never reduces it and
 never nets against a positive one in the same account. An account
@@ -623,14 +620,14 @@ own value is negative, not loans only: a `loan`'s already-negative
 outstanding, and a non-loan holding in debit, are summed the same way,
 by sign alone, no type check. `buildDebtTotal` is called ONLY on
 Statistics (`statistics.screen.tsx`, rendered under the account pie).
-Home has no separate debts line (ruling M3): its `guardedNetWorth`
+Home has no separate debts line: its `guardedNetWorth`
 headline and its `guardedBreakdown` per-currency breakdown both stay
 SIGNED (net) sums of every holding, so the breakdown still adds up to
 the headline exactly as it always did — a debt nets into its own
 currency's cell there, unlike Statistics' assets-only pie. Accounts'
 own "Debts" section (`accounts.screen.tsx`) computes its OWN section
 total independently, via `guardedNetWorth` of just the debt-kind
-accounts' holdings (M2 — every debt-kind account holds only `loan`
+accounts' holdings (every debt-kind account holds only `loan`
 holdings, so this total is always <= 0); it does not call
 `buildDebtTotal`, which sums across every account kind. A
 property-kind account gets the SAME treatment: its own "Property"
@@ -673,7 +670,7 @@ See `kiko-pricing` for `price_points`, `PriceBook`, priced-holding
 valuation (`property_item`/`metal`), the create-time `firstPricePoint`
 and remove-time series cleanup, and `PricePointForm` / "Update value".
 
-## Bonds — ISIN validation and the NBU register cache (T23/T24)
+## Bonds — ISIN validation and the NBU register cache
 
 `BondMeta` (`src/holdings/holding-metadata/holding-metadata.ts`)
 already carries the full bond shape a Manual-mode form writes:
@@ -706,15 +703,15 @@ this file (`asTermDepositMeta`, `asPropertyMeta`, `asMetalMeta`,
 `asLoanMeta`) already rejects a present-but-invalid field the same way;
 `asBondMeta` used to be the one exception that defaulted instead.
 
-`src/bonds/isin/` (T23) validates an ISIN with no side effects:
+`src/bonds/isin/` validates an ISIN with no side effects:
 `normalizeIsin` trims/uppercases; `validateIsin` checks the ISO 6166
 shape (`^[A-Z]{2}[A-Z0-9]{9}[0-9]$`) and Luhn check digit, returning
 `{ ok: true, isin }` or `{ ok: false, reason: 'format' | 'checkDigit'
 }` — never throws on an expected validation failure, the standing
 domain convention.
 
-`src/bonds/nbu-register/` (T24) is the NBU securities-register client
-(spec 6.1/6.2), mirroring `nbu-metals.ts`'s pattern (fetch + `guard`-
+`src/bonds/nbu-register/` is the NBU securities-register client,
+mirroring `nbu-metals.ts`'s pattern (fetch + `guard`-
 based validation + a recorded JSON fixture, no network in tests) on
 the SAME `bank.gov.ua` host — no new pinning (kiko-compliance: this
 host stays keyless and unpinned; see `docs/security/README.md`'s host
@@ -734,13 +731,12 @@ Date(year, month - 1, day)`), NOT through `parseDateTimeSeconds`'s
 feeds straight into `BondMeta.maturityDate` above, and every consumer
 of that field reads it through local getters, so a UTC parse would
 silently shift the maturity date (and every coupon date derived from
-it) back a day for a user west of UTC (T24 review finding I1).
+it) back a day for a user west of UTC.
 `couponFrequencyFromPayPeriod(days)` maps the register's `pay_period`
 onto `BondCouponFrequency`, tolerating a ±5-day slack around each of
 the four canonical periods (30/91/182/364); a period outside every
 band resolves to `null` — the eventual ISIN-mode form falls back to
-Manual mode with the known fields pre-filled rather than guessing
-(spec 6.2).
+Manual mode with the known fields pre-filled rather than guessing.
 
 `src/bonds/bond-register-repo/` caches the register in the
 `bond_register` table (migration `0037`; `isin` primary key, `terms`
@@ -757,22 +753,22 @@ most once per LOCAL calendar day, comparing the cache's single
 write-time `fetchedAt` stamp against `now` through `dayKeyOf`
 (`kiko-pricing`) — the same device-local-day convention `price_points`
 uses, not a UTC day. `src/bonds/bond-register-repo/index.ts` is a
-barrel (`export * from './bond-register.repo'`), added in T25 once the
-ISIN-mode form became a real consumer — see the T24 ruling's own note
-that no barrel existed yet (Knip would have flagged an unused one).
+barrel (`export * from './bond-register.repo'`), added once the
+ISIN-mode form became a real consumer — an unused barrel would have
+been flagged by Knip.
 
-### The ISIN-mode form (T25, spec 6.3/6.4)
+### The ISIN-mode form
 
 `BondMeta.isin?: string` (`holding-metadata.ts`) records how a bond was
 added — present for one saved through ISIN mode (or typed into
 Manual mode's own optional ISIN field), `undefined` for a legacy
 Manual-mode bond. Once saved, the holding never depends on the
-register again (spec 6.4 #5) — nothing re-validates a stored ISIN
+register again — nothing re-validates a stored ISIN
 against a later register state.
 
 `BondFormBlock`'s bond section has an "ISIN / Manual"
 `BondEntryMode` mode, the design-system `SegmentedControl` (not
-`ChipRow` — F3/T24 ruling: one control type per kind of mode choice),
+`ChipRow` — one control type per kind of mode choice),
 rendered by `BondIsinSection`
 (`src/screens/forms/holding-form/bond/bond-isin-section/`) — purely
 presentational, the same `MetalSection`/`PropertySection` split.
@@ -781,14 +777,14 @@ presentational, the same `MetalSection`/`PropertySection` split.
 owns ALL of the ISIN-mode state, the `useLiveQuery` lookup
 (`bondRegisterRepo.findByIsinQuery`, keyed on the normalized ISIN when
 `validateIsin` passes, else an empty string that matches no row), and
-THREE SEPARATE effects — extracted out of `HoldingFormScreen` (T25
-review round 1, I4) specifically because a single MERGED effect
-sharing one dependency array is what caused I1 below; the hook has its
+THREE SEPARATE effects — extracted out of `HoldingFormScreen`
+specifically because a single MERGED effect
+sharing one dependency array causes the cross-talk described below; the hook has its
 own cognitive-complexity budget instead of borrowing the screen's, so
 its effects stay genuinely separate with no lint-driven pressure to
 recombine them:
-- refreshes the register cache at most once per local day (spec 6.4
-  #4), fired once per bond-section open (create or edit); the
+- refreshes the register cache at most once per local day, fired
+  once per bond-section open (create or edit); the
   fire-and-forget call is `either(() => refreshBondRegisterIfStale())`
   as a bare statement (the project's standing fire-and-forget idiom —
   `either` never rejects, so a network failure can never surface as a
@@ -806,60 +802,59 @@ recombine them:
   register lookup itself is NOT gated on `bondMode` (a valid ISIN
   typed in Manual mode resolves just as readily), so a match resolved
   while the user is in Manual mode still applies the first time they
-  later switch to ISIN (T25 review round 2, N1: keying purely on
-  `registerTerms?.isin` missed exactly this case, because the effect
-  never ran again once `bondMode` stopped changing). This also fixes
-  T25 review round 1's I1 (a merged effect re-applied on every
-  unrelated change, silently overwriting a typed name or a changed
-  currency) and I3 (the same merged effect re-firing on every re-tap
-  of "ISIN" put the control into a loop back to Manual for an
-  unmapped-frequency match).
+  later switch to ISIN — keying purely on
+  `registerTerms?.isin` misses exactly this case, because the effect
+  never runs again once `bondMode` stops changing. A merged effect
+  applied on every unrelated change would silently overwrite a typed
+  name or a changed currency, and would re-fire on every re-tap of
+  "ISIN", putting the control into a loop back to Manual for an
+  unmapped-frequency match — this is why the three effects must stay
+  separate.
 
 ISIN mode shows quantity (required) and purchasePrice (optional,
 defaults to nominal — unchanged from Manual) always; it hides face
 value, coupon, maturity, kind, and frequency — a found ISIN fills all
 of them: `bondKind` is always `'government'` (the register is
 Minfin-only), `couponFrequency` only when the register's `pay_period`
-maps onto a known band; an unmapped period (spec 6.2's own documented
-fallback) instead switches the form to Manual ONCE, the first time
+maps onto a known band; an unmapped period instead switches the form to Manual ONCE, the first time
 that match is applied, leaving every OTHER known field pre-filled,
 rather than guessing a frequency. Re-tapping "ISIN" afterward for that
-SAME match does stay in ISIN mode (I3) — but showing the register's
+SAME match does stay in ISIN mode — but showing the register's
 summary there with no visible frequency would silently let the form
 carry the shared `couponFrequency` state's own untouched default into
-Save, which is the exact guess spec 6.2 forbids. So ISIN mode instead
+Save, which is exactly the guess this rule forbids. So ISIN mode instead
 shows its OWN coupon-frequency `SelectField` (`selected: null`) with NO
 default whenever the
 matched terms have `couponFrequency === null`
 (`needsCouponFrequencyPick`), and Save is blocked until the user picks
-one (T25 review round 2, N2) — never a frequency the user did not
+one — never a frequency the user did not
 pick or the register did not give. In
 EDIT mode, a found ISIN whose currency differs from the (locked)
 holding currency is never applied at all — `isinReasonKey` returns
 `'forms.holding.isinCurrencyMismatchError'` instead, blocking Save
-(T25 review round 1, I5 — the currency field is locked
+(the currency field is locked
 `disabled={isEdit}`, so a silent apply used to store one currency's
 terms under a holding balance denominated in another). Outside edit
 mode a found ISIN's `currency`/`name` DO overwrite the form's own
 state on every new match — editable afterward, but re-applied whenever
 the ISIN changes to a new found bond.
 
-A CREATE defaults to `'isin'`; EDIT always seeds `'manual'` (spec 6.4
-#6 — the stored ISIN is shown there, still editable) via
+A CREATE defaults to `'isin'`; EDIT always seeds `'manual'` (the
+stored ISIN is shown there, still editable) via
 `useBondFields`'s own `seed`
-(`src/screens/forms/holding-form/bond/use-bond-fields/`, R3 Phase C),
+(`src/screens/forms/holding-form/bond/use-bond-fields/`),
 which also calls the hook's own `setBondMode`.
 
 Validation (`isinReasonKey`, returned by the hook, backed by a
 module-level pure `bondIsinReasonKey`): required and blocking in ISIN
 mode; optional but still check-digit-validated when non-empty in
 Manual mode; `isinNotInRegister` once shape/check-digit both pass but
-the cache has no match (spec 6.4 #3 — a genuine not-found and an
+the cache has no match (a genuine not-found and an
 offline-with-no-cache open the same way, since both leave the lookup's
-result `null`); `isinCurrencyMismatchError` in edit mode per I5 above.
+result `null`); `isinCurrencyMismatchError` in edit mode per the currency-lock rule above.
 A maturity-before-purchase reason (`bondReasonKey`, unrelated to the
 ISIN reason above) still applies unchanged in ISIN mode — a
-matured-still-registered bond (spec 6.1 counts 2 in the live register)
+matured-still-registered bond (the live register still counts it)
 can pass every ISIN check yet still fail this — but ISIN mode never
 mounts the maturity `DateField`, so `BondFormBlock` shows that reason
 on the purchase date `DateField` instead, and `useBondFields.scrollTargets`
@@ -873,17 +868,16 @@ rather than the caller gating `{bondMode === 'manual' && (...)}`
 around its JSX — see `kiko-code-style`'s `noExcessiveCognitiveComplexity`
 entry for why a conditional NESTED inside the bond block's own
 `{type === 'bond' && (...)}` gate needed a real extraction, not a
-`match()` trick (T25 review round 1, I4).
+`match()` trick.
 
-## Debts — the `debt` kind, `loan` type, and schedule math (T26)
+## Debts — the `debt` kind, `loan` type, and schedule math
 
-`accounts.kind` gains `debt` (en "Debt", uk "Борг" — the label ships
-in T26; the "Debts" net-worth/accounts-screen wiring is T27) and
+`accounts.kind` gains `debt` (en "Debt", uk "Борг") and
 `holdings.type` gains `loan`, TS-only enum widenings (no migration,
-same as `property`/`metals` at T13/T17). `loan` is `isLedgerlessHoldingType`
+same as `property`/`metals`). `loan` is `isLedgerlessHoldingType`
 (`src/holdings/holding-descriptor/holding-descriptors.ts`) — like `property_item`/`metal`, a loan
 holding writes NO `Transaction` ledger rows of its own; every payment
-lives on the LINKED bank holding instead (T29's `loanHoldingId`
+lives on the LINKED bank holding instead (the `loanHoldingId`
 column). `debt` maps to `loan` alone in `holdingTypesForAccountKind`,
 and `loan` is excluded from every Exchange source/destination
 predicate in `exchange-destination.ts` (a loan is never an Exchange
@@ -898,10 +892,10 @@ kind-and-type icon/color reuse `property`/`property_item` and
 `startDate`, `schedule` (`'annuity' | 'differentiated' | 'none'`), and
 `annualRatePct?`/`termMonths?` — both OPTIONAL, since a `none`
 (informal) loan carries no known rate/term; the create form is
-expected to require them for `annuity`/`differentiated` (T28), not
+expected to require them for `annuity`/`differentiated`, not
 `asLoanMeta` itself, which accepts either shape. A loan the user GAVE
 to someone (not owed BY them) is not a `loan` holding at all — it
-stays the existing `property` category `loan_given` (T13), which is
+stays the existing `property` category `loan_given`, which is
 an ASSET, not a debt.
 
 `src/holdings/loan-schedule/` is the amortization math, mirroring
@@ -921,8 +915,7 @@ decimal-string rule.
   (`round(principal / termMonths)`). Either way the LAST installment's
   principal is simply whatever balance remains, so the schedule always
   reduces to EXACTLY 0, never a stray rounding kopeck.
-- `loanOutstandingMinorAt(meta, holdingId, book, instant)` (open
-  question N10a, binding default): `none` reads the manual
+- `loanOutstandingMinorAt(meta, holdingId, book, instant)`: `none` reads the manual
   `holding:<id>` price-point series directly (the same mechanism
   Property's "Update value" uses), clamped to never go below 0.
   `annuity`/`differentiated` are computed AT READ TIME from the
@@ -935,16 +928,14 @@ decimal-string rule.
   clamps to 0 — an overpaid/over-corrected loan reads as paid off,
   never negative.
 - `loanInterestForPaymentMinor(meta, paymentTime, paymentAbsMinor)`
-  (open question N10b, binding default; D14's "interest-only
-  spending" — the derived-entry wiring itself is the "Spending-
-  exclusion pipeline" section above): `none` always counts 0 interest
+  ("interest-only spending" — the derived-entry wiring itself is the
+  "Spending-exclusion pipeline" section above): `none` always counts 0 interest
   (an informal debt has no schedule to derive interest from).
   Otherwise the payment maps to the installment whose `dueDate` is
   NEAREST to the payment's own local day (not necessarily the next
   unpaid one), and the interest counted is that installment's
   scheduled interest capped at `paymentAbsMinor` — a partial payment
-  can never count more interest than it actually paid. M2 (T26
-  review, fixed at T30): a payment MORE THAN ONE PERIOD outside the
+  can never count more interest than it actually paid. A payment MORE THAN ONE PERIOD outside the
   schedule (before `addMonths(startDate, 0)`, after
   `addMonths(startDate, installments.length + 1)`) counts 0 instead of
   still mapping to the nearest boundary installment — both bounds are
@@ -952,32 +943,31 @@ decimal-string rule.
 
 `holding-descriptor/loan/loan.descriptor.ts`'s valuation branch (`gross = net = -outstanding`,
 `principalOrCost = -principal`, interest/tax always 0 — a loan never
-accrues either AT VALUATION time) and the net-worth assets-minus-debt
-rule change landed at T27. The `loanHoldingId` link column + its repo
-functions landed at T29 (own subsection below). Interest-only
-spending (T30) landed as the "Spending-exclusion pipeline" section's
-loan-payments module, above. Not yet wired as of T30 (later tasks):
-the transaction-form field (T31) and the automatic payment-linking
-matcher itself (T32, spec 5.4) — read each task's own brief before
-assuming that works.
+accrues either AT VALUATION time) backs the net-worth assets-minus-debt
+rule. The `loanHoldingId` link column + its repo
+functions are covered in their own subsection below. Interest-only
+spending is wired through the "Spending-exclusion pipeline" section's
+loan-payments module, above. NOT YET WIRED: an automatic transaction-form
+field and payment-linking matcher — do not assume either exists
+without checking the code first.
 
-### Loan form + detail (T28)
+### Loan form + detail
 
 `src/screens/forms/holding-form/loan/loan-section/` (kind `SelectField`,
 principal, start date, schedule SegmentedControl, rate/term hidden for
 `'none'`) and its own `use-loan-fields/` hook — a full `HoldingTypeForm`
-(`src/screens/forms/holding-form/holding-type-form/`, R3 Phase C): state,
+(`src/screens/forms/holding-form/holding-type-form/`): state,
 per-schedule `loanReasonKey` validation, edit-mode `seed`,
-`createPayload`, and `saveEdit` — mirror T25's `useBondIsinMode`
+`createPayload`, and `saveEdit` — mirror `useBondIsinMode`'s
 extraction, the same way every other holding type's own `use<Type>Fields`
-hook does (R3 Phase C). Unlike `PropertySection`/`MetalSection`'s
+hook does. Unlike `PropertySection`/`MetalSection`'s
 create-only-lot fields, EVERY loan field stays editable in both create and
 edit mode (mirrors term_deposit/bond) — there is no fixed-at-creation
 "first lot" a loan's principal/dates/schedule freeze against. Its own leaf
 component (`LoanFormBlock`,
 `src/screens/forms/holding-form/loan/loan-form-block/`) renders from one
 arm of `HoldingFormScreen`'s single `match(type)…exhaustive()` — the same
-dispatch every holding type's own form block renders from (R3 Phase C);
+dispatch every holding type's own form block renders from;
 collapsing what used to be five independent `{type === '…' && (...)}`
 JSX gates into one match is itself what keeps the screen under its
 cognitive-complexity budget (kiko-code-style). A `'none'`-schedule CREATE
@@ -1041,7 +1031,7 @@ series against what the metadata edit just changed:
   shadowed — rare, and the ruling is written this way deliberately).
 - (c) every other transition (including `'none'` OUT to a schedule)
   leaves the manual series untouched — a correction point is still
-  valid for a scheduled loan (N10a above).
+  valid for a scheduled loan (see `loanOutstandingMinorAt` above).
 
 A fresh holding (`oldMeta === null`) has nothing to reconcile.
 
@@ -1053,33 +1043,31 @@ integer. A term deposit's own `termMonths` field is capped at the SAME
 shared constant (`term-deposit-reasons.ts`), for the identical reason
 on its compounding math; there is no separate deposit-specific cap.
 
-### Loan-payment link column + repo (T29, revised by review round 1)
+### Loan-payment link column + repo
 
-Migration 0038 adds three columns to `transactions` (spec 5.4): `loanHoldingId`
+Migration 0038 adds three columns to `transactions`: `loanHoldingId`
 (text, nullable — the linked loan holding), `loanLinkSource` (text enum
 `'auto' | 'manual'`, nullable), and `loanLinkRejected` (integer boolean,
 NOT NULL default `false`). The two link columns are kept in lockstep — never a
 `loanLinkSource` with no `loanHoldingId` or vice versa.
 
-**Two separate write paths, not one** (T29 review round 1, I2): only a
+**Two separate write paths, not one**: only a
 MANUAL action may ever move `loanLinkRejected`.
 
 - `transactionsRepo.setLoanPayment({ transactionId, loanHoldingId })` is the
-  MANUAL path (the user's own picker, T31). A manual LINK
+  MANUAL path (the user's own picker). A manual LINK
   (`loanHoldingId` non-null) clears `loanLinkRejected`, un-rejecting a row
   the user had previously undone — a fresh manual pick always overrides an
   earlier Undo. A manual **"None"** (`loanHoldingId: null`) **SETS**
-  `loanLinkRejected` (I3 ruling) — the user's explicit "not a loan payment"
+  `loanLinkRejected` — the user's explicit "not a loan payment"
   has to stick, or the very next sync would just auto-link the row again.
-  This deviates from spec 5.4's literal text ("a manual None clears the
-  flag"), which the orchestrator ruled would make "None" not stick.
+  A manual None clearing the flag instead would make "None" not stick.
   `loanHoldingId: null` also nulls `loanLinkSource`, keeping the two
   columns in lockstep. No `source`-column gate — exactly like `setCategory`,
   the link is user state, not a mutation of bank-owned ledger data, so it
   is allowed on a synced (`monobank`/`binance`/`import`) row too.
 - `transactionsRepo.setAutoLoanLinks(links: { transactionId, loanHoldingId }[])`
-  is the matcher's path (T32): writes every link in ONE transaction (spec
-  5.4's "one `db.transaction()` writes the links"), NEVER touches
+  is the matcher's path: writes every link in ONE `db.transaction()` call, NEVER touches
   `loanLinkRejected`, and its own WHERE clause skips any row that is
   already linked (`loanHoldingId` non-null) or already rejected — so a
   stale candidate read, or a race with the user's own Undo/manual link,
@@ -1098,9 +1086,8 @@ existing doc comment). A settled-amount re-fetch of an already-linked payment
 therefore keeps its link untouched. Its underlying insert
 (`insertDedupRowsDatabaseTransaction`) is chunked through `chunkForTable` (below) — a whole
 statement-import file or Monobank sync above a few thousand rows failed
-`SQLITE_MAX_VARIABLE_NUMBER` before this (M6).
+`SQLITE_MAX_VARIABLE_NUMBER` before this.
 
-**Review Focus 7, extended to the account-delete path (I1).**
 `holdingsRepo.clearLoanLinksForHoldingsDatabaseTransaction(databaseTransaction, holdingIds)` (exported, not
 private to `remove`) clears `loanHoldingId`/`loanLinkSource` on every OTHER
 holding's transaction that still points at one of `holdingIds`, in the SAME
@@ -1123,8 +1110,9 @@ before this migration — whose transaction rows carry no
 `loanHoldingId`/`loanLinkSource`/`loanLinkRejected` keys at all — restores
 unchanged and SQLite defaults the missing columns itself (null / null /
 false), the same way `counterIban`/`changeGroupId` already do for an older
-export. It DID need a fix for how it chunks every insert (C1, T29 review
-round 1): T29's 3 new columns took `transactions` from 15 to 18 columns, so
+export. Chunking every insert by a fixed row count breaks once a
+table's own column count grows: three new columns took `transactions`
+from 15 to 18 columns, so
 the OLD fixed 2000-rows-per-chunk constant bound 2000 x 18 = 36000
 parameters — over SQLite's 32766-bound-parameter ceiling — and a `.kiko`
 backup with >= 1821 transactions failed to restore. `chunkForTable`
