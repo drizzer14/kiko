@@ -12,3 +12,20 @@
 import GlassSurface from '../../src/design-system/components/glass-surface';
 
 export const glassSurfaceOutsideNavLayer = GlassSurface;
+
+// A path ending in the component's OWN file, not the bare module directory
+// (`glass-surface/glass-surface.component`), which the original regex
+// (anchored to end exactly at `glass-surface`) missed entirely.
+// EXPECT-FINDING
+import GlassSurfaceComponent from '../../src/design-system/components/glass-surface/glass-surface.component';
+
+export const glassSurfaceComponentOutsideNavLayer = GlassSurfaceComponent;
+
+// The statement below restates GlassSurface's default binding through a
+// curly-brace clause, using the OTHER leading keyword the rule's
+// pattern-regex now covers — the original regex required only the keyword
+// the first case above uses. Deliberately no such keyword text appears
+// earlier in this block either, for the same reason cited at the top of
+// this file.
+// EXPECT-FINDING
+export { default as ReExportedGlassSurface } from '../../src/design-system/components/glass-surface';

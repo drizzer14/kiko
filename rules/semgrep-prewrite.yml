@@ -208,11 +208,16 @@ rules:
   # (the tab bar, `BottomSheet`, the keyboard "Done" accessory, the Home
   # add-transaction FAB). A content-layer card/list/chart reads `Card`
   # instead (a solid, bordered fill — no glass material). `pattern-regex`
-  # over the whole import statement, not an AST `pattern:` — an import path
-  # is a plain string literal, so there is no AST shape to distinguish "the
-  # glass-surface module" from any other import beyond the path text itself.
-  # `paths.exclude` is the nav-layer allowlist: extend this list for a new
-  # nav-layer surface.
+  # over the whole import/re-export statement, not an AST `pattern:` — an
+  # import path is a plain string literal, so there is no AST shape to
+  # distinguish "the glass-surface module" from any other import beyond the
+  # path text itself. `(?:import|export)`, not a bare `import`, so a
+  # re-export (`export { default } from '.../glass-surface'`) is caught too;
+  # `glass-surface(?:/[^'"]*)?['"]` (not a bare `glass-surface['"]`) so a
+  # path ending in the component's OWN file (`glass-surface/glass-surface.
+  # component`) matches too, not only the bare module directory — both were
+  # real, unintended bypasses of this rule. `paths.exclude` is the nav-layer
+  # allowlist: extend this list for a new nav-layer surface.
   - id: kiko-glass-surface-nav-layer-only
     languages: [typescript]
     severity: ERROR
@@ -231,7 +236,7 @@ rules:
         - "src/design-system/components/keyboard-done-accessory/**"
         - "src/screens/home/add-transaction-fab/**"
     patterns:
-      - pattern-regex: "import\\s[^;]*from\\s*['\"][^'\"]*glass-surface['\"]"
+      - pattern-regex: "(?:import|export)\\s[^;]*from\\s*['\"][^'\"]*glass-surface(?:/[^'\"]*)?['\"]"
   # kiko-design-system's "Field placeholder and error copy" — a placeholder
   # never repeats its own field's label. The object-literal shape is a
   # `pattern-regex` with a PCRE backreference, not an AST pattern: the
