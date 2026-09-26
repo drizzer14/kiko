@@ -67,17 +67,21 @@ export const readTableRows = (
   return readCsvRows(input.text, delimiter);
 };
 
+// How many leading rows can hold the header row — the raw preview's expanded
+// view shows the same span, so the user can correct any guess it could make.
+export const HEADER_SCAN_ROW_COUNT = 10;
+
 /**
- * The first of the first 10 rows with the most non-empty cells — a cheap
- * guess a user picks up front, shown pre-selected before they confirm the
- * header row themselves — a saved/guessed mapping never imports without the
- * user's own tap.
+ * The first of the first `HEADER_SCAN_ROW_COUNT` rows with the most non-empty
+ * cells — a cheap guess a user picks up front, shown pre-selected before they
+ * confirm the header row themselves — a saved/guessed mapping never imports
+ * without the user's own tap.
  */
 export const guessHeaderRowIndex = (rows: TableCell[][]): number => {
   let bestIndex = 0;
   let bestNonEmptyCount = -1;
 
-  rows.slice(0, 10).forEach((row, index) => {
+  rows.slice(0, HEADER_SCAN_ROW_COUNT).forEach((row, index) => {
     const nonEmptyCount = row.filter((cell) => cell !== '').length;
 
     if (nonEmptyCount > bestNonEmptyCount) {

@@ -327,11 +327,20 @@ follow the same layout conventions as every other Kiko screen:
   "Tap the row with the column names" (`columnMapping.rawPreview`)
   renders at the `heading` type step instead of a muted `body`/
   `textSecondary` caption, so it reads clearly above the grid, and
-  doubles as this section's own heading. The grid shows the first
-  `PREVIEW_ROW_COUNT` (5) rows — extended up to the selected header row
-  when that row sits further down (Sensebank's CSV header is row index
-  5, below a preamble), so the chosen header is never hidden or
-  untappable; `guessHeaderRowIndex` still scans the first 10 rows. The
+  doubles as this section's own heading. The grid STARTS AT the header
+  row (guessed or tapped; row 0 before one is known) and shows
+  `PREVIEW_ROW_COUNT` (5) rows from there. A "Show all" toggle below the
+  grid (the pie legend's link look: caption `tone="accent"` + chevron,
+  reusing the `components.pieChart.showAll`/`showLess` keys, a 44pt tap
+  target via vertical `hitSlop`) expands to every row
+  `guessHeaderRowIndex` scans (`HEADER_SCAN_ROW_COUNT`, 10, exported from
+  `table-rows.ts` so the two never drift) — never fewer than the
+  collapsed window — INCLUDING the rows above the header, so the user can
+  tap another row to correct a wrong guess (Sensebank's real header is
+  row index 5; under UTF-8 the guess lands on row 8). "Show less"
+  collapses back to the 5-row window from the header. The toggle renders
+  only when expanding reveals a row the collapsed window hides; a tap in
+  either mode selects the tapped row's own file index as the header. The
   grid shows at most `PREVIEW_COLUMN_COUNT` (5) columns per row — a wide export
   (multi-card PrivatBank, say) no longer scrolls dozens of columns
   before the user has even picked a header row; every

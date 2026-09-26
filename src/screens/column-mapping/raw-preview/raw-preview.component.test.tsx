@@ -1,6 +1,8 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
+import '../../../i18n';
 
+import { i18n } from '../../../i18n';
 import { darkTheme } from '../../../design-system/theme';
 import type { TableCell } from '../../../statement-import/column-mapping';
 
@@ -11,6 +13,8 @@ const rows: TableCell[][] = [
   ['01.07.2025', 'Coffee', -123.45],
   ['02.07.2025', 'Salary', 5000],
 ];
+
+const manyRows: TableCell[][] = Array.from({ length: 15 }, (_, index) => [`row-${index}`]);
 
 describe('RawPreview', () => {
   it('renders every cell of every row, up to the first 5 rows', async () => {
@@ -24,8 +28,6 @@ describe('RawPreview', () => {
   });
 
   it('caps the preview at the first 5 rows', async () => {
-    const manyRows: TableCell[][] = Array.from({ length: 15 }, (_, index) => [`row-${index}`]);
-
     const { queryByText } = await render(
       <RawPreview rows={manyRows} headerRowIndex={0} onSelectHeaderRow={jest.fn()} />,
     );
@@ -34,18 +36,130 @@ describe('RawPreview', () => {
     expect(queryByText('row-5')).toBeNull();
   });
 
-  // A bank export can carry preamble lines above its header (Sensebank's
-  // header sits at row index 5), so a selected header row past the cap
-  // extends the preview to it — never an invisible, untappable header.
-  it('extends the preview to a selected header row past the first 5 rows', async () => {
-    const manyRows: TableCell[][] = Array.from({ length: 15 }, (_, index) => [`row-${index}`]);
-
+  it('starts at row 0 before a header row is known', async () => {
     const { queryByText } = await render(
-      <RawPreview rows={manyRows} headerRowIndex={6} onSelectHeaderRow={jest.fn()} />,
+      <RawPreview rows={manyRows} headerRowIndex={undefined} onSelectHeaderRow={jest.fn()} />,
     );
 
+    expect(queryByText('row-0')).toBeTruthy();
+    expect(queryByText('row-4')).toBeTruthy();
+    expect(queryByText('row-5')).toBeNull();
+  });
+
+  it('starts at the detected header row and shows 5 rows from it', async () => {
+    const { queryByText } = await render(
+      <RawPreview rows={manyRows} headerRowIndex={3} onSelectHeaderRow={jest.fn()} />,
+    );
+
+    expect(queryByText('row-2')).toBeNull();
+    expect(queryByText('row-3')).toBeTruthy();
+    expect(queryByText('row-7')).toBeTruthy();
+    expect(queryByText('row-8')).toBeNull();
+  });
+
+  it('starts at a newly selected header row', async () => {
+    const { queryByText, rerender } = await render(
+      <RawPreview rows={manyRows} headerRowIndex={3} onSelectHeaderRow={jest.fn()} />,
+    );
+
+    await rerender(<RawPreview rows={manyRows} headerRowIndex={6} onSelectHeaderRow={jest.fn()} />);
+
+    expect(queryByText('row-5')).toBeNull();
     expect(queryByText('row-6')).toBeTruthy();
-    expect(queryByText('row-7')).toBeNull();
+    expect(queryByText('row-10')).toBeTruthy();
+    expect(queryByText('row-11')).toBeNull();
+  });
+
+  it('keeps each shown row’s own file index as its tap target', async () => {
+    const onSelectHeaderRow = jest.fn();
+    const { getByTestId } = await render(
+      <RawPreview rows={manyRows} headerRowIndex={3} onSelectHeaderRow={onSelectHeaderRow} />,
+    );
+
+    await fireEvent.press(getByTestId('raw-preview-row-5'));
+
+    expect(onSelectHeaderRow).toHaveBeenCalledWith(5);
+  });
+
+  it('reveals every scanned row, including rows above the header, on Show all', async () => {
+    const { getByTestId, queryByText } = await render(
+      <RawPreview rows={manyRows} headerRowIndex={3} onSelectHeaderRow={jest.fn()} />,
+    );
+
+    await fireEvent.press(getByTestId('raw-preview-toggle'));
+
+    expect(queryByText('row-0')).toBeTruthy();
+    expect(queryByText('row-9')).toBeTruthy();
+    expect(queryByText('row-10')).toBeNull();
+    expect(
+      within(getByTestId('raw-preview-toggle')).getByText(i18n.t('components.pieChart.showLess')),
+    ).toBeTruthy();
+    expect(getByTestId('raw-preview-toggle-chevron').props.name).toBe('chevron.up');
+  });
+
+  it('keeps the header’s own 5-row window when expanding from a header near the scan end', async () => {
+    const { getByTestId, queryByText } = await render(
+      <RawPreview rows={manyRows} headerRowIndex={8} onSelectHeaderRow={jest.fn()} />,
+    );
+
+    await fireEvent.press(getByTestId('raw-preview-toggle'));
+
+    expect(queryByText('row-0')).toBeTruthy();
+    expect(queryByText('row-12')).toBeTruthy();
+    expect(queryByText('row-13')).toBeNull();
+  });
+
+  it('collapses back to 5 rows from the header on Show less', async () => {
+    const { getByTestId, queryByText } = await render(
+      <RawPreview rows={manyRows} headerRowIndex={3} onSelectHeaderRow={jest.fn()} />,
+    );
+
+    await fireEvent.press(getByTestId('raw-preview-toggle'));
+    await fireEvent.press(getByTestId('raw-preview-toggle'));
+
+    expect(queryByText('row-2')).toBeNull();
+    expect(queryByText('row-3')).toBeTruthy();
+    expect(queryByText('row-8')).toBeNull();
+    expect(
+      within(getByTestId('raw-preview-toggle')).getByText(i18n.t('components.pieChart.showAll')),
+    ).toBeTruthy();
+    expect(getByTestId('raw-preview-toggle-chevron').props.name).toBe('chevron.down');
+  });
+
+  it('selects a row above the header as the new header when expanded', async () => {
+    const onSelectHeaderRow = jest.fn();
+    const { getByTestId } = await render(
+      <RawPreview rows={manyRows} headerRowIndex={3} onSelectHeaderRow={onSelectHeaderRow} />,
+    );
+
+    await fireEvent.press(getByTestId('raw-preview-toggle'));
+    await fireEvent.press(getByTestId('raw-preview-row-1'));
+
+    expect(onSelectHeaderRow).toHaveBeenCalledWith(1);
+  });
+
+  it('shows no toggle when every scanned row already fits', async () => {
+    const { queryByTestId } = await render(
+      <RawPreview rows={rows} headerRowIndex={0} onSelectHeaderRow={jest.fn()} />,
+    );
+
+    expect(queryByTestId('raw-preview-toggle')).toBeNull();
+  });
+
+  // The toggle sits alone below the grid, so vertical hitSlop can reach the
+  // 44pt floor without overlapping a neighbouring target.
+  it('gives the toggle at least a 44pt tap target', async () => {
+    const { getByTestId } = await render(
+      <RawPreview rows={manyRows} headerRowIndex={3} onSelectHeaderRow={jest.fn()} />,
+    );
+
+    const { StyleSheet } = require('react-native');
+    const toggle = getByTestId('raw-preview-toggle');
+    const { paddingVertical } = StyleSheet.flatten(toggle.props.style);
+    const { top, bottom } = toggle.props.hitSlop;
+    const captionLineHeight = 16;
+
+    expect(captionLineHeight + 2 * paddingVertical + top + bottom).toBeGreaterThanOrEqual(44);
   });
 
   it('calls onSelectHeaderRow with the tapped row index', async () => {
@@ -65,7 +179,7 @@ describe('RawPreview', () => {
     );
 
     expect(getByTestId('raw-preview-row-1').props.accessibilityState).toEqual({ selected: true });
-    expect(getByTestId('raw-preview-row-0').props.accessibilityState).toEqual({
+    expect(getByTestId('raw-preview-row-2').props.accessibilityState).toEqual({
       selected: false,
     });
   });

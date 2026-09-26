@@ -784,6 +784,9 @@ describe('ColumnMappingScreen', () => {
     const mapSensebankColumns = async (
       view: Awaited<ReturnType<typeof renderScreen>>,
     ): Promise<void> => {
+      // Under UTF-8 the guess lands on row 8, below the real header, so the
+      // header row is only reachable from the expanded preview.
+      await fireEvent.press(view.getByTestId('raw-preview-toggle'));
       await fireEvent.press(view.getByTestId('raw-preview-row-5'));
 
       await fireEvent.press(within(view.getByTestId('column-mapping-delimiter')).getByText(';'));
