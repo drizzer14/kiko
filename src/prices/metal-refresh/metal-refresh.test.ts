@@ -276,29 +276,34 @@ describe('refreshMetalPrices', () => {
     ]);
   });
 
-  it('does not refetch a backward range a previous run already asked for and got empty', async () => {
-    // A lot dated before NBU's own metal data starts: the backward range
-    // [earlierLotDay, firstStoredDay - DAY] will NEVER have any rows, so a
-    // naive re-plan-every-run would refetch it forever.
-    const firstStoredDay = Date.UTC(2025, 0, 1);
-    const earlierLotDay = Date.UTC(1990, 0, 1);
-    let historyCallCount = 0;
-    const knownEmptyBackwardFloors = new Map<Metal, number>();
-    const { deps } = makeDeps({
-      listHoldings: async () => [metalHolding('XAU', [earlierLotDay])],
+  // A lot dated before NBU's own metal data starts: the backward range
+  // [earlierLotDay, firstStoredDay - DAY] will NEVER have any rows. Today is
+  // already stored, so only that backward range is ever requested.
+  const backwardGapDeps = (
+    fetchHistory: MetalRefreshDeps['fetchHistory'],
+    knownEmptyBackwardFloors: Map<Metal, number>,
+  ) =>
+    makeDeps({
+      listHoldings: async () => [metalHolding('XAU', [Date.UTC(1990, 0, 1)])],
       loadPoints: async () => [
-        { instrument: 'metal:XAU', day: firstStoredDay },
+        { instrument: 'metal:XAU', day: Date.UTC(2025, 0, 1) },
         { instrument: 'metal:XAU', day: today },
       ],
-      fetchHistory: async () => {
-        historyCallCount += 1;
-        return [];
-      },
+      fetchHistory,
       fetchCurrent: async (): Promise<NbuMetalRate[]> => {
         throw new Error('fetchCurrent should not be called — today is already stored');
       },
       knownEmptyBackwardFloors,
-    });
+    }).deps;
+
+  it('does not refetch a backward range a previous run already asked for and got empty', async () => {
+    // A naive re-plan-every-run would refetch the never-filled range forever.
+    let historyCallCount = 0;
+    const knownEmptyBackwardFloors = new Map<Metal, number>();
+    const deps = backwardGapDeps(async () => {
+      historyCallCount += 1;
+      return [];
+    }, knownEmptyBackwardFloors);
 
     await refreshMetalPrices(deps);
     expect(historyCallCount).toBe(1);
@@ -307,6 +312,24 @@ describe('refreshMetalPrices', () => {
     // must not ask NBU for the same known-empty range again.
     await refreshMetalPrices(deps);
     expect(historyCallCount).toBe(1);
+  });
+
+  // The twin of the rate-history backfill's known-empty set: only an ANSWERED
+  // empty backward range is remembered. A failed request is a network failure
+  // to retry on the next run, never "NBU has no data before this day".
+  it('never records a backward range whose request failed as known-empty, so the next run asks again', async () => {
+    let historyCallCount = 0;
+    const knownEmptyBackwardFloors = new Map<Metal, number>();
+    const deps = backwardGapDeps(async (): Promise<NbuMetalHistoryPoint[]> => {
+      historyCallCount += 1;
+      throw new Error('NBU request failed: 429');
+    }, knownEmptyBackwardFloors);
+
+    await expect(refreshMetalPrices(deps)).rejects.toThrow('429');
+    await expect(refreshMetalPrices(deps)).rejects.toThrow('429');
+
+    expect(knownEmptyBackwardFloors.size).toBe(0);
+    expect(historyCallCount).toBe(2);
   });
 
   it('rejects and writes nothing when the underlying fetch fails', async () => {
