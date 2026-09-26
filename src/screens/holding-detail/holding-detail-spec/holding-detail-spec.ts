@@ -3,12 +3,12 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { startOfLocalDay } from '@kiko/dates';
 import type { PriceBook } from '@kiko/prices/price-book';
-import type { BondTerms } from '@kiko/bonds/nbu-register';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import { bondYieldToMaturity } from '@kiko/bonds/yield-to-maturity';
 import { asBondMeta, asLoanMeta } from '@kiko/holdings/holding-metadata';
 import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
 import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor';
+import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import { loanInstallments, type LoanInstallment } from '@kiko/holdings/loan-schedule';
 
 /** Which add action the detail screen's footer offers. */
@@ -21,14 +21,14 @@ export type FooterAction = 'contribution' | 'transaction' | 'updateValue' | 'add
 // `metal`) shows instead — it has no interest or tax to withhold, so those
 // rows would only ever read a misleading zero. `loan` is the
 // principal/paid/interest paid/principal repaid/outstanding table read from
-// the loan's linked payments (`loanLedgerSummary`). A bond's yield to
-// maturity reads the register's cached terms for its ISIN, which the screen
-// queries (`registerTerms`, null when there are none).
+// the loan's linked payments (`loanLedgerSummary`). A bond's expected profit
+// and yield to maturity read the register's cached terms for its ISIN, which
+// the screen queries (`registerTerms`, null when there are none).
 export type HoldingBreakdownSpec =
   | {
       kind: 'interest';
       principalLabelKey: 'holdingDetail.principal' | 'holdingDetail.cost';
-      expectedProfit: (holding: HoldingRow) => Money | null;
+      expectedProfit: (holding: HoldingRow, registerTerms: BondTerms | null) => Money | null;
       yieldToMaturity: (holding: HoldingRow, registerTerms: BondTerms | null) => number | null;
     }
   | { kind: 'priced' }
@@ -94,10 +94,18 @@ const loanUpcomingInstallments = (
 };
 
 // A bond's whole-life expected profit (net coupons + nominal redeemed, less
-// the price paid) — `null` for unparsable metadata.
-const bondExpectedProfit = (holding: HoldingRow): Money | null =>
+// the price paid), each coupon at its own register rate when the cache has
+// them — `null` for unparsable metadata.
+const bondExpectedProfit = (holding: HoldingRow, registerTerms: BondTerms | null): Money | null =>
   foldMap(maybe(asBondMeta(holding.metadata)), (meta) =>
-    Money.of(holding.currency, bondExpectedProfitMinor(meta, holding.currency)),
+    Money.of(
+      holding.currency,
+      bondExpectedProfitMinor(
+        meta,
+        holding.currency,
+        holdingRegisterCoupons(holding.metadata, holding.currency, registerTerms),
+      ),
+    ),
   ) ?? null;
 
 /**

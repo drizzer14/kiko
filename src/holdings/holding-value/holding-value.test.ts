@@ -265,7 +265,37 @@ describe('holdingValue', () => {
 
     if (meta !== null) {
       // 3 * 8,175.00 net coupons + 100,000.00 nominal - 107,868.00 paid.
-      expect(bondExpectedProfitMinor(meta, 'UAH')).toBe(1_665_700);
+      expect(bondExpectedProfitMinor(meta, 'UAH', [])).toBe(1_665_700);
+    }
+  });
+
+  it("sums a step-up bond's expected profit from each register coupon's own rate", () => {
+    // 1,000 x XS2895055981 (1-dollar nominal) for 980.00, saved at 4.5%: one
+    // 22.50 coupon before the step, four 30.00 after, then 1,000.00 redeemed.
+    const meta = asBondMeta({
+      quantity: 1000,
+      faceValueMinorUnits: 100,
+      couponPct: 4.5,
+      couponFrequency: 'semiannually',
+      bondKind: 'government',
+      purchaseDate: local(2026, 8, 26),
+      purchasePriceMinorUnits: 98_000,
+      maturityDate: local(2029, 1, 1),
+      isin: 'XS2895055981',
+    });
+    const stepUpCoupons = [
+      { date: local(2027, 1, 1), amount: '0.0225' },
+      { date: local(2027, 7, 1), amount: '0.03' },
+      { date: local(2028, 1, 1), amount: '0.03' },
+      { date: local(2028, 7, 1), amount: '0.03' },
+      { date: local(2029, 1, 1), amount: '0.03' },
+    ];
+
+    expect(meta).not.toBeNull();
+
+    if (meta !== null) {
+      expect(bondExpectedProfitMinor(meta, 'USD', stepUpCoupons)).toBe(16_250);
+      expect(bondExpectedProfitMinor(meta, 'USD', [])).toBe(13_250);
     }
   });
 

@@ -1,5 +1,6 @@
 import type { TFunction } from 'i18next';
 
+import type { BondCouponPayment } from '../interest';
 import type { ValuableHolding } from '../holding-value';
 import { holdingDescriptorOrUndefined } from '../holding-descriptor';
 
@@ -36,6 +37,7 @@ const entriesForType = (
   holding: ValuableHolding,
   now: number,
   t: TFunction,
+  scheduledCoupons: readonly BondCouponPayment[],
 ): readonly DerivedEntry[] => {
   const descriptor = holdingDescriptorOrUndefined(holding.type);
 
@@ -46,7 +48,7 @@ const entriesForType = (
     return [];
   }
 
-  return descriptor.entries(holding, now, t);
+  return descriptor.entries(holding, now, t, scheduledCoupons);
 };
 
 // The derived lifecycle entries for a holding, sorted oldest-first. Entries that
@@ -55,9 +57,12 @@ const entriesForType = (
 // sort. Not a React component (a plain render-time helper the caller's own
 // `useTranslation()` feeds `t` into), so every label re-resolves against the
 // active language on every call rather than freezing to a module-load-time
-// language.
+// language. `scheduledCoupons` are a bond's issuer-listed coupons (empty for
+// every other type, and for a bond without a known schedule).
 export const derivedEntries = (
   holding: ValuableHolding,
   now: number,
   t: TFunction,
-): DerivedEntry[] => [...entriesForType(holding, now, t)].sort((a, b) => a.time - b.time);
+  scheduledCoupons: readonly BondCouponPayment[] = [],
+): DerivedEntry[] =>
+  [...entriesForType(holding, now, t, scheduledCoupons)].sort((a, b) => a.time - b.time);

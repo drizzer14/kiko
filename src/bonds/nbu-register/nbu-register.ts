@@ -4,8 +4,8 @@ import { NBU_API_ENDPOINT } from '@env';
 import { Money } from '@kiko/currency/money';
 import { startOfLocalDay } from '@kiko/dates';
 import { monthsPerCouponPeriod } from '@kiko/holdings/interest';
-import { type Currency, currencyOptions } from '@kiko/currency/currency';
-import { decimalFromJsonNumber, multiplyToDecimal } from '@kiko/currency/decimal';
+import { type Currency, currencyOptions, currencyScale } from '@kiko/currency/currency';
+import { shiftDecimal, multiplyToDecimal, decimalFromJsonNumber } from '@kiko/currency/decimal';
 import { bondCouponFrequencies, type BondCouponFrequency } from '@kiko/holdings/holding-metadata';
 
 /**
@@ -180,24 +180,24 @@ const COUPON_PERCENT_SCALE = 4;
  * The rate of the next coupon not yet paid on `now`'s local day (a coupon
  * paid today counts as paid): its amount x payments per year / nominal,
  * through exact decimal math — `77 * 2 / 1000 * 100` in float is
- * `15.400000000000002`. Null when there is no such coupon or no known
- * frequency, so the caller falls back to the auction rate. A step-up bond
+ * `15.400000000000002`. Null when there is no such coupon, no known
+ * frequency, or no positive nominal, so the caller falls back to the auction
+ * rate (at refresh) or the cached coupon (at read time). A step-up bond
  * reads its CURRENT step this way, where `auk_proc` stays the first one.
  */
 const nextCouponPct = (
-  row: NbuRegisterRow,
   payments: readonly BondPayment[],
+  frequency: BondCouponFrequency | null,
+  nominal: string | null,
   now: number,
 ): number | null => {
-  const frequency = couponFrequencyFromPayPeriod(row.pay_period);
-  const nominal = decimalFromJsonNumber(row.nominal);
   const todayStart = startOfLocalDay(now);
   const next = payments
     .filter((payment) => payment.kind === 'coupon' && payment.date > todayStart)
     .sort((first, second) => first.date - second.date)
     .at(0);
 
-  if (frequency === null || nominal === null || row.nominal <= 0 || next === undefined) {
+  if (frequency === null || nominal === null || next === undefined) {
     return null;
   }
 
@@ -229,19 +229,37 @@ const toBondTerms = (row: NbuRegisterRow, now: number): BondTerms[] => {
   }
 
   const payments = toBondPayments(row.payments);
+  const frequency = couponFrequencyFromPayPeriod(row.pay_period);
+  const nominal = row.nominal > 0 ? decimalFromJsonNumber(row.nominal) : null;
 
   return [
     {
       isin: row.cpcode,
       currency: row.val_code,
       faceValueMinorUnits: Money.fromMajor(row.val_code, row.nominal).minorUnits,
-      couponPct: nextCouponPct(row, payments ?? [], now) ?? row.auk_proc,
+      couponPct: nextCouponPct(payments ?? [], frequency, nominal, now) ?? row.auk_proc,
       maturityDate,
-      couponFrequency: couponFrequencyFromPayPeriod(row.pay_period),
+      couponFrequency: frequency,
       name: `${row.cpdescr} ${row.cpcode}`,
       payments,
     },
   ];
+};
+
+/**
+ * The coupon of cached `terms` as of `now`, not as of the refresh day that
+ * wrote them: an offline phone must still move to a step-up bond's next step
+ * on its date. The cached coupon when no coupon is left to pay.
+ */
+export const currentCouponPct = (terms: BondTerms, now: number): number => {
+  const nominal =
+    terms.faceValueMinorUnits > 0
+      ? shiftDecimal(String(terms.faceValueMinorUnits), -currencyScale[terms.currency])
+      : null;
+
+  return (
+    nextCouponPct(terms.payments ?? [], terms.couponFrequency, nominal, now) ?? terms.couponPct
+  );
 };
 
 /**

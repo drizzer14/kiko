@@ -2,7 +2,7 @@ import { i18n } from '@kiko/i18n/init';
 
 import type { ValuableHolding } from '../holding-value';
 
-import { derivedEntries } from './derived-entries';
+import { type DerivedEntry, derivedEntries } from './derived-entries';
 
 const DAY = 86_400_000;
 const T0 = 1_600_000_000_000;
@@ -257,6 +257,93 @@ describe('derivedEntries', () => {
       entries.filter((entry) => entry.kind === 'coupon').map((entry) => entry.amountMinorUnits),
     ).toEqual([38_500, 38_500, 38_500]);
     expect(entries.some((entry) => entry.kind === 'tax')).toBe(false);
+  });
+
+  describe('a bond paid from its register coupons', () => {
+    // XS2895055981 pays per 1-dollar nominal: 0.0225 up to 2027-02, 0.03 from
+    // 2027-08, semiannually; saved in ISIN mode while the coupon read 4.5%.
+    const stepUpCoupons = [
+      { date: local(2026, 7, 1), amount: '0.0225' },
+      { date: local(2027, 1, 1), amount: '0.0225' },
+      { date: local(2027, 7, 1), amount: '0.03' },
+      { date: local(2028, 1, 1), amount: '0.03' },
+      { date: local(2028, 7, 1), amount: '0.03' },
+      { date: local(2029, 1, 1), amount: '0.03' },
+    ];
+    const stepUpBond: Holding = {
+      id: 'step-up',
+      type: 'bond',
+      currency: 'USD',
+      balanceMinorUnits: 0,
+      metadata: {
+        quantity: 1000,
+        faceValueMinorUnits: 100,
+        couponPct: 4.5,
+        couponFrequency: 'semiannually',
+        bondKind: 'government',
+        purchaseDate: local(2026, 8, 26),
+        purchasePriceMinorUnits: 98_000,
+        maturityDate: local(2029, 1, 1),
+        isin: 'XS2895055981',
+      },
+    };
+    const couponRows = (entries: DerivedEntry[]) =>
+      entries
+        .filter((entry) => entry.kind === 'coupon')
+        .map((entry) => [entry.time, entry.amountMinorUnits]);
+
+    it("books each coupon of a step-up bond at that payment's own rate", () => {
+      const entries = derivedEntries(stepUpBond, local(2026, 8, 26), i18n.t, stepUpCoupons);
+
+      expect(couponRows(entries)).toEqual([
+        [local(2027, 1, 15), 2_250],
+        [local(2027, 7, 15), 3_000],
+        [local(2028, 1, 15), 3_000],
+        [local(2028, 7, 15), 3_000],
+        [local(2029, 1, 1), 3_000],
+      ]);
+    });
+
+    it('books every coupon at the saved rate when the register has no coupons for it', () => {
+      const entries = derivedEntries(stepUpBond, local(2026, 8, 26), i18n.t, []);
+
+      expect(couponRows(entries).map(([, amount]) => amount)).toEqual([
+        2_250, 2_250, 2_250, 2_250, 2_250,
+      ]);
+    });
+
+    it('books UA4000239115 at 75.90 per 1,000 bond from its register coupons', () => {
+      const holding: Holding = {
+        id: 'ovdp',
+        type: 'bond',
+        currency: 'UAH',
+        balanceMinorUnits: 0,
+        metadata: {
+          quantity: 1,
+          faceValueMinorUnits: 100_000,
+          couponPct: 15.18,
+          couponFrequency: 'semiannually',
+          bondKind: 'government',
+          purchaseDate: local(2026, 8, 10),
+          maturityDate: local(2027, 8, 15),
+          isin: 'UA4000239115',
+        },
+      };
+      const coupons = [
+        { date: local(2026, 8, 16), amount: '75.9' },
+        { date: local(2027, 2, 17), amount: '75.9' },
+        { date: local(2027, 8, 15), amount: '75.9' },
+      ];
+
+      expect(couponRows(derivedEntries(holding, local(2026, 8, 26), i18n.t, coupons))).toEqual([
+        [local(2026, 8, 15), 7_590],
+        [local(2027, 2, 15), 7_590],
+        [local(2027, 8, 15), 7_590],
+      ]);
+      expect(couponRows(derivedEntries(holding, local(2026, 8, 26), i18n.t))).toEqual(
+        couponRows(derivedEntries(holding, local(2026, 8, 26), i18n.t, coupons)),
+      );
+    });
   });
 
   it('tones a recap-on deposit: tax lines negative, interest/capitalization positive, contributions neutral', () => {

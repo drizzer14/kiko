@@ -426,6 +426,30 @@ export const bondCouponDates = (
   return [...new Set(dates)].sort((a, b) => a - b);
 };
 
+/**
+ * One coupon a bond's issuer schedules (the NBU register's payments): the
+ * exact decimal amount paid for ONE bond on `date`.
+ */
+export type BondCouponPayment = { date: number; amount: string };
+
+/**
+ * The scheduled coupon a ledger coupon date stands for, or undefined without
+ * a schedule. The ledger books a coupon on the 15th of its month (the bank
+ * statement's day) while the issuer lists it a few days away, never half a
+ * period away, so the closest payment is the one paid on that date.
+ */
+export const couponPaymentOn = (
+  payments: readonly BondCouponPayment[],
+  date: number,
+): BondCouponPayment | undefined =>
+  payments.reduce<BondCouponPayment | undefined>(
+    (closest, payment) =>
+      closest === undefined || Math.abs(payment.date - date) < Math.abs(closest.date - date)
+        ? payment
+        : closest,
+    undefined,
+  );
+
 // The amount of a single coupon (major units): nominal * couponPct/100 divided
 // by the number of coupons per year (12 / months-per-period).
 export const bondCouponMajor = (

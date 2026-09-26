@@ -10,9 +10,10 @@ const bondIsinOf = (holding: HoldingRow | undefined): string =>
 
 /**
  * The cached NBU register terms for a bond holding's ISIN — a display-only
- * read for its yield to maturity; the stored bond itself never changes from
- * the register. Disabled for a holding with no ISIN (kiko-architecture: never
- * read data the caller does not need).
+ * read for its coupons (each at its own rate), expected profit and yield to
+ * maturity; the stored bond itself never changes from the register. Disabled
+ * for a holding with no ISIN (kiko-architecture: never read data the caller
+ * does not need).
  */
 export const useBondRegisterTerms = (
   holding: HoldingRow | undefined,

@@ -879,9 +879,57 @@ is only the fallback when no future coupon (or no known frequency)
 exists. A step-up bond (XS2895055981) therefore reads its CURRENT
 step. `fetchNbuRegister(fetchImpl, now)` takes `now` from
 `refreshBondRegisterIfStale`, so the cached coupon is as of the
-refresh day. The register only feeds the ISIN-mode form's fill: a
-SAVED bond's `BondMeta.couponPct` stays as saved — a later refresh
-(including a step-up date) never rewrites it.
+refresh day.
+
+**Step-up coupons: the coupon in force per payment date (USER DECISION
+2026-09-27).** No schema change: the holding reaches its payments
+through its own ISIN → the `bond_register.terms` cache (the same read
+the yield uses), never a copy in the holding's metadata. A SAVED
+bond's `BondMeta.couponPct` still stays as saved (nothing rewrites it);
+it is only the fallback.
+- **Which bonds.** `holdingRegisterPayments(meta, currency, terms)`
+  (`src/bonds/nbu-register/holding-register-payments.ts`) is the one
+  gate: the cached payments describe a holding only when `terms.isin
+  === meta.isin` AND the currency and face value match the register's;
+  null for a Manual bond (no ISIN), another ISIN, a cache without
+  payments, or no cache. `holdingRegisterCoupons(metadata, currency,
+  terms)` keeps its `'coupon'` payments (`[]` otherwise). The yield,
+  the ledger, and the expected profit all read this gate.
+- **Ledger and expected profit.** `derivedEntries(holding, now, t,
+  scheduledCoupons)` → `HoldingDescriptor.entries(…, scheduledCoupons)`
+  and `bondExpectedProfitMinor(meta, currency, scheduledCoupons)`
+  (`holding-descriptor/bond/`) build every coupon through one
+  `bondCoupons`: the ledger DATES stay `bondCouponDates` (the
+  statement's 15th, unchanged); each date's gross is the scheduled
+  coupon closest to it (`couponPaymentOn`, `src/holdings/interest/` —
+  the register lists it a few days off the 15th, never half a period;
+  an equal-distance tie keeps the earlier) x `quantity` through
+  `multiplyToMinorUnits`, else the saved constant coupon. Corporate
+  tax is withheld per coupon. `BondCouponPayment` (`{ date, amount }`)
+  is the holdings-owned shape; `BondPayment` satisfies it, so holdings
+  never imports bonds. The holding detail screen passes
+  `holdingRegisterCoupons(…, registerTerms)` from
+  `useBondRegisterTerms`; the spec's `expectedProfit(holding,
+  registerTerms)` does the same.
+- **Shown coupon at read time.** `currentCouponPct(terms, now)`
+  (`nbu-register.ts`) re-applies the next-unpaid rule to the cached
+  payments against TODAY (nominal from `faceValueMinorUnits` via
+  `shiftDecimal`), falling back to the cached `couponPct`. The
+  ISIN-mode form's `useBondIsinMode` returns its matched terms with
+  this coupon (`Date.now()`), so both the shown and the filled coupon
+  move to a step on its date with no refresh (an offline phone).
+- **Pins.** XS2895055981 cached on 2026-09-26: shown 4.5 on 2027-01-20,
+  6 on 2027-08-15 (and on 2027-02-01, that coupon counted paid); 1,000
+  bonds bought 2026-09-26 for 980.00 book coupons 22.50, then 4 x 30.00,
+  expected profit 162.50 (the saved 4.5% alone gives 132.50).
+  UA4000239115 unchanged: 15.18, ledger 75.90 per 1,000 bond with or
+  without the register coupons. A Manual bond and an ISIN bond whose
+  cache has no payments keep the saved coupon.
+- **Limits.** A matured/delisted ISIN leaves the cache (`replaceAll`),
+  so its past coupons fall back to the saved coupon; so does a fresh
+  install or restore before the first register refresh (the refresh
+  runs when the bond form opens). Edit mode still seeds the SAVED
+  coupon into Manual's coupon field.
 
 **Yield to maturity (USER DECISION D4).** `src/bonds/yield-to-maturity/`:
 `yieldToMaturity(cashFlows, paidMinorUnits, lotDate)` is the effective
@@ -941,7 +989,8 @@ Manual mode's own optional ISIN field), `undefined` for a legacy
 Manual-mode bond. Once saved, the holding's stored terms never depend
 on the register again — nothing re-validates a stored ISIN or
 rewrites its coupon against a later register state (the detail
-screen's yield to maturity only READS the cached payments, above).
+screen's coupons, expected profit and yield to maturity only READ the
+cached payments, above).
 
 `BondFormBlock`'s bond section has an "ISIN / Manual"
 `BondEntryMode` mode, the design-system `SegmentedControl` (not

@@ -57,11 +57,11 @@ type TextNode = ReturnType<Awaited<ReturnType<typeof render>>['getByText']>;
 // The tightest ancestor of `label` that contains a money amount (UAH formats
 // with a trailing ₴), scoped to a single ledger/breakdown row — the mocked
 // MoneyText node whose `money-tone-*` testID carries the resolved tone.
-const amountForLabel = (label: TextNode): TextNode => {
+const amountForLabel = (label: TextNode, currencySign = /₴/): TextNode => {
   let node = label.parent;
 
   for (let depth = 0; depth < 8 && node; depth += 1) {
-    const matches = within(node).queryAllByText(/₴/);
+    const matches = within(node).queryAllByText(currencySign);
 
     if (matches.length > 0) {
       return matches[0];
@@ -2009,5 +2009,67 @@ describe('HoldingDetailScreen — bond yield to maturity', () => {
     await renderScreen();
 
     expect(registerCall()?.[2]).toBe(false);
+  });
+
+  // 1,000 x XS2895055981 (1-dollar nominal) for 980.00, saved at 4.5%: the
+  // register pays 0.0225 per bond up to 2027-02 and 0.03 from 2027-08.
+  it("books a step-up bond's coupons and expected profit at each register payment's rate", async () => {
+    const coupon = (year: number, month: number, amount: string) => ({
+      date: localDay(year, month, 1),
+      kind: 'coupon',
+      amount,
+    });
+    mockBondRegisterRows = [
+      {
+        isin: 'XS2895055981',
+        terms: {
+          isin: 'XS2895055981',
+          currency: 'USD',
+          faceValueMinorUnits: 100,
+          couponPct: 4.5,
+          maturityDate: localDay(2029, 2, 1),
+          couponFrequency: 'semiannually',
+          name: 'OЗДП-середньострокова XS2895055981',
+          payments: [
+            coupon(2027, 2, '0.0225'),
+            coupon(2027, 8, '0.03'),
+            coupon(2028, 2, '0.03'),
+            coupon(2028, 8, '0.03'),
+            coupon(2029, 2, '0.03'),
+            { date: localDay(2029, 2, 1), kind: 'redemption', amount: '1' },
+          ],
+        },
+        fetchedAt: 1,
+      },
+    ];
+    seed({
+      ...bondHolding,
+      currency: 'USD',
+      metadata: {
+        quantity: 1000,
+        faceValueMinorUnits: 100,
+        couponPct: 4.5,
+        couponFrequency: 'semiannually',
+        bondKind: 'government',
+        purchaseDate: localDay(2026, 9, 26),
+        purchasePriceMinorUnits: 98_000,
+        maturityDate: localDay(2029, 2, 1),
+        isin: 'XS2895055981',
+      },
+    });
+
+    const { getAllByText, getByText } = await renderScreen();
+    const couponAmounts = getAllByText('Coupon').map(
+      (label) => amountForLabel(label, /\$/).props.children,
+    );
+
+    expect(couponAmounts.map(String)).toEqual([
+      expect.stringContaining('30.00'),
+      expect.stringContaining('30.00'),
+      expect.stringContaining('30.00'),
+      expect.stringContaining('30.00'),
+      expect.stringContaining('22.50'),
+    ]);
+    expect(amountForLabel(getByText('Expected profit'), /\$/)).toHaveTextContent(/162\.50/);
   });
 });

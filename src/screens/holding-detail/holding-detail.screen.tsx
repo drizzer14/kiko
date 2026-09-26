@@ -24,7 +24,6 @@ import { categoriesRepo } from '@kiko/categories/repo';
 import { activeLocale } from '@kiko/i18n/active-locale';
 import type { Currency } from '@kiko/currency/currency';
 import type { PriceBook } from '@kiko/prices/price-book';
-import type { BondTerms } from '@kiko/bonds/nbu-register';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { usePriceBook } from '@kiko/prices/use-price-book';
 import { asLoanMeta } from '@kiko/holdings/holding-metadata';
@@ -44,6 +43,7 @@ import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
 import { isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
+import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import { useDataReady, useLiveQuery, type HoldingRow, type TransactionRow } from '@kiko/db';
 import { type FC, type ReactElement, type ReactNode, useLayoutEffect, useMemo } from 'react';
 import { type HoldingValueBreakdown, holdingValueBreakdown } from '@kiko/holdings/holding-value';
@@ -135,7 +135,7 @@ const interestBreakdownRows = (
   registerTerms: BondTerms | null,
   t: TFunction,
 ): BreakdownRow[] => {
-  const expectedProfit = spec.expectedProfit(holding);
+  const expectedProfit = spec.expectedProfit(holding, registerTerms);
   const yieldRows =
     foldMap(maybe(spec.yieldToMaturity(holding, registerTerms)), (rate) => [
       {
@@ -747,7 +747,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     holding?.type === 'loan',
     { cached: true },
   );
-  // The register terms a bond's yield to maturity reads its payments from.
+  // The register terms a bond's coupons, expected profit and yield to
+  // maturity read its payments from.
   const { terms: registerTerms, isLoading: registerTermsLoading } = useBondRegisterTerms(holding);
   const currency: Currency = holding?.currency ?? 'UAH';
   const now = Date.now();
@@ -809,10 +810,19 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // purchase, coupon — whatever `derivedEntries` yields for the type). Both
   // carry a `time`; the merged list is sorted newest-first to match the repo's
   // `desc(time)` ordering. Real rows stay interactive (swipe-to-delete, tap to
-  // edit); derived rows are read-only and marked "Computed".
+  // edit); derived rows are read-only and marked "Computed". A bond's coupons
+  // each take their own register rate (a step-up bond's rate changes).
   const derived: DerivedEntry[] = useMemo(
-    () => (holding ? derivedEntries(holding, now, t) : []),
-    [holding, now, t],
+    () =>
+      holding
+        ? derivedEntries(
+            holding,
+            now,
+            t,
+            holdingRegisterCoupons(holding.metadata, holding.currency, registerTerms),
+          )
+        : [],
+    [holding, now, t, registerTerms],
   );
   const ledger = useMemo(
     () =>

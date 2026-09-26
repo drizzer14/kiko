@@ -1,11 +1,12 @@
 import either from 'fnts/either';
 import { useLiveQuery } from '@kiko/db';
+import maybe, { foldMap } from 'fnts/maybe';
 import { startOfLocalDay } from '@kiko/dates';
 import type { Currency } from '@kiko/currency/currency';
-import type { BondTerms } from '@kiko/bonds/nbu-register';
 import { normalizeIsin, validateIsin } from '@kiko/bonds/isin';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { type BondTerms, currentCouponPct } from '@kiko/bonds/nbu-register';
 import type { BondKind, BondCouponFrequency } from '@kiko/holdings/holding-metadata';
 import { bondRegisterRepo, refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
 
@@ -158,8 +159,15 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
   // only trust the matched row when its OWN `isin` still equals what is
   // typed now.
   const matchedRow = bondRegisterRows.at(0);
-  const registerTerms: BondTerms | null =
+  const cachedTerms: BondTerms | null =
     matchedRow !== undefined && matchedRow.isin === normalizedIsin ? matchedRow.terms : null;
+  // The cache holds the coupon as of its refresh day; an offline phone must
+  // still show and fill a step-up bond's new step from its date.
+  const registerTerms: BondTerms | null =
+    foldMap(maybe(cachedTerms), (terms) => ({
+      ...terms,
+      couponPct: currentCouponPct(terms, Date.now()),
+    })) ?? null;
 
   // Whether the `bond_register` cache has EVER been populated — tells "no
   // cache yet" (the register was never fetched, or is fetching for the

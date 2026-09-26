@@ -4,6 +4,7 @@ import {
 } from '@kiko/holdings/holding-descriptor';
 import type { HoldingRow } from '@kiko/db';
 import { addMonths } from '@kiko/holdings/interest';
+import type { BondTerms } from '@kiko/bonds/nbu-register';
 import type { BondMeta, LoanMeta } from '@kiko/holdings/holding-metadata';
 import { buildPriceBook, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 import { holdingTypes, type HoldingType } from '@kiko/holdings/holding-type';
@@ -69,7 +70,7 @@ describe('holdingDetailSpecs breakdown', () => {
     const spec = asInterestBreakdown(holdingDetailSpecFor('term_deposit').breakdown);
 
     expect(spec.principalLabelKey).toBe('holdingDetail.principal');
-    expect(spec.expectedProfit(holding({ type: 'term_deposit' }))).toBeNull();
+    expect(spec.expectedProfit(holding({ type: 'term_deposit' }), null)).toBeNull();
   });
 
   it("shows a bond its cost label with the bond's whole-life expected profit", () => {
@@ -87,13 +88,61 @@ describe('holdingDetailSpecs breakdown', () => {
     const spec = asInterestBreakdown(holdingDetailSpecs.bond.breakdown);
 
     expect(spec.principalLabelKey).toBe('holdingDetail.cost');
-    expect(spec.expectedProfit(bondHolding)?.minorUnits).toBe(bondExpectedProfitMinor(meta, 'UAH'));
+    expect(spec.expectedProfit(bondHolding, null)?.minorUnits).toBe(
+      bondExpectedProfitMinor(meta, 'UAH', []),
+    );
+  });
+
+  describe('a step-up ISIN bond', () => {
+    // 1,000 x XS2895055981 (1-dollar nominal) for 980.00, saved at 4.5%: one
+    // 22.50 coupon before the step, four 30.00 after, then 1,000.00 redeemed.
+    const stepUpMeta: BondMeta = {
+      quantity: 1000,
+      faceValueMinorUnits: 100,
+      couponPct: 4.5,
+      couponFrequency: 'semiannually',
+      bondKind: 'government',
+      purchaseDate: new Date(2026, 8, 26).getTime(),
+      purchasePriceMinorUnits: 98_000,
+      maturityDate: new Date(2029, 1, 1).getTime(),
+      isin: 'XS2895055981',
+    };
+    const stepUpTerms: BondTerms = {
+      isin: 'XS2895055981',
+      currency: 'USD',
+      faceValueMinorUnits: 100,
+      couponPct: 4.5,
+      maturityDate: new Date(2029, 1, 1).getTime(),
+      couponFrequency: 'semiannually',
+      name: 'OЗДП-середньострокова XS2895055981',
+      payments: [
+        { date: new Date(2027, 1, 1).getTime(), kind: 'coupon', amount: '0.0225' },
+        { date: new Date(2027, 7, 1).getTime(), kind: 'coupon', amount: '0.03' },
+        { date: new Date(2028, 1, 1).getTime(), kind: 'coupon', amount: '0.03' },
+        { date: new Date(2028, 7, 1).getTime(), kind: 'coupon', amount: '0.03' },
+        { date: new Date(2029, 1, 1).getTime(), kind: 'coupon', amount: '0.03' },
+        { date: new Date(2029, 1, 1).getTime(), kind: 'redemption', amount: '1' },
+      ],
+    };
+    const stepUpHolding = holding({ type: 'bond', currency: 'USD', metadata: stepUpMeta });
+    const spec = asInterestBreakdown(holdingDetailSpecs.bond.breakdown);
+
+    it("sums the expected profit from each register coupon's own rate", () => {
+      expect(spec.expectedProfit(stepUpHolding, stepUpTerms)?.minorUnits).toBe(16_250);
+    });
+
+    it('falls back to the saved coupon when the cache has no payments for it', () => {
+      const olderCache = { ...stepUpTerms, payments: undefined };
+
+      expect(spec.expectedProfit(stepUpHolding, olderCache)?.minorUnits).toBe(13_250);
+      expect(spec.expectedProfit(stepUpHolding, null)?.minorUnits).toBe(13_250);
+    });
   });
 
   it('returns null for a bond with unparsable metadata', () => {
     const spec = asInterestBreakdown(holdingDetailSpecs.bond.breakdown);
 
-    expect(spec.expectedProfit(holding({ type: 'bond', metadata: null }))).toBeNull();
+    expect(spec.expectedProfit(holding({ type: 'bond', metadata: null }), null)).toBeNull();
     expect(spec.yieldToMaturity(holding({ type: 'bond', metadata: null }), null)).toBeNull();
   });
 
@@ -127,8 +176,8 @@ describe('holdingDetailSpecs breakdown', () => {
     const bondHolding = holding({ type: 'bond', currency: 'UAH', metadata: meta });
     const spec = asInterestBreakdown(holdingDetailSpecs.bond.breakdown);
 
-    expect(spec.expectedProfit(bondHolding)?.minorUnits).toBe(
-      bondExpectedProfitMinor({ ...meta, purchasePriceMinorUnits: 9_800_000 }, 'UAH'),
+    expect(spec.expectedProfit(bondHolding, null)?.minorUnits).toBe(
+      bondExpectedProfitMinor({ ...meta, purchasePriceMinorUnits: 9_800_000 }, 'UAH', []),
     );
     expect(spec.yieldToMaturity(bondHolding, null)).toBeNull();
   });

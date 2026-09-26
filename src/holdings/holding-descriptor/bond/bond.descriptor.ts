@@ -1,12 +1,19 @@
+import {
+  bondCouponDates,
+  couponPaymentOn,
+  bondCouponMajor,
+  type BondCouponPayment,
+} from '@kiko/holdings/interest';
 import type { TFunction } from 'i18next';
+import maybe, { foldMap } from 'fnts/maybe';
 import { startOfLocalDay } from '@kiko/dates';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { Money, toMajor } from '@kiko/currency/money';
 import { taxOnInterestMinor } from '@kiko/holdings/tax';
 import type { DerivedEntry } from '@kiko/holdings/derived-entries';
 import type { ValuableHolding } from '@kiko/holdings/holding-value';
-import { bondCouponDates, bondCouponMajor } from '@kiko/holdings/interest';
 import { asBondMeta, type BondMeta } from '@kiko/holdings/holding-metadata';
+import { decimalFromJsonNumber, multiplyToMinorUnits } from '@kiko/currency/decimal';
 
 import { makeEntry } from '../entry-parts';
 import type { HoldingDescriptor } from '../holding-descriptor.d';
@@ -62,47 +69,66 @@ const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreak
   };
 };
 
+type BondCoupon = { date: number; netMinorUnits: number };
+
+// Every coupon the holding is paid after its purchase, each at the rate in
+// force on its own date: a step-up bond's scheduled coupon for that date when
+// the schedule is known, else the saved constant coupon. Each pays out net of
+// the corporate 23% withholding (government bonds are untaxed); the bank
+// credits the net amount.
+const bondCoupons = (
+  meta: BondMeta,
+  currency: ValuableHolding['currency'],
+  scheduledCoupons: readonly BondCouponPayment[],
+): BondCoupon[] => {
+  const nominalMinorUnits = meta.quantity * meta.faceValueMinorUnits;
+  const savedGrossMinorUnits = Money.fromMajor(
+    currency,
+    bondCouponMajor(toMajor(nominalMinorUnits, currency), meta.couponPct, meta.couponFrequency),
+  ).minorUnits;
+  const quantity = decimalFromJsonNumber(meta.quantity);
+  const grossOn = (date: number): number =>
+    foldMap(maybe(couponPaymentOn(scheduledCoupons, date)), (payment) =>
+      foldMap(maybe(quantity), (bonds) => multiplyToMinorUnits([bonds, payment.amount], currency)),
+    ) ?? savedGrossMinorUnits;
+
+  const couponDates = bondCouponDates(meta.purchaseDate, meta.maturityDate, meta.couponFrequency);
+
+  return couponDates.map((date) => {
+    const grossMinorUnits = grossOn(date);
+    const taxMinorUnits = meta.bondKind === 'corporate' ? taxOnInterestMinor(grossMinorUnits) : 0;
+
+    return { date, netMinorUnits: grossMinorUnits - taxMinorUnits };
+  });
+};
+
 // The bond's expected lifetime profit (minor units): the sum of every net
 // coupon plus the redeemed nominal, less the price actually paid. Reproduces the
 // figure the user's bank shows (e.g. 3 * 8,175 + 100,000 - 107,868 = 16,657).
 export const bondExpectedProfitMinor = (
   meta: BondMeta,
   currency: ValuableHolding['currency'],
-): number => {
-  const nominalMinor = meta.quantity * meta.faceValueMinorUnits;
-  const couponMinor = Money.fromMajor(
-    currency,
-    bondCouponMajor(toMajor(nominalMinor, currency), meta.couponPct, meta.couponFrequency),
-  ).minorUnits;
-  const netCouponMinor =
-    couponMinor - (meta.bondKind === 'corporate' ? taxOnInterestMinor(couponMinor) : 0);
-  const couponCount = bondCouponDates(
-    meta.purchaseDate,
-    meta.maturityDate,
-    meta.couponFrequency,
-  ).length;
+  scheduledCoupons: readonly BondCouponPayment[],
+): number =>
+  bondCoupons(meta, currency, scheduledCoupons).reduce(
+    (sum, coupon) => sum + coupon.netMinorUnits,
+    0,
+  ) +
+  meta.quantity * meta.faceValueMinorUnits -
+  meta.purchasePriceMinorUnits;
 
-  return netCouponMinor * couponCount + nominalMinor - meta.purchasePriceMinorUnits;
-};
-
-const bondEntries = (holding: ValuableHolding, now: number, t: TFunction): DerivedEntry[] => {
+const bondEntries = (
+  holding: ValuableHolding,
+  now: number,
+  t: TFunction,
+  scheduledCoupons: readonly BondCouponPayment[],
+): DerivedEntry[] => {
   const meta = asBondMeta(holding.metadata);
 
   if (meta === null) {
     return [];
   }
-  const { currency } = holding;
   const nominalMinorUnits = meta.quantity * meta.faceValueMinorUnits;
-  const nominalMajor = toMajor(nominalMinorUnits, currency);
-  const grossCouponMinor = Money.fromMajor(
-    currency,
-    bondCouponMajor(nominalMajor, meta.couponPct, meta.couponFrequency),
-  ).minorUnits;
-  // Each coupon pays out net of the corporate 23% withholding (government bonds
-  // are untaxed). The bank credits the net amount, so that is the ledger entry.
-  const netCouponMinor =
-    grossCouponMinor - (meta.bondKind === 'corporate' ? taxOnInterestMinor(grossCouponMinor) : 0);
-  const couponDates = bondCouponDates(meta.purchaseDate, meta.maturityDate, meta.couponFrequency);
 
   // Purchase (money out), each coupon (money in, net), and redemption of the
   // nominal at maturity (money in). Past entries render as real ledger rows;
@@ -117,13 +143,13 @@ const bondEntries = (holding: ValuableHolding, now: number, t: TFunction): Deriv
       t('holdingDetail.purchase'),
       now,
     ),
-    ...couponDates.map((couponDate, index) =>
+    ...bondCoupons(meta, holding.currency, scheduledCoupons).map((coupon, index) =>
       makeEntry(
         holding.id,
         'coupon',
         index,
-        couponDate,
-        netCouponMinor,
+        coupon.date,
+        coupon.netMinorUnits,
         t('holdingDetail.coupon'),
         now,
       ),

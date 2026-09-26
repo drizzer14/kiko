@@ -5,8 +5,14 @@
 // `UA4000237077`/`UA4000239115` are real DCP ISINs; `XS2895055981` is a real
 // OZDP (Eurobond) ISIN with `nominal: 1` and a step-up coupon (0.00875 per
 // 1 nominal in 2025, 0.0225 to 2027-02, 0.03 from 2027-08).
+import {
+  type BondTerms,
+  currentCouponPct,
+  fetchNbuRegister,
+  couponPeriodDays,
+  couponFrequencyFromPayPeriod,
+} from './nbu-register';
 import depoSecuritiesSample from './__fixtures__/depo-securities-sample.json';
-import { couponFrequencyFromPayPeriod, couponPeriodDays, fetchNbuRegister } from './nbu-register';
 
 const makeFetch = (body: unknown, ok = true): typeof fetch =>
   (async () => ({ ok, json: async () => body, status: ok ? 200 : 500 })) as unknown as typeof fetch;
@@ -266,5 +272,52 @@ describe('fetchNbuRegister — coupon from the next unpaid coupon payment', () =
     const row = { ...registerRow('UA4000239115'), pay_period: 200 };
 
     expect(await couponOf([row], today)).toBe(15.18);
+  });
+});
+
+// The cache is written on the refresh day; the phone may stay offline past a
+// step date, so the coupon shown is read from the payments against today.
+describe('currentCouponPct', () => {
+  const cachedOn = async (isin: string, refreshDay: number): Promise<BondTerms> => {
+    const [terms] = await fetchNbuRegister(makeFetch([registerRow(isin)]), refreshDay);
+
+    return terms;
+  };
+
+  it('reads the step-up XS2895055981 cached before the step as 4.5% before it', async () => {
+    const terms = await cachedOn('XS2895055981', today);
+
+    expect(currentCouponPct(terms, localMidnight(2027, 1, 20))).toBe(4.5);
+  });
+
+  it('moves the same cached XS2895055981 terms to 6% after the step, with no refresh', async () => {
+    const terms = await cachedOn('XS2895055981', today);
+
+    expect(terms.couponPct).toBe(4.5);
+    expect(currentCouponPct(terms, localMidnight(2027, 8, 15))).toBe(6);
+  });
+
+  it('treats the step coupon paid today as paid', async () => {
+    const terms = await cachedOn('XS2895055981', today);
+
+    expect(currentCouponPct(terms, localMidnight(2027, 2, 1))).toBe(6);
+  });
+
+  it('reads UA4000239115 as 15.18% on any day before maturity', async () => {
+    const terms = await cachedOn('UA4000239115', today);
+
+    expect(currentCouponPct(terms, localMidnight(2027, 5, 1))).toBe(15.18);
+  });
+
+  it('keeps the cached coupon for terms without payments', async () => {
+    const terms = { ...(await cachedOn('XS2895055981', today)), payments: undefined };
+
+    expect(currentCouponPct(terms, localMidnight(2027, 8, 15))).toBe(4.5);
+  });
+
+  it('keeps the cached coupon once no coupon is left to pay', async () => {
+    const terms = await cachedOn('XS2895055981', today);
+
+    expect(currentCouponPct(terms, localMidnight(2029, 3, 1))).toBe(4.5);
   });
 });

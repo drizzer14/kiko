@@ -348,4 +348,61 @@ describe('useBondIsinMode', () => {
     expect(result.current.registerLoaded).toBe(true);
     expect(result.current.isinReasonKey).toBe('forms.holding.isinNotInRegister');
   });
+
+  // The cache was written on 2026-09-26, when XS2895055981's next coupon was
+  // 0.0225 per 1-dollar bond (4.5%); from 2027-08 it pays 0.03 (6%). An
+  // offline phone never refreshes, yet must show the step on its date.
+  describe('the coupon of a step-up bond, read against today', () => {
+    const stepUpIsin = 'XS2895055981';
+    const stepUpRow = {
+      isin: stepUpIsin,
+      terms: {
+        isin: stepUpIsin,
+        currency: 'USD',
+        faceValueMinorUnits: 100,
+        couponPct: 4.5,
+        maturityDate: new Date(2029, 1, 1).getTime(),
+        couponFrequency: 'semiannually',
+        name: 'OЗДП-середньострокова XS2895055981',
+        payments: [
+          { date: new Date(2027, 1, 1).getTime(), kind: 'coupon', amount: '0.0225' },
+          { date: new Date(2027, 7, 1).getTime(), kind: 'coupon', amount: '0.03' },
+          { date: new Date(2028, 1, 1).getTime(), kind: 'coupon', amount: '0.03' },
+          { date: new Date(2029, 1, 1).getTime(), kind: 'redemption', amount: '1' },
+        ],
+      },
+      fetchedAt: new Date(2026, 8, 26).getTime(),
+    };
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    const couponOn = async (today: number) => {
+      jest.spyOn(Date, 'now').mockReturnValue(today);
+      mockBondRegisterRows = [stepUpRow];
+      const params = baseParams();
+      const { result } = await renderTheHook(params);
+
+      await act(async () => {
+        result.current.setIsin(stepUpIsin);
+      });
+
+      return { shown: result.current.registerTerms?.couponPct, filled: params.setCouponPct };
+    };
+
+    it('shows and fills 4.5% before the step', async () => {
+      const { shown, filled } = await couponOn(new Date(2027, 0, 20).getTime());
+
+      expect(shown).toBe(4.5);
+      expect(filled).toHaveBeenCalledWith('4.5');
+    });
+
+    it('shows and fills 6% after the step, from the same cache', async () => {
+      const { shown, filled } = await couponOn(new Date(2027, 7, 15).getTime());
+
+      expect(shown).toBe(6);
+      expect(filled).toHaveBeenCalledWith('6');
+    });
+  });
 });

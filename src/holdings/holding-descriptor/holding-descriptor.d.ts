@@ -7,6 +7,7 @@ import type { PriceBook } from '@kiko/prices/price-book';
 import type { Lot } from '../lots';
 import type { OwnershipShare } from '../ownership';
 import type { PricedHolding } from '../priced-value';
+import type { BondCouponPayment } from '../interest';
 import type { DerivedEntry } from '../derived-entries';
 import type { ExchangeReceivePath } from '../exchange-destination';
 import type { HoldingValueBreakdown, ValuableHolding } from '../holding-value';
@@ -48,5 +49,14 @@ export type HoldingDescriptor = {
   };
   priced: PricedSpec | null;
   breakdown: (holding: ValuableHolding, now: number, book: PriceBook) => HoldingValueBreakdown;
-  entries: (holding: ValuableHolding, now: number, t: TFunction) => readonly DerivedEntry[];
+  /**
+   * `scheduledCoupons`: a bond's issuer-listed coupons, each at its own rate
+   * (a step-up bond's rate changes between them); empty when unknown.
+   */
+  entries: (
+    holding: ValuableHolding,
+    now: number,
+    t: TFunction,
+    scheduledCoupons: readonly BondCouponPayment[],
+  ) => readonly DerivedEntry[];
 };

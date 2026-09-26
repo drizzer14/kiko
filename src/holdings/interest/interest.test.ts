@@ -4,6 +4,7 @@ import {
   biweeklyCreditDates,
   bondCouponDates,
   bondCouponMajor,
+  couponPaymentOn,
   daysBetween,
   depositAccruedMajor,
   depositLedger,
@@ -444,5 +445,25 @@ describe('bondCouponMajor', () => {
     expect(bondCouponMajor(100_000, 12, 'quarterly')).toBeCloseTo(3000, 6);
     expect(bondCouponMajor(100_000, 12, 'monthly')).toBeCloseTo(1000, 6);
     expect(bondCouponMajor(100_000, 12, 'annually')).toBeCloseTo(12000, 6);
+  });
+});
+
+describe('couponPaymentOn', () => {
+  const beforeStep = { date: local(2027, 1, 1), amount: '0.0225' };
+  const afterStep = { date: local(2027, 7, 1), amount: '0.03' };
+
+  it('reads the scheduled coupon closest to a ledger date, on either side', () => {
+    expect(couponPaymentOn([beforeStep, afterStep], local(2027, 1, 15))).toBe(beforeStep);
+    expect(couponPaymentOn([beforeStep, afterStep], local(2027, 6, 25))).toBe(afterStep);
+  });
+
+  it('keeps the earlier coupon for a date exactly between two', () => {
+    const midway = (beforeStep.date + afterStep.date) / 2;
+
+    expect(couponPaymentOn([beforeStep, afterStep], midway)).toBe(beforeStep);
+  });
+
+  it('reads nothing from an empty schedule', () => {
+    expect(couponPaymentOn([], local(2027, 1, 15))).toBeUndefined();
   });
 });

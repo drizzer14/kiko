@@ -9,32 +9,21 @@ import type { Currency } from '@kiko/currency/currency';
 import { bondCouponMajor } from '@kiko/holdings/interest';
 import { decimalFromJsonNumber, multiplyToMinorUnits } from '@kiko/currency/decimal';
 
-import { couponPeriodDays, type BondTerms } from '../nbu-register';
+import { couponPeriodDays, type BondTerms, holdingRegisterPayments } from '../nbu-register';
 
 import { portfolioYieldToMaturity, type CashFlow } from './yield-to-maturity';
 
 const MAX_GENERATED_COUPONS = 2000;
 
-/**
- * The register lists each payment for ONE bond of its own nominal, so the
- * payments describe this holding only when it carries that same nominal and
- * currency; null otherwise, or when the cache has no payments for the bond.
- */
 const registerCashFlows = (
   meta: BondMeta,
   currency: Currency,
   terms: BondTerms | null,
 ): CashFlow[] | null => {
   const quantity = decimalFromJsonNumber(meta.quantity);
-  const payments = terms?.payments ?? [];
+  const payments = holdingRegisterPayments(meta, currency, terms);
 
-  if (
-    terms === null ||
-    quantity === null ||
-    payments.length === 0 ||
-    terms.currency !== currency ||
-    terms.faceValueMinorUnits !== meta.faceValueMinorUnits
-  ) {
+  if (quantity === null || payments === null) {
     return null;
   }
 
