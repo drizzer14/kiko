@@ -5,7 +5,7 @@ import { Money, toMajor } from '../../currency/money';
 import { canConvert } from '../../rates/net-worth-view';
 import type { Currency } from '../../currency/currency';
 import { toUtcMidnight } from '../../rates/history-entry';
-import { asBondMeta } from '../../holdings/holding-metadata';
+import { asBondMeta, type BondMeta } from '../../holdings/holding-metadata';
 import type { CurrencyRateHistoryRow } from '../../db/schema';
 import { convert, type RateTable } from '../../rates/conversion';
 import { reconcileBondFunding } from '../reconcile-bond-funding';
@@ -22,6 +22,60 @@ export type NetWorthPoint = { t: number; amount: number };
  * is the net worth at the range start (the dashed baseline the chart draws).
  */
 export type NetWorthSeries = { points: NetWorthPoint[]; startReference: number };
+
+/** A bond's recognized cost, shaped to spread straight onto its `BondMeta` copy. */
+type BondRecognition = Pick<BondMeta, 'purchaseDate' | 'purchasePriceMinorUnits'>;
+
+/**
+ * Reconciles every bond's held-cost recognition against the funding money that
+ * actually left — on BOTH axes: the DAY the debit landed and the AMOUNT it
+ * debited (Q) — NOT the typed `purchaseDate`/price (P), so a card->bond move
+ * nets to zero instead of dipping (or bumping). A cross-day gap dips on the
+ * DAY axis; a synced debit that differs from the typed price (a fee, НКД, a
+ * rounded "roughly the price") dips permanently on the AMOUNT axis by (Q − P).
+ * See `reconcileBondFunding` for the currency + debit + near-price match.
+ *
+ * Every bond shares ONE `claimed` set across the whole run (see
+ * `reconcileBondFunding`), so two bonds priced the same week never both claim
+ * the same funding debit. Which bond claims it is order-dependent (a greedy,
+ * per-bond nearest-day match — not a global optimum over every bond at once),
+ * so bonds are reconciled in a FIXED order: typed `purchaseDate`, then `id` —
+ * deterministic regardless of the holdings array's own (user-controlled sort
+ * order) order.
+ */
+const bondRecognitionsFor = (
+  holdings: SeriesHolding[],
+  transactionsByHolding: Map<string, SeriesTransaction[]>,
+): Map<string, BondRecognition> => {
+  const bonds = holdings
+    .map((holding) => ({
+      holding,
+      meta: holding.type === 'bond' ? asBondMeta(holding.metadata) : null,
+    }))
+    .filter((entry): entry is { holding: SeriesHolding; meta: BondMeta } => entry.meta !== null)
+    .sort(
+      (a, b) => a.meta.purchaseDate - b.meta.purchaseDate || (a.holding.id < b.holding.id ? -1 : 1),
+    );
+
+  const claimed = new Set<string>();
+
+  return new Map(
+    bonds.map(({ holding, meta }) => {
+      const { recognitionDay, recognitionCostMinorUnits } = reconcileBondFunding(
+        meta,
+        holding.currency,
+        holdings,
+        transactionsByHolding,
+        claimed,
+      );
+
+      return [
+        holding.id,
+        { purchaseDate: recognitionDay, purchasePriceMinorUnits: recognitionCostMinorUnits },
+      ];
+    }),
+  );
+};
 
 /**
  * Build the single converted net-worth line over `range`. For each day bucket
@@ -82,14 +136,6 @@ export const buildNetWorthSeries = (input: {
     return { points: [], startReference: 0 };
   }
 
-  // Align each bond's held-cost recognition to the funding money that actually
-  // left — on BOTH axes: the DAY the debit landed and the AMOUNT it debited (Q) —
-  // NOT to the typed `purchaseDate`/price (P), so a card->bond move nets to zero
-  // instead of dipping (or bumping). A cross-day gap dips on the DAY axis; a
-  // synced debit that differs from the typed price (a fee, НКД, a rounded
-  // "roughly the price") dips permanently on the AMOUNT axis by (Q − P). See
-  // `reconcileBondFunding` for the currency + debit + near-price match.
-  //
   // This is a pure valuation shift on a THROWAWAY copy: it rewrites `purchaseDate`
   // (the cost-on threshold `bondBreakdown` reads) AND `purchasePriceMinorUnits`
   // (the flat cost `bondBreakdown` values the live bond at — verified: between the
@@ -99,29 +145,23 @@ export const buildNetWorthSeries = (input: {
   // the REAL holding's untouched `purchasePriceMinorUnits`/`purchaseDate`
   // elsewhere — the series never derives them from this copy. The pairing needs
   // cross-holding transactions, which only this builder holds, so it happens once
-  // here before the bucket loop rather than inside `bondBreakdown`.
+  // here before the bucket loop rather than inside `bondBreakdown`. See
+  // `bondRecognitionsFor` above for the claim/order rules.
+  const bondRecognitions = bondRecognitionsFor(holdings, transactionsByHolding);
+
   const valuationHoldings: SeriesHolding[] = holdings.map((holding) => {
     if (holding.type !== 'bond') {
       return holding;
     }
     const meta = asBondMeta(holding.metadata);
-    if (meta === null) {
+    const recognition = bondRecognitions.get(holding.id);
+    if (meta === null || recognition === undefined) {
       return holding;
     }
-    const { recognitionDay, recognitionCostMinorUnits } = reconcileBondFunding(
-      meta,
-      holding.currency,
-      holdings,
-      transactionsByHolding,
-    );
 
     return {
       ...holding,
-      metadata: {
-        ...meta,
-        purchaseDate: recognitionDay,
-        purchasePriceMinorUnits: recognitionCostMinorUnits,
-      },
+      metadata: { ...meta, ...recognition },
     };
   });
 

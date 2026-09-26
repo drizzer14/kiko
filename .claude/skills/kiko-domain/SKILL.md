@@ -634,6 +634,35 @@ section, its own `guardedNetWorth`-summed section total over just the
 property-kind accounts' holdings, rendered between the main grid and
 the Debts section. Read `kiko-charts` for the pie/line-specific rules.
 
+### Bond funding recognition (net-worth series only)
+
+`reconcileBondFunding` (`src/statistics/reconcile-bond-funding/`) aligns a
+bond's held-cost recognition, INSIDE `buildNetWorthSeries` only, to the real
+funding money that left another holding — never the real holding's own
+`purchaseDate`/`purchasePriceMinorUnits` (unchanged; coupons, maturity, and
+the redemption ledger still read those). It matches a DEBIT (negative
+amount) in the bond's own currency whose amount is within 5% of the typed
+price (`AMOUNT_TOLERANCE_FRACTION`) AND whose local day is within
+`FUNDING_WINDOW_DAYS` (7) of the typed `purchaseDate`'s local day — both
+axes are needed: the transaction store carries no reliable structured bond
+marker, so amount alone would false-match an unrelated same-week debit, and
+day alone would false-match an unrelated same-price one. Among candidates
+within both bands, the nearest DAY wins, tie-broken by the closest amount;
+none match → falls back to the typed day/price (a legacy, FX-funded, or
+genuinely manual bond — no regression).
+
+Each candidate carries a key (`holdingId:index`), and `buildNetWorthSeries`
+(`bondRecognitionsFor`) shares ONE `claimed: Set<string>` across every bond
+in the run, so two bonds priced the same week never both claim the SAME
+debit — the reducer filters an already-claimed candidate out, and adds the
+winner's key before returning. Because the match is a greedy per-bond
+nearest-day pick, not a global optimum, WHICH bond claims a shared candidate
+is order-dependent — bonds are reconciled in a FIXED order (typed
+`purchaseDate`, then `id`) so the result is deterministic regardless of the
+holdings array's own (user-controlled sort) order. A bond that loses the
+claim falls back to its own typed day/price, same as a genuinely unmatched
+bond.
+
 ## Price series and priced holdings
 
 See `kiko-pricing` for `price_points`, `PriceBook`, priced-holding
