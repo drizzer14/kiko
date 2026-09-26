@@ -1,3 +1,4 @@
+import { dayKeyOf } from '../../prices/price-book';
 import { startOfLocalDay } from '../../dates/local-day';
 import type { Currency } from '../../currency/currency';
 import type { BondMeta } from '../../holdings/holding-metadata';
@@ -24,7 +25,7 @@ const AMOUNT_TOLERANCE_FRACTION = 0.05;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * How far (in local days, either direction) a candidate funding debit may
+ * How far (in CALENDAR days, either direction) a candidate funding debit may
  * sit from the typed `purchaseDate` and still be accepted as that bond's
  * funding outflow: 7 days. A debit further away than this is nearly always
  * an UNRELATED spend that happens to land within the amount-tolerance band
@@ -32,6 +33,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * "Купівля облігацій" row lands within days of the typed date in every
  * observed case, never weeks. Combined with the amount band above, this is
  * the second axis that keeps the match specific to the real funding debit.
+ *
+ * The distance itself is measured with `dayKeyOf` (a UTC-normalized calendar
+ * date), never a raw ms difference of two `startOfLocalDay` instants: a local
+ * day is not always 24 hours (`local-day.ts`'s own DST doc comment), so on a
+ * window that crosses a fall-back change (a 25-hour local day), the raw ms
+ * gap between two dates exactly 7 CALENDAR days apart is 1 hour OVER
+ * `7 * DAY_MS`, which would wrongly exclude a genuinely-7-day-away debit.
  */
 const FUNDING_WINDOW_DAYS = 7;
 
@@ -104,6 +112,7 @@ export const reconcileBondFunding = (
   claimed: Set<string> = new Set(),
 ): BondRecognition => {
   const typedDay = startOfLocalDay(meta.purchaseDate);
+  const typedDayKey = dayKeyOf(meta.purchaseDate);
   const typedPrice = meta.purchasePriceMinorUnits;
   const tolerance = typedPrice * AMOUNT_TOLERANCE_FRACTION;
   const windowMs = FUNDING_WINDOW_DAYS * DAY_MS;
@@ -116,11 +125,12 @@ export const reconcileBondFunding = (
             ({ transaction, key }) =>
               transaction.amountMinorUnits < 0 &&
               Math.abs(Math.abs(transaction.amountMinorUnits) - typedPrice) <= tolerance &&
-              Math.abs(startOfLocalDay(transaction.time) - typedDay) <= windowMs &&
+              Math.abs(dayKeyOf(transaction.time) - typedDayKey) <= windowMs &&
               !claimed.has(key),
           )
           .map(({ transaction, key }) => ({
             day: startOfLocalDay(transaction.time),
+            dayKey: dayKeyOf(transaction.time),
             costMinorUnits: Math.abs(transaction.amountMinorUnits),
             key,
           }))
@@ -137,7 +147,8 @@ export const reconcileBondFunding = (
   // by the amount closest to the typed price. Seeded with the first candidate
   // (never the typed day), so a lone match is returned directly.
   const best = candidates.reduce((chosen, candidate) => {
-    const dayDelta = Math.abs(candidate.day - typedDay) - Math.abs(chosen.day - typedDay);
+    const dayDelta =
+      Math.abs(candidate.dayKey - typedDayKey) - Math.abs(chosen.dayKey - typedDayKey);
 
     if (dayDelta !== 0) {
       return dayDelta < 0 ? candidate : chosen;
