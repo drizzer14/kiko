@@ -136,10 +136,18 @@ describe('refreshRates', () => {
   it('does not reject when both providers fail', async () => {
     const { deps, captured } = makeDeps({
       fetchFiatRates: () => Promise.reject(new Error('offline')),
+      // The fiat leg falls back to NBU on a Monobank failure (`withRetry` +
+      // the sequential fallback below) — reject NBU too, so the fiat leg
+      // itself genuinely fails end-to-end rather than "succeeding" via an
+      // empty NBU fallback.
+      fetchNbuRates: () => Promise.reject(new Error('nbu also offline')),
       fetchCryptoPrices: () => Promise.reject(new Error('429')),
     });
 
-    await expect(refreshRates(deps)).resolves.toBeUndefined();
+    await expect(refreshRates(deps)).resolves.toEqual({
+      state: 'failed',
+      failedLegs: ['fiat', 'crypto'],
+    });
 
     expect(captured).toHaveLength(0);
   });
@@ -283,9 +291,12 @@ describe('refreshRates — retry on a failed live fetch (Part B)', () => {
         callCount += 1;
         throw new Error('persistently offline');
       },
+      // The NBU fallback is ALSO offline, so the fiat leg genuinely fails —
+      // otherwise an unrelated empty NBU fallback would "succeed" this leg.
+      fetchNbuRates: () => Promise.reject(new Error('nbu also offline')),
     });
 
-    await expect(refreshRates(deps)).resolves.toBeUndefined();
+    await expect(refreshRates(deps)).resolves.toEqual({ state: 'partial', failedLegs: ['fiat'] });
 
     // The initial attempt plus every retry, and no row written (the stale DB
     // rates are left untouched, exactly like the pre-existing both-fail case).
@@ -369,7 +380,7 @@ describe('refreshRates — NBU fallback when Monobank is unreachable', () => {
       fetchNbuRates: () => Promise.reject(new Error('nbu also offline')),
     });
 
-    await expect(refreshRates(deps)).resolves.toBeUndefined();
+    await expect(refreshRates(deps)).resolves.toEqual({ state: 'partial', failedLegs: ['fiat'] });
 
     expect(captured).toHaveLength(0);
   });
@@ -583,5 +594,56 @@ describe('refreshRates — UAH is always treated as present for the throttle', (
 
     expect(fiatCalled).toBe(false);
     expect(captured).toHaveLength(0);
+  });
+});
+
+// `refreshRates` resolves an outcome instead of a bare `void`, mirroring
+// `BackfillStatus` (`history-backfill.ts`), so a caller (`refresh-market-data.ts`)
+// can log and surface a failed run without the promise ever rejecting.
+describe('refreshRates — the resolved RatesRefreshOutcome', () => {
+  it('resolves skipped when the data-presence gate has nothing to fetch', async () => {
+    const { deps } = makeDeps({
+      openCurrencies: async () => ({ needsFiat: false, cryptoCurrencies: [] }),
+    });
+
+    await expect(refreshRates(deps)).resolves.toEqual({ state: 'skipped', failedLegs: [] });
+  });
+
+  it('resolves skipped when the throttle window is active', async () => {
+    const { deps } = makeDeps({
+      now: () => 1000 + 60_000, // 1 minute after the last refresh
+      lastRefreshAt: 1000,
+    });
+
+    await expect(refreshRates(deps)).resolves.toEqual({ state: 'skipped', failedLegs: [] });
+  });
+
+  it('resolves failed and writes nothing when both fiat providers reject and only fiat is needed', async () => {
+    const { deps, captured } = makeDeps({
+      fetchFiatRates: () => Promise.reject(new Error('offline')),
+      fetchNbuRates: () => Promise.reject(new Error('nbu also offline')),
+      openCurrencies: async () => ({
+        needsFiat: true,
+        cryptoCurrencies: [],
+        nonBaseCurrencies: ['EUR'],
+      }),
+    });
+
+    await expect(refreshRates(deps)).resolves.toEqual({ state: 'failed', failedLegs: ['fiat'] });
+    expect(captured).toHaveLength(0);
+  });
+
+  it('resolves partial when the crypto leg rejects but the fiat leg succeeds', async () => {
+    const { deps } = makeDeps({
+      fetchCryptoPrices: () => Promise.reject(new Error('429')),
+    });
+
+    await expect(refreshRates(deps)).resolves.toEqual({ state: 'partial', failedLegs: ['crypto'] });
+  });
+
+  it('resolves refreshed when every attempted leg succeeds', async () => {
+    const { deps } = makeDeps();
+
+    await expect(refreshRates(deps)).resolves.toEqual({ state: 'refreshed', failedLegs: [] });
   });
 });

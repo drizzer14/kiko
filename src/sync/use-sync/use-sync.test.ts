@@ -1,19 +1,14 @@
+import { left, right } from 'fnts/either';
 import { act, renderHook } from '@testing-library/react-native';
 
 const mockRunSync = jest.fn();
-const mockRefreshRates = jest.fn();
-const mockLatestFetchedAt = jest.fn();
+const mockRefreshMarketData = jest.fn();
 
 jest.mock('../../monobank/sync', () => ({
   runSync: (...args: unknown[]) => mockRunSync(...args),
 }));
-jest.mock('../../rates/rates-refresh', () => ({
-  refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
-}));
-jest.mock('@kiko/rates/repo', () => ({
-  ratesRepo: {
-    latestFetchedAt: (...args: unknown[]) => mockLatestFetchedAt(...args),
-  },
+jest.mock('@kiko/sync/refresh-market-data', () => ({
+  refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),
 }));
 
 import { useSync } from './use-sync';
@@ -22,12 +17,10 @@ describe('useSync', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRunSync.mockResolvedValue(undefined);
-    mockRefreshRates.mockResolvedValue(undefined);
-    mockLatestFetchedAt.mockResolvedValue(null);
+    mockRefreshMarketData.mockResolvedValue(right(undefined));
   });
 
-  it('passes the stored latestFetchedAt to refreshRates as lastRefreshAt', async () => {
-    mockLatestFetchedAt.mockResolvedValue(1_700_000_000_000);
+  it('refreshes rates-only, throttled, after a successful sync', async () => {
     const { result } = await renderHook(() => useSync());
 
     await act(async () => {
@@ -35,18 +28,7 @@ describe('useSync', () => {
     });
 
     expect(mockRunSync).toHaveBeenCalled();
-    expect(mockRefreshRates).toHaveBeenCalledWith({ lastRefreshAt: 1_700_000_000_000 });
-  });
-
-  it('passes null when no rate has been stored yet', async () => {
-    mockLatestFetchedAt.mockResolvedValue(null);
-    const { result } = await renderHook(() => useSync());
-
-    await act(async () => {
-      await result.current.sync();
-    });
-
-    expect(mockRefreshRates).toHaveBeenCalledWith({ lastRefreshAt: null });
+    expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: true, metals: false });
   });
 
   it('passes the target account id through to runSync', async () => {
@@ -105,7 +87,7 @@ describe('useSync', () => {
   });
 
   it('resolves true and surfaces no error when the sync succeeds but the rate refresh fails', async () => {
-    mockRefreshRates.mockRejectedValue(new Error('rate refresh boom'));
+    mockRefreshMarketData.mockResolvedValue(left([{ step: 'rates', reason: 'boom' }]));
     const { result } = await renderHook(() => useSync());
 
     let outcome = false;

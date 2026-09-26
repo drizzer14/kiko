@@ -406,14 +406,17 @@ gate says there is nothing to do.
   metal/foreign-currency/crypto holding (`holding-form.screen.tsx`'s
   manual create) or restoring a `.kiko` export (`importData`,
   `src/data-transfer/import-data.ts`) triggers
-  `Promise.allSettled([refreshRates(), refreshMetalPrices()])`
-  explicitly right after its own write commits, since neither path
-  runs through the sync fan-out that otherwise triggers this — so the
-  price/rate appears without an app restart. Both calls gate
-  themselves, so this is a no-op when neither is needed;
-  `Promise.allSettled` never rejects, so a refresh failure never turns
-  a successful create/import into a shown error. An EDIT never needs
-  this trigger — a holding's type and currency are immutable once
+  `refreshMarketData({ throttled: false, metals: true })`
+  (`src/sync/refresh-market-data/`) explicitly right after its own
+  write commits, since neither path runs through the sync fan-out that
+  otherwise triggers this — so the price/rate appears without an app
+  restart. Both underlying steps gate themselves, so this is a no-op
+  when neither is needed; `refreshMarketData` never rejects, and a
+  failure is only logged (`warnRefreshFailure`), never shown, so it
+  never turns a successful create/import into a shown error. `throttled:
+  false`: a manual create/import is a deliberate user action, not a
+  background poll, so it never reads the throttle cursor. An EDIT never
+  needs this trigger — a holding's type and currency are immutable once
   created.
 
 ## Bulk insert: chunk when row count is caller- or API-controlled

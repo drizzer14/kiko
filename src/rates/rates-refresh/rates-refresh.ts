@@ -222,11 +222,53 @@ const shouldThrottle = async (
 };
 
 /**
+ * The outcome of one `refreshRates` call, mirroring `BackfillStatus`
+ * (`history-backfill.ts`) so a caller can log and surface a failed run
+ * without the promise ever rejecting. `'skipped'`: the data-presence gate or
+ * the throttle window meant neither leg ran. `'refreshed'`: every attempted
+ * leg (an unattempted leg, per the data-presence gate, never counts against
+ * this) settled. `'partial'`: one attempted leg rejected, the other
+ * succeeded. `'failed'`: every attempted leg rejected — nothing is written
+ * (this still never happens for a leg the gate skipped entirely).
+ */
+export type RatesRefreshOutcome = {
+  state: 'skipped' | 'refreshed' | 'partial' | 'failed';
+  failedLegs: ('fiat' | 'crypto')[];
+};
+
+/**
+ * Resolves the terminal `RatesRefreshOutcome` from each leg's settled
+ * result — `fiatAttempted`/`cryptoAttempted` come from the SAME data-presence
+ * gate verdict the run itself used, so a leg the gate never attempted can
+ * never count as failed.
+ */
+const resolveOutcome = (
+  fiatAttempted: boolean,
+  cryptoAttempted: boolean,
+  fiatResult: PromiseSettledResult<RateEntry[]>,
+  cryptoResult: PromiseSettledResult<RateEntry[]>,
+): RatesRefreshOutcome => {
+  const failedLegs: RatesRefreshOutcome['failedLegs'] = [];
+  if (fiatAttempted && fiatResult.status === 'rejected') {
+    failedLegs.push('fiat');
+  }
+  if (cryptoAttempted && cryptoResult.status === 'rejected') {
+    failedLegs.push('crypto');
+  }
+  const attemptedLegs = (fiatAttempted ? 1 : 0) + (cryptoAttempted ? 1 : 0);
+
+  if (failedLegs.length === 0) {
+    return { state: 'refreshed', failedLegs };
+  }
+  return { state: failedLegs.length === attemptedLegs ? 'failed' : 'partial', failedLegs };
+};
+
+/**
  * Fetch fiat and BTC rates, compose one `X:UAH` row per priced currency, and
  * upsert them. Skips work while the last refresh is still inside Monobank's
  * cache window. Providers and the repo write are injectable for tests.
  */
-export const refreshRates = async (deps: RefreshDeps = {}): Promise<void> => {
+export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefreshOutcome> => {
   const now = deps.now ?? Date.now;
   const at = now();
 
@@ -237,11 +279,11 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<void> => {
   // nothing open that differs from the base currency, and no crypto held,
   // means neither leg has anything to fetch this run.
   if (!needsFiat && cryptoCurrencies.length === 0) {
-    return;
+    return { state: 'skipped', failedLegs: [] };
   }
 
   if (await shouldThrottle(at, deps, nonBaseCurrencies)) {
-    return;
+    return { state: 'skipped', failedLegs: [] };
   }
 
   const loadFiat = deps.fetchFiatRates ?? (() => fetchFiatRates());
@@ -294,4 +336,6 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<void> => {
   if (rows.length > 0) {
     await upsertMany(rows);
   }
+
+  return resolveOutcome(needsFiat, cryptoCurrencies.length > 0, fiatResult, cryptoResult);
 };

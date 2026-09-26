@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 import { holdingDescriptor } from '@kiko/holdings/holding-descriptor';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { ScrollViewInstance, TextInputInstance } from 'react-native';
@@ -25,14 +26,12 @@ import HoldingTypeField from '../holding-type-field';
 import Box from '../../../design-system/components/box';
 import { useLiveQuery } from '../../../db/use-live-query';
 import type { Currency } from '../../../currency/currency';
-import { refreshRates } from '../../../rates/rates-refresh';
 import HoldingIdentityField from '../holding-identity-field';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import { usePriceBook } from '../../../prices/use-price-book';
 import Divider from '../../../design-system/components/divider';
 import { needsPriceBook } from '../../../holdings/priced-value';
-import { refreshMetalPrices } from '../../../prices/metal-refresh';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
@@ -388,14 +387,16 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
       // The FIRST metal, foreign-currency, or crypto holding needs its
       // price/rate visible without an app restart — trigger the SAME gated
-      // refresh app-open runs. Both calls gate themselves on data presence
-      // (kiko-architecture), so this is a no-op for a type/currency that
-      // needs neither. `Promise.allSettled` never rejects, so a refresh
-      // failure here never turns a successful create into a shown error.
-      // Fire-and-forget (not awaited): the refresh is a background nicety,
-      // not a save precondition — Save must not sit on the network before
-      // navigating back; only fire the refresh after the write commits.
-      Promise.allSettled([refreshRates(), refreshMetalPrices()]);
+      // refresh app-open runs, unthrottled (a manual create is a deliberate
+      // user action, not a background poll). Both steps gate themselves on
+      // data presence (kiko-architecture), so this is a no-op for a
+      // type/currency that needs neither. `refreshMarketData` never rejects
+      // and logs its own failure, so it never turns a successful create into
+      // a shown error. Fire-and-forget (not awaited): the refresh is a
+      // background nicety, not a save precondition — Save must not sit on
+      // the network before navigating back; only fire the refresh after the
+      // write commits.
+      refreshMarketData({ throttled: false, metals: true });
 
       // A `returnTo` route param (set only by the "Create new holding" entry
       // points on StatementImport/ColumnMapping) carries that screen's own

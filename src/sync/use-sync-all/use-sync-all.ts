@@ -1,9 +1,6 @@
-import either from 'fnts/either';
 import { useState } from 'react';
-import { ratesRepo } from '@kiko/rates/repo';
+import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 
-import { refreshRates } from '../../rates/rates-refresh';
-import { refreshMetalPrices } from '../../prices/metal-refresh';
 import { SYNC_CONCURRENCY_LIMIT, settleAllLimited } from '../settle-limited';
 import { type SyncableAccount, type SyncJob, syncJobsFor } from '../sync-jobs';
 
@@ -14,13 +11,19 @@ type UseSyncAll = {
 };
 
 /**
- * Run one whole fan-out and refresh rates once, returning the names of the
- * accounts whose job rejected (empty on full success). Only the sync
- * FAN-OUT is gated on having jobs; the rate refresh is decoupled from it so
- * a manual-only account list (no Monobank/crypto connected) still gets
+ * Run one whole fan-out and refresh rates + metals once, returning the names
+ * of the accounts whose job rejected (empty on full success). Only the sync
+ * FAN-OUT is gated on having jobs; the refresh is decoupled from it so a
+ * manual-only account list (no Monobank/crypto connected) still gets
  * cross-rates cached — mirroring `useAutoSync`'s identical fix. Running it
- * unconditionally is safe: `refreshRates` is self-throttled by
- * `lastRefreshAt` and hits only the PUBLIC, tokenless endpoint.
+ * unconditionally is safe: `refreshMarketData` is self-throttled (its own
+ * `refreshRates` step) and hits only PUBLIC, tokenless endpoints.
+ *
+ * `refreshMarketData` never rejects (it logs its own failure and returns a
+ * Left/Right), so the single-flight lock in `runSyncAllOnce` below still
+ * releases only once this whole call settles — the concurrent-refresh and
+ * orphan-promise guards it replaces (running rates and metals under ONE
+ * `Promise.allSettled` rather than sequentially) now live there, not here.
  */
 const fanOutAndRefresh = async (jobs: SyncJob[]): Promise<string[]> => {
   let failed: string[] = [];
@@ -37,26 +40,10 @@ const fanOutAndRefresh = async (jobs: SyncJob[]): Promise<string[]> => {
     failed = jobs.filter((_, index) => results[index].status === 'rejected').map((job) => job.name);
   }
 
-  // One rate refresh for the whole fan-out (not per account), mirroring the
-  // single refresh a lone sync does. Wrapped so a rate-refresh failure — not
-  // tied to any one account — never throws out of pull-to-refresh.
-  // Concurrent, not sequential — mirrors useAutoSync's identical fix:
-  // `refreshRates` (currency_rates) and `refreshMetalPrices` (price_points)
-  // read and write disjoint tables, so starting both at once shrinks the
-  // pull's DB-read burst instead of making the metal fetch wait out the
-  // whole rates fetch first. `Promise.allSettled`, not `Promise.all`: the
-  // latter settles (rejects) the instant EITHER promise rejects, which would
-  // resolve this whole function — and release the single-flight lock in
-  // `runSyncAllOnce` below — while the OTHER promise keeps running orphaned;
-  // a pull that then arrives sees the lock already free and starts a SECOND
-  // fan-out. `allSettled` never rejects, so a rejected step here is silently
-  // dropped exactly as it was before (the same catch-all `either` swallowed
-  // it either way) — only the release TIMING changes.
-  await either(async () => {
-    const lastRefreshAt = await ratesRepo.latestFetchedAt();
-
-    await Promise.allSettled([refreshRates({ lastRefreshAt }), refreshMetalPrices()]);
-  });
+  // One refresh for the whole fan-out (not per account), mirroring the single
+  // refresh a lone sync does — `metals: true` since a pull-to-refresh also
+  // needs metal prices, unlike a single Monobank/crypto sync.
+  await refreshMarketData({ throttled: true, metals: true });
 
   return failed;
 };

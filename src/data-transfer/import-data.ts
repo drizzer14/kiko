@@ -1,8 +1,6 @@
 import * as RNFS from 'react-native-fs';
 import { bifold, eitherSync, isLeft } from 'fnts/either';
-
-import { refreshRates } from '../rates/rates-refresh';
-import { refreshMetalPrices } from '../prices/metal-refresh';
+import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 
 import {
   decryptEnvelope,
@@ -155,15 +153,16 @@ export const importData = async (options: {
   // A restored foreign-currency/metal/crypto holding needs its price/rate
   // visible without an app restart — a bulk restore bypasses the sync
   // fan-out that normally triggers this, so trigger the SAME gated refresh
-  // explicitly here. Both calls gate themselves on data presence
+  // explicitly here, unthrottled (a restore is a deliberate user action, not
+  // a background poll). Both steps gate themselves on data presence
   // (kiko-architecture), so this is a no-op for a restore with neither.
-  // `Promise.allSettled` never rejects, so a refresh failure here never
+  // `refreshMarketData` never rejects and logs its own failure, so it never
   // turns a successful import into a shown error. Fire-and-forget (not
   // awaited): the refresh is a background nicety, not an import
   // precondition — `importData` must resolve with its row-count summary
   // without sitting on the network; only fire the refresh after the write
   // commits.
-  Promise.allSettled([refreshRates(), refreshMetalPrices()]);
+  refreshMarketData({ throttled: false, metals: true });
 
   return {
     accountsRestored: payload.tables.accounts.length,

@@ -1,3 +1,4 @@
+import { right } from 'fnts/either';
 import type { ComponentProps } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
@@ -146,13 +147,9 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
 // The first-add refresh trigger (a create's own follow-up, kiko-architecture):
 // spied so a test can assert it runs after a CREATE and not after an EDIT,
 // without exercising the real gated repos.
-const mockRefreshRates = jest.fn().mockResolvedValue(undefined);
-const mockRefreshMetalPrices = jest.fn().mockResolvedValue(undefined);
-jest.mock('../../../rates/rates-refresh', () => ({
-  refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
-}));
-jest.mock('../../../prices/metal-refresh', () => ({
-  refreshMetalPrices: (...args: unknown[]) => mockRefreshMetalPrices(...args),
+const mockRefreshMarketData = jest.fn().mockResolvedValue(right(undefined));
+jest.mock('@kiko/sync/refresh-market-data', () => ({
+  refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),
 }));
 // Auto-mocked so the scroll-order tests below can assert on WHICH field ref a
 // rejected Save targets, without a real ScrollView/measureLayout in the test
@@ -3143,19 +3140,18 @@ describe('HoldingFormScreen — the price_points gate', () => {
 // once created) never needs to.
 describe('HoldingFormScreen — the first-add refresh trigger', () => {
   beforeEach(() => {
-    mockRefreshRates.mockClear();
-    mockRefreshMetalPrices.mockClear();
+    mockRefreshMarketData.mockClear();
+    mockRefreshMarketData.mockResolvedValue(right(undefined));
   });
 
-  it('triggers the gated rate/metal refresh after a successful create', async () => {
+  it('triggers the gated rate/metal refresh after a successful create, unthrottled', async () => {
     mockAccountKind = 'cash';
     const screen = await renderScreen();
 
     await fill(screen, 'Name', 'My cash');
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(mockRefreshRates).toHaveBeenCalled();
-    expect(mockRefreshMetalPrices).toHaveBeenCalled();
+    expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: false, metals: true });
   });
 
   it('navigates back immediately, without waiting for the refresh to settle', async () => {
@@ -3164,10 +3160,10 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
     // refresh promise proves navigation already fired without it.
     mockAccountKind = 'cash';
     let resolveRefresh: () => void = () => {};
-    mockRefreshRates.mockImplementation(
+    mockRefreshMarketData.mockImplementation(
       () =>
-        new Promise<undefined>((resolve) => {
-          resolveRefresh = () => resolve(undefined);
+        new Promise((resolve) => {
+          resolveRefresh = () => resolve(right(undefined));
         }),
     );
 
@@ -3195,7 +3191,6 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
     await fill(screen, 'Name', 'Renamed card');
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(mockRefreshRates).not.toHaveBeenCalled();
-    expect(mockRefreshMetalPrices).not.toHaveBeenCalled();
+    expect(mockRefreshMarketData).not.toHaveBeenCalled();
   });
 });

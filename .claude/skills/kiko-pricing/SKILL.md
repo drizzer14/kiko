@@ -474,26 +474,40 @@ new pinning (kiko-compliance: this host stays keyless and unpinned).
   fallback. Returns `{ metal, day, price }[]`.
 
 `src/prices/metal-refresh/refreshMetalPrices({ now, fetchImpl, ... })`
-is the scheduler, run CONCURRENTLY with `refreshRates` from both
-`useAutoSync` and `useSyncAll` — `await Promise.allSettled([refreshRates(...),
-refreshMetalPrices()])`, inside the SAME `either(...)` wrapper each
-hook already used around `refreshRates` alone. The two share no data
-dependency (`refreshMetalPrices` reads/writes `price_points` only,
-`refreshRates` reads/writes `currency_rates` only), so running them
-concurrently — rather than strictly sequentially, `refreshMetalPrices`
-not even STARTING until `refreshRates` had settled — overlaps their
-network + DB work and shrinks the app-open DB-read burst's wall-clock
-span; see `kiko-architecture`'s "op-sqlite's ONE worker thread"
-section for why that burst matters to every OTHER screen's own reads.
-`allSettled`, not `all`: `Promise.all` settles (rejects) the instant
-EITHER promise rejects, which would let the enclosing `either(...)`
-call — and, in `useSyncAll`, the single-flight lock around the whole
-fan-out — resolve/release while the OTHER promise keeps running
-orphaned; a pull that then arrives sees the lock already free and
-starts a SECOND fan-out (caught in review, not a shipped production bug).
-`allSettled` never rejects, so a rejected step is swallowed exactly as
-before by the same catch-all `either` — only the release TIMING
-changes, not which failures are silent.
+is the scheduler, run CONCURRENTLY with `refreshRates` through
+`src/sync/refresh-market-data/` — every sync surface (`useSync`,
+`useSyncAll`, `useAutoSync`) and every fire-and-forget "first add"
+trigger (`holding-form.screen.tsx`, `import-data.ts`) now calls
+`refreshMarketData({ throttled, metals })` instead of orchestrating
+`Promise.allSettled([refreshRates(...), refreshMetalPrices()])`
+directly. The two share no data dependency (`refreshMetalPrices`
+reads/writes `price_points` only, `refreshRates` reads/writes
+`currency_rates` only), so running them concurrently — rather than
+strictly sequentially, `refreshMetalPrices` not even STARTING until
+`refreshRates` had settled — overlaps their network + DB work and
+shrinks the app-open DB-read burst's wall-clock span; see
+`kiko-architecture`'s "op-sqlite's ONE worker thread" section for why
+that burst matters to every OTHER screen's own reads. `allSettled`,
+not `all`: `Promise.all` settles (rejects) the instant EITHER promise
+rejects, which would let `refreshMarketData` itself resolve — and, in
+`useSyncAll`, the single-flight lock around the whole fan-out —
+release while the OTHER promise keeps running orphaned; a pull that
+then arrives sees the lock already free and starts a SECOND fan-out
+(caught in review, not a shipped production bug).
+
+`refreshMarketData` never rejects, but a rejected step (or
+`refreshRates`'s own `'failed'`/`'partial'` `RatesRefreshOutcome`, mirroring
+`BackfillStatus`) is no longer silently dropped: it is collected,
+logged through the ONE exported `warnRefreshFailure(step, reason)`
+(a justified `console.warn`, no UI, no new string — the narrowest
+default), and returned as a `Left`. `throttled` reads
+`ratesRepo.latestFetchedAt()` first (a failed read is logged too and
+the run proceeds unthrottled); `metals` gates whether
+`refreshMetalPrices` runs at all. `useAutoSync` also passes its OWN
+outer catch-all's Left (reading accounts/sync-state/credentials) to
+the SAME `warnRefreshFailure`, tagged `'auto-sync'`, instead of
+dropping it — but never double-logs a `refreshMarketData` Left, since
+that failure was already logged inside `refreshMarketData` itself.
 It refreshes ONLY currently held metals — scanned from every `metal`
 holding's `asMetalMeta(...).metal`, never a metal nobody owns, and
 INCLUDING a closed holding's own lots (the history chart still needs
