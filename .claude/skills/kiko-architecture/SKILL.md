@@ -219,8 +219,8 @@ consequences follow directly:
 ### `useLiveQuery` consumer rule: gate an empty state on `isLoading`, never on `data.length === 0` alone
 
 Every `useLiveQuery` (and `usePriceBook`, which wraps one) starts
-`isLoading: true` — unless the live-query cache below has rows for its
-key — and clears it only once its FIRST read for its CURRENT
+`isLoading: true` — unless it opted into the live-query cache below and
+the cache has rows for its key — and clears it only once its FIRST read for its CURRENT
 sql+paramsKey settles — never before. Because of the
 one-worker-thread queueing above, that first read can sit queued for
 real, perceptible time on a busy app open. A screen that renders its
@@ -346,25 +346,53 @@ full contract, and the section below for its `enabled` argument.
 
 ### The live-query cache: a reopened screen shows its data on the first frame
 
-Rule: a screen reopened within seconds shows its data at once, on the
-first frame — never a `LoadingState` (a native-stack pop UNMOUNTS the
-screen, so every reopen is a fresh mount, and on the dark `Screen`
-background the spinner's delayed empty container reads as a black
-screen). `useLiveQuery` keeps a module-level LRU cache
-(`LIVE_QUERY_CACHE_LIMIT`, 100 keys) of the last successfully APPLIED
-rows per full query key (`sql` + serialized `params` — different
-params never share an entry). A mount with a cache hit seeds `data`
-with the cached rows and `appliedKey` with the current key, so
-`isLoading` is `false` on the very first render; it STILL runs the
-query and subscribes, and every applied result (mount, reactive fire)
-overwrites the entry, so a write replaces the cached rows. Only a
-mount reads the cache — a later re-key waits for its own read as
-above. A rejected read is never cached. A write committed while the
-screen was unmounted shows the cached (stale) rows for one read's
-duration before the background refresh replaces them — accepted, the
-same as any stale-while-revalidate read. Tests call
-`clearLiveQueryCache()` in `beforeEach` so one `it`'s rows never seed
-the next.
+Rule: a DISPLAY screen reopened within seconds shows its data at once,
+on the first frame — never a `LoadingState` (a native-stack pop
+UNMOUNTS the screen, so every reopen is a fresh mount, and on the dark
+`Screen` background the spinner's delayed empty container reads as a
+black screen). `useLiveQuery` keeps a module-level LRU cache
+(`LIVE_QUERY_CACHE_LIMIT`, 100 keys) of the last successful read per
+full query key (`sql` + serialized `params` — different params never
+share an entry). EVERY successful read writes it, even one that
+settles after its screen unmounted (a form's Save + `goBack()`, a quick
+pop); the per-instance generation guard still runs first, so an older
+read never overwrites a newer one. A rejected read is never cached.
+
+**The cache is OPT-IN, for display screens only.** Only a call that
+passes `{ cached: true }` (the 4th argument:
+`useLiveQuery(query, tables, true, { cached: true })`, or
+`usePriceBook(enabled, { cached: true })`) READS it. Today the opt-in
+is exactly the readiness queries of Accounts, Home, Account detail,
+Holding detail, Settings, System, Categories, and Statistics. A mount
+with a cache hit seeds `data` with the cached rows and `appliedKey`
+with the current key, so `isLoading` is `false` on the very first
+render; it STILL runs the query and subscribes, and the fresh result
+replaces the rows. Only a mount reads the cache — a later re-key waits
+for its own read as above.
+
+**Never opt in a query that seeds a form or drives a write.** A write
+made while no subscriber of a key is mounted (the lot form's
+`holdingsRepo.update` while the holding form is closed) leaves that
+key's entry one read old. A one-shot form seed (`hydrated` latch)
+reading it would latch the stale row, and Save would write it back over
+the newer one — this shipped as a data-loss bug (edit metal, cancel,
+add a lot, edit again, Save: the new lot was gone). Forms,
+statement import, `useTargetHoldingOptions`, `useBondIsinMode`, and
+every other one-shot seed never pass `cached`.
+
+**A write started from a cached display screen must not trust its
+rows.** `useLiveQuery` also returns `isFresh`: `true` once THIS
+mount's own read for the current key has applied (always `true` while
+disabled). Every write a display screen starts either passes only IDs
+(plus the user's explicit new value) to a repo that re-reads inside its
+own transaction (every `remove`, `categoriesRepo.delete`, the sync
+jobs), or is gated on `isFresh`. The drag reorders (Accounts' three
+grids, Account detail's holdings grid, Categories) set
+`sortEnabled={isFresh && …}`, and Categories' move-to-top/bottom
+buttons ignore a press until `isFresh` — each persists the WHOLE order
+of the rows on screen. A new write from a display screen picks one of
+the two, never neither. Tests call `clearLiveQueryCache()` in
+`beforeEach` so one `it`'s rows never seed the next.
 
 ## App-open and refresh work is gated on data presence
 

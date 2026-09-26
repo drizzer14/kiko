@@ -26,7 +26,9 @@ type SystemScreenProps = NativeStackScreenProps<SettingsStackParamList, 'System'
 const SystemScreen: FC<SystemScreenProps> = () => {
   const { t } = useTranslation();
 
-  const { data, isLoading } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  const { data, isLoading } = useLiveQuery(settingsRepo.getQuery(), ['settings'], true, {
+    cached: true,
+  });
   const settings = data.at(0);
   // The App Lock toggle and the selected language must never render their
   // own defaults (off, device-default) while settings is still on its own

@@ -70,17 +70,28 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
     accountsRepo.byIdQuery(accountId),
     ['accounts'],
+    true,
+    { cached: true },
   );
-  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
-    holdingsRepo.listByAccountQuery(accountId),
-    ['holdings'],
+  const {
+    data: holdings,
+    isLoading: holdingsLoading,
+    isFresh: holdingsFresh,
+  } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings'], true, {
+    cached: true,
+  });
+  const { data: rates, isLoading: ratesLoading } = useLiveQuery(
+    ratesRepo.allQuery(),
+    ['currency_rates'],
+    true,
+    { cached: true },
   );
-  const { data: rates, isLoading: ratesLoading } = useLiveQuery(ratesRepo.allQuery(), [
-    'currency_rates',
-  ]);
-  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(settingsRepo.getQuery(), [
-    'settings',
-  ]);
+  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
+    settingsRepo.getQuery(),
+    ['settings'],
+    true,
+    { cached: true },
+  );
   // kiko-architecture: skip the price_points read while nothing rendered on
   // this screen ever reads it — a holding whose type carries no priced spec
   // and is not a loan (`needsPriceBook`) never touches `price_points`. It
@@ -88,6 +99,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // reads run in parallel instead of price_points waiting on holdings.
   const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
     holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
+    { cached: true },
   );
   // Empty holding list / zero balance must never render while any of this
   // screen's own queries is still on its first load (kiko-architecture's
@@ -295,11 +307,14 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
               its vertical axis (a single column has no horizontal move to make).
               `scrollableRef` + `autoScrollActivationOffset` let a drag near an
               edge scroll the parent list. `sortEnabled` is off with a single
-              holding, where there is nothing to reorder. */}
+              holding, where there is nothing to reorder, and until the
+              holdings query's own fresh read has applied — a drag persists
+              the order of the rows on screen, never the cached
+              (possibly one-read-old) order (kiko-architecture). */}
           <Box testID="holdings-grid">
             <Sortable.Grid
               data={activeHoldings}
-              sortEnabled={activeHoldings.length > 1}
+              sortEnabled={holdingsFresh && activeHoldings.length > 1}
               // A subtle lift on touch-and-hold: the library default (1.1) pops
               // the card up too much, so scale it just barely (matches the
               // accounts grid).

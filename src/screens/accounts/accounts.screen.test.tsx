@@ -111,6 +111,9 @@ const setLiveData = (data: {
   // key defaults to `false` (an already-resolved query), so every existing
   // call site above keeps behaving exactly as before.
   isLoading?: Partial<Record<string, boolean>>;
+  // Per-table "still the cached rows" overrides (`isFresh: false`), for the
+  // reorder-gate tests only — every key defaults to fresh.
+  isStale?: Partial<Record<string, boolean>>;
 }): void => {
   const byTable: Record<string, unknown[]> = {
     accounts: data.accounts ?? [],
@@ -120,10 +123,12 @@ const setLiveData = (data: {
     price_points: [],
   };
   const isLoadingByTable = data.isLoading ?? {};
+  const isStaleByTable = data.isStale ?? {};
 
   mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => ({
     data: byTable[tables[0]] ?? [],
     isLoading: isLoadingByTable[tables[0]] ?? false,
+    isFresh: !(isStaleByTable[tables[0]] ?? false),
   }));
 };
 
@@ -316,6 +321,36 @@ describe('AccountsScreen', () => {
     // edge offset, so a drag near the top/bottom edge auto-scrolls the list.
     expect(grid.props.scrollableRef).toBeDefined();
     expect(grid.props.autoScrollActivationOffset).toBeGreaterThan(0);
+  });
+
+  // kiko-architecture: a cached display mount shows rows that can be one read
+  // old. A drag persists the WHOLE account order from the rows on screen, so
+  // it must never start from the cached order — an account added or removed
+  // elsewhere while this screen was closed would be dropped from (or
+  // resurrected into) the persisted order.
+  it('never lets a drag reorder start while the accounts are still the cached order', async () => {
+    setLiveData({
+      accounts: [
+        { id: 'a', name: 'Monobank', kind: 'bank' },
+        { id: 'c', name: 'Privat', kind: 'bank' },
+      ],
+      isStale: { accounts: true },
+    });
+    const { getByTestId } = await renderAccounts();
+
+    expect(getByTestId('sortable-grid').props.sortEnabled).toBe(false);
+  });
+
+  it('lets a drag reorder start once the accounts have their own fresh read', async () => {
+    setLiveData({
+      accounts: [
+        { id: 'a', name: 'Monobank', kind: 'bank' },
+        { id: 'c', name: 'Privat', kind: 'bank' },
+      ],
+    });
+    const { getByTestId } = await renderAccounts();
+
+    expect(getByTestId('sortable-grid').props.sortEnabled).toBe(true);
   });
 
   it('persists a reorder to accountsRepo.reorder when a card is dragged to a new slot', async () => {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import either, { bifold, eitherSync, first, isLeft } from 'fnts/either';
+import either, { bifold, type Either, eitherSync, first, isLeft, isRight } from 'fnts/either';
 
 import { rawDatabase } from './client';
 
@@ -13,11 +13,13 @@ const toError = (caught: unknown): Error =>
 
 export const LIVE_QUERY_CACHE_LIMIT = 100;
 
-// The last applied rows per full query key (sql + params), shared by every
+// The last settled rows per full query key (sql + params), shared by every
 // hook instance. A native-stack pop unmounts a screen, so reopening it is a
-// fresh mount: a hit here lets that mount render its data on the FIRST frame
-// (isLoading false) while the query still re-runs and re-subscribes in the
-// background. Bounded as an LRU (Map insertion order = recency).
+// fresh mount: a hit here lets a DISPLAY screen's mount render its data on the
+// FIRST frame (isLoading false) while the query still re-runs and re-subscribes
+// in the background. Every successful read writes it; only a query passed
+// `{ cached: true }` reads it (kiko-architecture: display screens only).
+// Bounded as an LRU (Map insertion order = recency).
 const liveQueryCache = new Map<string, unknown[]>();
 
 const readCache = (key: string): unknown[] | undefined => {
@@ -46,6 +48,17 @@ export const clearLiveQueryCache = (): void => {
   liveQueryCache.clear();
 };
 
+export type LiveQueryOptions = {
+  /**
+   * `true` lets a mount start from the last cached rows for this key — a
+   * DISPLAY screen's readiness query only (kiko-architecture). Never for a
+   * query that seeds a form or drives a write: a write made while no
+   * subscriber was mounted leaves the entry one read old, and a one-shot seed
+   * would latch it. Defaults to `false`.
+   */
+  cached?: boolean;
+};
+
 /**
  * Reactive read hook built on op-sqlite's `reactiveExecute` primitive
  * (Drizzle's own `useLiveQuery` only supports expo-sqlite).
@@ -69,14 +82,18 @@ export function useLiveQuery<T>(
    * existing call site is unaffected.
    */
   enabled = true,
-): { data: T[]; error?: Error; isLoading: boolean } {
+  { cached = false }: LiveQueryOptions = {},
+): { data: T[]; error?: Error; isLoading: boolean; isFresh: boolean } {
   const { sql, params } = query.toSQL();
   const paramsKey = JSON.stringify(params);
   const tablesKey = tables.join(',');
   const currentKey = `${sql}::${paramsKey}`;
-  // Read once, on mount only: a cache hit seeds both the rows and the key
-  // they belong to, so the first render is already "applied" (not loading).
-  const [cachedOnMount] = useState(() => readCache(currentKey) as T[] | undefined);
+  // Read once, on mount only, and only when opted in: a cache hit seeds both
+  // the rows and the key they belong to, so the first render is already
+  // "applied" (not loading).
+  const [cachedOnMount] = useState(() =>
+    cached ? (readCache(currentKey) as T[] | undefined) : undefined,
+  );
   const [data, setData] = useState<T[]>(cachedOnMount ?? []);
   const [error, setError] = useState<Error | undefined>();
   // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(content-keyed subscription) keyed on tablesKey (a stable serialized primitive), not the `tables` array reference itself — see the identical rationale on the effect below.
@@ -86,13 +103,18 @@ export function useLiveQuery<T>(
   // overlapping calls settle out of order (e.g. two rapid writes), an
   // older call's result must not overwrite a newer one.
   const generation = useRef(0);
-  // The generation and sql+paramsKey a settled result was last APPLIED
-  // from — NOT the newest generation that has merely STARTED (see the guard
-  // below, where that distinction matters).
+  // The generation a settled result was last ACCEPTED from (cached, and
+  // applied while mounted), and the sql+paramsKey it was last APPLIED from —
+  // NOT the newest generation that has merely STARTED (see the guard below,
+  // where that distinction matters).
   const appliedGeneration = useRef(0);
   const appliedKey = useRef<string | undefined>(
     cachedOnMount === undefined ? undefined : currentKey,
   );
+  // The key whose own read (never a cache hit) last applied successfully in
+  // THIS mount. A display screen gates a write it derives from its rows (a
+  // drag reorder) on `isFresh`, since cached rows can be one read old.
+  const freshKey = useRef<string | undefined>(undefined);
   // isLoading is derived, not stored: true whenever the CURRENT render's
   // sql+paramsKey has no applied result yet — true on first mount and true
   // again the instant the key changes (a dependent query re-keying off data
@@ -104,6 +126,7 @@ export function useLiveQuery<T>(
   // caller gating a whole screen's readiness on this must see it flip, not
   // spin, for a query it deliberately never ran.
   const isLoading = enabled && appliedKey.current !== currentKey;
+  const isFresh = !enabled || freshKey.current === currentKey;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(content-keyed subscription) sql/params/tables/query are re-derived every render from stable serialized primitives (paramsKey/tablesKey) and a fireOn memoized on tablesKey; depending on their object/array *references* instead would re-subscribe on every render whenever a caller passes an inline literal (e.g. `useLiveQuery(q, ['accounts'])` in JSX) and — because the native callback can fire synchronously — infinite-loop.
   useEffect(() => {
@@ -115,29 +138,11 @@ export function useLiveQuery<T>(
 
     const myKey = currentKey;
 
-    const runQuery = async (): Promise<void> => {
-      const myGeneration = ++generation.current;
-
-      const result = await either<unknown, T[]>(async () => query);
-
-      // Unmount guard, and a monotonic-generation guard: apply a finished
-      // result only if it is NEWER than the last APPLIED one — not only if
-      // it is the newest STARTED one. Comparing against the newest started
-      // generation instead drops every in-order result under a dense write
-      // burst (a newer run always starts before the previous one settles),
-      // leaving the screen on the spinner until the burst stops; comparing
-      // against the newest APPLIED one still drops a result that finishes
-      // out of order behind one that already won.
-      if (!alive || myGeneration <= appliedGeneration.current) {
-        return;
-      }
-
+    // Apply one accepted, still-mounted result to this hook's state.
+    const applySettled = (settled: Either<Error, T[]>): void => {
       const previousAppliedKey = appliedKey.current;
 
-      appliedGeneration.current = myGeneration;
       appliedKey.current = myKey;
-
-      const settled = first(result, toError);
 
       if (isLeft(settled)) {
         const caughtError: Error = bifold(settled);
@@ -158,9 +163,42 @@ export function useLiveQuery<T>(
 
       const rows: T[] = bifold(settled);
 
-      writeCache(myKey, rows);
+      freshKey.current = myKey;
       setData(rows);
       setError(undefined);
+    };
+
+    const runQuery = async (): Promise<void> => {
+      const myGeneration = ++generation.current;
+
+      const result = await either<unknown, T[]>(async () => query);
+
+      // Monotonic-generation guard: accept a finished result only if it is
+      // NEWER than the last ACCEPTED one — not only if it is the newest
+      // STARTED one. Comparing against the newest started generation instead
+      // drops every in-order result under a dense write burst (a newer run
+      // always starts before the previous one settles), leaving the screen on
+      // the spinner until the burst stops; comparing against the newest
+      // accepted one still drops a result that finishes out of order behind
+      // one that already won — in state AND in the cache.
+      if (myGeneration <= appliedGeneration.current) {
+        return;
+      }
+
+      appliedGeneration.current = myGeneration;
+
+      const settled = first(result, toError);
+
+      // Cache BEFORE the unmount guard: a screen that unmounts before its own
+      // read settles (a form's Save + goBack(), a quick pop) must still leave
+      // the entry current. A rejected read is never cached.
+      if (isRight(settled)) {
+        writeCache(myKey, bifold(settled));
+      }
+
+      if (alive) {
+        applySettled(settled);
+      }
     };
 
     runQuery();
@@ -195,5 +233,5 @@ export function useLiveQuery<T>(
     };
   }, [sql, paramsKey, fireOn, enabled]);
 
-  return { data: enabled ? data : [], error, isLoading };
+  return { data: enabled ? data : [], error, isLoading, isFresh };
 }

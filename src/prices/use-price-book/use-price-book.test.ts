@@ -16,7 +16,19 @@ describe('usePriceBook', () => {
 
     await renderHook(() => usePriceBook());
 
-    expect(mockUseLiveQuery).toHaveBeenCalledWith(expect.anything(), ['price_points'], true);
+    expect(mockUseLiveQuery).toHaveBeenCalledWith(expect.anything(), ['price_points'], true, {});
+  });
+
+  // kiko-architecture: only a display screen reads the live-query cache, so
+  // the opt-in is the caller's, forwarded as-is; a form passes nothing.
+  it('forwards the cache opt-in straight through to useLiveQuery', async () => {
+    mockUseLiveQuery.mockReturnValue({ data: [], isLoading: false });
+
+    await renderHook(() => usePriceBook(true, { cached: true }));
+
+    expect(mockUseLiveQuery).toHaveBeenCalledWith(expect.anything(), ['price_points'], true, {
+      cached: true,
+    });
   });
 
   // kiko-architecture: a screen showing no priced holding type never needs
@@ -28,7 +40,7 @@ describe('usePriceBook', () => {
 
     await renderHook(() => usePriceBook(false));
 
-    expect(mockUseLiveQuery).toHaveBeenCalledWith(expect.anything(), ['price_points'], false);
+    expect(mockUseLiveQuery).toHaveBeenCalledWith(expect.anything(), ['price_points'], false, {});
   });
 
   it('builds a PriceBook from the live rows', async () => {

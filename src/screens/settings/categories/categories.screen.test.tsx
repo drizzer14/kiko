@@ -79,6 +79,9 @@ let mockLiveQueryData: Array<{ key: string; title: string; icon: string; color?:
   [];
 let mockSettingsRows: Array<{ defaultCategoryKey: string }> = [];
 let mockCategoriesIsLoading = false;
+// `false` = the categories are still the cached rows (a cached display mount
+// before its own fresh read has applied).
+let mockCategoriesIsFresh = true;
 let mockSettingsIsLoading = false;
 
 jest.mock('@kiko/categories/repo', () => ({
@@ -102,7 +105,11 @@ jest.mock('../../../db/use-live-query', () => ({
   useLiveQuery: (_query: unknown, keys: string[]) =>
     keys?.[0] === 'settings'
       ? { data: mockSettingsRows, isLoading: mockSettingsIsLoading }
-      : { data: mockLiveQueryData, isLoading: mockCategoriesIsLoading },
+      : {
+          data: mockLiveQueryData,
+          isLoading: mockCategoriesIsLoading,
+          isFresh: mockCategoriesIsFresh,
+        },
 }));
 
 type CategoriesProps = ComponentProps<typeof CategoriesScreen>;
@@ -125,6 +132,7 @@ describe('CategoriesScreen', () => {
     // `other` is the seeded default catch-all.
     mockSettingsRows = [{ defaultCategoryKey: 'other' }];
     mockCategoriesIsLoading = false;
+    mockCategoriesIsFresh = true;
     mockSettingsIsLoading = false;
   });
 
@@ -579,6 +587,25 @@ describe('CategoriesScreen', () => {
         ...keys.filter((k) => k !== 'transport'),
         'transport',
       ]);
+    });
+
+    // kiko-architecture: a cached display mount shows rows that can be one
+    // read old. Both reorder paths persist the WHOLE order of the rows on
+    // screen, so neither may act on the cached order.
+    it('never starts a drag reorder while the categories are still the cached order', async () => {
+      mockCategoriesIsFresh = false;
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('sortable-grid').props.sortEnabled).toBe(false);
+    });
+
+    it('ignores a move-to-top press while the categories are still the cached order', async () => {
+      mockCategoriesIsFresh = false;
+      const { getByLabelText } = await renderScreen();
+
+      await fireEvent.press(getByLabelText('Move Transport to top'));
+
+      expect(mockReorder).not.toHaveBeenCalled();
     });
 
     it('persists a drag reorder through onGridDragEnd (only when the item actually moved)', async () => {

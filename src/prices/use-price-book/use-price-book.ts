@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 
-import { useLiveQuery } from '../../db/use-live-query';
 import { pricePointsRepo } from '../price-points-repo';
 import { buildPriceBook, type PriceBook } from '../price-book';
+import { type LiveQueryOptions, useLiveQuery } from '../../db/use-live-query';
 
 type UsePriceBookResult = { book: PriceBook; isLoading: boolean };
 
@@ -22,12 +22,20 @@ type UsePriceBookResult = { book: PriceBook; isLoading: boolean };
  * hook itself, which Rules of Hooks forbids. `book` resolves to
  * `EMPTY_PRICE_BOOK` and `isLoading` to `false` (ready, never stuck) while
  * disabled.
+ *
+ * `options` forwards straight to `useLiveQuery`'s own: a DISPLAY screen passes
+ * `{ cached: true }` so a reopen shows its prices on the first frame; a form
+ * never does (kiko-architecture).
  */
-export const usePriceBook = (enabled = true): UsePriceBookResult => {
+export const usePriceBook = (
+  enabled = true,
+  options: LiveQueryOptions = {},
+): UsePriceBookResult => {
   const { data: rows, isLoading } = useLiveQuery(
     pricePointsRepo.allQuery(),
     ['price_points'],
     enabled,
+    options,
   );
   const book = useMemo(() => buildPriceBook(rows), [rows]);
 

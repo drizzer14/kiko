@@ -373,13 +373,17 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
   // action is the only way in, and the form's Save/Cancel are the only ways
   // out (both call `collapseAddCategoryForm` below).
   const [addCategoryExpanded, setAddCategoryExpanded] = useState(false);
-  const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
-    categoriesRepo.allQuery(),
-    ['categories'],
+  const {
+    data: categories,
+    isLoading: categoriesLoading,
+    isFresh: categoriesFresh,
+  } = useLiveQuery(categoriesRepo.allQuery(), ['categories'], true, { cached: true });
+  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
+    settingsRepo.getQuery(),
+    ['settings'],
+    true,
+    { cached: true },
   );
-  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(settingsRepo.getQuery(), [
-    'settings',
-  ]);
   // The blank list must never render while either query is still on its own
   // first load (kiko-architecture's useLiveQuery consumer rule).
   const isReady = useDataReady(categoriesLoading, settingsLoading);
@@ -403,13 +407,23 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
   // list, not a stale snapshot captured at some earlier render.
   const orderedKeysRef = useRef(orderedKeys);
   orderedKeysRef.current = orderedKeys;
+  // Both buttons persist the WHOLE order, so neither acts until the categories
+  // query's own fresh read has applied — never on the cached (possibly
+  // one-read-old) order of a reopened screen (kiko-architecture). Read through
+  // a ref for the same stable-callback reason as `orderedKeysRef`.
+  const categoriesFreshRef = useRef(categoriesFresh);
+  categoriesFreshRef.current = categoriesFresh;
 
   const moveToTop = useCallback((key: string): void => {
-    categoriesRepo.reorder([key, ...orderedKeysRef.current.filter((other) => other !== key)]);
+    if (categoriesFreshRef.current) {
+      categoriesRepo.reorder([key, ...orderedKeysRef.current.filter((other) => other !== key)]);
+    }
   }, []);
 
   const moveToBottom = useCallback((key: string): void => {
-    categoriesRepo.reorder([...orderedKeysRef.current.filter((other) => other !== key), key]);
+    if (categoriesFreshRef.current) {
+      categoriesRepo.reorder([...orderedKeysRef.current.filter((other) => other !== key), key]);
+    }
   }, []);
 
   // Memoized on the same principle as `categoryKeyExtractor` above: with
@@ -489,11 +503,12 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
             keeps a dragged card on its vertical axis; `scrollableRef` +
             `autoScrollActivationOffset` let a drag near an edge scroll the parent
             ScrollView; `sortEnabled` is off with a single category (nothing to
-            reorder). Each card also carries move-to-top/bottom buttons for a
-            gesture-free reorder. */}
+            reorder), and until the categories query's own fresh read has
+            applied (never a drag from the cached order). Each card also
+            carries move-to-top/bottom buttons for a gesture-free reorder. */}
         <Sortable.Grid
           data={categories}
-          sortEnabled={categories.length > 1}
+          sortEnabled={categoriesFresh && categories.length > 1}
           activeItemScale={1.03}
           columns={1}
           overDrag="vertical"

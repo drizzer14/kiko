@@ -207,6 +207,9 @@ type Rate = { base: string; quote: string; rate: string };
 type Settings = { baseCurrency: string };
 type SyncState = { lastSyncAt?: number | null; lastSyncDisplayAt?: number | null };
 
+// One mocked `useLiveQuery` result.
+type LiveResult = { data: unknown[]; isLoading?: boolean; isFresh?: boolean };
+
 /**
  * Drive the `useLiveQuery` calls, keying on the query's `__kind` (the
  * account-by-id query subscribes to `['accounts']`, so the table name alone
@@ -228,12 +231,15 @@ const setLiveData = (data: {
   ratesIsLoading?: boolean;
   settingsIsLoading?: boolean;
   pricePointsIsLoading?: boolean;
+  // `true` = the holdings are still the cached rows (`isFresh: false`), for
+  // the reorder-gate test only.
+  holdingsIsStale?: boolean;
 }): void => {
   const accounts = data.accounts ?? [];
   // A per-table result map, keyed the same way the old if-chain branched —
   // a lookup instead of a chain keeps this well under the cognitive-
   // complexity budget (kiko-code-style).
-  const resultByTable: Record<string, { data: unknown[]; isLoading?: boolean }> = {
+  const resultByTable: Record<string, LiveResult> = {
     // A real holding row always carries a `type`; default it here so a
     // fixture that only cares about name/currency/balance still yields a
     // valid type for the card's color/icon derivation (an undefined type
@@ -241,6 +247,7 @@ const setLiveData = (data: {
     holdings: {
       data: (data.holdings ?? []).map((holding) => ({ type: 'card', ...holding })),
       isLoading: data.holdingsIsLoading ?? false,
+      isFresh: !(data.holdingsIsStale ?? false),
     },
     currency_rates: { data: data.rates ?? [], isLoading: data.ratesIsLoading ?? false },
     settings: {
@@ -853,6 +860,29 @@ describe('AccountDetailScreen', () => {
     expect(grid.props.scrollableRef).toBeDefined();
     expect(grid.props.autoScrollActivationOffset).toBeGreaterThan(0);
   });
+
+  // kiko-architecture: a cached display mount shows rows that can be one read
+  // old, and a drag persists the order of the holdings on screen — so it
+  // never starts until the holdings query's own fresh read has applied.
+  it.each([
+    [true, false],
+    [false, true],
+  ])(
+    'enables the holdings drag only once the holdings are fresh (stale: %s)',
+    async (holdingsIsStale, sortEnabled) => {
+      setLiveData({
+        accounts: [account()],
+        holdings: [
+          { id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 },
+          { id: 'h2', name: 'Dollar jar', currency: 'USD', balanceMinorUnits: 5000 },
+        ],
+        holdingsIsStale,
+      });
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('sortable-grid').props.sortEnabled).toBe(sortEnabled);
+    },
+  );
 
   it('persists a reorder to holdingsRepo.reorder when a holding is dragged to a new slot', async () => {
     setLiveData({

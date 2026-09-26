@@ -106,15 +106,24 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const listRef = useRef<SectionList<HomeTransactionRow, DaySection<HomeTransactionRow>>>(null);
   useScrollToTopOnTabPress(listRef);
 
-  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(accountsRepo.listQuery(), [
-    'accounts',
-  ]);
-  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(holdingsRepo.allQuery(), [
-    'holdings',
-  ]);
-  const { data: rates, isLoading: ratesLoading } = useLiveQuery(ratesRepo.allQuery(), [
-    'currency_rates',
-  ]);
+  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
+    accountsRepo.listQuery(),
+    ['accounts'],
+    true,
+    { cached: true },
+  );
+  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
+    holdingsRepo.allQuery(),
+    ['holdings'],
+    true,
+    { cached: true },
+  );
+  const { data: rates, isLoading: ratesLoading } = useLiveQuery(
+    ratesRepo.allQuery(),
+    ['currency_rates'],
+    true,
+    { cached: true },
+  );
   // kiko-architecture: skip the price_points read while nothing rendered on
   // this screen ever reads it — a holding whose type carries no priced spec
   // and is not a loan (`needsPriceBook`) never touches `price_points`. It
@@ -122,17 +131,25 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // reads run in parallel instead of price_points waiting on holdings.
   const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
     holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
+    { cached: true },
   );
-  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(settingsRepo.getQuery(), [
-    'settings',
-  ]);
+  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
+    settingsRepo.getQuery(),
+    ['settings'],
+    true,
+    { cached: true },
+  );
   const { data: transactions, isLoading: transactionsLoading } = useLiveQuery(
     transactionsRepo.listAllWithContextQuery(),
     ['transactions', 'holdings', 'accounts'],
+    true,
+    { cached: true },
   );
   const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
     categoriesRepo.allQuery(),
     ['categories'],
+    true,
+    { cached: true },
   );
   // The net-worth headline (it would otherwise read 0 while still loading)
   // and the empty-transactions text must never render while any of this

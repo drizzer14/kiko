@@ -181,29 +181,47 @@ const StatisticsScreen: FC = () => {
   const scrollOffset = useScrollOffset(scrollRef);
   useScrollToTopOnTabPress(scrollRef, scrollOffset);
 
-  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(accountsRepo.listQuery(), [
-    'accounts',
-  ]);
-  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(holdingsRepo.allQuery(), [
-    'holdings',
-  ]);
-  const { data: rates, isLoading: ratesLoading } = useLiveQuery(ratesRepo.allQuery(), [
-    'currency_rates',
-  ]);
-  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(settingsRepo.getQuery(), [
-    'settings',
-  ]);
+  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
+    accountsRepo.listQuery(),
+    ['accounts'],
+    true,
+    { cached: true },
+  );
+  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
+    holdingsRepo.allQuery(),
+    ['holdings'],
+    true,
+    { cached: true },
+  );
+  const { data: rates, isLoading: ratesLoading } = useLiveQuery(
+    ratesRepo.allQuery(),
+    ['currency_rates'],
+    true,
+    { cached: true },
+  );
+  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
+    settingsRepo.getQuery(),
+    ['settings'],
+    true,
+    { cached: true },
+  );
   const { data: transactions, isLoading: transactionsLoading } = useLiveQuery(
     transactionsRepo.listAllQuery(),
     ['transactions'],
+    true,
+    { cached: true },
   );
   const { data: historyRows, isLoading: historyLoading } = useLiveQuery(
     rateHistoryRepo.historyRowsQuery(),
     ['currency_rate_history'],
+    true,
+    { cached: true },
   );
   const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
     categoriesRepo.allQuery(),
     ['categories'],
+    true,
+    { cached: true },
   );
 
   // An empty set means "all accounts"; any names in it narrow all three charts.
@@ -253,6 +271,7 @@ const StatisticsScreen: FC = () => {
   // reads run in parallel instead of price_points waiting on holdings.
   const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
     holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
+    { cached: true },
   );
   // Every chart (bar/pie/trend) must never render an empty state while any of
   // this screen's own queries is still on its first load (kiko-architecture's

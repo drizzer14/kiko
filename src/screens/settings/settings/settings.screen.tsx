@@ -68,7 +68,9 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   const { t, i18n } = useTranslation();
   const { theme } = useUnistyles();
 
-  const { data, isLoading } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  const { data, isLoading } = useLiveQuery(settingsRepo.getQuery(), ['settings'], true, {
+    cached: true,
+  });
   const settings = data.at(0);
   // The base-currency field must never render as "none selected" while
   // settings is still on its own first load (kiko-architecture's

@@ -548,26 +548,39 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // `holdingsRepo` exposes no single-row lookup, so the holding's own
   // currency (needed to render each transaction's signed MoneyText) comes
   // from filtering the full holdings list for this id.
-  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(holdingsRepo.allQuery(), [
-    'holdings',
-  ]);
+  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
+    holdingsRepo.allQuery(),
+    ['holdings'],
+    true,
+    { cached: true },
+  );
   const { data: transactions, isLoading: transactionsLoading } = useLiveQuery(
     transactionsRepo.listByHoldingQuery(holdingId),
     ['transactions'],
+    true,
+    { cached: true },
   );
   const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
     categoriesRepo.allQuery(),
     ['categories'],
+    true,
+    { cached: true },
   );
-  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(settingsRepo.getQuery(), [
-    'settings',
-  ]);
+  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
+    settingsRepo.getQuery(),
+    ['settings'],
+    true,
+    { cached: true },
+  );
   // The cached conversion rates, so the Value amount can carry a smaller
   // converted base-currency caption beneath it — the same second line the
   // holding card shows for a holding in a non-base currency.
-  const { data: rates, isLoading: ratesLoading } = useLiveQuery(ratesRepo.allQuery(), [
-    'currency_rates',
-  ]);
+  const { data: rates, isLoading: ratesLoading } = useLiveQuery(
+    ratesRepo.allQuery(),
+    ['currency_rates'],
+    true,
+    { cached: true },
+  );
   // kiko-architecture: skip the price_points read while this specific
   // holding's type never reads it — a type carrying no priced spec and not
   // a loan (`needsPriceBook`) never touches `price_points`. It stays enabled
@@ -576,6 +589,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
     holdingsLoading ||
       holdings.some((candidate) => candidate.id === holdingId && needsPriceBook(candidate.type)),
+    { cached: true },
   );
 
   // Resolve each transaction row's stored category to its display (icon + title)
@@ -596,6 +610,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     transactionsRepo.listLinkedToLoanQuery(holdingId),
     ['transactions'],
     holding?.type === 'loan',
+    { cached: true },
   );
   const currency: Currency = holding?.currency ?? 'UAH';
   const now = Date.now();
@@ -607,6 +622,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
     accountsRepo.byIdQuery(holding?.accountId ?? ''),
     ['accounts'],
+    true,
+    { cached: true },
   );
   const account = accounts.at(0);
   // The empty-transactions text, the footer add action, and the Value header
