@@ -102,7 +102,7 @@ from there throws or silently no-ops.
 ## Sortables grid conventions
 
 Three grids — `accounts.screen.tsx`'s main grid (1 column), its own
-"Debts" section grid below it (T27, also 1 column — see "Section-scoped
+"Debts" section grid below it (also 1 column — see "Section-scoped
 grids must persist the FULL order" below), and the account-detail
 holding grid (2 columns) — share the same tuning, so a value drifting
 on one and not the others is a bug, not a deliberate difference. Read
@@ -115,7 +115,7 @@ library default of `1.1` pops the card up too far) and
 deliberately different `dragActivationDelay` — see its own entry below
 — it is not part of this shared-tuning claim.)
 
-### Section-scoped grids must persist the FULL order (T27 round 1, I1)
+### Section-scoped grids must persist the FULL order
 
 `accountsRepo.reorder(orderedIds)` rewrites `sortOrder = index` for
 ONLY the ids it is given — its contract is "the full new front-to-back
