@@ -146,7 +146,42 @@ resolverOutput="$(node -e '
 filePath="$(printf '%s\n' "$resolverOutput" | sed -n '1p')"
 cwd="$(printf '%s\n' "$resolverOutput" | sed -n '2p')"
 
+# Resolves the git worktree root for an EXISTING directory. Echoes the root
+# and returns 0 on success. Returns 1 when git's own failure text says "not
+# a git repository" (a plain, non-repo directory is not a dispatcher
+# crash, so the caller falls back to CLAUDE_PROJECT_DIR below). Returns 2
+# on any OTHER git failure (the git binary itself misbehaving, a corrupt
+# .git, a permission error) — I2: silently falling back on THIS case used
+# to let an unchecked write through for pre-write-guard.sh, so the caller
+# escalates it to denyOrNoop instead of treating it the same as "no repo
+# here".
+resolveGitRootOrFail() {
+  targetDirectory="$1"
+  gitErrorFile="$(mktemp 2>/dev/null)"
+  if [ -z "$gitErrorFile" ]; then
+    return 2
+  fi
+  gitRootValue="$(git -C "$targetDirectory" rev-parse --show-toplevel 2>"$gitErrorFile")"
+  gitStatus=$?
+  gitErrorText="$(cat "$gitErrorFile" 2>/dev/null)"
+  rm -f "$gitErrorFile"
+  if [ "$gitStatus" -eq 0 ] && [ -n "$gitRootValue" ]; then
+    printf '%s' "$gitRootValue"
+    return 0
+  fi
+  case "$gitErrorText" in
+    *"not a git repository"*)
+      return 1
+      ;;
+    *)
+      return 2
+      ;;
+  esac
+}
+
 resolvedRoot=""
+gitFailureIsOther=0
+
 if [ -n "$filePath" ]; then
   directory="$(dirname "$filePath")"
   # Walk up to the nearest EXISTING ancestor — a brand-new file's own
@@ -160,10 +195,11 @@ if [ -n "$filePath" ]; then
     directory="$parent"
   done
   if [ -d "$directory" ]; then
-    gitRoot="$(git -C "$directory" rev-parse --show-toplevel 2>/dev/null)"
-    if [ -n "$gitRoot" ]; then
-      resolvedRoot="$gitRoot"
-    fi
+    gitRoot="$(resolveGitRootOrFail "$directory")"
+    case $? in
+      0) resolvedRoot="$gitRoot" ;;
+      2) gitFailureIsOther=1 ;;
+    esac
   fi
 elif [ -n "$cwd" ]; then
   # C1: `cwd` used to be trusted as-is. A Bash/Stop payload's own `cwd` can
@@ -174,11 +210,16 @@ elif [ -n "$cwd" ]; then
   # one level up. Resolve `cwd`'s own git root the same way file_path's
   # directory is resolved above.
   if [ -d "$cwd" ]; then
-    gitRoot="$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)"
-    if [ -n "$gitRoot" ]; then
-      resolvedRoot="$gitRoot"
-    fi
+    gitRoot="$(resolveGitRootOrFail "$cwd")"
+    case $? in
+      0) resolvedRoot="$gitRoot" ;;
+      2) gitFailureIsOther=1 ;;
+    esac
   fi
+fi
+
+if [ "$gitFailureIsOther" -eq 1 ]; then
+  denyOrNoop 'dispatch.sh: git rev-parse failed resolving the target root (a genuine git failure, not a plain non-repo directory)'
 fi
 
 if [ -z "$resolvedRoot" ]; then

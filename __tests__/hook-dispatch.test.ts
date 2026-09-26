@@ -89,6 +89,41 @@ function payloadForBashCommand(cwd: string, command: string): string {
   return JSON.stringify({ cwd, tool_input: { command } });
 }
 
+// I2: a fake `git` (prepended onto PATH) that fails EVERY `rev-parse
+// --show-toplevel` call with a genuine, OTHER git error (deliberately
+// avoiding the literal substring "not a git repository" in its own message,
+// since the dispatcher's own check is a plain substring match) so the
+// dispatcher's fallback-to-CLAUDE_PROJECT_DIR path can be proven to trigger
+// ONLY on the "not a git repository" case, never on a real git failure
+// (which the guard must instead treat as a dispatcher crash). Any other
+// git subcommand (git init in the test setup, or a real `git` call the
+// dispatcher itself never issues on this path) passes through to the real
+// binary so the rest of each test's setup keeps working.
+function writeFakeGitOtherFailure(directory: string, realGitPath: string): string {
+  const fakeGitPath = join(directory, 'git');
+  writeFileSync(
+    fakeGitPath,
+    [
+      '#!/usr/bin/env bash',
+      'sawRevParse=0',
+      'sawShowToplevel=0',
+      'for argument in "$@"; do',
+      '  if [ "$argument" = "rev-parse" ]; then sawRevParse=1; fi',
+      '  if [ "$argument" = "--show-toplevel" ]; then sawShowToplevel=1; fi',
+      'done',
+      'if [ "$sawRevParse" = "1" ] && [ "$sawShowToplevel" = "1" ]; then',
+      "  printf 'fatal: a bespoke test git failure (permission denied)\\n' >&2",
+      '  exit 129',
+      'fi',
+      `exec "${realGitPath}" "$@"`,
+      '',
+    ].join('\n'),
+  );
+  chmodSync(fakeGitPath, 0o755);
+
+  return fakeGitPath;
+}
+
 // C1: proves the real production bug end to end, not just a stub — copies
 // the REAL kill-guard.sh/kill-guard.js pair (kill-guard.sh only ever
 // `require`s its own sibling kill-guard.js, so the pair is self-contained)
@@ -356,6 +391,62 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
     expect(result.status).toBe(0);
     expect(existsSync(marker)).toBe(true);
     expect(readFileSync(marker, 'utf8')).toContain(`CLAUDE_PROJECT_DIR=${fallbackRepository}`);
+  });
+
+  // I2: a git failure that is NOT "not a git repository" (the git binary
+  // itself misbehaving, a corrupt .git, a permission error) used to fall
+  // back to CLAUDE_PROJECT_DIR the same as a genuine non-repo directory —
+  // for a main-rooted session this silently ALLOWED a write the guard
+  // should have denied. Only "not a git repository" may fall back; any
+  // OTHER git failure must deny for pre-write-guard.sh and keep each other
+  // hook's own kept semantics.
+  describe('a git failure OTHER than "not a git repository" (I2)', () => {
+    const realGitPath = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim();
+
+    it('denies (deny JSON, exit 2) for pre-write-guard.sh', () => {
+      const fakeBinDirectory = createTempDirectory('kiko-dispatch-fake-git-deny-');
+      writeFakeGitOtherFailure(fakeBinDirectory, realGitPath);
+
+      const result = runDispatch('pre-write-guard.sh', payloadForFile('/tmp/whatever-i2.ts'), {
+        ...process.env,
+        PATH: `${fakeBinDirectory}:${process.env.PATH}`,
+      });
+
+      expect(result.status).toBe(2);
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.hookSpecificOutput.hookEventName).toBe('PreToolUse');
+      expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
+      expect(result.stderr.trim()).not.toBe('');
+    });
+
+    it('follows its kept fail-open semantics (exit 0, no output) for fast.sh', () => {
+      const fakeBinDirectory = createTempDirectory('kiko-dispatch-fake-git-fast-');
+      writeFakeGitOtherFailure(fakeBinDirectory, realGitPath);
+
+      const result = runDispatch('fast.sh', payloadForFile('/tmp/whatever-i2.ts'), {
+        ...process.env,
+        PATH: `${fakeBinDirectory}:${process.env.PATH}`,
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toBe('');
+    });
+
+    it("follows kill-guard.sh's own always-allow semantics for a cwd-based payload", () => {
+      const fakeBinDirectory = createTempDirectory('kiko-dispatch-fake-git-kill-');
+      writeFakeGitOtherFailure(fakeBinDirectory, realGitPath);
+      const cwdDirectory = createTempDirectory('kiko-dispatch-fake-git-kill-cwd-');
+
+      const result = runDispatch('kill-guard.sh', payloadForCwd(cwdDirectory), {
+        ...process.env,
+        PATH: `${fakeBinDirectory}:${process.env.PATH}`,
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toBe('');
+    });
   });
 
   it.each(['../evil.sh', 'a/b.sh', 'no-suffix', '', 'evil..sh', 'has space.sh'])(
