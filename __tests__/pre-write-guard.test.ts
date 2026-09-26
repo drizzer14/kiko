@@ -2399,18 +2399,92 @@ describe('conflicted file on disk (ours/theirs baselines)', () => {
     expect(reason).toContain('syntactically complete');
   });
 
-  it('runs no semgrep process when the write keeps the conflict markers', () => {
+  const MARKER_KEEPING_AFTER = CONFLICTED_BEFORE.replace(
+    '>>>>>>> feature',
+    '>>>>>>> feature\n// still merging',
+  );
+
+  it('scans both sides of a marker-keeping step in the same semgrep process', () => {
     const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
     const counterFile = join(captureDirectory, 'counter.txt');
+    const argvFile = join(captureDirectory, 'argv.json');
 
     const result = runConflictScenario(
-      { KIKO_PREWRITE_TEST_COUNTER_FILE: counterFile },
-      CONFLICTED_BEFORE.replace('>>>>>>> feature', '>>>>>>> feature\n// still merging'),
+      {
+        STUB_RESULTS_AFTER: '[]',
+        KIKO_PREWRITE_TEST_COUNTER_FILE: counterFile,
+        KIKO_PREWRITE_TEST_ARGV_FILE: argvFile,
+      },
+      MARKER_KEEPING_AFTER,
     );
 
     expect(result.stdout).toBe('');
     expect(result.status).toBe(0);
-    expect(existsSync(counterFile)).toBe(false);
+    expect(readFileSync(counterFile, 'utf8').trim().split('\n')).toEqual(['1']);
+    expect(JSON.parse(readFileSync(argvFile, 'utf8'))).toEqual([
+      'ours/src/example.ts',
+      'theirs/src/example.ts',
+      'after-ours/src/example.ts',
+      'after-theirs/src/example.ts',
+    ]);
+  });
+
+  it('denies a marker-keeping step that breaks the parse of a side that parsed on disk', () => {
+    const result = runConflictScenario(
+      {
+        STUB_RESULTS_AFTER: '[]',
+        STUB_PARSE_ERROR_PATHS: JSON.stringify(['after-ours/src/example.ts']),
+      },
+      MARKER_KEEPING_AFTER,
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('could not check');
+    expect(reason).toContain('syntactically complete');
+  });
+
+  it('allows a marker-keeping step whose side did not parse on disk either', () => {
+    const result = runConflictScenario(
+      {
+        STUB_RESULTS_AFTER: '[]',
+        STUB_PARSE_ERROR_PATHS: JSON.stringify([
+          'ours/src/example.ts',
+          'after-ours/src/example.ts',
+        ]),
+      },
+      MARKER_KEEPING_AFTER,
+    );
+
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+  });
+});
+
+// Every write to a file that does not parse on disk is denied, so advice to
+// make the edit complete would not help even when the new content fails
+// too.
+describe('parse-error advice', () => {
+  it('gives the on-disk advice when both the file on disk and the new content fail to parse', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'example.ts');
+    writeFileSync(targetFile, 'export function broken( {\n');
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: 'export const value = (;\n' }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: writeFindingsStub(project),
+        KIKO_PREWRITE_RULES: writeRulesStub(project),
+        STUB_PARSE_ERROR_PATHS: JSON.stringify(['before/src/example.ts', 'after/src/example.ts']),
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('The file on disk already does not parse');
+    expect(reason).not.toContain('syntactically complete');
   });
 });
 

@@ -59,6 +59,28 @@ function resolvedContent(side: string[]): string {
   return [...SHARED_HEAD, ...side, ...SHARED_TAIL].join('\n');
 }
 
+const SECOND_OURS_SIDE = ["export const mode = 'light';"];
+
+const SECOND_THEIRS_SIDE = ["export const mode = 'dark';"];
+
+function conflictBlock(ours: string[], theirs: string[]): string[] {
+  return [OURS_MARKER, ...ours, SEPARATOR_MARKER, ...theirs, THEIRS_MARKER];
+}
+
+// Two blocks: `first` and `second` are each either a whole conflict block
+// or the lines it was resolved to.
+function twoBlockContent(first: string[], second: string[]): string {
+  return [...SHARED_HEAD, ...first, '', ...second, ...SHARED_TAIL].join('\n');
+}
+
+const FIRST_BLOCK = conflictBlock(OURS_SIDE, THEIRS_SIDE);
+
+const SECOND_BLOCK = conflictBlock(SECOND_OURS_SIDE, SECOND_THEIRS_SIDE);
+
+function withCrlf(text: string): string {
+  return text.split('\n').join('\r\n');
+}
+
 function runGuard(
   toolName: string,
   toolInput: Record<string, unknown>,
@@ -205,6 +227,123 @@ describe('pre-write guard on a file with git conflict markers (real semgrep)', (
 
     expect(result.status).toBe(2);
     expect(denyReason(result)).toContain('kiko-full-word-identifiers');
+  });
+
+  // A violation added while a block stays would sit on BOTH sides of the
+  // next step's baseline and pass the final resolution unseen, so the
+  // marker-keeping step itself is checked, and the deny names the line in
+  // the content the edit would write, not in a rebuilt side.
+  it('denies a marker-keeping step that adds a violation in a shared region', () => {
+    const beforeContent = conflictedContent({ withBase: false });
+    const { project, targetFile } = writeOnDiskFile(beforeContent);
+    const tailLine = beforeContent.split('\n').indexOf('export const tail = 2;') + 1;
+
+    const result = runGuard(
+      'Edit',
+      {
+        file_path: targetFile,
+        old_string: 'export const tail = 2;',
+        new_string: `${HISTORY_ID_COMMENT}\nexport const tail = 2;`,
+      },
+      project,
+    );
+
+    expect(result.status).toBe(2);
+    const reason = denyReason(result);
+    expect(reason).toContain('kiko-no-history-id-comment');
+    expect(reason).toContain(`src/probe/conflict.ts:${tailLine}`);
+    expect(reason).toContain('would add 1 new violation');
+  });
+
+  it('denies a marker-keeping step that edits a violation into one side', () => {
+    const { project, targetFile } = writeOnDiskFile(conflictedContent({ withBase: false }));
+
+    const result = runGuard(
+      'Edit',
+      {
+        file_path: targetFile,
+        old_string: THEIRS_SIDE[0],
+        new_string: `${THEIRS_SIDE[0]}\nexport const tmp = 0;`,
+      },
+      project,
+    );
+
+    expect(result.status).toBe(2);
+    expect(denyReason(result)).toContain('kiko-full-word-identifiers');
+  });
+
+  it('allows a step that resolves one block to theirs while another block stays', () => {
+    const { project, targetFile } = writeOnDiskFile(twoBlockContent(FIRST_BLOCK, SECOND_BLOCK));
+
+    const result = runGuard(
+      'Edit',
+      {
+        file_path: targetFile,
+        old_string: FIRST_BLOCK.join('\n'),
+        new_string: THEIRS_SIDE.join('\n'),
+      },
+      project,
+    );
+
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+  });
+
+  it('allows a full resolution of two blocks that takes ours for one and theirs for the other', () => {
+    const { project, targetFile } = writeOnDiskFile(twoBlockContent(FIRST_BLOCK, SECOND_BLOCK));
+
+    const result = runGuard(
+      'Write',
+      { file_path: targetFile, content: twoBlockContent(OURS_SIDE, SECOND_THEIRS_SIDE) },
+      project,
+    );
+
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+  });
+
+  it('allows a CRLF conflicted file resolved to the ours side', () => {
+    const { project, targetFile } = writeOnDiskFile(
+      withCrlf(conflictedContent({ withBase: false })),
+    );
+
+    const result = runGuard(
+      'Write',
+      { file_path: targetFile, content: withCrlf(resolvedContent(OURS_SIDE)) },
+      project,
+    );
+
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+  });
+
+  it('checks a CRLF marker-keeping step', () => {
+    const beforeContent = withCrlf(twoBlockContent(FIRST_BLOCK, SECOND_BLOCK));
+    const { project, targetFile } = writeOnDiskFile(beforeContent);
+
+    const clean = runGuard(
+      'Edit',
+      {
+        file_path: targetFile,
+        old_string: withCrlf(SECOND_BLOCK.join('\n')),
+        new_string: SECOND_OURS_SIDE[0],
+      },
+      project,
+    );
+    const violating = runGuard(
+      'Edit',
+      {
+        file_path: targetFile,
+        old_string: withCrlf(SECOND_BLOCK.join('\n')),
+        new_string: `${SECOND_OURS_SIDE[0]}\r\n${HISTORY_ID_COMMENT}`,
+      },
+      project,
+    );
+
+    expect(clean.stderr).toBe('');
+    expect(clean.status).toBe(0);
+    expect(violating.status).toBe(2);
+    expect(denyReason(violating)).toContain('kiko-no-history-id-comment');
   });
 
   it('still denies an unparseable file on disk that has no conflict markers', () => {
