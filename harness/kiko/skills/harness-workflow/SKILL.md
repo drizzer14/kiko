@@ -41,6 +41,31 @@ PreToolUse hook on `Bash` (`scripts/checks/kill-guard.sh`, wired in
 mechanically — this rule states it for agents to follow directly, not
 just get blocked by.
 
+## A write can be denied before it lands
+
+A `PreToolUse` hook on `Edit|Write|MultiEdit`
+(`scripts/checks/pre-write-guard.sh`, wired in
+`harness/kiko/hooks/hooks.json`) can deny the write itself, before it
+ever reaches disk — it rebuilds the proposed post-edit content and
+checks it against `rules/semgrep-prewrite.yml` plus the Node-checker
+rules in `pre-write-guard.js`. A deny arrives as a
+`permissionDecision: "deny"` block naming the rule id, the exact
+finding, `metadata.fix` (the concrete fix), and `metadata.skill` (which
+skill section explains why) — read all three before acting, and go to
+the skill section named if the reason for the rule is unclear. Fix the
+write per `metadata.fix` and re-issue it; never retry the identical,
+unchanged write — it will deny again the same way. Two override
+comment forms suppress a specific finding, each naming the rule id and
+a concrete reason: `// nosemgrep: <rule-id> OVERRIDE(<reason>) <why>`
+for a Semgrep rule, `// kiko-override: <rule-id> OVERRIDE(<reason>)
+<why>` for a Node-checker rule — a bare comment with no `OVERRIDE(...)`
+never suppresses anything (see `kiko-linter`'s wrapper-contract
+exceptions section for the full mechanism). A deny that says the guard
+itself "could not check" the write (a Semgrep/Node crash, a timeout,
+malformed input) is fail-closed by design — it means fix the guard's
+own input or report the guard bug, never bypass it with an override
+comment.
+
 ## Run verbose commands through an Orca terminal
 
 Run a verbose or long-running command inside an Orca terminal instead
