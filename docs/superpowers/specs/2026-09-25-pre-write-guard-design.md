@@ -419,15 +419,26 @@ sides (`conflictSides` in `pre-write-guard.js`):
   side that does not parse is dropped from the baseline; if both are
   dropped, the write is allowed and `check:all` checks the finished
   file.
-- An AFTER that still has a complete block (`<<<<<<<`, `=======`,
-  `>>>>>>>`) is allowed unchecked, so blocks can be resolved one at a
-  time.
-- A marker-free AFTER is checked against the union of the ours and
-  theirs findings as the baseline.
-- A write that adds markers to a clean file is denied (AFTER does not
-  parse).
-- A file without markers that does not parse on disk is denied on every
-  write, with advice to ask the user how to repair it.
+- A write that keeps markers is checked only if it keeps whole blocks
+  (`<<<<<<<`, `=======`, `>>>>>>>`). The guard rebuilds new-ours and
+  new-theirs. Every finding must exist in the union of the old-ours and
+  old-theirs findings (max count). One baseline, not per side, so a block
+  resolved to theirs does not falsely deny. A full resolution is the
+  zero-block case of the same rule.
+- A write that keeps markers without a whole block, or adds markers to a
+  clean file, is denied.
+- A new side that does not parse while the same side parsed on disk is
+  denied. A side already broken on disk is tolerated, and its Node-checker
+  findings are dropped too.
+- A file WITHOUT markers that does not parse on disk is denied on every
+  write. If both on-disk and new content fail to parse, the deny gives the
+  on-disk advice: ask the user how to repair it. Do not work around it
+  with a Bash write.
+- The one-exported-component check runs in a worker thread, so the two
+  sides run in parallel. A shared-code edit while a block stays on a very
+  large `.tsx` can still exceed the 3 s p95 (known scanner cost).
+
+See `afterTreesFor` and `throwIfEditBrokeASide` in `pre-write-guard.js`.
 
 ## Deny message
 

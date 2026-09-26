@@ -792,20 +792,28 @@ The guard reads the file on disk (BEFORE) and the proposed content
 
 - BEFORE with conflict markers never causes a deny from its own parse
   error.
-- An AFTER that still has a complete block (`<<<<<<<`, `=======`,
-  `>>>>>>>`) is allowed without checks. Resolve blocks one at a time
-  with Edit if you need to.
-- A marker-free AFTER is checked against the union of the ours and
-  theirs sides as the baseline. A finding in either side counts as
-  pre-existing.
-- A write that adds conflict markers to a clean file is denied.
+- A write that keeps markers is checked only if it keeps whole blocks
+  (`<<<<<<<`, `=======`, `>>>>>>>`). The guard rebuilds new-ours and
+  new-theirs. Every finding must exist in the union of the old-ours and
+  old-theirs findings (max count). One baseline, not per side, so a block
+  resolved to theirs does not falsely deny. A full resolution is the
+  zero-block case of the same rule.
+- A write that keeps markers without a whole block, or adds markers to a
+  clean file, is denied.
+- A new side that does not parse while the same side parsed on disk is
+  denied. A side already broken on disk is tolerated, and its Node-checker
+  findings are dropped too.
 - A file WITHOUT markers that does not parse on disk is denied on every
-  write. The deny says to ask the user how to repair it. Do not work
-  around it with a Bash write.
+  write. If both on-disk and new content fail to parse, the deny gives the
+  on-disk advice: ask the user how to repair it. Do not work around it
+  with a Bash write.
+- The one-exported-component check runs in a worker thread, so the two
+  sides run in parallel. A shared-code edit while a block stays on a very
+  large `.tsx` can still exceed the 3 s p95 (known scanner cost).
 
 The baseline pass re-runs only the Node rules that found something in
-AFTER. See `conflictSides` and `baselineTextsFor` in
-`pre-write-guard.js`.
+a new tree. See `conflictSides`, `afterTreesFor`, and
+`throwIfEditBrokeASide` in `scripts/checks/pre-write-guard.js`.
 
 ## Adding a pre-write guard rule
 

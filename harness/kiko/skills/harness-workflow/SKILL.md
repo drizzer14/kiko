@@ -69,12 +69,13 @@ comment.
 
 ## Merge conflicts vs the pre-write guard
 
-Resolve conflict markers with Edit/Write as usual. The guard allows a
-write that still leaves a complete conflict block, checks the final
-marker-free file against both sides as the baseline, and denies a write
-that adds markers to a clean file. If the guard denies because a file
-without markers does not parse on disk, stop and ask the user how to
-repair it. See kiko-linter's "Pre-write guard and merge-conflict files".
+Resolve conflict markers with Edit/Write as usual; resolving one whole
+block at a time is fine. The guard checks every step: each rebuilt side
+may only carry findings already in the union of the on-disk sides. It
+denies a partial block, markers added to a clean file, and a side the
+edit broke. If the deny says the file on disk does not parse, stop and
+ask the user how to repair it. See kiko-linter's "Pre-write guard and
+merge-conflict files".
 
 ## Run verbose commands through an Orca terminal
 
