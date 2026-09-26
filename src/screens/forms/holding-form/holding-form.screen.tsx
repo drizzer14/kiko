@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 import { holdingDescriptor } from '@kiko/holdings/holding-descriptor';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
@@ -56,6 +57,20 @@ import { usePropertyFields } from './property/use-property-fields';
 import type { ScrollTarget, HoldingTypeForm } from './holding-type-form';
 import TermDepositFormBlock from './term-deposit/term-deposit-form-block';
 import { useTermDepositFields } from './term-deposit/use-term-deposit-fields';
+
+// Fire-and-forget, only for a loan: the matcher backfills from the loan's
+// own start date, so a create OR an edit (principal/schedule/
+// paymentHoldingId/lenderName/lenderIban can all change) needs a fresh run —
+// unlike `refreshMarketData`, which never fires on an edit at all
+// (type/currency are read-only there). Never rejects (its own doc comment),
+// so `save` never awaits or catches it. Extracted to a module-level function
+// (a plain call, not an inline `if`) so this ONE extra branch stays out of
+// `save`'s own cognitive-complexity budget.
+const runLoanAutoLinkIfLoan = (type: HoldingType): void => {
+  if (type === 'loan') {
+    runLoanAutoLink();
+  }
+};
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 
@@ -358,6 +373,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         });
         await holdingsRepo.setIcon(holdingId, icon);
 
+        // Unlike `refreshMarketData` below (type/currency are read-only in
+        // edit mode, so it never fires here), a loan's principal, schedule,
+        // paymentHoldingId, lenderName, and lenderIban all stay editable —
+        // any of them can change what the matcher would now link, so an
+        // EDIT backfills too (see `runLoanAutoLinkIfLoan`'s own doc comment).
+        runLoanAutoLinkIfLoan(type);
+
         navigation.goBack();
 
         return;
@@ -397,6 +419,9 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       // the network before navigating back; only fire the refresh after the
       // write commits.
       refreshMarketData({ throttled: false, metals: true });
+      // A freshly created loan can already have past ledger history worth
+      // backfilling (see `runLoanAutoLinkIfLoan`'s own doc comment).
+      runLoanAutoLinkIfLoan(type);
 
       // A `returnTo` route param (set only by the "Create new holding" entry
       // points on StatementImport/ColumnMapping) carries that screen's own

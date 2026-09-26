@@ -151,6 +151,12 @@ const mockRefreshMarketData = jest.fn().mockResolvedValue(right(undefined));
 jest.mock('@kiko/sync/refresh-market-data', () => ({
   refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),
 }));
+// The loan auto-link matcher's own follow-up after a loan create/edit —
+// spied the same way, so a test can assert it fires only for `type: 'loan'`.
+const mockRunLoanAutoLink = jest.fn().mockResolvedValue(undefined);
+jest.mock('@kiko/loans/use-loan-auto-link', () => ({
+  runLoanAutoLink: (...args: unknown[]) => mockRunLoanAutoLink(...args),
+}));
 // Auto-mocked so the scroll-order tests below can assert on WHICH field ref a
 // rejected Save targets, without a real ScrollView/measureLayout in the test
 // environment (mirrors contribution-form's and account-form's own mock).
@@ -2382,6 +2388,49 @@ describe('HoldingFormScreen loan', () => {
       { kind: 'none' },
     );
   });
+
+  // The matcher backfills from the loan's own start date, so both a fresh
+  // loan and an edited one (principal/schedule/paymentHoldingId/lenderName/
+  // lenderIban can all change) need a fresh run — unlike `refreshMarketData`
+  // just above, which only ever fires on create (type/currency are
+  // immutable in edit mode, so it has nothing new to react to there).
+  it('runs the loan auto-link matcher after a loan CREATE', async () => {
+    mockRunLoanAutoLink.mockClear();
+    const screen = await renderScreen();
+
+    await fillLoanFields(screen);
+    await fill(screen, 'Annual rate %', '12');
+    await fill(screen, 'Term (months)', '24');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(mockRunLoanAutoLink).toHaveBeenCalled();
+  });
+
+  it('runs the loan auto-link matcher after a loan EDIT too', async () => {
+    mockRunLoanAutoLink.mockClear();
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Car loan',
+      type: 'loan',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        kind: 'car_loan',
+        principalMinorUnits: 50_000_000,
+        startDate: localDay(2026, 1, 1),
+        schedule: 'annuity',
+        annualRatePct: 12,
+        termMonths: 24,
+      },
+    });
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(mockRunLoanAutoLink).toHaveBeenCalled();
+  });
 });
 
 describe('HoldingFormScreen icon', () => {
@@ -3142,6 +3191,7 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
   beforeEach(() => {
     mockRefreshMarketData.mockClear();
     mockRefreshMarketData.mockResolvedValue(right(undefined));
+    mockRunLoanAutoLink.mockClear();
   });
 
   it('triggers the gated rate/metal refresh after a successful create, unthrottled', async () => {
@@ -3192,5 +3242,19 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
     await fireEvent.press(screen.getByText('Save'));
 
     expect(mockRefreshMarketData).not.toHaveBeenCalled();
+    expect(mockRunLoanAutoLink).not.toHaveBeenCalled();
+  });
+
+  // P-NOWORK: a non-loan create/edit never runs the loan auto-link matcher
+  // at all — see `HoldingFormScreen loan`'s own describe block for the
+  // matching POSITIVE loan create/edit cases.
+  it('does not trigger the loan auto-link matcher for a non-loan create', async () => {
+    mockAccountKind = 'cash';
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'My cash');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(mockRunLoanAutoLink).not.toHaveBeenCalled();
   });
 });
