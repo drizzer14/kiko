@@ -1,13 +1,15 @@
 import { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 
-// Semgrep fixture (NEGATIVE): three shapes `kiko-worklet-directive-required`
+// Semgrep fixture (NEGATIVE): four shapes `kiko-worklet-directive-required`
 // must NOT flag — a same-file helper tagged with its own `'worklet'`
 // directive, a helper defined INLINE directly inside the worklet callback
 // (already part of that worklet's own closure, per kiko-gestures — never
 // captured remotely), and a function imported from ANOTHER module
 // (`withTiming`, from `react-native-reanimated`) — this rule only checks a
 // SAME-file declaration, so an imported helper is a known false negative,
-// per kiko-gestures' "Every function called inside a worklet..." section.
+// per kiko-gestures' "Every function called inside a worklet..." section —
+// and an untagged same-file helper called in the hook's DEPENDENCY argument,
+// which runs on the JS thread and is never part of the worklet's closure.
 const scaleForFade = (opacityValue: number): number => {
   'worklet';
 
@@ -25,3 +27,10 @@ export const useLiftStyle = (liftScale: { value: number }, opacity: { value: num
       opacity: withTiming(opacity.value, { duration: 200 }),
     };
   });
+
+const dependencyListFor = (liftValue: number): number[] => {
+  return [liftValue];
+};
+
+export const useFadeStyle = (opacity: { value: number }) =>
+  useAnimatedStyle(() => ({ opacity: opacity.value }), dependencyListFor(1));

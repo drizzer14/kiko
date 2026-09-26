@@ -586,7 +586,12 @@ rules:
   # further-chained gesture builders (`.minDuration(...).runOnJS(true)
   # .onStart(...)`, see `card-context-menu.component.tsx`/
   # `bottom-sheet.component.tsx`), both accepted per the heuristic — a real
-  # sweep of `src App.tsx __tests__ e2e` drew 0 findings. Test files are
+  # sweep of `src App.tsx __tests__ e2e` drew 0 findings. The call match is
+  # focused on a function (or handler-object) ARGUMENT of the hook
+  # (`focus-metavariable: $CALLBACK`), not the whole hook call: a helper
+  # called in the dependency argument (`useAnimatedStyle(() => ...,
+  # deps(1))`) runs on the JS thread and is never captured by the worklet,
+  # so a whole-call `pattern-inside` false-positived on it. Test files are
   # excluded: Jest mocks reanimated, so no worklet runtime ever captures a
   # helper there and the Release-only SIGABRT cannot happen; and the
   # `$F(...)` x statement-sequence match is quadratic on a large test file
@@ -617,12 +622,21 @@ rules:
       skill: "kiko-gestures › Every function called inside a worklet needs its own 'worklet' directive"
     patterns:
       - pattern-either:
-          - pattern-inside: "useAnimatedStyle(...)"
-          - pattern-inside: "useDerivedValue(...)"
-          - pattern-inside: "useAnimatedReaction(...)"
-          - pattern-inside: "useAnimatedScrollHandler(...)"
-          - pattern-inside: "runOnUI(...)"
-          - pattern-inside: "Gesture.$G().$ON(...)"
+          - patterns:
+              - pattern-either:
+                  - pattern: "useAnimatedStyle(..., $CALLBACK, ...)"
+                  - pattern: "useDerivedValue(..., $CALLBACK, ...)"
+                  - pattern: "useAnimatedReaction(..., $CALLBACK, ...)"
+                  - pattern: "useAnimatedScrollHandler(..., $CALLBACK, ...)"
+                  - pattern: "runOnUI(..., $CALLBACK, ...)"
+                  - pattern: "Gesture.$G().$ON(..., $CALLBACK, ...)"
+              - metavariable-pattern:
+                  metavariable: $CALLBACK
+                  pattern-either:
+                    - pattern: "(...) => $BODY"
+                    - pattern: "function (...) { ... }"
+                    - pattern: "{ ... }"
+              - focus-metavariable: $CALLBACK
       - pattern: $F(...)
       - pattern-either:
           - pattern-inside: |
