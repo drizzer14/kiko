@@ -226,6 +226,38 @@ if [ -z "$resolvedRoot" ]; then
   resolvedRoot="${CLAUDE_PROJECT_DIR:-}"
 fi
 
+# M4: a resolved root from file_path/cwd is trusted only when it shares
+# CLAUDE_PROJECT_DIR's own repository — same repo, or a linked worktree of
+# it (same `git rev-parse --git-common-dir`, realpath-compared so a macOS
+# /tmp -> /private/tmp symlink never causes a false mismatch). This keeps
+# every worktree of the session's OWN repo in scope while stopping a Write
+# that merely happens to land in some UNRELATED repo on disk from running
+# THAT repo's scripts/checks/* with CLAUDE_PROJECT_DIR's own rules. When
+# CLAUDE_PROJECT_DIR is unset or is not itself a repo, there is nothing to
+# bound against, so the resolved root is kept as-is.
+gitCommonDirectoryRealpath() {
+  targetDirectory="$1"
+  commonDirectory="$(git -C "$targetDirectory" rev-parse --git-common-dir 2>/dev/null)"
+  if [ -z "$commonDirectory" ]; then
+    return 1
+  fi
+  case "$commonDirectory" in
+    /*) : ;;
+    *) commonDirectory="$targetDirectory/$commonDirectory" ;;
+  esac
+  (cd "$commonDirectory" 2>/dev/null && pwd -P)
+}
+
+if [ -n "$resolvedRoot" ] && [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
+  projectCommonDirectory="$(gitCommonDirectoryRealpath "$CLAUDE_PROJECT_DIR")"
+  if [ -n "$projectCommonDirectory" ]; then
+    resolvedCommonDirectory="$(gitCommonDirectoryRealpath "$resolvedRoot")"
+    if [ "$resolvedCommonDirectory" != "$projectCommonDirectory" ]; then
+      resolvedRoot="$CLAUDE_PROJECT_DIR"
+    fi
+  fi
+fi
+
 targetScript="$resolvedRoot/scripts/checks/$scriptName"
 if [ ! -f "$targetScript" ]; then
   exit 0

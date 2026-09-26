@@ -155,29 +155,37 @@ afterEach(() => {
 });
 
 describe('harness/kiko/hooks/dispatch.sh', () => {
-  it("runs the target file's OWN worktree script, not CLAUDE_PROJECT_DIR's", () => {
-    const wrongRepository = initGitRepository('kiko-dispatch-wrong-');
-    const rightRepository = initGitRepository('kiko-dispatch-right-');
-    const wrongMarker = join(wrongRepository, 'marker.txt');
-    const rightMarker = join(rightRepository, 'marker.txt');
-    writeStubScript(wrongRepository, 'fast.sh', wrongMarker);
-    writeStubScript(rightRepository, 'fast.sh', rightMarker);
-    const targetFile = join(rightRepository, 'src', 'example.ts');
-    mkdirSync(join(rightRepository, 'src'), { recursive: true });
+  // M4: a resolved root is only trusted when it shares CLAUDE_PROJECT_DIR's
+  // OWN git-common-dir (i.e. the same repository, or a linked worktree of
+  // it) — an UNRELATED repository (a different .git entirely, as these two
+  // disposable repos are) must fall back to CLAUDE_PROJECT_DIR instead,
+  // so a Write into a repo that merely happens to sit on disk near the
+  // session's own project cannot run THAT repo's scripts/checks/* against
+  // CLAUDE_PROJECT_DIR's rules — the exact case this bound closes.
+  it("falls back to CLAUDE_PROJECT_DIR's own script for a file in an UNRELATED repository", () => {
+    const unrelatedRepository = initGitRepository('kiko-dispatch-unrelated-');
+    const projectRepository = initGitRepository('kiko-dispatch-project-');
+    const unrelatedMarker = join(unrelatedRepository, 'marker.txt');
+    const projectMarker = join(projectRepository, 'marker.txt');
+    writeStubScript(unrelatedRepository, 'fast.sh', unrelatedMarker);
+    writeStubScript(projectRepository, 'fast.sh', projectMarker);
+    const targetFile = join(unrelatedRepository, 'src', 'example.ts');
+    mkdirSync(join(unrelatedRepository, 'src'), { recursive: true });
 
     const result = runDispatch('fast.sh', payloadForFile(targetFile), {
       ...process.env,
-      CLAUDE_PROJECT_DIR: wrongRepository,
+      CLAUDE_PROJECT_DIR: projectRepository,
     });
 
     expect(result.status).toBe(0);
-    expect(existsSync(wrongMarker)).toBe(false);
-    expect(existsSync(rightMarker)).toBe(true);
-    const marker = readFileSync(rightMarker, 'utf8');
-    // `git rev-parse --show-toplevel` resolves symlinks (macOS's /tmp ->
-    // /private/tmp among them), so compare against the realpath, the same
-    // way pre-write-guard.js itself resolves both sides before comparing.
-    expect(marker).toContain(`CLAUDE_PROJECT_DIR=${realpathSync(rightRepository)}`);
+    expect(existsSync(unrelatedMarker)).toBe(false);
+    expect(existsSync(projectMarker)).toBe(true);
+    const marker = readFileSync(projectMarker, 'utf8');
+    // The M4 fallback assigns CLAUDE_PROJECT_DIR verbatim (no git rev-parse
+    // involved, unlike a resolved root), matching the existing "falls back
+    // to CLAUDE_PROJECT_DIR when the file_path directory is outside any
+    // git repo" test's own raw-path comparison below.
+    expect(marker).toContain(`CLAUDE_PROJECT_DIR=${projectRepository}`);
   });
 
   it('is a no-op (exit 0, no output) when the resolved root has no such script', () => {
