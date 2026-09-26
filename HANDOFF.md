@@ -59,6 +59,9 @@ Release/Distribution config; memory ops-brief-pin-physical-udid.) Guard: G1-G4 d
 developer. Morning items for the user: RETEST-0930.md + RETEST-phase3-addendum.md; KEYS-overnight.md (10 pending) + uk Cost
 "Вартість" vs "Собівартість"; guard KEYS.md (11 sync-error strings; coordinator concern: 7 are developer messages -> suggest one
 user-facing Binance message; full stops); visible guard changes (checkmark leading, "Use passcode").
+GUARD KEYS copied (worktree KEYS.md is untracked and dies with the prune) to the feat sdd folder:
+.superpowers/sdd/shares-property-metals-debts/KEYS-pre-write-guard.md (11 sync-error keys + the "Use passcode" / localized
+Cancel biometric prompt labels). USER MUST APPROVE before any deploy that ships the guard merge.
 1. When the hotfix session sends the bump sha: `git -C ~/orca/workspaces/pff-ios/device-deploy checkout -q --detach <sha>`,
    then kiko:ops archives Release / KikoDistribution there: FORCE_BUNDLING=1, clean build (rm ios/build + pod install
    if needed), NON-beta Xcode (check DTXcodeBuild), move the .xcarchive to ~/Library/Developer/Xcode/Archives/<date>/,
