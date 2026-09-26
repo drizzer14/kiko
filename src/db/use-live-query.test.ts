@@ -433,4 +433,22 @@ describe('useLiveQuery — the enabled argument', () => {
     expect(mockReactiveExecute).toHaveBeenCalled();
     expect(result.current.data).toEqual([{ id: 'a' }]);
   });
+
+  it('drops its data and unsubscribes once enabled flips true -> false (matches the doc, no stale rows)', async () => {
+    const { result, rerender } = await renderHook(
+      ({ enabled }: { enabled: boolean }) => useLiveQuery(fakeQuery, ['accounts'], enabled),
+      { initialProps: { enabled: true } },
+    );
+
+    expect(result.current.data).toEqual([{ id: 'a' }]);
+    mockUnsubscribe.mockClear();
+
+    await act(async () => {
+      await rerender({ enabled: false });
+    });
+
+    expect(mockUnsubscribe).toHaveBeenCalled();
+    expect(result.current.data).toEqual([]);
+    expect(result.current.isLoading).toBe(false);
+  });
 });
