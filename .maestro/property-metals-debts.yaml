@@ -29,11 +29,7 @@
 #
 # TAB BAR IDENTIFIERS: `house.fill` (Home) and `tray` (Accounts) are read
 # straight off `src/navigation/root.navigator.tsx`'s current
-# `tabBarIcon`/`genericEntitySymbol.account` values — NOT copied from the
-# sibling `.maestro/statement-import*.yaml` flows' own `wallet.pass.fill`,
-# which predates the icon-overhaul rename (`git log -S"wallet.pass.fill"`:
-# commit 54d58cab, "Accounts tab wallet.pass.fill -> genericEntitySymbol.account
-# (tray)") and is itself stale against the current source.
+# `tabBarIcon`/`genericEntitySymbol.account` values.
 #
 # THIS FLOW WAS AUTHORED WITHOUT A LIVE MAESTRO RUN (orchestrator ruling:
 # write + validate YAML syntax only; the run is a morning device check) —
