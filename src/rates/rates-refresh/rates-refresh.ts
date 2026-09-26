@@ -228,8 +228,11 @@ const shouldThrottle = async (
  * the throttle window meant neither leg ran. `'refreshed'`: every attempted
  * leg (an unattempted leg, per the data-presence gate, never counts against
  * this) settled. `'partial'`: one attempted leg rejected, the other
- * succeeded. `'failed'`: every attempted leg rejected — nothing is written
- * (this still never happens for a leg the gate skipped entirely).
+ * succeeded. `'failed'`: every attempted leg rejected. Neither `'partial'`
+ * nor `'failed'` guarantees a write happened — a surviving leg alone can
+ * still compose zero rows (e.g. a lone crypto leg with no fiat USD anchor to
+ * pivot through, `buildUahPrice`), so `'partial'` can write nothing too, not
+ * only `'failed'`.
  */
 export type RatesRefreshOutcome = {
   state: 'skipped' | 'refreshed' | 'partial' | 'failed';
@@ -310,7 +313,18 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
 
     if (isLeft(attempt)) {
       fiatSource = 'nbu';
-      return loadNbuFiat();
+      const nbuRates = await loadNbuFiat();
+
+      // NBU's feed carries fewer currencies than Monobank's (kiko-pricing);
+      // an empty response means it has nothing usable for this run, so the
+      // whole fiat leg must count as FAILED — an empty array read as
+      // "succeeded with no rows" would report 'refreshed'/'skipped' for a run
+      // that actually composed and stored nothing.
+      if (nbuRates.length === 0) {
+        throw new Error('rates-refresh: NBU fallback returned no supported currency');
+      }
+
+      return nbuRates;
     }
 
     return bifold(attempt);

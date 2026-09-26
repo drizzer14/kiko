@@ -385,6 +385,17 @@ describe('refreshRates — NBU fallback when Monobank is unreachable', () => {
     expect(captured).toHaveLength(0);
   });
 
+  it('counts the fiat leg as failed (not refreshed) when NBU answers with no supported currency', async () => {
+    const { deps, captured } = makeDeps({
+      fetchFiatRates: () => Promise.reject(new Error('cert pinning blocked')),
+      fetchNbuRates: async () => [],
+    });
+
+    await expect(refreshRates(deps)).resolves.toEqual({ state: 'partial', failedLegs: ['fiat'] });
+
+    expect(captured).toHaveLength(0);
+  });
+
   it('does not touch the crypto pipeline: BTC still composes against the NBU fiat anchor', async () => {
     const { deps, captured } = makeDeps({
       fetchFiatRates: () => Promise.reject(new Error('cert pinning blocked')),
