@@ -1,6 +1,6 @@
 import type { RateEntry } from '../conversion';
-import { isCurrency } from '../../currency/currency';
 import { buildRateTable, canConvert } from '../net-worth-view';
+import { currencyOptions, isCrypto, isCurrency } from '../../currency/currency';
 
 import { type RefreshDeps, refreshRates } from './rates-refresh';
 
@@ -48,16 +48,16 @@ const makeDeps = (overrides: Partial<RefreshDeps> = {}) => {
 };
 
 describe('refreshRates', () => {
-  it('composes every cross pair and upserts them once', async () => {
+  it('composes one X:UAH row per priced currency and upserts them once', async () => {
     const { deps, captured } = makeDeps();
 
     await refreshRates(deps);
 
     expect(captured).toHaveLength(1);
     const stored = captured[0];
-    // The mock providers price only 4 currencies (UAH anchor + USD/EUR/BTC), so
-    // buildPairs skips the unpriced GBP/CHF and emits 4 -> 12 ordered distinct pairs.
-    expect(stored).toHaveLength(12);
+    // The mock providers price 3 non-UAH currencies (USD/EUR/BTC) — one X:UAH
+    // row each, never a cross row between two of them.
+    expect(stored).toHaveLength(3);
     expect(stored).toContainEqual({
       base: 'USD',
       quote: 'UAH',
@@ -70,13 +70,6 @@ describe('refreshRates', () => {
       quote: 'UAH',
       rate: '43',
       source: 'monobank',
-      fetchedAt: 1000,
-    });
-    expect(stored).toContainEqual({
-      base: 'BTC',
-      quote: 'USD',
-      rate: '65000',
-      source: 'coingecko',
       fetchedAt: 1000,
     });
     expect(stored).toContainEqual({
@@ -203,11 +196,52 @@ describe('refreshRates', () => {
 
     expect(canConvert('GBP', 'UAH', table)).toBe(true);
     expect(canConvert('CHF', 'UAH', table)).toBe(true);
-    // A cross-pair with no direct Monobank quote: composed via the UAH pivot
-    // inside `buildUahPrice`/`buildPairs`, not fetched directly.
+    // A cross-pair with no direct Monobank quote: resolved at READ TIME via
+    // `rateBetween`'s UAH pivot, never fetched or stored directly.
     expect(canConvert('GBP', 'USD', table)).toBe(true);
     expect(canConvert('CHF', 'USD', table)).toBe(true);
     expect(canConvert('GBP', 'CHF', table)).toBe(true);
+  });
+
+  // Writers store only X:UAH — a full Monobank feed (every fiat currency but
+  // UAH) plus every crypto composes exactly one row per priced currency,
+  // never a cross pair among two non-UAH currencies.
+  it('stores exactly one X:UAH row per priced currency — 106 fiat + 3 crypto, none base UAH', async () => {
+    const fullFiat: RateEntry[] = currencyOptions
+      .filter((currency) => currency !== 'UAH' && !isCrypto(currency))
+      .map((currency, index) => ({
+        base: currency,
+        quote: 'UAH' as const,
+        rate: 1 + index * 0.1,
+        source: 'monobank' as const,
+      }));
+    const fullCrypto: RateEntry[] = [
+      { base: 'BTC', quote: 'USD', rate: 65_000, source: 'coingecko' },
+      { base: 'ETH', quote: 'USD', rate: 3_100, source: 'coingecko' },
+      { base: 'USDT', quote: 'USD', rate: 1.0002, source: 'coingecko' },
+    ];
+    const { deps, captured } = makeDeps({
+      fetchFiatRates: async () => fullFiat,
+      fetchCryptoPrices: async () => fullCrypto,
+    });
+
+    await refreshRates(deps);
+
+    expect(captured).toHaveLength(1);
+    const stored = captured[0];
+    expect(stored).toHaveLength(109);
+    expect(stored.every((row) => row.quote === 'UAH')).toBe(true);
+    expect(stored.every((row) => row.base !== 'UAH')).toBe(true);
+    expect(
+      stored
+        .filter((row) => isCrypto(row.base as never))
+        .every((row) => row.source === 'coingecko'),
+    ).toBe(true);
+    expect(
+      stored
+        .filter((row) => !isCrypto(row.base as never))
+        .every((row) => row.source === 'monobank'),
+    ).toBe(true);
   });
 });
 
@@ -351,8 +385,8 @@ describe('refreshRates — NBU fallback when Monobank is unreachable', () => {
     expect(captured).toHaveLength(1);
     expect(captured[0]).toContainEqual({
       base: 'BTC',
-      quote: 'USD',
-      rate: '65000',
+      quote: 'UAH',
+      rate: '2665000',
       source: 'coingecko',
       fetchedAt: 1000,
     });
@@ -511,6 +545,38 @@ describe('refreshRates — an unrated held currency skips the throttle', () => {
         nonBaseCurrencies: ['USD', 'EUR', 'BTC'],
       }),
       presentCurrencies: async () => ['USD', 'EUR', 'BTC'],
+    });
+
+    await refreshRates(deps);
+
+    expect(fiatCalled).toBe(false);
+    expect(captured).toHaveLength(0);
+  });
+});
+
+// A star row's `quote` is always UAH — UAH itself never appears as a `base`
+// row in `currency_rates`, so `presentCurrenciesQuery` (a distinct `base`
+// read) never lists it. Without an explicit exception, a base-USD user who
+// holds UAH would see UAH read as "unrated" forever and bypass the throttle
+// on every sync, not just a genuine gap.
+describe('refreshRates — UAH is always treated as present for the throttle', () => {
+  it('still respects the throttle when the only unrated held currency is UAH itself', async () => {
+    let fiatCalled = false;
+    const { deps, captured } = makeDeps({
+      fetchFiatRates: async () => {
+        fiatCalled = true;
+        return fiat;
+      },
+      now: () => 1000 + 60_000, // 1 minute after the last refresh — inside the window
+      lastRefreshAt: 1000,
+      openCurrencies: async () => ({
+        needsFiat: true,
+        cryptoCurrencies: [],
+        // Base is USD; UAH and EUR are held. UAH never has its own stored
+        // row (star rows never carry UAH as `base`), only EUR does.
+        nonBaseCurrencies: ['UAH', 'EUR'],
+      }),
+      presentCurrencies: async () => ['EUR', 'USD'],
     });
 
     await refreshRates(deps);

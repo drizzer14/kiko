@@ -10,9 +10,10 @@ type NewHistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'ra
 
 // Each row binds 5 parameters (base, quote, day, rate, source). SQLite rejects a
 // statement with more than SQLITE_MAX_VARIABLE_NUMBER (32766) bound parameters,
-// so a single multi-year backfill (12 cross pairs/day → tens of thousands of
-// rows) would overflow one insert and store nothing. 2000 rows/chunk = 10000
-// parameters, a safe margin under the ceiling.
+// so a single multi-year backfill (one X:UAH row per priced currency per day →
+// tens of thousands of rows over a long span) would overflow one insert and
+// store nothing. 2000 rows/chunk = 10000 parameters, a safe margin under the
+// ceiling.
 const UPSERT_CHUNK_SIZE = 2000;
 
 export const rateHistoryRepo = {

@@ -359,7 +359,12 @@ gate says there is nothing to do.
   `shouldThrottle` (`src/rates/rates-refresh/rates-refresh.ts`) skips
   its own throttle window when a held currency has no rate row yet —
   a "never fetched" escape so the data-presence gate can never hide a
-  currency's rate entirely.
+  currency's rate entirely. `UAH` is filtered out of that presence
+  check first: a star row's `quote` is always `UAH` and its `base`
+  never is, so `presentCurrenciesQuery` (a distinct `base` read) can
+  never list `UAH` — without the filter, a base-USD user who holds
+  UAH would read as permanently "unrated" and bypass the throttle on
+  every sync instead of only a genuine gap.
   The history backfill resumes per currency: a newly held currency
   with no history rows forces a run from the earliest day
   (`src/rates/history-backfill/history-backfill.ts`). A create/restore
@@ -400,8 +405,13 @@ SQLite (op-sqlite's bundled SQLCipher) caps bound parameters at
 whose row count comes from an external source (an API page, a
 user-picked file) can blow past that — the insert throws, the
 transaction rolls back, and a swallowed error can make the failure
-silent (this happened: a live Monobank refresh, ~11,990 rate pairs x
-5 params, overflowed the limit and rates never saved).
+silent (this happened: a live Monobank refresh, back when it wrote
+every ordered cross pair rather than one `X:UAH` row per priced
+currency — ~11,990 rows x 5 params, overflowed the limit and rates
+never saved). The chunking stays even though a live write is now only
+~109 rows (kiko-pricing's "Currency-rate fallback chain"): a `.kiko`
+restore of a pre-star export can still hand `upsertMany` a
+legacy-shaped batch that size.
 
 Rule: chunk with `chunkForTable(table, rows)`
 (`src/db/chunk-for-table.ts`) — it derives the safe row-per-chunk

@@ -34,10 +34,20 @@ non-currency `price_points` store.
   refresh has ever run. Crypto has no seed entry — see below.
 - BTC price: CoinGecko free API, quoted in USD; derive other pairs
   from it. No offline seed for crypto; an unrated crypto holding is
-  excluded until a live CoinGecko price lands.
-- Store live results in `CurrencyRate`. Refresh on sync, throttled to
-  respect each provider's own cache window — do not poll faster than
-  the upstream cache refreshes.
+  excluded until a live CoinGecko price lands. `rate(BTC, UAH) =
+  rate(BTC, USD) x rate(USD, UAH)` from the SAME run's fiat anchor
+  (Monobank buy rate, else NBU) — stored as ONE `BTC:UAH` row, always
+  `source = 'coingecko'`; no fiat anchor that run (both fiat providers
+  failed) means no crypto row at all, exactly as before, until a run
+  with a fiat anchor lands. `ETH`/`USDT` derive the same way.
+- Store live results in `CurrencyRate`, one `X:UAH` row per priced
+  currency (`buildUahRows`, `rates-refresh.ts`) — never a cross row
+  between two non-UAH currencies, since a cross rate resolves at READ
+  TIME through `rateBetween` (below). A full Monobank sync writes
+  ~109 rows (106 fiat + 3 crypto), not the ~11,990-row cross join a
+  legacy write once composed (kiko-architecture's "Bulk insert" section).
+  Refresh on sync, throttled to respect each provider's own cache
+  window — do not poll faster than the upstream cache refreshes.
 - **`RateTable` is a currency -> UAH-price map, resolved at READ TIME
   through the UAH pivot, not a stored cross-pair lookup.**
   `src/rates/conversion/conversion.ts`'s `RateTable =
@@ -76,6 +86,18 @@ instead of dropping it from the leading buckets. `price_points`' own
 earliest-fallback shape.
 
 ### History backfill
+
+`composeHistoryRows` writes one `X:UAH` row per priced currency per
+day (`USD`, `EUR`, plus every held crypto) — never a cross row
+between two non-UAH currencies, mirroring `rates-refresh.ts`'s own
+`buildUahRows` but once per historical day instead of once per live
+run. A gap in one provider's own series (NBU has no weekend/holiday
+quote; CoinGecko prices every calendar day) no longer stalls the
+OTHER currency's row: each currency's own `X:UAH` row carries forward
+from ITS OWN nearest earlier anchor independently, rather than a
+single stored cross pair carrying both legs forward as one joint
+unit — coverage is a strict superset of the old cross-join shape,
+never fewer converting buckets on a gap day.
 
 The Statistics screen drives an incremental, non-blocking backfill of
 `currency_rate_history` (`src/rates/history-backfill/history-backfill.ts`):
@@ -409,6 +431,14 @@ provider's own cache window (see "Currency-rate fallback chain"
 above) — do not poll faster than the upstream cache refreshes. No
 dedicated quota-guard or once-per-day scheduler exists yet as of T17;
 do not assume one when reading a refresh call site.
+
+`shouldThrottle` (`rates-refresh.ts`) treats `UAH` as always present
+in its "does every held currency already have a rate" check: a star
+row's `quote` is always `UAH` and its `base` never is, so
+`presentCurrenciesQuery` (a distinct `base` read) can never list
+`UAH` itself. Without this exception a base-USD user who holds UAH
+would read as permanently "unrated" and bypass the throttle on every
+single sync, not just a genuine gap.
 
 ## NBU metal prices — current and history (T19)
 

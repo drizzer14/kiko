@@ -1,4 +1,7 @@
+import { Money, toMajor } from '../../currency/money';
 import type { HistoryRateEntry } from '../history-entry';
+import type { SeriesHolding } from '../../statistics/holding-value-at';
+import { buildNetWorthSeries } from '../../statistics/net-worth-series';
 
 import {
   type BackfillDeps,
@@ -82,9 +85,23 @@ describe('composeHistoryRows', () => {
     { base: 'BTC', quote: 'USD', day: day(0), rate: 65_000, source: 'coingecko' },
   ];
 
-  it('composes all 12 ordered cross pairs per day', () => {
+  it('composes one X:UAH row per priced currency per day, never a cross pair', () => {
     const rows = composeHistoryRows(anchors, [day(0)]);
-    expect(rows).toHaveLength(12);
+    expect(rows).toHaveLength(3);
+    expect(rows.every((row) => row.quote === 'UAH')).toBe(true);
+    expect(rows.every((row) => row.base !== 'UAH')).toBe(true);
+  });
+
+  it('composes 5 rows/day for USD/EUR/BTC/ETH/USDT when every anchor is priced', () => {
+    const fivePriced: HistoryRateEntry[] = [
+      { base: 'USD', quote: 'UAH', day: day(0), rate: 40, source: 'nbu' },
+      { base: 'EUR', quote: 'UAH', day: day(0), rate: 43, source: 'nbu' },
+      { base: 'BTC', quote: 'USD', day: day(0), rate: 65_000, source: 'coingecko' },
+      { base: 'ETH', quote: 'USD', day: day(0), rate: 3_200, source: 'coingecko' },
+      { base: 'USDT', quote: 'USD', day: day(0), rate: 1.0002, source: 'coingecko' },
+    ];
+    const rows = composeHistoryRows(fivePriced, [day(0)]);
+    expect(rows).toHaveLength(5);
   });
 
   it('anchors fiat pairs to UAH with an nbu source', () => {
@@ -105,15 +122,8 @@ describe('composeHistoryRows', () => {
     });
   });
 
-  it('prices BTC through USD and tags any BTC pair as coingecko', () => {
+  it('prices BTC through USD and stores only its BTC:UAH row, tagged coingecko', () => {
     const rows = composeHistoryRows(anchors, [day(0)]);
-    expect(rows).toContainEqual({
-      base: 'BTC',
-      quote: 'USD',
-      day: day(0),
-      rate: '65000',
-      source: 'coingecko',
-    });
     expect(rows).toContainEqual({
       base: 'BTC',
       quote: 'UAH',
@@ -121,6 +131,7 @@ describe('composeHistoryRows', () => {
       rate: '2600000',
       source: 'coingecko',
     });
+    expect(rows.some((row) => row.base === 'BTC' && row.quote === 'USD')).toBe(false);
   });
 
   it('prices ETH through USD and composes a convertible ETH:UAH history row', () => {
@@ -208,7 +219,8 @@ describe('runBackfill', () => {
     const status: BackfillStatus = await runBackfill(deps);
 
     expect(captured).toHaveLength(1);
-    expect(captured[0]).toHaveLength(12);
+    // USD, EUR, BTC — one X:UAH row per priced currency, never a cross pair.
+    expect(captured[0]).toHaveLength(3);
     expect(status).toEqual({ state: 'complete', lastDay: day(0) });
   });
 
@@ -256,11 +268,11 @@ describe('runBackfill', () => {
 
     const status: BackfillStatus = await runBackfill(deps);
 
-    // Only BTC:USD anchors survive, so no fully-priced fiat cross pair composes;
-    // the pass still reports complete rather than throwing.
-    // With just BTC:USD priced, no cross pair among {BTC,USD,EUR,UAH} is emitted
-    // (USD alone is not enough to price a UAH-anchored pair), so nothing is stored,
-    // and the resume cursor stays at its prior value (null) rather than advancing.
+    // Only BTC:USD anchors survive; the pass still reports complete rather
+    // than throwing. With no fiat anchor at all, BTC itself never reaches a
+    // UAH price either (its own X:UAH row needs the same-run USD:UAH anchor),
+    // so no row is emitted for BTC or anything else, and the resume cursor
+    // stays at its prior value (null) rather than advancing.
     expect(status).toEqual({ state: 'complete', lastDay: null });
     expect(captured).toHaveLength(0);
   });
@@ -493,5 +505,76 @@ describe('runBackfill — the data-presence gate', () => {
     await runBackfill(deps);
 
     expect(receivedCurrencies).toEqual(['BTC']);
+  });
+});
+
+// A history day with a missing leg: NBU has no Saturday/Sunday quote (a real
+// weekend gap), while CoinGecko prices BTC every calendar day. Each currency's
+// own X:UAH row now carries forward independently (its OWN nearest-at-or-
+// before anchor), rather than a stored cross pair carrying forward as one
+// joint unit — `buildNetWorthSeries` must still value a BTC holding correctly
+// on the gap day, and no bucket may drop a holding it could convert on an
+// earlier day.
+describe('composeHistoryRows -> buildNetWorthSeries — a history day with a missing leg', () => {
+  const usdAtDay = (index: number): number => 40 + index * 0.5;
+  const btcUsdAtDay = (index: number): number => 60_000 + index * 100;
+  const GAP_SPAN_DAYS = 7; // day indices 0..6
+
+  it('values a BTC holding on the gap day from its OWN carried anchor, not a stale joint pair', () => {
+    const nbuAnchors: HistoryRateEntry[] = [];
+    for (let index = 0; index < GAP_SPAN_DAYS - 1; index += 1) {
+      // NBU has no quote for day 6 (the weekend gap) — every earlier day does.
+      nbuAnchors.push({
+        base: 'USD',
+        quote: 'UAH',
+        day: day(index),
+        rate: usdAtDay(index),
+        source: 'nbu',
+      });
+    }
+    const cryptoAnchors: HistoryRateEntry[] = Array.from({ length: GAP_SPAN_DAYS }, (_, index) => ({
+      base: 'BTC' as const,
+      quote: 'USD' as const,
+      day: day(index),
+      rate: btcUsdAtDay(index),
+      source: 'coingecko' as const,
+    }));
+
+    const days = Array.from({ length: GAP_SPAN_DAYS }, (_, index) => day(index));
+    const historyRows = composeHistoryRows([...nbuAnchors, ...cryptoAnchors], days);
+
+    const btcWallet: SeriesHolding = {
+      id: 'btc-wallet',
+      currency: 'BTC',
+      type: 'crypto_asset',
+      balanceMinorUnits: 100_000_000, // 1 BTC
+      metadata: null,
+    };
+
+    const series = buildNetWorthSeries({
+      holdings: [btcWallet],
+      transactionsByHolding: new Map(),
+      historyRows,
+      baseCurrency: 'UAH',
+      range: { from: day(0), to: day(GAP_SPAN_DAYS - 1) },
+    });
+
+    // Day 6's USD:UAH leg carries forward from day 5 (NBU's last quote before
+    // the gap); BTC:UAH day 6 is CoinGecko's own day-6 price times that SAME
+    // carried USD:UAH — computed here from the raw fixture facts, never read
+    // back from a row the production code wrote.
+    const gapDayUahPerBtc = btcUsdAtDay(GAP_SPAN_DAYS - 1) * usdAtDay(GAP_SPAN_DAYS - 2);
+    const expectedGapDayAmount = toMajor(
+      Money.fromMajor('UAH', 1 * gapDayUahPerBtc).minorUnits,
+      'UAH',
+    );
+
+    expect(series.points).toHaveLength(GAP_SPAN_DAYS);
+    const gapDayPoint = series.points.at(-1);
+    expect(gapDayPoint?.t).toBe(day(GAP_SPAN_DAYS - 1));
+    expect(gapDayPoint?.amount).toBe(expectedGapDayAmount);
+    // No bucket drops the BTC holding — every day's amount converts, none is
+    // the empty-sum fallback of 0.
+    expect(series.points.every((point) => point.amount > 0)).toBe(true);
   });
 });

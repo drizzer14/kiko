@@ -72,9 +72,11 @@ describe('rateHistoryRepo', () => {
   });
 
   it('chunks a large batch into insert statements under the SQLite variable limit', async () => {
-    // 12 cross pairs/day at 5 params each: a multi-year span produces tens of
-    // thousands of rows. A single insert would blow past SQLITE_MAX_VARIABLE_NUMBER
-    // (32766), so upsertMany must split the rows into bounded chunks.
+    // One X:UAH row per priced currency per day at 5 params each: a
+    // multi-year span (or a `.kiko` restore of a legacy, larger cross-join
+    // export) can still produce tens of thousands of rows. A single insert
+    // would blow past SQLITE_MAX_VARIABLE_NUMBER (32766), so upsertMany must
+    // split the rows into bounded chunks.
     const store: HistoryRow[] = [];
     const chunkSizes: number[] = [];
     const upsertStore = makeUpsertDatabaseTransaction(store);

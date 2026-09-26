@@ -73,7 +73,7 @@ const toEntry = (currency: Currency, row: NbuRangeRow): HistoryRateEntry => ({
 /**
  * Fetch official UAH cross rates for USD and EUR over `[start, end]` from NBU's
  * public range endpoint — one request per currency. Returns UAH-per-currency
- * entries per day, ready for the backfill to compose into stored cross pairs.
+ * entries per day, ready for the backfill to compose into stored `X:UAH` rows.
  * Requests are issued sequentially to stay gentle on the free endpoint.
  */
 export const fetchNbuHistory = async (
