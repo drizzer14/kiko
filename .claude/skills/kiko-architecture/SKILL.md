@@ -125,6 +125,23 @@ project-level pointer to this section.
   migration with a fresh number at THAT time, checked against whatever
   `main`'s own journal tail is then — never assume a branch's own next
   `idx` is still free by the time it lands.
+- **A key/column whose backfill can only run in JS, not SQL, is a
+  flag-adding migration plus a launch-time upgrade step.** Migration
+  `0041_add_dedup_key_upgraded` only adds `settings.dedup_keys_upgraded`
+  (defaulting to `false`) — the actual rewrite can't be SQL:
+  `normalizeTransactionName` is JS-only, never in SQL, so SQL alone
+  cannot tell a statement-import dedup key's occurrence suffix from a
+  description that itself ends in a digit. `MigrationsGate` performs
+  the rewrite: `upgradeStoredDedupKeys`
+  (`statement-import/upgrade-stored-dedup-keys/`) runs after
+  `runMigrations` and `settingsRepo.ensure()`, next to the credential
+  migrations, reads the flag, and — only when it's still `false` —
+  recomputes and rewrites every legacy `source = 'import'` transaction's
+  `externalId` (the pure `upgradeLegacyDedupKey`,
+  `statement-import/mapping/upgrade-dedup-key.ts`) inside ONE `write()`
+  transaction before flipping the flag, so a crash mid-run retries the
+  WHOLE upgrade on the next launch instead of leaving some rows
+  unrewritten.
 
 ## Hard rule: every write goes through `db.transaction()`
 

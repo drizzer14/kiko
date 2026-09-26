@@ -105,9 +105,15 @@ present), and `importParsedStatement` hands the whole batch to
 `transactionsRepo.importRows` in one call — see "Detect → import
 pipeline" above; `addManyDedup` is the separate, still-live
 dedup-write path every sync route uses instead. A key an old build
-already wrote with the plain-space join is upgraded once, in place —
-see `kiko-architecture`'s "Storage" and "Data transfer" sections for
-the migration/gate/restore mechanism.
+already wrote with the plain-space join is upgraded once, in place:
+`upgrade-dedup-key.ts`'s pure `upgradeLegacyDedupKey(row)` recomputes
+`computeDedupKeyBase` from a STORED row and rewrites an exact
+`base + ' ' + digits` match to `base + '␟' + digits`, leaving anything
+else (an edited description, a bank-issued id) untouched.
+`upgrade-stored-dedup-keys.ts`'s `upgradeStoredDedupKeys` is the launch
+step `MigrationsGate` runs it under — see `kiko-architecture`'s
+"Storage" section for the migration/gate mechanism and "Data transfer"
+for the restore-side mirror.
 
 ## Column mapping
 

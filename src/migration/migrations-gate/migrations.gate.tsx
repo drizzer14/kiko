@@ -11,6 +11,7 @@ import { settingsRepo } from '@kiko/settings/settings.repo';
 import { type FC, type ReactNode, useEffect, useState } from 'react';
 import { migrateSingleTokenToPerAccount } from '@kiko/monobank/migrate-credential';
 import { migrateBinanceCredentialToPerAccount } from '@kiko/crypto-sync/binance/migrate-binance-credential';
+import { upgradeStoredDedupKeys } from '@kiko/statement-import/upgrade-stored-dedup-keys/upgrade-stored-dedup-keys';
 
 import { styles } from './migrations.gate.styles';
 
@@ -102,11 +103,14 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
     // setter can ever run against a missing row, and a failed insert surfaces
     // as this gate's error state instead of an unhandled rejection. The
     // persisted language is applied next, before either gate paints anything
-    // user-visible. The Keychain-token migrations run last, before any token
+    // user-visible. The Keychain-token migrations run next, before any token
     // read (the auto-sync hook mounts only on success): first the legacy
     // (pre-`kiko`) -> global move, then the global -> per-account move that binds
     // the Monobank token to its connected account, then the equivalent global ->
-    // per-account move for the Binance credentials.
+    // per-account move for the Binance credentials. The dedup-key upgrade runs
+    // last of the one-shot migrations, since it only needs the settings row
+    // (already ensured above) and touches no Keychain state the credential
+    // migrations depend on.
     initDatabase()
       .then(runMigrations)
       .then(() => settingsRepo.ensure())
@@ -114,6 +118,7 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
       .then(migrateLegacyToken)
       .then(migratePerAccountMonobankToken)
       .then(migratePerAccountBinanceCredential)
+      .then(upgradeStoredDedupKeys)
       .then(() => {
         if (!cancelled) {
           setState({ status: 'success' });

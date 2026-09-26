@@ -14,6 +14,7 @@ const mockRunMigrations = jest.fn<Promise<void>, []>();
 const mockMigrateLegacyToken = jest.fn<Promise<void>, []>();
 const mockMigratePerAccountToken = jest.fn<Promise<void>, [string | undefined]>();
 const mockMigratePerAccountBinance = jest.fn<Promise<void>, [string | undefined]>();
+const mockUpgradeStoredDedupKeys = jest.fn<Promise<void>, []>();
 const mockConnectedQuery = jest.fn<Promise<{ id: string }[]>, [string?]>();
 // Backs `settingsRepo.getQuery()` for `applyPersistedLanguage`. A test sets
 // `mockGetSettings.mockResolvedValue(...)` / `mockRejectedValueOnce(...)`
@@ -28,6 +29,9 @@ jest.mock('@kiko/monobank/migrate-credential', () => ({
 jest.mock('@kiko/crypto-sync/binance/migrate-binance-credential', () => ({
   migrateBinanceCredentialToPerAccount: (id: string | undefined) =>
     mockMigratePerAccountBinance(id),
+}));
+jest.mock('@kiko/statement-import/upgrade-stored-dedup-keys/upgrade-stored-dedup-keys', () => ({
+  upgradeStoredDedupKeys: () => mockUpgradeStoredDedupKeys(),
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { connectedQuery: (institution?: string) => mockConnectedQuery(institution) },
@@ -58,6 +62,7 @@ describe('MigrationsGate', () => {
     mockMigrateLegacyToken.mockResolvedValue(undefined);
     mockMigratePerAccountToken.mockResolvedValue(undefined);
     mockMigratePerAccountBinance.mockResolvedValue(undefined);
+    mockUpgradeStoredDedupKeys.mockResolvedValue(undefined);
     mockConnectedQuery.mockResolvedValue([]);
     (settingsRepo.ensure as jest.Mock).mockResolvedValue(undefined);
     mockGetSettings.mockResolvedValue([]);
@@ -113,6 +118,26 @@ describe('MigrationsGate', () => {
     expect(await findByText('ready')).toBeTruthy();
     expect(mockConnectedQuery).toHaveBeenCalledWith('binance');
     expect(mockMigratePerAccountBinance).toHaveBeenCalledWith('acc-binance');
+  });
+
+  it('runs the dedup-key upgrade once, after the credential migrations', async () => {
+    const order: string[] = [];
+    mockMigratePerAccountBinance.mockImplementation(async () => {
+      order.push('binance-credential');
+    });
+    mockUpgradeStoredDedupKeys.mockImplementation(async () => {
+      order.push('dedup-key-upgrade');
+    });
+
+    const { findByText } = await render(
+      <MigrationsGate>
+        <Text>ready</Text>
+      </MigrationsGate>,
+    );
+
+    expect(await findByText('ready')).toBeTruthy();
+    expect(mockUpgradeStoredDedupKeys).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(['binance-credential', 'dedup-key-upgrade']);
   });
 
   it('passes undefined to the per-account migration when no Monobank account is connected', async () => {
