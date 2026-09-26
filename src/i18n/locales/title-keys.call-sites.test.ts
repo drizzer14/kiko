@@ -1,30 +1,81 @@
 // Title Case applies by UI role (kiko-translator), and TITLE_KEYS is the only
 // place the casing and full-stop invariants learn a key is a heading. A
 // heading key left out of it is silently checked as sentence case, so this
-// walks every app `.tsx` call site that renders a key as a heading or a sheet
-// title and requires that key to be in TITLE_KEYS.
+// walks every app `.tsx` call site that renders a key as a heading, a sheet
+// title, or a nav title and requires that key to be in TITLE_KEYS.
 import ts from 'typescript';
 import { join, relative } from 'node:path';
+import maybe, { foldMap } from 'fnts/maybe';
 import { readdirSync, readFileSync } from 'node:fs';
 
 import { TITLE_KEYS } from './title-keys';
 
 const SOURCE_ROOT = join(__dirname, '..', '..');
 
-// The components that render their `title` prop as a heading. `sheetTitle`
-// is a sheet title on any component, because SelectField wrappers pass it on.
-const TITLE_PROP_COMPONENTS = new Set(['SummaryTable', 'ConfirmSheet', 'LinkedPaymentsSection']);
+// The components that render a prop as a heading or a sheet title, so a
+// `t('...')` passed to that prop is a heading key. `sheetTitle` is a sheet
+// title on any component, because SelectField wrappers pass it on.
+const HEADING_PROPS: Record<string, readonly string[]> = {
+  ConfirmSheet: ['title'],
+  EntityAmountHeader: ['label'],
+  LinkedPaymentsSection: ['title'],
+  SummaryTable: ['title'],
+};
 
 // A heading whose key is not a literal cannot be read from the syntax tree, so
 // each such site lists the keys it can render, verified by reading the site.
-// A new dynamic site fails until it is listed here.
 const DYNAMIC_HEADING_KEYS: Record<string, readonly string[]> = {
   'screens/account-detail/bank-sync-section/bank-sync-section.component.tsx#titleKey': [
     'accountDetail.disconnectMonobank',
   ],
+  'screens/forms/transaction-form/transaction-form.screen.tsx#title': [
+    'forms.transaction.title',
+    'forms.transaction.editTitle',
+    'forms.transaction.addTitle',
+  ],
 };
 
-type HeadingCall = { site: string; key: string | undefined; argument: string; file: string };
+// A heading slot inside a component that renders its own prop there: the keys
+// are checked at that component's call sites through HEADING_PROPS instead.
+const FORWARDED_HEADING_SITES: Record<string, `${string}.${string}`> = {
+  'design-system/components/confirm-sheet/confirm-sheet.component.tsx#title': 'ConfirmSheet.title',
+  'design-system/components/entity-amount-header/entity-amount-header.component.tsx#label':
+    'EntityAmountHeader.label',
+  'design-system/components/select-field/select-field.component.tsx#sheetTitle':
+    'SelectField.sheetTitle',
+  'design-system/components/summary-table/summary-table.component.tsx#title': 'SummaryTable.title',
+  'screens/forms/account-kind-field/account-kind-field.component.tsx#sheetTitle':
+    'AccountKindField.sheetTitle',
+  'screens/holding-detail/holding-detail.screen.tsx#title': 'LinkedPaymentsSection.title',
+};
+
+// A picker sheet that repeats its own field label as its title renders a
+// field-label key, which the field-label role keeps in sentence case.
+const FIELD_LABEL_ECHO = 'a picker sheet repeating its own sentence-case field label';
+
+// A heading slot that renders no Title-role key, with the reason.
+const UNCHECKED_HEADING_SITES: Record<string, string> = {
+  'calendar/calendar-header/calendar-header.component.tsx#title':
+    'a month name and a year, not a phrase that has a casing role',
+  'design-system/components/card-context-menu/card-context-menu.component.tsx#name':
+    'the user-entered name of the entity the menu acts on',
+  'design-system/components/currency-field/currency-field.component.tsx#label': FIELD_LABEL_ECHO,
+  'design-system/components/filter-menu/filter-menu.component.tsx#label': FIELD_LABEL_ECHO,
+  'screens/account-detail/account-detail.screen.tsx#accountName': 'the user-entered account name',
+  'screens/column-mapping/column-select-field/column-select-field.component.tsx#label':
+    FIELD_LABEL_ECHO,
+  'screens/forms/bank-type-field/bank-type-field.component.tsx#label': FIELD_LABEL_ECHO,
+  'screens/forms/category-field/category-field.component.tsx#label': FIELD_LABEL_ECHO,
+  'screens/forms/date-field/date-field.component.tsx#label': FIELD_LABEL_ECHO,
+  'screens/forms/holding-select-field/holding-select-field.component.tsx#label': FIELD_LABEL_ECHO,
+  'screens/forms/payment-holding-field/payment-holding-field.component.tsx#label': FIELD_LABEL_ECHO,
+  'screens/forms/time-field/time-field.component.tsx#label': FIELD_LABEL_ECHO,
+  'screens/holding-detail/holding-detail.screen.tsx#holdingName': 'the user-entered holding name',
+  'screens/statement-import/statement-preview-block/statement-preview-block.component.tsx#stats.displayName':
+    'the statement format name the parser reports, a bank brand name',
+};
+
+type HeadingSite = { site: string; key: string | undefined; siteId: string };
 
 const sourceFiles = (directory: string): string[] =>
   readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -42,10 +93,47 @@ const isTranslateCall = (node: ts.Node): node is ts.CallExpression =>
   ((ts.isIdentifier(node.expression) && node.expression.text === 't') ||
     (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 't'));
 
-const translateCallsIn = (node: ts.Node): ts.CallExpression[] => {
-  const nested = node.getChildren().flatMap(translateCallsIn);
+const isJsx = (node: ts.Node): boolean =>
+  ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) || ts.isJsxFragment(node);
 
-  return isTranslateCall(node) ? [node, ...nested] : nested;
+// The expressions a heading slot can render: both arms of a conditional, the
+// rendered side of `&&`, and every non-blank child of nested JSX.
+const headingLeaves = (node: ts.Node): ts.Node[] => {
+  if (ts.isJsxExpression(node) || ts.isParenthesizedExpression(node)) {
+    return foldMap(maybe(node.expression), headingLeaves) ?? [];
+  }
+
+  if (ts.isJsxText(node)) {
+    return node.containsOnlyTriviaWhiteSpaces ? [] : [node];
+  }
+
+  if (ts.isJsxElement(node) || ts.isJsxFragment(node)) {
+    return node.children.flatMap(headingLeaves);
+  }
+
+  if (ts.isJsxSelfClosingElement(node)) {
+    return [];
+  }
+
+  if (ts.isConditionalExpression(node)) {
+    return [...headingLeaves(node.whenTrue), ...headingLeaves(node.whenFalse)];
+  }
+
+  return ts.isBinaryExpression(node) ? binaryLeaves(node) : [node];
+};
+
+const binaryLeaves = (node: ts.BinaryExpression): ts.Node[] => {
+  const operator = node.operatorToken.kind;
+
+  if (operator === ts.SyntaxKind.AmpersandAmpersandToken) {
+    return headingLeaves(node.right);
+  }
+
+  if (operator === ts.SyntaxKind.BarBarToken || operator === ts.SyntaxKind.QuestionQuestionToken) {
+    return [...headingLeaves(node.left), ...headingLeaves(node.right)];
+  }
+
+  return [node];
 };
 
 const tagName = (element: ts.JsxOpeningLikeElement): string => element.tagName.getText();
@@ -66,38 +154,80 @@ const isHeadingText = (element: ts.JsxOpeningLikeElement): boolean => {
   );
 };
 
-// A header that is itself a `<Text variant="heading">` is already walked as a
-// heading; this adds the bare `header={t('...')}` form.
-const directBottomSheetHeaderCall = (element: ts.JsxOpeningLikeElement): ts.Node[] => {
+const headingProps = (element: ts.JsxOpeningLikeElement): ts.Node[] =>
+  [...(HEADING_PROPS[tagName(element)] ?? []), 'sheetTitle'].flatMap(
+    (name) =>
+      foldMap(maybe(attribute(element, name)?.initializer), (initializer) => [initializer]) ?? [],
+  );
+
+// A JSX header is walked on its own (its `<Text variant="heading">`), so only
+// a bare expression given to `header` is a heading slot here.
+const bottomSheetHeader = (element: ts.JsxOpeningLikeElement): ts.Node[] => {
   const header = tagName(element) === 'BottomSheet' ? attribute(element, 'header') : undefined;
   const expression =
     header?.initializer && ts.isJsxExpression(header.initializer)
       ? header.initializer.expression
       : undefined;
 
-  return expression !== undefined && isTranslateCall(expression) ? [expression] : [];
+  return expression === undefined || isJsx(expression) ? [] : [expression];
 };
 
-const headingNodes = (node: ts.Node): ts.Node[] => {
-  const nested = node.getChildren().flatMap(headingNodes);
+const titleProperty = (objectLiteral: ts.Node): ts.Node[] => {
+  if (!ts.isObjectLiteralExpression(objectLiteral)) {
+    return [];
+  }
+
+  return objectLiteral.properties.flatMap((property) => {
+    if (property.name?.getText() !== 'title') {
+      return [];
+    }
+
+    if (ts.isPropertyAssignment(property)) {
+      return [property.initializer];
+    }
+
+    return ts.isShorthandPropertyAssignment(property) ? [property.name] : [];
+  });
+};
+
+// A nav title: `options={{ title }}` on a screen, or `navigation.setOptions({ title })`.
+const navigationTitle = (node: ts.Node): ts.Node[] => {
+  if (ts.isJsxAttribute(node) && node.name.getText() === 'options') {
+    const initializer = node.initializer;
+
+    return initializer && ts.isJsxExpression(initializer) && initializer.expression
+      ? titleProperty(initializer.expression)
+      : [];
+  }
+
+  if (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    node.expression.name.text === 'setOptions'
+  ) {
+    return node.arguments.flatMap(titleProperty);
+  }
+
+  return [];
+};
+
+const headingSlots = (node: ts.Node): ts.Node[] => {
+  const nested = node.getChildren().flatMap(headingSlots);
 
   if (ts.isJsxElement(node) && isHeadingText(node.openingElement)) {
     return [...node.children, ...nested];
   }
 
   if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
-    const headingProps = [
-      TITLE_PROP_COMPONENTS.has(tagName(node)) ? attribute(node, 'title') : undefined,
-      attribute(node, 'sheetTitle'),
-    ].flatMap((prop) => (prop?.initializer ? [prop.initializer] : []));
-
-    return [...headingProps, ...directBottomSheetHeaderCall(node), ...nested];
+    return [...headingProps(node), ...bottomSheetHeader(node), ...nested];
   }
 
-  return nested;
+  return [...navigationTitle(node), ...nested];
 };
 
-const headingCallsIn = (file: string): HeadingCall[] => {
+const oneLine = (node: ts.Node): string => node.getText().replace(/\s+/g, ' ').trim();
+
+const headingSitesIn = (file: string): HeadingSite[] => {
   const source = ts.createSourceFile(
     file,
     readFileSync(file, 'utf8'),
@@ -107,62 +237,95 @@ const headingCallsIn = (file: string): HeadingCall[] => {
   );
   const relativePath = relative(SOURCE_ROOT, file);
 
-  return headingNodes(source)
-    .flatMap(translateCallsIn)
-    .map((call) => {
-      const [firstArgument] = call.arguments;
-      const line = source.getLineAndCharacterOfPosition(call.getStart()).line + 1;
+  return headingSlots(source)
+    .flatMap(headingLeaves)
+    .map((leaf) => {
+      const line = source.getLineAndCharacterOfPosition(leaf.getStart()).line + 1;
+      const site = `${relativePath}:${line}`;
+
+      if (!isTranslateCall(leaf)) {
+        return { site, key: undefined, siteId: `${relativePath}#${oneLine(leaf)}` };
+      }
+
+      const [firstArgument] = leaf.arguments;
       const isLiteral =
         firstArgument !== undefined &&
         (ts.isStringLiteral(firstArgument) || ts.isNoSubstitutionTemplateLiteral(firstArgument));
 
       return {
-        site: `${relativePath}:${line}`,
+        site,
         key: isLiteral ? firstArgument.text : undefined,
-        argument: firstArgument?.getText() ?? '',
-        file: relativePath,
+        siteId: `${relativePath}#${foldMap(maybe(firstArgument), oneLine) ?? ''}`,
       };
     });
 };
 
-const headingCalls = sourceFiles(SOURCE_ROOT).flatMap(headingCallsIn);
+const headingSites = sourceFiles(SOURCE_ROOT).flatMap(headingSitesIn);
 
-const dynamicSiteId = (call: HeadingCall): string => `${call.file}#${call.argument}`;
+const dynamicSiteIds = new Set(
+  headingSites.filter((heading) => heading.key === undefined).map((heading) => heading.siteId),
+);
 
-describe('TITLE_KEYS covers every heading and sheet-title call site', () => {
+const allowlists = [DYNAMIC_HEADING_KEYS, FORWARDED_HEADING_SITES, UNCHECKED_HEADING_SITES];
+
+describe('TITLE_KEYS covers every heading, sheet-title, and nav-title call site', () => {
   it('finds the known heading call sites', () => {
-    expect(headingCalls.length).toBeGreaterThan(40);
-    expect(headingCalls.map((call) => call.key)).toContain('holdingDetail.shareChanges');
-    expect(headingCalls.map((call) => call.key)).toContain('holdingDetail.linkedPayments');
-    expect(headingCalls.map((call) => call.key)).toContain('settings.dataImport.confirmTitle');
+    const keys = headingSites.map((heading) => heading.key);
+
+    expect(headingSites.length).toBeGreaterThan(40);
+    expect(keys).toContain('holdingDetail.shareChanges');
+    expect(keys).toContain('holdingDetail.linkedPayments');
+    expect(keys).toContain('settings.dataImport.confirmTitle');
+    expect(keys).toContain('accountDetail.balanceLabel');
+    expect(keys).toContain('holdingDetail.valueLabel');
+    expect(keys).toContain('settings.categories');
+    expect(keys).toContain('forms.account.editTitle');
   });
 
   it('lists every literal heading key in TITLE_KEYS', () => {
-    const missing = headingCalls
-      .filter((call) => call.key !== undefined && !TITLE_KEYS.has(call.key))
-      .map((call) => `${call.site} ${call.key}`);
+    const missing = headingSites
+      .filter((heading) => heading.key !== undefined && !TITLE_KEYS.has(heading.key))
+      .map((heading) => `${heading.site} ${heading.key}`);
 
     expect(missing).toEqual([]);
   });
 
-  it('lists every dynamic heading site in DYNAMIC_HEADING_KEYS', () => {
-    const unlisted = headingCalls
-      .filter((call) => call.key === undefined && !(dynamicSiteId(call) in DYNAMIC_HEADING_KEYS))
-      .map(dynamicSiteId);
+  it('lists every non-literal heading site in exactly one allowlist', () => {
+    const unlisted = [...dynamicSiteIds].filter(
+      (siteId) => allowlists.filter((allowlist) => siteId in allowlist).length !== 1,
+    );
 
     expect(unlisted).toEqual([]);
   });
 
-  it('keeps DYNAMIC_HEADING_KEYS current and its keys in TITLE_KEYS', () => {
-    const foundSites = new Set(
-      headingCalls.filter((call) => call.key === undefined).map(dynamicSiteId),
-    );
-    const stale = Object.keys(DYNAMIC_HEADING_KEYS).filter((site) => !foundSites.has(site));
+  it('keeps every allowlist current', () => {
+    const stale = allowlists
+      .flatMap((allowlist) => Object.keys(allowlist))
+      .filter((siteId) => !dynamicSiteIds.has(siteId));
+
+    expect(stale).toEqual([]);
+  });
+
+  it('keeps DYNAMIC_HEADING_KEYS keys in TITLE_KEYS', () => {
     const missing = Object.values(DYNAMIC_HEADING_KEYS)
       .flat()
       .filter((key) => !TITLE_KEYS.has(key));
 
-    expect(stale).toEqual([]);
     expect(missing).toEqual([]);
+  });
+
+  it('maps every forwarded heading prop in HEADING_PROPS, and forwards every HEADING_PROPS prop', () => {
+    const forwarded: Set<string> = new Set(Object.values(FORWARDED_HEADING_SITES));
+    const unmapped = [...forwarded].filter((componentProp) => {
+      const [component = '', prop = ''] = componentProp.split('.');
+
+      return prop !== 'sheetTitle' && !(HEADING_PROPS[component] ?? []).includes(prop);
+    });
+    const unforwarded = Object.entries(HEADING_PROPS)
+      .flatMap(([component, props]) => props.map((prop) => `${component}.${prop}`))
+      .filter((componentProp) => !forwarded.has(componentProp));
+
+    expect(unmapped).toEqual([]);
+    expect(unforwarded).toEqual([]);
   });
 });

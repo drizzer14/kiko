@@ -18,6 +18,7 @@
 // or a field label would otherwise be silently exempted from BOTH checks).
 export const TITLE_KEYS = new Set([
   'accountDetail.addBankSheetTitle',
+  'accountDetail.balanceLabel',
   'accountDetail.disconnectMonobank',
   'accountDetail.disconnectProvider',
   'accountDetail.holdingsHeading',
@@ -61,11 +62,14 @@ export const TITLE_KEYS = new Set([
   'holdingDetail.shareChanges',
   'holdingDetail.transactionsHeading',
   'holdingDetail.upcomingPayments',
+  'holdingDetail.valueLabel',
   'home.dateRangeField.heading',
   'home.title',
+  'settings.categories',
   'settings.dataExport.title',
   'settings.dataImport.confirmTitle',
   'settings.dataImport.title',
+  'settings.system',
   'settings.title',
   'statementImport.chooseHoldingSheetTitle',
   'statementImport.importResultTitle',

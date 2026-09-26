@@ -157,12 +157,17 @@ title/heading/sheet-title key fails this test until it is added to
 `TITLE_KEYS` on purpose. The reverse direction is its own invariant,
 `src/i18n/locales/title-keys.call-sites.test.ts`: it parses every app
 `.tsx` and fails when a `t('key')` rendered as a heading is missing from
-`TITLE_KEYS` — a `<Text variant="heading">` child, a `title=` on
-`SummaryTable`/`ConfirmSheet`/`LinkedPaymentsSection`, any `sheetTitle=`,
-or a bare `BottomSheet` `header={t(...)}`. A non-literal key there must be
-listed with its keys in the test's `DYNAMIC_HEADING_KEYS`. A new component
-that renders its own `title` prop as a heading goes into the test's
-`TITLE_PROP_COMPONENTS`. Read the FAILURE MESSAGE'S key path before
+`TITLE_KEYS` — a `<Text variant="heading">` child, a prop listed in the
+test's `HEADING_PROPS` (e.g. `ConfirmSheet` `title`, `EntityAmountHeader`
+`label`), any `sheetTitle=`, a bare `BottomSheet` `header={...}`, or a nav
+title (`options={{ title }}` / `navigation.setOptions({ title })`). Every
+other expression in a heading slot (a variable, a `t(variableKey)`, a
+template) fails until it is listed in exactly one allowlist:
+`DYNAMIC_HEADING_KEYS` (the keys it can render), `FORWARDED_HEADING_SITES`
+(a component rendering its own prop, which must be in `HEADING_PROPS`), or
+`UNCHECKED_HEADING_SITES` (a reason: user-entered names, a picker sheet
+repeating its own field label). A new component that renders a prop as a
+heading goes into `HEADING_PROPS`. Read the FAILURE MESSAGE'S key path before
 assuming a new string is miscased: add a new title key to
 `title-keys.ts`, not just to the catalogue.
 
