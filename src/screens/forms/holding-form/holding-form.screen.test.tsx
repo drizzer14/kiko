@@ -3278,7 +3278,10 @@ describe('HoldingFormScreen — localization', () => {
     await fireEvent.press(getByTestId('holding-type-field-option-bond'));
     await fireEvent.press(getByText('Вручну'));
 
-    expect(getByText('Деталі облігації')).toBeTruthy();
+    // `forms.holding.details` is the shared heading of the property, metal,
+    // bond, and loan blocks, so it reads a generic "Details", not a
+    // bond-specific one.
+    expect(getByText('Деталі')).toBeTruthy();
     expect(getByText('Кількість')).toBeTruthy();
     expect(getByText('Номінальна вартість')).toBeTruthy();
     expect(getByText('Купон %')).toBeTruthy();

@@ -253,7 +253,7 @@ export const uk: typeof en = {
       couponSummaryLabel: 'Купон',
       cryptoAsset: 'Криптоактив',
       deposit: 'Депозит',
-      details: 'Деталі облігації',
+      details: 'Деталі',
       diiaHint: 'Придбали в Дії? Додайте облігацію до банку або брокера, якого ви обрали там.',
       editTitle: 'Редагувати актив',
       faceValue: 'Номінальна вартість',
