@@ -126,7 +126,7 @@ invariant). The Title Case role is an EXPLICIT key list (`TITLE_KEYS`,
 `src/i18n/locales/title-keys.ts` — shared with the full-stop invariant
 below), not a key-name pattern (a `Title`/`Heading`-suffixed key that
 is actually a button or a field label would otherwise be silently
-exempted from the sentence-case check — CASE fix round 1/5); every
+exempted from the sentence-case check); every
 other key defaults to sentence case, so a genuinely new
 title/heading/sheet-title key fails this test until it is added to
 `TITLE_KEYS` on purpose. Read the FAILURE MESSAGE'S key path before

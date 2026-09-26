@@ -101,8 +101,7 @@ project-level pointer to this section.
   never proceed past a failed migration.
 - The count-based runner makes migration `idx` a SHARED NAMESPACE
   across branches, not a per-branch sequence — two branches that each
-  add a migration at the same next `idx` are NOT independent (review
-  I3, merge commit `86c4838`): `fix/import-balance`'s own
+  add a migration at the same next `idx` are NOT independent: `fix/import-balance`'s own
   `0034_add_balance_set_at` must NEVER reach `main` as-is. That fix
   lands on `main` only through `feat/assets-debts`, where it was
   renumbered to `0036` (after that branch's own `0034`/`0035`) at merge
