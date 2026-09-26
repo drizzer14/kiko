@@ -216,6 +216,42 @@ describe('asBondMeta couponFrequency', () => {
   });
 });
 
+describe('asBondMeta payments', () => {
+  const base = {
+    quantity: 1000,
+    faceValueMinorUnits: 100,
+    couponPct: 4.5,
+    purchaseDate: 1000,
+    maturityDate: 2000,
+    isin: 'XS2895055981',
+  };
+  const payments = [
+    { date: 1500, kind: 'coupon', amount: '0.0225' },
+    { date: 2000, kind: 'coupon', amount: '0.03' },
+    { date: 2000, kind: 'redemption', amount: '1' },
+  ];
+
+  it('keeps a stored schedule', () => {
+    expect(asBondMeta({ ...base, payments })?.payments).toEqual(payments);
+  });
+
+  it('keeps an empty schedule apart from an absent one', () => {
+    expect(asBondMeta({ ...base, payments: [] })?.payments).toEqual([]);
+    expect(asBondMeta(base)).not.toHaveProperty('payments');
+  });
+
+  it.each([
+    ['a non-array', { kind: 'coupon' }],
+    ['a non-number date', [{ ...payments[0], date: '1500' }]],
+    ['an unknown kind', [{ ...payments[0], kind: 'dividend' }]],
+    ['a number amount', [{ ...payments[0], amount: 0.0225 }]],
+    ['a non-decimal amount', [{ ...payments[0], amount: '2.25e-2' }]],
+    ['one malformed payment among valid ones', [...payments, { date: 3000 }]],
+  ])('rejects the whole record for %s', (_label, invalid) => {
+    expect(asBondMeta({ ...base, payments: invalid })).toBeNull();
+  });
+});
+
 describe('walletAddressOf', () => {
   it('reads a string walletAddress', () => {
     expect(walletAddressOf({ walletAddress: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq' })).toBe(

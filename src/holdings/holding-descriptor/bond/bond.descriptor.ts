@@ -88,7 +88,7 @@ const bondCoupons = (
   ).minorUnits;
   const quantity = decimalFromJsonNumber(meta.quantity);
   const grossOn = (date: number): number =>
-    foldMap(maybe(couponPaymentOn(scheduledCoupons, date)), (payment) =>
+    foldMap(maybe(couponPaymentOn(scheduledCoupons, date, meta.couponFrequency)), (payment) =>
       foldMap(maybe(quantity), (bonds) => multiplyToMinorUnits([bonds, payment.amount], currency)),
     ) ?? savedGrossMinorUnits;
 

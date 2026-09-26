@@ -16,6 +16,17 @@ jest.mock('@kiko/bonds/bond-register-repo', () => ({
   refreshBondRegisterIfStale: jest.fn().mockResolvedValue(undefined),
 }));
 
+const mockSaveMetadataEdit = jest.fn().mockResolvedValue(undefined);
+
+jest.mock('../../save-metadata-edit', () => ({
+  saveMetadataEdit: (...args: unknown[]) => mockSaveMetadataEdit(...args),
+}));
+
+import type { HoldingRow } from '@kiko/db';
+import { EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
+
+import type { EditContext } from '../../holding-type-form';
+
 import { useBondFields } from './use-bond-fields';
 
 // UA4000234215: a real register ISIN, checksum-valid.
@@ -37,11 +48,11 @@ const foundRow = (
   fetchedAt: 1,
 });
 
-const renderBondFields = () =>
+const renderBondFields = (isEdit = false) =>
   renderHook(() =>
     useBondFields({
       type: 'bond',
-      isEdit: false,
+      isEdit,
       currency: 'UAH',
       setCurrency: jest.fn(),
       setName: jest.fn(),
@@ -51,6 +62,74 @@ const renderBondFields = () =>
 beforeEach(() => {
   mockBondRegisterRows = [];
   mockFetchedAtRows = [{ value: 1 }];
+  mockSaveMetadataEdit.mockClear();
+});
+
+describe('useBondFields kept payment schedule', () => {
+  const payments = [
+    { date: new Date(2027, 2, 24).getTime(), kind: 'coupon', amount: '23.75' },
+    { date: new Date(2029, 5, 24).getTime(), kind: 'redemption', amount: '1000' },
+  ];
+  const withPayments = () => {
+    const row = foundRow();
+
+    return { ...row, terms: { ...row.terms, payments } };
+  };
+
+  it('keeps the register schedule of a bond created in ISIN mode', async () => {
+    mockBondRegisterRows = [withPayments()];
+    const { result } = await renderBondFields();
+
+    await act(async () => {
+      result.current.setIsin(VALID_ISIN);
+    });
+
+    expect(result.current.createPayload().metadata).toMatchObject({ isin: VALID_ISIN, payments });
+  });
+
+  it('drops the kept schedule once the coupon is edited, saving the edited coupon', async () => {
+    mockBondRegisterRows = [withPayments()];
+    const holding = {
+      currency: 'UAH',
+      metadata: {
+        quantity: 10,
+        faceValueMinorUnits: 100_000,
+        couponPct: 9.5,
+        purchaseDate: new Date(2026, 8, 1).getTime(),
+        maturityDate: new Date(2029, 5, 24).getTime(),
+        couponFrequency: 'quarterly',
+        isin: VALID_ISIN,
+        payments,
+      },
+    } as unknown as HoldingRow;
+    const { result } = await renderBondFields(true);
+    const context: EditContext = {
+      holdingId: 'h1',
+      name: 'Bond',
+      color: null,
+      currency: 'UAH',
+      isSynced: false,
+      editingHolding: holding,
+      book: EMPTY_PRICE_BOOK,
+    };
+
+    await act(async () => {
+      result.current.seed(holding);
+    });
+    await result.current.saveEdit(context);
+
+    expect(mockSaveMetadataEdit.mock.calls.at(-1)?.[1]).toMatchObject({ payments });
+
+    await act(async () => {
+      result.current.setCouponPct('12');
+    });
+    await result.current.saveEdit(context);
+
+    expect(mockSaveMetadataEdit.mock.calls.at(-1)?.[1]).toMatchObject({
+      couponPct: 12,
+      payments: [],
+    });
+  });
 });
 
 describe('useBondFields scrollTargets', () => {

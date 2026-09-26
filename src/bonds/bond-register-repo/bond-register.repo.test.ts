@@ -113,7 +113,36 @@ describe('refreshBondRegisterIfStale', () => {
     fetchedAt: () => Promise.resolve(null),
     fetchRegister: jest.fn().mockResolvedValue([]),
     replaceAll: jest.fn().mockResolvedValue(undefined),
+    backfillPayments: jest.fn().mockResolvedValue(undefined),
     ...overrides,
+  });
+
+  it('keeps each matching bond its schedule from the fetched rows before the cache is replaced', async () => {
+    const calls: string[] = [];
+    const deps = makeDeps({
+      fetchRegister: jest.fn().mockResolvedValue([dcpTerms]),
+      backfillPayments: jest.fn(async (terms: readonly BondTerms[]) => {
+        calls.push(`backfill:${terms.map((bond) => bond.isin).join()}`);
+      }),
+      replaceAll: jest.fn(async () => {
+        calls.push('replaceAll');
+      }),
+    });
+
+    await refreshBondRegisterIfStale(deps);
+
+    expect(calls).toEqual([`backfill:${dcpTerms.isin}`, 'replaceAll']);
+  });
+
+  it('keeps no schedule when the refresh is skipped or fetches nothing', async () => {
+    const skipped = makeDeps({ now: () => laterSameDay, fetchedAt: () => Promise.resolve(day1) });
+    const empty = makeDeps();
+
+    await refreshBondRegisterIfStale(skipped);
+    await refreshBondRegisterIfStale(empty);
+
+    expect(skipped.backfillPayments).not.toHaveBeenCalled();
+    expect(empty.backfillPayments).not.toHaveBeenCalled();
   });
 
   it('skips the fetch when the cache was already refreshed on the SAME local day', async () => {

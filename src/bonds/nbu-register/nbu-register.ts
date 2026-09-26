@@ -1,12 +1,16 @@
 import { guard } from 'fnts';
 import { match } from 'ts-pattern';
 import { NBU_API_ENDPOINT } from '@env';
+import {
+  type BondPayment,
+  bondCouponFrequencies,
+  type BondCouponFrequency,
+} from '@kiko/holdings/holding-metadata';
 import { Money } from '@kiko/currency/money';
 import { startOfLocalDay } from '@kiko/dates';
 import { monthsPerCouponPeriod } from '@kiko/holdings/interest';
 import { type Currency, currencyOptions, currencyScale } from '@kiko/currency/currency';
 import { shiftDecimal, multiplyToDecimal, decimalFromJsonNumber } from '@kiko/currency/decimal';
-import { bondCouponFrequencies, type BondCouponFrequency } from '@kiko/holdings/holding-metadata';
 
 /**
  * NBU's public, tokenless securities-register endpoint — the
@@ -38,18 +42,6 @@ type NbuRegisterRow = {
   val_code: string;
   pay_period: number;
   payments?: NbuRegisterPayment[];
-};
-
-/**
- * One register cash flow for ONE bond of the register's `nominal`: `amount`
- * is the exact decimal the register lists (a Eurobond pays fractions of a
- * cent per 1-dollar nominal, so it cannot be minor units), `date` a
- * device-local midnight like `maturityDate`.
- */
-export type BondPayment = {
-  date: number;
-  kind: 'coupon' | 'redemption';
-  amount: string;
 };
 
 /** The register's resolved terms for one bond ISIN — the ISIN-mode form's read shape. */

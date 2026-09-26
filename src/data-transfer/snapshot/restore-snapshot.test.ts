@@ -21,6 +21,7 @@ import {
 } from '@kiko/db';
 import { getTableColumns } from 'drizzle-orm';
 import { holdingValue } from '@kiko/holdings/holding-value';
+import { holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 
 import { computeDedupKeyBase } from '../../statement-import/mapping/mapping';
 
@@ -1023,5 +1024,39 @@ describe('restoreDataSnapshot', () => {
 
       expect(insertedRows.currencyRateHistory ?? []).toEqual([]);
     });
+  });
+
+  it("keeps a bond's own coupon schedule when its ISIN is no longer in the restored register", async () => {
+    const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+    const payments = [
+      { date: Date.UTC(2027, 1, 1), kind: 'coupon', amount: '0.0225' },
+      { date: Date.UTC(2027, 7, 1), kind: 'coupon', amount: '0.03' },
+      { date: Date.UTC(2029, 1, 1), kind: 'redemption', amount: '1' },
+    ];
+    const bond = {
+      id: 'h1',
+      type: 'bond',
+      currency: 'USD',
+      balanceMinorUnits: 0,
+      balanceSetAt: null,
+      metadata: {
+        quantity: 1000,
+        faceValueMinorUnits: 100,
+        couponPct: 4.5,
+        purchaseDate: Date.UTC(2026, 8, 26),
+        maturityDate: Date.UTC(2029, 1, 1),
+        isin: 'XS2895055981',
+        payments,
+      },
+    };
+
+    await restoreDataSnapshot(
+      JSON.parse(JSON.stringify({ ...emptySnapshot, holdings: [bond] })) as DataSnapshot,
+    );
+
+    const [restored] = insertedRows.holdings as { metadata: unknown }[];
+
+    expect(holdingRegisterCoupons(restored.metadata, 'USD', null)).toEqual(payments.slice(0, 2));
   });
 });

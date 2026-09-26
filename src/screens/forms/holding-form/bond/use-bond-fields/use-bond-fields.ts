@@ -7,6 +7,7 @@ import {
   hasStoredBondPurchasePrice,
 } from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
+import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { parseAmount } from '@kiko/currency/parse';
 import { useCallback, useRef, useState } from 'react';
@@ -28,6 +29,7 @@ import {
   type BondFieldErrors,
   type BondReasonKey,
 } from './bond-reasons';
+import { bondPaymentsOnSave } from './bond-payments-on-save';
 
 // Seed the bond number/date fields from stored metadata. Minor-unit money
 // fields (face value, purchase price) convert back to grouped major strings;
@@ -166,15 +168,32 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
     setName,
   });
 
+  // The bond as stored when the edit form seeded, to tell which fields the
+  // user changed; null on create.
+  const savedBondRef = useRef<{ meta: BondMeta; currency: Currency } | null>(null);
+
   const buildBondMetadata = (): Record<string, unknown> => {
     const quantityValue = parseAmount(quantity) || 0;
     const faceValueMinorUnits = Money.fromMajor(currency, parseAmount(faceValue) || 0).minorUnits;
     const priceValue = parseAmount(purchasePrice);
+    const couponValue = parseAmount(couponPct) || 0;
+    const payments = bondPaymentsOnSave({
+      bondMode,
+      registerTerms,
+      saved: savedBondRef.current,
+      next: {
+        isin: isin.trim() === '' ? undefined : isin,
+        currency,
+        faceValueMinorUnits,
+        couponPct: couponValue,
+        couponFrequency,
+      },
+    });
 
     return {
       quantity: quantityValue,
       faceValueMinorUnits,
-      couponPct: parseAmount(couponPct) || 0,
+      couponPct: couponValue,
       // The total actually paid. A blank one is left out, not stored as the
       // nominal: `asBondMeta` still reads it as nominal (par), so the purchase
       // entry and expected profit read as break-even, while the yield to
@@ -195,6 +214,7 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
       // `setIsin` wrapper) — a second `normalizeIsin` call here was a
       // redundant third normalization.
       ...(isin.trim() === '' ? {} : { isin }),
+      ...foldMap(maybe(payments), (schedule) => ({ payments: schedule })),
     };
   };
 
@@ -228,6 +248,7 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
         return;
       }
 
+      savedBondRef.current = { meta, currency: holding.currency };
       const fields = seedBondFields(
         meta,
         holding.currency,

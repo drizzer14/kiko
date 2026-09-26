@@ -137,6 +137,16 @@ describe('holdingDetailSpecs breakdown', () => {
       expect(spec.expectedProfit(stepUpHolding, olderCache)?.minorUnits).toBe(13_250);
       expect(spec.expectedProfit(stepUpHolding, null)?.minorUnits).toBe(13_250);
     });
+
+    it('keeps the register profit from its kept schedule once its ISIN has left the cache', () => {
+      const kept = holding({
+        type: 'bond',
+        currency: 'USD',
+        metadata: { ...stepUpMeta, payments: stepUpTerms.payments },
+      });
+
+      expect(spec.expectedProfit(kept, null)?.minorUnits).toBe(16_250);
+    });
   });
 
   it('returns null for a bond with unparsable metadata', () => {

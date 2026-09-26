@@ -1,7 +1,11 @@
 import type { BondMeta } from '@kiko/holdings/holding-metadata';
 
+import {
+  holdingRegisterCoupons,
+  cachedRegisterPayments,
+  holdingRegisterPayments,
+} from './holding-register-payments';
 import type { BondTerms } from './nbu-register';
-import { holdingRegisterCoupons, holdingRegisterPayments } from './holding-register-payments';
 
 const local = (year: number, month: number, day: number): number =>
   new Date(year, month - 1, day).getTime();
@@ -63,6 +67,39 @@ describe('holdingRegisterPayments', () => {
 
   it("reads none for a currency other than the register's", () => {
     expect(holdingRegisterPayments(meta, 'USD', terms)).toBeNull();
+  });
+
+  describe('with the schedule kept in the metadata', () => {
+    const stored = [
+      { date: local(2026, 9, 16), kind: 'coupon' as const, amount: '70' },
+      { date: local(2027, 9, 15), kind: 'redemption' as const, amount: '1000' },
+    ];
+
+    it('reads the kept schedule once the ISIN has left the cache', () => {
+      expect(holdingRegisterPayments({ ...meta, payments: stored }, 'UAH', null)).toEqual(stored);
+    });
+
+    it('reads the kept schedule before the cached one', () => {
+      expect(holdingRegisterPayments({ ...meta, payments: stored }, 'UAH', terms)).toEqual(stored);
+    });
+
+    it("reads none for an empty schedule (the user's own coupon), even with a matching cache", () => {
+      expect(holdingRegisterPayments({ ...meta, payments: [] }, 'UAH', terms)).toBeNull();
+    });
+  });
+});
+
+describe('cachedRegisterPayments', () => {
+  it('reads the cache even for a bond with a kept schedule', () => {
+    const kept: BondMeta = { ...meta, payments: [] };
+
+    expect(cachedRegisterPayments(kept, 'UAH', terms)).toEqual(terms.payments);
+  });
+
+  it('reads none for a schedule that would not parse back from the metadata', () => {
+    const negative = { ...terms, payments: [{ date: 1, kind: 'coupon' as const, amount: '-1' }] };
+
+    expect(cachedRegisterPayments(meta, 'UAH', negative)).toBeNull();
   });
 });
 

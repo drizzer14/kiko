@@ -32,6 +32,18 @@ export const bondCouponFrequencies: readonly BondCouponFrequency[] = [
   'annually',
 ];
 
+/**
+ * One cash flow of an issuer's schedule (the NBU register's `payments[]`) for
+ * ONE bond of its face value: `amount` is the exact decimal the issuer pays
+ * per bond (a Eurobond pays fractions of a cent, so never minor units), and
+ * `date` a device-local midnight, the register's own date convention.
+ */
+export type BondPayment = {
+  date: number;
+  kind: 'coupon' | 'redemption';
+  amount: string;
+};
+
 export type BondMeta = {
   quantity: number;
   faceValueMinorUnits: number;
@@ -47,6 +59,11 @@ export type BondMeta = {
   // the register again — this is purely a record of how the holding was
   // added, re-shown editable in edit mode's Manual view.
   isin?: string;
+  // The issuer's schedule kept with the holding, so its coupons never depend
+  // on the ISIN still being in the register cache (a matured or delisted
+  // ISIN leaves it). Absent: never captured, so the cache is read instead.
+  // Empty: the user's own coupon replaced the schedule, so neither is read.
+  payments?: BondPayment[];
 };
 
 const frequencies = new Set<string>(['bi-weekly', 'monthly', 'quarterly', 'annually']);
@@ -200,6 +217,40 @@ export const asTermDepositMeta = (value: unknown): TermDepositMeta | null => {
   };
 };
 
+const asBondPayment = (value: unknown): BondPayment | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const { date, kind, amount } = value;
+
+  if (
+    !isNumber(date) ||
+    (kind !== 'coupon' && kind !== 'redemption') ||
+    !isPlainDecimalString(amount)
+  ) {
+    return null;
+  }
+
+  return { date, kind, amount };
+};
+
+/**
+ * All-or-nothing, like `asLots`: a schedule missing one payment would
+ * silently drop a cash flow from every coupon and yield read from it. Also
+ * the check a schedule passes before it is written into `BondMeta`, so a
+ * stored one always parses back.
+ */
+export const asBondPayments = (value: unknown): BondPayment[] | null => {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const parsed = value.map(asBondPayment);
+
+  return parsed.every((payment): payment is BondPayment => payment !== null) ? parsed : null;
+};
+
 /**
  * Whether a stored bond carries a price the user entered. `asBondMeta` gives a
  * bond without one the nominal as its price (for the ledger and expected
@@ -225,18 +276,21 @@ export const asBondMeta = (value: unknown): BondMeta | null => {
     return null;
   }
 
-  const { couponFrequency, purchasePriceMinorUnits } = value;
+  const { couponFrequency, purchasePriceMinorUnits, payments } = value;
+  const parsedPayments = foldMap(maybe(payments), asBondPayments);
 
-  // A PRESENT bondKind/couponFrequency/purchasePriceMinorUnits/isin that fails
-  // its own check is BAD INPUT — reject the whole record, same as any other
-  // wrong-type field above. An ABSENT (undefined) field is the legacy shape
-  // every stored pre-field row still has, and keeps its documented default
-  // below — the decision targets bad input, not missing input.
+  // A PRESENT bondKind/couponFrequency/purchasePriceMinorUnits/isin/payments
+  // that fails its own check is BAD INPUT — reject the whole record, same as
+  // any other wrong-type field above. An ABSENT (undefined) field is the
+  // legacy shape every stored pre-field row still has, and keeps its
+  // documented default below — the decision targets bad input, not missing
+  // input.
   if (
     (bondKind !== undefined && bondKind !== 'government' && bondKind !== 'corporate') ||
     (couponFrequency !== undefined && !isBondCouponFrequency(couponFrequency)) ||
     (purchasePriceMinorUnits !== undefined && !isNumber(purchasePriceMinorUnits)) ||
-    (isin !== undefined && typeof isin !== 'string')
+    (isin !== undefined && typeof isin !== 'string') ||
+    parsedPayments === null
   ) {
     return null;
   }
@@ -259,6 +313,7 @@ export const asBondMeta = (value: unknown): BondMeta | null => {
     bondKind: bondKind === 'corporate' ? 'corporate' : 'government',
     couponFrequency: isBondCouponFrequency(couponFrequency) ? couponFrequency : 'annually',
     isin: typeof isin === 'string' ? isin : undefined,
+    ...foldMap(maybe(parsedPayments), (schedule) => ({ payments: schedule })),
   };
 };
 

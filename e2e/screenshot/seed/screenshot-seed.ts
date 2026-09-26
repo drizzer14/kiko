@@ -12,6 +12,7 @@ import type {
   BondMeta,
   LoanMeta,
   MetalMeta,
+  BondPayment,
   PropertyMeta,
   TermDepositMeta,
 } from '@kiko/holdings/holding-metadata';
@@ -374,6 +375,16 @@ const BOND_FACE_VALUE_MINOR_UNITS = 100_000;
 const BOND_COUPON_PCT = 16.2;
 const BOND_MATURITY = on(2027, 7, 18);
 
+// The register's cash flows for ONE bond: a coupon every half year and the
+// face value back at maturity. The holding keeps them too, since the ISIN is
+// invented and leaves the cache on the first online register refresh.
+const BOND_PAYMENTS: BondPayment[] = [
+  { date: on(2026, 7, 19), kind: 'coupon', amount: '81' },
+  { date: on(2027, 1, 17), kind: 'coupon', amount: '81' },
+  { date: BOND_MATURITY, kind: 'coupon', amount: '81' },
+  { date: BOND_MATURITY, kind: 'redemption', amount: '1000' },
+];
+
 // The car loan's two latest installments, paid from the main card and linked
 // to the loan; its earlier installments predate the card's own history.
 const CAR_LOAN_PAYMENTS: SeedTransaction[] = [on(2026, 6, 15), on(2026, 7, 15)].map((time) => ({
@@ -498,6 +509,7 @@ const buildAccounts = (): SeedAccount[] => [
           bondKind: 'government',
           couponFrequency: 'semiannually',
           isin: BOND_ISIN,
+          payments: BOND_PAYMENTS,
         },
       },
     ],
@@ -740,8 +752,6 @@ const buildPricePoints = (): SeedPricePoint[] => [
   ...goldQuotes(),
 ];
 
-// The register's cash flows for ONE bond: a coupon every half year and the
-// face value back at maturity.
 const buildBondRegister = (): BondRegisterRow[] => [
   {
     isin: BOND_ISIN,
@@ -753,12 +763,7 @@ const buildBondRegister = (): BondRegisterRow[] => [
       maturityDate: BOND_MATURITY,
       couponFrequency: 'semiannually',
       name: 'ОВДП',
-      payments: [
-        { date: on(2026, 7, 19), kind: 'coupon', amount: '81' },
-        { date: on(2027, 1, 17), kind: 'coupon', amount: '81' },
-        { date: BOND_MATURITY, kind: 'coupon', amount: '81' },
-        { date: BOND_MATURITY, kind: 'redemption', amount: '1000' },
-      ],
+      payments: BOND_PAYMENTS,
     },
     fetchedAt: ANCHOR,
   },

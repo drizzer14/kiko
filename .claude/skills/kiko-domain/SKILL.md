@@ -884,29 +884,68 @@ step. `fetchNbuRegister(fetchImpl, now)` takes `now` from
 refresh day.
 
 **Step-up coupons: the coupon in force per payment date (USER DECISION
-2026-09-27).** No schema change: the holding reaches its payments
-through its own ISIN → the `bond_register.terms` cache (the same read
-the yield uses), never a copy in the holding's metadata. A SAVED
-bond's `BondMeta.couponPct` still stays as saved (nothing rewrites it);
-it is only the fallback.
-- **Which bonds.** `holdingRegisterPayments(meta, currency, terms)`
-  (`src/bonds/nbu-register/holding-register-payments.ts`) is the one
-  gate: the cached payments describe a holding only when `terms.isin
-  === meta.isin` AND the currency and face value match the register's;
-  null for a Manual bond (no ISIN), another ISIN, a cache without
-  payments, or no cache. `holdingRegisterCoupons(metadata, currency,
-  terms)` keeps its `'coupon'` payments (`[]` otherwise). The yield,
-  the ledger, and the expected profit all read this gate.
+2026-09-27).** No schema change: the holding KEEPS the issuer's schedule
+in its own metadata (`BondMeta.payments`, JSON), so its coupons never
+depend on the ISIN still being in the `bond_register` cache or on when
+the register last refreshed. A SAVED bond's `BondMeta.couponPct` still
+stays as saved (nothing rewrites it); it is only the fallback.
+- **The kept schedule.** `BondMeta.payments?: BondPayment[]` — the
+  register's own `{ date, kind, amount }` list, coupons AND the
+  redemption (the yield reads both): `amount` is the exact decimal per
+  ONE bond of its face value (never per 1 unit of nominal, never minor
+  units), `date` the register's device-local midnight. `BondPayment` is
+  holdings-owned (`holding-metadata.ts`); `nbu-register.ts` imports it.
+  `asBondMeta` parses it through `asBondPayments` — all-or-nothing, and a
+  present-but-invalid list rejects the whole record like every other
+  present field. The key is TRI-STATE: absent = never captured (read the
+  cache); a non-empty list = the schedule; `[]` = the user's own coupon
+  replaced the schedule (read neither, so a matching cache cannot
+  override an edited coupon).
+- **Read order.** `holdingRegisterPayments(meta, currency, terms)`
+  (`src/bonds/nbu-register/holding-register-payments.ts`): the kept
+  schedule → the cache → null (the saved coupon). The cache step is
+  `cachedRegisterPayments(bond, currency, terms)`, the one gate: the
+  cached payments describe a bond only when `terms.isin === bond.isin`
+  AND the currency and face value match the register's, and only if they
+  parse back through `asBondPayments`; null for a Manual bond (no ISIN),
+  another ISIN, a cache without payments, or no cache.
+  `holdingRegisterCoupons(metadata, currency, terms)` keeps the
+  `'coupon'` payments (`[]` otherwise). The yield, the ledger, and the
+  expected profit all read this order.
+- **Written at save** (`bondPaymentsOnSave`,
+  `src/screens/forms/holding-form/bond/use-bond-fields/`): ISIN mode
+  copies the matched register schedule (create or edit). Manual create
+  keeps none. An edit keeps the saved schedule, or captures the matched
+  register's for a bond saved without one (a refresh can land while the
+  form is open). An edited ISIN, face value or currency drops it (key
+  absent: another bond, so the cache is read). An edited coupon % or
+  frequency on an ISIN bond in Manual mode writes `[]`, so the edited
+  coupon is what the ledger books. `useBondFields` compares against the
+  row it seeded (`savedBondRef`).
+- **Backfill of bonds saved before this** (`backfillBondPayments`,
+  `src/bonds/bond-payments-backfill/`): runs inside the daily register
+  refresh (`refreshBondRegisterIfStale`), after a non-empty fetch and
+  BEFORE `replaceAll`, reading the fresh rows first and then the rows
+  still cached, so an ISIN the fresh fetch dropped is still kept. ONE
+  write for all bonds that re-reads every bond inside it (the
+  kiko-architecture display-screen write rule: never a cached row) and
+  writes only a bond whose `payments` key is still absent and whose
+  ISIN/currency/face still match; every other metadata key is kept as
+  stored (a bond without a price does not gain the nominal one). It
+  reads the cache only for the ISINs still pending. Not a render-time
+  effect: the refresh is the only place the fresh rows exist.
 - **Ledger and expected profit.** `derivedEntries(holding, now, t,
   scheduledCoupons)` → `HoldingDescriptor.entries(…, scheduledCoupons)`
   and `bondExpectedProfitMinor(meta, currency, scheduledCoupons)`
   (`holding-descriptor/bond/`) build every coupon through one
   `bondCoupons`: the ledger DATES stay `bondCouponDates` (the
   statement's 15th, unchanged); each date's gross is the scheduled
-  coupon closest to it (`couponPaymentOn`, `src/holdings/interest/` —
-  the register lists it a few days off the 15th, never half a period;
-  an equal-distance tie keeps the earlier) x `quantity` through
-  `multiplyToMinorUnits`, else the saved constant coupon. Corporate
+  coupon closest to it (`couponPaymentOn(payments, date, frequency)`,
+  `src/holdings/interest/` — the register lists it a few days off the
+  15th; an equal-distance tie keeps the earlier; a closest coupon more
+  than half a period away (months x 365 / 24 days) belongs to another
+  date and gives undefined) x `quantity` through `multiplyToMinorUnits`,
+  else the saved constant coupon. Corporate
   tax is withheld per coupon. `BondCouponPayment` (`{ date, amount }`)
   is the holdings-owned shape; `BondPayment` satisfies it, so holdings
   never imports bonds. The holding detail screen passes
@@ -926,12 +965,19 @@ it is only the fallback.
   expected profit 162.50 (the saved 4.5% alone gives 132.50).
   UA4000239115 unchanged: 15.18, ledger 75.90 per 1,000 bond with or
   without the register coupons. A Manual bond and an ISIN bond whose
-  cache has no payments keep the saved coupon.
-- **Limits.** A matured/delisted ISIN leaves the cache (`replaceAll`),
-  so its past coupons fall back to the saved coupon; so does a fresh
-  install or restore before the first register refresh (the refresh
-  runs when the bond form opens). Edit mode still seeds the SAVED
-  coupon into Manual's coupon field.
+  cache has no payments keep the saved coupon. The same XS bond with its
+  schedule kept and its cache row gone (matured/delisted) still books
+  22.50 + 4 x 30.00, expected profit 162.50; a `.kiko` restore keeps the
+  schedule (metadata is restored verbatim). The App Store demo bond
+  (invented ISIN UA4000233011, `e2e/screenshot/seed/`) keeps its
+  schedule for the same reason: the first online refresh drops it.
+- **Limits.** A bond whose ISIN left the cache BEFORE any refresh ran
+  the backfill (never captured) stays on its saved coupon — for a
+  step-up bond, the step saved at create. A `.kiko` restore brings the
+  `bond_register` cache back with the holdings, so a restored bond not
+  yet backfilled reads the restored cache until the next refresh
+  backfills it. Edit mode still seeds the SAVED coupon into Manual's
+  coupon field.
 
 **Yield to maturity (USER DECISION D4).** `src/bonds/yield-to-maturity/`:
 `yieldToMaturity(cashFlows, paidMinorUnits, lotDate)` is the effective
@@ -991,8 +1037,10 @@ Manual mode's own optional ISIN field), `undefined` for a legacy
 Manual-mode bond. Once saved, the holding's stored terms never depend
 on the register again — nothing re-validates a stored ISIN or
 rewrites its coupon against a later register state (the detail
-screen's coupons, expected profit and yield to maturity only READ the
-cached payments, above).
+screen's coupons, expected profit and yield to maturity READ the kept
+schedule, else the cached payments, above; the only register-driven
+write is the one-time schedule backfill, which never touches the
+coupon).
 
 `BondFormBlock`'s bond section has an "ISIN / Manual"
 `BondEntryMode` mode, the design-system `SegmentedControl` (not

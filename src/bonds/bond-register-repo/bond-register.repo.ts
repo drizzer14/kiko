@@ -2,6 +2,7 @@ import { eq, max } from 'drizzle-orm';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { type Repository, database, write, type BondRegisterRow, bondRegister } from '@kiko/db';
 
+import { backfillBondPayments } from '../bond-payments-backfill';
 import { fetchNbuRegister, type BondTerms } from '../nbu-register';
 
 type NewBondRegisterRow = Pick<BondRegisterRow, 'isin' | 'terms' | 'fetchedAt'>;
@@ -42,6 +43,7 @@ export type RefreshBondRegisterDeps = {
   fetchedAt?: () => Promise<number | null>;
   fetchRegister?: (fetchImpl: typeof fetch, now: number) => Promise<BondTerms[]>;
   replaceAll?: (rows: NewBondRegisterRow[]) => Promise<void>;
+  backfillPayments?: (freshTerms: readonly BondTerms[]) => Promise<void>;
 };
 
 const defaultFetchedAt = async (): Promise<number | null> => {
@@ -64,7 +66,9 @@ const defaultFetchedAt = async (): Promise<number | null> => {
  * live register) is NOT written: it would wipe a good cache via
  * `replaceAll([])`, and an offline form open needs that cache. The stale
  * cache is left in place, and `fetchedAt` does not advance, so the next
- * open retries the fetch.
+ * open retries the fetch. Before the replace, every bond saved without its
+ * own schedule keeps the one the fresh or the still-cached rows give it
+ * (`backfillBondPayments`), since the replace drops a matured ISIN.
  */
 export const refreshBondRegisterIfStale = async (
   deps: RefreshBondRegisterDeps = {},
@@ -74,6 +78,7 @@ export const refreshBondRegisterIfStale = async (
   const fetchedAt = deps.fetchedAt ?? defaultFetchedAt;
   const fetchRegister = deps.fetchRegister ?? fetchNbuRegister;
   const replaceAll = deps.replaceAll ?? bondRegisterRepo.replaceAll;
+  const backfillPayments = deps.backfillPayments ?? backfillBondPayments;
 
   const at = now();
   const lastFetchedAt = await fetchedAt();
@@ -88,5 +93,6 @@ export const refreshBondRegisterIfStale = async (
     return;
   }
 
+  await backfillPayments(terms);
   await replaceAll(terms.map((bond) => ({ isin: bond.isin, terms: bond, fetchedAt: at })));
 };

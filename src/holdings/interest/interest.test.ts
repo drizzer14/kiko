@@ -452,18 +452,28 @@ describe('couponPaymentOn', () => {
   const beforeStep = { date: local(2027, 1, 1), amount: '0.0225' };
   const afterStep = { date: local(2027, 7, 1), amount: '0.03' };
 
+  const schedule = [beforeStep, afterStep];
+
   it('reads the scheduled coupon closest to a ledger date, on either side', () => {
-    expect(couponPaymentOn([beforeStep, afterStep], local(2027, 1, 15))).toBe(beforeStep);
-    expect(couponPaymentOn([beforeStep, afterStep], local(2027, 6, 25))).toBe(afterStep);
+    expect(couponPaymentOn(schedule, local(2027, 1, 15), 'semiannually')).toBe(beforeStep);
+    expect(couponPaymentOn(schedule, local(2027, 6, 25), 'semiannually')).toBe(afterStep);
   });
 
   it('keeps the earlier coupon for a date exactly between two', () => {
     const midway = (beforeStep.date + afterStep.date) / 2;
 
-    expect(couponPaymentOn([beforeStep, afterStep], midway)).toBe(beforeStep);
+    expect(couponPaymentOn(schedule, midway, 'semiannually')).toBe(beforeStep);
   });
 
   it('reads nothing from an empty schedule', () => {
-    expect(couponPaymentOn([], local(2027, 1, 15))).toBeUndefined();
+    expect(couponPaymentOn([], local(2027, 1, 15), 'semiannually')).toBeUndefined();
+  });
+
+  it('reads nothing when the closest coupon is more than half a period away', () => {
+    // 168 days before the first scheduled coupon: a semiannual half-period is ~91 days.
+    expect(couponPaymentOn(schedule, local(2026, 7, 15), 'semiannually')).toBeUndefined();
+    // 73 days from the closest one: a quarterly half-period is ~46 days.
+    expect(couponPaymentOn(schedule, local(2027, 3, 15), 'quarterly')).toBeUndefined();
+    expect(couponPaymentOn(schedule, local(2027, 3, 15), 'annually')).toBe(beforeStep);
   });
 });

@@ -434,21 +434,30 @@ export type BondCouponPayment = { date: number; amount: string };
 
 /**
  * The scheduled coupon a ledger coupon date stands for, or undefined without
- * a schedule. The ledger books a coupon on the 15th of its month (the bank
+ * one. The ledger books a coupon on the 15th of its month (the bank
  * statement's day) while the issuer lists it a few days away, never half a
- * period away, so the closest payment is the one paid on that date.
+ * period away, so the closest payment is the one paid on that date. A closest
+ * payment more than half a period away belongs to another date, so the caller
+ * falls back to the saved coupon for this one.
  */
 export const couponPaymentOn = (
   payments: readonly BondCouponPayment[],
   date: number,
-): BondCouponPayment | undefined =>
-  payments.reduce<BondCouponPayment | undefined>(
-    (closest, payment) =>
-      closest === undefined || Math.abs(payment.date - date) < Math.abs(closest.date - date)
+  frequency: BondCouponFrequency,
+): BondCouponPayment | undefined => {
+  const halfPeriodMs = (monthsPerCouponPeriod(frequency) * DAYS_PER_YEAR * DAY_MS) / 24;
+  const closest = payments.reduce<BondCouponPayment | undefined>(
+    (nearest, payment) =>
+      nearest === undefined || Math.abs(payment.date - date) < Math.abs(nearest.date - date)
         ? payment
-        : closest,
+        : nearest,
     undefined,
   );
+
+  return closest !== undefined && Math.abs(closest.date - date) <= halfPeriodMs
+    ? closest
+    : undefined;
+};
 
 // The amount of a single coupon (major units): nominal * couponPct/100 divided
 // by the number of coupons per year (12 / months-per-period).

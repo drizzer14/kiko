@@ -1,5 +1,6 @@
 import { Money } from '@kiko/currency/money';
 import { holdingValue } from '@kiko/holdings/holding-value';
+import { holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 
 import { buildScreenshotDataset } from './screenshot-seed';
@@ -107,6 +108,19 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     expect(pairs).toEqual(new Set(['USD:UAH', 'EUR:UAH', 'BTC:UAH']));
     // 27 weekly points (weeks 0..26) per pair.
     expect(history).toHaveLength(3 * 27);
+  });
+
+  it('keeps the invented-ISIN bond its coupons once a register refresh drops the ISIN', () => {
+    const dataset = buildScreenshotDataset('uk');
+    const bond = dataset.accounts
+      .flatMap((account) => account.holdings)
+      .find((holding) => holding.type === 'bond');
+    const registerCoupons = dataset.bondRegister[0].terms.payments?.filter(
+      (payment) => payment.kind === 'coupon',
+    );
+
+    expect(holdingRegisterCoupons(bond?.metadata, 'UAH', null)).toEqual(registerCoupons);
+    expect(registerCoupons).toHaveLength(3);
   });
 
   it('exposes no scenario or lock dimension — one dataset, parameterized only by language', () => {
