@@ -149,8 +149,8 @@ the `AREA_OPACITY`/`NEGATIVE_AREA_OPACITY` constants in
 `net-worth-line.component.tsx` for the current values rather than
 restating them here.
 
-**T27 (spec §5.2, kiko-domain "Net worth"):** net worth can now go
-negative (a debt outweighing assets), so the line can cross 0 — this
+**Net worth can go negative** (see kiko-domain "Net worth"): a debt
+outweighing assets means the line can cross 0 — this
 needed NO change to `NetWorthLine` itself: `toAreaPath` already splits
 the fill on sign per crossing (above), which is exactly the "cross 0"
 case. The Y axis already floors to the series' own minimum (whatever
@@ -264,7 +264,7 @@ toggle. The Expenses-by-Category donut passes `legendMinShare={0.05}`
 (`CATEGORY_LEGEND_MIN_SHARE` in `statistics.screen.tsx`); the
 account-contribution pie passes nothing, so its legend is uncropped.
 
-## The account pie excludes debts (T27)
+## The account pie excludes debts
 
 `PieChart` itself has no debt concept — the exclusion lives entirely
 in its caller. `buildAccountContribution` (`src/statistics/account-contribution/`)
