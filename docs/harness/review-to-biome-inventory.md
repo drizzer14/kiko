@@ -59,7 +59,7 @@ mechanize well; keep in the skill).
 
 | Rule | Source | Enforce via | Tier |
 |---|---|---|---|
-| A plain, non-`'worklet'`-tagged function called synchronously inside a reanimated worklet hook (`useAnimatedStyle`/`useDerivedValue`/`useAnimatedReaction`/`useAnimatedScrollHandler`/`Gesture.*`) | kiko-gestures ("Every function called inside a worklet needs its own `'worklet'` directive"), memory `worklet-directive-debug-swallows-release-aborts` | Semgrep (TS, likely ERROR — deterministic, RELEASE-only SIGABRT, invisible to tsc/Jest) | Needs design + a `rules/fixtures/<rule-id>.bad.ts`/`.good.ts` pair before it can land; not yet implemented |
+| A plain, non-`'worklet'`-tagged function called synchronously inside a reanimated worklet hook (`useAnimatedStyle`/`useDerivedValue`/`useAnimatedReaction`/`useAnimatedScrollHandler`/`Gesture.*`) | kiko-gestures ("Every function called inside a worklet needs its own `'worklet'` directive"), memory `worklet-directive-debug-swallows-release-aborts` | Semgrep (TS, ERROR) | Implemented — `kiko-worklet-directive-required`, `rules/semgrep-prewrite.yml` |
 
 ### Candidates — kiko-ux-round review (2026-09-04, not yet enforced)
 

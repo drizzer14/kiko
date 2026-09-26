@@ -62,6 +62,25 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   "Automatic wiring" and `harness/kiko/hooks/hooks.json`'s `PreToolUse`
   entry for the wiring, and `kill-guard.js` for the tokenizer.
 
+  A THIRD exception, of yet another shape: `scripts/checks/pre-write-guard.sh`
+  (+ `pre-write-guard.js`) is the `PreToolUse` hook on `Edit|Write|MultiEdit` —
+  it denies a write BEFORE it lands, rather than checking a file already on
+  disk. It DENIES (exit 2, plus the `permissionDecision: "deny"` JSON on
+  stdout and the reason on stderr) the moment either Semgrep
+  (`rules/semgrep-prewrite.yml`) or one of the `NODE_RULES` checkers in
+  `pre-write-guard.js` reports a NEW finding against the proposed post-edit
+  content; a check that could not run at all (a Semgrep/Node crash,
+  malformed stdin, a timeout) also denies — fail-closed, the opposite of
+  `kill-guard.sh`'s always-allow default. It has NO content-dedup
+  fingerprint, for the same reason `kill-guard.sh` has none: a pre-write
+  check must run on every single write by design, not just when something
+  changed since last time. Env seams override its defaults for testing
+  (`KIKO_PREWRITE_TIMEOUT_MS`, `KIKO_PREWRITE_RULES`,
+  `KIKO_PREWRITE_SEMGREP_BIN`, `KIKO_PREWRITE_NODE_BIN` — read
+  `pre-write-guard.js` for their exact defaults and the closed `NODE_RULES`
+  set). See `docs/superpowers/specs/2026-09-25-pre-write-guard-design.md`
+  for the full design and CLAUDE.md's "Automatic wiring" for the hook wiring.
+
   `mutation.sh` also DIFF-SCOPES by default: it mutates only the `.ts`/
   `.tsx` source files this branch changed vs the merge-base with
   `${KIKO_MUTATION_BASE:-main}`, passed to Stryker as an explicit
@@ -161,14 +180,37 @@ A Semgrep rule that mechanizes a finding needs a fixture pair, run by
   `paths.scanned` list — a fixture Semgrep never opened must fail the
   check, not silently prove nothing.
 
+## `semgrep-prewrite.yml` vs `semgrep-mobile.yml` — where a rule lives
+
+`rules/semgrep-prewrite.yml` holds only the rules the pre-write guard
+(`scripts/checks/pre-write-guard.js`, `KIKO_PREWRITE_RULES`) needs to
+deny a write before it lands. Every one of those rules is ALSO loaded
+as an additional `--config` by `scripts/checks/security.sh` and
+`scripts/checks/semgrep-rules.sh` alongside `rules/semgrep-mobile.yml`,
+so the project-wide gate keeps proving them against the real tree and
+their `rules/fixtures/` pair unchanged. Each rule in
+`semgrep-prewrite.yml` carries `metadata: { fix, skill }` —
+`metadata.fix` is the one-line fix an agent applies, `metadata.skill`
+points at the skill section (this file) explaining why; the guard
+itself denies fail-closed on any rule missing `metadata.skill`, since
+a deny that cannot point the agent anywhere is a guard bug. Add a NEW
+prewrite-checkable rule to `semgrep-prewrite.yml` directly, not to
+`semgrep-mobile.yml` — see that file's own header comment for the full
+reasoning.
+
 ## Semgrep facts verified on 1.175 — don't relearn these the hard way
 
-- `paths.include` must be a **basename** pattern (e.g. `"*.swift"`),
-  never path-prefixed (e.g. `"ios/Kiko/*.swift"`). A
-  path-prefixed include silently matches **nothing** when the fixture
-  runner scans `rules/fixtures/` directly (the fixture isn't under
-  that prefix) — verified by sabotage: the prefixed form drew zero
-  findings on its own positive fixture.
+- `paths.include` CAN be path-prefixed (e.g. `"src/screens/**"`), but
+  only when the fixture for that rule is placed at the MIRRORED nested
+  path under `rules/fixtures/<rule-id>/<mirrored path>/...` rather than
+  flat at `rules/fixtures/<rule-id>.bad.<ext>` — the fixture runner
+  scans `rules/fixtures/` directly, so a flat fixture silently draws
+  **zero** findings against a path-prefixed include (the fixture isn't
+  under that prefix) — verified by sabotage: the prefixed form drew
+  zero findings against a flat fixture. A **basename-only** pattern
+  (e.g. `"*.swift"`) needs no nesting. `kiko-no-cross-screen-import`
+  (rule 12, `rules/semgrep-prewrite.yml`) is the nested-fixture example
+  — read its fixture path for the current shape.
 - `pattern-inside: func $F(...) { ... }` (or any brace-delimited
   container pattern) matches **nothing** in Swift — Semgrep's rules
   here are effectively file-scoped for Swift, not function-scoped. A
@@ -224,6 +266,23 @@ A Semgrep rule that mechanizes a finding needs a fixture pair, run by
   empirically: the bare form gave 0 findings against a real `switch`
   fixture with three `case` arms; the clause-anchored form matched.
 
+## Semgrep facts verified on 2026-09-25 (pre-write guard build-out)
+
+- An unanchored `paths.include`/`paths.exclude` glob (e.g. `src/screens/**`,
+  no leading `**/` or root pin) matches correctly whether Semgrep's target
+  is the real repo root or a completely different root (a worktree, a
+  fixture directory scanned directly) — the guard's per-write scan runs
+  Semgrep against a temp copy of the proposed content, not the repo tree,
+  and the same include/exclude patterns still resolved correctly there.
+- `extra.lines` on a Semgrep JSON finding is the literal source line(s)
+  the finding matched, not a synthesized summary — `pre-write-guard.js`'s
+  message builder can safely quote it verbatim (verified against a rule
+  whose match line was literally the string "requires login").
+- A `// nosemgrep: <rule-id> OVERRIDE(<reason>) <justification>` comment
+  is honored by Semgrep's own suppression even with trailing text after
+  the rule id (the `OVERRIDE(...)` and justification) — Semgrep does not
+  require the comment to end at the rule id.
+
 ## Class A vs Class B
 
 `rules/semgrep-mobile.yml` groups rules into two severities, both
@@ -271,11 +330,11 @@ belongs in the SAME commit as the feature that triggered the check, so
 `git log` shows one coherent change rather than a drive-by refactor
 with no test-behavior delta.
 
-## Backlog: a rule for a plain function called inside a worklet
+## Implemented: a rule for a plain function called inside a worklet
 
-A proposed but NOT YET IMPLEMENTED Semgrep rule (documentation only —
-do not implement without a dedicated pass): flag a plain,
-non-`'worklet'`-tagged function called synchronously inside a
+Formerly a documented backlog item, now IMPLEMENTED:
+`kiko-worklet-directive-required` (`rules/semgrep-prewrite.yml`) flags
+a plain, non-`'worklet'`-tagged function called synchronously inside a
 reanimated worklet hook (`useAnimatedStyle`, `useDerivedValue`,
 `useAnimatedReaction`, `useAnimatedScrollHandler`, a `Gesture.*`
 worklet callback). This is a real, previously-shipped bug class (see
@@ -284,11 +343,9 @@ own `'worklet'` directive" and memory
 `worklet-directive-debug-swallows-release-aborts`): the missing
 directive is invisible to `tsc` and to Jest (reanimated's worklet
 runtime is mocked there, and Debug builds only warn), and only
-SIGABRTs in a RELEASE build — exactly the class of finding this
-harness exists to mechanize so it stops depending on a reviewer
-happening to notice it. Needs a `rules/fixtures/<rule-id>.bad.ts` /
-`.good.ts` pair per the fixture contract above before it can land;
-tracked as a backlog item in `docs/harness/review-to-biome-inventory.md`.
+SIGABRTs in a RELEASE build. See the rule itself for its fixture pair
+and `docs/harness/review-to-biome-inventory.md` for the closed backlog
+row.
 
 ## F4 code-style mechanization candidates — all four now implemented
 

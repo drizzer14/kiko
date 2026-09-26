@@ -31,13 +31,16 @@ From `biome.json`:
 Run `npm run check:lint` to verify (see the project harness in the
 root `CLAUDE.md`). Never hand-tune something Biome already owns.
 
-### Blank lines before statement blocks — apply by hand
+### Blank lines before statement blocks — now mechanized
 
-Biome does **not** enforce this, it recurs in review, and it is a
-**hard rule**: put a blank line before every `return`, and before
-every `if`, `for`, `while`, and `switch` statement. It visually
-separates that block from whatever led up to it, the same way a
-blank line already separates import groups.
+Biome does **not** enforce this, but the pre-write guard does
+(`kiko-blank-line-separation` in `scripts/checks/pre-write-guard.js`'s
+`NODE_RULES`, plus the project-wide `npm run check:blank-line-separation`):
+put a blank line
+before every `return`, and before every `if`, `for`, `while`, and
+`switch` statement. It visually separates that block from whatever
+led up to it, the same way a blank line already separates import
+groups. A pre-write-guard deny on this points back here.
 
 Exception: a statement that is the first line of its block (directly
 after `{`) needs no blank line before it — there is nothing above it
@@ -80,10 +83,11 @@ literal — those always stay concise.
 
 ### Blank line between adjacent JSX sibling nodes
 
-Not mechanized — Biome and the formatter are whitespace-insensitive
-inside JSX, so there is no check for this. Separate adjacent JSX
-sibling expression nodes with a blank line, the same way statement
-blocks get one (see above).
+Now mechanized the same way (see above) — Biome and the formatter are
+whitespace-insensitive inside JSX, so this check lives in the
+pre-write guard's `NODE_RULES` and `check:blank-line-separation`
+instead. Separate adjacent JSX sibling expression nodes with a blank
+line, the same way statement blocks get one.
 
 ### `.concat` over a multi-part template literal
 
