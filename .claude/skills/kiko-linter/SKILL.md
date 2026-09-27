@@ -79,24 +79,35 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   start is a comment to the newline, so a quote inside it hides nothing;
   a `#` inside `${…}` is not a comment, and only an unquoted `)`/`}` is
   stripped as a closer.
+  Heredoc bodies: at the newline ending a `<<`/`<<-` operator's line,
+  each queued body is skipped up to its delimiter line (quote removal on
+  the word; `<<-` strips leading tabs; several heredocs on one line are
+  read in order). Body text is never parsed as shell, so a `#`, an
+  apostrophe, or a `<<word` in a body hides or denies nothing. Each body
+  is still checked on its own for a kill or `git stash` line, because a
+  body can run (`bash <<'EOF'`, `eval "$(cat <<'EOF' …)"`,
+  `ssh host <<'EOF'`, `cat <<'EOF' | sh`); only a body that a shell
+  without `-c` reads as its script is also checked for an unquoted
+  heredoc. An unterminated body: the rest of the input is scanned as
+  shell (fail closed). Known false positive: a body line that literally
+  is a kill or `git stash` command denies, even when the body is only
+  written to a file — write such text with the Write tool, or commit
+  with `git commit -F <file>`.
   Known limits (heuristic tokenizer, not a shell parser; read
-  `kill-guard.js` and its tests to re-verify): NOT denied are
-  a `case … in a) git stash ;; esac` branch, a stash or kill reached
-  through an alias, a function, a script file, or a variable (`$CMD`),
-  and `exec -a name pkill`; a shell `-c` flag is matched anywhere in the
-  arguments, not only before the command string (errs toward deny); a
-  `$(` span that still closes is read without comment handling. The agent rule stays absolute regardless:
-  never `git stash` or pattern-kill in any form. Both denies
-  carry the `print_block` WHAT/DETAILS/WHY/HOW/DO-NOT shape as plain text
-  in the one JSON reason field; the kill deny keeps its one-line reason.
-  A heredoc body is still scanned line by line as commands (so
-  `bash <<'EOF'` with a `pkill` in it still denies) — a body line that
-  itself starts with `git stash` or `pkill` denies too, even under a
-  quoted delimiter. Known false positive: ANY `<<` followed by a word
-  inside a quoted-delimiter body denies too, whatever the word starts
-  with (`1 << 2`, `x << $n`, `1 << bits`, `std::cout << x`, a
-  commit body that mentions `cat <<EOF`). For such text, write it with
-  the Write tool, or commit with `git commit -F <file>`. Deny/allow cases for each form live in
+  `kill-guard.js` and its tests to re-verify): NOT denied are a stash or
+  kill reached through an alias, a function, a script file, or a
+  variable (`$CMD`), and `exec -a name pkill`; a shell `-c` flag is
+  matched anywhere in the arguments, not only before the command string
+  (errs toward deny). Heredoc delimiter corner cases: a delimiter line
+  with trailing spaces does not end the body (bash agrees); `"E\"OF"`
+  keeps the backslash; bash's `EOF)` shorthand inside `$(` is not
+  recognized, so the rest is scanned as shell (fail closed); a `<<`
+  inside `$((…))` nested in a `$(…)` span is queued as a heredoc until
+  the next newline, matches no line, and skips nothing. The agent rule
+  stays absolute regardless: never `git stash` or pattern-kill in any
+  form. Both denies carry the `print_block` WHAT/DETAILS/WHY/HOW/DO-NOT
+  shape as plain text in the one JSON reason field; the kill deny keeps
+  its one-line reason. Deny/allow cases for each form live in
   `__tests__/kill-guard.test.ts`.
 
   A THIRD exception, of yet another shape: `scripts/checks/pre-write-guard.sh`
