@@ -274,6 +274,16 @@ verified usage, not dead weight:
   at a container root (no `--tree` `loose-file` finding). They are ambient
   declarations that nothing imports, so a unit folder and barrel would
   have no importer.
+- **`__tests__/cited-paths.test.ts`'s `KNOWN_STALE_CITATIONS` list
+  (TEMPORARY)**: each entry is one `(citing file, cited path)` pair that
+  did not exist when the invariant landed. The list is a hand-off, not an
+  accepted exception: the scribe fixes those citations in the skill and
+  doc text and EMPTIES this list in the drift commit that follows. The
+  test fails for an entry that no longer fails, so the list can only
+  shrink, and a new stale citation is never added to it. The test's own
+  header states what counts as a citation (inline code spans outside
+  fenced blocks; globs and placeholders skipped; a sentence that says its
+  path is gone keeps it).
 - **`scripts/checks/full-word-identifiers.js`'s own `EXEMPTIONS` list**: an
   exact `(file path suffix, denylisted word, EXACT identifier name)`
   allowlist mechanizing kiko-code-style's "Full words in identifiers"
