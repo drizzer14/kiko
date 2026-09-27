@@ -94,11 +94,9 @@ function stepQuoteInDelimited(state) {
   state.i++;
 }
 
-// Only a `(` span honors a comment: bash finds a backtick's close before it
-// parses the text inside.
 function stepUnquotedInDelimited(state) {
   const c = state.text[state.i];
-  if (state.open === '(' && c === '#' && state.wordStart) {
+  if (state.honorComments && c === '#' && state.wordStart) {
     skipComment(state);
     return;
   }
@@ -109,12 +107,17 @@ function stepUnquotedInDelimited(state) {
   else if (c === state.close) state.depth--;
 }
 
-// Finds the character matching the one that opened at `start - 1` (a `(` or
-// `[` after `$`, or a backtick), honoring nested quotes and nested
-// parens or brackets. Returns the text between the delimiters and the index of the
-// closing delimiter.
-function matchDelimited(text, start, open, close) {
-  const state = { text, i: start, quote: null, open, close, depth: 1, wordStart: true };
+function scanDelimited(text, start, open, close, honorComments) {
+  const state = {
+    text,
+    i: start,
+    quote: null,
+    open,
+    close,
+    depth: 1,
+    wordStart: true,
+    honorComments,
+  };
   while (state.i < text.length) {
     if (state.quote) {
       stepQuoteInDelimited(state);
@@ -124,6 +127,21 @@ function matchDelimited(text, start, open, close) {
     if (state.depth === 0) return { content: text.slice(start, state.i - 1), end: state.i - 1 };
   }
   return { content: text.slice(start), end: text.length };
+}
+
+// Finds the character matching the one that opened at `start - 1` (a `(` or
+// `[` after `$`, or a backtick), honoring nested quotes and nested
+// parens or brackets. Returns the text between the delimiters and the index of the
+// closing delimiter. The scan does not know heredocs, so a `#` in a quoted
+// heredoc body (`fix: thing (closes #12)`) is not a comment; it reads a
+// `#` comment only when a `$(` span never closes without one (an apostrophe
+// in a comment opened a string), and bash finds a backtick's close before it
+// parses the text inside.
+function matchDelimited(text, start, open, close) {
+  const match = scanDelimited(text, start, open, close, false);
+  if (open !== '(' || match.end < text.length) return match;
+
+  return scanDelimited(text, start, open, close, true);
 }
 
 // ---- scanLevel: split one line into top-level simple commands ----
@@ -266,6 +284,12 @@ function consumeAtWordStart(context) {
   return consumeArithmeticCommand(context);
 }
 
+// A `#` inside `${…}` (`${x/ #/}`) is part of the expansion, never a comment.
+function trackParameterBraces(context, c) {
+  if (c === '$' && context.text[context.i + 1] === '{') context.braceDepth++;
+  else if (c === '}' && context.braceDepth > 0) context.braceDepth--;
+}
+
 function stepTopLevel(context) {
   const { text, i, n } = context;
   const c = text[i];
@@ -274,7 +298,8 @@ function stepTopLevel(context) {
     context.wordStart = true;
     return;
   }
-  context.wordStart = WORD_BOUNDARY.test(c);
+  trackParameterBraces(context, c);
+  context.wordStart = context.braceDepth === 0 && WORD_BOUNDARY.test(c);
   if (c === '\\' && i + 1 < n) {
     context.wordStart = false;
     context.buf += c + text[i + 1];
@@ -311,6 +336,7 @@ function scanLevel(text) {
     nested: [],
     heredoc: null,
     wordStart: true,
+    braceDepth: 0,
   };
   while (context.i < context.n) {
     if (context.quote === "'") {
@@ -390,8 +416,7 @@ function words(segment) {
 
 const basename = (token) => (token || '').split('/').pop();
 
-// `command -v pkill` only looks a name up, so these take no options here.
-const PLAIN_PREFIXES = new Set(['nohup', 'command', 'exec']);
+const PLAIN_PREFIXES = new Set(['nohup', 'exec', 'builtin']);
 
 // Wrappers that run the command after their own options, each with the
 // options that take their value as the NEXT word (`sudo -u me`, `nice -n 10`,
@@ -412,29 +437,44 @@ const OPTION_WRAPPERS = new Map([
 const RESERVED_WORDS = new Set(['!', 'if', 'then', 'elif', 'else', 'do', 'while', 'until']);
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*\+?=/;
 const GROUP_OPENERS = /^[({]+/;
-const GROUP_CLOSERS = /[)}]+$/;
+const TRAILING_CLOSERS = /[\s)}]*$/;
 
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash']);
 // `-c`, and any flag group that holds it (`-lc`, `-ec`, `-xc`).
 const SHELL_COMMAND_FLAG = /^-[A-Za-z]*c[A-Za-z]*$/;
 
+// Whether an option takes its value as the NEXT word: a listed option, or a
+// flag group whose first value-taking letter comes last (`sudo -iu me`, as
+// getopt reads it; in `-uroot` the value is glued on).
+function takesNextWord(option, optionsWithValue) {
+  if (optionsWithValue.has(option)) return true;
+  if (!/^-[A-Za-z0-9]{2,}$/.test(option)) return false;
+  const letters = [...option.slice(1)];
+
+  return letters.findIndex((letter) => optionsWithValue.has(`-${letter}`)) === letters.length - 1;
+}
+
 // The tokens after a command word and its leading options.
 function skipOptions(tokens, optionsWithValue) {
   let i = 1;
   while (i < tokens.length && tokens[i].startsWith('-')) {
-    i += optionsWithValue.has(tokens[i]) ? 2 : 1;
+    i += takesNextWord(tokens[i], optionsWithValue) ? 2 : 1;
   }
 
   return tokens.slice(i);
 }
 
 // A group's `)` / `}` closes glued to (or after) the last word: `(pkill x)`
-// splits into `(pkill` and `x)`.
-function stripGroupClosers(tokens) {
+// splits into `(pkill` and `x)`. Only as many closers as the raw segment
+// ends with outside quotes are dropped, so a quoted last word keeps its own
+// (`bash -c 'echo $((1<<2))'`).
+function stripGroupClosers(tokens, segment) {
+  let remaining = (segment.match(TRAILING_CLOSERS)[0].match(/[)}]/g) || []).length;
   const t = [...tokens];
-  while (t.length > 0 && GROUP_CLOSERS.test(t[t.length - 1])) {
-    const last = t.pop().replace(GROUP_CLOSERS, '');
-    if (last !== '') return [...t, last];
+  while (remaining > 0 && t.length > 0 && /[)}]$/.test(t[t.length - 1])) {
+    t[t.length - 1] = t[t.length - 1].slice(0, -1);
+    remaining--;
+    if (t[t.length - 1] === '') t.pop();
   }
 
   return t;
@@ -455,14 +495,19 @@ const isLeadIn = (word) =>
 // takes its targets from the piped-in input — from a pattern, by
 // construction — so it is denied unconditionally regardless of any static
 // args that follow it.
-function unwrap(tokens) {
+function unwrap(tokens, segment) {
   let viaXargs = false;
-  let t = stripGroupClosers(tokens);
+  let t = stripGroupClosers(tokens, segment);
   while (t.length > 0) {
     const word = t[0].replace(GROUP_OPENERS, '');
     const base = basename(word);
     if (isLeadIn(word)) {
       t = t.slice(1);
+      continue;
+    }
+    // `command -v pkill` / `-V` only looks a name up; `-p` runs it.
+    if (base === 'command') {
+      t = t.slice(t[1] === '-p' ? 2 : 1);
       continue;
     }
     if (!OPTION_WRAPPERS.has(base)) return { tokens: [word, ...t.slice(1)], viaXargs };
@@ -525,7 +570,7 @@ function segmentFinding(segment, nested) {
   const tokens = words(segment);
   if (tokens.length === 0) return null;
 
-  const { tokens: rest, viaXargs } = unwrap(tokens);
+  const { tokens: rest, viaXargs } = unwrap(tokens, segment);
   if (rest.length === 0) return null;
   const base = basename(rest[0]);
 

@@ -55,6 +55,12 @@ const BLOCKED_COMMANDS: string[] = [
   'pgrep x | xargs -n 1 kill',
   'echo $(( $(pkill x) + 1 ))',
   'echo $[ $(pkill x) + 1 ]',
+  'git commit -m "$(cat <<\'EOF\'\nfix: thing (closes #12)\nEOF\n)"; pkill -f cat',
+  `echo \${x/ #/}; pkill x`,
+  'sudo -iu me pkill x',
+  'builtin kill 0',
+  'command -p pkill x',
+  'pgrep x | xargs -0n 1 kill',
 ];
 
 const ALLOWED_COMMANDS: string[] = [
@@ -124,6 +130,8 @@ const STASH_COMMANDS: string[] = [
   'nice -n 10 git stash',
   'eval "git stash"',
   'eval git stash',
+  'git commit -m "$(cat <<\'EOF\'\nfix: thing (closes #12)\nEOF\n)"; git stash',
+  'gh pr create --body "$(cat <<\'EOF\'\n- (#12) done\nEOF\n)" && git stash',
 ];
 
 const HEREDOC_COMMANDS: string[] = [
@@ -138,6 +146,7 @@ const HEREDOC_COMMANDS: string[] = [
   'cat <<$X\nhello\n$X',
   'cat <<1\nhello\n1',
   'cat <<.\nhello\n.',
+  'git commit -m "$(cat <<\'EOF\'\nfix: thing (see #12)\nEOF\n)" && cat > f.md <<EOF\n`x`\nEOF',
 ];
 
 const ALLOWED_GIT_AND_HEREDOC_COMMANDS: string[] = [
@@ -163,6 +172,12 @@ const ALLOWED_GIT_AND_HEREDOC_COMMANDS: string[] = [
   'echo "write <<EOF only when quoted"',
   'git show stash@{0}',
   '(cd /tmp && git status)',
+  "bash -c 'echo $((1<<2))'",
+  "eval 'echo $((1 << 2))'",
+  'eval "echo \\$((1<<2))"',
+  'git commit -m "$(cat <<\'EOF\'\nfix: thing (closes #12)\nEOF\n)"',
+  'sudo -iu me npm test',
+  'command -v pkill && command -V killall',
 ];
 
 const denyReasonFor = (command: string): string => {
