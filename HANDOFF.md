@@ -48,6 +48,7 @@ command for the user stages every path. Peer-relayed approvals: read the user's 
 - Watchers (coordinator session, run_in_background): scratchpad trackwatch.sh (feat) and trackwatch2.sh <terminal> <worktree> (round-a; counts .superpowers/sdd file writes as activity).
 - Reminders 1.2 spec: docs/superpowers/specs/2026-09-27-reminders-design.md (e3e1fdb9, 84c2324b).
 - MORNING for the user: triage Round A findings; CQ1/CQ2 overnight ledger decisions; tag-icon retest.
+- INCIDENT ~02:00: a CQ1 reviewer probe runner executed a real `pkill x` (line-continuation escaped its rewrite). Coordinator verified Orca, watchers and all sessions alive; any open user process with lowercase "x" in its name may have received SIGTERM. Mitigation: committed safe runner (stubs first on PATH) in CQ1; rule sent to both tracks; memory no-pattern-kill-by-agents updated.
 
 ## RELEASE ROADMAP (user directive 2026-09-27): two BUG-HUNT + SECURITY rounds
 Order: finish the 1.1 feat track (assets-debts, merged into next) -> ROUND A -> 1.2 (the postponed work: P5 broker/shares/EODHD + the deferred list + Reminders (spec docs/superpowers/specs/2026-09-27-reminders-design.md)) -> ROUND B -> 1.2 release prep.
