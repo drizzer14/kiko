@@ -17,8 +17,16 @@ import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 // the full rationale.
 const SCRIPT = join(__dirname, '../scripts/checks/kill-guard.sh');
 
+// The guard expands `~` and `$HOME` from HOME; pinning it keeps the
+// main-checkout rows independent of the machine running the suite.
+const HOME_DIRECTORY = '/Users/drizzer14';
+
 const run = (payload: string): SpawnSyncReturns<string> =>
-  spawnSync('bash', [SCRIPT], { input: payload, encoding: 'utf8' });
+  spawnSync('bash', [SCRIPT], {
+    input: payload,
+    encoding: 'utf8',
+    env: { ...process.env, HOME: HOME_DIRECTORY },
+  });
 
 const payloadFor = (command: string): string => JSON.stringify({ tool_input: { command } });
 
@@ -227,8 +235,9 @@ const ALLOWED_GIT_AND_HEREDOC_COMMANDS: string[] = [
 ];
 
 // The hooks' dispatcher runs from the main checkout, so a conflict marker
-// there breaks every hook in every session: git apply/merge/rebase aimed at
-// it is denied, and the same commands anywhere else pass.
+// there breaks every hook in every session: git apply/merge/rebase/pull/
+// cherry-pick/revert/am aimed at it is denied, except a fast-forward-only
+// update and the recovery options; the same commands anywhere else pass.
 const MAIN_CHECKOUT = '/Users/drizzer14/Developer/Projects/pff-ios';
 const WORKTREE = '/Users/drizzer14/orca/workspaces/pff-ios/shares-assets-research';
 
@@ -237,8 +246,32 @@ const MAIN_CHECKOUT_COMMANDS: [string, string][] = [
   [MAIN_CHECKOUT, 'git merge feat/x'],
   [MAIN_CHECKOUT, 'git apply x.patch'],
   [MAIN_CHECKOUT, 'git rebase main'],
-  [MAIN_CHECKOUT, 'git merge --ff-only feat/x'],
-  [MAIN_CHECKOUT, 'git rebase --continue'],
+  [MAIN_CHECKOUT, 'git merge --no-ff feat/x'],
+  [MAIN_CHECKOUT, 'git merge --squash feat/x'],
+  [MAIN_CHECKOUT, 'git merge --ff-only --no-ff feat/x'],
+  [MAIN_CHECKOUT, 'git pull'],
+  [MAIN_CHECKOUT, 'git pull origin main'],
+  [MAIN_CHECKOUT, 'git pull --rebase'],
+  [MAIN_CHECKOUT, 'git pull --ff-only --rebase'],
+  [MAIN_CHECKOUT, 'git cherry-pick 1a2b3c4'],
+  [MAIN_CHECKOUT, 'git revert HEAD'],
+  [MAIN_CHECKOUT, 'git am x.patch'],
+  [MAIN_CHECKOUT, 'git apply --stat --apply x.patch'],
+  [WORKTREE, `git -C ${MAIN_CHECKOUT} pull --no-ff`],
+  [WORKTREE, `git -C ${MAIN_CHECKOUT} cherry-pick 1a2b3c4`],
+  [WORKTREE, 'cd ~/Developer/Projects/pff-ios && git merge feat/x'],
+  [WORKTREE, 'cd $HOME/Developer/Projects/pff-ios && git merge feat/x'],
+  [WORKTREE, `cd "\${HOME}/Developer/Projects/pff-ios" && git rebase main`],
+  [WORKTREE, 'cd && cd Developer/Projects/pff-ios && git merge feat/x'],
+  [WORKTREE, 'git -C ~/Developer/Projects/pff-ios merge feat/x'],
+  [WORKTREE, 'git --git-dir=$HOME/Developer/Projects/pff-ios/.git rebase main'],
+  [WORKTREE, 'git --work-tree ~/Developer/Projects/pff-ios apply x.patch'],
+  [WORKTREE, 'git -C /users/drizzer14/developer/projects/PFF-IOS merge feat/x'],
+  ['/USERS/drizzer14/Developer/Projects/pff-ios', 'git merge feat/x'],
+  [WORKTREE, `GIT_DIR=${MAIN_CHECKOUT}/.git git merge feat/x`],
+  [WORKTREE, `GIT_WORK_TREE=${MAIN_CHECKOUT} git apply x.patch`],
+  [WORKTREE, `env GIT_DIR=${MAIN_CHECKOUT}/.git git rebase main`],
+  [WORKTREE, 'GIT_DIR=~/Developer/Projects/pff-ios/.git git merge feat/x'],
   [`${MAIN_CHECKOUT}/`, 'git merge feat/x'],
   [`${MAIN_CHECKOUT}/src/screens`, 'git apply -3 x.patch'],
   [`${MAIN_CHECKOUT}/src`, 'git -C .. merge feat/x'],
@@ -277,7 +310,33 @@ const ALLOWED_OUTSIDE_MAIN_CHECKOUT: [string, string][] = [
   [MAIN_CHECKOUT, 'git merge -h'],
   [MAIN_CHECKOUT, 'echo git merge feat/x'],
   [MAIN_CHECKOUT, 'grep -rn "git rebase" docs/'],
+  [MAIN_CHECKOUT, 'git merge --ff-only feat/x'],
+  [MAIN_CHECKOUT, 'git merge --ff-only 1a2b3c4'],
+  [MAIN_CHECKOUT, 'git pull --ff-only'],
+  [MAIN_CHECKOUT, 'git pull --ff-only origin main'],
+  [WORKTREE, `git -C ${MAIN_CHECKOUT} merge --ff-only 1a2b3c4`],
+  [WORKTREE, `git -C ${MAIN_CHECKOUT} pull --ff-only`],
+  [MAIN_CHECKOUT, 'git apply --check x.patch'],
+  [MAIN_CHECKOUT, 'git apply --stat x.patch'],
+  [WORKTREE, 'cd ~/orca/workspaces/pff-ios/shares-assets-research && git merge feat/x'],
+  [MAIN_CHECKOUT, 'git -C ~/orca/workspaces/pff-ios/shares-assets-research merge feat/x'],
+  [WORKTREE, 'GIT_DIR=/tmp/scratch/.git git merge feat/x'],
+  [WORKTREE, 'git pull'],
+  [WORKTREE, 'git cherry-pick 1a2b3c4'],
+  [WORKTREE, 'git revert HEAD'],
+  [WORKTREE, 'git am x.patch'],
 ];
+
+// Recovery from a stuck operation stays allowed in the main checkout.
+const RECOVERY_IN_MAIN_CHECKOUT: string[] = [
+  'merge',
+  'rebase',
+  'cherry-pick',
+  'revert',
+  'am',
+].flatMap((subcommand) =>
+  ['--abort', '--quit', '--skip', '--continue'].map((option) => `git ${subcommand} ${option}`),
+);
 
 const payloadIn = (directory: string, command: string): string =>
   JSON.stringify({ cwd: directory, tool_input: { command } });
@@ -332,18 +391,26 @@ describe('scripts/checks/kill-guard.sh (PreToolUse Bash guard)', () => {
   });
 
   it.each(MAIN_CHECKOUT_COMMANDS)(
-    'denies git apply/merge/rebase on the main checkout: in %s, %s',
+    'denies a git history change on the main checkout: in %s, %s',
     (directory, command) => {
       const reason = denyReasonFor(command, payloadIn(directory, command));
 
       expectStandardBlock(reason);
       expect(reason).toContain('main checkout');
-      expect(reason).toContain('in a worktree');
+      expect(reason).toContain('separate detached worktree');
+      expect(reason).toContain(`git -C ${MAIN_CHECKOUT} merge --ff-only <sha>`);
     },
   );
 
   it.each(ALLOWED_OUTSIDE_MAIN_CHECKOUT)('allows: in %s, %s', (directory, command) => {
     const result = run(payloadIn(directory, command));
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('');
+  });
+
+  it.each(RECOVERY_IN_MAIN_CHECKOUT)('allows recovery in the main checkout: %s', (command) => {
+    const result = run(payloadIn(MAIN_CHECKOUT, command));
 
     expect(result.status).toBe(0);
     expect(result.stdout.trim()).toBe('');

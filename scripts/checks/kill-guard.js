@@ -20,11 +20,14 @@
 // quoted (`<<EOF`, `<<-EOF`), after an unquoted heredoc ran backticked text
 // in its body as commands and left a stuck process.
 //
-// And it denies a `git apply`, `git merge`, or `git rebase` whose target is
-// the main checkout (the payload's cwd, a `cd` earlier in the command, or
-// git's `-C`/`--git-dir`/`--work-tree`): the hooks' dispatcher runs from
+// And it denies a `git apply`, `merge`, `rebase`, `pull`, `cherry-pick`,
+// `revert`, or `am` whose target is the main checkout (the payload's cwd, a
+// `cd` earlier in the command, git's `-C`/`--git-dir`/`--work-tree`, or a
+// `GIT_DIR=`/`GIT_WORK_TREE=` prefix): the hooks' dispatcher runs from
 // there, so a conflict marker in it once broke every hook in every session.
+// A fast-forward-only update and the recovery options stay allowed.
 
+const os = require('node:os');
 const path = require('node:path');
 
 const MAIN_CHECKOUT_PATH = '/Users/drizzer14/Developer/Projects/pff-ios';
@@ -56,10 +59,13 @@ const HEREDOC_REASON_LINES = [
 ];
 
 const MAIN_CHECKOUT_REASON_LINES = [
-  'WHAT FAILED:    kill-guard denied a git apply, merge, or rebase on the main checkout.',
+  'WHAT FAILED:    kill-guard denied a git apply, merge, rebase, pull, cherry-pick, revert, or am ' +
+    'on the main checkout.',
   `WHY IT MATTERS: the hooks of every session run from the main checkout (${MAIN_CHECKOUT_PATH}), ` +
     'so a conflict marker there breaks every hook in every session.',
-  'HOW TO FIX:     do the apply, merge, or rebase in a worktree; the coordinator owns the main checkout.',
+  'HOW TO FIX:     do the real merge in a separate detached worktree, verify it, then ' +
+    `\`git -C ${MAIN_CHECKOUT_PATH} merge --ff-only <sha>\`. To recover a stuck operation there, ` +
+    '--abort, --quit, --skip, and --continue stay allowed.',
   'DO NOT:         reach the main checkout through a script file, an alias, or a variable to get past this guard.',
 ];
 
@@ -688,9 +694,11 @@ function unwrapSpecial(base, t) {
 // wrapper was stripped: a `kill`/`pkill`/`killall` reached through `xargs`
 // takes its targets from the piped-in input — from a pattern, by
 // construction — so it is denied unconditionally regardless of any static
-// args that follow it.
+// args that follow it. `environment` holds the `NAME=value` prefixes it
+// stripped (`GIT_DIR=…` changes where git writes).
 function unwrap(tokens) {
   let viaXargs = false;
+  const environment = {};
   let t = tokens;
   while (t.length > 0) {
     const word = t[0].replace(GROUP_OPENERS, '');
@@ -701,16 +709,25 @@ function unwrap(tokens) {
       continue;
     }
     if (isLeadIn(word)) {
+      recordAssignment(environment, word);
       t = t.slice(1);
       continue;
     }
-    if (!OPTION_WRAPPERS.has(base)) return { tokens: [word, ...t.slice(1)], viaXargs };
+    if (!OPTION_WRAPPERS.has(base)) {
+      return { tokens: [word, ...t.slice(1)], viaXargs, environment };
+    }
     viaXargs = viaXargs || base === 'xargs';
     t = skipOptions(t, OPTION_WRAPPERS.get(base));
     if (base === 'timeout') t = t.slice(1);
   }
 
-  return { tokens: t, viaXargs };
+  return { tokens: t, viaXargs, environment };
+}
+
+// A `NAME=value` prefix sets NAME for the command it leads into.
+function recordAssignment(environment, word) {
+  const assignment = word.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/s);
+  if (assignment !== null) environment[assignment[1]] = assignment[2];
 }
 
 // `kill` parses at most one leading signal specifier — `-s SIG`, `-N`,
@@ -766,26 +783,67 @@ const GIT_PATH_OPTIONS = new Map([
   ['--work-tree', 'workTree'],
 ]);
 
-const MAIN_CHECKOUT_SUBCOMMANDS = new Set(['apply', 'merge', 'rebase']);
+const MAIN_CHECKOUT_SUBCOMMANDS = new Set([
+  'apply',
+  'merge',
+  'rebase',
+  'pull',
+  'cherry-pick',
+  'revert',
+  'am',
+]);
 const HELP_OPTIONS = new Set(['-h', '--help']);
+const RECOVERY_SUBCOMMANDS = new Set(['merge', 'rebase', 'cherry-pick', 'revert', 'am']);
+const RECOVERY_OPTIONS = new Set(['--abort', '--quit', '--skip', '--continue']);
+const FAST_FORWARD_SUBCOMMANDS = new Set(['merge', 'pull']);
+const APPLY_READ_ONLY_OPTIONS = new Set(['--check', '--stat', '--numstat', '--summary']);
 
-// A path that needs the shell to expand it (`~`, `$X`, a glob, a `$(...)`)
-// cannot be pinned down from the text.
+// What the main checkout may still run: help, recovery from a stuck
+// operation, an `apply` that only inspects, and the one update that cannot
+// conflict — a fast-forward with no option but `--ff-only`, since a later
+// `--no-ff` or `--rebase` would override it.
+function leavesMainCheckoutSafe(git) {
+  const { subcommand, arguments: parameters } = git;
+  const has = (options) => parameters.some((parameter) => options.has(parameter));
+  if (has(HELP_OPTIONS)) return true;
+  if (RECOVERY_SUBCOMMANDS.has(subcommand) && has(RECOVERY_OPTIONS)) return true;
+  if (subcommand === 'apply') {
+    return has(APPLY_READ_ONLY_OPTIONS) && !parameters.includes('--apply');
+  }
+
+  return (
+    FAST_FORWARD_SUBCOMMANDS.has(subcommand) &&
+    parameters.includes('--ff-only') &&
+    parameters.every((parameter) => parameter === '--ff-only' || !parameter.startsWith('-'))
+  );
+}
+
+// `~`, `$HOME`, and `${HOME}` at the start of a path, as the shell expands them.
+const HOME_PREFIX = /^(?:~|\$HOME|\$\{HOME\})(?=\/|$)/;
+
+// A path that needs the shell to expand anything else (`~user`, `$X`, a
+// glob, a `$(...)`) cannot be pinned down from the text.
 const UNRESOLVED_PATH = /^~|[$`*?[]|__SUBSHELL__/;
 
 // The normalized absolute path `target` names from `directory`, or null when
 // the text alone cannot tell.
 function resolveDirectory(directory, target) {
-  if (UNRESOLVED_PATH.test(target)) return null;
-  if (path.isAbsolute(target)) return path.resolve(target);
+  const expanded = target.replace(HOME_PREFIX, () => os.homedir());
+  if (UNRESOLVED_PATH.test(expanded)) return null;
+  if (path.isAbsolute(expanded)) return path.resolve(expanded);
   if (directory === null) return null;
 
-  return path.resolve(directory, target);
+  return path.resolve(directory, expanded);
 }
 
-const isInsideMainCheckout = (directory) =>
-  directory !== null &&
-  (directory === MAIN_CHECKOUT_PATH || directory.startsWith(`${MAIN_CHECKOUT_PATH}/`));
+// APFS is case-insensitive, so `/users/…/PFF-IOS` is the same folder.
+function isInsideMainCheckout(directory) {
+  if (directory === null) return false;
+  const folded = directory.toLowerCase();
+  const main = MAIN_CHECKOUT_PATH.toLowerCase();
+
+  return folded === main || folded.startsWith(`${main}/`);
+}
 
 function applyGitOption(invocation, option, next) {
   const equals = option.indexOf('=');
@@ -798,9 +856,14 @@ function applyGitOption(invocation, option, next) {
 }
 
 // The subcommand after git's global options, its arguments, and the two
-// places it writes: its work tree and its git directory.
-function gitInvocation(rest, directory) {
-  const invocation = { directory };
+// places it writes: its work tree and its git directory. A `GIT_DIR=` or
+// `GIT_WORK_TREE=` prefix counts until an option overrides it, as in git.
+function gitInvocation(rest, directory, environment) {
+  const invocation = {
+    directory,
+    gitDirectory: environment.GIT_DIR,
+    workTree: environment.GIT_WORK_TREE,
+  };
   let i = 1;
   while (i < rest.length && rest[i].startsWith('-')) {
     const takesValue = takesNextWord(rest[i], GIT_OPTIONS_WITH_VALUE);
@@ -819,8 +882,7 @@ function gitInvocation(rest, directory) {
 
 function gitFinding(segment, git) {
   if (git.subcommand === 'stash') return { kind: 'stash', detail: segment.trim() };
-  if (!MAIN_CHECKOUT_SUBCOMMANDS.has(git.subcommand)) return null;
-  if (git.arguments.some((argument) => HELP_OPTIONS.has(argument))) return null;
+  if (!MAIN_CHECKOUT_SUBCOMMANDS.has(git.subcommand) || leavesMainCheckoutSafe(git)) return null;
   const target = git.targets.find(isInsideMainCheckout);
   if (target === undefined) return null;
 
@@ -830,14 +892,12 @@ function gitFinding(segment, git) {
 const DIRECTORY_CHANGERS = new Set(['cd', 'pushd']);
 
 // Where the shell stands after one segment: `cd`/`pushd` moves it, `cd -`
-// goes back, and a bare `cd` goes home, which is never the main checkout.
+// goes back, and a bare `cd` goes home.
 function moveDirectory(location, segment) {
   const { tokens } = unwrap(words(segment));
   if (tokens.length === 0 || !DIRECTORY_CHANGERS.has(basename(tokens[0]))) return;
-  const target = tokens.slice(1).find((token) => token === '-' || !token.startsWith('-'));
-  let next = null;
-  if (target === '-') next = location.previous;
-  else if (target !== undefined) next = resolveDirectory(location.directory, target);
+  const target = tokens.slice(1).find((token) => token === '-' || !token.startsWith('-')) ?? '~';
+  const next = target === '-' ? location.previous : resolveDirectory(location.directory, target);
   location.previous = location.directory;
   location.directory = next;
 }
@@ -870,7 +930,7 @@ function segmentFinding(segment, nested, stdinBodies, directory) {
   const tokens = words(segment);
   if (tokens.length === 0) return null;
 
-  const { tokens: rest, viaXargs } = unwrap(tokens);
+  const { tokens: rest, viaXargs, environment } = unwrap(tokens);
   if (rest.length === 0) return null;
   const base = basename(rest[0]);
 
@@ -892,7 +952,7 @@ function segmentFinding(segment, nested, stdinBodies, directory) {
     return isPatternKill ? { kind: 'kill' } : null;
   }
 
-  if (base === 'git') return gitFinding(segment, gitInvocation(rest, directory));
+  if (base === 'git') return gitFinding(segment, gitInvocation(rest, directory, environment));
 
   return null;
 }
