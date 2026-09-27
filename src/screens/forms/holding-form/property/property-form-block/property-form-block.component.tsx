@@ -5,8 +5,8 @@ import Text from '@kiko/design-system/components/text';
 import { currencySymbol } from '@kiko/currency/currency';
 import Divider from '@kiko/design-system/components/divider';
 import { groupAmount } from '@kiko/screens/forms/amount-format';
+import OwnershipField from '@kiko/screens/forms/ownership-field';
 
-import OwnershipField from '../ownership-field';
 import PropertySection from '../property-section';
 import { fieldErrorMessage } from '../../field-error-message';
 

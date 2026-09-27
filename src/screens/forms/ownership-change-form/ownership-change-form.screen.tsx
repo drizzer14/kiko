@@ -1,22 +1,22 @@
 import { useLiveQuery } from '@kiko/db';
 import {
-  OwnershipField,
-  enteredShare,
-  ownershipEntryOf,
-  type OwnershipEntry,
-} from '@kiko/screens/forms/holding-form';
-import {
   useHeaderInset,
   scrollToField,
   type FieldInstance,
 } from '@kiko/design-system/scroll-to-field';
 import { useTranslation } from 'react-i18next';
+import {
+  enteredShare,
+  ownershipEntryOf,
+  type OwnershipEntry,
+} from '@kiko/screens/forms/property-ownership';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { type FC, useEffect, useRef, useState } from 'react';
 import { asPropertyMeta } from '@kiko/holdings/holding-metadata';
+import OwnershipField from '@kiko/screens/forms/ownership-field';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import type { AccountsStackParamList } from '@kiko/navigation/types';

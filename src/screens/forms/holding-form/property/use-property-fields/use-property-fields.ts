@@ -18,6 +18,12 @@ import type { HoldingRow } from '@kiko/db';
 import { Money } from '@kiko/currency/money';
 import { startOfLocalDay } from '@kiko/dates';
 import type { Lot } from '@kiko/holdings/lots';
+import {
+  enteredShare,
+  shareChanged,
+  ownershipEntryOf,
+  type OwnershipEntry,
+} from '@kiko/screens/forms/property-ownership';
 import { parseAmount } from '@kiko/currency/parse';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { useCallback, useRef, useState } from 'react';
@@ -35,12 +41,6 @@ import {
   type PropertyFieldErrors,
   type PropertyReasonKey,
 } from './property-reasons';
-import {
-  enteredShare,
-  shareChanged,
-  ownershipEntryOf,
-  type OwnershipEntry,
-} from './property-ownership';
 
 // The property CREATE payload: a `property_item` writes a zero stored
 // balance (its value lives entirely in `metadata.lots` / `price_points` —
