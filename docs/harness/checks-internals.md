@@ -43,6 +43,16 @@ worktree, rather than blocking or queueing. The lock is released on
 normal exit and on INT/TERM via a trap, so a killed run never strands
 it. Stryker's own `concurrency` is 2.
 
+## Mutation file cap
+
+After the lock and the dedup skip, `mutation.sh` selects the files to
+mutate (the diff vs `KIKO_MUTATION_BASE`'s merge-base, or the whole
+project for `KIKO_MUTATION_FULL=1` and an unresolvable base), applies
+its excludes, and counts them. Above `MUTATION_FILE_CAP` (30) it exits
+2 with the structured block before Stryker starts. No env var bypasses
+the cap: mutation testing runs per small change set, with
+`KIKO_MUTATION_BASE` set to that change set's own base commit.
+
 ## `osv-scanner` is never deduped
 
 `osv-scanner` is deliberately excluded from the dedup scheme: its

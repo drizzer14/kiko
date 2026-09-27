@@ -20,6 +20,14 @@ Rules:
   and any long build / `pod install` / device deploy. These emit no
   useful incremental output, so polling them burns tokens for zero
   signal.
+- **Mutation testing runs per SMALL change set only — never on a whole
+  project or a whole release.** There is no whole-release deep gate. Set
+  `KIKO_MUTATION_BASE` to the change set's own base commit so only its
+  files are mutated. `scripts/checks/mutation.sh` exits 2 before Stryker
+  starts when more than 30 files would be mutated (`MUTATION_FILE_CAP`);
+  `KIKO_MUTATION_FULL=1` hits the same cap, and no env var bypasses it.
+  On that failure, split the run into smaller change sets — never raise
+  the cap.
 - Run check:deep / check:mutation in the FOREGROUND via the wrapper
   (`npm run check:deep` / `npm run check:mutation`); it is single-flighted
   and tears its own workers down. Never run `npx stryker run` directly and

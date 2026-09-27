@@ -30,6 +30,18 @@ any drift found and commits it. The completion report names the
 drift-fix commit sha, or states "no drift found" with the retrospect
 result.
 
+## Mutation testing: small change sets only
+
+Mutation testing (`check:deep` / `check:mutation`) runs per SMALL change
+set, never on a whole project or a whole release — a whole-release run
+went 10 h 16 min with no result. There is no whole-release or
+end-of-integration deep gate. Run it on each change set with
+`KIKO_MUTATION_BASE` set to that change set's own base commit.
+`scripts/checks/mutation.sh` exits 2 before Stryker starts when more
+than 30 files would be mutated (`MUTATION_FILE_CAP`);
+`KIKO_MUTATION_FULL=1` hits the same cap, and no env var bypasses it.
+See the `ops` skill for how to launch and await a run.
+
 ## Never pattern-kill a process
 
 Never use pkill, killall, or any pattern or group kill. Stop only a

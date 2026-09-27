@@ -29,7 +29,7 @@ below).
 | `npm run check:feature-imports` | `scripts/checks/feature-imports.sh` (+ `feature-imports.js`) | an import that crosses a feature without its barrel (`kiko-feature-imports`, B2) fails; so do the `--tree` layout findings over `src/` (loose file at a container root, unit without `index.ts`, undeclared container, a barrel that re-exports test code or another feature, a feature-level value-import cycle) | project-wide (`check:all`) + pre-write guard |
 | `npm run check:blank-line-separation` | `scripts/checks/blank-line-separation.sh` | a blank-line-separation violation (`kiko-blank-line-separation`) fails project-wide | project-wide (`check:all`) + pre-write guard |
 | `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
-| `npm run check:mutation` | Stryker (Jest runner) | mutation score below 60 (break threshold; ratchet up over time) fails | deep only |
+| `npm run check:mutation` | Stryker (Jest runner) | mutation score below 60 (break threshold; ratchet up over time) fails; more than 30 source files to mutate (`MUTATION_FILE_CAP` in `mutation.sh`) fails before Stryker starts — no env var bypasses the cap | deep only |
 | `bash scripts/checks/osv.sh` | osv-scanner | any known CVE in `package-lock.json` fails | deep only |
 
 Composite scripts:
@@ -39,12 +39,17 @@ Composite scripts:
   import-order, full-word-identifiers, screen-imports, feature-imports,
   blank-line-separation, typecheck.
 - `npm run check:deep` — the heavy tier: mutation testing, then
-  osv-scanner. **Run this before declaring a feature done.** It is not
-  wired to any hook because it is slow; it is a manual checkpoint. By
-  default the mutation step mutates ONLY the source files changed
-  against the merge-base with `${KIKO_MUTATION_BASE:-main}`
-  (tests/fixtures excluded); set `KIKO_MUTATION_FULL=1` to force a
-  whole-project run. When you deep-gate an integration branch stacked on `next`, pass `KIKO_MUTATION_BASE=next make deep`: the default `main` base diffs against the last release and re-mutates the ENTIRE next-vs-main delta (2026-09-17: 199 files / ~8850 mutants) instead of the integration's own changes (86 files vs `next`). Reserve the `main` base for a genuine full release-scope gate. The mutation step tees its output to a stable,
+  osv-scanner. It is not wired to any hook because it is slow; it is a
+  manual checkpoint. **Mutation testing runs per SMALL change set only,
+  never on a whole project or a whole release** (a whole-release run
+  went 10 h 16 min with no result). The mutation step mutates ONLY the
+  source files changed against the merge-base with
+  `${KIKO_MUTATION_BASE:-main}` (tests/fixtures excluded): set
+  `KIKO_MUTATION_BASE` to that change set's own base commit so only its
+  files are mutated. More than 30 files to mutate (`MUTATION_FILE_CAP`
+  in `scripts/checks/mutation.sh`) exits 2 before Stryker starts;
+  `KIKO_MUTATION_FULL=1` (whole project) hits the same cap, and no env
+  var bypasses it. There is no release-scope deep gate. The mutation step tees its output to a stable,
   tailable progress log and prints an ETA from run history — a
   per-mutant rate (seconds/mutant) derived from past runs, times this
   run's actual mutant count, printed live the moment Stryker reports

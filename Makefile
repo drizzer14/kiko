@@ -36,7 +36,7 @@ verify: ## Fail-fast end-of-work check: lint, then full jest, then gate — stop
 jest: ## Run the full Jest suite
 	npx jest
 
-deep: ## Deep gate: mutation testing + osv-scanner (slow, 10-20+ min). It prints a `tail -f` line to watch progress.
+deep: ## Deep gate: mutation testing + osv-scanner, per small change set (set KIKO_MUTATION_BASE; > 30 files fails). It prints a `tail -f` line to watch progress.
 	npm run check:deep
 
 typecheck: ## tsc --noEmit
