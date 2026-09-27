@@ -28,8 +28,8 @@ export type UseBondIsinModeParams = {
   currency: Currency;
   name: string;
   purchaseDate: number | null;
-  // Whether the form still holds the face value, coupon, coupon frequency and
-  // maturity date the edited bond was stored with.
+  // Whether the form still holds the face value, coupon, coupon frequency,
+  // maturity date and bond kind the edited bond was stored with.
   holdsStoredTerms: boolean;
   setPurchaseDate: (value: number) => void;
   setFaceValue: (value: string) => void;
@@ -115,8 +115,8 @@ type UseBondIsinModeResult = {
   registerTerms: BondTerms | null;
   registerLoaded: boolean;
   // True while an edit's ISIN field still holds its stored ISIN and the form
-  // its stored face value, coupon, coupon frequency and maturity date, which
-  // then describe the bond even with no register match.
+  // its stored face value, coupon, coupon frequency, maturity date and bond
+  // kind, which then describe the bond even with no register match.
   isStoredIsin: boolean;
   isinReasonKey: IsinReasonKey | null;
   // True while ISIN mode has a found match whose OWN `couponFrequency` the

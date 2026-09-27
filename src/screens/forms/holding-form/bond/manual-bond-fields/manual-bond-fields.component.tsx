@@ -42,6 +42,7 @@ const ManualBondFields: FC<ManualBondFieldsProps> = ({
   onSelectBondKind,
   couponFrequency,
   onSelectCouponFrequency,
+  couponFromSchedule,
   currencySuffix,
 }) => {
   const { t } = useTranslation();
@@ -75,6 +76,7 @@ const ManualBondFields: FC<ManualBondFieldsProps> = ({
           placeholder={t('forms.holding.couponPlaceholder')}
           suffix={t('forms.units.percent')}
           required
+          editable={!couponFromSchedule}
           error={couponPctError}
           inputRef={couponPctInputRef}
         />
@@ -113,6 +115,7 @@ const ManualBondFields: FC<ManualBondFieldsProps> = ({
         labels={couponFrequencyLabels(t)}
         placeholder={t('forms.holding.couponFrequencyPlaceholder')}
         required
+        disabled={couponFromSchedule}
         testID="manual-bond-coupon-frequency-field"
       />
     </>

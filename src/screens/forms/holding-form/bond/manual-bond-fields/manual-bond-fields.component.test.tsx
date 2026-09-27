@@ -24,6 +24,7 @@ const baseProps = {
   onSelectBondKind: jest.fn(),
   couponFrequency: 'semiannually' as const,
   onSelectCouponFrequency: jest.fn(),
+  couponFromSchedule: false,
   currencySuffix: '₴',
 };
 
@@ -87,6 +88,27 @@ describe('ManualBondFields', () => {
 
     expect(onSelectBondKind).toHaveBeenCalledWith('corporate');
     expect(onSelectCouponFrequency).toHaveBeenCalledWith('quarterly');
+  });
+
+  it('keeps the coupon % and coupon frequency editable without a kept schedule', async () => {
+    const { getByLabelText, getByTestId } = await render(<ManualBondFields {...baseProps} />);
+
+    expect(getByLabelText('Coupon').props.editable).toBe(true);
+    expect(getByTestId('manual-bond-coupon-frequency-field').props.accessibilityState).toEqual(
+      expect.objectContaining({ disabled: false }),
+    );
+  });
+
+  it('shows the coupon % and coupon frequency read-only while a kept schedule sets them', async () => {
+    const { getByLabelText, getByTestId } = await render(
+      <ManualBondFields {...baseProps} couponPct="6" couponFromSchedule />,
+    );
+
+    expect(getByLabelText('Coupon').props.value).toBe('6');
+    expect(getByLabelText('Coupon').props.editable).toBe(false);
+    expect(getByTestId('manual-bond-coupon-frequency-field').props.accessibilityState).toEqual(
+      expect.objectContaining({ disabled: true }),
+    );
   });
 
   it('shows the passed-through error messages', async () => {

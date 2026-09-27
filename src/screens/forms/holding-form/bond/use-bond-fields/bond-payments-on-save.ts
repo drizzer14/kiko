@@ -33,6 +33,18 @@ const couponChanged = (
   (from.couponFrequency !== null && from.couponFrequency !== next.couponFrequency);
 
 /**
+ * Whether a Manual save keeps the saved non-empty schedule as it is: the same
+ * bond, still with the coupon and frequency it was saved with. The form then
+ * shows the schedule's coupon read-only, so an edit cannot drop the schedule
+ * by typing over its coupon (user ruling).
+ */
+export const keepsSavedSchedule = (saved: SavedBond | null, next: BondToSave): boolean =>
+  saved !== null &&
+  (saved.meta.payments?.length ?? 0) > 0 &&
+  !identityChanged(saved, next) &&
+  !couponChanged(saved.meta, next);
+
+/**
  * The schedule a bond keeps in its metadata on Save. ISIN mode takes the
  * matched register's. Manual mode keeps the saved one, or captures the
  * matched register's for a bond saved without one, since a register refresh

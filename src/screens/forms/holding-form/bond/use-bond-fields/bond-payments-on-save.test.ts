@@ -1,7 +1,7 @@
 import type { BondTerms } from '@kiko/bonds/nbu-register';
 import type { BondMeta, BondPayment } from '@kiko/holdings/holding-metadata';
 
-import { bondPaymentsOnSave, type BondToSave } from './bond-payments-on-save';
+import { bondPaymentsOnSave, keepsSavedSchedule, type BondToSave } from './bond-payments-on-save';
 
 const local = (year: number, month: number, day: number): number =>
   new Date(year, month - 1, day).getTime();
@@ -185,5 +185,39 @@ describe('bondPaymentsOnSave on edit', () => {
         next: filled,
       }),
     ).toBe(keptPayments);
+  });
+});
+
+describe('keepsSavedSchedule', () => {
+  it('holds for the bond as saved with a non-empty schedule, as its Manual save keeps it', () => {
+    expect(keepsSavedSchedule(saved, next)).toBe(true);
+    expect(bondPaymentsOnSave({ bondMode: 'manual', registerTerms: null, saved, next })).toBe(
+      keptPayments,
+    );
+  });
+
+  it('does not hold on create, or for a bond saved without a schedule or with its own coupon', () => {
+    expect(keepsSavedSchedule(null, next)).toBe(false);
+    expect(
+      keepsSavedSchedule({ ...saved, meta: { ...savedMeta, payments: undefined } }, next),
+    ).toBe(false);
+    expect(keepsSavedSchedule({ ...saved, meta: { ...savedMeta, payments: [] } }, next)).toBe(
+      false,
+    );
+  });
+
+  it.each([
+    ['ISIN', { isin: 'UA4000239115' }],
+    ['face value', { faceValueMinorUnits: 1000 }],
+    ['currency', { currency: 'EUR' as const }],
+    ['coupon %', { couponPct: 6 }],
+    ['coupon frequency', { couponFrequency: 'quarterly' as const }],
+  ])('does not hold once the %s changed, as the save then drops the schedule', (_label, edit) => {
+    const edited = { ...next, ...edit };
+
+    expect(keepsSavedSchedule(saved, edited)).toBe(false);
+    expect(
+      bondPaymentsOnSave({ bondMode: 'manual', registerTerms: null, saved, next: edited }),
+    ).not.toBe(keptPayments);
   });
 });

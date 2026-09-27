@@ -25,5 +25,8 @@ export type ManualBondFieldsProps = {
   onSelectBondKind: (kind: BondKind) => void;
   couponFrequency: BondCouponFrequency;
   onSelectCouponFrequency: (frequency: BondCouponFrequency) => void;
+  // True while an edit keeps the bond's stored payment schedule, which then
+  // sets the coupon % and frequency: both show read-only (user ruling).
+  couponFromSchedule: boolean;
   currencySuffix: string;
 };

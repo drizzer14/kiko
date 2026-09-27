@@ -935,7 +935,9 @@ stays as saved (nothing rewrites it); it is only the fallback.
   An edited ISIN, face value or currency drops it (key absent: another
   bond, so the cache is read). An edited coupon % or frequency on an
   ISIN bond in Manual mode writes `[]`, so the edited coupon is what the
-  ledger books. `useBondFields` compares the fields against the row it
+  ledger books; the form reaches this only for a bond seeded without a
+  non-empty schedule, since a kept one makes both fields read-only
+  (below). `useBondFields` compares the fields against the row it
   seeded (`savedBondRef`), but takes the schedule it keeps from the row
   as stored at the time of the write: the edit saves through
   `holdingsRepo.updateMetadataFromStored`, which re-reads the metadata
@@ -980,6 +982,33 @@ stays as saved (nothing rewrites it); it is only the fallback.
   ISIN-mode form's `useBondIsinMode` returns its matched terms with
   this coupon (`Date.now()`), so both the shown and the filled coupon
   move to a step on its date with no refresh (an offline phone).
+  `currentCouponPct` takes a `Pick` of `BondTerms` (currency, face,
+  coupon, frequency, payments), so a stored bond's kept schedule reads
+  through the SAME function: `{ ...meta, currency }`.
+- **Edit form coupon with a kept schedule (USER RULING (4) option (a),
+  2026-09-27).** While an edit keeps a non-empty stored schedule
+  (`keepsSavedSchedule(saved, next)` in `bond-payments-on-save.ts`: the
+  seeded bond has `payments.length > 0`, and the form still holds its
+  ISIN, face value, currency, coupon % and frequency — exactly when a
+  Manual save returns `saved.meta.payments`), `useBondFields` returns
+  `scheduledCouponPct` = `String(currentCouponPct({ ...meta, currency },
+  Date.now()))` — the coupon in force today — and the Manual coupon %
+  field shows it READ-ONLY (`TextField editable={false}`), with the
+  coupon frequency `SelectField disabled` too (the frequency sets the
+  payments per year the coupon is read with, and a changed frequency
+  drops the schedule by the same rule). The typed `couponPct` state
+  keeps the SAVED coupon, so an untouched Save writes the stored
+  `couponPct` unchanged (4.5 for XS2895055981 after its step) with the
+  schedule kept — the shown value is never written back. Without a
+  schedule (`payments` absent, or `[]` = the user's own coupon) or once
+  the ISIN, face value or currency changed (the schedule is then dropped
+  by the identity rule), both fields stay editable and show the typed
+  coupon. ISIN mode never shows an editable coupon: its summary shows the
+  matched register terms' `currentCouponPct`. Pins
+  (`use-bond-fields.test.ts`): XS2895055981 saved at 4.5 with its
+  schedule, today 2027-01-20 → shown 4.5, 2027-08-15 → shown 6, in
+  Manual AND ISIN mode; the untouched Save `toEqual`s the stored
+  metadata.
 - **Pins.** XS2895055981 cached on 2026-09-26: shown 4.5 on 2027-01-20,
   6 on 2027-08-15 (and on 2027-02-01, that coupon counted paid); 1,000
   bonds bought 2026-09-26 for 980.00 book coupons 22.50, then 4 x 30.00,
@@ -1001,9 +1030,12 @@ stays as saved (nothing rewrites it); it is only the fallback.
   step-up bond, the step saved at create. A `.kiko` restore brings the
   `bond_register` cache back with the holdings, so a restored bond not
   yet backfilled reads the restored cache until the next refresh
-  backfills it. Edit mode still seeds the SAVED coupon, and the
-  register's coupon for the stored ISIN never replaces it
-  (`seedStoredIsin`, below).
+  backfills it. The edit form's typed coupon state still seeds the SAVED
+  coupon, and the register's coupon for the stored ISIN never replaces
+  it (`seedStoredIsin`, below); a kept schedule shows its current coupon
+  read-only instead (above). An ISIN-mode edit of a stored ISIN the
+  register no longer lists shows no coupon at all (no summary without a
+  match).
 
 **Yield to maturity (USER DECISION D4).** `src/bonds/yield-to-maturity/`:
 `yieldToMaturity(cashFlows, paidMinorUnits, lotDate)` is the effective
@@ -1262,11 +1294,13 @@ lists (matured/delisted, or offline with an empty cache) SAVES — USER
 RULING: `useBondIsinMode` keeps the seeded `storedIsin`, and
 `bondIsinReasonKey` returns no reason while nothing matched and
 `isStoredIsin` holds: the ISIN field still holds the stored ISIN AND
-the form still holds the stored face value, coupon %, coupon frequency
-and maturity date (`holdsStoredTerms` in `useBondFields`, compared as
-values against the seeded `savedBondRef`). USER RULING: nothing stored
-is overwritten — a change to any of those four (for example typed in
-Manual, then back to ISIN) blocks the unlisted ISIN in ISIN mode again
+the form still holds the stored face value, coupon %, coupon frequency,
+maturity date and bond kind (`holdsStoredTerms` in `useBondFields`,
+compared as values against the seeded `savedBondRef`). USER RULING:
+nothing stored is overwritten — a change to any of those five (for
+example typed in Manual, then back to ISIN; the kind is a Manual-only
+chip, so an ISIN-mode save would store a kind the reopened bond no
+longer shows) blocks the unlisted ISIN in ISIN mode again
 with `isinNotInRegister`, and Switch to manual saves it honestly as
 Manual; the yield row hides with it. `BondIsinSection` still shows the "not in the
 register" / "not loaded" note with its Switch-to-manual button (the

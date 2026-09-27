@@ -215,6 +215,151 @@ describe('useBondFields kept payment schedule', () => {
   });
 });
 
+// XS2895055981 pays 0.0225 per 1-dollar bond (4.5%) up to 2027-02 and 0.03
+// (6%) from 2027-08. The bond was saved at 4.5% with its schedule kept.
+describe('useBondFields coupon of a bond with a kept schedule (user ruling)', () => {
+  const stepUpIsin = 'XS2895055981';
+  const stepUpPayments = [
+    { date: new Date(2027, 1, 1).getTime(), kind: 'coupon', amount: '0.0225' },
+    { date: new Date(2027, 7, 1).getTime(), kind: 'coupon', amount: '0.03' },
+    { date: new Date(2028, 1, 1).getTime(), kind: 'coupon', amount: '0.03' },
+    { date: new Date(2029, 1, 1).getTime(), kind: 'redemption', amount: '1' },
+  ];
+  const stepUpMetadata = {
+    quantity: 1000,
+    faceValueMinorUnits: 100,
+    couponPct: 4.5,
+    purchasePriceMinorUnits: 98_000,
+    purchaseDate: new Date(2026, 8, 26).getTime(),
+    maturityDate: new Date(2029, 1, 1).getTime(),
+    bondKind: 'government',
+    couponFrequency: 'semiannually',
+    isin: stepUpIsin,
+    entryMode: 'manual',
+    payments: stepUpPayments,
+  };
+  const stepUpRow = {
+    isin: stepUpIsin,
+    terms: {
+      isin: stepUpIsin,
+      currency: 'USD',
+      faceValueMinorUnits: 100,
+      couponPct: 4.5,
+      maturityDate: new Date(2029, 1, 1).getTime(),
+      couponFrequency: 'semiannually',
+      name: 'OЗДП-середньострокова XS2895055981',
+      payments: stepUpPayments,
+    },
+    fetchedAt: new Date(2026, 8, 26).getTime(),
+  };
+  const beforeStep = new Date(2027, 0, 20).getTime();
+  const afterStep = new Date(2027, 7, 15).getTime();
+
+  const holdingOf = (metadata: Record<string, unknown>) =>
+    ({ currency: 'USD', metadata }) as unknown as HoldingRow;
+  const contextOf = (holding: HoldingRow): EditContext => ({
+    holdingId: 'h1',
+    name: 'Bond',
+    color: null,
+    currency: 'USD',
+    isSynced: false,
+    editingHolding: holding,
+    book: EMPTY_PRICE_BOOK,
+  });
+
+  const seededOn = async (today: number, metadata: Record<string, unknown>) => {
+    jest.spyOn(Date, 'now').mockReturnValue(today);
+    mockStoredMetadata = metadata;
+    const holding = holdingOf(metadata);
+    const { result } = await renderHook(() =>
+      useBondFields({
+        type: 'bond',
+        isEdit: true,
+        currency: 'USD',
+        setCurrency: jest.fn(),
+        name: 'Bond',
+        setName: jest.fn(),
+      }),
+    );
+
+    await act(async () => {
+      result.current.seed(holding);
+    });
+
+    return { result, holding };
+  };
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it.each([
+    ['before the step', beforeStep, '4.5'],
+    ['after the step', afterStep, '6'],
+  ])(
+    'shows the coupon in force %s in Manual mode; an untouched Save keeps what is stored',
+    async (_case, today, shown) => {
+      const { result, holding } = await seededOn(today, stepUpMetadata);
+
+      expect(result.current.bondMode).toBe('manual');
+      expect(result.current.scheduledCouponPct).toBe(shown);
+      expect(result.current.couponPct).toBe('4.5');
+      expect(result.current.isValid).toBe(true);
+
+      await result.current.saveEdit(contextOf(holding));
+
+      expect(mockWrittenMetadata.at(-1)).toEqual(stepUpMetadata);
+    },
+  );
+
+  it.each([
+    ['before the step', beforeStep, 4.5],
+    ['after the step', afterStep, 6],
+  ])(
+    'shows the same coupon %s in ISIN mode; an untouched Save keeps what is stored',
+    async (_case, today, shown) => {
+      mockBondRegisterRows = [stepUpRow];
+      const isinMetadata = { ...stepUpMetadata, entryMode: 'isin' };
+      const { result, holding } = await seededOn(today, isinMetadata);
+
+      expect(result.current.bondMode).toBe('isin');
+      expect(result.current.registerTerms?.couponPct).toBe(shown);
+      expect(result.current.scheduledCouponPct).toBe(String(shown));
+      expect(result.current.isValid).toBe(true);
+
+      await result.current.saveEdit(contextOf(holding));
+
+      expect(mockWrittenMetadata.at(-1)).toEqual(isinMetadata);
+    },
+  );
+
+  it('leaves the coupon to the user when their own coupon replaced the schedule, or none exists', async () => {
+    const ownCoupon = await seededOn(afterStep, { ...stepUpMetadata, payments: [] });
+
+    expect(ownCoupon.result.current.scheduledCouponPct).toBeNull();
+
+    const withoutSchedule = await seededOn(afterStep, {
+      ...stepUpMetadata,
+      isin: undefined,
+      payments: undefined,
+    });
+
+    expect(withoutSchedule.result.current.scheduledCouponPct).toBeNull();
+  });
+
+  // Another face value is another bond: the save drops the schedule by that
+  // rule, so the coupon it books is the typed one again.
+  it('leaves the coupon to the user once the face value changed', async () => {
+    const { result } = await seededOn(afterStep, stepUpMetadata);
+
+    await act(async () => {
+      result.current.setFaceValue('2');
+    });
+
+    expect(result.current.scheduledCouponPct).toBeNull();
+  });
+});
+
 describe('useBondFields entry mode', () => {
   const storedBond = (metadata: Record<string, unknown>) =>
     ({
@@ -423,7 +568,30 @@ describe('useBondFields ISIN-mode edit of an ISIN the register does not list', (
     expect(result.current.isValid).toBe(false);
   });
 
+  // The kind is a Manual-only chip: an ISIN-mode save would store a kind the
+  // reopened bond no longer shows.
+  it('blocks the stored ISIN in ISIN mode once Manual changed its bond kind', async () => {
+    const { result } = await renderBondFields(true);
+
+    await act(async () => {
+      result.current.seed(holding);
+    });
+    await act(async () => {
+      result.current.setBondMode('manual');
+    });
+    await act(async () => {
+      result.current.setBondKind('corporate');
+    });
+    await act(async () => {
+      result.current.setBondMode('isin');
+    });
+
+    expect(result.current.isinReasonKey).toBe('forms.holding.isinNotInRegister');
+    expect(result.current.isValid).toBe(false);
+  });
+
   it.each([
+    ['bond kind', (fields: UseBondFieldsResult) => fields.setBondKind('corporate')],
     ['face value', (fields: UseBondFieldsResult) => fields.setFaceValue('2 000')],
     ['coupon', (fields: UseBondFieldsResult) => fields.setCouponPct('12')],
     ['coupon frequency', (fields: UseBondFieldsResult) => fields.setCouponFrequency('annually')],

@@ -182,7 +182,7 @@ const BondFormBlock: FC<BondFormBlockProps> = ({ fields, attemptedSave }) => {
         faceValueError={fieldErrorMessage(t, attemptedSave, fieldErrors.faceValueError)}
         faceValueFieldRef={refs.faceValueFieldRef}
         faceValueInputRef={refs.faceValueInputRef}
-        couponPct={fields.couponPct}
+        couponPct={fields.scheduledCouponPct ?? fields.couponPct}
         onChangeCouponPct={fields.setCouponPct}
         couponPctError={fieldErrorMessage(t, attemptedSave, fieldErrors.couponPctError)}
         couponPctFieldRef={refs.couponPctFieldRef}
@@ -195,6 +195,7 @@ const BondFormBlock: FC<BondFormBlockProps> = ({ fields, attemptedSave }) => {
         onSelectBondKind={fields.setBondKind}
         couponFrequency={fields.couponFrequency}
         onSelectCouponFrequency={fields.setCouponFrequency}
+        couponFromSchedule={fields.scheduledCouponPct !== null}
         currencySuffix={currencySymbol[fields.currency]}
       />
     </Box>

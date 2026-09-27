@@ -14,11 +14,11 @@ import { parseAmount } from '@kiko/currency/parse';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import type { TextInputInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
-import type { BondTerms } from '@kiko/bonds/nbu-register';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import { bondYieldToMaturity } from '@kiko/bonds/yield-to-maturity';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import { type BondTerms, currentCouponPct } from '@kiko/bonds/nbu-register';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 
 import { useBondIsinMode, type IsinReasonKey } from '../use-bond-isin-mode';
@@ -35,7 +35,12 @@ import {
   pricePerBondText,
   type SeededPurchasePrice,
 } from './bond-purchase-price';
-import { bondPaymentsOnSave, type SavedBond } from './bond-payments-on-save';
+import {
+  type SavedBond,
+  type BondToSave,
+  bondPaymentsOnSave,
+  keepsSavedSchedule,
+} from './bond-payments-on-save';
 
 // `buildBondMetadata` stands today in for a missing date, which would solve
 // a yield for dates the user never entered.
@@ -55,7 +60,8 @@ const hasYieldTerms = (
 ): boolean => bondMode === 'manual' || registerTerms !== null || isStoredIsin;
 
 // An edit's unlisted stored ISIN saves in ISIN mode only as the bond was
-// stored; nothing stored is overwritten (user ruling).
+// stored; nothing stored is overwritten (user ruling). The kind counts too:
+// it is a Manual-only chip, so a kind changed there would be saved unseen.
 const holdsStoredTerms = (
   saved: SavedBond | null,
   form: {
@@ -64,6 +70,7 @@ const holdsStoredTerms = (
     couponPct: string;
     couponFrequency: BondCouponFrequency;
     maturityDate: number | null;
+    bondKind: BondKind;
   },
 ): boolean =>
   saved !== null &&
@@ -71,7 +78,34 @@ const holdsStoredTerms = (
     saved.meta.faceValueMinorUnits &&
   parseAmount(form.couponPct) === saved.meta.couponPct &&
   form.couponFrequency === saved.meta.couponFrequency &&
-  form.maturityDate === saved.meta.maturityDate;
+  form.maturityDate === saved.meta.maturityDate &&
+  form.bondKind === saved.meta.bondKind;
+
+// Read the way Save writes them, so the kept-schedule check below and the save
+// itself can never disagree.
+const bondToSave = (form: {
+  isin: string;
+  currency: Currency;
+  faceValue: string;
+  couponPct: string;
+  couponFrequency: BondCouponFrequency;
+}): BondToSave => ({
+  isin: form.isin.trim() === '' ? undefined : form.isin,
+  currency: form.currency,
+  faceValueMinorUnits: Money.fromMajor(form.currency, parseAmount(form.faceValue) || 0).minorUnits,
+  couponPct: parseAmount(form.couponPct) || 0,
+  couponFrequency: form.couponFrequency,
+});
+
+// The coupon in force today on the kept schedule, read as the register terms
+// are, so the edit shows what the ledger books rather than the rate saved at
+// create (user ruling). Null while a save would not keep that schedule.
+const scheduledCouponText = (saved: SavedBond | null, next: BondToSave): string | null =>
+  foldMap(maybe(saved), (bond) =>
+    keepsSavedSchedule(bond, next)
+      ? String(currentCouponPct({ ...bond.meta, currency: bond.currency }, Date.now()))
+      : null,
+  ) ?? null;
 
 // Seed the bond number/date fields from stored metadata. Minor-unit money
 // fields (face value, price per bond) convert back to grouped major strings;
@@ -114,6 +148,10 @@ export type UseBondFieldsResult = HoldingTypeForm & {
   setFaceValue: (value: string) => void;
   couponPct: string;
   setCouponPct: (value: string) => void;
+  // The coupon in force today on the schedule an edit keeps, shown read-only
+  // in place of `couponPct` along with the frequency: typing over either would
+  // drop the schedule. Null while no schedule is kept, so both stay editable.
+  scheduledCouponPct: string | null;
   purchasePrice: string;
   setPurchasePrice: (value: string) => void;
   purchaseDate: number | null;
@@ -221,6 +259,7 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
       couponPct,
       couponFrequency,
       maturityDate,
+      bondKind,
     }),
     setPurchaseDate,
     setFaceValue,
@@ -232,36 +271,29 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
     setName,
   });
 
+  const scheduledCouponPct = scheduledCouponText(
+    savedBondRef.current,
+    bondToSave({ isin, currency, faceValue, couponPct, couponFrequency }),
+  );
+
   // A stable identity while no bond field changes, so the yield below is not
   // solved again on every keystroke in Name or Notes.
   const buildBondMetadata = useCallback(
     (saved: SavedBond | null): Record<string, unknown> => {
       const quantityValue = parseAmount(quantity) || 0;
-      const faceValueMinorUnits = Money.fromMajor(currency, parseAmount(faceValue) || 0).minorUnits;
       const purchasePriceMinorUnits = bondPurchaseTotal({
         quantity,
         pricePerBond: purchasePrice,
         currency,
         seeded: seededPurchasePriceRef.current,
       });
-      const couponValue = parseAmount(couponPct) || 0;
-      const payments = bondPaymentsOnSave({
-        bondMode,
-        registerTerms,
-        saved,
-        next: {
-          isin: isin.trim() === '' ? undefined : isin,
-          currency,
-          faceValueMinorUnits,
-          couponPct: couponValue,
-          couponFrequency,
-        },
-      });
+      const next = bondToSave({ isin, currency, faceValue, couponPct, couponFrequency });
+      const payments = bondPaymentsOnSave({ bondMode, registerTerms, saved, next });
 
       return {
         quantity: quantityValue,
-        faceValueMinorUnits,
-        couponPct: couponValue,
+        faceValueMinorUnits: next.faceValueMinorUnits,
+        couponPct: next.couponPct,
         // The total actually paid, while the form takes the price of one bond. A
         // blank one is left out, not stored as the nominal: `asBondMeta` still
         // reads it as nominal (par), so the purchase entry and expected profit
@@ -404,6 +436,7 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
     setFaceValue,
     couponPct,
     setCouponPct,
+    scheduledCouponPct,
     purchasePrice,
     setPurchasePrice,
     purchaseDate,

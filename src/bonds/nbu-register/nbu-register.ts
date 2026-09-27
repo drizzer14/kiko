@@ -241,9 +241,17 @@ const toBondTerms = (row: NbuRegisterRow, now: number): BondTerms[] => {
 /**
  * The coupon of cached `terms` as of `now`, not as of the refresh day that
  * wrote them: an offline phone must still move to a step-up bond's next step
- * on its date. The cached coupon when no coupon is left to pay.
+ * on its date. The cached coupon when no coupon is left to pay. A stored
+ * bond's kept schedule reads through here too, so the edit form shows the
+ * same coupon the register terms would.
  */
-export const currentCouponPct = (terms: BondTerms, now: number): number => {
+export const currentCouponPct = (
+  terms: Pick<
+    BondTerms,
+    'currency' | 'faceValueMinorUnits' | 'couponPct' | 'couponFrequency' | 'payments'
+  >,
+  now: number,
+): number => {
   const nominal =
     terms.faceValueMinorUnits > 0
       ? shiftDecimal(String(terms.faceValueMinorUnits), -currencyScale[terms.currency])

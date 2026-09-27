@@ -1023,6 +1023,18 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     ).toBe(true);
   });
 
+  // User ruling: a kept schedule sets the coupon, so an edit cannot change it
+  // or drop the schedule by typing over it.
+  it('shows the demo bond coupon and frequency read-only from its kept schedule', async () => {
+    const screen = await renderEdit(demoBond);
+
+    expect(screen.getByLabelText('Coupon').props.value).toBe('16.2');
+    expect(screen.getByLabelText('Coupon').props.editable).toBe(false);
+    expect(
+      screen.getByTestId('manual-bond-coupon-frequency-field').props.accessibilityState.disabled,
+    ).toBe(true);
+  });
+
   it('saves a Manual edit of the demo bond, against a register without its ISIN, with its stored values', async () => {
     mockBondRegisterRows = [foundRegisterRow];
     const screen = await renderEdit(demoBond);
