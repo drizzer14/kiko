@@ -3,8 +3,9 @@ import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
 // scripts/checks/kill-guard.sh is the PreToolUse hook wired in
 // harness/kiko/hooks/hooks.json under the Bash tool. It reads the hook's
-// tool_input JSON payload from stdin, tokenizes the command line (recursing
-// into $(...)/backticks and a quoted `sh -c`/`bash -c`/`zsh -c` argument),
+// tool_input JSON payload from stdin, tokenizes the command line (dropping
+// `#` comments, and recursing into $(...)/backticks, a shell's `-c`/`-lc`
+// argument, and an `eval` string),
 // and prints the documented deny JSON when the command is a pkill/killall,
 // a kill/pkill/killall reached through a pattern (xargs, a subshell), or a
 // process-group/broadcast kill (0, a negative pid, `--` then a negative
@@ -37,6 +38,23 @@ const BLOCKED_COMMANDS: string[] = [
   'kill -TERM -1234',
   'sudo pkill cat',
   'kill node',
+  "# don't hang\npkill -f cat",
+  "echo hi # it's fine\npkill x",
+  'echo "$(true # it\'s\n)"\npkill x',
+  'echo a#b; pkill x',
+  `echo \${#x}; pkill x`,
+  'echo $#; pkill x',
+  'FOO=1 pkill x',
+  '(pkill x)',
+  '{ pkill x; }',
+  'if pkill x; then :; fi',
+  "bash -lc 'pkill x'",
+  'sudo -u me pkill x',
+  'nice -n 5 pkill x',
+  'eval "pkill x"',
+  'pgrep x | xargs -n 1 kill',
+  'echo $(( $(pkill x) + 1 ))',
+  'echo $[ $(pkill x) + 1 ]',
 ];
 
 const ALLOWED_COMMANDS: string[] = [
@@ -51,6 +69,16 @@ const ALLOWED_COMMANDS: string[] = [
   'git commit -m "block pkill and killall"',
   'ls -la',
   'npm run check:all',
+  '# pkill x is banned here',
+  'echo a#b',
+  `echo \${#x} $#`,
+  '(kill 1234)',
+  '{ kill "$pid"; }',
+  'command -v pkill',
+  'FOO=1 npm test',
+  'time npm test',
+  'eval "echo hi"',
+  "bash -lc 'npm test'",
 ];
 
 // A git stash in any directory — this repository, a worktree, or a scratch
@@ -72,6 +100,30 @@ const STASH_COMMANDS: string[] = [
   'sh -c "git stash"',
   "bash -c 'git -C /tmp/scratch stash drop'",
   'echo $(git stash)',
+  '(cd /tmp/scratch-clone && git stash -q)',
+  '( git stash )',
+  '{ git stash; }',
+  'GIT_DIR=/tmp/scratch/.git git stash',
+  'HUSKY=0 git stash push',
+  'if git stash; then :; fi',
+  'if false; then :; elif git stash; then :; fi',
+  'if false; then :; else git stash; fi',
+  'while git stash; do :; done',
+  'until git stash; do :; done',
+  'for d in a b; do git -C $d stash; done',
+  '! git stash',
+  'time git stash',
+  'time -p git stash',
+  "bash -lc 'git stash'",
+  "bash -ec 'git stash'",
+  "sh -xc 'git stash'",
+  "dash -c 'git stash'",
+  'sudo -u me git stash',
+  'sudo -g staff git stash',
+  'nice git stash',
+  'nice -n 10 git stash',
+  'eval "git stash"',
+  'eval git stash',
 ];
 
 const HEREDOC_COMMANDS: string[] = [
@@ -81,6 +133,11 @@ const HEREDOC_COMMANDS: string[] = [
   'cat > notes.txt <<END_OF_TEXT\nhello\nEND_OF_TEXT',
   'git commit -m "$(cat <<EOF\nmessage\nEOF\n)"',
   "bash -c 'cat <<EOF\nhello\nEOF'",
+  "bash -lc 'cat <<EOF\nhello\nEOF'",
+  "# write the skill text; it's long\ncat > f.md <<EOF\nrun `git apply -3`\nEOF",
+  'cat <<$X\nhello\n$X',
+  'cat <<1\nhello\n1',
+  'cat <<.\nhello\n.',
 ];
 
 const ALLOWED_GIT_AND_HEREDOC_COMMANDS: string[] = [
@@ -99,7 +156,13 @@ const ALLOWED_GIT_AND_HEREDOC_COMMANDS: string[] = [
   'git commit -m "$(cat <<\'EOF\'\nmessage\nEOF\n)"',
   'cat <<<"a here-string"',
   'echo $((1 << 2))',
+  'echo $((1 << n))',
+  'echo $(( x<<2 ))',
+  '(( x = 1 << n ))',
+  'echo $[1<<2]',
   'echo "write <<EOF only when quoted"',
+  'git show stash@{0}',
+  '(cd /tmp && git status)',
 ];
 
 const denyReasonFor = (command: string): string => {
