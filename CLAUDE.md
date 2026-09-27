@@ -23,21 +23,41 @@ below).
 | `npm run check:secrets` | gitleaks | any detected secret fails | fast |
 | `npm run check:overrides` | override-guard.sh | any bare `biome-ignore` (no `OVERRIDE(...)`) fails | medium |
 | `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
-| `npm run check:mutation` | Stryker (Jest runner) | mutation score below 60 (break threshold; ratchet up over time) fails | deep only |
+| `npm run check:import-order` (on next; arrives on main with release 1.1) | `scripts/checks/import-order.sh` | an import block not sorted per kiko-code-style's "Import ordering" fails | fast (per-file) + project-wide |
+| `npm run check:full-word-identifiers` (on next; arrives on main with release 1.1) | `scripts/checks/full-word-identifiers.sh` | a denylisted abbreviation in an identifier fails (see the analyzer's own denylist) | fast (per-file) + project-wide |
+| `npm run check:screen-imports` (on next; arrives on main with release 1.1) | `scripts/checks/screen-imports.sh` | a cross-screen import fails | project-wide + pre-write guard |
+| `npm run check:feature-imports` (on next; arrives on main with release 1.1) | `scripts/checks/feature-imports.sh` | an import that crosses a feature without its barrel, or a `--tree` layout finding, fails | project-wide + pre-write guard |
+| `npm run check:blank-line-separation` (on next; arrives on main with release 1.1) | `scripts/checks/blank-line-separation.sh` | a blank-line-separation violation fails | project-wide + pre-write guard |
+| `npm run check:guard-replay` (on next; arrives on main with release 1.1) | `scripts/checks/guard-replay.sh` — the pre-write guard replayed over each `.ts`/`.tsx` file the session changed | any finding the change ADDED fails (a Bash/python write bypassed the guard); fails closed | medium (Stop/SubagentStop) + project-wide |
+| `npm run check:mutation` | Stryker (Jest runner) | mutation score below 60 (break threshold; ratchet up over time) fails; more than 30 source files to mutate (`MUTATION_FILE_CAP` in `mutation.sh`) fails before Stryker starts — no env var bypasses the cap (cap on next; arrives on main with release 1.1) | deep only |
 | `bash scripts/checks/osv.sh` | osv-scanner | any known CVE in `package-lock.json` fails | deep only |
 
 Composite scripts:
 
 - `npm run check:all` — the fast + medium tier checks, in order:
   lint, dup, knip, deps, security, rules, plist, secrets, overrides,
-  typecheck.
+  typecheck. On next (arrives on main with release 1.1) the order is:
+  lint, dup, knip, deps, security, rules, plist, secrets, overrides,
+  import-order, full-word-identifiers, screen-imports, feature-imports,
+  blank-line-separation, guard-replay, typecheck.
 - `npm run check:deep` — the heavy tier: mutation testing, then
-  osv-scanner. **Run this before declaring a feature done.** It is not
-  wired to any hook because it is slow; it is a manual checkpoint. By
-  default the mutation step mutates ONLY the source files changed
-  against the merge-base with `${KIKO_MUTATION_BASE:-main}`
-  (tests/fixtures excluded); set `KIKO_MUTATION_FULL=1` to force a
-  whole-project run. When you deep-gate an integration branch stacked on `next`, pass `KIKO_MUTATION_BASE=next make deep`: the default `main` base diffs against the last release and re-mutates the ENTIRE next-vs-main delta (2026-09-17: 199 files / ~8850 mutants) instead of the integration's own changes (86 files vs `next`). Reserve the `main` base for a genuine full release-scope gate. The mutation step tees its output to a stable,
+  osv-scanner. It is not wired to any hook because it is slow; it is a
+  manual checkpoint. **Mutation testing runs per SMALL change set only,
+  never on a whole project or a whole release** (a whole-release run
+  went 10 h 16 min with no result). The mutation step mutates ONLY the
+  source files changed against the merge-base with
+  `${KIKO_MUTATION_BASE:-main}` (tests/fixtures excluded): set
+  `KIKO_MUTATION_BASE` to that change set's own base commit so only its
+  files are mutated. More than 30 files to mutate (`MUTATION_FILE_CAP`
+  in `scripts/checks/mutation.sh`) exits 2 before Stryker starts;
+  `KIKO_MUTATION_FULL=1` (whole project) and a `KIKO_MUTATION_BASE`
+  that does not resolve are refused directly (exit 2), and no env var
+  bypasses the cap (cap and refusals on next; arrive on main with
+  release 1.1). There is no release-scope deep gate. **Who and when:**
+  the coordinator runs `KIKO_MUTATION_BASE=<change set base sha> make
+  deep`, detached, for each reviewed change set (<= 30 source files)
+  before its merge into next. Orchestrators never run it; a BATCH READY
+  names the change-set base sha and the file count. The mutation step tees its output to a stable,
   tailable progress log and prints an ETA from run history — a
   per-mutant rate (seconds/mutant) derived from past runs, times this
   run's actual mutant count, printed live the moment Stryker reports

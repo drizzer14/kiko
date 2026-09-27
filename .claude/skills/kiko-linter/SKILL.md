@@ -74,11 +74,12 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   the barrel/`.styles.ts` drop-with-reinclusion step) and `CLAUDE.md`'s
   "Documented exceptions" for the mutate-set and sandbox exclusions this
   mirrors. An empty changed set exits 0 (nothing to mutate).
-  `KIKO_MUTATION_FULL=1` forces the whole project, and an unresolvable
-  merge-base also falls back to the whole project — the gate never
-  silently mutates nothing. See `CLAUDE.md`'s `check:deep` section for
-  when to override the base (`KIKO_MUTATION_BASE=next` when deep-gating
-  an integration stacked on `next`). This keeps the manual `check:deep` cheap;
+  Never mutate the whole project: `KIKO_MUTATION_FULL=1` and a
+  `KIKO_MUTATION_BASE` that does not resolve are both refused (exit 2),
+  and more than 30 files to mutate (`MUTATION_FILE_CAP`) exits 2 before
+  Stryker starts (on next; arrives on main with release 1.1). Set
+  `KIKO_MUTATION_BASE` to the change set's own base commit — see
+  `CLAUDE.md`'s `check:deep` section for who runs it and when. This keeps the manual `check:deep` cheap;
   the diff logic is tested hermetically (a throwaway git repo, the real
   script, an arg-capturing stub) in `__tests__/mutation-stream.test.ts`.
 
