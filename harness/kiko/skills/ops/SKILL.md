@@ -66,8 +66,10 @@ Rules:
 - **Track the known CVEs with `bash scripts/checks/osv.sh` on its own.**
   `check:deep` can stop at the mutation cap before it reaches osv, so
   its exit code does not prove the osv result.
-- **`devicectl` "unavailable" or CoreDevice error 4016 means ask the
-  user to connect USB and unlock the phone** — do not rebuild. The
+- **`devicectl` "unavailable" or CoreDevice error 4016 means the phone
+  is not reachable: ask the user to join the iPhone to the Mac's WiFi
+  network (builds install over the network; the 2026-09-27 cause), or
+  to connect USB, and to unlock it** — do not rebuild. The
   deploy script's launch step can false-fail; a locked phone blocks only
   the launch, not the install.
 
