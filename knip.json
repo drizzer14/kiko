@@ -11,7 +11,8 @@
     "scripts/checks/screen-imports.js",
     "scripts/checks/feature-imports.js",
     "scripts/checks/specifier-scanner.js",
-    "scripts/checks/pre-write-guard.js"
+    "scripts/checks/pre-write-guard.js",
+    "scripts/checks/guard-replay.js"
   ],
   "ignoreDependencies": [
     "@babel/runtime",
