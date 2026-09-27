@@ -52,8 +52,8 @@ describe('HoldingCard', () => {
     expect(getByText(/1,000\.00 ₴/)).toBeTruthy();
   });
 
-  // A long bond name ran past the card edge and pushed the value out of view.
-  // Jest cannot lay out pixels, so this pins the style contract the
+  // A long name must wrap, not run past the card edge and push the value out of
+  // view. Jest cannot lay out pixels, so this pins the style contract the
   // transaction card wraps with.
   it('wraps a long name beside the icon while the value keeps its own width', async () => {
     const longName = 'Середньострокові облігації UA4000239115 з дуже довгою назвою';
@@ -68,10 +68,10 @@ describe('HoldingCard', () => {
       StyleSheet.flatten(ancestorWithStyle(getByText(/1,000\.00 ₴/), 'flexShrink').props.style)
         .flexShrink,
     ).toBe(0);
+    const leadBox = StyleSheet.flatten(ancestorWithStyle(title, 'alignItems').props.style);
+    expect(leadBox.flex).toBe(1);
     // A short name still centers beside the icon tile, as before.
-    expect(StyleSheet.flatten(ancestorWithStyle(title, 'alignItems').props.style).alignItems).toBe(
-      'center',
-    );
+    expect(leadBox.alignItems).toBe('center');
   });
 
   describe('a shared property', () => {

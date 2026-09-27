@@ -228,7 +228,9 @@ an entry (date + value) the moment the user approves a new visual.
   section heading rows, upcoming payments' dates) are not this pattern.
   Pinned per family by a style-contract test (`ancestorWithStyle`: the
   title's own box is `flex: 1` with no row direction, no
-  `numberOfLines`, the amount's box `flexShrink: 0`).
+  `numberOfLines`). The two card tests also pin the amount's box
+  `flexShrink: 0` and the lead cluster's `flex: 1`; the pie legend test
+  pins its fixed-width value column instead (`width > 0`).
 
 ## UX patterns
 

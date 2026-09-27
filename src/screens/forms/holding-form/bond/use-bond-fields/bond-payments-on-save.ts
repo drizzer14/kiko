@@ -38,8 +38,7 @@ const couponChanged = (
  * shows the schedule's coupon read-only, so an edit cannot drop the schedule
  * by typing over its coupon (user ruling).
  */
-export const keepsSavedSchedule = (saved: SavedBond | null, next: BondToSave): boolean =>
-  saved !== null &&
+export const keepsSavedSchedule = (saved: SavedBond, next: BondToSave): boolean =>
   (saved.meta.payments?.length ?? 0) > 0 &&
   !identityChanged(saved, next) &&
   !couponChanged(saved.meta, next);

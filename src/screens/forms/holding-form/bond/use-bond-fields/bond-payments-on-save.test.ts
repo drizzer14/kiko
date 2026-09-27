@@ -196,8 +196,7 @@ describe('keepsSavedSchedule', () => {
     );
   });
 
-  it('does not hold on create, or for a bond saved without a schedule or with its own coupon', () => {
-    expect(keepsSavedSchedule(null, next)).toBe(false);
+  it('does not hold for a bond saved without a schedule or with an empty one', () => {
     expect(
       keepsSavedSchedule({ ...saved, meta: { ...savedMeta, payments: undefined } }, next),
     ).toBe(false);

@@ -228,10 +228,10 @@ describe('AccountsScreen', () => {
       StyleSheet.flatten(ancestorWithStyle(getByText(/1,000\.00 ₴/), 'flexShrink').props.style)
         .flexShrink,
     ).toBe(0);
+    const leadBox = StyleSheet.flatten(ancestorWithStyle(title, 'alignItems').props.style);
+    expect(leadBox.flex).toBe(1);
     // A short name still centers beside the icon tile, as before.
-    expect(StyleSheet.flatten(ancestorWithStyle(title, 'alignItems').props.style).alignItems).toBe(
-      'center',
-    );
+    expect(leadBox.alignItems).toBe('center');
   });
 
   it('does not render an archived account', async () => {
