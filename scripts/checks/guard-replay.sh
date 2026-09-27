@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Replay of the pre-write guard over every changed .ts/.tsx file the session
-# changed, whatever wrote it — see guard-replay.js for which commits count,
-# what BEFORE and AFTER are, and why. medium.sh runs it under its lock with
-# `--stop-tier`, which adds the replay deadline; `npm run check:guard-replay`
-# (also part of check:all) runs it with no deadline.
+# Replay of the pre-write guard over every .ts/.tsx file the session changed,
+# whatever tool wrote it — see guard-replay.js for which commits count, what
+# BEFORE and AFTER are, and why. medium.sh runs it under its lock with
+# `--stop-tier <medium.sh start, unix seconds>`, which adds the replay
+# deadline; `npm run check:guard-replay` (also part of check:all) runs it
+# with no deadline.
 #
 # Exit 0 (silent) on a pass. Exit 2 with the structured block when a change
 # added a violation, when the Stop-tier deadline left files unchecked, and
@@ -17,7 +18,10 @@ ROOT="$(cd "$DIR/../.." && pwd)"
 cd "$ROOT"
 
 runOptions=()
-[ "${1:-}" = "--stop-tier" ] && runOptions=(--deadline)
+[ "${1:-}" = "--stop-tier" ] && runOptions=(--deadline ${2:+"$2"})
+
+FLOOR_REF="refs/kiko/guard-replay-floor"
+FIRST_RUN_WINDOW_SECONDS=86400
 
 could_not_run() {
   # $1 details
@@ -33,16 +37,56 @@ could_not_run() {
 
 # Read when the run starts: a commit made while this run is in flight is not
 # reachable from the mark this run records, so the next run still replays it.
-mark="$(harness_replay_mark "$ROOT")"
-recordedMark="$(cat "$(harness_passfp_file "$ROOT" "guard-replay-mark")" 2>/dev/null)"
+head="$(harness_replay_mark "$ROOT")"
+ref="$(harness_replay_ref "$ROOT")" || could_not_run "git rev-parse --absolute-git-dir failed in $ROOT"
+
+# A passed replay moves this worktree's mark to the HEAD it started from; a
+# failed or stopped one never moves it.
+record_mark() {
+  [ -n "$head" ] && git update-ref "$ref" "$head" 2>/dev/null
+}
+
+# The repository's first replay (no floor and no mark ref yet) records the
+# floor, whether it then passes or fails. A commit older than the floor is
+# taken as checked, so neither that first replay nor a merge of a branch no
+# replay ever passed re-checks months of history, and a failed first replay
+# resumed days later still replays what it flagged, since the floor does not
+# slide. KIKO_GUARD_REPLAY_NOW_SECONDS moves the clock back for the tests; it
+# is ignored when it would move it forward.
+if ! git rev-parse -q --verify "$FLOOR_REF" >/dev/null \
+  && [ -z "$(git for-each-ref --count=1 refs/kiko/guard-replay)" ]; then
+  now="$(date +%s)"
+  case "${KIKO_GUARD_REPLAY_NOW_SECONDS:-}" in
+    '' | *[!0-9]*) ;;
+    *) [ "$KIKO_GUARD_REPLAY_NOW_SECONDS" -lt "$now" ] && now="$KIKO_GUARD_REPLAY_NOW_SECONDS" ;;
+  esac
+  floorObject="$(printf '%s' "$((now - FIRST_RUN_WINDOW_SECONDS))" | git hash-object -w --stdin)" \
+    && git update-ref "$FLOOR_REF" "$floorObject" \
+    || could_not_run "could not record the replay floor ($FLOOR_REF)"
+fi
+floor="$(git cat-file blob "$FLOOR_REF" 2>/dev/null)"
+
+# An older replay kept this worktree's mark in the state dir. It seeds the
+# ref once, when it names a commit and the ref does not exist yet; either way
+# the file is then dropped.
+legacyMarkFile="$(harness_passfp_file "$ROOT" "guard-replay-mark")"
+if [ -f "$legacyMarkFile" ]; then
+  legacyMark="$(cat "$legacyMarkFile" 2>/dev/null)"
+  if ! git rev-parse -q --verify "$ref" >/dev/null \
+    && [[ "$legacyMark" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]] \
+    && git rev-parse -q --verify "$legacyMark^{commit}" >/dev/null; then
+    git update-ref "$ref" "$legacyMark"
+  fi
+  rm -f "$legacyMarkFile"
+fi
 
 planErrors="$(mktemp)"
 trap 'rm -f "$planErrors"' EXIT
-plan="$(node "$DIR/guard-replay.js" plan ${recordedMark:+"$recordedMark"} 2>"$planErrors")" \
+plan="$(node "$DIR/guard-replay.js" plan ${floor:+"$floor"} 2>"$planErrors")" \
   || could_not_run "$(cat "$planErrors")"
 
 if [ -z "$plan" ]; then
-  harness_mark_pass "$ROOT" "guard-replay-mark" "$mark"
+  record_mark
   exit 0
 fi
 
@@ -54,7 +98,7 @@ fp="$( { printf '%s\n' "$plan"
         cat "$DIR"/*.js "$DIR"/*.ts "$DIR/pre-write-guard.sh" "$DIR/guard-replay.sh" \
           "$ROOT/rules/semgrep-prewrite.yml" 2>/dev/null | shasum; } | harness_hash )"
 if harness_unchanged "$ROOT" "guard-replay" "$fp"; then
-  harness_mark_pass "$ROOT" "guard-replay-mark" "$mark"
+  record_mark
   exit 0
 fi
 
@@ -63,7 +107,7 @@ code=$?
 
 if [ "$code" -eq 0 ]; then
   harness_mark_pass "$ROOT" "guard-replay" "$fp"
-  harness_mark_pass "$ROOT" "guard-replay-mark" "$mark"
+  record_mark
   exit 0
 fi
 

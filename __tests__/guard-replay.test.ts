@@ -4,15 +4,21 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 
 // scripts/checks/guard-replay.sh replays the pre-write guard on the Stop tier
-// for every .ts/.tsx file the session changed outside the guard (a Bash or
-// python write, or a commit of one). Every test runs COPIES of the real
-// wrappers and the real rule file in a throwaway repository with the real
-// Semgrep, so the replay proves the guard's own new-finding semantics, not a
-// stub's. The setup commits live in a main checkout and each test works in a
-// linked worktree of it, the way an Orca worktree starts: the replay counts
-// only the commits made in its own worktree.
+// for every .ts/.tsx file the session changed, whatever tool wrote it (a Bash
+// or python write, or a commit of one, is what it exists to catch). Every
+// test runs COPIES of the real wrappers and the real rule file in a throwaway
+// repository with the real Semgrep, so the replay proves the guard's own
+// new-finding semantics, not a stub's. The setup commit lives in a main
+// checkout, dated before the replay's first-run floor the way a real
+// worktree's history predates the harness, and each test works in a linked
+// worktree of it, the way an Orca worktree starts: the replay counts only the
+// commits newer than the floor that no worktree's passed-replay mark reaches.
 const CHECKS = join(__dirname, '../scripts/checks');
 const PREWRITE_RULES = join(__dirname, '../rules/semgrep-prewrite.yml');
+const REPLAY_ENGINE = join(CHECKS, 'guard-replay.js');
+
+const HOUR_SECONDS = 60 * 60;
+const SETUP_AGE_HOURS = 48;
 
 // The medium-tier wrappers other than the replay run knip, depcheck, and tsc
 // against a real project, so the Stop-tier tests replace them with a pass.
@@ -33,6 +39,22 @@ const SWITCH_SOURCE = [
   "      return 'one';",
   '    default:',
   "      return 'other';",
+  '  }',
+  '};',
+  '',
+].join('\n');
+
+// Breaks the Semgrep rule kiko-no-switch and no Node rule, so a replay with a
+// stub Semgrep passes it.
+const BLOCK_SWITCH_SOURCE = [
+  'export const pick = (value: number): string => {',
+  '  switch (value) {',
+  '    case 1: {',
+  "      return 'one';",
+  '    }',
+  '    default: {',
+  "      return 'other';",
+  '    }',
   '  }',
   '};',
   '',
@@ -64,23 +86,29 @@ const TWO_REGION_SOURCE = [
 
 const CRASHING_SEMGREP = ['#!/usr/bin/env bash', 'exit 7', ''].join('\n');
 
-// A clean Semgrep that takes 2 s: the guard sends nine fixed flag tokens
-// before its targets, and checks every target is in `paths.scanned`.
-const SLOW_SEMGREP = [
-  '#!/usr/bin/env bash',
-  'sleep 2',
+// A Semgrep that finds nothing: the guard sends nine fixed flag tokens before
+// its targets, and checks every target is in `paths.scanned`.
+const CLEAN_SEMGREP_BODY = [
   'shift 9',
   'scanned="$(printf \'"%s",\' "$@" | sed \'s/,$//\')"',
   'printf \'{"results":[],"errors":[],"paths":{"scanned":[%s]}}\' "$scanned"',
   '',
-].join('\n');
+];
+
+const CLEAN_SEMGREP = ['#!/usr/bin/env bash', ...CLEAN_SEMGREP_BODY].join('\n');
+
+const SLOW_SEMGREP = ['#!/usr/bin/env bash', 'sleep 2', ...CLEAN_SEMGREP_BODY].join('\n');
 
 type Checkout = { worktree: string; main: string; state: string; root: string };
 
 type Run = { code: number | null; stderr: string };
 
+type ScriptOptions = { directory?: string; scriptArguments?: string[] };
+
 const git = (cwd: string, ...gitArguments: string[]): string =>
   execFileSync('git', gitArguments, { cwd, encoding: 'utf8', stdio: 'pipe' });
+
+const unixNow = (): number => Math.floor(Date.now() / 1000);
 
 const writeFile = (root: string, relativePath: string, body: string): void => {
   const absolutePath = join(root, relativePath);
@@ -96,9 +124,14 @@ const writeExecutable = (root: string, relativePath: string, body: string): stri
   return absolutePath;
 };
 
-const commitAll = (cwd: string, message: string): void => {
+const commitAll = (cwd: string, message: string, { hoursAgo = 0 } = {}): void => {
+  const date = `@${unixNow() - hoursAgo * HOUR_SECONDS} +0000`;
   git(cwd, 'add', '-A');
-  git(cwd, 'commit', '-qm', message);
+  execFileSync('git', ['commit', '-qm', message], {
+    cwd,
+    env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date },
+    stdio: 'pipe',
+  });
 };
 
 const buildCheckout = (
@@ -128,7 +161,7 @@ const buildCheckout = (
     writeFile(main, relativePath, body);
   }
 
-  commitAll(main, 'base');
+  commitAll(main, 'base', { hoursAgo: SETUP_AGE_HOURS });
   git(main, 'worktree', 'add', '-q', '-b', 'feature', worktree);
 
   return { worktree, main, state, root };
@@ -148,9 +181,11 @@ const runScript = (
   checkout: Checkout,
   scriptName: string,
   environment: Record<string, string> = {},
+  { directory = checkout.worktree, scriptArguments = [] }: ScriptOptions = {},
 ): Run => {
-  const result = spawnSync('bash', [join(checkout.worktree, 'scripts/checks', scriptName)], {
-    cwd: checkout.worktree,
+  const script = join(directory, 'scripts/checks', scriptName);
+  const result = spawnSync('bash', [script, ...scriptArguments], {
+    cwd: directory,
     env: wrapperEnvironment(checkout.state, environment),
     encoding: 'utf8',
   });
@@ -158,16 +193,50 @@ const runScript = (
   return { code: result.status, stderr: result.stderr };
 };
 
-const runReplay = (checkout: Checkout, environment: Record<string, string> = {}): Run =>
-  runScript(checkout, 'guard-replay.sh', environment);
+const runReplay = (
+  checkout: Checkout,
+  environment: Record<string, string> = {},
+  options: ScriptOptions = {},
+): Run => runScript(checkout, 'guard-replay.sh', environment, options);
 
 const crashingSemgrep = (checkout: Checkout): Record<string, string> => ({
   KIKO_PREWRITE_SEMGREP_BIN: writeExecutable(checkout.root, 'semgrep-crash', CRASHING_SEMGREP),
 });
 
+// A replay that passes records that checkout's own mark, the way a passed
+// Stop does. The stub engine lets a finding through, so a later replay tells
+// a commit some mark reaches (skipped) from one no mark reaches (replayed, and
+// failing).
+const passReplayWithStubEngine = (checkout: Checkout, directory = checkout.main): void => {
+  const engine = writeExecutable(checkout.root, 'semgrep-clean', CLEAN_SEMGREP);
+  const run = runReplay(checkout, { KIKO_PREWRITE_SEMGREP_BIN: engine }, { directory });
+
+  expect(run).toEqual({ code: 0, stderr: '' });
+};
+
+// The state an older replay recorded: its mark in the per-worktree state dir.
+const recordLegacyMark = (checkout: Checkout, mark: string): void => {
+  const library = join(checkout.worktree, 'scripts/checks/_lib.sh');
+  const record = `source "${library}"; harness_mark_pass "$1" guard-replay-mark "$2"`;
+  spawnSync('bash', ['-c', record, '_', checkout.worktree, mark], {
+    env: wrapperEnvironment(checkout.state, {}),
+  });
+};
+
 const moveMain = (checkout: Checkout): void => {
   writeFile(checkout.main, 'src/other.ts', 'export const other = 1;\n');
   commitAll(checkout.main, 'main moves');
+};
+
+const commitViolationAfterAPass = (checkout: Checkout): void => {
+  expect(runReplay(checkout).code).toBe(0);
+  writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
+  commitAll(checkout.worktree, 'bypass');
+};
+
+const expectSwitchFlagged = ({ code, stderr }: Run): void => {
+  expect(code).toBe(2);
+  expect(stderr).toContain('rule kiko-no-switch at src/pick.ts:2');
 };
 
 const TIMEOUT = 60000;
@@ -179,11 +248,10 @@ describe('guard-replay.sh', () => {
       const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
       writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
 
-      const { code, stderr } = runReplay(checkout);
+      const run = runReplay(checkout);
 
-      expect(code).toBe(2);
-      expect(stderr).toContain('bypassed the pre-write guard');
-      expect(stderr).toContain('rule kiko-no-switch at src/pick.ts:2');
+      expectSwitchFlagged(run);
+      expect(run.stderr).toContain('bypassed the pre-write guard');
     },
     TIMEOUT,
   );
@@ -231,10 +299,7 @@ describe('guard-replay.sh', () => {
       writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
       commitAll(checkout.worktree, 'bypass');
 
-      const { code, stderr } = runReplay(checkout);
-
-      expect(code).toBe(2);
-      expect(stderr).toContain('rule kiko-no-switch at src/pick.ts:2');
+      expectSwitchFlagged(runReplay(checkout));
     },
     TIMEOUT,
   );
@@ -257,15 +322,62 @@ describe('guard-replay.sh', () => {
     'fails a violation committed after an earlier pass recorded its mark',
     () => {
       const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
-      expect(runReplay(checkout).code).toBe(0);
+      commitViolationAfterAPass(checkout);
 
+      expectSwitchFlagged(runReplay(checkout));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'fails a violation committed after a pass even when a backup branch has it',
+    () => {
+      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
+      commitViolationAfterAPass(checkout);
+      git(checkout.worktree, 'branch', 'backup');
+
+      expectSwitchFlagged(runReplay(checkout));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'fails a violation committed after a pass even after switching to a new branch',
+    () => {
+      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
+      commitViolationAfterAPass(checkout);
+      git(checkout.worktree, 'switch', '-q', '-c', 'feature2');
+
+      expectSwitchFlagged(runReplay(checkout));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'keeps a flagged commit failing in its worktree and in a sibling worktree made from it',
+    () => {
+      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
+      commitViolationAfterAPass(checkout);
+      expectSwitchFlagged(runReplay(checkout));
+
+      const sibling = join(checkout.root, 'sibling');
+      git(checkout.worktree, 'worktree', 'add', '-q', '-b', 'sub', sibling, 'feature');
+
+      expectSwitchFlagged(runReplay(checkout));
+      expectSwitchFlagged(runReplay(checkout, {}, { directory: sibling }));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'fails a violation committed on a first replay even when another local branch has it',
+    () => {
+      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
       writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
       commitAll(checkout.worktree, 'bypass');
+      git(checkout.worktree, 'branch', 'published');
 
-      const { code, stderr } = runReplay(checkout);
-
-      expect(code).toBe(2);
-      expect(stderr).toContain('rule kiko-no-switch at src/pick.ts:2');
+      expectSwitchFlagged(runReplay(checkout));
     },
     TIMEOUT,
   );
@@ -274,19 +386,13 @@ describe('guard-replay.sh', () => {
     'fails a flagged commit again after a rebase onto a moved main',
     () => {
       const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
-      expect(runReplay(checkout).code).toBe(0);
-
-      writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
-      commitAll(checkout.worktree, 'bypass');
+      commitViolationAfterAPass(checkout);
       expect(runReplay(checkout).code).toBe(2);
 
       moveMain(checkout);
       git(checkout.worktree, 'rebase', '-q', 'main');
 
-      const { code, stderr } = runReplay(checkout);
-
-      expect(code).toBe(2);
-      expect(stderr).toContain('rule kiko-no-switch at src/pick.ts:2');
+      expectSwitchFlagged(runReplay(checkout));
     },
     TIMEOUT,
   );
@@ -295,20 +401,14 @@ describe('guard-replay.sh', () => {
     'fails a violating commit re-applied by a reset and a cherry-pick',
     () => {
       const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
-      expect(runReplay(checkout).code).toBe(0);
-
-      writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
-      commitAll(checkout.worktree, 'bypass');
+      commitViolationAfterAPass(checkout);
       const bypass = git(checkout.worktree, 'rev-parse', 'HEAD').trim();
       git(checkout.worktree, 'reset', '-q', '--hard', 'HEAD~1');
       writeFile(checkout.worktree, 'src/kept.ts', 'export const kept = 2;\n');
       commitAll(checkout.worktree, 'another parent, so the pick gets a new sha');
       git(checkout.worktree, 'cherry-pick', bypass);
 
-      const { code, stderr } = runReplay(checkout);
-
-      expect(code).toBe(2);
-      expect(stderr).toContain('rule kiko-no-switch at src/pick.ts:2');
+      expectSwitchFlagged(runReplay(checkout));
     },
     TIMEOUT,
   );
@@ -322,10 +422,7 @@ describe('guard-replay.sh', () => {
       moveMain(checkout);
       git(checkout.worktree, 'pull', '-q', '--rebase', '.', 'main');
 
-      const { code, stderr } = runReplay(checkout);
-
-      expect(code).toBe(2);
-      expect(stderr).toContain('rule kiko-no-switch at src/pick.ts:2');
+      expectSwitchFlagged(runReplay(checkout));
     },
     TIMEOUT,
   );
@@ -345,11 +442,29 @@ describe('guard-replay.sh', () => {
   );
 
   it(
-    'passes a merge commit that joins both sides of a file, one carrying a finding',
+    'fails a --no-ff merge of its own topic branch that carries a violation',
+    () => {
+      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
+      expect(runReplay(checkout).code).toBe(0);
+
+      git(checkout.worktree, 'switch', '-q', '-c', 'topic');
+      writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
+      commitAll(checkout.worktree, 'bypass on a topic branch');
+      git(checkout.worktree, 'switch', '-q', 'feature');
+      git(checkout.worktree, 'merge', '-q', '--no-ff', '--no-edit', 'topic');
+
+      expectSwitchFlagged(runReplay(checkout));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'passes a merge commit that joins both sides of a file, one carrying a gated finding',
     () => {
       const checkout = buildCheckout({ 'src/pick.ts': TWO_REGION_SOURCE });
-      writeFile(checkout.main, 'src/pick.ts', `${TWO_REGION_SOURCE}${SWITCH_SOURCE}`);
+      writeFile(checkout.main, 'src/pick.ts', `${TWO_REGION_SOURCE}${BLOCK_SWITCH_SOURCE}`);
       commitAll(checkout.main, 'main side');
+      passReplayWithStubEngine(checkout);
       const worktreeSide = TWO_REGION_SOURCE.replace('first = 1', 'first = 2');
       writeFile(checkout.worktree, 'src/pick.ts', worktreeSide);
       commitAll(checkout.worktree, 'worktree side');
@@ -381,6 +496,28 @@ describe('guard-replay.sh', () => {
   );
 
   it(
+    'fails a conflict resolved by a Bash write even when a track worktree is made from the merge',
+    () => {
+      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
+      expect(runReplay(checkout).code).toBe(0);
+
+      writeFile(checkout.main, 'src/pick.ts', 'export const pick = 2;\n');
+      commitAll(checkout.main, 'main side');
+      writeFile(checkout.worktree, 'src/pick.ts', 'export const pick = 3;\n');
+      commitAll(checkout.worktree, 'worktree side');
+      spawnSync('git', ['merge', '-q', '--no-edit', 'main'], { cwd: checkout.worktree });
+      writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
+      git(checkout.worktree, 'add', '-A');
+      git(checkout.worktree, 'commit', '-q', '--no-edit');
+      const track = join(checkout.root, 'track2');
+      git(checkout.worktree, 'worktree', 'add', '-q', '-b', 'track2', track, 'HEAD');
+
+      expectSwitchFlagged(runReplay(checkout));
+    },
+    TIMEOUT,
+  );
+
+  it(
     'names an unfinished merge instead of a bypassed guard',
     () => {
       const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
@@ -400,64 +537,152 @@ describe('guard-replay.sh', () => {
   );
 
   it(
-    'treats a recorded mark that is not a commit as no mark',
+    'passes a fast-forward to commits another worktree already passed, replaying none',
     () => {
-      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
-      const library = join(checkout.worktree, 'scripts/checks/_lib.sh');
-      const recordOldFormatMark = `source "${library}"; harness_mark_pass "$1" guard-replay-mark "1790521477 abc123"`;
-      spawnSync('bash', ['-c', recordOldFormatMark, '_', checkout.worktree], {
-        env: wrapperEnvironment(checkout.state, {}),
-      });
-      writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
-      commitAll(checkout.worktree, 'bypass');
+      const checkout = buildCheckout({});
+      expect(runReplay(checkout).code).toBe(0);
+
+      writeFile(checkout.main, 'src/pick.ts', BLOCK_SWITCH_SOURCE);
+      commitAll(checkout.main, 'another branch');
+      passReplayWithStubEngine(checkout);
+      git(checkout.worktree, 'merge', '-q', '--no-edit', 'main');
+
+      expect(runReplay(checkout, crashingSemgrep(checkout))).toEqual({ code: 0, stderr: '' });
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'passes a clean merge of a branch another worktree already passed, replaying none',
+    () => {
+      const checkout = buildCheckout({});
+      expect(runReplay(checkout).code).toBe(0);
+
+      writeFile(checkout.main, 'src/pick.ts', BLOCK_SWITCH_SOURCE);
+      commitAll(checkout.main, 'another branch');
+      passReplayWithStubEngine(checkout);
+      git(checkout.worktree, 'merge', '-q', '--no-ff', '--no-edit', 'main');
+
+      expect(runReplay(checkout, crashingSemgrep(checkout))).toEqual({ code: 0, stderr: '' });
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'replays the commits a merge brings in from a branch that never passed a replay',
+    () => {
+      const checkout = buildCheckout({});
+      expect(runReplay(checkout).code).toBe(0);
+
+      writeFile(checkout.main, 'src/pick.ts', SWITCH_SOURCE);
+      commitAll(checkout.main, 'never replayed');
+      git(checkout.worktree, 'merge', '-q', '--no-ff', '--no-edit', 'main');
+
+      expectSwitchFlagged(runReplay(checkout));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'keeps what this worktree already passed as baseline in a merge of a never-passed branch',
+    () => {
+      const checkout = buildCheckout({ 'src/pick.ts': TWO_REGION_SOURCE });
+      const passedHere = BLOCK_SWITCH_SOURCE.replace('pick =', 'pickHere =');
+      writeFile(
+        checkout.worktree,
+        'src/pick.ts',
+        TWO_REGION_SOURCE.replace('export const first = 1;\n', passedHere),
+      );
+      commitAll(checkout.worktree, 'passed here');
+      passReplayWithStubEngine(checkout, checkout.worktree);
+
+      writeFile(checkout.main, 'src/pick.ts', `${TWO_REGION_SOURCE}${SWITCH_SOURCE}`);
+      commitAll(checkout.main, 'never replayed');
+      git(checkout.worktree, 'merge', '-q', '--no-ff', '--no-edit', 'main');
 
       const { code, stderr } = runReplay(checkout);
 
       expect(code).toBe(2);
-      expect(stderr).toContain('rule kiko-no-switch at src/pick.ts:2');
+      expect(stderr.match(/rule kiko-no-switch at src\/pick\.ts:\d+/g)).toEqual([
+        'rule kiko-no-switch at src/pick.ts:15',
+      ]);
     },
     TIMEOUT,
   );
 
   it(
-    'skips on a first replay a commit another local branch already has',
-    () => {
-      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
-      writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
-      commitAll(checkout.worktree, 'bypass');
-      git(checkout.worktree, 'branch', 'published');
-
-      expect(runReplay(checkout)).toEqual({ code: 0, stderr: '' });
-    },
-    TIMEOUT,
-  );
-
-  it(
-    'passes a merge of commits made in another checkout',
+    'skips merged-in commits older than the floor the first replay recorded',
     () => {
       const checkout = buildCheckout({});
       expect(runReplay(checkout).code).toBe(0);
 
       writeFile(checkout.main, 'src/pick.ts', SWITCH_SOURCE);
-      commitAll(checkout.main, 'another branch');
-      git(checkout.worktree, 'merge', '-q', '--no-edit', 'main');
-
-      expect(runReplay(checkout)).toEqual({ code: 0, stderr: '' });
-    },
-    TIMEOUT,
-  );
-
-  it(
-    'passes a clean merge commit of another branch that carries a finding',
-    () => {
-      const checkout = buildCheckout({});
-      expect(runReplay(checkout).code).toBe(0);
-
-      writeFile(checkout.main, 'src/pick.ts', SWITCH_SOURCE);
-      commitAll(checkout.main, 'another branch');
+      commitAll(checkout.main, 'older than the floor', { hoursAgo: 30 });
       git(checkout.worktree, 'merge', '-q', '--no-ff', '--no-edit', 'main');
 
       expect(runReplay(checkout)).toEqual({ code: 0, stderr: '' });
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'keeps the floor of a failed first replay, so a violation that ages past a day still fails',
+    () => {
+      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
+      writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
+      commitAll(checkout.worktree, 'bypass', { hoursAgo: 25 });
+      const twoHoursEarlier = {
+        KIKO_GUARD_REPLAY_NOW_SECONDS: String(unixNow() - 2 * HOUR_SECONDS),
+      };
+
+      expectSwitchFlagged(runReplay(checkout, twoHoursEarlier));
+      expectSwitchFlagged(runReplay(checkout));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'ignores a clock override later than the real clock',
+    () => {
+      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
+      writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
+      commitAll(checkout.worktree, 'bypass', { hoursAgo: 1 });
+      const twoDaysLater = { KIKO_GUARD_REPLAY_NOW_SECONDS: String(unixNow() + 48 * HOUR_SECONDS) };
+
+      expectSwitchFlagged(runReplay(checkout, twoDaysLater));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'seeds the mark from the mark an older replay recorded',
+    () => {
+      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
+      writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
+      commitAll(checkout.worktree, 'passed under the older replay');
+      recordLegacyMark(checkout, git(checkout.worktree, 'rev-parse', 'HEAD').trim());
+
+      expect(runReplay(checkout)).toEqual({ code: 0, stderr: '' });
+
+      writeFile(checkout.worktree, 'src/fresh.ts', SWITCH_SOURCE);
+      commitAll(checkout.worktree, 'bypass');
+      const { code, stderr } = runReplay(checkout);
+
+      expect(code).toBe(2);
+      expect(stderr).toContain('rule kiko-no-switch at src/fresh.ts:2');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'does not seed the mark from a recorded mark that is not a commit',
+    () => {
+      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
+      recordLegacyMark(checkout, '1790521477 abc123');
+      writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
+      commitAll(checkout.worktree, 'bypass');
+
+      expectSwitchFlagged(runReplay(checkout));
     },
     TIMEOUT,
   );
@@ -506,6 +731,49 @@ describe('guard-replay.sh', () => {
     },
     TIMEOUT,
   );
+
+  it(
+    'fails at once on the Stop tier when the hook has already spent its budget',
+    () => {
+      const checkout = buildCheckout({});
+      writeFile(checkout.worktree, 'src/kept.ts', 'export const kept = 2;\n');
+      const hookStarted = String(unixNow() - 280);
+
+      const { code, stderr } = runReplay(
+        checkout,
+        {},
+        { scriptArguments: ['--stop-tier', hookStarted] },
+      );
+
+      expect(code).toBe(2);
+      expect(stderr).toContain('deadline');
+      expect(stderr).toContain('1 of 1 changed files were not replayed');
+    },
+    TIMEOUT,
+  );
+});
+
+describe('guard-replay.js Stop-tier deadline', () => {
+  const { stopTierDeadlineSeconds } = require(REPLAY_ENGINE);
+  const now = unixNow();
+
+  it('caps the test override at the 150 s Stop-tier deadline', () => {
+    expect(stopTierDeadlineSeconds({ override: '100000', now })).toBe(150);
+    expect(stopTierDeadlineSeconds({ override: 'Infinity', now })).toBe(150);
+    expect(stopTierDeadlineSeconds({ override: '1', now })).toBe(1);
+  });
+
+  it('ignores an override that is not a positive number', () => {
+    for (const override of ['', 'abc', '-5', '0', 'NaN']) {
+      expect(stopTierDeadlineSeconds({ override, now })).toBe(150);
+    }
+  });
+
+  it('shrinks to what the hook budget leaves after the tail and the later checks', () => {
+    expect(stopTierDeadlineSeconds({ hookStarted: String(now), now })).toBe(150);
+    expect(stopTierDeadlineSeconds({ hookStarted: String(now - 100), now })).toBe(115);
+    expect(stopTierDeadlineSeconds({ hookStarted: String(now - 280), now })).toBeLessThanOrEqual(0);
+  });
 });
 
 describe('medium.sh guard replay', () => {
@@ -515,10 +783,7 @@ describe('medium.sh guard replay', () => {
       const checkout = buildCheckout({}, { stubOtherMediumWrappers: true });
       writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
 
-      const { code, stderr } = runScript(checkout, 'medium.sh');
-
-      expect(code).toBe(2);
-      expect(stderr).toContain('rule kiko-no-switch at src/pick.ts:2');
+      expectSwitchFlagged(runScript(checkout, 'medium.sh'));
     },
     TIMEOUT,
   );
@@ -530,10 +795,7 @@ describe('medium.sh guard replay', () => {
       writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
       commitAll(checkout.worktree, 'bypass');
 
-      const { code, stderr } = runScript(checkout, 'medium.sh');
-
-      expect(code).toBe(2);
-      expect(stderr).toContain('rule kiko-no-switch at src/pick.ts:2');
+      expectSwitchFlagged(runScript(checkout, 'medium.sh'));
     },
     TIMEOUT,
   );
