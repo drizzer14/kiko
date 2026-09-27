@@ -1,5 +1,11 @@
 import { useLiveQuery } from '@kiko/db';
 import {
+  OwnershipField,
+  enteredShare,
+  ownershipEntryOf,
+  type OwnershipEntry,
+} from '@kiko/screens/forms/holding-form';
+import {
   useHeaderInset,
   scrollToField,
   type FieldInstance,
@@ -18,13 +24,6 @@ import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { ScrollViewInstance, TextInputInstance } from 'react-native';
 import { WHOLE_SHARE, type OwnershipShare } from '@kiko/holdings/ownership';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
-import {
-  enteredShare,
-  ownershipEntryOf,
-  type OwnershipEntry,
-} from '../holding-form/property/use-property-fields';
-import OwnershipField from '../holding-form/property/ownership-field';
 
 type OwnershipChangeFormScreenProps = NativeStackScreenProps<
   AccountsStackParamList,

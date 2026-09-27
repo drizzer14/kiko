@@ -4,23 +4,23 @@ import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
+import DateField from '@kiko/screens/forms/date-field';
 import { currencySymbol } from '@kiko/currency/currency';
 import Button from '@kiko/design-system/components/button';
 import Switch from '@kiko/design-system/components/switch';
 import Divider from '@kiko/design-system/components/divider';
 import ChipRow from '@kiko/design-system/components/chip-row';
+import { groupAmount } from '@kiko/screens/forms/amount-format';
 import TextField from '@kiko/design-system/components/text-field';
 import FieldError from '@kiko/design-system/components/field-error';
+import TermField, { termMaxFor } from '@kiko/screens/forms/term-field';
 import type { CompoundingFrequency } from '@kiko/holdings/holding-metadata';
 
-import DateField from '../../../date-field';
 import {
   isContributionRowValid,
   type TermDepositFieldErrors,
 } from '../use-term-deposit-fields/term-deposit-reasons';
-import TermField, { termMaxFor } from '../../../term-field';
 import { fieldErrorMessage } from '../../field-error-message';
-import { groupAmount } from '../../../amount-format/amount-format';
 
 import type { TermDepositSectionProps } from './term-deposit-section.props';
 

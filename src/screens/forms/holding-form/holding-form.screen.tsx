@@ -29,6 +29,7 @@ import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import ColorPicker from '@kiko/design-system/components/color-picker';
+import HoldingTypeField from '@kiko/screens/forms/holding-type-field';
 import { holdingCurrencyOptions } from '@kiko/holdings/holding-currency';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useLiveQuery, type AccountRow, type HoldingRow } from '@kiko/db';
@@ -36,14 +37,12 @@ import CurrencyField from '@kiko/design-system/components/currency-field';
 import type { ScrollViewInstance, TextInputInstance } from 'react-native';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 import { KIKO_ENTITIES_ICONS } from '@kiko/design-system/components/icon-picker-modal';
 import { defaultHoldingSymbol, holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
 import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { holdingDescriptor, isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
-
-import HoldingTypeField from '../holding-type-field';
-import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 
 import LoanFormBlock from './loan/loan-form-block';
 import BondFormBlock from './bond/bond-form-block';

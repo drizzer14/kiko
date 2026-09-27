@@ -4,12 +4,11 @@ import { View } from 'react-native';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
+import DateField from '@kiko/screens/forms/date-field';
 import TextField from '@kiko/design-system/components/text-field';
 import FieldLabel from '@kiko/design-system/components/field-label';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
 import { ownershipInputs, type OwnershipInput } from '@kiko/holdings/holding-metadata';
-
-import DateField from '../../../date-field';
 
 import type { OwnershipFieldProps } from './ownership-field.props';
 

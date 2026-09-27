@@ -3,12 +3,12 @@ import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import { currencySymbol } from '@kiko/currency/currency';
+import { termMaxFor } from '@kiko/screens/forms/term-field';
 import Divider from '@kiko/design-system/components/divider';
+import { groupAmount } from '@kiko/screens/forms/amount-format';
 
 import LoanSection from '../loan-section';
-import { termMaxFor } from '../../../term-field';
 import { fieldErrorMessage } from '../../field-error-message';
-import { groupAmount } from '../../../amount-format/amount-format';
 
 import type { LoanFormBlockProps } from './loan-form-block.props';
 

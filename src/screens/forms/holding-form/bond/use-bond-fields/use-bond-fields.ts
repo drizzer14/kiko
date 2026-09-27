@@ -17,10 +17,10 @@ import type { Currency } from '@kiko/currency/currency';
 import type { BondTerms } from '@kiko/bonds/nbu-register';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 
 import { useBondIsinMode, type IsinReasonKey } from '../use-bond-isin-mode';
 import type { BondEntryMode } from '../bond-isin-section/bond-isin-section.props';
-import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
 
 import {

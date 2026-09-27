@@ -5,9 +5,8 @@ import { type FC, useEffect, useState } from 'react';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import Switch from '@kiko/design-system/components/switch';
+import SettingsRow from '@kiko/screens/settings/settings-row';
 import { isSensorAvailable, type SensorStatus } from '@kiko/auth';
-
-import SettingsRow from '../../settings-row';
 
 import type { AppLockSettingProps } from './app-lock-setting.props';
 

@@ -2,12 +2,12 @@ import type { FC } from 'react';
 import { View } from 'react-native';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
+import DateField from '@kiko/screens/forms/date-field';
 import ChipRow from '@kiko/design-system/components/chip-row';
 import TextField from '@kiko/design-system/components/text-field';
 import SelectField from '@kiko/design-system/components/select-field';
 import { bondKinds, bondCouponFrequencies } from '@kiko/holdings/holding-metadata';
 
-import DateField from '../../../date-field';
 import { couponFrequencyLabels } from '../bond-isin-section';
 
 import type { ManualBondFieldsProps } from './manual-bond-fields.props';

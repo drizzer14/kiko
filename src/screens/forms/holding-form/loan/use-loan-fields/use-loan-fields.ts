@@ -19,6 +19,7 @@ import { currencyScale, type Currency } from '@kiko/currency/currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { holdingsRepo, type LoanPricePointOp } from '@kiko/holdings/repo';
 import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
+import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 
 import {
   termReasonKey,
@@ -28,7 +29,6 @@ import {
   termMonthsFromInput,
   type TermReasonKey,
 } from '../../../term-field/term-reasons';
-import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
 
 // The literal i18n keys `loanReasonKey` below may return, so `t()` (typed

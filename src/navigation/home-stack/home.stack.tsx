@@ -1,7 +1,7 @@
 import type { FC } from 'react';
-import HomeScreen from '@kiko/screens/home/home.screen';
+import HomeScreen from '@kiko/screens/home';
+import TransactionFormScreen from '@kiko/screens/forms/transaction-form';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import TransactionFormScreen from '@kiko/screens/forms/transaction-form/transaction-form.screen';
 
 import type { HomeStackParamList } from '../types';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';

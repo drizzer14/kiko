@@ -4,10 +4,10 @@ import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import { currencySymbol } from '@kiko/currency/currency';
 import Divider from '@kiko/design-system/components/divider';
+import { groupAmount } from '@kiko/screens/forms/amount-format';
 
 import MetalSection from '../metal-section';
 import { fieldErrorMessage } from '../../field-error-message';
-import { groupAmount } from '../../../amount-format/amount-format';
 
 import type { MetalFormBlockProps } from './metal-form-block.props';
 

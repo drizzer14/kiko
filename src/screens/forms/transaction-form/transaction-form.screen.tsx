@@ -35,6 +35,9 @@ import {
 } from '@kiko/design-system/scroll-to-field';
 import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
+import HoldingSelectField, {
+  type HoldingSelectOption,
+} from '@kiko/screens/forms/holding-select-field';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { parseAmount } from '@kiko/currency/parse';
 import Box from '@kiko/design-system/components/box';
@@ -45,8 +48,11 @@ import { isSyncedHolding } from '@kiko/holdings/deletable';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
+import DateTimeRow from '@kiko/screens/forms/date-time-row';
 import Divider from '@kiko/design-system/components/divider';
 import SymbolIcon from '@kiko/design-system/components/symbol';
+import CategoryField from '@kiko/screens/forms/category-field';
+import ExchangeFields from '@kiko/screens/forms/exchange-fields';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
@@ -57,6 +63,7 @@ import type { TransactionFormParams } from '@kiko/navigation/types';
 import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
+import LoanPaymentField from '@kiko/screens/forms/loan-payment-field';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
@@ -64,21 +71,13 @@ import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
+import ConvertExchangeFields from '@kiko/screens/forms/convert-exchange-fields';
 import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
+import DescriptionSuggestions from '@kiko/screens/forms/description-suggestions';
+import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 import { type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
+import ModeSelectField, { type FormMode } from '@kiko/screens/forms/mode-select-field';
 import { useLiveQuery, type AccountRow, type HoldingRow, type TransactionRow } from '@kiko/db';
-
-import DateTimeRow from '../date-time-row';
-import CategoryField from '../category-field';
-import ExchangeFields from '../exchange-fields';
-import ModeSelectField from '../mode-select-field';
-import LoanPaymentField from '../loan-payment-field';
-import HoldingSelectField from '../holding-select-field';
-import ConvertExchangeFields from '../convert-exchange-fields';
-import DescriptionSuggestions from '../description-suggestions';
-import type { FormMode } from '../mode-select-field/mode-select-field.props';
-import { groupAmount, majorAmountText } from '../amount-format/amount-format';
-import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 
 // This screen is registered in BOTH the Home and Accounts stacks (Home lists
 // every transaction; Accounts reaches it from a holding), so it cannot bind its

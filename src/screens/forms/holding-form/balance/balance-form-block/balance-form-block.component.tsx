@@ -1,9 +1,8 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { currencySymbol } from '@kiko/currency/currency';
+import { groupAmount } from '@kiko/screens/forms/amount-format';
 import TextField from '@kiko/design-system/components/text-field';
-
-import { groupAmount } from '../../../amount-format/amount-format';
 
 import type { BalanceFormBlockProps } from './balance-form-block.props';
 

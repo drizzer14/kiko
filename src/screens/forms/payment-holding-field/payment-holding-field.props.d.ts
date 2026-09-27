@@ -1,4 +1,4 @@
-import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
+import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 export type PaymentHoldingFieldProps = {
   label: string;

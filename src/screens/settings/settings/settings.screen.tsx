@@ -1,5 +1,9 @@
 import { match } from 'ts-pattern';
 import { type FC, useState } from 'react';
+import SettingsRow, {
+  chevronSize,
+  chevronTrailingWhitespace,
+} from '@kiko/screens/settings/settings-row';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
@@ -19,9 +23,7 @@ import { type Currency, fiatCurrencyOptions } from '@kiko/currency/currency';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 
-import SettingsRow from '../settings-row';
 import pkg from '../../../../package.json';
-import { chevronSize, chevronTrailingWhitespace } from '../settings-row/settings-row.chevron';
 
 type SettingsScreenProps = NativeStackScreenProps<SettingsStackParamList, 'Settings'>;
 

@@ -7,11 +7,11 @@ import { normalizeIsin, validateIsin } from '@kiko/bonds/isin';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type BondTerms, currentCouponPct } from '@kiko/bonds/nbu-register';
+import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 import type { BondKind, BondCouponFrequency } from '@kiko/holdings/holding-metadata';
 import { bondRegisterRepo, refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
 
 import type { BondEntryMode } from '../bond-isin-section/bond-isin-section.props';
-import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 
 // The literal i18n keys this hook's own `isinReasonKey` may return. Required
 // in ISIN mode, optional-but-must-be-valid-if-typed in Manual mode (the ISIN

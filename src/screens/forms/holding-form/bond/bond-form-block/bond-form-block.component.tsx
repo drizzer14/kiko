@@ -4,16 +4,16 @@ import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
+import DateField from '@kiko/screens/forms/date-field';
 import { currencySymbol } from '@kiko/currency/currency';
 import Divider from '@kiko/design-system/components/divider';
+import { groupAmount } from '@kiko/screens/forms/amount-format';
 import TextField from '@kiko/design-system/components/text-field';
 import type { BondCouponFrequency } from '@kiko/holdings/holding-metadata';
 
-import DateField from '../../../date-field';
 import BondIsinSection from '../bond-isin-section';
 import ManualBondFields from '../manual-bond-fields';
 import { fieldErrorMessage } from '../../field-error-message';
-import { groupAmount } from '../../../amount-format/amount-format';
 import type { IsinReasonKey } from '../use-bond-isin-mode/use-bond-isin-mode';
 import type { BondEntryMode } from '../bond-isin-section/bond-isin-section.props';
 

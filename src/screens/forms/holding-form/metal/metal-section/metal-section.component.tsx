@@ -10,8 +10,7 @@ import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import ChipRow from '@kiko/design-system/components/chip-row';
 import TextField from '@kiko/design-system/components/text-field';
-
-import { metalUnitSuffix } from '../../../metal-unit-suffix';
+import { metalUnitSuffix } from '@kiko/screens/forms/metal-unit-suffix';
 
 import type { MetalSectionProps } from './metal-section.props';
 

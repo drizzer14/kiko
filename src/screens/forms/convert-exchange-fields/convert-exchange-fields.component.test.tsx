@@ -3,8 +3,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
-
-import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
+import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 import ConvertExchangeFields from './convert-exchange-fields.component';
 

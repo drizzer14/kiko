@@ -1,7 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
-
 import '@kiko/design-system/unistyles';
-import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
+import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 import PaymentHoldingField from '.';
 import type { PaymentHoldingFieldProps } from './payment-holding-field.props';

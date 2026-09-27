@@ -9,14 +9,13 @@ import {
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
+import DateField from '@kiko/screens/forms/date-field';
+import TermField from '@kiko/screens/forms/term-field';
 import TextField from '@kiko/design-system/components/text-field';
 import FieldLabel from '@kiko/design-system/components/field-label';
 import SelectField from '@kiko/design-system/components/select-field';
+import PaymentHoldingField from '@kiko/screens/forms/payment-holding-field';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
-
-import DateField from '../../../date-field';
-import TermField from '../../../term-field';
-import PaymentHoldingField from '../../../payment-holding-field';
 
 import type { LoanSectionProps } from './loan-section.props';
 

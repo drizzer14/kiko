@@ -10,9 +10,9 @@ import {
   navigationSpy,
 } from '@kiko/test-support/navigation-props';
 import { darkTheme } from '@kiko/design-system/theme';
+import { chevronSize, chevronTrailingWhitespace } from '@kiko/screens/settings/settings-row';
 
 import pkg from '../../../../package.json';
-import { chevronSize, chevronTrailingWhitespace } from '../settings-row/settings-row.chevron';
 
 import SettingsScreen from './settings.screen';
 

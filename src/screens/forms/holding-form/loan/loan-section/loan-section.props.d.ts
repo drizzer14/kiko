@@ -1,10 +1,9 @@
 import type { RefObject } from 'react';
 import type { TextInputInstance } from 'react-native';
+import type { TermUnit } from '@kiko/screens/forms/term-field';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import type { LoanKind, LoanSchedule } from '@kiko/holdings/holding-metadata';
-
-import type { TermUnit } from '../../../term-field/term-reasons';
-import type { HoldingSelectOption } from '../../../holding-select-field/holding-select-field.props';
+import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 export type LoanSectionProps = {
   kind: LoanKind;

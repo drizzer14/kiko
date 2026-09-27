@@ -2,11 +2,10 @@ import type { FC } from 'react';
 import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
+import DateTimeRow from '@kiko/screens/forms/date-time-row';
 import TextField from '@kiko/design-system/components/text-field';
 import FieldError from '@kiko/design-system/components/field-error';
-
-import DateTimeRow from '../date-time-row';
-import HoldingSelectField from '../holding-select-field';
+import HoldingSelectField from '@kiko/screens/forms/holding-select-field';
 
 import type { ConvertExchangeFieldsProps } from './convert-exchange-fields.props';
 

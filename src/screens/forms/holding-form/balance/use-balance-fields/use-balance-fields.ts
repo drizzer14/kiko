@@ -4,8 +4,8 @@ import { useCallback, useState } from 'react';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { parseAmount } from '@kiko/currency/parse';
 import type { Currency } from '@kiko/currency/currency';
+import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 
-import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
 
 type UseBalanceFieldsParams = {

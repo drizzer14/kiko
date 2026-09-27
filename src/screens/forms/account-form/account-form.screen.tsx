@@ -17,6 +17,8 @@ import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { id, type AccountRow, useLiveQuery } from '@kiko/db';
 import Divider from '@kiko/design-system/components/divider';
+import BankTypeField from '@kiko/screens/forms/bank-type-field';
+import { groupAmount } from '@kiko/screens/forms/amount-format';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
 import { defaultAccountColor } from '@kiko/holdings/entity-colors';
@@ -25,6 +27,7 @@ import { type BankId, isBankId } from '@kiko/bank-sync/bank-catalog';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import ColorPicker from '@kiko/design-system/components/color-picker';
+import AccountKindField from '@kiko/screens/forms/account-kind-field';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import CurrencyField from '@kiko/design-system/components/currency-field';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
@@ -36,10 +39,6 @@ import { KIKO_ENTITIES_ICONS } from '@kiko/design-system/components/icon-picker-
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
 import MonobankConnectField from '@kiko/design-system/components/monobank-connect-field';
 import { type Currency, currencySymbol, fiatCurrencyOptions } from '@kiko/currency/currency';
-
-import BankTypeField from '../bank-type-field';
-import AccountKindField from '../account-kind-field';
-import { groupAmount } from '../amount-format/amount-format';
 
 type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
 

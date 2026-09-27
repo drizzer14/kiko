@@ -1,5 +1,6 @@
+import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
+
 import type { UseLoanFieldsResult } from '../use-loan-fields/use-loan-fields';
-import type { HoldingSelectOption } from '../../../holding-select-field/holding-select-field.props';
 
 export type LoanFormBlockProps = {
   fields: UseLoanFieldsResult;

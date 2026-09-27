@@ -11,9 +11,11 @@ import { parseAmount } from '@kiko/currency/parse';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import Box from '@kiko/design-system/components/box';
 import { shiftDecimal } from '@kiko/currency/decimal';
+import DateField from '@kiko/screens/forms/date-field';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { holdingInstrument } from '@kiko/prices/instrument';
+import { groupAmount } from '@kiko/screens/forms/amount-format';
 import { pricePointsRepo } from '@kiko/prices/price-points-repo';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
@@ -25,9 +27,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 import { type Currency, currencyScale, currencySymbol } from '@kiko/currency/currency';
-
-import DateField from '../date-field';
-import { groupAmount } from '../amount-format/amount-format';
 
 type PricePointFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'PricePointForm'>;
 

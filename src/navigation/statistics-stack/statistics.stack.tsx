@@ -1,6 +1,6 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import StatisticsScreen from '@kiko/screens/statistics/statistics.screen';
+import StatisticsScreen from '@kiko/screens/statistics';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import type { StatisticsStackParamList } from '../types';

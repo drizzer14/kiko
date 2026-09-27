@@ -25,23 +25,22 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import { parseAmount } from '@kiko/currency/parse';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import Box from '@kiko/design-system/components/box';
+import DateField from '@kiko/screens/forms/date-field';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { asMetalMeta } from '@kiko/holdings/holding-metadata';
+import { groupAmount } from '@kiko/screens/forms/amount-format';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import FieldLabel from '@kiko/design-system/components/field-label';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
+import { metalUnitSuffix } from '@kiko/screens/forms/metal-unit-suffix';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 import { type Currency, currencyScale, currencySymbol } from '@kiko/currency/currency';
-
-import DateField from '../date-field';
-import { metalUnitSuffix } from '../metal-unit-suffix';
-import { groupAmount } from '../amount-format/amount-format';
 
 type LotFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'LotForm'>;
 
