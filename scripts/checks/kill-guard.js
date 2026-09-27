@@ -27,6 +27,7 @@
 // there, so a conflict marker in it once broke every hook in every session.
 // A fast-forward-only update and the recovery options stay allowed.
 
+const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
@@ -134,17 +135,33 @@ function removeQuote(_match, single, double, escaped) {
 const removeQuoteAsZsh = (match, ...parts) =>
   (match.startsWith('$"') ? '$' : '') + removeQuote(match, ...parts);
 
-// The word after `<<`/`<<-`: its raw text, and the delimiter lines that can
-// end the body (the word with its quotes removed, as bash and as zsh read
-// it).
+const QUOTE_REMOVAL_BY_READING = { bash: removeQuote, zsh: removeQuoteAsZsh };
+
+// How the current scan reads a `$"…"` delimiter. `decide` scans a command
+// once per reading, because the text between the two delimiter lines is a
+// body for one shell and code for the other. A module-level setting, not a
+// parameter, since every scanner below reads heredocs and none of them
+// should carry it; `withHeredocReading` always restores it.
+let heredocReading = 'bash';
+
+function withHeredocReading(reading, scan) {
+  const outer = heredocReading;
+  heredocReading = reading;
+  try {
+    return scan();
+  } finally {
+    heredocReading = outer;
+  }
+}
+
+// The word after `<<`/`<<-`: its raw text, and the delimiter line that ends
+// the body (the word with its quotes removed, as the current reading does).
 function readHeredocWord(text, start) {
   const leading = text.slice(start).match(/^[ \t]*/)[0].length;
   const raw = text.slice(start + leading).match(HEREDOC_WORD)[0];
-  const delimiters = [
-    ...new Set([raw.replace(QUOTED_PART, removeQuote), raw.replace(QUOTED_PART, removeQuoteAsZsh)]),
-  ];
+  const delimiter = raw.replace(QUOTED_PART, QUOTE_REMOVAL_BY_READING[heredocReading]);
 
-  return { raw, delimiters, end: start + leading + raw.length };
+  return { raw, delimiters: [delimiter], end: start + leading + raw.length };
 }
 
 // Reads a `<<`, `<<-`, or `<<<` operator at `i` (a `<<<` here-string has no
@@ -168,9 +185,7 @@ function queueHeredoc(state, operator, segmentIndex) {
 }
 
 // One body starting at `start`: every line up to the first one that equals
-// a delimiter reading (after its leading tabs, for `<<-`). The earliest end
-// leaves the most text to scan as shell, so a shell that reads the word the
-// other way can only over-deny. Null when no line does.
+// the delimiter (after its leading tabs, for `<<-`). Null when no line does.
 function readHeredocBody(text, start, heredoc) {
   let lineStart = start;
   while (lineStart <= text.length) {
@@ -409,6 +424,12 @@ function trackDoubleBracket(context, atWordStart) {
   }
 }
 
+// The `&` of a redirect (`2>&1`, `>&-`, `<&3`, `&>file`, `&>>file`) belongs to
+// its word; it never ends the command or sends it to the background.
+function isRedirectAmpersand(text, i) {
+  return text[i - 1] === '>' || text[i - 1] === '<' || text[i + 1] === '>';
+}
+
 // Consumes an unquoted `;`, `&&`, `||`, `|`, `&`, a `)`, or a newline — after
 // which the bodies of the heredocs its line opened are taken aside — as a
 // top-level segment separator. Returns false (and consumes nothing) for
@@ -433,7 +454,7 @@ function consumeSeparator(context) {
     context.wordStart = closesSubshell;
     return true;
   }
-  if (';&|'.includes(c)) {
+  if (';|'.includes(c) || (c === '&' && !isRedirectAmpersand(text, i))) {
     endSegment(context, 1);
     return true;
   }
@@ -857,17 +878,25 @@ function resolveDirectory(directory, target) {
 }
 
 // A Claude Code worktree nested at `<main>/.claude/worktrees/<name>` is a
-// separate worktree, the very place a merge belongs.
-const NESTED_WORKTREES = `${MAIN_CHECKOUT_PATH}/.claude/worktrees/`.toLowerCase();
+// separate worktree, the very place a merge belongs — but only when
+// `<name>/.git` exists; any other folder there is part of the main
+// checkout's own repository.
+function isNestedWorktree(directory, mainCheckoutPath) {
+  const prefix = `${mainCheckoutPath}/.claude/worktrees/`;
+  if (!directory.toLowerCase().startsWith(prefix.toLowerCase())) return false;
+  const name = directory.slice(prefix.length).split('/')[0];
+
+  return name !== '' && fs.existsSync(path.join(prefix, name, '.git'));
+}
 
 // APFS is case-insensitive, so `/users/…/PFF-IOS` is the same folder.
-function isInsideMainCheckout(directory) {
+function isInsideMainCheckout(directory, mainCheckoutPath) {
   if (directory === null) return false;
   const folded = directory.toLowerCase();
-  const main = MAIN_CHECKOUT_PATH.toLowerCase();
-  if (folded.startsWith(NESTED_WORKTREES)) return false;
+  const main = mainCheckoutPath.toLowerCase();
+  if (folded !== main && !folded.startsWith(`${main}/`)) return false;
 
-  return folded === main || folded.startsWith(`${main}/`);
+  return !isNestedWorktree(directory, mainCheckoutPath);
 }
 
 function applyGitOption(invocation, option, next) {
@@ -907,57 +936,112 @@ function gitInvocation(rest, directory, environment) {
 
 // One invocation per directory the command may run in; the subcommand is
 // the same in each.
-function gitFinding(segment, invocations) {
+function gitFinding(segment, invocations, rules) {
   const [git] = invocations;
   if (git.subcommand === 'stash') return { kind: 'stash', detail: segment.trim() };
   if (!MAIN_CHECKOUT_SUBCOMMANDS.has(git.subcommand) || leavesMainCheckoutSafe(git)) return null;
-  const target = invocations.flatMap((invocation) => invocation.targets).find(isInsideMainCheckout);
+  const target = invocations
+    .flatMap((invocation) => invocation.targets)
+    .find((directory) => isInsideMainCheckout(directory, rules.mainCheckoutPath));
   if (target === undefined) return null;
 
   return { kind: 'mainCheckout', detail: `${segment.trim()} (runs in ${target})` };
 }
 
-const DIRECTORY_CHANGERS = new Set(['cd', 'pushd']);
+const DIRECTORY_CHANGERS = new Set(['cd', 'pushd', 'popd']);
+// `2>&1`, `>/dev/null`, `&>log`: a redirect word never names a directory.
+const REDIRECT_WORD = /^(?:\d*[<>]|&>)/;
+// `cd x || exit` ends the shell when the `cd` fails.
+const LEAVES_THE_SHELL = /^\s*(?:exit|return)(?:\s|$)/;
 
 const union = (first, second) => [...new Set([...first, ...second])];
 
-// Where a `cd`/`pushd` leads: `cd -` goes back, a bare `cd` goes home, and
-// a bare `pushd` swaps with a directory this command may have left, so
-// either place stays possible.
-function changedDirectories(location, tokens) {
-  const target = tokens.slice(1).find((token) => token === '-' || !token.startsWith('-'));
-  if (target === '-') return location.previous;
-  if (target === undefined && basename(tokens[0]) === 'pushd') {
-    return union(location.directories, location.previous);
+const resolveEach = (directories, target) =>
+  directories.map((directory) => resolveDirectory(directory, target));
+
+// `pushd dir` saves the current place; a bare `pushd` swaps with the saved
+// top; `+N`/`-N` rotations leave any saved place possible.
+function pushDirectory(location, target) {
+  const { directories, stack } = location;
+  if (target === undefined) {
+    if (stack.length === 0) return { directories, stack };
+    return { directories: stack.at(-1), stack: [...stack.slice(0, -1), directories] };
   }
+  if (/^[+-]\d/.test(target)) return { directories: union(directories, stack.flat()), stack };
 
-  return location.directories.map((directory) => resolveDirectory(directory, target ?? '~'));
+  return { directories: resolveEach(directories, target), stack: [...stack, directories] };
 }
 
-// Where the shell may stand after one segment. A `cd` moves it for what
-// follows in sequence (`&&`, `;`, a newline). Before `&` or `|` it runs in
-// a subshell and moves nothing. Before `||` the next command runs only if
-// the `cd` failed, so the old place and the new one both stay possible.
-function moveDirectory(location, segment, separator) {
-  const { tokens } = unwrap(words(segment));
+function popDirectory(location, target) {
+  const { directories, stack } = location;
+  if (target !== undefined) return { directories: union(directories, stack.flat()), stack };
+  if (stack.length === 0) return { directories, stack };
+
+  return { directories: stack.at(-1), stack: stack.slice(0, -1) };
+}
+
+// Where a `cd`/`pushd`/`popd` leads: `cd -` goes back and a bare `cd` goes
+// home. Options and redirect words are skipped.
+function changedDirectories(location, tokens) {
+  const command = basename(tokens[0]);
+  const target = tokens
+    .slice(1)
+    .filter((token) => !REDIRECT_WORD.test(token))
+    .find((token) => token === '-' || !token.startsWith('-') || /^[+-]\d/.test(token));
+  if (command === 'pushd') return pushDirectory(location, target);
+  if (command === 'popd') return popDirectory(location, target);
+  if (target === '-') return { directories: location.previous, stack: location.stack };
+
+  return { directories: resolveEach(location.directories, target ?? '~'), stack: location.stack };
+}
+
+// Where the shell may stand after one directory change, from the separators
+// around it:
+//   - before `&` or `|` it runs in a subshell and moves nothing;
+//   - after `||` or `|` it may not run (and after `|`, bash runs it in a
+//     subshell while zsh does not), so both places stay possible;
+//   - before `|| exit`/`|| return` only a successful change goes on;
+//   - before any other `||` the next command runs only if it failed;
+//   - after `&&` it runs only if the command before succeeded; the commands
+//     joined to it by `&&` share that fate, so the old place comes back into
+//     play at the next other separator (`fallback`).
+function moveDirectory(location, move) {
+  const { tokens } = unwrap(words(move.segment));
   if (tokens.length === 0 || !DIRECTORY_CHANGERS.has(basename(tokens[0]))) return;
-  if (separator === '&' || separator === '|') return;
-  const next = changedDirectories(location, tokens);
+  if (move.after === '&' || move.after === '|') return;
+  const change = changedDirectories(location, tokens);
   const current = location.directories;
-  location.directories = separator === '||' ? union(current, next) : next;
   location.previous = current;
+  location.stack = change.stack;
+  if (move.before === '||' || move.before === '|') {
+    location.directories = union(current, change.directories);
+  } else if (move.after === '||' && !LEAVES_THE_SHELL.test(move.next)) {
+    location.directories = union(current, change.directories);
+  } else {
+    location.directories = change.directories;
+    if (move.before === '&&') location.fallback = current;
+  }
 }
 
-// A subshell's `cd` ends with the subshell.
+// The old place of a change made after `&&` is possible again once a
+// separator other than `&&` passes.
+function settleFallback(location, separator) {
+  if (location.fallback === null || separator === '&&') return;
+  location.directories = union(location.directories, location.fallback);
+  location.fallback = null;
+}
+
+// A subshell's directory changes end with the subshell.
 function enterSubshells(location, count) {
+  const { directories, previous, stack, fallback } = location;
   for (let open = 0; open < count; open++) {
-    location.saved.push([location.directories, location.previous]);
+    location.saved.push({ directories, previous, stack, fallback });
   }
 }
 
 function leaveSubshell(location) {
   if (location.saved.length === 0) return;
-  [location.directories, location.previous] = location.saved.pop();
+  Object.assign(location, location.saved.pop());
 }
 
 // A shell runs its `-c` string or, without `-c`, the heredoc bodies it reads
@@ -973,7 +1057,7 @@ function queueShellScript(rest, nested, stdinBodies) {
 // shell's script and `eval`'s joined arguments go to `nested` as command
 // text. `directories` are the places the command may run in (null for one
 // the text cannot pin down).
-function segmentFinding(segment, nested, stdinBodies, directories) {
+function segmentFinding(segment, nested, stdinBodies, directories, rules) {
   const tokens = words(segment);
   if (tokens.length === 0) return null;
 
@@ -991,7 +1075,7 @@ function segmentFinding(segment, nested, stdinBodies, directories) {
     return null;
   }
 
-  if (base === 'pkill' || base === 'killall') return { kind: 'kill' };
+  if (rules.killCommands.has(base)) return { kind: 'kill' };
 
   if (base === 'kill') {
     const isPatternKill = viaXargs || killTargets(rest.slice(1)).some(isDangerousKillTarget);
@@ -1002,15 +1086,15 @@ function segmentFinding(segment, nested, stdinBodies, directories) {
   if (base === 'git') {
     const invocations = directories.map((directory) => gitInvocation(rest, directory, environment));
 
-    return gitFinding(segment, invocations);
+    return gitFinding(segment, invocations, rules);
   }
 
   return null;
 }
 
-function firstFinding(lines, depth, checkHeredoc) {
+function firstFinding(lines, depth, checkHeredoc, rules) {
   for (const line of lines) {
-    const finding = findDanger(line.text, depth + 1, checkHeredoc, line.directories);
+    const finding = findDanger(line.text, depth + 1, checkHeredoc, line.directories, rules);
     if (finding !== null) return finding;
   }
 
@@ -1027,10 +1111,10 @@ function firstFinding(lines, depth, checkHeredoc) {
 // other body is text, so a `<<word` in it is not an operator. `directories`
 // are the places the line may start in; every nested line runs where its
 // segment does.
-function findDanger(line, depth, checkHeredoc = true, directories = [null]) {
+function findDanger(line, depth, checkHeredoc, directories, rules) {
   if (depth > 8) return null; // guards against pathological nesting
   const { segments, nested, heredoc, bodies, opens, closes, separators } = scanLevel(line);
-  const location = { directories, previous: [null], saved: [] };
+  const location = { directories, previous: [null], stack: [], fallback: null, saved: [] };
   const directoriesAt = [];
   const scripts = [];
 
@@ -1042,10 +1126,12 @@ function findDanger(line, depth, checkHeredoc = true, directories = [null]) {
       .filter((body) => body.segmentIndex === index)
       .map((body) => body.text);
     const segmentScripts = [];
-    const finding = segmentFinding(segment, segmentScripts, stdinBodies, here);
+    const finding = segmentFinding(segment, segmentScripts, stdinBodies, here, rules);
     if (finding !== null) return finding;
     scripts.push(...segmentScripts.map((text) => ({ text, directories: here })));
-    moveDirectory(location, segment, separators[index]);
+    const [before, after] = [separators[index - 1] ?? '', separators[index]];
+    moveDirectory(location, { segment, before, after, next: segments[index + 1] ?? '' });
+    settleFallback(location, after);
     if (closes[index]) leaveSubshell(location);
   }
   if (checkHeredoc && heredoc !== null) return { kind: 'heredoc', detail: heredoc };
@@ -1056,9 +1142,39 @@ function findDanger(line, depth, checkHeredoc = true, directories = [null]) {
   });
 
   return (
-    firstFinding([...nested.map(inItsDirectory), ...scripts], depth, checkHeredoc) ??
-    firstFinding(bodies.map(inItsDirectory), depth, false)
+    firstFinding([...nested.map(inItsDirectory), ...scripts], depth, checkHeredoc, rules) ??
+    firstFinding(bodies.map(inItsDirectory), depth, false, rules)
   );
+}
+
+// ---- the decision ----
+
+const KILL_COMMANDS = ['pkill', 'killall'];
+
+// The hook's decision for one command: the first finding, or null.
+//
+// `options.cwd` is where the command starts. `options.sentinelKillCommands`
+// and `options.mainCheckoutPath` exist only for the tests and the sentinel
+// probe runner (scripts/checks/kill-guard-probe.sh): a probe that really runs
+// uses a harmless sentinel name in place of every kill word and a scratch
+// folder in place of the main checkout, and the guard judges it with those.
+// The hook entry point below never passes them.
+//
+// A `$"…"` heredoc delimiter ends at `EOF` in bash and at `$EOF` in zsh, so
+// such a command is judged once per reading, and either finding counts.
+function decide(command, options = {}) {
+  const rules = {
+    killCommands: new Set([...KILL_COMMANDS, ...(options.sentinelKillCommands ?? [])]),
+    mainCheckoutPath: options.mainCheckoutPath ?? MAIN_CHECKOUT_PATH,
+  };
+  const start = typeof options.cwd === 'string' ? resolveDirectory(null, options.cwd) : null;
+  const readings = command.includes('$"') ? ['bash', 'zsh'] : ['bash'];
+  for (const reading of readings) {
+    const finding = withHeredocReading(reading, () => findDanger(command, 0, true, [start], rules));
+    if (finding !== null) return finding;
+  }
+
+  return null;
 }
 
 // ---- hook entry point ----
@@ -1072,18 +1188,19 @@ function main(raw) {
   }
   const command = payload?.tool_input?.command;
   if (typeof command !== 'string' || command.trim() === '') return;
-  const startDirectory =
-    typeof payload.cwd === 'string' ? resolveDirectory(null, payload.cwd) : null;
 
-  const finding = findDanger(command, 0, true, [startDirectory]);
+  const finding = decide(command, { cwd: payload.cwd });
   if (finding !== null) process.stdout.write(denyJson(reasonFor(finding)));
 }
 
-try {
-  const raw = require('node:fs').readFileSync(0, 'utf8');
-  main(raw);
-} catch {
-  // Never break the Bash tool: any unexpected failure here falls through to
-  // the unconditional exit 0 below with no output, i.e. allow.
+if (require.main === module) {
+  try {
+    main(fs.readFileSync(0, 'utf8'));
+  } catch {
+    // Never break the Bash tool: any unexpected failure here falls through to
+    // the unconditional exit 0 below with no output, i.e. allow.
+  }
+  process.exit(0);
 }
-process.exit(0);
+
+module.exports = { decide };

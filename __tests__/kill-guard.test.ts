@@ -1,4 +1,6 @@
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
 // scripts/checks/kill-guard.sh is the PreToolUse hook wired in
@@ -94,6 +96,11 @@ const BLOCKED_COMMANDS: string[] = [
   'cat <<$"EOF"\nit\'s\n$EOF\npkill x\nEOF',
   'cat <<E$"OF"\nit\'s\nE$OF\npkill x\nEOF',
   'cat <<E$"OF"\nit\'s\nEOF\npkill x\nE$OF',
+  'cat <<$"EOF"\nEOF\nit\'s\n$EOF\npkill x',
+  'cat <<E$"OF"\nEOF\nit\'s\nE$OF\npkill x',
+  'cat <<$"EOF"\n$EOF\nit\'s\nEOF\npkill x',
+  'cat <<E$"OF"\nE$OF\nit\'s\nEOF\npkill x',
+  'cat <<$"EOF"\n$EOF\necho "\nEOF\npkill x\n"',
   'cat <<"E\\"OF"\nit\'s\nE"OF\npkill x\nE\\"OF',
   'cat <<"E\\\\OF"\nit\'s\nE\\OF\npkill x\nE\\\\OF',
   'cat <<"E\\$OF"\nit\'s\nE$OF\npkill x\nE\\$OF',
@@ -303,6 +310,19 @@ const MAIN_CHECKOUT_COMMANDS: [string, string][] = [
   [WORKTREE, `cd ${MAIN_CHECKOUT} || true; git merge feat/x`],
   [`${MAIN_CHECKOUT}/.claude/worktrees`, 'git merge feat/x'],
   [`${MAIN_CHECKOUT}/.claude`, 'git merge feat/x'],
+  [WORKTREE, `cd ${MAIN_CHECKOUT} >/dev/null 2>&1 && git merge feat/x`],
+  [WORKTREE, `cd ${MAIN_CHECKOUT} &>/dev/null && git merge feat/x`],
+  [WORKTREE, `cd ${MAIN_CHECKOUT} 2>&1; git rebase main`],
+  [WORKTREE, `pushd ${MAIN_CHECKOUT} >&- && git pull origin main`],
+  [MAIN_CHECKOUT, 'false && cd /tmp; git merge feat/x'],
+  [MAIN_CHECKOUT, 'false || cd /tmp; git merge feat/x'],
+  [MAIN_CHECKOUT, 'true | cd /tmp; git merge feat/x'],
+  [MAIN_CHECKOUT, 'pushd /tmp; popd; git merge feat/x'],
+  [WORKTREE, `cd ${MAIN_CHECKOUT} || exit 1; git merge feat/x`],
+  // No `.git` there: not a worktree, so git would run in the main checkout.
+  [`${MAIN_CHECKOUT}/.claude/worktrees/agent-1`, 'git merge feat/x'],
+  [MAIN_CHECKOUT, `cd ${MAIN_CHECKOUT}/.claude/worktrees/agent-1 && git rebase main`],
+  [WORKTREE, `git -C ${MAIN_CHECKOUT}/.claude/worktrees/agent-1 merge feat/x`],
 ];
 
 const ALLOWED_OUTSIDE_MAIN_CHECKOUT: [string, string][] = [
@@ -344,9 +364,10 @@ const ALLOWED_OUTSIDE_MAIN_CHECKOUT: [string, string][] = [
   [MAIN_CHECKOUT, 'git rebase --edit-todo'],
   [MAIN_CHECKOUT, 'git rebase --show-current-patch'],
   [MAIN_CHECKOUT, 'git am --show-current-patch'],
-  [`${MAIN_CHECKOUT}/.claude/worktrees/agent-1`, 'git merge feat/x'],
-  [MAIN_CHECKOUT, `cd ${MAIN_CHECKOUT}/.claude/worktrees/agent-1 && git rebase main`],
-  [WORKTREE, `git -C ${MAIN_CHECKOUT}/.claude/worktrees/agent-1 merge feat/x`],
+  [MAIN_CHECKOUT, `cd ${WORKTREE} >/dev/null 2>&1 && git merge feat/x`],
+  [MAIN_CHECKOUT, `cd ${WORKTREE} || exit 1; git merge feat/x`],
+  [MAIN_CHECKOUT, `cd ${WORKTREE} || return; git merge feat/x`],
+  [WORKTREE, 'pushd /tmp && popd && git merge feat/x'],
 ];
 
 // Recovery from a stuck operation stays allowed in the main checkout.
@@ -458,4 +479,72 @@ describe('scripts/checks/kill-guard.sh (PreToolUse Bash guard)', () => {
     expect(result.status).toBe(0);
     expect(result.stdout.trim()).toBe('');
   });
+});
+
+// The guard's exported `decide`, called in node as a parser only: nothing
+// here runs the command text. Its `sentinelKillCommands` and
+// `mainCheckoutPath` options exist for the sentinel probe runner and these
+// tests; the hook entry point never passes them.
+const GUARD = join(__dirname, '../scripts/checks/kill-guard.js');
+const SENTINEL = 'kg_sentinel_target';
+const DECIDE_SCRIPT = [
+  'const { decide } = require(process.argv[1]);',
+  'const finding = decide(process.argv[2], JSON.parse(process.argv[3]));',
+  'process.stdout.write(finding === null ? "allow" : finding.kind);',
+].join('\n');
+
+const decide = (command: string, options: Record<string, unknown> = {}): string =>
+  spawnSync('node', ['-e', DECIDE_SCRIPT, GUARD, command, JSON.stringify(options)], {
+    encoding: 'utf8',
+  }).stdout;
+
+const FAKE_MAIN = mkdtempSync(join(tmpdir(), 'kill-guard-fake-main-'));
+mkdirSync(join(FAKE_MAIN, '.claude/worktrees/agent-1'), { recursive: true });
+mkdirSync(join(FAKE_MAIN, '.claude/worktrees/stray'), { recursive: true });
+writeFileSync(join(FAKE_MAIN, '.claude/worktrees/agent-1/.git'), 'gitdir: elsewhere\n');
+
+describe('kill-guard decide() test-only options (parser only)', () => {
+  it.each([
+    `${SENTINEL} -x`,
+    `bash -c '${SENTINEL} -x'`,
+    'kg_senti\\\nnel_target -x',
+    `echo 1 | xargs ${SENTINEL}`,
+  ])('denies the sentinel as a kill when asked: %s', (command) => {
+    expect(decide(command, { sentinelKillCommands: [SENTINEL] })).toBe('kill');
+  });
+
+  it('allows the sentinel without the option', () => {
+    expect(decide(`${SENTINEL} -x`)).toBe('allow');
+  });
+
+  it('checks a fake main checkout path only when asked', () => {
+    expect(decide('git merge feat/x', { cwd: FAKE_MAIN, mainCheckoutPath: FAKE_MAIN })).toBe(
+      'mainCheckout',
+    );
+    expect(decide('git merge feat/x', { cwd: FAKE_MAIN })).toBe('allow');
+  });
+
+  it.each([
+    ['.claude/worktrees/agent-1', 'allow'],
+    ['.claude/worktrees/agent-1/src', 'allow'],
+    ['.claude/worktrees/stray', 'mainCheckout'],
+    ['.claude/worktrees', 'mainCheckout'],
+  ])('counts %s as a separate worktree only with its own .git: %s', (folder, decision) => {
+    const options = { cwd: join(FAKE_MAIN, folder), mainCheckoutPath: FAKE_MAIN };
+
+    expect(decide('git merge feat/x', options)).toBe(decision);
+  });
+
+  it.each([`${SENTINEL} -x`, 'git merge feat/x'])(
+    'the hook entry ignores both options in its payload: %s',
+    (command) => {
+      const options = { sentinelKillCommands: [SENTINEL], mainCheckoutPath: FAKE_MAIN };
+      const result = run(
+        JSON.stringify({ cwd: FAKE_MAIN, tool_input: { command, ...options }, ...options }),
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+    },
+  );
 });
