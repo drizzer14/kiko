@@ -2,6 +2,16 @@
 
 
 
+## RELEASE ROADMAP (user directive 2026-09-27): two BUG-HUNT + SECURITY rounds
+Order: finish the 1.1 feat track (assets-debts, merged into next) -> ROUND A -> 1.2 (the postponed work: P5 broker/shares/EODHD + the deferred list) -> ROUND B -> 1.2 release prep.
+Each round (coordinator runs it as its own Orca track + orchestrator session, from next):
+1. Read-only audits in parallel (kiko:auditor): SECURITY (network hosts/ATS/TLS, Keychain tokens and API secrets, .kiko export crypto, logging of personal data, URL schemes/deep links, Info.plist + privacy manifest, gitleaks over history, osv CVEs incl. the tracked accepted ones), PERFORMANCE (op-sqlite single queue, app-open work, live queries, statistics), DEPENDENCIES/BUNDLE.
+2. Bug hunt (kiko:debugger, read-only, parallel slices): holdings (bonds, deposits, loans, metals, property), transactions + statement import, rates/prices/sync, statistics + net worth, backup/restore + migrations, auth/lock; plus a DIVERGENT-TWINS hunt and data-integrity invariants; Maestro E2E flows.
+3. Triage with the user: ranked findings; Critical/Important fixed in change sets (<= 30 source files each, one review, coordinator mutation run per change set before merge); every mechanizable finding becomes a guard rule/checker.
+4. Deferred debt picked up in Round A: createSingleFlight helper, deploy-device.sh launch-grep false-fail, the worklet-remote-function Semgrep rule, the harness hooks self-check, pre-submission items (screenshots 07/10, privacy policy wording).
+5. Exit: device test by the user, merge into next, retrospect + drift pass.
+Round B adds: the 1.2 surfaces (broker/EODHD API keys and new network domains, new stored secrets, new data flows) and a full kiko-compliance pass before the 1.2 App Store submission.
+
 ## 2026-09-27 ~22:00: feat SESSION 9 (term_76d2219c-4a86-4f7b-80d1-84a1dc2e4ed3) replaced session 8 at 51%; tip 49ed0a04; queue: kill-guard fix round (git stash + unquoted heredoc deny, user-approved) -> re-review -> BATCH READY (base ccb611dd, 2 source files) + deployable (tag icon). next = e85be58c (guard replay merged). Harness-only main commit (8 agent/skill files + plugin 0.2.2) waits for the user.
 
 ## 2026-09-27 ~18:00: feat/assets-debts 62c38965 MERGED into next = 13455209 (release 1.1; make verify 408/5562 coordinator-verified; 5 harness conflicts resolved feat-first + next-only lines). main unchanged. Harness text in next reaches sessions only after main + plugin bump (0.2.1 now).
