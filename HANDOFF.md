@@ -2,6 +2,8 @@
 
 
 
+## 2026-09-27 day: whole-release deep gate STOPPED by the user after 10 h (mutation only on small diffs; memory mutation-only-on-small-diffs; harness cap task held for the user's OK in session 8). Session 8 = shares-assets-research-c2.
+
 ## OVERNIGHT 2026-09-27 (user directive 00:58: work overnight, deep gate if in time, DEPLOY 09:30)
 02:30: session 7 handed over at 51%; feat SESSION 8 = shares-assets-research-c2 (term_845005f8-4411-4d77-9ef6-8c0953196049), tip 5ea2f805, in overnight mode (brief scratchpad brief-feat8.txt): device fix round 3 -> IMPORTS T9-T17 + review -> T43 (read-only in parallel; fixes between IMPORTS tasks) -> drift. FREEZE CANDIDATE sha by 04:30 at the latest.
 Deep gate: separate checkout ~/orca/workspaces/pff-ios/deep-gate (detached worktree, npm ci done at 6c56d31f); run KIKO_MUTATION_BASE=next make deep there on the freeze sha (best effort; no rate history -> unknown duration). Coordinator crons: 04:37 freeze fallback + deep gate start; 08:43 deploy prep (kiko:ops, standard brief) + morning summary. Overnight keys ship unapproved in the 09:30 device build; review in the morning. Silent watcher scratchpad trackwatch.sh (gauge >= 50% or idle > 60 min).
@@ -42,8 +44,8 @@ coordinator = SendMessage target).
 6. Merge feat/assets-debts into next (release 1.1). Prune pre-write-guard worktree+branch after its merge (KEYS.md copy already saved).
 
 ### Device
-iPhone (UDID 00008130-0018712A1E32001C, app data container 11300148-8CFA-440B-8C97-DB08CEB653CA) has a4e8d71d (Release-AdHoc, installed 2026-09-27 ~09:00, overnight freeze; gate evidence = session 8 make verify 02:52; a re-run under Stryker load failed only on Semgrep timeouts -> re-run the gate after the deep gate). Before: 8667c8f0 (installed 2026-09-27, make verify 401/5339; retest RETEST-DEV2-addendum.md; D4 yield to maturity). Before: e1ded680 (installed 2026-09-26 20:45, make verify 399/5285; retest RETEST-DEV1-addendum.md). Before: 8adaf394 (installed 2026-09-26 19:1x, make verify 397/5206; all keys through P6 approved). User device test: RETEST-FB1-P6-addendum.md + the 3 earlier RETEST files. Was: 5cb70fb.
-device-deploy HEAD = a4e8d71d, npm install done (.env keys from C2). EVERY ops install brief must pin the UDID, Release-AdHoc and the
+iPhone (UDID 00008130-0018712A1E32001C, app data container 11300148-8CFA-440B-8C97-DB08CEB653CA) has f2282acb (Release-AdHoc, installed 2026-09-27 14:40, make verify 407/5545; device rounds 4+5 incl. D5-D9; retest RETEST-DEV4 + RETEST-DEV5). Before: a4e8d71d (installed 2026-09-27 ~09:00, overnight freeze; gate evidence = session 8 make verify 02:52; a re-run under Stryker load failed only on Semgrep timeouts -> re-run the gate after the deep gate). Before: 8667c8f0 (installed 2026-09-27, make verify 401/5339; retest RETEST-DEV2-addendum.md; D4 yield to maturity). Before: e1ded680 (installed 2026-09-26 20:45, make verify 399/5285; retest RETEST-DEV1-addendum.md). Before: 8adaf394 (installed 2026-09-26 19:1x, make verify 397/5206; all keys through P6 approved). User device test: RETEST-FB1-P6-addendum.md + the 3 earlier RETEST files. Was: 5cb70fb.
+device-deploy HEAD = f2282acb, npm install done (.env keys from C2). EVERY ops install brief must pin the UDID, Release-AdHoc and the
 container UUID check (an ops run once installed on the iPhone 17 SIMULATOR with a Distribution config and reported SUCCESS).
 
 ### Pending for the USER (approve before a deploy that ships them)
