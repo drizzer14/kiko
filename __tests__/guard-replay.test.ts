@@ -400,6 +400,26 @@ describe('guard-replay.sh', () => {
   );
 
   it(
+    'treats a recorded mark that is not a commit as no mark',
+    () => {
+      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
+      const library = join(checkout.worktree, 'scripts/checks/_lib.sh');
+      const recordOldFormatMark = `source "${library}"; harness_mark_pass "$1" guard-replay-mark "1790521477 abc123"`;
+      spawnSync('bash', ['-c', recordOldFormatMark, '_', checkout.worktree], {
+        env: wrapperEnvironment(checkout.state, {}),
+      });
+      writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
+      commitAll(checkout.worktree, 'bypass');
+
+      const { code, stderr } = runReplay(checkout);
+
+      expect(code).toBe(2);
+      expect(stderr).toContain('rule kiko-no-switch at src/pick.ts:2');
+    },
+    TIMEOUT,
+  );
+
+  it(
     'skips on a first replay a commit another local branch already has',
     () => {
       const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });

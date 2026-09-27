@@ -95,10 +95,15 @@ function gitAnswer(gitArguments) {
   return { found: result.status === 0, output: result.stdout.trim() };
 }
 
-// A mark whose commit is gone (garbage-collected after a reset) bounds
+const COMMIT_SHA = /^[0-9a-f]{40,64}$/;
+
+// A mark that is not a commit sha (state an older replay wrote in another
+// format) or whose commit is gone (garbage-collected after a reset) bounds
 // nothing, so the run falls back to the first-run window.
 function sessionCommits(mark) {
-  const hasMark = Boolean(mark) && gitAnswer(['cat-file', '-e', `${mark}^{commit}`]).found;
+  const hasMark =
+    COMMIT_SHA.test(mark ?? '') &&
+    gitAnswer(['rev-parse', '-q', '--verify', `${mark}^{commit}`]).found;
   const window = hasMark
     ? []
     : [`--max-age=${Math.floor(Date.now() / 1000) - FIRST_RUN_WINDOW_SECONDS}`];
