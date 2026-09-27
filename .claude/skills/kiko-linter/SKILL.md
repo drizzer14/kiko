@@ -117,8 +117,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   such a body is still denied). Heredoc delimiter corner cases: quote
   removal drops a `$` before `'…'` (`$'EOF'` ends at `EOF` in both
   shells); `$"EOF"` differs by shell (bash ends at `EOF`, zsh at `$EOF`),
-  so a command holding `$"` is scanned once per shell reading (bash,
-  then zsh) and either finding denies; inside
+  so the guard ALWAYS scans every command once per shell reading (bash,
+  then zsh) and either finding denies — at any nesting level, because
+  the outer text cannot show a `$"…"` nested in a `-c` or `eval` string
+  (`\$\"EOF\"`); inside
   double quotes, unescapes `\"`, `\\`, `\$`, and a backslash-backtick
   (`"E\"OF"` ends at `E"OF`); a delimiter line with trailing spaces does
   not end the body (bash agrees); bash's `EOF)` shorthand inside `$(` is
@@ -126,7 +128,14 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   a command after a heredoc inside `<(`/`$(` whose body holds an
   unbalanced paren; the guard does not model that. bash 3.2 (zsh fails)
   also runs the kill in `echo $( (echo a)#c ); pkill x` (pre-existing,
-  not denied). The agent rule stays
+  not denied). Redirect words: every redirect operator and its target
+  (read `words()` in `kill-guard.js` for the operator set) is dropped
+  wherever it sits — before the command word (`2>/dev/null pkill x`
+  denies), glued to a path, or detached (`cd dir>/dev/null` reads
+  `dir`). An unquoted number right before the operator is its
+  descriptor (`2>&1`); `-` is never part of the operator (`>&-`,
+  `<<-EOF`). So `kill <pid> 2>/dev/null` and `kill <pid> &>/dev/null`
+  are allowed. The agent rule stays
   absolute regardless: never `git stash` or pattern-kill in any form.
   Every deny carries the `print_block` WHAT/DETAILS/WHY/HOW/DO-NOT shape
   as plain text in the one JSON reason field; the kill deny keeps its
@@ -148,7 +157,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `<&3`, `&>file`, `&>>file`) is NOT a separator, and a redirect word is
   never a `cd` target. A `cd` after `&&`, `||`, or `|` may not have run,
   so both the old and new directory stay possible (after `&&` the old
-  one comes back at the next other separator); before a plain `||` both
+  one comes back at the next other separator; an `&&`, `||`, or `|` at
+  line end continues onto the next line and does NOT release the saved
+  directory; a second `cd` in one `&&` chain keeps every earlier
+  directory possible too); before a plain `||` both
   stay possible too, except `cd x || exit`/`|| return`, which keeps only
   the new directory. `pushd` pushes, a bare `pushd` swaps, `popd` pops,
   and `+N`/`-N` leave any saved directory possible; a subshell's `cd`
@@ -173,7 +185,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   script, or function; `export GIT_DIR=…` as its own earlier command;
   `env -C <main>`; `git -c pull.rebase=true pull --ff-only`. The
   directory model leans to deny: a failed `cd typo; git merge` still
-  counts as moved, and `cd $VAR` counts as not main (limits).
+  counts as moved, and `cd $VAR` counts as not main (limits);
+  `pushd -n`/`popd -n` count as moving; and from main,
+  `cd <wt> || { echo no; exit 1; }; git merge` is denied (the brace
+  group is not read as an exit).
   Over-denied: `--git-dir=<main>/.git/worktrees/<name>`; a
   `merge --ff-only` with any extra option (`-q`, `--no-edit`, `--`); and,
   with cwd = main, a heredoc body line that is itself one of the covered
@@ -195,16 +210,22 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   ['kg_sentinel_target'], mainCheckoutPath })`. The sentinel and `git`
   stubs sit first on PATH and only log (git also logs its working
   folder); no real command has the sentinel's name. The runner refuses
-  (exit 2) text that names a kill command in any case, or the real main
-  path, after joining line continuations and dropping quotes and
-  backslashes. Real kill words and the real main path appear ONLY in
-  NON-executed parser tests (node: string -> `decide()`). The
+  (exit 2) text holding `kill` (covers pkill, killall, kill) or
+  `pff-ios`, after it folds case, joins line continuations, drops
+  `$ ' " \ { } , ( )` and the backtick, and collapses `/./` and `//` (read the
+  runner for the exact set). The test-only env var
+  `KIKO_PROBE_REFUSE_ALSO` adds refused words; the refusal tests use it
+  with the sentinel and a fake folder (`kg/fake_main`). No real kill
+  word and no real main path is ever handed to the runner; they appear
+  ONLY in NON-executed parser tests (node: string -> `decide()`). The
   `decide(command, options)` options `sentinelKillCommands` and
   `mainCheckoutPath` are test-only: the hook entry passes only
   `{ cwd: payload.cwd }` and ignores both (tested in
   `__tests__/kill-guard.test.ts`). The runner is NOT an OS sandbox: a
-  kill word built at run time (`a=pk; ${a}ill x`) would bypass its text
-  check, so probe authors never write one. Never write a runner that
+  kill word built at run time (`a=pk; ${a}ill x`) is beyond any text
+  check, so probe authors always write the sentinel instead; and real
+  git stays reachable from a probe by a PATH edit or `/usr/bin/git`
+  (it then runs in the runner's empty scratch folder). Never write a runner that
   rewrites a kill word by string. Incident: such a runner once ran a
   real kill command because a line continuation dodged the rewrite.
 
