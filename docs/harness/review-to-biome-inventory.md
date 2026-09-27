@@ -232,6 +232,12 @@ because it can compare against the actual pinned set.
 |---|---|---|---|
 | (every pre-write guard rule) | Agents wrote `src/` and `__tests__/` with Bash or python (heredoc, `sed -i`, a script), which the `Edit\|Write\|MultiEdit` PreToolUse guard never sees (3 slips); a Bash deny hook is wrong because legitimate commands write source (`--write` fixers, `git merge`) | Shell check (`scripts/checks/guard-replay.sh` + `.js`, medium tier and `check:guard-replay` in `check:all`) | Replays the unchanged `pre-write-guard.sh` per changed `.ts`/`.tsx` file against its content before the session changed it (working tree plus session commits, including rebases, cherry-picks, and a merge commit's own changes); only an added finding fails. 150 s Stop-tier deadline, fail closed. A commit is skipped only when a passed replay's mark ref (`refs/kiko/guard-replay/<worktree id>`) reaches it, or it predates the floor ref and none of its parents is a session commit; a branch or worktree made from HEAD hides nothing, and a pass never moves a mark back. See kiko-linter's "Pre-write guard replay on the Stop tier". |
 
+### Enforced — 2026-09-27 DRIFT s8b (copied mutation cap)
+
+| Rule id | Finding | Enforce via | Notes |
+|---|---|---|---|
+| (Jest invariant) `__tests__/mutation-cap-docs.test.ts` | The mutation file cap (`MUTATION_FILE_CAP` in `scripts/checks/mutation.sh`) is copied as a number into CLAUDE.md, the `Makefile` help, kiko-linter, ops, harness-workflow, planner.md, checks-internals.md, and the shares-property-metals-debts plan; a cap change that misses one leaves a doc naming a limit the script does not enforce | Jest invariant (reads the assignment and every listed doc) | Each doc in `DOCS_STATING_THE_CAP` must state the cap at least once, and every number any listed doc states in one of the `CAP_STATEMENTS` phrasings (whitespace-collapsed, so a line wrap still matches) must equal the assignment. `docs/harness/documented-exceptions.md` names the cap without a number, so it is checked but not required to state it. A new copy of the number goes in the list; a new phrasing goes in `CAP_STATEMENTS`. |
+
 ## Go-forward process (to wire into the retrospect/scribe loop)
 
 After each code review, triage every finding:

@@ -115,7 +115,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   at the same HEAD. The cap and the refusals are tested hermetically in
   `__tests__/mutation-cap.test.ts` (29 and 30 files run the stub; 31,
   `KIKO_MUTATION_FULL=1`, a bad base, a failing `git diff` shim, and a
-  broad run after a narrow pass fail without it). The stream, lock, and
+  broad run after a narrow pass fail without it). Every doc that copies
+  the cap number is pinned to the assignment by
+  `__tests__/mutation-cap-docs.test.ts`; a doc that newly states the
+  number goes in its list. The stream, lock, and
   cap tests share their throwaway-repository, stub, and wrapper-run helpers
   through `__tests__/test-support/mutation-repository.ts` (excluded from
   Jest's suite list by `jest.config.js` `testPathIgnorePatterns`, which
