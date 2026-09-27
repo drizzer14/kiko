@@ -23,7 +23,7 @@ type AccountKind = AccountRow['kind'];
 // here. The crypto ACCOUNT default is persisted at create time, so its change
 // to `bitcoinsign.circle` ships alongside migration 0032_icon_crypto_account,
 // which refines un-customized existing rows. `cube.fill` (SF Symbols 1, safe
-// on the iOS-16 floor) is the pick for `metals` — icon choice was
+// on the iOS 15.1 deployment target) is the pick for `metals` — icon choice was
 // unspecified for it, as with `house.fill` for `property`. `minus.circle.fill`
 // (SF Symbols 1) is the pick for `debt` — same "negative amount owed"
 // semantics as its sole holding type below, mirroring the property/metals
@@ -86,7 +86,7 @@ export const genericEntitySymbol = {
   category: 'tag',
 } as const;
 
-// The iOS-16-safe fallback for any generic glyph that is an iOS-26 symbol,
+// The iOS-15.1-safe fallback for any generic glyph that is an iOS-26 symbol,
 // exported alongside so a consumer rendering the glyph OUTSIDE SymbolIcon can
 // pass it explicitly. Only `holding` needs one today.
 export const genericEntitySymbolFallback: Partial<

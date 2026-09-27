@@ -13,6 +13,7 @@ import Text from '@kiko/design-system/components/text';
 import Button from '@kiko/design-system/components/button';
 import ChipRow from '@kiko/design-system/components/chip-row';
 import SymbolIcon from '@kiko/design-system/components/symbol';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import SheetFooter from '@kiko/design-system/components/sheet-footer';
 import SelectableRow from '@kiko/design-system/components/selectable-row';
@@ -27,10 +28,10 @@ const AMOUNTS: readonly number[] = [1, 2, 3, 4, 5];
 const MEASURES: readonly TrendMeasure[] = ['contribution', 'frequency', 'rising'];
 
 // The trigger glyph reflects the APPLIED filter mode (the same `filter.mode`
-// `buttonLabel` reads below): the categories `tag` in Manual mode, the
+// `buttonLabel` reads below): the generic category glyph in Manual mode, the
 // ranking `chart.bar.fill` in Top mode.
 const MODE_SYMBOL: Record<TrendMode, string> = {
-  manual: 'tag',
+  manual: genericEntitySymbol.category,
   top: 'chart.bar.fill',
 };
 

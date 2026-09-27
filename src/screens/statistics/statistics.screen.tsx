@@ -63,6 +63,7 @@ import { bucketDaysForSpan } from '@kiko/statistics/buckets';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { defaultAccountColor } from '@kiko/holdings/entity-colors';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { buildTypeBreakdown } from '@kiko/statistics/type-breakdown';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
@@ -1112,7 +1113,7 @@ const StatisticsScreen: FC = () => {
                 options={categoryOptions}
                 selected={selectedCategories}
                 onToggle={toggleFilter(setSelectedCategories)}
-                triggerIcon="tag"
+                triggerIcon={genericEntitySymbol.category}
               />
             </Box>
 

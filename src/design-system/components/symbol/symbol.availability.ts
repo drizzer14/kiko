@@ -2,8 +2,8 @@ import { Platform } from 'react-native';
 
 // The SF Symbols this app renders that were introduced in iOS 26 (SF Symbols
 // 7). `SFSymbolView` renders a symbol the running OS cannot resolve as a BLANK
-// glyph, and the app floor is iOS 16, so each MUST fall back to an iOS-16-safe
-// glyph on an older device. Centralized here — NOT duplicated per call site —
+// glyph, and the app's deployment target is iOS 15.1, so each MUST fall back
+// to an iOS-15.1-safe glyph on an older device. Centralized here — NOT duplicated per call site —
 // so no consumer of `SymbolIcon` can render one of these without its fallback
 // (e.g. the transaction-type ChipRow's `split` chip, which passes only a plain
 // name string, still gets `arrow.branch` on an older device for free).

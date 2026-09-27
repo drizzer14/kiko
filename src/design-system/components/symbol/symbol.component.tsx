@@ -27,7 +27,7 @@ const SymbolIcon: FC<SymbolProps> = ({
   const resolvedSize = size ?? theme.iconSizes.body;
 
   // Two layers of iOS-availability guard (symbol.availability.ts): the resolved
-  // NAME deterministically swaps a known iOS-26 symbol for its iOS-16-safe
+  // NAME deterministically swaps a known iOS-26 symbol for its iOS-15.1-safe
   // fallback below iOS 26 (some newer symbols render blank rather than nil, so
   // the native net alone is not trusted for the known set), while the native
   // `fallbackName` is the runtime net for any other unresolved symbol.

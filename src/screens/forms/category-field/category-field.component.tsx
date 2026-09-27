@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import { ScrollView, type ScrollViewInstance } from 'react-native';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import { type ReactElement, useEffect, useRef, useState } from 'react';
 import FieldTrigger from '@kiko/design-system/components/field-trigger';
@@ -10,10 +11,10 @@ import SelectableRow from '@kiko/design-system/components/selectable-row';
 import { styles } from './category-field.styles';
 import type { CategoryFieldProps } from './category-field.props';
 
-// The glyph shown in the field before any category is picked — a neutral tag
-// placeholder, tinted secondary to read as "empty" like the DateField's own
-// unselected state.
-const PLACEHOLDER_ICON = 'tag';
+// The glyph shown in the field before any category is picked — the generic
+// category placeholder, tinted secondary to read as "empty" like the
+// DateField's own unselected state.
+const PLACEHOLDER_ICON = genericEntitySymbol.category;
 
 // A labeled single-select category picker: the field shows the current
 // selection (its SF Symbol + title, or a placeholder when none) and opens a

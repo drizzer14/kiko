@@ -389,7 +389,7 @@ describe('AccountDetailScreen', () => {
     await renderScreen();
 
     // Sync-now takes the iOS-26 rotate glyph (central availability map supplies
-    // the iOS-16-safe fallback for free); Disconnect takes the open-lock glyph.
+    // the iOS-15.1-safe fallback for free); Disconnect takes the open-lock glyph.
     const syncEntry = mockButtonProps.find((entry) => entry.children === 'Sync');
     const disconnectEntry = mockButtonProps.find((entry) => entry.children === 'Disconnect');
     expect(syncEntry?.icon).toBe('arrow.trianglehead.2.clockwise.rotate.90');

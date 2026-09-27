@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import DateRangeField from '@kiko/design-system/components/date-range-field';
 import FilterMenu, { type FilterOption } from '@kiko/design-system/components/filter-menu';
 
@@ -59,7 +60,7 @@ const TransactionFilterBar: FC<TransactionFilterBarProps> = ({
           options={categories}
           selected={selectedCategory}
           onToggle={onToggleCategory}
-          triggerIcon="tag"
+          triggerIcon={genericEntitySymbol.category}
           testID="category-filter-menu"
         />
       </Box>
