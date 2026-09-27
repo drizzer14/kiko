@@ -61,6 +61,19 @@ const BLOCKED_COMMANDS: string[] = [
   'builtin kill 0',
   'command -p pkill x',
   'pgrep x | xargs -0n 1 kill',
+  "gh pr create --body-file - <<'EOF'\n## What's new\nIt's done\nEOF\npkill x",
+  "x=$(cat <<'EOF'\nsee #12)\nPR #45's fix\nit's\nEOF\n); pkill -f cat",
+  'git commit -m "$(cat <<\'EOF\'\n#1 ((\nx)\nsay "hi\nEOF\n)"; pkill x',
+  "bash <<'EOF'\npkill x\nEOF",
+  'eval "$(cat <<\'EOF\'\npkill x\nEOF\n)"',
+  "cat <<'EOF'\nan unterminated body\npkill x",
+  "cat <<-'EOF'\n\tbody\n\tEOF\npkill x",
+  "cat <<'A' - <<'B'\na\nA\nb\nB\npkill x",
+  'nohup -- pkill x',
+  'command -- pkill x',
+  'pgrep x | xargs -J % kill %',
+  'env -S "pkill x"',
+  "echo `echo it's` ; pkill x",
 ];
 
 const ALLOWED_COMMANDS: string[] = [
@@ -132,6 +145,13 @@ const STASH_COMMANDS: string[] = [
   'eval git stash',
   'git commit -m "$(cat <<\'EOF\'\nfix: thing (closes #12)\nEOF\n)"; git stash',
   'gh pr create --body "$(cat <<\'EOF\'\n- (#12) done\nEOF\n)" && git stash',
+  "cat > /tmp/pr.md <<'EOF'\n## What's changed\n- it's fixed\nEOF\ngit stash",
+  "git commit -F - <<'EOF'\nfix: PR #45's regression\n\nIt's fixed.\nEOF\ngit stash",
+  "git commit -m \"$(cat <<'EOF'\nfix: it's fixed\nEOF\n)\"; git stash",
+  '(git stash)>/dev/null',
+  '(git stash) 2>&1',
+  '(git stash)# c',
+  'case x in a) git stash ;; esac',
 ];
 
 const HEREDOC_COMMANDS: string[] = [
@@ -147,6 +167,7 @@ const HEREDOC_COMMANDS: string[] = [
   'cat <<1\nhello\n1',
   'cat <<.\nhello\n.',
   'git commit -m "$(cat <<\'EOF\'\nfix: thing (see #12)\nEOF\n)" && cat > f.md <<EOF\n`x`\nEOF',
+  "bash <<'EOF'\ncat <<X\n`x`\nX\nEOF",
 ];
 
 const ALLOWED_GIT_AND_HEREDOC_COMMANDS: string[] = [
@@ -178,6 +199,11 @@ const ALLOWED_GIT_AND_HEREDOC_COMMANDS: string[] = [
   'git commit -m "$(cat <<\'EOF\'\nfix: thing (closes #12)\nEOF\n)"',
   'sudo -iu me npm test',
   'command -v pkill && command -V killall',
+  "git commit -m \"$(cat <<'EOF'\nfeat: debts (#12)\n\n## Summary\nIt's done; closes #45.\nShift: 1 << 2\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\"",
+  'gh pr create --title "x (#12)" --body "$(cat <<\'EOF\'\n## Summary\n- it\'s fixed (closes #45)\n- 1 << 2 and x << $n\n\n## Test plan\n- [x] make verify\nEOF\n)"',
+  "cat > /tmp/pr.md <<'EOF'\n## What's changed\n- it's fixed\n- write cat <<EOF only quoted\nEOF",
+  "git commit -F - <<'EOF'\nfix: PR #45's regression\n\nIt's fixed.\nEOF",
+  'diff <(ls a) <(ls b)',
 ];
 
 const denyReasonFor = (command: string): string => {
