@@ -2,6 +2,8 @@
 
 
 
+## 2026-09-27 ~18:00: feat/assets-debts 62c38965 MERGED into next = 13455209 (release 1.1; make verify 408/5562 coordinator-verified; 5 harness conflicts resolved feat-first + next-only lines). main unchanged. Harness text in next reaches sessions only after main + plugin bump (0.2.1 now).
+
 ## 2026-09-27 day: whole-release deep gate STOPPED by the user after 10 h (mutation only on small diffs; memory mutation-only-on-small-diffs; harness cap task held for the user's OK in session 8). Session 8 = shares-assets-research-c2.
 
 ## OVERNIGHT 2026-09-27 (user directive 00:58: work overnight, deep gate if in time, DEPLOY 09:30)
