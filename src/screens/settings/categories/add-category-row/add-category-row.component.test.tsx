@@ -4,7 +4,9 @@ import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-picker-modal';
 
 import AddCategoryRow from './add-category-row.component';
 
@@ -149,6 +151,10 @@ describe('AddCategoryRow', () => {
     await waitFor(() =>
       expect(mockCreate).toHaveBeenCalledWith({ title: 'Groceries', icon: 'tag', color: null }),
     );
+  });
+
+  it('offers the default new-category icon in the category picker pool', () => {
+    expect(KIKO_CATEGORIES_ICONS).toContain(genericEntitySymbol.category);
   });
 
   it('lets the user pick the default tag icon back after picking another', async () => {

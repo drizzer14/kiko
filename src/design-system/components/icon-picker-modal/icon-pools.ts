@@ -92,9 +92,10 @@ export const KIKO_ENTITIES_ICONS = [
 // `arrow.left.arrow.right`) is selectable in the picker. `percent`
 // is the eleventh default's icon (`loan_interest`, seeded by its
 // own LATER migration, 0039 — not part of `SEEDED_CATEGORIES`, see that
-// fixture's own comment), added here for the same reason. `tag` (the
-// generic category glyph a new category starts on) is added beyond the plan
-// doc's collection so a user who picks another icon can pick it back.
+// fixture's own comment), added here for the same reason. The generic
+// category glyph a new category starts on (`genericEntitySymbol.category`
+// in @kiko/holdings/entity-symbols) is added beyond the plan doc's
+// collection so a user who picks another icon can pick it back.
 export const KIKO_CATEGORIES_ICONS = [
   'airplane',
   'antenna.radiowaves.left.and.right',
