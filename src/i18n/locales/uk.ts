@@ -362,6 +362,7 @@ export const uk: typeof en = {
       quantity: 'Кількість',
       quantityError: 'Введіть кількість більше 0.',
       quantityPlaceholder: '10',
+      quantityWholeError: 'Введіть цілу кількість облігацій.',
       quarterly: 'Щоквартально',
       recapitalization: 'Капіталізація відсотків',
       remove: 'Видалити',

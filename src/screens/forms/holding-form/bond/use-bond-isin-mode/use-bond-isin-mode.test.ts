@@ -65,6 +65,7 @@ const baseParams = () => ({
   currency: 'UAH' as const,
   name: '',
   purchaseDate: null,
+  holdsStoredTerms: true,
   setPurchaseDate: jest.fn(),
   setFaceValue: jest.fn(),
   setCouponPct: jest.fn(),
@@ -491,6 +492,21 @@ describe('useBondIsinMode', () => {
       expect(result.current.registerTerms).toBeNull();
       expect(result.current.registerLoaded).toBe(loaded);
       expect(result.current.isinReasonKey).toBeNull();
+    });
+
+    it('blocks the stored ISIN once the form no longer holds its stored terms', async () => {
+      const params = editParams();
+      const { result, rerender } = await renderTheHook(params);
+
+      await act(async () => {
+        result.current.seedStoredIsin({ isin: VALID_ISIN, couponFrequency: 'annually' });
+      });
+      await act(async () => {
+        await rerender({ ...params, holdsStoredTerms: false });
+      });
+
+      expect(result.current.isStoredIsin).toBe(false);
+      expect(result.current.isinReasonKey).toBe('forms.holding.isinNotInRegister');
     });
 
     it('still blocks another ISIN the register does not list', async () => {

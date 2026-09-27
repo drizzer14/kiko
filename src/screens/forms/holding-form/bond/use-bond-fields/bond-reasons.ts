@@ -16,7 +16,7 @@ type BondValidationParams = {
 };
 
 export type BondFieldErrors = {
-  quantityError: 'forms.holding.quantityError' | null;
+  quantityError: 'forms.holding.quantityError' | 'forms.holding.quantityWholeError' | null;
   purchasePriceError: 'forms.holding.purchasePriceRequiredError' | null;
   faceValueError: 'forms.holding.faceValueError' | null;
   couponPctError: 'forms.holding.couponPctError' | null;
@@ -32,8 +32,17 @@ export type BondFieldErrors = {
 export type BondReasonKey = NonNullable<BondFieldErrors[keyof BondFieldErrors]>;
 
 // The bond quantity field's OWN reason, independent of the fields below it.
-const quantityFieldReasonKey = (quantity: string): BondFieldErrors['quantityError'] =>
-  parseAmount(quantity) > 0 ? null : 'forms.holding.quantityError';
+// A bond is a whole unit: the number-pad has no separator, but a paste or a
+// restored `.kiko` can still bring a fraction, which seeds no price per bond.
+const quantityFieldReasonKey = (quantity: string): BondFieldErrors['quantityError'] => {
+  const value = parseAmount(quantity);
+
+  if (!(value > 0)) {
+    return 'forms.holding.quantityError';
+  }
+
+  return Number.isInteger(value) ? null : 'forms.holding.quantityWholeError';
+};
 
 // The purchase-price field's OWN reason: only where the price is required.
 const purchasePriceFieldReasonKey = (

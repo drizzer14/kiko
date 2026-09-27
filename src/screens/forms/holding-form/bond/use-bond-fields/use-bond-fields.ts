@@ -54,6 +54,25 @@ const hasYieldTerms = (
   isStoredIsin: boolean,
 ): boolean => bondMode === 'manual' || registerTerms !== null || isStoredIsin;
 
+// An edit's unlisted stored ISIN saves in ISIN mode only as the bond was
+// stored; nothing stored is overwritten (user ruling).
+const holdsStoredTerms = (
+  saved: SavedBond | null,
+  form: {
+    currency: Currency;
+    faceValue: string;
+    couponPct: string;
+    couponFrequency: BondCouponFrequency;
+    maturityDate: number | null;
+  },
+): boolean =>
+  saved !== null &&
+  Money.fromMajor(form.currency, parseAmount(form.faceValue) || 0).minorUnits ===
+    saved.meta.faceValueMinorUnits &&
+  parseAmount(form.couponPct) === saved.meta.couponPct &&
+  form.couponFrequency === saved.meta.couponFrequency &&
+  form.maturityDate === saved.meta.maturityDate;
+
 // Seed the bond number/date fields from stored metadata. Minor-unit money
 // fields (face value, price per bond) convert back to grouped major strings;
 // plain-number fields (quantity, coupon %) render verbatim. A bond stored
@@ -170,6 +189,11 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
   const faceValueInputRef = useRef<TextInputInstance>(null);
   const couponPctInputRef = useRef<TextInputInstance>(null);
 
+  // The bond as stored when the edit form seeded, to tell which fields the
+  // user changed; null on create.
+  const savedBondRef = useRef<SavedBond | null>(null);
+  const seededPurchasePriceRef = useRef<SeededPurchasePrice | null>(null);
+
   // The Bond form's "ISIN / Manual" mode — its own state,
   // register lookup, and side effects all live in `useBondIsinMode`.
   const {
@@ -191,6 +215,13 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
     currency,
     name,
     purchaseDate,
+    holdsStoredTerms: holdsStoredTerms(savedBondRef.current, {
+      currency,
+      faceValue,
+      couponPct,
+      couponFrequency,
+      maturityDate,
+    }),
     setPurchaseDate,
     setFaceValue,
     setCouponPct,
@@ -200,11 +231,6 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
     setCurrency,
     setName,
   });
-
-  // The bond as stored when the edit form seeded, to tell which fields the
-  // user changed; null on create.
-  const savedBondRef = useRef<SavedBond | null>(null);
-  const seededPurchasePriceRef = useRef<SeededPurchasePrice | null>(null);
 
   // A stable identity while no bond field changes, so the yield below is not
   // solved again on every keystroke in Name or Notes.

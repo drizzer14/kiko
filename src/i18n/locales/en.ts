@@ -418,6 +418,7 @@ export const en = {
       quantity: 'Quantity',
       quantityError: 'Enter a quantity greater than 0.',
       quantityPlaceholder: '10',
+      quantityWholeError: 'Enter a whole number of bonds.',
       quarterly: 'Quarterly',
       recapitalization: 'Recapitalization',
       remove: 'Remove',

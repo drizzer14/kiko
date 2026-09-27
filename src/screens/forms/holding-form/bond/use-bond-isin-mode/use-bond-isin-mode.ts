@@ -28,6 +28,9 @@ export type UseBondIsinModeParams = {
   currency: Currency;
   name: string;
   purchaseDate: number | null;
+  // Whether the form still holds the face value, coupon, coupon frequency and
+  // maturity date the edited bond was stored with.
+  holdsStoredTerms: boolean;
   setPurchaseDate: (value: number) => void;
   setFaceValue: (value: string) => void;
   setCouponPct: (value: string) => void;
@@ -47,9 +50,11 @@ export type UseBondIsinModeParams = {
 // — "not found" and "offline with no cache" still share the same
 // Switch-to-Manual path; only the WORDING differs), the third once a match
 // IS found but its currency differs from the (locked) edit-mode holding
-// currency. An edit's own stored ISIN is exempt from the first pair: a
-// matured or delisted bond leaves the register, and its stored terms still
-// describe it (user ruling), so it saves them as they are. A plain top-level
+// currency. An edit's own stored ISIN is exempt from the first pair while the
+// form still holds its stored terms: a matured or delisted bond leaves the
+// register, and those terms still describe it, so it saves them as they are.
+// Terms typed over them are blocked like any unlisted ISIN, since nothing
+// stored is overwritten (user ruling); Switch to manual saves them. A plain top-level
 // function (not an inline closure in the hook body) so it carries its own
 // cognitive-complexity budget.
 const bondIsinReasonKey = (params: {
@@ -110,7 +115,8 @@ type UseBondIsinModeResult = {
   registerTerms: BondTerms | null;
   registerLoaded: boolean;
   // True while an edit's ISIN field still holds its stored ISIN and the form
-  // its stored terms, which then describe the bond even with no register match.
+  // its stored face value, coupon, coupon frequency and maturity date, which
+  // then describe the bond even with no register match.
   isStoredIsin: boolean;
   isinReasonKey: IsinReasonKey | null;
   // True while ISIN mode has a found match whose OWN `couponFrequency` the
@@ -148,6 +154,7 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
     currency,
     name,
     purchaseDate,
+    holdsStoredTerms,
     setPurchaseDate,
     setFaceValue,
     setCouponPct,
@@ -303,7 +310,7 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
     }
   }, [registerTerms?.isin, bondMode]);
 
-  const isStoredIsin = storedIsin !== null && isin === storedIsin;
+  const isStoredIsin = storedIsin !== null && isin === storedIsin && holdsStoredTerms;
   const isinReasonKey = bondIsinReasonKey({
     bondMode,
     isin,

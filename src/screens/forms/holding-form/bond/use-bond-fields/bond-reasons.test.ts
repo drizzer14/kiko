@@ -55,6 +55,19 @@ describe('bondFieldErrors — quantity', () => {
   it('accepts a positive quantity', () => {
     expect(bondFieldErrors({ ...baseParams(), quantity: '10' }).quantityError).toBeNull();
   });
+
+  it('accepts a grouped whole quantity', () => {
+    expect(bondFieldErrors({ ...baseParams(), quantity: '1 000' }).quantityError).toBeNull();
+  });
+
+  it.each(['2.5', '2,5'])(
+    'rejects a quantity that is not a whole number of bonds (%s)',
+    (quantity) => {
+      expect(bondFieldErrors({ ...baseParams(), quantity }).quantityError).toBe(
+        'forms.holding.quantityWholeError',
+      );
+    },
+  );
 });
 
 describe('bondFieldErrors — face value', () => {

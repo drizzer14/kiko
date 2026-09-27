@@ -39,7 +39,7 @@ import { bondYieldToMaturity } from '@kiko/bonds/yield-to-maturity';
 
 import type { EditContext } from '../../holding-type-form';
 
-import { useBondFields } from './use-bond-fields';
+import { useBondFields, type UseBondFieldsResult } from './use-bond-fields';
 
 // UA4000234215: a real register ISIN, checksum-valid.
 const VALID_ISIN = 'UA4000234215';
@@ -399,6 +399,52 @@ describe('useBondFields ISIN-mode edit of an ISIN the register does not list', (
     expect(mockWrittenMetadata.at(-1)).toMatchObject({ purchasePriceMinorUnits: 1_100_000 });
   });
 
+  // User ruling: nothing stored is overwritten. Terms typed over the stored
+  // ones describe another bond, one the register does not list either.
+  it('blocks the stored ISIN in ISIN mode once Manual typed over its terms', async () => {
+    const { result } = await renderBondFields(true);
+
+    await act(async () => {
+      result.current.seed(holding);
+    });
+    await act(async () => {
+      result.current.setBondMode('manual');
+    });
+    await act(async () => {
+      result.current.setFaceValue('2 000');
+      result.current.setCouponPct('12');
+      result.current.setMaturityDate(new Date(2030, 0, 1).getTime());
+    });
+    await act(async () => {
+      result.current.setBondMode('isin');
+    });
+
+    expect(result.current.isinReasonKey).toBe('forms.holding.isinNotInRegister');
+    expect(result.current.isValid).toBe(false);
+  });
+
+  it.each([
+    ['face value', (fields: UseBondFieldsResult) => fields.setFaceValue('2 000')],
+    ['coupon', (fields: UseBondFieldsResult) => fields.setCouponPct('12')],
+    ['coupon frequency', (fields: UseBondFieldsResult) => fields.setCouponFrequency('annually')],
+    [
+      'maturity date',
+      (fields: UseBondFieldsResult) => fields.setMaturityDate(new Date(2030, 0, 1).getTime()),
+    ],
+  ])('blocks the stored ISIN in ISIN mode once its %s changed', async (_field, change) => {
+    const { result } = await renderBondFields(true);
+
+    await act(async () => {
+      result.current.seed(holding);
+    });
+    await act(async () => {
+      change(result.current);
+    });
+
+    expect(result.current.isinReasonKey).toBe('forms.holding.isinNotInRegister');
+    expect(result.current.isValid).toBe(false);
+  });
+
   it('still blocks a create with an ISIN the register does not list', async () => {
     const { result } = await renderBondFields();
 
@@ -409,6 +455,75 @@ describe('useBondFields ISIN-mode edit of an ISIN the register does not list', (
     });
 
     expect(result.current.isinReasonKey).toBe('forms.holding.isinNotInRegister');
+    expect(result.current.isValid).toBe(false);
+  });
+});
+
+// A bond is a whole unit. A pasted or restored fractional quantity seeds no
+// price per bond, so Save must wait for a whole one rather than drop the
+// stored price.
+describe('useBondFields whole-number quantity', () => {
+  const storedBond = (quantity: number) =>
+    ({
+      currency: 'UAH',
+      metadata: {
+        quantity,
+        faceValueMinorUnits: 100_000,
+        couponPct: 9,
+        purchasePriceMinorUnits: 1_000_000,
+        purchaseDate: new Date(2026, 0, 1).getTime(),
+        maturityDate: new Date(2028, 0, 1).getTime(),
+        bondKind: 'government',
+        couponFrequency: 'semiannually',
+        entryMode: 'manual',
+      },
+    }) as unknown as HoldingRow;
+
+  it('blocks Save for a quantity of 2.5, and keeps the stored total once it is 3 again', async () => {
+    const holding = storedBond(3);
+    mockStoredMetadata = holding.metadata;
+    const { result } = await renderBondFields(true);
+
+    await act(async () => {
+      result.current.seed(holding);
+    });
+    await act(async () => {
+      result.current.setQuantity('2.5');
+    });
+
+    expect(result.current.fieldErrors.quantityError).toBe('forms.holding.quantityWholeError');
+    expect(result.current.isValid).toBe(false);
+
+    await act(async () => {
+      result.current.setQuantity('3');
+    });
+
+    expect(result.current.isValid).toBe(true);
+
+    await result.current.saveEdit({
+      holdingId: 'h1',
+      name: 'Bond',
+      color: null,
+      currency: 'UAH',
+      isSynced: false,
+      editingHolding: holding,
+      book: EMPTY_PRICE_BOOK,
+    });
+
+    expect(mockWrittenMetadata.at(-1)).toMatchObject({
+      quantity: 3,
+      purchasePriceMinorUnits: 1_000_000,
+    });
+  });
+
+  it('shows the quantity error on an edit of a restored non-whole quantity', async () => {
+    const { result } = await renderBondFields(true);
+
+    await act(async () => {
+      result.current.seed(storedBond(2.5));
+    });
+
+    expect(result.current.fieldErrors.quantityError).toBe('forms.holding.quantityWholeError');
     expect(result.current.isValid).toBe(false);
   });
 });

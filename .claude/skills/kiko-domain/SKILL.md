@@ -1175,7 +1175,14 @@ stored price on an edit (review I1). `pricePerBondText` seeds the edit
 field with `scaleMinorUnits(total, 1, quantity)` in one exact BigInt
 step, rounded half away from zero to the minor unit; a quantity that is
 not a whole, positive number of bonds seeds a blank price (the BigInt
-division cannot take it). While both the price and the
+division cannot take it). A bond is a whole unit, so the quantity field
+rejects a fraction (`bond-reasons.ts`: `quantityWholeError`, "Enter a
+whole number of bonds."; blank/zero keep `quantityError`) — the
+number-pad has no separator, but a paste or a restored `.kiko` can bring
+one. An edit of a restored non-whole quantity shows that error and
+blocks Save; the stored metadata is not touched until the user types a
+whole quantity. Pins: '2.5' blocks Save; a stored 3-bond total, changed
+to 2.5 and back to 3, re-saves unchanged. While both the price and the
 quantity text still equal what the edit seeded, Save writes the stored
 total unchanged — 10 000.00 over 3 bonds seeds 3 333.33, which would
 otherwise re-save as 9 999.99. Pins: 98 x "1 076,72" → 10_551_856;
@@ -1253,8 +1260,15 @@ check for a price typed into the old total field).
 An ISIN-mode EDIT of its own stored ISIN that the register no longer
 lists (matured/delisted, or offline with an empty cache) SAVES — USER
 RULING: `useBondIsinMode` keeps the seeded `storedIsin`, and
-`bondIsinReasonKey` returns no reason while the ISIN field still holds
-it and nothing matched. `BondIsinSection` still shows the "not in the
+`bondIsinReasonKey` returns no reason while nothing matched and
+`isStoredIsin` holds: the ISIN field still holds the stored ISIN AND
+the form still holds the stored face value, coupon %, coupon frequency
+and maturity date (`holdsStoredTerms` in `useBondFields`, compared as
+values against the seeded `savedBondRef`). USER RULING: nothing stored
+is overwritten — a change to any of those four (for example typed in
+Manual, then back to ISIN) blocks the unlisted ISIN in ISIN mode again
+with `isinNotInRegister`, and Switch to manual saves it honestly as
+Manual; the yield row hides with it. `BondIsinSection` still shows the "not in the
 register" / "not loaded" note with its Switch-to-manual button (the
 note reads `foundTerms`, not the reason). Save writes the stored terms
 unchanged (name, coupon, face, frequency, maturity, currency) with
