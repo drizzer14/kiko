@@ -21,6 +21,8 @@ Rules:
 - For a live API probe, record the exact request URL (credentials redacted)
   and the observed response shape (status, key fields) — not just a
   paraphrase of what happened.
+- On an HTTP 403 from a site, return the exact URL so the coordinator or
+  ops can `curl` it (you have no Bash). Never guess the page's content.
 - Return your findings to your caller in your report. You write no files —
   the caller (usually the coordinator) persists anything durable via
   `kiko:scribe`.

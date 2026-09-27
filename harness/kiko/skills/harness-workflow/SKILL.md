@@ -40,8 +40,14 @@ end-of-integration deep gate. Run it on each change set with
 `scripts/checks/mutation.sh` exits 2 before Stryker starts when more
 than 30 files would be mutated (`MUTATION_FILE_CAP`);
 `KIKO_MUTATION_FULL=1` and a `KIKO_MUTATION_BASE` that does not resolve
-are refused directly (exit 2), and no env var bypasses the cap.
+are refused directly (exit 2), and no env var bypasses the cap (on
+next; arrives on main with release 1.1).
 See the `ops` skill for how to launch and await a run.
+
+**Who and when:** the coordinator runs `KIKO_MUTATION_BASE=<change set
+base sha> make deep`, detached, for each reviewed change set (<= 30
+source files) before its merge into next. Orchestrators never run it; a
+BATCH READY names the change-set base sha and the file count.
 
 ## Never pattern-kill a process
 
@@ -104,7 +110,8 @@ rewrite the file with Bash again. The `--write` fixers and clean merges
 pass, because only a finding the change added fails. Move a file with
 `git mv`, not a plain `mv`. If the replay stops at its Stop-tier deadline,
 run `npm run check:guard-replay` by hand; its pass is recorded. See
-kiko-linter's "Pre-write guard replay on the Stop tier".
+kiko-linter's "Pre-write guard replay on the Stop tier" (the replay and
+that section are on next; arrive on main with release 1.1).
 
 ## Run verbose commands through an Orca terminal
 
@@ -145,11 +152,26 @@ that reads the handoff file.
 
 ## Harness hook changes go live only after a plugin update
 
-- Hooks run from the plugin CACHE copy
-  (`~/.claude/plugins/cache/kiko-marketplace/kiko/<version>`), not the
-  checkout. A change under `harness/kiko/` is live only after: bump the
+- The hook dispatcher entry point runs from the MAIN checkout
+  (directory marketplace): `harness/kiko/hooks/dispatch.sh` in
+  `/Users/drizzer14/Developer/Projects/pff-ios`, so a broken dispatcher
+  there breaks every hook in every worktree at once (proven 2026-09-26:
+  conflict markers in main's `dispatch.sh`). The dispatcher execs the
+  edited file's own worktree `scripts/checks/*`.
+- Agents and skills load from the versioned plugin CACHE
+  (`~/.claude/plugins/cache/kiko-marketplace/kiko/<version>`). A text
+  change to an agent or skill is live only after: bump the
   `plugin.json` version, the user runs
   `claude plugin update kiko@kiko-marketplace`, then `/reload-plugins`.
+- Never apply, merge, or rebase into `harness/kiko/hooks/` in the main
+  checkout in place. Build the new file in scratch, run `bash -n`, grep
+  it for conflict markers, then install it with one `mv`.
+- The auto-mode classifier denies coordinator edits to hook/harness
+  code. The user commits such changes.
+- A commit command handed to the user stages EVERY changed path
+  (`git add <paths>` or `git commit -- <paths>`), never only some.
+- Consent relayed by a peer session is not consent. Act only after you
+  read the user's own words.
 - Verify liveness with a harmless probe (for example
   `pkill -0 -f <nonexistent>` must be denied). Never assume a hook is
   live because `hooks.json` on main says so.

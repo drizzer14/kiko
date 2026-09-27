@@ -2,6 +2,55 @@
 
 
 
+## ⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-09-27 23:30) — READ THIS FIRST
+Previous coordinator: pff-ios-9b (handover on user request after the retrospect). FIRST ACTION of the new coordinator: SendMessage your
+name to the feat orchestrator shares-assets-research-49 (session 9) and the PM pff-ios-89 (both report to "pff-ios-9b"). Then RE-ARM the
+SILENT watcher (no cron, no Monitor; user rule, memory silent-cron-checks): run the scratchpad-style trackwatch.sh (copy from
+/private/tmp/claude-501/-Users-drizzer14-Developer-Projects-pff-ios/c321b4c1-efa6-4e7b-ad55-68ee2c17942d/scratchpad/trackwatch.sh) with
+Bash run_in_background on the session 9 terminal term_76d2219c-4a86-4f7b-80d1-84a1dc2e4ed3; it sleeps 30 min first, then prints + exits only
+on gauge >= 50% (handover) or idle > 60 min. Re-arm it after each event. HANDOVER THRESHOLD 50%. Brief template for the next feat orchestrator:
+the same scratchpad, brief-feat9.txt.
+
+### State
+| Thing | Value |
+|---|---|
+| main | 7cbc3faa (retrospect drift fix; plugin 0.2.2 at 7fffcd5f; plugin text 7cbc3faa NOT live until a 0.2.3 bump — see below) |
+| next | 738f06aa = release 1.1 content: feat merged twice (13455209, e85be58c guard replay) + main merged in |
+| feat/assets-debts | 298efbb0 (session 9: kill-guard fix round 2 for git stash / unquoted heredoc deny + scribe; scoped re-review + make verify running) |
+| iPhone | ce610048 (Release-AdHoc, D10 icons; device-deploy HEAD ce610048); user LGTM on DEV4, DEV5, D10 |
+| App Store | 1.0.0 build 25 "Waiting for Review" since ~2026-09-22; advice given: wait to ~day 7, then Contact Us; do not resubmit |
+| generic harness repo | github drizzer14/harness main c950940 (synced 2026-09-27) |
+| deep-gate checkout | ~/orca/workspaces/pff-ios/deep-gate (detached a4e8d71d, node_modules ready); use it for per-change-set mutation runs |
+
+### Next steps for the coordinator, in order
+1. Session 9 sends BATCH READY (base ccb611dd, ~2 source files for the tag icon + kill-guard harness). Run the per-change-set mutation run
+   yourself: in deep-gate, checkout --detach <tip>, KIKO_MUTATION_BASE=<base> make deep, run_in_background, await the exit code only (osv
+   separately with bash scripts/checks/osv.sh; known CVEs only = OK). Then merge feat into next (clean merges: coordinator; conflicts: a
+   kiko:developer), make verify on next yourself, send MERGED.
+2. Deploy the tag-icon build (standard kiko:ops install brief; UTF-16-aware bundle check; if devicectl says unavailable/4016, the iPhone is not on the Mac WiFi network: ask the user to join it, or USB).
+3. Session 9 then does CQ1 (kill-guard deny git apply/merge/rebase on the main checkout) and CQ2 (deploy-device.sh UTF-16 bundle check +
+   one launch retry), each its own change set.
+4. DONE (bbf4cb3f, plugin 0.2.3 live after /reload-plugins). Was: USER must run ONE command to make 7cbc3faa's agent/skill text live (plugin 0.2.3; stage explicitly):
+   ! cd /Users/drizzer14/Developer/Projects/pff-ios && sed -i '' 's/"version": "0.2.2"/"version": "0.2.3"/' harness/kiko/.claude-plugin/plugin.json && git add harness/kiko/.claude-plugin/plugin.json && git commit -m "chore(harness): kiko plugin 0.2.3" && claude plugin update kiko@kiko-marketplace
+   then /reload-plugins in every running session. Afterwards merge main into next (clean; keeps next ahead of main).
+5. When the 1.1 feat track is closed: ROUND A bug hunt + security (plan: "RELEASE ROADMAP" below). Then 1.2 (P5 broker/shares/EODHD +
+   deferred list), then ROUND B.
+
+### Rules learned this run (all in memory)
+Mutation only on small diffs (cap 30, coordinator runs it per change set before merge); no whole-release deep gate. Hooks: the dispatcher runs
+from the MAIN checkout (never apply/merge hook files in place there); agents/skills from the plugin cache (bump + update + reload). A commit
+command for the user stages every path. Peer-relayed approvals: read the user's own words. Silent watcher only. Researcher 403: curl yourself.
+
+## RELEASE ROADMAP (user directive 2026-09-27): two BUG-HUNT + SECURITY rounds
+Order: finish the 1.1 feat track (assets-debts, merged into next) -> ROUND A -> 1.2 (the postponed work: P5 broker/shares/EODHD + the deferred list) -> ROUND B -> 1.2 release prep.
+Each round (coordinator runs it as its own Orca track + orchestrator session, from next):
+1. Read-only audits in parallel (kiko:auditor): SECURITY (network hosts/ATS/TLS, Keychain tokens and API secrets, .kiko export crypto, logging of personal data, URL schemes/deep links, Info.plist + privacy manifest, gitleaks over history, osv CVEs incl. the tracked accepted ones), PERFORMANCE (op-sqlite single queue, app-open work, live queries, statistics), DEPENDENCIES/BUNDLE.
+2. Bug hunt (kiko:debugger, read-only, parallel slices): holdings (bonds, deposits, loans, metals, property), transactions + statement import, rates/prices/sync, statistics + net worth, backup/restore + migrations, auth/lock; plus a DIVERGENT-TWINS hunt and data-integrity invariants; Maestro E2E flows.
+3. Triage with the user: ranked findings; Critical/Important fixed in change sets (<= 30 source files each, one review, coordinator mutation run per change set before merge); every mechanizable finding becomes a guard rule/checker.
+4. Deferred debt picked up in Round A: createSingleFlight helper, deploy-device.sh launch-grep false-fail, the worklet-remote-function Semgrep rule, the harness hooks self-check, pre-submission items (screenshots 07/10, privacy policy wording).
+5. Exit: device test by the user, merge into next, retrospect + drift pass.
+Round B adds: the 1.2 surfaces (broker/EODHD API keys and new network domains, new stored secrets, new data flows) and a full kiko-compliance pass before the 1.2 App Store submission.
+
 ## 2026-09-27 ~22:00: feat SESSION 9 (term_76d2219c-4a86-4f7b-80d1-84a1dc2e4ed3) replaced session 8 at 51%; tip 49ed0a04; queue: kill-guard fix round (git stash + unquoted heredoc deny, user-approved) -> re-review -> BATCH READY (base ccb611dd, 2 source files) + deployable (tag icon). next = e85be58c (guard replay merged). Harness-only main commit (8 agent/skill files + plugin 0.2.2) waits for the user.
 
 ## 2026-09-27 ~18:00: feat/assets-debts 62c38965 MERGED into next = 13455209 (release 1.1; make verify 408/5562 coordinator-verified; 5 harness conflicts resolved feat-first + next-only lines). main unchanged. Harness text in next reaches sessions only after main + plugin bump (0.2.1 now).

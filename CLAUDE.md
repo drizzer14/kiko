@@ -51,7 +51,11 @@ Composite scripts:
   in `scripts/checks/mutation.sh`) exits 2 before Stryker starts;
   `KIKO_MUTATION_FULL=1` (whole project) and a `KIKO_MUTATION_BASE`
   that does not resolve are refused directly (exit 2), and no env var
-  bypasses the cap. There is no release-scope deep gate. The mutation step tees its output to a stable,
+  bypasses the cap. There is no release-scope deep gate. **Who and when:**
+  the coordinator runs `KIKO_MUTATION_BASE=<change set base sha> make
+  deep`, detached, for each reviewed change set (<= 30 source files)
+  before its merge into next. Orchestrators never run it; a BATCH READY
+  names the change-set base sha and the file count. The mutation step tees its output to a stable,
   tailable progress log and prints an ETA from run history — a
   per-mutant rate (seconds/mutant) derived from past runs, times this
   run's actual mutant count, printed live the moment Stryker reports
