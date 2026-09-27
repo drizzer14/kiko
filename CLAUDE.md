@@ -28,6 +28,7 @@ below).
 | `npm run check:screen-imports` | `scripts/checks/screen-imports.sh` | a cross-screen import (`kiko-no-cross-screen-import`) fails project-wide | project-wide (`check:all`) + pre-write guard |
 | `npm run check:feature-imports` | `scripts/checks/feature-imports.sh` (+ `feature-imports.js`) | an import that crosses a feature without its barrel (`kiko-feature-imports`, B2) fails; so do the `--tree` layout findings over `src/` (loose file at a container root, unit without `index.ts`, undeclared container, a barrel that re-exports test code or another feature, a feature-level value-import cycle) | project-wide (`check:all`) + pre-write guard |
 | `npm run check:blank-line-separation` | `scripts/checks/blank-line-separation.sh` | a blank-line-separation violation (`kiko-blank-line-separation`) fails project-wide | project-wide (`check:all`) + pre-write guard |
+| `npm run check:guard-replay` | `scripts/checks/guard-replay.sh` (+ `.js` planner/runner) — the unchanged pre-write guard (`pre-write-guard.sh`), run once per `.ts`/`.tsx` file the session changed, with BEFORE = the file at HEAD, or at the parent of the earliest commit this worktree made since the last pass, and AFTER = the working-tree file | any finding the change ADDED fails, naming file, rule, and line (a Bash/python write or its commit bypassed the pre-write guard); a pre-existing finding does not; a replay or guard that could not run fails too (fail closed) | medium (Stop/SubagentStop) + project-wide (`check:all`) |
 | `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
 | `npm run check:mutation` | Stryker (Jest runner) | mutation score below 60 (break threshold; ratchet up over time) fails; more than 30 source files to mutate (`MUTATION_FILE_CAP` in `mutation.sh`) fails before Stryker starts — no env var bypasses the cap | deep only |
 | `bash scripts/checks/osv.sh` | osv-scanner | any known CVE in `package-lock.json` fails | deep only |
@@ -37,7 +38,7 @@ Composite scripts:
 - `npm run check:all` — the fast + medium tier checks, in order:
   lint, dup, knip, deps, security, rules, plist, secrets, overrides,
   import-order, full-word-identifiers, screen-imports, feature-imports,
-  blank-line-separation, typecheck.
+  blank-line-separation, guard-replay, typecheck.
 - `npm run check:deep` — the heavy tier: mutation testing, then
   osv-scanner. It is not wired to any hook because it is slow; it is a
   manual checkpoint. **Mutation testing runs per SMALL change set only,
@@ -73,7 +74,13 @@ files, fixtures, check wrappers, the Info.plist, and the Xcode
 project). A session that edited
 only a rule, a fixture, or the plist is the one most likely to have
 broken a rule (or unpinned a credential-bearing host), so it must not
-be the one that runs nothing. `tsc --noEmit` is project-wide by
+be the one that runs nothing. The medium tier also replays the
+pre-write guard (`scripts/checks/guard-replay.sh`) on every `.ts`/`.tsx`
+file the session changed outside `Edit|Write|MultiEdit` — in the working
+tree, and in the commits this worktree made since the replay last passed
+— and runs that replay alone when only HEAD moved (a turn that only
+committed); see kiko-linter's "Pre-write guard replay on the Stop tier".
+`tsc --noEmit` is project-wide by
 nature — a type error surfaces in the file that CONSUMES a changed
 type, not only in the file that was edited — so it never takes a
 changed-file argument. Both wrappers exit `2` on failure and print

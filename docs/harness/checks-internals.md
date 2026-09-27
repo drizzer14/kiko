@@ -60,6 +60,29 @@ the same HEAD. No env var bypasses the cap: mutation testing runs per
 small change set, with `KIKO_MUTATION_BASE` set to that change set's
 own base commit.
 
+## Guard replay: fingerprint and reflog mark
+
+`guard-replay.sh` runs inside `medium.sh`'s lock and keeps two records
+in the per-worktree state dir:
+
+- The dedup fingerprint (key `guard-replay`) hashes the plan (each
+  file with its BEFORE commit sha and path, which pin the BEFORE
+  content), each working-tree file's hash, and the engine: every
+  `scripts/checks/*.js` and `*.ts`, `pre-write-guard.sh`,
+  `guard-replay.sh`, and `rules/semgrep-prewrite.yml`. A skip is
+  recorded only on a pass.
+- The reflog mark (key `guard-replay-mark`, from `harness_replay_mark`
+  in `_lib.sh`) is the newest HEAD reflog entry, read when the run
+  starts and recorded on a pass. The next run replays only the commits
+  made from that time on. `medium.sh` compares it with the current
+  entry: when HEAD moved but no file changed, it runs the replay alone
+  (about 50 ms to decide) and skips every other check.
+
+Measured on 2026-09-27 (10-core Mac, Semgrep 1.175): a cold replay
+takes about 2.3 s for 1 changed file, 4.1 to 5.1 s for 5 files, and
+6.6 s for 12 files (four guard calls at a time; each is one Semgrep
+start). A dedup skip takes about 0.3 s.
+
 ## `osv-scanner` is never deduped
 
 `osv-scanner` is deliberately excluded from the dedup scheme: its

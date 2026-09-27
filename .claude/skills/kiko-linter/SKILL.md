@@ -865,6 +865,59 @@ The baseline pass re-runs only the Node rules that found something in
 a new tree. See `conflictSides`, `afterTreesFor`, and
 `throwIfEditBrokeASide` in `scripts/checks/pre-write-guard.js`.
 
+## Pre-write guard replay on the Stop tier
+
+The pre-write guard sees only `Edit`/`Write`/`MultiEdit`. A Bash or
+python write (a heredoc, `sed -i`, a script) and a commit of it reach
+disk unchecked. A Bash deny hook is the wrong fix: legitimate commands
+write source too (the `--write` fixers, `git merge`). The replay
+catches these writes after they land instead.
+
+- **Where.** `scripts/checks/guard-replay.sh` (+ `guard-replay.js`, the
+  planner and runner). `medium.sh` runs it on `Stop`/`SubagentStop`
+  under its lock. It is also `npm run check:guard-replay`, part of
+  `check:all`.
+- **Engine.** It runs the unchanged `pre-write-guard.sh` once per file,
+  as a `Write` of the working-tree content. The BEFORE content sits at
+  the same relative path in a scratch `CLAUDE_PROJECT_DIR`. The
+  new-finding diff, both override forms, `isInScope`, conflict-marker
+  handling, and fail-closed handling are therefore the guard's own. A
+  new guard rule reaches the replay with no change here.
+- **Files and BEFORE.** Every `.ts`/`.tsx` file changed in the working
+  tree against HEAD (tracked and untracked, staged renames followed),
+  plus every file touched by this worktree's own commits since the last
+  pass. Those commits are HEAD reflog entries `commit`,
+  `commit (amend)`, and `commit (initial)` still in HEAD's history.
+  BEFORE is the file at the parent of the earliest such commit that
+  touched it, otherwise at HEAD. When the file is absent there, it is a
+  new file (every finding is new, as in the guard). AFTER is always the
+  working-tree file, so a later fix clears the finding. Merges,
+  cherry-picks, pulls, rebases, and resets bring in commits gated
+  elsewhere, so they are not replayed. With no pass recorded yet (a
+  fresh worktree, or lost state), only commits from the last 24 h that
+  no other local branch has count.
+- **Failure.** Exit 2 with the structured block. It holds each failing
+  file's guard reason (file, rule, line) and says the write bypassed the
+  pre-write guard. A guard crash or timeout arrives as the guard's own
+  "could not check" deny and fails too. A replay that cannot run (git,
+  node) fails closed with its own block.
+- **Dedup and speed.** See `docs/harness/checks-internals.md`'s "Guard
+  replay: fingerprint and reflog mark" for the fingerprint, the reflog
+  mark, and the measured time.
+- **Known limits.** A merge's conflict resolution committed with
+  `git commit` (`commit (merge)`) is not replayed. A commit amended or
+  reset away before the turn ended is not replayed; its replacement is.
+  A plain `mv` (unstaged) reads as a delete plus a new file, so every
+  finding the moved file carries counts as new: move with `git mv`. If
+  a merge changed a file that the session also committed in the same
+  turn, a finding the merge brought in reads as new.
+- **Tests.** `__tests__/guard-replay.test.ts`: a throwaway repository
+  with a linked worktree, copies of the real wrappers and rule file,
+  and the real Semgrep. It covers a Bash-written violation (tracked and
+  new file), a committed one, a fixed one, a pre-existing one, the
+  fixers, a merge, the first-run bound, the dedup skip, a crashing
+  engine, and `medium.sh` itself.
+
 ## Harness and hook changes land through a worktree
 
 Merge a harness/hook change in a worktree first, never straight into
