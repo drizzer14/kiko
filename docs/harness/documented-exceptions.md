@@ -233,13 +233,24 @@ verified usage, not dead weight:
   by `__tests__/pre-write-guard.test.ts`'s `kiko-no-cross-screen-import`
   case (via `pre-write-guard.sh`) — none of which Jest's static import
   graph makes Knip see as reachable.
-- **No `knip.json` `ignore` for `scripts/checks/feature-imports.js` or
-  `scripts/checks/specifier-scanner.js`** (not an exception, recorded so
-  nobody adds one): the `report:feature-imports` package.json script runs
-  `node scripts/checks/feature-imports.js --report`, which Knip's script
-  scan sees, and `feature-imports.js` `require`s `specifier-scanner.js`.
-  If that script is ever removed, `feature-imports.js` needs the same
-  `ignore` entry as `screen-imports.js` above.
+- **`knip.json` `ignore`**: `scripts/checks/feature-imports.js` — the same
+  shape as `screen-imports.js` above. `scripts/checks/feature-imports.sh`
+  reaches it only via a `node` invocation (per-file, project-wide and
+  `--tree`), and `scripts/checks/pre-write-guard.js` only via
+  `runSpawnedNodeChecker`'s `spawnSync` (the `kiko-feature-imports`
+  `NODE_RULES` row). No package.json script names it since the
+  sweep-only `report:feature-imports` script (and its `--report`/`--json`
+  modes) was removed once the sweep reached 0 findings. Exercised by
+  `__tests__/feature-imports.test.ts` (direct `node feature-imports.js`
+  runs plus `feature-imports.sh` as a subprocess) and by
+  `__tests__/pre-write-guard.test.ts`'s `kiko-feature-imports` case —
+  none of which Jest's static import graph makes Knip see as reachable.
+- **`knip.json` `ignore`**: `scripts/checks/specifier-scanner.js` — the
+  shared specifier scanner. Its only importers are `feature-imports.js`
+  and `screen-imports.js` (a static `require`), and both are themselves
+  in `ignore` above, so Knip never walks into it and reports it as an
+  unused file. It is reached exactly as far as those two checkers are,
+  and exercised through their tests.
 - **`scripts/checks/feature-imports.js`'s `TEST_ONLY` allowlist**
   (`kiko-feature-imports`): the paths below may be imported deep, through
   `@kiko/<path>`, and only by a test file. No barrel may export them

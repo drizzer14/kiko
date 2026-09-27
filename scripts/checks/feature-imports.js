@@ -12,9 +12,8 @@
 // A NODE check, not a Semgrep rule: deciding which feature a relative
 // specifier lands in needs it resolved against the importing file's path.
 //
-// Modes: `<files…>` (exit 1 on findings), `--report [files…]` and
-// `--json [files…]` (the sweep's counter and codemod input, always exit 0),
-// `--tree [srcRoot]` (layout checks that need the whole tree).
+// Modes: `<files…>` (exit 1 on findings), `--tree [srcRoot]` (layout
+// checks that need the whole tree).
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -164,11 +163,6 @@ function featureOf(sourceRelative) {
 
   return { container, feature: null };
 }
-
-const groupOf = (sourceRelative) =>
-  sourceRelative.startsWith('design-system/components/')
-    ? 'design-system/components'
-    : sourceRelative.split('/')[0];
 
 function isTestFile(root, absolute) {
   const relative = path.posix.relative(root, absolute);
@@ -324,7 +318,7 @@ function classifyRelative(context, target, specifier, suggestion) {
     target.namesBarrel &&
     inOpenContainerWith(context, target.location)
   ) {
-    return { allowed: 'sibling' };
+    return null;
   }
 
   const betweenScreens =
@@ -339,27 +333,16 @@ function classifyRelative(context, target, specifier, suggestion) {
   };
 }
 
-function classifyAlias(target, suggestion) {
-  if (target.namesBarrel) {
-    return null;
-  }
+// A test-only path has no barrel to go through.
+const classifyAlias = (target, suggestion) =>
+  target.namesBarrel || target.jestCall || target.testOnly
+    ? null
+    : { kind: 'alias-skips-barrel', suggestion };
 
-  if (target.jestCall) {
-    return { allowed: 'jest-inner-file' };
-  }
-
-  if (target.testOnly) {
-    return { allowed: 'test-only' };
-  }
-
-  return { kind: 'alias-skips-barrel', suggestion };
-}
-
-// One specifier's verdict: a `{ kind, suggestion }` finding, an
-// `{ allowed }` exemption the report counts, or null when the rule does not
-// apply. A jest call keeps its resolved file, because Jest mocks by
-// resolved file: a mock of a barrel never reaches the feature's own
-// relative importers.
+// One specifier's verdict: a `{ kind, suggestion }` finding, or null when
+// the import is allowed. A jest call keeps its resolved file, because Jest
+// mocks by resolved file: a mock of a barrel never reaches the feature's
+// own relative importers.
 function classify(context, entry) {
   const target = describeTarget(context, entry);
 
@@ -385,40 +368,31 @@ function classify(context, entry) {
     : classifyAlias(target, suggestion);
 }
 
-// Every finding in one file, plus the exemptions `--report` counts.
 function analyze(filePath, source) {
   const context = importerContext(filePath);
-  const findings = [];
-  const allowed = [];
 
   if (context === null) {
-    return { findings, allowed };
+    return [];
   }
 
-  for (const entry of findSpecifiers(source, FEATURE_PATTERNS)) {
+  return findSpecifiers(source, FEATURE_PATTERNS).flatMap((entry) => {
     const verdict = classify(context, entry);
 
-    if (verdict?.allowed) {
-      allowed.push(verdict.allowed);
-    } else if (verdict) {
-      const target = resolveTarget(context.root, context.absolute, entry.specifier);
-
-      findings.push({
-        line: entry.line,
-        specifier: entry.specifier,
-        kind: verdict.kind,
-        suggestion: verdict.suggestion,
-        group: groupOf(target),
-        callKind: entry.callKind,
-      });
-    }
-  }
-
-  return { findings, allowed };
+    return verdict === null
+      ? []
+      : [
+          {
+            line: entry.line,
+            specifier: entry.specifier,
+            kind: verdict.kind,
+            suggestion: verdict.suggestion,
+          },
+        ];
+  });
 }
 
 function findViolations(filePath, source) {
-  return analyze(filePath, source).findings.map((finding) => ({
+  return analyze(filePath, source).map((finding) => ({
     line: finding.line,
     matchedText: `${finding.specifier} [${finding.kind}]`,
     detailText: finding.suggestion,
@@ -755,64 +729,6 @@ function findTreeViolations(sourceRoot) {
 
 // ---- CLI ----
 
-function defaultFiles() {
-  const override = process.env.FEATURE_IMPORTS_SOURCE_ROOT;
-  const roots = override
-    ? [override]
-    : ['src', '__tests__', 'e2e', 'App.tsx'].map((name) => path.join(ROOT, name));
-
-  return roots
-    .filter((candidate) => fs.existsSync(candidate))
-    .flatMap((candidate) =>
-      fs.statSync(candidate).isFile() ? [candidate] : walkSourceFiles(candidate),
-    )
-    .sort();
-}
-
-function analyzeFiles(files) {
-  return files.map((file) => ({ file, ...analyze(file, fs.readFileSync(file, 'utf8')) }));
-}
-
-function countLines(values) {
-  const counts = new Map();
-
-  for (const value of values) {
-    counts.set(value, (counts.get(value) ?? 0) + 1);
-  }
-
-  return [...counts.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([name, count]) => `  ${name}: ${count}`);
-}
-
-function formOf(finding) {
-  if (!isRelativeSpecifier(finding.specifier)) {
-    return 'alias';
-  }
-
-  return finding.callKind === 'jest' ? 'relative jest call' : 'relative';
-}
-
-function printReport(results) {
-  const findings = results.flatMap((result) => result.findings);
-  const allowed = results.flatMap((result) => result.allowed);
-  const files = results.filter((result) => result.findings.length > 0).length;
-  const lines = [
-    'by target group:',
-    ...countLines(findings.map((finding) => finding.group)),
-    'by kind:',
-    ...countLines(findings.map((finding) => finding.kind)),
-    'by form:',
-    ...countLines(findings.map(formOf)),
-    `total: ${findings.length} violations in ${files} files`,
-    ...['sibling', 'test-only', 'jest-inner-file'].map(
-      (name) => `allowed ${name}: ${allowed.filter((value) => value === name).length}`,
-    ),
-  ];
-
-  process.stdout.write(`${lines.join('\n')}\n`);
-}
-
 function runTreeMode(sourceRoot) {
   const violations = findTreeViolations(sourceRoot ?? path.join(ROOT, 'src'));
 
@@ -823,31 +739,14 @@ function runTreeMode(sourceRoot) {
   return violations.length > 0 ? 1 : 0;
 }
 
-function runSummaryMode(mode, files) {
-  const results = analyzeFiles(files.length > 0 ? files : defaultFiles());
-
-  if (mode === '--report') {
-    printReport(results);
-
-    return 0;
-  }
-
-  const findings = results.flatMap((result) =>
-    result.findings.map((finding) => ({ file: result.file, ...finding })),
-  );
-  process.stdout.write(`${JSON.stringify(findings, null, 2)}\n`);
-
-  return 0;
-}
-
 function runCheckMode(files) {
   let anyViolation = false;
 
-  for (const result of analyzeFiles(files)) {
-    for (const finding of result.findings) {
+  for (const file of files) {
+    for (const finding of analyze(file, fs.readFileSync(file, 'utf8'))) {
       anyViolation = true;
       process.stdout.write(
-        `${result.file}:${finding.line}: ${finding.specifier} [${finding.kind}] -> ${finding.suggestion}\n`,
+        `${file}:${finding.line}: ${finding.specifier} [${finding.kind}] -> ${finding.suggestion}\n`,
       );
     }
   }
@@ -862,14 +761,8 @@ function runCli() {
     return runTreeMode(rest[0]);
   }
 
-  if (mode === '--report' || mode === '--json') {
-    return runSummaryMode(mode, rest);
-  }
-
   if (mode === undefined) {
-    process.stderr.write(
-      'usage: feature-imports.js <file...> | --report [file...] | --json [file...] | --tree [srcRoot]\n',
-    );
+    process.stderr.write('usage: feature-imports.js <file...> | --tree [srcRoot]\n');
 
     return 2;
   }
@@ -877,7 +770,7 @@ function runCli() {
   return runCheckMode(process.argv.slice(2));
 }
 
-// `process.exit` would cut off a large report still queued for a pipe.
+// `process.exit` would cut off a large output still queued for a pipe.
 if (require.main === module) {
   process.exitCode = runCli();
 }

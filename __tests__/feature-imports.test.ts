@@ -251,44 +251,6 @@ describe('scripts/checks/feature-imports.js per-file findings', () => {
   });
 });
 
-describe('scripts/checks/feature-imports.js report and json modes', () => {
-  it('--report counts findings per target group and always exits 0', () => {
-    const file = writeFixture(
-      'src/holdings/lots/lots.ts',
-      importFrom('../../currency/money/money') + importFrom('../history'),
-    );
-
-    const result = runAnalyzer('--report', file);
-
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('currency: 1');
-    expect(result.stdout).toContain('total: 1 violations in 1 files');
-    expect(result.stdout).toContain('allowed sibling: 1');
-  });
-
-  it('--json prints each finding with its suggestion', () => {
-    const file = writeFixture(
-      'src/holdings/lots/lots.ts',
-      importFrom('../../currency/money/money'),
-    );
-
-    const result = runAnalyzer('--json', file);
-
-    expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout)).toEqual([
-      {
-        file,
-        line: 1,
-        specifier: '../../currency/money/money',
-        kind: 'relative-leaves-feature',
-        suggestion: '@kiko/currency/money',
-        group: 'currency',
-        callKind: 'import',
-      },
-    ]);
-  });
-});
-
 describe('scripts/checks/feature-imports.js --tree', () => {
   function runTree(): SpawnSyncReturns<string> {
     return runAnalyzer('--tree', join(directory, 'src'));

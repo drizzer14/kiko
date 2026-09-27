@@ -9,6 +9,8 @@
     "scripts/checks/full-word-identifiers.js",
     "scripts/checks/blank-line-separation.js",
     "scripts/checks/screen-imports.js",
+    "scripts/checks/feature-imports.js",
+    "scripts/checks/specifier-scanner.js",
     "scripts/checks/pre-write-guard.js"
   ],
   "ignoreDependencies": [
