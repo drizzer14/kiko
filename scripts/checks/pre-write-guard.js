@@ -382,7 +382,7 @@ function buildFinding(temporaryRoot, result) {
     matchedText,
     fix: metadata.fix,
     skill: metadata.skill,
-    projectCheck: 'check:rules',
+    projectCheck: 'check:security',
   };
 }
 
@@ -752,7 +752,7 @@ async function runOneComponentPerFileChecker(filePath) {
 // it, and the fix/skill pair the deny reason cites (the Node-check analog
 // of a Semgrep rule's `metadata.fix`/`metadata.skill`). `projectCheck` is
 // the project-wide gate the deny reason names for a pre-existing finding:
-// check:rules runs only Semgrep, so it never sees a Node rule.
+// check:security runs only Semgrep, so it never sees a Node rule.
 const NODE_RULES = [
   {
     ruleId: 'kiko-import-order',
@@ -944,7 +944,7 @@ function nonJustifiedFindings(findings, sourceText) {
 
 // A finding the proposed edit ADDS: present in the AFTER key set, absent
 // from every baseline's. A pre-existing violation is never reported here —
-// it stays visible to check:rules/check:all, which this hook does not
+// it stays visible to the finding's projectCheck, which this hook does not
 // affect. A conflicted file has two baselines, one per side; a key found in
 // either is pre-existing, and since the occurrence rank is part of the key,
 // a repeated violation is allowed up to the larger of the two sides' counts.
