@@ -6,7 +6,7 @@ Status: research done 2026-09-27; USER DECISIONS recorded; needs a plan (kiko:pl
 2. NO account names (or any account identifier) in notification text — potentially sensitive on the lock screen. Also never amounts/balances.
 3. Release 1.2.
 4. Own native module (Swift, wraps UNUserNotificationCenter + a thin TurboModule spec), NOT expo-notifications, NOT notifee (archived 2026-04-07).
-5. Placement: a Settings > Reminders page (list of all reminders, edit/pause/delete) AND each account gets its OWN reminder control page, reached from the place closest to that account (the account detail screen). Contextual offer after a statement import completes, too.
+5. Placement: a Settings > Reminders page (list of all reminders, edit/pause/delete) AND each account gets its OWN reminder control page, reached from the place closest to that account (the account detail screen). Contextual offer at TWO moments (user's addition 2026-09-28): (a) after a statement import completes, and (b) after the user adds a MANUAL transaction to an account that already has prior similar transactions (a sign the user logs this account by hand regularly).
 
 ## Design
 - Frame: a reminder the USER sets up in Kiko on the user's own schedule — useful, never noise.
@@ -22,11 +22,13 @@ Status: research done 2026-09-27; USER DECISIONS recorded; needs a plan (kiko:pl
 - Storage: new additive migration; reminder rules in a new table (per account + global) rather than settings columns, since each account has its own reminders; settingsRepo-style repo. Mind the op-sqlite single queue on app open.
 - No aps-environment entitlement, no UIBackgroundModes needed for local notifications. Check PrivacyInfo.xcprivacy if UserDefaults is used in the native module.
 - Compliance: 2.5.4 (local notifications allowed), 2.5.16 (content relates to app), 4.5.4, 5.1.2(i) (never required); 5.6: the Reminders UI ships visible, no flag gating.
+- Contextual offer: shown only when the account has no reminder yet; one-time and dismissible per account (a dismissal is remembered, so the offer never repeats as nagging); it is an in-app, non-modal prompt, never a notification; it opens that account's reminder page prefilled with the matching type (import or add transactions).
 
 ## Open items for the planner
 - Manual account = accounts.institution IS NULL (isSyncedAccount in src/holdings/deletable/deletable.ts). Should import reminders also apply to synced accounts that import statements? (ask the user)
 - Device tests: reboot, app update, time-zone change, DST.
 - Competitor gaps not verified: Spendee, Monefy, Money Lover, CoinKeeper, Day One, Daylio.
+- Define "prior similar transactions" for trigger (b) — for example, at least N earlier source='manual' transactions on the same account (and optionally the same category or payee) within a recent window; confirm N and the matching rule with the user.
 
 ## Sources (checked 2026-09-27)
 - HIG Notifications / Managing notifications / Privacy: https://developer.apple.com/design/human-interface-guidelines/notifications , .../managing-notifications , .../privacy (text read via https://developer.apple.com/tutorials/data/design/human-interface-guidelines/<page>.json)
