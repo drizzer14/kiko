@@ -1,36 +1,40 @@
 import type { FC } from 'react';
 import { match } from 'ts-pattern';
-import * as RNFS from 'react-native-fs';
-import { useLiveQuery } from '@kiko/db';
-import maybe, { foldMap } from 'fnts/maybe';
-import { accountsRepo } from '@kiko/accounts';
-import { settingsRepo } from '@kiko/settings';
-import { useTranslation } from 'react-i18next';
-import { bifoldr, eitherSync } from 'fnts/either';
-import { useRef, useEffect, useState } from 'react';
-import type { ScrollViewInstance } from 'react-native';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
 import type {
   ParsedStatement,
   SpreadsheetCellValue,
   StatementFormat,
   StatementFormatId,
   StatementFormatInput,
-} from '../../statement-import/parser';
+} from '@kiko/statement-import/parser';
+import * as RNFS from 'react-native-fs';
+import { useLiveQuery } from '@kiko/db';
 import {
   detectFormat,
   statementFormats,
   supportedFormatNames,
-} from '../../statement-import/registry';
+} from '@kiko/statement-import/registry';
+import maybe, { foldMap } from 'fnts/maybe';
+import { accountsRepo } from '@kiko/accounts';
+import { settingsRepo } from '@kiko/settings';
+import { useTranslation } from 'react-i18next';
+import { bifoldr, eitherSync } from 'fnts/either';
+import { useRef, useEffect, useState } from 'react';
 import {
   fileNameOf,
   isXlsxFile,
   decodeStatementText,
   readSheetRowsSafely,
   deleteLocalStatementCopy,
-} from '../../statement-import/read-statement-file';
+} from '@kiko/statement-import/read-statement-file';
+import type { ScrollViewInstance } from 'react-native';
+import { previewStats } from '@kiko/statement-import/preview-stats';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { readTableRows, findSavedMapping } from '@kiko/statement-import/column-mapping';
+import { useTargetHoldingOptions } from '@kiko/statement-import/use-target-holding-options';
+import { importStatement, type ImportResult } from '@kiko/statement-import/import-statement';
+
 import Box from '../../design-system/components/box';
 import Text from '../../design-system/components/text';
 import Screen from '../../design-system/components/screen';
@@ -41,11 +45,7 @@ import {
 } from '../../design-system/scroll-to-field/scroll-to-field';
 import { alertOnCatch } from '../../design-system/alert-on-catch';
 import type { AccountsStackParamList } from '../../navigation/types';
-import { previewStats } from '../../statement-import/preview-stats/preview-stats';
 import ImportResultSheet from '../../design-system/components/import-result-sheet';
-import { readTableRows, findSavedMapping } from '../../statement-import/column-mapping';
-import { importStatement, type ImportResult } from '../../statement-import/import-statement';
-import { useTargetHoldingOptions } from '../../statement-import/use-target-holding-options/use-target-holding-options';
 
 import StatementImportFooter from './statement-import-footer';
 import StatementPreviewBlock from './statement-preview-block';

@@ -1,8 +1,8 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { decode as decodeWindows1251 } from 'windows-1251';
+import { StatementParseError } from '@kiko/statement-import/parser';
 
-import { StatementParseError } from '../../parser';
 import { PRIVATBANK_TITLE_PREFIX } from '../privatbank-xlsx';
 
 import {

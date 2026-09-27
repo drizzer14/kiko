@@ -22,8 +22,7 @@ import {
 import { getTableColumns } from 'drizzle-orm';
 import { holdingValue } from '@kiko/holdings/holding-value';
 import { holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
-
-import { computeDedupKeyBase } from '../../statement-import/mapping/mapping';
+import { computeDedupKeyBase } from '@kiko/statement-import/mapping';
 
 import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';

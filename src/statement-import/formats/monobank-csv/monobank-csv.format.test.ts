@@ -1,7 +1,6 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
-
-import { StatementParseError } from '../../parser';
+import { StatementParseError } from '@kiko/statement-import/parser';
 
 import { monobankCsvFormat } from './monobank-csv.format';
 

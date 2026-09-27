@@ -1,12 +1,11 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
-
-import { monobankCsvFormat } from '../formats/monobank-csv';
-import { sensebankCsvFormat } from '../formats/sensebank-csv';
-import { privatbankXlsxFormat } from '../formats/privatbank-xlsx';
-import { alfaBusinessCsvFormat } from '../formats/alfa-business-csv';
-import { ukrsibBusinessCsvFormat } from '../formats/ukrsib-business-csv';
-import { procreditBusinessCsvFormat } from '../formats/procredit-business-csv';
+import { monobankCsvFormat } from '@kiko/statement-import/formats/monobank-csv';
+import { sensebankCsvFormat } from '@kiko/statement-import/formats/sensebank-csv';
+import { privatbankXlsxFormat } from '@kiko/statement-import/formats/privatbank-xlsx';
+import { alfaBusinessCsvFormat } from '@kiko/statement-import/formats/alfa-business-csv';
+import { ukrsibBusinessCsvFormat } from '@kiko/statement-import/formats/ukrsib-business-csv';
+import { procreditBusinessCsvFormat } from '@kiko/statement-import/formats/procredit-business-csv';
 
 import { detectFormat, statementFormats, supportedFormatNames } from './registry';
 

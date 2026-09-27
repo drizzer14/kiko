@@ -1,4 +1,4 @@
-import type { TableCell } from '../../../statement-import/column-mapping';
+import type { TableCell } from '@kiko/statement-import/column-mapping';
 
 export type RawPreviewProps = {
   rows: TableCell[][];

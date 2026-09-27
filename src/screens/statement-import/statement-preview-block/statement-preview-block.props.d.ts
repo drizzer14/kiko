@@ -1,6 +1,6 @@
 import type { RefObject } from 'react';
+import type { previewStats } from '@kiko/statement-import/preview-stats';
 
-import type { previewStats } from '../../../statement-import/preview-stats/preview-stats';
 import type { FieldInstance } from '../../../design-system/scroll-to-field/scroll-to-field';
 import type { TargetHoldingOption } from '../../../design-system/components/target-holding-sheet/target-holding-sheet.props';
 

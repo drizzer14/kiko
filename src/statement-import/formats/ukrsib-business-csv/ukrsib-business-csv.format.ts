@@ -6,7 +6,8 @@
 // synthetic data (all-fake account/EDRPOU numbers, "Test Merchant"
 // descriptions), written as real cp1251 bytes, same placeholder-style
 // convention the other hand-authored fixtures in this plan use.
-import type { StatementFormat } from '../../parser';
+import type { StatementFormat } from '@kiko/statement-import/parser';
+
 import { createColumnarBusinessCsvFormat, FOP_BUSINESS_COLUMN_BASE } from '../business-csv';
 
 // Section C.3: "Detect signature — file content matches the FULL literal

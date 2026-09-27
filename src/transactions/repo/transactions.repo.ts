@@ -14,6 +14,7 @@ import {
 } from '@kiko/db';
 import { match } from 'ts-pattern';
 import type { Currency } from '@kiko/currency/currency';
+import type { ClosingBalance } from '@kiko/statement-import/parser';
 import { exchangeReceivePath } from '@kiko/holdings/exchange-destination';
 import type { DepositContribution } from '@kiko/holdings/holding-metadata';
 import { isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
@@ -22,7 +23,6 @@ import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/rep
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
 
 import { normalizeTransactionName } from '../normalize-name';
-import type { ClosingBalance } from '../../statement-import/parser';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<

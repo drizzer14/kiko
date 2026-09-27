@@ -9,8 +9,7 @@ import Papa from 'papaparse';
 import { parseAmount } from '@kiko/currency/parse';
 import { isCurrency } from '@kiko/currency/currency';
 import type { Currency } from '@kiko/currency/currency';
-
-import { StatementParseError } from '../../parser';
+import { StatementParseError } from '@kiko/statement-import/parser';
 
 // Splits `text` into `;`-delimited rows — `papaparse` de-quotes a
 // double-quoted field (Ukrsib) transparently with no extra config, so the

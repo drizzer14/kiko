@@ -7,22 +7,22 @@
 // (`__fixtures__/uabean-alfa-business-sample.csv`) IS uabean's own real
 // sample — confirmed SYNTHETIC (`XYZ COMPANY`/`JOHN DOE` placeholders,
 // all-1s IBANs/EDRPOU, literal `[REDACTED]` markers in description text).
-import { Money } from '@kiko/currency/money';
-
 import type {
   ParsedStatement,
   ParsedTransaction,
   StatementFormat,
   StatementFormatInput,
-} from '../../parser';
+} from '@kiko/statement-import/parser';
+import { Money } from '@kiko/currency/money';
+import { StatementParseError } from '@kiko/statement-import/parser';
+import { parseDateTimeSeconds } from '@kiko/statement-import/parse-date-time';
+
 import {
   parseFiniteAmountMajor,
   readDataRows,
   resolveRowCurrency,
   resolveSoleColumnValue,
 } from '../business-csv';
-import { StatementParseError } from '../../parser';
-import { parseDateTimeSeconds } from '../../parse-date-time';
 
 // Section C.3: "Detect signature — file content matches the FULL literal
 // header line" (unquoted, unlike Ukrsib business — verified against the real

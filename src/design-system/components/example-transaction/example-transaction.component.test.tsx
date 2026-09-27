@@ -5,8 +5,7 @@ import '@kiko/i18n/init';
 
 import { i18n } from '@kiko/i18n/init';
 import { formatDate } from '@kiko/dates';
-
-import type { ParsedTransaction } from '../../../statement-import/parser';
+import type { ParsedTransaction } from '@kiko/statement-import/parser';
 
 import ExampleTransaction from './example-transaction.component';
 

@@ -1,3 +1,5 @@
+import { StatementParseError } from '@kiko/statement-import/parser';
+
 import {
   alfaBusinessFixtureInput,
   monobankFixtureInput,
@@ -6,7 +8,6 @@ import {
   sensebankFixtureInput,
   ukrsibBusinessFixtureInput,
 } from '../format-test-fixtures';
-import { StatementParseError } from '../../parser';
 
 import {
   alfaBusinessCsvFormat,

@@ -12,8 +12,7 @@ jest.mock('@kiko/db/client', () => {
 });
 
 import { database } from '@kiko/db';
-
-import type { SavedColumnMapping } from '../statement-import/column-mapping';
+import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
 
 import { settingsRepo } from './settings.repo';
 

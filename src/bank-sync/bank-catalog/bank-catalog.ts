@@ -1,4 +1,4 @@
-import type { StatementFormatId } from '../../statement-import/parser';
+import type { StatementFormatId } from '@kiko/statement-import/parser';
 
 /**
  * The Option A "which bank is this account" catalog: every bank Kiko can

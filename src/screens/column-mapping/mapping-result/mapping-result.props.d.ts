@@ -1,5 +1,5 @@
-import type { ColumnMappingRowError } from '../../../statement-import/column-mapping';
-import type { PreviewStats } from '../../../statement-import/preview-stats/preview-stats';
+import type { PreviewStats } from '@kiko/statement-import/preview-stats';
+import type { ColumnMappingRowError } from '@kiko/statement-import/column-mapping';
 
 export type MappingResultProps = {
   // `undefined` while the mapping is not yet structurally complete OR once

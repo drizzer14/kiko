@@ -7,14 +7,6 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
-import { bifoldr, eitherSync } from 'fnts/either';
-import { holdingsRepo } from '@kiko/holdings/repo';
-import { useEffect, useRef, useState } from 'react';
-import type { ScrollViewInstance } from 'react-native';
-import type { Currency } from '@kiko/currency/currency';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
 import {
   dateFormatIds,
   dateFormatExamples,
@@ -30,7 +22,10 @@ import {
   findSavedMapping,
   headerFingerprint,
   guessHeaderRowIndex,
-} from '../../statement-import/column-mapping';
+} from '@kiko/statement-import/column-mapping';
+import { bifoldr, eitherSync } from 'fnts/either';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { useEffect, useRef, useState } from 'react';
 import {
   fileNameOf,
   isXlsxFile,
@@ -38,15 +33,21 @@ import {
   decodeStatementText,
   readSheetRowsSafely,
   deleteLocalStatementCopy,
-} from '../../statement-import/read-statement-file';
+} from '@kiko/statement-import/read-statement-file';
+import type { ScrollViewInstance } from 'react-native';
+import type { Currency } from '@kiko/currency/currency';
+import { supportedFormatNames } from '@kiko/statement-import/registry';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { previewStats, type PreviewStats } from '@kiko/statement-import/preview-stats';
+import { useTargetHoldingOptions } from '@kiko/statement-import/use-target-holding-options';
+import type { SpreadsheetCellValue, StatementFormatInput } from '@kiko/statement-import/parser';
+import { importParsedStatement, type ImportResult } from '@kiko/statement-import/import-statement';
+
 import Box from '../../design-system/components/box';
 import Text from '../../design-system/components/text';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
-import {
-  previewStats,
-  type PreviewStats,
-} from '../../statement-import/preview-stats/preview-stats';
 import {
   scrollToField,
   useHeaderInset,
@@ -54,11 +55,7 @@ import {
 } from '../../design-system/scroll-to-field/scroll-to-field';
 import { alertOnCatch } from '../../design-system/alert-on-catch';
 import type { AccountsStackParamList } from '../../navigation/types';
-import { supportedFormatNames } from '../../statement-import/registry';
 import ImportResultSheet from '../../design-system/components/import-result-sheet';
-import type { SpreadsheetCellValue, StatementFormatInput } from '../../statement-import/parser';
-import { importParsedStatement, type ImportResult } from '../../statement-import/import-statement';
-import { useTargetHoldingOptions } from '../../statement-import/use-target-holding-options/use-target-holding-options';
 
 import ColumnMappingForm from './column-mapping-form';
 import type {

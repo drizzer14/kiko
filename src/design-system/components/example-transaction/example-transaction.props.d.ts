@@ -1,4 +1,4 @@
-import type { ParsedTransaction } from '../../../statement-import/parser';
+import type { ParsedTransaction } from '@kiko/statement-import/parser';
 
 export type ExampleTransactionProps = {
   // The row to preview — normally `PreviewStats.firstTransaction`, the FIRST

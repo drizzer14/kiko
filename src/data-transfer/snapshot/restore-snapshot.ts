@@ -19,10 +19,10 @@ import {
   chunkForTable,
 } from '@kiko/db';
 import type { Currency } from '@kiko/currency/currency';
+import { upgradeLegacyDedupKey } from '@kiko/statement-import/mapping';
 import { isCurrencyAllowedForHoldingType } from '@kiko/holdings/holding-currency';
 
 import { entityColorsDark } from '../../design-system/palette';
-import { upgradeLegacyDedupKey } from '../../statement-import/mapping/upgrade-dedup-key';
 
 import type { DataSnapshot } from './data-snapshot';
 

@@ -2,20 +2,19 @@
 // src/statement-import/NOTICE.md. No uabean source is copied; independent
 // TypeScript implementation.
 import Papa from 'papaparse';
-import { Money } from '@kiko/currency/money';
-import { parseAmount } from '@kiko/currency/parse';
-import { isCurrency } from '@kiko/currency/currency';
-import type { Currency } from '@kiko/currency/currency';
-
 import type {
   ClosingBalance,
   ParsedStatement,
   ParsedTransaction,
   StatementFormat,
   StatementFormatInput,
-} from '../../parser';
-import { StatementParseError } from '../../parser';
-import { parseDateTimeSeconds } from '../../parse-date-time';
+} from '@kiko/statement-import/parser';
+import { Money } from '@kiko/currency/money';
+import { parseAmount } from '@kiko/currency/parse';
+import { isCurrency } from '@kiko/currency/currency';
+import type { Currency } from '@kiko/currency/currency';
+import { StatementParseError } from '@kiko/statement-import/parser';
+import { parseDateTimeSeconds } from '@kiko/statement-import/parse-date-time';
 
 // `—` (U+2014 em dash) marks an absent optional column (commission,
 // cashback, exchange rate) in Monobank's export — never an empty string.

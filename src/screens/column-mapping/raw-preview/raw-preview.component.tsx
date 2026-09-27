@@ -2,11 +2,11 @@ import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import { HEADER_SCAN_ROW_COUNT } from '@kiko/statement-import/column-mapping';
 
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import SymbolIcon from '../../../design-system/components/symbol';
-import { HEADER_SCAN_ROW_COUNT } from '../../../statement-import/column-mapping';
 
 import { styles } from './raw-preview.styles';
 import { computeColumnWidths } from './column-widths';

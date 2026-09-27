@@ -26,20 +26,20 @@ jest.mock('@kiko/holdings/repo', () => ({
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import readXlsxFile from 'read-excel-file/node';
-import { accounts, categoryOverrides, holdings, transactions } from '@kiko/db';
-
 import {
   monobankFixtureInput,
   sensebankFixtureInput,
   procreditBusinessFixtureInput,
-} from '../formats/format-test-fixtures';
+} from '@kiko/statement-import/formats/format-test-fixtures';
+import { accounts, categoryOverrides, holdings, transactions } from '@kiko/db';
+import { monobankCsvFormat } from '@kiko/statement-import/formats/monobank-csv';
+import { sensebankCsvFormat } from '@kiko/statement-import/formats/sensebank-csv';
+import { privatbankXlsxFormat } from '@kiko/statement-import/formats/privatbank-xlsx';
+import { procreditBusinessCsvFormat } from '@kiko/statement-import/formats/procredit-business-csv';
+
 import { computeDedupKey } from '../mapping';
-import { monobankCsvFormat } from '../formats/monobank-csv';
-import { sensebankCsvFormat } from '../formats/sensebank-csv';
-import { privatbankXlsxFormat } from '../formats/privatbank-xlsx';
 import type { ParsedTransaction, StatementFormatInput } from '../parser';
 import { importParsedStatement, importStatement } from '../import-statement';
-import { procreditBusinessCsvFormat } from '../formats/procredit-business-csv';
 
 import { readTableRows } from './table-rows';
 import { applyColumnMapping } from './apply-column-mapping';

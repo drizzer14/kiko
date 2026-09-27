@@ -1,4 +1,4 @@
-import type { ImportResult } from '../../../statement-import/import-statement';
+import type { ImportResult } from '@kiko/statement-import/import-statement';
 
 export type ImportOutcomeProps = {
   /** The last successful `importStatement` result, if any. A caught failure

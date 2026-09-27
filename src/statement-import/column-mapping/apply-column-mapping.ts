@@ -9,8 +9,8 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { isCurrency } from '@kiko/currency/currency';
 import type { Currency } from '@kiko/currency/currency';
+import { CURRENCY_WORD_MAP } from '@kiko/statement-import/formats/privatbank-xlsx';
 
-import { CURRENCY_WORD_MAP } from '../formats/privatbank-xlsx';
 import { StatementParseError, type ParsedStatement } from '../parser';
 import type { ClosingBalance, ParsedAccountHint, ParsedTransaction } from '../parser';
 

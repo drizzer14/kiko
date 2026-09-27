@@ -1,8 +1,7 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import readXlsxFile from 'read-excel-file/node';
-
-import type { SpreadsheetCellValue, StatementFormatInput } from '../../parser';
+import type { SpreadsheetCellValue, StatementFormatInput } from '@kiko/statement-import/parser';
 
 import {
   COLUMN,

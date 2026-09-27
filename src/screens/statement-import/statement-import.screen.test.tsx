@@ -4,10 +4,10 @@ import type { ComponentProps } from 'react';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { supportedFormatNames } from '@kiko/statement-import/registry';
+import { headerFingerprint } from '@kiko/statement-import/column-mapping';
+import type { ParsedStatement, StatementFormat } from '@kiko/statement-import/parser';
 
-import { supportedFormatNames } from '../../statement-import/registry';
-import { headerFingerprint } from '../../statement-import/column-mapping';
-import type { ParsedStatement, StatementFormat } from '../../statement-import/parser';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import StatementImportScreen from './statement-import.screen';
@@ -92,7 +92,7 @@ jest.mock('@kiko/settings/settings.repo', () => ({
 }));
 
 const mockImportStatement = jest.fn();
-jest.mock('../../statement-import/import-statement', () => ({
+jest.mock('@kiko/statement-import/import-statement', () => ({
   importStatement: (...args: unknown[]) => mockImportStatement(...args),
 }));
 
@@ -179,8 +179,8 @@ const sensebankFormatStub: StatementFormat = {
 // (UTF-8) attempt finds no match.
 const sensebankDetectFormatCalls: string[] = [];
 
-jest.mock('../../statement-import/registry', () => {
-  const actual = jest.requireActual('../../statement-import/registry');
+jest.mock('@kiko/statement-import/registry', () => {
+  const actual = jest.requireActual('@kiko/statement-import/registry');
 
   return {
     ...actual,

@@ -44,11 +44,11 @@ import { readFileSync } from 'node:fs';
 import readXlsxFile from 'read-excel-file/node';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { accounts, categoryOverrides, holdings, transactions } from '@kiko/db';
+import { ukrsibBusinessFixtureInput } from '@kiko/statement-import/formats/format-test-fixtures';
 
 import { StatementParseError } from '../parser';
 import { applyColumnMapping } from '../column-mapping';
 import type { ColumnMapping } from '../column-mapping';
-import { ukrsibBusinessFixtureInput } from '../formats/format-test-fixtures';
 
 import { importStatement, importParsedStatement } from './import-statement';
 

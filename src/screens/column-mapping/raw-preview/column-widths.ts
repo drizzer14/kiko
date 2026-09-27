@@ -1,4 +1,4 @@
-import type { TableCell } from '../../../statement-import/column-mapping';
+import type { TableCell } from '@kiko/statement-import/column-mapping';
 
 // A rough per-character width (points) at the raw-preview grid's caption type
 // step, plus the cell's own horizontal padding — good enough for a MONOSPACE-

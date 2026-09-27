@@ -8,7 +8,8 @@
 // sample — confirmed ANONYMIZED via uabean's own committed `anonymize.py`
 // script (EDRPOUs, IBANs, correspondent names, and dates all remapped
 // through deterministic counters/offsets, not the real values).
-import type { StatementFormat } from '../../parser';
+import type { StatementFormat } from '@kiko/statement-import/parser';
+
 import { createColumnarBusinessCsvFormat, FOP_BUSINESS_COLUMN_BASE } from '../business-csv';
 
 // Section C.3: "Detect signature — file content starts with the first 59

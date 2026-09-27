@@ -1,3 +1,5 @@
+import { StatementParseError } from '@kiko/statement-import/parser';
+
 import {
   alfaBusinessFixtureInput,
   monobankFixtureInput,
@@ -6,7 +8,6 @@ import {
   sensebankFixtureInput,
   ukrsibBusinessFixtureInput,
 } from '../format-test-fixtures';
-import { StatementParseError } from '../../parser';
 import { FOP_BUSINESS_COLUMN_BASE } from '../business-csv';
 
 import { COLUMN, DETECT_PREFIX, procreditBusinessCsvFormat } from '.';

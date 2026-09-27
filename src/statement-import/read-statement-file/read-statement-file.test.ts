@@ -1,7 +1,6 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
-
-import { SENSEBANK_PREAMBLE } from '../formats/sensebank-csv';
+import { SENSEBANK_PREAMBLE } from '@kiko/statement-import/formats/sensebank-csv';
 
 const mockUnlink = jest.fn();
 jest.mock('react-native-fs', () => ({

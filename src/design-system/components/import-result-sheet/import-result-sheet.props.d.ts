@@ -1,4 +1,4 @@
-import type { ImportResult } from '../../../statement-import/import-statement';
+import type { ImportResult } from '@kiko/statement-import/import-statement';
 
 export type ImportResultSheetProps = {
   /** Whether the sheet is shown. Kept as its own prop, DECOUPLED from

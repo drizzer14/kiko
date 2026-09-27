@@ -6,7 +6,7 @@ import type {
   ColumnMappingRowError,
 } from '@kiko/statement-import/column-mapping';
 import type { Currency } from '@kiko/currency/currency';
-import type { PreviewStats } from '@kiko/statement-import/preview-stats/preview-stats';
+import type { PreviewStats } from '@kiko/statement-import/preview-stats';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field/scroll-to-field';
 import type { TargetHoldingOption } from '@kiko/design-system/components/target-holding-sheet/target-holding-sheet.props';
 

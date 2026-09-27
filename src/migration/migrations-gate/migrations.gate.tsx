@@ -10,7 +10,7 @@ import { migrateLegacyToken } from '@kiko/monobank/token';
 import { type FC, type ReactNode, useEffect, useState } from 'react';
 import { migrateBinanceCredentialToPerAccount } from '@kiko/crypto-sync/binance';
 import { migrateSingleTokenToPerAccount } from '@kiko/monobank/migrate-credential';
-import { upgradeStoredDedupKeys } from '@kiko/statement-import/upgrade-stored-dedup-keys/upgrade-stored-dedup-keys';
+import { upgradeStoredDedupKeys } from '@kiko/statement-import/upgrade-stored-dedup-keys';
 
 import { styles } from './migrations.gate.styles';
 

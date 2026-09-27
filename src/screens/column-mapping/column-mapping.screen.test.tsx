@@ -5,8 +5,8 @@ import { act, fireEvent, render, waitFor, within } from '@testing-library/react-
 import '../../design-system/unistyles';
 import '@kiko/i18n/init';
 import { i18n } from '@kiko/i18n/init';
+import { headerFingerprint } from '@kiko/statement-import/column-mapping';
 
-import { headerFingerprint } from '../../statement-import/column-mapping';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import ColumnMappingScreen from './column-mapping.screen';
@@ -53,7 +53,7 @@ jest.mock('react-native-fs', () => ({
 }));
 
 const mockImportParsedStatement = jest.fn();
-jest.mock('../../statement-import/import-statement', () => ({
+jest.mock('@kiko/statement-import/import-statement', () => ({
   importParsedStatement: (...args: unknown[]) => mockImportParsedStatement(...args),
 }));
 
