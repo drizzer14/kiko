@@ -367,9 +367,11 @@ const PERSONAL_DEBT_KEY = 'personal-debt';
 const APARTMENT_KEY = 'apartment';
 const CAR_KEY = 'car';
 
-// A fabricated, ISIN-shaped government bond: 1,000.00 nominal, a 16.2%
-// coupon paid twice a year (81.00 per bond each time).
-const BOND_ISIN = 'UA4000233011';
+// A fabricated government bond: 1,000.00 nominal, a 16.2% coupon paid twice a
+// year (81.00 per bond each time). Its ISIN carries a valid check digit, so a
+// reviewer can save the bond after an edit, and sits far above the live NBU
+// issue range (UA40002391xx in 2026-09), so it never matches a real bond.
+const BOND_ISIN = 'UA4000999015';
 const BOND_FACE_VALUE_MINOR_UNITS = 100_000;
 const BOND_COUPON_PCT = 16.2;
 const BOND_MATURITY = on(2027, 7, 18);

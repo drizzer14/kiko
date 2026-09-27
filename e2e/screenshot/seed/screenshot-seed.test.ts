@@ -1,4 +1,5 @@
 import { Money } from '@kiko/currency/money';
+import { validateIsin } from '@kiko/bonds/isin';
 import { holdingValue } from '@kiko/holdings/holding-value';
 import { holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
@@ -121,6 +122,28 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
 
     expect(holdingRegisterCoupons(bond?.metadata, 'UAH', null)).toEqual(registerCoupons);
     expect(registerCoupons).toHaveLength(3);
+  });
+
+  // A reviewer who edits the demo bond must be able to save it, and the bond
+  // form rejects an ISIN whose check digit fails.
+  it('gives every ISIN in the dataset a valid check digit', () => {
+    const dataset = buildScreenshotDataset('uk');
+    const isins = [
+      ...dataset.accounts
+        .flatMap((account) => account.holdings)
+        .flatMap((holding) =>
+          holding.metadata !== undefined && 'isin' in holding.metadata
+            ? [holding.metadata.isin]
+            : [],
+        ),
+      ...dataset.bondRegister.flatMap((row) => [row.isin, row.terms.isin]),
+    ];
+
+    expect(isins).toHaveLength(3);
+
+    for (const isin of isins) {
+      expect(validateIsin(isin ?? '')).toEqual({ ok: true, isin });
+    }
   });
 
   it('exposes no scenario or lock dimension — one dataset, parameterized only by language', () => {

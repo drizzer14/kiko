@@ -990,8 +990,12 @@ stays as saved (nothing rewrites it); it is only the fallback.
   schedule kept and its cache row gone (matured/delisted) still books
   22.50 + 4 x 30.00, expected profit 162.50; a `.kiko` restore keeps the
   schedule (metadata is restored verbatim). The App Store demo bond
-  (invented ISIN UA4000233011, `e2e/screenshot/seed/`) keeps its
-  schedule for the same reason: the first online refresh drops it.
+  (invented ISIN UA4000999015, `e2e/screenshot/seed/`) keeps its
+  schedule for the same reason: the first online refresh drops it. Its
+  ISIN passes `validateIsin` (a seed test pins every dataset ISIN), so
+  a reviewer can save an edit of it in Manual or ISIN mode, and sits
+  far above the live NBU issue range (highest listed UA4000239123 on
+  2026-09-27), so it never matches a real bond.
 - **Limits.** A bond whose ISIN left the cache BEFORE any refresh ran
   the backfill (never captured) stays on its saved coupon — for a
   step-up bond, the step saved at create. A `.kiko` restore brings the

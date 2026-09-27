@@ -985,10 +985,9 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     expect(savedBondMetadata(bondHolding.metadata).isin).toBe('XS2895055981');
   });
 
-  // The App Store demo bond (screenshot-seed.ts): an invented ISIN with a kept
-  // schedule, which leaves the cache on the first online register refresh.
-  // The ISIN here passes the check digit, so the test reaches the register
-  // lookup rather than the ISIN's own format error.
+  // The App Store demo bond (screenshot-seed.ts) as seeded: an invented ISIN
+  // with a kept schedule, which leaves the cache on the first online register
+  // refresh. A reviewer who edits it must still be able to save it.
   const demoBond = {
     id: 'h-demo-bond',
     name: 'ОВДП',
@@ -1006,7 +1005,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
       maturityDate: localDay(2027, 8, 18),
       bondKind: 'government',
       couponFrequency: 'semiannually',
-      isin: 'UA4000233019',
+      isin: 'UA4000999015',
       payments: [
         { date: localDay(2026, 8, 19), kind: 'coupon', amount: '81' },
         { date: localDay(2027, 2, 17), kind: 'coupon', amount: '81' },
@@ -1024,7 +1023,22 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     ).toBe(true);
   });
 
+  it('saves a Manual edit of the demo bond, against a register without its ISIN, with its stored values', async () => {
+    mockBondRegisterRows = [foundRegisterRow];
+    const screen = await renderEdit(demoBond);
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(updateFromStoredMock).toHaveBeenCalledTimes(1);
+    expect(updateFromStoredMock.mock.calls[0][1]).toMatchObject({ name: 'ОВДП' });
+    expect(savedBondMetadata(demoBond.metadata)).toEqual({
+      ...demoBond.metadata,
+      entryMode: 'manual',
+    });
+  });
+
   it('saves an ISIN-mode edit of an ISIN the register no longer lists with its stored terms, under the not-in-register note', async () => {
+    mockBondRegisterRows = [foundRegisterRow];
     const holding = { ...demoBond, metadata: { ...demoBond.metadata, entryMode: 'isin' } };
     const screen = await renderEdit(holding);
 
