@@ -422,14 +422,16 @@ verified usage, not dead weight:
   before mutating, so a wrongly-excluded read fails FAST with a clear
   ENOENT rather than silently corrupting the score — that fail-fast is the
   accepted safety net.
-- **`jest.config.js` `testPathIgnorePatterns`**: `<rootDir>/__tests__/test-support/`
-  (beside Jest's own `/node_modules/` default). Jest's default `testMatch`
-  runs every file under a `__tests__/` folder as a suite, so the shared
-  harness-test helpers there (`mutation-repository.ts`, the throwaway git
-  repository and argument-stub helpers the mutation cap, stream, and lock
-  tests share) would each fail as an empty suite. No test is skipped: the
-  folder holds helpers only, and every helper is exercised by the suites
-  that import it.
+- **`jest.config.js` `testPathIgnorePatterns`**:
+  `<rootDir>/__tests__/test-support/(?!.*\.test\.[jt]sx?$)` (beside Jest's
+  own `/node_modules/` default). Jest's default `testMatch` runs every file
+  under a `__tests__/` folder as a suite, so the shared harness-test helpers
+  there (`mutation-repository.ts`, the throwaway git repository, stub, and
+  wrapper-run helpers the mutation cap, stream, and lock tests share) would
+  each fail as an empty suite. No test is skipped: the negative lookahead
+  ignores only the non-test helpers, so a `*.test.*` file placed beside a
+  helper in that folder still runs, and every helper is exercised by the
+  suites that import it.
 - **`.npmrc` `min-release-age-exclude`**: `Kiko`, the first-party
   package name, is exempt from the dependency min-age rule below.
   `react-native` is exempt for the same category of reason: it is an

@@ -116,9 +116,13 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `__tests__/mutation-cap.test.ts` (29 and 30 files run the stub; 31,
   `KIKO_MUTATION_FULL=1`, a bad base, a failing `git diff` shim, and a
   broad run after a narrow pass fail without it). The stream, lock, and
-  cap tests share their throwaway-repository and stub helpers through
-  `__tests__/test-support/mutation-repository.ts` (excluded from Jest's
-  suite list by `jest.config.js` `testPathIgnorePatterns`).
+  cap tests share their throwaway-repository, stub, and wrapper-run helpers
+  through `__tests__/test-support/mutation-repository.ts` (excluded from
+  Jest's suite list by `jest.config.js` `testPathIgnorePatterns`, which
+  ignores only the non-`*.test.*` files there). Those helpers drop an
+  inherited `KIKO_MUTATION_BASE` and `KIKO_MUTATION_FULL` from the wrapper's
+  env, so a developer's own `export` never changes the scope a test runs;
+  a test's own explicit setting still wins.
 
   `mutation.sh` also gives a watching HUMAN a live progress display and a
   per-mutant-rate ETA, so nobody polls the run — its exit code stays the only

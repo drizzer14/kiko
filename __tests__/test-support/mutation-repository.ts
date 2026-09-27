@@ -23,7 +23,17 @@ const ARGUMENT_STUB = [
   'exit 0',
 ].join('\n');
 
-export const runGit = (cwd: string, ...gitArguments: string[]): void => {
+// A developer's own `export KIKO_MUTATION_BASE=...` (or FULL) must not change
+// the scope a test runs the wrapper with: the throwaway repository has no such
+// commit, so every run would be refused. A test's own `environment` still wins.
+const SCOPE_VARIABLES = new Set(['KIKO_MUTATION_BASE', 'KIKO_MUTATION_FULL']);
+
+const wrapperEnvironment = (environment: Record<string, string>): NodeJS.ProcessEnv => ({
+  ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !SCOPE_VARIABLES.has(name))),
+  ...environment,
+});
+
+const runGit = (cwd: string, ...gitArguments: string[]): void => {
   execFileSync('git', gitArguments, { cwd, encoding: 'utf8', stdio: 'pipe' });
 };
 
@@ -101,13 +111,12 @@ export const runWithArgumentStub = (
 
   const result = spawnSync('bash', [script], {
     cwd: dirname(dirname(dirname(script))),
-    env: {
-      ...process.env,
+    env: wrapperEnvironment({
       KIKO_MUTATION_BIN: stub,
       KIKO_STUB_ARGUMENTS: argumentsFile,
       TMPDIR: mkdtempSync(join(tmpdir(), 'kiko-mutation-state-')),
       ...environment,
-    },
+    }),
     encoding: 'utf8',
   });
 
@@ -123,3 +132,25 @@ export const mutatedFiles = (stubArguments: string[] | null): string[] =>
     .find((argument) => argument.startsWith('--mutate='))
     ?.slice('--mutate='.length)
     .split(',') ?? [];
+
+export const writeStrykerStub = (temporaryDirectory: string, body: string): string =>
+  writeExecutable(join(temporaryDirectory, 'stryker-stub'), body);
+
+export type StubRun = { code: number | null; stdout: string; stderr: string };
+
+// The repository lives at `<temporaryDirectory>/project`, and that same
+// directory is the TMPDIR, so the dedup state and the global lock are isolated
+// per test.
+export const runWithStub = (bin: string, temporaryDirectory: string, callLog: string): StubRun => {
+  const script = join(temporaryDirectory, 'project', 'scripts/checks/mutation.sh');
+  const result = spawnSync('bash', [script], {
+    env: wrapperEnvironment({
+      KIKO_MUTATION_BIN: bin,
+      TMPDIR: temporaryDirectory,
+      KIKO_STUB_CALLS: callLog,
+    }),
+    encoding: 'utf8',
+  });
+
+  return { code: result.status, stdout: result.stdout, stderr: result.stderr };
+};

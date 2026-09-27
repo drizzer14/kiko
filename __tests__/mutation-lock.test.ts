@@ -3,7 +3,11 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 
-import { writeExecutable, buildMutationRepository } from './test-support/mutation-repository';
+import {
+  runWithStub,
+  writeStrykerStub,
+  buildMutationRepository,
+} from './test-support/mutation-repository';
 
 // scripts/checks/mutation.sh holds a GLOBAL (machine-wide) single-flight lock so
 // only ONE Stryker runs at a time across ALL worktrees — two different worktrees
@@ -15,9 +19,6 @@ import { writeExecutable, buildMutationRepository } from './test-support/mutatio
 
 // The project changes one source file against `main`, so the wrapper's default
 // diff scope holds one file.
-const projectScript = (temporaryDirectory: string): string =>
-  join(temporaryDirectory, 'project', 'scripts', 'checks', 'mutation.sh');
-
 const freshTemporaryDirectory = (): string => {
   const temporaryDirectory = mkdtempSync(join(tmpdir(), 'kiko-lock-'));
   buildMutationRepository(join(temporaryDirectory, 'project'), {
@@ -31,8 +32,8 @@ const globalLockDir = (temporaryDirectory: string): string =>
   join(temporaryDirectory, 'kiko-harness', 'mutation.global.lock');
 
 const makeStub = (temporaryDirectory: string, exitCode: number): string =>
-  writeExecutable(
-    join(temporaryDirectory, 'stryker-stub'),
+  writeStrykerStub(
+    temporaryDirectory,
     [
       '#!/usr/bin/env bash',
       'printf "%s\\n" "$$" >> "$KIKO_STUB_CALLS"',
@@ -40,22 +41,6 @@ const makeStub = (temporaryDirectory: string, exitCode: number): string =>
       `exit ${exitCode}`,
     ].join('\n'),
   );
-
-type Run = { code: number | null; stdout: string; stderr: string };
-
-const run = (bin: string, temporaryDirectory: string, callLog: string): Run => {
-  const result = spawnSync('bash', [projectScript(temporaryDirectory)], {
-    env: {
-      ...process.env,
-      KIKO_MUTATION_BIN: bin,
-      TMPDIR: temporaryDirectory,
-      KIKO_STUB_CALLS: callLog,
-    },
-    encoding: 'utf8',
-  });
-
-  return { code: result.status, stdout: result.stdout, stderr: result.stderr };
-};
 
 const stubRanCount = (callLog: string): number =>
   existsSync(callLog) ? readFileSync(callLog, 'utf8').split('\n').filter(Boolean).length : 0;
@@ -84,7 +69,7 @@ describe('scripts/checks/mutation.sh global single-flight lock', () => {
     // process.pid is this test runner — alive for the wrapper's kill -0 check.
     const lockDir = holdLock(temporaryDirectory, String(process.pid), '/some/other/worktree');
 
-    const result = run(bin, temporaryDirectory, callLog);
+    const result = runWithStub(bin, temporaryDirectory, callLog);
 
     expect(result.code).toBe(2);
     // The refusal names the fixed global lock path and who holds it...
@@ -103,7 +88,7 @@ describe('scripts/checks/mutation.sh global single-flight lock', () => {
     const bin = makeStub(temporaryDirectory, 0);
     holdLock(temporaryDirectory, deadPid(), '/a/dead/worktree');
 
-    const result = run(bin, temporaryDirectory, callLog);
+    const result = runWithStub(bin, temporaryDirectory, callLog);
 
     expect(result.code).toBe(0);
     expect(result.stderr).not.toContain('refusing to start a second Stryker');
@@ -116,7 +101,7 @@ describe('scripts/checks/mutation.sh global single-flight lock', () => {
     const callLog = join(temporaryDirectory, 'calls');
     const bin = makeStub(temporaryDirectory, 0);
 
-    const result = run(bin, temporaryDirectory, callLog);
+    const result = runWithStub(bin, temporaryDirectory, callLog);
 
     expect(result.code).toBe(0);
     // The EXIT trap removed the lock, so the next run acquires cleanly.

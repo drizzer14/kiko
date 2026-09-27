@@ -4,8 +4,9 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 
 import {
+  runWithStub,
   mutatedFiles,
-  writeExecutable,
+  writeStrykerStub,
   runWithArgumentStub,
   buildMutationRepository,
 } from './test-support/mutation-repository';
@@ -24,8 +25,6 @@ const LIB = join(__dirname, '../scripts/checks/_lib.sh');
 // its history file under TMPDIR by a hash of that ROOT, so pre-seeded history
 // must use the same root.
 const projectRoot = (temporaryDirectory: string): string => join(temporaryDirectory, 'project');
-
-type Run = { code: number | null; stdout: string; stderr: string };
 
 // Append history records for the project root under the given isolated TMPDIR by
 // sourcing _lib.sh, so a subsequent wrapper run in that TMPDIR reads them. Each
@@ -58,26 +57,6 @@ const seedCorruptHistory = (temporaryDirectory: string): void => {
   });
 };
 
-const makeStub = (temporaryDirectory: string, body: string): string =>
-  writeExecutable(join(temporaryDirectory, 'stryker-stub'), body);
-
-// The project changes one source file against `main`, so the streaming tests
-// run the wrapper's default diff scope over that one file.
-const run = (bin: string, temporaryDirectory: string, callLog: string): Run => {
-  const script = join(projectRoot(temporaryDirectory), 'scripts/checks/mutation.sh');
-  const result = spawnSync('bash', [script], {
-    env: {
-      ...process.env,
-      KIKO_MUTATION_BIN: bin,
-      TMPDIR: temporaryDirectory,
-      KIKO_STUB_CALLS: callLog,
-    },
-    encoding: 'utf8',
-  });
-
-  return { code: result.status, stdout: result.stdout, stderr: result.stderr };
-};
-
 // A stub that records each invocation (so a dedup test can count calls), prints
 // two distinctive lines, then exits with the given code.
 const stubBody = (exitCode: number): string =>
@@ -89,6 +68,8 @@ const stubBody = (exitCode: number): string =>
     `exit ${exitCode}`,
   ].join('\n');
 
+// The project changes one source file against `main`, so the streaming tests
+// run the wrapper's default diff scope over that one file.
 const freshTemporaryDirectory = (): string => {
   const temporaryDirectory = mkdtempSync(join(tmpdir(), 'kiko-mut-'));
   buildMutationRepository(projectRoot(temporaryDirectory), {
@@ -105,9 +86,9 @@ describe('scripts/checks/mutation.sh streaming', () => {
   it('streams the Stryker output to stdout on a PASSING run (not swallowed)', () => {
     const temporaryDirectory = freshTemporaryDirectory();
     const callLog = join(temporaryDirectory, 'calls');
-    const bin = makeStub(temporaryDirectory, stubBody(0));
+    const bin = writeStrykerStub(temporaryDirectory, stubBody(0));
 
-    const result = run(bin, temporaryDirectory, callLog);
+    const result = runWithStub(bin, temporaryDirectory, callLog);
 
     expect(result.code).toBe(0);
     // The core regression: a passing run used to capture the output into a
@@ -119,9 +100,9 @@ describe('scripts/checks/mutation.sh streaming', () => {
   it('prints the tail -f watch command and writes the streamed output to that progress log', () => {
     const temporaryDirectory = freshTemporaryDirectory();
     const callLog = join(temporaryDirectory, 'calls');
-    const bin = makeStub(temporaryDirectory, stubBody(0));
+    const bin = writeStrykerStub(temporaryDirectory, stubBody(0));
 
-    const result = run(bin, temporaryDirectory, callLog);
+    const result = runWithStub(bin, temporaryDirectory, callLog);
 
     expect(result.code).toBe(0);
     // The wrapper prints the exact command a human runs to watch the run live.
@@ -142,7 +123,7 @@ describe('scripts/checks/mutation.sh streaming', () => {
     // Sleep ~1s so the run has a strictly-positive duration: the wrapper's
     // clock-skew guard refuses to record a 0s run, so an instant stub would
     // (correctly) leave no history. This exercises the record-on-completion path.
-    const bin = makeStub(
+    const bin = writeStrykerStub(
       temporaryDirectory,
       [
         '#!/usr/bin/env bash',
@@ -153,7 +134,7 @@ describe('scripts/checks/mutation.sh streaming', () => {
       ].join('\n'),
     );
 
-    const result = run(bin, temporaryDirectory, callLog);
+    const result = runWithStub(bin, temporaryDirectory, callLog);
 
     expect(result.code).toBe(0);
     // With no prior runs the wrapper says so plainly rather than inventing an ETA.
@@ -181,7 +162,7 @@ describe('scripts/checks/mutation.sh streaming', () => {
     // The stub reports an "N/M tested" counter (500 mutants) and sleeps ~1s so
     // the run has a positive duration. The filter must print the ETA line the
     // moment that counter appears.
-    const bin = makeStub(
+    const bin = writeStrykerStub(
       temporaryDirectory,
       [
         '#!/usr/bin/env bash',
@@ -192,7 +173,7 @@ describe('scripts/checks/mutation.sh streaming', () => {
       ].join('\n'),
     );
 
-    const result = run(bin, temporaryDirectory, callLog);
+    const result = runWithStub(bin, temporaryDirectory, callLog);
 
     expect(result.code).toBe(0);
     // The full ETA prints live, scaled by the run's ACTUAL mutant count (500).
@@ -211,9 +192,9 @@ describe('scripts/checks/mutation.sh streaming', () => {
     const temporaryDirectory = freshTemporaryDirectory();
     const callLog = join(temporaryDirectory, 'calls');
     seedCorruptHistory(temporaryDirectory);
-    const bin = makeStub(temporaryDirectory, stubBody(0));
+    const bin = writeStrykerStub(temporaryDirectory, stubBody(0));
 
-    const result = run(bin, temporaryDirectory, callLog);
+    const result = runWithStub(bin, temporaryDirectory, callLog);
 
     // A malformed history never crashes the gate: a passing run still exits 0...
     expect(result.code).toBe(0);
@@ -225,9 +206,9 @@ describe('scripts/checks/mutation.sh streaming', () => {
     const temporaryDirectory = freshTemporaryDirectory();
     const callLog = join(temporaryDirectory, 'calls');
     seedCorruptHistory(temporaryDirectory);
-    const bin = makeStub(temporaryDirectory, stubBody(1));
+    const bin = writeStrykerStub(temporaryDirectory, stubBody(1));
 
-    const result = run(bin, temporaryDirectory, callLog);
+    const result = runWithStub(bin, temporaryDirectory, callLog);
 
     // A malformed history never masks a real failure: a failing run still exits 2.
     expect(result.code).toBe(2);
@@ -237,9 +218,9 @@ describe('scripts/checks/mutation.sh streaming', () => {
   it('streams the output, prints the failure block, and exits 2 on a FAILING run', () => {
     const temporaryDirectory = freshTemporaryDirectory();
     const callLog = join(temporaryDirectory, 'calls');
-    const bin = makeStub(temporaryDirectory, stubBody(1));
+    const bin = writeStrykerStub(temporaryDirectory, stubBody(1));
 
-    const result = run(bin, temporaryDirectory, callLog);
+    const result = runWithStub(bin, temporaryDirectory, callLog);
 
     expect(result.code).toBe(2);
     // Output is streamed to stdout (not only echoed inside the block)...
@@ -252,10 +233,10 @@ describe('scripts/checks/mutation.sh streaming', () => {
   it('records a pass so an identical second run is content-deduped (Stryker not re-run)', () => {
     const temporaryDirectory = freshTemporaryDirectory();
     const callLog = join(temporaryDirectory, 'calls');
-    const bin = makeStub(temporaryDirectory, stubBody(0));
+    const bin = writeStrykerStub(temporaryDirectory, stubBody(0));
 
-    const first = run(bin, temporaryDirectory, callLog);
-    const second = run(bin, temporaryDirectory, callLog);
+    const first = runWithStub(bin, temporaryDirectory, callLog);
+    const second = runWithStub(bin, temporaryDirectory, callLog);
 
     expect(first.code).toBe(0);
     expect(second.code).toBe(0);
@@ -267,10 +248,10 @@ describe('scripts/checks/mutation.sh streaming', () => {
   it('does NOT record a skip on a FAILING run, so it re-runs next time', () => {
     const temporaryDirectory = freshTemporaryDirectory();
     const callLog = join(temporaryDirectory, 'calls');
-    const bin = makeStub(temporaryDirectory, stubBody(1));
+    const bin = writeStrykerStub(temporaryDirectory, stubBody(1));
 
-    run(bin, temporaryDirectory, callLog);
-    run(bin, temporaryDirectory, callLog);
+    runWithStub(bin, temporaryDirectory, callLog);
+    runWithStub(bin, temporaryDirectory, callLog);
 
     // A skip is only recorded on a PASS, so a failing check always re-runs.
     expect(callCount(callLog)).toBe(2);
