@@ -10,8 +10,10 @@ import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 // a kill/pkill/killall reached through a pattern (xargs, a subshell), or a
 // process-group/broadcast kill (0, a negative pid, `--` then a negative
 // pid), any `git stash` subcommand, a heredoc whose delimiter is not
-// quoted, or a `git apply`/`merge`/`rebase` aimed at the main checkout (the
-// last three with a WHAT/DETAILS/WHY/HOW/DO-NOT reason). It must
+// quoted, or a git history change (`apply`, `merge`, `rebase`, `pull`,
+// `cherry-pick`, `revert`, `am`) aimed at the main checkout other than a
+// fast-forward-only update or a recovery option (the last three with a
+// WHAT/DETAILS/WHY/HOW/DO-NOT reason). It must
 // ALWAYS exit 0 — even on malformed input — so a broken guard
 // never blocks the Bash tool itself. See scripts/checks/kill-guard.js for
 // the full rationale.
@@ -89,6 +91,9 @@ const BLOCKED_COMMANDS: string[] = [
   'ls (a|b)#c ; pkill x',
   "cat <<$'EOF'\nit's\nEOF\npkill x\n$EOF",
   'cat <<$"EOF"\nit\'s\nEOF\npkill x\n$EOF',
+  'cat <<$"EOF"\nit\'s\n$EOF\npkill x\nEOF',
+  'cat <<E$"OF"\nit\'s\nE$OF\npkill x\nEOF',
+  'cat <<E$"OF"\nit\'s\nEOF\npkill x\nE$OF',
   'cat <<"E\\"OF"\nit\'s\nE"OF\npkill x\nE\\"OF',
   'cat <<"E\\\\OF"\nit\'s\nE\\OF\npkill x\nE\\\\OF',
   'cat <<"E\\$OF"\nit\'s\nE$OF\npkill x\nE\\$OF',
@@ -291,6 +296,13 @@ const MAIN_CHECKOUT_COMMANDS: [string, string][] = [
   [MAIN_CHECKOUT, '(cd /tmp); git merge feat/x'],
   [MAIN_CHECKOUT, 'sudo git merge feat/x'],
   [MAIN_CHECKOUT, 'sh -c "git rebase main"'],
+  [MAIN_CHECKOUT, 'cd /tmp || git merge feat/x'],
+  [MAIN_CHECKOUT, 'cd /tmp & git merge feat/x'],
+  [MAIN_CHECKOUT, 'cd /tmp | git merge feat/x'],
+  [MAIN_CHECKOUT, 'pushd /tmp; pushd; git merge feat/x'],
+  [WORKTREE, `cd ${MAIN_CHECKOUT} || true; git merge feat/x`],
+  [`${MAIN_CHECKOUT}/.claude/worktrees`, 'git merge feat/x'],
+  [`${MAIN_CHECKOUT}/.claude`, 'git merge feat/x'],
 ];
 
 const ALLOWED_OUTSIDE_MAIN_CHECKOUT: [string, string][] = [
@@ -325,6 +337,16 @@ const ALLOWED_OUTSIDE_MAIN_CHECKOUT: [string, string][] = [
   [WORKTREE, 'git cherry-pick 1a2b3c4'],
   [WORKTREE, 'git revert HEAD'],
   [WORKTREE, 'git am x.patch'],
+  [MAIN_CHECKOUT, `cd ${WORKTREE}; git merge feat/x`],
+  [MAIN_CHECKOUT, `cd ${WORKTREE}\ngit merge feat/x`],
+  [MAIN_CHECKOUT, `pushd ${WORKTREE} && git merge feat/x`],
+  [MAIN_CHECKOUT, 'git am --resolved'],
+  [MAIN_CHECKOUT, 'git rebase --edit-todo'],
+  [MAIN_CHECKOUT, 'git rebase --show-current-patch'],
+  [MAIN_CHECKOUT, 'git am --show-current-patch'],
+  [`${MAIN_CHECKOUT}/.claude/worktrees/agent-1`, 'git merge feat/x'],
+  [MAIN_CHECKOUT, `cd ${MAIN_CHECKOUT}/.claude/worktrees/agent-1 && git rebase main`],
+  [WORKTREE, `git -C ${MAIN_CHECKOUT}/.claude/worktrees/agent-1 merge feat/x`],
 ];
 
 // Recovery from a stuck operation stays allowed in the main checkout.

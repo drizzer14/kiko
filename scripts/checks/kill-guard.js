@@ -117,8 +117,9 @@ function trackParameterBraces(state, c) {
 // ---- heredocs: a body is data for its command, not shell text ----
 
 const HEREDOC_WORD = /^(?:'[^']*'|"(?:\\.|[^"\\])*"|\\.|[^\s;&|<>()'"\\])*/;
-// bash and zsh end a `<<$'EOF'` or `<<$"EOF"` body at the line `EOF`, so a
-// `$` before a quote goes with the quotes.
+// A `$` before a single quote goes with the quotes in bash and zsh
+// (`<<$'EOF'` ends at `EOF`). Before a double quote it does in bash only:
+// zsh has no `$"…"` quoting, so there `<<$"EOF"` ends at `$EOF`.
 const QUOTED_PART = /\$?'([^']*)'|\$?"((?:\\.|[^"\\])*)"|\\(.)/g;
 // Inside double quotes a backslash escapes only these; before any other
 // character it stays.
@@ -130,14 +131,20 @@ function removeQuote(_match, single, double, escaped) {
   return single ?? escaped;
 }
 
-// The word after `<<`/`<<-`: its raw text, and the delimiter line that ends
-// the body (the word with its quotes removed).
+const removeQuoteAsZsh = (match, ...parts) =>
+  (match.startsWith('$"') ? '$' : '') + removeQuote(match, ...parts);
+
+// The word after `<<`/`<<-`: its raw text, and the delimiter lines that can
+// end the body (the word with its quotes removed, as bash and as zsh read
+// it).
 function readHeredocWord(text, start) {
   const leading = text.slice(start).match(/^[ \t]*/)[0].length;
   const raw = text.slice(start + leading).match(HEREDOC_WORD)[0];
-  const delimiter = raw.replace(QUOTED_PART, removeQuote);
+  const delimiters = [
+    ...new Set([raw.replace(QUOTED_PART, removeQuote), raw.replace(QUOTED_PART, removeQuoteAsZsh)]),
+  ];
 
-  return { raw, delimiter, end: start + leading + raw.length };
+  return { raw, delimiters, end: start + leading + raw.length };
 }
 
 // Reads a `<<`, `<<-`, or `<<<` operator at `i` (a `<<<` here-string has no
@@ -145,7 +152,7 @@ function readHeredocWord(text, start) {
 function readHeredocOperator(text, i) {
   if (!text.startsWith('<<', i)) return null;
   const symbol = ['<<<', '<<-', '<<'].find((candidate) => text.startsWith(candidate, i));
-  if (symbol === '<<<') return { symbol, raw: '', delimiter: '', end: i + symbol.length };
+  if (symbol === '<<<') return { symbol, raw: '', delimiters: [], end: i + symbol.length };
 
   return { symbol, ...readHeredocWord(text, i + symbol.length) };
 }
@@ -154,21 +161,23 @@ function readHeredocOperator(text, i) {
 function queueHeredoc(state, operator, segmentIndex) {
   if (operator.raw === '') return;
   state.pending.push({
-    delimiter: operator.delimiter,
+    delimiters: operator.delimiters,
     stripTabs: operator.symbol === '<<-',
     segmentIndex,
   });
 }
 
-// One body starting at `start`: every line up to the one that equals the
-// delimiter (after its leading tabs, for `<<-`). Null when no line does.
+// One body starting at `start`: every line up to the first one that equals
+// a delimiter reading (after its leading tabs, for `<<-`). The earliest end
+// leaves the most text to scan as shell, so a shell that reads the word the
+// other way can only over-deny. Null when no line does.
 function readHeredocBody(text, start, heredoc) {
   let lineStart = start;
   while (lineStart <= text.length) {
     const newline = text.indexOf('\n', lineStart);
     const lineEnd = newline === -1 ? text.length : newline;
     const line = text.slice(lineStart, lineEnd);
-    if ((heredoc.stripTabs ? line.replace(/^\t+/, '') : line) === heredoc.delimiter) {
+    if (heredoc.delimiters.includes(heredoc.stripTabs ? line.replace(/^\t+/, '') : line)) {
       return {
         body: text.slice(start, lineStart),
         end: newline === -1 ? text.length : newline + 1,
@@ -370,6 +379,7 @@ function endSegment(context, length, closesSubshell = false) {
   context.segments.push(context.buf);
   context.opens.push(context.segmentOpens);
   context.closes.push(closesSubshell);
+  context.separators.push(context.text.slice(context.i, context.i + length));
   context.buf = '';
   context.segmentOpens = 0;
   context.i += length;
@@ -522,6 +532,7 @@ function scanLevel(text) {
     segmentOpens: 0,
     opens: [],
     closes: [],
+    separators: [],
   };
   while (context.i < context.n) {
     if (context.quote === "'") {
@@ -542,6 +553,7 @@ function scanLevel(text) {
     bodies: context.bodies,
     opens: context.opens,
     closes: context.closes,
+    separators: context.separators,
   };
 }
 
@@ -794,7 +806,15 @@ const MAIN_CHECKOUT_SUBCOMMANDS = new Set([
 ]);
 const HELP_OPTIONS = new Set(['-h', '--help']);
 const RECOVERY_SUBCOMMANDS = new Set(['merge', 'rebase', 'cherry-pick', 'revert', 'am']);
-const RECOVERY_OPTIONS = new Set(['--abort', '--quit', '--skip', '--continue']);
+const RECOVERY_OPTIONS = new Set([
+  '--abort',
+  '--quit',
+  '--skip',
+  '--continue',
+  '--resolved',
+  '--edit-todo',
+  '--show-current-patch',
+]);
 const FAST_FORWARD_SUBCOMMANDS = new Set(['merge', 'pull']);
 const APPLY_READ_ONLY_OPTIONS = new Set(['--check', '--stat', '--numstat', '--summary']);
 
@@ -836,11 +856,16 @@ function resolveDirectory(directory, target) {
   return path.resolve(directory, expanded);
 }
 
+// A Claude Code worktree nested at `<main>/.claude/worktrees/<name>` is a
+// separate worktree, the very place a merge belongs.
+const NESTED_WORKTREES = `${MAIN_CHECKOUT_PATH}/.claude/worktrees/`.toLowerCase();
+
 // APFS is case-insensitive, so `/users/…/PFF-IOS` is the same folder.
 function isInsideMainCheckout(directory) {
   if (directory === null) return false;
   const folded = directory.toLowerCase();
   const main = MAIN_CHECKOUT_PATH.toLowerCase();
+  if (folded.startsWith(NESTED_WORKTREES)) return false;
 
   return folded === main || folded.startsWith(`${main}/`);
 }
@@ -880,10 +905,13 @@ function gitInvocation(rest, directory, environment) {
   };
 }
 
-function gitFinding(segment, git) {
+// One invocation per directory the command may run in; the subcommand is
+// the same in each.
+function gitFinding(segment, invocations) {
+  const [git] = invocations;
   if (git.subcommand === 'stash') return { kind: 'stash', detail: segment.trim() };
   if (!MAIN_CHECKOUT_SUBCOMMANDS.has(git.subcommand) || leavesMainCheckoutSafe(git)) return null;
-  const target = git.targets.find(isInsideMainCheckout);
+  const target = invocations.flatMap((invocation) => invocation.targets).find(isInsideMainCheckout);
   if (target === undefined) return null;
 
   return { kind: 'mainCheckout', detail: `${segment.trim()} (runs in ${target})` };
@@ -891,27 +919,45 @@ function gitFinding(segment, git) {
 
 const DIRECTORY_CHANGERS = new Set(['cd', 'pushd']);
 
-// Where the shell stands after one segment: `cd`/`pushd` moves it, `cd -`
-// goes back, and a bare `cd` goes home.
-function moveDirectory(location, segment) {
+const union = (first, second) => [...new Set([...first, ...second])];
+
+// Where a `cd`/`pushd` leads: `cd -` goes back, a bare `cd` goes home, and
+// a bare `pushd` swaps with a directory this command may have left, so
+// either place stays possible.
+function changedDirectories(location, tokens) {
+  const target = tokens.slice(1).find((token) => token === '-' || !token.startsWith('-'));
+  if (target === '-') return location.previous;
+  if (target === undefined && basename(tokens[0]) === 'pushd') {
+    return union(location.directories, location.previous);
+  }
+
+  return location.directories.map((directory) => resolveDirectory(directory, target ?? '~'));
+}
+
+// Where the shell may stand after one segment. A `cd` moves it for what
+// follows in sequence (`&&`, `;`, a newline). Before `&` or `|` it runs in
+// a subshell and moves nothing. Before `||` the next command runs only if
+// the `cd` failed, so the old place and the new one both stay possible.
+function moveDirectory(location, segment, separator) {
   const { tokens } = unwrap(words(segment));
   if (tokens.length === 0 || !DIRECTORY_CHANGERS.has(basename(tokens[0]))) return;
-  const target = tokens.slice(1).find((token) => token === '-' || !token.startsWith('-')) ?? '~';
-  const next = target === '-' ? location.previous : resolveDirectory(location.directory, target);
-  location.previous = location.directory;
-  location.directory = next;
+  if (separator === '&' || separator === '|') return;
+  const next = changedDirectories(location, tokens);
+  const current = location.directories;
+  location.directories = separator === '||' ? union(current, next) : next;
+  location.previous = current;
 }
 
 // A subshell's `cd` ends with the subshell.
 function enterSubshells(location, count) {
   for (let open = 0; open < count; open++) {
-    location.saved.push([location.directory, location.previous]);
+    location.saved.push([location.directories, location.previous]);
   }
 }
 
 function leaveSubshell(location) {
   if (location.saved.length === 0) return;
-  [location.directory, location.previous] = location.saved.pop();
+  [location.directories, location.previous] = location.saved.pop();
 }
 
 // A shell runs its `-c` string or, without `-c`, the heredoc bodies it reads
@@ -925,8 +971,9 @@ function queueShellScript(rest, nested, stdinBodies) {
 // Returns the finding for one simple command — `{ kind: 'kill' }`, or
 // `{ kind: 'stash' | 'mainCheckout', detail }` — or null when it is safe. A
 // shell's script and `eval`'s joined arguments go to `nested` as command
-// text. `directory` is where the command runs, or null when unknown.
-function segmentFinding(segment, nested, stdinBodies, directory) {
+// text. `directories` are the places the command may run in (null for one
+// the text cannot pin down).
+function segmentFinding(segment, nested, stdinBodies, directories) {
   const tokens = words(segment);
   if (tokens.length === 0) return null;
 
@@ -952,14 +999,18 @@ function segmentFinding(segment, nested, stdinBodies, directory) {
     return isPatternKill ? { kind: 'kill' } : null;
   }
 
-  if (base === 'git') return gitFinding(segment, gitInvocation(rest, directory, environment));
+  if (base === 'git') {
+    const invocations = directories.map((directory) => gitInvocation(rest, directory, environment));
+
+    return gitFinding(segment, invocations);
+  }
 
   return null;
 }
 
 function firstFinding(lines, depth, checkHeredoc) {
   for (const line of lines) {
-    const finding = findDanger(line.text, depth + 1, checkHeredoc, line.directory);
+    const finding = findDanger(line.text, depth + 1, checkHeredoc, line.directories);
     if (finding !== null) return finding;
   }
 
@@ -973,33 +1024,35 @@ function firstFinding(lines, depth, checkHeredoc) {
 // run (`bash <<'EOF'`, `eval "$(cat <<'EOF' …)"`, `ssh host <<'EOF'`), so
 // each body is checked on its own for a kill or a git stash. Only a body a
 // shell reads as its script is also checked for an unquoted heredoc; any
-// other body is text, so a `<<word` in it is not an operator. `directory` is
-// where the line starts; every nested line runs where its segment does.
-function findDanger(line, depth, checkHeredoc = true, directory = null) {
+// other body is text, so a `<<word` in it is not an operator. `directories`
+// are the places the line may start in; every nested line runs where its
+// segment does.
+function findDanger(line, depth, checkHeredoc = true, directories = [null]) {
   if (depth > 8) return null; // guards against pathological nesting
-  const { segments, nested, heredoc, bodies, opens, closes } = scanLevel(line);
-  const location = { directory, previous: null, saved: [] };
-  const directoryAt = [];
+  const { segments, nested, heredoc, bodies, opens, closes, separators } = scanLevel(line);
+  const location = { directories, previous: [null], saved: [] };
+  const directoriesAt = [];
   const scripts = [];
 
   for (const [index, segment] of segments.entries()) {
     enterSubshells(location, opens[index]);
-    directoryAt.push(location.directory);
+    const here = location.directories;
+    directoriesAt.push(here);
     const stdinBodies = bodies
       .filter((body) => body.segmentIndex === index)
       .map((body) => body.text);
     const segmentScripts = [];
-    const finding = segmentFinding(segment, segmentScripts, stdinBodies, location.directory);
+    const finding = segmentFinding(segment, segmentScripts, stdinBodies, here);
     if (finding !== null) return finding;
-    scripts.push(...segmentScripts.map((text) => ({ text, directory: location.directory })));
-    moveDirectory(location, segment);
+    scripts.push(...segmentScripts.map((text) => ({ text, directories: here })));
+    moveDirectory(location, segment, separators[index]);
     if (closes[index]) leaveSubshell(location);
   }
   if (checkHeredoc && heredoc !== null) return { kind: 'heredoc', detail: heredoc };
 
   const inItsDirectory = (entry) => ({
     text: entry.text,
-    directory: directoryAt[entry.segmentIndex],
+    directories: directoriesAt[entry.segmentIndex],
   });
 
   return (
@@ -1022,7 +1075,7 @@ function main(raw) {
   const startDirectory =
     typeof payload.cwd === 'string' ? resolveDirectory(null, payload.cwd) : null;
 
-  const finding = findDanger(command, 0, true, startDirectory);
+  const finding = findDanger(command, 0, true, [startDirectory]);
   if (finding !== null) process.stdout.write(denyJson(reasonFor(finding)));
 }
 
