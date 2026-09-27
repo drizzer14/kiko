@@ -52,6 +52,17 @@ file count after excludes is within `MUTATION_FILE_CAP` (read it in
 `scripts/checks/mutation.sh`); a larger batch splits into change sets
 with their own bases.
 
+## Merging into main
+
+Never merge, rebase, pull (except `--ff-only`), cherry-pick, revert,
+am, or apply in the main checkout
+(`/Users/drizzer14/Developer/Projects/pff-ios`): every session's hooks
+run from it, so a conflict marker there breaks every hook. The
+kill-guard denies these (see kiko-linter's "MAIN-CHECKOUT deny"). Do the
+real merge, conflicts and all, in a separate detached worktree, verify
+it there, then fast-forward main:
+`git -C /Users/drizzer14/Developer/Projects/pff-ios merge --ff-only <sha>`.
+
 ## Read-only agents return their report
 
 A read-only agent (debugger, reviewer, auditor, researcher, explorer)

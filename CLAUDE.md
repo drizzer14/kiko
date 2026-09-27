@@ -111,6 +111,17 @@ heredoc expands backticked text in its body as commands. Each of
 these two denies carries the standard WHAT/DETAILS/WHY/HOW/DO-NOT
 block.
 
+The same hook also denies `git apply`, `merge`, `rebase`, `pull`,
+`cherry-pick`, `revert`, and `am` that target the MAIN checkout
+(`/Users/drizzer14/Developer/Projects/pff-ios`), by cwd, `cd`, `-C`,
+`--git-dir`/`--work-tree`, or `GIT_DIR=`, because every session's hooks
+run from it. Allowed there: `git merge --ff-only <ref>`,
+`git pull --ff-only`, and the recovery options `--abort`, `--quit`,
+`--skip`, `--continue`. Do the real merge in a separate detached
+worktree, verify it, then run
+`git -C /Users/drizzer14/Developer/Projects/pff-ios merge --ff-only <sha>`.
+See kiko-linter's "MAIN-CHECKOUT deny" for the full rule and limits.
+
 A second `PreToolUse` matcher (`Edit|Write|MultiEdit`, beside the
 `Bash` matcher above) runs `scripts/checks/pre-write-guard.sh`: it
 rebuilds the proposed post-edit content and denies the write when a
