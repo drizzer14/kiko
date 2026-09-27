@@ -120,9 +120,10 @@ type SyncStateSnapshot = Pick<
  *   the cursor — on every run that REACHED Monobank with at least one card
  *   succeeding (INCLUDING a partial failure), so the user sees a fresh time even
  *   when the cursor deliberately stays put to re-cover a failed card.
- * - `setLastFullSyncAt` stamps the last-full-fetch time; written on a full-fetch
- *   run even when one card failed, so a flaky card cannot strand the account in
- *   permanent full-fetch mode.
+ * - `setLastFullSyncAt` stamps the last-full-fetch time; written ONLY on a
+ *   fully clean full-fetch run (SYNC-1 — a partial failure must not graduate
+ *   it, or the failed card's own retry would widen to this just-advanced
+ *   marker and lose whatever window the failed run itself was covering).
  * - `setFailedSyncMonobankIds` persists the force-fetch set for the NEXT run,
  *   stored as null when empty. Written on BOTH the clean and the partial-failure
  *   path, before the partial-failure throw.
@@ -536,6 +537,13 @@ const shouldFullFetch = (
   lastFullSyncAt: number | null,
 ): boolean =>
   !lastSyncAt || lastFullSyncAt == null || now() - lastFullSyncAt >= FULL_FETCH_INTERVAL_MS;
+
+/**
+ * Whether `lastFullSyncAt` graduates this run: a full fetch where EVERY card
+ * succeeded, never a partial failure — see the call site for why (SYNC-1).
+ */
+const shouldGraduateFullSync = (isFullFetch: boolean, failureCount: number): boolean =>
+  isFullFetch && failureCount === 0;
 
 /**
  * The balance-diff skip predicate: skip a card's statement fetch only when this
@@ -1242,18 +1250,20 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
     await deps.syncStateRepo.setFailedSyncMonobankIds(accountId, failedIdsToPersist(newFailedIds));
   }
 
-  // GRADUATE the full-fetch marker EVEN ON A PARTIAL FAILURE. This runs
-  // BEFORE the throw below, so a full fetch where one card
-  // failed still advances `lastFullSyncAt` and does NOT get stuck re-running a
-  // slow N×60s full fetch every time (which starved the balance-diff skip once
-  // the marker aged past `FULL_FETCH_INTERVAL_MS`). Nothing is lost: the failed
-  // card is force-fetched next run via `failedSyncMonobankIds`, and because the
-  // cursor (`setLastSyncAt` below) stays put on a partial failure, that
-  // force-fetch derives its window from the un-advanced `lastSyncAt` and
-  // re-covers the failed card's window; dedup keeps it idempotent. Stamped with
-  // the queried ceiling (`toSeconds * 1000`), matching `setLastSyncAt`'s
-  // convention, so the next full fetch resumes precisely where this one ended.
-  if (isFullFetch) {
+  // GRADUATE the full-fetch marker ONLY on a fully clean full-fetch run — NOT
+  // on a partial failure (SYNC-1). A failed/behind-marker card's own from-window
+  // (`fromSecondsForCard`) widens back to THIS marker, not to `lastSyncAt`, so
+  // graduating it here would become the failed card's own retry cursor next
+  // run — narrowing the very window the failed run was supposed to cover (the
+  // 31-day first-connect lookback, or the span since the prior clean full
+  // fetch) and losing it permanently. The failed card is still force-fetched
+  // next run via `failedSyncMonobankIds`; because the marker stays put, that
+  // retry re-derives the SAME window this run used and re-covers it
+  // idempotently (the `(source, external_id)` upsert). The accepted cost: a
+  // persistently flaky card keeps the account in full-fetch mode (slower,
+  // every card refetched) until a run finally comes back fully clean — see
+  // kiko-architecture's "Robust graduation" for the trade-off this reverts.
+  if (shouldGraduateFullSync(isFullFetch, failures.length)) {
     await deps.syncStateRepo.setLastFullSyncAt(accountId, toSeconds * 1000);
   }
 
@@ -1264,9 +1274,10 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
     // inserting a duplicate — so nothing already imported is lost or
     // re-imported (`addTransactions` reports 0 new for a re-fetched item).
     // Surface the failure so the caller shows an error and the user retries.
-    // Everything above (display stamp, failed-set persist, full-fetch
-    // graduation) already ran, so the failed card is force-fetched next run
-    // without stranding the account in permanent full-fetch mode.
+    // Everything above that must still run on a partial failure (display
+    // stamp, failed-set persist) already did; the full-fetch marker
+    // deliberately did NOT graduate (see `shouldGraduateFullSync` above), so
+    // the failed card is force-fetched next run from the SAME window.
     throw failures[0];
   }
 

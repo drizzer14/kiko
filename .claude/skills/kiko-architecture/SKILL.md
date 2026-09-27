@@ -743,11 +743,16 @@ fetch's from-window is derived from `lastFullSyncAt`
 (`fromCursorSeconds`), **not** the incremental `lastSyncAt` cursor —
 `lastSyncAt` advances on every clean run, including runs that skipped
 whole cards, so using it would re-fetch only the recent window and
-recover nothing. `lastFullSyncAt` now GRADUATES even on a partial
-failure — see "Robust graduation: `failedSyncMonobankIds`" below; this
-is a deliberate DIVERGENCE from `lastSyncAt`'s own partial-failure
-discipline (see "Partial-progress resilience across cards" below), not
-a copy of it.
+recover nothing. `lastFullSyncAt` graduates **only** on a fully clean
+full-fetch run — the SAME partial-failure discipline as `lastSyncAt`
+(see "Partial-progress resilience across cards" below), not a
+divergence from it (SYNC-1: a card's own from-window widens back to
+THIS marker when its crash-safe marker is behind, so graduating it on
+a run that failed that very card would become the failed card's own
+retry cursor and permanently narrow away the window the failed run was
+supposed to cover). See "Robust graduation: `failedSyncMonobankIds`"
+below for the force-retry set that carries the actual fix for a
+persistently flaky card, and the cost it accepts instead.
 
 Migration `0021` originally added `lastFullSyncAt` (on `settings`) as
 NULL with no backfill, which would otherwise force every already-synced
@@ -807,38 +812,52 @@ read `runSyncInner` end to end rather than trusting a restated shape.
 
 ### Robust graduation: `failedSyncMonobankIds`
 
-Before this, `lastFullSyncAt` (above) graduated **only** on a fully
-clean full-fetch run. That made ONE persistently flaky card starve the
-periodic safety net forever: `lastFullSyncAt` froze, `shouldFullFetch`
-kept returning true past `FULL_FETCH_INTERVAL_MS`, and every run became
-a full N×60s fetch of every card — the balance-diff skip never got a
-chance to engage again.
+`lastFullSyncAt` (above) graduates **only** on a fully clean full-fetch
+run — never on a partial failure. An earlier version of this fix made it
+graduate even on a partial failure, reasoning that ONE persistently
+flaky card would otherwise starve the periodic safety net forever
+(`lastFullSyncAt` frozen, `shouldFullFetch` stuck true past
+`FULL_FETCH_INTERVAL_MS`, every run a full N×60s fetch of every card).
+That reasoning missed a load-bearing consequence (SYNC-1, fixed
+2026-09-28): `fromSecondsForCard` widens a failed or behind-marker
+card's OWN from-window back to `lastFullSyncAt`, so graduating the
+marker on the very run that failed that card made its next retry widen
+to the JUST-ADVANCED marker instead of the window the failed run itself
+needed to cover — permanently dropping the first-connect 31-day
+lookback, or the span since the prior clean full fetch, for that one
+card (the balance still looked right, because `holdings.balanceMinorUnits`
+is overwritten from client-info regardless — see "Balance-diff skip"
+above — so nothing else surfaced the gap). Graduating only on a fully
+clean run is the SAME discipline `lastSyncAt` already used (see
+"Partial-progress resilience across cards" below); there is no
+per-card cursor to divide the difference, so the accepted trade-off is
+the original starving cost: a persistently flaky card keeps the whole
+account in full N×60s fetch mode until a run finally comes back fully
+clean.
 
-The fix is `syncState.failedSyncMonobankIds` (per-connection; schema in
+`syncState.failedSyncMonobankIds` (per-connection; schema in
 `src/db/schema.ts` — originally added as global `settings.failedSyncMonobankIds`
 in migration `0023`, de-globalized to `syncState` by migrations `0027`/`0028`,
-same as `lastFullSyncAt` above): a persisted set of Monobank account ids whose
-statement fetch FAILED on the last run. The next run force-fetches
+same as `lastFullSyncAt` above) is a persisted set of Monobank account ids
+whose statement fetch FAILED on the last run. The next run force-fetches
 exactly those ids regardless of balance — the same carve-out shape as
-the outstanding-hold case in "Balance-diff skip" above — while
-`lastFullSyncAt` now graduates even when this run had a partial
-failure, as long as it was a full fetch. A card is dropped from the set
-the moment it succeeds, and the set is pruned to ids still present in
-client-info (so a removed card is not force-fetched forever). Read
-`nextFailedSet` and `isBalanceDiffSkip` (`src/monobank/`) for
-the exact set algebra rather than a restated one here.
+the outstanding-hold case in "Balance-diff skip" above — from the SAME
+un-advanced window the failed run used, re-covered idempotently (the
+`(source, external_id)` upsert dedups a re-fetch). A card is dropped
+from the set the moment it succeeds, and the set is pruned to ids still
+present in client-info (so a removed card is not force-fetched
+forever). Read `nextFailedSet`, `isBalanceDiffSkip`, and
+`shouldGraduateFullSync` (`src/monobank/`) for the exact set algebra
+and the graduation guard rather than a restated one here.
 
-This is a genuine divergence, not a relaxation of the existing
-discipline: the statement CURSOR (`syncState.lastSyncAt`) still advances
-**only** on a fully clean run (unchanged "Partial-progress resilience
-across cards" behavior below), so a force-fetched card's window is
-re-derived from that un-advanced cursor and re-covered idempotently
-(the `(source, external_id)` upsert). Only the full-fetch MARKER now
-graduates early — the thing that was starving, not the thing that
-protects against data loss. Read the end-of-run sequence in
-`runSyncInner` (`src/monobank/`) for the exact ordering: the
-failed-set persist and the `lastFullSyncAt` stamp both happen BEFORE
-the partial-failure throw.
+The statement CURSOR (`syncState.lastSyncAt`) advances **only** on a
+fully clean run too (unchanged "Partial-progress resilience across
+cards" behavior below) — both cursors now share one discipline: neither
+graduates until the run that would graduate it is fully clean. Read the
+end-of-run sequence in `runSyncInner` (`src/monobank/`) for the exact
+ordering: the failed-set persist happens BEFORE the partial-failure
+throw; the `lastFullSyncAt` stamp is gated on zero failures, so it never
+runs on a partial-failure path at all.
 
 `runSyncInner` also emits one diagnostic per run —
 `console.warn('[monobank sync] done', {isFullFetch, cards, fetched,
