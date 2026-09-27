@@ -40,44 +40,10 @@ const INLINE_CODE_PATTERN = /(?<!`)(`+)(?!`)([\s\S]+?)(?<!`)\1(?!`)/g;
 
 const FENCE_PATTERN = /^\s*(`{3,}|~{3,})/;
 
-// Every citation still missing when this test landed. The scribe fixes the
-// skill and doc text and empties this list in the drift commit that follows;
-// see docs/harness/documented-exceptions.md. An entry that no longer fails
+// Stale citations the test tolerates. Empty: a stale citation is fixed in
+// the skill or doc text, never added here. An entry that no longer fails
 // fails the test, so the list can only shrink.
-const KNOWN_STALE_CITATIONS: ReadonlyArray<{ file: string; path: string }> = [
-  { file: '.claude/skills/kiko-code-style/SKILL.md', path: 'src/monobank/monobank.types.d.ts' },
-  { file: '.claude/skills/kiko-code-style/SKILL.md', path: 'src/statistics/holding-value-at.ts' },
-  {
-    file: '.claude/skills/kiko-design-system/SKILL.md',
-    path: 'src/design-system/disabled-opacity.ts',
-  },
-  {
-    file: '.claude/skills/kiko-design-system/SKILL.md',
-    path: 'src/design-system/disabled-field-style.ts',
-  },
-  { file: '.claude/skills/kiko-design-system/SKILL.md', path: 'src/design-system/entity-tint.ts' },
-  { file: '.claude/skills/kiko-domain/SKILL.md', path: 'src/statistics/holding-value-at.ts' },
-  {
-    file: '.claude/skills/kiko-domain/SKILL.md',
-    path: 'src/screens/forms/holding-form/property/ownership-field/',
-  },
-  { file: '.claude/skills/kiko-pricing/SKILL.md', path: 'src/statistics/holding-value-at.ts' },
-  { file: '.claude/skills/kiko-statement-import/SKILL.md', path: 'src/navigation/types.d.ts' },
-  {
-    file: '.claude/skills/kiko-statement-import/SKILL.md',
-    path: 'src/design-system/components/example-',
-  },
-  { file: 'docs/harness/documented-exceptions.md', path: 'src/rates/coingecko.ts' },
-  {
-    file: 'docs/harness/documented-exceptions.md',
-    path: 'src/categories/categories.repo.test.ts',
-  },
-  { file: 'docs/harness/documented-exceptions.md', path: 'src/holdings/interest.test.ts' },
-  { file: 'docs/harness/review-to-biome-inventory.md', path: 'src/navigation/dark-theme.ts' },
-  { file: 'docs/harness/review-to-biome-inventory.md', path: 'src/probe/' },
-  { file: 'docs/harness/skill-gap-analysis.md', path: 'src/design-system/entity-tint.ts' },
-  { file: 'docs/harness/skill-gap-analysis.md', path: 'src/holdings/holdings.repo.test.ts' },
-];
+const KNOWN_STALE_CITATIONS: ReadonlyArray<{ file: string; path: string }> = [];
 
 type Citation = { line: number; path: string; marksRemoved: boolean };
 

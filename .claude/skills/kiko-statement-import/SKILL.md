@@ -218,7 +218,7 @@ generic statement-import screen whenever a file was read at all
 to `src/screens/column-mapping/column-mapping.screen.tsx`.
 
 **`ownsFile` — which screen owns deleting the local copy.**
-`ColumnMapping`'s route param `ownsFile` (`src/navigation/types.d.ts`,
+`ColumnMapping`'s route param `ownsFile` (`src/navigation/types/types.d.ts`,
 `ColumnMapping.ownsFile` doc comment is the source of truth) is `true`
 only when `ColumnMapping` was reached via `StatementImportScreen`'s
 auto-`replace` (no `StatementImport` route left below it on the stack),
@@ -275,8 +275,8 @@ follow the same layout conventions as every other Kiko screen:
   transaction-count/date-span rows, both go through the SAME shared
   component the deposit/bond value-breakdown block also uses — never
   each other's columns, only the row layout.
-- **`ExampleTransaction`** (`src/design-system/components/example-
-  transaction/`) is the ONE shared "first parsed row" preview, rendered
+- **`ExampleTransaction`** (`src/design-system/components/example-transaction/`)
+  is the ONE shared "first parsed row" preview, rendered
   under the summary table on both screens from `PreviewStats.firstTransaction`
   (the first `ParsedTransaction` in ON-FILE order, not chronological order
   — `previewStats` sets it via `parsed.transactions.at(0)`, optional

@@ -766,12 +766,18 @@ for the current set.
   developer code work. Decide how a justified exception passes both the
   guard and the project-wide checker before a new Node rule ships.
 
-## Node checkers: blank-line separation and cross-screen imports
+## Node checkers (blank-line separation, cross-screen imports, feature imports)
 
-Both run as `node scripts/checks/<name>.js <file>`, as a guard
+Each runs as `node scripts/checks/<name>.js <file>`, as a guard
 `NODE_RULES` row, and project-wide through a `.sh` wrapper in
-`check:all`. Both are in `knip.json`'s `ignore` (reached only via
-`node`).
+`check:all`. Every checker and the shared scanner stay reachable for
+knip only through `knip.json`'s `ignore` (read the list there; it
+includes `feature-imports.js` and `specifier-scanner.js`). None has a
+report or JSON mode.
+
+Each `NODE_RULES` row names its own `projectCheck`, the gate a deny for
+a pre-existing finding points at. A Semgrep deny names
+`check:security`.
 
 - `blank-line-separation.js` (`kiko-blank-line-separation`) enforces
   kiko-code-style's "Blank lines before statement blocks" and "Blank
@@ -786,11 +792,21 @@ Both run as `node scripts/checks/<name>.js <file>`, as a guard
   do. No `--write`.
 - `feature-imports.js` (`kiko-feature-imports`) enforces
   kiko-code-style's "Feature imports (B2)". Per-file mode is FS-free,
-  so it works on the guard's mirror (`treeRootOf`); `--tree` checks
-  layout invariants and feature-level value cycles. Its classification
-  (`CONTAINERS`, `TEST_ONLY`) lives in the checker. No `--write`.
+  so it works on the guard's mirror. `treeRootOf` resolves a file
+  inside the checker's own checkout against that root first, and only
+  a path outside it (the guard mirror) by its first `src/`-style
+  segment. `--tree` checks layout invariants and feature-level value
+  cycles; its `barrel-leak` also catches the two-statement form
+  (`import { b } …` then `export { b }`). Its classification
+  (`CONTAINERS`, `TEST_ONLY`, `AMBIENT_LOOSE`, …) lives in the checker;
+  read it there. No `--write`.
 - `specifier-scanner.js` is the shared import-specifier scanner. A new
   checker that reads import specifiers reuses it.
+
+A Jest invariant, `__tests__/cited-paths.test.ts`, fails when a skill,
+agent or harness doc cites a repo path in an inline code span that does
+not exist. Fix the citation in the text; never allowlist it. The test's
+header defines what counts as a citation.
 
 ## Pre-write guard and merge-conflict files
 

@@ -80,8 +80,12 @@ motivated it. Summary — every step is required, not optional:
 
 1. Build with `FORCE_BUNDLING=1` (a Release device build can otherwise
    reuse a stale cached `main.jsbundle` and silently ship old JS).
-2. Grep the built `main.jsbundle` for a known-new string before
-   installing — this is the only proof the bundle actually regenerated.
+2. Check the built `main.jsbundle` for a known-new string before
+   installing. This is the only proof that the bundle regenerated. Pick
+   an ASCII string: Hermes stores a non-ASCII string (Cyrillic, ₴, …) as
+   UTF-16LE, so a plain grep misses it and reads a fresh bundle as
+   stale. For a non-ASCII string use
+   `python3 -c "import sys; print('<str>'.encode('utf-16-le') in open(sys.argv[1],'rb').read())" <bundle>`.
 3. Install with `devicectl`, not `xcodebuild ... install -destination
    generic/platform=iOS` — the latter reports SUCCEEDED without
    reaching the physical device.

@@ -583,7 +583,8 @@ The convention (handwritten, Prettier-only exemplar:
 `~/Developer/Projects/ovpn-ui`):
 
 - Keep 3 import GROUPS in this order, each separated by a blank line:
-  (1) external packages, (2) `../**` parent-relative, (3) `./**`
+  (1) external packages and path aliases (`@kiko/...`, the most
+  common import after B2), (2) `../**` parent-relative, (3) `./**`
   sibling-relative.
 - WITHIN each group, sort by LENGTH ASCENDING. The sort key is the
   length of the statement's ENDING physical line: the whole line for
@@ -597,8 +598,13 @@ The convention (handwritten, Prettier-only exemplar:
   only as an equal-length tiebreaker — length dominates.
 - A bare side-effect import (e.g.
   `import '@kiko/design-system/unistyles';`) is an ordering BARRIER:
-  never move an import across it — module-initialization order must
-  be preserved.
+  never move a VALUE import from after it to before it: that runs a
+  module before the side effect. Moving an import from before it to
+  after it is allowed only for an `import type` (Babel erases it) or a
+  module with no module-scope side effect of its own (e.g. a test
+  helper that only imports `react-native`); such a move removes a
+  module from the pre-barrier set and adds nothing. The `--write`
+  fixer never moves any import across a barrier.
 - Two adjacent groups of the SAME kind (e.g. two `../**` groups back
   to back, with no other-kind group or side-effect barrier between
   them) is also a violation — they must merge into one group. The
@@ -614,7 +620,7 @@ The convention (handwritten, Prettier-only exemplar:
 Use `import type` when the entire import is types:
 
 ```ts
-import type { Account } from '../domain/account';
+import type { AccountRow } from '@kiko/db';
 ```
 
 Use the inline `type` modifier when mixing types and values in one
@@ -659,16 +665,25 @@ with a root barrel.
   `rates/rates-refresh/rates-refresh.ts` imports `'../conversion'`.
   Screens never use `../` to another screen; use
   `@kiko/screens/forms/date-field`.
-- A container has no files of its own. A new module there gets its own
-  unit folder and `index.ts`.
+- A container has no files of its own, except the ambient `.d.ts`
+  files in `AMBIENT_LOOSE` (read the set in `feature-imports.js`). A new
+  module there gets its own unit folder and `index.ts`.
 - A barrel exports only its own feature. Never export a test, a test
-  helper, a fixture, or another feature's module.
+  helper, a fixture, or another feature's module — neither through
+  `export … from` nor in two statements (`import { b } from '…';` then
+  `export { b };`).
+- Shared form logic gets its own unit, apart from its component unit
+  (precedent: `src/screens/forms/term-reasons/`,
+  `src/screens/forms/property-ownership/`), so a logic module never
+  loads component styles.
 - A side-effect module has one path and no barrel re-exports it:
   `import '@kiko/design-system/unistyles';`, `import '@kiko/i18n/init';`.
 - `jest.mock` names the file that owns the seam, e.g.
   `jest.mock('@kiko/db/client')`. Jest mocks by resolved file, so code
   that imports `@kiko/db` gets the mock. When you change a mock path,
-  keep the resolved file the same.
+  keep the resolved file the same. Exception: a test inside `src/db/`
+  uses `jest.mock('./client')`, because B2 denies
+  `alias-into-own-feature`.
 - A test-only helper is deep-imported from tests only, and needs a
   `TEST_ONLY` entry with a reason in `feature-imports.js`.
 
@@ -699,7 +714,7 @@ const maskedPan = holding.metadata.maskedPan; // wrong
 **Exception — wire-mirror casing.** A type or field that mirrors an
 external wire/API payload keeps that payload's own casing on purpose,
 even where it disagrees with the acronym rule above. `maskedPan` and
-`counterIban` (`src/db/schema.ts`, `src/monobank/monobank.types.d.ts`,
+`counterIban` (`src/db/schema.ts`, `src/monobank/monobank-types/monobank.types.d.ts`,
 `src/monobank/`) are the standing example: those are the
 literal Monobank API JSON field names, not names chosen in application
 code, so they stay lower-`an`/lower-`iban` rather than becoming
@@ -832,7 +847,7 @@ not `<name>.props.ts`. A props file holding only a props type is the
 canonical case. Import it with `import type` so the build erases it.
 Exception: a file that also exports a runtime value or runs a side
 effect stays `.ts` even if most of its content is types — for example
-`src/statistics/holding-value-at.ts` and
+`src/statistics/holding-value-at/holding-value-at.ts` and
 `src/design-system/unistyles/unistyles.ts`.
 
 The repo-wide rename of existing type-only files to `.d.ts` is DONE —
@@ -918,10 +933,14 @@ Two shapes this takes today:
 
   ```
   holdings/
-    holdings.repo.ts
-    holdings.repo.test.ts
-    …
+    repo/
+      index.ts
+      holdings.repo.ts
+      holdings.repo.test.ts
   ```
+
+  (`holdings` is a container, so the repository is its own `repo/`
+  unit with a barrel.)
 
   Read the feature folder you're touching (`src/holdings/`,
   `src/accounts/`, `src/rates/`, and their siblings) for the live
@@ -933,13 +952,19 @@ of the rule, they simply aren't "a thing" with an owner:
 
 - None for containers: a container has no loose files (see "Feature
   imports (B2)").
-- A type-augmentation `.d.ts` file (an ambient/global declaration).
-  This is distinct from a component's own `.props.d.ts`, which does
-  live inside that component's folder as shown above.
+- An ambient/global declaration `.d.ts` file (never imported). At a
+  container root it needs an `AMBIENT_LOOSE` entry in
+  `scripts/checks/feature-imports.js` (read the set there), or `--tree`
+  reports it as a loose file. This is distinct from a component's own
+  `.props.d.ts`, which lives in the component's folder.
 - A cross-cutting shared test helper directory such as
   `src/test-support/` — its files are used by many things, not owned
   by any single one, so they don't belong inside any one thing's
   folder.
+
+To move a file into a unit folder, create the new file with Write (so
+the pre-write guard runs), then `git rm` the old one. Never use
+`git mv` plus a Bash edit, and never use sed.
 
 ## Helper placement
 

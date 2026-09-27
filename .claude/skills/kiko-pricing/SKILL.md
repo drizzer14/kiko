@@ -352,7 +352,7 @@ property.
 revaluations.** Its lots array is the only source of quantity/cost-basis
 history; a price change moves its VALUE without ever touching its
 `balanceMinorUnits` or emitting a transaction. Consequently
-`holdingValueAt` (`src/statistics/holding-value-at.ts`) cannot
+`holdingValueAt` (`src/statistics/holding-value-at/holding-value-at.ts`) cannot
 back-derive a priced holding's historical value from `currentBalance -
 sum(transactions)` the way it does for a ledger-backed holding — it
 branches on `isLedgerlessHoldingType` and instead calls

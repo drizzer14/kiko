@@ -162,7 +162,7 @@ through one of them:
   holding.
 
 Why it matters concretely: `holdingValueAt`
-(`src/statistics/holding-value-at.ts`) back-derives a holding's opening
+(`src/statistics/holding-value-at/holding-value-at.ts`) back-derives a holding's opening
 balance as `currentBalance - sum(allTransactions)`, so a balance written
 without its ledger row retroactively shifts the ENTIRE historical
 net-worth series by that amount, and the holding-detail transaction list
@@ -236,7 +236,9 @@ a priced holding's price series" section for the create/remove
 symmetry.
 
 **Ownership field.** `OwnershipField`
-(`src/screens/forms/holding-form/property/ownership-field/`) renders
+(`src/screens/forms/ownership-field/`; its entry logic `ownershipEntryOf`/`enteredShare`
+lives apart in `src/screens/forms/property-ownership/property-ownership.ts`,
+and `ownership-change-form` imports both) renders
 in `PropertyFormBlock` on create AND edit for every category but
 `loan_given` (`ownershipApplies`); an edited loan given shows no
 block at all. A `SegmentedControl` Percent | Fraction (it changes
@@ -918,7 +920,11 @@ stays as saved (nothing rewrites it); it is only the fallback.
   copies the matched register schedule (create or edit). A Manual create
   with an ISIN copies the matched register's schedule while its coupon %
   (and frequency, when the register maps one) is still the matched
-  one; a coupon typed over it, or no matched register row, writes `[]`,
+  one; a coupon typed over it, or no matched register row, writes `[]`
+  (this includes an ISIN typed while the register cache is still empty,
+  e.g. a first launch offline: a step-up bond then books its typed flat
+  coupon; switching the bond to ISIN mode in Edit copies the register
+  schedule once the cache has it),
   so the typed coupon is booked (OVERNIGHT ruling 2026-09-27, needs user
   confirmation). A Manual create without an ISIN keeps none. An edit
   keeps the saved schedule, or captures the matched register's for a

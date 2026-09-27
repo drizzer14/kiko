@@ -407,7 +407,7 @@ new component can land between reviews of this skill:
   `isSubmitting` as `loading`, and the surface it sits on stays open
   until the write is done — never a hand-rolled spinner beside a button.
   The shared `DISABLED_OPACITY` token
-  (`src/design-system/disabled-opacity.ts`) is the ONE dimming a disabled
+  (`src/design-system/disabled-opacity/disabled-opacity.ts`) is the ONE dimming a disabled
   pressable applies — `Button` reads it, and any new disabled pressable
   reuses it too, never a fresh inline `opacity`. `children` is OPTIONAL:
   an `icon` (or `trailingIcon`) with no `children` renders an ICON-ONLY
@@ -802,7 +802,7 @@ new component can land between reviews of this skill:
 - **TextField** — a labeled text input wrapping RN's `TextInput` with
   theme tokens. Its disabled chrome (border/background/opacity) comes
   from the shared `disabledFieldStyle(theme)` helper
-  (`src/design-system/disabled-field-style.ts`); `DateField` and
+  (`src/design-system/disabled-field-style/disabled-field-style.ts`); `DateField` and
   `TimeField` (`src/screens/forms/`) consume the SAME helper so a
   read-only date/time field renders identically to a read-only text
   field. This is a DIFFERENT token from the pressable `DISABLED_OPACITY`
@@ -832,8 +832,10 @@ new component can land between reviews of this skill:
   from that field's own `error` prop) at the same press, not just one
   — the first-invalid field in the form's top-to-bottom order is used
   ONLY to pick the scroll target, a SEPARATE concern from which fields
-  turn red. Save/Import itself is never disabled; it validates on
-  press. Every form composes this instead of hand-rolling its own
+  turn red. Save/Import is never disabled for VALIDATION; it validates
+  on press. It disables only while a submit is in flight, or when an
+  edit's saved value depends on data still loading (the holding form's
+  edit waits for the price book, kiko-pricing). Every form composes this instead of hand-rolling its own
   error caption — see `kiko-code-style`'s "Form validation model" section for when to
   show it.
 - **FieldTrigger** (`src/design-system/components/field-trigger/`) —
@@ -863,7 +865,10 @@ new component can land between reviews of this skill:
   testID? }`), each split `space-between`. Extracted from the
   holding-detail deposit/bond value-breakdown block —
   `HoldingDetailScreen` renders its own
-  principal/gross/interest/tax/expected-profit rows through this, passing
+  principal/gross/interest/tax/expected-profit rows through this (and,
+  for a bond, a "Yield to maturity" text row: a two-decimal percent,
+  testID `bond-yield-to-maturity`, left out when no lot has a stored
+  price — the one text row in the interest table), passing
   `<MoneyText money={...} tone={...} />` as each row's `value`, with NO
   visual change from before the extraction. The statement-import preview
   (`StatementPreviewBlock`, `statement-import/statement-preview-block/`) and the
@@ -1107,7 +1112,7 @@ An account or holding's color is never a raw hex literal at the call
 site — it goes through one shared pipeline so a swatch reads
 identically everywhere that entity appears (its card, its icon tint,
 its chart legend). Read `src/holdings/entity-colors/entity-colors.ts` and
-`src/design-system/entity-tint.ts` directly for the exact functions
+`src/design-system/entity-tint/entity-tint.ts` directly for the exact functions
 and their current shape; do not copy their signatures into prose here
 where they can drift. As of this writing the pipeline is:
 

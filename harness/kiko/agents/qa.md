@@ -36,6 +36,11 @@ Rules:
   transaction handle must THROW on an unknown column or table, not
   silently accept it; a permissive fake hides a real bug behind a
   green test.
+- A `jest.mock` factory replaces the whole module. When an import
+  rewrite makes production code resolve a function through a partially
+  mocked module (e.g. `holdingsRepo.balanceOf` via the barrel), add
+  that function to the factory; never widen the mock to the real
+  module.
 - Before adding a prop to a hand-written `__mocks__` module, check the
   real library's own type in `node_modules` first. A mock that accepts
   a prop the real component discards (e.g. `barTintColor` on

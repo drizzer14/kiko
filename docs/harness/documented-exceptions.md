@@ -16,7 +16,7 @@ verified usage, not dead weight:
   `scripts/checks/*.sh` wrapper, never from a package.json script
   Knip's static scan can see). Also `@env` — the virtual module that
   the `react-native-dotenv` Babel plugin synthesizes at transform time
-  (`import { PRICE_ENDPOINT } from '@env'` in `src/rates/coingecko.ts`);
+  (`import { PRICE_ENDPOINT } from '@env'` in `src/rates/coingecko/coingecko.ts`);
   it is not a real npm package, so Knip's resolver reports the import
   as an unlisted dependency. The package itself (`react-native-dotenv`)
   is seen through `babel.config.js`; only the synthetic `@env`
@@ -32,10 +32,10 @@ verified usage, not dead weight:
   `@react-native/typescript-config` pins `types: ["jest"]`, which
   drops the Node ambient globals and module typings that four test
   files legitimately use — `src/db/schema.category-overrides.test.ts`
-  and `src/categories/categories.repo.test.ts` read
+  and `src/categories/repo/categories.repo.test.ts` read
   `drizzle/migrations` through `node:fs` + `__dirname`,
   `__tests__/info-plist.test.ts` reads `ios/Kiko/Info.plist` the same
-  way, and `src/holdings/interest.test.ts` sets `process.env.TZ` to
+  way, and `src/holdings/interest/interest.test.ts` sets `process.env.TZ` to
   force a DST-observing zone. Jest runs on Node, so these are real,
   available globals, not a shim; the list is widened to
   `["jest", "node"]` (never to `[]`, which would admit every
@@ -274,16 +274,6 @@ verified usage, not dead weight:
   at a container root (no `--tree` `loose-file` finding). They are ambient
   declarations that nothing imports, so a unit folder and barrel would
   have no importer.
-- **`__tests__/cited-paths.test.ts`'s `KNOWN_STALE_CITATIONS` list
-  (TEMPORARY)**: each entry is one `(citing file, cited path)` pair that
-  did not exist when the invariant landed. The list is a hand-off, not an
-  accepted exception: the scribe fixes those citations in the skill and
-  doc text and EMPTIES this list in the drift commit that follows. The
-  test fails for an entry that no longer fails, so the list can only
-  shrink, and a new stale citation is never added to it. The test's own
-  header states what counts as a citation (inline code spans outside
-  fenced blocks; globs and placeholders skipped; a sentence that says its
-  path is gone keeps it).
 - **`scripts/checks/full-word-identifiers.js`'s own `EXEMPTIONS` list**: an
   exact `(file path suffix, denylisted word, EXACT identifier name)`
   allowlist mechanizing kiko-code-style's "Full words in identifiers"
@@ -415,7 +405,7 @@ verified usage, not dead weight:
   `existsSync`, `__dirname`, `require` of a non-module path). **KEEP-LIST**
   — external paths tests DO read, which must stay in the sandbox and are
   therefore NOT ignored: `drizzle/migrations/**` (read by
-  `src/db/schema.*.test.ts`, `src/categories/categories.repo.test.ts`,
+  `src/db/schema.*.test.ts`, `src/categories/repo/categories.repo.test.ts`,
   and `src/db/__fixtures__/seed-category-colors.ts` via `__dirname`
   +`node:fs`) and `scripts/checks/*.sh` (read by the `__tests__/mutation-*`
   wrapper tests). `reports/` is deliberately kept: Stryker's incremental

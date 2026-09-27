@@ -147,10 +147,7 @@ human or agent can verify.
 
 Every ignore-list / suppression exception in this repo is a real, verified
 usage with a concrete justification — not dead weight. The full inventory
-(`knip.json`, `tsconfig.json` `types`, `.depcheckrc.json`, `.gitleaks.toml`,
-`.jscpd.json`, `rules/fixtures/**`, the Stryker mutate-set and sandbox
-exclusions, `.npmrc` `min-release-age-exclude`, and the tracked public-only
-`.env.test`) lives in
+of every ignore-list and allowlist lives in
 **`docs/harness/documented-exceptions.md`**. Read
 and UPDATE that file when you add, change, or rely on an exception. The
 standing rule holds: a suppression is acceptable only when it names a

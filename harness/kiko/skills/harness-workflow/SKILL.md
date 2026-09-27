@@ -143,6 +143,14 @@ adds the rules, following kiko-linter's "Adding a pre-write guard rule"
 and "Pinned-value rules for locked user-approved visuals". The
 reviewer's `mechanizable: yes/pinned/no` tag is the first draft.
 
+## Large reviews
+
+Split a big review into parallel read-only reviewer slices by commit
+range, each writing its own output file. Review a mechanical sweep by
+static proof, not by sampling: resolve every import binding and
+`jest.mock`/`require` target at both commits, count cycles, and check
+each side-effect import's predecessors.
+
 ## The Stop-hook dup check is scoped
 
 `medium.sh`'s Stop/SubagentStop hook runs jscpd scoped to the

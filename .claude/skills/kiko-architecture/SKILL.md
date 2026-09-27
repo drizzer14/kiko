@@ -74,8 +74,10 @@ project-level pointer to this section.
   `drizzle-orm` (^0.45.2) is the ORM on top of it: open the database
   with op-sqlite's `open()`, wrap it with `drizzle(opsqliteDb)`.
 - The schema is defined in TypeScript (Drizzle schema, not raw SQL).
-  The `@kiko/db` barrel exports it as a namespace (`schema`). Mock the
-  connection with `jest.mock('@kiko/db/client')`.
+  The `@kiko/db` barrel exports the tables flat (`export * from
+  './schema'`) and also as a namespace (`schema`). Mock the connection
+  with `jest.mock('@kiko/db/client')`. A test inside `src/db/` uses
+  `jest.mock('./client')`, because B2 denies `alias-into-own-feature`.
 - Generate migrations with `drizzle-kit` using `driver: 'expo'` —
   this is the correct driver value for op-sqlite migration
   generation, despite the name.
@@ -404,6 +406,11 @@ the bond edit form fires the register refresh, whose backfill can add
 `payments` to the very row the form seeded, so the bond edit saves
 through `holdingsRepo.updateMetadataFromStored` and takes that key from
 the row re-read inside its own write.
+
+**A Save that derives a stored value from a query waits for that
+query.** Disable Save while the query's `isLoading` is true; saving
+early writes a value built from missing data (the loan edit once saved
+before the price book loaded and wrote a permanent manual point).
 
 **A write started from a cached display screen must not trust its
 rows.** `useLiveQuery` also returns `isFresh`: `true` once THIS
