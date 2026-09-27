@@ -485,17 +485,31 @@ gate says there is nothing to do.
   never list `UAH` — without the filter, a base-USD user who holds
   UAH would read as permanently "unrated" and bypass the throttle on
   every sync instead of only a genuine gap.
-  The history backfill resumes per currency: a newly held currency
-  with no history rows forces a run from the earliest day
-  (`src/rates/history-backfill/history-backfill.ts`) — once per app
-  run: a currency whose providers all answered for the whole span but
-  returned no row for it (a held coin CoinGecko never returns) is kept
-  in an in-memory `knownEmptyCurrenciesThisRun` set and no longer
-  resets the cursor, so Statistics does not refetch the full span on
-  every focus (a rejected leg is never recorded — it retries; nor is a
-  coin whose OWN CoinGecko request failed while another coin's succeeded:
-  `fetchCryptoHistory` settles per coin and returns `failedCurrencies`
-  beside its `entries`. The metal twin, `emptyBackwardFloorByMetal`,
+  The history backfill's resume cursor is PER CURRENCY (SYNC-2,
+  2026-09-28 fix), not one shared max(day) across every stored row:
+  `resolveResumeCursor` (`src/rates/history-backfill/history-backfill.ts`)
+  takes the OLDEST last-backfilled day among every currently-held
+  currency — fiat as its `USD` anchor, plus every held crypto — fed by
+  `deriveLastBackfilledDayByCurrency(historyRows)`. A currency with no
+  stored day at all forces the whole span from the earliest day, same
+  as before; the fix is that a currency which already HAS some rows
+  but fell behind (its own provider leg kept failing while a DIFFERENT
+  currency's leg kept succeeding and advancing the shared max to
+  today) is no longer masked by that other currency's progress — the
+  minimum always reflects the most-lagging held currency, so its own
+  gap keeps getting re-derived and re-fetched on every run instead of
+  going permanently stale. A currency whose providers all answered for
+  the whole span but returned no row for it (a held coin CoinGecko
+  never returns) is kept in an in-memory `knownEmptyCurrenciesThisRun`
+  set and excluded from that minimum, so Statistics does not refetch
+  the full span on every focus (a rejected leg is never recorded — it
+  retries; nor is a coin whose OWN CoinGecko request failed while
+  another coin's succeeded: `fetchCryptoHistory` settles per coin and
+  returns `failedCurrencies` beside its `entries` — `runBackfill` itself
+  reports `'failed'`, never `'complete'`, whenever an attempted
+  currency's fetch failed and nothing composed for it this run (see
+  kiko-pricing's "History backfill" section for the full outcome rule).
+  The metal twin, `emptyBackwardFloorByMetal`,
   records only an ANSWERED empty backward range — a failed request
   throws before it is recorded). A create/restore
   that may add the first holding of a new currency or type triggers

@@ -2,7 +2,7 @@ import { match } from 'ts-pattern';
 import {
   type BackfillStatus,
   deriveLastBackfilledDay,
-  derivePresentCurrencies,
+  deriveLastBackfilledDayByCurrency,
   planBackfillRun,
   runBackfill,
 } from '@kiko/rates/history-backfill';
@@ -349,11 +349,15 @@ const StatisticsScreen: FC = () => {
   // The resume point for the backfill: the newest day already stored, derived
   // from the history table itself (no extra persistence). Null when empty.
   const lastBackfilledDay = useMemo(() => deriveLastBackfilledDay(historyRows), [historyRows]);
-  // Every currency with at least one stored row — `runBackfill`'s own gap
-  // check against a currency held NOW but never itself backfilled (a new
-  // coin, or fiat conversion needed for the first time), derived from this
-  // SAME already-loaded `historyRows` read, no new query.
-  const presentCurrencies = useMemo(() => derivePresentCurrencies(historyRows), [historyRows]);
+  // Every currency's OWN last-backfilled day — `runBackfill`'s per-currency
+  // resume cursor (SYNC-2: a single global max(day) let one currency whose
+  // own leg kept failing, or one held for the first time, hide behind
+  // another currency's success and never re-fetch its own gap), derived from
+  // this SAME already-loaded `historyRows` read, no new query.
+  const lastBackfilledDayByCurrency = useMemo(
+    () => deriveLastBackfilledDayByCurrency(historyRows),
+    [historyRows],
+  );
 
   // Drive the incremental, non-blocking backfill and surface its status to the
   // line. It runs when there is a bounded span (transactions exist) with days
@@ -429,9 +433,9 @@ const StatisticsScreen: FC = () => {
     const token = runTokenRef.current;
 
     // No local "nothing missing" shortcut here any more: `runBackfill` itself
-    // owns that decision now, since it also has to check a newly-held
-    // currency against `presentCurrencies` — a check this screen cannot
-    // replicate without `openCurrencies`'s own async read.
+    // owns that decision now, since it also has to check a newly-held or
+    // lagging currency against `lastBackfilledDayByCurrency` — a check this
+    // screen cannot replicate without `openCurrencies`'s own async read.
     setBackfillStatus({ state: 'loading', lastDay: lastBackfilledDay });
     // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) either() captures every rejection as a Left, and the .then handler only sets state
     either<unknown, BackfillStatus>(() =>
@@ -439,7 +443,7 @@ const StatisticsScreen: FC = () => {
         earliestDay: spanStart,
         lastBackfilledDay: resumeFrom,
         today: now,
-        presentCurrencies,
+        lastBackfilledDayByCurrency,
       }),
     ).then((result) => {
       if (!isMountedRef.current || token !== runTokenRef.current) {
@@ -473,7 +477,7 @@ const StatisticsScreen: FC = () => {
     spanStart,
     lastBackfilledDay,
     now,
-    presentCurrencies,
+    lastBackfilledDayByCurrency,
   ]);
 
   // Bar + pie value "now" on the current rate table; the line values each day on

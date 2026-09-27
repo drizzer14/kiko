@@ -64,16 +64,19 @@ export type BackfillDeps = {
    */
   openCurrencies?: () => Promise<OpenCurrencies>;
   /**
-   * Every currency that already has at least one stored history row —
-   * `derivePresentCurrencies(historyRows)`, the SAME `historyRows` the caller
-   * already reads for `lastBackfilledDay`, so this needs no new query. The
-   * global `lastBackfilledDay` is one max(day) across ALL stored pairs; once
-   * it reaches `today`, a currency newly held afterward (a coin nobody held
-   * during that earlier run, or a base-currency-only user's first foreign
-   * holding) has NO row of its own at all, and the day-based gate alone would
-   * skip it forever. Defaults to `[]` (nothing known present).
+   * Every currency's OWN last-backfilled day —
+   * `deriveLastBackfilledDayByCurrency(historyRows)`, the SAME `historyRows`
+   * the caller already reads for `lastBackfilledDay`, so this needs no new
+   * query. SYNC-2: the global `lastBackfilledDay` is one max(day) across ALL
+   * stored pairs, so once it reaches `today` (from whatever currency drove it
+   * there), a DIFFERENT currency whose own leg kept failing — or one held for
+   * the first time, with no row at all — hides behind that shared cursor and
+   * never re-fetches its own gap. The resume cursor below is instead the
+   * MINIMUM across every currently-held currency's own day here (missing
+   * entirely counts as maximally behind), so the most-lagging one always
+   * drives the window. Defaults to `{}` (nothing known backfilled).
    */
-  presentCurrencies?: Currency[];
+  lastBackfilledDayByCurrency?: Partial<Record<Currency, number>>;
   /**
    * Injectable override for `knownEmptyCurrenciesThisRun` below, so a test
    * can isolate its own set instead of sharing this module's per-app-run
@@ -86,7 +89,7 @@ export type BackfillDeps = {
  * Per-app-run, IN-MEMORY set of newly-held currencies (no stored history
  * row) whose providers all answered for the whole span yet returned no row
  * for them — e.g. a held coin CoinGecko never returns. Without it, such a
- * currency stays absent from `presentCurrencies` forever, so
+ * currency stays absent from `lastBackfilledDayByCurrency` forever, so
  * `resolveResumeCursor` resets to the whole span and re-fetches it on every
  * Statistics focus. Same trade-off as `metal-refresh.ts`'s
  * `emptyBackwardFloorByMetal`: forgotten on app restart, so at most one
@@ -97,18 +100,25 @@ export type BackfillDeps = {
  */
 const knownEmptyCurrenciesThisRun = new Set<Currency>();
 
-/** Every currency that appears as either `base` or `quote` in at least one stored row. */
-export const derivePresentCurrencies = (
-  rows: Pick<CurrencyRateHistoryRow, 'base' | 'quote'>[],
-): Currency[] => {
-  const present = new Set<Currency>();
+/**
+ * Every currency's own last-backfilled day, keyed by the `X:UAH` row's own
+ * `base` — the same key `composeHistoryRows` writes one row per currency
+ * under. A currency absent from the map has never been backfilled at all.
+ */
+export const deriveLastBackfilledDayByCurrency = (
+  rows: Pick<CurrencyRateHistoryRow, 'base' | 'day'>[],
+): Partial<Record<Currency, number>> => {
+  const days: Partial<Record<Currency, number>> = {};
 
   for (const row of rows) {
-    present.add(row.base);
-    present.add(row.quote);
+    const current = days[row.base];
+
+    if (current === undefined || row.day > current) {
+      days[row.base] = row.day;
+    }
   }
 
-  return [...present];
+  return days;
 };
 
 /** The maximum stored `day`, i.e. the resume point — null when there is none. */
@@ -302,47 +312,80 @@ const runCryptoLeg = (
     ? loadCrypto(cryptoDays, cryptoCurrencies)
     : Promise.resolve(NO_CRYPTO_HISTORY);
 
+/** Every currently-held currency, fiat represented by its `USD` anchor (EUR always composes alongside it, same NBU leg). */
+const heldCurrencies = (needsFiat: boolean, cryptoCurrencies: CryptoCurrency[]): Currency[] =>
+  needsFiat ? ['USD', ...cryptoCurrencies] : cryptoCurrencies;
+
 /**
- * The global `lastBackfilledDay` cursor can already sit at `today` from a
- * PRIOR run's currently-held set, while a currency held NOW has never itself
- * been backfilled — a coin first added after that run, or fiat conversion
- * needed for the first time. This lists those currencies (fiat as its `USD`
- * anchor), minus any this app run already fetched the whole span for and got
- * nothing back (`knownEmpty`) — re-asking would only repeat the same empty
- * answer.
+ * SYNC-2 — the resume cursor for THIS run: the OLDEST last-backfilled day
+ * among every currently-held currency, not one shared max across everything.
+ * A single global cursor let one currency whose own leg kept failing hide
+ * behind another currency's success (it never re-derives a gap once the
+ * SHARED cursor reaches `today`, even though ITS OWN rows stop earlier) —
+ * resuming from the minimum means the most-lagging held currency always
+ * drives the window, and the idempotent day-pair upsert makes re-covering an
+ * already-current currency in that same wider window free. `null` (recompute
+ * the whole span) whenever a held currency has never been backfilled at all.
+ * A currency this app run already confirmed has no data (`knownEmpty`) is
+ * excluded — it would otherwise pin the cursor to `null` forever.
  */
-const unbackfilledCurrencies = (
+const resolveResumeCursor = (
+  held: Currency[],
+  lastBackfilledDayByCurrency: Partial<Record<Currency, number>>,
+  knownEmpty: ReadonlySet<Currency>,
+): number | null => {
+  let minimum: number | null = null;
+
+  for (const currency of held) {
+    if (knownEmpty.has(currency)) {
+      continue;
+    }
+
+    const lastDay = lastBackfilledDayByCurrency[currency];
+
+    if (lastDay === undefined) {
+      return null;
+    }
+
+    if (minimum === null || lastDay < minimum) {
+      minimum = lastDay;
+    }
+  }
+
+  return minimum;
+};
+
+/** `resolveResumeCursor` plus the never-backfilled candidate list `recordKnownEmpty` needs, computed together so `runBackfill` itself stays a flat sequence. */
+const resolveBackfillWindow = (
   needsFiat: boolean,
   cryptoCurrencies: CryptoCurrency[],
-  presentCurrencies: Currency[] | undefined,
+  lastBackfilledDayByCurrency: Partial<Record<Currency, number>>,
   knownEmpty: ReadonlySet<Currency>,
-): Currency[] => {
-  const present = new Set(presentCurrencies ?? []);
-  const held: Currency[] = needsFiat ? ['USD', ...cryptoCurrencies] : cryptoCurrencies;
+): { neverBackfilled: Currency[]; resumeFrom: number | null } => {
+  const held = heldCurrencies(needsFiat, cryptoCurrencies);
+  const neverBackfilled = held.filter(
+    (currency) => lastBackfilledDayByCurrency[currency] === undefined && !knownEmpty.has(currency),
+  );
 
-  return held.filter((currency) => !present.has(currency) && !knownEmpty.has(currency));
+  return {
+    neverBackfilled,
+    resumeFrom: resolveResumeCursor(held, lastBackfilledDayByCurrency, knownEmpty),
+  };
 };
 
 /**
- * The cursor to use for THIS run: `null` (recompute the whole span) whenever
- * a held currency has never been backfilled, so `missingDays` never silently
- * skips it forever; unchanged otherwise.
- */
-const resolveResumeCursor = (
-  lastBackfilledDay: number | null,
-  unbackfilled: Currency[],
-): number | null => (unbackfilled.length > 0 ? null : lastBackfilledDay);
-
-/**
- * Adds to `knownEmpty` every `unbackfilled` currency this whole-span run
- * composed no row for — only when EVERY provider leg answered, and never a
- * coin in `failedCurrencies`: CoinGecko settles per coin, so one coin's 200
- * fulfils the leg while another coin's own request failed. A failed request is
- * a network failure to retry, not an empty answer.
+ * Adds to `knownEmpty` every NEVER-backfilled held currency (no stored day at
+ * all) this whole-span run composed no row for — only when EVERY provider leg
+ * answered, and never a coin in `failedCurrencies`: CoinGecko settles per
+ * coin, so one coin's 200 fulfils the leg while another coin's own request
+ * failed. A failed request is a network failure to retry, not an empty
+ * answer. A currency that already HAD some rows (merely lagging, SYNC-2's
+ * case) is never a candidate here — it keeps retrying every run through
+ * `resolveResumeCursor` instead of being permanently blacklisted.
  */
 const recordKnownEmpty = (
   legs: PromiseSettledResult<unknown>[],
-  unbackfilled: Currency[],
+  neverBackfilled: Currency[],
   rows: NewHistoryRow[],
   failedCurrencies: readonly Currency[],
   knownEmpty: Set<Currency>,
@@ -353,20 +396,90 @@ const recordKnownEmpty = (
 
   const composedOrFailed = new Set<Currency>([...rows.map((row) => row.base), ...failedCurrencies]);
 
-  for (const currency of unbackfilled.filter((candidate) => !composedOrFailed.has(candidate))) {
+  for (const currency of neverBackfilled.filter((candidate) => !composedOrFailed.has(candidate))) {
     knownEmpty.add(currency);
   }
+};
+
+/**
+ * TWIN-1 / SYNC-2 — one outcome rule: every currency this run attempted to
+ * resolve but did not, because its OWN provider leg rejected outright, or
+ * (crypto only) its own per-coin request failed inside an otherwise-fulfilled
+ * leg. A rejected NBU leg fails BOTH `USD` and `EUR` (composed from the same
+ * fetch); it also transitively blocks every crypto row (`composeHistoryRows`
+ * needs the SAME-run `USD` anchor to price a crypto pair), so nothing further
+ * needs to special-case that dependency here — a failed NBU leg alone already
+ * leaves every crypto currency out of `composed` too.
+ */
+const unresolvedFailures = (
+  needsFiat: boolean,
+  cryptoCurrencies: CryptoCurrency[],
+  nbuResult: PromiseSettledResult<HistoryRateEntry[]>,
+  cryptoResult: PromiseSettledResult<CryptoHistory>,
+  crypto: CryptoHistory,
+  composed: ReadonlySet<Currency>,
+): Currency[] => {
+  const failed: Currency[] = [
+    ...(needsFiat && nbuResult.status === 'rejected' ? (['USD', 'EUR'] as Currency[]) : []),
+    ...(cryptoResult.status === 'rejected' ? cryptoCurrencies : crypto.failedCurrencies),
+  ];
+
+  return failed.filter((currency) => !composed.has(currency));
+};
+
+/**
+ * Compose this run's rows from both settled legs, record any newly-confirmed
+ * `knownEmpty` currency, and classify the result — the whole middle of
+ * `runBackfill` extracted so that function itself stays a flat sequence of
+ * early returns.
+ */
+const composeAndClassify = (
+  needsFiat: boolean,
+  cryptoCurrencies: CryptoCurrency[],
+  neverBackfilled: Currency[],
+  days: number[],
+  nbuResult: PromiseSettledResult<HistoryRateEntry[]>,
+  cryptoResult: PromiseSettledResult<CryptoHistory>,
+  knownEmpty: Set<Currency>,
+): { rows: NewHistoryRow[]; failures: Currency[] } => {
+  const nbu = nbuResult.status === 'fulfilled' ? nbuResult.value : [];
+  const crypto = cryptoResult.status === 'fulfilled' ? cryptoResult.value : NO_CRYPTO_HISTORY;
+  const rows = composeHistoryRows([...nbu, ...crypto.entries], days);
+
+  recordKnownEmpty(
+    [nbuResult, cryptoResult],
+    neverBackfilled,
+    rows,
+    crypto.failedCurrencies,
+    knownEmpty,
+  );
+
+  const composed = new Set(rows.map((row) => row.base));
+  const failures = unresolvedFailures(
+    needsFiat,
+    cryptoCurrencies,
+    nbuResult,
+    cryptoResult,
+    crypto,
+    composed,
+  );
+
+  return { rows, failures };
 };
 
 /**
  * Run one incremental pass: compute the still-missing days, fetch the fiat range
  * from NBU and every crypto's series from CoinGecko for that span, compose every
  * cross pair per day, and upsert them. Idempotent (upsert on the pair-day index) and
- * resumable — a fresh call picks up wherever `lastBackfilledDay` leaves off.
- * Returns a terminal `BackfillStatus`: `complete` once the pass has upserted
- * (or had nothing new to upsert for) the missing span, or `failed` when every
- * provider rejected for it (see the guard just below) — never `complete` on
- * a network failure.
+ * resumable — a fresh call picks up wherever each held currency's own day leaves
+ * off (`resolveResumeCursor`). Returns a terminal `BackfillStatus`: `complete`
+ * once every attempted currency resolved (or the span genuinely had nothing new
+ * to upsert), or `failed` when an attempted currency's fetch failed and nothing
+ * composed for it this run (`unresolvedFailures`) — never `complete` while a
+ * currency this run was supposed to resolve stays silently unresolved. Any rows
+ * that DID compose this run are still persisted before a `failed` return, so a
+ * partial success (e.g. fiat succeeded while crypto failed) is never re-fetched
+ * on retry.
  */
 export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> => {
   const today = toUtcMidnight(deps.today ?? Date.now());
@@ -383,15 +496,15 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
   }
 
   const knownEmpty = deps.knownEmptyCurrencies ?? knownEmptyCurrenciesThisRun;
-  const unbackfilled = unbackfilledCurrencies(
+  const lastBackfilledDayByCurrency = deps.lastBackfilledDayByCurrency ?? {};
+  const { neverBackfilled, resumeFrom } = resolveBackfillWindow(
     needsFiat,
     cryptoCurrencies,
-    deps.presentCurrencies,
+    lastBackfilledDayByCurrency,
     knownEmpty,
   );
-  const effectiveLastBackfilledDay = resolveResumeCursor(lastBackfilledDay, unbackfilled);
 
-  const days = missingDays(deps.earliestDay, effectiveLastBackfilledDay, today);
+  const days = missingDays(deps.earliestDay, resumeFrom, today);
 
   if (days.length === 0) {
     return { state: 'complete', lastDay: lastBackfilledDay };
@@ -416,28 +529,29 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
     runCryptoLeg(cryptoCurrencies, loadCrypto, cryptoDays),
   ]);
 
-  if (nbuResult.status === 'rejected' && cryptoResult.status === 'rejected') {
-    // Every provider failed for this span (e.g. fully offline): report
-    // `'failed'`, never `'complete'` — the caller's `lastBackfilledDay`
-    // resume point is left exactly where it was, so a later pass re-fetches
-    // this same span rather than skipping it as already done. Only ONE
-    // provider rejecting instead keeps composing from whichever succeeded,
-    // the existing partial-history behavior below.
-    return { state: 'failed', lastDay: lastBackfilledDay };
-  }
-
-  const nbu = nbuResult.status === 'fulfilled' ? nbuResult.value : [];
-  const crypto = cryptoResult.status === 'fulfilled' ? cryptoResult.value : NO_CRYPTO_HISTORY;
-
-  const rows = composeHistoryRows([...nbu, ...crypto.entries], days);
-
-  recordKnownEmpty(
-    [nbuResult, cryptoResult],
-    unbackfilled,
-    rows,
-    crypto.failedCurrencies,
+  const { rows, failures } = composeAndClassify(
+    needsFiat,
+    cryptoCurrencies,
+    neverBackfilled,
+    days,
+    nbuResult,
+    cryptoResult,
     knownEmpty,
   );
+
+  if (rows.length > 0) {
+    await upsertMany(rows);
+  }
+
+  if (failures.length > 0) {
+    // An attempted currency's fetch failed for this span and nothing composed
+    // for it: report `'failed'`, never `'complete'` — the caller's
+    // `lastBackfilledDay` resume point is left exactly where it was, so a
+    // later pass re-fetches this same span rather than skipping it as already
+    // done. Whatever DID compose from the other currencies above is already
+    // persisted, so a partial success is never redone.
+    return { state: 'failed', lastDay: lastBackfilledDay };
+  }
 
   if (rows.length === 0) {
     // Nothing composed (both providers empty for the span), so nothing is
@@ -446,7 +560,7 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
     // still-missing days and the line would never fill.
     return { state: 'complete', lastDay: lastBackfilledDay };
   }
-  await upsertMany(rows);
+
   // Advance the cursor only to the newest day actually stored (usually today,
   // but earlier if the latest days had no anchor yet), so a later pass resumes
   // and fills the remaining gap instead of assuming today is done.

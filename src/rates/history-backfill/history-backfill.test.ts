@@ -14,6 +14,7 @@ import {
   type BackfillStatus,
   composeHistoryRows,
   deriveLastBackfilledDay,
+  deriveLastBackfilledDayByCurrency,
   missingDays,
   planBackfillRun,
   runBackfill,
@@ -195,9 +196,18 @@ describe('runBackfill', () => {
     const captured: StoredRow[][] = [];
     const nbuCalls: [number, number][] = [];
     const btcCalls: number[] = [];
+    const lastBackfilledDay = overrides.lastBackfilledDay ?? null;
+    // Every existing test below models a world where USD/EUR/BTC have already
+    // been backfilled together up to `lastBackfilledDay` — the "a newly-held
+    // currency" describe block sets `lastBackfilledDayByCurrency` directly to
+    // exercise the per-currency gap this default would otherwise mask.
+    const lastBackfilledDayByCurrency: Partial<Record<Currency, number>> =
+      lastBackfilledDay === null
+        ? {}
+        : { USD: lastBackfilledDay, EUR: lastBackfilledDay, BTC: lastBackfilledDay };
     const deps: BackfillDeps = {
       earliestDay: day(0),
-      lastBackfilledDay: null,
+      lastBackfilledDay,
       today: day(0),
       fetchNbuHistory: async (start, end) => {
         nbuCalls.push([start, end]);
@@ -217,11 +227,7 @@ describe('runBackfill', () => {
       // as needed; the "data-presence gate" describe block overrides this to
       // exercise the skip paths.
       openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC'] }),
-      // Every existing test below models a world where USD/EUR/BTC have
-      // already been backfilled together up to `lastBackfilledDay` — the
-      // "a newly-held currency" describe block overrides this to exercise the
-      // per-currency gap the default here would otherwise mask.
-      presentCurrencies: ['USD', 'EUR', 'BTC'],
+      lastBackfilledDayByCurrency,
       ...overrides,
     };
 
@@ -252,11 +258,12 @@ describe('runBackfill', () => {
     expect(btcCalls[0]).toBeGreaterThanOrEqual(2);
   });
 
-  it('still stores NBU fiat when the CoinGecko BTC fetch fails', async () => {
-    // CoinGecko's free tier can 401 a multi-year request; because the fetches are
-    // settled independently, a BTC failure must not discard the fiat rates NBU
-    // already returned. The composed rows carry the fiat cross pairs; BTC pairs
-    // are simply absent for that pass.
+  // TWIN-1 / SYNC-2: the fiat rates NBU already returned are still persisted
+  // (settled independently — a BTC failure must not discard them), but the
+  // overall pass now reports `'failed'`, not `'complete'`: BTC's own fetch
+  // failed and composed no row for it, so the caller must retry on the next
+  // focus instead of silently stranding BTC's history.
+  it('still stores NBU fiat when the CoinGecko BTC fetch fails, but reports failed so BTC retries', async () => {
     const { deps, captured } = makeDeps({
       fetchCryptoHistory: async () => {
         throw new Error('CoinGecko request failed: 401');
@@ -271,10 +278,14 @@ describe('runBackfill', () => {
     // USD/EUR/UAH fiat pairs are present; no pair references BTC.
     expect(stored.some((row) => row.base === 'USD' && row.quote === 'UAH')).toBe(true);
     expect(stored.every((row) => row.base !== 'BTC' && row.quote !== 'BTC')).toBe(true);
-    expect(status).toEqual({ state: 'complete', lastDay: day(0) });
+    expect(status).toEqual({ state: 'failed', lastDay: null });
   });
 
-  it('still composes when only the BTC fetch succeeds and NBU fails', async () => {
+  // TWIN-1's "wider" case: crypto needs the SAME-run USD:UAH anchor
+  // (`composeHistoryRows`), so a rejected NBU leg blocks BTC too even though
+  // CoinGecko itself answered — nothing composes, and the pass must report
+  // `'failed'`, never `'complete'` with zero rows silently accepted as "done".
+  it('reports failed, composing nothing, when NBU fails even though CoinGecko succeeds', async () => {
     const { deps, captured } = makeDeps({
       fetchNbuHistory: async () => {
         throw new Error('NBU request failed: 500');
@@ -283,12 +294,30 @@ describe('runBackfill', () => {
 
     const status: BackfillStatus = await runBackfill(deps);
 
-    // Only BTC:USD anchors survive; the pass still reports complete rather
-    // than throwing. With no fiat anchor at all, BTC itself never reaches a
-    // UAH price either (its own X:UAH row needs the same-run USD:UAH anchor),
-    // so no row is emitted for BTC or anything else, and the resume cursor
-    // stays at its prior value (null) rather than advancing.
-    expect(status).toEqual({ state: 'complete', lastDay: null });
+    // With no fiat anchor at all, BTC itself never reaches a UAH price either
+    // (its own X:UAH row needs the same-run USD:UAH anchor), so no row is
+    // emitted for BTC or anything else, and the resume cursor stays at its
+    // prior value (null) rather than advancing.
+    expect(status).toEqual({ state: 'failed', lastDay: null });
+    expect(captured).toHaveLength(0);
+  });
+
+  // TWIN-1's original case: an UNATTEMPTED leg (no crypto held at all)
+  // previously resolved fulfilled with `NO_CRYPTO_HISTORY`, so the old
+  // both-legs-rejected check never fired for a fiat-only user whose NBU
+  // fetch failed — the pass reported `'complete'` and never retried for the
+  // rest of the session. It must report `'failed'` here too.
+  it('reports failed for a fiat-only user whose NBU fetch fails, even with no crypto attempted', async () => {
+    const { deps, captured } = makeDeps({
+      fetchNbuHistory: async () => {
+        throw new Error('NBU request failed: 500');
+      },
+      openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: [] }),
+    });
+
+    const status: BackfillStatus = await runBackfill(deps);
+
+    expect(status).toEqual({ state: 'failed', lastDay: null });
     expect(captured).toHaveLength(0);
   });
 
@@ -387,7 +416,7 @@ describe('runBackfill — a newly-held currency with no stored history yet', () 
         captured.push(rows);
       },
       openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC', 'ETH'] }),
-      presentCurrencies: ['USD', 'EUR', 'BTC'],
+      lastBackfilledDayByCurrency: { USD: day(2), EUR: day(2), BTC: day(2) },
     };
 
     const status = await runBackfill(deps);
@@ -418,7 +447,7 @@ describe('runBackfill — a newly-held currency with no stored history yet', () 
         captured.push(rows);
       },
       openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: [] }),
-      presentCurrencies: [],
+      lastBackfilledDayByCurrency: {},
     };
 
     const status = await runBackfill(deps);
@@ -448,7 +477,7 @@ describe('runBackfill — a newly-held currency with no stored history yet', () 
       fetchCryptoHistory,
       upsertMany: async () => {},
       openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC', 'ETH'] }),
-      presentCurrencies: ['USD', 'EUR', 'BTC'],
+      lastBackfilledDayByCurrency: { USD: day(2), EUR: day(2), BTC: day(2) },
       knownEmptyCurrencies,
     };
 
@@ -508,6 +537,94 @@ describe('runBackfill — a newly-held currency with no stored history yet', () 
 
     expect(knownEmptyCurrencies.has('ETH')).toBe(false);
     expect(requestedCoins.filter((coin) => coin === 'ethereum')).toHaveLength(2);
+  });
+});
+
+// SYNC-2: a currency that already has SOME stored rows (not the never-held
+// case above) but whose own leg keeps failing must not hide behind a
+// DIFFERENT currency's success once the global cursor reaches today —
+// end-to-end across two runs, re-deriving both cursors from the rows the
+// FIRST run actually persisted, the same way the real Statistics screen does
+// from `historyRowsQuery()`.
+describe('runBackfill — SYNC-2: a lagging currency with existing rows is not permanently gapped', () => {
+  it('fetches crypto for the gap on the next run once fiat has already advanced past it', async () => {
+    // Steady state before this test starts: USD/EUR/BTC all backfilled
+    // together through day(0).
+    const historyRows: { base: Currency; day: number }[] = [
+      { base: 'USD', day: day(0) },
+      { base: 'EUR', day: day(0) },
+      { base: 'BTC', day: day(0) },
+    ];
+    const upsertMany = async (rows: StoredRow[]): Promise<void> => {
+      for (const row of rows) {
+        historyRows.push({ base: row.base as Currency, day: row.day });
+      }
+    };
+    const cryptoDaysRequested: number[] = [];
+
+    const makeRunDeps = (fetchCryptoHistory: BackfillDeps['fetchCryptoHistory']): BackfillDeps => ({
+      earliestDay: day(0),
+      lastBackfilledDay: deriveLastBackfilledDay(historyRows.map((row) => ({ day: row.day }))),
+      lastBackfilledDayByCurrency: deriveLastBackfilledDayByCurrency(
+        historyRows.map((row) => ({ base: row.base, quote: 'UAH' as Currency, day: row.day })),
+      ),
+      today: day(2),
+      fetchNbuHistory: async (start, end) => {
+        const entries: HistoryRateEntry[] = [];
+
+        for (let d = start; d <= end; d += DAY_MS) {
+          entries.push({ base: 'USD', quote: 'UAH', day: d, rate: 40, source: 'nbu' });
+          entries.push({ base: 'EUR', quote: 'UAH', day: d, rate: 43, source: 'nbu' });
+        }
+
+        return entries;
+      },
+      fetchCryptoHistory,
+      upsertMany,
+      openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC'] }),
+    });
+
+    // Run 1: NBU succeeds and advances fiat all the way to today; the crypto
+    // leg rejects, so BTC's own history stays stuck at day(0).
+    const firstRun = await runBackfill(
+      makeRunDeps(async (days) => {
+        cryptoDaysRequested.push(days);
+        throw new Error('CoinGecko request failed: 401');
+      }),
+    );
+
+    expect(firstRun.state).toBe('failed');
+    // Fiat DID persist despite the overall 'failed' outcome.
+    expect(historyRows.some((row) => row.base === 'USD' && row.day === day(2))).toBe(true);
+    // BTC's own history is unchanged — still stuck at day(0), exactly the
+    // permanent gap SYNC-2 reports.
+    const btcRowsAfterFirstRun = historyRows.filter((row) => row.base === 'BTC');
+    expect(Math.max(...btcRowsAfterFirstRun.map((row) => row.day))).toBe(day(0));
+
+    // Run 2 (the caller's own next focus/retry, re-deriving both cursors from
+    // the rows run 1 actually persisted): crypto now succeeds.
+    const secondRun = await runBackfill(
+      makeRunDeps(async (days) => {
+        cryptoDaysRequested.push(days);
+
+        const entries: HistoryRateEntry[] = [];
+
+        for (let d = day(0); d <= day(2); d += DAY_MS) {
+          entries.push({ base: 'BTC', quote: 'USD', day: d, rate: 65_000, source: 'coingecko' });
+        }
+
+        return { entries, failedCurrencies: [] };
+      }),
+    );
+
+    // The global max(day) across ALL stored rows already sits at today (from
+    // fiat) — a global cursor would have computed `missingDays` as EMPTY and
+    // never re-asked CoinGecko at all. SYNC-2's per-currency minimum instead
+    // drives the window from BTC's own (still day(0)) history, so the retry
+    // actually re-covers the 2-day gap.
+    expect(cryptoDaysRequested[1]).toBeGreaterThanOrEqual(2);
+    expect(secondRun.state).toBe('complete');
+    expect(historyRows.some((row) => row.base === 'BTC' && row.day === day(2))).toBe(true);
   });
 });
 
