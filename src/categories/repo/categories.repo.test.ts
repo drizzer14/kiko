@@ -468,8 +468,8 @@ describe('categories seed migration', () => {
     const seed = seedMigration();
 
     // The eight categories that carry a settled default color, each with the
-    // hex of its `entityColors` token (src/design-system/theme.ts). `utilities`
-    // and `entertainment` are intentionally left uncolored.
+    // hex of its `entityColors` token (src/design-system/theme/theme.ts).
+    // `utilities` and `entertainment` are intentionally left uncolored.
     const defaultColors: Record<string, string> = {
       groceries: '#30D158',
       dining: '#FF9F0A',

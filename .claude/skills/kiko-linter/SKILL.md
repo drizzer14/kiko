@@ -867,7 +867,9 @@ mechanizable (see harness-workflow's "Classify every finding").
      `detailText`, the deny message prints it in place of `matchedText`,
      so `detailText` must still name the offending code.
    - Add one `NODE_RULES` row: `ruleId`, `extensions`, `fix`, `skill`,
-     `run`. `pre-write-guard.sh` needs no change.
+     `projectCheck` (the project-wide gate the deny reason names for a
+     pre-existing finding, e.g. `check:<name>`), and `run`.
+     `pre-write-guard.sh` needs no change.
    - Node rules have no `rules/fixtures/` pair. Prove them with
      `__tests__/<name>.test.ts` and a case in
      `__tests__/pre-write-guard.test.ts`.

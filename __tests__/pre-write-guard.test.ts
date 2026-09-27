@@ -1228,6 +1228,7 @@ describe('Semgrep pass + new-findings-only diff', () => {
     expect(reason).toContain('someActualCode');
     expect(reason).toContain('remove the task id from the comment');
     expect(reason).toContain('kiko-code-style › No history id comment');
+    expect(reason).toContain('a pre-existing one is left for check:rules to catch');
   });
 
   it('denies when a finding lacks metadata.skill', () => {
@@ -1301,6 +1302,10 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
     const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
     expect(reason).toContain('kiko-import-order');
     expect(reason).toContain('out of order');
+    // check:rules runs only Semgrep, so a Node rule names its own
+    // project-wide gate instead.
+    expect(reason).toContain('a pre-existing one is left for check:import-order to catch');
+    expect(reason).not.toContain('check:rules');
   });
 
   it('allows an unrelated edit in a file whose import order was already broken', () => {
@@ -1408,6 +1413,10 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
     const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
     expect(reason).toContain('kiko-one-component-per-file');
     expect(reason).toContain('Bar');
+    // This rule has no check:* gate; its project-wide check is a Jest invariant.
+    expect(reason).toContain(
+      'a pre-existing one is left for __tests__/one-component-per-file.test.ts to catch',
+    );
   });
 
   it('does not run the component check on a .ts file', () => {

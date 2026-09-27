@@ -87,7 +87,8 @@ const withLegacyBalanceSetAtBackfilled = (
 // real balance): term_deposit/bond are ledgerless (their value derives
 // entirely from metadata), and every current write path either writes 0
 // unconditionally (create) or never touches `balanceMinorUnits` at all
-// (`saveMetadataEdit`, every edit) — the SAME literal pair the SQL's own
+// (`saveMetadataEdit`, or `holdingsRepo.updateMetadataFromStored` for a bond:
+// every edit) — the SAME literal pair the SQL's own
 // `IN (...)` names, not the wider `isLedgerlessHoldingType` set (property_item/
 // metal/loan never had this create-time bug at all).
 const STRAY_DEPOSIT_BOND_TYPES = new Set(['term_deposit', 'bond']);

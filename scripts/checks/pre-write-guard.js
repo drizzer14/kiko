@@ -382,6 +382,7 @@ function buildFinding(temporaryRoot, result) {
     matchedText,
     fix: metadata.fix,
     skill: metadata.skill,
+    projectCheck: 'check:rules',
   };
 }
 
@@ -749,13 +750,16 @@ async function runOneComponentPerFileChecker(filePath) {
 
 // One row per Node-checker rule: the extensions it applies to, how to run
 // it, and the fix/skill pair the deny reason cites (the Node-check analog
-// of a Semgrep rule's `metadata.fix`/`metadata.skill`).
+// of a Semgrep rule's `metadata.fix`/`metadata.skill`). `projectCheck` is
+// the project-wide gate the deny reason names for a pre-existing finding:
+// check:rules runs only Semgrep, so it never sees a Node rule.
 const NODE_RULES = [
   {
     ruleId: 'kiko-import-order',
     extensions: ['.ts', '.tsx'],
     fix: 'run `node scripts/checks/import-order.js --write <file>`, or reorder the groups by hand: external, then ../**, then ./**, each ascending by ending-line length',
     skill: 'kiko-code-style › Import ordering',
+    projectCheck: 'check:import-order',
     run: (filePath) =>
       runSpawnedNodeChecker('import-order.js', filePath, parseImportOrderCheckerOutput),
   },
@@ -764,6 +768,7 @@ const NODE_RULES = [
     extensions: ['.ts', '.tsx'],
     fix: 'spell out the abbreviated word in full',
     skill: 'kiko-code-style › Full words in identifiers',
+    projectCheck: 'check:full-word-identifiers',
     run: (filePath) =>
       runSpawnedNodeChecker(
         'full-word-identifiers.js',
@@ -776,6 +781,7 @@ const NODE_RULES = [
     extensions: ['.tsx'],
     fix: 'move every exported component but the first into its own file',
     skill: 'kiko-code-style › One component per file, each in its own folder',
+    projectCheck: '__tests__/one-component-per-file.test.ts',
     run: (filePath) => runOneComponentPerFileChecker(filePath),
   },
   {
@@ -784,6 +790,7 @@ const NODE_RULES = [
     fix: 'run `node scripts/checks/blank-line-separation.js --write <file>`, or insert a blank line by hand above the return/if/for/while statement (or JSX sibling), unless it is the first statement of its block or already preceded by a comment',
     skill:
       'kiko-code-style › Blank lines before statement blocks / Blank line between adjacent JSX sibling nodes',
+    projectCheck: 'check:blank-line-separation',
     run: (filePath) =>
       runSpawnedNodeChecker(
         'blank-line-separation.js',
@@ -796,6 +803,7 @@ const NODE_RULES = [
     extensions: ['.ts', '.tsx'],
     fix: 'move the shared module out of src/screens/ into src/design-system/components/ (a UI component) or the owning domain module (a hook/util), then import it from there — see the FieldTrigger precedent; if the module is really screen-owned, move the IMPORTER instead',
     skill: 'kiko-design-system › Component set',
+    projectCheck: 'check:screen-imports',
     run: (filePath) =>
       runSpawnedNodeChecker('screen-imports.js', filePath, parseScreenImportsCheckerOutput),
   },
@@ -804,6 +812,7 @@ const NODE_RULES = [
     extensions: ['.ts', '.tsx'],
     fix: 'import across features through the barrel: @kiko/<feature> (or ../<sibling> in one non-screen container); relative paths only inside one feature',
     skill: 'kiko-code-style › Feature imports (B2)',
+    projectCheck: 'check:feature-imports',
     run: (filePath) =>
       runSpawnedNodeChecker('feature-imports.js', filePath, parseFeatureImportsCheckerOutput),
   },
@@ -839,6 +848,7 @@ async function runNodeChecks(temporaryRoot, relativePath, tree, ruleIds) {
         detailText: finding.detailText,
         fix: rule.fix,
         skill: rule.skill,
+        projectCheck: rule.projectCheck,
       });
     }
   });
@@ -1015,7 +1025,7 @@ function buildFindingBlock(relativePath, finding) {
   const lines = [
     `WHAT FAILED:    rule ${finding.ruleId} at ${relativePath}:${finding.line}`,
     `DETAILS:        matched text: ${JSON.stringify(displayText)}`,
-    'WHY IT MATTERS: this is a NEW violation the edit would add; a pre-existing one is left for check:rules to catch',
+    `WHY IT MATTERS: this is a NEW violation the edit would add; a pre-existing one is left for ${finding.projectCheck} to catch`,
     `HOW TO FIX:     ${finding.fix}`,
     `DO NOT:         suppress this without a justified override; see ${finding.skill}`,
   ];

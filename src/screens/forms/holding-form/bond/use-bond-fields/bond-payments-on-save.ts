@@ -43,6 +43,11 @@ const couponChanged = (
  * the user typed over the saved or matched one, on an ISIN bond, is the
  * user's own coupon: an empty schedule, so the cache cannot override it
  * either.
+ *
+ * A Manual create with an ISIN copies the matched register's schedule while
+ * its coupon (and mapped frequency) still match; a typed coupon, or no matched
+ * row (an empty cache), gives `[]`. A create without an ISIN, or an ISIN
+ * create with no cached payments, keeps none.
  */
 export const bondPaymentsOnSave = ({
   bondMode,

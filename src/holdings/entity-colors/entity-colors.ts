@@ -7,8 +7,8 @@ import { recordByType } from '../holding-descriptor';
 // The default swatch shown for a newly-created account or holding, keyed by its
 // kind/type. A user may override the color per entity later; until then the row
 // renders the kind/type default. Values reference the named entity-color tokens
-// (src/design-system/palette.ts) — the one source of truth for these hues — so a
-// palette tweak never touches these maps.
+// (src/design-system/palette/palette.ts) — the one source of truth for these
+// hues — so a palette tweak never touches these maps.
 
 type AccountKind = AccountRow['kind'];
 

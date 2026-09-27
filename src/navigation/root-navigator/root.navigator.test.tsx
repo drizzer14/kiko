@@ -67,7 +67,7 @@ describe('RootNavigator', () => {
   // render time, not from a hardcoded `darkTheme` import. Under the global
   // Jest mock (`react-native-unistyles/mocks`), `useUnistyles().theme`
   // always resolves to the same `darkTheme` object as the static import (the
-  // first-registered theme — see design-system/unistyles.ts), so a plain
+  // first-registered theme — see design-system/unistyles/unistyles.ts), so a plain
   // value assertion cannot tell the two sourcing strategies apart. This test
   // spies on the hook itself to return a theme whose color values are
   // deliberately distinct from `darkTheme`, proving the navigator reads

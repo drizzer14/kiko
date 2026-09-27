@@ -351,7 +351,7 @@ describe('scripts/checks/import-order.js --write', () => {
 
   // A group of comments with NO import in it (a header block followed
   // directly by another comment block, with no import between them —
-  // src/navigation/types.d.ts is the live shape) must never be silently
+  // src/navigation/types/types.d.ts is the live shape) must never be silently
   // dropped when an unrelated earlier group in the same file DOES need
   // reordering (which is what flips fixImportOrder's file-level `changed`
   // flag and triggers the rewrite).

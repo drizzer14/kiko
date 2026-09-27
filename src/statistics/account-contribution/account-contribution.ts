@@ -82,9 +82,9 @@ export const buildAccountContribution = (input: {
       const amount = convertibleValues(accountHoldings, baseCurrency, rateTable, now, book)
         .filter((money) => money.minorUnits > 0)
         .reduce((sum, money) => sum.add(money), Money.of(baseCurrency, 0)).minorUnits;
-      // `resolveEntityColor` (design-system/entity-tint.ts) is the ONE function
-      // that picks an entity's effective color: a valid stored hex, else the
-      // kind default, else a safe gray. A bare `stored ?? default` let an
+      // `resolveEntityColor` (design-system/entity-tint/entity-tint.ts) is the
+      // ONE function that picks an entity's effective color: a valid stored
+      // hex, else the kind default, else a safe gray. A bare `stored ?? default` let an
       // empty-string color and an unmapped kind (a row written under a
       // since-removed enum member — the schema enum is TS-only, no CHECK
       // constraint) reach the chart as `''`/`undefined`, so `<Path fill>` drew

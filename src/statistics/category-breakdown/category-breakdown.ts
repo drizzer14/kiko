@@ -70,7 +70,7 @@ export const categoryColor = (key: string): string => {
 
 /**
  * A category's EFFECTIVE chart color — the category analog of resolveEntityColor
- * (design-system/entity-tint.ts). A stored `#RRGGBB` hex wins; otherwise fall
+ * (design-system/entity-tint/entity-tint.ts). A stored `#RRGGBB` hex wins; otherwise fall
  * back to the stable per-key palette hash, so an uncolored category renders
  * exactly as it did before category colors existed. Guards a stored empty string
  * (which `??` would let through and a bad hex would leak downstream) the same way
