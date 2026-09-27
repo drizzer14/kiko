@@ -13,7 +13,7 @@ import MoneyText from './money-text.component';
 // here instead, exposing the `tone` prop MoneyText resolves via a testID —
 // the money amount itself still renders as plain text underneath, so the
 // existing formatted-amount assertion below is unaffected.
-jest.mock('../text', () => {
+jest.mock('@kiko/design-system/components/text', () => {
   const { Text: RNText } = require('react-native');
 
   return {

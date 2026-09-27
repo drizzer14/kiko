@@ -15,7 +15,7 @@ import Button from './button.component';
 // these tests assert behavior and the NON-variant style axes (size, width,
 // disabled), never the variant colors. The icon is mocked to a plain text node
 // so its presence is queryable without the native SFSymbolView.
-jest.mock('../symbol', () => {
+jest.mock('@kiko/design-system/components/symbol', () => {
   const { Text: RNText } = require('react-native');
 
   return {

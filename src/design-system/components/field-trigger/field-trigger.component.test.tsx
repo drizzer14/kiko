@@ -8,7 +8,7 @@ import FieldTrigger from '.';
 // mock Text to surface its `tone` prop through a testID instead, the same
 // pattern `field-label.component.test.tsx` uses. Children still render as
 // plain text, so every other query in this file is unaffected.
-jest.mock('../text', () => {
+jest.mock('@kiko/design-system/components/text', () => {
   const { Text: RNText } = require('react-native');
 
   return {

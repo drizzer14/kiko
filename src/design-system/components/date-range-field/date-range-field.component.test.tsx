@@ -14,7 +14,7 @@ import DateRangeField from './date-range-field.component';
 // out of the resolved style object before a test can inspect it. Mock Text here
 // instead, stamping the resolved `tone` onto the rendered node's testID — the
 // label text still renders as children, so getByText assertions are unaffected.
-jest.mock('../text', () => {
+jest.mock('@kiko/design-system/components/text', () => {
   const { Text: RNText } = require('react-native');
 
   return {

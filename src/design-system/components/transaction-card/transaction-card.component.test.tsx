@@ -12,7 +12,7 @@ import TransactionCard from '.';
 // variant is stripped by the project's Jest unistyles mock (see MoneyText's
 // own test file's comment), so this mocks MoneyText itself, exposing the
 // resolved context/sign via testID, the same technique.
-jest.mock('../money-text', () => {
+jest.mock('@kiko/design-system/components/money-text', () => {
   const { Text: RNText } = require('react-native');
 
   return {

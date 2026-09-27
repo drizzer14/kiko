@@ -1,4 +1,4 @@
-import type { TargetHoldingOption } from '../target-holding-sheet/target-holding-sheet.props';
+import type { TargetHoldingOption } from '../target-holding-sheet';
 
 export type TargetHoldingFieldProps = {
   label: string;

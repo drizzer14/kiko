@@ -13,7 +13,7 @@ import { Keyboard, Modal, Pressable, ScrollView, useWindowDimensions, View } fro
 
 import Box from '../box';
 import GlassSurface from '../glass-surface';
-import { KEYBOARD_ACCESSORY_HEIGHT } from '../keyboard-done-accessory/keyboard-done-accessory.styles';
+import { KEYBOARD_ACCESSORY_HEIGHT } from '../keyboard-done-accessory';
 
 import {
   resolveKeyboardAwareBottomPadding,

@@ -6,8 +6,8 @@ import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-han
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
 
+import { KEYBOARD_ACCESSORY_HEIGHT } from '../keyboard-done-accessory';
 import type { RenderedElement } from '../../../test-support/rendered-element';
-import { KEYBOARD_ACCESSORY_HEIGHT } from '../keyboard-done-accessory/keyboard-done-accessory.styles';
 
 import BottomSheet from '.';
 import { KEYBOARD_CORNER_OVERLAP, SHEET_DRAG_GESTURE_TEST_ID } from './bottom-sheet.component';

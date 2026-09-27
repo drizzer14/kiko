@@ -15,7 +15,7 @@ import ConfirmSheet from '.';
 // forward every prop onto a host Pressable (and render its label in a Text) so
 // the `variant` ConfirmSheet passes is the honest, assertable signal while the
 // press handler still fires.
-jest.mock('../button', () => {
+jest.mock('@kiko/design-system/components/button', () => {
   const { Pressable, Text } = require('react-native');
   const MockButton = ({ children, ...rest }: { children?: unknown }) => (
     <Pressable {...rest}>

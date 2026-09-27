@@ -17,7 +17,7 @@ import LockGate from './lock-gate.component';
 
 // Same stand-in as lock-gate.component.test.tsx: the SF Symbol glyph is a
 // native SFSymbolView, unavailable under react-test-renderer.
-jest.mock('../../design-system/components/symbol', () => {
+jest.mock('@kiko/design-system/components/symbol', () => {
   const { Text: RNText } = require('react-native');
 
   return {

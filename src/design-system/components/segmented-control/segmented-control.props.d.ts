@@ -1,4 +1,4 @@
-import type { TextVariant } from '../text/text.props';
+import type { TextVariant } from '../text';
 
 export type SegmentedControlProps<Option extends string> = {
   options: readonly Option[];

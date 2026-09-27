@@ -7,7 +7,7 @@ import EditHeaderButton from './edit-header-button.component';
 // Button's SF Symbol icon is mocked the same way button.component.test.tsx
 // mocks it, so the leading pencil glyph is queryable without the native
 // SFSymbolView.
-jest.mock('../symbol', () => {
+jest.mock('@kiko/design-system/components/symbol', () => {
   const { Text: RNText } = require('react-native');
 
   return {

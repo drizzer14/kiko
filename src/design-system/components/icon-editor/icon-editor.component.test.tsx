@@ -4,7 +4,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 
-import { KIKO_CATEGORIES_ICONS } from '../icon-picker-modal/icon-pools';
+import { KIKO_CATEGORIES_ICONS } from '../icon-picker-modal';
 
 import IconEditor from '.';
 

@@ -14,7 +14,7 @@ import SegmentedControl from './segmented-control.component';
 // than inside `segmented-control.component.test.tsx`) so this file-wide
 // module mock never touches that file's other assertions, which render the
 // real `Text`.
-jest.mock('../text', () => {
+jest.mock('@kiko/design-system/components/text', () => {
   const React = require('react');
   const { Text: RNText } = require('react-native');
 

@@ -22,7 +22,7 @@ const transaction: ParsedTransaction = {
 // category resolution pipeline (already covered by category-display's own
 // tests) in this leaf component's test.
 const mockTransactionCard = jest.fn();
-jest.mock('../transaction-card', () => ({
+jest.mock('@kiko/design-system/components/transaction-card', () => ({
   __esModule: true,
   default: (props: Record<string, unknown>) => {
     mockTransactionCard(props);

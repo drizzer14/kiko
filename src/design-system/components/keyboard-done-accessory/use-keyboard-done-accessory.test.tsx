@@ -33,7 +33,7 @@ jest.mock('@callstack/liquid-glass', () => {
 // the design-system Text to surface its `tone` prop through a testID so the
 // Done label's tone is assertable; children still render as plain text, so
 // every `getByText`/`getByRole` query below is unaffected.
-jest.mock('../text', () => {
+jest.mock('@kiko/design-system/components/text', () => {
   const { Text: RNText } = require('react-native');
 
   return {

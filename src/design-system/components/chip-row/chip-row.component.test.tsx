@@ -7,7 +7,7 @@ import ChipRow from '.';
 
 // Text's tone -> color mapping is a unistyles variant the Jest mock strips, so
 // the label's tone is read from the shared mock's testID instead.
-jest.mock('../text', () => ({
+jest.mock('@kiko/design-system/components/text', () => ({
   __esModule: true,
   default: jest.requireActual('../../../test-support/mock-text-tone').default,
 }));

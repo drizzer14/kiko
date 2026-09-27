@@ -2,7 +2,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 
-import type { TargetHoldingOption } from '../target-holding-sheet/target-holding-sheet.props';
+import type { TargetHoldingOption } from '../target-holding-sheet';
 
 import TargetHoldingField from '.';
 

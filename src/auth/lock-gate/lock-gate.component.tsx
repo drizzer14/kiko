@@ -1,15 +1,15 @@
 import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import Button from '@kiko/design-system/components/button';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import SymbolIcon from '@kiko/design-system/components/symbol';
 import { type FC, type ReactNode, useCallback, useEffect, useState } from 'react';
 
 import { useAppLock } from '../use-app-lock';
 import type { AuthResult } from '../biometrics';
-import Box from '../../design-system/components/box';
-import Text from '../../design-system/components/text';
-import Button from '../../design-system/components/button';
-import SymbolIcon from '../../design-system/components/symbol';
 
 import { styles } from './lock-gate.styles';
 

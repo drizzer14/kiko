@@ -21,7 +21,7 @@ jest.mock('@react-native-clipboard/clipboard', () => ({
 // Mock Text here — following the account-detail screen test precedent — so the
 // resolved `tone` the link renders with is observable via a testID, while the
 // label still renders as plain text so every getByText assertion is unaffected.
-jest.mock('../text', () => {
+jest.mock('@kiko/design-system/components/text', () => {
   const { Text: RNText } = require('react-native');
 
   return {

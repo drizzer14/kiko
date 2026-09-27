@@ -1,4 +1,4 @@
-import type { TextVariant } from '../text/text.props';
+import type { TextVariant } from '../text';
 
 // The one shared chips component: a value selection that leaves the form the
 // same (see the SegmentedControl entry in kiko-design-system for the

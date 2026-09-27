@@ -4,8 +4,7 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
-
-import type { TargetHoldingOption } from '../../design-system/components/target-holding-sheet/target-holding-sheet.props';
+import type { TargetHoldingOption } from '@kiko/design-system/components/target-holding-sheet';
 
 type TargetHoldingOptions = {
   options: TargetHoldingOption[];
