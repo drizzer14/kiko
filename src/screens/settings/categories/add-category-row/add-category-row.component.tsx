@@ -40,7 +40,7 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onCollapse }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const [name, setName] = useState('');
-  const [icon, setIcon] = useState(DEFAULT_ICON);
+  const [icon, setIcon] = useState<string>(DEFAULT_ICON);
   // Null until the user taps a swatch — an honest "no color picked yet" that
   // persists as null so the row falls back to the stable per-key palette hash,
   // mirroring accounts/holdings' nullable color.
