@@ -406,7 +406,7 @@ export const en = {
       purchaseDate: 'Purchase date',
       purchaseDateRequiredError: 'No purchase date selected.',
       purchaseDateSheetTitle: 'Purchase Date',
-      purchasePrice: 'Purchase price (total paid)',
+      purchasePrice: 'Purchase price per bond',
       // ISIN mode requires the price (the yield to maturity needs it), so its
       // placeholder is an example amount instead of the Manual-mode default.
       purchasePriceIsinPlaceholder: '1000.00',

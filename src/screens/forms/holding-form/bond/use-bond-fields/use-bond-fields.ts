@@ -29,6 +29,11 @@ import {
   type BondFieldErrors,
   type BondReasonKey,
 } from './bond-reasons';
+import {
+  bondPurchaseTotal,
+  pricePerBondText,
+  type SeededPurchasePrice,
+} from './bond-purchase-price';
 import { bondPaymentsOnSave, type SavedBond } from './bond-payments-on-save';
 
 // A bond saved before `entryMode` was stored does not say which mode it came
@@ -38,7 +43,7 @@ const legacyEntryMode = (meta: BondMeta): BondEntryMode =>
   meta.isin !== undefined && (meta.payments?.length ?? 0) > 0 ? 'isin' : 'manual';
 
 // Seed the bond number/date fields from stored metadata. Minor-unit money
-// fields (face value, purchase price) convert back to grouped major strings;
+// fields (face value, price per bond) convert back to grouped major strings;
 // plain-number fields (quantity, coupon %) render verbatim. A bond stored
 // without a price seeds a blank one, not `asBondMeta`'s nominal default, so
 // re-saving it unchanged never invents a price.
@@ -47,7 +52,7 @@ const seedBondFields = (meta: BondMeta, currency: Currency, hasStoredPrice: bool
   faceValue: groupAmount(majorAmountText(currency, meta.faceValueMinorUnits)),
   couponPct: String(meta.couponPct),
   purchasePrice: hasStoredPrice
-    ? groupAmount(majorAmountText(currency, meta.purchasePriceMinorUnits))
+    ? pricePerBondText(meta.purchasePriceMinorUnits, meta.quantity, currency)
     : '',
   purchaseDate: meta.purchaseDate,
   maturityDate: meta.maturityDate,
@@ -180,11 +185,17 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
   // The bond as stored when the edit form seeded, to tell which fields the
   // user changed; null on create.
   const savedBondRef = useRef<SavedBond | null>(null);
+  const seededPurchasePriceRef = useRef<SeededPurchasePrice | null>(null);
 
   const buildBondMetadata = (saved: SavedBond | null): Record<string, unknown> => {
     const quantityValue = parseAmount(quantity) || 0;
     const faceValueMinorUnits = Money.fromMajor(currency, parseAmount(faceValue) || 0).minorUnits;
-    const priceValue = parseAmount(purchasePrice);
+    const purchasePriceMinorUnits = bondPurchaseTotal({
+      quantity,
+      pricePerBond: purchasePrice,
+      currency,
+      seeded: seededPurchasePriceRef.current,
+    });
     const couponValue = parseAmount(couponPct) || 0;
     const payments = bondPaymentsOnSave({
       bondMode,
@@ -203,13 +214,12 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
       quantity: quantityValue,
       faceValueMinorUnits,
       couponPct: couponValue,
-      // The total actually paid. A blank one is left out, not stored as the
-      // nominal: `asBondMeta` still reads it as nominal (par), so the purchase
-      // entry and expected profit read as break-even, while the yield to
-      // maturity, which needs the real price, shows none.
-      ...(priceValue > 0
-        ? { purchasePriceMinorUnits: Money.fromMajor(currency, priceValue).minorUnits }
-        : {}),
+      // The total actually paid, while the form takes the price of one bond. A
+      // blank one is left out, not stored as the nominal: `asBondMeta` still
+      // reads it as nominal (par), so the purchase entry and expected profit
+      // read as break-even, while the yield to maturity, which needs the real
+      // price, shows none.
+      ...foldMap(maybe(purchasePriceMinorUnits), (total) => ({ purchasePriceMinorUnits: total })),
       purchaseDate: purchaseDate ?? Date.now(),
       maturityDate: maturityDate ?? Date.now(),
       bondKind,
@@ -259,11 +269,15 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
       }
 
       savedBondRef.current = { meta, currency: holding.currency };
-      const fields = seedBondFields(
-        meta,
-        holding.currency,
-        hasStoredBondPurchasePrice(holding.metadata),
-      );
+      const hasStoredPrice = hasStoredBondPurchasePrice(holding.metadata);
+      const fields = seedBondFields(meta, holding.currency, hasStoredPrice);
+      seededPurchasePriceRef.current = hasStoredPrice
+        ? {
+            quantity: fields.quantity,
+            pricePerBond: fields.purchasePrice,
+            totalMinorUnits: meta.purchasePriceMinorUnits,
+          }
+        : null;
       setQuantity(fields.quantity);
       setFaceValue(fields.faceValue);
       setCouponPct(fields.couponPct);

@@ -825,7 +825,10 @@ own check (an unrecognized `bondKind`/`couponFrequency` string, a
 non-number `purchasePriceMinorUnits` including `NaN`, a non-string
 `isin`) instead rejects the WHOLE record (`asBondMeta` returns `null`),
 the same as any other wrong-type field — silently defaulting corrupt
-data would hide a real bug in whatever wrote it. Every sibling parser in
+data would hide a real bug in whatever wrote it. The one exception is
+`entryMode`, which only picks the mode the edit form opens in: an
+unknown value is dropped and the record still parses (the
+`PropertyMeta.ownershipInput` pattern). Every sibling parser in
 this file (`asTermDepositMeta`, `asPropertyMeta`, `asMetalMeta`,
 `asLoanMeta`) already rejects a present-but-invalid field the same way;
 `asBondMeta` used to be the one exception that defaulted instead.
@@ -1116,7 +1119,30 @@ Manual mode keeps it optional. A blank price is NOT stored (the key is
 left out, never written as the nominal): `asBondMeta` alone supplies the
 nominal default for the purchase entry and expected profit, and the
 yield shows none. Edit seeds a blank price field when the key is absent,
-so an unchanged re-save stays unpriced. It hides face
+so an unchanged re-save stays unpriced.
+
+The price is ENTERED PER BOND and STORED AS THE BATCH TOTAL (USER
+FINDING D6, no migration): the field (`forms.holding.purchasePrice`,
+"Purchase price per bond") takes the price of ONE bond, while
+`purchasePriceMinorUnits` keeps its meaning — the total paid — for every
+consumer (net worth, the purchase ledger entry, expected profit, yield
+to maturity, funding reconcile, export/restore). `bond-purchase-price.ts`
+(`src/screens/forms/holding-form/bond/use-bond-fields/`) owns both
+conversions: `bondPurchaseTotal` stores quantity x price per bond
+through `multiplyToMinorUnits` (exact, no float; the total is taken
+from the quantity at Save, so a quantity typed after the price still
+counts), and `pricePerBondText` seeds the edit field with total /
+quantity rounded to the minor unit. While both the price and the
+quantity text still equal what the edit seeded, Save writes the stored
+total unchanged — 10 000.00 over 3 bonds seeds 3 333.33, which would
+otherwise re-save as 9 999.99. Pins: 98 x "1 076,72" → 10_551_856;
+that total seeds "1 076.72" (every seeded amount uses a dot). A bond the
+user saved by typing one bond's price into the old "total paid" field
+is stored wrong and code cannot tell; its edit shows an implausibly
+small price per bond, fixed by hand. Metal lots and property keep a
+total cost field.
+
+ISIN mode hides face
 value, coupon, maturity, kind, and frequency — a found ISIN fills all
 of them: `bondKind` is always `'government'` (the register is
 Minfin-only), `couponFrequency` only when the register's `pay_period`

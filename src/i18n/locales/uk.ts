@@ -352,7 +352,7 @@ export const uk: typeof en = {
       purchaseDate: 'Дата придбання',
       purchaseDateRequiredError: 'Дату придбання не вибрано.',
       purchaseDateSheetTitle: 'Дата придбання',
-      purchasePrice: 'Ціна придбання (сплачено всього)',
+      purchasePrice: 'Ціна придбання за облігацію',
       purchasePriceIsinPlaceholder: '1 000,00',
       purchasePricePlaceholder: 'За замовчуванням — номінал',
       purchasePriceRequiredError: 'Введіть ціну придбання.',

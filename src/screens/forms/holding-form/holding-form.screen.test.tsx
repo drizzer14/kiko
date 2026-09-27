@@ -457,7 +457,7 @@ describe('HoldingFormScreen term deposit', () => {
 
     // ISIN mode (the CREATE default) shows quantity/purchase date —
     // always visible — plus the mode toggle and the ISIN field itself.
-    for (const label of ['Quantity', 'Purchase date', 'Purchase price (total paid)']) {
+    for (const label of ['Quantity', 'Purchase date', 'Purchase price per bond']) {
       expect(screen.getByText(label)).toBeTruthy();
     }
     expect(screen.getByPlaceholderText('UA4000234215')).toBeTruthy();
@@ -747,14 +747,26 @@ describe('HoldingFormScreen term deposit', () => {
     expect(metadataOfFirstCreate()).not.toHaveProperty('purchasePriceMinorUnits');
   });
 
-  it('stores the typed purchase price for a Manual bond', async () => {
+  it('stores the price of one bond times the quantity as the total paid for a Manual bond', async () => {
     const screen = await renderScreen();
 
     await fillBondFields(screen);
-    await fill(screen, 'Purchase price (total paid)', '9 500');
+    await fill(screen, 'Quantity', '98');
+    await fill(screen, 'Purchase price per bond', '1 076,72');
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(metadataOfFirstCreate().purchasePriceMinorUnits).toBe(950_000);
+    expect(metadataOfFirstCreate().purchasePriceMinorUnits).toBe(10_551_856);
+  });
+
+  it('stores the total for the quantity at Save, even when the quantity changed after the price', async () => {
+    const screen = await renderScreen();
+
+    await fillBondFields(screen);
+    await fill(screen, 'Purchase price per bond', '950');
+    await fill(screen, 'Quantity', '12');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(metadataOfFirstCreate().purchasePriceMinorUnits).toBe(1_140_000);
   });
 
   it('creates a corporate bond when the corporate chip is selected', async () => {
@@ -866,7 +878,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     await selectHoldingType(screen, 'bond');
     await fireEvent.changeText(isinInput(screen), 'UA4000234215');
     await fill(screen, 'Quantity', '10');
-    await fill(screen, 'Purchase price (total paid)', '10 000');
+    await fill(screen, 'Purchase price per bond', '10 000');
 
     // The read-only summary reflects the found terms.
     expect(within(screen.getByTestId('bond-isin-summary')).getByText(/9\.5/)).toBeTruthy();
@@ -983,7 +995,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     await selectHoldingType(screen, 'bond');
     await fireEvent.changeText(isinInput(screen), 'UA4000234215');
     await fill(screen, 'Quantity', '10');
-    await fill(screen, 'Purchase price (total paid)', '10 000');
+    await fill(screen, 'Purchase price per bond', '10 000');
 
     expect(screen.getByDisplayValue('Register Bond UA4000234215')).toBeTruthy();
 
@@ -1043,7 +1055,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
 
     await fireEvent.press(screen.getByTestId('bond-isin-mode-control-option-isin'));
     await fill(screen, 'Quantity', '10');
-    await fill(screen, 'Purchase price (total paid)', '10 000');
+    await fill(screen, 'Purchase price per bond', '10 000');
 
     expect(within(screen.getByTestId('bond-isin-summary')).getByText(/9\.5/)).toBeTruthy();
 
@@ -1074,7 +1086,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     await selectHoldingType(screen, 'bond');
     await fireEvent.changeText(isinInput(screen), 'UA4000234215');
     await fill(screen, 'Quantity', '10');
-    await fill(screen, 'Purchase price (total paid)', '10 000');
+    await fill(screen, 'Purchase price per bond', '10 000');
 
     // Auto-switched to Manual for the unmapped frequency.
     expect(
@@ -1128,7 +1140,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     await selectHoldingType(screen, 'bond');
     await fireEvent.changeText(isinInput(screen), 'UA4000234215');
     await fill(screen, 'Quantity', '10');
-    await fill(screen, 'Purchase price (total paid)', '10 000');
+    await fill(screen, 'Purchase price per bond', '10 000');
 
     await fireEvent.press(screen.getByText('Save'));
 
@@ -1151,7 +1163,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     expect(screen.getByText('Enter the purchase price.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
 
-    await fill(screen, 'Purchase price (total paid)', '10 767,20');
+    await fill(screen, 'Purchase price per bond', '1 076,72');
     await fireEvent.press(screen.getByText('Save'));
 
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
@@ -3702,11 +3714,31 @@ describe('HoldingFormScreen edit mode', () => {
     expect(updateDeltaMock).not.toHaveBeenCalled();
   });
 
+  it('seeds the price of one bond from the stored total', async () => {
+    const screen = await renderEdit({
+      ...bondHolding,
+      metadata: { ...bondHolding.metadata, quantity: 98, purchasePriceMinorUnits: 10_551_856 },
+    });
+
+    expect(screen.getByLabelText('Purchase price per bond').props.value).toBe('1 076.72');
+  });
+
+  it('re-saves an untouched total that does not divide by the quantity unchanged', async () => {
+    const metadata = { ...bondHolding.metadata, quantity: 3, purchasePriceMinorUnits: 1_000_000 };
+    const screen = await renderEdit({ ...bondHolding, metadata });
+
+    expect(screen.getByLabelText('Purchase price per bond').props.value).toBe('3 333.33');
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(savedBondMetadata(metadata).purchasePriceMinorUnits).toBe(1_000_000);
+  });
+
   it('seeds a blank price for a bond stored without one, and re-saves it still without one', async () => {
     const { purchasePriceMinorUnits: _, ...unpricedMetadata } = bondHolding.metadata;
     const screen = await renderEdit({ ...bondHolding, metadata: unpricedMetadata });
 
-    expect(screen.getByLabelText('Purchase price (total paid)').props.value).toBe('');
+    expect(screen.getByLabelText('Purchase price per bond').props.value).toBe('');
 
     await fireEvent.press(screen.getByText('Save'));
 
@@ -3791,6 +3823,7 @@ describe('HoldingFormScreen — localization', () => {
     expect(getByText('Купон')).toBeTruthy();
     expect(fieldSuffix(getByLabelText('Кількість'))).toBe('шт.');
     expect(getByText('Дата придбання')).toBeTruthy();
+    expect(getByText('Ціна придбання за облігацію')).toBeTruthy();
     expect(getByText('Дата погашення')).toBeTruthy();
     expect(getByText('Тип облігації')).toBeTruthy();
     expect(getByText('Державна')).toBeTruthy();
