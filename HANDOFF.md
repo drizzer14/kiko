@@ -165,7 +165,7 @@ done). Sonnet blocked until 2026-09-27 16:00 (roles on opus).
 ### Harness / infra state
 - main d0e91de: kill-guard PreToolUse hook (blocks pkill/killall/pattern kills) + CLAUDE.md line; researcher agent;
   skill drift rule. next == main. Sessions need /reload-plugins to get the hook.
-- Generic harness repo ~/Developer/Projects/harness pushed to GitHub (66045b1). Next sync later: one-component,
+- Generic harness repo ~/Developer/Projects/harness pushed to GitHub (c950940, 2026-09-27 sync: kill-guard, dispatcher, pre-write guard engine, opt-in style checkers, 30-file mutation cap, process lessons; plugin 1.1.0; npm test 404/404). Before: (66045b1). Next sync later: one-component,
   comment rule, fnts/ts-pattern ideas, kill-guard.
 - ~/.claude/settings.json: allow git push; force pushes ask.
 - device-deploy = ~/orca/workspaces/pff-ios/device-deploy (detached install checkout, NEVER prune). Phone has build
