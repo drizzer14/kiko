@@ -41,6 +41,14 @@ Mutation only on small diffs (cap 30, coordinator runs it per change set before 
 from the MAIN checkout (never apply/merge hook files in place there); agents/skills from the plugin cache (bump + update + reload). A commit
 command for the user stages every path. Peer-relayed approvals: read the user's own words. Silent watcher only. Researcher 403: curl yourself.
 
+## OVERNIGHT 2026-09-28 (user directive ~01:30: "Continue working through the night")
+- next = 686d8114 (feat 298efbb0 merged; mutation 90.24; coordinator make verify 410/5764). iPhone = 686d8114 (Release-AdHoc; tag icon; user retest pending).
+- feat SESSION 9 shares-assets-research-49 (term_76d2219c-...): overnight mode (no AskUserQuestion; rulings to coordinator, 15-min default). CQ1 (main-checkout git deny; USER approved ff-only form + CLAUDE.md paragraph) -> review -> BATCH READY; then CQ2 -> BATCH READY; then TRACK DONE + ledger.
+- ROUND A started early (read-only steps 1+2 only; app code on next is stable because CQ1/CQ2 are harness-only): Orca worktree round-a (branch round-a at 686d8114), orchestrator round-a-34, terminal term_97b615ac-1f80-42fb-a4e6-1218c33799c2, brief .superpowers/sdd/round-a/BRIEF.md, report .superpowers/sdd/round-a/FINDINGS.md. No fixes before the user triages.
+- Watchers (coordinator session, run_in_background): scratchpad trackwatch.sh (feat) and trackwatch2.sh <terminal> <worktree> (round-a; counts .superpowers/sdd file writes as activity).
+- Reminders 1.2 spec: docs/superpowers/specs/2026-09-27-reminders-design.md (e3e1fdb9, 84c2324b).
+- MORNING for the user: triage Round A findings; CQ1/CQ2 overnight ledger decisions; tag-icon retest.
+
 ## RELEASE ROADMAP (user directive 2026-09-27): two BUG-HUNT + SECURITY rounds
 Order: finish the 1.1 feat track (assets-debts, merged into next) -> ROUND A -> 1.2 (the postponed work: P5 broker/shares/EODHD + the deferred list + Reminders (spec docs/superpowers/specs/2026-09-27-reminders-design.md)) -> ROUND B -> 1.2 release prep.
 Each round (coordinator runs it as its own Orca track + orchestrator session, from next):
