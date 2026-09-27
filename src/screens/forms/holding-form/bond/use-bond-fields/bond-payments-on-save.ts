@@ -46,7 +46,7 @@ const couponChanged = (
  *
  * A Manual create with an ISIN copies the matched register's schedule while
  * its coupon (and mapped frequency) still match; a typed coupon, or no matched
- * row (an empty cache), gives `[]`. A create without an ISIN, or an ISIN
+ * row (an unknown ISIN or an empty cache), gives `[]`. A create without an ISIN, or an ISIN
  * create with no cached payments, keeps none.
  */
 export const bondPaymentsOnSave = ({
