@@ -233,6 +233,36 @@ verified usage, not dead weight:
   by `__tests__/pre-write-guard.test.ts`'s `kiko-no-cross-screen-import`
   case (via `pre-write-guard.sh`) — none of which Jest's static import
   graph makes Knip see as reachable.
+- **No `knip.json` `ignore` for `scripts/checks/feature-imports.js` or
+  `scripts/checks/specifier-scanner.js`** (not an exception, recorded so
+  nobody adds one): the `report:feature-imports` package.json script runs
+  `node scripts/checks/feature-imports.js --report`, which Knip's script
+  scan sees, and `feature-imports.js` `require`s `specifier-scanner.js`.
+  If that script is ever removed, `feature-imports.js` needs the same
+  `ignore` entry as `screen-imports.js` above.
+- **`scripts/checks/feature-imports.js`'s `TEST_ONLY` allowlist**
+  (`kiko-feature-imports`): the paths below may be imported deep, through
+  `@kiko/<path>`, and only by a test file. No barrel may export them
+  (`--tree` `barrel-leak`), and a production file may not import them
+  (`test-only-from-production`), so no test code reaches the App Store
+  build (kiko-compliance 5.6). Each entry and its reason:
+  - `test-support/**`: shared test helpers with no owning feature. The
+    folder has no barrel.
+  - `**/__fixtures__/**`: fixture data (db, monobank, the statement-import
+    formats, `bonds/nbu-register`).
+  - `db/in-array-clause-test-helper`, `db/render-condition-test-helper`:
+    query-shape helpers for the repo tests of other features.
+  - `db/capture-set-tx`: its only importers are tests.
+  - `rates/monobank-feed-test-helper`: a test-only feed builder.
+  - `statement-import/formats/format-test-fixtures`: shared format test
+    rows.
+  - `i18n/locales/flatten-catalog`, `i18n/locales/title-keys`: catalog
+    helpers that only the i18n tests use.
+- **`scripts/checks/feature-imports.js`'s `AMBIENT_LOOSE` set**: `env.d.ts`,
+  `i18n/i18next.d.ts` and `statement-import/windows-1251.d.ts` stay loose
+  at a container root (no `--tree` `loose-file` finding). They are ambient
+  declarations that nothing imports, so a unit folder and barrel would
+  have no importer.
 - **`scripts/checks/full-word-identifiers.js`'s own `EXEMPTIONS` list**: an
   exact `(file path suffix, denylisted word, EXACT identifier name)`
   allowlist mechanizing kiko-code-style's "Full words in identifiers"

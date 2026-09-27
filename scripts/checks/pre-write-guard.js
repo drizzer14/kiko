@@ -635,6 +635,25 @@ function parseScreenImportsCheckerOutput(stdout) {
   return findings;
 }
 
+// feature-imports.js's output is one `<path>:<line>: <specifier> [<kind>] ->
+// <suggestion>` line per violation — see its own `runCheckMode`. Anchored on
+// the LAST `:<digits>: ` run like the parsers above. `matchedText` leaves
+// the suggestion out: it names the target feature's barrel, which an
+// unrelated edit (a moved importer) can change without adding a finding.
+// The whole line stays the `detailText` a human reads.
+const FEATURE_IMPORTS_VIOLATION_LINE = /:(\d+): ((\S+ \[[a-z-]+\]) -> .*)$/;
+
+function parseFeatureImportsCheckerOutput(stdout) {
+  const findings = [];
+  for (const line of stdout.split('\n')) {
+    const match = FEATURE_IMPORTS_VIOLATION_LINE.exec(line);
+    if (match) {
+      findings.push({ line: Number(match[1]), matchedText: match[3], detailText: match[2] });
+    }
+  }
+  return findings;
+}
+
 // Finds the 1-based line of the `export` declaration that introduces
 // `name` — tried, in order, against every shape
 // one-component-per-file.ts's own `classifySlice` recognizes an EXPORTED
@@ -779,6 +798,14 @@ const NODE_RULES = [
     skill: 'kiko-design-system › Component set',
     run: (filePath) =>
       runSpawnedNodeChecker('screen-imports.js', filePath, parseScreenImportsCheckerOutput),
+  },
+  {
+    ruleId: 'kiko-feature-imports',
+    extensions: ['.ts', '.tsx'],
+    fix: 'import across features through the barrel: @kiko/<feature> (or ../<sibling> in one non-screen container); relative paths only inside one feature',
+    skill: 'kiko-code-style › Feature imports (B2)',
+    run: (filePath) =>
+      runSpawnedNodeChecker('feature-imports.js', filePath, parseFeatureImportsCheckerOutput),
   },
 ];
 

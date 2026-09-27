@@ -1705,6 +1705,63 @@ describe('runNodeChecks (rule 12: no-cross-screen-import)', () => {
   });
 });
 
+// Rule 13: the REAL feature-imports.js checker against the mirrored tree —
+// only Semgrep is stubbed clean, the same convention as rule 12. The checker
+// is FS-free per file, so the mirror needs no real src/ tree around it.
+describe('runNodeChecks (rule 13: feature-imports)', () => {
+  const importerPath = ['src', 'rates', 'rates-refresh', 'rates-refresh.ts'];
+  const leavingImport = "import { database } from '../../db/client';";
+
+  it('denies an edit that adds a relative import leaving its feature (kiko-feature-imports)', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, ...importerPath);
+
+    const result = runGuard(
+      payloadFor('Write', {
+        file_path: targetFile,
+        content: `${leavingImport}\n\nexport const handle = database;\n`,
+      }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-feature-imports');
+    expect(reason).toContain('../../db/client [relative-leaves-feature]');
+    expect(reason).toContain('@kiko/db');
+  });
+
+  it('allows an edit that leaves an existing leaving import as it was', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, ...importerPath);
+    mkdirSync(join(project, ...importerPath.slice(0, -1)), { recursive: true });
+    writeFileSync(targetFile, `${leavingImport}\n\nexport const handle = database;\n`);
+
+    const result = runGuard(
+      payloadFor('Edit', {
+        file_path: targetFile,
+        old_string: 'export const handle = database;',
+        new_string: 'export const connection = database;',
+      }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+      }),
+    );
+
+    expect(result.status).toBe(0);
+  });
+});
+
 // The override protocol: a rule-id-specific comment naming the rule and
 // carrying OVERRIDE(<reason>) — `nosemgrep: <id> OVERRIDE(reason) why` for
 // Semgrep rules, `kiko-override: <id> OVERRIDE(reason) why` for Node-checked
@@ -2083,14 +2140,15 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
   });
 });
 
-// Speed: on a large real .tsx file, the 4 spawned Node
-// checkers (import-order, full-word-identifiers, blank-line-separation,
-// screen-imports) running one after another via spawnSync pushed p50/p95
-// past the 3s target. The mitigation is to run them concurrently instead
-// (spawn, not spawnSync) — same results, since each checker only ever reads
-// the SAME mirrored file and reports its own findings independently of the
-// others. This stub sleeps a fixed duration per invocation so the test can
-// tell "ran one after another" (roughly 4x the sleep) from "ran together"
+// Speed: on a large real .tsx file, the spawned Node checkers
+// (import-order, full-word-identifiers, blank-line-separation,
+// screen-imports, feature-imports) running one after another via spawnSync
+// pushed p50/p95 past the 3s target. The mitigation is to run them
+// concurrently instead (spawn, not spawnSync) — same results, since each
+// checker only ever reads the SAME mirrored file and reports its own
+// findings independently of the others. This stub sleeps a fixed duration
+// per invocation so the test can tell "ran one after another" (roughly 5x
+// the sleep) from "ran together"
 // (roughly ONE sleep) by wall-clock alone, without depending on real
 // checker runtimes that could vary by machine.
 describe('runNodeChecks concurrency (speed mitigation)', () => {
@@ -2177,7 +2235,7 @@ describe('runNodeChecks concurrency (speed mitigation)', () => {
     },
   );
 
-  it('runs the 4 spawned AFTER-tree Node checkers concurrently, not one after another', () => {
+  it('runs the 5 spawned AFTER-tree Node checkers concurrently, not one after another', () => {
     const project = createTempDirectory('kiko-prewrite-project-');
     const semgrepStub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
@@ -2198,7 +2256,7 @@ describe('runNodeChecks concurrency (speed mitigation)', () => {
     const durationMilliseconds = Date.now() - startTime;
 
     expect(result.status).toBe(0);
-    // Sequential: 4 * 1s of stub sleep alone is >= 4000ms. Concurrent: the
+    // Sequential: 5 * 1s of stub sleep alone is >= 5000ms. Concurrent: the
     // whole AFTER-tree Node-check phase takes roughly ONE sleep.
     expect(durationMilliseconds).toBeGreaterThanOrEqual(900);
     expect(durationMilliseconds).toBeLessThan(2500);
