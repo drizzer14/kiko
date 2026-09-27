@@ -16,7 +16,7 @@
 1. P0 T1 → T9, ending in a **STOP**: the coordinator deploys the POC to the device, and P1 waits for the user's test report.
 2. P1 T10 → T16 (the price-series foundation every later phase uses).
 3. P2 T17 → T21, P3 T22 → T25, P4 T26 → T33, P5 T34 → T41, each ending in `make gate`.
-4. Wrap-up T42 → T44: docs, whole-branch review, `make verify`, the deep gate, the device checklist.
+4. Wrap-up T42 → T44: docs, whole-branch review, `make verify`, per-change-set mutation + osv, the device checklist.
 
 ---
 
@@ -95,7 +95,7 @@ None added. P0 reuses `papaparse`, `windows-1251`, and `read-excel-file` (`read-
 - **Trademarks.** Broker and provider names are plain text. No logos. No partnership wording.
 - **Migrations.** Additive only. `npx drizzle-kit generate --name <slug>`, then re-check `drizzle/migrations/migrations.js` and run `npx biome check --write` over the generated artifacts. Data-only migrations are hand-authored, have no snapshot, and get a journal entry. Numbers below assume `0034` is next; use the next free number at implementation time.
 - **Skills and docs change in the same task as the code they describe.** A `(scribe)` step is done by the scribe role before the task closes.
-- **Checks.** Per task: the scoped `npx jest <paths>` red/green cycle, then `make typecheck` and `make lint`. Per phase: `make gate`. End of P0 and end of the line: `make verify` (lint → full jest → `check:all`) until green. Then, separately, `KIKO_MUTATION_BASE=next make deep` (T44). Never weaken a check.
+- **Checks.** Per task: the scoped `npx jest <paths>` red/green cycle, then `make typecheck` and `make lint`. Per phase: `make gate`. End of P0 and end of the line: `make verify` (lint → full jest → `check:all`) until green. Then, separately, per-change-set mutation (each change set deep-gated on its own base, `KIKO_MUTATION_BASE=<change set base sha> make deep`, under the 30-file cap; never the whole branch) and `bash scripts/checks/osv.sh` for dependency CVEs (T44). Never weaken a check.
 - **Commits.** Commit each task on `feat/assets-debts` after its checks pass (Conventional Commits).
 
 ## Review Focus
@@ -492,7 +492,8 @@ moves to a later release; release 1.1 ships without it.**
 
 - [ ] **User reviews every new or changed en/uk key** (a diff of `src/i18n/locales/{en,uk}.ts` against `next`) before any deploy.
 - [ ] `make verify` (lint → full jest → `check:all`). Re-run until green. Fix root causes, never weaken a check.
-- [ ] The coordinator runs `KIKO_MUTATION_BASE=next make deep` detached and waits for the exit code. Effectively green = mutation score ≥ threshold and osv reports only the known accepted CVEs.
+- [ ] Mutation testing runs per change set, never on the whole branch. The coordinator deep-gates each change set on its own base (`KIKO_MUTATION_BASE=<change set base sha> make deep`), detached, and waits for the exit code. Each change set stays under the 30-file cap: `scripts/checks/mutation.sh` refuses more than 30 files, `KIKO_MUTATION_FULL=1`, and an unresolvable base. Green = mutation score ≥ threshold.
+- [ ] Run `bash scripts/checks/osv.sh` separately as the dependency CVE check. Effectively green = osv reports only the known accepted CVEs.
 - [ ] (ops) `make deploy` Release-AdHoc to the connected iPhone (USB preferred).
 - [ ] Device checklist (the user has **only a Monobank account**):
 
