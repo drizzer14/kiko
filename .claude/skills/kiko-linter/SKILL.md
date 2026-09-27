@@ -883,40 +883,64 @@ catches these writes after they land instead.
   new-finding diff, both override forms, `isInScope`, conflict-marker
   handling, and fail-closed handling are therefore the guard's own. A
   new guard rule reaches the replay with no change here.
+- **Which commits.** Selection is by reachability, not by how a commit
+  was made: the commits on HEAD's first-parent line that neither the
+  mark (HEAD when the replay last passed) nor any other local branch
+  reaches. A plain commit, an amend, a rebase, a cherry-pick, and a
+  `pull --rebase` all make such commits, so all are replayed. Commits a
+  merge brings in through its second parent, and a fast-forward to a
+  branch that still exists, were gated on their own branch and are not.
+  With no mark yet (a fresh worktree, or lost state), only commits from
+  the last 24 h count.
 - **Files and BEFORE.** Every `.ts`/`.tsx` file changed in the working
   tree against HEAD (tracked and untracked, staged renames followed),
-  plus every file touched by this worktree's own commits since the last
-  pass. Those commits are HEAD reflog entries `commit`,
-  `commit (amend)`, and `commit (initial)` still in HEAD's history.
-  BEFORE is the file at the parent of the earliest such commit that
-  touched it, otherwise at HEAD. When the file is absent there, it is a
-  new file (every finding is new, as in the guard). AFTER is always the
-  working-tree file, so a later fix clears the finding. Merges,
-  cherry-picks, pulls, rebases, and resets bring in commits gated
-  elsewhere, so they are not replayed. With no pass recorded yet (a
-  fresh worktree, or lost state), only commits from the last 24 h that
-  no other local branch has count.
+  plus every file a session commit touched. BEFORE is the file at the
+  parent of the earliest session commit that touched it, otherwise at
+  HEAD. When the file is absent there, it is a new file (every finding
+  is new, as in the guard). AFTER is always the working-tree file, so a
+  later fix clears the finding.
+- **Merge commits.** A session merge commit contributes only the paths
+  `git diff-tree --cc` lists: the files it left different from every
+  parent (a conflict resolution, or anything written into the merge
+  before it was committed). A clean merge lists none. For those paths
+  BEFORE is one conflict block of the first two parents' versions, so
+  the guard's own conflicted-BEFORE handling takes the union of both
+  sides' findings as the baseline. A path an earlier session commit
+  already touched keeps that commit's parent as the first side and
+  gains the merged-in parent as the second.
 - **Failure.** Exit 2 with the structured block. It holds each failing
   file's guard reason (file, rule, line) and says the write bypassed the
   pre-write guard. A guard crash or timeout arrives as the guard's own
-  "could not check" deny and fails too. A replay that cannot run (git,
-  node) fails closed with its own block.
+  "could not check" deny and fails too. During an unfinished merge
+  (`MERGE_HEAD` or unmerged paths) the block names the unfinished merge
+  instead, since a file with conflict markers cannot parse. A replay
+  that cannot run (git, node) fails closed with its own block.
+- **Deadline.** On the Stop tier the replay starts no guard call after
+  `STOP_TIER_DEADLINE_SECONDS` (150 s) and fails with a block telling
+  the agent to run `npm run check:guard-replay` by hand, which has no
+  deadline and records its pass. A killed Stop hook would otherwise end
+  the turn with no error and no check.
 - **Dedup and speed.** See `docs/harness/checks-internals.md`'s "Guard
-  replay: fingerprint and reflog mark" for the fingerprint, the reflog
+  replay: fingerprint, mark, and deadline" for the fingerprint, the
   mark, and the measured time.
-- **Known limits.** A merge's conflict resolution committed with
-  `git commit` (`commit (merge)`) is not replayed. A commit amended or
-  reset away before the turn ended is not replayed; its replacement is.
-  A plain `mv` (unstaged) reads as a delete plus a new file, so every
-  finding the moved file carries counts as new: move with `git mv`. If
-  a merge changed a file that the session also committed in the same
-  turn, a finding the merge brought in reads as new.
+- **Known limits.** A plain `mv` (unstaged) reads as a delete plus a new
+  file, so every finding the moved file carries counts as new: move
+  with `git mv`. An octopus merge is checked against its first two
+  parents only. A merge that took one side's version of a file the
+  session had already committed (so `--cc` does not list it) compares
+  that file with the session's earlier BEFORE, so a finding the other
+  side brought reads as new. A fast-forward to a branch that was then
+  deleted replays that branch's commits too; they pass, at a cost.
 - **Tests.** `__tests__/guard-replay.test.ts`: a throwaway repository
   with a linked worktree, copies of the real wrappers and rule file,
   and the real Semgrep. It covers a Bash-written violation (tracked and
-  new file), a committed one, a fixed one, a pre-existing one, the
-  fixers, a merge, the first-run bound, the dedup skip, a crashing
-  engine, and `medium.sh` itself.
+  new file), a committed one, a fixed one, a pre-existing one, rebase,
+  reset plus cherry-pick, `pull --rebase`, a clean rebase, merges (fast
+  forward, clean, joined both sides, a write staged into the merge), an
+  unfinished merge, the fixers, the first-run bound, the dedup skip, a
+  crashing engine, the deadline (a slow Semgrep stub through the
+  `KIKO_GUARD_REPLAY_DEADLINE_SECONDS` test seam), and `medium.sh`
+  itself.
 
 ## Harness and hook changes land through a worktree
 
