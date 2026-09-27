@@ -29,3 +29,12 @@ export const glassSurfaceComponentOutsideNavLayer = GlassSurfaceComponent;
 // this file.
 // EXPECT-FINDING
 export { default as ReExportedGlassSurface } from '../../src/design-system/components/glass-surface';
+
+// The alias form. Under the feature rule (B2) a module outside the design
+// system reaches the component only through its unit barrel under the
+// `@kiko/` alias, so this is the form app code really writes. No leading
+// keyword of the rule's pattern-regex appears in this block either.
+// EXPECT-FINDING
+import AliasedGlassSurface from '@kiko/design-system/components/glass-surface';
+
+export const aliasedGlassSurfaceOutsideNavLayer = AliasedGlassSurface;
