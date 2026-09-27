@@ -21,21 +21,56 @@ import { execFileSync, spawnSync } from 'node:child_process';
 // the content-dedup skip and the single-flight lock start clean.
 const SCRIPT = join(__dirname, '../scripts/checks/mutation.sh');
 const LIB = join(__dirname, '../scripts/checks/_lib.sh');
-// The wrapper computes ROOT as scripts/checks/../.. — i.e. the real worktree
-// root — and keys its history file under TMPDIR by a hash of that ROOT. To
-// pre-seed history for the LIVE ETA test we must use the SAME ROOT and TMPDIR.
-const ROOT = join(__dirname, '..');
+
+const gitq = (cwd: string, ...args: string[]): void => {
+  execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' });
+};
+
+const writeFile = (root: string, rel: string, body: string): void => {
+  const abs = join(root, rel);
+  mkdirSync(dirname(abs), { recursive: true });
+  writeFileSync(abs, body);
+};
+
+// Ensure a destination directory exists and return its path (for copyFileSync).
+function mkAndReturn(root: string, rel: string): string {
+  const abs = join(root, rel);
+  mkdirSync(dirname(abs), { recursive: true });
+
+  return abs;
+}
+
+// The wrapper refuses a whole-project run above its file cap, and the real
+// worktree is far above it, so the streaming tests run a copy of the wrapper
+// inside a one-file throwaway project. The wrapper computes ROOT as
+// scripts/checks/../.. — this project — and keys its history file under TMPDIR
+// by a hash of that ROOT, so pre-seeded history must use the same root.
+const projectRoot = (temporaryDirectory: string): string => join(temporaryDirectory, 'project');
+
+const buildOneFileProject = (temporaryDirectory: string): void => {
+  const root = projectRoot(temporaryDirectory);
+  mkdirSync(root);
+  gitq(root, 'init', '-q', '-b', 'main');
+  gitq(root, 'config', 'user.email', 'test@example.com');
+  gitq(root, 'config', 'user.name', 'Test');
+  copyFileSync(SCRIPT, mkAndReturn(root, 'scripts/checks/mutation.sh'));
+  copyFileSync(LIB, mkAndReturn(root, 'scripts/checks/_lib.sh'));
+  writeFile(root, 'src/keep.ts', 'export const a = 1;\n');
+  gitq(root, 'add', '-A');
+  gitq(root, 'commit', '-qm', 'base');
+};
 
 type Run = { code: number | null; stdout: string; stderr: string };
 
-// Append history records for ROOT under the given isolated TMPDIR by sourcing
-// _lib.sh, so a subsequent wrapper run in that TMPDIR reads them. Each record is
-// "<iso> <dur> <count> <score>". This does NOT rely on a prior wrapper run
-// (content-dedup would skip an identical second run).
+// Append history records for the project root under the given isolated TMPDIR by
+// sourcing _lib.sh, so a subsequent wrapper run in that TMPDIR reads them. Each
+// record is "<iso> <dur> <count> <score>". This does NOT rely on a prior wrapper
+// run (content-dedup would skip an identical second run).
 const seedHistory = (temporaryDirectory: string, records: string[]): void => {
+  const root = projectRoot(temporaryDirectory);
   const script = [
     `source "${LIB}"`,
-    ...records.map((r) => `harness_mutation_history_append "${ROOT}" ${r}`),
+    ...records.map((r) => `harness_mutation_history_append "${root}" ${r}`),
   ].join('\n');
   spawnSync('bash', ['-c', script], {
     env: { ...process.env, TMPDIR: temporaryDirectory },
@@ -43,13 +78,13 @@ const seedHistory = (temporaryDirectory: string, records: string[]): void => {
   });
 };
 
-// Overwrite the history file for ROOT under the given TMPDIR with corrupt content
-// (no numeric fields), so harness_mutation_rate yields nothing and the wrapper
-// must still gate correctly.
+// Overwrite the history file for the project root under the given TMPDIR with
+// corrupt content (no numeric fields), so harness_mutation_rate yields nothing
+// and the wrapper must still gate correctly.
 const seedCorruptHistory = (temporaryDirectory: string): void => {
   const script = [
     `source "${LIB}"`,
-    `f="$(harness_mutation_history_file "${ROOT}")"`,
+    `f="$(harness_mutation_history_file "${projectRoot(temporaryDirectory)}")"`,
     'printf "garbage\\nno numeric fields here\\n" > "$f"',
   ].join('\n');
   spawnSync('bash', ['-c', script], {
@@ -70,7 +105,8 @@ const makeStub = (temporaryDirectory: string, body: string): string => {
 // they are independent of the diff-scoping (tested separately, in its own
 // hermetic git repo below).
 const run = (bin: string, temporaryDirectory: string, callLog: string): Run => {
-  const result = spawnSync('bash', [SCRIPT], {
+  const script = join(projectRoot(temporaryDirectory), 'scripts/checks/mutation.sh');
+  const result = spawnSync('bash', [script], {
     env: {
       ...process.env,
       KIKO_MUTATION_BIN: bin,
@@ -95,7 +131,12 @@ const stubBody = (exitCode: number): string =>
     `exit ${exitCode}`,
   ].join('\n');
 
-const freshTemporaryDirectory = (): string => mkdtempSync(join(tmpdir(), 'kiko-mut-'));
+const freshTemporaryDirectory = (): string => {
+  const temporaryDirectory = mkdtempSync(join(tmpdir(), 'kiko-mut-'));
+  buildOneFileProject(temporaryDirectory);
+
+  return temporaryDirectory;
+};
 
 const callCount = (callLog: string): number =>
   readFileSync(callLog, 'utf8').split('\n').filter(Boolean).length;
@@ -284,16 +325,6 @@ describe('scripts/checks/mutation.sh streaming', () => {
 // --mutate logic is exercised for real, deterministically.
 // ---------------------------------------------------------------------------
 
-const gitq = (cwd: string, ...args: string[]): void => {
-  execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' });
-};
-
-const writeFile = (root: string, rel: string, body: string): void => {
-  const abs = join(root, rel);
-  mkdirSync(dirname(abs), { recursive: true });
-  writeFileSync(abs, body);
-};
-
 // The stub records every argument it is invoked with (one per line) so a test
 // can assert the exact --mutate list Stryker would receive.
 const ARG_STUB = ['#!/usr/bin/env bash', 'printf "%s\\n" "$@" >> "$KIKO_STUB_ARGS"', 'exit 0'].join(
@@ -331,14 +362,6 @@ const buildRepo = (): { root: string; script: string } => {
 
   return { root, script: join(root, 'scripts/checks/mutation.sh') };
 };
-
-// Ensure a destination directory exists and return its path (for copyFileSync).
-function mkAndReturn(root: string, rel: string): string {
-  const abs = join(root, rel);
-  mkdirSync(dirname(abs), { recursive: true });
-
-  return abs;
-}
 
 type DiffRun = { code: number | null; args: string[] | null };
 

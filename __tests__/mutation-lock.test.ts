@@ -1,5 +1,6 @@
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -8,7 +9,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 
 // scripts/checks/mutation.sh holds a GLOBAL (machine-wide) single-flight lock so
 // only ONE Stryker runs at a time across ALL worktrees — two different worktrees
@@ -18,8 +19,38 @@ import { spawnSync } from 'node:child_process';
 // and TMPDIR is pointed at a fresh dir so the fixed global lock path is isolated
 // per test. The global lock lives at $TMPDIR/kiko-harness/mutation.global.lock.
 const SCRIPT = join(__dirname, '../scripts/checks/mutation.sh');
+const LIB = join(__dirname, '../scripts/checks/_lib.sh');
 
-const freshTemporaryDirectory = (): string => mkdtempSync(join(tmpdir(), 'kiko-lock-'));
+const gitq = (cwd: string, ...args: string[]): void => {
+  execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' });
+};
+
+// The wrapper refuses a whole-project run above its file cap, and the real
+// worktree is far above it, so these run a copy of the wrapper inside a one-file
+// throwaway project.
+const projectScript = (temporaryDirectory: string): string =>
+  join(temporaryDirectory, 'project', 'scripts', 'checks', 'mutation.sh');
+
+const buildOneFileProject = (temporaryDirectory: string): void => {
+  const root = join(temporaryDirectory, 'project');
+  mkdirSync(join(root, 'scripts', 'checks'), { recursive: true });
+  mkdirSync(join(root, 'src'));
+  gitq(root, 'init', '-q', '-b', 'main');
+  gitq(root, 'config', 'user.email', 'test@example.com');
+  gitq(root, 'config', 'user.name', 'Test');
+  copyFileSync(SCRIPT, projectScript(temporaryDirectory));
+  copyFileSync(LIB, join(root, 'scripts', 'checks', '_lib.sh'));
+  writeFileSync(join(root, 'src', 'keep.ts'), 'export const a = 1;\n');
+  gitq(root, 'add', '-A');
+  gitq(root, 'commit', '-qm', 'base');
+};
+
+const freshTemporaryDirectory = (): string => {
+  const temporaryDirectory = mkdtempSync(join(tmpdir(), 'kiko-lock-'));
+  buildOneFileProject(temporaryDirectory);
+
+  return temporaryDirectory;
+};
 
 const globalLockDir = (temporaryDirectory: string): string =>
   join(temporaryDirectory, 'kiko-harness', 'mutation.global.lock');
@@ -41,7 +72,7 @@ const makeStub = (temporaryDirectory: string, exitCode: number): string => {
 type Run = { code: number | null; stdout: string; stderr: string };
 
 const run = (bin: string, temporaryDirectory: string, callLog: string): Run => {
-  const result = spawnSync('bash', [SCRIPT], {
+  const result = spawnSync('bash', [projectScript(temporaryDirectory)], {
     env: {
       ...process.env,
       KIKO_MUTATION_BIN: bin,

@@ -70,39 +70,84 @@ if harness_unchanged "$ROOT" "mutation" "$fp"; then
   exit 0
 fi
 
+# A whole-release mutation run took 10 h 16 min and produced no result, so a run
+# above this many source files never starts. It is a plain assignment on purpose:
+# no env var may raise it, and KIKO_MUTATION_FULL=1 counts the whole project
+# against it too.
+MUTATION_FILE_CAP=30
+
+# Reads candidate .ts/.tsx paths on stdin and prints the ones Stryker would
+# mutate, excluding tests and fixtures (matching the config's own mutate
+# excludes). Part 2: it also drops zero/low-logic barrels (**/index.ts) +
+# pure-static *.styles.ts, preserving the 2 logic-bearing styles
+# (bottom-sheet.styles.ts, entity-icon-tile.styles.ts).
+# These MUST be filtered here too: on a diff-scoped run --mutate REPLACES
+# the config mutate[] wholesale (deepMerge replaces arrays, deep-merge.js:13),
+# so the config negations in stryker.conf.json do NOT apply there. Kept
+# bash-3.2-safe (no assoc arrays/namerefs) to match the rest of this script.
+mutable_source_files() {
+  local candidates reinc
+  candidates="$(grep -Ev '(\.test\.tsx?$|(^|/)__tests__/|(^|/)rules/fixtures/|(^|/)scripts/checks/|(^|/)i18n/locales/|\.d\.ts$)' || true)"
+  [ -n "$candidates" ] || return 0
+  reinc="$(printf '%s\n' "$candidates" | grep -E '((^|/)bottom-sheet\.styles\.ts$|(^|/)entity-icon-tile\.styles\.ts$)' || true)"
+  candidates="$(printf '%s\n' "$candidates" | grep -Ev '((^|/)index\.ts$|\.styles\.ts$)' || true)"
+  printf '%s\n' "$candidates" "$reinc" | grep -v '^[[:space:]]*$' | sort -u || true
+}
+
 # Diff-scope the mutation to the source files THIS branch changed, so the manual
 # gate is cheap. Compare against the merge-base with $KIKO_MUTATION_BASE (default
-# main) — i.e. "what this branch changed" — and mutate only those .ts/.tsx files,
-# EXCLUDING tests and fixtures (matching the config's own mutate excludes). An
-# explicit --mutate list overrides Stryker's whole-tree glob. `KIKO_MUTATION_FULL=1`
-# forces the whole-project run; a base whose merge-base cannot be resolved also
-# falls back to the whole project (never silently mutate nothing).
+# main) — i.e. "what this branch changed" — and mutate only those .ts/.tsx files.
+# An explicit --mutate list overrides Stryker's whole-tree glob.
+# `KIKO_MUTATION_FULL=1` forces the whole-project run; a base whose merge-base
+# cannot be resolved also falls back to the whole project (never silently mutate
+# nothing). Either way the selected set is counted against MUTATION_FILE_CAP
+# before Stryker starts.
 mutate_arg=""
+merge_base=""
 if [ -z "${KIKO_MUTATION_FULL:-}" ]; then
   base="${KIKO_MUTATION_BASE:-main}"
   merge_base="$(git -C "$ROOT" merge-base "$base" HEAD 2>/dev/null || true)"
-  if [ -n "$merge_base" ]; then
-    changed="$(git -C "$ROOT" diff --name-only --diff-filter=d "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null \
-      | grep -Ev '(\.test\.tsx?$|(^|/)__tests__/|(^|/)rules/fixtures/|(^|/)scripts/checks/|(^|/)i18n/locales/|\.d\.ts$)' || true)"
-    # Part 2: drop zero/low-logic barrels (**/index.ts) + pure-static
-    # *.styles.ts from the mutate set, preserving the 2 logic-bearing styles
-    # (bottom-sheet.styles.ts, entity-icon-tile.styles.ts).
-    # These MUST be filtered here too: on this diff-scoped run --mutate REPLACES
-    # the config mutate[] wholesale (deepMerge replaces arrays, deep-merge.js:13),
-    # so the config negations in stryker.conf.json do NOT apply here. Kept
-    # bash-3.2-safe (no assoc arrays/namerefs) to match the rest of this script.
-    if [ -n "$changed" ]; then
-      reinc="$(printf '%s\n' "$changed" | grep -E '((^|/)bottom-sheet\.styles\.ts$|(^|/)entity-icon-tile\.styles\.ts$)' || true)"
-      changed="$(printf '%s\n' "$changed" | grep -Ev '((^|/)index\.ts$|\.styles\.ts$)' || true)"
-      changed="$(printf '%s\n' "$changed" "$reinc" | grep -v '^[[:space:]]*$' | sort -u || true)"
-    fi
-    if [ -z "$changed" ]; then
-      # This branch changed no mutable source file — nothing to mutate, pass.
-      exit 0
-    fi
-    csv="$(printf '%s' "$changed" | tr '\n' ',')"
-    mutate_arg="--mutate=${csv%,}"
+fi
+if [ -n "$merge_base" ]; then
+  scope="the source files changed since the merge-base with $base"
+  changed="$(git -C "$ROOT" diff --name-only --diff-filter=d "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null \
+    | mutable_source_files)"
+  if [ -z "$changed" ]; then
+    # This branch changed no mutable source file — nothing to mutate, pass.
+    exit 0
   fi
+  csv="$(printf '%s' "$changed" | tr '\n' ',')"
+  mutate_arg="--mutate=${csv%,}"
+else
+  scope="the whole project"
+  # The whole-project run mutates by the config's own glob, so count what that
+  # glob sees: every tracked or unignored .ts/.tsx outside the config's
+  # ignorePatterns directories. An unreadable list must never count as zero.
+  if ! listed="$(git -C "$ROOT" ls-files --cached --others --exclude-standard -- '*.ts' '*.tsx' 2>/dev/null)"; then
+    print_block \
+      "Stryker (mutation testing)" \
+      "Could not list the project's source files to count them against the mutation cap." \
+      "git ls-files failed in $ROOT (not a git worktree?)." \
+      "The mutation file cap cannot be checked without the file list, and an unchecked whole-project run takes hours." \
+      "Run npm run check:mutation inside the git worktree, with KIKO_MUTATION_BASE set to the change set's own base commit." \
+      "Do not start Stryker directly to skip the cap."
+    exit 2
+  fi
+  changed="$(printf '%s\n' "$listed" \
+    | grep -Ev '(^|/)(ios|android|vendor|coverage|docs|\.superpowers)/' \
+    | mutable_source_files)"
+fi
+
+file_count="$(printf '%s\n' "$changed" | grep -c . || true)"
+if [ "$file_count" -gt "$MUTATION_FILE_CAP" ]; then
+  print_block \
+    "Stryker (mutation testing)" \
+    "$file_count files would be mutated (> $MUTATION_FILE_CAP)." \
+    "Scope: $scope." \
+    "A big mutation run takes hours and starves the machine (a whole-release run went 10 h 16 min with no result)." \
+    "Run it per small change set: set KIKO_MUTATION_BASE to that change set's own base commit so only its files are mutated." \
+    "No env override to skip the cap; do not raise the number to pass."
+  exit 2
 fi
 
 # Everything below runs only when Stryker will ACTUALLY run (past every early
