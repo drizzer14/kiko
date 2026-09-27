@@ -115,13 +115,18 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `cat <<'EOF' | bash`, `eval "$(cat <<'EOF' …)"`, or
   `bash -c "$(cat <<'EOF' …)"` it is not (a kill or `git stash` line in
   such a body is still denied). Heredoc delimiter corner cases: quote
-  removal drops a `$` before a quote (`$'EOF'`, `$"EOF"`) and, inside
+  removal drops a `$` before `'…'` (`$'EOF'` ends at `EOF` in both
+  shells); `$"EOF"` differs by shell (bash ends at `EOF`, zsh at `$EOF`),
+  so the guard ends that body at the first line matching EITHER reading
+  and scans the rest as shell (fail closed); inside
   double quotes, unescapes `\"`, `\\`, `\$`, and a backslash-backtick
   (`"E\"OF"` ends at `E"OF`); a delimiter line with trailing spaces does
   not end the body (bash agrees); bash's `EOF)` shorthand inside `$(` is
   not recognized as the delimiter line. bash 3.2 (not zsh) can still run
   a command after a heredoc inside `<(`/`$(` whose body holds an
-  unbalanced paren; the guard does not model that. The agent rule stays
+  unbalanced paren; the guard does not model that. bash 3.2 (zsh fails)
+  also runs the kill in `echo $( (echo a)#c ); pkill x` (pre-existing,
+  not denied). The agent rule stays
   absolute regardless: never `git stash` or pattern-kill in any form.
   Every deny carries the `print_block` WHAT/DETAILS/WHY/HOW/DO-NOT shape
   as plain text in the one JSON reason field; the kill deny keeps its
@@ -134,16 +139,25 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   (read the set in `kill-guard.js`; at the time of writing: `apply`,
   `merge`, `rebase`, `pull`, `cherry-pick`, `revert`, `am`) whose write
   target (work tree or git dir) is inside `MAIN_CHECKOUT_PATH`, the one
-  constant that pins the path. The target comes from the payload `cwd`,
-  from `cd`/`pushd`/`cd -` earlier in the same command (a subshell's
-  `cd` ends with the subshell), from `git -C` (stacked and relative),
+  constant that pins the path; a nested worktree under
+  `<main>/.claude/worktrees/<name>` is a separate worktree and is
+  excluded (`isInsideMainCheckout`). The target comes from the payload
+  `cwd`, from `cd`/`pushd`/`cd -` earlier in the same command — which
+  moves the directory only across `&&`, `;`, or a newline; before `&` or
+  `|` it moves nothing, before `||` both the old and new directory stay
+  possible (over-denies `cd <worktree> || exit 1; git merge x` from
+  main), a bare `pushd` keeps both the current and previous set, and a
+  subshell's `cd` ends with the subshell — from `git -C` (stacked and relative),
   `--git-dir`, `--work-tree`, and from `GIT_DIR=`/`GIT_WORK_TREE=`
   prefixes (also after `env`). A leading `~`, `$HOME`, or `${HOME}`
   expands to the home directory, a bare `cd` goes home, and the compare
   is case-insensitive (APFS). Nested text (`$(...)`, a `-c` string,
   `eval`, a shell-read body) runs in its segment's directory. Allowed
-  there (`leavesMainCheckoutSafe`): `-h`/`--help`; the recovery options
-  `--abort`, `--quit`, `--skip`, `--continue`; `git apply --check`,
+  there (`leavesMainCheckoutSafe`; read `RECOVERY_OPTIONS` in
+  `kill-guard.js` for the closed set): `-h`/`--help`; the recovery
+  options (at the time of writing `--abort`, `--quit`, `--skip`,
+  `--continue`, `--resolved`, `--edit-todo`, `--show-current-patch`);
+  `git apply --check`,
   `--stat`, `--numstat`, `--summary` without `--apply`; and the one
   update form, `git merge --ff-only <ref>` or
   `git pull --ff-only [remote [ref]]` with no other option (strict,
@@ -157,10 +171,26 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `merge --ff-only` with any extra option (`-q`, `--no-edit`, `--`); and,
   with cwd = main, a heredoc body line that is itself one of the covered
   git commands (the same body-line false positive as kill and stash;
-  write such text with the Write tool). A recovery option lets the whole
-  command through even with other arguments. A session in the main
-  checkout gets this deny only after the guard merges to main, because
-  it runs main's own `kill-guard.js`.
+  write such text with the Write tool). A help or recovery option lets
+  the whole command through from ANY argument position, even as another
+  option's value, so a deliberate bypass such as
+  `git merge -m --abort x` passes and really merges (limit). A session
+  in the main checkout gets this deny only after the guard merges to
+  main, because it runs main's own `kill-guard.js`.
+
+  Probing the kill-guard (rule): a probe that EXECUTES shell text runs
+  ONLY through the committed safe runner
+  `scripts/checks/kill-guard-probe.sh bash|zsh '<probe>'` — stubs first
+  on PATH (pkill, killall, kill, xargs, git), the kill builtin disabled,
+  it refuses to start otherwise (exit 3) and refuses unsafe probe text
+  (exit 2); read its header for the full contract. Never write a runner
+  that rewrites the kill word by string, and never execute a kill string
+  outside this runner. Incident: a string-rewrite runner once ran a real
+  `pkill x` because a line continuation (`pk\<newline>ill`) dodged the
+  rewrite. Runner limits: the probe-text refusal list is a denylist
+  (text built to evade it could pass; PATH stubs and the disabled
+  builtin still hold), and it is macOS-only in practice (`/bin/zsh`,
+  `/usr/bin/perl`).
 
   A THIRD exception, of yet another shape: `scripts/checks/pre-write-guard.sh`
   (+ `pre-write-guard.js`) is the `PreToolUse` hook on `Edit|Write|MultiEdit` —

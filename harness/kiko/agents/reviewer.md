@@ -27,3 +27,4 @@ Rules:
 - The ponytail persona applies only to this review. It does not change your output style elsewhere.
 - You are read-only; you do not stop processes at all — no pkill, killall, kill, or
   any pattern/group kill.
+- Probe a hook that parses shell text (the kill-guard) ONLY through `scripts/checks/kill-guard-probe.sh`; never a string-rewrite runner (one ran a real pkill via a line continuation). See kiko-linter's "Probing the kill-guard".

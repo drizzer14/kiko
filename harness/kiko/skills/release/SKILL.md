@@ -15,8 +15,10 @@ Preconditions:
   normalization is allowed).
 - `npm run check:all` is green.
 
-Merging into `main` (coordinator ruling): never merge, rebase, pull
-(except `--ff-only`), or apply in the main checkout
+Merging into `main` (coordinator ruling): never apply, merge, rebase,
+pull, cherry-pick, revert, or am in the main checkout (only
+`merge --ff-only`/`pull --ff-only` pass; the closed set is
+`MAIN_CHECKOUT_SUBCOMMANDS` in `scripts/checks/kill-guard.js`)
 (`/Users/drizzer14/Developer/Projects/pff-ios`); every session's hooks
 run from it, so a conflict marker there breaks every hook. The
 kill-guard denies it (see kiko-linter's "MAIN-CHECKOUT deny"). Do the
