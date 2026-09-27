@@ -985,6 +985,57 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     expect(savedBondMetadata(bondHolding.metadata).isin).toBe('XS2895055981');
   });
 
+  // The App Store demo bond (screenshot-seed.ts): an invented ISIN with a kept
+  // schedule, which leaves the cache on the first online register refresh.
+  // The ISIN here passes the check digit, so the test reaches the register
+  // lookup rather than the ISIN's own format error.
+  const demoBond = {
+    id: 'h-demo-bond',
+    name: 'ОВДП',
+    type: 'bond',
+    currency: 'UAH',
+    balanceMinorUnits: 0,
+    icon: null,
+    color: null,
+    metadata: {
+      quantity: 30,
+      faceValueMinorUnits: 100_000,
+      couponPct: 16.2,
+      purchaseDate: localDay(2026, 2, 18),
+      purchasePriceMinorUnits: 3_060_000,
+      maturityDate: localDay(2027, 8, 18),
+      bondKind: 'government',
+      couponFrequency: 'semiannually',
+      isin: 'UA4000233019',
+      payments: [
+        { date: localDay(2026, 8, 19), kind: 'coupon', amount: '81' },
+        { date: localDay(2027, 2, 17), kind: 'coupon', amount: '81' },
+        { date: localDay(2027, 8, 18), kind: 'coupon', amount: '81' },
+        { date: localDay(2027, 8, 18), kind: 'redemption', amount: '1000' },
+      ],
+    },
+  };
+
+  it('opens the demo bond, saved before the mode was stored, in Manual', async () => {
+    const screen = await renderEdit(demoBond);
+
+    expect(
+      screen.getByTestId('bond-isin-mode-control-option-manual').props.accessibilityState.selected,
+    ).toBe(true);
+  });
+
+  it('saves an ISIN-mode edit of an ISIN the register no longer lists with its stored terms, under the not-in-register note', async () => {
+    const holding = { ...demoBond, metadata: { ...demoBond.metadata, entryMode: 'isin' } };
+    const screen = await renderEdit(holding);
+
+    expect(screen.getByText('Not in the NBU register.')).toBeTruthy();
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(updateFromStoredMock.mock.calls[0][1]).toMatchObject({ name: 'ОВДП' });
+    expect(savedBondMetadata(holding.metadata)).toEqual(holding.metadata);
+  });
+
   // The found-terms apply must not re-fire on an
   // unrelated change — renaming the holding after a match, then picking a
   // date, must save the TYPED name, not the register's.

@@ -1215,14 +1215,27 @@ create and edit save — the unmapped-frequency auto-switch saves
 `'manual'`. `useBondFields`'s own `seed`
 (`src/screens/forms/holding-form/bond/use-bond-fields/`) calls the
 hook's `setBondMode` with it; the stored ISIN is shown, still editable,
-in either mode. A bond saved before `entryMode` existed goes through
-ONE small named function, `legacyEntryMode` (PENDING USER RULING — a
-one-line edit if the user rules otherwise): an ISIN AND a non-empty
-stored `payments` array opens ISIN; every other legacy bond opens
-Manual. Accepted side effect: an ISIN-mode edit of a matured/delisted
-ISIN, or offline with an empty cache, shows "not in the register" and
-blocks Save until "Switch to manual"; a legacy bond that opens ISIN
-without a stored price must get one before Save.
+in either mode. A bond without `entryMode` (saved before it existed)
+opens Manual — USER RULING: "Ignore old bonds, I'll just remake them";
+there is no legacy detection code (no mode guess, no per-bond-price
+check for a price typed into the old total field).
+
+An ISIN-mode EDIT of its own stored ISIN that the register no longer
+lists (matured/delisted, or offline with an empty cache) SAVES — USER
+RULING: `useBondIsinMode` keeps the seeded `storedIsin`, and
+`bondIsinReasonKey` returns no reason while the ISIN field still holds
+it and nothing matched. `BondIsinSection` still shows the "not in the
+register" / "not loaded" note with its Switch-to-manual button (the
+note reads `foundTerms`, not the reason). Save writes the stored terms
+unchanged (name, coupon, face, frequency, maturity, currency) with
+`entryMode: 'isin'`, and `bondPaymentsOnSave` keeps the stored schedule
+(no register payments to take, identity unchanged → `saved.meta.payments`).
+The form's yield row reads that stored schedule too, the same value as
+the holding detail. Once another ISIN's match fills the form, the
+exemption ends (`storedIsin` clears in the apply effect): retyping the
+stored ISIN is blocked again, since the form no longer holds its stored
+terms. A CREATE with an unlisted ISIN, or an edit's DIFFERENT unlisted
+ISIN, is still blocked until "Switch to manual".
 
 Validation (`isinReasonKey`, returned by the hook, backed by a
 module-level pure `bondIsinReasonKey`): required and blocking in ISIN
@@ -1230,7 +1243,7 @@ mode; optional but still check-digit-validated when non-empty in
 Manual mode; `isinNotInRegister` once shape/check-digit both pass but
 the cache has no match (a genuine not-found and an
 offline-with-no-cache open the same way, since both leave the lookup's
-result `null`); `isinCurrencyMismatchError` in edit mode per the currency-lock rule above.
+result `null`; an edit's own stored ISIN is exempt, above); `isinCurrencyMismatchError` in edit mode per the currency-lock rule above.
 A maturity-before-purchase reason (`bondReasonKey`, unrelated to the
 ISIN reason above) still applies unchanged in ISIN mode — a
 matured-still-registered bond (the live register still counts it)

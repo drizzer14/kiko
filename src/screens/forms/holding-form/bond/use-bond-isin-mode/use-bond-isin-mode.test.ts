@@ -473,6 +473,56 @@ describe('useBondIsinMode', () => {
       expect(result.current.needsCouponFrequencyPick).toBe(true);
       expect(result.current.pickedCouponFrequency).toBeNull();
     });
+
+    // A matured or delisted ISIN leaves the register; the bond keeps its
+    // stored terms, so its ISIN-mode edit still saves.
+    it.each([
+      ['the register no longer lists it', 1, true],
+      ['the cache is empty (offline)', null, false],
+    ])('lets the stored ISIN save in ISIN mode when %s', async (_case, fetchedAt, loaded) => {
+      mockFetchedAtRows = [{ value: fetchedAt }];
+      const { result } = await renderTheHook(editParams());
+
+      await act(async () => {
+        result.current.seedStoredIsin({ isin: VALID_ISIN, couponFrequency: 'annually' });
+      });
+
+      expect(result.current.bondMode).toBe('isin');
+      expect(result.current.registerTerms).toBeNull();
+      expect(result.current.registerLoaded).toBe(loaded);
+      expect(result.current.isinReasonKey).toBeNull();
+    });
+
+    it('still blocks another ISIN the register does not list', async () => {
+      const { result } = await renderTheHook(editParams());
+
+      await act(async () => {
+        result.current.seedStoredIsin({ isin: VALID_ISIN, couponFrequency: 'annually' });
+      });
+      await act(async () => {
+        result.current.setIsin(OTHER_ISIN);
+      });
+
+      expect(result.current.isinReasonKey).toBe('forms.holding.isinNotInRegister');
+    });
+
+    it('blocks the stored ISIN again once another bond filled the terms', async () => {
+      const { result } = await renderTheHook(editParams());
+
+      await act(async () => {
+        result.current.seedStoredIsin({ isin: VALID_ISIN, couponFrequency: 'annually' });
+      });
+      mockBondRegisterRows = [otherRow()];
+      await act(async () => {
+        result.current.setIsin(OTHER_ISIN);
+      });
+      mockBondRegisterRows = [];
+      await act(async () => {
+        result.current.setIsin(VALID_ISIN);
+      });
+
+      expect(result.current.isinReasonKey).toBe('forms.holding.isinNotInRegister');
+    });
   });
 
   // The cache was written on 2026-09-26, when XS2895055981's next coupon was

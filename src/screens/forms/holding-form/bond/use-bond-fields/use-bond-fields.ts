@@ -37,12 +37,6 @@ import {
 } from './bond-purchase-price';
 import { bondPaymentsOnSave, type SavedBond } from './bond-payments-on-save';
 
-// A bond saved before `entryMode` was stored does not say which mode it came
-// from. An ISIN with a kept register schedule is the best sign of an
-// ISIN-mode save; every other such bond opens Manual.
-const legacyEntryMode = (meta: BondMeta): BondEntryMode =>
-  meta.isin !== undefined && (meta.payments?.length ?? 0) > 0 ? 'isin' : 'manual';
-
 // `buildBondMetadata` stands today in for a missing date, which would solve
 // a yield for dates the user never entered.
 const hasYieldInputs = (
@@ -69,7 +63,10 @@ const seedBondFields = (meta: BondMeta, currency: Currency, hasStoredPrice: bool
   couponFrequency: meta.couponFrequency,
   // Shown and still editable in either mode; '' for a bond saved without one.
   isin: meta.isin ?? '',
-  bondMode: meta.entryMode ?? legacyEntryMode(meta),
+  // A bond saved before `entryMode` existed does not say which mode it came
+  // from; the user remakes those bonds (user ruling), so Manual shows them as
+  // stored.
+  bondMode: meta.entryMode ?? 'manual',
 });
 
 type UseBondFieldsParams = {

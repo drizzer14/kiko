@@ -35,6 +35,7 @@ jest.mock('@kiko/holdings/repo', () => ({
 
 import type { HoldingRow } from '@kiko/db';
 import { EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
+import { bondYieldToMaturity } from '@kiko/bonds/yield-to-maturity';
 
 import type { EditContext } from '../../holding-type-form';
 
@@ -284,11 +285,10 @@ describe('useBondFields entry mode', () => {
     expect(await seededMode({ isin: VALID_ISIN, entryMode: 'manual', payments })).toBe('manual');
   });
 
-  it('opens a bond saved before the mode was stored in ISIN only with an ISIN and a kept schedule', async () => {
-    expect(await seededMode({ isin: VALID_ISIN, payments })).toBe('isin');
-    expect(await seededMode({ isin: VALID_ISIN, payments: [] })).toBe('manual');
+  it('opens a bond saved before the mode was stored in Manual, even with an ISIN and a kept schedule', async () => {
+    expect(await seededMode({ isin: VALID_ISIN, payments })).toBe('manual');
     expect(await seededMode({ isin: VALID_ISIN })).toBe('manual');
-    expect(await seededMode({ payments })).toBe('manual');
+    expect(await seededMode({})).toBe('manual');
   });
 
   it('saves an unchanged ISIN-mode edit as ISIN', async () => {
@@ -311,6 +311,87 @@ describe('useBondFields entry mode', () => {
     });
 
     expect(mockWrittenMetadata.at(-1)).toMatchObject({ entryMode: 'isin', couponPct: 9.5 });
+  });
+});
+
+// A matured or delisted ISIN leaves the register, and an offline phone may
+// have no cache at all: the bond's own stored terms still describe it.
+describe('useBondFields ISIN-mode edit of an ISIN the register does not list', () => {
+  const storedMetadata = {
+    quantity: 10,
+    faceValueMinorUnits: 100_000,
+    couponPct: 9,
+    purchasePriceMinorUnits: 950_000,
+    purchaseDate: new Date(2026, 0, 1).getTime(),
+    maturityDate: new Date(2028, 0, 1).getTime(),
+    bondKind: 'government',
+    couponFrequency: 'semiannually',
+    isin: VALID_ISIN,
+    entryMode: 'isin',
+    payments: [
+      { date: new Date(2026, 6, 1).getTime(), kind: 'coupon', amount: '45' },
+      { date: new Date(2027, 0, 1).getTime(), kind: 'coupon', amount: '60' },
+      { date: new Date(2028, 0, 1).getTime(), kind: 'redemption', amount: '1000' },
+    ],
+  };
+  const holding = { currency: 'UAH', metadata: storedMetadata } as unknown as HoldingRow;
+  const context: EditContext = {
+    holdingId: 'h1',
+    name: 'Bond',
+    color: null,
+    currency: 'UAH',
+    isSynced: false,
+    editingHolding: holding,
+    book: EMPTY_PRICE_BOOK,
+  };
+
+  it.each([
+    ['the register no longer lists it', 1],
+    ['the cache is empty (offline)', null],
+  ])('saves the stored terms unchanged when %s', async (_case, fetchedAt) => {
+    mockFetchedAtRows = [{ value: fetchedAt }];
+    mockStoredMetadata = storedMetadata;
+    const setName = jest.fn();
+    const { result } = await renderBondFields(true, setName);
+
+    await act(async () => {
+      result.current.seed(holding);
+    });
+
+    expect(result.current.bondMode).toBe('isin');
+    expect(result.current.registerTerms).toBeNull();
+    expect(result.current.isValid).toBe(true);
+
+    await result.current.saveEdit(context);
+
+    expect(setName).not.toHaveBeenCalled();
+    expect(mockWrittenMetadata.at(-1)).toEqual(storedMetadata);
+  });
+
+  it('shows the yield from the stored schedule, the same as the holding detail', async () => {
+    const { result } = await renderBondFields(true);
+
+    await act(async () => {
+      result.current.seed(holding);
+    });
+
+    const detailYield = bondYieldToMaturity(storedMetadata, 'UAH', null);
+
+    expect(detailYield).not.toBeNull();
+    expect(result.current.yieldToMaturity).toBe(detailYield);
+  });
+
+  it('still blocks a create with an ISIN the register does not list', async () => {
+    const { result } = await renderBondFields();
+
+    await act(async () => {
+      result.current.setIsin(VALID_ISIN);
+      result.current.setQuantity('10');
+      result.current.setPurchasePrice('950');
+    });
+
+    expect(result.current.isinReasonKey).toBe('forms.holding.isinNotInRegister');
+    expect(result.current.isValid).toBe(false);
   });
 });
 

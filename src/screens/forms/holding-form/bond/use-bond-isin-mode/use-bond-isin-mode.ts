@@ -47,20 +47,31 @@ export type UseBondIsinModeParams = {
 // — "not found" and "offline with no cache" still share the same
 // Switch-to-Manual path; only the WORDING differs), the third once a match
 // IS found but its currency differs from the (locked) edit-mode holding
-// currency. A plain top-level function (not an inline closure in the hook
-// body) so it
-// carries its own cognitive-complexity budget.
+// currency. An edit's own stored ISIN is exempt from the first pair: a
+// matured or delisted bond leaves the register, and its stored terms still
+// describe it (user ruling), so it saves them as they are. A plain top-level
+// function (not an inline closure in the hook body) so it carries its own
+// cognitive-complexity budget.
 const bondIsinReasonKey = (params: {
   bondMode: BondEntryMode;
   isin: string;
   isinValidation: ReturnType<typeof validateIsin>;
   registerTerms: BondTerms | null;
   registerLoaded: boolean;
+  isStoredIsin: boolean;
   isEdit: boolean;
   currency: Currency;
 }): IsinReasonKey | null => {
-  const { bondMode, isin, isinValidation, registerTerms, registerLoaded, isEdit, currency } =
-    params;
+  const {
+    bondMode,
+    isin,
+    isinValidation,
+    registerTerms,
+    registerLoaded,
+    isStoredIsin,
+    isEdit,
+    currency,
+  } = params;
 
   if (bondMode !== 'isin' && isin.trim() === '') {
     return null;
@@ -76,7 +87,7 @@ const bondIsinReasonKey = (params: {
       : 'forms.holding.isinCheckDigitError';
   }
 
-  if (bondMode !== 'isin') {
+  if (bondMode !== 'isin' || (registerTerms === null && isStoredIsin)) {
     return null;
   }
 
@@ -234,6 +245,9 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
   // onto a new one.
   const [pickedCouponFrequency, setPickedCouponFrequencyState] =
     useState<BondCouponFrequency | null>(null);
+  // The ISIN an edit was saved with, while the form still holds that bond's
+  // stored terms; null on create and once another match filled the terms.
+  const [storedIsin, setStoredIsin] = useState<string | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(apply once per matched ISIN while in ISIN mode) the ref inside the effect body is what makes re-application idempotent, not the dependency array — see the doc comment above.
   useEffect(() => {
     if (bondMode !== 'isin' || registerTerms === null) {
@@ -254,6 +268,7 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
       return;
     }
 
+    setStoredIsin(null);
     setFaceValue(
       groupAmount(majorAmountText(registerTerms.currency, registerTerms.faceValueMinorUnits)),
     );
@@ -287,6 +302,7 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
     isinValidation,
     registerTerms,
     registerLoaded,
+    isStoredIsin: storedIsin !== null && isin === storedIsin,
     isEdit,
     currency,
   });
@@ -322,9 +338,10 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
   // name, coupon or face value, and its stored frequency counts as picked, so
   // an unmapped-frequency bond stays saveable in ISIN mode.
   const seedStoredIsin = useCallback((stored: StoredIsin): void => {
-    const storedIsin = normalizeIsin(stored.isin);
-    lastAppliedIsinRef.current = storedIsin;
-    setIsin(storedIsin);
+    const normalizedStoredIsin = normalizeIsin(stored.isin);
+    lastAppliedIsinRef.current = normalizedStoredIsin;
+    setIsin(normalizedStoredIsin);
+    setStoredIsin(normalizedStoredIsin);
     setPickedCouponFrequencyState(stored.couponFrequency);
   }, []);
 
