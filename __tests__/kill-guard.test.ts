@@ -101,6 +101,8 @@ const BLOCKED_COMMANDS: string[] = [
   'cat <<$"EOF"\n$EOF\nit\'s\nEOF\npkill x',
   'cat <<E$"OF"\nE$OF\nit\'s\nEOF\npkill x',
   'cat <<$"EOF"\n$EOF\necho "\nEOF\npkill x\n"',
+  '2>/dev/null pkill x',
+  '>/dev/null pkill x',
   'cat <<"E\\"OF"\nit\'s\nE"OF\npkill x\nE\\"OF',
   'cat <<"E\\\\OF"\nit\'s\nE\\OF\npkill x\nE\\\\OF',
   'cat <<"E\\$OF"\nit\'s\nE$OF\npkill x\nE\\$OF',
@@ -128,6 +130,8 @@ const ALLOWED_COMMANDS: string[] = [
   '(kill 1234)',
   '{ kill "$pid"; }',
   'command -v pkill',
+  'kill 1234 &>/dev/null',
+  'kill $PID 2>/dev/null',
   'FOO=1 npm test',
   'time npm test',
   'eval "echo hi"',
@@ -319,6 +323,11 @@ const MAIN_CHECKOUT_COMMANDS: [string, string][] = [
   [MAIN_CHECKOUT, 'true | cd /tmp; git merge feat/x'],
   [MAIN_CHECKOUT, 'pushd /tmp; popd; git merge feat/x'],
   [WORKTREE, `cd ${MAIN_CHECKOUT} || exit 1; git merge feat/x`],
+  [MAIN_CHECKOUT, '>/dev/null git merge feat/x'],
+  [WORKTREE, `cd ${MAIN_CHECKOUT}>/dev/null && git merge feat/x`],
+  [WORKTREE, `cd > /dev/null ${MAIN_CHECKOUT} && git merge feat/x`],
+  [MAIN_CHECKOUT, 'git fetch && cd /tmp/a && make && cd /tmp/b; git merge feat/x'],
+  [MAIN_CHECKOUT, 'false &&\ncd /tmp; git merge feat/x'],
   // No `.git` there: not a worktree, so git would run in the main checkout.
   [`${MAIN_CHECKOUT}/.claude/worktrees/agent-1`, 'git merge feat/x'],
   [MAIN_CHECKOUT, `cd ${MAIN_CHECKOUT}/.claude/worktrees/agent-1 && git rebase main`],
@@ -368,6 +377,8 @@ const ALLOWED_OUTSIDE_MAIN_CHECKOUT: [string, string][] = [
   [MAIN_CHECKOUT, `cd ${WORKTREE} || exit 1; git merge feat/x`],
   [MAIN_CHECKOUT, `cd ${WORKTREE} || return; git merge feat/x`],
   [WORKTREE, 'pushd /tmp && popd && git merge feat/x'],
+  [MAIN_CHECKOUT, `echo a && cd ${WORKTREE} &&\ngit merge feat/x`],
+  [MAIN_CHECKOUT, `git fetch && cd ${WORKTREE} && npm test &&\ngit merge feat/x`],
 ];
 
 // Recovery from a stuck operation stays allowed in the main checkout.
@@ -511,6 +522,16 @@ describe('kill-guard decide() test-only options (parser only)', () => {
     `echo 1 | xargs ${SENTINEL}`,
   ])('denies the sentinel as a kill when asked: %s', (command) => {
     expect(decide(command, { sentinelKillCommands: [SENTINEL] })).toBe('kill');
+  });
+
+  // A `$"…"` delimiter nested in a `-c` or `eval` string still gets both
+  // shell readings.
+  it.each([
+    'zsh -c "cat <<\\$\\"EOF\\"\nEOF\nit\'s\n\\$EOF\npkill x"',
+    'zsh -c "cat <<E\\$\\"OF\\"\nEOF\nit\'s\nE\\$OF\npkill x"',
+    'eval "cat <<\\$\\"EOF\\"\nEOF\nit\'s\n\\$EOF\npkill x"',
+  ])('denies a nested $"…" heredoc under either reading: %s', (command) => {
+    expect(decide(command)).toBe('kill');
   });
 
   it('allows the sentinel without the option', () => {

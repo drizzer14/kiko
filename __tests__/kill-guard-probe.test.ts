@@ -7,22 +7,35 @@ import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 // or zsh. A probe names `kg_sentinel_target` wherever a kill command would
 // be, and a scratch folder wherever the main checkout would be; the sentinel
 // and git are stubs first on PATH that only log what they received. No real
-// command has the sentinel's name, so an escape past the stubs finds nothing
-// to run. The runner refuses any text that names a kill command or the real
-// main checkout.
+// command has the sentinel's name, so a probe that escapes the stub (a
+// child shell, a PATH edit) finds no sentinel to run. Real git stays
+// reachable by a PATH edit or /usr/bin/git; it would run in the runner's
+// empty scratch folder.
 //
-// Every text these tests pass is harmless even with a broken runner: the
-// sentinel runs nothing real, git only runs in a scratch folder, and each
-// refused text only prints or looks a name up.
+// These tests never hand the runner a real kill word or the real main
+// checkout. The refusal rows prove each spelling with the sentinel and a
+// fake folder, added to the refusal list through the runner's test-only
+// KIKO_PROBE_REFUSE_ALSO; the built-in words go through the same check.
+// Every text here is harmless even with a broken runner: the sentinel runs
+// nothing real, and git runs only in a scratch folder.
 const SCRIPT = join(__dirname, '../scripts/checks/kill-guard-probe.sh');
 const SENTINEL = 'kg_sentinel_target';
 const SHELLS = ['bash', 'zsh'];
 // The runner refuses any text holding the letters of a kill command, a
 // folder name included.
 const SCRATCH_MAIN = mkdtempSync(join(tmpdir(), 'guard-probe-main-'));
+const REFUSE_ALSO = { KIKO_PROBE_REFUSE_ALSO: `${SENTINEL} kg/fake_main` };
 
-const runProbe = (shell: string, probe: string): SpawnSyncReturns<string> =>
-  spawnSync('bash', [SCRIPT, shell, probe], { encoding: 'utf8', timeout: 30_000 });
+const runProbe = (
+  shell: string,
+  probe: string,
+  environment: Record<string, string> = {},
+): SpawnSyncReturns<string> =>
+  spawnSync('bash', [SCRIPT, shell, probe], {
+    encoding: 'utf8',
+    timeout: 30_000,
+    env: { ...process.env, ...environment },
+  });
 
 const expectStub = (result: SpawnSyncReturns<string>, call: string): void => {
   expect(result.status).toBe(0);
@@ -49,19 +62,37 @@ describe('scripts/checks/kill-guard-probe.sh (sentinel probe runner)', () => {
   });
 
   it.each([
-    'type -t kill',
-    'command -v pkill',
-    'echo KILLALL',
-    'echo pk\\\nill',
-    "echo pk''ill",
-    'echo /Users/drizzer14/Developer/Projects/pff-ios',
-    'echo ~/developer/projects/PFF-IOS',
-  ])('refuses text that names a kill command or the main checkout: %s', (probe) => {
-    const result = runProbe('bash', probe);
+    `${SENTINEL} -x`,
+    'KG_SENTINEL_TARGET -x',
+    "kg_senti$''nel_target -x",
+    'kg_senti$""nel_target -x',
+    'kg_senti{n,}el_target -x',
+    'kg_senti``nel_target -x',
+    'kg_senti$()nel_target -x',
+    "kg_senti'n'el_target -x",
+    'kg_senti"n"el_target -x',
+    'kg_senti\\nel_target -x',
+    'kg_senti\\\nnel_target -x',
+    'cd /tmp/kg/./fake_main',
+    'cd /tmp/kg//fake_main',
+    "cd /tmp/kg/fake_$''main",
+    'cd /tmp/KG/Fake_Main',
+  ])('refuses every spelling of a refused word: %s', (probe) => {
+    const result = runProbe('bash', probe, REFUSE_ALSO);
 
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('refused');
     expect(result.stdout).toBe('');
+  });
+
+  // Without the refusal, these spellings do reach the command: the shell
+  // rebuilds the word, which is why the refusal has to see through them.
+  it.each([
+    ['bash', "kg_senti$''nel_target -x", `${SENTINEL} -x`],
+    ['zsh', "kg_senti$''nel_target -x", `${SENTINEL} -x`],
+    ['bash', 'kg_senti{n,}el_target -x', `${SENTINEL} kg_sentiel_target -x`],
+  ])('runs in %s the spelling %s when it is not refused', (shell, probe, call) => {
+    expectStub(runProbe(shell, probe), call);
   });
 
   it('refuses a shell other than bash or zsh', () => {
