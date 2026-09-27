@@ -20,7 +20,6 @@ import Screen from '@kiko/design-system/components/screen';
 import { sumByCurrency } from '@kiko/rates/currency-totals';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
-import { accountKindSymbol } from '@kiko/holdings/entity-symbols';
 import { defaultAccountColor } from '@kiko/holdings/entity-colors';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
@@ -36,6 +35,7 @@ import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon'
 import EditHeaderButton from '@kiko/design-system/components/edit-header-button';
 import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
+import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { isConnectableBank, statementFormatIdForBank } from '@kiko/bank-sync/bank-catalog';
 
 import HoldingCard from './holding-card';
@@ -261,6 +261,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
             variant="primary"
             fullWidth
             onPress={() => navigation.navigate('HoldingForm', { accountId })}
+            icon={genericEntitySymbol.holding}
           >
             {t('accountDetail.addHolding')}
           </Button>

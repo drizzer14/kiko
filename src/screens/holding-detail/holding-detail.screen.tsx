@@ -1,4 +1,9 @@
 import { match } from 'ts-pattern';
+import {
+  defaultHoldingSymbol,
+  genericEntitySymbol,
+  holdingTypeSymbol,
+} from '@kiko/holdings/entity-symbols';
 import type { TFunction } from 'i18next';
 import {
   holdingDescriptorOrUndefined,
@@ -43,7 +48,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { ownershipShareDetailText } from '@kiko/holdings/ownership';
 import { yieldToMaturityText } from '@kiko/bonds/yield-to-maturity';
-import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { startOfLocalDay, formatDate, formatTime } from '@kiko/dates';
@@ -601,12 +605,18 @@ const holdingDetailFooterAction = (
 
   return match(footerAction)
     .with('contribution', () => (
-      <Button onPress={() => navigation.navigate('ContributionForm', { holdingId })}>
+      <Button
+        onPress={() => navigation.navigate('ContributionForm', { holdingId })}
+        icon="calendar.badge.plus"
+      >
         {t('forms.holding.addContribution')}
       </Button>
     ))
     .with('transaction', () => (
-      <Button onPress={() => navigation.navigate('TransactionForm', { holdingId })}>
+      <Button
+        onPress={() => navigation.navigate('TransactionForm', { holdingId })}
+        icon={genericEntitySymbol.transaction}
+      >
         {t('holdingDetail.addTransaction')}
       </Button>
     ))
@@ -616,7 +626,10 @@ const holdingDetailFooterAction = (
       </Button>
     ))
     .with('addLot', () => (
-      <Button onPress={() => navigation.navigate('LotForm', { holdingId })}>
+      <Button
+        onPress={() => navigation.navigate('LotForm', { holdingId })}
+        icon={holdingTypeSymbol.metal}
+      >
         {t('holdingDetail.addLot')}
       </Button>
     ))

@@ -18,7 +18,6 @@ import Screen from '@kiko/design-system/components/screen';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import { Pressable, type ScrollViewInstance } from 'react-native';
-import { accountKindSymbol } from '@kiko/holdings/entity-symbols';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { defaultAccountColor } from '@kiko/holdings/entity-colors';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
@@ -31,6 +30,7 @@ import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import { useFocusRefreshedNow } from '@kiko/design-system/use-focus-refreshed-now';
+import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 
 import { styles } from './accounts.styles';
@@ -300,6 +300,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
             variant="primary"
             fullWidth
             onPress={() => navigation.navigate('AccountForm', {})}
+            icon={genericEntitySymbol.account}
           >
             {t('accounts.addAccount')}
           </Button>

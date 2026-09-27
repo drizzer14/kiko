@@ -107,6 +107,7 @@ describe('genericEntitySymbol', () => {
     expect(genericEntitySymbol.account).toBe('tray');
     expect(genericEntitySymbol.holding).toBe('text.pad.header');
     expect(genericEntitySymbol.transaction).toBe('arrow.up.arrow.down');
+    expect(genericEntitySymbol.category).toBe('tag');
   });
 
   it('maps every generic entity to a non-empty SF Symbol name', () => {

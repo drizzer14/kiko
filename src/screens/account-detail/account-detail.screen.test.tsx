@@ -1211,6 +1211,14 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     expect(addHoldingButton?.variant).toBe('primary');
   });
 
+  it('leads Add holding with the generic holding glyph', async () => {
+    await renderScreen();
+
+    const addHoldingButton = mockButtonProps.find((props) => props.children === 'Add holding');
+
+    expect(addHoldingButton?.icon).toBe('text.pad.header');
+  });
+
   it('renders Import statement full-width, stacked above Add holding (not sharing a row)', async () => {
     await renderScreen();
 

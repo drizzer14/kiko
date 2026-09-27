@@ -10,6 +10,7 @@ import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { type FC, useCallback, useRef, useState } from 'react';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import ColorPicker from '@kiko/design-system/components/color-picker';
@@ -501,7 +502,12 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
       footer={
         addCategoryExpanded ? undefined : (
           <Box testID="add-category-footer" style={styles.addCategoryButton}>
-            <Button variant="primary" fullWidth onPress={expandAddCategoryForm}>
+            <Button
+              variant="primary"
+              fullWidth
+              onPress={expandAddCategoryForm}
+              icon={genericEntitySymbol.category}
+            >
               {t('categories.addCategory')}
             </Button>
           </Box>

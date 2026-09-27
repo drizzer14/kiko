@@ -449,6 +449,14 @@ describe('CategoriesScreen', () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
+  it('leads the footer "Add category" action with the category tag glyph', async () => {
+    const { getByTestId } = await renderScreen();
+
+    const glyphs = getByTestId('add-category-footer').queryAll((node) => node.props.name === 'tag');
+
+    expect(glyphs.length).toBeGreaterThan(0);
+  });
+
   it('collapses the add-category form (and writes nothing) when Cancel is pressed', async () => {
     const { getByLabelText, getByText, queryByLabelText } = await renderScreen();
 

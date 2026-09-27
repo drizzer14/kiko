@@ -14,6 +14,7 @@ import Screen from '@kiko/design-system/components/screen';
 import Divider from '@kiko/design-system/components/divider';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { PRIVACY_POLICY_URL_EN, PRIVACY_POLICY_URL_UK } from '@env';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
@@ -243,7 +244,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
         <Card testID="settings-card-categories" padding={3}>
           <SettingsRow
             testID="settings-row-categories"
-            icon="tag"
+            icon={genericEntitySymbol.category}
             label={t('settings.categories')}
             onPress={() => navigation.navigate('Categories')}
           />

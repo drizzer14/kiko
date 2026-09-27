@@ -462,6 +462,24 @@ new component can land between reviews of this skill:
   `confirm-sheet.component.tsx` shape). A pre-write-guard deny on any of
   these three points back here.
 
+  **Footer "Add …" buttons carry the entity's leading symbol**
+  (user-approved, D10). Same shape as account detail's "Import
+  statement" (`icon="doc.badge.plus"`): ONLY the `Button` `icon` prop —
+  no size/tint/spacing override, no new variant. The mapping, each read
+  from its one source (never a re-typed string): Add holding →
+  `genericEntitySymbol.holding` (`text.pad.header`, iOS 26; SymbolIcon's
+  central fallback paints `list.bullet.rectangle` below iOS 26); Add
+  account → `genericEntitySymbol.account` (`tray`); Add category →
+  `genericEntitySymbol.category` (`tag`, shared with the Settings
+  Categories row); Add transaction → `genericEntitySymbol.transaction`
+  (`arrow.up.arrow.down`); Add contribution → `calendar.badge.plus`
+  (call-site literal); Add lot → `holdingTypeSymbol.metal` (`cube.fill`,
+  the metal descriptor's symbol). "Update value" / "Update outstanding"
+  add no entity, so they stay text-only. Every name above is SF Symbols
+  1/2 (iOS 13/14) except `text.pad.header`, so all paint on the iOS 15.1
+  deployment target. A new footer "Add …" action takes its entity's
+  glyph the same way.
+
   **Sizes — `regular` / `compact` / `small`** (read `button.props.d.ts`'s
   `ButtonSize` for the exact current set). `regular` is the 50pt tall
   footer/submit CTA. `compact` is a shorter inline action that still

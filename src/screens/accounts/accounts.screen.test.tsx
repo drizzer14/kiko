@@ -265,6 +265,14 @@ describe('AccountsScreen', () => {
     expect(within(footer).queryByText('Add account')).toBeTruthy();
   });
 
+  it('leads "Add account" with the generic account glyph', async () => {
+    const { getByTestId } = await renderAccounts();
+
+    const glyphs = getByTestId('add-account-footer').queryAll((node) => node.props.name === 'tray');
+
+    expect(glyphs.length).toBeGreaterThan(0);
+  });
+
   it('clears the floating tab bar through the shared Screen footer, not a per-button margin', async () => {
     const { getByTestId } = await renderAccounts();
     const footerStyle = StyleSheet.flatten(getByTestId('screen-footer').props.style);

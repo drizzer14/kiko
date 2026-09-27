@@ -72,6 +72,13 @@ const amountForLabel = (label: TextNode, currencySign = /₴/): TextNode => {
   throw new Error('no amount found for label row');
 };
 
+// The mocked SFSymbolView forwards its resolved symbol `name` as a host prop,
+// so the footer's glyphs are exactly its host nodes that carry a string `name`.
+const footerGlyphNames = (footer: TextNode): string[] =>
+  footer
+    .queryAll((node) => typeof node.props.name === 'string')
+    .map((node) => node.props.name as string);
+
 const bondHolding = {
   id: 'h-1',
   name: 'Gov bond',
@@ -722,6 +729,14 @@ describe('HoldingDetailScreen', () => {
     expect(within(footer).getByText('Add transaction')).toBeTruthy();
   });
 
+  it('leads the Add transaction action with the generic transaction glyph', async () => {
+    seed(cardHolding);
+
+    const { getByTestId } = await renderScreen();
+
+    expect(footerGlyphNames(getByTestId('screen-footer'))).toEqual(['arrow.up.arrow.down']);
+  });
+
   it('shows the main-currency converted value under the amount for a foreign-currency holding', async () => {
     // A USD holding against a UAH base, with a USD:UAH rate cached, shows a
     // smaller converted base-currency line beneath its own-currency Value — the
@@ -1297,6 +1312,14 @@ describe('HoldingDetailScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('ContributionForm', { holdingId: 'h-1' });
   });
 
+  it('leads the deposit Add contribution action with a calendar-plus glyph', async () => {
+    seed(depositHolding);
+
+    const { getByTestId } = await renderScreen();
+
+    expect(footerGlyphNames(getByTestId('screen-footer'))).toEqual(['calendar.badge.plus']);
+  });
+
   it('hides the footer add action for a bond', async () => {
     seed(bondHolding);
 
@@ -1323,6 +1346,14 @@ describe('HoldingDetailScreen', () => {
     expect(within(footer).getByText('Update value')).toBeTruthy();
     expect(queryByText('Add transaction')).toBeNull();
     expect(queryByText('Add contribution')).toBeNull();
+  });
+
+  it('keeps "Update value" text-only (it adds no entity, so it carries no glyph)', async () => {
+    seed(propertyHolding);
+
+    const { getByTestId } = await renderScreen();
+
+    expect(footerGlyphNames(getByTestId('screen-footer'))).toEqual([]);
   });
 
   it('navigates to PricePointForm on "Update value"', async () => {
@@ -1361,6 +1392,14 @@ describe('HoldingDetailScreen', () => {
     expect(queryByText('Update value')).toBeNull();
     expect(queryByText('Add transaction')).toBeNull();
     expect(queryByText('Add contribution')).toBeNull();
+  });
+
+  it('leads the Add lot action with the metal cube glyph', async () => {
+    seed(metalHolding);
+
+    const { getByTestId } = await renderScreen();
+
+    expect(footerGlyphNames(getByTestId('screen-footer'))).toEqual(['cube.fill']);
   });
 
   it('navigates to LotForm on "Add lot"', async () => {
