@@ -9,8 +9,9 @@ import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 // and prints the documented deny JSON when the command is a pkill/killall,
 // a kill/pkill/killall reached through a pattern (xargs, a subshell), or a
 // process-group/broadcast kill (0, a negative pid, `--` then a negative
-// pid), any `git stash` subcommand, or a heredoc whose delimiter is not
-// quoted (the last two with a WHAT/DETAILS/WHY/HOW/DO-NOT reason). It must
+// pid), any `git stash` subcommand, a heredoc whose delimiter is not
+// quoted, or a `git apply`/`merge`/`rebase` aimed at the main checkout (the
+// last three with a WHAT/DETAILS/WHY/HOW/DO-NOT reason). It must
 // ALWAYS exit 0 — even on malformed input — so a broken guard
 // never blocks the Bash tool itself. See scripts/checks/kill-guard.js for
 // the full rationale.
