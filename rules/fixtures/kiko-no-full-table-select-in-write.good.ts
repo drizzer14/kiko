@@ -1,7 +1,5 @@
 import { eq, inArray } from 'drizzle-orm';
-
-import { database, write } from '../../src/db/client';
-import { holdings, settings, transactions } from '../../src/db/schema';
+import { database, holdings, settings, transactions, write } from '@kiko/db';
 
 // Semgrep fixture (NEGATIVE): inside a `write`, every select is filtered in
 // SQL (`where`) or bounded (`limit`), or reads the one-row `settings` table.

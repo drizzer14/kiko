@@ -1,6 +1,9 @@
 import { SFSymbolView } from 'react-native-nitro-sfsymbols';
 
-import { effectiveFallbackName } from '../../src/design-system/components/symbol/symbol.availability';
+// The symbol unit keeps this helper private (its barrel exports only the
+// component), so the fixture declares its signature instead of importing
+// across features; Semgrep matches the JSX either way.
+declare const effectiveFallbackName: (name: string, fallbackName: string | undefined) => string;
 
 // Semgrep fixture (NEGATIVE): a string literal, or a value routed through
 // `effectiveFallbackName` (the same guard `symbol.component.tsx` uses,

@@ -3,6 +3,6 @@
 // for the navigation layer. `kiko-glass-surface-nav-layer-only` MUST report
 // nothing here.
 
-import Card from '../../src/design-system/components/card';
+import Card from '@kiko/design-system/components/card';
 
 export const contentLayerSurface = Card;

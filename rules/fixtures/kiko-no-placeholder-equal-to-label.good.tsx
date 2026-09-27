@@ -1,4 +1,4 @@
-import TextField from '../../src/design-system/components/text-field';
+import TextField from '@kiko/design-system/components/text-field';
 
 // Semgrep fixture (NEGATIVE): every placeholder below reads DIFFERENT copy
 // than its own field's label, in both key/attribute orders, plus a value

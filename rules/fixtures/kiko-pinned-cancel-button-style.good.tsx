@@ -1,4 +1,4 @@
-import Button from '../../src/design-system/components/button';
+import Button from '@kiko/design-system/components/button';
 
 // Semgrep fixture (NEGATIVE): `kiko-pinned-cancel-button-style` MUST report
 // nothing on a Cancel button already carrying BOTH `variant="ghost"` and

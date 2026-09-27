@@ -1,5 +1,5 @@
-import Text from '../../src/design-system/components/text';
-import FieldError from '../../src/design-system/components/field-error';
+import Text from '@kiko/design-system/components/text';
+import FieldError from '@kiko/design-system/components/field-error';
 
 // Semgrep fixture (NEGATIVE): the real `FieldError` component, plus a
 // `variant="body"` status line (not a validation-failure caption at all) —

@@ -1,7 +1,6 @@
 import { Pressable } from 'react-native';
-
-import Text from '../../src/design-system/components/text';
-import SelectableRow from '../../src/design-system/components/selectable-row';
+import Text from '@kiko/design-system/components/text';
+import SelectableRow from '@kiko/design-system/components/selectable-row';
 
 // Semgrep fixture (NEGATIVE): the real `SelectableRow` component, plus an
 // unrelated `Pressable` whose `accessibilityState` key is `disabled` (not

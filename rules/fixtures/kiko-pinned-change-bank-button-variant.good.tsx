@@ -1,4 +1,4 @@
-import Button from '../../src/design-system/components/button';
+import Button from '@kiko/design-system/components/button';
 
 // Semgrep fixture (NEGATIVE): `kiko-pinned-change-bank-button-variant` MUST
 // report nothing on a Change bank button already pinned to

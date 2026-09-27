@@ -4,7 +4,7 @@
 // documents the accent token's own value — is prose, never a matched string
 // literal: the rule reads the AST, not raw comment text.
 
-import { darkTheme } from '../../src/design-system/theme';
+import { darkTheme } from '@kiko/design-system/theme';
 
 export const accentColor = darkTheme.colors.accent;
 

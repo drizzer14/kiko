@@ -1,4 +1,4 @@
-import Button from '../../src/design-system/components/button';
+import Button from '@kiko/design-system/components/button';
 
 // Semgrep fixture (NEGATIVE): `kiko-pinned-sync-button-variant` MUST report
 // nothing on a Sync button already pinned to `variant="secondaryTonal"`, in
