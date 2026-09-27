@@ -76,19 +76,25 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   such as `sudo`, `nice`, `time`, `env`, `timeout`, `xargs`; any shell
   flag group holding `c` (`-lc`, `-xc`) counts as `-c`, and `eval`'s
   arguments are scanned as a command string. An unquoted `#` at word
-  start is a comment to the newline, so a quote inside it hides nothing.
-  Known limits (heuristic tokenizer, not a shell parser): NOT denied are
+  start is a comment to the newline, so a quote inside it hides nothing;
+  a `#` inside `${…}` is not a comment, and only an unquoted `)`/`}` is
+  stripped as a closer.
+  Known limits (heuristic tokenizer, not a shell parser; read
+  `kill-guard.js` and its tests to re-verify): NOT denied are
   a `case … in a) git stash ;; esac` branch, a stash or kill reached
   through an alias, a function, a script file, or a variable (`$CMD`),
-  and `exec -a name pkill`. The agent rule stays absolute regardless:
+  and `exec -a name pkill`; a shell `-c` flag is matched anywhere in the
+  arguments, not only before the command string (errs toward deny); a
+  `$(` span that still closes is read without comment handling. The agent rule stays absolute regardless:
   never `git stash` or pattern-kill in any form. Both denies
   carry the `print_block` WHAT/DETAILS/WHY/HOW/DO-NOT shape as plain text
   in the one JSON reason field; the kill deny keeps its one-line reason.
   A heredoc body is still scanned line by line as commands (so
   `bash <<'EOF'` with a `pkill` in it still denies) — a body line that
   itself starts with `git stash` or `pkill` denies too, even under a
-  quoted delimiter. Known false positive: ANY `<<word` text inside a
-  quoted-delimiter body denies too (`1 << bits`, `std::cout << x`, a
+  quoted delimiter. Known false positive: ANY `<<` followed by a word
+  inside a quoted-delimiter body denies too, whatever the word starts
+  with (`1 << 2`, `x << $n`, `1 << bits`, `std::cout << x`, a
   commit body that mentions `cat <<EOF`). For such text, write it with
   the Write tool, or commit with `git commit -F <file>`. Deny/allow cases for each form live in
   `__tests__/kill-guard.test.ts`.
