@@ -797,7 +797,9 @@ a pre-existing finding points at. A Semgrep deny names
   a path outside it (the guard mirror) by its first `src/`-style
   segment. `--tree` checks layout invariants and feature-level value
   cycles; its `barrel-leak` also catches the two-statement form
-  (`import { b } …` then `export { b }`). Its classification
+  (`import { b } …` then `export { b }`, `export default b` or
+  `export const a = b`), with comments inside the import braces
+  ignored. Its classification
   (`CONTAINERS`, `TEST_ONLY`, `AMBIENT_LOOSE`, …) lives in the checker;
   read it there. No `--write`.
 - `specifier-scanner.js` is the shared import-specifier scanner. A new

@@ -322,6 +322,18 @@ describe('scripts/checks/feature-imports.js --tree', () => {
       'src/rates/namespace-binding/index.ts',
       "import * as history from '../history';\nexport type { history };\n",
     ],
+    [
+      'barrel-leak',
+      'src/rates/commented-binding/index.ts',
+      'src/rates/commented-binding/index.ts',
+      "import {\n  // the rate history\n  thing,\n} from '@kiko/rates/history';\nexport { thing };\n",
+    ],
+    [
+      'barrel-leak',
+      'src/rates/aliased-binding/index.ts',
+      'src/rates/aliased-binding/index.ts',
+      "import { thing } from '@kiko/rates/history';\nexport const alias = thing;\n",
+    ],
   ])('reports [%s] for %s', (kind, relativePath, reportedPath, source) => {
     writeFixture('src/rates/history/index.ts', "export * from './history';\n");
     writeFixture('src/rates/history/history.ts', 'export const thing = 1;\n');
