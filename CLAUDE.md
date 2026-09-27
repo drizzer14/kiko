@@ -100,6 +100,16 @@ process ID you started yourself (`kill <pid>`), or let the tool
 timeout end a hung command. The hook is not part of the
 fast/medium/deep tiers and has no dedup fingerprint.
 
+The same hook (user-approved; it binds the user's own sessions too)
+also denies any `git stash` subcommand in any directory, scratch
+clones included (`git -C <dir> stash`, `git --git-dir … stash`, and
+one inside a `sh -c`/`bash -c` string) — commit a WIP or copy the
+files instead — and a heredoc whose delimiter is not quoted (`<<EOF`,
+`<<-EOF`; `<<'EOF'`, `<<"EOF"`, `<<\EOF` pass), because an unquoted
+heredoc expands backticked text in its body as commands. Each of
+these two denies carries the standard WHAT/DETAILS/WHY/HOW/DO-NOT
+block.
+
 A second `PreToolUse` matcher (`Edit|Write|MultiEdit`, beside the
 `Bash` matcher above) runs `scripts/checks/pre-write-guard.sh`: it
 rebuilds the proposed post-edit content and denies the write when a

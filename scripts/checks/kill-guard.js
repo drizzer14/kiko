@@ -13,19 +13,60 @@
 // `pkill -f "cat" -U <user>` to stop its own hung `cat`. The pattern matched
 // every process with "cat" in its command line and restarted Orca helpers
 // and the iOS Simulator.
+//
+// It also denies (user-approved, and it binds the user's own sessions too):
+// any `git stash` subcommand in any directory, scratch clones included —
+// after a scratch-clone stash slip — and a heredoc whose delimiter is not
+// quoted (`<<EOF`, `<<-EOF`), after an unquoted heredoc ran backticked text
+// in its body as commands and left a stuck process.
 
-const REASON =
+const KILL_REASON =
   'Blocked: pkill, killall, and pattern or process-group kills are banned in this repo ' +
   '(a pattern kill once restarted Orca and the iOS Simulator). Stop only a process ID you ' +
   'started yourself (kill <pid>), or let the tool timeout end a hung command.';
 
-const DENY_JSON = JSON.stringify({
-  hookSpecificOutput: {
-    hookEventName: 'PreToolUse',
-    permissionDecision: 'deny',
-    permissionDecisionReason: REASON,
-  },
-});
+// The stash and heredoc denies use the WHAT/DETAILS/WHY/HOW/DO-NOT shape of
+// `_lib.sh`'s `print_block`, as plain text inside the one JSON reason field.
+const STASH_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied a git stash command.',
+  'WHY IT MATTERS: git stash is banned in every directory, scratch clones included, after a ' +
+    "scratch-clone stash slip: a repository's stash stack is shared by every worktree and " +
+    'session, so an entry is easy to pop, apply, or lose in the wrong place.',
+  'HOW TO FIX:     commit a WIP commit on your own branch, or copy the files aside to your scratchpad.',
+  'DO NOT:         route the stash through an alias, a script file, or a variable to get past this guard.',
+];
+
+const HEREDOC_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied an unquoted heredoc delimiter.',
+  'WHY IT MATTERS: an unquoted heredoc expands its body, so backticked text in it once ran as ' +
+    'commands and left a stuck process.',
+  "HOW TO FIX:     quote the delimiter — <<'EOF' (or <<\"EOF\", <<\\EOF, <<-'EOF') — so the body " +
+    'stays literal text.',
+  'DO NOT:         leave the delimiter unquoted to expand a variable in the body; build that text ' +
+    'with printf, or write it to a scratchpad file with the Write tool.',
+];
+
+function blockReason(reasonLines, detail) {
+  const [what, ...rest] = reasonLines;
+
+  return [what, `DETAILS:        ${detail}`, ...rest].join('\n');
+}
+
+function reasonFor(finding) {
+  if (finding.kind === 'stash') return blockReason(STASH_REASON_LINES, finding.detail);
+  if (finding.kind === 'heredoc') return blockReason(HEREDOC_REASON_LINES, finding.detail);
+
+  return KILL_REASON;
+}
+
+const denyJson = (reason) =>
+  JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      permissionDecisionReason: reason,
+    },
+  });
 
 // ---- matchDelimited: find the close matching an already-consumed open ----
 
@@ -146,6 +187,30 @@ function consumeSeparator(context) {
   return false;
 }
 
+// A delimiter word with a quote or backslash ANYWHERE in it (`'EOF'`,
+// `"EOF"`, `\EOF`, `E"OF"`) keeps bash from expanding the body. The leading
+// letter/underscore keeps an arithmetic shift (`$((1 << 2))`) from reading
+// as a heredoc.
+const UNQUOTED_HEREDOC_DELIMITER = /^[A-Za-z_][^'"\\]*$/;
+
+// Consumes a `<<`/`<<-` heredoc operator, recording the first one whose
+// delimiter word is unquoted, or a `<<<` here-string (not a heredoc).
+// Returns false (and consumes nothing) for anything else.
+function consumeHeredocOperator(context) {
+  const { text, i } = context;
+  if (text[i] !== '<' || text[i + 1] !== '<') return false;
+  const operator = ['<<<', '<<-', '<<'].find((candidate) => text.startsWith(candidate, i));
+  if (operator !== '<<<' && context.heredoc === null) {
+    const afterOperator = text.slice(i + operator.length).replace(/^[ \t]*/, '');
+    const delimiter = afterOperator.match(/^[^\s;&|<>()]*/)[0];
+    if (UNQUOTED_HEREDOC_DELIMITER.test(delimiter)) context.heredoc = `${operator}${delimiter}`;
+  }
+  context.buf += operator;
+  context.i += operator.length;
+
+  return true;
+}
+
 function stepTopLevel(context) {
   const { text, i, n } = context;
   const c = text[i];
@@ -161,6 +226,7 @@ function stepTopLevel(context) {
     return;
   }
   if (tryConsumeSubshell(context)) return;
+  if (consumeHeredocOperator(context)) return;
   if (consumeSeparator(context)) return;
   context.buf += c;
   context.i++;
@@ -170,9 +236,19 @@ function stepTopLevel(context) {
 // an unquoted `;`, `&&`, `||`, `|`, `&`, or newline, and collects the text
 // of every `$(...)` / backtick span found — at top level or inside double
 // quotes, where the shell still expands them (NOT inside single quotes,
-// where it never does) — for the caller to recurse into.
+// where it never does) — for the caller to recurse into. `heredoc` is the
+// first top-level unquoted-delimiter heredoc operator, or null.
 function scanLevel(text) {
-  const context = { text, i: 0, n: text.length, buf: '', quote: null, segments: [], nested: [] };
+  const context = {
+    text,
+    i: 0,
+    n: text.length,
+    buf: '',
+    quote: null,
+    segments: [],
+    nested: [],
+    heredoc: null,
+  };
   while (context.i < context.n) {
     if (context.quote === "'") {
       stepSingleQuote(context);
@@ -185,7 +261,7 @@ function scanLevel(text) {
     stepTopLevel(context);
   }
   context.segments.push(context.buf);
-  return { segments: context.segments, nested: context.nested };
+  return { segments: context.segments, nested: context.nested, heredoc: context.heredoc };
 }
 
 // ---- words: word-split one simple command respecting quotes ----
@@ -339,39 +415,77 @@ function isDangerousKillTarget(target) {
   return true;
 }
 
-function segmentIsDangerous(segment, nested) {
+// Global options that take their value as the NEXT word (`-C <dir>`,
+// `--git-dir <dir>`); the `--git-dir=<dir>` spelling is one word and needs
+// no entry here.
+const GIT_OPTIONS_WITH_VALUE = new Set([
+  '-C',
+  '-c',
+  '--git-dir',
+  '--work-tree',
+  '--namespace',
+  '--config-env',
+  '--super-prefix',
+]);
+
+function gitSubcommand(argumentsAfterGit) {
+  let i = 0;
+  while (i < argumentsAfterGit.length && argumentsAfterGit[i].startsWith('-')) {
+    i += GIT_OPTIONS_WITH_VALUE.has(argumentsAfterGit[i]) ? 2 : 1;
+  }
+
+  return argumentsAfterGit[i];
+}
+
+// Returns the finding for one simple command — `{ kind: 'kill' }` or
+// `{ kind: 'stash', detail }` — or null when it is safe.
+function segmentFinding(segment, nested) {
   const tokens = words(segment);
-  if (tokens.length === 0) return false;
+  if (tokens.length === 0) return null;
 
   const { tokens: rest, viaXargs } = unwrap(tokens);
-  if (rest.length === 0) return false;
+  if (rest.length === 0) return null;
   const base = basename(rest[0]);
 
   if (SHELLS.has(base)) {
     const cIndex = rest.indexOf('-c');
     if (cIndex !== -1 && cIndex + 1 < rest.length) nested.push(rest[cIndex + 1]);
-    return false;
+    return null;
   }
 
-  if (base === 'pkill' || base === 'killall') return true;
+  if (base === 'pkill' || base === 'killall') return { kind: 'kill' };
 
   if (base === 'kill') {
-    if (viaXargs) return true;
-    return killTargets(rest.slice(1)).some(isDangerousKillTarget);
+    const isPatternKill = viaXargs || killTargets(rest.slice(1)).some(isDangerousKillTarget);
+
+    return isPatternKill ? { kind: 'kill' } : null;
   }
 
-  return false;
+  if (base === 'git' && gitSubcommand(rest.slice(1)) === 'stash') {
+    return { kind: 'stash', detail: segment.trim() };
+  }
+
+  return null;
 }
 
 // Scans one full line of shell text (recursing into `$(...)`, backticks, and
-// a quoted `-c` argument to `sh`/`bash`/`zsh`) and returns true the moment
-// anything dangerous is found anywhere in it.
-function isDangerous(line, depth) {
-  if (depth > 8) return false; // guards against pathological nesting
-  const { segments, nested } = scanLevel(line);
+// a quoted `-c` argument to `sh`/`bash`/`zsh`) and returns the first finding
+// anywhere in it, or null.
+function findDanger(line, depth) {
+  if (depth > 8) return null; // guards against pathological nesting
+  const { segments, nested, heredoc } = scanLevel(line);
 
-  if (segments.some((segment) => segmentIsDangerous(segment, nested))) return true;
-  return nested.some((n) => isDangerous(n, depth + 1));
+  for (const segment of segments) {
+    const finding = segmentFinding(segment, nested);
+    if (finding !== null) return finding;
+  }
+  if (heredoc !== null) return { kind: 'heredoc', detail: heredoc };
+  for (const nestedLine of nested) {
+    const finding = findDanger(nestedLine, depth + 1);
+    if (finding !== null) return finding;
+  }
+
+  return null;
 }
 
 // ---- hook entry point ----
@@ -386,7 +500,8 @@ function main(raw) {
   const command = payload?.tool_input?.command;
   if (typeof command !== 'string' || command.trim() === '') return;
 
-  if (isDangerous(command, 0)) process.stdout.write(DENY_JSON);
+  const finding = findDanger(command, 0);
+  if (finding !== null) process.stdout.write(denyJson(reasonFor(finding)));
 }
 
 try {

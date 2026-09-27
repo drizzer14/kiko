@@ -62,6 +62,20 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   "Automatic wiring" and `harness/kiko/hooks/hooks.json`'s `PreToolUse`
   entry for the wiring, and `kill-guard.js` for the tokenizer.
 
+  The same tokenizer (user-approved; it binds the user's own sessions
+  too) also denies any `git stash` subcommand — `git` after the wrapper
+  unwrap, its global options skipped (`GIT_OPTIONS_WITH_VALUE` lists the
+  ones that consume the next word) — and a top-level `<<`/`<<-` heredoc
+  whose delimiter word has no quote or backslash in it (a `<<<`
+  here-string and an arithmetic `$((1 << 2))` shift pass). Both denies
+  carry the `print_block` WHAT/DETAILS/WHY/HOW/DO-NOT shape as plain text
+  in the one JSON reason field; the kill deny keeps its one-line reason.
+  A heredoc body is still scanned line by line as commands (so
+  `bash <<'EOF'` with a `pkill` in it still denies) — a body line that
+  itself starts with `git stash` or `pkill` denies too, even under a
+  quoted delimiter. Deny/allow cases for each form live in
+  `__tests__/kill-guard.test.ts`.
+
   A THIRD exception, of yet another shape: `scripts/checks/pre-write-guard.sh`
   (+ `pre-write-guard.js`) is the `PreToolUse` hook on `Edit|Write|MultiEdit` —
   it denies a write BEFORE it lands, rather than checking a file already on

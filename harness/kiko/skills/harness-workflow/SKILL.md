@@ -54,6 +54,15 @@ PreToolUse hook on `Bash` (`scripts/checks/kill-guard.sh`, wired in
 mechanically — this rule states it for agents to follow directly, not
 just get blocked by.
 
+## Never git stash; always quote a heredoc delimiter
+
+Never run `git stash` in any directory, scratch clones included
+(`git -C <dir> stash` and `git --git-dir … stash` too) — commit a WIP
+or copy the files aside instead. Always quote a heredoc delimiter
+(`<<'EOF'`, never `<<EOF`): an unquoted heredoc expands backticked
+text in its body as commands. The same `kill-guard.sh` hook denies
+both mechanically, with a WHAT/DETAILS/WHY/HOW/DO-NOT reason.
+
 ## A write can be denied before it lands
 
 A `PreToolUse` hook on `Edit|Write|MultiEdit`
