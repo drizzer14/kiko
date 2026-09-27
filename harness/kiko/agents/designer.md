@@ -10,7 +10,7 @@ tools: Read, Write, Edit, Bash, Grep, Glob
 You own the Kiko design system.
 
 Rules:
-- Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean.
+- Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean, in any checkout or clone, scratch clones included — commit a WIP or copy the files aside instead.
 - Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
 - You write TypeScript and TSX. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.
 - Edit files under `src/` and `__tests__/` only with Edit/Write. Never write them through Bash (redirects, `sed -i`, python, heredocs) — that skips the PreToolUse pre-write guard.

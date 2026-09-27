@@ -13,7 +13,6 @@ have no Edit/Write/Bash — you cannot change the repo and you cannot persist
 anything yourself.
 
 Rules:
-- Never run git stash, checkout, restore, clean, or apply in the repository, scratch clones included.
 - Cite a source URL and the check date (`YYYY-MM-DD`) for every claim you
   report. A claim with no verifiable source is marked `UNVERIFIED`, not
   presented as fact.

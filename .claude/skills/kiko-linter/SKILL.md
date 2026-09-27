@@ -63,17 +63,34 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   entry for the wiring, and `kill-guard.js` for the tokenizer.
 
   The same tokenizer (user-approved; it binds the user's own sessions
-  too) also denies any `git stash` subcommand — `git` after the wrapper
-  unwrap, its global options skipped (`GIT_OPTIONS_WITH_VALUE` lists the
-  ones that consume the next word) — and a top-level `<<`/`<<-` heredoc
-  whose delimiter word has no quote or backslash in it (a `<<<`
-  here-string and an arithmetic `$((1 << 2))` shift pass). Both denies
+  too) also denies a `git stash` subcommand in command position — `git`
+  after the command-position unwrap, its global options skipped
+  (`GIT_OPTIONS_WITH_VALUE` lists the ones that consume the next word) —
+  and a top-level `<<`/`<<-` heredoc whose delimiter word is non-empty and
+  has no quote or backslash in it (`<<$X`, `<<1`, `<<.` deny too; a `<<<`
+  here-string and arithmetic `$((…))`, `((…))`, `$[…]` shifts pass).
+  The unwrap (shared by the kill and stash checks; read `unwrap` and
+  `OPTION_WRAPPERS` in `kill-guard.js` for the closed set) strips `(`/`{`
+  group openers and `)`/`}` closers, the reserved words `!` `if` `then`
+  `elif` `else` `do` `while` `until`, `NAME=value` prefixes, and wrappers
+  such as `sudo`, `nice`, `time`, `env`, `timeout`, `xargs`; any shell
+  flag group holding `c` (`-lc`, `-xc`) counts as `-c`, and `eval`'s
+  arguments are scanned as a command string. An unquoted `#` at word
+  start is a comment to the newline, so a quote inside it hides nothing.
+  Known limits (heuristic tokenizer, not a shell parser): NOT denied are
+  a `case … in a) git stash ;; esac` branch, a stash or kill reached
+  through an alias, a function, a script file, or a variable (`$CMD`),
+  and `exec -a name pkill`. The agent rule stays absolute regardless:
+  never `git stash` or pattern-kill in any form. Both denies
   carry the `print_block` WHAT/DETAILS/WHY/HOW/DO-NOT shape as plain text
   in the one JSON reason field; the kill deny keeps its one-line reason.
   A heredoc body is still scanned line by line as commands (so
   `bash <<'EOF'` with a `pkill` in it still denies) — a body line that
   itself starts with `git stash` or `pkill` denies too, even under a
-  quoted delimiter. Deny/allow cases for each form live in
+  quoted delimiter. Known false positive: ANY `<<word` text inside a
+  quoted-delimiter body denies too (`1 << bits`, `std::cout << x`, a
+  commit body that mentions `cat <<EOF`). For such text, write it with
+  the Write tool, or commit with `git commit -F <file>`. Deny/allow cases for each form live in
   `__tests__/kill-guard.test.ts`.
 
   A THIRD exception, of yet another shape: `scripts/checks/pre-write-guard.sh`
@@ -998,9 +1015,11 @@ catches these writes after they land instead.
   while the tree holds the violation again. The mark stays on the fix,
   so a later revert of the fix fails; a new commit made on the older
   commit diverges from the mark and moves it there, and the violation
-  is then taken as checked. `check:all` is the backstop:
-  `check:security` scans `rules/semgrep-prewrite.yml` project-wide, and
-  every Node rule has its own project-wide check. A branch no replay
+  is then taken as checked. `make verify` (full Jest + `check:all`) is
+  the backstop: `check:security` scans `rules/semgrep-prewrite.yml`
+  project-wide, and every Node rule has its own project-wide check —
+  some in `check:all`, and `kiko-one-component-per-file`'s as a Jest
+  test, which runs only under `make verify`. A branch no replay
   ever passed costs replay time when merged (see "Floor and
   never-replayed branches").
 - **Tests.** `__tests__/guard-replay.test.ts`: a throwaway repository

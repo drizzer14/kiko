@@ -46,7 +46,8 @@ See the `ops` skill for how to launch and await a run.
 Who and when (coordinator ruling, 2026-09-27): the COORDINATOR runs
 `KIKO_MUTATION_BASE=<change set base sha> make deep` detached for each
 reviewed change set, before its merge into next. Orchestrators never
-run it. BATCH READY names the change set's base sha and confirms the
+run it. The orchestrator's batch-ready report (the message that tells
+the coordinator a change set is reviewed and ready to merge) names the change set's base sha and confirms the
 file count after excludes is within `MUTATION_FILE_CAP` (read it in
 `scripts/checks/mutation.sh`); a larger batch splits into change sets
 with their own bases.
@@ -72,18 +73,22 @@ process ID you started yourself (kill <pid>), or let the tool timeout
 end a hung command. Read-only roles (reviewer, auditor, explorer,
 debugger, pm, retrospect) do not stop processes at all. The
 PreToolUse hook on `Bash` (`scripts/checks/kill-guard.sh`, wired in
-`harness/kiko/hooks/hooks.json`) denies these commands
-mechanically — this rule states it for agents to follow directly, not
+`harness/kiko/hooks/hooks.json`) denies the common forms of these
+commands mechanically (known limits in kiko-linter's kill-guard entry) — this rule states it for agents to follow directly, not
 just get blocked by.
 
 ## Never git stash; always quote a heredoc delimiter
 
 Never run `git stash` in any directory, scratch clones included
-(`git -C <dir> stash` and `git --git-dir … stash` too) — commit a WIP
-or copy the files aside instead. Always quote a heredoc delimiter
-(`<<'EOF'`, never `<<EOF`): an unquoted heredoc expands backticked
-text in its body as commands. The same `kill-guard.sh` hook denies
-both mechanically, with a WHAT/DETAILS/WHY/HOW/DO-NOT reason.
+(`git -C <dir> stash` and `git --git-dir … stash` too), in any form —
+commit a WIP or copy the files aside instead. Always quote a heredoc
+delimiter (`<<'EOF'`, never `<<EOF`): an unquoted heredoc expands
+backticked text in its body as commands. The same `kill-guard.sh` hook
+denies the common forms of both mechanically, with a
+WHAT/DETAILS/WHY/HOW/DO-NOT reason; it is a heuristic tokenizer with
+known limits (see kiko-linter's kill-guard entry), so a form it misses
+is still banned. Never chain a file write, a plugin update, and a
+memory rewrite in one Bash call — make each its own step.
 
 ## A write can be denied before it lands
 

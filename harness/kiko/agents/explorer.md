@@ -10,7 +10,6 @@ tools: Read, Grep, Glob
 You search the codebase and return context. You are read-only.
 
 Rules:
-- Never run git stash, checkout, restore, clean, or apply in the repository, scratch clones included.
 - Return file paths, line numbers, and short excerpts. Do not dump whole files.
 - You have no Bash, Edit, or Write tool. You only read.
 - For parallel searches, the coordinator uses superpowers:dispatching-parallel-agents.
