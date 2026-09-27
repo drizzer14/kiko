@@ -102,15 +102,13 @@ harness_unlock() {
   rm -rf "$1" 2>/dev/null || true
 }
 
-# harness_replay_mark <root> : the newest HEAD reflog entry as
-# "<unix time> <sha>", or nothing when HEAD has no reflog. guard-replay.sh
-# records it (under the dedup key "guard-replay-mark") when it passes and
-# replays only the commits made from that time on; medium.sh compares it with
-# the recorded one to tell whether HEAD moved since, so a turn that only
-# committed still runs the replay.
+# harness_replay_mark <root> : the HEAD sha, or nothing for an unborn HEAD.
+# guard-replay.sh records it (under the dedup key "guard-replay-mark") when it
+# passes and then replays only commits the recorded sha cannot reach;
+# medium.sh compares it with the recorded one to tell whether HEAD moved
+# since, so a turn that only committed still runs the replay.
 harness_replay_mark() {
-  git -C "$1" reflog -1 --date=unix --format='%gd %H' HEAD 2>/dev/null \
-    | sed -E 's/^HEAD@\{([0-9]+)\} /\1 /'
+  git -C "$1" rev-parse -q --verify HEAD 2>/dev/null
 }
 
 # harness_global_lock_dir : the machine-wide (per-user) single-flight lock

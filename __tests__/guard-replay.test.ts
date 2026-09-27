@@ -52,7 +52,28 @@ const UNSORTED_UNSEPARATED_SOURCE = [
   '',
 ].join('\n');
 
+// Two lines apart, so a change to the first and an append after the last
+// merge without a conflict.
+const TWO_REGION_SOURCE = [
+  'export const first = 1;',
+  'export const second = 1;',
+  'export const third = 1;',
+  'export const last = 1;',
+  '',
+].join('\n');
+
 const CRASHING_SEMGREP = ['#!/usr/bin/env bash', 'exit 7', ''].join('\n');
+
+// A clean Semgrep that takes 2 s: the guard sends nine fixed flag tokens
+// before its targets, and checks every target is in `paths.scanned`.
+const SLOW_SEMGREP = [
+  '#!/usr/bin/env bash',
+  'sleep 2',
+  'shift 9',
+  'scanned="$(printf \'"%s",\' "$@" | sed \'s/,$//\')"',
+  'printf \'{"results":[],"errors":[],"paths":{"scanned":[%s]}}\' "$scanned"',
+  '',
+].join('\n');
 
 type Checkout = { worktree: string; main: string; state: string; root: string };
 
@@ -143,6 +164,11 @@ const runReplay = (checkout: Checkout, environment: Record<string, string> = {})
 const crashingSemgrep = (checkout: Checkout): Record<string, string> => ({
   KIKO_PREWRITE_SEMGREP_BIN: writeExecutable(checkout.root, 'semgrep-crash', CRASHING_SEMGREP),
 });
+
+const moveMain = (checkout: Checkout): void => {
+  writeFile(checkout.main, 'src/other.ts', 'export const other = 1;\n');
+  commitAll(checkout.main, 'main moves');
+};
 
 const TIMEOUT = 60000;
 
@@ -235,12 +261,140 @@ describe('guard-replay.sh', () => {
 
       writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
       commitAll(checkout.worktree, 'bypass');
-      git(checkout.worktree, 'branch', 'published');
 
       const { code, stderr } = runReplay(checkout);
 
       expect(code).toBe(2);
       expect(stderr).toContain('rule kiko-no-switch at src/pick.ts:2');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'fails a flagged commit again after a rebase onto a moved main',
+    () => {
+      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
+      expect(runReplay(checkout).code).toBe(0);
+
+      writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
+      commitAll(checkout.worktree, 'bypass');
+      expect(runReplay(checkout).code).toBe(2);
+
+      moveMain(checkout);
+      git(checkout.worktree, 'rebase', '-q', 'main');
+
+      const { code, stderr } = runReplay(checkout);
+
+      expect(code).toBe(2);
+      expect(stderr).toContain('rule kiko-no-switch at src/pick.ts:2');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'fails a violating commit re-applied by a reset and a cherry-pick',
+    () => {
+      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
+      expect(runReplay(checkout).code).toBe(0);
+
+      writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
+      commitAll(checkout.worktree, 'bypass');
+      const bypass = git(checkout.worktree, 'rev-parse', 'HEAD').trim();
+      git(checkout.worktree, 'reset', '-q', '--hard', 'HEAD~1');
+      writeFile(checkout.worktree, 'src/kept.ts', 'export const kept = 2;\n');
+      commitAll(checkout.worktree, 'another parent, so the pick gets a new sha');
+      git(checkout.worktree, 'cherry-pick', bypass);
+
+      const { code, stderr } = runReplay(checkout);
+
+      expect(code).toBe(2);
+      expect(stderr).toContain('rule kiko-no-switch at src/pick.ts:2');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'fails a violation committed and pulled with a rebase in the same turn',
+    () => {
+      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
+      writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
+      commitAll(checkout.worktree, 'bypass');
+      moveMain(checkout);
+      git(checkout.worktree, 'pull', '-q', '--rebase', '.', 'main');
+
+      const { code, stderr } = runReplay(checkout);
+
+      expect(code).toBe(2);
+      expect(stderr).toContain('rule kiko-no-switch at src/pick.ts:2');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'passes a clean commit rebased onto a moved main',
+    () => {
+      const checkout = buildCheckout({});
+      writeFile(checkout.worktree, 'src/kept.ts', 'export const kept = 2;\n');
+      commitAll(checkout.worktree, 'clean');
+      moveMain(checkout);
+      git(checkout.worktree, 'rebase', '-q', 'main');
+
+      expect(runReplay(checkout)).toEqual({ code: 0, stderr: '' });
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'passes a merge commit that joins both sides of a file, one carrying a finding',
+    () => {
+      const checkout = buildCheckout({ 'src/pick.ts': TWO_REGION_SOURCE });
+      writeFile(checkout.main, 'src/pick.ts', `${TWO_REGION_SOURCE}${SWITCH_SOURCE}`);
+      commitAll(checkout.main, 'main side');
+      const worktreeSide = TWO_REGION_SOURCE.replace('first = 1', 'first = 2');
+      writeFile(checkout.worktree, 'src/pick.ts', worktreeSide);
+      commitAll(checkout.worktree, 'worktree side');
+      git(checkout.worktree, 'merge', '-q', '--no-ff', '--no-edit', 'main');
+
+      expect(runReplay(checkout)).toEqual({ code: 0, stderr: '' });
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'fails a violation written into a merge before it was committed',
+    () => {
+      const checkout = buildCheckout({});
+      expect(runReplay(checkout).code).toBe(0);
+
+      moveMain(checkout);
+      git(checkout.worktree, 'merge', '-q', '--no-ff', '--no-commit', 'main');
+      writeFile(checkout.worktree, 'src/kept.ts', SWITCH_SOURCE);
+      git(checkout.worktree, 'add', '-A');
+      git(checkout.worktree, 'commit', '-q', '--no-edit');
+
+      const { code, stderr } = runReplay(checkout);
+
+      expect(code).toBe(2);
+      expect(stderr).toContain('rule kiko-no-switch at src/kept.ts:2');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'names an unfinished merge instead of a bypassed guard',
+    () => {
+      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
+      writeFile(checkout.main, 'src/pick.ts', 'export const pick = 2;\n');
+      commitAll(checkout.main, 'main side');
+      writeFile(checkout.worktree, 'src/pick.ts', 'export const pick = 3;\n');
+      commitAll(checkout.worktree, 'worktree side');
+      spawnSync('git', ['merge', '-q', '--no-edit', 'main'], { cwd: checkout.worktree });
+
+      const { code, stderr } = runReplay(checkout);
+
+      expect(code).toBe(2);
+      expect(stderr).toContain('unfinished merge');
+      expect(stderr).not.toContain('bypassed the pre-write guard');
     },
     TIMEOUT,
   );
@@ -267,6 +421,21 @@ describe('guard-replay.sh', () => {
       writeFile(checkout.main, 'src/pick.ts', SWITCH_SOURCE);
       commitAll(checkout.main, 'another branch');
       git(checkout.worktree, 'merge', '-q', '--no-edit', 'main');
+
+      expect(runReplay(checkout)).toEqual({ code: 0, stderr: '' });
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'passes a clean merge commit of another branch that carries a finding',
+    () => {
+      const checkout = buildCheckout({});
+      expect(runReplay(checkout).code).toBe(0);
+
+      writeFile(checkout.main, 'src/pick.ts', SWITCH_SOURCE);
+      commitAll(checkout.main, 'another branch');
+      git(checkout.worktree, 'merge', '-q', '--no-ff', '--no-edit', 'main');
 
       expect(runReplay(checkout)).toEqual({ code: 0, stderr: '' });
     },
@@ -345,6 +514,31 @@ describe('medium.sh guard replay', () => {
 
       expect(code).toBe(2);
       expect(stderr).toContain('rule kiko-no-switch at src/pick.ts:2');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'fails closed at the replay deadline, and a run by hand then records the pass',
+    () => {
+      const checkout = buildCheckout({}, { stubOtherMediumWrappers: true });
+      const slowGuard = {
+        KIKO_PREWRITE_SEMGREP_BIN: writeExecutable(checkout.root, 'semgrep-slow', SLOW_SEMGREP),
+        KIKO_GUARD_REPLAY_DEADLINE_SECONDS: '1',
+      };
+
+      for (const name of ['one', 'two', 'three', 'four', 'five', 'six']) {
+        writeFile(checkout.worktree, `src/${name}.ts`, `export const ${name} = 1;\n`);
+      }
+
+      const stopped = runScript(checkout, 'medium.sh', slowGuard);
+
+      expect(stopped.code).toBe(2);
+      expect(stopped.stderr).toContain('deadline');
+      expect(stopped.stderr).toContain('npm run check:guard-replay');
+
+      expect(runReplay(checkout, slowGuard)).toEqual({ code: 0, stderr: '' });
+      expect(runScript(checkout, 'medium.sh', slowGuard)).toEqual({ code: 0, stderr: '' });
     },
     TIMEOUT,
   );
