@@ -2,6 +2,8 @@
 
 
 
+## 2026-09-27 ~22:00: feat SESSION 9 (term_76d2219c-4a86-4f7b-80d1-84a1dc2e4ed3) replaced session 8 at 51%; tip 49ed0a04; queue: kill-guard fix round (git stash + unquoted heredoc deny, user-approved) -> re-review -> BATCH READY (base ccb611dd, 2 source files) + deployable (tag icon). next = e85be58c (guard replay merged). Harness-only main commit (8 agent/skill files + plugin 0.2.2) waits for the user.
+
 ## 2026-09-27 ~18:00: feat/assets-debts 62c38965 MERGED into next = 13455209 (release 1.1; make verify 408/5562 coordinator-verified; 5 harness conflicts resolved feat-first + next-only lines). main unchanged. Harness text in next reaches sessions only after main + plugin bump (0.2.1 now).
 
 ## 2026-09-27 day: whole-release deep gate STOPPED by the user after 10 h (mutation only on small diffs; memory mutation-only-on-small-diffs; harness cap task held for the user's OK in session 8). Session 8 = shares-assets-research-c2.
