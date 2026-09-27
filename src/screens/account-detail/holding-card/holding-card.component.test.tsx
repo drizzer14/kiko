@@ -8,6 +8,7 @@ import '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
 import { EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 import { entityIconTileGradient } from '@kiko/design-system/entity-tint';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
 import HoldingCard from './holding-card.component';
 
@@ -49,6 +50,28 @@ describe('HoldingCard', () => {
     const { getByText } = await renderCard();
     expect(getByText('Black card')).toBeTruthy();
     expect(getByText(/1,000\.00 ₴/)).toBeTruthy();
+  });
+
+  // A long bond name ran past the card edge and pushed the value out of view.
+  // Jest cannot lay out pixels, so this pins the style contract the
+  // transaction card wraps with.
+  it('wraps a long name beside the icon while the value keeps its own width', async () => {
+    const longName = 'Середньострокові облігації UA4000239115 з дуже довгою назвою';
+    const { getByText } = await renderCard({ holding: holding({ name: longName }) });
+    const title = getByText(longName);
+    const titleBox = StyleSheet.flatten(ancestorWithStyle(title, 'flex').props.style);
+
+    expect(title.props.numberOfLines).toBeUndefined();
+    expect(titleBox.flex).toBe(1);
+    expect(titleBox.flexDirection).toBeUndefined();
+    expect(
+      StyleSheet.flatten(ancestorWithStyle(getByText(/1,000\.00 ₴/), 'flexShrink').props.style)
+        .flexShrink,
+    ).toBe(0);
+    // A short name still centers beside the icon tile, as before.
+    expect(StyleSheet.flatten(ancestorWithStyle(title, 'alignItems').props.style).alignItems).toBe(
+      'center',
+    );
   });
 
   describe('a shared property', () => {

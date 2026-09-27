@@ -13,6 +13,7 @@ import {
 } from '@kiko/design-system/components/card-context-menu';
 import { entityIconTileGradient } from '@kiko/design-system/entity-tint';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import AccountsScreen from './accounts.screen';
@@ -205,6 +206,32 @@ describe('AccountsScreen', () => {
     const { getByText } = await renderAccounts();
     expect(getByText('Monobank')).toBeTruthy();
     expect(getByText(/1,000\.00 ₴/)).toBeTruthy();
+  });
+
+  // A long name must wrap, not run past the card edge and push the balance out
+  // of view. Jest cannot lay out pixels, so this pins the style contract the
+  // transaction card wraps with.
+  it('wraps a long account name beside the icon while the balance keeps its own width', async () => {
+    const longName = 'Спільний рахунок для сімейних заощаджень та поточних витрат';
+    setLiveData({
+      accounts: [{ id: 'a', name: longName, kind: 'bank' }],
+      holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100000 }],
+    });
+    const { getByText } = await renderAccounts();
+    const title = getByText(longName);
+    const titleBox = StyleSheet.flatten(ancestorWithStyle(title, 'flex').props.style);
+
+    expect(title.props.numberOfLines).toBeUndefined();
+    expect(titleBox.flex).toBe(1);
+    expect(titleBox.flexDirection).toBeUndefined();
+    expect(
+      StyleSheet.flatten(ancestorWithStyle(getByText(/1,000\.00 ₴/), 'flexShrink').props.style)
+        .flexShrink,
+    ).toBe(0);
+    // A short name still centers beside the icon tile, as before.
+    expect(StyleSheet.flatten(ancestorWithStyle(title, 'alignItems').props.style).alignItems).toBe(
+      'center',
+    );
   });
 
   it('does not render an archived account', async () => {

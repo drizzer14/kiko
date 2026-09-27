@@ -154,9 +154,11 @@ const PieLegendEntry: FC<{
           style={[styles.swatch, { backgroundColor: slice.color }]}
         />
 
-        <Text variant="body" tone="textPrimary">
-          {slice.name}
-        </Text>
+        <View style={styles.legendLabel}>
+          <Text variant="body" tone="textPrimary">
+            {slice.name}
+          </Text>
+        </View>
       </View>
 
       <View testID={`${testID}-legend-value-${slice.accountId}`} style={styles.legendValue}>

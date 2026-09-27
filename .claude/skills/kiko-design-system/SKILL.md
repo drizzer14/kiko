@@ -207,6 +207,28 @@ an entry (date + value) the moment the user approves a new visual.
   input and 8pt from the row's end; the `small` Button keeps its
   44pt-wide tap target. See "The paste-icon-only ghost Button
   convention" under `Button`.
+- **Card titles wrap; the amount keeps its width** (2026-09-27, user
+  device finding D9: a long bond name ran past the card edge and pushed
+  its amount out of view). Every card or row with a user-data title next
+  to an amount wraps the title the way `TransactionCard` does, never
+  `numberOfLines`/ellipsis: the leading cluster (icon + title) is
+  `flex: 1` with `marginRight: theme.spacing(3)`, the title sits in its
+  own `flex: 1` box (`rowDescription`; a `Text` does not shrink in a row
+  on its own), and the amount sits in a `flexShrink: 0` box (`rowAmount`,
+  or the holding card's `valueColumn`), right-aligned at its full width.
+  Short titles render exactly as before: each family keeps its own
+  vertical alignment — `TransactionCard` top-aligns (`flex-start`, a
+  body-size glyph), the holding-detail ledger rows stay `center`, and
+  the account card (`accounts.screen.tsx` `renderAccountCard`, also the
+  Property and Debts grids) and the account-detail `HoldingCard` stay
+  `center` beside their taller `EntityIconTile`. The Statistics pie legend's name
+  wraps in its own `legendLabel` (`flex: 1`) box beside the swatch; its
+  fixed-width value/percent columns are unchanged. Rows whose label is a
+  fixed short string (`SummaryTable`, the bar chart's type rows, the
+  section heading rows, upcoming payments' dates) are not this pattern.
+  Pinned per family by a style-contract test (`ancestorWithStyle`: the
+  title's own box is `flex: 1` with no row direction, no
+  `numberOfLines`, the amount's box `flexShrink: 0`).
 
 ## UX patterns
 

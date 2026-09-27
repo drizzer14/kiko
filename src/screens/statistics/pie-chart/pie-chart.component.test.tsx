@@ -1,6 +1,8 @@
+import { StyleSheet } from 'react-native';
 import { Money } from '@kiko/currency/money';
 import type { Currency } from '@kiko/currency/currency';
 import { fireEvent, render, within } from '@testing-library/react-native';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
 import type { AccountSlice } from '@kiko/statistics/account-contribution';
 import '@kiko/design-system/unistyles';
@@ -48,6 +50,24 @@ describe('PieChart', () => {
     expect(getByText(/\$600\.00/)).toBeTruthy();
     expect(getByText('60%')).toBeTruthy();
     expect(getByText('10%')).toBeTruthy();
+  });
+
+  // The swatch shares the name's row, so the name needs its own flexing box to
+  // wrap inside what is left; otherwise it runs into the value column.
+  it('wraps a long account name beside the swatch while the value column keeps its width', async () => {
+    const longName = 'Спільний рахунок для сімейних заощаджень та поточних витрат';
+    const { getByText, getByTestId } = await render(
+      <PieChart slices={[{ ...slices[0], name: longName }]} baseCurrency="USD" />,
+    );
+    const title = getByText(longName);
+    const titleBox = StyleSheet.flatten(ancestorWithStyle(title, 'flex').props.style);
+
+    expect(title.props.numberOfLines).toBeUndefined();
+    expect(titleBox.flex).toBe(1);
+    expect(titleBox.flexDirection).toBeUndefined();
+    expect(
+      StyleSheet.flatten(getByTestId('pie-chart-legend-value-a1').props.style).width,
+    ).toBeGreaterThan(0);
   });
 
   it('legend percents sum to 100 for four uneven slices', async () => {

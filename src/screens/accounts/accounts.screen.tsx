@@ -231,14 +231,16 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                 color={color}
                 accessibilityLabel={t('accounts.icon', { name: item.name })}
               />
-              <Box gap={1}>
+              <Box gap={1} style={styles.rowDescription}>
                 <Text variant="body">{item.name}</Text>
                 <Text variant="caption" tone="textSecondary">
                   {t(`forms.account.${item.kind}`)}
                 </Text>
               </Box>
             </Box>
-            <MoneyText money={balance} context="balance" />
+            <Box style={styles.rowAmount}>
+              <MoneyText money={balance} context="balance" />
+            </Box>
           </Pressable>
         </Card>
       </CardContextMenu>

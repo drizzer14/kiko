@@ -73,7 +73,9 @@ const HoldingCard: FC<{
             color={color}
             accessibilityLabel={`${holding.name} icon`}
           />
-          <Text variant="body">{holding.name}</Text>
+          <Box style={styles.rowDescription}>
+            <Text variant="body">{holding.name}</Text>
+          </Box>
         </Box>
 
         <Box style={styles.valueColumn}>
