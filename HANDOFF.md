@@ -30,7 +30,7 @@ the same scratchpad, brief-feat9.txt.
 2. Deploy the tag-icon build (standard kiko:ops install brief; UTF-16-aware bundle check; if devicectl says unavailable/4016, the iPhone is not on the Mac WiFi network: ask the user to join it, or USB).
 3. Session 9 then does CQ1 (kill-guard deny git apply/merge/rebase on the main checkout) and CQ2 (deploy-device.sh UTF-16 bundle check +
    one launch retry), each its own change set.
-4. USER must run ONE command to make 7cbc3faa's agent/skill text live (plugin 0.2.3; stage explicitly):
+4. DONE (bbf4cb3f, plugin 0.2.3 live after /reload-plugins). Was: USER must run ONE command to make 7cbc3faa's agent/skill text live (plugin 0.2.3; stage explicitly):
    ! cd /Users/drizzer14/Developer/Projects/pff-ios && sed -i '' 's/"version": "0.2.2"/"version": "0.2.3"/' harness/kiko/.claude-plugin/plugin.json && git add harness/kiko/.claude-plugin/plugin.json && git commit -m "chore(harness): kiko plugin 0.2.3" && claude plugin update kiko@kiko-marketplace
    then /reload-plugins in every running session. Afterwards merge main into next (clean; keeps next ahead of main).
 5. When the 1.1 feat track is closed: ROUND A bug hunt + security (plan: "RELEASE ROADMAP" below). Then 1.2 (P5 broker/shares/EODHD +
