@@ -128,7 +128,10 @@ const writeExecutable = (root: string, relativePath: string, body: string): stri
 const commitAll = (
   cwd: string,
   message: string,
-  { hoursAgo = 0, date = `@${unixNow() - hoursAgo * HOUR_SECONDS} +0000` } = {},
+  {
+    hoursAgo = 0,
+    date = `@${unixNow() - hoursAgo * HOUR_SECONDS} +0000`,
+  }: { hoursAgo?: number; date?: string } = {},
 ): void => {
   git(cwd, 'add', '-A');
   execFileSync('git', ['commit', '-qm', message], {
