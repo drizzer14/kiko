@@ -24,7 +24,7 @@ import { act, fireEvent, render, waitFor, within } from '@testing-library/react-
 
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
-import '../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import { FILTER_ALL } from '../../design-system/components/filter-menu';
 
 import StatisticsScreen from './statistics.screen';
@@ -81,7 +81,7 @@ jest.mock('@kiko/navigation/use-scroll-to-top-on-tab-press', () => ({
 // taken once at mount and held STABLE across re-renders, the same behavior the
 // screen's old `useMemo(() => Date.now(), [])` had (no test here drives a focus
 // event, so the value never needs to change mid-test).
-jest.mock('../../design-system/use-focus-refreshed-now/use-focus-refreshed-now', () => {
+jest.mock('@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now', () => {
   const { useState } = jest.requireActual('react');
 
   return { useFocusRefreshedNow: () => useState(() => Date.now())[0] };
@@ -763,7 +763,7 @@ describe('StatisticsScreen', () => {
     // here with a spy the test controls directly instead of a fake navigation
     // focus event.
     const focusModule = jest.requireMock(
-      '../../design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+      '@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
     ) as {
       useFocusRefreshedNow: () => number;
     };
@@ -801,7 +801,7 @@ describe('StatisticsScreen', () => {
     mockRunBackfill.mockReturnValueOnce(firstRun);
 
     const focusModule = jest.requireMock(
-      '../../design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+      '@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
     ) as {
       useFocusRefreshedNow: () => number;
     };
@@ -861,7 +861,7 @@ describe('StatisticsScreen', () => {
     mockRunBackfill.mockResolvedValueOnce({ state: 'failed', lastDay: null });
 
     const focusModule = jest.requireMock(
-      '../../design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+      '@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
     ) as {
       useFocusRefreshedNow: () => number;
     };
@@ -901,7 +901,7 @@ describe('StatisticsScreen', () => {
     });
 
     const focusModule = jest.requireMock(
-      '../../design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+      '@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
     ) as {
       useFocusRefreshedNow: () => number;
     };

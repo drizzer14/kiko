@@ -1,5 +1,5 @@
-import '../../../design-system/unistyles';
-import { darkTheme } from '../../../design-system/theme';
+import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
 
 import { chevronSize, chevronTrailingWhitespace } from './settings-row.chevron';
 

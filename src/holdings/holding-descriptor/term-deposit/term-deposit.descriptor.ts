@@ -6,6 +6,7 @@ import {
 import type { TFunction } from 'i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { Money, toMajor } from '@kiko/currency/money';
+import { entityColorsDark } from '@kiko/design-system/palette';
 import type { DerivedEntry } from '@kiko/holdings/derived-entries';
 import { asTermDepositMeta } from '@kiko/holdings/holding-metadata';
 import type { ValuableHolding } from '@kiko/holdings/holding-value';
@@ -13,7 +14,6 @@ import { depositAccruedMajor, depositLedger } from '@kiko/holdings/interest';
 
 import { makeEntry } from '../entry-parts';
 import type { HoldingDescriptor } from '../holding-descriptor.d';
-import { entityColorsDark } from '../../../design-system/palette';
 import { flat, makeBreakdown, type HoldingValueBreakdown } from '../breakdown-parts';
 
 const depositBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreakdown => {

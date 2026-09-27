@@ -1,5 +1,5 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import type { AccountRow } from '@kiko/db';
 

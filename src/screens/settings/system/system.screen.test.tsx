@@ -1,15 +1,15 @@
 import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { darkTheme } from '@kiko/design-system/theme';
 
 import {
   asNavigationProp,
   asRouteProp,
   navigationSpy,
 } from '../../../test-support/navigation-props';
-import { darkTheme } from '../../../design-system/theme';
 
 import SystemScreen from './system.screen';
 

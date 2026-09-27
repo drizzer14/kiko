@@ -3,7 +3,7 @@ import { StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 
 import DateField from './date-field.component';
 import type { DateFieldProps } from './date-field.props';

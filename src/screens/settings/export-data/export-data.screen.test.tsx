@@ -1,5 +1,5 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 // Side-effect import: src/i18n/init/init.ts calls `i18next.init()` at module
 // load. Every test file gets its own fresh module registry, so without this
 // import `useTranslation`'s `t()` returns the raw key (e.g.

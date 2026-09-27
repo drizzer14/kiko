@@ -1,6 +1,5 @@
 import { StyleSheet } from 'react-native-unistyles';
-
-import { disabledFieldStyle } from '../../../design-system/disabled-field-style';
+import { disabledFieldStyle } from '@kiko/design-system/disabled-field-style';
 
 export const styles = StyleSheet.create((theme) => ({
   // The tappable field: a bordered chip matching an ACTIVE TextField's chrome

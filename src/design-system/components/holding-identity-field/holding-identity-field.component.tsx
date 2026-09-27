@@ -2,12 +2,12 @@ import type { FC } from 'react';
 import { TextInput } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
+import { deriveFieldTestID } from '@kiko/design-system/derive-field-test-id';
 
 import Box from '../box';
 import FieldError from '../field-error';
 import FieldLabel from '../field-label';
 import IconEditor from '../icon-editor';
-import { deriveFieldTestID } from '../../derive-field-test-id';
 import { useKeyboardDoneAccessory } from '../keyboard-done-accessory';
 
 import { styles } from './holding-identity-field.styles';

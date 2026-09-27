@@ -1,5 +1,5 @@
 import { fireEvent, render } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 
 import CurrencyFields from './currency-fields.component';

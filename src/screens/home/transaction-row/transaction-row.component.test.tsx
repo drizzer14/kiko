@@ -6,7 +6,7 @@ import {
 } from 'react-native-gesture-handler/jest-utils';
 import { State } from 'react-native-gesture-handler';
 import { act, fireEvent, render } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 // Initialize i18next so the row's and CardContextMenu's `t()` labels resolve
 // to the real catalogue instead of the raw key.
 import '@kiko/i18n/init';

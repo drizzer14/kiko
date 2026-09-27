@@ -3,7 +3,7 @@ import type { Currency } from '@kiko/currency/currency';
 import { fireEvent, render, within } from '@testing-library/react-native';
 
 import type { AccountSlice } from '@kiko/statistics/account-contribution';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import PieChart from './pie-chart.component';
 
 // Flatten a (possibly nested/array) style prop into its plain object layers so a

@@ -16,6 +16,7 @@ import { normalizeIban } from '@kiko/loans/payment-matcher';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import { dayKeyOf, type PriceBook } from '@kiko/prices/price-book';
 import { currencyScale, type Currency } from '@kiko/currency/currency';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { holdingsRepo, type LoanPricePointOp } from '@kiko/holdings/repo';
 import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
 
@@ -29,7 +30,6 @@ import {
 } from '../../../term-field/term-reasons';
 import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
-import type { FieldInstance } from '../../../../../design-system/scroll-to-field/scroll-to-field';
 
 // The literal i18n keys `loanReasonKey` below may return, so `t()` (typed
 // from src/i18n/locales/en.ts) accepts them — mirrors `PropertyReasonKey`/

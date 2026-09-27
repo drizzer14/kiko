@@ -1,9 +1,8 @@
 import { StyleSheet } from 'react-native';
 import { render } from '@testing-library/react-native';
-
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
-import { darkTheme } from '../../../design-system/theme';
+import { darkTheme } from '@kiko/design-system/theme';
 
 import DateTimeRow from './date-time-row.component';
 

@@ -28,6 +28,11 @@ import {
   isExchangeDestinationType,
   isExchangeSourceType,
 } from '@kiko/holdings/exchange-destination';
+import {
+  useHeaderInset,
+  scrollToField,
+  type FieldInstance,
+} from '@kiko/design-system/scroll-to-field';
 import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
@@ -37,8 +42,11 @@ import { transactionsRepo } from '@kiko/transactions/repo';
 import { isSyncedHolding } from '@kiko/holdings/deletable';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
+import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
+import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
@@ -61,23 +69,15 @@ import Text from '../../../design-system/components/text';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import ConvertExchangeFields from '../convert-exchange-fields';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '../../../design-system/scroll-to-field/scroll-to-field';
 import Divider from '../../../design-system/components/divider';
 import DescriptionSuggestions from '../description-suggestions';
 import SymbolIcon from '../../../design-system/components/symbol';
 import TextField from '../../../design-system/components/text-field';
-import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import FieldError from '../../../design-system/components/field-error';
 import type { TransactionFormParams } from '../../../navigation/types';
-import { resolveEntityColor } from '../../../design-system/entity-tint';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import type { FormMode } from '../mode-select-field/mode-select-field.props';
 import { groupAmount, majorAmountText } from '../amount-format/amount-format';
-import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
 import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 
 // This screen is registered in BOTH the Home and Accounts stacks (Home lists

@@ -12,13 +12,13 @@ import { ownershipShareText } from '@kiko/holdings/ownership';
 import { convert, type RateTable } from '@kiko/rates/conversion';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
+import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { propertyOwnershipView } from '@kiko/holdings/holding-descriptor';
 
 import Box from '../../../design-system/components/box';
 import Card from '../../../design-system/components/card';
 import Text from '../../../design-system/components/text';
 import MoneyText from '../../../design-system/components/money-text';
-import { resolveEntityColor } from '../../../design-system/entity-tint';
 import EntityIconTile from '../../../design-system/components/entity-icon-tile';
 
 import { styles } from './holding-card.styles';

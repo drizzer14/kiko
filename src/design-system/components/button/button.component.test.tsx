@@ -2,10 +2,10 @@ import { i18n } from '@kiko/i18n/init';
 import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
 
 import type { RenderedElement } from '../../../test-support/rendered-element';
-import '../../unistyles';
-import { darkTheme } from '../../theme';
 
 import Button from './button.component';
 

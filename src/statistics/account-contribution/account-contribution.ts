@@ -5,9 +5,8 @@ import type { Currency } from '@kiko/currency/currency';
 import { holdingValue } from '@kiko/holdings/holding-value';
 import { convert, type RateTable } from '@kiko/rates/conversion';
 import { defaultAccountColor } from '@kiko/holdings/entity-colors';
+import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
-
-import { resolveEntityColor } from '../../design-system/entity-tint';
 
 /**
  * An account as the pie chart needs it: identity, display name, and the two

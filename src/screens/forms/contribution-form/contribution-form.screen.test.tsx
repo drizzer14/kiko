@@ -1,16 +1,16 @@
 import type { ComponentProps } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import { scrollToField } from '@kiko/design-system/scroll-to-field';
 
 import {
   asNavigationProp,
   asRouteProp,
   navigationSpy,
 } from '../../../test-support/navigation-props';
-import { scrollToField } from '../../../design-system/scroll-to-field/scroll-to-field';
 
 import ContributionFormScreen from './contribution-form.screen';
 
@@ -27,7 +27,7 @@ jest.mock('@kiko/holdings/repo', () => ({
     appendDepositContribution: jest.fn(),
   },
 }));
-jest.mock('../../../design-system/scroll-to-field/scroll-to-field');
+jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 
 const navigation = navigationSpy();
 const route = asRouteProp<ContributionFormProps['route']>('ContributionForm', {

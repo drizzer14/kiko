@@ -1,8 +1,8 @@
 import { holdingsRepo } from '@kiko/holdings/repo';
+import { entityColorsDark } from '@kiko/design-system/palette';
 
 import { flat } from '../breakdown-parts';
 import type { HoldingDescriptor } from '../holding-descriptor.d';
-import { entityColorsDark } from '../../../design-system/palette';
 
 type BalanceDescriptorConfig = Pick<HoldingDescriptor, 'symbol' | 'defaultColor'> & {
   exchange: HoldingDescriptor['exchange'];

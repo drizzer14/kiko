@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { pricePointsRepo } from '@kiko/prices/price-points-repo';

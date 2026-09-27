@@ -1,6 +1,6 @@
 import { Text as RNText } from 'react-native';
 import { render, within } from '@testing-library/react-native';
-import '../../unistyles';
+import '@kiko/design-system/unistyles';
 import { Money } from '@kiko/currency/money';
 
 import EntityAmountHeader from './entity-amount-header.component';

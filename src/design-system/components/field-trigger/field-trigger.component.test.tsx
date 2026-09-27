@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
-import '../../unistyles';
+import '@kiko/design-system/unistyles';
 import FieldTrigger from '.';
 
 // Text's tone -> color mapping is a react-native-unistyles variant, which

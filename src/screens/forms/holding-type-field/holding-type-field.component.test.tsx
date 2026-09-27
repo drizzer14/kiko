@@ -1,6 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
 
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 
 import type { HoldingType } from '@kiko/holdings/holding-type';
 

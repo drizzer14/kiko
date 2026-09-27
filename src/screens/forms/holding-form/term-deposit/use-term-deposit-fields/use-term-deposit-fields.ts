@@ -9,6 +9,7 @@ import { parseAmount } from '@kiko/currency/parse';
 import { useCallback, useRef, useState } from 'react';
 import type { TextInputInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 
 import {
   termInputFromMonths,
@@ -18,7 +19,6 @@ import {
 import { saveMetadataEdit } from '../../save-metadata-edit';
 import { groupAmount, majorAmountText } from '../../../amount-format/amount-format';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
-import type { FieldInstance } from '../../../../../design-system/scroll-to-field/scroll-to-field';
 
 import {
   parsedContributions,

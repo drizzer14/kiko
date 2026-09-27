@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { act, render } from '@testing-library/react-native';
 
 import { Money } from '@kiko/currency/money';
-import '../../unistyles';
+import '@kiko/design-system/unistyles';
 import MoneyText from './money-text.component';
 
 // The Text primitive's tone -> color mapping lives inside a

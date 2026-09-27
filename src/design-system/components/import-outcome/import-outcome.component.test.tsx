@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 
 import ImportOutcome from './import-outcome.component';

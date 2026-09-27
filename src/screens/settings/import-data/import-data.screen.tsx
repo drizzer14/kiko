@@ -4,6 +4,7 @@ import { Alert } from 'react-native';
 import { i18n } from '@kiko/i18n/init';
 import { useTranslation } from 'react-i18next';
 import { importData } from '@kiko/data-transfer';
+import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { keepLocalCopy, pick, types } from '@react-native-documents/picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -15,7 +16,6 @@ import Screen from '../../../design-system/components/screen';
 import FieldError from '../../../design-system/components/field-error';
 import type { SettingsStackParamList } from '../../../navigation/types';
 import ConfirmSheet from '../../../design-system/components/confirm-sheet';
-import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
 import ClipboardTextField from '../../../design-system/components/clipboard-text-field';
 
 type ImportDataScreenProps = NativeStackScreenProps<SettingsStackParamList, 'ImportData'>;

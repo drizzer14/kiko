@@ -1,10 +1,9 @@
 import { fireEvent, render, within } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { i18n } from '@kiko/i18n/init';
+import { darkTheme } from '@kiko/design-system/theme';
 import type { TableCell } from '@kiko/statement-import/column-mapping';
-
-import { darkTheme } from '../../../design-system/theme';
 
 import RawPreview from './raw-preview.component';
 

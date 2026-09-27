@@ -4,7 +4,7 @@ import { formatMoney } from '@kiko/currency/format';
 import { render } from '@testing-library/react-native';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 
 import UpcomingPayments from './upcoming-payments.component';
 

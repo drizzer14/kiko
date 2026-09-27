@@ -2,9 +2,9 @@ import { View } from 'react-native';
 import { type FC, useId } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
 import { Defs, LinearGradient, Rect, Stop, Svg } from 'react-native-svg';
+import { entityIconTileGradient, isLightEntityColor } from '@kiko/design-system/entity-tint';
 
 import SymbolIcon from '../symbol';
-import { entityIconTileGradient, isLightEntityColor } from '../../entity-tint';
 
 import { iconTileSize, styles } from './entity-icon-tile.styles';
 import type { EntityIconTileProps } from './entity-icon-tile.props';

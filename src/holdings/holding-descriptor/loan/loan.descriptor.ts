@@ -1,11 +1,11 @@
 import { Money } from '@kiko/currency/money';
 import type { PriceBook } from '@kiko/prices/price-book';
 import { asLoanMeta } from '@kiko/holdings/holding-metadata';
+import { entityColorsDark } from '@kiko/design-system/palette';
 import type { ValuableHolding } from '@kiko/holdings/holding-value';
 import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
 
 import type { HoldingDescriptor } from '../holding-descriptor.d';
-import { entityColorsDark } from '../../../design-system/palette';
 import { flat, type HoldingValueBreakdown } from '../breakdown-parts';
 
 // A loan's held value is NEGATIVE: it is debt, not an asset, so

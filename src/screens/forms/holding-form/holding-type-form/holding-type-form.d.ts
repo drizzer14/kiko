@@ -3,8 +3,7 @@ import type { HoldingRow } from '@kiko/db';
 import type { Money } from '@kiko/currency/money';
 import type { Currency } from '@kiko/currency/currency';
 import type { PriceBook } from '@kiko/prices/price-book';
-
-import type { FieldInstance } from '../../../../design-system/scroll-to-field/scroll-to-field';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 
 /** One validated field; the screen scrolls to the first invalid one, in this order. */
 export type ScrollTarget = {

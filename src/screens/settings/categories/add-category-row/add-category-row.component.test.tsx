@@ -1,11 +1,10 @@
 import type { ReactNode } from 'react';
 import { Alert, StyleSheet, TextInput } from 'react-native';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
-import '../../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
+import { darkTheme } from '@kiko/design-system/theme';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
-
-import { darkTheme } from '../../../../design-system/theme';
 
 import AddCategoryRow from './add-category-row.component';
 

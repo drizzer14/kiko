@@ -1,6 +1,5 @@
 import { StyleSheet } from 'react-native-unistyles';
-
-import { DISABLED_OPACITY } from '../../disabled-opacity';
+import { DISABLED_OPACITY } from '@kiko/design-system/disabled-opacity';
 
 // The shared regular Button's rendered height.
 const BUTTON_MIN_HEIGHT = 50;

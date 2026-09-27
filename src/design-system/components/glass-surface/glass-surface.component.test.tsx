@@ -4,8 +4,8 @@ import { StyleSheet, Text, View, type ViewProps } from 'react-native';
 // `StyleSheet.hairlineWidth`, which is not necessarily react-native's, so the
 // assertion reads the expected value from the same source the style uses.
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
-import '../../unistyles';
-import { darkTheme } from '../../theme';
+import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
 
 // Imported through the folder's index (the real path a screen consumes,
 // `design-system/components/glass-surface`), not `./glass-surface.component`

@@ -6,6 +6,11 @@ import {
   holdingTypes,
   holdingTypesForAccountKind,
 } from '@kiko/holdings/holding-type';
+import {
+  useHeaderInset,
+  scrollToField,
+  type FieldInstance,
+} from '@kiko/design-system/scroll-to-field';
 import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
@@ -13,8 +18,11 @@ import type { Currency } from '@kiko/currency/currency';
 import { usePriceBook } from '@kiko/prices/use-price-book';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
+import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
+import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { holdingCurrencyOptions } from '@kiko/holdings/holding-currency';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useLiveQuery, type AccountRow, type HoldingRow } from '@kiko/db';
@@ -29,18 +37,10 @@ import HoldingTypeField from '../holding-type-field';
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '../../../design-system/scroll-to-field/scroll-to-field';
 import Divider from '../../../design-system/components/divider';
-import { alertOnCatch } from '../../../design-system/alert-on-catch';
-import { resolveEntityColor } from '../../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../../navigation/types';
 import ColorPicker from '../../../design-system/components/color-picker';
 import CurrencyField from '../../../design-system/components/currency-field';
-import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
 import HoldingIdentityField from '../../../design-system/components/holding-identity-field';
 import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';

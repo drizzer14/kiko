@@ -1,6 +1,6 @@
 // Must run first: configures the Unistyles StyleSheet (themes) as a side
 // effect before any component that calls StyleSheet.create is imported.
-import './src/design-system/unistyles';
+import '@kiko/design-system/unistyles';
 // Must run first alongside Unistyles: initializes the i18next instance with the
 // device language as a side effect, before any component that calls
 // useTranslation renders.

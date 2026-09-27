@@ -1,7 +1,7 @@
 import { render, waitFor } from '@testing-library/react-native';
 import { AppState, type AppStateStatus, Text } from 'react-native';
 import { authenticateWithOptions } from '@sbaiahmed1/react-native-biometrics';
-import '../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { en } from '@kiko/i18n/locales';
 

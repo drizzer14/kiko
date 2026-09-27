@@ -7,9 +7,8 @@ import { Money } from '@kiko/currency/money';
 import { canConvert } from '@kiko/rates/net-worth-view';
 import type { Currency } from '@kiko/currency/currency';
 import type { HoldingRow, TransactionRow } from '@kiko/db';
+import { chartSeriesDark } from '@kiko/design-system/palette';
 import { convert, type RateTable } from '@kiko/rates/conversion';
-
-import { chartSeriesDark } from '../../design-system/palette';
 
 /**
  * A transaction as the spending breakdown needs it: its stored `category` key,

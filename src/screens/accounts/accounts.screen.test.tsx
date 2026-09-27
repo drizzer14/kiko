@@ -4,15 +4,15 @@ import { State } from 'react-native-gesture-handler';
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
-import '../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { darkTheme } from '@kiko/design-system/theme';
+import { entityIconTileGradient } from '@kiko/design-system/entity-tint';
 
-import { darkTheme } from '../../design-system/theme';
 import {
   DELETE_CONFIRM_TEST_ID,
   HOLD_GESTURE_TEST_ID,
 } from '../../design-system/components/card-context-menu';
-import { entityIconTileGradient } from '../../design-system/entity-tint';
 import GestureRootWrapper from '../../test-support/gesture-root-wrapper';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
@@ -48,7 +48,7 @@ jest.mock('@kiko/navigation/use-scroll-to-top-on-tab-press', () => ({
 // and held STABLE across re-renders (no focus event fires in a standalone
 // screen render), so a re-render test can prove the screen no longer reads
 // its own fresh `Date.now()` per render.
-jest.mock('../../design-system/use-focus-refreshed-now/use-focus-refreshed-now', () => {
+jest.mock('@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now', () => {
   const { useState } = jest.requireActual('react');
 
   return { useFocusRefreshedNow: () => useState(() => Date.now())[0] };

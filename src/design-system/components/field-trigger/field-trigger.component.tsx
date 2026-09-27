@@ -1,13 +1,13 @@
 import type { FC } from 'react';
 import { Pressable } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import { deriveFieldTestID } from '@kiko/design-system/derive-field-test-id';
 
 import Box from '../box';
 import Text from '../text';
 import SymbolIcon from '../symbol';
 import FieldError from '../field-error';
 import FieldLabel from '../field-label';
-import { deriveFieldTestID } from '../../derive-field-test-id';
 
 import { styles } from './field-trigger.styles';
 import type { FieldTriggerProps } from './field-trigger.props';

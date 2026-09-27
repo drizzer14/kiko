@@ -15,6 +15,11 @@ import {
   supportedFormatNames,
 } from '@kiko/statement-import/registry';
 import maybe, { foldMap } from 'fnts/maybe';
+import {
+  scrollToField,
+  useHeaderInset,
+  type FieldInstance,
+} from '@kiko/design-system/scroll-to-field';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
@@ -28,6 +33,7 @@ import {
   deleteLocalStatementCopy,
 } from '@kiko/statement-import/read-statement-file';
 import type { ScrollViewInstance } from 'react-native';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { previewStats } from '@kiko/statement-import/preview-stats';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -38,12 +44,6 @@ import { importStatement, type ImportResult } from '@kiko/statement-import/impor
 import Box from '../../design-system/components/box';
 import Text from '../../design-system/components/text';
 import Screen from '../../design-system/components/screen';
-import {
-  scrollToField,
-  useHeaderInset,
-  type FieldInstance,
-} from '../../design-system/scroll-to-field/scroll-to-field';
-import { alertOnCatch } from '../../design-system/alert-on-catch';
 import type { AccountsStackParamList } from '../../navigation/types';
 import ImportResultSheet from '../../design-system/components/import-result-sheet';
 

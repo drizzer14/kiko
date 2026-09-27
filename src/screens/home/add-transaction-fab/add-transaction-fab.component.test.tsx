@@ -1,14 +1,14 @@
 import { StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
-
 // Register the design-system theme so `useUnistyles()` resolves inside this
 // isolated render (the app entry imports it transitively; a lone component test
 // must import it itself).
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 // Initialize i18next so the FAB's accessibility label resolves to the real
 // catalogue string rather than the bare key.
 import '@kiko/i18n/init';
-import { darkTheme } from '../../../design-system/theme';
+import { darkTheme } from '@kiko/design-system/theme';
+
 import { asNavigationProp, navigationSpy } from '../../../test-support/navigation-props';
 
 import AddTransactionFab from './add-transaction-fab.component';

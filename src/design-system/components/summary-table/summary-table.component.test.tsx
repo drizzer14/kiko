@@ -1,7 +1,7 @@
 import { Text as RNText } from 'react-native';
 import { render } from '@testing-library/react-native';
 
-import '../../unistyles';
+import '@kiko/design-system/unistyles';
 
 import SummaryTable from './summary-table.component';
 

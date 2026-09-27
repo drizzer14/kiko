@@ -24,10 +24,10 @@ import { useCallback, useRef, useState } from 'react';
 import { shiftDecimal } from '@kiko/currency/decimal';
 import type { TextInputInstance } from 'react-native';
 import { currencyScale, type Currency } from '@kiko/currency/currency';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 
 import { saveMetadataEdit } from '../../save-metadata-edit';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
-import type { FieldInstance } from '../../../../../design-system/scroll-to-field/scroll-to-field';
 
 import {
   propertyFieldErrors,

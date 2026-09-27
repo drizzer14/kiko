@@ -8,9 +8,8 @@ import { fireEvent, render } from '@testing-library/react-native';
 // test).
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import '@kiko/i18n/init';
-import '../../unistyles';
-
-import { darkTheme } from '../../theme';
+import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
 
 import { useKeyboardDoneAccessory } from './use-keyboard-done-accessory';
 

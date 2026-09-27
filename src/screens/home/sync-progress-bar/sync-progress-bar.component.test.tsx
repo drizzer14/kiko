@@ -3,7 +3,7 @@ import { render } from '@testing-library/react-native';
 // Register the design-system theme so `useUnistyles()` resolves inside this
 // isolated render (the app entry imports it transitively; a lone component test
 // must import it itself).
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 // Initialize i18next so the bar's `t()` label resolves to the real catalogue
 // string rather than the bare key.
 import '@kiko/i18n/init';

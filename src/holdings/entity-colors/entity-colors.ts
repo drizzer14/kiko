@@ -1,8 +1,8 @@
 import type { AccountRow } from '@kiko/db';
+import { entityColorsDark } from '@kiko/design-system/palette';
 
 import type { HoldingType } from '../holding-type';
 import { recordByType } from '../holding-descriptor';
-import { entityColorsDark } from '../../design-system/palette';
 
 // The default swatch shown for a newly-created account or holding, keyed by its
 // kind/type. A user may override the color per entity later; until then the row

@@ -12,12 +12,12 @@ import { Money } from '@kiko/currency/money';
 import { quantityAt } from '@kiko/holdings/lots';
 import { holdingInstrument } from '@kiko/prices/instrument';
 import { multiplyToMinorUnits } from '@kiko/currency/decimal';
+import { entityColorsDark } from '@kiko/design-system/palette';
 import type { PricedHolding } from '@kiko/holdings/priced-value';
 import { priceAt, type PriceBook } from '@kiko/prices/price-book';
 import type { ValuableHolding } from '@kiko/holdings/holding-value';
 import { asPropertyMeta, type OwnershipInput } from '@kiko/holdings/holding-metadata';
 
-import { entityColorsDark } from '../../../design-system/palette';
 import { pricedDescriptor, pricedWholeParts } from '../priced-parts';
 import type { HoldingDescriptor, PricedSpec } from '../holding-descriptor.d';
 

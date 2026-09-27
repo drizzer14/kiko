@@ -1,6 +1,6 @@
 import type { AccountRow } from '@kiko/db';
+import { entityColorsDark } from '@kiko/design-system/palette';
 
-import { entityColorsDark } from '../../design-system/palette';
 import { holdingTypes, holdingTypesForAccountKind } from '../holding-type';
 
 import { defaultAccountColor, defaultHoldingColor } from './entity-colors';

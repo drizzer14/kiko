@@ -2,7 +2,7 @@ import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import type { ComponentProps } from 'react';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
-import '../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { supportedFormatNames } from '@kiko/statement-import/registry';
 import { headerFingerprint } from '@kiko/statement-import/column-mapping';

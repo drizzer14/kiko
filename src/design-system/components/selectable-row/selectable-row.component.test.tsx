@@ -1,6 +1,6 @@
 import { Text } from 'react-native';
 import { render } from '@testing-library/react-native';
-import '../../unistyles';
+import '@kiko/design-system/unistyles';
 
 import SelectableRow from '.';
 

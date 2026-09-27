@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react-native';
 import { isSensorAvailable } from '@sbaiahmed1/react-native-biometrics';
-import '../../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 
 import AppLockSetting from './app-lock-setting.component';

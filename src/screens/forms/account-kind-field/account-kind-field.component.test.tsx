@@ -3,7 +3,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import AccountKindField from '.';
 import type { AccountKind } from './account-kind-field.props';
 

@@ -3,7 +3,7 @@ import { render, within } from '@testing-library/react-native';
 import { type StyleProp, StyleSheet, Text, type ViewStyle } from 'react-native';
 
 import type { RenderedElement } from '../../../test-support/rendered-element';
-import '../../unistyles';
+import '@kiko/design-system/unistyles';
 // Imported through the folder's index (the real path a screen consumes,
 // `design-system/components/screen`), not `./screen.component` directly, so
 // this test also exercises index.ts's re-export.

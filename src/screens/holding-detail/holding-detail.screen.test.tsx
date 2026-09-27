@@ -4,18 +4,18 @@ import type { ComponentProps } from 'react';
 import { State } from 'react-native-gesture-handler';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
-import '../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { formatMoney } from '@kiko/currency/format';
+import { darkTheme } from '@kiko/design-system/theme';
 import { formatDate, startOfLocalDay } from '@kiko/dates';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
 
-import { darkTheme } from '../../design-system/theme';
 import {
   EDIT_ACTION_TEST_ID,
   HOLD_GESTURE_TEST_ID,

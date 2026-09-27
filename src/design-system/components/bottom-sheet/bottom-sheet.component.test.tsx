@@ -3,10 +3,10 @@ import { State } from 'react-native-gesture-handler';
 import { Dimensions, Keyboard, StyleSheet, Text } from 'react-native';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
+import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
 
 import type { RenderedElement } from '../../../test-support/rendered-element';
-import '../../unistyles';
-import { darkTheme } from '../../theme';
 import { KEYBOARD_ACCESSORY_HEIGHT } from '../keyboard-done-accessory/keyboard-done-accessory.styles';
 
 import BottomSheet from '.';

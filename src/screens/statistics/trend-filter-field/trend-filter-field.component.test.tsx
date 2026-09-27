@@ -1,9 +1,9 @@
 import { StyleSheet } from 'react-native';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { darkTheme } from '@kiko/design-system/theme';
 
-import { darkTheme } from '../../../design-system/theme';
 import type { FilterOption } from '../../../design-system/components/filter-menu/filter-menu.props';
 
 import TrendFilterField from './trend-filter-field.component';

@@ -5,7 +5,7 @@ import { StyleSheet } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 
 import DateRangeField from './date-range-field.component';
 

@@ -1,7 +1,8 @@
 import { Text as RNText, StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
-import { darkTheme } from '../../../design-system/theme';
+import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
+
 import Card from '../../../design-system/components/card';
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 

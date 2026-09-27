@@ -3,8 +3,8 @@ import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import { act, render, within } from '@testing-library/react-native';
 import type { NetWorthPoint } from '@kiko/statistics/net-worth-series';
 
-import { darkTheme } from '../../../design-system/theme';
-import '../../../design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
+import '@kiko/design-system/unistyles';
 import NetWorthLine from './index';
 import { buildLineSegments, buildTicks, toAreaPath } from './net-worth-line.component';
 

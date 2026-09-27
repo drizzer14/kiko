@@ -1,13 +1,13 @@
 import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
-import '../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { darkTheme } from '@kiko/design-system/theme';
 import { DAY_MS, formatDate, defaultDateRange } from '@kiko/dates';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 
-import { darkTheme } from '../../design-system/theme';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
 // resolved MoneyText `tone` via a testID — see the module for the full rationale.
 import mockTextTone from '../../test-support/mock-text-tone';

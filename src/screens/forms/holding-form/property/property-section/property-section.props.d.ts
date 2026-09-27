@@ -1,7 +1,6 @@
 import type { RefObject } from 'react';
 import type { TextInputInstance } from 'react-native';
-
-import type { FieldInstance } from '../../../../../design-system/scroll-to-field/scroll-to-field';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 
 export type PropertySectionProps = {
   cost: string;

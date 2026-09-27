@@ -1,9 +1,11 @@
 import { Alert } from 'react-native';
 import type { ComponentProps } from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
+import { darkTheme } from '@kiko/design-system/theme';
+import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 
 import {
@@ -12,8 +14,6 @@ import {
   type NavigationSpy,
   navigationSpy,
 } from '../../../test-support/navigation-props';
-import { darkTheme } from '../../../design-system/theme';
-import { scrollToField } from '../../../design-system/scroll-to-field/scroll-to-field';
 
 import AccountFormScreen from './account-form.screen';
 
@@ -93,7 +93,7 @@ jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
 jest.mock('@kiko/crypto-sync/binance/binance.client', () => ({
   fetchAccount: (...args: unknown[]) => mockFetchAccount(...args),
 }));
-jest.mock('../../../design-system/scroll-to-field/scroll-to-field');
+jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 jest.mock('@kiko/sync/use-sync', () => ({
   useSync: () => ({
     isSyncing: false,

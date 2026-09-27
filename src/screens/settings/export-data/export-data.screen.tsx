@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { exportData } from '@kiko/data-transfer';
 import { useEffect, useRef, useState } from 'react';
 import Clipboard from '@react-native-clipboard/clipboard';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import SettingsRow from '../settings-row';
@@ -14,9 +16,7 @@ import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import Switch from '../../../design-system/components/switch';
 import TextField from '../../../design-system/components/text-field';
-import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import type { SettingsStackParamList } from '../../../navigation/types';
-import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
 
 import { styles } from './export-data.styles';
 

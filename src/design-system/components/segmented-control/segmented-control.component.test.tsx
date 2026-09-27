@@ -1,10 +1,9 @@
 import { StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
-import '../../unistyles';
+import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
-
-import { darkTheme } from '../../theme';
-import { wcagContrastRatio } from '../../entity-tint';
+import { darkTheme } from '@kiko/design-system/theme';
+import { wcagContrastRatio } from '@kiko/design-system/entity-tint';
 
 import SegmentedControl from '.';
 

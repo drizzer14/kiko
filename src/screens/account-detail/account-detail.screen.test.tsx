@@ -3,11 +3,11 @@ import { State } from 'react-native-gesture-handler';
 import type { ComponentProps, ReactNode } from 'react';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
-import '../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { formatDateTime } from '@kiko/dates';
+import { darkTheme } from '@kiko/design-system/theme';
 
-import { darkTheme } from '../../design-system/theme';
 import {
   DELETE_CONFIRM_TEST_ID,
   HOLD_GESTURE_TEST_ID,

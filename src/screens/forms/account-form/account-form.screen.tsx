@@ -1,4 +1,9 @@
 import { Money } from '@kiko/currency/money';
+import {
+  useHeaderInset,
+  scrollToField,
+  type FieldInstance,
+} from '@kiko/design-system/scroll-to-field';
 import { useSync } from '@kiko/sync/use-sync';
 import either, { isRight } from 'fnts/either';
 import { accountsRepo } from '@kiko/accounts';
@@ -7,8 +12,11 @@ import { saveToken } from '@kiko/monobank/token';
 import { parseAmount } from '@kiko/currency/parse';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import { id, type AccountRow, useLiveQuery } from '@kiko/db';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { defaultAccountColor } from '@kiko/holdings/entity-colors';
+import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { type BankId, isBankId } from '@kiko/bank-sync/bank-catalog';
+import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
@@ -23,20 +31,12 @@ import Text from '../../../design-system/components/text';
 import { groupAmount } from '../amount-format/amount-format';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '../../../design-system/scroll-to-field/scroll-to-field';
 import Divider from '../../../design-system/components/divider';
-import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import TextField from '../../../design-system/components/text-field';
-import { resolveEntityColor } from '../../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../../navigation/types';
 import ColorPicker from '../../../design-system/components/color-picker';
 import CurrencyField from '../../../design-system/components/currency-field';
 import CryptoSyncForm from '../../../design-system/components/crypto-sync-form';
-import { useSubmitOnce } from '../../../design-system/use-submit-once/use-submit-once';
 import HoldingIdentityField from '../../../design-system/components/holding-identity-field';
 import MonobankConnectField from '../../../design-system/components/monobank-connect-field';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';

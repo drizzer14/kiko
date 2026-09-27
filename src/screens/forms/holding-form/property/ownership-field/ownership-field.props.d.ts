@@ -1,8 +1,7 @@
 import type { RefObject } from 'react';
 import type { TextInputInstance } from 'react-native';
 import type { OwnershipInput } from '@kiko/holdings/holding-metadata';
-
-import type { FieldInstance } from '../../../../../design-system/scroll-to-field/scroll-to-field';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 
 export type OwnershipFieldProps = {
   mode: OwnershipInput;

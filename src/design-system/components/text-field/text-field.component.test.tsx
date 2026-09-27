@@ -2,7 +2,7 @@ import type { ComponentProps } from 'react';
 import { Keyboard, StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/i18n/init';
-import '../../unistyles';
+import '@kiko/design-system/unistyles';
 import TextField from '.';
 
 // Every test below renders the same TextField shape with only a couple of

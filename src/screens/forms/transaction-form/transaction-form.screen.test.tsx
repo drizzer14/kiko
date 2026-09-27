@@ -1,17 +1,17 @@
 import type { ComponentProps } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { darkTheme } from '@kiko/design-system/theme';
+import { scrollToField } from '@kiko/design-system/scroll-to-field';
 
 import {
   asNavigationProp,
   asRouteProp,
   navigationSpy,
 } from '../../../test-support/navigation-props';
-import { darkTheme } from '../../../design-system/theme';
 import type { TransactionFormParams } from '../../../navigation/types';
-import { scrollToField } from '../../../design-system/scroll-to-field/scroll-to-field';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
 import { mockReanimatedScrollToEnd } from '../../../test-support/mock-reanimated-scroll-to-end';
@@ -27,7 +27,7 @@ jest.mock('react-native-reanimated', () => mockReanimatedScrollToEnd(() => mockS
 // an unconditional `scrollToEnd` — auto-mocked here so the new-row tests
 // below can assert on the WIRING without depending on real
 // `measureLayout`/`measure` host-instance behavior under the test renderer.
-jest.mock('../../../design-system/scroll-to-field/scroll-to-field');
+jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 
 type TransactionFormProps = ComponentProps<typeof TransactionFormScreen>;
 

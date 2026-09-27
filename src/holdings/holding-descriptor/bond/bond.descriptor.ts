@@ -10,6 +10,7 @@ import { startOfLocalDay } from '@kiko/dates';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { Money, toMajor } from '@kiko/currency/money';
 import { taxOnInterestMinor } from '@kiko/holdings/tax';
+import { entityColorsDark } from '@kiko/design-system/palette';
 import type { DerivedEntry } from '@kiko/holdings/derived-entries';
 import type { ValuableHolding } from '@kiko/holdings/holding-value';
 import { asBondMeta, type BondMeta } from '@kiko/holdings/holding-metadata';
@@ -17,7 +18,6 @@ import { decimalFromJsonNumber, multiplyToMinorUnits } from '@kiko/currency/deci
 
 import { makeEntry } from '../entry-parts';
 import type { HoldingDescriptor } from '../holding-descriptor.d';
-import { entityColorsDark } from '../../../design-system/palette';
 import { flat, type HoldingValueBreakdown } from '../breakdown-parts';
 
 const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreakdown => {

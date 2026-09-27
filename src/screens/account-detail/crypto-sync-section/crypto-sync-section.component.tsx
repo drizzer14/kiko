@@ -11,13 +11,13 @@ import { useTranslation } from 'react-i18next';
 import type { AccountRow, HoldingRow } from '@kiko/db';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import { resyncRequest } from '@kiko/crypto-sync/resync-request';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
 
 import { styles } from '../account-detail.styles';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import SymbolIcon from '../../../design-system/components/symbol';
-import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
 import { formatLastSyncAt, latestSyncedAt } from '../format-last-sync';
 import ConfirmSheet from '../../../design-system/components/confirm-sheet';

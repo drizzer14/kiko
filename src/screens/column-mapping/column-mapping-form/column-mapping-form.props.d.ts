@@ -7,7 +7,7 @@ import type {
 } from '@kiko/statement-import/column-mapping';
 import type { Currency } from '@kiko/currency/currency';
 import type { PreviewStats } from '@kiko/statement-import/preview-stats';
-import type { FieldInstance } from '@kiko/design-system/scroll-to-field/scroll-to-field';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import type { TargetHoldingOption } from '@kiko/design-system/components/target-holding-sheet/target-holding-sheet.props';
 
 import type { AmountMode } from '../amount-fields/amount-fields.props';

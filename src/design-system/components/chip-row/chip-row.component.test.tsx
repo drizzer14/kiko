@@ -1,8 +1,7 @@
 import { StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
-
-import '../../unistyles';
-import { darkTheme } from '../../theme';
+import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
 
 import ChipRow from '.';
 

@@ -12,11 +12,11 @@ import { parseAmount } from '@kiko/currency/parse';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { useCallback, useRef, useState } from 'react';
 import type { TextInputInstance } from 'react-native';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { normalizeDecimal, shiftDecimal, trimDecimal } from '@kiko/currency/decimal';
 
 import { saveMetadataEdit } from '../../save-metadata-edit';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
-import type { FieldInstance } from '../../../../../design-system/scroll-to-field/scroll-to-field';
 
 import {
   metalFieldErrors,

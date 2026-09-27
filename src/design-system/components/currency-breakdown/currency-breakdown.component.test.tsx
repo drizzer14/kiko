@@ -2,7 +2,7 @@ import { Money } from '@kiko/currency/money';
 import { render } from '@testing-library/react-native';
 
 import type { RenderedElement } from '../../../test-support/rendered-element';
-import '../../unistyles';
+import '@kiko/design-system/unistyles';
 import CurrencyBreakdown from './currency-breakdown.component';
 
 // Flatten a (possibly nested/array) style prop into its plain object layers so a

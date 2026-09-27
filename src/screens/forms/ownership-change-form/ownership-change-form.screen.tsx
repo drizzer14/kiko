@@ -1,23 +1,23 @@
 import { useLiveQuery } from '@kiko/db';
+import {
+  useHeaderInset,
+  scrollToField,
+  type FieldInstance,
+} from '@kiko/design-system/scroll-to-field';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { type FC, useEffect, useRef, useState } from 'react';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '@kiko/design-system/scroll-to-field/scroll-to-field';
 import { asPropertyMeta } from '@kiko/holdings/holding-metadata';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { ScrollViewInstance, TextInputInstance } from 'react-native';
 import { WHOLE_SHARE, type OwnershipShare } from '@kiko/holdings/ownership';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useSubmitOnce } from '@kiko/design-system/use-submit-once/use-submit-once';
 
 import {
   enteredShare,

@@ -1,9 +1,9 @@
 import { StyleSheet } from 'react-native';
 import { render } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
 
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
-import '../../unistyles';
-import { darkTheme } from '../../theme';
 
 import Switch from './switch.component';
 

@@ -5,6 +5,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { useUnistyles } from 'react-native-unistyles';
 import type { DateData } from 'react-native-calendars';
 import KikoCalendar from '@kiko/calendar/kiko-calendar';
+import { deriveFieldTestID } from '@kiko/design-system/derive-field-test-id';
 
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
@@ -12,7 +13,6 @@ import SymbolIcon from '../../../design-system/components/symbol';
 import FieldError from '../../../design-system/components/field-error';
 import FieldLabel from '../../../design-system/components/field-label';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
-import { deriveFieldTestID } from '../../../design-system/derive-field-test-id';
 
 import { styles } from './date-field.styles';
 import type { DateFieldProps } from './date-field.props';

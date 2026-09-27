@@ -1,7 +1,6 @@
 import { join } from 'node:path';
 import { readdirSync, readFileSync } from 'node:fs';
-
-import { darkTheme } from '../design-system/theme';
+import { darkTheme } from '@kiko/design-system/theme';
 
 import {
   parseSeedCategoryColors,

@@ -3,15 +3,15 @@ import { useUnistyles } from 'react-native-unistyles';
 import type { TextInputInstance } from 'react-native';
 import { categoriesRepo } from '@kiko/categories/repo';
 import { type FC, useEffect, useRef, useState } from 'react';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 
 import Box from '../../../../design-system/components/box';
 import Card from '../../../../design-system/components/card';
 import Button from '../../../../design-system/components/button';
-import { alertOnCatch } from '../../../../design-system/alert-on-catch';
 import FieldError from '../../../../design-system/components/field-error';
 import ColorPicker from '../../../../design-system/components/color-picker';
-import { useSubmitOnce } from '../../../../design-system/use-submit-once/use-submit-once';
 import HoldingIdentityField from '../../../../design-system/components/holding-identity-field';
 import { KIKO_CATEGORIES_ICONS } from '../../../../design-system/components/icon-picker-modal/icon-pools';
 

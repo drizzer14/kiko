@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { clearLiveQueryCache } from '@kiko/db';
 import { holdingsRepo } from '@kiko/holdings/repo';
@@ -87,7 +87,7 @@ jest.mock('@kiko/sync/refresh-market-data', () => ({
 jest.mock('@kiko/loans/use-loan-auto-link', () => ({
   runLoanAutoLink: jest.fn().mockResolvedValue(undefined),
 }));
-jest.mock('../../../design-system/scroll-to-field/scroll-to-field');
+jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 
 const updateDeltaMock = holdingsRepo.updateWithBalanceDelta as jest.Mock;
 

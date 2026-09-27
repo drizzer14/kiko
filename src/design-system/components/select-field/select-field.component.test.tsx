@@ -1,6 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
 
-import '../../unistyles';
+import '@kiko/design-system/unistyles';
 import SelectField from '.';
 import type { SelectFieldProps } from './select-field.props';
 

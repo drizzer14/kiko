@@ -1,6 +1,6 @@
 import { act, render } from '@testing-library/react-native';
 
-import '../../unistyles';
+import '@kiko/design-system/unistyles';
 import LoadingState, { SPINNER_DELAY_MS } from '.';
 
 // A screen whose own read resolves faster than SPINNER_DELAY_MS (the common

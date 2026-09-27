@@ -1,5 +1,5 @@
 import { fireEvent, render } from '@testing-library/react-native';
-import '../../unistyles';
+import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 
 import LanguageSwitch from '.';

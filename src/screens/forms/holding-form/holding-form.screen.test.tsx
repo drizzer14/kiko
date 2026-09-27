@@ -2,14 +2,16 @@ import { right } from 'fnts/either';
 import type { ComponentProps } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
+import { darkTheme } from '@kiko/design-system/theme';
 import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 import type { Metal } from '@kiko/holdings/holding-metadata';
 import type { HoldingType } from '@kiko/holdings/holding-type';
+import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import { refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
 
 import {
@@ -17,9 +19,7 @@ import {
   asRouteProp,
   navigationSpy,
 } from '../../../test-support/navigation-props';
-import { darkTheme } from '../../../design-system/theme';
 import { fieldSuffix } from '../../../test-support/field-suffix';
-import { scrollToField } from '../../../design-system/scroll-to-field/scroll-to-field';
 
 import HoldingFormScreen from './holding-form.screen';
 
@@ -186,7 +186,7 @@ jest.mock('@kiko/loans/use-loan-auto-link', () => ({
 // Auto-mocked so the scroll-order tests below can assert on WHICH field ref a
 // rejected Save targets, without a real ScrollView/measureLayout in the test
 // environment (mirrors contribution-form's and account-form's own mock).
-jest.mock('../../../design-system/scroll-to-field/scroll-to-field');
+jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 
 const navigation = navigationSpy();
 const route = asRouteProp<HoldingFormProps['route']>('HoldingForm', { accountId: 'acc-1' });

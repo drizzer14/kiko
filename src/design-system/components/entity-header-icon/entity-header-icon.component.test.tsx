@@ -1,5 +1,5 @@
 import { act, render } from '@testing-library/react-native';
-import '../../unistyles';
+import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 
 import EntityHeaderIcon from './entity-header-icon.component';

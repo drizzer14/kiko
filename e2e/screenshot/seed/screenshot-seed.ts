@@ -18,9 +18,8 @@ import type {
 } from '@kiko/holdings/holding-metadata';
 import type { Currency } from '@kiko/currency/currency';
 import type { AppLanguage } from '@kiko/i18n/device-language';
+import { entityColorsDark } from '@kiko/design-system/palette';
 import type { AccountRow, BondRegisterRow, HoldingRow } from '@kiko/db';
-
-import { entityColorsDark } from '../../../src/design-system/palette';
 
 // ---------------------------------------------------------------------------
 // Fixed constants. Every timestamp derives from ANCHOR (a literal Date.UTC, NOT
