@@ -95,13 +95,14 @@ merge-conflict files".
 A Bash or python write (a heredoc, `sed -i`, a script) and a commit of
 it skip the pre-write guard. On `Stop` and `SubagentStop`, `medium.sh`
 replays the same guard over every `.ts`/`.tsx` file the session changed:
-the working tree, plus the commits made since the replay last passed
-that no other local branch has (rebased and cherry-picked ones too). A
+the working tree, plus every commit no worktree's passed replay reached
+(rebased, cherry-picked, and merged-in ones too; a backup branch or a
+new worktree hides nothing). A
 violation such a write added fails the turn end with the file, rule,
 and line. Fix it with Edit/Write, so the guard checks the fix. Never
 rewrite the file with Bash again. The `--write` fixers and clean merges
 pass, because only a finding the change added fails. Move a file with
-`git mv`, not a plain `mv`. If the replay stops at its 150 s deadline,
+`git mv`, not a plain `mv`. If the replay stops at its Stop-tier deadline,
 run `npm run check:guard-replay` by hand; its pass is recorded. See
 kiko-linter's "Pre-write guard replay on the Stop tier".
 

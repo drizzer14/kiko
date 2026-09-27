@@ -883,15 +883,32 @@ catches these writes after they land instead.
   new-finding diff, both override forms, `isInScope`, conflict-marker
   handling, and fail-closed handling are therefore the guard's own. A
   new guard rule reaches the replay with no change here.
-- **Which commits.** Selection is by reachability, not by how a commit
-  was made: the commits on HEAD's first-parent line that neither the
-  mark (HEAD when the replay last passed) nor any other local branch
-  reaches. A plain commit, an amend, a rebase, a cherry-pick, and a
-  `pull --rebase` all make such commits, so all are replayed. Commits a
-  merge brings in through its second parent, and a fast-forward to a
-  branch that still exists, were gated on their own branch and are not.
-  With no mark yet (a fresh worktree, or lost state), only commits from
-  the last 24 h count.
+- **Which commits.** Selection is by reachability from PASSED replays,
+  not by how a commit was made or which branch has it: every commit in
+  HEAD (all parents, not only the first-parent line) that no mark ref
+  reaches and that is newer than the floor. Each worktree's mark is a
+  git ref, `refs/kiko/guard-replay/<worktree id>` (the id hashes the
+  worktree's git dir; see `harness_replay_ref` in `_lib.sh`), moved to
+  HEAD on a pass and never on a failure. A plain commit, an amend, a
+  rebase, a cherry-pick, a `pull --rebase`, and every commit of a topic
+  branch merged in (`--no-ff` or fast-forward) are all replayed. A
+  backup branch, a `switch -c`, or a worktree made from HEAD hides
+  nothing, because a branch name is no proof a replay passed. Commits
+  another worktree's replay passed are reached by that worktree's mark
+  and skipped, so a clean `git merge next` of gated work replays
+  nothing.
+- **Floor and never-replayed branches.** The repository's first replay
+  records `refs/kiko/guard-replay-floor` (24 h before that run), pass or
+  fail, and no run replays a commit older than it. A merge of a branch
+  no replay ever passed (the first merge of `next` after the replay
+  landed, or commits made by hand with no Stop hook) replays that
+  branch's commits newer than the floor against their own history; they
+  pass when they were written through Edit/Write. When they are too
+  many, the Stop-tier deadline stops the run and says to run
+  `npm run check:guard-replay` by hand, which records the pass. The
+  floor does not slide, so a failed first replay resumed days later
+  still fails. See `docs/harness/checks-internals.md` for the ref
+  layout and the one-time seed from an older replay's mark file.
 - **Files and BEFORE.** Every `.ts`/`.tsx` file changed in the working
   tree against HEAD (tracked and untracked, staged renames followed),
   plus every file a session commit touched. BEFORE is the file at the
@@ -899,15 +916,18 @@ catches these writes after they land instead.
   HEAD. When the file is absent there, it is a new file (every finding
   is new, as in the guard). AFTER is always the working-tree file, so a
   later fix clears the finding.
-- **Merge commits.** A session merge commit contributes only the paths
-  `git diff-tree --cc` lists: the files it left different from every
-  parent (a conflict resolution, or anything written into the merge
-  before it was committed). A clean merge lists none. For those paths
-  BEFORE is one conflict block of the first two parents' versions, so
-  the guard's own conflicted-BEFORE handling takes the union of both
-  sides' findings as the baseline. A path an earlier session commit
-  already touched keeps that commit's parent as the first side and
-  gains the merged-in parent as the second.
+- **Merge commits.** Each session commit carries a baseline per path
+  along its own line of history. A session merge keeps, for a path it
+  left as one parent had it, that parent's baseline (none when that
+  parent's version was already checked). For the paths it left
+  different from every parent, the set `git diff-tree --cc` lists (a
+  conflict resolution, a join of both sides, or anything written into
+  the merge before it was committed), BEFORE is one conflict block of
+  both parents' baselines, so the guard's own conflicted-BEFORE handling
+  takes the union of both sides' findings. A clean merge of checked
+  parents therefore replays nothing, and a finding this worktree already
+  passed is never blamed on a merged-in branch that touched the same
+  file.
 - **Failure.** Exit 2 with the structured block. It holds each failing
   file's guard reason (file, rule, line) and says the write bypassed the
   pre-write guard. A guard crash or timeout arrives as the guard's own
@@ -916,31 +936,47 @@ catches these writes after they land instead.
   instead, since a file with conflict markers cannot parse. A replay
   that cannot run (git, node) fails closed with its own block.
 - **Deadline.** On the Stop tier the replay starts no guard call after
-  `STOP_TIER_DEADLINE_SECONDS` (150 s) and fails with a block telling
-  the agent to run `npm run check:guard-replay` by hand, which has no
-  deadline and records its pass. A killed Stop hook would otherwise end
-  the turn with no error and no check.
+  `stopTierDeadlineSeconds`: at most 150 s, and less when `medium.sh`'s
+  own elapsed time (lock wait, `dup.sh`), the 25 s in-flight guard call,
+  and a 60 s reserve for the later checks leave less of the 300 s hook
+  budget. It then fails with a block telling the agent to run
+  `npm run check:guard-replay` by hand, which has no deadline and
+  records its pass. A killed Stop hook would otherwise end the turn with
+  no error and no check. The `KIKO_GUARD_REPLAY_DEADLINE_SECONDS` test
+  seam only lowers the 150 s ceiling.
 - **Dedup and speed.** See `docs/harness/checks-internals.md`'s "Guard
   replay: fingerprint, mark, and deadline" for the fingerprint, the
   mark, and the measured time.
 - **Known limits.** A plain `mv` (unstaged) reads as a delete plus a new
   file, so every finding the moved file carries counts as new: move
-  with `git mv`. An octopus merge is checked against its first two
-  parents only. A merge that took one side's version of a file the
-  session had already committed (so `--cc` does not list it) compares
-  that file with the session's earlier BEFORE, so a finding the other
-  side brought reads as new. A fast-forward to a branch that was then
-  deleted replays that branch's commits too; they pass, at a cost.
+  with `git mv`. A file whose merge baseline has more than two versions
+  (an octopus merge, or nested merges that each changed it) is checked
+  against the first two only. A merge that applies one side's change to
+  a file the other side renamed compares it with the renamed side's
+  baseline only, so a finding the change brought reads as new. All
+  three fail closed (a finding reads as new, never as old). A commit
+  with a forged committer date older than the floor
+  (`GIT_COMMITTER_DATE`) is skipped; that is deliberate evasion, not a
+  slip. Deleting one `refs/kiko/*` ref by hand only makes the replay
+  check more; deleting all of them starts over as a first replay (a new
+  floor, 24 h back). A branch no replay ever passed costs replay time when
+  merged (see "Floor and never-replayed branches").
 - **Tests.** `__tests__/guard-replay.test.ts`: a throwaway repository
   with a linked worktree, copies of the real wrappers and rule file,
   and the real Semgrep. It covers a Bash-written violation (tracked and
   new file), a committed one, a fixed one, a pre-existing one, rebase,
-  reset plus cherry-pick, `pull --rebase`, a clean rebase, merges (fast
-  forward, clean, joined both sides, a write staged into the merge), an
-  unfinished merge, the fixers, the first-run bound, the dedup skip, a
-  crashing engine, the deadline (a slow Semgrep stub through the
-  `KIKO_GUARD_REPLAY_DEADLINE_SECONDS` test seam), and `medium.sh`
-  itself.
+  reset plus cherry-pick, `pull --rebase`, a clean rebase, a backup
+  branch, `switch -c`, a sibling worktree made after a flag, merges
+  (fast forward and clean of work another worktree passed, joined both
+  sides, a write staged into the merge, a Bash-resolved conflict plus a
+  track worktree, a `--no-ff` merge of an own topic, a never-passed
+  branch, one older than the floor), an unfinished merge, the fixers,
+  the floor across a failed first replay (the
+  `KIKO_GUARD_REPLAY_NOW_SECONDS` test seam, which only moves the clock
+  back), the seed from an older mark, the dedup skip, a crashing engine,
+  the deadline (a slow Semgrep stub through the
+  `KIKO_GUARD_REPLAY_DEADLINE_SECONDS` test seam, a spent hook budget,
+  and the clamp), and `medium.sh` itself.
 
 ## Harness and hook changes land through a worktree
 

@@ -28,7 +28,7 @@ below).
 | `npm run check:screen-imports` | `scripts/checks/screen-imports.sh` | a cross-screen import (`kiko-no-cross-screen-import`) fails project-wide | project-wide (`check:all`) + pre-write guard |
 | `npm run check:feature-imports` | `scripts/checks/feature-imports.sh` (+ `feature-imports.js`) | an import that crosses a feature without its barrel (`kiko-feature-imports`, B2) fails; so do the `--tree` layout findings over `src/` (loose file at a container root, unit without `index.ts`, undeclared container, a barrel that re-exports test code or another feature, a feature-level value-import cycle) | project-wide (`check:all`) + pre-write guard |
 | `npm run check:blank-line-separation` | `scripts/checks/blank-line-separation.sh` | a blank-line-separation violation (`kiko-blank-line-separation`) fails project-wide | project-wide (`check:all`) + pre-write guard |
-| `npm run check:guard-replay` | `scripts/checks/guard-replay.sh` (+ `.js` planner/runner) — the unchanged pre-write guard (`pre-write-guard.sh`), run once per `.ts`/`.tsx` file the session changed, with BEFORE = the file at HEAD, or at the parent of the earliest session commit (one that neither the last-passed HEAD nor another local branch reaches; a merge commit contributes only the files it left different from both parents, against both parents), and AFTER = the working-tree file | any finding the change ADDED fails, naming file, rule, and line (a Bash/python write or its commit bypassed the pre-write guard); a pre-existing finding does not; a replay or guard that could not run fails too (fail closed), and so does the Stop tier's 150 s deadline | medium (Stop/SubagentStop) + project-wide (`check:all`, no deadline) |
+| `npm run check:guard-replay` | `scripts/checks/guard-replay.sh` (+ `.js` planner/runner) — the unchanged pre-write guard (`pre-write-guard.sh`), run once per `.ts`/`.tsx` file the session changed, with BEFORE = the file at HEAD, or at the parent of the earliest session commit (one newer than the floor ref `refs/kiko/guard-replay-floor` that no worktree's passed-replay mark ref `refs/kiko/guard-replay/<worktree id>` reaches; a merge commit contributes only the files it left different from both parents, against both parents' baselines), and AFTER = the working-tree file | any finding the change ADDED fails, naming file, rule, and line (a Bash/python write or its commit bypassed the pre-write guard); a pre-existing finding does not; a replay or guard that could not run fails too (fail closed), and so does the Stop tier's deadline (at most 150 s) | medium (Stop/SubagentStop) + project-wide (`check:all`, no deadline) |
 | `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
 | `npm run check:mutation` | Stryker (Jest runner) | mutation score below 60 (break threshold; ratchet up over time) fails; more than 30 source files to mutate (`MUTATION_FILE_CAP` in `mutation.sh`) fails before Stryker starts — no env var bypasses the cap | deep only |
 | `bash scripts/checks/osv.sh` | osv-scanner | any known CVE in `package-lock.json` fails | deep only |
@@ -77,9 +77,10 @@ broken a rule (or unpinned a credential-bearing host), so it must not
 be the one that runs nothing. The medium tier also replays the
 pre-write guard (`scripts/checks/guard-replay.sh`) on every changed
 `.ts`/`.tsx` file, whatever wrote it — in the working tree, and in the
-commits made since the replay last passed that no other local branch has
-— and runs that replay alone when only HEAD moved (a turn that only
-committed). It stops at a 150 s deadline and then fails, telling the
+commits no worktree's passed replay reached (its mark ref under
+`refs/kiko/guard-replay/`) — and runs that replay alone when only HEAD
+moved (a turn that only committed). It stops at a deadline of at most
+150 s (less when the hook's 300 s are partly spent) and then fails, telling the
 agent to run `npm run check:guard-replay` by hand; see kiko-linter's
 "Pre-write guard replay on the Stop tier".
 `tsc --noEmit` is project-wide by

@@ -252,6 +252,9 @@ verified usage, not dead weight:
   `import`/`require`. Exercised by `__tests__/guard-replay.test.ts`,
   which spawns `guard-replay.sh` and `medium.sh` as subprocesses, so
   Jest's import graph does not make Knip see it as reachable either.
+  The same test also loads its one export, `stopTierDeadlineSeconds`,
+  with a `require` of a computed path (`REPLAY_ENGINE`), which Knip
+  does not resolve, so the entry is still needed.
 - **`knip.json` `ignore`**: `scripts/checks/specifier-scanner.js` — the
   shared specifier scanner. Its only importers are `feature-imports.js`
   and `screen-imports.js` (a static `require`), and both are themselves
