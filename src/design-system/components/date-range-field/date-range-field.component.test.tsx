@@ -3,8 +3,7 @@ import type { ReactNode } from 'react';
 import { formatDate } from '@kiko/dates';
 import { StyleSheet } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
-
-import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import '@kiko/design-system/unistyles';
 
 import DateRangeField from './date-range-field.component';

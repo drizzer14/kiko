@@ -5,12 +5,7 @@ import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
-
-import {
-  asNavigationProp,
-  asRouteProp,
-  navigationSpy,
-} from '../../../test-support/navigation-props';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import ContributionFormScreen from './contribution-form.screen';
 

@@ -5,16 +5,11 @@ import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
-
-import {
-  asNavigationProp,
-  asRouteProp,
-  navigationSpy,
-} from '../../../test-support/navigation-props';
-import type { TransactionFormParams } from '../../../navigation/types';
+import type { TransactionFormParams } from '@kiko/navigation/types';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
-import { mockReanimatedScrollToEnd } from '../../../test-support/mock-reanimated-scroll-to-end';
+import { mockReanimatedScrollToEnd } from '@kiko/test-support/mock-reanimated-scroll-to-end';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import TransactionFormScreen, { canSaveSplit } from './transaction-form.screen';
 

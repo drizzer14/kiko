@@ -4,8 +4,7 @@ import type { ComponentProps } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
-
-import type { RenderedElement } from '../../../test-support/rendered-element';
+import type { RenderedElement } from '@kiko/test-support/rendered-element';
 
 import Button from './button.component';
 

@@ -11,9 +11,8 @@ import {
   DELETE_CONFIRM_TEST_ID,
   HOLD_GESTURE_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
-
-import GestureRootWrapper from '../../test-support/gesture-root-wrapper';
-import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import AccountDetailScreen from './account-detail.screen';
 

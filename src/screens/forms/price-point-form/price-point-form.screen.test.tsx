@@ -4,12 +4,7 @@ import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { pricePointsRepo } from '@kiko/prices/price-points-repo';
-
-import {
-  asNavigationProp,
-  asRouteProp,
-  navigationSpy,
-} from '../../../test-support/navigation-props';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import PricePointFormScreen from './price-point-form.screen';
 

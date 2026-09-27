@@ -19,6 +19,7 @@ import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
 import { type FC, useLayoutEffect, useRef, useState } from 'react';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
+import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
@@ -27,7 +28,6 @@ import { type Currency, currencyScale, currencySymbol } from '@kiko/currency/cur
 
 import DateField from '../date-field';
 import { groupAmount } from '../amount-format/amount-format';
-import type { AccountsStackParamList } from '../../../navigation/types';
 
 type PricePointFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'PricePointForm'>;
 

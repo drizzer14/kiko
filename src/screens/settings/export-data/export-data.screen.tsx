@@ -13,10 +13,10 @@ import Switch from '@kiko/design-system/components/switch';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
+import type { SettingsStackParamList } from '@kiko/navigation/types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import SettingsRow from '../settings-row';
-import type { SettingsStackParamList } from '../../../navigation/types';
 
 import { styles } from './export-data.styles';
 

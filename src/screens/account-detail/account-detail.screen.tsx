@@ -24,6 +24,7 @@ import { accountKindSymbol } from '@kiko/holdings/entity-symbols';
 import { defaultAccountColor } from '@kiko/holdings/entity-colors';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
+import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { type AccountRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { fileNameOf } from '@kiko/statement-import/read-statement-file';
 import LoadingState from '@kiko/design-system/components/loading-state';
@@ -36,8 +37,6 @@ import EditHeaderButton from '@kiko/design-system/components/edit-header-button'
 import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
 import { isConnectableBank, statementFormatIdForBank } from '@kiko/bank-sync/bank-catalog';
-
-import type { AccountsStackParamList } from '../../navigation/types';
 
 import HoldingCard from './holding-card';
 import { styles } from './account-detail.styles';

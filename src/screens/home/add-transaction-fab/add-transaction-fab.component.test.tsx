@@ -8,8 +8,7 @@ import '@kiko/design-system/unistyles';
 // catalogue string rather than the bare key.
 import '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
-
-import { asNavigationProp, navigationSpy } from '../../../test-support/navigation-props';
+import { asNavigationProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import AddTransactionFab from './add-transaction-fab.component';
 

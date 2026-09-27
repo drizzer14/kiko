@@ -1,7 +1,6 @@
 import { StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
-
-import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
 import '@kiko/design-system/unistyles';
 import HoldingSelectField from '.';

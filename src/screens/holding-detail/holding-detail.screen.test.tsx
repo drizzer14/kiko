@@ -22,10 +22,9 @@ import {
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
-
-import GestureRootWrapper from '../../test-support/gesture-root-wrapper';
-import { ancestorWithStyle } from '../../test-support/ancestor-with-style';
-import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HoldingDetailScreen from './holding-detail.screen';
 

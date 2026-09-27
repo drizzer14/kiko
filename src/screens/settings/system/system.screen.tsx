@@ -5,13 +5,13 @@ import Box from '@kiko/design-system/components/box';
 import { useDataReady, useLiveQuery } from '@kiko/db';
 import Card from '@kiko/design-system/components/card';
 import Screen from '@kiko/design-system/components/screen';
+import type { SettingsStackParamList } from '@kiko/navigation/types';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import LanguageSwitch from '@kiko/design-system/components/language-switch';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type AppLanguage, deviceLanguage } from '@kiko/i18n/device-language';
 
 import SettingsRow from '../settings-row';
-import type { SettingsStackParamList } from '../../../navigation/types';
 
 import AppLockSetting from './app-lock-setting/app-lock-setting.component';
 

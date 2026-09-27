@@ -9,7 +9,7 @@ import ChipRow from '.';
 // the label's tone is read from the shared mock's testID instead.
 jest.mock('@kiko/design-system/components/text', () => ({
   __esModule: true,
-  default: jest.requireActual('../../../test-support/mock-text-tone').default,
+  default: jest.requireActual('@kiko/test-support/mock-text-tone').default,
 }));
 
 const options = ['bank', 'cash', 'crypto'] as const;

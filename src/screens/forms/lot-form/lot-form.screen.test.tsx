@@ -4,13 +4,8 @@ import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
-
-import {
-  asNavigationProp,
-  asRouteProp,
-  navigationSpy,
-} from '../../../test-support/navigation-props';
-import { fieldSuffix } from '../../../test-support/field-suffix';
+import { fieldSuffix } from '@kiko/test-support/field-suffix';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import LotFormScreen from './lot-form.screen';
 

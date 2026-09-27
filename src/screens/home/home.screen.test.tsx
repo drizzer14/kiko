@@ -4,15 +4,14 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
+// Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
+// resolved MoneyText `tone` via a testID — see the module for the full rationale.
+import mockTextTone from '@kiko/test-support/mock-text-tone';
 import { DAY_MS, formatDate, defaultDateRange } from '@kiko/dates';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 import { resolveBottomClearance } from '@kiko/design-system/components/screen';
-
-// Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
-// resolved MoneyText `tone` via a testID — see the module for the full rationale.
-import mockTextTone from '../../test-support/mock-text-tone';
-import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HomeScreen from './home.screen';
 

@@ -1,8 +1,7 @@
 import { render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
-
-import GestureRootWrapper from '../../../test-support/gesture-root-wrapper';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 
 import ShareChanges from './share-changes.component';
 

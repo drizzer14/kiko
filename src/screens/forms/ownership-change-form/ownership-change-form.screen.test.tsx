@@ -3,12 +3,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { holdingsRepo } from '@kiko/holdings/repo';
-
-import {
-  asNavigationProp,
-  asRouteProp,
-  navigationSpy,
-} from '../../../test-support/navigation-props';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import OwnershipChangeFormScreen from './ownership-change-form.screen';
 

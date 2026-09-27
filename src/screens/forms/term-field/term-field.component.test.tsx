@@ -3,7 +3,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 
-import { fieldSuffix } from '../../../test-support/field-suffix';
+import { fieldSuffix } from '@kiko/test-support/field-suffix';
 
 import TermField from './term-field.component';
 

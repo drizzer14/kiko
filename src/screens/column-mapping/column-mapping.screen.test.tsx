@@ -6,8 +6,7 @@ import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { i18n } from '@kiko/i18n/init';
 import { headerFingerprint } from '@kiko/statement-import/column-mapping';
-
-import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import ColumnMappingScreen from './column-mapping.screen';
 

@@ -7,8 +7,7 @@ import { i18n } from '@kiko/i18n/init';
 import { supportedFormatNames } from '@kiko/statement-import/registry';
 import { headerFingerprint } from '@kiko/statement-import/column-mapping';
 import type { ParsedStatement, StatementFormat } from '@kiko/statement-import/parser';
-
-import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import StatementImportScreen from './statement-import.screen';
 

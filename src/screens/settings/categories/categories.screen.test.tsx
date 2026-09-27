@@ -6,15 +6,10 @@ import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
-
-import {
-  asNavigationProp,
-  asRouteProp,
-  navigationSpy,
-} from '../../../test-support/navigation-props';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
-import { mockReanimatedScrollToEnd } from '../../../test-support/mock-reanimated-scroll-to-end';
+import { mockReanimatedScrollToEnd } from '@kiko/test-support/mock-reanimated-scroll-to-end';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import CategoriesScreen from './categories.screen';
 

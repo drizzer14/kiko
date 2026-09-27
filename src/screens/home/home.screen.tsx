@@ -37,13 +37,12 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type DaySection, groupByDay } from '@kiko/transactions/group-by-day';
 import { defaultDateRange, endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import type { FilterOption } from '@kiko/design-system/components/filter-menu';
+import type { HomeStackParamList, TabParamList } from '@kiko/navigation/types';
 import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
 import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown';
 import Screen, { resolveBottomClearance } from '@kiko/design-system/components/screen';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import { buildRateTable, guardedBreakdown, guardedNetWorth } from '@kiko/rates/net-worth-view';
-
-import type { HomeStackParamList, TabParamList } from '../../navigation/types';
 
 import { styles } from './home.styles';
 import TransactionRow from './transaction-row';

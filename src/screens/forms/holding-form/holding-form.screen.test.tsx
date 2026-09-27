@@ -10,16 +10,11 @@ import { dayKeyOf } from '@kiko/prices/price-book';
 import { darkTheme } from '@kiko/design-system/theme';
 import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 import type { Metal } from '@kiko/holdings/holding-metadata';
+import { fieldSuffix } from '@kiko/test-support/field-suffix';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import { refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
-
-import {
-  asNavigationProp,
-  asRouteProp,
-  navigationSpy,
-} from '../../../test-support/navigation-props';
-import { fieldSuffix } from '../../../test-support/field-suffix';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HoldingFormScreen from './holding-form.screen';
 

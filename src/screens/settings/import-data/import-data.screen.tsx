@@ -11,12 +11,11 @@ import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import FieldError from '@kiko/design-system/components/field-error';
+import type { SettingsStackParamList } from '@kiko/navigation/types';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
 import { keepLocalCopy, pick, types } from '@react-native-documents/picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import ClipboardTextField from '@kiko/design-system/components/clipboard-text-field';
-
-import type { SettingsStackParamList } from '../../../navigation/types';
 
 type ImportDataScreenProps = NativeStackScreenProps<SettingsStackParamList, 'ImportData'>;
 

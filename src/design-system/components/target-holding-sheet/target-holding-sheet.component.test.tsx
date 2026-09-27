@@ -1,8 +1,7 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
-
-import { navigationSpy } from '../../../test-support/navigation-props';
+import { navigationSpy } from '@kiko/test-support/navigation-props';
 
 import TargetHoldingSheet from '.';
 import type { TargetHoldingOption } from './target-holding-sheet.props';

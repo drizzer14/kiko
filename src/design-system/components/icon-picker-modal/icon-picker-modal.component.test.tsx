@@ -5,8 +5,7 @@ import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
-
-import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
 import IconPickerModal from '.';
 import { KIKO_CATEGORIES_ICONS, KIKO_ENTITIES_ICONS } from './icon-pools';

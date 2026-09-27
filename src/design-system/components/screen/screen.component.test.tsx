@@ -2,7 +2,7 @@ import type { ComponentProps } from 'react';
 import { render, within } from '@testing-library/react-native';
 import { type StyleProp, StyleSheet, Text, type ViewStyle } from 'react-native';
 
-import type { RenderedElement } from '../../../test-support/rendered-element';
+import type { RenderedElement } from '@kiko/test-support/rendered-element';
 import '@kiko/design-system/unistyles';
 // Imported through the folder's index (the real path a screen consumes,
 // `design-system/components/screen`), not `./screen.component` directly, so

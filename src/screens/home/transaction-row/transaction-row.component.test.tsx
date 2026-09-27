@@ -16,8 +16,7 @@ import {
   DUPLICATE_ACTION_TEST_ID,
   HOLD_GESTURE_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
-
-import GestureRootWrapper from '../../../test-support/gesture-root-wrapper';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 
 import TransactionRow from './transaction-row.component';
 import type { HomeTransactionRow } from './transaction-row.props';

@@ -15,6 +15,7 @@ import Screen from '@kiko/design-system/components/screen';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
+import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -22,7 +23,6 @@ import { View, type ScrollViewInstance, type TextInputInstance } from 'react-nat
 
 import DateField from '../date-field';
 import { groupAmount } from '../amount-format/amount-format';
-import type { AccountsStackParamList } from '../../../navigation/types';
 
 type ContributionFormScreenProps = NativeStackScreenProps<
   AccountsStackParamList,

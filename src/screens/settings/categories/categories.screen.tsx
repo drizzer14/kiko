@@ -11,6 +11,7 @@ import Screen from '@kiko/design-system/components/screen';
 import { type FC, useCallback, useRef, useState } from 'react';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
+import type { SettingsStackParamList } from '@kiko/navigation/types';
 import ColorPicker from '@kiko/design-system/components/color-picker';
 import { type CategoryRow, useDataReady, useLiveQuery } from '@kiko/db';
 import LoadingState from '@kiko/design-system/components/loading-state';
@@ -21,8 +22,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
 import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-picker-modal';
-
-import type { SettingsStackParamList } from '../../../navigation/types';
 
 import AddCategoryRow from './add-category-row';
 

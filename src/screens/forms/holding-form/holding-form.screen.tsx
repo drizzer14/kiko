@@ -27,6 +27,7 @@ import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
+import type { AccountsStackParamList } from '@kiko/navigation/types';
 import ColorPicker from '@kiko/design-system/components/color-picker';
 import { holdingCurrencyOptions } from '@kiko/holdings/holding-currency';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
@@ -42,7 +43,6 @@ import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState }
 import { holdingDescriptor, isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 
 import HoldingTypeField from '../holding-type-field';
-import type { AccountsStackParamList } from '../../../navigation/types';
 import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 
 import LoanFormBlock from './loan/loan-form-block';

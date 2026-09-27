@@ -5,9 +5,9 @@ import { fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
+import type { RenderedElement } from '@kiko/test-support/rendered-element';
 
 import { KEYBOARD_ACCESSORY_HEIGHT } from '../keyboard-done-accessory';
-import type { RenderedElement } from '../../../test-support/rendered-element';
 
 import BottomSheet from '.';
 import { KEYBOARD_CORNER_OVERLAP, SHEET_DRAG_GESTURE_TEST_ID } from './bottom-sheet.component';

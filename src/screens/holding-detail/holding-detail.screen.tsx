@@ -44,6 +44,7 @@ import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { ownershipShareDetailText } from '@kiko/holdings/ownership';
 import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
+import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { startOfLocalDay, formatDate, formatTime } from '@kiko/dates';
 import { buildRateTable, canConvert } from '@kiko/rates/net-worth-view';
 import SummaryTable from '@kiko/design-system/components/summary-table';
@@ -63,8 +64,6 @@ import { useDataReady, useLiveQuery, type HoldingRow, type TransactionRow } from
 import { type FC, type ReactElement, type ReactNode, useLayoutEffect, useMemo } from 'react';
 import { type HoldingValueBreakdown, holdingValueBreakdown } from '@kiko/holdings/holding-value';
 import { type DerivedEntry, derivedEntries, type EntryTone } from '@kiko/holdings/derived-entries';
-
-import type { AccountsStackParamList } from '../../navigation/types';
 
 import {
   type FooterAction,

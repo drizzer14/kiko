@@ -23,6 +23,7 @@ import { defaultAccountColor } from '@kiko/holdings/entity-colors';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { type BankId, isBankId } from '@kiko/bank-sync/bank-catalog';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
+import type { AccountsStackParamList } from '@kiko/navigation/types';
 import ColorPicker from '@kiko/design-system/components/color-picker';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import CurrencyField from '@kiko/design-system/components/currency-field';
@@ -39,7 +40,6 @@ import { type Currency, currencySymbol, fiatCurrencyOptions } from '@kiko/curren
 import BankTypeField from '../bank-type-field';
 import AccountKindField from '../account-kind-field';
 import { groupAmount } from '../amount-format/amount-format';
-import type { AccountsStackParamList } from '../../../navigation/types';
 
 type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
 

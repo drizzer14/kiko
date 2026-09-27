@@ -14,8 +14,7 @@ import '@kiko/design-system/unistyles';
 // so the sheet's `t('common.cancel')`/`t('common.delete')` resolve under test
 // the same way they do at runtime.
 import '@kiko/i18n/init';
-
-import GestureRootWrapper from '../../../test-support/gesture-root-wrapper';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 
 import CardContextMenu, {
   EDIT_ACTION_TEST_ID,

@@ -4,16 +4,15 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
-import { darkTheme } from '@kiko/design-system/theme';
-import { scrollToField } from '@kiko/design-system/scroll-to-field';
-import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
-
 import {
   asNavigationProp,
   asRouteProp,
   type NavigationSpy,
   navigationSpy,
-} from '../../../test-support/navigation-props';
+} from '@kiko/test-support/navigation-props';
+import { darkTheme } from '@kiko/design-system/theme';
+import { scrollToField } from '@kiko/design-system/scroll-to-field';
+import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 
 import AccountFormScreen from './account-form.screen';
 

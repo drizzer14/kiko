@@ -10,6 +10,7 @@ import Screen from '@kiko/design-system/components/screen';
 import Divider from '@kiko/design-system/components/divider';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { PRIVACY_POLICY_URL_EN, PRIVACY_POLICY_URL_UK } from '@env';
+import type { SettingsStackParamList } from '@kiko/navigation/types';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import CurrencyField from '@kiko/design-system/components/currency-field';
@@ -20,7 +21,6 @@ import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-
 
 import SettingsRow from '../settings-row';
 import pkg from '../../../../package.json';
-import type { SettingsStackParamList } from '../../../navigation/types';
 import { chevronSize, chevronTrailingWhitespace } from '../settings-row/settings-row.chevron';
 
 type SettingsScreenProps = NativeStackScreenProps<SettingsStackParamList, 'Settings'>;

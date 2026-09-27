@@ -46,6 +46,7 @@ import type { Currency } from '@kiko/currency/currency';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { supportedFormatNames } from '@kiko/statement-import/registry';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -54,8 +55,6 @@ import { previewStats, type PreviewStats } from '@kiko/statement-import/preview-
 import { useTargetHoldingOptions } from '@kiko/statement-import/use-target-holding-options';
 import type { SpreadsheetCellValue, StatementFormatInput } from '@kiko/statement-import/parser';
 import { importParsedStatement, type ImportResult } from '@kiko/statement-import/import-statement';
-
-import type { AccountsStackParamList } from '../../navigation/types';
 
 import ColumnMappingForm from './column-mapping-form';
 import type {

@@ -23,6 +23,7 @@ import MoneyText from '@kiko/design-system/components/money-text';
 import { defaultAccountColor } from '@kiko/holdings/entity-colors';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
+import type { AccountsStackParamList } from '@kiko/navigation/types';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
@@ -31,8 +32,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import { useFocusRefreshedNow } from '@kiko/design-system/use-focus-refreshed-now';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
-
-import type { AccountsStackParamList } from '../../navigation/types';
 
 import { styles } from './accounts.styles';
 

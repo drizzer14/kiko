@@ -38,14 +38,13 @@ import type { ScrollViewInstance } from 'react-native';
 import Screen from '@kiko/design-system/components/screen';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { previewStats } from '@kiko/statement-import/preview-stats';
+import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import ImportResultSheet from '@kiko/design-system/components/import-result-sheet';
 import { readTableRows, findSavedMapping } from '@kiko/statement-import/column-mapping';
 import { useTargetHoldingOptions } from '@kiko/statement-import/use-target-holding-options';
 import { importStatement, type ImportResult } from '@kiko/statement-import/import-statement';
-
-import type { AccountsStackParamList } from '../../navigation/types';
 
 import StatementImportFooter from './statement-import-footer';
 import StatementPreviewBlock from './statement-preview-block';

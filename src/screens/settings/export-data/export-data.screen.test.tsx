@@ -7,11 +7,7 @@ import '@kiko/design-system/unistyles';
 // this suite asserts on — the same reason
 // src/screens/settings/settings/settings.screen.test.tsx imports it.
 import '@kiko/i18n/init';
-import {
-  asNavigationProp,
-  asRouteProp,
-  navigationSpy,
-} from '../../../test-support/navigation-props';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 const mockExportData = jest.fn();
 jest.mock('@kiko/data-transfer/export-data', () => ({
