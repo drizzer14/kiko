@@ -19,7 +19,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { DEFAULT_PATTERNS, findSpecifiers } = require('./specifier-scanner');
+const { DEFAULT_PATTERNS, blankNoise, findSpecifiers } = require('./specifier-scanner');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 
@@ -530,10 +530,49 @@ function leakReason(ownFeature, target) {
   return reasons.find(([applies]) => applies)?.[1] ?? null;
 }
 
-// What a barrel hands to its importers: its re-exports, and any module it
-// runs on load.
-const isReExportOrSideEffect = (entry) =>
-  entry.callKind === 'export' || /^import\s*['"]/.test(entry.statement);
+const IMPORT_CLAUSE = /^import\s+(?:type\s+)?([\s\S]*?)\s*\bfrom\s*['"]/;
+const LOCAL_EXPORT_LIST = /\bexport\s+(?:type\s+)?\{([^}]*)\}(?!\s*from\b)/g;
+const DEFAULT_EXPORT_NAME = /\bexport\s+default\s+([A-Za-z_$][\w$]*)\s*(?:;|$)/gm;
+
+const withoutTypeModifier = (member) => member.trim().replace(/^type\s+/, '');
+
+const listMembers = (list) => list.split(',').map(withoutTypeModifier).filter(Boolean);
+
+// The local names an `import … from` statement binds.
+function importedNames(entry) {
+  const clause = entry.callKind === 'import' ? IMPORT_CLAUSE.exec(entry.statement) : null;
+
+  if (clause === null) {
+    return [];
+  }
+
+  const braces = /\{([^}]*)\}/.exec(clause[1]);
+  const named = braces === null ? [] : listMembers(braces[1]);
+  const outside = listMembers(clause[1].replace(/\{[^}]*\}/, ''));
+
+  return [...outside, ...named].map((member) => member.split(/\s+as\s+/).pop());
+}
+
+// The local names a barrel exports in a statement of their own
+// (`export { b }`, `export default b`), read from the noise-blanked source
+// so a commented-out export does not count.
+function locallyExportedNames(source) {
+  const blanked = blankNoise(source);
+  const listed = [...blanked.matchAll(LOCAL_EXPORT_LIST)].flatMap((match) =>
+    listMembers(match[1]).map((member) => member.split(/\s+as\s+/)[0]),
+  );
+  const defaulted = [...blanked.matchAll(DEFAULT_EXPORT_NAME)].map((match) => match[1]);
+
+  return new Set([...listed, ...defaulted]);
+}
+
+// What a barrel hands to its importers: its re-exports, any module it runs
+// on load, and any binding it imports and then exports on its own line —
+// the same re-export, written in two statements.
+const handsOnToImporters = (exportedNames) => (entry) =>
+  entry.callKind === 'export' ||
+  /^import\s*['"]/.test(entry.statement) ||
+  importedNames(entry).some((name) => exportedNames.has(name));
 
 function barrelLeakFindings(sourceRoot, sourceFiles) {
   const root = path.posix.dirname(toPosix(path.resolve(sourceRoot)));
@@ -546,9 +585,10 @@ function barrelLeakFindings(sourceRoot, sourceFiles) {
       own: stripExtension(path.posix.relative(`${root}/src`, toPosix(path.resolve(file)))),
     }))
     .filter(({ own }) => !isTestOnly(own))
-    .flatMap(({ file, absolute, own }) =>
-      findSpecifiers(fs.readFileSync(file, 'utf8'), FEATURE_PATTERNS)
-        .filter(isReExportOrSideEffect)
+    .map((barrel) => ({ ...barrel, source: fs.readFileSync(barrel.file, 'utf8') }))
+    .flatMap(({ file, absolute, own, source }) =>
+      findSpecifiers(source, FEATURE_PATTERNS)
+        .filter(handsOnToImporters(locallyExportedNames(source)))
         .flatMap((entry) => {
           const target = resolveTarget(root, absolute, entry.specifier);
           const reason = target === null ? null : leakReason(featureOf(own).feature, target);

@@ -336,6 +336,30 @@ describe('scripts/checks/feature-imports.js --tree', () => {
       'src/rates/runs-foreign/index.ts',
       "import '../history';\n",
     ],
+    [
+      'barrel-leak',
+      'src/rates/named-binding/index.ts',
+      'src/rates/named-binding/index.ts',
+      "import { thing } from '@kiko/rates/history';\nexport { thing };\n",
+    ],
+    [
+      'barrel-leak',
+      'src/rates/renamed-binding/index.ts',
+      'src/rates/renamed-binding/index.ts',
+      "import { thing as other } from '../history';\nexport { other as renamed };\n",
+    ],
+    [
+      'barrel-leak',
+      'src/rates/default-binding/index.ts',
+      'src/rates/default-binding/index.ts',
+      "import thing from '@kiko/rates/history';\nexport default thing;\n",
+    ],
+    [
+      'barrel-leak',
+      'src/rates/namespace-binding/index.ts',
+      'src/rates/namespace-binding/index.ts',
+      "import * as history from '../history';\nexport type { history };\n",
+    ],
   ])('reports [%s] for %s', (kind, relativePath, reportedPath, source) => {
     writeFixture('src/rates/history/index.ts', "export * from './history';\n");
     writeFixture('src/rates/history/history.ts', 'export const thing = 1;\n');
@@ -345,6 +369,29 @@ describe('scripts/checks/feature-imports.js --tree', () => {
 
     expect(result.status).toBe(1);
     expect(result.stdout).toContain(`${join(directory, reportedPath)}: [${kind}]`);
+  });
+
+  it('allows a barrel that exports only its own bindings', () => {
+    writeFixture('src/rates/history/index.ts', "export * from './history';\n");
+    writeFixture('src/rates/history/history.ts', 'export const thing = 1;\n');
+    writeFixture(
+      'src/rates/own/index.ts',
+      [
+        "import { own } from './own';",
+        "import { thing } from '../history';",
+        '',
+        '// export { thing };',
+        'export const doubled = thing * 2;',
+        'export { own };',
+        '',
+      ].join('\n'),
+    );
+    writeFixture('src/rates/own/own.ts', 'export const own = 1;\n');
+
+    const result = runTree();
+
+    expect(result.stdout).toBe('');
+    expect(result.status).toBe(0);
   });
 
   it('reports [undeclared-container] for a folder of barrelled units', () => {
