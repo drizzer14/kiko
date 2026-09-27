@@ -1,7 +1,6 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-
-import SelectField from '../../../design-system/components/select-field';
+import SelectField from '@kiko/design-system/components/select-field';
 
 import type { AccountKindFieldProps } from './account-kind-field.props';
 

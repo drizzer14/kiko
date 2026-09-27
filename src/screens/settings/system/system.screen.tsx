@@ -1,17 +1,17 @@
 import type { FC } from 'react';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
 import { useDataReady, useLiveQuery } from '@kiko/db';
+import Card from '@kiko/design-system/components/card';
+import Screen from '@kiko/design-system/components/screen';
+import LoadingState from '@kiko/design-system/components/loading-state';
+import LanguageSwitch from '@kiko/design-system/components/language-switch';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type AppLanguage, deviceLanguage } from '@kiko/i18n/device-language';
 
 import SettingsRow from '../settings-row';
-import Box from '../../../design-system/components/box';
-import Card from '../../../design-system/components/card';
-import Screen from '../../../design-system/components/screen';
 import type { SettingsStackParamList } from '../../../navigation/types';
-import LoadingState from '../../../design-system/components/loading-state';
-import LanguageSwitch from '../../../design-system/components/language-switch';
 
 import AppLockSetting from './app-lock-setting/app-lock-setting.component';
 

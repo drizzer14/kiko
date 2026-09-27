@@ -24,24 +24,24 @@ import { type FC, useRef, useState } from 'react';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { parseAmount } from '@kiko/currency/parse';
 import { dayKeyOf } from '@kiko/prices/price-book';
+import Box from '@kiko/design-system/components/box';
+import Button from '@kiko/design-system/components/button';
+import Screen from '@kiko/design-system/components/screen';
 import { asMetalMeta } from '@kiko/holdings/holding-metadata';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import TextField from '@kiko/design-system/components/text-field';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
+import FieldLabel from '@kiko/design-system/components/field-label';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import SegmentedControl from '@kiko/design-system/components/segmented-control';
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 import { type Currency, currencyScale, currencySymbol } from '@kiko/currency/currency';
 
 import DateField from '../date-field';
 import { metalUnitSuffix } from '../metal-unit-suffix';
-import Box from '../../../design-system/components/box';
 import { groupAmount } from '../amount-format/amount-format';
-import Button from '../../../design-system/components/button';
-import Screen from '../../../design-system/components/screen';
-import TextField from '../../../design-system/components/text-field';
-import FieldLabel from '../../../design-system/components/field-label';
 import type { AccountsStackParamList } from '../../../navigation/types';
-import SegmentedControl from '../../../design-system/components/segmented-control';
 
 type LotFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'LotForm'>;
 

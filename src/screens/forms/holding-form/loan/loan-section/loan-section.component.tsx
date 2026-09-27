@@ -8,15 +8,15 @@ import {
 } from '@kiko/holdings/holding-metadata';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
+import TextField from '@kiko/design-system/components/text-field';
+import FieldLabel from '@kiko/design-system/components/field-label';
+import SelectField from '@kiko/design-system/components/select-field';
+import SegmentedControl from '@kiko/design-system/components/segmented-control';
 
 import DateField from '../../../date-field';
 import TermField from '../../../term-field';
-import Box from '../../../../../design-system/components/box';
 import PaymentHoldingField from '../../../payment-holding-field';
-import TextField from '../../../../../design-system/components/text-field';
-import FieldLabel from '../../../../../design-system/components/field-label';
-import SelectField from '../../../../../design-system/components/select-field';
-import SegmentedControl from '../../../../../design-system/components/segmented-control';
 
 import type { LoanSectionProps } from './loan-section.props';
 

@@ -1,12 +1,12 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
+import TextField from '@kiko/design-system/components/text-field';
+import FieldError from '@kiko/design-system/components/field-error';
 
 import DateTimeRow from '../date-time-row';
-import Box from '../../../design-system/components/box';
 import HoldingSelectField from '../holding-select-field';
-import TextField from '../../../design-system/components/text-field';
-import FieldError from '../../../design-system/components/field-error';
 
 import type { ExchangeFieldsProps } from './exchange-fields.props';
 

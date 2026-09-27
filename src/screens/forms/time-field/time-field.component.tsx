@@ -1,13 +1,12 @@
 import { Pressable } from 'react-native';
 import { formatTime } from '@kiko/dates';
 import { type FC, useState } from 'react';
+import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
+import Text from '@kiko/design-system/components/text';
+import SymbolIcon from '@kiko/design-system/components/symbol';
+import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
-
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import SymbolIcon from '../../../design-system/components/symbol';
-import BottomSheet from '../../../design-system/components/bottom-sheet';
 
 import { styles } from './time-field.styles';
 import type { TimeFieldProps } from './time-field.props';

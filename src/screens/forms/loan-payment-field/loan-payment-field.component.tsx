@@ -1,9 +1,9 @@
 import type { ReactElement } from 'react';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import Button from '@kiko/design-system/components/button';
 
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
 import PaymentHoldingField from '../payment-holding-field';
-import Button from '../../../design-system/components/button';
 
 import type { LoanPaymentFieldProps } from './loan-payment-field.props';
 

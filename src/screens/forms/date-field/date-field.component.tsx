@@ -2,17 +2,16 @@ import { Pressable } from 'react-native';
 import { formatDate } from '@kiko/dates';
 import { type FC, useState } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
+import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
+import Text from '@kiko/design-system/components/text';
 import type { DateData } from 'react-native-calendars';
 import KikoCalendar from '@kiko/calendar/kiko-calendar';
+import SymbolIcon from '@kiko/design-system/components/symbol';
+import FieldError from '@kiko/design-system/components/field-error';
+import FieldLabel from '@kiko/design-system/components/field-label';
+import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import { deriveFieldTestID } from '@kiko/design-system/derive-field-test-id';
-
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import SymbolIcon from '../../../design-system/components/symbol';
-import FieldError from '../../../design-system/components/field-error';
-import FieldLabel from '../../../design-system/components/field-label';
-import BottomSheet from '../../../design-system/components/bottom-sheet';
 
 import { styles } from './date-field.styles';
 import type { DateFieldProps } from './date-field.props';

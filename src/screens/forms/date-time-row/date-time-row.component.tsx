@@ -1,10 +1,10 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
 
 import DateField from '../date-field';
 import TimeField from '../time-field';
-import Box from '../../../design-system/components/box';
 
 import { styles } from './date-time-row.styles';
 import type { DateTimeRowProps } from './date-time-row.props';

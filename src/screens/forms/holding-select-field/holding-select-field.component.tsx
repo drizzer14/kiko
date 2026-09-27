@@ -1,10 +1,9 @@
 import { type ReactElement, useState } from 'react';
-
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import BottomSheet from '../../../design-system/components/bottom-sheet';
-import FieldTrigger from '../../../design-system/components/field-trigger';
-import SelectableRow from '../../../design-system/components/selectable-row';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import BottomSheet from '@kiko/design-system/components/bottom-sheet';
+import FieldTrigger from '@kiko/design-system/components/field-trigger';
+import SelectableRow from '@kiko/design-system/components/selectable-row';
 
 import { styles } from './holding-select-field.styles';
 import type { HoldingSelectFieldProps } from './holding-select-field.props';

@@ -3,19 +3,19 @@ import { Share } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { exportData } from '@kiko/data-transfer';
 import { useEffect, useRef, useState } from 'react';
+import Box from '@kiko/design-system/components/box';
+import Card from '@kiko/design-system/components/card';
+import Text from '@kiko/design-system/components/text';
 import Clipboard from '@react-native-clipboard/clipboard';
+import Button from '@kiko/design-system/components/button';
+import Screen from '@kiko/design-system/components/screen';
+import Switch from '@kiko/design-system/components/switch';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import TextField from '@kiko/design-system/components/text-field';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import SettingsRow from '../settings-row';
-import Box from '../../../design-system/components/box';
-import Card from '../../../design-system/components/card';
-import Text from '../../../design-system/components/text';
-import Button from '../../../design-system/components/button';
-import Screen from '../../../design-system/components/screen';
-import Switch from '../../../design-system/components/switch';
-import TextField from '../../../design-system/components/text-field';
 import type { SettingsStackParamList } from '../../../navigation/types';
 
 import { styles } from './export-data.styles';

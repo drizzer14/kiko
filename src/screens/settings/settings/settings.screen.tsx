@@ -2,10 +2,17 @@ import { match } from 'ts-pattern';
 import { type FC, useState } from 'react';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
 import { useDataReady, useLiveQuery } from '@kiko/db';
+import Text from '@kiko/design-system/components/text';
+import Card from '@kiko/design-system/components/card';
+import Screen from '@kiko/design-system/components/screen';
+import Divider from '@kiko/design-system/components/divider';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { PRIVACY_POLICY_URL_EN, PRIVACY_POLICY_URL_UK } from '@env';
+import LoadingState from '@kiko/design-system/components/loading-state';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import CurrencyField from '@kiko/design-system/components/currency-field';
 import { Linking, Pressable, type ScrollViewInstance } from 'react-native';
 import { type Currency, fiatCurrencyOptions } from '@kiko/currency/currency';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -13,14 +20,7 @@ import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-
 
 import SettingsRow from '../settings-row';
 import pkg from '../../../../package.json';
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import Card from '../../../design-system/components/card';
-import Screen from '../../../design-system/components/screen';
-import Divider from '../../../design-system/components/divider';
 import type { SettingsStackParamList } from '../../../navigation/types';
-import LoadingState from '../../../design-system/components/loading-state';
-import CurrencyField from '../../../design-system/components/currency-field';
 import { chevronSize, chevronTrailingWhitespace } from '../settings-row/settings-row.chevron';
 
 type SettingsScreenProps = NativeStackScreenProps<SettingsStackParamList, 'Settings'>;

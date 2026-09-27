@@ -114,7 +114,7 @@ jest.mock('@kiko/sync/use-crypto-sync', () => ({
 // pressable that fires the screen's `onConnect*` closure, so what is under test
 // is the create screen's wiring (create-first, no duplicate, secret stays in the
 // field).
-jest.mock('../../../design-system/components/wallet-address-field', () => {
+jest.mock('@kiko/design-system/components/wallet-address-field', () => {
   const { Pressable, Text } = require('react-native');
 
   return {
@@ -129,7 +129,7 @@ jest.mock('../../../design-system/components/wallet-address-field', () => {
     ),
   };
 });
-jest.mock('../../../design-system/components/binance-credentials-field', () => {
+jest.mock('@kiko/design-system/components/binance-credentials-field', () => {
   const { Pressable, Text } = require('react-native');
 
   return {
@@ -146,7 +146,7 @@ jest.mock('../../../design-system/components/binance-credentials-field', () => {
 // status (covered by its own test); here it collapses to one pressable that fires
 // the screen's `connectMonobank` closure with a token, so what is under test is
 // the create screen's wiring (create-first, no duplicate, secret via the closure).
-jest.mock('../../../design-system/components/monobank-connect-field', () => {
+jest.mock('@kiko/design-system/components/monobank-connect-field', () => {
   const { useState } = require('react');
   const { Pressable, Text } = require('react-native');
 

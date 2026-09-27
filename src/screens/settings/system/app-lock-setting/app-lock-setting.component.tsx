@@ -2,12 +2,12 @@ import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { type FC, useEffect, useState } from 'react';
+import Card from '@kiko/design-system/components/card';
+import Text from '@kiko/design-system/components/text';
+import Switch from '@kiko/design-system/components/switch';
 import { isSensorAvailable, type SensorStatus } from '@kiko/auth';
 
 import SettingsRow from '../../settings-row';
-import Card from '../../../../design-system/components/card';
-import Text from '../../../../design-system/components/text';
-import Switch from '../../../../design-system/components/switch';
 
 import type { AppLockSettingProps } from './app-lock-setting.props';
 

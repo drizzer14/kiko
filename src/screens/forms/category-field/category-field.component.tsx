@@ -1,12 +1,11 @@
 import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
 import { ScrollView, type ScrollViewInstance } from 'react-native';
+import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import { type ReactElement, useEffect, useRef, useState } from 'react';
-
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import BottomSheet from '../../../design-system/components/bottom-sheet';
-import FieldTrigger from '../../../design-system/components/field-trigger';
-import SelectableRow from '../../../design-system/components/selectable-row';
+import FieldTrigger from '@kiko/design-system/components/field-trigger';
+import SelectableRow from '@kiko/design-system/components/selectable-row';
 
 import { styles } from './category-field.styles';
 import type { CategoryFieldProps } from './category-field.props';

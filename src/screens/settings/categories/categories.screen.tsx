@@ -1,28 +1,28 @@
 import Sortable from 'react-native-sortables';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
+import Card from '@kiko/design-system/components/card';
 import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
+import Button from '@kiko/design-system/components/button';
+import Screen from '@kiko/design-system/components/screen';
 import { type FC, useCallback, useRef, useState } from 'react';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
+import ColorPicker from '@kiko/design-system/components/color-picker';
 import { type CategoryRow, useDataReady, useLiveQuery } from '@kiko/db';
+import LoadingState from '@kiko/design-system/components/loading-state';
+import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
 import { DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
+import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
+import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-picker-modal';
 
-import Box from '../../../design-system/components/box';
-import Card from '../../../design-system/components/card';
-import Button from '../../../design-system/components/button';
-import Screen from '../../../design-system/components/screen';
 import type { SettingsStackParamList } from '../../../navigation/types';
-import ColorPicker from '../../../design-system/components/color-picker';
-import LoadingState from '../../../design-system/components/loading-state';
-import ConfirmSheet from '../../../design-system/components/confirm-sheet';
-import HoldingIdentityField from '../../../design-system/components/holding-identity-field';
-import { KIKO_CATEGORIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 
 import AddCategoryRow from './add-category-row';
 

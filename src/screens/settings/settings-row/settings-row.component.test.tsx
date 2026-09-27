@@ -2,8 +2,8 @@ import { Text as RNText, StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
+import Card from '@kiko/design-system/components/card';
 
-import Card from '../../../design-system/components/card';
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 
 import SettingsRow from './settings-row.component';

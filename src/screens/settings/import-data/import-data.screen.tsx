@@ -4,19 +4,19 @@ import { Alert } from 'react-native';
 import { i18n } from '@kiko/i18n/init';
 import { useTranslation } from 'react-i18next';
 import { importData } from '@kiko/data-transfer';
+import Box from '@kiko/design-system/components/box';
+import Card from '@kiko/design-system/components/card';
+import Text from '@kiko/design-system/components/text';
+import Button from '@kiko/design-system/components/button';
+import Screen from '@kiko/design-system/components/screen';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
+import FieldError from '@kiko/design-system/components/field-error';
+import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
 import { keepLocalCopy, pick, types } from '@react-native-documents/picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import ClipboardTextField from '@kiko/design-system/components/clipboard-text-field';
 
-import Box from '../../../design-system/components/box';
-import Card from '../../../design-system/components/card';
-import Text from '../../../design-system/components/text';
-import Button from '../../../design-system/components/button';
-import Screen from '../../../design-system/components/screen';
-import FieldError from '../../../design-system/components/field-error';
 import type { SettingsStackParamList } from '../../../navigation/types';
-import ConfirmSheet from '../../../design-system/components/confirm-sheet';
-import ClipboardTextField from '../../../design-system/components/clipboard-text-field';
 
 type ImportDataScreenProps = NativeStackScreenProps<SettingsStackParamList, 'ImportData'>;
 
