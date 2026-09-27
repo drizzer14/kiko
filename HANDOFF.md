@@ -27,7 +27,7 @@ the same scratchpad, brief-feat9.txt.
    yourself: in deep-gate, checkout --detach <tip>, KIKO_MUTATION_BASE=<base> make deep, run_in_background, await the exit code only (osv
    separately with bash scripts/checks/osv.sh; known CVEs only = OK). Then merge feat into next (clean merges: coordinator; conflicts: a
    kiko:developer), make verify on next yourself, send MERGED.
-2. Deploy the tag-icon build (standard kiko:ops install brief; UTF-16-aware bundle check; USB if devicectl says unavailable/4016).
+2. Deploy the tag-icon build (standard kiko:ops install brief; UTF-16-aware bundle check; if devicectl says unavailable/4016, the iPhone is not on the Mac WiFi network: ask the user to join it, or USB).
 3. Session 9 then does CQ1 (kill-guard deny git apply/merge/rebase on the main checkout) and CQ2 (deploy-device.sh UTF-16 bundle check +
    one launch retry), each its own change set.
 4. USER must run ONE command to make 7cbc3faa's agent/skill text live (plugin 0.2.3; stage explicitly):
