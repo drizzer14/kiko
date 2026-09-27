@@ -1,7 +1,7 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 
 const SCRIPT = join(__dirname, '../scripts/checks/feature-imports.sh');
 const ANALYZER = join(__dirname, '../scripts/checks/feature-imports.js');
@@ -200,6 +200,31 @@ describe('scripts/checks/feature-imports.js per-file findings', () => {
 
     expect(runAnalyzer(leaving).stdout).toContain('[relative-leaves-feature]');
     expect(runAnalyzer(sibling).status).toBe(0);
+  });
+
+  it('anchors on its own checkout when the checkout path holds a src folder', () => {
+    // Node resolves the copied script's __dirname through symlinks
+    // (/var -> /private/var on macOS), so the file path must be real too.
+    const checkout = join(realpathSync(directory), 'src/clone');
+    const checks = join(checkout, 'scripts/checks');
+    mkdirSync(checks, { recursive: true });
+
+    for (const name of ['feature-imports.js', 'specifier-scanner.js']) {
+      copyFileSync(join(__dirname, '../scripts/checks', name), join(checks, name));
+    }
+
+    const file = join(checkout, 'src/rates/a/a.ts');
+    mkdirSync(join(file, '..'), { recursive: true });
+    writeFileSync(file, importFrom('../../db/client'));
+
+    const result = spawnSync('node', [join(checks, 'feature-imports.js'), file], {
+      encoding: 'utf8',
+    });
+
+    expect(result.stdout).toBe(
+      `${file}:1: ../../db/client [relative-leaves-feature] -> @kiko/db\n`,
+    );
+    expect(result.status).toBe(1);
   });
 
   it('treats App.tsx and e2e files as feature-less importers', () => {

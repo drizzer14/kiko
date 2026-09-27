@@ -121,11 +121,20 @@ const stripExtension = (filePath) => filePath.replace(/\.d\.ts$|\.tsx?$|\.js$/, 
 const isTestOnly = (sourceRelative) =>
   TEST_ONLY_PATTERNS.some((pattern) => pattern.test(sourceRelative));
 
-// The repo root a file belongs to: the path before its first src/,
-// __tests__/, e2e/ or jest/ segment, or the folder of a root App.tsx. Only
-// ever searched for by segment, so a guard mirror path works the same.
+const IN_SCOPE_FROM_ROOT = /^(?:(?:src|__tests__|e2e|jest)\/|App\.tsx$)/;
+
+// The repo root a file belongs to. A file in this checkout uses ROOT, so a
+// checkout that itself sits under a src/ folder still resolves. A guard
+// mirror lies outside ROOT, so there the root is the path before the first
+// src/, __tests__/, e2e/ or jest/ segment, or the folder of a root App.tsx.
 function treeRootOf(filePath) {
   const absolute = toPosix(path.resolve(filePath));
+  const checkoutRoot = toPosix(ROOT);
+
+  if (absolute.startsWith(`${checkoutRoot}/`)) {
+    return IN_SCOPE_FROM_ROOT.test(absolute.slice(checkoutRoot.length + 1)) ? checkoutRoot : null;
+  }
+
   const match = /\/(?:src|__tests__|e2e|jest)\//.exec(absolute);
 
   if (match) {
