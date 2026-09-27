@@ -63,7 +63,7 @@ fresh at each submission lists every registered screen name from
 `src/navigation/`:
 
 ```
-grep -h -oE 'name="[A-Za-z]+"' $(ls src/navigation/*.tsx | grep -v '\.test\.tsx$') | sort -u
+grep -h -oE 'name="[A-Za-z]+"' $(find src/navigation -name '*.tsx' ! -name '*.test.tsx') | sort -u
 ```
 
 Paste the resulting list into the App Store review notes as Guideline

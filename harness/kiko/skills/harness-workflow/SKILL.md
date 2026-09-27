@@ -30,6 +30,19 @@ any drift found and commits it. The completion report names the
 drift-fix commit sha, or states "no drift found" with the retrospect
 result.
 
+## Mutation testing: small change sets only
+
+Mutation testing (`check:deep` / `check:mutation`) runs per SMALL change
+set, never on a whole project or a whole release — a whole-release run
+went 10 h 16 min with no result. There is no whole-release or
+end-of-integration deep gate. Run it on each change set with
+`KIKO_MUTATION_BASE` set to that change set's own base commit.
+`scripts/checks/mutation.sh` exits 2 before Stryker starts when more
+than 30 files would be mutated (`MUTATION_FILE_CAP`);
+`KIKO_MUTATION_FULL=1` and a `KIKO_MUTATION_BASE` that does not resolve
+are refused directly (exit 2), and no env var bypasses the cap.
+See the `ops` skill for how to launch and await a run.
+
 ## Never pattern-kill a process
 
 Never use pkill, killall, or any pattern or group kill. Stop only a
@@ -76,6 +89,22 @@ denies a partial block, markers added to a clean file, and a side the
 edit broke. If the deny says the file on disk does not parse, stop and
 ask the user how to repair it. See kiko-linter's "Pre-write guard and
 merge-conflict files".
+
+## The Stop tier replays the pre-write guard
+
+A Bash or python write (a heredoc, `sed -i`, a script) and a commit of
+it skip the pre-write guard. On `Stop` and `SubagentStop`, `medium.sh`
+replays the same guard over every `.ts`/`.tsx` file the session changed:
+the working tree, plus every commit no worktree's passed replay reached
+(rebased, cherry-picked, and merged-in ones too; a backup branch or a
+new worktree hides nothing). A
+violation such a write added fails the turn end with the file, rule,
+and line. Fix it with Edit/Write, so the guard checks the fix. Never
+rewrite the file with Bash again. The `--write` fixers and clean merges
+pass, because only a finding the change added fails. Move a file with
+`git mv`, not a plain `mv`. If the replay stops at its Stop-tier deadline,
+run `npm run check:guard-replay` by hand; its pass is recorded. See
+kiko-linter's "Pre-write guard replay on the Stop tier".
 
 ## Run verbose commands through an Orca terminal
 
@@ -172,6 +201,14 @@ The round's report lists the classification. The scribe or developer
 adds the rules, following kiko-linter's "Adding a pre-write guard rule"
 and "Pinned-value rules for locked user-approved visuals". The
 reviewer's `mechanizable: yes/pinned/no` tag is the first draft.
+
+## Large reviews
+
+Split a big review into parallel read-only reviewer slices by commit
+range, each writing its own output file. Review a mechanical sweep by
+static proof, not by sampling: resolve every import binding and
+`jest.mock`/`require` target at both commits, count cycles, and check
+each side-effect import's predecessors.
 
 ## The Stop-hook dup check is scoped
 
