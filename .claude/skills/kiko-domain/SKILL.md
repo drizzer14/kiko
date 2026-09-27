@@ -1138,9 +1138,27 @@ holding currency is never applied at all — `isinReasonKey` returns
 (the currency field is locked
 `disabled={isEdit}`, so a silent apply used to store one currency's
 terms under a holding balance denominated in another). Outside edit
-mode a found ISIN's `currency`/`name` DO overwrite the form's own
-state on every new match — editable afterward, but re-applied whenever
-the ISIN changes to a new found bond.
+mode a found ISIN's `currency` DOES overwrite the form's own state on
+every new match — editable afterward, but re-applied whenever the ISIN
+changes to a new found bond.
+
+The register name fills the Name field only while the user has not
+typed one (USER FINDING D5): `useBondIsinMode` takes the current
+`name`; a match sets it only when it is blank or still equals the name
+the hook itself filled last (`filledNameRef`), so ISIN B replaces ISIN
+A's automatic name but never a typed one, in either mode, in create or
+edit (an edit seeds the saved name, which the hook never filled).
+
+An EDIT seeds its stored ISIN through the hook's `seedStoredIsin`: the
+stored ISIN counts as already applied (`lastAppliedIsinRef`), so a
+register resolve or a tap on ISIN never overwrites the saved name,
+coupon, face value or frequency — without it, a step-up bond's register
+coupon replaced the saved one, and a later Manual save read that as a
+typed coupon and stored `payments: []`. The stored `couponFrequency`
+also counts as the pick (`pickedCouponFrequency`), so an ISIN-mode edit
+of an unmapped-frequency bond stays saveable. The pick clears only when
+a NEW match applies (inside the apply effect), not on every change of
+the matched ISIN.
 
 A CREATE defaults to `'isin'`; EDIT always seeds `'manual'` (the
 stored ISIN is shown there, still editable) via

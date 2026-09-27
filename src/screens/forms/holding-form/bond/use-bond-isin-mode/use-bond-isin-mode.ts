@@ -28,6 +28,7 @@ export type UseBondIsinModeParams = {
   type: HoldingType;
   isEdit: boolean;
   currency: Currency;
+  name: string;
   purchaseDate: number | null;
   setPurchaseDate: (value: number) => void;
   setFaceValue: (value: string) => void;
@@ -107,7 +108,15 @@ type UseBondIsinModeResult = {
   needsCouponFrequencyPick: boolean;
   pickedCouponFrequency: BondCouponFrequency | null;
   setPickedCouponFrequency: (frequency: BondCouponFrequency) => void;
+  seedStoredIsin: (stored: StoredIsin) => void;
 };
+
+type StoredIsin = { isin: string; couponFrequency: BondCouponFrequency };
+
+// A typed name, or a name kept after a match filled a different one, belongs
+// to the user; a match replaces only a blank name or the one it filled last.
+const isOwnName = (name: string, filledName: string | null): boolean =>
+  name.trim() !== '' && name !== filledName;
 
 /**
  * Owns the Bond form's "ISIN / Manual" mode: the mode itself, the typed
@@ -125,6 +134,7 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
     type,
     isEdit,
     currency,
+    name,
     purchaseDate,
     setPurchaseDate,
     setFaceValue,
@@ -219,6 +229,14 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
   // ALREADY-applied match never re-fires the body below (no re-clobbered
   // name/currency, no re-tripped auto-switch-to-Manual).
   const lastAppliedIsinRef = useRef<string | null>(null);
+  // The name the last applied match filled in. A name that differs from it
+  // is the user's own, and no later match replaces it.
+  const filledNameRef = useRef<string | null>(null);
+  // The ISIN-mode-only coupon-frequency pick. Cleared whenever a new match
+  // applies, so a stale pick from a previous unmapped match is never carried
+  // onto a new one.
+  const [pickedCouponFrequency, setPickedCouponFrequencyState] =
+    useState<BondCouponFrequency | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(apply once per matched ISIN while in ISIN mode) the ref inside the effect body is what makes re-application idempotent, not the dependency array — see the doc comment above.
   useEffect(() => {
     if (bondMode !== 'isin' || registerTerms === null) {
@@ -229,6 +247,7 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
       return;
     }
     lastAppliedIsinRef.current = registerTerms.isin;
+    setPickedCouponFrequencyState(null);
 
     // In edit mode the currency field is locked (`CurrencyField
     // disabled={isEdit}`); a found bond in a DIFFERENT currency must not
@@ -244,7 +263,11 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
     setCouponPct(String(registerTerms.couponPct));
     setMaturityDate(registerTerms.maturityDate);
     setBondKind('government');
-    setName(registerTerms.name);
+
+    if (!isOwnName(name, filledNameRef.current)) {
+      filledNameRef.current = registerTerms.name;
+      setName(registerTerms.name);
+    }
 
     if (!isEdit) {
       setCurrency(registerTerms.currency);
@@ -270,16 +293,6 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
     isEdit,
     currency,
   });
-
-  // The ISIN-mode-only coupon-frequency pick. Reset whenever the
-  // MATCHED isin itself changes, so a stale pick from a previous unmapped
-  // match is never carried onto a new one.
-  const [pickedCouponFrequency, setPickedCouponFrequencyState] =
-    useState<BondCouponFrequency | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(reset on a new match only) `registerTerms?.isin` is the reset TRIGGER, not read in the body — a stale pick from a PREVIOUS unmapped match must not carry onto a newly matched one.
-  useEffect(() => {
-    setPickedCouponFrequencyState(null);
-  }, [registerTerms?.isin]);
 
   const needsCouponFrequencyPick =
     bondMode === 'isin' &&
@@ -307,6 +320,17 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
     setIsin(normalizeIsin(value));
   }, []);
 
+  // An edit shows the bond as saved: the register terms of its stored ISIN
+  // count as already applied, so a later lookup never overwrites the saved
+  // name, coupon or face value, and its stored frequency counts as picked, so
+  // an unmapped-frequency bond stays saveable in ISIN mode.
+  const seedStoredIsin = useCallback((stored: StoredIsin): void => {
+    const storedIsin = normalizeIsin(stored.isin);
+    lastAppliedIsinRef.current = storedIsin;
+    setIsin(storedIsin);
+    setPickedCouponFrequencyState(stored.couponFrequency);
+  }, []);
+
   return {
     bondMode,
     setBondMode,
@@ -318,5 +342,6 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
     needsCouponFrequencyPick,
     pickedCouponFrequency,
     setPickedCouponFrequency,
+    seedStoredIsin,
   };
 };

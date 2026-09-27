@@ -44,10 +44,26 @@ const foundRow = (overrides: { currency?: string; couponFrequency?: string | nul
   fetchedAt: 1,
 });
 
+// A second real register ISIN, checksum-valid.
+const OTHER_ISIN = 'XS2895055981';
+
+const otherRow = (couponFrequency: string | null = 'semiannually') => ({
+  isin: OTHER_ISIN,
+  terms: {
+    ...foundRow().terms,
+    isin: OTHER_ISIN,
+    couponPct: 4.5,
+    couponFrequency,
+    name: 'Other Bond',
+  },
+  fetchedAt: 1,
+});
+
 const baseParams = () => ({
   type: 'bond' as const,
   isEdit: false,
   currency: 'UAH' as const,
+  name: '',
   purchaseDate: null,
   setPurchaseDate: jest.fn(),
   setFaceValue: jest.fn(),
@@ -347,6 +363,116 @@ describe('useBondIsinMode', () => {
 
     expect(result.current.registerLoaded).toBe(true);
     expect(result.current.isinReasonKey).toBe('forms.holding.isinNotInRegister');
+  });
+
+  describe('the name a match fills', () => {
+    it('keeps a name the user typed before the ISIN matched, while still filling the terms', async () => {
+      mockBondRegisterRows = [foundRow()];
+      const params = { ...baseParams(), name: 'War bond' };
+      const { result } = await renderTheHook(params);
+
+      await act(async () => {
+        result.current.setIsin(VALID_ISIN);
+      });
+
+      expect(params.setName).not.toHaveBeenCalled();
+      expect(params.setFaceValue).toHaveBeenCalledTimes(1);
+    });
+
+    it('replaces the name it filled for one ISIN with the name of the next matched ISIN', async () => {
+      mockBondRegisterRows = [foundRow()];
+      const params = baseParams();
+      const { result, rerender } = await renderTheHook(params);
+
+      await act(async () => {
+        result.current.setIsin(VALID_ISIN);
+      });
+      await act(async () => {
+        await rerender({ ...params, name: 'Register Bond' });
+      });
+      mockBondRegisterRows = [otherRow()];
+      await act(async () => {
+        result.current.setIsin(OTHER_ISIN);
+      });
+
+      expect(params.setName).toHaveBeenLastCalledWith('Other Bond');
+    });
+
+    it('fills the name again once the user cleared the name they typed', async () => {
+      mockBondRegisterRows = [foundRow()];
+      const params = { ...baseParams(), name: 'War bond' };
+      const { result, rerender } = await renderTheHook(params);
+
+      await act(async () => {
+        result.current.setIsin(VALID_ISIN);
+      });
+      await act(async () => {
+        await rerender({ ...params, name: '' });
+      });
+      mockBondRegisterRows = [otherRow()];
+      await act(async () => {
+        result.current.setIsin(OTHER_ISIN);
+      });
+
+      expect(params.setName).toHaveBeenCalledTimes(1);
+      expect(params.setName).toHaveBeenCalledWith('Other Bond');
+    });
+  });
+
+  describe('an edit seeded with its stored ISIN', () => {
+    const editParams = () => ({ ...baseParams(), isEdit: true, currency: 'USD' as const });
+
+    it('applies none of the register terms of the stored ISIN in ISIN mode', async () => {
+      mockBondRegisterRows = [foundRow()];
+      const params = editParams();
+      const { result } = await renderTheHook(params);
+
+      await act(async () => {
+        result.current.seedStoredIsin({ isin: VALID_ISIN, couponFrequency: 'annually' });
+      });
+
+      expect(result.current.bondMode).toBe('isin');
+      expect(result.current.registerTerms).not.toBeNull();
+      expect(params.setName).not.toHaveBeenCalled();
+      expect(params.setCouponPct).not.toHaveBeenCalled();
+      expect(params.setFaceValue).not.toHaveBeenCalled();
+      expect(params.setCouponFrequency).not.toHaveBeenCalled();
+    });
+
+    it('counts the stored frequency as picked for a stored unmapped-frequency ISIN', async () => {
+      mockBondRegisterRows = [foundRow({ couponFrequency: null })];
+      const params = editParams();
+      const { result } = await renderTheHook(params);
+
+      await act(async () => {
+        result.current.seedStoredIsin({ isin: VALID_ISIN, couponFrequency: 'annually' });
+      });
+
+      expect(result.current.bondMode).toBe('isin');
+      expect(result.current.needsCouponFrequencyPick).toBe(true);
+      expect(result.current.pickedCouponFrequency).toBe('annually');
+    });
+
+    it('applies another ISIN typed after the seed, and asks for its own frequency', async () => {
+      mockBondRegisterRows = [foundRow()];
+      const params = editParams();
+      const { result } = await renderTheHook(params);
+
+      await act(async () => {
+        result.current.seedStoredIsin({ isin: VALID_ISIN, couponFrequency: 'annually' });
+      });
+      mockBondRegisterRows = [otherRow(null)];
+      await act(async () => {
+        result.current.setIsin(OTHER_ISIN);
+      });
+      await act(async () => {
+        result.current.setBondMode('isin');
+      });
+
+      expect(params.setCouponPct).toHaveBeenCalledWith('4.5');
+      expect(result.current.needsCouponFrequencyPick).toBe(true);
+      expect(result.current.pickedCouponFrequency).toBeNull();
+    });
   });
 
   // The cache was written on 2026-09-26, when XS2895055981's next coupon was

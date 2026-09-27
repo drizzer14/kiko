@@ -59,14 +59,15 @@ const foundRow = (
   fetchedAt: 1,
 });
 
-const renderBondFields = (isEdit = false) =>
+const renderBondFields = (isEdit = false, setName: (value: string) => void = jest.fn()) =>
   renderHook(() =>
     useBondFields({
       type: 'bond',
       isEdit,
       currency: 'UAH',
       setCurrency: jest.fn(),
-      setName: jest.fn(),
+      name: isEdit ? 'Bond' : '',
+      setName,
     }),
   );
 
@@ -139,6 +140,51 @@ describe('useBondFields kept payment schedule', () => {
     await result.current.saveEdit(context(holding));
 
     expect(mockWrittenMetadata.at(-1)).toMatchObject({ couponPct: 12, payments: [] });
+  });
+
+  // The register now pays a stepped-up 9.5% while the bond was saved at 9.0%:
+  // looking at ISIN mode must not turn the stored coupon into a typed one.
+  it('keeps the stored name, coupon and schedule after a tap on ISIN and back to Manual', async () => {
+    mockBondRegisterRows = [withPayments()];
+    const holding = bondHolding({ ...bondMetadata, couponPct: 9, payments });
+    mockStoredMetadata = holding.metadata;
+    const setName = jest.fn();
+    const { result } = await renderBondFields(true, setName);
+
+    await act(async () => {
+      result.current.seed(holding);
+    });
+    await act(async () => {
+      result.current.setBondMode('isin');
+    });
+    await act(async () => {
+      result.current.setBondMode('manual');
+    });
+    await result.current.saveEdit(context(holding));
+
+    expect(setName).not.toHaveBeenCalled();
+    expect(mockWrittenMetadata.at(-1)).toMatchObject({ couponPct: 9, payments });
+  });
+
+  it('keeps an edit of a stored unmapped-frequency ISIN saveable in ISIN mode', async () => {
+    mockBondRegisterRows = [foundRow({ couponFrequency: null })];
+    const holding = bondHolding({
+      ...bondMetadata,
+      purchasePriceMinorUnits: 1_000_000,
+      couponFrequency: 'annually',
+    });
+    const { result } = await renderBondFields(true);
+
+    await act(async () => {
+      result.current.seed(holding);
+    });
+    await act(async () => {
+      result.current.setBondMode('isin');
+    });
+
+    expect(result.current.bondMode).toBe('isin');
+    expect(result.current.needsCouponFrequencyPick).toBe(true);
+    expect(result.current.isValid).toBe(true);
   });
 
   // A bond saved before bonds kept a schedule: the edit form's own register

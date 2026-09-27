@@ -979,6 +979,37 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     expect(createMock.mock.calls[0][0].name).toBe('War bond 2029');
   });
 
+  it('keeps a name typed before the ISIN, in ISIN mode and after a tap from Manual', async () => {
+    mockBondRegisterRows = [foundRegisterRow];
+    const screen = await renderScreen();
+
+    await selectHoldingType(screen, 'bond');
+    await fill(screen, 'Name', 'War bond');
+    await fireEvent.press(screen.getByText('Manual'));
+    await fireEvent.changeText(isinInput(screen), 'UA4000234215');
+    await fireEvent.press(screen.getByTestId('bond-isin-mode-control-option-isin'));
+
+    expect(within(screen.getByTestId('bond-isin-summary')).getByText(/9\.5/)).toBeTruthy();
+    expect(screen.getByDisplayValue('War bond')).toBeTruthy();
+    expect(screen.queryByDisplayValue('Register Bond UA4000234215')).toBeNull();
+  });
+
+  it('keeps the saved name and coupon of an edited bond after a tap on ISIN', async () => {
+    mockBondRegisterRows = [
+      { ...foundRegisterRow, terms: { ...foundRegisterRow.terms, currency: 'UAH' } },
+    ];
+    const screen = await renderEdit({
+      ...bondHolding,
+      metadata: { ...bondHolding.metadata, isin: 'UA4000234215' },
+    });
+
+    await fireEvent.press(screen.getByTestId('bond-isin-mode-control-option-isin'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(updateFromStoredMock.mock.calls[0][1]).toMatchObject({ name: 'Gov bond' });
+    expect(savedBondMetadata(bondHolding.metadata)).toMatchObject({ couponPct: 9 });
+  });
+
   // A match resolved while the user is in MANUAL
   // mode must still apply the first time they later switch to ISIN — the
   // register lookup itself never depended on `bondMode`, only the apply did.

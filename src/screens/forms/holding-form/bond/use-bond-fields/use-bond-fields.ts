@@ -57,6 +57,7 @@ type UseBondFieldsParams = {
   isEdit: boolean;
   currency: Currency;
   setCurrency: (value: Currency) => void;
+  name: string;
   setName: (value: string) => void;
 };
 
@@ -114,7 +115,7 @@ export type UseBondFieldsResult = HoldingTypeForm & {
  * term-deposit form.
  */
 export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult => {
-  const { type, isEdit, currency, setCurrency, setName } = params;
+  const { type, isEdit, currency, setCurrency, name, setName } = params;
 
   const [quantity, setQuantity] = useState('');
   const [faceValue, setFaceValue] = useState('');
@@ -153,10 +154,12 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
     needsCouponFrequencyPick,
     pickedCouponFrequency,
     setPickedCouponFrequency,
+    seedStoredIsin,
   } = useBondIsinMode({
     type,
     isEdit,
     currency,
+    name,
     purchaseDate,
     setPurchaseDate,
     setFaceValue,
@@ -262,12 +265,12 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
       setMaturityDate(fields.maturityDate);
       setBondKind(fields.bondKind);
       setCouponFrequency(fields.couponFrequency);
-      setIsin(fields.isin);
+      seedStoredIsin({ isin: fields.isin, couponFrequency: fields.couponFrequency });
       // Edit always opens Manual — the register is never
       // consulted again once a holding is saved.
       setBondMode('manual');
     },
-    [setIsin, setBondMode],
+    [seedStoredIsin, setBondMode],
   );
 
   // Ledgerless: a bond's value derives entirely from its lots/schedule, never

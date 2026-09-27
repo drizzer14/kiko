@@ -336,7 +336,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const nameInputRef = useRef<TextInputInstance>(null);
 
   const deposit = useTermDepositFields({ currency, scrollTo });
-  const bond = useBondFields({ type, isEdit, currency, setCurrency, setName });
+  const bond = useBondFields({ type, isEdit, currency, setCurrency, name, setName });
   const property = usePropertyFields({ isEdit, currency });
   const metal = useMetalFields({ isEdit });
   const loanFields = useLoanFields({ currency });
