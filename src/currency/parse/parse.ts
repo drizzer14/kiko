@@ -32,6 +32,7 @@ export const parseAmount = (input: string): number => {
   const lastDot = compact.lastIndexOf('.');
 
   let normalized: string;
+
   if (lastComma === -1 && lastDot === -1) {
     // No separators at all: a plain integer (or non-numeric junk -> NaN below).
     normalized = compact;

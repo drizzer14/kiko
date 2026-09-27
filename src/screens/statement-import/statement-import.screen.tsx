@@ -1,140 +1,64 @@
 import type { FC } from 'react';
-import * as RNFS from 'react-native-fs';
-import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import readXlsxFile from 'read-excel-file/browser';
-import { decode as decodeWindows1251 } from 'windows-1251';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
+import { match } from 'ts-pattern';
 import type {
+  ParsedStatement,
   SpreadsheetCellValue,
   StatementFormat,
   StatementFormatId,
   StatementFormatInput,
-} from '../../statement-import/parser';
-import { formatDate } from '../../dates/format';
-import { holdingsRepo } from '../../holdings/repo';
-import Box from '../../design-system/components/box';
-import { useLiveQuery } from '../../db/use-live-query';
-import Text from '../../design-system/components/text';
-import Button from '../../design-system/components/button';
-import Screen from '../../design-system/components/screen';
-import { accountsRepo } from '../../accounts/accounts.repo';
-import type { AccountsStackParamList } from '../../navigation/types';
+} from '@kiko/statement-import/parser';
+import * as RNFS from 'react-native-fs';
+import { useLiveQuery } from '@kiko/db';
 import {
   detectFormat,
   statementFormats,
   supportedFormatNames,
-} from '../../statement-import/registry';
-import { importStatement, type ImportResult } from '../../statement-import/import-statement';
+} from '@kiko/statement-import/registry';
+import maybe, { foldMap } from 'fnts/maybe';
+import {
+  scrollToField,
+  useHeaderInset,
+  type FieldInstance,
+} from '@kiko/design-system/scroll-to-field';
+import { accountsRepo } from '@kiko/accounts';
+import { settingsRepo } from '@kiko/settings';
+import { useTranslation } from 'react-i18next';
+import { bifoldr, eitherSync } from 'fnts/either';
+import { useRef, useEffect, useState } from 'react';
+import {
+  fileNameOf,
+  isXlsxFile,
+  decodeStatementText,
+  readSheetRowsSafely,
+  deleteLocalStatementCopy,
+} from '@kiko/statement-import/read-statement-file';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import type { ScrollViewInstance } from 'react-native';
+import Screen from '@kiko/design-system/components/screen';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import { previewStats } from '@kiko/statement-import/preview-stats';
+import type { AccountsStackParamList } from '@kiko/navigation/types';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import ImportResultSheet from '@kiko/design-system/components/import-result-sheet';
+import { readTableRows, findSavedMapping } from '@kiko/statement-import/column-mapping';
+import { useTargetHoldingOptions } from '@kiko/statement-import/use-target-holding-options';
+import { importStatement, type ImportResult } from '@kiko/statement-import/import-statement';
 
-import ImportOutcome from './import-outcome';
-import { styles } from './statement-import.styles';
-import PreviewDetailList from './preview-detail-list';
-import TargetHoldingSheet from './target-holding-sheet';
-import type { TargetHoldingOption } from './target-holding-sheet/target-holding-sheet.props';
+import StatementImportFooter from './statement-import-footer';
+import StatementPreviewBlock from './statement-preview-block';
 
 type StatementImportScreenProps = NativeStackScreenProps<AccountsStackParamList, 'StatementImport'>;
 
-const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-
-// Decodes a base64 string to its raw bytes, WITHOUT `Buffer` (not guaranteed
-// to exist as a global under Hermes — this app has no `buffer` polyfill
-// anywhere, confirmed by grep) and without `atob` (a standard global too, but
-// one that only ever yields a Latin-1 byte string, one JS char per byte —
-// exactly the shape `decodeUtf8Bytes` below needs, so a real `atob` would
-// have worked as the FIRST half of this pipeline; it is avoided here purely
-// because its Hermes availability is equally unverified, not because of any
-// UTF-8 defect in what it returns). Table lookup + bit-shifting only, so this
-// is provably correct under both Jest's Node engine and Hermes — no
-// engine-specific API, just arithmetic.
-const decodeBase64ToBytes = (base64: string): number[] => {
-  const clean = base64.replace(/[^A-Za-z0-9+/]/g, '');
-  const bytes: number[] = [];
-  let buffer = 0;
-  let bitsCollected = 0;
-
-  // The regex above already dropped every character not in
-  // `BASE64_ALPHABET`, so `BASE64_ALPHABET.indexOf(char)` can never miss
-  // here — no `=== -1` guard needed.
-  for (const char of clean) {
-    const sextet = BASE64_ALPHABET.indexOf(char);
-
-    buffer = (buffer << 6) | sextet;
-    bitsCollected += 6;
-
-    if (bitsCollected >= 8) {
-      bitsCollected -= 8;
-      bytes.push((buffer >> bitsCollected) & 0xff);
-    }
-  }
-
-  return bytes;
-};
-
-// Decodes a UTF-8 byte sequence to a JS string, handling every 1/2/3/4-byte
-// form (the Monobank fixture's Cyrillic descriptions are 2-byte) — this is
-// the step a bare `atob()` skips, which is what corrupts multi-byte text
-// (see the task brief's base64-decode ruling): `atob` alone treats each BYTE
-// as one Latin-1 CHARACTER, so a 2-byte Cyrillic codepoint renders as two
-// mangled Latin-1 characters instead of being recombined into one.
-const decodeUtf8Bytes = (bytes: number[]): string => {
-  let result = '';
-  let index = 0;
-
-  while (index < bytes.length) {
-    const byte1 = bytes[index];
-
-    if (byte1 < 0x80) {
-      result += String.fromCharCode(byte1);
-      index += 1;
-    } else if ((byte1 & 0xe0) === 0xc0) {
-      const codepoint = ((byte1 & 0x1f) << 6) | (bytes[index + 1] & 0x3f);
-      result += String.fromCharCode(codepoint);
-      index += 2;
-    } else if ((byte1 & 0xf0) === 0xe0) {
-      const codepoint =
-        ((byte1 & 0x0f) << 12) | ((bytes[index + 1] & 0x3f) << 6) | (bytes[index + 2] & 0x3f);
-      result += String.fromCharCode(codepoint);
-      index += 3;
-    } else {
-      const codepoint =
-        ((byte1 & 0x07) << 18) |
-        ((bytes[index + 1] & 0x3f) << 12) |
-        ((bytes[index + 2] & 0x3f) << 6) |
-        (bytes[index + 3] & 0x3f);
-      const surrogatePair = codepoint - 0x10000;
-      result += String.fromCharCode(
-        0xd800 + (surrogatePair >> 10),
-        0xdc00 + (surrogatePair & 0x3ff),
-      );
-      index += 4;
-    }
-  }
-
-  return result;
-};
-
-// The one Hermes-safe base64 -> UTF-8 decode path for a picked file's
-// content — see `decodeBase64ToBytes`/`decodeUtf8Bytes` above for why this
-// does not reach for `Buffer` or `atob`.
-const decodeBase64Utf8 = (base64: string): string => decodeUtf8Bytes(decodeBase64ToBytes(base64));
-
-// The file's own basename, derived from the resolved `filePath` — none of the
-// shipped formats' `detect`/`parse` actually reads `fileName` (see
-// `monobank-csv.format.ts`), but `StatementFormatInput` still carries it, so
-// a real (if inert) value is passed rather than an empty string.
-const fileNameOf = (filePath: string): string => filePath.split('/').pop() ?? filePath;
-
 // The one format `expectedFormatId` names, or `undefined` when the route
-// carries none (an account with no `bankId`, or the accountId-less Share
-// Extension entry point) — the caller then falls back to the existing
-// multi-format `detectFormat` auto-detect below.
+// carries none (an account with no `bankId`) — the caller then falls back
+// to the existing multi-format `detectFormat` auto-detect below.
 const expectedFormatOf = (id: StatementFormatId | undefined): StatementFormat | undefined =>
-  id === undefined ? undefined : statementFormats.find((format) => format.id === id);
+  foldMap(maybe(id), (found) => statementFormats.find((format) => format.id === found));
 
-// The recognized format for a ready `input` (device-feedback-round-1 item
-// 5): scoped to `expectedFormat` when the account's bank is known — ONLY
+// The recognized format for a ready `input`: scoped to `expectedFormat`
+// when the account's bank is known — ONLY
 // that bank's own format may match, so a file that parses as a DIFFERENT
 // bank's format recognizes nothing here (the caller reports it as a
 // mismatch, not a silent auto-detect success) — or the original
@@ -157,65 +81,6 @@ const formatFor = (
   return detectFormat(input);
 };
 
-// PrivatBank XLSX is the only spreadsheet format in scope (section C.5) —
-// an honest, visible extension check decides the text-vs-spreadsheet branch
-// below, not a hidden flag. Every other picked file (every CSV format
-// shipped so far) takes the existing UTF-8 text path.
-const isXlsxFile = (fileName: string): boolean => fileName.toLowerCase().endsWith('.xlsx');
-
-// Runs the async `read-excel-file` parse ONCE, ahead of `detectFormat`/
-// `format.parse` (both synchronous — see `StatementFormatInput.sheetRows`'s
-// doc comment in `parser.ts`). [VERIFY AT BUILD TIME]: the `/browser` entry
-// point is the Hermes-safe choice picked here — it accepts a plain
-// `ArrayBuffer` (no Node `Buffer`, no DOM `File`/`Blob`), matching exactly
-// what `decodeBase64ToBytes` above already produces from the picked file's
-// base64 content; this cannot be proven under Jest (which runs on Node, not
-// Hermes), only by a real on-device import.
-const readSheetRowsSafely = async (
-  base64: string,
-): Promise<SpreadsheetCellValue[][] | undefined> => {
-  const arrayBuffer = new Uint8Array(decodeBase64ToBytes(base64)).buffer;
-
-  try {
-    const sheets = await readXlsxFile(arrayBuffer);
-
-    return sheets[0]?.data as SpreadsheetCellValue[][] | undefined;
-  } catch {
-    // A genuinely invalid/corrupted `.xlsx` — degrades to the same "we don't
-    // recognize this file" state `previewStats` already shows for any other
-    // format-level failure (no `sheetRows` means `detectFormat` recognizes
-    // nothing), rather than a distinct crash/error path.
-    return undefined;
-  }
-};
-
-type PreviewStats = {
-  displayName: string;
-  transactionCount: number;
-  currency: string;
-  dateSpan: string;
-  // Distinct masked-card hints across every parsed row, in first-seen order.
-  // PrivatBank XLSX is the only format that ever produces one (section C.1,
-  // a multi-card export) — every other shipped format's rows carry none, so
-  // this is always `[]` for them.
-  maskedCardHints: string[];
-  // Rows this format's parse could not resolve (e.g. an unmapped PrivatBank
-  // currency word) — excluded from `transactionCount` above, but surfaced
-  // here rather than silently dropped (controller ruling 2).
-  unresolvedRowCount: number;
-  // Distinct currencies across every parsed row, in first-seen order (Task 3
-  // review, CRITICAL fix) — a multi-card PrivatBank export can mix
-  // currencies per row, and `importStatement` excludes any row whose
-  // currency doesn't match the target holding's, so the user needs this
-  // BEFORE picking a holding to pick one that actually matches.
-  detectedCurrencies: string[];
-};
-
-// The preview's transaction-count/date-span/currency block, derived from a
-// RECOGNIZED parse. `timeSeconds` reduces to the min/max across every row —
-// not just the first/last row's on-file order — so an out-of-order export
-// still reports its true span.
-//
 // `detect()` is a cheap header/signature sniff — it does NOT validate every
 // data row, so a format it accepted can still throw `StatementParseError`
 // out of `parse()` on a bad row (a truncated export, a reformatted date
@@ -226,61 +91,28 @@ type PreviewStats = {
 // parse failure — not just the documented `StatementParseError` case — so a
 // future format's unexpected throw degrades the same way rather than
 // crashing.
-const previewStats = (
+const parseFormatSafely = (
   format: StatementFormat,
   input: StatementFormatInput,
-): PreviewStats | undefined => {
-  try {
-    const parsed = format.parse(input);
-    const times = parsed.transactions.map((transaction) => transaction.timeSeconds);
-    const minSeconds = Math.min(...times);
-    const maxSeconds = Math.max(...times);
-    const maskedCardHints = Array.from(
-      new Set(
-        parsed.transactions
-          .map((transaction) => transaction.maskedCardHint)
-          .filter((hint): hint is string => hint !== undefined),
-      ),
-    );
-    const detectedCurrencies = Array.from(
-      new Set(parsed.transactions.map((transaction) => transaction.currency)),
-    );
+): ParsedStatement | undefined => {
+  const attempt = eitherSync<unknown, ParsedStatement>(() => format.parse(input));
 
-    return {
-      displayName: format.displayName,
-      transactionCount: parsed.transactions.length,
-      currency: parsed.account.currency,
-      dateSpan: `${formatDate(minSeconds * 1000)} – ${formatDate(maxSeconds * 1000)}`,
-      maskedCardHints,
-      unresolvedRowCount: parsed.unresolvedRows?.length ?? 0,
-      detectedCurrencies,
-    };
-  } catch {
-    // Any parse failure here — the documented `StatementParseError` a bad
-    // data row throws, or anything else unexpected — degrades to the same
-    // graceful state rather than crashing the screen.
-    return undefined;
-  }
+  // Any parse failure here — the documented `StatementParseError` a bad
+  // data row throws, or anything else unexpected — degrades to the same
+  // graceful state rather than crashing the screen.
+  return bifoldr(attempt);
 };
 
-// Joins the holding rows this screen is scoped to (per `accountId`, or every
-// holding when absent) against the account rows this device knows about, so
-// `TargetHoldingSheet` gets a fully-formed `accountName` per row without
-// owning any repo dependency of its own.
-const useTargetHoldingOptions = (accountId: string | undefined): TargetHoldingOption[] => {
-  const { data: holdingRows } = useLiveQuery(
-    accountId ? holdingsRepo.listByAccountQuery(accountId) : holdingsRepo.allQuery(),
-    ['holdings'],
-  );
-  const { data: accountRows } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
-  const accountNameById = new Map(accountRows.map((row) => [row.id, row.name] as const));
+// Combines `parseFormatSafely` and `previewStats` into the one derivation
+// the component needs, keeping that component's own cognitive complexity
+// under the project's Biome cap.
+const statsFor = (
+  format: StatementFormat | undefined,
+  input: StatementFormatInput | undefined,
+): ReturnType<typeof previewStats> | undefined => {
+  const parsed = format && input ? parseFormatSafely(format, input) : undefined;
 
-  return holdingRows.map((holding) => ({
-    id: holding.id,
-    name: holding.name,
-    accountId: holding.accountId,
-    accountName: accountNameById.get(holding.accountId) ?? '',
-  }));
+  return format && parsed ? previewStats(parsed, format.displayName) : undefined;
 };
 
 // The file-read pipeline's own state — kept separate from the derived
@@ -301,15 +133,59 @@ type LoadState =
  * and the `importStatement` action.
  */
 const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigation }) => {
-  const { filePath, accountId, expectedFormatId } = route.params;
+  const { filePath, accountId, expectedFormatId, holdingId } = route.params;
   const { t } = useTranslation();
   const [loadState, setLoadState] = useState<LoadState>({ kind: 'loading' });
-  const [sheetVisible, setSheetVisible] = useState(false);
   const [selectedHoldingId, setSelectedHoldingId] = useState<string | undefined>(undefined);
   const [importing, setImporting] = useState(false);
-  const [importError, setImportError] = useState<string | undefined>(undefined);
   const [importResult, setImportResult] = useState<ImportResult | undefined>(undefined);
-  const holdingOptions = useTargetHoldingOptions(accountId);
+  // Decoupled from `importResult` itself — see
+  // `handleImportDone` below for why.
+  const [resultSheetVisible, setResultSheetVisible] = useState(false);
+  // Guards `handleSheetClosed` against running
+  // its navigation more than once — see that function's own comment.
+  const navigatedAwayRef = useRef(false);
+  // Import is ALWAYS enabled — this flips true on the FIRST
+  // Import press and stays true, the same "validate on press" contract every
+  // other Kiko form uses (`kiko-code-style`'s "Form validation model").
+  const [attemptedImport, setAttemptedImport] = useState(false);
+  const targetHoldingFieldRef = useRef<FieldInstance>(null);
+  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
+  const scrollOffset = useScrollOffset(scrollableRef);
+  const headerInset = useHeaderInset();
+  const contentHeightRef = useRef(0);
+  const { options: holdingOptions, isLoading: holdingOptionsLoading } =
+    useTargetHoldingOptions(accountId);
+
+  // The auto-replace check: an account's own `bankId` and its saved
+  // column-mapping entries.
+  const { data: accountRows, isLoading: accountIsLoading } = useLiveQuery(
+    accountsRepo.byIdQuery(accountId),
+    ['accounts'],
+  );
+  const bankId = accountRows.at(0)?.bankId;
+  const { data: settingsRows, isLoading: settingsIsLoading } = useLiveQuery(
+    settingsRepo.getQuery(),
+    ['settings'],
+  );
+  const savedMappings = settingsRows.at(0)?.statementMappings;
+
+  // A holding created via "Add new" (`handleCreateNewHolding`
+  // below) never got SELECTED — the live-queried option list already showed
+  // it (`useTargetHoldingOptions` above), but nothing told the picker to
+  // select it. `HoldingFormScreen`'s create-save path now hands the new id
+  // back through this same route's own `holdingId` param, merged in via
+  // `navigation.popTo(..., { merge: true })` — NOT `navigate`, which on
+  // React Navigation 7 pushes a duplicate of this already-on-stack route
+  // instead of reusing it; see `returnTo` on
+  // `HoldingForm`'s route type, and
+  // `src/navigation/root-navigator/statement-import-return.navigator.test.tsx` for the
+  // real-router proof). This effect selects it the moment it arrives.
+  useEffect(() => {
+    if (holdingId !== undefined) {
+      setSelectedHoldingId(holdingId);
+    }
+  }, [holdingId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -334,18 +210,18 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
           return;
         }
 
-        const utf8Text = decodeBase64Utf8(base64);
+        const utf8Text = decodeStatementText(base64, 'utf-8');
         const utf8Input = { text: utf8Text, fileName: fileNameOf(filePath) };
 
-        // Sensebank (and Phase 4's FOP CSVs) are cp1251-encoded, not UTF-8 —
-        // section C.2's KEY DESIGN. A UTF-8 decode of cp1251 bytes never
-        // matches a cp1251 format's own Cyrillic detect signature, so this is
-        // an honest, visible second decode attempt of the SAME bytes — no
-        // flag, no per-format bytes field — that runs only when the first
-        // (UTF-8) pass matched no known format.
+        // Sensebank (and the FOP CSVs) are cp1251-encoded, not UTF-8. A
+        // UTF-8 decode of cp1251 bytes never matches a cp1251 format's own
+        // Cyrillic detect signature, so this is an honest, visible second
+        // decode attempt of the SAME bytes — no flag, no per-format bytes
+        // field — that runs only when the first (UTF-8) pass matched no
+        // known format.
         const text = detectFormat(utf8Input)
           ? utf8Text
-          : decodeWindows1251(new Uint8Array(decodeBase64ToBytes(base64)));
+          : decodeStatementText(base64, 'windows-1251');
 
         setLoadState({ kind: 'ready', text });
       })
@@ -365,46 +241,255 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   }, [filePath]);
 
   const fileName = fileNameOf(filePath);
-  const input =
-    loadState.kind === 'ready'
-      ? { text: loadState.text, fileName, sheetRows: loadState.sheetRows }
-      : undefined;
+  const input = match(loadState)
+    .with({ kind: 'ready' }, (state) => ({
+      text: state.text,
+      fileName,
+      sheetRows: state.sheetRows,
+    }))
+    .with({ kind: 'loading' }, { kind: 'unreadable' }, () => undefined)
+    .exhaustive();
   const expectedFormat = expectedFormatOf(expectedFormatId);
-  // Scoped recognition (device-feedback-round-1 item 5) — see `formatFor`'s
-  // doc comment above for the full rule.
+  // Scoped recognition — see `formatFor`'s doc comment above for the full rule.
   const format = formatFor(input, expectedFormat);
-  const stats = format && input ? previewStats(format, input) : undefined;
+  const stats = statsFor(format, input);
   const bankMismatch = input !== undefined && expectedFormat !== undefined && format === undefined;
+
+  // When this file matched NO format (unrecognized, or a bank
+  // mismatch) and an EXACT saved mapping exists for this account's own
+  // bank, skip straight to the manual-mapping screen instead of showing the
+  // "we don't recognize this file" state — `ColumnMapping` still requires
+  // its own Import tap, so this never imports anything on its own.
+  const autoReplacedRef = useRef(false);
+  // The user chose the manual-mapping path themselves (`handleMapColumnsManually`
+  // below) — once that happens, the auto-replace check must never act for
+  // this screen instance again, no matter what it later re-evaluates.
+  const manualMapPushedRef = useRef(false);
+  // Decides at most once, the FIRST time `input` resolves AND both the
+  // account and settings live queries have finished their own INITIAL
+  // load — whether or not that look finds a match. Both queries start at
+  // `data: []`/`isLoading: true` and fill in later: deciding while either
+  // is still loading would read an empty `savedMappings`/`bankId` as "no
+  // mapping exists" and lock in a wrong "no match" for a returning user
+  // whose mapping simply hadn't loaded yet. `savedMappings` stays a
+  // dependency (a mapping already saved before the queries resolve must
+  // still be seen), but once the decision is made it refuses to revisit
+  // it: a `savedMappings` write that lands LATER — the pushed ColumnMapping
+  // screen this effect is unaware of saving its own mapping while this
+  // screen sits blurred underneath it — would otherwise flip the match from
+  // false to true and call `navigation.replace` from a screen the user had
+  // already navigated away from; the router's REPLACE carries no target and falls
+  // back to the FOCUSED route, silently swapping out the live ColumnMapping
+  // instance (and its open success sheet) for a brand-new one.
+  const evaluatedRef = useRef(false);
+
+  useEffect(() => {
+    if (
+      evaluatedRef.current ||
+      manualMapPushedRef.current ||
+      input === undefined ||
+      format !== undefined ||
+      accountIsLoading ||
+      settingsIsLoading
+    ) {
+      return;
+    }
+
+    evaluatedRef.current = true;
+
+    // A stack-mutating call from an effect must never act for a screen the
+    // user has already navigated away from.
+    if (!navigation.isFocused()) {
+      return;
+    }
+
+    const { rows } = readTableRows(input);
+    const saved = findSavedMapping(savedMappings, bankId, rows);
+
+    if (saved?.exact) {
+      autoReplacedRef.current = true;
+      // `ownsFile: true` — this REPLACES
+      // StatementImport (no `StatementImport` route left below it on the
+      // stack), so ColumnMapping becomes the file's sole owner from here.
+      // The OTHER ColumnMapping entry point ("Map columns manually",
+      // below) never sets this: it PUSHES on top, leaving StatementImport
+      // still mounted and still the owner.
+      navigation.replace('ColumnMapping', { filePath, accountId, ownsFile: true });
+    }
+  }, [
+    accountId,
+    input,
+    format,
+    savedMappings,
+    bankId,
+    filePath,
+    navigation,
+    accountIsLoading,
+    settingsIsLoading,
+  ]);
+
+  // `filePath` is a plaintext local
+  // cache copy (`keepLocalCopy`'s own fix) outside the encrypted
+  // database — deleted once this screen is REMOVED from the stack (a
+  // successful import's `popTo`, or the user backing all the way out),
+  // never left behind in `Library/Caches`. `useEffect`'s cleanup fires
+  // exactly on unmount — which native-stack only does when a screen is
+  // actually popped, NOT when merely backgrounded by a push on top (Map
+  // Columns stays reachable, this screen's own `RNFS.readFile` calls keep
+  // working, its column-mapping state is preserved — see the real-router
+  // test). Guarded on `autoReplacedRef`: the auto-replace above ALSO
+  // unmounts this screen (`navigation.replace`), but hands the SAME
+  // `filePath` to the ColumnMapping screen that replaces it — that screen
+  // owns the file from then on (its own matching cleanup effect, gated on
+  // the `ownsFile` param this screen just set), so this one must NOT
+  // delete out from under it.
+  useEffect(() => {
+    return () => {
+      if (!autoReplacedRef.current) {
+        // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) deleteLocalStatementCopy swallows a failed unlink, and an unmount cleanup cannot await
+        deleteLocalStatementCopy(filePath);
+      }
+    };
+  }, [filePath]);
   // Covers every "this file cannot be imported as-is" outcome EXCEPT the
   // bank-mismatch case (which renders its own, more specific message below):
   // the read itself failed, OR the read succeeded but no format recognized
   // it (and none was expected), OR a format matched and then failed to
   // parse a data row.
+  const isUnreadableLoad = match(loadState)
+    .with({ kind: 'unreadable' }, () => true)
+    .with({ kind: 'loading' }, { kind: 'ready' }, () => false)
+    .exhaustive();
   const showUnreadable =
-    !bankMismatch &&
-    (loadState.kind === 'unreadable' || (input !== undefined && stats === undefined));
+    !bankMismatch && (isUnreadableLoad || (input !== undefined && stats === undefined));
 
+  // Import is ALWAYS enabled (`disabled={importing}` only, see
+  // the footer below) — this validates on press instead of standing behind a
+  // `disabled={!canImport}` gate, mirroring `column-mapping.screen.tsx`'s own
+  // `handleImport` for the SAME target-holding field.
   const handleImport = async (): Promise<void> => {
-    if (!input || !selectedHoldingId || importing) {
+    if (!input || importing) {
+      return;
+    }
+
+    if (!selectedHoldingId) {
+      setAttemptedImport(true);
+      scrollToField(scrollableRef, targetHoldingFieldRef, {
+        currentOffset: scrollOffset.value,
+        headerInset,
+        contentHeight: contentHeightRef.current,
+      });
+
       return;
     }
 
     setImporting(true);
-    setImportError(undefined);
 
     try {
       setImportResult(await importStatement(input, selectedHoldingId));
-    } catch (error) {
-      setImportError(error instanceof Error ? error.message : String(error));
+      setResultSheetVisible(true);
+    } catch {
+      // A translated Alert, never raw `error.message` rendered inline — see
+      // `statementImport.importErrorTitle`'s own doc comment.
+      alertOnCatch(t, 'statementImport.importErrorTitle', 'statementImport.importErrorMessage');
     } finally {
       setImporting(false);
     }
   };
 
+  // Closes the successful-import modal. Does NOT navigate —
+  // see `handleSheetClosed` below: a native-stack pop
+  // must wait for the sheet to ACTUALLY finish closing, which `onDone` (a
+  // Done press or a scrim tap) cannot promise on its own — only `onClosed`
+  // (the sheet's real completion signal) can. `importResult` itself is
+  // NEVER cleared, so the sheet's last content stays
+  // correct for the whole close animation, independent of `visible`.
+  const handleImportDone = (): void => {
+    setResultSheetVisible(false);
+  };
+
+  // Runs once `ImportResultSheet`'s `onClosed`
+  // fires — `BottomSheet`'s pass-through of RN `Modal`'s own `onDismiss`,
+  // which only fires once the close ANIMATION has actually finished — never
+  // a guessed `setTimeout` delay, which is not tied to the real animation.
+  // `navigatedAwayRef`
+  // ignores a repeated call (a double Done tap, or `onClosed` somehow
+  // firing more than once) so this navigates at most ONCE.
+  //
+  // `navigation.popTo` — NOT `navigate`, which on React Navigation 7 pushes
+  // a DUPLICATE of an already-on-stack route instead of reusing it — see
+  // `src/navigation/root-navigator/statement-import-return.navigator.test.tsx` for the
+  // real-router proof) — finds the existing `AccountDetail` instance
+  // already on the stack (this screen, and Map Columns before it, were both
+  // pushed FROM there) and pops back to it in place, regardless of how many
+  // screens deep this import happened. Falls back to a plain `goBack()`
+  // when the account row hasn't loaded yet (a fresh mount, before its
+  // `useLiveQuery` above resolves) — NEVER `popTo` in that branch, which
+  // would ADD an `AccountDetail` that was never on this stack.
+  const handleSheetClosed = (): void => {
+    if (navigatedAwayRef.current) {
+      return;
+    }
+
+    navigatedAwayRef.current = true;
+
+    const account = accountRows.at(0);
+
+    if (account) {
+      navigation.popTo('AccountDetail', { accountId, name: account.name }, { merge: true });
+
+      return;
+    }
+
+    navigation.goBack();
+  };
+
+  // The manual entry point into the generic column-mapping screen.
+  const handleMapColumnsManually = (): void => {
+    manualMapPushedRef.current = true;
+    // Carry the holding already chosen on THIS preview through to Map
+    // Columns, so it pre-fills instead of asking again.
+    navigation.navigate('ColumnMapping', { filePath, accountId, holdingId: selectedHoldingId });
+  };
+
+  const handleCreateNewHolding = (): void => {
+    navigation.navigate('HoldingForm', {
+      accountId,
+      returnTo: { screen: 'StatementImport', params: route.params },
+    });
+  };
+
+  const isLoadingFile = match(loadState)
+    .with({ kind: 'loading' }, () => true)
+    .with({ kind: 'ready' }, { kind: 'unreadable' }, () => false)
+    .exhaustive();
+
+  // `Screen`'s own `footer` prop treats ANY defined node (even one that
+  // itself renders null) as "has a footer" and reserves the clearance for
+  // it — so this stays `undefined` rather than an always-defined element,
+  // exactly mirroring the FORMER inline `input !== undefined` gate below.
+  const footer =
+    stats !== undefined || input !== undefined ? (
+      <StatementImportFooter
+        hasStats={stats !== undefined}
+        hasInput={input !== undefined}
+        importing={importing}
+        onImport={handleImport}
+        onMapColumnsManually={handleMapColumnsManually}
+      />
+    ) : undefined;
+
   return (
-    <Screen scroll>
+    <Screen
+      scroll
+      footer={footer}
+      scrollableRef={scrollableRef}
+      onContentSizeChange={(_width, height) => {
+        contentHeightRef.current = height;
+      }}
+    >
       <Box gap={4} testID="statement-import-content">
-        {loadState.kind === 'loading' && (
+        {isLoadingFile && (
           <Text variant="body" tone="textSecondary">
             {t('statementImport.reading')}
           </Text>
@@ -423,79 +508,29 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
         )}
 
         {stats && (
-          <Box gap={3} style={styles.previewBlock}>
-            <Text variant="heading">{stats.displayName}</Text>
-            {/* `Text` (the design-system wrapper) does not forward `testID` —
-                each data row's testID lives on a wrapping `Box` instead. */}
-            <Box testID="statement-import-transaction-count">
-              <Text variant="body">{stats.transactionCount}</Text>
-            </Box>
-            <Box testID="statement-import-currency">
-              <Text variant="body">{stats.currency}</Text>
-            </Box>
-            <Box testID="statement-import-date-span">
-              <Text variant="body">{stats.dateSpan}</Text>
-            </Box>
-
-            {stats.maskedCardHints.length > 0 && (
-              <PreviewDetailList
-                items={stats.maskedCardHints}
-                testID="statement-import-masked-cards"
-              />
-            )}
-
-            {stats.unresolvedRowCount > 0 && (
-              <Text variant="body" tone="textSecondary">
-                {t('statementImport.unresolvedRowsSkipped', { count: stats.unresolvedRowCount })}
-              </Text>
-            )}
-
-            {stats.detectedCurrencies.length > 1 && (
-              <PreviewDetailList
-                items={stats.detectedCurrencies}
-                label={t('statementImport.detectedCurrenciesLabel')}
-                testID="statement-import-detected-currencies"
-              />
-            )}
-
-            <Button
-              variant="secondaryTonal"
-              fullWidth={false}
-              onPress={() => setSheetVisible(true)}
-            >
-              {t('statementImport.chooseHolding')}
-            </Button>
-
-            <Button
-              variant="primary"
-              onPress={handleImport}
-              disabled={selectedHoldingId === undefined || importing}
-            >
-              {t('statementImport.importButton')}
-            </Button>
-
-            <ImportOutcome error={importError} result={importResult} />
-          </Box>
+          <StatementPreviewBlock
+            stats={stats}
+            holdingOptions={holdingOptions}
+            holdingOptionsLoading={holdingOptionsLoading}
+            accountId={accountId}
+            selectedHoldingId={selectedHoldingId}
+            onSelectHolding={setSelectedHoldingId}
+            onCreateNewHolding={handleCreateNewHolding}
+            targetHoldingError={
+              attemptedImport && selectedHoldingId === undefined
+                ? t('statementImport.chooseHoldingError')
+                : undefined
+            }
+            targetHoldingFieldRef={targetHoldingFieldRef}
+          />
         )}
       </Box>
 
-      <TargetHoldingSheet
-        visible={sheetVisible}
-        onDismiss={() => setSheetVisible(false)}
-        holdings={holdingOptions}
-        accountId={accountId}
-        onSelect={setSelectedHoldingId}
-        // Entry point 2 (the Share Extension, no known `accountId`) has no
-        // defined "create a holding for which account" behavior yet — see
-        // `.superpowers/sdd/statement-import/task-2-report.md` concern 1/2 —
-        // so "Create new holding" only navigates in the scoped (entry point
-        // 1) case; it stays a harmless no-op otherwise rather than crashing
-        // on a missing required `accountId`.
-        onCreateNew={() => {
-          if (accountId) {
-            navigation.navigate('HoldingForm', { accountId });
-          }
-        }}
+      <ImportResultSheet
+        visible={resultSheetVisible}
+        result={importResult}
+        onDone={handleImportDone}
+        onClosed={handleSheetClosed}
       />
     </Screen>
   );

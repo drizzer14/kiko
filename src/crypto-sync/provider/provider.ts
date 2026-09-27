@@ -1,8 +1,7 @@
-import type { TFunction } from 'i18next';
 import { match } from 'ts-pattern';
-
-import type { HoldingRow } from '../../db/schema';
-import type { ExchangeMetadataField } from '../../holdings/holding-metadata';
+import type { TFunction } from 'i18next';
+import type { HoldingRow } from '@kiko/db';
+import type { ExchangeMetadataField } from '@kiko/holdings/holding-metadata';
 
 /**
  * The single source of truth for the balance-provider ids. Each id doubles as

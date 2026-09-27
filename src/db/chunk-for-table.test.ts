@@ -20,12 +20,12 @@ describe('chunkForTable', () => {
   });
 
   it('derives a smaller chunk size for a wider table', () => {
-    // holdings has 13 columns: floor(32000 / 13) = 2461 rows/chunk.
+    // holdings has 14 columns: floor(32000 / 14) = 2285 rows/chunk.
     const rows = Array.from({ length: 5000 }, (_, index) => ({ id: index }));
 
     const chunks = chunkForTable(holdings, rows);
 
-    expect(chunks.map((chunk) => chunk.length)).toEqual([2461, 2461, 78]);
+    expect(chunks.map((chunk) => chunk.length)).toEqual([2285, 2285, 430]);
   });
 
   it('returns no chunks for an empty batch', () => {

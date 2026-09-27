@@ -1,24 +1,22 @@
-import { type FC, type ReactNode, useCallback, useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { match } from 'ts-pattern';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import Button from '@kiko/design-system/components/button';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import SymbolIcon from '@kiko/design-system/components/symbol';
+import { type FC, type ReactNode, useCallback, useEffect, useState } from 'react';
 
-import Box from '../../design-system/components/box';
-import Button from '../../design-system/components/button';
-import SymbolIcon from '../../design-system/components/symbol';
-import Text from '../../design-system/components/text';
-import type { AuthResult } from '../biometrics';
 import { useAppLock } from '../use-app-lock';
+import type { AuthResult } from '../biometrics';
 
 import { styles } from './lock-gate.styles';
 
 const LOCK_ICON_SIZE = 56;
 
-const unlockHint = (
-  result: AuthResult | undefined,
-  t: ReturnType<typeof useTranslation>['t'],
-): string =>
-  match(result?.kind)
+const unlockHint = (result: AuthResult | undefined, t: TFunction): string =>
+  match<AuthResult['kind'] | undefined, string>(result?.kind)
     .with(undefined, () => t('auth.hint.default'))
     .with('success', () => '')
     .with('cancelled', () => t('auth.hint.cancelled'))
@@ -30,10 +28,8 @@ const unlockHint = (
 // With `allowDeviceCredentials` the same system sheet falls back to the passcode
 // once biometry is locked out, so the retry action is the same call; only the
 // label changes to tell the user what to expect.
-const unlockLabel = (
-  result: AuthResult | undefined,
-  t: ReturnType<typeof useTranslation>['t'],
-): string => (result?.kind === 'lockout' ? t('auth.usePasscode') : t('auth.unlock'));
+const unlockLabel = (result: AuthResult | undefined, t: TFunction): string =>
+  result?.kind === 'lockout' ? t('auth.usePasscode') : t('auth.unlock');
 
 /**
  * Mounted inside `MigrationsGate` (settings must be readable) and around the
@@ -41,11 +37,6 @@ const unlockLabel = (
  * and runs the biometric/passcode sheet on mount and on every retry tap.
  * `Screen` is not used here on purpose — it reads the bottom tab bar height,
  * which only exists inside the tab navigator this gate wraps.
- *
- * SAFETY: the gate leans entirely on `useAppLock`, which is inert while
- * `APP_LOCK_ENABLED` is off (it reports `isReady: true, isLocked: false` and
- * never loads the native biometrics module). So on a build with the flag off
- * this is a pure pass-through that renders `children` and never prompts.
  */
 const LockGate: FC<{ children: ReactNode }> = ({ children }) => {
   const { t } = useTranslation();
@@ -53,6 +44,7 @@ const LockGate: FC<{ children: ReactNode }> = ({ children }) => {
   const [lastResult, setLastResult] = useState<AuthResult | undefined>(undefined);
 
   const attemptUnlock = useCallback((): void => {
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) authenticate() never rejects; a failure resolves as the `failed` result
     unlock().then(setLastResult);
   }, [unlock]);
 

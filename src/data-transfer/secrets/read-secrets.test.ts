@@ -1,15 +1,12 @@
-const mockReadDbKey = jest.fn();
-jest.mock('../../db/keys/db-key', () => ({ readDbKey: () => mockReadDbKey() }));
-
 const mockReadToken = jest.fn();
-jest.mock('../../monobank/token', () => ({ readToken: (id: string) => mockReadToken(id) }));
+jest.mock('@kiko/monobank/token', () => ({ readToken: (id: string) => mockReadToken(id) }));
 
 const mockReadCredentials = jest.fn();
-jest.mock('../../crypto-sync/binance/binance.credentials', () => ({
+jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
   readCredentials: (id: string) => mockReadCredentials(id),
 }));
 
-import type { AccountRow } from '../../db/schema';
+import type { AccountRow } from '@kiko/db';
 
 import { readExportSecrets } from './read-secrets';
 
@@ -17,8 +14,7 @@ const account = (id: string, institution: AccountRow['institution']): AccountRow
   ({ id, institution }) as AccountRow;
 
 describe('readExportSecrets', () => {
-  it('reads the DB key and every connected Monobank token / Binance credential, skipping accounts with none stored', async () => {
-    mockReadDbKey.mockResolvedValue('deadbeef'.repeat(8));
+  it('reads every connected Monobank token / Binance credential, skipping accounts with none stored, and carries no DB key', async () => {
     mockReadToken.mockImplementation((id: string) =>
       Promise.resolve(id === 'mono1' ? 'mono-token' : undefined),
     );
@@ -33,14 +29,12 @@ describe('readExportSecrets', () => {
       account('cash1', null),
     ]);
 
-    expect(secrets.dbKeyHex).toBe('deadbeef'.repeat(8));
+    expect(secrets).not.toHaveProperty('dbKeyHex');
     expect(secrets.monobankTokens).toEqual([{ accountId: 'mono1', token: 'mono-token' }]);
     expect(secrets.binanceCredentials).toEqual([{ accountId: 'bin1', apiKey: 'k', secret: 's' }]);
   });
 
   it('never reads a token/credential for a non-monobank/non-binance account', async () => {
-    mockReadDbKey.mockResolvedValue(undefined);
-
     await readExportSecrets([account('privat1', 'privatbank')]);
 
     expect(mockReadToken).not.toHaveBeenCalled();

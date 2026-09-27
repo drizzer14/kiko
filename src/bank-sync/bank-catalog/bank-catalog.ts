@@ -1,17 +1,20 @@
-import type { StatementFormatId } from '../../statement-import/parser';
+import type { StatementFormatId } from '@kiko/statement-import/parser';
 
 /**
- * The Option A "which bank is this account" catalog (device-feedback-round-1
- * item 3): all 6 banks Kiko can represent an account under, independent of
+ * The Option A "which bank is this account" catalog: every bank Kiko can
+ * represent an account under, independent of
  * whether that bank has a LIVE sync connection. Sibling of, and deliberately
  * narrower-scoped than, `BankProviderId` (`../provider`) — that tuple stays
  * exactly `['monobank']` (the only bank with a real API connect, per the
- * Guideline 5.6 remediation); THIS tuple additionally covers the 5
- * statement-import-only banks the `statement-import` track already ships
- * parsers for. `connectable` is a plain, always-visible data field on a
- * fully-rendered static array — never a build/runtime visibility gate — so
- * every row always renders; only the AFFORDANCE differs (a real Connect
- * field for Monobank, an "import only" caption for the rest). Never wire a
+ * Guideline 5.6 remediation); THIS tuple additionally covers every
+ * statement-import-only bank, whether or not `statement-import` ships a
+ * dedicated parser for it (see `BankCatalogEntry.statementFormatId` below —
+ * P3's PUMB/Oschadbank/Raiffeisen/Ukrgasbank have none, and import through
+ * the generic column-mapping screen instead). `connectable` is a plain,
+ * always-visible data field on a fully-rendered static array — never a
+ * build/runtime visibility gate — so every row always renders; only the
+ * AFFORDANCE differs (a real Connect field for Monobank, an "import only" or
+ * "column mapping only" caption for the rest). Never wire a
  * `SHOW_*`/`HIDE_*`/`ENABLE_*` flag around any entry here (Guideline 5.6).
  */
 export const bankIds = [
@@ -21,6 +24,10 @@ export const bankIds = [
   'procredit',
   'ukrsib',
   'alfa',
+  'pumb',
+  'oschadbank',
+  'raiffeisen',
+  'ukrgasbank',
 ] as const;
 
 export type BankId = (typeof bankIds)[number];
@@ -36,41 +43,89 @@ type BankCatalogEntry = {
    * render a Connect field — only its statement-import affordance. */
   connectable: boolean;
   /** The `statement-import` format this bank's account scopes import
-   * recognition to (see `statementFormatIdForBank` below). */
-  statementFormatId: StatementFormatId;
+   * recognition to (see `statementFormatIdForBank` below) — `undefined` for
+   * a bank with no dedicated parser (P3's PUMB/Oschadbank/Raiffeisen/
+   * Ukrgasbank), which falls through to the generic column-mapping import
+   * (`BankTypeField`'s `bankColumnMappingOnly` caption names this honestly). */
+  statementFormatId?: StatementFormatId;
+  /** Whether a `bank`-kind account at this bank may hold a `metal` holding
+   * (a bank-held precious-metal account, distinct from the standalone
+   * `metals` account kind, which never gates on this field). Always-rendered
+   * DATA on this fully-rendered static array — never a build/runtime
+   * visibility gate (Guideline 5.6): every row always renders regardless of
+   * this value, and only the CREATABLE holding-type set differs
+   * (`creatableHoldingTypesForAccount`, `src/holdings/holding-type/`).
+   * PrivatBank, PUMB, Oschadbank, and Ukrgasbank (P3); Monobank and
+   * Raiffeisen stay `false` (no such product). */
+  sellsMetals: boolean;
 };
 
 export const bankCatalog: readonly BankCatalogEntry[] = [
-  { id: 'monobank', displayName: 'Monobank', connectable: true, statementFormatId: 'monobank-csv' },
+  {
+    id: 'monobank',
+    displayName: 'Monobank',
+    connectable: true,
+    statementFormatId: 'monobank-csv',
+    sellsMetals: false,
+  },
   {
     id: 'privatbank',
     displayName: 'PrivatBank',
     connectable: false,
     statementFormatId: 'privatbank-xlsx',
+    sellsMetals: true,
   },
   {
     id: 'sensebank',
     displayName: 'Sensebank',
     connectable: false,
     statementFormatId: 'sensebank-csv',
+    sellsMetals: false,
   },
   {
     id: 'procredit',
     displayName: 'ProCredit Bank',
     connectable: false,
     statementFormatId: 'procredit-business-csv',
+    sellsMetals: false,
   },
   {
     id: 'ukrsib',
     displayName: 'UKRSIBBANK',
     connectable: false,
     statementFormatId: 'ukrsib-business-csv',
+    sellsMetals: false,
   },
   {
     id: 'alfa',
     displayName: 'Alfa-Bank',
     connectable: false,
     statementFormatId: 'alfa-business-csv',
+    sellsMetals: false,
+  },
+  {
+    id: 'pumb',
+    displayName: 'PUMB',
+    connectable: false,
+    sellsMetals: true,
+  },
+  {
+    id: 'oschadbank',
+    displayName: 'Oschadbank',
+    connectable: false,
+    sellsMetals: true,
+  },
+  {
+    id: 'raiffeisen',
+    displayName: 'Raiffeisen Bank',
+    connectable: false,
+    sellsMetals: false,
+  },
+  {
+    id: 'ukrgasbank',
+    displayName: 'Ukrgasbank',
+    connectable: false,
+    sellsMetals: true,
   },
 ];
 
@@ -89,11 +144,23 @@ export const statementFormatIdForBank = (
     ? bankCatalog.find((entry) => entry.id === bankId)?.statementFormatId
     : undefined;
 
-/** Resolves a stored `accounts.bankId` to whether it is CONNECTABLE (device-
- * feedback-round-4 item 4): `true` for an unset/unrecognized value (the
- * account has not declared a bank yet, or predates this feature — the
+/** Resolves a stored `accounts.bankId` to whether it is CONNECTABLE: `true`
+ * for an unset/unrecognized value (the account has not declared a bank
+ * yet, or predates this feature — the
  * connect affordance stays available rather than guessing it is import-only)
  * and for Monobank; `false` for a known import-only bank (PrivatBank etc.),
  * which must show NO sync/connect affordance — only its statement import. */
 export const isConnectableBank = (bankId: string | null | undefined): boolean =>
   isBankId(bankId) ? (bankCatalog.find((entry) => entry.id === bankId)?.connectable ?? true) : true;
+
+/** Resolves a stored `accounts.bankId` to whether that bank sells precious
+ * metals (the `metal` holding allow-list): `false` for an unset/
+ * unrecognized value — UNLIKE `isConnectableBank`'s permissive default, an
+ * unknown bank must not silently unlock the `metal` holding type — and
+ * otherwise the catalog entry's own `sellsMetals` field (see that field's
+ * comment above, `BankCatalogEntry.sellsMetals`, for the current set —
+ * not restated here, it drifts). */
+export const bankSellsMetals = (bankId: string | null | undefined): boolean =>
+  isBankId(bankId)
+    ? (bankCatalog.find((entry) => entry.id === bankId)?.sellsMetals ?? false)
+    : false;

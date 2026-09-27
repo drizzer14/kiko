@@ -1,10 +1,12 @@
 import type { FC } from 'react';
 import { Pressable } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import { deriveFieldTestID } from '@kiko/design-system/derive-field-test-id';
 
 import Box from '../box';
 import Text from '../text';
 import SymbolIcon from '../symbol';
+import FieldError from '../field-error';
 import FieldLabel from '../field-label';
 
 import { styles } from './field-trigger.styles';
@@ -30,13 +32,17 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
   required,
   disabled = false,
   hideLabel = false,
+  error,
   testID,
 }) => {
   const { theme } = useUnistyles();
+  // A defined, non-empty `error` IS the invalid signal — same contract as
+  // TextField's own `hasError` (see text-field.component.tsx).
+  const hasError = error !== undefined && error !== '';
 
   return (
     <Box gap={1}>
-      {!hideLabel && <FieldLabel label={label} required={required} />}
+      {!hideLabel && <FieldLabel label={label} required={required} invalid={hasError} />}
 
       <Pressable
         accessibilityRole="button"
@@ -74,6 +80,10 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
           {trailing}
         </Box>
       </Pressable>
+
+      {/* REFLOW, not reserve (Option A) — same contract as every other field
+          type: no error node while valid. */}
+      {hasError && <FieldError message={error} testID={deriveFieldTestID(testID, 'error')} />}
     </Box>
   );
 };

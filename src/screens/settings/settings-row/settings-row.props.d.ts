@@ -11,9 +11,9 @@ export type SettingsRowProps = ViewProps & {
   // An inline control rendered on the SAME line as the label, pinned to the
   // row's trailing edge and top-aligned to the label's first line — the
   // export screen's "Include saved passwords & keys" Switch is the first
-  // consumer (device-feedback-round-3 item 5: a toggle reads as one row with
-  // its label, not stacked below it the way a picker/segmented control does).
-  // Independent of `onPress`/the chevron — no current row passes both.
+  // consumer (a toggle reads as one row with its label, not stacked below it
+  // the way a picker/segmented control does). Independent of
+  // `onPress`/the chevron — no current row passes both.
   trailing?: ReactNode;
   // Full-width content rendered below the label, for a non-navigating row
   // (e.g. the inline base-currency switch, or a hint caption below a

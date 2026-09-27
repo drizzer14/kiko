@@ -1,3 +1,5 @@
+import { StatementParseError } from '@kiko/statement-import/parser';
+
 import {
   alfaBusinessFixtureInput,
   monobankFixtureInput,
@@ -6,24 +8,23 @@ import {
   sensebankFixtureInput,
   ukrsibBusinessFixtureInput,
 } from '../format-test-fixtures';
-import { StatementParseError } from '../../parser';
 import { FOP_BUSINESS_COLUMN_BASE } from '../business-csv';
 
 import { COLUMN, FULL_HEADER_LINE, OPERATSII_WORD, ukrsibBusinessCsvFormat } from '.';
 
 // HAND-AUTHORED synthetic fixture (no uabean fixture exists for this
 // format, C.4) — cp1251-encoded, all-fake account/EDRPOU numbers, "Test
-// Merchant" descriptions (task-5-report.md). Decoded via the REAL
+// Merchant" descriptions. Decoded via the REAL
 // `windows-1251` library (see `../format-test-fixtures`), the SAME decode
 // step the screen's cp1251 fallback performs before handing text to this
 // format.
 const fixtureInput = ukrsibBusinessFixtureInput;
 const fixtureText = fixtureInput.text;
 
-// Task 3 review precedent (NaN guard, IMPORTANT): neither `Дебет` nor
-// `Кредит` is populated — an empty or malformed amount cell must never
-// reach `Money.fromMajor` as `NaN`; `parse` throws `StatementParseError`
-// instead (Monobank/Sensebank/ProCredit business's convention).
+// The NaN guard: neither `Дебет` nor `Кредит` is populated — an empty or
+// malformed amount cell must never reach `Money.fromMajor` as `NaN`; `parse`
+// throws `StatementParseError` instead (Monobank/Sensebank/ProCredit
+// business's convention).
 const malformedAmountInput = {
   text: [
     FULL_HEADER_LINE,
@@ -41,12 +42,12 @@ const malformedDateInput = {
 };
 
 // The exported constants ARE the real contract a kiko:developer implements
-// `detect`/`parse` against (section C.3), pinned here — including the
+// `detect`/`parse` against, pinned here — including the
 // byte-level Latin-`i` trap, the reason this format needed its own hand-
 // authored fixture rather than a reused one. `COLUMN`'s 16 shared indices
 // come from `FOP_BUSINESS_COLUMN_BASE` (also used by
 // `procredit-business-csv`'s own `COLUMN`, cross-verified against BOTH
-// real/hand-authored fixtures at authoring time, task-5-report.md); only
+// real/hand-authored fixtures at authoring time); only
 // this format's OWN divergent column (`mfo`, index 1) is asserted
 // independently here.
 describe('ukrsib-business-csv format constants', () => {

@@ -1,6 +1,23 @@
+import type { ReactNode } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
-import '../../unistyles';
+import '@kiko/design-system/unistyles';
 import FieldTrigger from '.';
+
+// Text's tone -> color mapping is a react-native-unistyles variant, which
+// this project's Jest setup cannot resolve back out of a rendered style —
+// mock Text to surface its `tone` prop through a testID instead, the same
+// pattern `field-label.component.test.tsx` uses. Children still render as
+// plain text, so every other query in this file is unaffected.
+jest.mock('@kiko/design-system/components/text', () => {
+  const { Text: RNText } = require('react-native');
+
+  return {
+    __esModule: true,
+    default: ({ tone = 'textPrimary', children }: { tone?: string; children: ReactNode }) => (
+      <RNText testID={`text-tone-${tone}`}>{children}</RNText>
+    ),
+  };
+});
 
 describe('FieldTrigger', () => {
   it('renders the label and value and reports a press', async () => {
@@ -58,5 +75,35 @@ describe('FieldTrigger', () => {
     );
 
     expect(queryByText('AED')).toBeNull();
+  });
+
+  it('renders no FieldError and a plain label when `error` is undefined', async () => {
+    const { queryByText } = await render(
+      <FieldTrigger
+        label="Category"
+        onPress={jest.fn()}
+        value="Groceries"
+        valueTone="textPrimary"
+      />,
+    );
+
+    expect(queryByText('Pick one.')).toBeNull();
+  });
+
+  it('shows the FieldError message and tints the label negative when `error` is set', async () => {
+    const { getByText, getByTestId } = await render(
+      <FieldTrigger
+        label="Category"
+        onPress={jest.fn()}
+        value="Select a category"
+        valueTone="textSecondary"
+        error="Pick one."
+        testID="category-field"
+      />,
+    );
+
+    expect(getByText('Pick one.')).toBeTruthy();
+    expect(getByTestId('category-field-error')).toBeTruthy();
+    expect(getByText('Category').props.testID).toBe('text-tone-negative');
   });
 });

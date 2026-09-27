@@ -3,15 +3,16 @@
 // `jest/setup.js` lets the module graph load; runBalanceSync's data access is
 // fully injected through BalanceSyncDeps, so the real repos are never exercised
 // here.
-import type { AccountRow, HoldingRow } from '../../db/schema';
-import { i18n } from '../../i18n';
 import {
   getProgressSnapshot,
   getSnapshot as isSyncingSnapshot,
   setSyncing,
   setSyncProgress,
   subscribeProgress,
-} from '../../monobank/sync-status';
+} from '@kiko/monobank/sync-status';
+import { i18n } from '@kiko/i18n/init';
+import type { AccountRow, HoldingRow } from '@kiko/db';
+
 import type { BalanceProvider, ProviderBalance, SyncTarget } from '../provider';
 
 import { type BalanceSyncDeps, runBalanceSync } from './sync';
@@ -75,44 +76,42 @@ const makeInMemoryDeps = (initialAccounts: AccountRow[]) => {
   const holdingsStore: HoldingRow[] = [];
   let sequence = 0;
 
-  const upsertHolding: BalanceSyncDeps['upsertHolding'] = async ({
-    metadataField,
-    metadataKey,
-    metadata,
-    ...rest
-  }) => {
-    const merged = {
-      ...(metadata as Record<string, unknown> | null),
-      [metadataField]: metadataKey,
-    };
-    const existing = holdingsStore.find(
-      (holding) =>
-        holding.accountId === rest.accountId &&
-        (holding.metadata as Record<string, unknown>)[metadataField] === metadataKey,
-    );
+  const upsertHoldings: BalanceSyncDeps['upsertHoldings'] = async (holdingsList) => {
+    for (const { metadataField, metadataKey, metadata, ...rest } of holdingsList) {
+      const merged = {
+        ...(metadata as Record<string, unknown> | null),
+        [metadataField]: metadataKey,
+      };
+      const existing = holdingsStore.find(
+        (holding) =>
+          holding.accountId === rest.accountId &&
+          (holding.metadata as Record<string, unknown>)[metadataField] === metadataKey,
+      );
 
-    if (existing) {
-      existing.balanceMinorUnits = rest.balanceMinorUnits ?? 0;
-      existing.metadata = merged;
+      if (existing) {
+        existing.balanceMinorUnits = rest.balanceMinorUnits ?? 0;
+        existing.metadata = merged;
 
-      return;
+        continue;
+      }
+
+      sequence += 1;
+      holdingsStore.push({
+        id: `h-${sequence}`,
+        icon: null,
+        color: null,
+        sortOrder: 0,
+        closedAt: null,
+        createdAt: 0,
+        balanceMinorUnits: rest.balanceMinorUnits ?? 0,
+        // The Monobank-only crash-safe statement-import marker; a crypto holding
+        // never carries one (it imports no statements).
+        syncedBalanceMinorUnits: null,
+        balanceSetAt: null,
+        ...rest,
+        metadata: merged,
+      });
     }
-
-    sequence += 1;
-    holdingsStore.push({
-      id: `h-${sequence}`,
-      icon: null,
-      color: null,
-      sortOrder: 0,
-      closedAt: null,
-      createdAt: 0,
-      balanceMinorUnits: rest.balanceMinorUnits ?? 0,
-      // The Monobank-only crash-safe statement-import marker; a crypto holding
-      // never carries one (it imports no statements).
-      syncedBalanceMinorUnits: null,
-      ...rest,
-      metadata: merged,
-    });
   };
 
   const deps: Partial<BalanceSyncDeps> = {
@@ -129,7 +128,7 @@ const makeInMemoryDeps = (initialAccounts: AccountRow[]) => {
       holdingsStore
         .filter((holding) => holding.accountId === accountId)
         .map((holding) => ({ ...holding })),
-    upsertHolding,
+    upsertHoldings,
   };
 
   return { deps, accountsStore, holdingsStore };
@@ -232,7 +231,7 @@ describe('runBalanceSync', () => {
     await runBalanceSync(provider, { balances: [walletBalance(7)] }, deps);
 
     // The second wallet resolves to its OWN account and writes its own holding —
-    // the one-connection-per-institution gate is gone (Task 5.2).
+    // the one-connection-per-institution gate is gone.
     expect(accountsStore.find((account) => account.id === 'acc-b')?.institution).toBe('btc_wallet');
     expect(holdingsStore).toHaveLength(1);
     expect(holdingsStore[0].accountId).toBe('acc-b');
@@ -291,6 +290,23 @@ describe('runBalanceSync', () => {
     ).rejects.toThrow('Block explorer request failed: 400');
     expect(accountsStore[0].institution).toBeNull();
     expect(holdingsStore).toHaveLength(0);
+  });
+
+  it('never calls upsertHoldings when the provider returns no balance (no empty write transaction)', async () => {
+    const { provider } = makeProvider();
+    const { deps } = makeInMemoryDeps([cryptoAccount({ id: 'acc-1', institution: 'btc_wallet' })]);
+    deps.targetAccountId = 'acc-1';
+    let upsertCalled = false;
+    const originalUpsertHoldings = deps.upsertHoldings;
+    deps.upsertHoldings = async (holdingsList) => {
+      upsertCalled = true;
+
+      return originalUpsertHoldings?.(holdingsList);
+    };
+
+    await runBalanceSync(provider, { balances: [] }, deps);
+
+    expect(upsertCalled).toBe(false);
   });
 
   // The crypto sync feeds the same determinate progress bar as the Monobank run

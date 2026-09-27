@@ -1,16 +1,16 @@
-import { fireEvent, render } from '@testing-library/react-native';
 import type { FC, ReactNode } from 'react';
 import { Keyboard, StyleSheet, TextInput } from 'react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 // The border width the pill's bordered glass applies comes from Unistyles'
 // own `StyleSheet.hairlineWidth`, which is not necessarily react-native's, so
 // the assertion below reads the expected value from the same source the
 // style uses (mirrors `glass-surface.component.test.tsx`'s own bordered
 // test).
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
-import '../../../i18n';
-import '../../unistyles';
+import '@kiko/i18n/init';
+import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
 
-import { darkTheme } from '../../theme';
 import { useKeyboardDoneAccessory } from './use-keyboard-done-accessory';
 
 // The global jest/setup.js mock renders LiquidGlassView as a plain View and
@@ -22,6 +22,7 @@ import { useKeyboardDoneAccessory } from './use-keyboard-done-accessory';
 // scope.
 jest.mock('@callstack/liquid-glass', () => {
   const { View } = require('react-native');
+
   return { LiquidGlassView: View, isLiquidGlassSupported: false };
 });
 
@@ -32,7 +33,7 @@ jest.mock('@callstack/liquid-glass', () => {
 // the design-system Text to surface its `tone` prop through a testID so the
 // Done label's tone is assertable; children still render as plain text, so
 // every `getByText`/`getByRole` query below is unaffected.
-jest.mock('../text', () => {
+jest.mock('@kiko/design-system/components/text', () => {
   const { Text: RNText } = require('react-native');
 
   return {
@@ -85,7 +86,7 @@ describe('useKeyboardDoneAccessory', () => {
 
     const { getByText } = await render(<Host />);
 
-    fireEvent.press(getByText('Done'));
+    await fireEvent.press(getByText('Done'));
 
     expect(dismissSpy).toHaveBeenCalledTimes(1);
 

@@ -1,13 +1,12 @@
-import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
-
-import { darkTheme } from '../design-system/theme';
+import { readdirSync, readFileSync } from 'node:fs';
+import { darkTheme } from '@kiko/design-system/theme';
 
 import {
   parseSeedCategoryColors,
   readSeedCategoryColorMigration,
 } from './__fixtures__/seed-category-colors';
+import { SEEDED_CATEGORIES } from './__fixtures__/seeded-categories';
 
 const migrationsDir = join(__dirname, '../../drizzle/migrations');
 const sqlFiles = (): string[] =>
@@ -129,6 +128,7 @@ describe('seed-category-colors migration', () => {
 
     expect(keys.sort()).toEqual([...COLORED_CATEGORY_KEYS].sort());
     expect(new Set(keys).size).toBe(COLORED_CATEGORY_KEYS.length);
+
     for (const uncoloredKey of UNCOLORED_CATEGORY_KEYS) {
       expect(keys).not.toContain(uncoloredKey);
     }
@@ -162,6 +162,7 @@ describe('seed-category-colors migration', () => {
       .filter((statement) => statement.includes('SET `color`'));
 
     expect(statements).toHaveLength(8);
+
     for (const statement of statements) {
       expect(statement).toContain('`color` IS NULL');
     }
@@ -195,6 +196,7 @@ const applyGuardedIconUpdate = (
   const match = sql.match(
     /UPDATE `[a-z_]+` SET `icon` = '([^']+)' WHERE `([a-z_]+)` = '([^']+)' AND `icon` = '([^']+)'/,
   );
+
   if (match === null) {
     throw new Error('No guarded icon UPDATE found in migration SQL');
   }
@@ -205,11 +207,11 @@ const applyGuardedIconUpdate = (
   return matches ? nextIcon : row.icon;
 };
 
-// M1: the icon rework changes exactly ONE seeded category default — Health from
+// The icon rework changes exactly ONE seeded category default — Health from
 // `cross.case` to `cross`. Categories are seeded as DB rows (0002), so an
 // existing install stores `cross.case` and needs a guarded data migration to
 // converge, same class/shape as 0017's transport `car`->`bus` refinement.
-describe('health-category-icon migration (M1)', () => {
+describe('health-category-icon migration', () => {
   const sql = (): string =>
     readFileSync(join(migrationsDir, '0031_icon_health_category.sql'), 'utf8');
 
@@ -263,12 +265,12 @@ describe('health-category-icon migration (M1)', () => {
   });
 });
 
-// M2: the crypto ACCOUNT default changes from `bitcoinsign` to
+// The crypto ACCOUNT default changes from `bitcoinsign` to
 // `bitcoinsign.circle`. The account form PERSISTS the kind default at create
 // time (never null on create), so existing un-customized crypto accounts store
 // `bitcoinsign` and need a guarded data migration — unlike the holding defaults,
 // which are null-until-picked render-time fallbacks and need no migration.
-describe('crypto-account-icon migration (M2)', () => {
+describe('crypto-account-icon migration', () => {
   const sql = (): string =>
     readFileSync(join(migrationsDir, '0032_icon_crypto_account.sql'), 'utf8');
 
@@ -381,6 +383,7 @@ describe('exchange-marker migration', () => {
     const backfills = sql.split('UPDATE `transactions`').slice(1);
 
     expect(backfills).toHaveLength(2);
+
     for (const statement of backfills) {
       expect(statement).toContain('`exchange_counterpart_holding_id` IS NULL');
       expect(statement).toContain("`description` = ''");
@@ -388,8 +391,8 @@ describe('exchange-marker migration', () => {
   });
 });
 
-// C1: the `transactions` table only carried `transactions_source_external`
-// (the dedup unique index). Every `where(eq(transactions.holdingId, …))` did a
+// The `transactions` table only carried `transactions_source_external` (the
+// dedup unique index). Every `where(eq(transactions.holdingId, …))` did a
 // full table scan and every `orderBy(desc(transactions.time))` a full sort, so
 // a migration adds a plain index on each of those two columns.
 describe('transactions performance indexes migration', () => {
@@ -408,13 +411,13 @@ describe('transactions performance indexes migration', () => {
   });
 
   it('adds the two indexes and nothing that rebuilds or drops the table', () => {
-    // The migration that introduces the holding_id index is the C1 one; it must
-    // not carry an accidental table rebuild or column drop alongside the indexes.
-    const c1 = sqlFiles().find((sql) => sql.includes('`transactions_holding_id`'));
+    // The migration that introduces the holding_id index must not carry an
+    // accidental table rebuild or column drop alongside the indexes.
+    const migrationSql = sqlFiles().find((sql) => sql.includes('`transactions_holding_id`'));
 
-    expect(c1).toBeDefined();
-    expect(c1).not.toContain('DROP TABLE');
-    expect(c1).not.toContain('DROP COLUMN');
-    expect(c1).not.toContain('CREATE TABLE');
+    expect(migrationSql).toBeDefined();
+    expect(migrationSql).not.toContain('DROP TABLE');
+    expect(migrationSql).not.toContain('DROP COLUMN');
+    expect(migrationSql).not.toContain('CREATE TABLE');
   });
 });

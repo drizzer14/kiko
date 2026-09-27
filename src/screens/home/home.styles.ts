@@ -25,15 +25,6 @@ export const styles = StyleSheet.create((theme) => ({
   filterBar: {
     marginTop: theme.spacing(4),
   },
-  // A hairline rule between the net-worth block and the filter row, drawn in
-  // the theme's separator color to match the dividers used elsewhere (e.g.
-  // account-detail). It carries no vertical margin of its own: the content
-  // column's `gap(4)` sits above it (net-worth card → divider) and the filter
-  // row's own `marginTop(4)` sits below it (divider → filters).
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: theme.colors.border,
-  },
   // A date separator between day groups in the transaction SectionList. A
   // generous top pad gives each date label clear separation above it.
   sectionHeader: {

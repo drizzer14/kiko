@@ -1,19 +1,14 @@
+import { right } from 'fnts/either';
 import { act, renderHook } from '@testing-library/react-native';
 
 const mockRunCryptoSync = jest.fn();
-const mockRefreshRates = jest.fn();
-const mockLatestFetchedAt = jest.fn();
+const mockRefreshMarketData = jest.fn();
 
-jest.mock('../../crypto-sync/run-crypto-sync', () => ({
+jest.mock('@kiko/crypto-sync/run-crypto-sync', () => ({
   runCryptoSync: (...args: unknown[]) => mockRunCryptoSync(...args),
 }));
-jest.mock('../../rates/rates-refresh', () => ({
-  refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
-}));
-jest.mock('@kiko/rates/repo', () => ({
-  ratesRepo: {
-    latestFetchedAt: (...args: unknown[]) => mockLatestFetchedAt(...args),
-  },
+jest.mock('@kiko/sync/refresh-market-data', () => ({
+  refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),
 }));
 
 import { useCryptoSync } from './use-crypto-sync';
@@ -24,11 +19,10 @@ describe('useCryptoSync', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRunCryptoSync.mockResolvedValue({ syncedHoldings: 1 });
-    mockRefreshRates.mockResolvedValue(undefined);
-    mockLatestFetchedAt.mockResolvedValue(1_700_000_000_000);
+    mockRefreshMarketData.mockResolvedValue(right(undefined));
   });
 
-  it('passes the request through to runCryptoSync, then refreshes rates with the stored latestFetchedAt', async () => {
+  it('passes the request through to runCryptoSync, then refreshes rates-only, throttled', async () => {
     const { result } = await renderHook(() => useCryptoSync());
 
     await act(async () => {
@@ -44,7 +38,7 @@ describe('useCryptoSync', () => {
       targetAccountId: 'acc-1',
       address: ADDRESS,
     });
-    expect(mockRefreshRates).toHaveBeenCalledWith({ lastRefreshAt: 1_700_000_000_000 });
+    expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: true, metals: false });
   });
 
   it('resolves true and leaves no error on success', async () => {
@@ -71,6 +65,6 @@ describe('useCryptoSync', () => {
 
     expect(outcome).toBe(false);
     expect(result.current.error).toBe('Binance request failed: 401');
-    expect(mockRefreshRates).not.toHaveBeenCalled();
+    expect(mockRefreshMarketData).not.toHaveBeenCalled();
   });
 });

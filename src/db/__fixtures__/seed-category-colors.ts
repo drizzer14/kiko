@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 
 // Parses migration `0017_default_category_colors.sql`'s UPDATE statements into
 // `{ key, color }` pairs, read from the REAL migration file rather than a

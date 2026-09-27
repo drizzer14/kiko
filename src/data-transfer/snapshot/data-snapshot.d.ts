@@ -1,15 +1,17 @@
 // src/data-transfer/snapshot/data-snapshot.d.ts
 import type {
   AccountRow,
+  BondRegisterRow,
   CategoryOverrideRow,
   CategoryRow,
   CurrencyRateHistoryRow,
   CurrencyRateRow,
   HoldingRow,
+  PricePointRow,
   SettingsRow,
   SyncStateRow,
   TransactionRow,
-} from '../../db/schema';
+} from '@kiko/db';
 
 /**
  * Every logical table in the app, as a flat row-array snapshot. This is the
@@ -27,4 +29,6 @@ export type DataSnapshot = {
   syncState: SyncStateRow[];
   categories: CategoryRow[];
   categoryOverrides: CategoryOverrideRow[];
+  pricePoints: PricePointRow[];
+  bondRegister: BondRegisterRow[];
 };

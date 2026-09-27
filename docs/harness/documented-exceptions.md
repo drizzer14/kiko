@@ -16,7 +16,7 @@ verified usage, not dead weight:
   `scripts/checks/*.sh` wrapper, never from a package.json script
   Knip's static scan can see). Also `@env` — the virtual module that
   the `react-native-dotenv` Babel plugin synthesizes at transform time
-  (`import { PRICE_ENDPOINT } from '@env'` in `src/rates/coingecko.ts`);
+  (`import { PRICE_ENDPOINT } from '@env'` in `src/rates/coingecko/coingecko.ts`);
   it is not a real npm package, so Knip's resolver reports the import
   as an unlisted dependency. The package itself (`react-native-dotenv`)
   is seen through `babel.config.js`; only the synthetic `@env`
@@ -32,10 +32,10 @@ verified usage, not dead weight:
   `@react-native/typescript-config` pins `types: ["jest"]`, which
   drops the Node ambient globals and module typings that four test
   files legitimately use — `src/db/schema.category-overrides.test.ts`
-  and `src/categories/categories.repo.test.ts` read
+  and `src/categories/repo/categories.repo.test.ts` read
   `drizzle/migrations` through `node:fs` + `__dirname`,
   `__tests__/info-plist.test.ts` reads `ios/Kiko/Info.plist` the same
-  way, and `src/holdings/interest.test.ts` sets `process.env.TZ` to
+  way, and `src/holdings/interest/interest.test.ts` sets `process.env.TZ` to
   force a DST-observing zone. Jest runs on Node, so these are real,
   available globals, not a shim; the list is widened to
   `["jest", "node"]` (never to `[]`, which would admit every
@@ -76,7 +76,7 @@ verified usage, not dead weight:
   `@bottom-tabs/react-navigation` — its `NativeBottomTabView` imports
   the real `TabView` component from `react-native-bottom-tabs` to
   render the tab bar on-device; only `@bottom-tabs/react-navigation`
-  is imported from app code, in `src/navigation/root.navigator.tsx`,
+  is imported from app code, in `src/navigation/root-navigator/root.navigator.tsx`,
   so depcheck's static scan cannot see `react-native-bottom-tabs`
   itself being used). Also `react-native-dotenv` — a Babel plugin referenced only
   as the string `'module:react-native-dotenv'` in `babel.config.js`,
@@ -159,16 +159,167 @@ verified usage, not dead weight:
   directly by `__tests__/kill-guard.test.ts`, which spawns
   `kill-guard.sh` (and so `kill-guard.js`) as a subprocess, not an import,
   so Jest's coverage does not make Knip see it as reachable either.
+- **`knip.json` `ignore`**: `scripts/checks/pre-write-guard.js` — the
+  PreToolUse hook script that `scripts/checks/pre-write-guard.sh` invokes
+  (`node --experimental-strip-types --no-warnings pre-write-guard.js`) to
+  rebuild an Edit/Write/MultiEdit's proposed file content and deny the
+  write when it introduces a known violation (see CLAUDE.md's "Automatic
+  wiring" and `.claude/skills/kiko-linter/SKILL.md`), the same reason as
+  `kill-guard.js` above. It is reached only from a sibling `.sh` wrapper's
+  `node` invocation — never a static `import`/`require` from any
+  TypeScript/JavaScript source, and never a package.json script Knip's
+  static scan can see — so Knip's reachability graph reports it as an
+  unused file. It is exercised directly by
+  `__tests__/pre-write-guard.test.ts`, which spawns `pre-write-guard.sh`
+  (and so `pre-write-guard.js`) as a subprocess, not an import, so Jest's
+  coverage does not make Knip see it as reachable either.
+- **`knip.json` `ignore`**: `scripts/checks/import-order.js` — the same
+  shape as `kill-guard.js` above. `scripts/checks/import-order.sh`
+  reaches it only via a `node` invocation (both the fast-tier per-file
+  check and the project-wide `check:import-order` mode), never a static
+  `import`/`require`, and never a package.json script Knip's static scan
+  can see, so Knip's reachability graph reports it as unused. Exercised
+  directly by `__tests__/import-order.test.ts`, which spawns
+  `import-order.sh` (and so `import-order.js`) as a subprocess, and by a
+  direct `node import-order.js --write` invocation in the same test file
+  — neither of which Jest's static import graph makes Knip see as
+  reachable.
+- **`knip.json` `ignore`**: `scripts/checks/full-word-identifiers.js` —
+  the same shape as `import-order.js`/`kill-guard.js` above.
+  `scripts/checks/full-word-identifiers.sh` reaches it only via a `node`
+  invocation (both the fast-tier per-file check and the project-wide
+  `check:full-word-identifiers` mode), never a static `import`/`require`,
+  and never a package.json script Knip's static scan can see, so Knip's
+  reachability graph reports it as unused. Exercised directly by
+  `__tests__/full-word-identifiers.test.ts`, which spawns
+  `full-word-identifiers.sh` (and so `full-word-identifiers.js`) as a
+  subprocess — not an import, so Jest's coverage does not make Knip see it
+  as reachable either.
+- **`knip.json` `ignore`**: `scripts/checks/blank-line-separation.js` — the
+  same shape as `import-order.js`/`full-word-identifiers.js`/
+  `kill-guard.js` above. `scripts/checks/blank-line-separation.sh` reaches
+  it only via a `node` invocation (both its per-file mode and its
+  project-wide mode), and `scripts/checks/pre-write-guard.js` reaches it
+  only via `runSpawnedNodeChecker`'s own `spawnSync` — never a static
+  `import`/`require`, and never a package.json script Knip's static scan
+  can see (it mechanizes kiko-code-style's "Blank lines before statement
+  blocks" and "Blank line between adjacent JSX sibling nodes" rules, wired
+  into the pre-write guard's `NODE_RULES` as `kiko-blank-line-separation`;
+  it is guard-mode only for now — not yet in `check:all`, so its
+  project-wide mode has no package.json script either), so Knip's
+  reachability graph reports it as unused. Exercised directly by
+  `__tests__/blank-line-separation.test.ts`, which spawns
+  `blank-line-separation.sh` (and so `blank-line-separation.js`) as a
+  subprocess, and by a direct `node blank-line-separation.js [--write]`
+  invocation in the same test file, and by
+  `__tests__/pre-write-guard.test.ts`'s `kiko-blank-line-separation` case
+  (via `pre-write-guard.sh`) — none of which Jest's static import graph
+  makes Knip see as reachable.
+- **`knip.json` `ignore`**: `scripts/checks/screen-imports.js` — the same
+  shape as `blank-line-separation.js`/`import-order.js`/`kill-guard.js`
+  above. `scripts/checks/screen-imports.sh` reaches it only via a `node`
+  invocation (both its per-file mode and its project-wide mode), and
+  `scripts/checks/pre-write-guard.js` reaches it only via
+  `runSpawnedNodeChecker`'s own `spawnSync` — never a static `import`/
+  `require`, and never a package.json script Knip's static scan can see
+  (it mechanizes the pre-write-guard design spec's rule 12, "no import from
+  another screen's folder", wired into the pre-write guard's `NODE_RULES`
+  as `kiko-no-cross-screen-import`; it is guard-mode only for now — not yet
+  in `check:all`, so its project-wide mode has no package.json script
+  either), so Knip's reachability graph reports it as unused. Exercised
+  directly by `__tests__/screen-imports.test.ts`, which spawns
+  `screen-imports.sh` (and so `screen-imports.js`) as a subprocess, and by
+  a direct `node screen-imports.js` invocation in the same test file, and
+  by `__tests__/pre-write-guard.test.ts`'s `kiko-no-cross-screen-import`
+  case (via `pre-write-guard.sh`) — none of which Jest's static import
+  graph makes Knip see as reachable.
+- **`knip.json` `ignore`**: `scripts/checks/feature-imports.js` — the same
+  shape as `screen-imports.js` above. `scripts/checks/feature-imports.sh`
+  reaches it only via a `node` invocation (per-file, project-wide and
+  `--tree`), and `scripts/checks/pre-write-guard.js` only via
+  `runSpawnedNodeChecker`'s `spawnSync` (the `kiko-feature-imports`
+  `NODE_RULES` row). No package.json script names it since the
+  sweep-only `report:feature-imports` script (and its `--report`/`--json`
+  modes) was removed once the sweep reached 0 findings. Exercised by
+  `__tests__/feature-imports.test.ts` (direct `node feature-imports.js`
+  runs plus `feature-imports.sh` as a subprocess) and by
+  `__tests__/pre-write-guard.test.ts`'s `kiko-feature-imports` case —
+  none of which Jest's static import graph makes Knip see as reachable.
+- **`knip.json` `ignore`**: `scripts/checks/specifier-scanner.js` — the
+  shared specifier scanner. Its only importers are `feature-imports.js`
+  and `screen-imports.js` (a static `require`), and both are themselves
+  in `ignore` above, so Knip never walks into it and reports it as an
+  unused file. It is reached exactly as far as those two checkers are,
+  and exercised through their tests.
+- **`scripts/checks/feature-imports.js`'s `TEST_ONLY` allowlist**
+  (`kiko-feature-imports`): the paths below may be imported deep, through
+  `@kiko/<path>`, and only by a test file. No barrel may export them
+  (`--tree` `barrel-leak`), and a production file may not import them
+  (`test-only-from-production`), so no test code reaches the App Store
+  build (kiko-compliance 5.6). Each entry and its reason:
+  - `test-support/**`: shared test helpers with no owning feature. The
+    folder has no barrel.
+  - `**/__fixtures__/**`: fixture data (db, monobank, the statement-import
+    formats, `bonds/nbu-register`).
+  - `db/in-array-clause-test-helper`, `db/render-condition-test-helper`:
+    query-shape helpers for the repo tests of other features.
+  - `db/capture-set-tx`: its only importers are tests.
+  - `rates/monobank-feed-test-helper`: a test-only feed builder.
+  - `statement-import/formats/format-test-fixtures`: shared format test
+    rows.
+  - `i18n/locales/flatten-catalog`, `i18n/locales/title-keys`: catalog
+    helpers that only the i18n tests use.
+- **`scripts/checks/feature-imports.js`'s `AMBIENT_LOOSE` set**: `env.d.ts`,
+  `i18n/i18next.d.ts` and `statement-import/windows-1251.d.ts` stay loose
+  at a container root (no `--tree` `loose-file` finding). They are ambient
+  declarations that nothing imports, so a unit folder and barrel would
+  have no importer.
+- **`scripts/checks/full-word-identifiers.js`'s own `EXEMPTIONS` list**: an
+  exact `(file path suffix, denylisted word, EXACT identifier name)`
+  allowlist mechanizing kiko-code-style's "Full words in identifiers"
+  exception for "a name forced by a third-party API/DB column/persisted
+  JSON key". The `name` field (not just word) matters: it is what lets
+  `src/crypto-sync/binance/binance.transactions.ts` exempt only its
+  wire-mirrored `txId` field while still catching a DIFFERENT `tx`-bearing
+  identifier chosen freely in the SAME file (`BinanceTransactionSyncDeps`, this
+  codebase's own type name, correctly renamed to `BinanceTransactionSyncDeps`
+  during the R1.d sweep — a word-only, file-wide exemption would have
+  silently skipped that one too). Each of the 20 entries is a real,
+  verified external-format mirror, not a style preference:
+  `src/db/run-migrations.ts` + its test + the six
+  `src/db/schema.*.test.ts` fixtures (`idx`) mirror drizzle-kit's own
+  generated `_journal.json` `{idx, when, tag}` shape, which this runner
+  reimplements byte-for-byte (see the file's own header comment);
+  `src/bonds/nbu-register/nbu-register.ts` + its test (`val`, from
+  `val_code` and from `payments[].pay_val`) mirror the National Bank of
+  Ukraine securities register's own external JSON fields; `src/crypto-sync/binance/binance.client.ts` +
+  its test (`msg`) mirror Binance's own error-body shape `{code, msg}`;
+  those same two files plus `binance.transactions.ts`/`.test.ts` (`tx`,
+  from `txId`) mirror the literal field name on Binance's deposit/withdraw
+  history records (`GET /sapi/v1/capital/deposit/hisrec` and
+  `/withdraw/history`) — found only by reading the ACTUAL diff after an
+  initial mechanical `tx` → `transaction` sweep pass, not by inspection
+  beforehand, which is exactly why this allowlist is exact-name-scoped
+  rather than trusted-by-eye; `src/crypto-sync/btc-wallet/btc-wallet.client.test.ts`
+  (`tx`, from `tx_count`) mirrors the Esplora/Blockstream address-stats
+  API's own field name; `src/design-system/components/currency-field/currency-field.component.tsx`
+  (`num`, from `initialNumToRender`) is React Native's own `FlatList` prop
+  name. A denylisted word anywhere else in the tree — including the same
+  word in a different file, or a DIFFERENT identifier in the same file —
+  still fails; add a new entry here only for another verified
+  external-name case, per this file's own standing rule.
 - **`rules/fixtures/**` (Biome `files.includes`, `knip.json` `ignore`,
-  `.jscpd.json` `ignore`, and `--exclude 'fixtures'` in
-  `scripts/checks/security.sh`)**: the positive/negative fixture pair that
+  `.jscpd.json` `ignore`, and
+  `--exclude 'fixtures'` in `scripts/checks/security.sh`)**: the
+  positive/negative fixture pair that
   proves each project Semgrep rule still fires. A positive fixture is
   deliberately non-conforming, never-imported code (a hidden Guideline 5.6
   feature flag import, a Keychain secret pushed into React state), and each
   pair is near-identical by construction — the negative fixture
   is the positive one plus the fix. Verified: without these exclusions a
   `.bad.tsx` fails Biome, reads as an unused file to Knip, and a pair reports
-  40% duplicated lines / 43.71% duplicated tokens to jscpd, all by design. The
+  40% duplicated lines / 43.71% duplicated tokens to jscpd, all by design.
+  The
   semgrep `--exclude` is the bare directory name `fixtures` (semgrep matches it
   per path component), so it hits only `rules/fixtures`; the app's own
   `src/**/__fixtures__` stays in scope. No coverage is lost:
@@ -177,13 +328,22 @@ verified usage, not dead weight:
   fixture or starts matching its negative one.
 - **Stryker mutate-set exclusions (`stryker.conf.json` `mutate`
   negations + the changed-file filter in `scripts/checks/mutation.sh`)**:
-  four NON-LOGIC categories are excluded from the set of files Stryker
-  mutates, in both run modes (the whole-project fallback array and the
-  diff-scoped changed-file filter). (1) **i18n locale catalogs
+  five categories are excluded from the set of files Stryker
+  mutates, in both places (the config's own `mutate` array and the
+  diff-scoped changed-file filter; the wrapper refuses a whole-project
+  run, so the filter is the one a gated run uses). (0) **`scripts/checks/**`** — the
+  harness's own check tooling, not app logic; `import-order.js`,
+  `kill-guard.js`, and `full-word-identifiers.js` are already exempt by
+  extension (plain `.js`, outside the `**/*.ts`/`**/*.tsx` mutate glob),
+  but `one-component-per-file.ts` (the one-exported-component-per-`.tsx`
+  Jest invariant, moved here from src/code-style/ so it is treated the
+  same as the harness's other TypeScript-checked rules) needed an
+  explicit pattern since it IS `.ts`. (1) **i18n locale catalogs
   (`src/i18n/locales/**`)** — pure nested string-data objects with no
   logic a surviving mutant could meaningfully expose (hundreds of
   low-value string mutants); the
-  locale test assertions (e.g. `en.button-casing.test.ts`) still run
+  locale test assertions (e.g. `en.casing-by-role.test.ts`,
+  `uk.casing.test.ts`) still run
   under Jest, so string/casing coverage is unaffected — only the mutation
   report drops those keys. (2) **`**/*.d.ts`** — type-only declarations,
   erased at compile time, so Stryker generates no runtime mutants from
@@ -191,10 +351,9 @@ verified usage, not dead weight:
   (`**/index.ts`)** — pure re-export modules (`export ... from './x'`)
   whose only mutable token is the module-path string; no branch, no
   arithmetic, no logic, and no test imports the excluded barrels
-  directly. The SOLE non-barrel `index.ts` is `src/i18n/index.ts` (an
-  `i18next.init(...)` side-effect module with config booleans/strings),
-  so it is RE-INCLUDED (`**/i18n/index.ts`, a positive pattern after the
-  negation). (4) **pure-static styles (`**/*.styles.ts`)** — pure
+  directly. Every `index.ts` is a barrel: the `i18next.init(...)`
+  side-effect module lives in `src/i18n/init/init.ts`, so it stays in
+  scope without a re-include. (4) **pure-static styles (`**/*.styles.ts`)** — pure
   `StyleSheet.create` objects (string/number/object-literal tokens only,
   no conditionals or arithmetic); no test imports any `.styles` file, so
   their mutants are pure denominator noise. The two logic-bearing styles
@@ -204,11 +363,12 @@ verified usage, not dead weight:
   `**/entity-icon-tile.styles.ts` (exports the `iconTileSize` helper
   function). The mechanism is PURELY glob-based, not logic-based: the
   drop is by PATTERN — EVERY `**/index.ts` and EVERY `**/*.styles.ts`
-  is negated — and ONLY the three named files above
-  (`src/i18n/index.ts`, `bottom-sheet.styles.ts`,
-  `entity-icon-tile.styles.ts`) are re-included, BY NAME. So the files
-  that stay in scope (`src/design-system/palette.ts`, `theme.ts`,
-  `entity-tint.ts`, the mixed const+function modules,
+  is negated — and ONLY the two named files above
+  (`bottom-sheet.styles.ts`, `entity-icon-tile.styles.ts`) are
+  re-included, BY NAME. So the files that stay in scope
+  (`src/i18n/init/init.ts`, `src/design-system/palette/palette.ts`,
+  `theme/theme.ts`, `entity-tint/entity-tint.ts`, the mixed
+  const+function modules,
   `drizzle/migrations/**`, and every other non-`.styles`, non-barrel
   source) stay in scope simply because they never match the `index.ts`
   or `*.styles.ts` globs — NOT because any logic test spared them.
@@ -246,7 +406,7 @@ verified usage, not dead weight:
   `existsSync`, `__dirname`, `require` of a non-module path). **KEEP-LIST**
   — external paths tests DO read, which must stay in the sandbox and are
   therefore NOT ignored: `drizzle/migrations/**` (read by
-  `src/db/schema.*.test.ts`, `src/categories/categories.repo.test.ts`,
+  `src/db/schema.*.test.ts`, `src/categories/repo/categories.repo.test.ts`,
   and `src/db/__fixtures__/seed-category-colors.ts` via `__dirname`
   +`node:fs`) and `scripts/checks/*.sh` (read by the `__tests__/mutation-*`
   wrapper tests). `reports/` is deliberately kept: Stryker's incremental
@@ -262,6 +422,16 @@ verified usage, not dead weight:
   before mutating, so a wrongly-excluded read fails FAST with a clear
   ENOENT rather than silently corrupting the score — that fail-fast is the
   accepted safety net.
+- **`jest.config.js` `testPathIgnorePatterns`**:
+  `<rootDir>/__tests__/test-support/(?!.*\.test\.[jt]sx?$)` (beside Jest's
+  own `/node_modules/` default). Jest's default `testMatch` runs every file
+  under a `__tests__/` folder as a suite, so the shared harness-test helpers
+  there (`mutation-repository.ts`, the throwaway git repository, stub, and
+  wrapper-run helpers the mutation cap, stream, and lock tests share) would
+  each fail as an empty suite. No test is skipped: the negative lookahead
+  ignores only the non-test helpers, so a `*.test.*` file placed beside a
+  helper in that folder still runs, and every helper is exercised by the
+  suites that import it.
 - **`.npmrc` `min-release-age-exclude`**: `Kiko`, the first-party
   package name, is exempt from the dependency min-age rule below.
   `react-native` is exempt for the same category of reason: it is an
@@ -324,4 +494,30 @@ verified usage, not dead weight:
   `kiko-appgroup-write-needs-protection`) and their fixtures were removed
   2026-09-23 (`4e66dd7`) as dead — re-add both, with fixtures, the moment
   any code (a Share Extension or otherwise) writes to the App Group again.
+- **The pre-write guard's override comment (`// nosemgrep: <rule-id>
+  OVERRIDE(<reason>) <justification>`, or `kiko-override:` for a
+  Node-checked rule) is the same shape as the Biome override protocol
+  above, applied to `rules/semgrep-prewrite.yml` and the
+  `NODE_RULES` in `scripts/checks/pre-write-guard.js`.** A bare
+  `nosemgrep`/`kiko-override` comment with no `OVERRIDE(...)` never
+  suppresses a finding — see `pre-write-guard.js`'s
+  `OVERRIDE_COMMENT_PATTERN` and its surrounding comments for the
+  exact match rule. Every `paths.exclude` scope added to
+  `rules/semgrep-prewrite.yml` (one per rule, pointing at the real
+  implementation a rule's own pattern would otherwise also flag) is
+  documented inline in that file's own comments next to each rule —
+  read the rule there rather than duplicating the list here, since a
+  new rule's exclude would otherwise drift this bullet out of date.
 
+- **`kiko-worklet-directive-required` (`rules/semgrep-prewrite.yml`)
+  excludes every test file (`*.test.ts`, `*.test.tsx`, `__tests__/**`,
+  `e2e/**`).** Jest mocks `react-native-reanimated`, so no worklet runtime
+  ever captures a helper in a test file and the Release-only SIGABRT the
+  rule guards against cannot happen there. The rule's `$F(...)` x
+  statement-sequence match is also quadratic on a large test file whose
+  "Gesture" substrings (`fireGestureHandler`, `GestureRootWrapper`) defeat
+  Semgrep's prefilter: it crossed Semgrep's per-rule timeout under load, so
+  the pre-write guard denied "could not check" at random. The rule's
+  `rules/fixtures/` pair is not named like a test file and still proves the
+  rule in `check:rules`; `__tests__/pre-write-guard-rules.test.ts` proves
+  the exclusion.

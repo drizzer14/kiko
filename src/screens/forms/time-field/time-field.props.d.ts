@@ -1,14 +1,19 @@
 export type TimeFieldProps = {
   // The caption rendered above the field, and the field's accessibility label.
   label: string;
+  // The picker sheet's header: a Title Case sheet title, a separate key from
+  // the sentence-case `label` (kiko-translator: one key per UI role).
+  sheetTitle: string;
   // The current transaction time as a unix-millis timestamp; the field displays
   // its time-of-day (HH:mm). Null when there is nothing to show yet.
   value: number | null;
   // Reports the new timestamp: the picked hours/minutes combined with the DAY
   // (year/month/date) of the current `value`, so a time pick never moves the day.
   onChange: (timestamp: number) => void;
-  // Shown in the field when `value` is null.
-  placeholder?: string;
+  // Shown in the field when `value` is null. Required — see DateField's own
+  // matching `placeholder` doc comment for why the `?? label` fallback this
+  // replaced was a bug class, not a convenience default.
+  placeholder: string;
   // When true, the field is read-only: a press is inert (the picker never opens)
   // and the field is dimmed to read as locked — matching the disabled DateField /
   // TextField treatment. A synced (Monobank) transaction's time uses this so its

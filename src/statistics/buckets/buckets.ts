@@ -1,4 +1,4 @@
-import { DAY_MS } from '../../dates/duration';
+import { DAY_MS } from '@kiko/dates';
 
 // Past this line-window span the daily bucket count would grow unbounded, so
 // the series coarsens to a weekly bucket to keep the point count sane.
@@ -17,6 +17,7 @@ export const bucketDaysForSpan = (spanMs: number): number =>
 export const bucketTimes = (from: number, to: number, bucketDays: number): number[] => {
   const step = bucketDays * DAY_MS;
   const times: number[] = [];
+
   for (let t = from; t < to; t += step) {
     times.push(t);
   }

@@ -9,7 +9,7 @@
 // client) and reading the keys of what it actually returns — so a table added
 // to `schema.ts` or the snapshot object's field list changing under it fails
 // this test without either list being touched by hand.
-jest.mock('../../db/client', () => ({
+jest.mock('@kiko/db/client', () => ({
   database: {
     select: () => ({
       from: () => ({
@@ -20,9 +20,8 @@ jest.mock('../../db/client', () => ({
 }));
 
 import { is } from 'drizzle-orm';
+import { schema } from '@kiko/db';
 import { SQLiteTable } from 'drizzle-orm/sqlite-core';
-
-import * as schema from '../../db/schema';
 
 import { readDataSnapshot } from './read-snapshot';
 

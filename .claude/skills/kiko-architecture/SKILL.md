@@ -1,6 +1,6 @@
 ---
 name: kiko-architecture
-description: Invoke whenever you touch storage, a repository, a screen's data hook, migrations, the Monobank sync pipeline, or backup export/import (data-transfer). Read before writing any op-sqlite/Drizzle code, any db.transaction call, any useLiveQuery consumer, any code that reads the Monobank API or the Keychain token, or any `.kiko` export/import code.
+description: Invoke whenever you touch storage, a repository, a screen's data hook, migrations, the Monobank sync pipeline, or backup export/import (data-transfer). Read before writing any op-sqlite/Drizzle code, any db.transaction call, any useLiveQuery consumer, any code that reads the Monobank API or the Keychain token, or any `.kiko` export/import code. For currency rates, price_points, or a priced holding's value, see kiko-pricing; for statement-import parsing or column mapping, see kiko-statement-import.
 ---
 
 # Kiko architecture
@@ -74,6 +74,10 @@ project-level pointer to this section.
   `drizzle-orm` (^0.45.2) is the ORM on top of it: open the database
   with op-sqlite's `open()`, wrap it with `drizzle(opsqliteDb)`.
 - The schema is defined in TypeScript (Drizzle schema, not raw SQL).
+  The `@kiko/db` barrel exports the tables flat (`export * from
+  './schema'`) and also as a namespace (`schema`). Mock the connection
+  with `jest.mock('@kiko/db/client')`. A test inside `src/db/` uses
+  `jest.mock('./client')`, because B2 denies `alias-into-own-feature`.
 - Generate migrations with `drizzle-kit` using `driver: 'expo'` —
   this is the correct driver value for op-sqlite migration
   generation, despite the name.
@@ -99,6 +103,66 @@ project-level pointer to this section.
   disorder). `MigrationsGate` (`src/migration/`) owns the launch UI: a loading
   state until migrations succeed and an error state if they fail —
   never proceed past a failed migration.
+- The count-based runner makes migration `idx` a SHARED NAMESPACE
+  across branches, not a per-branch sequence — two branches that each
+  add a migration at the same next `idx` are NOT independent: `fix/import-balance`'s own
+  `0034_add_balance_set_at` must NEVER reach `main` as-is. That fix
+  lands on `main` only through `feat/assets-debts`, where it was
+  renumbered to `0036` (after that branch's own `0034`/`0035`) at merge
+  time. A build cut from a `main` that still carries the fix's
+  `0034_add_balance_set_at` verbatim would leave a device's `COUNT(*)`
+  at 35 once it later upgrades to `feat/assets-debts`'s renumbered
+  journal (`0034_add_statement_mappings`, `0035_add_price_points`,
+  `0036_add_balance_set_at`) — the runner then applies
+  `journal.entries.slice(35)`, i.e. idx 35 and 36 only. idx 35 in the
+  new journal is `0035_add_price_points`, which this device has never
+  run before, so it applies for the FIRST time and succeeds (not
+  "already applied ... again"). idx 36 (`0036_add_balance_set_at`) is
+  the one that then fails with "duplicate column name", since the
+  pre-upgrade build already added that column under its own local idx
+  34. `feat/assets-debts`'s own idx-34 migration,
+  `0034_add_statement_mappings`, is skipped entirely by this
+  `slice(35)` and is never created on that device at all, tripping
+  `MigrationsGate`'s error state either way. If `fix/import-balance`
+  (or any branch) ever needs a `main`-only hotfix again, re-cut ITS
+  migration with a fresh number at THAT time, checked against whatever
+  `main`'s own journal tail is then — never assume a branch's own next
+  `idx` is still free by the time it lands.
+- **A key/column whose backfill can only run in JS, not SQL, is a
+  flag-adding migration plus a launch-time upgrade step.** Migration
+  `0041_add_dedup_key_upgraded` only adds `settings.dedup_keys_upgraded`
+  (defaulting to `false`) — the actual rewrite can't be SQL:
+  `normalizeTransactionName` is JS-only, never in SQL, so SQL alone
+  cannot tell a statement-import dedup key's occurrence suffix from a
+  description that itself ends in a digit. `MigrationsGate` performs
+  the rewrite: `upgradeStoredDedupKeys`
+  (`statement-import/upgrade-stored-dedup-keys/`) runs after
+  `runMigrations` and `settingsRepo.ensure()`, next to the credential
+  migrations, reads the flag, and — only when it's still `false` —
+  recomputes and rewrites every legacy `source = 'import'` transaction's
+  `externalId` (the pure `upgradeLegacyDedupKey`,
+  `statement-import/mapping/upgrade-dedup-key.ts`) inside ONE `write()`
+  transaction before flipping the flag, so a crash mid-run retries the
+  WHOLE upgrade on the next launch instead of leaving some rows
+  unrewritten.
+- **A data-only cleanup migration needs a restore mirror, not a schema
+  change.** Migration `0042_uah_star_rates` is hand-authored SQL, no
+  snapshot JSON (same as `0040`/`0039`): it removes every stored
+  cross/inverse rate row (`currency_rates`/`currency_rate_history`,
+  `quote <> 'UAH' OR base = 'UAH'`) now that every A->B conversion
+  resolves at read time through the UAH pivot (kiko-pricing's
+  "Currency-rate fallback chain"). Crash-safe, derive-then-delete order
+  (same shape as `0040`'s snapshot-then-mutate): two additive
+  `INSERT OR IGNORE` steps first — one X:UAH row from an inverse
+  `UAH:X` row, one from a legacy `X:Y * Y:UAH` cross pair — so a
+  currency whose only pre-star row was an inverse or a cross pair still
+  ends up with its own star row before the final, irreversible DELETE
+  runs; idempotent (a second run derives and deletes nothing).
+  `src/data-transfer/snapshot/restore-snapshot.ts`'s
+  `withRatesNormalizedToUah` applies the IDENTICAL rule to a `.kiko`
+  restore, so a pre-star export normalizes exactly like a live device
+  upgrade rather than reintroducing dead cross rows. Next free
+  migration index: `0043`.
 
 ## Hard rule: every write goes through `db.transaction()`
 
@@ -112,6 +176,19 @@ This is non-negotiable: **every** insert, update, and delete —
 including a single-statement one — must be wrapped in
 `db.transaction()`. There is no exception for "it's just one
 statement."
+
+## No full-table select inside a write
+
+A `write(...)` callback holds op-sqlite's one worker thread (see "op-sqlite's
+ONE worker thread" below) until it commits. A where-less
+`select().from(<table>)` inside it reads the whole table and then filters in
+JS while every other read and write waits. Filter in SQL (`.where(...)`),
+read only the column you need (`selectDistinct`, as
+`upsertCategoryOverride` does for descriptions), or bound it with
+`.limit(...)`. The one-row `settings` table is exempt. Mechanized as
+`kiko-no-full-table-select-in-write` (ERROR, `rules/semgrep-prewrite.yml`).
+A full scan hidden behind a repo helper called inside the write is not
+caught; that stays a review item.
 
 ## The `useLiveQuery` pattern
 
@@ -136,6 +213,333 @@ It:
 `fireOn`) — get this list wrong and the query either never refreshes
 or refreshes on unrelated writes.
 
+### op-sqlite's ONE worker thread — every query, whole-app, one queue
+
+op-sqlite runs every query for the WHOLE APP on a single worker thread
+per connection (`node_modules/@op-engineering/op-sqlite/cpp/OPThreadPool.cpp:14-20`;
+`OPDatabase.cpp:494`). A read queued behind a write is DELAYED, not
+rejected — there is no per-query timeout or failure, only queueing.
+This is why an app-open write burst (the sync fan-out, `refreshRates`,
+`refreshMetalPrices` — see `kiko-pricing`) can leave a screen's own
+first read queued behind it for a perceptible stretch: the screen is
+not broken, its read is just waiting its turn on the one thread. Two
+consequences follow directly:
+
+- A screen must never treat "my first read hasn't resolved yet" as
+  "the data is empty" — see the `useDataReady` consumer rule below.
+- Shrinking the app-open burst itself (fewer redundant reads/writes,
+  or running two independent refreshes concurrently instead of
+  sequentially) genuinely reduces how long a screen's own read sits
+  queued — see `kiko-pricing`'s "Refresh throttles" section for the
+  concrete `refreshRates` / `refreshMetalPrices` case.
+
+### `useLiveQuery` consumer rule: gate an empty state on `isLoading`, never on `data.length === 0` alone
+
+Every `useLiveQuery` (and `usePriceBook`, which wraps one) starts
+`isLoading: true` — unless it opted into the live-query cache below and
+the cache has rows for its key — and clears it only once its FIRST read for its CURRENT
+sql+paramsKey settles — never before. Because of the
+one-worker-thread queueing above, that first read can sit queued for
+real, perceptible time on a busy app open. A screen that renders its
+own empty state (empty list text, an empty chart, a `0` balance)
+whenever `data.length === 0` — without checking `isLoading` — cannot
+tell "genuinely no data yet" apart from "my read is still queued," and
+shows the wrong one: a real empty state for a screen whose data hasn't
+arrived yet, which self-corrects only on the NEXT reactive fire or a
+fresh mount (this shipped as a production bug — every screen read
+`data`, none read `isLoading`).
+
+**`isLoading` is per query KEY, not merely per hook instance.** It goes
+back to `true` the instant a query's `sql`/`paramsKey` changes — a
+DEPENDENT query re-keying off data that only just arrived (e.g.
+holding-detail's `accountsRepo.byIdQuery(holding?.accountId ?? '')`,
+which starts on the placeholder `''` key before `holdings` has loaded
+and re-keys to the real account id the moment it does) — but a
+reactive re-run against the SAME key never flips it back to `true`
+(verified in `use-live-query.test.ts`). `useLiveQuery` tracks this by
+comparing the CURRENT render's key against the key its last-applied
+result belongs to, not by a one-shot "have I ever loaded" flag. Under
+a dense write burst, a finished result is applied whenever it is newer
+than the last APPLIED generation — not only when it is the newest
+STARTED one — so a screen's spinner clears as soon as an in-order
+result lands instead of waiting for the whole burst to quiet down.
+
+The fix is one shared mechanism, not a per-screen ad hoc guard:
+
+- `useDataReady(...isLoading)` (`src/db/use-data-ready.ts`) takes every
+  `isLoading` flag a screen's own `useLiveQuery`/`usePriceBook` calls
+  return and is `true` only once ALL of them are currently settled —
+  a plain `!loadingFlags.some(Boolean)`, no latch. An earlier revision
+  latched (stayed ready forever once every flag had settled once), as
+  a defensive backstop against `useLiveQuery`'s `isLoading` flipping
+  back to `true` after the gate had already opened; that never
+  actually happens for any current consumer, because a query's key
+  only ever changes while at least one of that SAME screen's OTHER
+  flags is still loading in that same render (the dependent-query case
+  above) — concretely, in holding-detail the ACCOUNT query's own
+  `isLoading` flips back to `true` the instant it re-keys off the
+  just-loaded holding, so `useDataReady`'s overall gate is already
+  not-ready for that render without any latch — so the latch was dead
+  weight once the flip moved to the right layer (`useLiveQuery` itself,
+  per-key, above). A future parameter-keyed query must keep the same
+  contract: keep the previous key's data visible through a later key
+  change and never show the EMPTY state for the new key before its own
+  result lands — the screen's first load per mount is what gates the
+  whole screen from ever showing empty on real data, not a per-key
+  reset in between.
+- `LoadingState` (`src/design-system/components/loading-state/`) is
+  the shared "not ready yet" visual: a plain centered native
+  `ActivityIndicator`, no text at all — a spinner needs no i18n
+  string, so gating a screen on it never has to add one. See
+  `kiko-design-system`'s "Component set" section for its own entry.
+- A screen calls `useDataReady` on every query's `isLoading` (its own
+  `useLiveQuery` calls plus `usePriceBook`'s), and — AFTER every hook
+  call (Rules of Hooks: every `useLiveQuery`/`usePriceBook` call still
+  runs unconditionally on every render; only the JSX branches) —
+  returns `<LoadingState testID="<screen>-loading" />` in place of its
+  normal content while `!isReady`, wrapped in the exact SAME `Screen`
+  mode/props as its ready branch (same `scroll`/`bleedTop`/
+  `bleedBottom` and the same `scrollableRef` when one is passed) — NOT
+  a bare `<Screen>`. The first scroll view iOS walks to drive the
+  native large-title collapse must exist from the very first render,
+  or the collapse never engages once real content replaces the
+  spinner. A screen whose ready branch's own scrollable IS its content
+  (holding-detail's ledger `FlatList` under `bleedTop`) keeps that
+  same component MOUNTED throughout instead of swapping to a separate
+  loading branch, rendering `LoadingState` as its
+  `ListHeaderComponent` and suppressing `data`/`ListEmptyComponent`
+  until ready — home similarly keeps `SyncProgressBar` (it shows the
+  sync the screen's own first read is queued behind) and
+  pull-to-refresh available on the same scroll view while loading, not
+  only once ready. Current consumers: `account-detail`,
+  `holding-detail`, `home` (net-worth headline + transaction list),
+  `statistics` (every chart), `accounts` (the accounts-list empty
+  state), `settings/system`, `settings/settings`,
+  `settings/categories`, statement-import's `example-transaction` (a
+  single row inside an already-loaded parent, gated on its OWN
+  categories/settings queries rather than the whole parent screen) —
+  grep `useDataReady` for the current call-site list rather than
+  trusting this restated one if it drifts. A screen/component that
+  gates only ONE value (not its whole render) reads `isLoading`
+  straight off the one `useLiveQuery` call it depends on instead —
+  `bank-sync-section`'s "Last sync" status line is the example: it
+  hides just that line while `sync_state` loads, leaving the
+  Sync/Disconnect actions (which don't depend on that query)
+  unaffected.
+- An `isLoading` gate is a SEPARATE concern from a screen's own async
+  UI state (e.g. statistics's rate-history backfill `loading` prop on
+  `NetWorthLine`) — the backfill tracks a later, non-blocking network
+  fetch that only starts once the screen's OWN base queries have
+  already loaded; do not fold the two into one flag. That backfill
+  effect must ALSO gate on its own upstream query's `isLoading`
+  (`historyLoading`) in its dependency guard, not just on
+  `transactions.length` — an empty `historyRows` reads identically to
+  "nothing backfilled yet" for as long as `currency_rate_history`'s
+  own query is still on its first load, and re-fetching/re-writing the
+  whole span on that false-empty read adds to the same app-open DB
+  burst this whole rule exists to protect screens from.
+- A rejected query still ends `isLoading` — `isLoading` derives from
+  whether the CURRENT key has an applied result at all, and the error
+  path marks the key applied (`appliedKey.current = myKey`) exactly
+  like the success path does, verified in `use-live-query.test.ts`'s
+  "clears isLoading when the first query fails" case — and now also
+  LOGS the failure (`console.warn('[useLiveQuery] query failed', sql,
+  error)`, behind a justified `noConsole` OVERRIDE) — previously a
+  rejected query set `error` with no diagnostic anywhere a device log
+  could see, and no screen read `error` at all. So a `useDataReady`
+  gate never spins forever on a genuinely failed query; it just never
+  shows the raw error either (no consumer reads `error` today). A
+  rejection for a KEY THAT JUST CHANGED (the previously applied key
+  differs from this render's) also resets `data` to `[]` — it must not
+  keep showing the OLD key's rows as this key's result; a rejection
+  against the SAME key that was already applied keeps that previous
+  data, matching what a same-key success does.
+
+`usePriceBook(enabled?, options?, loanPaymentsEnabled?)`
+(`src/prices/use-price-book/`) returns `{ book, isLoading }`, not a bare
+`PriceBook` — every consumer destructures
+`const { book: priceBook } = usePriceBook();` (or additionally
+`isLoading: priceBookLoading` when gating). It runs TWO live reads —
+`price_points` and every linked loan payment
+(`transactionsRepo.loanLedgerPaymentsQuery()`, ONE read across all loans,
+never one per holding: the one worker thread above) — and its `isLoading`
+is true while either is on its first load. See `kiko-pricing` for the
+full contract, and the section below for its two gate arguments.
+
+### The live-query cache: a reopened screen shows its data on the first frame
+
+Rule: a DISPLAY screen reopened within seconds shows its data at once,
+on the first frame — never a `LoadingState` (a native-stack pop
+UNMOUNTS the screen, so every reopen is a fresh mount, and on the dark
+`Screen` background the spinner's delayed empty container reads as a
+black screen). `useLiveQuery` keeps a module-level LRU cache
+(`LIVE_QUERY_CACHE_LIMIT`, 100 keys) of the last successful read per
+full query key (`sql` + serialized `params` — different params never
+share an entry). EVERY successful read writes it, even one that
+settles after its screen unmounted (a form's Save + `goBack()`, a quick
+pop); the per-instance generation guard still runs first, so an older
+read never overwrites a newer one. A rejected read is never cached.
+
+**The cache is OPT-IN, for display screens only.** Only a call that
+passes `{ cached: true }` (the 4th argument:
+`useLiveQuery(query, tables, true, { cached: true })`, or
+`usePriceBook(enabled, { cached: true })`) READS it. Only a display screen's readiness query opts in — never a
+form, a one-shot seed, or a query that drives a write. For the current
+set, grep `cached: true` under `src/`. A mount
+with a cache hit seeds `data` with the cached rows and `appliedKey`
+with the current key, so `isLoading` is `false` on the very first
+render; it STILL runs the query and subscribes, and the fresh result
+replaces the rows. Only a mount reads the cache — a later re-key waits
+for its own read as above.
+
+**Never opt in a query that seeds a form or drives a write.** A write
+made while no subscriber of a key is mounted (the lot form's
+`holdingsRepo.update` while the holding form is closed) leaves that
+key's entry one read old. A one-shot form seed (`hydrated` latch)
+reading it would latch the stale row, and Save would write it back over
+the newer one — this shipped as a data-loss bug (edit metal, cancel,
+add a lot, edit again, Save: the new lot was gone). Forms,
+statement import, `useTargetHoldingOptions`, `useBondIsinMode`, and
+every other one-shot seed never pass `cached`. An uncached seed is still
+one read old once a background write can land while the form is open:
+the bond edit form fires the register refresh, whose backfill can add
+`payments` to the very row the form seeded, so the bond edit saves
+through `holdingsRepo.updateMetadataFromStored` and takes that key from
+the row re-read inside its own write.
+
+**A Save that derives a stored value from a query waits for that
+query.** Disable Save while the query's `isLoading` is true; saving
+early writes a value built from missing data (the loan edit once saved
+before the price book loaded and wrote a permanent manual point).
+
+**A write started from a cached display screen must not trust its
+rows.** `useLiveQuery` also returns `isFresh`: `true` once THIS
+mount's own read for the current key has applied (always `true` while
+disabled). Every write a display screen starts either passes only IDs
+(plus the user's explicit new value) to a repo that re-reads inside its
+own transaction (every `remove`, `categoriesRepo.delete`, the sync
+jobs, `holdingsRepo.removeOwnershipChange` started from Holding
+detail — a holding id plus a share change's day key;
+`editOwnershipChange` is ID-shaped the same way but starts from the
+uncached `OwnershipChangeForm`), or is gated on `isFresh`. The drag reorders (Accounts' three
+grids, Account detail's holdings grid, Categories) set
+`sortEnabled={isFresh && …}`, and Categories' move-to-top/bottom
+buttons ignore a press until `isFresh` — each persists the WHOLE order
+of the rows on screen. A new write from a display screen picks one of
+the two, never neither. Tests call `clearLiveQueryCache()` in
+`beforeEach` so one `it`'s rows never seed the next.
+
+**Local state on a cached display screen follows the row; it is never
+seeded once.** A list row keyed by its ID never remounts when the fresh
+row replaces the cached one, so a `useState(row.field)` seed keeps the
+cached value, and a later write can put it back over a change made
+elsewhere (a `.kiko` restore). Categories' rename field syncs its local
+title from `category.title` whenever the stored title changes while the
+field is not being edited, and commits only text the user changed (not
+the title the edit started from). Syncing on a change, rather than
+rendering the row field directly, keeps a just-committed rename on
+screen until its write flows back. An effect that writes from rows and
+records what it covered in a ref waits for `isFresh` too: Statistics'
+history backfill does not start until `transactions` and
+`currency_rate_history` are both fresh, because its
+`backfillRanForSpanRef` marks the span covered for the rest of the
+mount, so a run planned from a cached resume point would stop the fresh
+read's own run from ever starting.
+
+## App-open and refresh work is gated on data presence
+
+Standing rule: the app never performs a request or a query for data
+the user does not have. Every app-open/refresh step reads one cheap
+gate first — an `EXISTS`/`LIMIT 1` check or a small `SELECT DISTINCT`,
+never a per-holding loop — and skips its own work entirely when the
+gate says there is nothing to do.
+
+- **Rate/price refresh**: `openCurrencies()`
+  (`src/rates/open-currencies-gate/`) is the ONE gate implementation
+  `refreshRates` (`rates-refresh.ts`) and `runBackfill`
+  (`history-backfill.ts`) both read — the same gate pattern for every
+  refresh, not a per-call-site copy. It resolves `{ needsFiat,
+  cryptoCurrencies }` from a single `settings` read plus
+  `holdingsRepo.openCurrenciesQuery()` (a `SELECT DISTINCT currency`
+  over ACTIVE holdings — open, and whose account is not archived,
+  mirroring `activeHoldings`). The fiat leg (Monobank/NBU, or NBU
+  history) runs only when `needsFiat` — some active holding's currency
+  differs from the base (display) currency, which also covers the
+  crypto leg's own USD:UAH anchor need, since a held crypto currency
+  always differs from a fiat base. The crypto leg (CoinGecko current
+  price or history) runs only for `cryptoCurrencies`, and
+  `fetchCryptoPrices`/`fetchCryptoHistory` fetch only those currencies,
+  never the full supported set. `refreshMetalPrices`
+  (`src/prices/metal-refresh/`) is the original template this
+  generalizes: `earliestDays.size === 0` (no held metal) is a zero-
+  network, zero-write early return, verified by test. It also reads
+  the cheap presence input first and returns before any heavier read
+  — `holdings` before `price_points` — the same order every gated
+  refresh follows.
+  `shouldThrottle` (`src/rates/rates-refresh/rates-refresh.ts`) skips
+  its own throttle window when a held currency has no rate row yet —
+  a "never fetched" escape so the data-presence gate can never hide a
+  currency's rate entirely. `UAH` is filtered out of that presence
+  check first: a star row's `quote` is always `UAH` and its `base`
+  never is, so `presentCurrenciesQuery` (a distinct `base` read) can
+  never list `UAH` — without the filter, a base-USD user who holds
+  UAH would read as permanently "unrated" and bypass the throttle on
+  every sync instead of only a genuine gap.
+  The history backfill resumes per currency: a newly held currency
+  with no history rows forces a run from the earliest day
+  (`src/rates/history-backfill/history-backfill.ts`) — once per app
+  run: a currency whose providers all answered for the whole span but
+  returned no row for it (a held coin CoinGecko never returns) is kept
+  in an in-memory `knownEmptyCurrenciesThisRun` set and no longer
+  resets the cursor, so Statistics does not refetch the full span on
+  every focus (a rejected leg is never recorded — it retries; nor is a
+  coin whose OWN CoinGecko request failed while another coin's succeeded:
+  `fetchCryptoHistory` settles per coin and returns `failedCurrencies`
+  beside its `entries`. The metal twin, `emptyBackwardFloorByMetal`,
+  records only an ANSWERED empty backward range — a failed request
+  throws before it is recorded). A create/restore
+  that may add the first holding of a new currency or type triggers
+  these gated refreshes WITHOUT awaiting them, so Save never blocks on
+  the network.
+- **`usePriceBook`'s `enabled` argument**: `useLiveQuery`'s own
+  `enabled` parameter (default `true`) skips BOTH the query and the
+  reactive subscription while `false`, reporting `data: []` and
+  `isLoading: false` — ready, never stuck (a gated-off screen must
+  still flip its overall readiness, never spin forever on a query it
+  deliberately never ran). `usePriceBook(enabled)` forwards straight
+  through; a screen passes `holdingsLoading || holdings.some((holding) =>
+  needsPriceBook(holding.type))` (or the one displayed holding, for a
+  detail screen) — never a conditional call to the hook itself, which
+  Rules of Hooks forbids. The `holdingsLoading ||` is required: without
+  it `holdings` reads `[]` during its first load, so the price_points
+  read only STARTS after holdings resolve (a waterfall that doubled
+  readiness for a loan/property/metal user); with it both reads run in
+  parallel and price_points disables afterwards if nothing needs it. `needsPriceBook` (`src/holdings/priced-value/`)
+  is true for a priced type (`property_item`/`metal`) OR `loan` (not
+  priced, but reads its own `holding:<id>` series the same way,
+  kiko-pricing) — the one predicate every call site uses. The third
+  argument, `loanPaymentsEnabled` (default: `enabled`), gates the
+  linked-loan-payments read the same way: every display screen passes
+  `holdingsLoading || holdings.some((holding) => holding.type === 'loan')`
+  (or the one displayed holding), so a metal- or property-only user never
+  runs it. It never runs while `enabled` is `false`.
+- **The first add triggers the gated refresh**: creating the FIRST
+  metal/foreign-currency/crypto holding (`holding-form.screen.tsx`'s
+  manual create) or restoring a `.kiko` export (`importData`,
+  `src/data-transfer/import-data.ts`) triggers
+  `refreshMarketData({ throttled: false, metals: true })`
+  (`src/sync/refresh-market-data/`) explicitly right after its own
+  write commits, since neither path runs through the sync fan-out that
+  otherwise triggers this — so the price/rate appears without an app
+  restart. Both underlying steps gate themselves, so this is a no-op
+  when neither is needed; `refreshMarketData` never rejects, and a
+  failure is only logged (`warnRefreshFailure`), never shown, so it
+  never turns a successful create/import into a shown error. `throttled:
+  false`: a manual create/import is a deliberate user action, not a
+  background poll, so it never reads the throttle cursor. An EDIT never
+  needs this trigger — a holding's type and currency are immutable once
+  created.
+
 ## Bulk insert: chunk when row count is caller- or API-controlled
 
 SQLite (op-sqlite's bundled SQLCipher) caps bound parameters at
@@ -143,8 +547,16 @@ SQLite (op-sqlite's bundled SQLCipher) caps bound parameters at
 whose row count comes from an external source (an API page, a
 user-picked file) can blow past that — the insert throws, the
 transaction rolls back, and a swallowed error can make the failure
-silent (this happened: a live Monobank refresh, ~11,990 rate pairs x
-5 params, overflowed the limit and rates never saved).
+silent (this happened: a live Monobank refresh, back when it wrote
+every ordered cross pair rather than one `X:UAH` row per priced
+currency — ~11,990 rows x 5 params, overflowed the limit and rates
+never saved). The chunking stays even though a live write is now only
+~109 rows (kiko-pricing's "Currency-rate fallback chain") — it costs
+nothing at this size and keeps the function safe against the same
+bound-parameter limit regardless of row count. This is NOT because a
+`.kiko` restore routes through `ratesRepo.upsertMany` — it doesn't:
+`restore-snapshot.ts` normalizes and chunks `currencyRates` rows
+itself, with its own `chunkForTable` call (see "Examples" below).
 
 Rule: chunk with `chunkForTable(table, rows)`
 (`src/db/chunk-for-table.ts`) — it derives the safe row-per-chunk
@@ -153,9 +565,10 @@ the SAME `db.transaction()`/`write()` call. Never hand-roll a fixed
 row-count chunk; the safe size depends on the table's column count,
 which only `chunkForTable` knows.
 
-Examples: `ratesRepo.upsertMany` (`src/rates/repo/rates.repo.ts`) and
-`transactionsRepo.addManyDedup`
-(`src/transactions/repo/transactions.repo.ts`) — the latter also
+Examples: `ratesRepo.upsertMany` (`src/rates/repo/rates.repo.ts`) and the
+shared `insertDedupRowsDatabaseTransaction`
+(`src/transactions/repo/transactions.repo.ts`, called by both
+`transactionsRepo.addManyDedup` and `importRows`) — the latter also
 chunks its two per-row `inArray(...)` selects (the category-override
 rule lookup and the existing-external-id lookup) directly at a safe
 item-count margin, since a one-column `inArray` list has no table to
@@ -179,7 +592,10 @@ plain module of exported functions, not a class.
   return once it's durable — every write function body is (or calls
   into) a `db.transaction()` call, per the hard rule above.
 - Repositories are the only place raw Drizzle rows are converted
-  to/from domain types (e.g. `balanceMinorUnits` -> `Money`,
+  to/from domain types (e.g. `balanceMinorUnits` -> `Money` via
+  `holdingsRepo.balanceOf`, and a write input's `Money` -> minor
+  units in `holdingsRepo.create`/`updateWithBalanceDelta`/
+  `setSyncedBalance` and `accountsRepo.createCashAccount`,
   see `kiko-domain`).
 - A full-list `sortOrder` rewrite (persisting a drag-and-drop reorder)
   is one `db.transaction()` wrapping a loop that updates every row's
@@ -591,11 +1007,10 @@ re-drive:
 - It ends the spinner when the FAST balance phase resolves — on the
   `fastPhaseDone` signal — NOT on the whole run. This is deliberate: the
   spinner shows a brief native spin while balances load, then hands the
-  slow per-card fetch to the progress bar. (An earlier R6-3 revision
-  ended the whole-run SIGNAL early and was reverted as R7; that concern
-  does not apply here — `isSyncing` still tracks the whole run and drives
+  slow per-card fetch to the progress bar. Do not end the whole-run
+  SIGNAL early — `isSyncing` must still track the whole run and drive
   the progress bar, so activity stays visible until "Last sync" lands.
-  Only the SPINNER ends early, by design.)
+  Only the SPINNER ends early, by design.
 - The flag clears on the FIRST of `fastPhaseDone` OR the run settling
   (`onRefresh`'s `.finally`). The settle path is the fallback for a
   fan-out with NO Monobank job (a crypto-only account, or no syncable
@@ -639,22 +1054,24 @@ re-imported. Kiko has no per-CARD cursor — that would need a schema
 change — so a partial failure does re-fetch the cards that already
 finished; the dedup layer keeps that correct, only slower.
 
-## DB encryption + app lock (always on)
+## DB encryption (always on)
 
-The SQLCipher database-encryption migration and the app-lock gate are
-**always on** — `DB_ENCRYPTION_ENABLED` and `APP_LOCK_ENABLED`
-(`src/db/db-config.ts`) are both `true` today, not a rollout flag a
-build can ship off. This is a security invariant, not a feature toggle
-(Guideline 5.6 sensitivity: a build/env flag that changes what a user's
-data protection looks like must never ship in the "off"/hidden state).
-Read these files directly rather than trusting a restated summary here,
-since the exact migration steps are the kind of thing that can still
-change:
+The SQLCipher database-encryption migration is **always on** —
+`DB_ENCRYPTION_ENABLED` (`src/db/db-config.ts`) is `true` today, not a
+rollout flag a build can ship off. This is a security invariant, not a
+feature toggle (Guideline 5.6 sensitivity: a build/env flag that
+changes what a user's data protection looks like must never ship in
+the "off"/hidden state). Read these files directly rather than
+trusting a restated summary here, since the exact migration steps are
+the kind of thing that can still change:
 
-- `src/db/db-config.ts` — `DB_ENCRYPTION_ENABLED` and
-  `APP_LOCK_ENABLED`, the two master switches; read the live values
-  there rather than trusting this line if it drifts. Read the comment
-  above each for what it gates.
+- `src/db/db-config.ts` — `DB_ENCRYPTION_ENABLED`, the master switch;
+  read the live value there rather than trusting this line if it
+  drifts. Read the comment above it for what it gates. The app lock
+  has no build-time switch of its own: it is a live `settings.lockEnabled`
+  toggle read by `useAppLock` (`src/auth/use-app-lock.ts`) and the
+  `AppLockSetting` settings card — see kiko-domain "App lock / security
+  settings".
 - `src/db/encrypted-database.ts` — `openEncryptedDatabase()`, the
   one-time plaintext -> SQLCipher export. Its crash-safety ordering is
   the load-bearing fact: export first, persist the key second, delete
@@ -692,8 +1109,8 @@ change:
 ## Spending-exclusion pipeline
 
 See `kiko-domain`'s "Spending-exclusion pipeline" section for the
-transfer-exclusion/internal-transfers/exchange-exclusion module
-pointers — read it there rather than a duplicated list here.
+transfer-exclusion/internal-transfers/exchange-exclusion/loan-payments
+module pointers — read it there rather than a duplicated list here.
 
 ## Binance exchange sync — every wallet, three holdings (Spot / Funding / Earn)
 
@@ -796,7 +1213,7 @@ than restated here:
   Monobank uses, `src/monobank/`) from the injected
   `now`/`sleep` and threads it through EVERY deposit/withdraw page
   request, spacing them by `BINANCE_REQUEST_INTERVAL_MS` (small — a
-  background import, not Monobank's 60s). `sleep` is a `BinanceTxSyncDeps`
+  background import, not Monobank's 60s). `sleep` is a `BinanceTransactionSyncDeps`
   seam so a test paces instantly; there is no `gate` seam (same rationale
   as Monobank — the gate is built from `now`/`sleep`).
 - **Incremental cursor, no schema column.** The window start is derived
@@ -855,6 +1272,9 @@ null `externalId` and is never namespaced.
 
 ## Price data
 
+See `kiko-pricing` for the currency-rate fallback chain (Monobank →
+NBU → bundled fiat seed), the `price_points` table, and `PriceBook`.
+
 - Writing a live refresh's rows: `ratesRepo.upsertMany` chunks via
   `chunkForTable` — see "Bulk insert: chunk when row count is
   caller- or API-controlled" above.
@@ -885,6 +1305,11 @@ null `externalId` and is never namespaced.
   respect each provider's own cache window — do not poll faster than
   the upstream cache refreshes.
 
+## Statement import — column mapping
+
+See `kiko-statement-import` for the format registry, encodings, the
+detect → import pipeline, column mapping, saved mappings, and dedup.
+
 ## Data transfer (backup export/import)
 
 `src/data-transfer/` implements the encrypted `.kiko` export/import feature:
@@ -902,23 +1327,91 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   one side but not the other. Read that file for the current field list and
   its (currently empty) documented-exclusion array — do not copy the table
   list here.
-- **Every Keychain secret class is read and restored — except one, on
-  purpose.** `payload.d.ts`'s `ExportSecrets` covers `dbKeyHex`,
-  `monobankTokens`, and `binanceCredentials`. `secrets/read-secrets.ts` reads
-  all three from the Keychain (skipping an account with no stored secret).
-  `secrets/restore-secrets.ts` restores ONLY the Monobank tokens and Binance
-  credentials, each back to its original account id — never `dbKeyHex`. Read
-  the safety comment on `restoreExportSecrets` for why: the exported DB key is
-  display-only; re-storing a FOREIGN device's SQLCipher key into this device's
-  own `kiko.db.key` Keychain item would not affect the already-open session,
-  but would brick the importing device's own encrypted database on its very
-  next launch (wrong key at `resolveDbKey()`).
+- **Every Keychain secret class the export carries is read and restored.**
+  `payload.d.ts`'s `ExportSecrets` covers `monobankTokens` and
+  `binanceCredentials` only — the export never carries the SQLCipher DB key
+  at all. `secrets/read-secrets.ts` reads both from the Keychain (skipping an
+  account with no stored secret) and `secrets/restore-secrets.ts` restores
+  both, each back to its original account id. `restoreExportSecrets` still
+  never imports `db/keys/db-key.ts`: an older file that still carries a
+  `dbKeyHex` field (from before that field was dropped) is read through
+  as an unknown, unrestored property — re-storing a FOREIGN device's
+  SQLCipher key into this device's own `kiko.db.key` Keychain item would
+  brick the importing device's own encrypted database on its very next
+  launch (wrong key at `resolveDbKey()`), which is why the field was
+  dropped rather than kept display-only.
 - **A legacy export missing a newer field must still restore.**
   `restoreExportSecrets` treats an entirely absent `secrets` object (an export
   written before the credentials toggle, or with it off) as a no-op, not an
   error — `import-data.ts` still restores `payload.tables` regardless. Follow
   the same pattern for any future field added to `ExportPayload`: make its
   absence in an older file a no-op, never a hard failure.
+- **A legacy snapshot's missing `balanceSetAt` is BACKFILLED, not left
+  `null`.** A build-25-shaped `.kiko` export has no `balanceSetAt` key at all
+  on its holdings. `restoreDataSnapshot` (`snapshot/restore-snapshot.ts`)
+  detects that with an `Object.hasOwn` check (an already-migrated snapshot's
+  value, including an explicit `null`, is left alone) and reproduces
+  migration 0036's own heuristic in JS. The rule itself stays stated in full
+  only in `transactionsRepo.importRows`'s doc comment
+  (`transactions/repo/transactions.repo.ts`). Generalize this: a migration
+  that adds a column needing a backfill must apply the IDENTICAL backfill on
+  BOTH paths that can produce a row missing it — the migration path itself
+  and the restore/import path (`restoreDataSnapshot`) — never only one.
+  Follow the `balanceSetAt` / `loan_interest` re-seed precedent above for the
+  next such column.
+- **A data-only cleanup migration follows the SAME two-path rule.**
+  Migration `0040_cleanup_stray_deposit_bond_balance.sql` removes a
+  pre-existing stray create-time artifact (a term_deposit/bond holding whose
+  hidden Card balance field was carried into `balanceMinorUnits` before
+  63f9073's fix, plus its matching `'manual'` opening transaction and
+  `balanceSetAt` stamp) — data-only, no schema change, so it carries no
+  `meta/NNNN_snapshot.json` (same as `0039_seed_loan_interest_category.sql`).
+  It snapshots the qualifying set into a `CREATE TEMP TABLE ... AS SELECT`
+  first so neither of the two mutating statements (the holding reset, the
+  transaction delete) needs the ORIGINAL, about-to-be-mutated columns to
+  still match — read the migration's own doc comment for the exact
+  predicate and why it can only ever match the pre-fix bug, never a real
+  balance (term_deposit/bond are ledgerless; every current write path either
+  writes 0 unconditionally or never touches `balanceMinorUnits` at all).
+  `restoreDataSnapshot`'s `withStrayDepositBondBalanceCleaned` mirrors the
+  identical predicate in JS, applied AFTER `withLegacyBalanceSetAtBackfilled`
+  so a legacy (pre-0036) snapshot's freshly-backfilled boundary still gets
+  cleaned. Proven against the ACTUAL shipped SQL (not a restated predicate)
+  by `drizzle/migrations/0040-cleanup-stray-deposit-bond-balance.test.ts`,
+  which runs the real migration statements through `node:sqlite`
+  (`DatabaseSync`, built into the Node 22 runtime this project already
+  requires) — the strongest available evidence for a migration that
+  deletes real rows, since op-sqlite itself is a native module unavailable
+  under Jest; every other migration's test coverage here stays at the
+  plumbing level (`run-migrations.test.ts`) or the restore-side JS mirror.
+- **A launch-time upgrade step (not a migration) needs the SAME restore-side
+  mirror as a migration's own backfill.** Migration 0041's flag
+  (`settings.dedupKeysUpgraded`) and its launch-time rewrite
+  (`upgradeStoredDedupKeys`) only run on live data — a `.kiko` restore
+  REPLACES the whole `transactions`/`settings` tables, so a pre-0041
+  export's legacy statement-import dedup keys need the identical rewrite
+  applied on restore too. `restoreDataSnapshot`'s
+  `withLegacyDedupKeysUpgraded` mirrors it: `Object.hasOwn` on the settings
+  row detects the `dedupKeysUpgraded` key's PRESENCE (a pre-0041 export
+  carries none at all), not its value — an already-0041-shaped snapshot's
+  `false` (a device that hadn't upgraded yet) is left exactly as exported,
+  since that device's own next launch runs the identical rewrite anyway.
+  Applied AFTER `withStrayDepositBondBalanceCleaned`, to the FINAL
+  transaction set that cleanup produces (a different table than the
+  balanceSetAt/stray-balance backfills above, so order between them
+  doesn't matter — it runs last only because it has to act on what's
+  actually being inserted).
+- **A value that lives inside `holdings.metadata` needs NO restore
+  mirror.** A property's dated ownership share (`metadata.ownership`,
+  kiko-pricing "Ownership share") rides in the opaque JSON column: a
+  newer export restores it byte-identical, and an older `.kiko` has no
+  key, which reads the whole asset — no migration, no `DataSnapshot`
+  key, nothing in `restoreDataSnapshot`
+  (`restore-snapshot.test.ts` pins both directions). An OLDER build
+  restoring a newer export ignores the key and values the whole asset.
+  Reach for metadata over a new table when the data is per holding,
+  user-typed, and small; a new table (and its restore mirror) is for a
+  series shared across holdings or bulk-written, like `price_points`.
 - **No `TextDecoder`/`TextEncoder`.** Hermes has no working `TextDecoder`
   (confirmed on device — see `utf8/utf8.ts`'s header comment); use the
   hand-rolled `utf8Encode`/`utf8Decode` and `encodeBytesToBase64`/
@@ -954,7 +1447,7 @@ in memory for the crash history this fixed.
   Keychain call (see memory `biometric-keychain-needs-nsfaceidusagedescription`).
 - **`useAnimatedKeyboard()` is banned** — see `kiko-gestures`'s "`useAnimatedKeyboard()`
   is banned" section for why, and the Semgrep ERROR rule
-  `kiko-no-use-animated-keyboard` (`rules/semgrep-mobile.yml`) that enforces it.
+  `kiko-no-use-animated-keyboard` (`rules/semgrep-prewrite.yml`) that enforces it.
 - **Release-only crash classes.** Some crashes reproduce ONLY in a Release
   build, not Debug: a plain function used inside a worklet without the
   `'worklet'` directive (Debug swallows the mismatch, Release SIGABRTs — see

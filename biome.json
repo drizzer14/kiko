@@ -54,6 +54,9 @@
       "style": {
         "noNestedTernary": "error",
         "useImportType": "error"
+      },
+      "nursery": {
+        "noFloatingPromises": "error"
       }
     }
   }

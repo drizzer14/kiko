@@ -1,5 +1,6 @@
-import type * as ReactNativeBiometrics from '@sbaiahmed1/react-native-biometrics';
+import { i18n } from '@kiko/i18n/init';
 import either, { bifold, isLeft } from 'fnts/either';
+import type * as ReactNativeBiometrics from '@sbaiahmed1/react-native-biometrics';
 
 /**
  * Lazily resolves the native biometrics module. `@sbaiahmed1/react-native-biometrics`
@@ -127,8 +128,8 @@ export const authenticate = async (prompt: string): Promise<AuthResult> => {
     loadNativeBiometrics().authenticateWithOptions({
       title: prompt,
       allowDeviceCredentials: true,
-      cancelLabel: 'Cancel',
-      fallbackLabel: 'Use Passcode',
+      cancelLabel: i18n.t('common.cancel'),
+      fallbackLabel: i18n.t('auth.usePasscode'),
     }),
   );
 

@@ -1,5 +1,5 @@
-import { defaultDateRange } from './default-range';
 import { DAY_MS } from './duration';
+import { defaultDateRange } from './default-range';
 
 describe('defaultDateRange', () => {
   it('sets `to` to the injected `now`', () => {

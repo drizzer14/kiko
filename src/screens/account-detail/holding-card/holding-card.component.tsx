@@ -1,21 +1,24 @@
-import { Pressable } from 'react-native';
 import type { FC } from 'react';
-
-import type { HoldingRow } from '../../../db/schema';
-import { formatMoney } from '../../../currency/format';
-import Box from '../../../design-system/components/box';
-import Card from '../../../design-system/components/card';
-import Text from '../../../design-system/components/text';
-import { activeLocale } from '../../../i18n/active-locale';
-import { canConvert } from '../../../rates/net-worth-view';
-import type { Currency } from '../../../currency/currency';
-import { holdingValue } from '../../../holdings/holding-value';
-import { convert, type RateTable } from '../../../rates/conversion';
-import MoneyText from '../../../design-system/components/money-text';
-import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
-import { defaultHoldingColor } from '../../../holdings/entity-colors';
-import { resolveEntityColor } from '../../../design-system/entity-tint';
-import EntityIconTile from '../../../design-system/components/entity-icon-tile';
+import { Pressable } from 'react-native';
+import type { HoldingRow } from '@kiko/db';
+import { useTranslation } from 'react-i18next';
+import { formatMoney } from '@kiko/currency/format';
+import Box from '@kiko/design-system/components/box';
+import Card from '@kiko/design-system/components/card';
+import Text from '@kiko/design-system/components/text';
+import { activeLocale } from '@kiko/i18n/active-locale';
+import { canConvert } from '@kiko/rates/net-worth-view';
+import type { Currency } from '@kiko/currency/currency';
+import type { PriceBook } from '@kiko/prices/price-book';
+import { holdingValue } from '@kiko/holdings/holding-value';
+import { ownershipShareText } from '@kiko/holdings/ownership';
+import { convert, type RateTable } from '@kiko/rates/conversion';
+import MoneyText from '@kiko/design-system/components/money-text';
+import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
+import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
+import { resolveEntityColor } from '@kiko/design-system/entity-tint';
+import { propertyOwnershipView } from '@kiko/holdings/holding-descriptor';
+import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
 
 import { styles } from './holding-card.styles';
 
@@ -43,10 +46,15 @@ const HoldingCard: FC<{
   now: number;
   baseCurrency: Currency;
   rateTable: RateTable;
+  priceBook: PriceBook;
   onOpen: () => void;
-}> = ({ holding, now, baseCurrency, rateTable, onOpen }) => {
+}> = ({ holding, now, baseCurrency, rateTable, priceBook, onOpen }) => {
+  const { t } = useTranslation();
   const color = resolveEntityColor(holding.color, defaultHoldingColor[holding.type]);
-  const value = holdingValue(holding, now);
+  const value = holdingValue(holding, now, priceBook);
+  // A property owned in part reads its owned value as the main line, and the
+  // share of the whole asset beneath it.
+  const ownership = propertyOwnershipView(holding, now, priceBook);
   // The smaller base-currency figure below the value, shown ONLY for a holding
   // in a different currency that also has a cached rate to the base. `convert`
   // throws on a missing rate pair, so `canConvert` guards it — a currency with
@@ -61,15 +69,28 @@ const HoldingCard: FC<{
       <Pressable accessibilityRole="button" onPress={onOpen} style={styles.row}>
         <Box direction="row" gap={3} style={styles.rowLead}>
           <EntityIconTile
-            name={holding.icon ?? holdingTypeSymbol[holding.type]}
+            name={holding.icon ?? defaultHoldingSymbol(holding)}
             color={color}
             accessibilityLabel={`${holding.name} icon`}
           />
-          <Text variant="body">{holding.name}</Text>
+          <Box style={styles.rowDescription}>
+            <Text variant="body">{holding.name}</Text>
+          </Box>
         </Box>
 
         <Box style={styles.valueColumn}>
           <MoneyText money={value} context="balance" />
+
+          {ownership && (
+            <Box testID="holding-card-whole">
+              <Text variant="caption" tone="textSecondary">
+                {`${ownershipShareText(ownership.share, ownership.input, activeLocale())} ${t(
+                  'holdingCard.ofWhole',
+                  { whole: formatMoney(ownership.whole, activeLocale()) },
+                )}`}
+              </Text>
+            </Box>
+          )}
 
           {convertedToBase && (
             <Box testID="holding-card-converted">

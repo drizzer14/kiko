@@ -1,62 +1,83 @@
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { categoriesRepo } from '@kiko/categories/repo';
-import { holdingsRepo } from '@kiko/holdings/repo';
-import { ratesRepo } from '@kiko/rates/repo';
-import { settingsRepo } from '@kiko/settings/settings.repo';
-import { transactionsRepo } from '@kiko/transactions/repo';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { TFunction } from 'i18next';
-import { type FC, useLayoutEffect, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
-import { FlatList, Pressable } from 'react-native';
-import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { match } from 'ts-pattern';
-
+import {
+  defaultHoldingSymbol,
+  genericEntitySymbol,
+  holdingTypeSymbol,
+} from '@kiko/holdings/entity-symbols';
+import type { TFunction } from 'i18next';
+import {
+  holdingDescriptorOrUndefined,
+  isTimeExemptHoldingType,
+  propertyOwnershipView,
+  type PropertyOwnershipView,
+} from '@kiko/holdings/holding-descriptor';
 import {
   buildCategoryDisplayMap,
   DEFAULT_CATEGORY_KEY,
   resolveCategoryDisplay,
-} from '../../categories/category-display';
-import type { Currency } from '../../currency/currency';
-import { formatMoney } from '../../currency/format';
-import { Money } from '../../currency/money';
-import { formatTime } from '../../dates/format';
-import { startOfLocalDay } from '../../dates/local-day';
-import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
-import { useLiveQuery } from '../../db/use-live-query';
-import Box from '../../design-system/components/box';
-import Button from '../../design-system/components/button';
-import Card from '../../design-system/components/card';
-import CardContextMenu from '../../design-system/components/card-context-menu';
-import EditHeaderButton from '../../design-system/components/edit-header-button';
-import MoneyText from '../../design-system/components/money-text';
-import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
-import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
-import SymbolIcon from '../../design-system/components/symbol';
-import Text from '../../design-system/components/text';
-import { resolveEntityColor } from '../../design-system/entity-tint';
-import { isSyncedHolding, isSyncedTransaction } from '../../holdings/deletable';
-import { type DerivedEntry, derivedEntries, type EntryTone } from '../../holdings/derived-entries';
-import { defaultHoldingColor } from '../../holdings/entity-colors';
-import { holdingTypeSymbol } from '../../holdings/entity-symbols';
-import { asBondMeta } from '../../holdings/holding-metadata';
-import { isTimeExemptHoldingType } from '../../holdings/holding-type';
+} from '@kiko/categories/category-display';
+import maybe, { foldMap } from 'fnts/maybe';
+import { ratesRepo } from '@kiko/rates/repo';
+import { Money } from '@kiko/currency/money';
+import { accountsRepo } from '@kiko/accounts';
+import { settingsRepo } from '@kiko/settings';
+import { useTranslation } from 'react-i18next';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { FlatList, Pressable } from 'react-native';
+import { formatMoney } from '@kiko/currency/format';
+import Box from '@kiko/design-system/components/box';
+import { categoriesRepo } from '@kiko/categories/repo';
+import Card from '@kiko/design-system/components/card';
+import Text from '@kiko/design-system/components/text';
+import { activeLocale } from '@kiko/i18n/active-locale';
+import type { Currency } from '@kiko/currency/currency';
+import type { PriceBook } from '@kiko/prices/price-book';
+import { transactionsRepo } from '@kiko/transactions/repo';
+import { usePriceBook } from '@kiko/prices/use-price-book';
+import Button from '@kiko/design-system/components/button';
+import { asLoanMeta } from '@kiko/holdings/holding-metadata';
+import { groupByDay } from '@kiko/transactions/group-by-day';
+import { needsPriceBook } from '@kiko/holdings/priced-value';
+import Divider from '@kiko/design-system/components/divider';
+import { loanLedgerSummary } from '@kiko/holdings/loan-ledger';
+import SymbolIcon from '@kiko/design-system/components/symbol';
+import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
+import { convert, type RateTable } from '@kiko/rates/conversion';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
+import { ownershipShareDetailText } from '@kiko/holdings/ownership';
+import { yieldToMaturityText } from '@kiko/bonds/yield-to-maturity';
+import { resolveEntityColor } from '@kiko/design-system/entity-tint';
+import type { AccountsStackParamList } from '@kiko/navigation/types';
+import { startOfLocalDay, formatDate, formatTime } from '@kiko/dates';
+import { buildRateTable, canConvert } from '@kiko/rates/net-worth-view';
+import SummaryTable from '@kiko/design-system/components/summary-table';
+import LoadingState from '@kiko/design-system/components/loading-state';
+import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { transactionRowDescription } from '@kiko/transactions/row-description';
+import CardContextMenu from '@kiko/design-system/components/card-context-menu';
+import { isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
+import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon';
+import EditHeaderButton from '@kiko/design-system/components/edit-header-button';
+import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
+import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
+import Screen, { resolveBottomClearance } from '@kiko/design-system/components/screen';
+import MoneyText, { type MoneyTextTone } from '@kiko/design-system/components/money-text';
+import { useDataReady, useLiveQuery, type HoldingRow, type TransactionRow } from '@kiko/db';
+import { type FC, type ReactElement, type ReactNode, useLayoutEffect, useMemo } from 'react';
+import { type HoldingValueBreakdown, holdingValueBreakdown } from '@kiko/holdings/holding-value';
+import { type DerivedEntry, derivedEntries, type EntryTone } from '@kiko/holdings/derived-entries';
+
 import {
-  bondExpectedProfitMinor,
-  type HoldingValueBreakdown,
-  holdingValueBreakdown,
-} from '../../holdings/holding-value';
-import { activeLocale } from '../../i18n/active-locale';
-import type { AccountsStackParamList } from '../../navigation/types';
-import { convert, type RateTable } from '../../rates/conversion';
-import { buildRateTable, canConvert } from '../../rates/net-worth-view';
-import { resolveCategoryColor } from '../../statistics/category-breakdown';
-import { groupByDay } from '../../transactions/group-by-day';
-import { transactionRowDescription } from '../../transactions/row-description';
-import EntityAmountHeader from '../entity-amount-header';
-import EntityHeaderIcon from '../entity-header-icon';
+  type FooterAction,
+  type HoldingBreakdownSpec,
+  holdingDetailSpecFor,
+} from './holding-detail-spec';
+import ShareChanges from './share-changes';
+import UpcomingPayments from './upcoming-payments';
+import { useBondRegisterTerms } from './use-bond-register-terms';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
 
@@ -69,7 +90,7 @@ type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, '
 // Extracted so the fallbacks don't count against the screen component's
 // cognitive-complexity budget.
 const holdingIdentity = (holding: HoldingRow): { icon: string; color: string } => ({
-  icon: holding.icon ?? holdingTypeSymbol[holding.type],
+  icon: holding.icon ?? defaultHoldingSymbol(holding),
   color: resolveEntityColor(holding.color, defaultHoldingColor[holding.type]),
 });
 
@@ -86,48 +107,199 @@ const isZero = (minorUnits: number): boolean => minorUnits === 0;
 const ledgerTone = (tone: EntryTone, minorUnits: number): MoneyTextTone =>
   tone !== 'neutral' && isZero(minorUnits) ? 'muted' : tone;
 
-// Rows that break the headline net value into its parts. Only the deposit and
-// bond types accrue interest/tax, so the breakdown is meaningful there; other
-// types render a flat value where gross == net and these would all read zero.
+// A row reads an amount, or (a property's share) a plain text value.
+type BreakdownRow =
+  | { label: string; money: Money; tone?: MoneyTextTone; testID?: string }
+  | { label: string; text: string; testID?: string };
+
+const BreakdownValue: FC<{ row: BreakdownRow }> = ({ row }) => {
+  if ('text' in row) {
+    return <Text variant="body">{row.text}</Text>;
+  }
+
+  return <MoneyText money={row.money} tone={row.tone} />;
+};
+
+// The deposit/bond breakdown: principal-or-cost, gross, interest, tax, and a
+// bond's own whole-life expected profit and yield to maturity. Only these two
+// types accrue interest/withhold tax, so this table is meaningful there.
+const interestBreakdownRows = (
+  breakdown: HoldingValueBreakdown,
+  spec: Extract<HoldingBreakdownSpec, { kind: 'interest' }>,
+  holding: HoldingRow,
+  registerTerms: BondTerms | null,
+  t: TFunction,
+): BreakdownRow[] => {
+  const expectedProfit = spec.expectedProfit(holding, registerTerms);
+  const yieldRows =
+    foldMap(maybe(spec.yieldToMaturity(holding, registerTerms)), (rate) => [
+      {
+        label: t('holdingDetail.yieldToMaturity'),
+        text: yieldToMaturityText(rate),
+        testID: 'bond-yield-to-maturity',
+      },
+    ]) ?? [];
+
+  return [
+    {
+      label: t(spec.principalLabelKey),
+      money: breakdown.principalOrCost,
+    },
+    { label: t('holdingDetail.grossValue'), money: breakdown.gross },
+    // Interest and tax carry a fixed tone by KIND (interest always green, tax
+    // always red), the same rule the derived ledger rows use — not the
+    // sign-only balance coloring, which would leave a positive interest/tax
+    // magnitude white — except when the amount is exactly zero, where
+    // `ledgerTone` mutes it to gray instead.
+    {
+      label: t('holdingDetail.interestEarned'),
+      money: breakdown.interest,
+      tone: ledgerTone('positive', breakdown.interest.minorUnits),
+    },
+    {
+      label: t('holdingDetail.taxWithheld'),
+      money: breakdown.tax,
+      tone: ledgerTone('negative', breakdown.tax.minorUnits),
+    },
+    // Bonds surface the whole-life expected profit: sum of net coupons +
+    // nominal redeemed, less the price paid (the figure the bank statement
+    // shows). It reads green as the holding's expected gain.
+    ...(expectedProfit
+      ? [
+          {
+            label: t('holdingDetail.expectedProfit'),
+            money: expectedProfit,
+            tone: 'positive' as const,
+          },
+        ]
+      : []),
+    ...yieldRows,
+  ];
+};
+
+// A priced type's (`property_item`, `metal`) breakdown: its cost basis, its
+// current priced value, and the gain between them. No interest/tax rows — a
+// priced type accrues neither, so those would only ever read a misleading
+// zero. Gain carries no explicit tone: MoneyText's own sign-based fallback
+// already reads a loss red and a gain green, the same as every other bare
+// signed amount in this screen.
+const pricedBreakdownRows = (breakdown: HoldingValueBreakdown, t: TFunction): BreakdownRow[] => [
+  { label: t('holdingDetail.cost'), money: breakdown.principalOrCost },
+  { label: t('holdingDetail.value'), money: breakdown.gross },
+  { label: t('holdingDetail.gain'), money: breakdown.gross.subtract(breakdown.principalOrCost) },
+];
+
+// A property owned in part: the whole asset's value, the share (in the form
+// the user typed it) and the day it took effect, then the owned value, the
+// owned cost, and the owned gain — the same amounts the breakdown values it at.
+const sharedPropertyBreakdownRows = (
+  breakdown: HoldingValueBreakdown,
+  ownership: PropertyOwnershipView,
+  t: TFunction,
+): BreakdownRow[] => {
+  const shareText = ownershipShareDetailText(ownership.share, ownership.input, activeLocale());
+  const since = t('holdingDetail.shareSince', {
+    date: formatDate(ownership.since, { timeZone: 'UTC' }),
+  });
+
+  return [
+    {
+      label: t('holdingDetail.wholeValue'),
+      money: ownership.whole,
+      testID: 'ownership-whole-value',
+    },
+    {
+      label: t('holdingDetail.yourShare'),
+      text: `${shareText} ${since}`,
+      testID: 'ownership-share',
+    },
+    {
+      label: t('holdingDetail.ownedValue'),
+      money: breakdown.gross,
+      testID: 'ownership-owned-value',
+    },
+    {
+      label: t('holdingDetail.ownedCost'),
+      money: breakdown.principalOrCost,
+      testID: 'ownership-owned-cost',
+    },
+    {
+      label: t('holdingDetail.gain'),
+      money: breakdown.gross.subtract(breakdown.principalOrCost),
+      testID: 'ownership-gain',
+    },
+  ];
+};
+
+// A loan's breakdown: its principal and what its linked payments paid, split
+// into interest and principal (`loanLedgerSummary`), ending on the SAME
+// outstanding the Value header shows. Every amount is a positive magnitude,
+// so no row carries a tone. Unparsable metadata shows no rows, the same way
+// the descriptor values such a loan at 0.
+const loanBreakdownRows = (
+  holding: HoldingRow,
+  book: PriceBook,
+  now: number,
+  t: TFunction,
+): BreakdownRow[] =>
+  foldMap(maybe(asLoanMeta(holding.metadata)), (meta) => {
+    const summary = loanLedgerSummary(meta, holding, book, now);
+    const money = (minorUnits: number): Money => Money.of(holding.currency, minorUnits);
+
+    return [
+      {
+        label: t('holdingDetail.principal'),
+        money: money(summary.principalMinorUnits),
+        testID: 'loan-ledger-principal',
+      },
+      {
+        label: t('holdingDetail.paidSoFar'),
+        money: money(summary.paidSoFarMinorUnits),
+        testID: 'loan-ledger-paid-so-far',
+      },
+      {
+        label: t('holdingDetail.interestPaid'),
+        money: money(summary.interestPaidMinorUnits),
+        testID: 'loan-ledger-interest-paid',
+      },
+      {
+        label: t('holdingDetail.principalRepaid'),
+        money: money(summary.principalRepaidMinorUnits),
+        testID: 'loan-ledger-principal-repaid',
+      },
+      {
+        label: t('holdingDetail.outstanding'),
+        money: money(summary.outstandingMinorUnits),
+        testID: 'loan-ledger-outstanding',
+      },
+    ];
+  }) ?? [];
+
+// Rows that break the headline net value into its parts, dispatched off the
+// holding type's own breakdown spec (kiko-code-style: ts-pattern for a closed
+// set constructed locally, never a switch).
 const breakdownRows = (
   breakdown: HoldingValueBreakdown,
-  type: string,
-  expectedProfit: Money | null,
+  spec: HoldingBreakdownSpec,
+  holding: HoldingRow,
+  book: PriceBook,
+  registerTerms: BondTerms | null,
+  now: number,
   t: TFunction,
-): { label: string; money: Money; tone?: MoneyTextTone }[] => [
-  {
-    label: type === 'bond' ? t('holdingDetail.cost') : t('holdingDetail.principal'),
-    money: breakdown.principalOrCost,
-  },
-  { label: t('holdingDetail.grossValue'), money: breakdown.gross },
-  // Interest and tax carry a fixed tone by KIND (interest always green, tax
-  // always red), the same rule the derived ledger rows use — not the sign-only
-  // balance coloring, which would leave a positive interest/tax magnitude
-  // white — except when the amount is exactly zero, where `ledgerTone` mutes
-  // it to gray instead.
-  {
-    label: t('holdingDetail.interestEarned'),
-    money: breakdown.interest,
-    tone: ledgerTone('positive', breakdown.interest.minorUnits),
-  },
-  {
-    label: t('holdingDetail.taxWithheld'),
-    money: breakdown.tax,
-    tone: ledgerTone('negative', breakdown.tax.minorUnits),
-  },
-  // Bonds surface the whole-life expected profit: sum of net coupons + nominal
-  // redeemed, less the price paid (the figure the bank statement shows). It
-  // reads green as the holding's expected gain.
-  ...(expectedProfit
-    ? [
-        {
-          label: t('holdingDetail.expectedProfit'),
-          money: expectedProfit,
-          tone: 'positive' as const,
-        },
-      ]
-    : []),
-];
+): BreakdownRow[] =>
+  match(spec)
+    .with({ kind: 'interest' }, (interestSpec) =>
+      interestBreakdownRows(breakdown, interestSpec, holding, registerTerms, t),
+    )
+    .with(
+      { kind: 'priced' },
+      () =>
+        foldMap(maybe(propertyOwnershipView(holding, now, book)), (ownership) =>
+          sharedPropertyBreakdownRows(breakdown, ownership, t),
+        ) ?? pricedBreakdownRows(breakdown, t),
+    )
+    .with({ kind: 'loan' }, () => loanBreakdownRows(holding, book, now, t))
+    .exhaustive();
 
 // The holding's Value converted into the user's main (base) currency, for the
 // smaller caption beneath the amount — the same second line the holding card
@@ -154,34 +326,26 @@ const convertedBaseValue = (
   return convert(breakdown.net, baseCurrency, rateTable);
 };
 
-// Which add action the screen's footer offers.
-type FooterAction = 'contribution' | 'transaction' | 'none';
-
-// A term_deposit takes contributions (its own deposit lifecycle); a plain
-// holding takes a manual transaction. A bond carries no manual ledger — its
-// value derives from metadata (kiko-domain) — and a synced (Monobank) holding's
-// ledger is owned by the sync, so neither offers an add action. `isSyncedHolding`
-// requires BOTH a connected synced institution AND the sync key in metadata, so
-// a disconnected former-Monobank holding counts as manual again and keeps its
-// add action. Extracted to module scope so the branch chain does not count
-// against the screen component's cognitive-complexity budget.
-const footerActionFor = (
-  holding: HoldingRow | undefined,
-  account: AccountRow | undefined,
-): FooterAction => {
-  if (holding === undefined) {
-    return 'none';
+// The Value header's secondary caption slot (`EntityAmountHeader`'s
+// `secondary` prop): the converted-to-base line — a module-scope component
+// (mirroring `LedgerRowItem` below) so the conditional JSX does not count
+// against the screen component's own cognitive-complexity budget. Renders
+// nothing (null) without a converted value, the same as the screen
+// previously passing `secondary={undefined}`.
+const ValueHeaderSecondary: FC<{
+  convertedToBase: Money | null;
+}> = ({ convertedToBase }) => {
+  if (!convertedToBase) {
+    return null;
   }
 
-  if (holding.type === 'term_deposit') {
-    return 'contribution';
-  }
-
-  if (holding.type === 'bond' || isSyncedHolding(holding, account)) {
-    return 'none';
-  }
-
-  return 'transaction';
+  return (
+    <Box testID="holding-detail-converted">
+      <Text variant="caption" tone="textSecondary">
+        {formatMoney(convertedToBase, activeLocale())}
+      </Text>
+    </Box>
+  );
 };
 
 // One merged ledger row — either a real stored transaction or a computed
@@ -194,7 +358,10 @@ type LedgerRow =
 // A stable key per row, reusing the exact identity the eager `.map` keyed on: a
 // derived entry's synthetic id, a stored row's transaction id.
 const ledgerKey = (row: LedgerRow): string =>
-  row.kind === 'derived' ? row.entry.id : row.transaction.id;
+  match(row)
+    .with({ kind: 'derived' }, (derivedRow) => derivedRow.entry.id)
+    .with({ kind: 'transaction' }, (transactionRow) => transactionRow.transaction.id)
+    .exhaustive();
 
 // A flattened ledger entry for the FlatList: the merged row plus, on the FIRST
 // row of each calendar day, that day's header title ("Today"/"Yesterday"/
@@ -217,7 +384,7 @@ type LedgerRowContext = {
   holdingName: string;
   holdingNameById: Map<string, string>;
   onPressTransaction: (transactionId: string) => void;
-  // Duplicate this ledger row into a pre-filled create form (D2). Passed for
+  // Duplicate this ledger row into a pre-filled create form. Passed for
   // manual rows only (a synced row is not duplicable), stateless via the
   // `duplicateOfTransactionId` route param.
   onDuplicateTransaction: (transactionId: string) => void;
@@ -242,124 +409,273 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
     onDuplicateTransaction,
   } = context;
 
-  if (row.kind === 'derived') {
-    // A computed lifecycle entry (opening/top-up, interest accrual, the
-    // 18%/5% withholding lines, capitalization, or a bond
-    // purchase/coupon/redemption): read-only — no delete gesture, not
-    // tappable — and marked "Computed" so it reads as derived, not a
-    // stored transaction. A projected (future-dated) entry — an
-    // upcoming accrual, coupon, or redemption — is dimmed and marked
-    // "Projected". The amount reads in its kind-derived tone (tax red,
-    // interest/coupon green, principal movements neutral/by-sign).
-    return (
+  return match(row)
+    .with({ kind: 'derived' }, (derivedRow) => (
+      // A computed lifecycle entry (opening/top-up, interest accrual, the
+      // 18%/5% withholding lines, capitalization, or a bond
+      // purchase/coupon/redemption): read-only — no delete gesture, not
+      // tappable — and marked "Computed" so it reads as derived, not a
+      // stored transaction. A projected (future-dated) entry — an
+      // upcoming accrual, coupon, or redemption — is dimmed and marked
+      // "Projected". The amount reads in its kind-derived tone (tax red,
+      // interest/coupon green, principal movements neutral/by-sign).
       <Card
         padding={3}
         testID="ledger-row"
-        style={row.entry.isFuture ? styles.futureRow : undefined}
+        style={derivedRow.entry.isFuture ? styles.futureRow : undefined}
       >
         <Box gap={1}>
           <Box direction="row" style={styles.rowMain}>
             <Box style={styles.rowDescription}>
-              <Text variant="body">{row.entry.label}</Text>
+              <Text variant="body">{derivedRow.entry.label}</Text>
             </Box>
             <Box style={styles.rowAmount}>
               <MoneyText
-                money={Money.of(currency, row.entry.amountMinorUnits)}
-                tone={ledgerTone(row.entry.tone, row.entry.amountMinorUnits)}
+                money={Money.of(currency, derivedRow.entry.amountMinorUnits)}
+                tone={ledgerTone(derivedRow.entry.tone, derivedRow.entry.amountMinorUnits)}
               />
             </Box>
           </Box>
           <Box style={styles.rowFooter}>
             <Text variant="caption" tone="textSecondary">
-              {row.entry.isFuture ? t('holdingDetail.projected') : t('holdingDetail.computed')}
-              {showTime ? ` · ${formatTime(row.entry.time)}` : ''}
+              {derivedRow.entry.isFuture
+                ? t('holdingDetail.projected')
+                : t('holdingDetail.computed')}
+              {showTime ? ` · ${formatTime(derivedRow.entry.time)}` : ''}
             </Text>
           </Box>
         </Box>
       </Card>
-    );
+    ))
+    .with({ kind: 'transaction' }, (transactionRow) => {
+      // The row's stored category resolves to its icon + title through the
+      // same shared mapping Home uses; a null/unknown category falls back
+      // to the neutral display.
+      const category = resolveCategoryDisplay(
+        transactionRow.transaction.category,
+        categoryByKey,
+        defaultCategoryKey,
+      );
+
+      // The row's human-readable description, reused as both the row label and
+      // the name the delete confirmation spells out ("Delete <description>").
+      const description = transactionRowDescription({
+        transaction: transactionRow.transaction,
+        holdingName,
+        holdingNameById,
+        t,
+      });
+
+      // Every real row is tappable: it opens the shared Transaction form
+      // for this id. A manual row edits; a synced (Monobank) row opens
+      // read-only — the form resolves which from the transaction's own
+      // `source`, so the row only needs to pass the id. Delete is a
+      // touch-and-hold that opens the shared card context menu (see
+      // `CardContextMenu`) with a single destructive Delete action — the
+      // same long-press pattern the account/holding cards use. A synced
+      // (Monobank) row is not deletable (its state is owned by the sync),
+      // so `CardContextMenu` renders it with no gesture at all.
+      return (
+        <CardContextMenu
+          name={description}
+          deletable={!isSyncedTransaction(transactionRow.transaction)}
+          onDelete={() => transactionsRepo.remove(transactionRow.transaction.id)}
+          // A synced row is not duplicable — pass no handler so its long-press keeps
+          // offering nothing (it already renders bare). A manual row's Duplicate
+          // opens the create form pre-filled from this row.
+          onDuplicate={
+            isSyncedTransaction(transactionRow.transaction)
+              ? undefined
+              : () => onDuplicateTransaction(transactionRow.transaction.id)
+          }
+          liftOnHold
+        >
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => onPressTransaction(transactionRow.transaction.id)}
+          >
+            <Card padding={3} testID="ledger-row">
+              <Box gap={1}>
+                <Box direction="row" style={styles.rowMain}>
+                  <Box direction="row" gap={2} style={styles.rowLead}>
+                    <SymbolIcon
+                      name={category.icon}
+                      size={theme.iconSizes.body}
+                      tone="textSecondary"
+                      color={resolveCategoryColor(
+                        category.color,
+                        transactionRow.transaction.category?.toLowerCase() || defaultCategoryKey,
+                      )}
+                      accessibilityLabel={category.title}
+                    />
+                    {/* A small "loan payment" marker, uniform with Home's
+                      list row — shown regardless of `loanLinkSource` ('auto'
+                      or 'manual' read the same marker). No accessibility
+                      label: decorative, mirroring `SelectableRow`'s own
+                      checkmark glyph — the row's own accessible content
+                      already fully describes the transaction. */}
+                    {transactionRow.transaction.loanHoldingId != null && (
+                      <SymbolIcon
+                        name="link"
+                        size={theme.iconSizes.caption}
+                        tone="textSecondary"
+                        testID="ledger-row-loan-link-marker"
+                      />
+                    )}
+                    <Box style={styles.rowDescription}>
+                      <Text variant="body">{description}</Text>
+                    </Box>
+                  </Box>
+                  <Box style={styles.rowAmount}>
+                    <MoneyText
+                      money={Money.of(currency, transactionRow.transaction.amountMinorUnits)}
+                      context="transaction"
+                    />
+                  </Box>
+                </Box>
+                {showTime && (
+                  <Box style={styles.rowFooter}>
+                    <Text variant="caption" tone="textSecondary">
+                      {formatTime(transactionRow.transaction.time)}
+                    </Text>
+                  </Box>
+                )}
+              </Box>
+            </Card>
+          </Pressable>
+        </CardContextMenu>
+      );
+    })
+    .exhaustive();
+};
+
+// The loan detail's own "Linked payments" section — every transaction the
+// matcher (or a manual pick) linked to THIS loan, in the order the query
+// hands them (newest first). Hidden entirely (returns null) once there are
+// none, rather than an empty heading with nothing beneath it. Reuses the
+// shared `LedgerRowItem` (and its own loan-link marker) exactly as the
+// ledger FlatList does, but as a plain `.map` here rather than a second
+// FlatList — this list is always small (one loan's own payments), never a
+// synced card's thousands of rows. Each row's OWN `holdingName` is
+// resolved from the PAYER holding it actually belongs to (never the loan
+// being viewed), matching `transactionRowDescription`'s own blank-description
+// fallback convention.
+const LinkedPaymentsSection: FC<{
+  title: string;
+  payments: readonly TransactionRow[];
+  holdingNameById: ReadonlyMap<string, string>;
+  context: LedgerRowContext;
+}> = ({ title, payments, holdingNameById, context }) => {
+  if (payments.length === 0) {
+    return null;
   }
 
-  // The row's stored category resolves to its icon + title through the
-  // same shared mapping Home uses; a null/unknown category falls back
-  // to the neutral display.
-  const category = resolveCategoryDisplay(
-    row.transaction.category,
-    categoryByKey,
-    defaultCategoryKey,
-  );
-
-  // The row's human-readable description, reused as both the row label and
-  // the name the delete confirmation spells out ("Delete <description>").
-  const description = transactionRowDescription({
-    transaction: row.transaction,
-    holdingName,
-    holdingNameById,
-    t,
-  });
-
-  // Every real row is tappable: it opens the shared Transaction form
-  // for this id. A manual row edits; a synced (Monobank) row opens
-  // read-only — the form resolves which from the transaction's own
-  // `source`, so the row only needs to pass the id. Delete is a
-  // touch-and-hold that opens the shared card context menu (see
-  // `CardContextMenu`) with a single destructive Delete action — the
-  // same long-press pattern the account/holding cards use. A synced
-  // (Monobank) row is not deletable (its state is owned by the sync),
-  // so `CardContextMenu` renders it with no gesture at all.
   return (
-    <CardContextMenu
-      name={description}
-      deletable={!isSyncedTransaction(row.transaction)}
-      onDelete={() => transactionsRepo.remove(row.transaction.id)}
-      // A synced row is not duplicable — pass no handler so its long-press keeps
-      // offering nothing (it already renders bare). A manual row's Duplicate
-      // opens the create form pre-filled from this row (D2).
-      onDuplicate={
-        isSyncedTransaction(row.transaction)
-          ? undefined
-          : () => onDuplicateTransaction(row.transaction.id)
-      }
-      liftOnHold
-    >
-      <Pressable accessibilityRole="button" onPress={() => onPressTransaction(row.transaction.id)}>
-        <Card padding={3} testID="ledger-row">
-          <Box gap={1}>
-            <Box direction="row" style={styles.rowMain}>
-              <Box direction="row" gap={2} style={styles.rowLead}>
-                <SymbolIcon
-                  name={category.icon}
-                  size={theme.iconSizes.body}
-                  tone="textSecondary"
-                  color={resolveCategoryColor(
-                    category.color,
-                    row.transaction.category?.toLowerCase() || defaultCategoryKey,
-                  )}
-                  accessibilityLabel={category.title}
-                />
-                <Box style={styles.rowDescription}>
-                  <Text variant="body">{description}</Text>
-                </Box>
-              </Box>
-              <Box style={styles.rowAmount}>
-                <MoneyText
-                  money={Money.of(currency, row.transaction.amountMinorUnits)}
-                  context="transaction"
-                />
-              </Box>
-            </Box>
-            {showTime && (
-              <Box style={styles.rowFooter}>
-                <Text variant="caption" tone="textSecondary">
-                  {formatTime(row.transaction.time)}
-                </Text>
-              </Box>
-            )}
-          </Box>
-        </Card>
-      </Pressable>
-    </CardContextMenu>
+    <Box gap={2}>
+      <Text variant="heading">{title}</Text>
+      {payments.map((transaction) => (
+        <LedgerRowItem
+          key={transaction.id}
+          row={{ kind: 'transaction', time: transaction.time, transaction }}
+          context={{ ...context, holdingName: holdingNameById.get(transaction.holdingId) ?? '' }}
+        />
+      ))}
+    </Box>
   );
+};
+
+// The footer's per-type primary action, extracted to module scope (mirroring
+// `resolveLedgerReadyView` below) so the `match` branching does not count
+// against the screen component's own cognitive-complexity budget. `undefined`
+// while `!isReady` (overriding every case) — a synced holding must never show
+// the "Add transaction" action before its own account row has loaded
+// (kiko-architecture's useLiveQuery consumer rule) — and for every type that
+// takes no footer action of its own (a bond, a synced holding).
+const holdingDetailFooterAction = (
+  isReady: boolean,
+  footerAction: FooterAction,
+  holdingId: string,
+  isDebtHolding: boolean,
+  navigation: HoldingDetailScreenProps['navigation'],
+  t: TFunction,
+): ReactNode => {
+  if (!isReady) {
+    return undefined;
+  }
+
+  return match(footerAction)
+    .with('contribution', () => (
+      <Button
+        onPress={() => navigation.navigate('ContributionForm', { holdingId })}
+        icon="calendar.badge.plus"
+      >
+        {t('forms.holding.addContribution')}
+      </Button>
+    ))
+    .with('transaction', () => (
+      <Button
+        onPress={() => navigation.navigate('TransactionForm', { holdingId })}
+        icon={genericEntitySymbol.transaction}
+      >
+        {t('holdingDetail.addTransaction')}
+      </Button>
+    ))
+    .with('updateValue', () => (
+      <Button onPress={() => navigation.navigate('PricePointForm', { holdingId })}>
+        {t(isDebtHolding ? 'holdingDetail.updateOutstanding' : 'holdingDetail.updateValue')}
+      </Button>
+    ))
+    .with('addLot', () => (
+      <Button
+        onPress={() => navigation.navigate('LotForm', { holdingId })}
+        icon={holdingTypeSymbol.metal}
+      >
+        {t('holdingDetail.addLot')}
+      </Button>
+    ))
+    .with('none', () => undefined)
+    .exhaustive();
+};
+
+type LedgerReadyView = {
+  data: LedgerListItem[];
+  headerComponent: ReactElement;
+  emptyComponent: ReactElement | undefined;
+};
+
+// Resolves the ledger FlatList's own loading-vs-ready content in one place —
+// module scope, mirroring `ValueHeaderSecondary`/`breakdownRows` above — so
+// branching on `isReady` does not count against the screen component's own
+// cognitive-complexity budget. The FlatList itself stays MOUNTED either way
+// (`bleedTop` + `contentInsetAdjustmentBehavior` must apply from the very
+// first render — kiko-architecture's useLiveQuery consumer rule): while
+// `!isReady` it shows no ledger rows, no "no transactions" empty text, and no
+// loaded summary header — only the shared `LoadingState` in the header slot,
+// so nothing renders as a final (empty or partial) state while this screen's
+// own queries are still loading.
+const resolveLedgerReadyView = (
+  isReady: boolean,
+  listData: LedgerListItem[],
+  listHeader: ReactElement,
+  emptyText: string,
+): LedgerReadyView => {
+  if (!isReady) {
+    return {
+      data: [],
+      headerComponent: <LoadingState testID="holding-detail-loading" />,
+      emptyComponent: undefined,
+    };
+  }
+
+  return {
+    data: listData,
+    headerComponent: listHeader,
+    emptyComponent: (
+      <Box style={styles.empty}>
+        <Text tone="textSecondary">{emptyText}</Text>
+      </Box>
+    ),
+  };
 };
 
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
@@ -368,16 +684,52 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // `holdingsRepo` exposes no single-row lookup, so the holding's own
   // currency (needed to render each transaction's signed MoneyText) comes
   // from filtering the full holdings list for this id.
-  const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
-  const { data: transactions } = useLiveQuery(transactionsRepo.listByHoldingQuery(holdingId), [
-    'transactions',
-  ]);
-  const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
-  const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
+    holdingsRepo.allQuery(),
+    ['holdings'],
+    true,
+    { cached: true },
+  );
+  const { data: transactions, isLoading: transactionsLoading } = useLiveQuery(
+    transactionsRepo.listByHoldingQuery(holdingId),
+    ['transactions'],
+    true,
+    { cached: true },
+  );
+  const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
+    categoriesRepo.allQuery(),
+    ['categories'],
+    true,
+    { cached: true },
+  );
+  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
+    settingsRepo.getQuery(),
+    ['settings'],
+    true,
+    { cached: true },
+  );
   // The cached conversion rates, so the Value amount can carry a smaller
   // converted base-currency caption beneath it — the same second line the
   // holding card shows for a holding in a non-base currency.
-  const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
+  const { data: rates, isLoading: ratesLoading } = useLiveQuery(
+    ratesRepo.allQuery(),
+    ['currency_rates'],
+    true,
+    { cached: true },
+  );
+  // kiko-architecture: skip the price_points read while this specific
+  // holding's type never reads it — a type carrying no priced spec and not
+  // a loan (`needsPriceBook`) never touches `price_points`. It stays enabled
+  // while holdings are still on their first load, so the two reads run in
+  // parallel instead of price_points waiting on holdings. Only a loan reads
+  // the linked-payments half of the book.
+  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
+    holdingsLoading ||
+      holdings.some((candidate) => candidate.id === holdingId && needsPriceBook(candidate.type)),
+    { cached: true },
+    holdingsLoading ||
+      holdings.some((candidate) => candidate.id === holdingId && candidate.type === 'loan'),
+  );
 
   // Resolve each transaction row's stored category to its display (icon + title)
   // through the same shared mapping Home uses, so a rename flows through here too.
@@ -387,22 +739,66 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
 
   const holding = holdings.find((candidate) => candidate.id === holdingId);
+  // The loan detail's own "Linked payments" section: the transactions the
+  // matcher (or a manual pick) linked to THIS loan, newest first — a loan
+  // is ledgerless, so its own `transactions` query above never finds them
+  // (a payment always lives on the payer holding instead). Disabled outright
+  // for every other holding type (kiko-architecture: never read data a
+  // disabled caller does not need).
+  const { data: linkedPayments, isLoading: linkedPaymentsLoading } = useLiveQuery(
+    transactionsRepo.listLinkedToLoanQuery(holdingId),
+    ['transactions'],
+    holding?.type === 'loan',
+    { cached: true },
+  );
+  // The register terms a bond's coupons, expected profit and yield to
+  // maturity read its payments from.
+  const { terms: registerTerms, isLoading: registerTermsLoading } = useBondRegisterTerms(holding);
   const currency: Currency = holding?.currency ?? 'UAH';
   const now = Date.now();
-  const breakdown = holding ? holdingValueBreakdown(holding, now) : null;
+  const breakdown = holding ? holdingValueBreakdown(holding, now, priceBook) : null;
   // The owning account, so the footer's sync gate can read its `institution`.
   // `isSyncedHolding` requires BOTH a connected synced institution AND a sync
   // key in metadata, so a disconnected former-Monobank holding counts as manual
   // again and keeps its add action.
-  const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(holding?.accountId ?? ''), [
-    'accounts',
-  ]);
+  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
+    accountsRepo.byIdQuery(holding?.accountId ?? ''),
+    ['accounts'],
+    true,
+    { cached: true },
+  );
   const account = accounts.at(0);
-  // Bonds show a whole-life expected profit line (net coupons + nominal - price).
-  const bondMeta = holding?.type === 'bond' ? asBondMeta(holding.metadata) : null;
-  const expectedProfit = bondMeta
-    ? Money.of(currency, bondExpectedProfitMinor(bondMeta, currency))
-    : null;
+  // The empty-transactions text, the footer add action, and the Value header
+  // must never render while any of this screen's own queries is still on its
+  // first load (kiko-architecture's useLiveQuery consumer rule) — gated below,
+  // right at the return.
+  const isReady = useDataReady(
+    holdingsLoading,
+    transactionsLoading,
+    categoriesLoading,
+    settingsLoading,
+    ratesLoading,
+    priceBookLoading,
+    accountsLoading,
+    linkedPaymentsLoading,
+    registerTermsLoading,
+  );
+  // This holding's detail-screen behavior (`HoldingDetailSpec`,
+  // `holding-detail-spec/`) — `undefined` when there is no real holding
+  // (`holdingDetailSpecFor` itself always tolerates an unrecognized type).
+  const spec = foldMap(maybe(holding), (found) => holdingDetailSpecFor(found.type));
+  const todayStart = startOfLocalDay(now);
+  // An annuity/differentiated loan's every remaining installment, listed just
+  // below the Value header. Keyed on the local DAY, not the per-render `now`
+  // millisecond (every input it reads is day-granular), so a 30-year
+  // mortgage's 360 rows are not rebuilt, nor re-rendered, on every render.
+  const upcomingInstallments = useMemo(
+    () =>
+      foldMap(maybe(holding), (found) =>
+        spec?.upcomingInstallments(found, priceBook, todayStart),
+      ) ?? [],
+    [holding, spec, priceBook, todayStart],
+  );
 
   // The user's main currency, and the rate table that converts into it. A
   // holding in a different currency shows a smaller converted base-currency
@@ -418,10 +814,19 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // purchase, coupon — whatever `derivedEntries` yields for the type). Both
   // carry a `time`; the merged list is sorted newest-first to match the repo's
   // `desc(time)` ordering. Real rows stay interactive (swipe-to-delete, tap to
-  // edit); derived rows are read-only and marked "Computed".
+  // edit); derived rows are read-only and marked "Computed". A bond's coupons
+  // each take their own register rate (a step-up bond's rate changes).
   const derived: DerivedEntry[] = useMemo(
-    () => (holding ? derivedEntries(holding, now, t) : []),
-    [holding, now, t],
+    () =>
+      holding
+        ? derivedEntries(
+            holding,
+            now,
+            t,
+            holdingRegisterCoupons(holding.metadata, holding.currency, registerTerms),
+          )
+        : [],
+    [holding, now, t, registerTerms],
   );
   const ledger = useMemo(
     () =>
@@ -442,7 +847,6 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // with that day's header title. Keyed on the local DAY (not the per-render
   // `now` millisecond) so it only recomputes when the ledger changes or the day
   // rolls over at midnight.
-  const todayStart = startOfLocalDay(now);
   const listData = useMemo<LedgerListItem[]>(
     () =>
       groupByDay(ledger, todayStart, t).flatMap((section) =>
@@ -453,10 +857,18 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       ),
     [ledger, todayStart, t],
   );
-  const showBreakdown = holding?.type === 'term_deposit' || holding?.type === 'bond';
-  // Which add action the footer offers — or none, for a bond or a synced
-  // holding (see `footerActionFor`).
-  const footerAction = footerActionFor(holding, account);
+  // Which add action the footer offers — or none, for a bond, a synced
+  // holding, or a type this build's registry does not recognize
+  // (`HoldingDetailSpec`, `holding-detail-spec/`).
+  const footerAction: FooterAction =
+    foldMap(maybe(holding), (found) => spec?.footerAction(isSyncedHolding(found, account))) ??
+    'none';
+  // The footer's own label for `'updateValue'`: a debt-side type (loan) reads
+  // "Update outstanding"; every other priced type reads "Update value". Reads
+  // the SAME descriptor `side` net-worth math keys off, so this label and the
+  // holding's own asset/debt classification can never diverge.
+  const isDebtHolding =
+    foldMap(maybe(holding?.type), holdingDescriptorOrUndefined)?.side === 'debt';
   // The ledger FlatList is a direct child of `Screen`'s SafeAreaView under
   // `bleedTop` (no `content` wrapper — that is what lets iOS track it for the
   // large-title collapse), so this screen owns the FlatList's bottom padding
@@ -501,6 +913,24 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // row (accountId is NOT NULL); the header Edit action is gated on it.
   const holdingAccountId = holding?.accountId;
 
+  // The per-row read context, threaded into each ledger row so the row
+  // component stays at module scope. `holdingName` is always a string (the
+  // route param seeds it), so the old `?? ''` fallback is no longer needed.
+  // Built here (rather than after `listHeader`, where this used to sit) so
+  // the Linked-payments section below can read it too.
+  const rowContext: LedgerRowContext = {
+    currency,
+    showTime,
+    categoryByKey,
+    defaultCategoryKey,
+    holdingName,
+    holdingNameById,
+    onPressTransaction: (transactionId) =>
+      navigation.navigate('TransactionForm', { transactionId }),
+    onDuplicateTransaction: (transactionId) =>
+      navigation.navigate('TransactionForm', { duplicateOfTransactionId: transactionId }),
+  };
+
   // The header/summary block that scrolls above the ledger: the Value amount +
   // identity icon, the optional converted (main-currency) caption tucked
   // directly under that amount, the optional breakdown lines, the hairline
@@ -522,34 +952,56 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
             // hugging the value) and consistent across every holding type. It
             // used to render as a disconnected caption at the BOTTOM of the whole
             // summary block, which on a deposit/bond floated below the whole
-            // breakdown, detached from the value it converts (feedback round-2,
-            // item 3).
-            secondary={
-              convertedToBase ? (
-                <Box testID="holding-detail-converted">
-                  <Text variant="caption" tone="textSecondary">
-                    {formatMoney(convertedToBase, activeLocale())}
-                  </Text>
-                </Box>
-              ) : undefined
-            }
+            // breakdown, detached from the value it converts.
+            secondary={<ValueHeaderSecondary convertedToBase={convertedToBase} />}
           />
-          {showBreakdown && (
-            <Box gap={1} style={styles.breakdown}>
-              {breakdownRows(breakdown, holding.type, expectedProfit, t).map((detail) => (
-                <Box key={detail.label} direction="row" style={styles.breakdownDetailRow}>
-                  <Text variant="caption" tone="textSecondary">
-                    {detail.label}
-                  </Text>
-                  <MoneyText money={detail.money} tone={detail.tone} />
-                </Box>
-              ))}
+          {spec?.breakdown && (
+            <Box style={styles.breakdown}>
+              {/* The one shared "label left, value right" row layout
+                  (`SummaryTable`) — this is the table the statement-import
+                  preview and column-mapping result section now reuse the
+                  LAYOUT of, never these value/percent/tax COLUMNS
+                  themselves. */}
+              <SummaryTable
+                rows={breakdownRows(
+                  breakdown,
+                  spec.breakdown,
+                  holding,
+                  priceBook,
+                  registerTerms,
+                  now,
+                  t,
+                ).map((detail) => ({
+                  key: detail.label,
+                  label: detail.label,
+                  testID: detail.testID,
+                  value: <BreakdownValue row={detail} />,
+                }))}
+              />
+            </Box>
+          )}
+          {upcomingInstallments.length > 0 && (
+            <Box style={styles.breakdown}>
+              <UpcomingPayments installments={upcomingInstallments} currency={currency} />
             </Box>
           )}
         </Box>
       )}
 
-      <Box style={styles.divider} />
+      <LinkedPaymentsSection
+        title={t('holdingDetail.linkedPayments')}
+        payments={linkedPayments}
+        holdingNameById={holdingNameById}
+        context={rowContext}
+      />
+
+      <ShareChanges
+        holding={holding}
+        onEdit={(day) => navigation.navigate('OwnershipChangeForm', { holdingId, day })}
+        onDelete={(day) => holdingsRepo.removeOwnershipChange(holdingId, day)}
+      />
+
+      <Divider spacing={2} />
 
       <Text variant="heading">{t('holdingDetail.transactionsHeading')}</Text>
     </Box>
@@ -570,21 +1022,12 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     });
   }, [navigation, holdingName, holdingAccountId, holdingId]);
 
-  // The per-row read context, threaded into each ledger row so the row
-  // component stays at module scope. `holdingName` is always a string (the
-  // route param seeds it), so the old `?? ''` fallback is no longer needed.
-  const rowContext: LedgerRowContext = {
-    currency,
-    showTime,
-    categoryByKey,
-    defaultCategoryKey,
-    holdingName,
-    holdingNameById,
-    onPressTransaction: (transactionId) =>
-      navigation.navigate('TransactionForm', { transactionId }),
-    onDuplicateTransaction: (transactionId) =>
-      navigation.navigate('TransactionForm', { duplicateOfTransactionId: transactionId }),
-  };
+  const ledgerReadyView = resolveLedgerReadyView(
+    isReady,
+    listData,
+    listHeader,
+    t('holdingDetail.emptyTransactions'),
+  );
 
   return (
     <Screen
@@ -593,37 +1036,29 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       // Screen render the FlatList as a DIRECT child of its SafeAreaView — with
       // NO intermediate `content` wrapper — so iOS tracks the FlatList as the
       // scroll view that drives the large-title COLLAPSE (an interposed wrapper
-      // stops the collapse: the title stays stuck expanded — feedback round-3,
-      // item 1). `bleedTop` also drops Screen's top safe-area edge so the list
-      // reaches the top edge and iOS applies the large-title content inset to it
-      // (via the FlatList's own `contentInsetAdjustmentBehavior="automatic"`
-      // below) — keeping the no-float fix from feedback round-2, item 2. This
+      // stops the collapse: the title stays stuck expanded). `bleedTop` also
+      // drops Screen's top safe-area edge so the list reaches the top edge and
+      // iOS applies the large-title content inset to it (via the FlatList's
+      // own `contentInsetAdjustmentBehavior="automatic"` below) — without it,
+      // the native large title has no scroll view to attach its content
+      // inset to and overlaps the list header at scroll-top. This
       // mirrors the working `account-detail` scroll ScrollView, a direct child
       // of its own SafeAreaView; this screen cannot use `scroll` because a
       // virtualized FlatList must not nest inside that branch's ScrollView.
       // Because there is no wrapper, the FlatList owns its own horizontal and
       // bottom padding (see `styles.listContent` / `listBottomClearance`).
       bleedTop
-      footer={
-        // A large, full-width primary action, shown for the holdings that take
-        // one. A term_deposit opens the dedicated Contribution form ("Add
-        // contribution"); a plain holding opens the shared Transaction form
-        // ("Add transaction"). A bond and a synced holding take no manual add
-        // action, so they render no footer at all.
-        match(footerAction)
-          .with('contribution', () => (
-            <Button onPress={() => navigation.navigate('ContributionForm', { holdingId })}>
-              {t('forms.holding.addContribution')}
-            </Button>
-          ))
-          .with('transaction', () => (
-            <Button onPress={() => navigation.navigate('TransactionForm', { holdingId })}>
-              {t('holdingDetail.addTransaction')}
-            </Button>
-          ))
-          .with('none', () => undefined)
-          .exhaustive()
-      }
+      // A large, full-width primary action, shown for the holdings that take
+      // one — see `holdingDetailFooterAction`'s own doc comment for the
+      // per-type mapping and the `!isReady` gate.
+      footer={holdingDetailFooterAction(
+        isReady,
+        footerAction,
+        holdingId,
+        isDebtHolding,
+        navigation,
+        t,
+      )}
     >
       {/* The ledger is a virtualized FlatList that OWNS this screen's scrolling
           (under `bleedTop` Screen renders it directly inside its SafeAreaView,
@@ -643,7 +1078,16 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           and between rows alike. */}
       <FlatList
         testID="ledger-list"
-        data={listData}
+        // Kept mounted while `!isReady` (never unmounted for a separate
+        // loading branch) so `bleedTop` + `contentInsetAdjustmentBehavior`
+        // still apply from the very first render — the same FlatList iOS
+        // tracks to drive the large-title collapse throughout.
+        // `resolveLedgerReadyView` resolves `data`/`ListHeaderComponent`/
+        // `ListEmptyComponent` together: no stale/partial ledger or the
+        // genuine "no transactions" text ever renders as final while any of
+        // this screen's own queries is still loading — only the shared
+        // LoadingState in the header slot.
+        data={ledgerReadyView.data}
         keyExtractor={(item) => ledgerKey(item.row)}
         renderItem={({ item }) => (
           <>
@@ -658,7 +1102,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
             <LedgerRowItem row={item.row} context={rowContext} />
           </>
         )}
-        ListHeaderComponent={listHeader}
+        ListHeaderComponent={ledgerReadyView.headerComponent}
+        ListEmptyComponent={ledgerReadyView.emptyComponent}
         // The list owns the scrolling under the native large title, so it — not
         // Screen's ScrollView — must carry the automatic content-inset
         // adjustment that seats content below the expanded large title (Screen
@@ -712,30 +1157,24 @@ const styles = StyleSheet.create((theme) => ({
     paddingTop: theme.spacing(3),
     paddingBottom: theme.spacing(1),
   },
+  // The ledger's own empty state (`home.screen.tsx`'s
+  // `ListEmptyComponent` pattern) — a plain centered caption below the
+  // "Transactions" heading, replacing a bare heading with nothing beneath it
+  // for a holding type (property_item, loan) with no real transactions yet.
+  empty: {
+    alignItems: 'center',
+    paddingVertical: theme.spacing(6),
+  },
   // A projected (post-`now`) lifecycle entry, dimmed so it reads as an estimate
   // rather than a settled statement line.
   futureRow: {
     opacity: 0.5,
   },
   // Extra space above the value breakdown so the headline number sits clearly
-  // apart from the principal/gross/interest/tax rows beneath it.
+  // apart from the principal/gross/interest/tax rows beneath it — the row
+  // layout itself now lives in the shared `SummaryTable`.
   breakdown: {
     marginTop: theme.spacing(3),
-  },
-  // One breakdown detail line (principal/gross/interest/tax/expected-profit):
-  // label on the left, amount on the right, split by space-between. The row
-  // direction comes from the `Box direction="row"` prop.
-  breakdownDetailRow: {
-    justifyContent: 'space-between',
-  },
-  // A hairline rule separating the Value block from the Transactions list — the
-  // same standard hairline treatment the account-detail sections use
-  // (account-detail.styles.ts `divider`), drawn in the theme's separator color
-  // with vertical margin so each section has room to breathe.
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginVertical: theme.spacing(2),
-    backgroundColor: theme.colors.border,
   },
   // The primary line of a transaction row: description on the left, amount on
   // the right, split by space-between.

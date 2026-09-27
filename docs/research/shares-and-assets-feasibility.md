@@ -1,0 +1,527 @@
+# Shares, property, metals, and debts — design spec
+
+- **Status:** DESIGN SPEC, round 5. All user decisions (rounds 1–5) are in the decision log. No app code changed. Implementation plan: `docs/plans/shares-property-metals-debts.md`.
+- **Date checked:** 2026-09-23 (all web sources and live API tests are from this date unless a row says otherwise).
+- **Branch:** `shares-assets-research` (based on `next`, App Store build 25).
+- **Users:** Ukrainians, inside Ukraine and displaced worldwide (EU, UK, North America). Every feature must serve both groups.
+
+Legend: **[verified]** = read on a primary source or tested live. **[secondary]** = news/review site, not the primary source. **[unverified]** = a lead only; confirm before the plan relies on it. **[inferred]** = my conclusion from data, not a stated fact.
+
+---
+
+## 0. Decision log
+
+| # | Question | Decision | Decided by |
+|---|---|---|---|
+| D1 | Name of the generic asset kind | **"Property" / "Майно"** | user, round 2 |
+| D2 | How a value changes over time | **Price series** (the user's idea, like currency rates), not ledger rows — see §2 | spec recommendation, user idea |
+| D3 | Share prices | **Auto-priced.** Manual-only price rejected. Quotes come from a user-supplied key (BYOK) or from broker sync | user, round 2 |
+| D4 | Precious metals | **Own asset type and own picker.** Not in the currency list. Not only inside Property | user, round 2 |
+| D5 | Debts, mortgage | **In scope.** The net-worth rule changes from "assets only" to "assets minus debts" | user, round 2 |
+| D6 | Broker import/sync | ~~All brokers covered~~ — **narrowed by D26**: catalog + manual shares + EODHD only | user, round 2 → 5 |
+| D7 | BYOK (user pastes a quote-API key) | **Accepted**, same pattern as the Monobank token | user, round 2 |
+| D8 | Bond by ISIN | **"ISIN / Manual" mode chips** in the Bond form, validated against the NBU register — see §6 | user request, feasible |
+| D9 | Non-bank institutions (Diia, brokers) | **New account kind "Broker / Брокер"**. Diia is NOT an institution — see §7 | spec recommendation |
+| D10 | ISIN mode fields | **ISIN + quantity**, with purchase date (default today) and price paid (default nominal) | user, round 3 |
+| D11 | Metal holding under a bank | **Yes, only for banks that sell metals** — allow-list in §4.1 | user, round 3 |
+| D12 | Quote provider | **EODHD only.** Alpha Vantage dropped | user, round 3 |
+| D13 | Cash leg of a share trade | **No transfer.** The share holding stays independent, same as bonds today | user, round 3 |
+| D14 | Loan payments in statistics | **Only the interest part counts as spending** — see §5.3 | user, round 3 |
+| D15 | Debt label | **"Debt" / "Борг"** | user, round 3 |
+| D16 | Release shape | **One feature line, shipped together.** P1–P9 are build order inside one integration branch, not staged releases. P8 (Freedom24) and P9 (Revolut) are gated tasks with a go/no-go | user, round 3 |
+| D17 | New banks in the catalog | **Add PUMB, Oschadbank, Raiffeisen, Ukrgasbank.** Statement imports only where the format is known — see §13 | user, round 3 |
+| D18 | Monobank metals | **No.** Monobank stays off the metal allow-list | user, round 4 |
+| D19 | PUMB importer | ~~Yes, with a synthetic fixture~~ — **deferred by D25** | user, round 4 → 5 |
+| D20 | ProCredit personal `.xls` | ~~Hand-rolled OLE2 + BIFF reader~~ — **deferred by D25**; the §14 library evaluation stays valid for later | user, round 4 → 5 |
+| D21 | Loan-payment linking | **Automatic linking with high confidence**, a visible "Linked automatically" state with Undo, manual link as the fallback — see §5.4 | user asked, round 4; feasible |
+| D22 | EODHD licence | **Closed.** Same BYOK model as the Monobank token and the Binance keys: the user's own key, the user's own data use. Kiko does not redistribute data and does not ship a key | user, round 4 |
+| D23 | IBKR Flex XML | ~~`saxen` 11.1.1~~ — **superseded by D24/D26** (IBKR deferred, so no XML dependency) | user, round 4 → 5 |
+| D24 | Scope rule | **No integration ships without a real sample file or a real account to test against.** The user has only a Monobank account and no broker accounts | user, round 5 |
+| D25 | Bank importers | **Keep every existing importer** in `src/statement-import`. **Defer** PUMB XLSX (was D19), the `.xls` reader and ProCredit personal (was D20). Banks without a real sample use the generic importer (D27) + manual entry | user, round 5 |
+| D26 | Broker integrations | **Defer** Trading 212 sync, IBKR sync and Flex import, Freedom24, Revolut import. Brokers stay as a catalog + Broker kind with **manual** share holdings, auto-priced by **EODHD BYOK** (the user can test with a free key). `saxen` is dropped; the `plist.sh` widening keeps only EODHD `api_token` | user, round 5 |
+| D27 | Generic import | **New first phase: generic column-mapping statement import (POC)**, tested by the user on the device before the rest — see §15 | user, round 5 |
+
+**Deferred until a real account or a real sample exists (D24).** These are not rejected. The research for each stays in this spec (§3.1, §3.3, §13, §14):
+- Trading 212 sync (read-only API access; host `live.trading212.com`).
+- Interactive Brokers Flex sync and Flex XML/CSV file import (and the `saxen` dependency).
+- Freedom24 sync (Tradernet API spike).
+- Revolut trading statement import.
+- PUMB XLSX importer (format documented by uabean `pumb_xls.py`).
+- Legacy `.xls` reader (OLE2 + BIFF) and the ProCredit personal importer.
+- Dedicated importers for Oschadbank, Raiffeisen, Ukrgasbank, UKRSIBBANK personal.
+
+Resume one when the user (or a tester) has a real account or a real anonymized export. Until then, these banks and brokers work through the generic importer (§15) and manual entry.
+
+**Rejected options** (kept here so they are not proposed again):
+- Manual-only share price (D3).
+- Metals as currencies in `currencyOptions` (D4) — they would appear in the base-currency picker.
+- Revaluation as `manual` ledger rows (D2) — see §2.3.
+- Yahoo Finance unofficial endpoints — Terms of Service risk and frequent breakage.
+- A key for a quote service shipped inside the app — the key can be extracted, and the free tiers forbid public-app use.
+- "Asset / Актив" as the name — "Актив" already means Holding in the Kiko uk catalogue.
+- **Alpha Vantage** as a quote provider (D12, round 3) — EODHD alone covers the needed exchanges; one provider means one pinned host and one client.
+- A transfer out of a bank holding when the user buys shares (D13).
+- Counting the full loan payment as spending (D14) — the principal part only reduces the debt.
+- Oschadbank sync through its web-banking internal API (`online.oschadbank.ua/wb/api/v2`, used by uabean's `oschad_api.py` with a login or a browser session cookie) — an undocumented private API that needs the user's banking password; rejected for security and App Store reasons.
+- Separate staged releases per phase (D16).
+- `xlsx` (SheetJS on npm, 0.18.5): OSV GHSA-4r6h-8v6p-xvw6 and GHSA-5pgg-2g8v-p4x9 (D20).
+- `@e965/xlsx` (a personal republish of SheetJS 0.20.3) and `cfb` (unmaintained since 2022, `require('fs')`/`require("zlib")` calls) (D20).
+- `fast-xml-parser` for IBKR XML: safe at 5.11.1 but adds 6 packages and parses internal DTD entities; `saxen` needs no new code (D23).
+- ZenPlugins (GPL-3.0) bank plugins for Oschadbank, PUMB, and UKRSIBBANK: they log in to the banks' private mobile/web APIs with the user's banking credentials — same rejection as the Oschadbank internal API.
+- A generic "Institution" account kind — it loses the kind → holding-type gating that the forms rely on.
+- Diia as an institution — Diia does not hold the bonds.
+
+---
+
+## 1. Codebase facts this spec builds on
+
+Mapped by `kiko:explorer` in two passes. I spot-checked the key facts in this session.
+
+| Area | Fact | Source |
+|---|---|---|
+| Account kinds | `bank`, `cash`, `crypto` (TS-only enum, no DB CHECK → widening needs no migration) | `src/db/schema.ts:7-16` |
+| Holding types | `card`, `term_deposit`, `bond`, `cash`, `crypto_asset`, `jar` | `src/db/schema.ts:44` |
+| Kind → types | `bank: ['card','term_deposit','bond','jar']`, `cash: ['cash']`, `crypto: ['crypto_asset']` | `src/holdings/holding-type/holding-type.ts:29-31` |
+| Derived value | `bond`/`term_deposit` save metadata only; value is computed at read by `holdingValueBreakdown` | `src/screens/forms/holding-form/holding-form.screen.tsx:118-142`, `src/holdings/holding-value/holding-value.ts` |
+| Past value | `holdingValueAt`: bond/deposit → analytic; others → opening balance + ledger up to the local day | `src/statistics/holding-value-at.ts:31-47` |
+| Rate lookup by date | `rateTableAt(rows, day)`: nearest row AT OR BEFORE the day (carry-forward); `earliestRateTable` for days before the first row | `src/rates/rate-history-repo/rate-history.repo.ts:47,82` |
+| Rate storage | `currencyRates` (latest) + `currencyRateHistory` (one row per pair per day), keyed on the closed `currencyOptions` enum | `src/db/schema.ts:168-207` |
+| Statistics exclusion | exchange legs, internal transfers, description/MCC transfer patterns; category breakdown counts only negative amounts | `src/statistics/exchange-exclusion/`, `internal-transfers/`, `transfer-exclusion/`, `category-breakdown/category-breakdown.ts:169,178` |
+| Bond coupons | computed on the fly (`derivedEntries()`), never written as transactions → statistics never see them | `src/holdings/derived-entries/derived-entries.ts` |
+| Money sign | `Money` allows negative values (`negate()` exists); no clamp in net-worth code | `src/currency/money/money.ts`, `src/rates/net-worth-view/net-worth-view.ts` |
+| Net-worth chart | Y axis floors to the series' own minimum → a negative net worth draws correctly | `src/screens/statistics/net-worth-line/net-worth-line.component.tsx:133-145` |
+| Pie chart | computes percent shares of the total → negative slices are not supported | `src/screens/statistics/pie-chart/pie-chart.component.tsx:121-126` |
+| Bond form | one shared holding form; bond fields: quantity, faceValue, couponPct, purchasePrice (optional, default = nominal), purchaseDate, maturityDate, bondKind chips, couponFrequency chips | `holding-form.screen.tsx:625-644, 695-727, 1110-1215` |
+| Chips | `ChipRow` `{options, selected, onSelect, labels}`; the holding `type` ChipRow already switches form sections | `holding-form.screen.tsx:921` |
+| Institutions | `accounts.institution` = live-sync provider key (only `monobank`); `accounts.bankId` = identity from `bankCatalog` (`monobank, privatbank, sensebank, procredit, ukrsib, alfa`) | `src/bank-sync/bank-catalog/bank-catalog.ts`, `account-form.screen.tsx:103,208,366,488` |
+| Credentials | Keychain per account, `WHEN_UNLOCKED_THIS_DEVICE_ONLY` (Monobank token, Binance key+secret JSON) | `src/monobank/token/token.ts`, `src/crypto-sync/binance/binance.credentials.ts` |
+| Pinning gate | `plist.sh` greps `src/**/*.ts` for `'X-Token'`, `'X-MBX-APIKEY'`, `'Authorization'`, `'api-key'`-like literals; the file must import its host from `@env`; the host must be in `NSPinnedDomains` with ≥2 CA SPKI pins | `scripts/checks/plist.sh:74` |
+| Refresh cadence | rates: 5-min throttle; triggered on app open (auto-sync mount) and pull-to-refresh; no background fetch | `src/rates/rates-refresh/rates-refresh.ts:12,158-164`, `src/sync/use-auto-sync/use-auto-sync.ts:20,34` |
+
+**Existing inconsistency found:** a credit `card` with a negative balance already lowers net worth today, although the kiko-domain skill says "net worth is assets-only" (`.claude/skills/kiko-domain/SKILL.md:370`). D5 makes the rule match the code.
+
+---
+
+## 2. Valuation model — price series (D2)
+
+### 2.1 What a revaluation is (plain words)
+
+A flat, a car, or a watch has no bank balance. Its value is an estimate that changes over time. Example: the user bought a car for USD 20,000 in 2024. In 2026 a similar car sells for USD 16,000. The user tells Kiko "the car is now worth 16,000". That new estimate is a **revaluation**. No money moved. Only the estimate of the value changed.
+
+### 2.2 The user's idea
+
+"Use the same mechanism as currency rates." A holding value = **quantity × price at date**. The prices are a series of (day, price) points, stored and looked up like `currencyRateHistory` and `rateTableAt`.
+
+- A car: quantity 1, price series = the user's estimates (2024-03-01: 20,000; 2026-09-01: 16,000).
+- Gold: quantity 31.1 g, price series = NBU XAU per day.
+- A share: quantity 12.5, price series = daily close from the quote provider or the broker.
+
+### 2.3 Comparison
+
+| Criterion | A. Ledger rows (round-1 idea) | B. Price series (user idea) |
+|---|---|---|
+| History chart / net worth at date | works through `holdingValueAt` ledger walk | works through a new branch: `quantityAt(day) × priceAt(day)`, carry-forward lookup copied from `rateTableAt` |
+| Statistics exclusion | **every** revaluation row must be excluded by a new marker in every statistics query — a new place for bugs | **automatic**: no transaction is written, like bond coupons today |
+| Reuse | reuses `updateWithBalanceDelta` | reuses the lookup rule and the "value derived at read" pattern of `bond`/`term_deposit`; needs one new table |
+| One model for Property, metals, shares | no — shares and metals need a price anyway | **yes** — the same code values all three; only the price SOURCE differs (manual, NBU, quote API, broker) |
+| Sparse data (2 estimates in 3 years) | fine | fine: carry-forward holds the last estimate until the next one |
+| Honest "as of" date | hard to show | the latest point's date is the "as of" date |
+
+**Decision: B (price series).** It removes the statistics-exclusion risk and gives one valuation path for Property, metals, and shares.
+
+`currencyRates`/`currencyRateHistory` are NOT reused directly. They are keyed on the closed `currencyOptions` enum, and a share ticker or a car is not a currency. A new table copies their shape and lookup rule.
+
+### 2.4 Data model sketch
+
+New table `price_points` (name open to review):
+
+| Column | Type | Note |
+|---|---|---|
+| `instrument` | text | `share:AAPL.US`, `metal:XAU`, or `holding:<holdingId>` (a private series for one Property item) |
+| `day` | int | UTC midnight ms, same as `currencyRateHistory.day` |
+| `price` | text | scaled decimal string, never float (same rule as `currencyRates.rate`) |
+| `currency` | text | quote currency, in `currencyOptions` (GBX needs a rule: store GBP and divide by 100 at ingest) |
+| `source` | text enum | `manual`, `nbu`, `eodhd`, `trading212`, `ibkr`, `freedom24` |
+
+Unique on `(instrument, day)`. Lookup = nearest row at or before `day`; before the first row, use the first row (same as `earliestRateTable`).
+
+**Quantity over time.** A share position changes when the user buys or sells. Holding metadata keeps `lots: [{ day, quantityDelta, costMinorUnits }]`. `quantityAt(day)` = sum of deltas up to the day. Cost basis = sum of costs. Property items have one lot (quantity 1). This keeps quantity history without transaction rows.
+
+**Holding value** = `quantityAt(day) × priceAt(instrument, day)`, in the price currency, then converted to base through the existing rate table.
+
+**Cash leg (D13).** Buying shares does NOT move money out of a bank holding. The institution holds the shares and returns the value on sale, so the share holding stays independent, as bonds are today. The price series never moves cash.
+
+---
+
+## 3. Shares — auto-priced (D3, D6, D7)
+
+### 3.1 How Ukrainians buy securities (research from round 1)
+
+| Route | Users | Sells | API | Export | Source |
+|---|---|---|---|---|---|
+| Diia "Military bonds" | residents | OVDP via partners; Diia does not sell | none | none from Diia | [militarybonds.diia.gov.ua](https://militarybonds.diia.gov.ua/) [verified] |
+| Monobank | residents | OVDP UAH/USD/EUR | no securities endpoint [unverified] | [unverified] | [finance.ua](https://news.finance.ua/ua/monobank-dozvolyv-kliyentam-kupuvaty-valyutni-ovdp) [secondary] |
+| mono invest (EXANTE) | — | **closed**: stopped 2022-02; EXANTE sanctioned 2023-07 | — | — | [finclub.net](https://finclub.net/news/klientiv-mono-invest-zmushuyut-prodati-aktsiji-oskilki-broker-exante-opinivsya-pid-sanktsiyami.html) [secondary] |
+| PrivatBank | residents | OVDP from UAH 1,000 | none | [unverified] | [privatbank.ua](https://privatbank.ua/news/2025/11/20/privatbank-zapustiv-kupivlyu-ta-prodazh-ovdp-u-mobilnomu-zastosunku-privat24) |
+| ICU Trade | residents | OVDP, funds, BAVL shares | none public; depository statements | [unverified] | [App Store](https://apps.apple.com/ua/app/icu-trade/id1494280961?l=uk), [online.icu](https://www.online.icu/en) |
+| UNIVER | residents | OVDP, shares, funds | none public | [unverified] | [investor24](https://investor24.com.ua/brokers/univer/) [secondary] |
+| Freedom Finance Ukraine | — | **closed to new clients**, sanctioned | — | — | [investor24](https://investor24.com.ua/brokers/freedom-finance/) [secondary] |
+| Freedom24 (CySEC) | residents + abroad | 15 exchanges | Tradernet API, public + private key | reports [unverified] | [freedom24.com/tradernet-api](https://freedom24.com/tradernet-api) |
+| Interactive Brokers | residents + abroad | 150+ exchanges | Flex Web Service: read-only token (6 h – 1 y, optional IP lock) + a Flex Query | Flex CSV/XML | [ibkrguides](https://www.ibkrguides.com/clientportal/performanceandstatements/flex-web-service.htm) [verified] |
+| Trading 212 | mostly abroad | shares, ETFs, fractional | Public API (beta): key + secret, HTTP Basic, **read-only scope available**, optional IP lock; Invest + ISA only; rate limits in `x-ratelimit-*` headers | CSV | [help centre](https://helpcentre.trading212.com/hc/en-us/articles/14584770928157-Trading-212-API-key), [rate limiting](https://docs.trading212.com/api/section/rate-limiting/how-it-works) [verified] |
+| Revolut | abroad | shares, ETFs | none | account + P&L statements; CSV vs PDF-only unclear [unverified] | [Revolut help](https://help.revolut.com/help/wealth/stocks/getting-started-with-trading/managing-your-trading-account/trading-statements/accessing-my-trading-statements-and-reports/) |
+
+Regulation (residents): from 2026-08-11 the NBU monthly limit for non-cash FX purchase is UAH 200,000 and also covers foreign securities and bank metals ([finance.ua](https://news.finance.ua/ua/novi-limity-na-kupivlyu-valyuty-shho-dozvolyv-nbu) [secondary]). Kiko values holdings; it does not track or enforce limits.
+
+Exchanges: UX licence revoked 2024-06 ([Wikipedia](https://en.wikipedia.org/wiki/Ukrainian_Exchange) [secondary]). OVDP secondary prices form on PFTS; PFTS publishes no API or CSV ([pfts.ua](https://pfts.ua/trade-info/torgi-ovdp) [verified]). Ukrainian company shares that residents can reach sit mostly on foreign exchanges ([investor24](https://investor24.com.ua/aktsii-ukrainskyh-kompaniy/) [secondary]).
+
+### 3.2 BYOK quote providers
+
+With BYOK, the user signs up with the provider, accepts its personal-use terms, and pastes the key. Kiko stores it in Keychain per provider. Kiko does not ship a key.
+
+| Provider | Free tier | Paid entry | Coverage relevant to users | Symbol search | Auth | Host to pin | Source |
+|---|---|---|---|---|---|---|---|
+| **EODHD** | 20 calls/day; EOD data, past year only | USD 19.99/month EOD, 100,000 calls/day | 150,000+ tickers worldwide; US, LSE, XETRA [verified]; Warsaw (WSE) [unverified] | yes [unverified on free] | `api_token` query param | `eodhd.com` | [pricing](https://eodhd.com/pricing), [EOD API](https://eodhd.com/financial-apis/api-for-historical-data-and-volumes) |
+| **Alpha Vantage** | 25 calls/day, 5/min; quote updated at end of each trading day | premium for realtime | US, LSE (`.LON`), XETRA (`.DEX`), Toronto (`.TRT`), India, China; WSE [unverified] | `SYMBOL_SEARCH` free | `apikey` query param | `www.alphavantage.co` | [docs](https://www.alphavantage.co/documentation/) [verified] |
+| Finnhub | 60 calls/min | paid for international | US real-time; international coverage on free [unverified] | yes | token | `finnhub.io` | [pricing](https://finnhub.io/pricing) (did not render) |
+| Twelve Data | 8/min, 800/day | paid | US equities/ETFs, FX, crypto only on free | yes | key | `api.twelvedata.com` | [pricing](https://twelvedata.com/pricing) [verified] |
+
+**What Ukrainians hold, and who prices it:**
+
+| Holding | Priced by |
+|---|---|
+| US shares/ETFs (Nasdaq, NYSE) | EODHD, broker sync |
+| LSE (incl. UCITS ETFs; GBX pence) | EODHD, broker sync |
+| XETRA / EU | EODHD, broker sync |
+| WSE (some Ukrainian companies) | EODHD [unverified], broker sync |
+| OVDP (UA government bonds) | **no quote source**; valued by the existing bond model (cost + coupons). PFTS has no feed |
+| BAVL on PFTS | no source; manual price point (the Property-style manual series) |
+
+**Decision (D12):** **EODHD only.** It has the widest exchange list and a cheap paid tier for heavy users. Alpha Vantage, Finnhub, and Twelve Data stay in the table above as research only; they are out of scope. No provider registry is needed for one provider; the EODHD client sits behind a small interface so a second provider stays possible later.
+
+**Refresh cadence:**
+- Prices are **end-of-day**. Real-time adds no value for net worth and costs quota.
+- On app open (the existing auto-sync hook) and on pull-to-refresh: fetch a new close only for instruments whose latest `price_points.day` is older than the last trading day. At most **one call per instrument per day**.
+- First add: one historical call per instrument fills the series from the first lot date (EODHD free: past year only; older days use the earliest point, as `earliestRateTable` does).
+- Quota guard: count calls per provider per day in settings. When the free quota is near its end, stop, keep carry-forward prices, and show "prices as of <date>". 20 instruments/day fit the EODHD free tier.
+- Broker-synced positions carry the broker's own price (T212 positions and IBKR Flex open positions include a price [unverified field names]). Those instruments need no BYOK call.
+
+### 3.3 Broker sync, per broker
+
+| Broker | Route | Credential | Host(s) to pin | Data | Status |
+|---|---|---|---|---|---|
+| **Trading 212** | Public API (beta) | key + secret, read-only scope; Keychain | `live.trading212.com` | positions, cash, history, dividends | feasible; beta = API can change |
+| **Interactive Brokers** | Flex Web Service (SendRequest → GetStatement, XML) + file import of a Flex CSV | token + query id; the user must create a Flex Query in Client Portal once (Kiko shows the steps) | IBKR Flex host (`ndcdyn.interactivebrokers.com` [unverified]; docs page returned 403) | positions, trades, dividends, cash; updated once per day | feasible; setup friction |
+| **Freedom24** | Tradernet API | public + private key; signing method [unverified] | Tradernet host [unverified] | portfolio, positions, P&L | **needs a spike** before the plan: auth details did not load |
+| **Revolut** | statement import only (no API) | none | none | trading account statement | depends on CSV availability [unverified]; PDF parsing rejected |
+| **ICU, UNIVER, Dragon** | no API | none | none | — | manual: bonds by ISIN mode (§6), shares with a manual price series |
+| **Monobank, PrivatBank, Diia bonds** | no securities API | none | none | — | ISIN mode (§6) under the bank that holds the bonds |
+
+Every new host sends a credential → it must be in `NSPinnedDomains` with ≥2 CA SPKI pins, or `npm run check:plist` fails. The `plist.sh` grep looks for credential **header** literals. EODHD sends the key as the **query parameter** `api_token`. The literal `'api_token'` does not match the `'[Aa]pi[-_]?[Kk]ey'` pattern. **Action for the plan:** widen the grep (or add a Semgrep rule with a fixture) so the EODHD client is detected as credential-bearing. Do not rely on the current pattern.
+
+### 3.4 Share holding
+
+- Account kind `broker` only (see §7). Revolut is in the broker catalog (§7.2), and no catalog bank sells shares, so `share` is NOT creatable under `bank` (resolved in the plan).
+- Holding type `share`, metadata `ShareMeta`: `symbol` (provider form, for example `AAPL.US`), `isin?`, `exchange`, `name`, `lots[]`, `quoteSource` (`eodhd | broker | manual`).
+- Value = §2.4. Show market value, cost basis, unrealized gain, and "price as of".
+- Dividends: from broker sync as income transactions on the broker cash holding. Manual users add them as income.
+
+---
+
+## 4. Precious metals (D4)
+
+- **Account kind** `metals` — en "Precious metals", uk "Дорогоцінні метали". Own entry in the add-account picker.
+- **Holding type** `metal`, metadata `MetalMeta`: `metal` (`XAU` gold, `XAG` silver, `XPT` platinum, `XPD` palladium), `form` (`bar`, `coin`, `bank_account`), `unit` (`g`, `oz`), `purity` (for example 0.9999), `lots[]`.
+- Also creatable under `bank`, **only when the account's `bankId` is in the metal allow-list** (D11, §4.1).
+- **Price:** NBU official price in UAH per troy ounce, keyless, host `bank.gov.ua` (already contacted, unpinned, no credential).
+  - Current: `GET https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json` → `XAU` 193295.79, `XAG` 2919.24, `XPT` 79652.08, `XPD` 57079.09 (exchangedate 24.09.2026) **[verified]**.
+  - History by date: `GET .../exchange?valcode=XAU&date=20250102&json` → `XAU` 109583.9 on 02.01.2025 **[verified]**. This backfills the series with no new host.
+- **Value** = weight in troy ounces × purity × NBU price (1 troy oz = 31.1034768 g). Coin collector premium is not modelled.
+- Metals are NOT added to `currencyOptions` (rejected option).
+
+### 4.1 Which catalog banks sell precious metals (checked 2026-09-23)
+
+**Warning: none of these rows is device-verified.** The user has only a Monobank account. Only the Monobank row can be checked on the user's device.
+
+| Bank (`bankId`) | Sells metals to individuals? | What | Source | Allow-list |
+|---|---|---|---|---|
+| PrivatBank (`privatbank`) | **yes** — since Oct 2025 only for PrivatBank clients | gold and silver bars, coins | [privatbank.ua/banking-metals](https://privatbank.ua/banking-metals) [verified, official page] | **yes** |
+| Oschadbank (`oschadbank`, new) | **yes** — at branches in safe regions; buy-back needs an expert on site | gold bars, investment and commemorative coins | [oschadbank.ua metals_coins](https://www.oschadbank.ua/ua/private/metals_coins), [news](https://www.oschadbank.ua/news/osadbank-vidnovlue-prodaz-monet-ta-zlivkiv-z-dorogocinnih-metaliv) [verified via search snippet, official site] | **yes** |
+| PUMB (`pumb`, new) | **yes** — online application or branch | gold bars 1–1000 g | [about.pumb.ua press release](https://about.pumb.ua/presscenter/news/item/1017-u-6-razv-virs-popit-na-zolot-zlitki-v-pumb-za-pds) [secondary: official press site, release date not shown; current offer unverified] | **yes** |
+| Ukrgasbank (`ukrgasbank`, new) | **yes** — bars "of the highest samples in all denominations", expert present | bars | [ukrgasbank.com/private/bank_metals](https://www.ukrgasbank.com/private/bank_metals/) [verified via search snippet, official site] | **yes** |
+| Raiffeisen (`raiffeisen`, new) | **not confirmed** — only a tariff note about metal sale limits found | — | [raiffeisen.ua document](https://raiffeisen.ua/storage/files/infomaciya-shcho-ye-bankivskoyu-tayemniceyu_1539242347.pdf) [unverified] | no (until confirmed) |
+| Monobank (`monobank`) | **not found** — finance.ua shows no metals data for Monobank | — | [finance.ua](https://finance.ua/ua/banks/monobank/metals) | no — **the user can check this on the device** |
+| Sensebank, UKRSIBBANK, ProCredit, Alfa (business) | not found | — | searches on 2026-09-23 | no |
+
+Build order note (resolved in the plan): P2 sets the flag on PrivatBank; the flag on PUMB, Oschadbank, and Ukrgasbank is set in P3, when those banks enter the catalog.
+
+The allow-list is a static data field on the bank catalog entry (for example `sellsMetals: true`), always rendered. It is not a visibility flag (Guideline 5.6). A metal holding under an allow-listed bank means bars or coins bought at that bank. The same metal kept at home goes under the Metals kind.
+
+---
+
+## 5. Debts and the net-worth rule change (D5)
+
+### 5.1 Model
+
+- **Account kind** `debt` — en "Debt", uk "Борг" (D15).
+- **Holding type** `loan`, metadata `LoanMeta`:
+  - `kind`: `mortgage`, `car_loan`, `consumer_loan`, `personal` (money the user owes a person).
+  - `principalMinorUnits`, `startDate`, `annualRatePct?`, `termMonths?`, `schedule`: `annuity`, `differentiated`, or `none`.
+- **Outstanding balance:**
+  - `annuity`/`differentiated`: computed at read from the schedule (like deposit interest in `src/holdings/interest/`). The user can add a correction point (a manual price point on `holding:<id>`) when the bank statement differs.
+  - `none` (informal debt): a manual series of outstanding amounts (the same price-series mechanism as Property).
+- **Value** = −outstanding, as negative `Money` (`Money` already allows negative values).
+- A loan the user GAVE to someone stays an **asset**: Property category `loan_given`.
+
+### 5.2 Rule change
+
+- Old rule (`kiko-domain` skill line 370): "Net worth is assets-only — liabilities and debt are out of scope".
+- **New rule:** net worth = Σ asset values − Σ debt outstanding, in the base currency. Credit-card negative balances (already negative today) count as debt too.
+- The kiko-domain skill must be updated in the same task (standing rule "update skills in the same task").
+
+### 5.3 UI effects
+
+| Surface | Change |
+|---|---|
+| Headline net worth | can be negative; format with a minus sign |
+| `NetWorthLine` | no change: the Y axis already floors to the series minimum |
+| Pie chart / `CurrencyBreakdown` | percent shares need positive parts → the pie shows **assets only**; a separate "Debts" total line shows below it |
+| Accounts list | a "Debts" section with totals shown as negative |
+| Statistics | **only the interest part of a loan payment counts as spending (D14)** — see below |
+
+**Interest-only spending (D14).** A loan payment is a bank transaction (for example −UAH 12,000). For an `annuity` or `differentiated` loan, Kiko knows the schedule, so it can split each scheduled payment into interest and principal. Design:
+- The user links a payment transaction to the loan (a "Loan payment" action on the transaction, like the existing Exchange link that sets `exchangeCounterpartHoldingId`).
+- A linked payment is excluded from spending by a new id-set builder (next to `exchangeExcludedTransactionIds`). The interest part for that date is added back to spending as a derived entry, under a "Loan interest" category. It is computed on the fly, like bond coupons.
+- A `none`-schedule (informal) debt has no interest → a linked payment counts 0 as spending.
+- An unlinked payment stays normal spending.
+
+### 5.4 Automatic loan-payment linking (D21)
+
+**Verdict: feasible.** For a scheduled loan, Kiko knows each installment's amount and due date, so it can find the matching bank debit. Informal (`none`) debts have no installments and are never matched.
+
+**Inputs on the loan (optional, entered in the loan form):** `paymentHoldingId` ("Paid from"), `lenderName`, `lenderIban`.
+
+**Candidate transaction:** a debit (amount < 0), not an exchange leg, not already linked, `loanLinkRejected = false`, same currency as the loan.
+
+**Rules — a link is written only when ALL of these hold:**
+1. **Amount:** |amount| is within the tolerance of the scheduled installment: ±1 % or ±1.00 in the loan currency, whichever is larger (a bank fee or rounding).
+2. **Date:** the transaction day is from 3 days before to 7 days after the due date.
+3. **One more signal, at least one of:**
+   - the transaction is on the loan's `paymentHoldingId`;
+   - `counterIban` equals `lenderIban` (Monobank and imports carry `counterIban`);
+   - the description contains a keyword: `кредит`, `погашення`, `іпотек`, `позик`, `loan`, `mortgage`, `repayment`, or the `lenderName`.
+4. **Uniqueness:** exactly one candidate for the installment, and the candidate matches exactly one installment of one loan. Any tie → no automatic link.
+
+**False-positive handling:**
+- Amount + date alone (for example monthly rent of the same size) never links: rule 3 needs a third signal.
+- The link is visible: the transaction shows "Linked automatically" with an Undo action; the loan detail lists linked payments.
+- Undo clears the link and sets `loanLinkRejected = true`, so the matcher never links that row again. A manual link or a manual "None" clears the flag.
+- Statistics are derived at read time (§5.3), so an undo corrects spending at once. No stored totals must be repaired.
+- A partial or early payment (amount outside the tolerance) is not matched; the user links it manually. The interest counted is the scheduled interest for that installment, capped at the payment amount.
+
+**When it runs:** after a sync, after a statement import, and when a loan is created or edited (backfill from the loan start date). It is a pure, idempotent function; one `db.transaction()` writes the links with `source = 'auto'`.
+
+**Data:** `transactions.loanHoldingId`, `transactions.loanLinkSource` (`'auto' | 'manual'`), `transactions.loanLinkRejected` — one additive migration.
+
+---
+
+## 6. Bond form — ISIN mode (D8)
+
+### 6.1 NBU register facts (tested live 2026-09-23)
+
+`GET https://bank.gov.ua/depo_securities?json` (keyless, host already contacted):
+- **196 records**: 177 UAH, 16 USD, 3 EUR. Issuer of all: Міністерство фінансів України.
+- `cptype`: 187 `DCP` (domestic OVDP, nominal 1000, ISIN `UA4000…`) and 9 `OZDP` (Eurobonds, ISIN `XS…`, nominal 1, fractional `pay_val`).
+- Maturity range 2026-06-24 … 2052-05-02. Only 2 records are already matured → the register keeps matured bonds for only a short time [inferred].
+- **All 196 ISINs pass the ISO 6166 check digit** (letters → numbers, Luhn mod 10) — tested with a local script.
+- Each record has `payments[]` with `pay_date`, `pay_type` (`1` = coupon, 3445 rows; `2` = redemption, 195 rows), `pay_val`.
+
+### 6.2 Field mapping
+
+| Register field | Kiko field |
+|---|---|
+| `cpcode` | new `BondMeta.isin` |
+| `nominal` | `faceValueMinorUnits` (via `Money.fromMajor`) |
+| `auk_proc` | `couponPct` |
+| `pgs_date` | `maturityDate` |
+| `val_code` | holding `currency` |
+| `pay_period` (182, …) | `couponFrequency`: ~30 → monthly, ~91 → quarterly, ~182 → semiannually, ~364 → annually; any other value → Manual mode with the known fields filled |
+| `emit_name` = Minfin | `bondKind = 'government'` |
+| `cpdescr` + `cpcode` | default `name` (editable) |
+| `payments[]` | later phase: exact coupon dates and amounts instead of the frequency approximation |
+
+### 6.3 Feasibility against the current form
+
+**Feasible.** The form already switches sections with `ChipRow` (`holding-form.screen.tsx:921`). A second `ChipRow` "ISIN / Manual" inside the bond section follows the same pattern.
+
+**Limit: ISIN alone is not enough.** The register gives the bond's terms, not the user's position. ISIN mode must still show:
+- `quantity` (required),
+- `purchaseDate` (default today),
+- `purchasePrice` (optional, default = nominal, as today).
+
+It hides face value, coupon, maturity, kind, and frequency — those come from the register.
+
+### 6.4 Validation and edge cases
+
+1. **Format:** `^[A-Z]{2}[A-Z0-9]{9}[0-9]$`, auto-uppercase. Accept any country prefix (`UA`, `XS`).
+2. **Check digit:** ISO 6166 Luhn. Error: "ISIN check digit is wrong".
+3. **Existence:** look up the ISIN in the cached register.
+   - Found → fill the terms; show a read-only summary (coupon, maturity, currency).
+   - Not found (a matured bond, a corporate bond, a typo with a valid check digit) → message "Not in the NBU register" with a button that switches to Manual and keeps the ISIN.
+4. **Offline:**
+   - Cache the register in SQLite with `fetchedAt`. Refresh it at most once per day when the form opens.
+   - Offline with a cache → validate against the cache.
+   - Offline with no cache → format + check digit pass, but the terms are unknown → the same "switch to Manual" path.
+5. **After save** the holding keeps the full terms in `BondMeta`. It never depends on the register again.
+6. **Edit** opens in Manual mode with all fields filled (the ISIN is shown and stays editable).
+
+---
+
+## 7. Institutions — Diia and brokers (D9)
+
+### 7.1 Where Diia bonds are held
+
+Diia is a **storefront**. "Дія не продає облігації самотужки. Партнери купують їх у держави та продають через застосунок." The bonds go to a securities account at the partner the user picks ([militarybonds.diia.gov.ua](https://militarybonds.diia.gov.ua/) [verified]).
+
+- Partners shown on the page on 2026-09-23: PrivatBank, PUMB, Oschadbank, Alfa-Bank, UkrSibBank, Raiffeisen Bank Aval [verified].
+- Older sources name Ukrgasbank and BTS Broker ([ukrgasbank.com](https://www.ukrgasbank.com/private/securities/ovdp/ovdp_diya), [btc-broker.com](https://btc-broker.com/diia-military-bonds)) [secondary; the list changes over time].
+- Securities appear on the investor's account at the broker/bank within three business days ([paperless.diia.gov.ua](https://paperless.diia.gov.ua/instruction/yak-pridbati-viiskovi-obligaciyi-u-zastosunku-diya) [secondary]).
+
+**Decision:** Kiko has no "Diia" institution. The user adds the bond under the partner bank or broker that holds it. The Bond form shows a hint: "Bought in Diia? Add the bond under the bank or broker you chose there."
+
+Catalog gap: `bankCatalog` has no PUMB, Oschadbank, Raiffeisen, or Ukrgasbank. Add them as identity-only entries (`connectable: false`, no statement format).
+
+### 7.2 Broker kind
+
+- **Account kind** `broker` — en "Broker", uk "Брокер".
+- Allowed holding types: `share`, `bond`, `cash` (broker cash, one holding per currency).
+- **Broker catalog** (same shape as `bankCatalog`): `trading212`, `ibkr`, `freedom24`, `revolut` (all plain, non-connectable entries — sync deferred, D26), `icu`, `univer`, `dragon`, and "Other broker" (free-text name). Plain text names only; no logos (compliance: third-party trademarks). No sanctioned brokers (EXANTE, Freedom Finance Ukraine).
+- `accounts.institution` marks a live-connected broker, as it marks Monobank today.
+
+**Rejected:** a generic "Institution" kind (loses type gating); putting brokers under `bank` (a broker is not a bank, and bank-only types such as `card`/`jar` would be offered).
+
+---
+
+## 8. Property (D1, D2)
+
+- **Account kind** `property` — en "Property", uk "Майно". Picker subtitle: en "Real estate, car, valuables, money you lent", uk "Нерухомість, авто, цінності, позики іншим".
+- **Holding type** `property_item`, metadata: `category` (`real_estate`, `vehicle`, `valuable`, `loan_given`, `business_share`, `other`), `lots[]` (one lot: acquired date + cost).
+- Value = the private price series `holding:<id>` (§2). "Update value" adds a manual point for today (or a chosen date).
+- Metals are NOT a Property category (they have their own kind, D4).
+- Name reasons (round 1): no collision with "Актив" = Holding; Civil Code art. 190 defines "майно" as things AND property rights, which covers a loan given and a business share ([protocol.ua](https://protocol.ua/ua/tsivilniy_kodeks_ukraini_stattya_190/) [secondary]).
+
+---
+
+## 9. Compliance
+
+- **Guideline 5.6:** the whole feature line ships together, complete and visible (D16). No flag, no "coming soon" entry. A gated task that gets NO-GO leaves no trace in the UI: the broker stays a plain, non-connectable catalog entry (manual holdings only), which is a complete feature, not a hidden one.
+- **ATS pinning:** new credential host — `eodhd.com` only (D26) — needs ≥2 CA SPKI pins. `bank.gov.ua` stays keyless and unpinned. Widen the `plist.sh` credential detection for query-param keys (§3.3).
+- **Privacy policy:** the new third party (EODHD) is named in the bilingual policy on `gh-pages` before the release.
+- **Trademarks:** plain text broker/provider names; no logos; no wording that suggests a partnership.
+- **No financial advice:** values, gains, and dates only.
+- **Translations:** every new en/uk key is reviewed by the user before a deploy.
+
+---
+
+## 10. Build order (one feature line, D16; scope from D24–D27)
+
+All work lands on ONE integration branch (`feat/assets-debts`) and ships in ONE release. P0 is built first and the user tests it on the device before P1 starts.
+
+| Step | Scope | New host |
+|---|---|---|
+| **P0** | **Generic column-mapping statement import (POC)** — §15 | none |
+| **P1** | Price-series foundation + **Property / Майно** | none |
+| **P2** | **Precious metals** kind + `metal` type + NBU prices + bank metal allow-list | none |
+| **P3** | Bank catalog: PUMB, Oschadbank, Raiffeisen, Ukrgasbank (caption "Import with column mapping"; no dedicated importer) + **Bond ISIN mode** + Diia hint | none |
+| **P4** | **Debts / Борг** + schedules + net-worth rule + interest-only spending + automatic loan-payment linking | none |
+| **P5** | **Broker / Брокер** kind + plain catalog + manual `share` holdings + **EODHD BYOK** quotes + `plist.sh` `api_token` detection | `eodhd.com` |
+| Deferred | everything in the "Deferred" list in §0 | — |
+
+The plan (`docs/plans/shares-property-metals-debts.md`) holds the task list and count.
+
+---
+
+## 11. Open questions
+
+All questions from rounds 2 and 3 are answered (D10–D23). No open product question remains in this spec. Open technical items are in §12 and in the plan's "New open questions" list.
+
+---
+
+## 13. Statement exports of catalog banks without an importer (checked 2026-09-23)
+
+**Warning: nothing below is device-verified.** The user has only a Monobank account and cannot supply sample files for these banks.
+
+Current importers: `monobank-csv`, `privatbank-xlsx`, `sensebank-csv`, `procredit-business-csv`, `ukrsib-business-csv`, `alfa-business-csv` (`src/statement-import/registry/registry.ts`). Existing fixtures are uabean samples or synthetic files (`src/statement-import/NOTICE.md`). [uabean](https://github.com/OSadovy/uabean) is MIT-licensed, last pushed 2025-11-02.
+
+| Bank | Personal export | Format facts | Real sample available? | Plan |
+|---|---|---|---|---|
+| **PUMB** | XLSX statement "Виписка по операціям" (uabean notes it was obtained **via a request to online support**) | first sheet; title at cell (7,1); "Період" and "Баланс на кінець періоду" rows before the header; header: `Дата операції, Тип операції, Сума у валюті операції, Опис, Дата списання, Сума операції, Комісія`; amounts as text `"-1 234,56 UAH"`; dates day-first; account currency taken from the file name | no (uabean has an importer, no test file) | **GO with a synthetic fixture**, labelled "not verified on a real file" — Q2 | [uabean pumb_xls.py](https://github.com/OSadovy/uabean/blob/main/src/uabean/importers/pumb_xls.py) |
+| PUMB (business "DIGITAL ПУМБ") | CSV: Рахунки → Виписки → "Завантажити вибрані CSV", file ending `-TX` | no column spec found | no | out of scope (business) | [bookkeeper help](https://help.bookkeeper.kiev.ua/clientbank/pumb) |
+| **Oschadbank** | Ощад 24/7: statement as PDF or e-mail [secondary]; corporate exports DBF/XLSX/JSON/XML | no personal column spec found | no | **NO-GO until a sample exists** | [bookkeeper help](https://help.bookkeeper.kiev.ua/clientbank/oschad) [secondary] |
+| **Raiffeisen** | statements in Raiffeisen Online and the app | file format not found | no | **NO-GO until a sample exists** | [raiffeisen.ua](https://raiffeisen.ua/privatnim-osobam/online-servisi/dystantsiine-obsluhovuvannia) |
+| **Ukrgasbank** | the found manual is for business: documents export as XLS/DBF/CSV; the statement print form is PDF | no personal statement spec | no | **NO-GO until a sample exists** | Ukrgasbank user manual `posibnyk_v9.pdf` (read locally with PDFKit) |
+| **UKRSIBBANK** (personal) | UKRSIB online: "сформувати банківську виписку по рахунку" | the user manual names no file format | no | **NO-GO until a sample exists** | [UKRSIB online manual](https://ukrsibbank.com/wp-content/uploads/legal_documents/UKRSIB_online_user_manual.pdf) (read locally) |
+| **ProCredit** (personal) | web interface, legacy `.xls` "Рух по рахунку_…" | account number at (4,1), currency at (6,1); sections "Операції по рахунку" / "Операції по картам"; header row starts with "Дата " | no | **GO (D20)**: hand-rolled `.xls` reader + a synthetic fixture, labelled "not verified on a real file" | [uabean procredit_xls.py](https://github.com/OSadovy/uabean/blob/main/src/uabean/importers/procredit_xls.py) |
+
+**Second search (round 4, 2026-09-23) for Oschadbank, Raiffeisen, Ukrgasbank, UKRSIBBANK personal formats:**
+- GitHub code search (Ukrainian and English bank names + "виписка", "statement", "csv", "xlsx"): no importer with a real sample file.
+- [zenmoney/ZenPlugins](https://github.com/zenmoney/ZenPlugins) has `oschadbank`, `pumb`, `ukrsibbank`, `raiffeisen-rs` plugins, but they call the banks' private APIs (for example `online.oschadbank.ua/mobile/api/v2/...`, `online.ukrsibbank.com/clientendpoint`) with the user's login, not statement files. GPL-3.0. Rejected.
+- [fiks9/FinanceOS-Bot `ai/csv_parser.py`](https://github.com/fiks9/FinanceOS-Bot) (MIT, 1 star) lists header guesses: Oschadbank `Дата операції, Найменування контрагента, Призначення платежу, Дебет, Кредит, Залишок`; Raiffeisen "iBank2" `OPERATION DATE, DOCUMENT AMOUNT, TRANSACTION DESCRIPTION, DEBIT/CREDIT`. Each header has several fallback aliases and there are no sample files, so these are **[unverified]** leads, not a basis for a strict `detect`. iBank2 is a business client-bank system.
+- Result: **no new importer tasks.** Round 5 (D27) replaces the accepted "Manual holdings only" caption with "Import with column mapping": the generic importer (§15) now serves these banks.
+
+**How to handle importers without a real file:**
+1. Build a parser only when a column spec exists from a working open-source importer (PUMB) or from an official document.
+2. Use a synthetic fixture that reproduces the documented header. Label the format in the code comment and in `NOTICE.md` as "not verified on a real file".
+3. Keep the importer's `detect` strict (exact header row match). A wrong file is then rejected with the existing "unrecognized format" message, never parsed wrongly.
+4. For every other bank: leave it out, and ask users (for example in the release notes or the support e-mail) for an anonymized sample. Add the importer when a sample arrives.
+
+---
+
+## 12. Unverified items (confirm before the plan)
+
+- IBKR Flex host name (docs page returned HTTP 403 to automated fetch).
+- Freedom24 Tradernet auth method and host.
+- Trading 212 and IBKR position price field names.
+- EODHD coverage of WSE; symbol search on the free tier.
+- Finnhub free-tier international coverage.
+- Revolut trading statement CSV availability.
+- Monobank personal API: no securities endpoint.
+- NBU press release text for the 2026-08-11 limits (HTTP 403 to automated fetch).
+- Whether BYOK personal-use licences allow display inside a third-party app the user runs for themselves (legal reading of each provider's terms).
+
+---
+
+## 14. Dependency decisions (round 4, checked 2026-09-23)
+
+Criteria from the user: maintained, no open CVEs (OSV), works in Hermes/React Native with no Node built-ins, exact version pin, respects the `.npmrc` 7-day minimum age.
+
+| Package | Checked facts | Verdict |
+|---|---|---|
+| `saxen` 11.1.1 (IBKR XML) | Already in `package-lock.json` through `read-excel-file` (`^11.1.0`). MIT, repo `nikku/saxen`, releases 2025-12-14 … 2026-09-21. OSV: none. No `require`/`import` of Node built-ins. No DTD processing: `<!…>` goes to the `attention` callback; only `&amp; &apos; &gt; &lt; &quot;` and numeric entities are decoded. 11.1.1 was published 2026-07-27 (> 7 days). | **Chosen (D23).** Pin `11.1.1` exact so npm dedupes it. |
+| `fast-xml-parser` 5.11.1 | OSV: none. Library entry has no Node built-ins (only `src/cli/*` imports `fs`/`path`/`stream`). 6 runtime dependencies, all from one maintainer. ~1.1 MB unpacked (`lib/`). Parses internal DTD entities with `maxEntitySize` 10000 / `maxEntityCount` 1000 limits. | Safe, but not needed. |
+| `xlsx` 0.18.5 | OSV: GHSA-4r6h-8v6p-xvw6 (prototype pollution), GHSA-5pgg-2g8v-p4x9 (ReDoS). Newer SheetJS builds are not on the npm registry. | Rejected. |
+| `@e965/xlsx` 0.20.3 | Republish of SheetJS by one person (`e965/sheetjs-npm-publisher`), last release 2024-07-19, 8 MB unpacked. OSV: none. | Rejected (supply chain). |
+| `cfb` 1.2.2 | Last release 2022-06-13. Contains `require('fs')` and `require("zlib")`. OSV: none. | Rejected (unmaintained; Metro resolves those requires). |
+| `read-excel-file` 9.3.10 (existing) | Reads `.xlsx` only; throws `XLS_FILE_NOT_SUPPORTED` for OLE2 `.xls` (its README). | Not enough for ProCredit. |
+| Hand-rolled `.xls` reader | OLE2 container (header, FAT, DIFAT, directory, mini stream) + BIFF5/BIFF8 cell records; cp1251 through the existing `windows-1251` dependency; strict bounds and loop checks. | **Chosen for ProCredit (D20).** Plan task T49. |
+
+---
+
+## 15. Generic column-mapping statement import (D27, POC)
+
+**Why:** most Ukrainian banks have no public statement format, and the user cannot supply samples (D24). A generic importer lets any user import any CSV/XLSX statement by telling Kiko which column is which. It covers PUMB, ProCredit personal (after a re-save as `.xlsx`), Oschadbank, Raiffeisen, Ukrgasbank, UKRSIBBANK, and banks abroad.
+
+**Flow:**
+1. Pick a CSV or XLSX file (existing `papaparse` / `read-excel-file`; `.xls` is not supported — `read-excel-file` reports `XLS_FILE_NOT_SUPPORTED`, so the message asks the user to re-save as `.xlsx`).
+2. Preview the first rows as a raw grid.
+3. Map columns: **date** (required); **amount**, OR a **debit/credit** pair (required); **description** (required); currency (optional); counterparty (optional). Choose the date format, the decimal separator, the header row, and the encoding (UTF-8 or windows-1251; `windows-1251` support exists).
+4. Parsed preview with per-row errors (a bad date, a bad amount).
+5. Confirm → import through the EXISTING pipeline: the same dedupe (`source = 'import'` + `externalId`), the same target-account selection.
+6. Save the mapping per bank/institution, so the next import of the same shape is one step (the preview still shows).
+
+**Rules:**
+- A complete, visible feature (Guideline 5.6): reachable from the existing statement import, offered when no known format matches, and also as an explicit "Map columns manually" entry. No flag.
+- Existing dedicated importers stay and still win when they detect their format (D25).
+- Tests use real-shaped files only: the existing fixtures (Monobank CSV, Sensebank cp1251 CSV, PrivatBank XLSX, ProCredit business CSV) go through the generic mapper, and the result must equal what the dedicated importer produces for the same file (parity tests). No invented bank formats.
+- Device test by the user: a real Monobank CSV export and a PrivatBank-style XLSX.
+

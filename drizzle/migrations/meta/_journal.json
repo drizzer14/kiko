@@ -239,6 +239,69 @@
       "when": 1789719446662,
       "tag": "0033_add_account_bank_id",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1790182312793,
+      "tag": "0034_add_statement_mappings",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1790186131250,
+      "tag": "0035_add_price_points",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1790208400306,
+      "tag": "0036_add_balance_set_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1790223905874,
+      "tag": "0037_add_bond_register",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1790243858087,
+      "tag": "0038_add_loan_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1790250690000,
+      "tag": "0039_seed_loan_interest_category",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1790267000000,
+      "tag": "0040_cleanup_stray_deposit_bond_balance",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1790382038200,
+      "tag": "0041_add_dedup_key_upgraded",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "6",
+      "when": 1790400000000,
+      "tag": "0042_uah_star_rates",
+      "breakpoints": true
     }
   ]
 }

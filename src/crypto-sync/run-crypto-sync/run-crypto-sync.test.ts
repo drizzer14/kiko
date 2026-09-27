@@ -5,18 +5,18 @@ const mockSyncBinanceTransactions = jest.fn();
 // whole module keeps this a pure dispatch test. `./binance/binance.transactions`
 // is replaced for the same reason. The Binance credentials module imports
 // react-native-keychain, whose native binding is absent under Jest.
-jest.mock('../sync', () => ({
+jest.mock('@kiko/crypto-sync/sync', () => ({
   runBalanceSync: (...args: unknown[]) => mockRunBalanceSync(...args),
 }));
-jest.mock('../binance/binance.transactions', () => ({
+jest.mock('@kiko/crypto-sync/binance/binance.transactions', () => ({
   syncBinanceTransactions: (...args: unknown[]) => mockSyncBinanceTransactions(...args),
 }));
 jest.mock('react-native-keychain', () => ({
   ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
 }));
 
-import { binanceProvider, defaultBinanceDeps } from '../binance/binance.provider';
-import { bitcoinWalletProvider, defaultBitcoinWalletDeps } from '../btc-wallet/btc-wallet.provider';
+import { binanceProvider, defaultBinanceDeps } from '../binance';
+import { bitcoinWalletProvider, defaultBitcoinWalletDeps } from '../btc-wallet';
 
 import { type CryptoSyncRequest, runCryptoSync } from './run-crypto-sync';
 

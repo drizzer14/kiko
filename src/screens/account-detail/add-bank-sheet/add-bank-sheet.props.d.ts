@@ -1,4 +1,4 @@
-import type { BankProviderId } from '../../../bank-sync/provider';
+import type { BankProviderId } from '@kiko/bank-sync/provider';
 
 export type AddBankProviderSheetProps = {
   /** Whether the sheet and its dismiss scrim are mounted and shown. */

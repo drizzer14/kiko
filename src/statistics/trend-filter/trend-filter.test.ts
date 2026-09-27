@@ -137,4 +137,10 @@ describe('resolveTrendFilter', () => {
       by: 'rising',
     });
   });
+
+  it('falls back to top handling for a malformed stored mode', () => {
+    const stored = { mode: 'bogus', amount: 9, by: 'rising' } as unknown as TrendFilter;
+
+    expect(resolveTrendFilter(stored, existing)).toEqual({ mode: 'top', amount: 5, by: 'rising' });
+  });
 });

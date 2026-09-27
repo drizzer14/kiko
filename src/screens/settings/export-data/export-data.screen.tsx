@@ -1,21 +1,21 @@
 import type { FC } from 'react';
-import { Alert, Share } from 'react-native';
+import { Share } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { exportData } from '@kiko/data-transfer';
 import { useEffect, useRef, useState } from 'react';
+import Box from '@kiko/design-system/components/box';
+import Card from '@kiko/design-system/components/card';
+import Text from '@kiko/design-system/components/text';
 import Clipboard from '@react-native-clipboard/clipboard';
-import { exportData } from '@kiko/data-transfer/export-data';
+import Button from '@kiko/design-system/components/button';
+import Screen from '@kiko/design-system/components/screen';
+import Switch from '@kiko/design-system/components/switch';
+import SettingsRow from '@kiko/screens/settings/settings-row';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import TextField from '@kiko/design-system/components/text-field';
+import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
+import type { SettingsStackParamList } from '@kiko/navigation/types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
-import SettingsRow from '../settings-row';
-import Box from '../../../design-system/components/box';
-import Card from '../../../design-system/components/card';
-import Text from '../../../design-system/components/text';
-import Button from '../../../design-system/components/button';
-import Screen from '../../../design-system/components/screen';
-import Switch from '../../../design-system/components/switch';
-import TextField from '../../../design-system/components/text-field';
-import type { SettingsStackParamList } from '../../../navigation/types';
-import { useSubmitOnce } from '../../forms/use-submit-once/use-submit-once';
 
 import { styles } from './export-data.styles';
 
@@ -74,7 +74,7 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
         // Dismissed/cancelled the share sheet.
       }
     } catch {
-      Alert.alert(t('settings.dataExport.errorTitle'), t('settings.dataExport.errorMessage'));
+      alertOnCatch(t, 'settings.dataExport.errorTitle', 'settings.dataExport.errorMessage');
     }
   };
 
@@ -93,6 +93,7 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
 
   const handleShareFile = (): void => {
     if (fileUri !== undefined) {
+      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(no recovery) the share sheet reports its own outcome to the user; the file stays exported either way
       Share.share({ url: toFileShareUrl(fileUri) });
     }
   };
@@ -116,10 +117,10 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
     >
       <Box gap={4}>
         <Card testID="settings-card-export-secrets" padding={3}>
-          {/* The toggle sits INLINE with its own label (device-feedback-round-3
-              item 5), not stacked below it — `SettingsRow`'s `trailing` prop
-              puts it on the same header line as the leading icon + label; the
-              hint stays full-width `children` below, same as before. */}
+          {/* The toggle sits INLINE with its own label, not stacked below it —
+              `SettingsRow`'s `trailing` prop puts it on the same header line
+              as the leading icon + label; the hint stays full-width
+              `children` below, same as before. */}
           <SettingsRow
             icon="key"
             label={t('settings.dataExport.includeSecrets')}

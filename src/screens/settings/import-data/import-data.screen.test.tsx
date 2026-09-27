@@ -1,11 +1,8 @@
+import { Alert } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
-import { i18n } from '../../../i18n';
-import {
-  asNavigationProp,
-  asRouteProp,
-  navigationSpy,
-} from '../../../test-support/navigation-props';
+import '@kiko/design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 const mockPick = jest.fn();
 const mockKeepLocalCopy = jest.fn();
@@ -28,9 +25,8 @@ import ImportDataScreen from './import-data.screen';
 
 // The installed @testing-library/react-native (14.0.1) ships an ASYNC
 // `render` and an ASYNC `fireEvent` (both return Promises, confirmed against
-// node_modules/@testing-library/react-native/dist/{render,fire-event}.js) —
-// unlike the brief's Step 1 snippet, which assumes the older sync API. Every
-// call site here awaits both, matching the working convention already used
+// node_modules/@testing-library/react-native/dist/{render,fire-event}.js).
+// Every call site here awaits both, matching the working convention already used
 // by src/screens/settings/settings/settings.screen.test.tsx.
 const renderScreen = () =>
   render(
@@ -46,6 +42,8 @@ const renderScreen = () =>
 const VALID_KEY = 'a'.repeat(44);
 
 describe('ImportDataScreen', () => {
+  afterEach(() => jest.restoreAllMocks());
+
   beforeEach(async () => {
     mockPick.mockReset();
     mockImportData.mockReset();
@@ -77,9 +75,9 @@ describe('ImportDataScreen', () => {
     expect(getByTestId('settings-button-import').props.accessibilityState.disabled).toBeFalsy();
   });
 
-  // BUG (device-feedback-round-4 item 7): pressing Import with neither a file
-  // nor a key used to fail SILENTLY — no confirm sheet, no error, nothing.
-  // Both must now surface their own inline error.
+  // Pressing Import with neither a file nor a key used to fail SILENTLY — no
+  // confirm sheet, no error, nothing. Both must now surface their own inline
+  // error.
   it('shows inline errors for BOTH a missing file and a missing key, not a silent no-op', async () => {
     const { getByTestId, findByText, queryByText } = await renderScreen();
 
@@ -89,7 +87,7 @@ describe('ImportDataScreen', () => {
     expect(
       await findByText('The key looks too short — paste the full key from your export.'),
     ).toBeTruthy();
-    expect(queryByText('Replace Data')).toBeNull();
+    expect(queryByText('Replace data')).toBeNull();
     expect(mockImportData).not.toHaveBeenCalled();
   });
 
@@ -103,7 +101,7 @@ describe('ImportDataScreen', () => {
     expect(
       queryByText('The key looks too short — paste the full key from your export.'),
     ).toBeNull();
-    expect(queryByText('Replace Data')).toBeNull();
+    expect(queryByText('Replace data')).toBeNull();
   });
 
   it('clears the missing-file error once a valid file is picked', async () => {
@@ -133,7 +131,7 @@ describe('ImportDataScreen', () => {
     await fireEvent.press(getByTestId('settings-button-import'));
 
     // Still no file — pressing Import must not call importData or open the sheet.
-    expect(queryByText('Replace Data')).toBeNull();
+    expect(queryByText('Replace data')).toBeNull();
     expect(mockImportData).not.toHaveBeenCalled();
   });
 
@@ -151,7 +149,7 @@ describe('ImportDataScreen', () => {
     expect(
       await findByText('The key looks too short — paste the full key from your export.'),
     ).toBeTruthy();
-    expect(queryByText('Replace Data')).toBeNull();
+    expect(queryByText('Replace data')).toBeNull();
     expect(mockImportData).not.toHaveBeenCalled();
   });
 
@@ -173,7 +171,7 @@ describe('ImportDataScreen', () => {
 
     // The destructive ConfirmSheet must appear before any real import runs.
     expect(mockImportData).not.toHaveBeenCalled();
-    await fireEvent.press(await findByText('Replace Data'));
+    await fireEvent.press(await findByText('Replace data'));
 
     // Imports the SANDBOX-LOCAL copy (`keepLocalCopy`'s `localUri`), never the
     // raw picked uri — reading the external URI directly is what made an
@@ -210,7 +208,7 @@ describe('ImportDataScreen', () => {
 
     await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), VALID_KEY);
     await fireEvent.press(getByTestId('settings-button-import'));
-    await fireEvent.press(await findByText('Replace Data'));
+    await fireEvent.press(await findByText('Replace data'));
 
     await waitFor(() =>
       expect(mockImportData).toHaveBeenCalledWith({
@@ -220,8 +218,8 @@ describe('ImportDataScreen', () => {
     );
   });
 
-  // device feedback: the file button showed the whole path/URI. It must show
-  // only the file's own name, even when the picker returns no display name.
+  // The file button used to show the whole path/URI. It must show only the
+  // file's own name, even when the picker returns no display name.
   it('shows only the file name on the button, not the full path', async () => {
     mockPick.mockResolvedValue([
       { uri: 'file:///private/var/mobile/Containers/Shared/kiko-demo-uk.kiko', name: undefined },
@@ -255,7 +253,7 @@ describe('ImportDataScreen', () => {
 
     await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), VALID_KEY);
     await fireEvent.press(getByTestId('settings-button-import'));
-    await fireEvent.press(await findByText('Replace Data'));
+    await fireEvent.press(await findByText('Replace data'));
 
     expect(await findByText('Імпорт завершено — відновлено рахунків: 2.')).toBeTruthy();
   });
@@ -265,6 +263,7 @@ describe('ImportDataScreen', () => {
     mockImportData.mockRejectedValue(
       new Error('data-transfer/decrypt: wrong key or corrupted file'),
     );
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
 
     const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
 
@@ -272,8 +271,57 @@ describe('ImportDataScreen', () => {
     await waitFor(() => expect(mockPick).toHaveBeenCalled());
     await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), VALID_KEY);
     await fireEvent.press(getByTestId('settings-button-import'));
-    await fireEvent.press(await findByText('Replace Data'));
+    await fireEvent.press(await findByText('Replace data'));
 
-    await waitFor(() => expect(mockImportData).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith(
+        'Import failed',
+        'The key is wrong, or the file is corrupted.',
+      ),
+    );
+  });
+
+  it('shows the crypto-cash-holding error when importData rejects a file carrying one', async () => {
+    mockPick.mockResolvedValue([{ uri: 'file:///picked.kiko', name: 'picked.kiko' }]);
+    mockImportData.mockRejectedValue(
+      new Error('data-transfer/crypto-cash-holding: a cash holding cannot hold BTC'),
+    );
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+
+    const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
+
+    await fireEvent.press(getByTestId('settings-button-pick-file'));
+    await waitFor(() => expect(mockPick).toHaveBeenCalled());
+    await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), VALID_KEY);
+    await fireEvent.press(getByTestId('settings-button-import'));
+    await fireEvent.press(await findByText('Replace data'));
+
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith(
+        'Import failed',
+        'This file has a cash holding in a cryptocurrency. Cash holdings take regular currencies only, so the file cannot be imported.',
+      ),
+    );
+  });
+
+  it('shows the generic invalid-file error when importData throws anything else', async () => {
+    mockPick.mockResolvedValue([{ uri: 'file:///picked.kiko', name: 'picked.kiko' }]);
+    mockImportData.mockRejectedValue(new Error('unexpected JSON shape'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+
+    const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
+
+    await fireEvent.press(getByTestId('settings-button-pick-file'));
+    await waitFor(() => expect(mockPick).toHaveBeenCalled());
+    await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), VALID_KEY);
+    await fireEvent.press(getByTestId('settings-button-import'));
+    await fireEvent.press(await findByText('Replace data'));
+
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith(
+        'Import failed',
+        'This does not look like a valid Kiko export file.',
+      ),
+    );
   });
 });

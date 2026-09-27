@@ -1,12 +1,11 @@
 import type { FC } from 'react';
 import { Pressable } from 'react-native';
+import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
+import Text from '@kiko/design-system/components/text';
+import SymbolIcon from '@kiko/design-system/components/symbol';
 
-import Box from '../../../design-system/components/box';
-import SymbolIcon from '../../../design-system/components/symbol';
-import Text from '../../../design-system/components/text';
-import { styles } from '../settings/settings.styles';
-
+import { styles } from './settings-row.styles';
 import { chevronSize } from './settings-row.chevron';
 import type { SettingsRowProps } from './settings-row.props';
 

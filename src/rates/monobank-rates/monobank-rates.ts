@@ -1,9 +1,13 @@
-import type { Currency } from '../../currency/currency';
-import { fiatCurrencyOptions } from '../../currency/currency';
-import { currencyFromCode } from '../../monobank/currency-code';
+import { MONOBANK_API_ENDPOINT } from '@env';
+import type { Currency } from '@kiko/currency/currency';
+import { fiatCurrencyOptions } from '@kiko/currency/currency';
+import { currencyFromCode } from '@kiko/monobank/currency-code';
+
 import type { RateEntry } from '../conversion';
 
-const CURRENCY_ENDPOINT = 'https://api.monobank.ua/bank/currency';
+// The public, tokenless fiat cross-rate path on the same host
+// `MONOBANK_API_ENDPOINT` names for client-info/statement requests.
+const CURRENCY_ENDPOINT = `${MONOBANK_API_ENDPOINT}/bank/currency`;
 
 /** The public `/bank/currency` payload shape. Codes are ISO 4217 numeric. */
 type MonobankCurrencyRate = {
@@ -38,22 +42,27 @@ const deriveRate = (entry: MonobankCurrencyRate): number | undefined => {
   if (entry.rateBuy !== undefined && entry.rateSell !== undefined) {
     return entry.rateBuy;
   }
+
   if (entry.rateCross !== undefined) {
     return entry.rateCross;
   }
+
   return entry.rateSell ?? entry.rateBuy;
 };
 
 const toRateEntry = (entry: MonobankCurrencyRate): RateEntry[] => {
   const base = currencyFromCode(entry.currencyCodeA);
   const quote = currencyFromCode(entry.currencyCodeB);
+
   if (!isFiat(base) || !isFiat(quote)) {
     return [];
   }
   const rate = deriveRate(entry);
+
   if (rate === undefined) {
     return [];
   }
+
   return [{ base, quote, rate, source: 'monobank' }];
 };
 
@@ -64,9 +73,11 @@ const toRateEntry = (entry: MonobankCurrencyRate): RateEntry[] => {
  */
 export const fetchFiatRates = async (fetchImpl: typeof fetch = fetch): Promise<RateEntry[]> => {
   const response = await fetchImpl(CURRENCY_ENDPOINT);
+
   if (!response.ok) {
     throw new Error(`Monobank currency request failed: ${response.status}`);
   }
   const raw = (await response.json()) as MonobankCurrencyRate[];
+
   return raw.flatMap(toRateEntry);
 };

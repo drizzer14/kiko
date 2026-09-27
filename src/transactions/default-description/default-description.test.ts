@@ -1,5 +1,5 @@
-import '../../i18n';
-import { i18n } from '../../i18n';
+import '@kiko/i18n/init';
+import { i18n } from '@kiko/i18n/init';
 
 import { defaultTransactionDescription } from './default-description';
 
@@ -27,5 +27,21 @@ describe('defaultTransactionDescription', () => {
 
     expect(defaultTransactionDescription('Готівка', 5000, i18n.t)).toBe('Надходження: Готівка');
     expect(defaultTransactionDescription('Готівка', -5000, i18n.t)).toBe('Витрата: Готівка');
+  });
+
+  // An empty holding name (the statement-import preview before a target
+  // holding is chosen) falls back to the PLAIN label — no
+  // dangling leading space ("{{name}} expense" with an empty name) or
+  // dangling colon ("Витрата: {{name}}" with an empty name).
+  it('falls back to the plain label with no dangling space when the holding name is empty (en)', () => {
+    expect(defaultTransactionDescription('', 5000, i18n.t)).toBe('Income');
+    expect(defaultTransactionDescription('', -5000, i18n.t)).toBe('Expense');
+  });
+
+  it('falls back to the plain label with no dangling colon when the holding name is empty (uk)', async () => {
+    await i18n.changeLanguage('uk');
+
+    expect(defaultTransactionDescription('', 5000, i18n.t)).toBe('Надходження');
+    expect(defaultTransactionDescription('', -5000, i18n.t)).toBe('Витрата');
   });
 });

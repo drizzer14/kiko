@@ -1,12 +1,14 @@
 import { StyleSheet } from 'react-native';
+import type { HoldingRow } from '@kiko/db';
 import type { ComponentProps } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
-
-import type { HoldingRow } from '../../../db/schema';
-import '../../../design-system/unistyles';
-import { darkTheme } from '../../../design-system/theme';
-import { entityIconTileGradient } from '../../../design-system/entity-tint';
+import '@kiko/design-system/unistyles';
+import '@kiko/i18n/init';
+import { darkTheme } from '@kiko/design-system/theme';
+import { EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
+import { entityIconTileGradient } from '@kiko/design-system/entity-tint';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
 import HoldingCard from './holding-card.component';
 
@@ -37,6 +39,7 @@ const renderCard = (overrides: Partial<ComponentProps<typeof HoldingCard>> = {})
       now={NOW}
       baseCurrency="UAH"
       rateTable={{}}
+      priceBook={EMPTY_PRICE_BOOK}
       onOpen={jest.fn()}
       {...overrides}
     />,
@@ -47,6 +50,83 @@ describe('HoldingCard', () => {
     const { getByText } = await renderCard();
     expect(getByText('Black card')).toBeTruthy();
     expect(getByText(/1,000\.00 ₴/)).toBeTruthy();
+  });
+
+  // A long name must wrap, not run past the card edge and push the value out of
+  // view. Jest cannot lay out pixels, so this pins the style contract the
+  // transaction card wraps with.
+  it('wraps a long name beside the icon while the value keeps its own width', async () => {
+    const longName = 'Середньострокові облігації UA4000239115 з дуже довгою назвою';
+    const { getByText } = await renderCard({ holding: holding({ name: longName }) });
+    const title = getByText(longName);
+    const titleBox = StyleSheet.flatten(ancestorWithStyle(title, 'flex').props.style);
+
+    expect(title.props.numberOfLines).toBeUndefined();
+    expect(titleBox.flex).toBe(1);
+    expect(titleBox.flexDirection).toBeUndefined();
+    expect(
+      StyleSheet.flatten(ancestorWithStyle(getByText(/1,000\.00 ₴/), 'flexShrink').props.style)
+        .flexShrink,
+    ).toBe(0);
+    const leadBox = StyleSheet.flatten(ancestorWithStyle(title, 'alignItems').props.style);
+    expect(leadBox.flex).toBe(1);
+    // A short name still centers beside the icon tile, as before.
+    expect(leadBox.alignItems).toBe('center');
+  });
+
+  describe('a shared property', () => {
+    const property = (metadata: Record<string, unknown> = {}): HoldingRow =>
+      holding({
+        name: 'Flat',
+        type: 'property_item',
+        metadata: {
+          category: 'real_estate',
+          lots: [{ day: NOW, quantityDelta: '1', costMinorUnits: 300_000_000 }],
+          ...metadata,
+        },
+      });
+
+    it('shows the owned value, then the share of the whole', async () => {
+      const { getByText, getByTestId } = await renderCard({
+        holding: property({
+          ownership: [{ day: NOW, numerator: 1, denominator: 3 }],
+          ownershipInput: 'fraction',
+        }),
+      });
+
+      expect(getByText(/^1,000,000\.00 ₴$/)).toBeTruthy();
+      expect(getByTestId('holding-card-whole')).toHaveTextContent('1/3 of 3,000,000.00 ₴');
+    });
+
+    it('shows a percent-typed share as its percent', async () => {
+      const { getByTestId } = await renderCard({
+        holding: property({
+          ownership: [{ day: NOW, numerator: 1, denominator: 2 }],
+          ownershipInput: 'percent',
+        }),
+      });
+
+      expect(getByTestId('holding-card-whole')).toHaveTextContent('50% of 3,000,000.00 ₴');
+    });
+
+    it('shows the whole value and no share before a future share change', async () => {
+      const { getByText, queryByTestId } = await renderCard({
+        holding: property({
+          ownership: [{ day: NOW + 86_400_000, numerator: 1, denominator: 2 }],
+          ownershipInput: 'percent',
+        }),
+      });
+
+      expect(getByText(/^3,000,000\.00 ₴$/)).toBeTruthy();
+      expect(queryByTestId('holding-card-whole')).toBeNull();
+    });
+
+    it('shows no second line for a property owned whole', async () => {
+      const { getByText, queryByTestId } = await renderCard({ holding: property() });
+
+      expect(getByText(/^3,000,000\.00 ₴$/)).toBeTruthy();
+      expect(queryByTestId('holding-card-whole')).toBeNull();
+    });
   });
 
   it('opens the holding detail on a plain tap', async () => {
@@ -67,6 +147,31 @@ describe('HoldingCard', () => {
     });
 
     expect(getByLabelText('Black card icon').props.tintColor).toBe(darkTheme.colors.onAccent);
+  });
+
+  it("shows a property's category glyph when it has no icon of its own", async () => {
+    const { getByLabelText } = await renderCard({
+      holding: holding({
+        name: 'Sedan',
+        type: 'property_item',
+        metadata: { category: 'vehicle', lots: [] },
+      }),
+    });
+
+    expect(getByLabelText('Sedan icon').props.name).toBe('car.fill');
+  });
+
+  it("shows the user's own icon over the category glyph", async () => {
+    const { getByLabelText } = await renderCard({
+      holding: holding({
+        name: 'Sedan',
+        type: 'property_item',
+        icon: 'star',
+        metadata: { category: 'vehicle', lots: [] },
+      }),
+    });
+
+    expect(getByLabelText('Sedan icon').props.name).toBe('star');
   });
 
   it("derives the icon tile's gradient from the holding's stored color", async () => {
@@ -101,7 +206,7 @@ describe('HoldingCard', () => {
     expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
   });
 
-  it('draws the shared hairline card border on first render (matches the account card, G2)', async () => {
+  it('draws the shared hairline card border on first render (matches the account card)', async () => {
     const { getByTestId } = await renderCard();
 
     const cardStyle = StyleSheet.flatten(getByTestId('holding-card').props.style);
@@ -125,7 +230,7 @@ describe('HoldingCard', () => {
       const { getByText, getByTestId } = await renderCard({
         holding: holding({ currency: 'USD', balanceMinorUnits: 10000 }),
         baseCurrency: 'UAH',
-        rateTable: { 'USD:UAH': 40 },
+        rateTable: { USD: 40 },
       });
 
       // The primary value stays in the holding's own currency.
@@ -140,7 +245,7 @@ describe('HoldingCard', () => {
       const { queryByTestId } = await renderCard({
         holding: holding({ currency: 'UAH' }),
         baseCurrency: 'UAH',
-        rateTable: { 'USD:UAH': 40 },
+        rateTable: { USD: 40 },
       });
 
       expect(queryByTestId('holding-card-converted')).toBeNull();

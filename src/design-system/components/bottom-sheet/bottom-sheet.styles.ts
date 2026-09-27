@@ -152,7 +152,7 @@ export const styles = StyleSheet.create((theme) => ({
   // cards/controls on it, so a selected pill (`surfaceHigh`) reads as raised
   // rather than blending into the sheet. It used `surfaceHigh` itself before —
   // the SAME tone as a selected pill — which the trend filter sheet blended
-  // into (on-device review). The base fill itself now lives on `glassFill`'s
+  // into. The base fill itself now lives on `glassFill`'s
   // `GlassSurface` (its `material` variant — a real live-blur on iOS 26+ that
   // reads the true content behind the sheet, or the same `surfaceTranslucent`
   // token on the non-glass fallback, composited over true-black to
@@ -197,7 +197,7 @@ export const styles = StyleSheet.create((theme) => ({
     right: 0,
     bottom: -theme.radii.lg,
   },
-  // DEVICE BUG (F5) fix: the 66% cap (`sheet.maxHeight` above) is forced on
+  // The 66% cap (`sheet.maxHeight` above) is forced on
   // every sheet, but until now the sheet card rendered no scroll container of
   // its own, so a plain-Box sheet whose content ran taller than the cap
   // (filter-menu, date-field, date-range-field, the transaction-form
@@ -252,7 +252,7 @@ export const styles = StyleSheet.create((theme) => ({
   // disappeared instead of reading clearly. `textSecondary` (the iOS
   // secondaryLabel translucency, ~6:1 contrast over true-black per
   // `docs/design/2026-09-10-ios-hig-audit.md`'s "Secondary text contrast"
-  // finding) is the same lighter gray `OptionPills`' unselected label already
+  // finding) is the same lighter gray `ChipRow`'s unselected label already
   // uses for a legible-but-subordinate tone, so the pill now reads as a clear
   // affordance without competing with the sheet's primary content.
   // `alignSelf: 'center'` keeps it centered now that its region no longer

@@ -1,74 +1,93 @@
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { categoriesRepo } from '@kiko/categories/repo';
-import { holdingsRepo } from '@kiko/holdings/repo';
-import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
-import { ratesRepo } from '@kiko/rates/repo';
-import { settingsRepo } from '@kiko/settings/settings.repo';
-import { transactionsRepo } from '@kiko/transactions/repo';
-import { type FC, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import type { ScrollViewInstance } from 'react-native';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
-
-import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '../../categories/category-display';
-import type { Currency } from '../../currency/currency';
-import { Money } from '../../currency/money';
-import { defaultDateRange } from '../../dates/default-range';
-import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
-import { useLiveQuery } from '../../db/use-live-query';
-import Box from '../../design-system/components/box';
-import Card from '../../design-system/components/card';
-import Screen from '../../design-system/components/screen';
-import Text from '../../design-system/components/text';
-import { resolveEntityColor } from '../../design-system/entity-tint';
-import { defaultAccountColor } from '../../holdings/entity-colors';
-import { ibanOf } from '../../holdings/holding-metadata';
-import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
+import { match } from 'ts-pattern';
 import {
   type BackfillStatus,
   deriveLastBackfilledDay,
-  missingDays,
+  derivePresentCurrencies,
   planBackfillRun,
   runBackfill,
-} from '../../rates/history-backfill';
-import { buildRateTable } from '../../rates/net-worth-view';
-import { type AccountSlice, buildAccountContribution } from '../../statistics/account-contribution';
-import { bucketDaysForSpan } from '../../statistics/buckets';
-import {
-  type BreakdownTransaction,
-  buildCategoryBreakdown,
-  type CategorySlice,
-} from '../../statistics/category-breakdown';
-import {
-  buildCategoryMeasures,
-  buildCategoryTrend,
-  type TrendTransaction,
-} from '../../statistics/category-trend';
-import { exchangeExcludedTxIds } from '../../statistics/exchange-exclusion';
-import type { SeriesTransaction } from '../../statistics/holding-value-at';
-import { internalTransferTxIds } from '../../statistics/internal-transfers';
-import { buildNetWorthSeries } from '../../statistics/net-worth-series';
-import {
-  descriptionExcludedTransferTxIds,
-  mccExcludedTransferTxIds,
-} from '../../statistics/transfer-exclusion';
+} from '@kiko/rates/history-backfill';
 import {
   resolveTrendFilter,
   selectTopCategories,
   type TrendFilter,
-} from '../../statistics/trend-filter';
-import { buildTypeBreakdown } from '../../statistics/type-breakdown';
-import { transactionSpan } from '../../transactions/transaction-span';
-import DateRangeField from '../home/date-range-field';
-import FilterMenu, { FILTER_ALL, type FilterOption } from '../home/filter-menu';
+} from '@kiko/statistics/trend-filter';
+import {
+  loanInterestEntries,
+  loanPaymentExcludedTransactionIds,
+} from '@kiko/statistics/loan-payments';
+import {
+  buildCategoryMeasures,
+  buildCategoryTrend,
+  type TrendTransaction,
+} from '@kiko/statistics/category-trend';
+import { ratesRepo } from '@kiko/rates/repo';
+import { Money } from '@kiko/currency/money';
+import {
+  type BreakdownTransaction,
+  buildCategoryBreakdown,
+  type CategorySlice,
+  resolveCategoryColor,
+} from '@kiko/statistics/category-breakdown';
+import {
+  descriptionExcludedTransferTransactionIds,
+  mccExcludedTransferTransactionIds,
+} from '@kiko/statistics/transfer-exclusion';
+import { accountsRepo } from '@kiko/accounts';
+import { settingsRepo } from '@kiko/settings';
+import { useTranslation } from 'react-i18next';
+import {
+  type AccountSlice,
+  buildAccountContribution,
+  buildDebtTotal,
+} from '@kiko/statistics/account-contribution';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import FilterMenu, {
+  FILTER_ALL,
+  type FilterOption,
+} from '@kiko/design-system/components/filter-menu';
+import either, { bifold, isLeft } from 'fnts/either';
+import Box from '@kiko/design-system/components/box';
+import { useDataReady, useLiveQuery } from '@kiko/db';
+import { categoriesRepo } from '@kiko/categories/repo';
+import Card from '@kiko/design-system/components/card';
+import Text from '@kiko/design-system/components/text';
+import type { ScrollViewInstance } from 'react-native';
+import type { Currency } from '@kiko/currency/currency';
+import { ibanOf } from '@kiko/holdings/holding-metadata';
+import { transactionsRepo } from '@kiko/transactions/repo';
+import { usePriceBook } from '@kiko/prices/use-price-book';
+import Screen from '@kiko/design-system/components/screen';
+import { buildRateTable } from '@kiko/rates/net-worth-view';
+import { needsPriceBook } from '@kiko/holdings/priced-value';
+import { bucketDaysForSpan } from '@kiko/statistics/buckets';
+import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
+import MoneyText from '@kiko/design-system/components/money-text';
+import { defaultAccountColor } from '@kiko/holdings/entity-colors';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import { buildTypeBreakdown } from '@kiko/statistics/type-breakdown';
+import { resolveEntityColor } from '@kiko/design-system/entity-tint';
+import { type FC, useEffect, useMemo, useRef, useState } from 'react';
+import { transactionSpan } from '@kiko/transactions/transaction-span';
+import { buildNetWorthSeries } from '@kiko/statistics/net-worth-series';
+import LoadingState from '@kiko/design-system/components/loading-state';
+import SummaryTable from '@kiko/design-system/components/summary-table';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { SeriesTransaction } from '@kiko/statistics/holding-value-at';
+import DateRangeField from '@kiko/design-system/components/date-range-field';
+import { defaultDateRange, endOfLocalDay, startOfLocalDay } from '@kiko/dates';
+import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
+import { useFocusRefreshedNow } from '@kiko/design-system/use-focus-refreshed-now';
+import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclusion';
+import { internalTransferTransactionIds } from '@kiko/statistics/internal-transfers';
+import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
+import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
 
 import BarChart from './bar-chart';
-import CategoryTrendLine from './category-trend-line';
-import NetWorthLine from './net-worth-line';
 import PieChart from './pie-chart';
+import NetWorthLine from './net-worth-line';
 import { styles } from './statistics.styles';
 import TrendFilterField from './trend-filter-field';
-import { useFocusRefreshedNow } from './use-focus-refreshed-now';
+import CategoryTrendLine from './category-trend-line';
 
 // Adapt a category spending slice onto the shared `PieChart` slice shape: the
 // category KEY is the slice identity (its React key + testID suffix), its title
@@ -96,6 +115,7 @@ const toggleFilter =
 
     setSelected((previous) => {
       const next = new Set(previous);
+
       if (next.has(value)) {
         next.delete(value);
       } else {
@@ -163,15 +183,48 @@ const StatisticsScreen: FC = () => {
   const scrollOffset = useScrollOffset(scrollRef);
   useScrollToTopOnTabPress(scrollRef, scrollOffset);
 
-  const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
-  const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
-  const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
-  const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
-  const { data: transactions } = useLiveQuery(transactionsRepo.listAllQuery(), ['transactions']);
-  const { data: historyRows } = useLiveQuery(rateHistoryRepo.historyRowsQuery(), [
-    'currency_rate_history',
-  ]);
-  const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
+  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
+    accountsRepo.listQuery(),
+    ['accounts'],
+    true,
+    { cached: true },
+  );
+  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
+    holdingsRepo.allQuery(),
+    ['holdings'],
+    true,
+    { cached: true },
+  );
+  const { data: rates, isLoading: ratesLoading } = useLiveQuery(
+    ratesRepo.allQuery(),
+    ['currency_rates'],
+    true,
+    { cached: true },
+  );
+  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
+    settingsRepo.getQuery(),
+    ['settings'],
+    true,
+    { cached: true },
+  );
+  const {
+    data: transactions,
+    isLoading: transactionsLoading,
+    isFresh: transactionsFresh,
+  } = useLiveQuery(transactionsRepo.listAllQuery(), ['transactions'], true, { cached: true });
+  const {
+    data: historyRows,
+    isLoading: historyLoading,
+    isFresh: historyFresh,
+  } = useLiveQuery(rateHistoryRepo.historyRowsQuery(), ['currency_rate_history'], true, {
+    cached: true,
+  });
+  const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
+    categoriesRepo.allQuery(),
+    ['categories'],
+    true,
+    { cached: true },
+  );
 
   // An empty set means "all accounts"; any names in it narrow all three charts.
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
@@ -213,6 +266,33 @@ const StatisticsScreen: FC = () => {
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
 
   const rateTable = useMemo(() => buildRateTable(rates), [rates]);
+  // kiko-architecture: skip the price_points read while nothing rendered on
+  // this screen ever reads it — a holding whose type carries no priced spec
+  // and is not a loan (`needsPriceBook`) never touches `price_points`. It
+  // stays enabled while holdings are still on their first load, so the two
+  // reads run in parallel instead of price_points waiting on holdings. Only a
+  // loan reads the linked-payments half of the book.
+  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
+    holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
+    { cached: true },
+    holdingsLoading || holdings.some((holding) => holding.type === 'loan'),
+  );
+  // Every chart (bar/pie/trend) must never render an empty state while any of
+  // this screen's own queries is still on its first load (kiko-architecture's
+  // useLiveQuery consumer rule) — gated below, right at the return. This is
+  // SEPARATE from the net-worth line's own `loading` prop below, which tracks
+  // the incremental rate-history backfill (a later, non-blocking concern once
+  // this base data has already loaded).
+  const isReady = useDataReady(
+    accountsLoading,
+    holdingsLoading,
+    ratesLoading,
+    settingsLoading,
+    transactionsLoading,
+    historyLoading,
+    categoriesLoading,
+    priceBookLoading,
+  );
 
   // Only non-archived accounts are ever shown; the account filter narrows within
   // those, and a holding then feeds the charts only when it is open AND its
@@ -269,6 +349,11 @@ const StatisticsScreen: FC = () => {
   // The resume point for the backfill: the newest day already stored, derived
   // from the history table itself (no extra persistence). Null when empty.
   const lastBackfilledDay = useMemo(() => deriveLastBackfilledDay(historyRows), [historyRows]);
+  // Every currency with at least one stored row — `runBackfill`'s own gap
+  // check against a currency held NOW but never itself backfilled (a new
+  // coin, or fiat conversion needed for the first time), derived from this
+  // SAME already-loaded `historyRows` read, no new query.
+  const presentCurrencies = useMemo(() => derivePresentCurrencies(historyRows), [historyRows]);
 
   // Drive the incremental, non-blocking backfill and surface its status to the
   // line. It runs when there is a bounded span (transactions exist) with days
@@ -285,8 +370,45 @@ const StatisticsScreen: FC = () => {
     lastDay: null,
   });
 
+  // Guards the backfill effect's own async settle against a REAL unmount
+  // only. A re-render whose deps changed (a refocus advancing `now`, for
+  // example) fires the SAME cleanup lifecycle event as an unmount, so a
+  // per-effect `cancelled` flag set in that effect's own returned cleanup
+  // cannot tell the two apart — it would drop a still-pending run's eventual
+  // settle on every refocus, leaving the line stuck on "loading" forever.
+  // This ref only ever flips inside its own unmount-only effect (`[]` deps).
+  const isMountedRef = useRef(true);
   useEffect(() => {
-    if (transactions.length === 0) {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Guards a settle against a SUPERSEDED run, not just a real unmount: a span
+  // extension while still mounted (an older transaction arriving mid-session)
+  // can start run B before run A's own settle arrives. Bumped only when this
+  // effect actually starts a run (never on a plain refocus, which the
+  // `backfillRanForSpanRef` check below already turns into a no-op), so a
+  // stale run's `.then` can compare its captured token against the current
+  // one and drop its settle instead of overwriting run B's state or ref.
+  const runTokenRef = useRef(0);
+
+  useEffect(() => {
+    // `historyFresh` guards against the exact same "empty reads as no data
+    // yet" trap kiko-architecture's useLiveQuery consumer rule covers for a
+    // rendered empty state: `historyRows` is `[]` — indistinguishable from
+    // "genuinely nothing backfilled yet" — for as long as its OWN query is
+    // still on its first load, even after `transactions` has already
+    // settled. Without this guard the effect re-fetches and re-writes the
+    // whole span on first open, adding to the app-open DB-read burst, then
+    // runs a SECOND time once history's real (possibly non-empty) rows land.
+    // Both guards also wait out the cached rows of a cached mount: a run
+    // marks its span covered for the rest of the mount, so a run planned from
+    // a cached, one-read-old resume point would stop the fresh read's own run
+    // from ever starting (kiko-architecture).
+    if (transactions.length === 0 || !transactionsFresh || !historyFresh) {
       return;
     }
 
@@ -303,31 +425,56 @@ const StatisticsScreen: FC = () => {
     // Mark this span covered BEFORE the async run so the write's own re-render
     // (which advances lastBackfilledDay) does not re-enter for the same span.
     backfillRanForSpanRef.current = spanStart;
+    runTokenRef.current += 1;
+    const token = runTokenRef.current;
 
-    if (missingDays(spanStart, resumeFrom, now).length === 0) {
-      setBackfillStatus({ state: 'complete', lastDay: lastBackfilledDay });
-
-      return;
-    }
-
+    // No local "nothing missing" shortcut here any more: `runBackfill` itself
+    // owns that decision now, since it also has to check a newly-held
+    // currency against `presentCurrencies` — a check this screen cannot
+    // replicate without `openCurrencies`'s own async read.
     setBackfillStatus({ state: 'loading', lastDay: lastBackfilledDay });
-    let cancelled = false;
-    runBackfill({ earliestDay: spanStart, lastBackfilledDay: resumeFrom, today: now })
-      .then((status) => {
-        if (!cancelled) {
-          setBackfillStatus(status);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setBackfillStatus({ state: 'complete', lastDay: lastBackfilledDay });
-        }
-      });
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) either() captures every rejection as a Left, and the .then handler only sets state
+    either<unknown, BackfillStatus>(() =>
+      runBackfill({
+        earliestDay: spanStart,
+        lastBackfilledDay: resumeFrom,
+        today: now,
+        presentCurrencies,
+      }),
+    ).then((result) => {
+      if (!isMountedRef.current || token !== runTokenRef.current) {
+        return;
+      }
 
-    return () => {
-      cancelled = true;
-    };
-  }, [transactions.length, spanStart, lastBackfilledDay, now]);
+      if (isLeft(result)) {
+        // A rejected run must retry on the next focus refresh instead of
+        // being reported as done: clear the span ref so `planBackfillRun`
+        // treats this span as never-run once `now` next advances.
+        backfillRanForSpanRef.current = null;
+        setBackfillStatus({ state: 'failed', lastDay: lastBackfilledDay });
+
+        return;
+      }
+
+      // `runBackfill` itself resolves a Right `'failed'` status (rather than
+      // rejecting) when every provider failed for the span — treated
+      // identically to the `isLeft` arm above: retry on the next focus.
+      const settled: BackfillStatus = bifold(result);
+
+      if (settled.state === 'failed') {
+        backfillRanForSpanRef.current = null;
+      }
+      setBackfillStatus(settled);
+    });
+  }, [
+    transactions.length,
+    transactionsFresh,
+    historyFresh,
+    spanStart,
+    lastBackfilledDay,
+    now,
+    presentCurrencies,
+  ]);
 
   // Bar + pie value "now" on the current rate table; the line values each day on
   // the historical table. All three are memoized on their real inputs so they no
@@ -341,15 +488,16 @@ const StatisticsScreen: FC = () => {
         rateTable,
         baseCurrency,
         now,
+        book: priceBook,
       }),
-    [filtered, rateTable, baseCurrency, now],
+    [filtered, rateTable, baseCurrency, now, priceBook],
   );
 
   const netWorth = useMemo(
     () =>
       buildNetWorthSeries({
         holdings: filtered.visibleHoldings,
-        txByHolding: groupByHolding(transactions),
+        transactionsByHolding: groupByHolding(transactions),
         historyRows,
         baseCurrency,
         range: { from: rangeFrom, to: rangeTo },
@@ -359,8 +507,19 @@ const StatisticsScreen: FC = () => {
         // sitting a few percent off on the day's NBU official rate.
         liveRateTable: rateTable,
         today: now,
+        book: priceBook,
       }),
-    [filtered, transactions, historyRows, baseCurrency, rangeFrom, rangeTo, rateTable, now],
+    [
+      filtered,
+      transactions,
+      historyRows,
+      baseCurrency,
+      rangeFrom,
+      rangeTo,
+      rateTable,
+      now,
+      priceBook,
+    ],
   );
 
   const slices = useMemo(
@@ -371,8 +530,25 @@ const StatisticsScreen: FC = () => {
         rateTable,
         baseCurrency,
         now,
+        book: priceBook,
       }),
-    [filtered, rateTable, baseCurrency, now],
+    [filtered, rateTable, baseCurrency, now, priceBook],
+  );
+
+  // The "Debts" total under the account pie
+  // — every NEGATIVE holding value (a loan's own value, or a non-loan
+  // holding in debit, e.g. a credit card), summed independently of the pie
+  // (which shows only POSITIVE values).
+  const debtTotal = useMemo(
+    () =>
+      buildDebtTotal({
+        holdings: filtered.visibleHoldings,
+        rateTable,
+        baseCurrency,
+        now,
+        book: priceBook,
+      }),
+    [filtered, rateTable, baseCurrency, now, priceBook],
   );
 
   // The spending pie sums EXPENSE transactions (negative amounts) by category, in
@@ -406,6 +582,7 @@ const StatisticsScreen: FC = () => {
 
     return transactions.flatMap((transaction) => {
       const currency = currencyByHolding.get(transaction.holdingId);
+
       if (currency === undefined) {
         return [];
       }
@@ -420,8 +597,32 @@ const StatisticsScreen: FC = () => {
   // are already ignored as income. Scoped to THIS chart only — every other view
   // (net worth, by-type, account pie) still sees the full ledger.
   const internalTransferIds = useMemo(
-    () => internalTransferTxIds(transactionsWithCurrency),
+    () => internalTransferTransactionIds(transactionsWithCurrency),
     [transactionsWithCurrency],
+  );
+
+  // Every DEBT-side holding in the raw, unfiltered ledger (only `loan` today):
+  // a payment's linked loan can live under an account filtered out of the
+  // other charts, and a closed/paid-off loan still EXISTS (only a delete
+  // clears its links), so neither should change whether its payment's
+  // interest counts.
+  const loanHoldings = useMemo(
+    () => holdings.filter((holding) => holdingDescriptorOrUndefined(holding.type)?.side === 'debt'),
+    [holdings],
+  );
+
+  // A linked payment never counts its PRINCIPAL as spending, only its
+  // INTEREST (`loanInterestRows` below, which replaces each excluded row
+  // with its own derived entry) — computed over the full, unfiltered ledger
+  // like every other exclusion rule here.
+  const loanPaymentExcludedIds = useMemo(
+    () => loanPaymentExcludedTransactionIds(transactionsWithCurrency, loanHoldings),
+    [transactionsWithCurrency, loanHoldings],
+  );
+
+  const loanInterestRows = useMemo(
+    () => loanInterestEntries({ transactions: transactionsWithCurrency, loanHoldings }),
+    [transactionsWithCurrency, loanHoldings],
   );
 
   const breakdownTransactions = useMemo<BreakdownTransaction[]>(
@@ -446,10 +647,13 @@ const StatisticsScreen: FC = () => {
   // below), so the donut and its center total agree with the range field
   // rendered above them. The exclusion sets above are computed over the
   // FULL, unfiltered ledger (see `transactionsWithCurrency`'s comment); only
-  // the rows actually SHOWN are scoped to the range here.
+  // the rows actually SHOWN are scoped to the range here. `loanInterestRows`
+  // is range-filtered the SAME way as the real rows — each derived
+  // entry replaces the raw row `loanPaymentExcludedIds` drops above, so it
+  // must obey the same window that row would have.
   const rangeFilteredBreakdownTransactions = useMemo<BreakdownTransaction[]>(
-    () =>
-      transactionsWithCurrency
+    () => [
+      ...transactionsWithCurrency
         .filter((transaction) => transaction.time >= rangeFrom && transaction.time <= rangeTo)
         .map((transaction) => ({
           id: transaction.id,
@@ -462,17 +666,21 @@ const StatisticsScreen: FC = () => {
           changeGroupId: transaction.changeGroupId,
           currency: transaction.currency,
         })),
-    [transactionsWithCurrency, rangeFrom, rangeTo],
+      ...loanInterestRows.filter((entry) => entry.time >= rangeFrom && entry.time <= rangeTo),
+    ],
+    [transactionsWithCurrency, rangeFrom, rangeTo, loanInterestRows],
   );
 
   // The spending-trend builder needs everything the breakdown does PLUS each
   // row's `time`, so it can bucket the expense into the active
   // rangeFrom/rangeTo window the same way the net-worth line does. Built
   // separately from `breakdownTransactions` (which carries no time) so neither
-  // memo has to change shape for the other.
+  // memo has to change shape for the other. `loanInterestRows` is
+  // appended UNFILTERED, same as the real rows here — `buildCategoryTrend`/
+  // `buildCategoryMeasures` do their own range bucketing internally.
   const trendTransactions = useMemo<TrendTransaction[]>(
-    () =>
-      transactionsWithCurrency.map((transaction) => ({
+    () => [
+      ...transactionsWithCurrency.map((transaction) => ({
         id: transaction.id,
         category: transaction.category,
         amountMinorUnits: transaction.amountMinorUnits,
@@ -484,7 +692,9 @@ const StatisticsScreen: FC = () => {
         currency: transaction.currency,
         time: transaction.time,
       })),
-    [transactionsWithCurrency],
+      ...loanInterestRows,
+    ],
+    [transactionsWithCurrency, loanInterestRows],
   );
 
   // The user's OWN card IBANs, read from each holding's stored metadata. A 4829
@@ -492,8 +702,10 @@ const StatisticsScreen: FC = () => {
   // spending pie); a 4829 to any other IBAN is a genuine P2P payment (kept).
   const ownIbans = useMemo(() => {
     const ibans = new Set<string>();
+
     for (const holding of holdings) {
       const iban = ibanOf(holding.metadata);
+
       if (iban !== undefined) {
         ibans.add(iban);
       }
@@ -506,7 +718,7 @@ const StatisticsScreen: FC = () => {
   // the ambiguous 4829). This catches the single-legged movements the matched-
   // pair matcher structurally cannot (a cash-out has no synced credit leg).
   const mccExcludedIds = useMemo(
-    () => mccExcludedTransferTxIds(breakdownTransactions, ownIbans),
+    () => mccExcludedTransferTransactionIds(breakdownTransactions, ownIbans),
     [breakdownTransactions, ownIbans],
   );
 
@@ -514,7 +726,7 @@ const StatisticsScreen: FC = () => {
   // (e.g. "Поповнення депозиту", "На чорну картку", the FOP top-up). The mcc
   // rule structurally cannot see these; the description rule catches them.
   const descriptionExcludedIds = useMemo(
-    () => descriptionExcludedTransferTxIds(breakdownTransactions),
+    () => descriptionExcludedTransferTransactionIds(breakdownTransactions),
     [breakdownTransactions],
   );
 
@@ -523,13 +735,15 @@ const StatisticsScreen: FC = () => {
   // rule can see them — null mcc, empty description, and a cross-currency
   // pair the matched-pair matcher rejects.
   const exchangeExcludedIds = useMemo(
-    () => exchangeExcludedTxIds(breakdownTransactions),
+    () => exchangeExcludedTransactionIds(breakdownTransactions),
     [breakdownTransactions],
   );
 
   // The union of every exclusion rule: the mcc/IBAN rule, the description rule,
-  // the exchange-marker rule, and the cheap secondary matched-pair matcher. A
-  // row is dropped from the spending pie if ANY rule catches it.
+  // the exchange-marker rule, the cheap secondary matched-pair matcher, and
+  // the linked-loan-payment rule (its own derived interest entry,
+  // `loanInterestRows` above, replaces the raw row this drops). A row is
+  // dropped from the spending pie if ANY rule catches it.
   const excludedTransactionIds = useMemo(
     () =>
       new Set([
@@ -537,8 +751,15 @@ const StatisticsScreen: FC = () => {
         ...mccExcludedIds,
         ...descriptionExcludedIds,
         ...exchangeExcludedIds,
+        ...loanPaymentExcludedIds,
       ]),
-    [internalTransferIds, mccExcludedIds, descriptionExcludedIds, exchangeExcludedIds],
+    [
+      internalTransferIds,
+      mccExcludedIds,
+      descriptionExcludedIds,
+      exchangeExcludedIds,
+      loanPaymentExcludedIds,
+    ],
   );
 
   // The active-range breakdown of every spending category (category-filter-
@@ -566,6 +787,18 @@ const StatisticsScreen: FC = () => {
     ],
   );
 
+  // The APPLIED trend filter: the saved config resolved against the categories
+  // that still exist (manual keys pruned, top amount clamped), falling
+  // back to the default (top 3 by contribution) when nothing is saved. Save
+  // persists it and the value flows back through the settings live query — there
+  // is no seed effect any more. Computed here (ahead of `categoryOptions`
+  // below, which unions its manual keys back in) since it depends on neither.
+  const appliedTrendFilter = useMemo(() => {
+    const existingKeys = new Set(categories.map((category) => category.key.toLowerCase()));
+
+    return resolveTrendFilter(settingsRows.at(0)?.trendFilter ?? null, existingKeys);
+  }, [settingsRows, categories]);
+
   // The FilterMenu matches/stores by the STABLE `categories.key` slug, never by
   // the resolved display title: the title is language-dependent (a default
   // category's title changes under a live language switch — see
@@ -580,6 +813,7 @@ const StatisticsScreen: FC = () => {
   // KEY is not selected is excluded. De-duplicated by key, first-seen-wins.
   const categoryOptions = useMemo(() => {
     const byKey = new Map<string, FilterOption>();
+
     for (const slice of allCategorySlices) {
       if (byKey.has(slice.key)) {
         continue;
@@ -589,6 +823,34 @@ const StatisticsScreen: FC = () => {
         label: slice.title,
         icon: slice.icon,
         color: slice.color,
+      });
+    }
+
+    // A category the user already SELECTED (or already SAVED as a manual trend
+    // key — the trend Filters sheet reuses this same list, `TrendFilterField`'s
+    // own `categoryOptions` prop) can drop out of the range-scoped slices
+    // above (e.g. the range moves to a week with no spending in it) — union it
+    // back in from `categoryByKey` so both menus still list it, checked,
+    // rather than silently hiding a selection the user can then never find and
+    // uncheck (review decision 17: KEEP a hidden selection visible).
+    const manualTrendKeys = appliedTrendFilter.mode === 'manual' ? appliedTrendFilter.keys : [];
+
+    for (const key of new Set([...selectedCategories, ...manualTrendKeys])) {
+      if (byKey.has(key)) {
+        continue;
+      }
+
+      const display = categoryByKey.get(key);
+
+      if (display === undefined) {
+        continue;
+      }
+
+      byKey.set(key, {
+        value: key,
+        label: display.title,
+        icon: display.icon,
+        color: resolveCategoryColor(display.color, key),
       });
     }
 
@@ -609,7 +871,7 @@ const StatisticsScreen: FC = () => {
     const rank = (key: string): number => orderByKey.get(key.toLowerCase()) ?? categories.length;
 
     return Array.from(byKey.values()).sort((a, b) => rank(a.value) - rank(b.value));
-  }, [allCategorySlices, categories]);
+  }, [allCategorySlices, categories, selectedCategories, categoryByKey, appliedTrendFilter]);
 
   const excludedCategoryKeys = useMemo(() => {
     if (selectedCategories.size === 0) {
@@ -645,17 +907,6 @@ const StatisticsScreen: FC = () => {
     ],
   );
 
-  // The APPLIED trend filter: the saved config resolved against the categories
-  // that still exist (manual keys pruned per D5; top amount clamped), falling
-  // back to the default (top 3 by contribution) when nothing is saved. Save
-  // persists it and the value flows back through the settings live query — there
-  // is no seed effect any more.
-  const appliedTrendFilter = useMemo(() => {
-    const existingKeys = new Set(categories.map((category) => category.key.toLowerCase()));
-
-    return resolveTrendFilter(settingsRows.at(0)?.trendFilter ?? null, existingKeys);
-  }, [settingsRows, categories]);
-
   // The per-category ranking measures over the SAME range/bucket set the
   // trend line and the net-worth line both use — the universe both the Top-N
   // ranking and the exclusion set below are computed from.
@@ -685,13 +936,12 @@ const StatisticsScreen: FC = () => {
   // top-N picked from the measures by the chosen measure.
   const trendSelectedKeys = useMemo(
     () =>
-      appliedTrendFilter.mode === 'manual'
-        ? new Set(appliedTrendFilter.keys)
-        : selectTopCategories({
-            measures: trendMeasures,
-            amount: appliedTrendFilter.amount,
-            by: appliedTrendFilter.by,
-          }),
+      match(appliedTrendFilter)
+        .with({ mode: 'manual' }, (filter) => new Set(filter.keys))
+        .with({ mode: 'top' }, (filter) =>
+          selectTopCategories({ measures: trendMeasures, amount: filter.amount, by: filter.by }),
+        )
+        .exhaustive(),
     [appliedTrendFilter, trendMeasures],
   );
 
@@ -766,12 +1016,21 @@ const StatisticsScreen: FC = () => {
     color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
   }));
 
+  if (!isReady) {
+    return (
+      <Screen scroll scrollableRef={scrollRef}>
+        <LoadingState testID="statistics-loading" />
+      </Screen>
+    );
+  }
+
   return (
     <Screen scroll scrollableRef={scrollRef}>
       <Box gap={4} testID="statistics-blocks">
         <Box direction="row" gap={3} style={styles.filterBar}>
           <FilterMenu
             label={t('statistics.filterAccounts')}
+            sheetTitle={t('statistics.filterAccountsSheetTitle')}
             testID="statistics-account-filter"
             options={accountOptions}
             selected={selectedAccounts}
@@ -821,6 +1080,22 @@ const StatisticsScreen: FC = () => {
             </Text>
 
             <PieChart slices={slices} baseCurrency={baseCurrency} />
+
+            {!debtTotal.isZero() && (
+              // SummaryTable is the shared "label left, value right" layout
+              // every other summary line in the app already uses, rather
+              // than a hand-built flexDirection row.
+              <SummaryTable
+                testID="statistics-debts-total"
+                rows={[
+                  {
+                    key: 'debts',
+                    label: t('statistics.debtsTotal'),
+                    value: <MoneyText money={debtTotal} context="balance" />,
+                  },
+                ]}
+              />
+            )}
           </Box>
         </Card>
 
@@ -833,11 +1108,12 @@ const StatisticsScreen: FC = () => {
             <Box direction="row" gap={3} style={styles.filterBar}>
               <FilterMenu
                 label={t('statistics.filterCategories')}
+                sheetTitle={t('statistics.filterCategoriesSheetTitle')}
                 testID="statistics-category-filter"
                 options={categoryOptions}
                 selected={selectedCategories}
                 onToggle={toggleFilter(setSelectedCategories)}
-                triggerIcon="tag"
+                triggerIcon={genericEntitySymbol.category}
               />
             </Box>
 

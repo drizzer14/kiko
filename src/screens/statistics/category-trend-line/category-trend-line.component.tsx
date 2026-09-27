@@ -1,15 +1,14 @@
 import { type FC, memo } from 'react';
+import { formatDayMonth } from '@kiko/dates';
+import Box from '@kiko/design-system/components/box';
+import { useUnistyles } from 'react-native-unistyles';
+import Text from '@kiko/design-system/components/text';
+import { activeLocale } from '@kiko/i18n/active-locale';
+import type { Currency } from '@kiko/currency/currency';
 import { type DimensionValue, View } from 'react-native';
 import { G, Line, Polyline, Svg } from 'react-native-svg';
-import { useUnistyles } from 'react-native-unistyles';
-
-import { formatDayMonth } from '../../../dates/format';
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import { activeLocale } from '../../../i18n/active-locale';
-import type { Currency } from '../../../currency/currency';
-import type { CategoryTrendSeries } from '../../../statistics/category-trend';
-import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact';
+import type { CategoryTrendSeries } from '@kiko/statistics/category-trend';
+import { chooseCompactUnit, formatCompactMoney } from '@kiko/currency/compact';
 
 import { styles } from './category-trend-line.styles';
 
@@ -136,6 +135,7 @@ const buildXTickSet = (scales: Scales, fractions: readonly number[]): XTick[] =>
 // the evenly spaced set would otherwise stack every day on the same x.
 const buildXLabelTicks = (scales: Scales): XTick[] => {
   const timeSpan = scales.maxTime - scales.minTime;
+
   if (timeSpan <= 0) {
     return [{ key: '0.00', time: scales.minTime, leftPercent: 0, isEdge: true, isStart: true }];
   }
@@ -149,6 +149,7 @@ const buildXLabelTicks = (scales: Scales): XTick[] => {
 // old single fraction-set render filtered out of the gridlines anyway).
 const buildXGridTicks = (scales: Scales): XTick[] => {
   const timeSpan = scales.maxTime - scales.minTime;
+
   if (timeSpan <= 0) {
     return [];
   }

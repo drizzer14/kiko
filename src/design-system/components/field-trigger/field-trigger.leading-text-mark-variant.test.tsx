@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react-native';
 
-import '../../unistyles';
+import '@kiko/design-system/unistyles';
 
 import FieldTrigger from '.';
 
@@ -8,15 +8,14 @@ import FieldTrigger from '.';
 // included) from a rendered node's style, since `Text` resolves its variant
 // through `styles.useVariants(...)`, which the mock does not compute — the
 // same caveat documented in
-// `trend-filter-field.section-header-tone.test.tsx` and
-// `option-pills.label-variant.test.tsx`. Mock the shared `Text` primitive
-// with a passthrough that forwards its `variant` prop onto the host node
-// instead, so the leading text mark's type step can be asserted from the
-// PROP that actually drives it rather than a resolved `fontSize` the mock
-// cannot produce. Kept in its own file (rather than inside
+// `trend-filter-field.section-header-tone.test.tsx`. Mock the shared `Text`
+// primitive with a passthrough that forwards its `variant` prop onto the
+// host node instead, so the leading text mark's type step can be asserted
+// from the PROP that actually drives it rather than a resolved `fontSize`
+// the mock cannot produce. Kept in its own file (rather than inside
 // `field-trigger.component.test.tsx`) so this file-wide module mock never
 // touches that file's other assertions, which render the real `Text`.
-jest.mock('../text', () => {
+jest.mock('@kiko/design-system/components/text', () => {
   const React = require('react');
   const { Text: RNText } = require('react-native');
 

@@ -1,15 +1,18 @@
-import { Money } from '../../currency/money';
+import { Money } from '@kiko/currency/money';
+import { buildPriceBook, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
+import { holdingInstrument, metalInstrument } from '@kiko/prices/instrument';
+
 import { asBondMeta } from '../holding-metadata';
+import { bondExpectedProfitMinor } from '../holding-descriptor';
 
 import {
-  bondExpectedProfitMinor,
   type HoldingValueBreakdown,
   holdingValue,
   holdingValueBreakdown,
   type ValuableHolding,
 } from './holding-value';
 
-const base = { currency: 'UAH' as const, balanceMinorUnits: 0, metadata: null };
+const base = { id: 'h1', currency: 'UAH' as const, balanceMinorUnits: 0, metadata: null };
 const START = Date.UTC(2026, 0, 1);
 const day = 86_400_000;
 const HOUR = 3_600_000;
@@ -139,7 +142,7 @@ describe('holdingValue', () => {
         compounding: 'daily',
       },
     };
-    // Daily compounding used to collapse to exactly 0; now it accrues.
+    // Daily compounding accrues even over a short span, never collapsing to 0.
     const value = holdingValue(holding, START + 200 * day);
     expect(value.minorUnits).toBeGreaterThan(1_000_000);
   });
@@ -179,7 +182,7 @@ describe('holdingValue', () => {
     expect(value.minorUnits).toBe(0);
   });
 
-  it('excludes a future-dated deposit contribution from principal and value (D2)', () => {
+  it('excludes a future-dated deposit contribution from principal and value', () => {
     const holding: ValuableHolding = {
       ...base,
       type: 'term_deposit',
@@ -259,9 +262,40 @@ describe('holdingValue', () => {
   it('reproduces the screenshot expected profit (16,657.00)', () => {
     const meta = asBondMeta(screenshotBond().metadata);
     expect(meta).not.toBeNull();
+
     if (meta !== null) {
       // 3 * 8,175.00 net coupons + 100,000.00 nominal - 107,868.00 paid.
-      expect(bondExpectedProfitMinor(meta, 'UAH')).toBe(1_665_700);
+      expect(bondExpectedProfitMinor(meta, 'UAH', [])).toBe(1_665_700);
+    }
+  });
+
+  it("sums a step-up bond's expected profit from each register coupon's own rate", () => {
+    // 1,000 x XS2895055981 (1-dollar nominal) for 980.00, saved at 4.5%: one
+    // 22.50 coupon before the step, four 30.00 after, then 1,000.00 redeemed.
+    const meta = asBondMeta({
+      quantity: 1000,
+      faceValueMinorUnits: 100,
+      couponPct: 4.5,
+      couponFrequency: 'semiannually',
+      bondKind: 'government',
+      purchaseDate: local(2026, 8, 26),
+      purchasePriceMinorUnits: 98_000,
+      maturityDate: local(2029, 1, 1),
+      isin: 'XS2895055981',
+    });
+    const stepUpCoupons = [
+      { date: local(2027, 1, 1), amount: '0.0225' },
+      { date: local(2027, 7, 1), amount: '0.03' },
+      { date: local(2028, 1, 1), amount: '0.03' },
+      { date: local(2028, 7, 1), amount: '0.03' },
+      { date: local(2029, 1, 1), amount: '0.03' },
+    ];
+
+    expect(meta).not.toBeNull();
+
+    if (meta !== null) {
+      expect(bondExpectedProfitMinor(meta, 'USD', stepUpCoupons)).toBe(16_250);
+      expect(bondExpectedProfitMinor(meta, 'USD', [])).toBe(13_250);
     }
   });
 
@@ -277,6 +311,7 @@ describe('holdingValue', () => {
 });
 
 const deposit = (over: Record<string, unknown>): ValuableHolding => ({
+  id: 'deposit-1',
   type: 'term_deposit' as const,
   currency: 'UAH' as const,
   balanceMinorUnits: 0,
@@ -291,6 +326,7 @@ const deposit = (over: Record<string, unknown>): ValuableHolding => ({
 });
 
 const bond = (bondKind: string): ValuableHolding => ({
+  id: 'bond-1',
   type: 'bond' as const,
   currency: 'UAH' as const,
   balanceMinorUnits: 0,
@@ -360,9 +396,427 @@ describe('holdingValueBreakdown', () => {
   });
 });
 
+// Property lots and price points key on `dayKeyOf`'s UTC-anchored convention
+// (`Date.UTC(y, m, d)` — `src/prices/price-book/`), NOT the file's own
+// `local()` helper above (which builds a real LOCAL-time instant for the
+// bond cases) — matching `lots.test.ts`/`price-book.test.ts`'s own fixtures.
+const propertyDay2024 = Date.UTC(2024, 0, 1);
+const propertyDay2026 = Date.UTC(2026, 0, 1);
+
+const property = (over: Record<string, unknown> = {}): ValuableHolding => ({
+  id: 'prop-1',
+  type: 'property_item',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  metadata: {
+    category: 'real_estate',
+    lots: [{ day: propertyDay2024, quantityDelta: '1', costMinorUnits: 18_000_00 }],
+    ...over,
+  },
+});
+
+describe('holdingValueBreakdown — property_item (priced)', () => {
+  it('values a property at its point at-or-before now, and at the next point once its day arrives', () => {
+    const point2024 = propertyDay2024;
+    const point2026 = propertyDay2026;
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('prop-1'),
+        day: point2024,
+        price: '20000',
+        currency: 'UAH',
+        source: 'manual',
+      },
+      {
+        instrument: holdingInstrument('prop-1'),
+        day: point2026,
+        price: '16000',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+    const holding = property();
+
+    const between = holdingValueBreakdown(holding, point2024 + 200 * day, book);
+    expect(between.gross.minorUnits).toBe(2_000_000);
+    expect(between.net.minorUnits).toBe(2_000_000);
+
+    const after = holdingValueBreakdown(holding, point2026, book);
+    expect(after.gross.minorUnits).toBe(1_600_000);
+    expect(after.net.minorUnits).toBe(1_600_000);
+  });
+
+  it('falls back to the lots cost basis when there is no price point yet', () => {
+    const holding = property();
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, EMPTY_PRICE_BOOK);
+    expect(breakdown.gross.minorUnits).toBe(18_000_00);
+    expect(breakdown.net.minorUnits).toBe(18_000_00);
+    expect(breakdown.principalOrCost.minorUnits).toBe(18_000_00);
+  });
+
+  it('defaults to the empty price book (cost basis) when no book is passed', () => {
+    const holding = property();
+
+    expect(holdingValue(holding, propertyDay2024).minorUnits).toBe(18_000_00);
+  });
+
+  it('reports the lots cost basis as principalOrCost even when a price point exists', () => {
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('prop-1'),
+        day: propertyDay2024,
+        price: '25000',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+    const holding = property();
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, book);
+    expect(breakdown.gross.minorUnits).toBe(2_500_000);
+    expect(breakdown.principalOrCost.minorUnits).toBe(18_000_00);
+  });
+
+  it('reports no interest or tax — a priced holding never accrues either', () => {
+    const holding = property();
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, EMPTY_PRICE_BOOK);
+    expect(breakdown.interest.minorUnits).toBe(0);
+    expect(breakdown.tax.minorUnits).toBe(0);
+  });
+});
+
+describe('holdingValueBreakdown — property_item ownership share', () => {
+  const wholeBook = buildPriceBook([
+    {
+      instrument: holdingInstrument('prop-1'),
+      day: propertyDay2024,
+      price: '30000.01',
+      currency: 'UAH',
+      source: 'manual',
+    },
+  ]);
+  const third = [{ day: propertyDay2024, numerator: 1, denominator: 3 }];
+
+  // Every property saved before the share existed has no `ownership` key; its
+  // value must not move by a single minor unit.
+  it('values a holding with no ownership key exactly as the whole asset', () => {
+    const breakdown = holdingValueBreakdown(property(), propertyDay2026, wholeBook);
+
+    expect(breakdown.gross.minorUnits).toBe(3_000_001);
+    expect(breakdown.net.minorUnits).toBe(3_000_001);
+    expect(breakdown.principalOrCost.minorUnits).toBe(18_000_00);
+    expect(
+      holdingValueBreakdown(property(), propertyDay2026, EMPTY_PRICE_BOOK).net.minorUnits,
+    ).toBe(18_000_00);
+  });
+
+  it('owns a third of the value, the cost, and so the gain', () => {
+    const breakdown = holdingValueBreakdown(
+      property({ ownership: third }),
+      propertyDay2026,
+      wholeBook,
+    );
+
+    expect(breakdown.gross.minorUnits).toBe(1_000_000);
+    expect(breakdown.net.minorUnits).toBe(1_000_000);
+    expect(breakdown.principalOrCost.minorUnits).toBe(600_000);
+    expect(breakdown.interest.minorUnits).toBe(0);
+    expect(breakdown.tax.minorUnits).toBe(0);
+  });
+
+  it('owns a share of the cost basis when there is no price point', () => {
+    const breakdown = holdingValueBreakdown(
+      property({ ownership: third }),
+      propertyDay2026,
+      EMPTY_PRICE_BOOK,
+    );
+
+    expect(breakdown.net.minorUnits).toBe(600_000);
+    expect(breakdown.principalOrCost.minorUnits).toBe(600_000);
+  });
+
+  it('values a loan given whole even with a stored share', () => {
+    const breakdown = holdingValueBreakdown(
+      property({ category: 'loan_given', ownership: third }),
+      propertyDay2026,
+      wholeBook,
+    );
+
+    expect(breakdown.net.minorUnits).toBe(3_000_001);
+    expect(breakdown.principalOrCost.minorUnits).toBe(18_000_00);
+  });
+
+  it('owns half of a vehicle', () => {
+    const breakdown = holdingValueBreakdown(
+      property({
+        category: 'vehicle',
+        ownership: [{ day: propertyDay2024, numerator: 1, denominator: 2 }],
+      }),
+      propertyDay2026,
+      wholeBook,
+    );
+
+    expect(breakdown.net.minorUnits).toBe(1_500_001);
+    expect(breakdown.principalOrCost.minorUnits).toBe(900_000);
+  });
+
+  it('reads the share of the requested day', () => {
+    const holding = property({
+      ownership: [
+        { day: propertyDay2024, numerator: 1, denominator: 1 },
+        { day: propertyDay2026, numerator: 1, denominator: 2 },
+      ],
+    });
+
+    expect(holdingValueBreakdown(holding, propertyDay2026 - day, wholeBook).net.minorUnits).toBe(
+      3_000_001,
+    );
+    expect(holdingValueBreakdown(holding, propertyDay2026, wholeBook).net.minorUnits).toBe(
+      1_500_001,
+    );
+  });
+});
+
+// Metal lots and price points key on the same `dayKeyOf`-style UTC-anchored
+// convention as property's above.
+const goldBar = (over: Record<string, unknown> = {}): ValuableHolding => ({
+  id: 'gold-1',
+  type: 'metal',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  metadata: {
+    metal: 'XAU',
+    form: 'bar',
+    unit: 'g',
+    purity: '1',
+    lots: [{ day: propertyDay2024, quantityDelta: '31.1034768', costMinorUnits: 8_500_000 }],
+    ...over,
+  },
+});
+
+// Shared by every "metal (priced)" case below that needs a stored NBU point:
+// one XAU point, priced 90000 UAH, at propertyDay2024.
+const xauBookAt90000 = () =>
+  buildPriceBook([
+    {
+      instrument: metalInstrument('XAU'),
+      day: propertyDay2024,
+      price: '90000',
+      currency: 'UAH',
+      source: 'nbu',
+    },
+  ]);
+
+describe('holdingValueBreakdown — metal (priced)', () => {
+  it('values a gold bar at its NBU point at-or-before now', () => {
+    const holding = goldBar();
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, xauBookAt90000());
+    // 31.1034768g at purity 1 is exactly one troy ounce.
+    expect(breakdown.gross.minorUnits).toBe(9_000_000);
+    expect(breakdown.net.minorUnits).toBe(9_000_000);
+  });
+
+  it('values an ounce-denominated metal lot with no unit conversion', () => {
+    const book = buildPriceBook([
+      {
+        instrument: metalInstrument('XAG'),
+        day: propertyDay2024,
+        price: '1000',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+    ]);
+    const holding = goldBar({
+      metal: 'XAG',
+      unit: 'oz',
+      lots: [{ day: propertyDay2024, quantityDelta: '2', costMinorUnits: 200_000 }],
+    });
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, book);
+    expect(breakdown.gross.minorUnits).toBe(200_000);
+  });
+
+  it('scales a metal value by purity below 1', () => {
+    const holding = goldBar({ purity: '0.5' });
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, xauBookAt90000());
+    expect(breakdown.gross.minorUnits).toBe(4_500_000);
+  });
+
+  it('falls back to the lots cost basis when there is no price point yet', () => {
+    const holding = goldBar();
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, EMPTY_PRICE_BOOK);
+    expect(breakdown.gross.minorUnits).toBe(8_500_000);
+    expect(breakdown.net.minorUnits).toBe(8_500_000);
+    expect(breakdown.principalOrCost.minorUnits).toBe(8_500_000);
+  });
+
+  it('reports the lots cost basis as principalOrCost even when a price point exists', () => {
+    const holding = goldBar();
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, xauBookAt90000());
+    expect(breakdown.gross.minorUnits).toBe(9_000_000);
+    expect(breakdown.principalOrCost.minorUnits).toBe(8_500_000);
+  });
+
+  it('reports no interest or tax — a priced holding never accrues either', () => {
+    const holding = goldBar();
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, EMPTY_PRICE_BOOK);
+    expect(breakdown.interest.minorUnits).toBe(0);
+    expect(breakdown.tax.minorUnits).toBe(0);
+  });
+
+  // NBU's metal price point is always UAH, but a restore-only row's
+  // `currency` column could disagree with it. The priced value must never be
+  // shown UNDER the holding's own currency label when the two disagree — that
+  // would silently relabel a UAH amount as USD rather than convert it. The
+  // holding falls back to its lots' cost basis instead, exactly as it would
+  // for no stored price point at all.
+  it('falls back to the lots cost basis for a metal row whose currency disagrees with the price point, never labeling the priced value as that currency', () => {
+    const holding: ValuableHolding = { ...goldBar(), currency: 'USD' };
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, xauBookAt90000());
+    expect(breakdown.gross.currency).toBe('USD');
+    expect(breakdown.gross.minorUnits).toBe(8_500_000);
+    expect(breakdown.net.minorUnits).toBe(8_500_000);
+    expect(breakdown.principalOrCost.minorUnits).toBe(8_500_000);
+  });
+});
+
 // Local helper mirrors interest.addMonths so the test states its own expectation.
 function addMonthsMs(start: number, months: number): number {
   const date = new Date(start);
   date.setMonth(date.getMonth() + months);
+
   return date.getTime();
 }
+
+const loanStart = local(2020, 0, 15);
+
+const loan = (over: Record<string, unknown> = {}): ValuableHolding => ({
+  id: 'loan-1',
+  type: 'loan',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  metadata: {
+    kind: 'mortgage',
+    principalMinorUnits: 120_000_000, // 1,200,000.00 UAH
+    startDate: loanStart,
+    annualRatePct: 12,
+    termMonths: 240,
+    schedule: 'annuity',
+    ...over,
+  },
+});
+
+describe('holdingValueBreakdown — loan', () => {
+  it('is negative — gross and net equal minus the outstanding balance, principalOrCost equals minus the principal', () => {
+    const b = holdingValueBreakdown(loan(), loanStart, EMPTY_PRICE_BOOK);
+    // At startDate itself, no installment is due yet: outstanding is the full principal.
+    expect(b.gross.minorUnits).toBe(-120_000_000);
+    expect(b.net.minorUnits).toBe(-120_000_000);
+    expect(b.principalOrCost.minorUnits).toBe(-120_000_000);
+    expect(b.interest.minorUnits).toBe(0);
+    expect(b.tax.minorUnits).toBe(0);
+  });
+
+  it('gross/net shrink toward 0 as the schedule pays the loan down, while principalOrCost stays at minus the ORIGINAL principal', () => {
+    // At `loanStart` itself, ZERO installments are due yet (the first is a
+    // month out), not ten.
+    const atStart = loanStart;
+    const laterDay = local(2021, 0, 15); // one year (12 installments) later
+    const before = holdingValueBreakdown(loan(), atStart, EMPTY_PRICE_BOOK);
+    const after = holdingValueBreakdown(loan(), laterDay, EMPTY_PRICE_BOOK);
+
+    expect(after.gross.minorUnits).toBeGreaterThan(before.gross.minorUnits);
+    expect(after.gross.minorUnits).toBeLessThan(0);
+    expect(after.principalOrCost.minorUnits).toBe(-120_000_000);
+  });
+
+  it('is 0 before the loan start date — a loan not yet taken out contributes nothing', () => {
+    const dayBeforeStart = local(2020, 0, 14);
+    const b = holdingValueBreakdown(loan(), dayBeforeStart, EMPTY_PRICE_BOOK);
+    expect(b.gross.minorUnits).toBe(0);
+    expect(b.net.minorUnits).toBe(0);
+  });
+
+  // A 'none' loan's manual correction accepts 0
+  // (repaid) and, end to end, contributes 0 to net worth from that day
+  // forward while its EARLIER history — valued as of an earlier day — still
+  // reads its earlier, nonzero correction. A price-point write never
+  // deletes prior points, so history survives the 0 correction.
+  it('a "none" loan set to 0 counts 0 in net worth and keeps its earlier history', () => {
+    const paidOffDay = local(2020, 2, 1); // 1 Mar 2020
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('loan-1'),
+        day: loanStart,
+        price: '120000.00',
+        currency: 'UAH',
+        source: 'manual',
+      },
+      {
+        instrument: holdingInstrument('loan-1'),
+        day: paidOffDay,
+        price: '0.00',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+    const noneLoan = loan({ schedule: 'none', annualRatePct: undefined, termMonths: undefined });
+
+    const atPayoff = holdingValueBreakdown(noneLoan, paidOffDay, book);
+    expect(atPayoff.gross.minorUnits).toBe(0);
+    expect(atPayoff.net.minorUnits).toBe(0);
+
+    const atStart = holdingValueBreakdown(noneLoan, loanStart, book);
+    expect(atStart.gross.minorUnits).toBe(-12_000_000);
+  });
+
+  // With linked payments the loan values at what was actually repaid, on
+  // every site that reads this breakdown (card, totals, statistics, history).
+  it('values a loan with linked payments at minus the principal less the principal they repaid', () => {
+    const paymentDay = local(2020, 1, 15);
+    const book = buildPriceBook(
+      [],
+      [
+        {
+          loanHoldingId: 'loan-1',
+          time: paymentDay,
+          amountMinorUnits: -3_000_000,
+          currency: 'UAH',
+        },
+      ],
+    );
+    // The first installment's interest: 1% a month of the full principal.
+    const interest = 1_200_000;
+
+    expect(holdingValueBreakdown(loan(), paymentDay, book).net.minorUnits).toBe(
+      -(120_000_000 - (3_000_000 - interest)),
+    );
+    // A bucket before the payment day still reads the schedule.
+    expect(holdingValueBreakdown(loan(), local(2020, 1, 14), book).net.minorUnits).toBe(
+      holdingValueBreakdown(loan(), local(2020, 1, 14), EMPTY_PRICE_BOOK).net.minorUnits,
+    );
+  });
+
+  // Missing/malformed loan metadata must value the loan at 0, never
+  // `+balanceMinorUnits` — a debt must never read as a positive asset.
+  // Harmless in practice today (the form always writes balance 0), but the
+  // fallback itself must have the right sign.
+  it('values a loan with missing/malformed metadata at 0, never the cached balance', () => {
+    const holding: ValuableHolding = {
+      id: 'loan-2',
+      type: 'loan',
+      currency: 'UAH',
+      balanceMinorUnits: 5_000,
+      metadata: { junk: true },
+    };
+    expect(holdingValue(holding, loanStart).minorUnits).toBe(0);
+  });
+});

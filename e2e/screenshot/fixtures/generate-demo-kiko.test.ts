@@ -14,20 +14,22 @@
 // `encryptEnvelope` uses a fresh random nonce every call (see
 // `envelope.ts`), so the ciphertext is NEVER byte-reproducible — the guard
 // below decrypts and compares the PAYLOAD, never the raw `.kiko` bytes.
-import { join } from 'node:path';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-
 import {
   decryptEnvelope,
   EXPORT_FORMAT,
   type ExportEnvelope,
   EXPORT_VERSION,
-} from '../../../src/data-transfer/crypto/envelope';
-import type { AppLanguage } from '../../../src/i18n';
+  type ExportPayload,
+  generateExportKey,
+  decodeBase64ToBytes,
+  encodeBytesToBase64,
+} from '@kiko/data-transfer';
+import { join } from 'node:path';
+import { accounts, holdings } from '@kiko/db';
+import type { AppLanguage } from '@kiko/i18n/device-language';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+
 import { ANCHOR, buildScreenshotDataset } from '../seed/screenshot-seed';
-import type { ExportPayload } from '../../../src/data-transfer/payload';
-import { generateExportKey } from '../../../src/data-transfer/crypto/generate-key';
-import { decodeBase64ToBytes, encodeBytesToBase64 } from '../../../src/data-transfer/base64/base64';
 
 import { buildDemoSnapshot } from './build-demo-snapshot';
 import { buildDemoEnvelopeJson } from './generate-demo-kiko';
@@ -65,6 +67,24 @@ describe('buildDemoEnvelopeJson (always runs — proves the encoder itself, not 
     expect(payload.appVersion).toBe('1.0.0');
     expect(payload.secrets).toBeUndefined();
   });
+});
+
+// The App Store reviewer reaches every feature through this dataset
+// (Guideline 5.6), so an account kind or holding type missing from it is a
+// feature the reviewer cannot see.
+describe('the demo dataset covers every account kind and holding type', () => {
+  for (const { language } of LANGUAGES) {
+    it(`${language}: holds at least one account of every kind and one holding of every type`, () => {
+      const snapshot = buildDemoSnapshot(buildScreenshotDataset(language));
+
+      expect(new Set(snapshot.accounts.map((account) => account.kind))).toEqual(
+        new Set(accounts.kind.enumValues),
+      );
+      expect(new Set(snapshot.holdings.map((holding) => holding.type))).toEqual(
+        new Set(holdings.type.enumValues),
+      );
+    });
+  }
 });
 
 if (process.env.KIKO_REGEN_DEMO === '1') {

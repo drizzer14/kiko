@@ -23,12 +23,15 @@
 #      not exist on disk yet, so this walks up until it finds one that
 #      does).
 #   2. Anything else (Bash, Stop, SubagentStop — no tool_input.file_path):
-#      the payload's own `cwd` field, used as-is (Claude Code already sets
-#      it to the session's own working directory; no git resolution needed
-#      there).
+#      the `git rev-parse --show-toplevel` of the payload's own `cwd` field
+#      (a session can `cd` into a subdirectory, so `cwd` is not always the
+#      root).
 #   3. Fallback: CLAUDE_PROJECT_DIR, when neither of the above yields a
 #      value (a missing field, or `git rev-parse` failing because the
 #      directory is not inside any repository at all).
+#   A root resolved in step 1 or 2 is kept only when it shares
+#   CLAUDE_PROJECT_DIR's own repository (see the bound check below);
+#   otherwise CLAUDE_PROJECT_DIR is used.
 #
 # Once resolved: exec the target script (scripts/checks/<script-name> under
 # that root) with CLAUDE_PROJECT_DIR set to that SAME root, replaying the
@@ -38,18 +41,19 @@
 # guard's own `[ -f "$f" ] || exit 0` convention generalized to all four.
 #
 # Fail-closed by DELEGATION, not duplication: a malformed JSON payload, a
-# `git rev-parse` failure, or `node` itself being unavailable all degrade to
-# "extract nothing, fall back to CLAUDE_PROJECT_DIR, still invoke the target
-# script" rather than a bespoke deny path here — each target script already
+# "not a git repository" result, or `node` itself being unavailable all
+# degrade to "extract nothing, fall back to CLAUDE_PROJECT_DIR, still invoke
+# the target script" rather than a bespoke deny path here — each target script already
 # has its own tested contract for exactly that input (pre-write-guard.sh
 # already denies on malformed JSON or a node crash; kill-guard.sh already
 # always exits 0). Replaying the same bytes through the fallback root reaches
 # that SAME contract, so the required outcome (a crash denies for
 # pre-write-guard.sh; the other hooks keep their current fail-open semantics)
-# holds without a second copy of that logic here. The one genuine
-# dispatcher-own crash this cannot delegate away is failing to even BUFFER
-# stdin (mktemp itself failing) — see the stdinFile check below, the only
-# spot with bespoke per-script-name behavior.
+# holds without a second copy of that logic here. The dispatcher-own
+# crashes this cannot delegate away — failing to even BUFFER stdin (mktemp
+# itself failing), or any OTHER git failure while resolving the root — go
+# through denyOrNoop below, the only spot with bespoke per-script-name
+# behavior.
 set -uo pipefail
 
 scriptName="${1:-}"
@@ -78,12 +82,11 @@ denyOrNoop() {
 # operation — a hard, unconditional reject (never delegated to
 # denyOrNoop's per-script table) is correct here because an invalid argument
 # is a dispatcher MISCONFIGURATION, not a runtime payload to gracefully
-# degrade from. One validity check, one error message (M7): a valid
+# degrade from. One validity check, one error message: a valid
 # script-name is empty of "/" and ".." and every character outside
 # [A-Za-z0-9._-], and ends in ".sh" — every other shape (missing, a path
 # segment, a ".." traversal, a disallowed character, or a missing ".sh"
-# suffix) is rejected identically, rather than five separate case/esac
-# blocks each printing its own bespoke message.
+# suffix) is rejected identically.
 isValidScriptName=1
 case "$scriptName" in
   '' | */* | *..* | *[!A-Za-z0-9._-]*)
@@ -139,8 +142,8 @@ cwd="$(printf '%s\n' "$resolverOutput" | sed -n '2p')"
 # a git repository" (a plain, non-repo directory is not a dispatcher
 # crash, so the caller falls back to CLAUDE_PROJECT_DIR below). Returns 2
 # on any OTHER git failure (the git binary itself misbehaving, a corrupt
-# .git, a permission error) — I2: silently falling back on THIS case used
-# to let an unchecked write through for pre-write-guard.sh, so the caller
+# .git, a permission error) — silently falling back on THIS case would let
+# an unchecked write through for pre-write-guard.sh, so the caller
 # escalates it to denyOrNoop instead of treating it the same as "no repo
 # here".
 resolveGitRootOrFail() {
@@ -190,11 +193,11 @@ if [ -n "$filePath" ]; then
     esac
   fi
 elif [ -n "$cwd" ]; then
-  # C1: `cwd` used to be trusted as-is. A Bash/Stop payload's own `cwd` can
-  # be a SUBDIRECTORY of the repo (e.g. `<root>/ios`, which the scope
-  # excludes but a session can still `cd` into) — trusting it verbatim then
-  # looks for `<root>/ios/scripts/checks/<script>`, which never exists, so
-  # the hook silently no-ops (fails OPEN) instead of finding the real script
+  # A Bash/Stop payload's own `cwd` can be a SUBDIRECTORY of the repo (e.g.
+  # `<root>/ios`, which the scope excludes but a session can still `cd`
+  # into) — trusting it verbatim would look for
+  # `<root>/ios/scripts/checks/<script>`, which never exists, so the hook
+  # would silently no-op (fail OPEN) instead of finding the real script
   # one level up. Resolve `cwd`'s own git root the same way file_path's
   # directory is resolved above.
   if [ -d "$cwd" ]; then
@@ -214,7 +217,7 @@ if [ -z "$resolvedRoot" ]; then
   resolvedRoot="${CLAUDE_PROJECT_DIR:-}"
 fi
 
-# M4: a resolved root from file_path/cwd is trusted only when it shares
+# A resolved root from file_path/cwd is trusted only when it shares
 # CLAUDE_PROJECT_DIR's own repository — same repo, or a linked worktree of
 # it (same `git rev-parse --git-common-dir`, realpath-compared so a macOS
 # /tmp -> /private/tmp symlink never causes a false mismatch). This keeps
@@ -251,10 +254,9 @@ if [ ! -f "$targetScript" ]; then
   exit 0
 fi
 
-# M6: exec the target script (replacing THIS process) instead of running
-# it as a child, matching the old pre-dispatcher guard wiring's own `exec`.
-# A hook timeout kills only the dispatcher's own PID; running the target as
-# a plain child would then orphan it still running (a real risk for
+# Exec the target script (replacing THIS process) instead of running it as
+# a child. A hook timeout kills only the dispatcher's own PID; running the
+# target as a plain child would then orphan it still running (a real risk for
 # medium.sh, which holds medium.lock for a long time) instead of the kill
 # taking the whole thing down. Redirect stdin from the buffered file onto
 # fd 0 first (a bare `exec` with only a redirection changes the CURRENT

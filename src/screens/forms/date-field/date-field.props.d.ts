@@ -1,13 +1,19 @@
 export type DateFieldProps = {
   // The caption rendered above the field, and the field's accessibility label.
   label: string;
+  // The calendar sheet's header: a Title Case sheet title, a separate key
+  // from the sentence-case `label` (kiko-translator: one key per UI role).
+  sheetTitle: string;
   // The selected day as a unix-millis timestamp (local midnight), or null when
   // nothing is picked yet.
   value: number | null;
   // Reports the picked day as a unix-millis timestamp (local midnight).
   onChange: (timestamp: number) => void;
-  // Shown in the field when `value` is null.
-  placeholder?: string;
+  // Shown in the field when `value` is null. Required — every call site
+  // names its own "Select a …" copy, so tsc catches a missing one rather
+  // than the field silently repeating `label` as its own unset-value text
+  // (the caption AND the unset value reading the same word).
+  placeholder: string;
   // When true, the label shows a red asterisk marking the field as required.
   // Defaults to false. See the shared FieldLabel.
   required?: boolean;

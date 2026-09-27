@@ -1,8 +1,8 @@
 import type { TFunction } from 'i18next';
+import type { TransactionRow } from '@kiko/db';
 
-import type { TransactionRow } from '../../db/schema';
-import { defaultTransactionDescription } from '../default-description';
 import { exchangeLegDescription } from '../exchange-description';
+import { defaultTransactionDescription } from '../default-description';
 
 /**
  * The label a transaction list row shows, resolved at RENDER time in three
@@ -12,9 +12,9 @@ import { exchangeLegDescription } from '../exchange-description';
  * the row falls back to its own holding's income/expense default.
  *
  * Shared by Home and Holding detail so both lists resolve the same row
- * identically — the two used to each inline the two-step `description ||
- * default` fallback, and only one of them would have learned about exchange
- * legs.
+ * identically — inlining the two-step `description || default` fallback
+ * separately in each screen risks the two drifting, with only one of them
+ * ever learning about exchange legs.
  *
  * `holdingNameById` maps a holding id to its CURRENT name (built from the
  * holdings live query both screens already run), so a rename flows through

@@ -1,11 +1,16 @@
-import type { Currency } from '../../../currency/currency';
+import type { Currency } from '@kiko/currency/currency';
 
 export type CurrencyFieldProps = {
   /** Caption above the field and the trigger's accessibility label. */
   label: string;
   /**
+   * The picker sheet's header: a Title Case sheet title, a separate key from
+   * the sentence-case `label` (kiko-translator: one key per UI role).
+   */
+  sheetTitle: string;
+  /**
    * Suppress the inline caption above the trigger while still using `label` for
-   * the sheet heading and the trigger's accessibility label. Defaults to false.
+   * the trigger's accessibility label. Defaults to false.
    * Set by a caller that already labels the control externally (the Settings
    * base-currency row wraps the field in its own labeled SettingsRow); the
    * account/holding forms omit it and keep their inline caption.
@@ -15,11 +20,18 @@ export type CurrencyFieldProps = {
   selected: Currency | undefined;
   onSelect: (currency: Currency) => void;
   /**
-   * The pickable set, in display order. Defaults to `currencyOptions`. The
-   * cash-account form passes `fiatCurrencyOptions` (fiat only); the holding
-   * form passes the full set (a crypto holding needs a crypto currency).
+   * The pickable set. Defaults to `currencyOptions`. The cash-account form
+   * passes `fiatCurrencyOptions` (fiat only); the holding form passes its
+   * type's `holdingCurrencyOptions` (fiat only for cash, the full set
+   * otherwise — a crypto holding needs a crypto currency).
    */
   options?: readonly Currency[];
+  /**
+   * Lists the crypto group before the fiat group (each keeps its own order).
+   * Defaults to false. The crypto-holding create form sets it, where a crypto
+   * currency is the likely pick.
+   */
+  cryptoFirst?: boolean;
   /** Shows the required asterisk on the label. Defaults to false. */
   required?: boolean;
   /** Read-only: the trigger is inert and dimmed, no sheet opens. Defaults to false. */

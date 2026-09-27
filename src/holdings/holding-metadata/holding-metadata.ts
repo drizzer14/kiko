@@ -1,3 +1,8 @@
+import maybe, { foldMap } from 'fnts/maybe';
+
+import { asLots, type Lot } from '../lots';
+import { asOwnershipChanges, type OwnershipChange } from '../ownership';
+
 export type CompoundingFrequency = 'bi-weekly' | 'monthly' | 'quarterly' | 'annually';
 
 export type DepositContribution = { amountMinorUnits: number; date: number };
@@ -12,7 +17,41 @@ export type TermDepositMeta = {
 
 export type BondKind = 'government' | 'corporate';
 
+// Exported alongside the type it enumerates (the same pattern
+// `preciousMetals`/`metalForms`/`propertyCategories` below establish) so a
+// ChipRow-building component (`ManualBondFields`, `BondIsinSection`) reads
+// its own `options` from here instead of re-declaring the same literal set.
+export const bondKinds: readonly BondKind[] = ['government', 'corporate'];
+
 export type BondCouponFrequency = 'monthly' | 'quarterly' | 'semiannually' | 'annually';
+
+export const bondCouponFrequencies: readonly BondCouponFrequency[] = [
+  'monthly',
+  'quarterly',
+  'semiannually',
+  'annually',
+];
+
+/**
+ * One cash flow of an issuer's schedule (the NBU register's `payments[]`) for
+ * ONE bond of its face value: `amount` is the exact decimal the issuer pays
+ * per bond (a Eurobond pays fractions of a cent, so never minor units), and
+ * `date` a device-local midnight, the register's own date convention.
+ */
+export type BondPayment = {
+  date: number;
+  kind: 'coupon' | 'redemption';
+  amount: string;
+};
+
+// "ISIN" pre-fills a found bond's terms from the NBU register; "Manual" is
+// the classic hand-entered form.
+const bondEntryModes = ['isin', 'manual'] as const;
+
+export type BondEntryMode = (typeof bondEntryModes)[number];
+
+const isBondEntryMode = (value: unknown): value is BondEntryMode =>
+  typeof value === 'string' && (bondEntryModes as readonly string[]).includes(value);
 
 export type BondMeta = {
   quantity: number;
@@ -23,6 +62,19 @@ export type BondMeta = {
   maturityDate: number;
   bondKind: BondKind;
   couponFrequency: BondCouponFrequency;
+  // The ISIN the bond was saved with, from either form mode, or `undefined`
+  // for a bond that never carried one (including every bond saved before
+  // the ISIN-mode form existed). Once saved its terms never depend on the
+  // register again; it is re-shown, editable, in the edit form.
+  isin?: string;
+  // The form mode the bond was last saved from; it only picks the mode the
+  // edit form opens in. Absent for a bond saved before it was stored.
+  entryMode?: BondEntryMode;
+  // The issuer's schedule kept with the holding, so its coupons never depend
+  // on the ISIN still being in the register cache (a matured or delisted
+  // ISIN leaves it). Absent: never captured, so the cache is read instead.
+  // Empty: the user's own coupon replaced the schedule, so neither is read.
+  payments?: BondPayment[];
 };
 
 const frequencies = new Set<string>(['bi-weekly', 'monthly', 'quarterly', 'annually']);
@@ -35,12 +87,10 @@ const frequencies = new Set<string>(['bi-weekly', 'monthly', 'quarterly', 'annua
 const normalizeCompounding = (value: string): CompoundingFrequency =>
   value === 'daily' ? 'monthly' : (value as CompoundingFrequency);
 
-const bondCouponFrequencies = new Set<string>(['monthly', 'quarterly', 'semiannually', 'annually']);
+const bondCouponFrequencySet = new Set<string>(bondCouponFrequencies);
 
-const asBondCouponFrequency = (value: unknown): BondCouponFrequency =>
-  typeof value === 'string' && bondCouponFrequencies.has(value)
-    ? (value as BondCouponFrequency)
-    : 'annually';
+const isBondCouponFrequency = (value: unknown): value is BondCouponFrequency =>
+  typeof value === 'string' && bondCouponFrequencySet.has(value);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -122,6 +172,7 @@ const asContribution = (value: unknown): DepositContribution | null => {
     return null;
   }
   const { amountMinorUnits, date } = value;
+
   if (!isNumber(amountMinorUnits) || !isNumber(date)) {
     return null;
   }
@@ -131,14 +182,17 @@ const asContribution = (value: unknown): DepositContribution | null => {
 
 const readContributions = (value: Record<string, unknown>): DepositContribution[] | null => {
   const { contributions, principalMinorUnits, startDate } = value;
+
   if (Array.isArray(contributions)) {
     const parsed = contributions.map(asContribution);
+
     if (parsed.length > 0 && parsed.every((c): c is DepositContribution => c !== null)) {
       return [...parsed].sort((a, b) => a.date - b.date);
     }
 
     return null;
   }
+
   if (isNumber(principalMinorUnits) && isNumber(startDate)) {
     return [{ amountMinorUnits: principalMinorUnits, date: startDate }];
   }
@@ -174,11 +228,55 @@ export const asTermDepositMeta = (value: unknown): TermDepositMeta | null => {
   };
 };
 
+const asBondPayment = (value: unknown): BondPayment | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const { date, kind, amount } = value;
+
+  if (
+    !isNumber(date) ||
+    (kind !== 'coupon' && kind !== 'redemption') ||
+    !isPlainDecimalString(amount)
+  ) {
+    return null;
+  }
+
+  return { date, kind, amount };
+};
+
+/**
+ * All-or-nothing, like `asLots`: a schedule missing one payment would
+ * silently drop a cash flow from every coupon and yield read from it. Also
+ * the check a schedule passes before it is written into `BondMeta`, so a
+ * stored one always parses back.
+ */
+export const asBondPayments = (value: unknown): BondPayment[] | null => {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const parsed = value.map(asBondPayment);
+
+  return parsed.every((payment): payment is BondPayment => payment !== null) ? parsed : null;
+};
+
+/**
+ * Whether a stored bond carries a price the user entered. `asBondMeta` gives a
+ * bond without one the nominal as its price (for the ledger and expected
+ * profit); a yield to maturity needs the real price, so it asks here.
+ */
+export const hasStoredBondPurchasePrice = (value: unknown): boolean =>
+  isRecord(value) && isNumber(value.purchasePriceMinorUnits);
+
 export const asBondMeta = (value: unknown): BondMeta | null => {
   if (!isRecord(value)) {
     return null;
   }
-  const { quantity, faceValueMinorUnits, couponPct, purchaseDate, maturityDate, bondKind } = value;
+  const { quantity, faceValueMinorUnits, couponPct, purchaseDate, maturityDate, bondKind, isin } =
+    value;
+
   if (
     !isNumber(quantity) ||
     !isNumber(faceValueMinorUnits) ||
@@ -188,12 +286,33 @@ export const asBondMeta = (value: unknown): BondMeta | null => {
   ) {
     return null;
   }
+
+  const { couponFrequency, purchasePriceMinorUnits, payments, entryMode } = value;
+  const parsedPayments = foldMap(maybe(payments), asBondPayments);
+
+  // A PRESENT bondKind/couponFrequency/purchasePriceMinorUnits/isin/payments
+  // that fails its own check is BAD INPUT — reject the whole record, same as
+  // any other wrong-type field above. An ABSENT (undefined) field is the
+  // legacy shape every stored pre-field row still has, and keeps its
+  // documented default below — the decision targets bad input, not missing
+  // input. A present `payments: null` is bad input too: `maybe` would read it
+  // as absent.
+  if (
+    (bondKind !== undefined && bondKind !== 'government' && bondKind !== 'corporate') ||
+    (couponFrequency !== undefined && !isBondCouponFrequency(couponFrequency)) ||
+    (purchasePriceMinorUnits !== undefined && !isNumber(purchasePriceMinorUnits)) ||
+    (isin !== undefined && typeof isin !== 'string') ||
+    payments === null ||
+    parsedPayments === null
+  ) {
+    return null;
+  }
+
   // `purchasePriceMinorUnits` is the total actually paid (separate from nominal
   // = quantity * faceValue). Legacy bonds predate this field; default it to the
   // nominal so the purchase ledger entry and expected-profit both read as
   // break-even until the user edits the real price in.
   const nominalMinorUnits = quantity * faceValueMinorUnits;
-  const { purchasePriceMinorUnits } = value;
 
   return {
     quantity,
@@ -205,6 +324,241 @@ export const asBondMeta = (value: unknown): BondMeta | null => {
       : nominalMinorUnits,
     maturityDate,
     bondKind: bondKind === 'corporate' ? 'corporate' : 'government',
-    couponFrequency: asBondCouponFrequency(value.couponFrequency),
+    couponFrequency: isBondCouponFrequency(couponFrequency) ? couponFrequency : 'annually',
+    isin: typeof isin === 'string' ? isin : undefined,
+    ...(isBondEntryMode(entryMode) ? { entryMode } : {}),
+    ...foldMap(maybe(parsedPayments), (schedule) => ({ payments: schedule })),
+  };
+};
+
+// The closed set of `property_item` categories. A `const` tuple, per
+// kiko-code-style: the derived union type sits directly after it, and
+// membership is tested on the tuple itself rather than a parallel `Set` —
+// this set is small, so a second runtime structure would be redundant.
+// Exported: the property-section form reads it directly to build its
+// category ChipRow's `options`.
+export const propertyCategories = [
+  'real_estate',
+  'vehicle',
+  'valuable',
+  'loan_given',
+  'business_share',
+  'other',
+] as const;
+
+export type PropertyCategory = (typeof propertyCategories)[number];
+
+const isPropertyCategory = (value: unknown): value is PropertyCategory =>
+  typeof value === 'string' && (propertyCategories as readonly string[]).includes(value);
+
+/**
+ * The `property_item`'s category, read LENIENTLY: a missing or unrecognized
+ * value falls back to `'other'` rather than treating the whole metadata blob
+ * as invalid the way `asPropertyMeta` does (mirrors `walletAddressOf`'s
+ * tolerant-reader shape). This is what pre-selects the property form's Type
+ * field in edit mode, independent of whether the metadata's `lots` also
+ * happen to parse.
+ */
+export const propertyCategoryOf = (metadata: unknown): PropertyCategory => {
+  if (!isRecord(metadata)) {
+    return 'other';
+  }
+
+  const { category } = metadata;
+
+  return isPropertyCategory(category) ? category : 'other';
+};
+
+// How the user last typed the share; it only picks the form's input mode and
+// the detail line's wording, never the value.
+export const ownershipInputs = ['percent', 'fraction'] as const;
+
+export type OwnershipInput = (typeof ownershipInputs)[number];
+
+const isOwnershipInput = (value: unknown): value is OwnershipInput =>
+  typeof value === 'string' && (ownershipInputs as readonly string[]).includes(value);
+
+export type PropertyMeta = {
+  category: PropertyCategory;
+  lots: Lot[];
+  /** Absent reads the whole asset; see `ownershipAt`. */
+  ownership?: OwnershipChange[];
+  ownershipInput?: OwnershipInput;
+};
+
+export const asPropertyMeta = (value: unknown): PropertyMeta | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const { category, lots, ownership, ownershipInput } = value;
+  const parsedLots = asLots(lots);
+  const parsedOwnership = foldMap(maybe(ownership), asOwnershipChanges);
+
+  if (!isPropertyCategory(category) || parsedLots === null || parsedOwnership === null) {
+    return null;
+  }
+
+  return {
+    category,
+    lots: parsedLots,
+    ...foldMap(maybe(parsedOwnership), (changes) => ({ ownership: changes })),
+    ...(isOwnershipInput(ownershipInput) ? { ownershipInput } : {}),
+  };
+};
+
+// The closed set of precious metals Kiko prices via NBU, keyed by the
+// same slug `metalInstrument` namespaces its `price_points.instrument` under
+// (`metal:<XAU|XAG|XPT|XPD>` — `src/prices/instrument/`). Exported so the
+// holding form's Type select (`MetalTypeField`) can list each metal as its
+// own row, mirroring `propertyCategories`.
+export const preciousMetals = ['XAU', 'XAG', 'XPT', 'XPD'] as const;
+
+export type Metal = (typeof preciousMetals)[number];
+
+export const isMetal = (value: unknown): value is Metal =>
+  typeof value === 'string' && (preciousMetals as readonly string[]).includes(value);
+
+// How the metal is physically held. Exported so the metal section can build
+// its Form ChipRow's `options`.
+export const metalForms = ['bar', 'coin', 'bank_account'] as const;
+
+export type MetalForm = (typeof metalForms)[number];
+
+const isMetalForm = (value: unknown): value is MetalForm =>
+  typeof value === 'string' && (metalForms as readonly string[]).includes(value);
+
+// The unit a lot's `quantityDelta` is denominated in. 'g' values convert to
+// troy ounces (the unit NBU quotes against) via the fixed constant
+// `priced-value.ts` multiplies by; 'oz' needs no conversion.
+export const metalUnits = ['g', 'oz'] as const;
+
+export type MetalUnit = (typeof metalUnits)[number];
+
+const isMetalUnit = (value: unknown): value is MetalUnit =>
+  typeof value === 'string' && (metalUnits as readonly string[]).includes(value);
+
+// A plain (unsigned) decimal string, matching the `quantityDelta`/`purity`
+// money-precision rule (kiko-domain): a scaled decimal STRING, never a
+// `number`, so an arbitrary-precision purity fraction never drifts through
+// float math. Unlike `lots.ts`'s `SIGNED_DECIMAL_PATTERN`, a purity can never
+// be negative, so no leading '-' is accepted.
+const PLAIN_DECIMAL_PATTERN = /^\d+(\.\d+)?$/;
+
+const isPlainDecimalString = (value: unknown): value is string =>
+  typeof value === 'string' && PLAIN_DECIMAL_PATTERN.test(value);
+
+export type MetalMeta = {
+  metal: Metal;
+  form: MetalForm;
+  unit: MetalUnit;
+  purity: string;
+  lots: Lot[];
+};
+
+export const asMetalMeta = (value: unknown): MetalMeta | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const { metal, form, unit, purity, lots } = value;
+  const parsedLots = asLots(lots);
+
+  if (
+    !isMetal(metal) ||
+    !isMetalForm(form) ||
+    !isMetalUnit(unit) ||
+    !isPlainDecimalString(purity) ||
+    parsedLots === null
+  ) {
+    return null;
+  }
+
+  return { metal, form, unit, purity, lots: parsedLots };
+};
+
+// The closed set of `loan` kinds: the last, `personal`, is
+// "money the user owes a person" — an informal debt, typically `schedule:
+// 'none'`, but not enforced to be (a person-to-person loan can still carry
+// interest and a schedule).
+export const loanKinds = ['mortgage', 'car_loan', 'consumer_loan', 'personal'] as const;
+
+export type LoanKind = (typeof loanKinds)[number];
+
+const isLoanKind = (value: unknown): value is LoanKind =>
+  typeof value === 'string' && (loanKinds as readonly string[]).includes(value);
+
+// `annuity`/`differentiated` compute the outstanding balance at read time from
+// the schedule math (`src/holdings/loan-schedule/`); `none` is an informal
+// debt whose outstanding is a manual series, the same `holding:<id>`
+// price-point mechanism Property uses (kiko-pricing).
+export const loanSchedules = ['annuity', 'differentiated', 'none'] as const;
+
+export type LoanSchedule = (typeof loanSchedules)[number];
+
+const isLoanSchedule = (value: unknown): value is LoanSchedule =>
+  typeof value === 'string' && (loanSchedules as readonly string[]).includes(value);
+
+export type LoanMeta = {
+  kind: LoanKind;
+  principalMinorUnits: number;
+  startDate: number;
+  // Required by the form unless `schedule === 'none'` (an informal debt has
+  // no known rate/term); left `undefined` for a `none` loan, mirroring
+  // `BondMeta.isin`'s optional-field convention.
+  annualRatePct?: number;
+  termMonths?: number;
+  schedule: LoanSchedule;
+  // The three inputs the automatic loan-payment matcher's own "third
+  // signal" reads (`src/loans/payment-matcher/`) — every one optional,
+  // entered on the loan form, and `undefined` for every loan saved before
+  // this field existed (the same optional-field convention as
+  // `BondMeta.isin` above). `paymentHoldingId` is the holding the user
+  // usually pays this loan FROM; `lenderIban` is compared against a
+  // candidate payment's own `counterIban`. `lenderIban` is the lender's
+  // bank IBAN, not the user's own — never logged (kiko-compliance).
+  paymentHoldingId?: string;
+  lenderName?: string;
+  lenderIban?: string;
+};
+
+export const asLoanMeta = (value: unknown): LoanMeta | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const { kind, principalMinorUnits, startDate, annualRatePct, termMonths, schedule } = value;
+
+  if (
+    !isLoanKind(kind) ||
+    !isNumber(principalMinorUnits) ||
+    !isNumber(startDate) ||
+    !isLoanSchedule(schedule) ||
+    (annualRatePct !== undefined && !isNumber(annualRatePct)) ||
+    (termMonths !== undefined && !isNumber(termMonths))
+  ) {
+    return null;
+  }
+
+  const { paymentHoldingId, lenderName, lenderIban } = value;
+
+  if (
+    (paymentHoldingId !== undefined && typeof paymentHoldingId !== 'string') ||
+    (lenderName !== undefined && typeof lenderName !== 'string') ||
+    (lenderIban !== undefined && typeof lenderIban !== 'string')
+  ) {
+    return null;
+  }
+
+  return {
+    kind,
+    principalMinorUnits,
+    startDate,
+    annualRatePct,
+    termMonths,
+    schedule,
+    paymentHoldingId,
+    lenderName,
+    lenderIban,
   };
 };

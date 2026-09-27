@@ -1,15 +1,16 @@
-import { resolveCategoryDisplay } from '../../categories/category-display';
-import type { Currency } from '../../currency/currency';
-import { Money, toMajor } from '../../currency/money';
-import { convert, type RateTable } from '../../rates/conversion';
-import { canConvert } from '../../rates/net-worth-view';
-import { bucketTimes } from '../buckets';
+import { Money, toMajor } from '@kiko/currency/money';
+import { canConvert } from '@kiko/rates/net-worth-view';
+import type { Currency } from '@kiko/currency/currency';
+import { convert, type RateTable } from '@kiko/rates/conversion';
+import { resolveCategoryDisplay } from '@kiko/categories/category-display';
+
 import {
   type BreakdownTransaction,
   netMagnitudeOf,
   resolveCategoryColor,
   sumReturnsByGroup,
 } from '../category-breakdown';
+import { bucketTimes } from '../buckets';
 
 /**
  * One point on a category's spending line: `amount` is that category's total
@@ -125,8 +126,8 @@ const accumulateSpend = (input: {
   const rangeTo = buckets[buckets.length - 1];
   const totals = new Map<string, TrendAccumulator>();
   // Sum the POSITIVE change-returns per group so a split payment's trend value is
-  // netted by its change (design F2-7), exactly as buildCategoryBreakdown nets
-  // the pie. Returns share the payment's currency AND time for v1, so a payment
+  // netted by its change, exactly as buildCategoryBreakdown nets the pie.
+  // Returns share the payment's currency AND time for v1, so a payment
   // and its returns always land in the same bucket — netting raw minor units
   // in the payment's own currency here is safe. Shares the pie's own helpers.
   const returnsByGroup = sumReturnsByGroup(transactions);
@@ -135,14 +136,17 @@ const accumulateSpend = (input: {
     if (transaction.amountMinorUnits >= 0) {
       continue;
     }
+
     if (excludedIds.has(transaction.id)) {
       continue;
     }
+
     if (!canConvert(transaction.currency, baseCurrency, rateTable)) {
       continue;
     }
 
     const key = groupKey(transaction.category, defaultCategoryKey);
+
     if (excluded.has(key)) {
       continue;
     }
@@ -296,6 +300,7 @@ export type CategoryMeasure = {
 // than two points, or a zero-variance x (unreachable for n >= 2), yields 0.
 const linearRegressionSlope = (ys: number[]): number => {
   const n = ys.length;
+
   if (n < 2) {
     return 0;
   }
@@ -304,6 +309,7 @@ const linearRegressionSlope = (ys: number[]): number => {
   let sumY = 0;
   let sumXY = 0;
   let sumXX = 0;
+
   for (let i = 0; i < n; i += 1) {
     sumX += i;
     sumY += ys[i];

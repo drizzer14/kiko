@@ -44,10 +44,10 @@ export const utf8Encode = (text: string): Uint8Array => {
 };
 
 /**
- * Decodes raw UTF-8 bytes back to text — the inverse of `utf8Encode`, and
- * the fix for the confirmed Hermes bug: this replaces the `bytesToUtf8`
- * (`new TextDecoder().decode()`) call that `.kiko` import used to make on
- * the decrypted plaintext.
+ * Decodes raw UTF-8 bytes back to text — the inverse of `utf8Encode`. Hermes
+ * has no working `TextDecoder` (confirmed on device), so `.kiko` import
+ * decodes the decrypted plaintext through this instead of
+ * `new TextDecoder().decode()`.
  */
 export const utf8Decode = (bytes: Uint8Array): string => {
   let result = '';

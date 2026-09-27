@@ -1,28 +1,27 @@
-import { holdingsRepo } from '@kiko/holdings/repo';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
-import { Alert, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
-
-import { type Currency, currencySymbol } from '../../../currency/currency';
-import { Money } from '../../../currency/money';
-import { parseAmount } from '../../../currency/parse';
-import { useLiveQuery } from '../../../db/use-live-query';
-import Box from '../../../design-system/components/box';
-import Button from '../../../design-system/components/button';
-import Screen from '../../../design-system/components/screen';
-import TextField from '../../../design-system/components/text-field';
-import type { AccountsStackParamList } from '../../../navigation/types';
-
-import DateField from '../date-field';
-import { groupAmount } from '../amount-format/amount-format';
-import { useSubmitOnce } from '../use-submit-once/use-submit-once';
+import { useLiveQuery } from '@kiko/db';
+import { Money } from '@kiko/currency/money';
 import {
   useHeaderInset,
   scrollToField,
   type FieldInstance,
-} from '../scroll-to-field/scroll-to-field';
+} from '@kiko/design-system/scroll-to-field';
+import { useTranslation } from 'react-i18next';
+import { type FC, useRef, useState } from 'react';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { parseAmount } from '@kiko/currency/parse';
+import Box from '@kiko/design-system/components/box';
+import DateField from '@kiko/screens/forms/date-field';
+import Button from '@kiko/design-system/components/button';
+import Screen from '@kiko/design-system/components/screen';
+import { groupAmount } from '@kiko/screens/forms/amount-format';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import TextField from '@kiko/design-system/components/text-field';
+import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
+import type { AccountsStackParamList } from '@kiko/navigation/types';
+import { type Currency, currencySymbol } from '@kiko/currency/currency';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
 type ContributionFormScreenProps = NativeStackScreenProps<
   AccountsStackParamList,
@@ -82,6 +81,7 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
     // field, and `!(NaN > 0)` rejects it: require a strictly positive major
     // amount before persisting anything.
     const majorAmount = parseAmount(amount);
+
     if (!(majorAmount > 0)) {
       setAttemptedSave(true);
       scrollToField(
@@ -102,7 +102,8 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
       await holdingsRepo.appendDepositContribution(holding.id, { amountMinorUnits, date });
     } catch {
       // Keep the screen open on failure so the entered values are not lost.
-      Alert.alert(t('forms.contribution.errorTitle'), t('forms.contribution.errorMessage'));
+      alertOnCatch(t, 'forms.contribution.errorTitle', 'forms.contribution.errorMessage');
+
       return;
     }
     navigation.goBack();
@@ -142,7 +143,13 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
           />
         </View>
 
-        <DateField label={t('forms.fields.date')} value={date} onChange={setDate} />
+        <DateField
+          label={t('forms.fields.date')}
+          sheetTitle={t('forms.fields.dateSheetTitle')}
+          value={date}
+          onChange={setDate}
+          placeholder={t('forms.fields.selectDatePlaceholder')}
+        />
       </Box>
     </Screen>
   );

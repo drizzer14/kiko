@@ -1,12 +1,12 @@
-import Box from '@kiko/design-system/components/box';
-import SymbolIcon from '@kiko/design-system/components/symbol';
-import Text from '@kiko/design-system/components/text';
 import type { FC } from 'react';
-import { useTranslation } from 'react-i18next';
 import { Pressable } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import SymbolIcon from '@kiko/design-system/components/symbol';
 
-import type { CalendarHeaderProps } from './calendar-header.props';
 import { styles } from './calendar-header.styles';
+import type { CalendarHeaderProps } from './calendar-header.props';
 
 const MONTH_KEYS = [
   'january',
@@ -23,20 +23,30 @@ const MONTH_KEYS = [
   'december',
 ] as const;
 
-// Sunday-first, matching react-native-calendars' default firstDay (0) and the
-// column order of the day grid this header sits above.
-const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+// Sunday-first — react-native-calendars' own default firstDay (0) and the
+// column order of the day grid this header sits above when firstDay is 0.
+const SUNDAY_FIRST_WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+
+// The weekday-label row's column order for a given `firstDay`: react-native-
+// calendars rotates its day grid by the SAME prop (`page(currentMonth,
+// firstDay, ...)`, `src/calendar/index.js`), so this header's own label row
+// must rotate identically or the labels drift out from under their columns.
+const weekdayKeysFor = (firstDay: 0 | 1): readonly (typeof SUNDAY_FIRST_WEEKDAY_KEYS)[number][] =>
+  firstDay === 1
+    ? [...SUNDAY_FIRST_WEEKDAY_KEYS.slice(1), ...SUNDAY_FIRST_WEEKDAY_KEYS.slice(0, 1)]
+    : SUNDAY_FIRST_WEEKDAY_KEYS;
 
 // Replaces react-native-calendars' default header. The library hands it the
 // visible month and an `addMonth(count)` navigator; the double-chevron controls
 // step a full year (±12), the single-chevron controls one month (±1). Because a
 // custom header also owns the weekday labels the default header would render,
 // this re-renders them below the title so the day-of-week row is preserved.
-const CalendarHeader: FC<CalendarHeaderProps> = ({ month, addMonth }) => {
+const CalendarHeader: FC<CalendarHeaderProps> = ({ month, addMonth, firstDay = 0 }) => {
   const { t } = useTranslation();
   const visible = month ?? new Date();
   const title = `${t(`calendar.month.${MONTH_KEYS[visible.getMonth()]}`)} ${visible.getFullYear()}`;
   const step = (count: number) => () => addMonth?.(count);
+  const weekdayKeys = weekdayKeysFor(firstDay);
 
   return (
     <Box style={styles.header}>
@@ -86,8 +96,8 @@ const CalendarHeader: FC<CalendarHeaderProps> = ({ month, addMonth }) => {
         </Box>
       </Box>
 
-      <Box direction="row" style={styles.weekRow}>
-        {WEEKDAY_KEYS.map((day) => (
+      <Box direction="row" style={styles.weekRow} testID="calendar-header-weekdays">
+        {weekdayKeys.map((day) => (
           <Box key={day} style={styles.weekday}>
             <Text variant="caption" tone="textSecondary">
               {t(`calendar.weekday.${day}`)}

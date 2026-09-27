@@ -1,22 +1,21 @@
 // Must run first: configures the Unistyles StyleSheet (themes) as a side
 // effect before any component that calls StyleSheet.create is imported.
-import './src/design-system/unistyles';
+import '@kiko/design-system/unistyles';
 // Must run first alongside Unistyles: initializes the i18next instance with the
 // device language as a side effect, before any component that calls
 // useTranslation renders.
-import './src/i18n';
+import '@kiko/i18n/init';
 
-import { NavigationContainer } from '@react-navigation/native';
 import type { FC } from 'react';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { LockGate } from '@kiko/auth';
+import { useAutoSync } from '@kiko/sync/use-auto-sync';
+import RootNavigator from '@kiko/navigation/root-navigator';
+import MigrationsGate from '@kiko/migration/migrations-gate';
+import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-
-import LockGate from './src/auth/lock-gate/lock-gate.component';
-import { useSyncLanguageWithSettings } from './src/i18n/use-sync-language-with-settings';
-import MigrationsGate from './src/migration/migrations-gate';
-import { navigationDarkTheme } from './src/navigation/dark-theme';
-import RootNavigator from './src/navigation/root.navigator';
-import { useAutoSync } from './src/sync/use-auto-sync';
+import { navigationDarkTheme } from '@kiko/navigation/dark-theme';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useSyncLanguageWithSettings } from '@kiko/i18n/use-sync-language-with-settings';
 
 /**
  * Rendered only once `MigrationsGate` reports success, so its mount is the

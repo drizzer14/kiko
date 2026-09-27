@@ -1,15 +1,15 @@
-import type { HoldingRow } from '../../db/schema';
+import type { HoldingRow } from '@kiko/db';
 
-import type { BinanceDeposit, BinanceWithdrawal, HistoryWindow } from './binance.client';
-import { HISTORY_PAGE_LIMIT } from './binance.client';
 import {
   BINANCE_REQUEST_INTERVAL_MS,
   type BinanceTransactionRow,
-  type BinanceTxSyncDeps,
+  type BinanceTransactionSyncDeps,
   HISTORY_FLOOR_MS,
   parseWithdrawTime,
   syncBinanceTransactions,
 } from './binance.transactions';
+import { HISTORY_PAGE_LIMIT } from './binance.client';
+import type { BinanceDeposit, BinanceWithdrawal, HistoryWindow } from './binance.client';
 
 const NOW = 1_704_326_400_000; // 2024-01-04T00:00:00Z
 const DAY = 86_400_000;
@@ -49,7 +49,7 @@ const withdrawal = (over: Partial<BinanceWithdrawal> = {}): BinanceWithdrawal =>
 const emptyDepositFetch = () =>
   jest.fn(async (_apiKey: string, _secret: string, _window: HistoryWindow) => []);
 
-const makeDeps = (over: Partial<BinanceTxSyncDeps> = {}): BinanceTxSyncDeps => ({
+const makeDeps = (over: Partial<BinanceTransactionSyncDeps> = {}): BinanceTransactionSyncDeps => ({
   now: () => NOW,
   sleep: async () => undefined,
   fetchImpl: (async () => ({})) as unknown as typeof fetch,
@@ -93,7 +93,7 @@ describe('syncBinanceTransactions', () => {
         amountMinorUnits: 50_000_000, // +0.5 BTC in satoshis
         time: NOW - DAY,
         source: 'binance',
-        // Phase 6: the synced external id is namespaced by the target account id
+        // The synced external id is namespaced by the target account id
         // (`${accountId}:deposit:<id>`), so two Binance connections cannot collide
         // on the GLOBAL (source, external_id) index — Binance record ids are only
         // per-account unique.
@@ -306,7 +306,7 @@ describe('syncBinanceTransactions', () => {
     expect(secondRun[0].externalId).toBe('acc-1:deposit:42');
   });
 
-  // Phase 6 / Risk R-1: Binance deposit/withdrawal record ids are only
+  // Binance deposit/withdrawal record ids are only
   // per-account unique, so two connections can each emit `deposit:<id>` with the
   // SAME raw id. Namespacing by the target account id keeps their external ids
   // distinct, so the global (source, external_id) upsert cannot refresh the wrong

@@ -1,8 +1,11 @@
-import type { AccountRow, HoldingRow } from '../../db/schema';
-import { defaultAccountColor } from '../../holdings/entity-colors';
+import type { AccountRow, HoldingRow } from '@kiko/db';
+import { buildPriceBook } from '@kiko/prices/price-book';
+import { holdingInstrument } from '@kiko/prices/instrument';
+import { defaultAccountColor } from '@kiko/holdings/entity-colors';
 
 import {
   buildAccountContribution,
+  buildDebtTotal,
   type ContributionAccount,
   type ContributionHolding,
 } from './account-contribution';
@@ -19,6 +22,7 @@ const account = (
 const holding = (
   over: Partial<HoldingRow> & Pick<HoldingRow, 'accountId'>,
 ): ContributionHolding => ({
+  id: 'h1',
   currency: 'UAH',
   type: 'cash',
   balanceMinorUnits: 0,
@@ -34,7 +38,7 @@ describe('buildAccountContribution', () => {
       holding({ accountId: 'b', currency: 'USD', balanceMinorUnits: 10_000 }), // 100 * 40 = 400_000
       holding({ accountId: 'c', currency: 'EUR', balanceMinorUnits: 20_000 }), // 200 * 45 = 900_000
     ];
-    const rateTable = { 'USD:UAH': 40, 'EUR:UAH': 45 };
+    const rateTable = { USD: 40, EUR: 45 };
 
     const slices = buildAccountContribution({
       accounts,
@@ -88,7 +92,7 @@ describe('buildAccountContribution', () => {
     const slices = buildAccountContribution({
       accounts,
       holdings,
-      rateTable: { 'USD:UAH': 40 },
+      rateTable: { USD: 40 },
       baseCurrency: 'UAH',
       now: NOW,
     });
@@ -173,5 +177,253 @@ describe('buildAccountContribution', () => {
     });
 
     expect(slices.map((slice) => slice.accountId)).toEqual(['a']);
+  });
+
+  // A debt account's net worth is a loan's negative held value
+  // (`holding-value.ts`) — it must never surface as a pie slice (a negative
+  // share would break the ring), same as the existing zero-net-worth filter.
+  it('excludes a debt account (negative net worth) from the pie — never a negative slice', () => {
+    const accounts = [account('a', 'Cash'), account('d', 'Mortgage', { kind: 'debt' })];
+    const holdings = [
+      holding({ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_000 }),
+      holding({
+        id: 'loan-1',
+        accountId: 'd',
+        type: 'loan',
+        currency: 'UAH',
+        metadata: {
+          kind: 'mortgage',
+          principalMinorUnits: 500_000,
+          startDate: NOW,
+          annualRatePct: 10,
+          termMonths: 12,
+          schedule: 'annuity',
+        },
+      }),
+    ];
+
+    const slices = buildAccountContribution({
+      accounts,
+      holdings,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      now: NOW,
+    });
+
+    expect(slices.map((slice) => slice.accountId)).toEqual(['a']);
+    expect(slices.every((slice) => slice.amount > 0)).toBe(true);
+  });
+
+  // The account pie is ASSETS ONLY — a
+  // slice sums only its POSITIVE holding values; a negative holding (a
+  // credit-card debit balance) never reduces it. An account whose
+  // only holding is negative therefore has nothing positive to show at all.
+  it('excludes an account whose only holding is a negative (credit-card debt) balance from the pie', () => {
+    const accounts = [account('a', 'Card')];
+    const holdings = [
+      holding({ accountId: 'a', type: 'card', currency: 'UAH', balanceMinorUnits: -300_000 }),
+    ];
+
+    const slices = buildAccountContribution({
+      accounts,
+      holdings,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      now: NOW,
+    });
+
+    expect(slices).toEqual([]);
+  });
+
+  it('sums ONLY the positive holding values of an account — a negative holding never nets against a positive one', () => {
+    const accounts = [account('a', 'Mixed')];
+    const holdings = [
+      holding({ accountId: 'a', type: 'cash', currency: 'UAH', balanceMinorUnits: 500_000 }),
+      holding({ accountId: 'a', type: 'card', currency: 'UAH', balanceMinorUnits: -300_000 }),
+    ];
+
+    const slices = buildAccountContribution({
+      accounts,
+      holdings,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      now: NOW,
+    });
+
+    // Not 500_000 - 300_000 = 200_000 (a net); the positive cash holding
+    // alone, unreduced by the negative card holding.
+    expect(slices).toEqual([
+      { accountId: 'a', name: 'Mixed', amount: 500_000, share: 1, color: expect.any(String) },
+    ]);
+  });
+
+  // Threading a `PriceBook` through reaches a priced (property_item)
+  // holding's value; with no book it falls back to its lots cost basis.
+  it('values a property_item holding via the PriceBook, falling back to cost basis with no book', () => {
+    const accounts = [account('a', 'Property')];
+    const holdings = [
+      holding({
+        id: 'prop',
+        accountId: 'a',
+        type: 'property_item',
+        currency: 'UAH',
+        metadata: {
+          category: 'real_estate',
+          lots: [{ day: NOW, quantityDelta: '1', costMinorUnits: 500_000 }],
+        },
+      }),
+    ];
+
+    const noBook = buildAccountContribution({
+      accounts,
+      holdings,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      now: NOW,
+    });
+    expect(noBook[0].amount).toBe(500_000);
+
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('prop'),
+        day: NOW,
+        price: '7000',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+    const withBook = buildAccountContribution({
+      accounts,
+      holdings,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      now: NOW,
+      book,
+    });
+    expect(withBook[0].amount).toBe(700_000);
+  });
+});
+
+describe('buildDebtTotal', () => {
+  it('sums every loan holding across accounts, converted to base, as a NEGATIVE total', () => {
+    const holdings = [
+      holding({
+        id: 'loan-1',
+        accountId: 'd',
+        type: 'loan',
+        currency: 'UAH',
+        metadata: {
+          kind: 'mortgage',
+          principalMinorUnits: 500_000,
+          startDate: NOW,
+          annualRatePct: 10,
+          termMonths: 12,
+          schedule: 'annuity',
+        },
+      }),
+      holding({
+        id: 'loan-2',
+        accountId: 'e',
+        type: 'loan',
+        currency: 'USD',
+        metadata: {
+          kind: 'personal',
+          principalMinorUnits: 10_000,
+          startDate: NOW,
+          annualRatePct: 5,
+          termMonths: 6,
+          schedule: 'annuity',
+        },
+      }),
+    ];
+
+    // Queried at each loan's own startDate: outstanding is the full principal,
+    // so each loan's own held value is exactly `-principal`.
+    const total = buildDebtTotal({
+      holdings,
+      rateTable: { USD: 40 },
+      baseCurrency: 'UAH',
+      now: NOW,
+    });
+
+    expect(total.currency).toBe('UAH');
+    expect(total.minorUnits).toBe(-500_000 - 10_000 * 40);
+  });
+
+  it('ignores a POSITIVE non-loan holding entirely — only a negative balance counts as debt', () => {
+    const holdings = [
+      holding({ accountId: 'a', type: 'cash', currency: 'UAH', balanceMinorUnits: 100_000 }),
+    ];
+
+    const total = buildDebtTotal({ holdings, rateTable: {}, baseCurrency: 'UAH', now: NOW });
+
+    expect(total.minorUnits).toBe(0);
+  });
+
+  // "Credit-card negative balances count as debt too." A negative non-loan
+  // holding balance (a card in debit) is not a `loan` holding, but its own
+  // value is negative all the same, so it counts toward the Debts total
+  // exactly like a loan's negative outstanding.
+  it('counts a negative non-loan holding balance (credit-card debt) toward the Debts total', () => {
+    const holdings = [
+      holding({ accountId: 'a', type: 'card', currency: 'UAH', balanceMinorUnits: -300_000 }),
+    ];
+
+    const total = buildDebtTotal({ holdings, rateTable: {}, baseCurrency: 'UAH', now: NOW });
+
+    expect(total.minorUnits).toBe(-300_000);
+  });
+
+  it('sums a loan and a negative non-loan balance together, converted to base', () => {
+    const holdings = [
+      holding({
+        id: 'loan-1',
+        accountId: 'd',
+        type: 'loan',
+        currency: 'UAH',
+        metadata: {
+          kind: 'mortgage',
+          principalMinorUnits: 500_000,
+          startDate: NOW,
+          annualRatePct: 10,
+          termMonths: 12,
+          schedule: 'annuity',
+        },
+      }),
+      holding({ accountId: 'a', type: 'card', currency: 'UAH', balanceMinorUnits: -300_000 }),
+    ];
+
+    const total = buildDebtTotal({ holdings, rateTable: {}, baseCurrency: 'UAH', now: NOW });
+
+    expect(total.minorUnits).toBe(-500_000 - 300_000);
+  });
+
+  it('is 0 when there are no loan holdings at all', () => {
+    const total = buildDebtTotal({ holdings: [], rateTable: {}, baseCurrency: 'UAH', now: NOW });
+
+    expect(total.minorUnits).toBe(0);
+  });
+
+  it('excludes an unconvertible loan holding rather than throwing', () => {
+    const holdings = [
+      holding({
+        id: 'loan-1',
+        accountId: 'd',
+        type: 'loan',
+        currency: 'EUR', // no EUR:UAH rate
+        metadata: {
+          kind: 'mortgage',
+          principalMinorUnits: 500_000,
+          startDate: NOW,
+          annualRatePct: 10,
+          termMonths: 12,
+          schedule: 'annuity',
+        },
+      }),
+    ];
+
+    const total = buildDebtTotal({ holdings, rateTable: {}, baseCurrency: 'UAH', now: NOW });
+
+    expect(total.minorUnits).toBe(0);
   });
 });

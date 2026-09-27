@@ -1,23 +1,24 @@
-// The real `transactionsRepo.addManyDedup` (transactions/repo/transactions.repo.ts)
+// The real `transactionsRepo.importRows` (transactions/repo/transactions.repo.ts)
 // runs through `write`, which op-sqlite's open() blocks under Jest. Mocking
 // `write` to run its callback against a fake in-memory transaction handle
 // lets this test drive the REAL repo function — the real (source,
-// external_id) dedup upsert — without a live database, mirroring
-// `holdings.repo.test.ts`'s fake-transaction-handle pattern: one persistent
-// `store` spans BOTH `importStatement` calls in the re-import test below, the
-// same way that file spans one store across a disconnect-then-reconnect
-// sequence.
-let mockTx: unknown;
-jest.mock('../../db/client', () => {
-  const actual = jest.requireActual('../../db/client');
+// external_id) dedup upsert AND the real balance-write decision — without a
+// live database, mirroring `holdings.repo.test.ts`'s fake-transaction-handle
+// pattern: one persistent `store`/`holding` pair spans BOTH `importStatement`
+// calls in the re-import test below, the same way that file spans one store
+// across a disconnect-then-reconnect sequence.
+let mockDatabaseTransaction: unknown;
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
+
   return {
     ...actual,
-    write: (work: (db: unknown) => unknown) => work(mockTx),
+    write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
   };
 });
 
-// The target holding's OWN currency (Task 3 review, CRITICAL fix) — mocked
-// directly at the repo boundary rather than through the real op-sqlite
+// The target holding's OWN currency — mocked directly at the repo boundary
+// rather than through the real op-sqlite
 // connection, which `write`'s own mock above already bypasses. Defaults to a
 // single UAH `holding-1`, matching every pre-existing fixture below; a test
 // exercising a different holding currency reassigns this before calling
@@ -30,15 +31,26 @@ jest.mock('@kiko/holdings/repo', () => ({
   },
 }));
 
+// The loan auto-link matcher itself is exhaustively unit-tested on its own
+// (`use-loan-auto-link.test.ts`); this file only proves the WIRING — that
+// every `importParsedStatement` caller runs it once the import commits.
+const mockRunLoanAutoLink = jest.fn().mockResolvedValue(undefined);
+jest.mock('@kiko/loans/use-loan-auto-link', () => ({
+  runLoanAutoLink: () => mockRunLoanAutoLink(),
+}));
+
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import readXlsxFile from 'read-excel-file/node';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { accounts, categoryOverrides, holdings, transactions } from '@kiko/db';
+import { ukrsibBusinessFixtureInput } from '@kiko/statement-import/formats/format-test-fixtures';
 
 import { StatementParseError } from '../parser';
-import { categoryOverrides, transactions } from '../../db/schema';
+import { applyColumnMapping } from '../column-mapping';
+import type { ColumnMapping } from '../column-mapping';
 
-import { importStatement } from './import-statement';
+import { importStatement, importParsedStatement } from './import-statement';
 
 const fixtureText = readFileSync(
   path.join(__dirname, '../formats/monobank-csv/__fixtures__/uabean-monobank-sample.csv'),
@@ -46,7 +58,7 @@ const fixtureText = readFileSync(
 );
 const monobankInput = { text: fixtureText, fileName: 'uabean-monobank-sample.csv' };
 
-// The real synthetic PrivatBank fixture (Task 3, `privatbank-xlsx.format.test.ts`'s
+// The real synthetic PrivatBank fixture (`privatbank-xlsx.format.test.ts`'s
 // own fixture-reading pattern) — its 2 resolvable rows are DIFFERENT
 // currencies (row 1: грн -> UAH; row 2: дол -> USD), so importing it exercises
 // the real multi-currency exclusion end to end, through the real
@@ -73,6 +85,7 @@ const readPrivatbankInput = async (): Promise<{
 
 beforeEach(() => {
   mockHoldingRows = [{ id: 'holding-1', currency: 'UAH' }];
+  mockRunLoanAutoLink.mockClear();
 });
 
 // Regression fixture for the occurrence-index bug: two rows identical on
@@ -90,9 +103,10 @@ const duplicateMccInput = {
   fileName: 'duplicate-mcc.csv',
 };
 
-/** A row as `addManyDedup`'s upsert sees it: enough of `TransactionRow` for
- * this fake's (source, externalId) match/refresh. */
-type StoredRow = { id: string; source: string; externalId: string | null } & Record<
+/** A row as `importRows`'s upsert sees it: enough of `TransactionRow` for
+ * this fake's (source, externalId) match/refresh, plus its own `time` (the
+ * fake's newest-existing-time aggregate reads this back). */
+type StoredRow = { id: string; source: string; externalId: string | null; time: number } & Record<
   string,
   unknown
 >;
@@ -135,26 +149,97 @@ const applyUpsertRow = (
   store.transactions.push({ id: nextId(), ...row } as StoredRow);
 };
 
+type FakeHolding = {
+  id: string;
+  currency: string;
+  balanceMinorUnits: number;
+  accountId: string;
+  balanceSetAt: number | null;
+  metadata?: unknown;
+};
+
+const defaultHolding = (overrides: Partial<FakeHolding> = {}): FakeHolding => ({
+  id: 'holding-1',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  accountId: 'acc-1',
+  balanceSetAt: null,
+  metadata: null,
+  ...overrides,
+});
+
+const unsyncedAccount = { institution: null };
+
 /**
- * A minimal in-memory fake for the write-transaction handle
- * `transactionsRepo.addManyDedup` runs against: the name→category rule
- * lookup (`categoryOverrides`) always answers empty (none seeded for this
- * test), the pre-write existing-row read answers with the CURRENT store
- * contents, and the upsert itself is applied for real via `applyUpsertRow` —
- * a row whose (source, externalId) already exists in `store` is refreshed,
- * everything else is a fresh insert.
+ * A full in-memory fake for the write-transaction handle `importRows` runs
+ * against: `categoryOverrides` always answers empty (none seeded for this
+ * test), the `holdings`/`accounts` reads answer the given `holding`/`account`
+ * (`.limit(1)` chained or not — both calling conventions resolve, mirroring
+ * `transactions.repo.test.ts`'s own dual-convention trick), the
+ * newest-existing-time aggregate is computed FRESH from `store.transactions`
+ * at call time (so it reflects only rows already there BEFORE this import's
+ * own upsert runs below), the dedup partition probe answers the CURRENT store
+ * contents, the upsert itself applies for real via `applyUpsertRow`, and a
+ * `holdings` balance write is captured.
  */
-const makeAddManyDedupTx = (store: { transactions: StoredRow[] }) => {
+type ImportTransactionOptions = {
+  store: { transactions: StoredRow[] };
+  holding?: FakeHolding;
+  account?: { institution: string | null };
+};
+
+/** The rows one fake `select(fields).from(table).where(...)` resolves to,
+ * dispatched by table identity — and, for the two no-`.limit()` `transactions`
+ * reads (the sync-boundary aggregate vs. the dedup partition probe), by the
+ * PROJECTED field set (`{ time }` vs `{ source, externalId }`), since both
+ * share the same table identity. The "time" read mirrors the REAL query's
+ * own sync-source filter (`source NOT IN ('manual', 'import')`) — the
+ * hand-set boundary source comes back separately, straight off
+ * `opts.holding.balanceSetAt`. */
+const resolveImportSelect = (
+  options: ImportTransactionOptions,
+  table: unknown,
+  fields: Record<string, unknown> | undefined,
+): unknown[] => {
+  if (table === categoryOverrides) {
+    return [];
+  }
+
+  if (table === holdings) {
+    return options.holding ? [options.holding] : [];
+  }
+
+  if (table === accounts) {
+    return options.account ? [options.account] : [];
+  }
+
+  if (table === transactions && fields && 'time' in fields) {
+    const syncTimes = options.store.transactions
+      .filter((row) => row.source !== 'manual' && row.source !== 'import')
+      .map((row) => row.time);
+
+    return syncTimes.length > 0 ? [{ time: Math.max(...syncTimes) }] : [{ time: null }];
+  }
+
+  return options.store.transactions.map((row) => ({
+    source: row.source,
+    externalId: row.externalId,
+  }));
+};
+
+const makeImportDatabaseTransaction = (
+  options: ImportTransactionOptions,
+): { databaseTransaction: unknown; captured: { holdingSet?: Record<string, unknown> } } => {
   let sequence = 0;
   const nextId = (): string => `row-${++sequence}`;
+  const captured: { holdingSet?: Record<string, unknown> } = {};
+  const resolveRows = (rows: unknown[]) =>
+    Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
 
-  return {
-    select: () => ({
+  const databaseTransaction = {
+    select: (fields?: Record<string, unknown>) => ({
       from: (table: unknown) => ({
-        where: async () =>
-          table === categoryOverrides
-            ? []
-            : store.transactions.map((row) => ({ source: row.source, externalId: row.externalId })),
+        where: () => resolveRows(resolveImportSelect(options, table, fields)),
       }),
     }),
     insert: (table: unknown) => ({
@@ -165,18 +250,33 @@ const makeAddManyDedupTx = (store: { transactions: StoredRow[] }) => {
           }
 
           for (const row of rows) {
-            applyUpsertRow(store, row, set, nextId);
+            applyUpsertRow(options.store, row, set, nextId);
           }
         },
       }),
     }),
+    update: (table: unknown) => ({
+      set: (values: Record<string, unknown>) => {
+        if (table === holdings) {
+          captured.holdingSet = values;
+        }
+
+        return { where: () => Promise.resolve() };
+      },
+    }),
   };
+
+  return { databaseTransaction, captured };
 };
 
 describe('importStatement', () => {
   it('detects the format, maps every row, and imports all of them on a first pass', async () => {
     const store: { transactions: StoredRow[] } = { transactions: [] };
-    mockTx = makeAddManyDedupTx(store);
+    mockDatabaseTransaction = makeImportDatabaseTransaction({
+      store,
+      holding: defaultHolding(),
+      account: unsyncedAccount,
+    }).databaseTransaction;
 
     const result = await importStatement(monobankInput, 'holding-1');
 
@@ -190,12 +290,19 @@ describe('importStatement', () => {
 
   it('imports zero new rows on a re-import of the identical text into the same holding (real dedup)', async () => {
     const store: { transactions: StoredRow[] } = { transactions: [] };
-    mockTx = makeAddManyDedupTx(store);
+    const holding = defaultHolding();
+    mockDatabaseTransaction = makeImportDatabaseTransaction({
+      store,
+      holding,
+      account: unsyncedAccount,
+    }).databaseTransaction;
 
     const first = await importStatement(monobankInput, 'holding-1');
-    const second = await importStatement(monobankInput, 'holding-1');
 
     expect(first.imported).toBe(4);
+
+    const second = await importStatement(monobankInput, 'holding-1');
+
     expect(second.imported).toBe(0);
     expect(second.total).toBe(4);
     // No duplicates accumulated across the two calls — the real
@@ -203,15 +310,19 @@ describe('importStatement', () => {
     expect(store.transactions).toHaveLength(4);
   });
 
-  // Regression test: `seenKeys` used to key on `JSON.stringify(transaction)`
-  // (the whole row), but `computeDedupKey` folds only on (holding, time,
-  // amount, normalized description) — it ignores `mcc`. Two rows identical
-  // on that tuple but differing only on `mcc` each got occurrenceIndex 0
-  // under the old code, so `computeDedupKey` produced the SAME externalId
-  // for both and the second silently overwrote the first.
+  // `seenKeys` must key on `computeDedupKey`'s own (holding, time, amount,
+  // normalized description) fold, never on `JSON.stringify(transaction)`
+  // (the whole row) — `computeDedupKey` ignores `mcc`, so two rows identical
+  // on that tuple but differing only on `mcc` would both land at
+  // occurrenceIndex 0 and produce the SAME externalId, the second silently
+  // overwriting the first, if `seenKeys` folded on anything finer-grained.
   it('keeps two rows identical on (holding, time, amount, description) but differing only on mcc as distinct rows', async () => {
     const store: { transactions: StoredRow[] } = { transactions: [] };
-    mockTx = makeAddManyDedupTx(store);
+    mockDatabaseTransaction = makeImportDatabaseTransaction({
+      store,
+      holding: defaultHolding(),
+      account: unsyncedAccount,
+    }).databaseTransaction;
 
     const result = await importStatement(duplicateMccInput, 'holding-1');
 
@@ -224,8 +335,12 @@ describe('importStatement', () => {
 
   it('throws StatementParseError for an unrecognized file before calling the repo', async () => {
     const store: { transactions: StoredRow[] } = { transactions: [] };
-    mockTx = makeAddManyDedupTx(store);
-    const addManyDedup = jest.spyOn(transactionsRepo, 'addManyDedup');
+    mockDatabaseTransaction = makeImportDatabaseTransaction({
+      store,
+      holding: defaultHolding(),
+      account: unsyncedAccount,
+    }).databaseTransaction;
+    const importRows = jest.spyOn(transactionsRepo, 'importRows');
 
     await expect(
       importStatement(
@@ -234,21 +349,112 @@ describe('importStatement', () => {
       ),
     ).rejects.toThrow(StatementParseError);
 
-    expect(addManyDedup).not.toHaveBeenCalled();
+    expect(importRows).not.toHaveBeenCalled();
     expect(store.transactions).toHaveLength(0);
 
-    addManyDedup.mockRestore();
+    importRows.mockRestore();
   });
 
-  // Task 3 review, CRITICAL: a PrivatBank file can mix currencies per row
-  // (one card per currency) — importing it into a holding of ONE of those
+  describe('importParsedStatement', () => {
+    it('writes rows with source "import" and returns the given formatId for a hand-built column-mapping ParsedStatement, excluding a wrong-currency row', async () => {
+      const store: { transactions: StoredRow[] } = { transactions: [] };
+      mockDatabaseTransaction = makeImportDatabaseTransaction({
+        store,
+        holding: defaultHolding(),
+        account: unsyncedAccount,
+      }).databaseTransaction;
+      mockHoldingRows = [{ id: 'holding-1', currency: 'UAH' }];
+
+      const parsed = {
+        formatId: 'column-mapping' as const,
+        account: { currency: 'UAH' as const },
+        transactions: [
+          {
+            currency: 'UAH' as const,
+            amountMinorUnits: -1_000,
+            timeSeconds: 1_700_000_000,
+            description: 'Coffee',
+          },
+          {
+            currency: 'USD' as const,
+            amountMinorUnits: 500,
+            timeSeconds: 1_700_000_100,
+            description: 'Wrong currency',
+          },
+        ],
+      };
+
+      const result = await importParsedStatement(parsed, 'holding-1');
+
+      expect(result.formatId).toBe('column-mapping');
+      expect(result.total).toBe(2);
+      expect(result.imported).toBe(1);
+      expect(result.skippedWrongCurrency).toBe(1);
+      // The result names WHICH currency was skipped, not just how many rows.
+      expect(result.skippedWrongCurrencyCodes).toEqual(['USD']);
+      expect(store.transactions).toHaveLength(1);
+      expect(store.transactions[0].source).toBe('import');
+    });
+
+    // import-balance commit B: the column-mapping screen's optional "Balance" column role,
+    // end to end — a real `applyColumnMapping` output (not a hand-built
+    // `ParsedStatement`) carries a `closingBalance` derived from the mapped
+    // Balance column, and `importParsedStatement` -> `transactionsRepo.importRows`
+    // applies it exactly like a dedicated format's own closing balance would.
+    it('a mapped Balance column flows through to a real import and lands the holding on the closing balance', async () => {
+      const store: { transactions: StoredRow[] } = { transactions: [] };
+      const holding = defaultHolding({ balanceMinorUnits: 0 });
+      const { databaseTransaction, captured } = makeImportDatabaseTransaction({
+        store,
+        holding,
+        account: unsyncedAccount,
+      });
+      mockDatabaseTransaction = databaseTransaction;
+      mockHoldingRows = [{ id: 'holding-1', currency: 'UAH' }];
+
+      const mapping: ColumnMapping = {
+        headerRowIndex: 0,
+        decimalSeparator: '.',
+        dateColumn: 0,
+        dateFormat: 'DD.MM.YYYY HH:MM:SS',
+        amount: { mode: 'single', column: 2 },
+        descriptionColumn: 1,
+        currency: { mode: 'fixed', currency: 'UAH' },
+        balanceColumn: 3,
+      };
+      const rows = [
+        ['Date', 'Description', 'Amount', 'Balance'],
+        ['01.07.2025 10:00:00', 'Coffee', '-100.00', '900.00'],
+        ['02.07.2025 10:00:00', 'Salary', '5000.00', '5900.00'],
+      ];
+      const { statement } = applyColumnMapping(rows, mapping);
+
+      const result = await importParsedStatement(statement, 'holding-1');
+
+      expect(result.imported).toBe(2);
+      // A virgin holding has no boundary at all, so the mapped closing
+      // balance (5,900.00 UAH -> 590_000 minor units, as of the newest row's
+      // own time) applies outright, over the plain net-delta fallback.
+      expect(captured.holdingSet).toEqual({
+        balanceMinorUnits: 590_000,
+        balanceSetAt: 1_751_450_400_000,
+      });
+    });
+  });
+
+  // A PrivatBank file can mix currencies per row (one card per currency) —
+  // importing it into a holding of ONE of those
   // currencies must write ONLY the matching rows, at their EXACT amount, and
   // exclude (never convert, never write verbatim) every other-currency row.
   describe('multi-currency exclusion (no FX conversion, no cross-currency corruption)', () => {
     it('imports only the UAH rows into a UAH holding, at their exact amount, and counts the rest as skipped', async () => {
       const store: { transactions: StoredRow[] } = { transactions: [] };
-      mockTx = makeAddManyDedupTx(store);
       mockHoldingRows = [{ id: 'holding-1', currency: 'UAH' }];
+      mockDatabaseTransaction = makeImportDatabaseTransaction({
+        store,
+        holding: defaultHolding({ currency: 'UAH' }),
+        account: unsyncedAccount,
+      }).databaseTransaction;
 
       const result = await importStatement(await readPrivatbankInput(), 'holding-1');
 
@@ -267,8 +473,12 @@ describe('importStatement', () => {
 
     it('imports only the USD row into a USD holding (the reverse split)', async () => {
       const store: { transactions: StoredRow[] } = { transactions: [] };
-      mockTx = makeAddManyDedupTx(store);
       mockHoldingRows = [{ id: 'holding-1', currency: 'USD' }];
+      mockDatabaseTransaction = makeImportDatabaseTransaction({
+        store,
+        holding: defaultHolding({ currency: 'USD' }),
+        account: unsyncedAccount,
+      }).databaseTransaction;
 
       const result = await importStatement(await readPrivatbankInput(), 'holding-1');
 
@@ -282,18 +492,246 @@ describe('importStatement', () => {
 
     it('throws when the target holding cannot be found, writing nothing', async () => {
       const store: { transactions: StoredRow[] } = { transactions: [] };
-      mockTx = makeAddManyDedupTx(store);
       mockHoldingRows = [];
-      const addManyDedup = jest.spyOn(transactionsRepo, 'addManyDedup');
+      mockDatabaseTransaction = makeImportDatabaseTransaction({
+        store,
+        holding: defaultHolding(),
+        account: unsyncedAccount,
+      }).databaseTransaction;
+      const importRows = jest.spyOn(transactionsRepo, 'importRows');
 
       await expect(importStatement(monobankInput, 'missing-holding')).rejects.toThrow(
         'Target holding not found: missing-holding',
       );
 
-      expect(addManyDedup).not.toHaveBeenCalled();
+      expect(importRows).not.toHaveBeenCalled();
       expect(store.transactions).toHaveLength(0);
 
-      addManyDedup.mockRestore();
+      importRows.mockRestore();
     });
+  });
+
+  // An import-only holding's displayed balance stayed 0 forever, because the
+  // old code never wrote to `holdings` at all. `holdingValueBreakdown`/
+  // `guardedNetWorth` (the Home net-worth path) read
+  // `holding.balanceMinorUnits` verbatim (`holding-value.ts` `flat()`), so
+  // proving the repo's write here is the same proof for Home.
+  describe('balance write (net of genuinely new rows at/after the boundary, plus the closing-balance override)', () => {
+    // Ukrsibbank business CSV carries no closing balance at all (its own
+    // format doc comment; see `ParsedStatement.closingBalance`), so this
+    // isolates the boundary's plain net-delta arithmetic with no closing-balance
+    // interference — unlike Monobank CSV, which always carries one and, for
+    // a virgin (no-history) holding, is always eligible to apply outright
+    // (see the closing-balance tests below and `transactions.repo.test.ts`'s
+    // "treats a holding with no prior transactions as always eligible").
+    it('moves a 0-balance holding to the net of the imported rows on a first import', async () => {
+      const store: { transactions: StoredRow[] } = { transactions: [] };
+      const holding = defaultHolding({ balanceMinorUnits: 0 });
+      const { databaseTransaction, captured } = makeImportDatabaseTransaction({
+        store,
+        holding,
+        account: unsyncedAccount,
+      });
+      mockDatabaseTransaction = databaseTransaction;
+
+      const result = await importStatement(ukrsibBusinessFixtureInput, 'holding-1');
+
+      // 2 UAH rows land (-25_000 debit, +500_000 credit); the 2 USD rows are
+      // excluded as wrong-currency. Net = -25_000 + 500_000 = 475_000.
+      expect(result.skippedWrongCurrency).toBe(2);
+      expect(captured.holdingSet).toEqual({ balanceMinorUnits: 475_000 });
+    });
+
+    it('leaves the balance untouched on a re-import of the identical file (net of new rows is 0)', async () => {
+      const store: { transactions: StoredRow[] } = { transactions: [] };
+      const holding = defaultHolding({ balanceMinorUnits: 0 });
+      mockDatabaseTransaction = makeImportDatabaseTransaction({
+        store,
+        holding,
+        account: unsyncedAccount,
+      }).databaseTransaction;
+
+      await importStatement(ukrsibBusinessFixtureInput, 'holding-1');
+      // The fake commits `captured.holdingSet` to the SAME `holding` object a
+      // real op-sqlite transaction would have, so the second call's balance
+      // read sees the first call's write.
+      holding.balanceMinorUnits = 475_000;
+
+      const second = makeImportDatabaseTransaction({ store, holding, account: unsyncedAccount });
+      mockDatabaseTransaction = second.databaseTransaction;
+
+      const result = await importStatement(ukrsibBusinessFixtureInput, 'holding-1');
+
+      expect(result.imported).toBe(0);
+      expect(second.captured.holdingSet).toBeUndefined();
+    });
+
+    it('sets a VIRGIN (no-history) holding straight to a real closing-balance-carrying import’s own closing balance', async () => {
+      // The exact shape of the bug report's repro: a holding created purely
+      // to receive an import, never touched by anything else. With no prior
+      // transaction to compare against, Monobank CSV's own closing balance
+      // (the bank's ground truth) applies outright rather than the net-delta
+      // fallback.
+      const store: { transactions: StoredRow[] } = { transactions: [] };
+      const holding = defaultHolding({ balanceMinorUnits: 0 });
+      const { databaseTransaction, captured } = makeImportDatabaseTransaction({
+        store,
+        holding,
+        account: unsyncedAccount,
+      });
+      mockDatabaseTransaction = databaseTransaction;
+
+      await importStatement(monobankInput, 'holding-1');
+
+      // Applying the closing balance also stamps `balanceSetAt` — the
+      // fixture's own last row's time — as this holding's boundary for a
+      // later import.
+      expect(captured.holdingSet).toEqual({
+        balanceMinorUnits: 10_000_000,
+        balanceSetAt: 1_683_912_636_000,
+      });
+    });
+
+    it('never moves a SYNCED holding’s balance, even though its new rows still import', async () => {
+      const store: { transactions: StoredRow[] } = { transactions: [] };
+      const holding = defaultHolding({
+        balanceMinorUnits: 0,
+        metadata: { monobankId: 'mono-1' },
+      });
+      const { databaseTransaction, captured } = makeImportDatabaseTransaction({
+        store,
+        holding,
+        account: { institution: 'monobank' },
+      });
+      mockDatabaseTransaction = databaseTransaction;
+
+      const result = await importStatement(monobankInput, 'holding-1');
+
+      expect(result.imported).toBe(4);
+      expect(store.transactions).toHaveLength(4);
+      // The sync pipeline stays the sole owner of this holding's balance.
+      expect(captured.holdingSet).toBeUndefined();
+    });
+
+    it('wrong-currency rows contribute 0 to the balance delta (excluded before the repo ever sees them)', async () => {
+      const store: { transactions: StoredRow[] } = { transactions: [] };
+      // The real PrivatBank fixture's 2 resolvable rows are different
+      // currencies (UAH -123.45, USD +50.00) — importing into a UAH holding
+      // must move the balance by ONLY the UAH row's exact amount, never the
+      // USD row's minor units (a ~40x cross-currency corruption if it did).
+      mockHoldingRows = [{ id: 'holding-1', currency: 'UAH' }];
+      const holding = defaultHolding({ currency: 'UAH', balanceMinorUnits: 0 });
+      const { databaseTransaction, captured } = makeImportDatabaseTransaction({
+        store,
+        holding,
+        account: unsyncedAccount,
+      });
+      mockDatabaseTransaction = databaseTransaction;
+
+      const result = await importStatement(await readPrivatbankInput(), 'holding-1');
+
+      expect(result.skippedWrongCurrency).toBe(1);
+      expect(captured.holdingSet).toEqual({ balanceMinorUnits: -12_345 });
+    });
+
+    it('sets the balance to the closing balance when the statement is at or after the hand-set boundary', async () => {
+      const store: { transactions: StoredRow[] } = { transactions: [] };
+      // A hand-set balance well before the fixture's own dates
+      // (`balanceSetAt`, not a seeded ledger row — see `holdings.repo.test.ts`
+      // for `holdingsRepo.create`/`updateWithBalanceDelta` writing it for real).
+      const holding = defaultHolding({ balanceMinorUnits: -999_999, balanceSetAt: 1 });
+      const { databaseTransaction, captured } = makeImportDatabaseTransaction({
+        store,
+        holding,
+        account: unsyncedAccount,
+      });
+      mockDatabaseTransaction = databaseTransaction;
+
+      await importStatement(monobankInput, 'holding-1');
+
+      // Monobank CSV's closing balance is the fixture's last row's own
+      // "Залишок після операції": 100000.00 UAH -> 10_000_000 minor units —
+      // NOT base + net (which would be -999_999 + -21_794). Applying it also
+      // moves `balanceSetAt` to that same instant.
+      expect(captured.holdingSet).toEqual({
+        balanceMinorUnits: 10_000_000,
+        balanceSetAt: 1_683_912_636_000,
+      });
+    });
+
+    // A statement entirely OLDER than the holding's hand-set boundary is
+    // history from end to end — its own closing balance is ignored, and its
+    // rows contribute 0 to the balance (they still land as real ledger
+    // rows). A boundary newer than every date in the Monobank fixture
+    // (which ends 2023-05-12) makes the statement the older one.
+    it('treats an entirely OLDER statement as history: its closing balance is ignored, its rows land but move nothing', async () => {
+      const store: { transactions: StoredRow[] } = { transactions: [] };
+      const holding = defaultHolding({
+        balanceMinorUnits: 500_000,
+        balanceSetAt: Date.UTC(2025, 0, 1),
+      });
+      const { databaseTransaction, captured } = makeImportDatabaseTransaction({
+        store,
+        holding,
+        account: unsyncedAccount,
+      });
+      mockDatabaseTransaction = databaseTransaction;
+
+      const result = await importStatement(monobankInput, 'holding-1');
+
+      // All 4 rows still land as ledger history (imported: 4) — the
+      // fixture's own closing balance (10_000_000) is ignored (as before),
+      // and every row is also dated before the boundary, so the net-delta
+      // fallback adds 0: the balance stays exactly 500_000.
+      expect(result.imported).toBe(4);
+      expect(store.transactions).toHaveLength(4);
+      expect(captured.holdingSet).toBeUndefined();
+    });
+  });
+});
+
+// Both `importParsedStatement` callers (the dedicated `importStatement`
+// above, and the generic column-mapping import, which calls
+// `importParsedStatement` directly) fan through this ONE function, so
+// wiring the matcher inside it alone covers both.
+describe('importParsedStatement runs the loan auto-link matcher', () => {
+  it('runs it once after a dedicated (importStatement) import commits', async () => {
+    const store: { transactions: StoredRow[] } = { transactions: [] };
+    const { databaseTransaction } = makeImportDatabaseTransaction({
+      store,
+      holding: defaultHolding(),
+      account: unsyncedAccount,
+    });
+    mockDatabaseTransaction = databaseTransaction;
+
+    await importStatement(monobankInput, 'holding-1');
+
+    expect(mockRunLoanAutoLink).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs it once after a column-mapping (direct importParsedStatement) import commits', async () => {
+    const store: { transactions: StoredRow[] } = { transactions: [] };
+    const { databaseTransaction } = makeImportDatabaseTransaction({
+      store,
+      holding: defaultHolding(),
+      account: unsyncedAccount,
+    });
+    mockDatabaseTransaction = databaseTransaction;
+    const parsed = {
+      formatId: 'column-mapping' as const,
+      account: { currency: 'UAH' as const },
+      transactions: [
+        {
+          currency: 'UAH' as const,
+          amountMinorUnits: -1_000,
+          timeSeconds: 1_700_000_000,
+          description: 'Coffee',
+        },
+      ],
+    };
+
+    await importParsedStatement(parsed, 'holding-1');
+
+    expect(mockRunLoanAutoLink).toHaveBeenCalledTimes(1);
   });
 });

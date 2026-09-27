@@ -1,10 +1,10 @@
 import { utf8ToBytes } from '@noble/ciphers/utils.js';
 
-import { decodeBase64ToBytes, encodeBytesToBase64 } from './base64/base64';
-import { decryptEnvelope, encryptEnvelope } from './crypto/envelope';
-import { generateExportKey } from './crypto/generate-key';
-import type { ExportPayload } from './payload';
 import { utf8Decode } from './utf8/utf8';
+import { generateExportKey } from './crypto/generate-key';
+import type { ExportPayload, ExportSecrets } from './payload';
+import { decryptEnvelope, encryptEnvelope } from './crypto/envelope';
+import { decodeBase64ToBytes, encodeBytesToBase64 } from './base64/base64';
 
 const fixturePayload = (): ExportPayload => ({
   exportedAt: 1700000000000,
@@ -53,6 +53,9 @@ const fixturePayload = (): ExportPayload => ({
         counterIban: null,
         exchangeCounterpartHoldingId: null,
         changeGroupId: null,
+        loanHoldingId: null,
+        loanLinkSource: null,
+        loanLinkRejected: false,
         comment: null,
         source: 'manual',
         externalId: null,
@@ -86,6 +89,7 @@ const fixturePayload = (): ExportPayload => ({
         trendCategoryKeys: null,
         trendFilter: null,
         failedSyncMonobankIds: null,
+        statementMappings: null,
       } as never,
     ],
     syncState: [
@@ -109,9 +113,32 @@ const fixturePayload = (): ExportPayload => ({
         updatedAt: 1700000000000,
       } as never,
     ],
+    pricePoints: [
+      {
+        instrument: 'share:AAPL',
+        day: 1700000000000,
+        price: '190.00',
+        currency: 'USD',
+        source: 'eodhd',
+      } as never,
+    ],
+    bondRegister: [
+      {
+        isin: 'UA4000234215',
+        terms: {
+          isin: 'UA4000234215',
+          currency: 'UAH',
+          faceValueMinorUnits: 100000,
+          couponPct: 15.1,
+          maturityDate: 1782259200000,
+          couponFrequency: 'semiannually',
+          name: 'Середньострокові UA4000234215',
+        },
+        fetchedAt: 1700000000000,
+      } as never,
+    ],
   },
   secrets: {
-    dbKeyHex: 'a'.repeat(64),
     monobankTokens: [{ accountId: 'a1', token: 'mono-token' }],
     binanceCredentials: [],
   },
@@ -139,6 +166,38 @@ describe('data-transfer full-pipeline round trip', () => {
     const envelope = encryptEnvelope(utf8ToBytes(JSON.stringify(fixturePayload())), key);
 
     expect(() => decryptEnvelope(envelope, wrongKey)).toThrow('data-transfer/decrypt');
+  });
+
+  it('round-trips a settings row from a pre-statementMappings export unchanged (the key stays absent)', () => {
+    const key = generateExportKey();
+    const payload = fixturePayload();
+    const legacySettingsRow: Record<string, unknown> = {
+      ...(payload.tables.settings[0] as unknown as Record<string, unknown>),
+    };
+    delete legacySettingsRow.statementMappings;
+    const legacyPayload = {
+      ...payload,
+      tables: { ...payload.tables, settings: [legacySettingsRow] },
+    } as unknown as ExportPayload;
+
+    const envelope = encryptEnvelope(utf8ToBytes(JSON.stringify(legacyPayload)), key);
+    const roundTripped = JSON.parse(utf8Decode(decryptEnvelope(envelope, key))) as ExportPayload;
+
+    expect(roundTripped.tables.settings[0]).not.toHaveProperty('statementMappings');
+  });
+
+  it('round-trips an old export whose secrets block still carries the retired DB key unchanged', () => {
+    const key = generateExportKey();
+    const payload = fixturePayload();
+    const legacyPayload = {
+      ...payload,
+      secrets: { ...(payload.secrets as ExportSecrets), dbKeyHex: 'a'.repeat(64) },
+    } as unknown as ExportPayload;
+
+    const envelope = encryptEnvelope(utf8ToBytes(JSON.stringify(legacyPayload)), key);
+    const roundTripped = JSON.parse(utf8Decode(decryptEnvelope(envelope, key))) as ExportPayload;
+
+    expect(roundTripped).toEqual(legacyPayload);
   });
 
   it('rejects a tampered ciphertext', () => {

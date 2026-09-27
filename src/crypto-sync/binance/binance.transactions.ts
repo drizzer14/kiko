@@ -1,9 +1,8 @@
+import type { HoldingRow } from '@kiko/db';
+import { Money } from '@kiko/currency/money';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
-
-import { Money } from '../../currency/money';
-import type { HoldingRow } from '../../db/schema';
-import { createRequestGate, type RequestGate } from '../../monobank/throttle';
+import { createRequestGate, type RequestGate } from '@kiko/monobank/throttle';
 
 import {
   type BinanceDeposit,
@@ -89,7 +88,7 @@ export type BinanceTransactionRow = {
  * the credential + holding reads, the newest-imported-time cursor read, and the
  * deduping import. Mirrors `BinanceDeps` in `binance.provider.ts`.
  */
-export type BinanceTxSyncDeps = {
+export type BinanceTransactionSyncDeps = {
   now: () => number;
   /** Delay primitive for the per-invocation request gate; injected so tests pace instantly. */
   sleep: (milliseconds: number) => Promise<void>;
@@ -112,7 +111,7 @@ export type BinanceTxSyncDeps = {
   ) => Promise<BinanceWithdrawal[]>;
 };
 
-const defaultBinanceTxDeps: BinanceTxSyncDeps = {
+const defaultBinanceTransactionDeps: BinanceTransactionSyncDeps = {
   now: () => Date.now(),
   sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   fetchImpl: fetch,
@@ -285,7 +284,7 @@ const fetchAllInWindow = async <Row>(
 };
 
 type WindowContext = {
-  deps: BinanceTxSyncDeps;
+  deps: BinanceTransactionSyncDeps;
   gate: RequestGate;
   apiKey: string;
   secret: string;
@@ -327,7 +326,7 @@ const binanceKeyOf = (holding: HoldingRow): string | undefined => {
 };
 
 const runSync = async (
-  deps: BinanceTxSyncDeps,
+  deps: BinanceTransactionSyncDeps,
   accountId: string,
 ): Promise<{ imported: number }> => {
   const holdings = await deps.listHoldings(accountId);
@@ -383,6 +382,6 @@ const runSync = async (
  */
 export const syncBinanceTransactions = (
   request: { targetAccountId: string },
-  overrides: Partial<BinanceTxSyncDeps> = {},
+  overrides: Partial<BinanceTransactionSyncDeps> = {},
 ): Promise<{ imported: number }> =>
-  runSync({ ...defaultBinanceTxDeps, ...overrides }, request.targetAccountId);
+  runSync({ ...defaultBinanceTransactionDeps, ...overrides }, request.targetAccountId);

@@ -1,6 +1,5 @@
 import { StyleSheet } from 'react-native-unistyles';
-
-import { darkTheme } from '../../theme';
+import { darkTheme } from '@kiko/design-system/theme';
 
 // The Done pill's minimum height (and tap target) — the iOS HIG 44pt minimum
 // touch target (`kiko-design-system`'s "Touch targets" HIG axis), the same

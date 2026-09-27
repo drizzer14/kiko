@@ -3,17 +3,16 @@ import { ScrollView, View } from 'react-native';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { resolveBottomClearance } from './bottom-clearance';
-import type { ScreenProps } from './screen.props';
 import { styles } from './screen.styles';
+import type { ScreenProps } from './screen.props';
+import { resolveBottomClearance } from './bottom-clearance';
 
 // A large-title navigator header owns the top inset itself, so any branch whose
 // content sits under one drops the SafeAreaView's top edge — keeping it would
-// double-offset content beneath the header (see the redesign feedback round-1
-// brief, task 3, for the root cause). Used by the always-scrolling `scroll`
-// branch AND by the plain branch's `bleedTop` opt-in (a large-title screen
-// whose child is itself the scrollable surface, e.g. HoldingDetail's ledger
-// FlatList — feedback round-2, item 2).
+// double-offset content beneath the header. Used by the always-scrolling
+// `scroll` branch AND by the plain branch's `bleedTop` opt-in (a large-title
+// screen whose child is itself the scrollable surface, e.g. HoldingDetail's
+// ledger FlatList).
 const LARGE_TITLE_SAFE_AREA_EDGES = ['left', 'right', 'bottom'] as const;
 
 const Screen: FC<ScreenProps> = ({
@@ -134,7 +133,7 @@ const Screen: FC<ScreenProps> = ({
   // `subviews[0]`, and its own comment notes "the OS does something similar when
   // looking for scrollview for large header"). An intermediate padded `content`
   // View between the SafeAreaView and that scroll view stops the collapse — the
-  // large title stays stuck expanded (feedback round-3, item 1). So `bleedTop`
+  // large title stays stuck expanded. So `bleedTop`
   // renders the child as a DIRECT child of the SafeAreaView, exactly like the
   // working `account-detail` scroll branch's ScrollView (its proven structure:
   // collapses AND does not float). There is no `content` wrapper, so the child

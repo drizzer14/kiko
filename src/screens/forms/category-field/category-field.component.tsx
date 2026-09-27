@@ -1,20 +1,20 @@
 import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
 import { ScrollView, type ScrollViewInstance } from 'react-native';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import { type ReactElement, useEffect, useRef, useState } from 'react';
-
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import BottomSheet from '../../../design-system/components/bottom-sheet';
-import FieldTrigger from '../../../design-system/components/field-trigger';
-import SelectableRow from '../../../design-system/components/selectable-row';
+import FieldTrigger from '@kiko/design-system/components/field-trigger';
+import SelectableRow from '@kiko/design-system/components/selectable-row';
 
 import { styles } from './category-field.styles';
 import type { CategoryFieldProps } from './category-field.props';
 
-// The glyph shown in the field before any category is picked — a neutral tag
-// placeholder, tinted secondary to read as "empty" like the DateField's own
-// unselected state.
-const PLACEHOLDER_ICON = 'tag';
+// The glyph shown in the field before any category is picked — the generic
+// category placeholder, tinted secondary to read as "empty" like the
+// DateField's own unselected state.
+const PLACEHOLDER_ICON = genericEntitySymbol.category;
 
 // A labeled single-select category picker: the field shows the current
 // selection (its SF Symbol + title, or a placeholder when none) and opens a
@@ -27,6 +27,7 @@ const PLACEHOLDER_ICON = 'tag';
 // propagates to every same-name row), so there is no `disabled`.
 const CategoryField = ({
   label,
+  sheetTitle,
   options,
   selectedKey,
   onSelect,
@@ -99,7 +100,7 @@ const CategoryField = ({
 
       {/* `scrollable={false}`: this sheet owns its OWN inner ScrollView (via
           `scrollRef`, to jump straight to the already-selected row on open) —
-          BottomSheet's shared ScrollView (F5 fix) would otherwise nest a
+          BottomSheet's shared ScrollView would otherwise nest a
           second same-axis ScrollView around it, and would also sweep the
           heading below into the scrollable region along with `scrollRef`'s
           own offsets. */}
@@ -108,7 +109,7 @@ const CategoryField = ({
         onDismiss={() => setOpen(false)}
         gap={2}
         scrollable={false}
-        header={<Text variant="heading">{label}</Text>}
+        header={<Text variant="heading">{sheetTitle}</Text>}
         testID="category-picker-sheet"
       >
         <ScrollView

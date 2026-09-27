@@ -1,14 +1,3 @@
-import type { TFunction } from 'i18next';
-import { ratesRepo } from '@kiko/rates/repo';
-import { useTranslation } from 'react-i18next';
-import { holdingsRepo } from '@kiko/holdings/repo';
-import { categoriesRepo } from '@kiko/categories/repo';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
-import { transactionsRepo } from '@kiko/transactions/repo';
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
-import { Alert, type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
 import {
   type FC,
   type ReactElement,
@@ -19,64 +8,76 @@ import {
   useRef,
   useState,
 } from 'react';
-
+import { match } from 'ts-pattern';
 import {
   canConvertToExchange,
   type ExchangeConvertDirection,
   exchangeConvertDirection,
-} from '../../../holdings/exchange-convert';
+} from '@kiko/holdings/exchange-convert';
+import type { TFunction } from 'i18next';
 import {
   buildCategoryDisplayMap,
   DEFAULT_CATEGORY_KEY,
   resolveCategoryDisplay,
-} from '../../../categories/category-display';
-import { Money } from '../../../currency/money';
+} from '@kiko/categories/category-display';
+import { ratesRepo } from '@kiko/rates/repo';
+import { Money } from '@kiko/currency/money';
 import {
   isExchangeCreateDestinationType,
   isExchangeCreateSourceType,
   isExchangeDestinationType,
   isExchangeSourceType,
-} from '../../../holdings/exchange-destination';
-import { parseAmount } from '../../../currency/parse';
-import Box from '../../../design-system/components/box';
-import { useLiveQuery } from '../../../db/use-live-query';
-import Text from '../../../design-system/components/text';
-import Button from '../../../design-system/components/button';
-import Screen from '../../../design-system/components/screen';
-import Divider from '../../../design-system/components/divider';
-import FieldError from '../../../design-system/components/field-error';
-import { buildRateTable } from '../../../rates/net-worth-view';
-import SymbolIcon from '../../../design-system/components/symbol';
-import TextField from '../../../design-system/components/text-field';
-import { isSyncedHolding } from '../../../holdings/deletable';
-import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
-import { defaultHoldingColor } from '../../../holdings/entity-colors';
-import type { AccountRow, HoldingRow, TransactionRow } from '../../../db/schema';
-import type { TransactionFormParams } from '../../../navigation/types';
-import { resolveEntityColor } from '../../../design-system/entity-tint';
-import BottomSheet from '../../../design-system/components/bottom-sheet';
-import { type Currency, currencySymbol } from '../../../currency/currency';
-import { resolveCategoryColor } from '../../../statistics/category-breakdown';
-import { seedCounterpartMinorUnits } from '../../../holdings/exchange-prefill';
-import { normalizeTransactionName } from '../../../transactions/normalize-name';
-import { defaultTransactionDescription } from '../../../transactions/default-description';
-
-import DateTimeRow from '../date-time-row';
-import CategoryField from '../category-field';
-import ExchangeFields from '../exchange-fields';
-import ModeSelectField from '../mode-select-field';
-import HoldingSelectField from '../holding-select-field';
-import ConvertExchangeFields from '../convert-exchange-fields';
-import DescriptionSuggestions from '../description-suggestions';
-import { useSubmitOnce } from '../use-submit-once/use-submit-once';
-import type { FormMode } from '../mode-select-field/mode-select-field.props';
-import { groupAmount, majorAmountText } from '../amount-format/amount-format';
+} from '@kiko/holdings/exchange-destination';
 import {
   useHeaderInset,
   scrollToField,
   type FieldInstance,
-} from '../scroll-to-field/scroll-to-field';
-import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
+} from '@kiko/design-system/scroll-to-field';
+import { accountsRepo } from '@kiko/accounts';
+import { useTranslation } from 'react-i18next';
+import HoldingSelectField, {
+  type HoldingSelectOption,
+} from '@kiko/screens/forms/holding-select-field';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { parseAmount } from '@kiko/currency/parse';
+import Box from '@kiko/design-system/components/box';
+import { categoriesRepo } from '@kiko/categories/repo';
+import Text from '@kiko/design-system/components/text';
+import { transactionsRepo } from '@kiko/transactions/repo';
+import { isSyncedHolding } from '@kiko/holdings/deletable';
+import Button from '@kiko/design-system/components/button';
+import Screen from '@kiko/design-system/components/screen';
+import { buildRateTable } from '@kiko/rates/net-worth-view';
+import DateTimeRow from '@kiko/screens/forms/date-time-row';
+import Divider from '@kiko/design-system/components/divider';
+import SymbolIcon from '@kiko/design-system/components/symbol';
+import CategoryField from '@kiko/screens/forms/category-field';
+import ExchangeFields from '@kiko/screens/forms/exchange-fields';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import TextField from '@kiko/design-system/components/text-field';
+import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
+import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
+import FieldError from '@kiko/design-system/components/field-error';
+import type { TransactionFormParams } from '@kiko/navigation/types';
+import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
+import { resolveEntityColor } from '@kiko/design-system/entity-tint';
+import BottomSheet from '@kiko/design-system/components/bottom-sheet';
+import LoanPaymentField from '@kiko/screens/forms/loan-payment-field';
+import { type Currency, currencySymbol } from '@kiko/currency/currency';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
+import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
+import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
+import { transactionRowDescription } from '@kiko/transactions/row-description';
+import ConvertExchangeFields from '@kiko/screens/forms/convert-exchange-fields';
+import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
+import DescriptionSuggestions from '@kiko/screens/forms/description-suggestions';
+import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
+import { type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
+import ModeSelectField, { type FormMode } from '@kiko/screens/forms/mode-select-field';
+import { useLiveQuery, type AccountRow, type HoldingRow, type TransactionRow } from '@kiko/db';
 
 // This screen is registered in BOTH the Home and Accounts stacks (Home lists
 // every transaction; Accounts reaches it from a holding), so it cannot bind its
@@ -126,6 +127,50 @@ const renderReadOnlyNotice = (
   );
 };
 
+// The counterparty->comment column writes a real value no screen ever
+// surfaced, shown whenever the loaded row carries a non-blank comment.
+// Not gated by `isReadOnly`:
+// `mapParsedTransaction`/Monobank sync can write `comment` onto any
+// imported row regardless of `source`, and a Monobank-synced row is exactly
+// the read-only case this must still cover — so this renders for
+// both. Module-level for the same cognitive-complexity-budget reason as
+// `renderReadOnlyNotice` above.
+//
+// This does NOT reuse `SummaryTable`
+// (the app's shared "label left, value right" ROW layout) — `SummaryTable`
+// was built for short values (money, counts, dates); Comment is free text
+// that can run to a full sentence. `SummaryTable` wraps a row's `value` in
+// its OWN `Box` (`summary-table.component.tsx`'s `<Box
+// testID={row.testID}>{row.value}</Box>`), one level BELOW the row's own
+// flex-row layout — a `flexShrink`/`textAlign` set on the VALUE node I pass
+// in (a grandchild of the row, not a direct flex child of it) has no effect
+// on that row's own layout pass in Yoga; only the WRAPPING `Box` itself
+// (which `SummaryTable` owns, not a caller) would need `flexShrink` — and
+// `SummaryTable`'s shared row must not change for one
+// caller. Stacking the label ABOVE the value instead — a plain `Box`
+// column, not a flex row — sidesteps the problem entirely: the value
+// `Text` gets the row's FULL width to itself and wraps normally, with no
+// label competing for horizontal space on the same line.
+const renderCommentRow = (
+  comment: string | null | undefined,
+  label: string,
+): ReactElement | null => {
+  const trimmed = comment?.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  return (
+    <Box gap={1} testID="transaction-comment">
+      <Text variant="caption" tone="textSecondary">
+        {label}
+      </Text>
+      <Text variant="body">{trimmed}</Text>
+    </Box>
+  );
+};
+
 // The header title reflects the mode: a synced row is a plain read-only view, an
 // existing manual row is an edit, and no id at all is a fresh add. The three
 // candidate titles are catalog-resolved strings, passed in as a labels object
@@ -161,31 +206,83 @@ const signedMinorUnits = (currency: Currency, amount: string, sign: Sign): numbe
 };
 
 // The description field's placeholder: a preview of the label the row would
-// carry if its description is left blank — the same holding-name + sign
-// fallback the Home and Holding-detail lists render for an empty description
-// (see `defaultTransactionDescription`). Only the polarity of the sign matters
-// to that helper, so the current `mode` maps to a representative signed value
-// (a negative for expense, non-negative otherwise). Falls back to a concrete
-// example ("Coffee") when no holding has resolved yet, so there is nothing to
-// preview — an example the user can type, not an echo of the field's own label.
-// Kept module-level and pure so its branch stays out of the screen
-// component's cognitive-complexity budget; `t` is the full `TFunction` (both
-// the fallback and the interpolated preview flow through it). Both `expense`
-// and `split` are expenses (a split's payment is negative), so each maps to a
-// negative representative value and previews the expense-style fallback; only a
-// plain income maps to non-negative.
-const resolveDescriptionPlaceholder = (
-  holding: Pick<HoldingRow, 'name'> | undefined,
-  mode: FormMode,
-  t: TFunction,
-): string =>
-  holding !== undefined
-    ? defaultTransactionDescription(
-        holding.name,
-        mode === 'expense' || mode === 'split' ? -1 : 0,
-        t,
-      )
-    : t('forms.transaction.descriptionPlaceholder');
+// carry if its description is left blank, resolved by the SAME
+// `transactionRowDescription` the Home and Holding-detail lists render — so an
+// edited exchange leg previews its "Exchange to/from <counterpart>" label
+// rather than a holding-name expense the list never shows. Only the polarity of
+// the sign matters to that helper, so the current `mode` maps to a
+// representative signed value (a negative for expense, non-negative
+// otherwise). Falls back to a concrete example ("Coffee") when no holding has
+// resolved yet, so there is nothing to preview — an example the user can type,
+// not an echo of the field's own label. Kept module-level and pure so its
+// branch stays out of the screen component's cognitive-complexity budget. Both
+// `expense` and `split` are expenses (a split's payment is negative), so each
+// maps to a negative representative value; only a plain income maps to
+// non-negative. Only an EDITED row carries the exchange marker — a duplicate is
+// written through `recordManual` without one, so its source's marker is not
+// read here.
+const resolveDescriptionPlaceholder = (input: {
+  holding: Pick<HoldingRow, 'name'> | undefined;
+  existing: Pick<TransactionRow, 'exchangeCounterpartHoldingId'> | undefined;
+  holdings: readonly Pick<HoldingRow, 'id' | 'name'>[];
+  mode: FormMode;
+  t: TFunction;
+}): string => {
+  const { holding, existing, holdings, mode, t } = input;
+
+  if (holding === undefined) {
+    return t('forms.transaction.descriptionPlaceholder');
+  }
+
+  return transactionRowDescription({
+    transaction: {
+      description: '',
+      amountMinorUnits: mode === 'expense' || mode === 'split' ? -1 : 0,
+      exchangeCounterpartHoldingId: existing?.exchangeCounterpartHoldingId ?? null,
+    },
+    holdingName: holding.name,
+    holdingNameById: buildHoldingNameById(holdings),
+    t,
+  });
+};
+
+const buildHoldingNameById = (
+  holdings: readonly Pick<HoldingRow, 'id' | 'name'>[],
+): ReadonlyMap<string, string> =>
+  new Map(holdings.map((candidate) => [candidate.id, candidate.name]));
+
+// The text an edited row with a BLANK stored description opens with: the label
+// the transaction lists show for it (an exchange leg's "Exchange to/from
+// <counterpart>", else the holding-name default), so the field never reads
+// empty while the list reads a label. Null when nothing is pre-filled — no
+// edit, a description of the row's own, or a holding not yet resolved.
+const resolveBlankLabel = (input: {
+  existing:
+    | Pick<TransactionRow, 'description' | 'amountMinorUnits' | 'exchangeCounterpartHoldingId'>
+    | undefined;
+  holding: Pick<HoldingRow, 'name'> | undefined;
+  holdings: readonly Pick<HoldingRow, 'id' | 'name'>[];
+  t: TFunction;
+}): string | null => {
+  const { existing, holding } = input;
+
+  if (existing === undefined || existing.description !== '' || holding === undefined) {
+    return null;
+  }
+
+  return transactionRowDescription({
+    transaction: existing,
+    holdingName: holding.name,
+    holdingNameById: buildHoldingNameById(input.holdings),
+    t: input.t,
+  });
+};
+
+// An untouched pre-filled label saves as '' so the row keeps resolving its
+// label at render time — a stored copy would stay in the language it was
+// written in and go stale after a rename. Anything the user typed is stored.
+const storedDescription = (typed: string, prefilledLabel: string | null): string =>
+  typed === prefilledLabel ? '' : typed;
 
 // Whether a money field holds a strictly positive number — the same guard every
 // `save` path applies before it writes. `parseAmount` yields NaN for a blank,
@@ -235,132 +332,7 @@ type SaveDisabledParams = {
   currency: Currency;
 };
 
-const isSaveDisabled = (params: SaveDisabledParams): boolean => {
-  if (params.converting) {
-    return params.counterpartHoldingId === null || !isPositiveAmountText(params.counterpartAmount);
-  }
-
-  if (params.isExchange) {
-    return (
-      params.destinationHoldingId === null ||
-      !isPositiveAmountText(params.amount) ||
-      !isPositiveAmountText(params.valueIn)
-    );
-  }
-
-  // Split gates on the same invariant `saveSplit` writes: a positive payment
-  // and ≥1 distinct non-payer positive return whose sum stays below it, PLUS a
-  // category — a split expense's netted magnitude lands in the spending pie, so
-  // it must be categorised like any other create expense.
-  if (params.isSplit) {
-    return (
-      params.selectedCategory === null ||
-      !canSaveSplit(params.amount, params.changeReturns, params.currency)
-    );
-  }
-
-  if (params.isReadOnly) {
-    return false;
-  }
-
-  if (params.isEditing) {
-    return !isPositiveAmountText(params.amount);
-  }
-
-  return !isPositiveAmountText(params.amount) || params.selectedCategory === null;
-};
-
-// One reason helper per `isSaveDisabled` branch, each mirroring that
-// branch's OWN condition (comments above each pair it verbatim) — split out
-// so `saveDisabledReason` below stays a flat dispatch instead of one deeply
-// nested function, keeping every helper under the cognitive-complexity
-// budget while the two stay impossible to drift apart.
-
-// Mirrors `isSaveDisabled`'s converting branch: `counterpartHoldingId ===
-// null || !isPositiveAmountText(counterpartAmount)`.
-const convertingReason = (params: SaveDisabledParams, t: TFunction): string | null => {
-  if (params.counterpartHoldingId === null) {
-    return t('forms.transaction.selectCounterpartError');
-  }
-
-  return isPositiveAmountText(params.counterpartAmount)
-    ? null
-    : t('forms.transaction.counterpartAmountError');
-};
-
-// Mirrors `isSaveDisabled`'s exchange branch: `destinationHoldingId ===
-// null || !isPositiveAmountText(amount) || !isPositiveAmountText(valueIn)`.
-const exchangeReason = (params: SaveDisabledParams, t: TFunction): string | null => {
-  if (params.destinationHoldingId === null) {
-    return t('forms.transaction.selectDestinationError');
-  }
-
-  if (!isPositiveAmountText(params.amount)) {
-    return t('forms.transaction.valueOutError');
-  }
-
-  return isPositiveAmountText(params.valueIn) ? null : t('forms.transaction.valueInError');
-};
-
-// Mirrors `isSaveDisabled`'s split branch: `selectedCategory === null ||
-// !canSaveSplit(amount, changeReturns, currency)`.
-const splitReason = (params: SaveDisabledParams, t: TFunction): string | null => {
-  if (params.selectedCategory === null) {
-    return t('forms.transaction.selectCategoryError');
-  }
-
-  return canSaveSplit(params.amount, params.changeReturns, params.currency)
-    ? null
-    : t('forms.transaction.splitInvalidError');
-};
-
-// Mirrors `isSaveDisabled`'s trailing read-only/editing/fresh-add branches,
-// in the same order: read-only is never disabled; editing needs only a
-// positive amount; a fresh add needs a positive amount AND a category.
-const plainReason = (params: SaveDisabledParams, t: TFunction): string | null => {
-  if (params.isReadOnly) {
-    return null;
-  }
-
-  if (params.isEditing) {
-    return isPositiveAmountText(params.amount) ? null : t('forms.transaction.amountError');
-  }
-
-  if (!isPositiveAmountText(params.amount)) {
-    return t('forms.transaction.amountError');
-  }
-
-  return params.selectedCategory === null ? t('forms.transaction.selectCategoryError') : null;
-};
-
-// The reason `isSaveDisabled` above returns true, for the SAME branches in
-// the SAME priority order (converting, exchange, split, then the trailing
-// read-only/editing/fresh-add group), so the two can never disagree — a
-// drift here would disable Save for one reason while explaining another.
-// `t` is threaded in explicitly, the same way `resolveDescriptionPlaceholder`
-// above takes it, so this stays a pure module-level helper.
-const saveDisabledReason = (params: SaveDisabledParams, t: TFunction): string | null => {
-  if (params.converting) {
-    return convertingReason(params, t);
-  }
-
-  if (params.isExchange) {
-    return exchangeReason(params, t);
-  }
-
-  if (params.isSplit) {
-    return splitReason(params, t);
-  }
-
-  return plainReason(params, t);
-};
-
-// The field key each save-blocking reason above belongs to — so its message
-// can render beside that field instead of in the footer. One pure function per
-// `xxxReason` helper, mirroring its branches EXACTLY (same order, same
-// conditions — see the comment above each `xxxReason` pair), returning a
-// field-key literal instead of a translated string. The two families must
-// never disagree about WHICH branch is active, only about key-vs-message.
+// The field key each save-blocking condition below belongs to.
 type SaveDisabledField =
   | 'counterpartHolding'
   | 'counterpartAmount'
@@ -371,71 +343,130 @@ type SaveDisabledField =
   | 'splitReturns'
   | 'amount';
 
-// Mirrors `convertingReason`'s branches exactly.
-const convertingField = (params: SaveDisabledParams): SaveDisabledField | null => {
-  if (params.counterpartHoldingId === null) {
-    return 'counterpartHolding';
-  }
+// Every field's OWN independent error, gated only by which mode is ACTIVE
+// (converting/isExchange/isSplit/plain are mutually exclusive, so only one
+// of these ever renders at a time), typed to hold ONLY the active mode's own
+// field keys — a mode's function never even mentions a field it has no
+// opinion on, so there is no all-undefined record to keep in sync by hand.
+type TransactionFieldErrors = Partial<Record<SaveDisabledField, string>>;
 
-  return isPositiveAmountText(params.counterpartAmount) ? null : 'counterpartAmount';
-};
+// Every field's OWN independent error for the convert mode.
+const convertingFieldErrors = (
+  params: SaveDisabledParams,
+  t: TFunction,
+): TransactionFieldErrors => ({
+  counterpartHolding:
+    params.counterpartHoldingId === null
+      ? t('forms.transaction.selectCounterpartError')
+      : undefined,
+  counterpartAmount: isPositiveAmountText(params.counterpartAmount)
+    ? undefined
+    : t('forms.transaction.counterpartAmountError'),
+});
 
-// Mirrors `exchangeReason`'s branches exactly.
-const exchangeField = (params: SaveDisabledParams): SaveDisabledField | null => {
-  if (params.destinationHoldingId === null) {
-    return 'destinationHolding';
-  }
+// Every field's OWN independent error for the exchange mode.
+const exchangeFieldErrors = (params: SaveDisabledParams, t: TFunction): TransactionFieldErrors => ({
+  destinationHolding:
+    params.destinationHoldingId === null
+      ? t('forms.transaction.selectDestinationError')
+      : undefined,
+  valueOut: isPositiveAmountText(params.amount) ? undefined : t('forms.transaction.valueOutError'),
+  valueIn: isPositiveAmountText(params.valueIn) ? undefined : t('forms.transaction.valueInError'),
+});
 
-  if (!isPositiveAmountText(params.amount)) {
-    return 'valueOut';
-  }
+// Every field's OWN independent error for the split mode. Split gates on the
+// same invariant `saveSplit` writes: a positive payment and ≥1 distinct
+// non-payer positive return whose sum stays below it, PLUS a category — a
+// split expense's netted magnitude lands in the spending pie, so it must be
+// categorised like any other create expense.
+const splitFieldErrors = (params: SaveDisabledParams, t: TFunction): TransactionFieldErrors => ({
+  selectedCategory:
+    params.selectedCategory === null ? t('forms.transaction.selectCategoryError') : undefined,
+  splitReturns: canSaveSplit(params.amount, params.changeReturns, params.currency)
+    ? undefined
+    : t('forms.transaction.splitInvalidError'),
+});
 
-  return isPositiveAmountText(params.valueIn) ? null : 'valueIn';
-};
-
-// Mirrors `splitReason`'s branches exactly.
-const splitField = (params: SaveDisabledParams): SaveDisabledField | null => {
-  if (params.selectedCategory === null) {
-    return 'selectedCategory';
-  }
-
-  return canSaveSplit(params.amount, params.changeReturns, params.currency) ? null : 'splitReturns';
-};
-
-// Mirrors `plainReason`'s branches exactly.
-const plainField = (params: SaveDisabledParams): SaveDisabledField | null => {
+// Every field's OWN independent error for the read-only/editing/fresh-add
+// modes — a fresh add's amount and category are two SEPARATE fields, so
+// both show at once instead of the category error waiting for amount to
+// clear first. A read-only (synced) row is never blocked here: Save only
+// appears once the category changed (`showsSaveButton`), and its write
+// touches only the category, never the bank-owned amount.
+const plainFieldErrors = (params: SaveDisabledParams, t: TFunction): TransactionFieldErrors => {
   if (params.isReadOnly) {
-    return null;
+    return {};
   }
 
-  if (params.isEditing) {
-    return isPositiveAmountText(params.amount) ? null : 'amount';
-  }
-
-  if (!isPositiveAmountText(params.amount)) {
-    return 'amount';
-  }
-
-  return params.selectedCategory === null ? 'selectedCategory' : null;
+  return {
+    amount: isPositiveAmountText(params.amount) ? undefined : t('forms.transaction.amountError'),
+    selectedCategory:
+      params.isEditing || params.selectedCategory !== null
+        ? undefined
+        : t('forms.transaction.selectCategoryError'),
+  };
 };
 
-// Mirrors `saveDisabledReason`'s dispatcher exactly — the two must never
-// disagree about WHICH branch is active, only about key-vs-message.
-const saveDisabledField = (params: SaveDisabledParams): SaveDisabledField | null => {
+// Dispatches to the ACTIVE mode's own independent errors.
+const transactionFieldErrors = (
+  params: SaveDisabledParams,
+  t: TFunction,
+): TransactionFieldErrors => {
   if (params.converting) {
-    return convertingField(params);
+    return convertingFieldErrors(params, t);
   }
 
   if (params.isExchange) {
-    return exchangeField(params);
+    return exchangeFieldErrors(params, t);
   }
 
   if (params.isSplit) {
-    return splitField(params);
+    return splitFieldErrors(params, t);
   }
 
-  return plainField(params);
+  return plainFieldErrors(params, t);
 };
+
+// Each mode's own field keys, in the SAME priority order that mode's own
+// error function above tests them — `firstInvalidField` below finds the
+// first of these with an actual error, which is both the Save-block gate
+// AND the scroll-to-first-invalid target, so the two can never disagree.
+const CONVERTING_FIELD_ORDER: readonly SaveDisabledField[] = [
+  'counterpartHolding',
+  'counterpartAmount',
+];
+const EXCHANGE_FIELD_ORDER: readonly SaveDisabledField[] = [
+  'destinationHolding',
+  'valueOut',
+  'valueIn',
+];
+const SPLIT_FIELD_ORDER: readonly SaveDisabledField[] = ['selectedCategory', 'splitReturns'];
+const PLAIN_FIELD_ORDER: readonly SaveDisabledField[] = ['amount', 'selectedCategory'];
+
+// The active mode's own priority order — mirrors `transactionFieldErrors`'s
+// dispatcher exactly, so the two can never pick a different mode's fields.
+const activeFieldOrder = (params: SaveDisabledParams): readonly SaveDisabledField[] => {
+  if (params.converting) {
+    return CONVERTING_FIELD_ORDER;
+  }
+
+  if (params.isExchange) {
+    return EXCHANGE_FIELD_ORDER;
+  }
+
+  if (params.isSplit) {
+    return SPLIT_FIELD_ORDER;
+  }
+
+  return PLAIN_FIELD_ORDER;
+};
+
+// The first still-invalid field in priority order, or null once every field
+// in that order has cleared.
+const firstInvalidField = (
+  order: readonly SaveDisabledField[],
+  errors: TransactionFieldErrors,
+): SaveDisabledField | null => order.find((key) => errors[key] !== undefined) ?? null;
 
 // Whether `save` needs to raise the propagation-confirm sheet, and with what
 // payload: only when the category actually changed AND the affected name is
@@ -444,7 +475,8 @@ const saveDisabledField = (params: SaveDisabledParams): SaveDisabledField | null
 // for one asked `Apply "Groceries" to all transactions named ""?` and then
 // wrote nothing — the row's own category is already persisted by `writeManual`
 // regardless, so `save` just returns to the list instead. Kept module-level
-// and pure for the same cognitive-complexity-budget reason as `isSaveDisabled`.
+// and pure for the same cognitive-complexity-budget reason as
+// `transactionFieldErrors`.
 const resolveCategoryOverrideRequest = (
   categoryChanged: boolean,
   selectedCategory: string | null,
@@ -458,7 +490,7 @@ const resolveCategoryOverrideRequest = (
 };
 
 // The mode row's options: Exchange is a CREATE-ONLY mode, offered only from a
-// cash source on create (`isExchangeCreateSourceType` — Requirement B,
+// cash source on create (`isExchangeCreateSourceType`,
 // narrower than the wider `isExchangeSourceType`/`isExchangeDestinationType`
 // pair in `holdings/exchange-destination`, reserved for convert-mode) — an
 // edit always opens on `income` or `expense` (no editing an already-recorded
@@ -583,7 +615,62 @@ const buildReturnOptions = (
   );
 };
 
-// Order two holdings the way the Accounts screen shows them (F2): primary by
+// The loan-payment picker's options: every OPEN loan holding in the
+// payment's own currency — a link is only ever valid same-currency;
+// `transactionsRepo.setLoanPayment` itself refuses a cross-currency write,
+// so this filter simply keeps the picker from ever OFFERING one. No
+// synced-holding exclusion: a `debt` account (the only
+// account kind a `loan` holding lives under) has no sync concept at all
+// (see kiko-domain), so every loan holding is manual-owned already.
+//
+// A filter never hides an active selection (kiko-design-system): the row's
+// OWN already-linked loan is unioned back in even when it has since closed
+// or moved to another currency — `buildExchangeOptions` would otherwise drop
+// it (closed) or the currency filter above would (a currency change), and
+// the picker would then show no value at all for a link that still exists in
+// the database, with no way for the user to see what it is or clear it.
+const buildLoanOptions = (
+  holdings: readonly HoldingRow[],
+  accountNameById: ReadonlyMap<string, string>,
+  accountOrderById: ReadonlyMap<string, number>,
+  paymentCurrency: Currency,
+  selectedLoanHoldingId: string | null,
+): HoldingSelectOption[] => {
+  const openOptions = buildExchangeOptions(
+    holdings,
+    accountNameById,
+    accountOrderById,
+    undefined,
+    (type) => type === 'loan',
+  ).filter((option) => option.currency === paymentCurrency);
+
+  if (
+    selectedLoanHoldingId === null ||
+    openOptions.some((option) => option.id === selectedLoanHoldingId)
+  ) {
+    return openOptions;
+  }
+
+  const selectedHolding = holdings.find((candidate) => candidate.id === selectedLoanHoldingId);
+
+  if (selectedHolding === undefined) {
+    return openOptions;
+  }
+
+  return [
+    ...openOptions,
+    {
+      id: selectedHolding.id,
+      name: selectedHolding.name,
+      icon: selectedHolding.icon ?? defaultHoldingSymbol(selectedHolding),
+      color: resolveEntityColor(selectedHolding.color, defaultHoldingColor[selectedHolding.type]),
+      currency: selectedHolding.currency,
+      accountName: accountNameById.get(selectedHolding.accountId) ?? '',
+    },
+  ];
+};
+
+// Order two holdings the way the Accounts screen shows them: primary by
 // the parent account's display rank (its 0-based index in the sortOrder-ordered
 // `accountsRepo.listQuery` list), then by the holding's own `sortOrder`, then
 // `createdAt`. A holding whose account is not in the rank map sorts last, so a
@@ -609,8 +696,8 @@ const compareByAccountThenHolding = (
 };
 
 // Every OPEN, non-excluded holding except `excludeHoldingId`, projected to a
-// picker option carrying its parent account name (Requirement C), ordered to
-// match the Accounts screen (F2 — see `compareByAccountThenHolding`). The
+// picker option carrying its parent account name, ordered to
+// match the Accounts screen (see `compareByAccountThenHolding`). The
 // eligible TYPE test is injected by the caller so one builder serves create-mode
 // (cash-only) and both convert-mode directions (the wider rules) without
 // duplicating the projection. A closed holding is excluded so an exchange can
@@ -636,7 +723,7 @@ const buildExchangeOptions = (
     .map((candidate) => ({
       id: candidate.id,
       name: candidate.name,
-      icon: candidate.icon ?? holdingTypeSymbol[candidate.type],
+      icon: candidate.icon ?? defaultHoldingSymbol(candidate),
       color: resolveEntityColor(candidate.color, defaultHoldingColor[candidate.type]),
       currency: candidate.currency,
       accountName: accountNameById.get(candidate.accountId) ?? '',
@@ -644,13 +731,14 @@ const buildExchangeOptions = (
 };
 
 // Whether a holding TYPE takes a plain manual transaction — the same gate
-// `footerActionFor` (`holding-detail.screen.tsx`) applies for its `'transaction'`
-// action: a term_deposit takes contributions and a bond carries no manual
-// ledger, so both are excluded; everything else (cash/card/crypto_asset/jar) is
-// eligible. Mirrored here (rather than exported from that screen) so the primary
-// picker and the footer action agree without a cross-screen import.
+// `holdingDetailSpecs` (`holding-detail-spec/`) applies for its `'transaction'`
+// action: a ledgerless type (term_deposit, bond, property_item — see
+// `isLedgerlessHoldingType`) carries no manual ledger and is excluded;
+// everything else (cash/card/crypto_asset/jar) is eligible. Mirrored here
+// (rather than imported from that spec) so the primary picker and the
+// footer action agree without a cross-feature import.
 const isTransactionEligibleType = (type: HoldingRow['type']): boolean =>
-  type !== 'term_deposit' && type !== 'bond';
+  !isLedgerlessHoldingType(type);
 
 // The primary-leg picker's options for the global-add (empty-create) case:
 // every OPEN, non-synced, transaction-eligible holding (mirroring the
@@ -720,6 +808,7 @@ const resolveDefaultPrimaryHolding = (args: {
 const renderPrimaryHoldingField = (props: {
   visible: boolean;
   label: string;
+  sheetTitle: string;
   placeholder: string;
   options: readonly HoldingSelectOption[];
   selectedId: string | null;
@@ -732,6 +821,7 @@ const renderPrimaryHoldingField = (props: {
   return (
     <HoldingSelectField
       label={props.label}
+      sheetTitle={props.sheetTitle}
       placeholder={props.placeholder}
       options={props.options}
       selectedId={props.selectedId}
@@ -757,7 +847,7 @@ const toAmountFields = (
 // The three mutually-exclusive entry ids read once from the route params, so
 // the component body spends no `in`-check branch on any of them (the union
 // keeps at most one non-null). `holdingParamId` is the plain-add holding;
-// `duplicateOfId` seeds a CREATE pre-filled from an existing manual row (D2).
+// `duplicateOfId` seeds a CREATE pre-filled from an existing manual row.
 const readRouteEntry = (
   params: TransactionFormParams,
 ): {
@@ -805,6 +895,9 @@ type HydrationPlan =
       amount: string;
       sign: Sign;
       description: string;
+      // The list label seeded in place of a blank stored description (see
+      // `resolveBlankLabel`), or null when the row's own description was seeded.
+      prefilledLabel: string | null;
       category: string | null;
       time: number | null;
     };
@@ -813,6 +906,7 @@ const seedFieldsFrom = (
   currency: Currency,
   row: Pick<TransactionRow, 'amountMinorUnits' | 'description' | 'category'>,
   time: number | null,
+  prefilledLabel: string | null,
 ): HydrationPlan => {
   const fields = toAmountFields(currency, row.amountMinorUnits);
 
@@ -820,7 +914,8 @@ const seedFieldsFrom = (
     kind: 'seedFields',
     amount: groupAmount(fields.amount),
     sign: fields.sign,
-    description: row.description,
+    description: prefilledLabel ?? row.description,
+    prefilledLabel,
     // Lowercase the stored value to a slug key — the same normalization the
     // display resolver applies — so it lines up with the picker's option keys.
     category: row.category ? row.category.toLowerCase() : null,
@@ -840,6 +935,7 @@ const resolveHydration = (args: {
   // the SAME `seedHolding` step the duplicate path uses, so the empty-create
   // default rides the effect's own one-shot latch with no second effect.
   defaultPrimaryHoldingId: string | null;
+  blankLabel: string | null;
 }): HydrationPlan => {
   const {
     existing,
@@ -848,12 +944,13 @@ const resolveHydration = (args: {
     primaryHoldingId,
     currency,
     defaultPrimaryHoldingId,
+    blankLabel,
   } = args;
 
   // Edit: seed once both the row and its holding have loaded, carrying the
   // stored timestamp so a manual row round-trips its own time.
   if (existing && holding) {
-    return seedFieldsFrom(currency, existing, existing.time);
+    return seedFieldsFrom(currency, existing, existing.time, blankLabel);
   }
 
   if (duplicateSource) {
@@ -866,7 +963,7 @@ const resolveHydration = (args: {
 
     // Duplicate step 2: seed the copied fields, dated to NOW (`time: null`).
     if (holding) {
-      return seedFieldsFrom(currency, duplicateSource, null);
+      return seedFieldsFrom(currency, duplicateSource, null, null);
     }
   }
 
@@ -897,6 +994,7 @@ type ConvertView = {
   fixedValue: string;
   fixedLabel: string;
   counterpartLabel: string;
+  counterpartSheetTitle: string;
   counterpartAmountLabel: string;
 };
 
@@ -912,7 +1010,7 @@ const resolveConvertView = (
   t: TFunction,
 ): ConvertView => {
   // Convert-mode eligibility uses the WIDER (cash/card) rule, unchanged from
-  // the current create source rule — Requirement B's cash-only restriction
+  // the current create source rule — the create-only cash-source restriction
   // applies to CREATE only. Both manual and synced rows qualify; the action
   // never mutates the existing row, so a synced row stays safe.
   const eligible =
@@ -923,8 +1021,7 @@ const resolveConvertView = (
   const direction = existing ? exchangeConvertDirection(existing.amountMinorUnits) : null;
   // An expense-sourced convert picks a DESTINATION (wider: excludes bond/jar);
   // an income-sourced convert picks a SOURCE (wider: cash/card only). Excludes
-  // the existing holding and closed holdings, and carries account names
-  // (Requirement C).
+  // the existing holding and closed holdings, and carries account names.
   const options = buildExchangeOptions(
     holdings,
     accountNameById,
@@ -945,11 +1042,13 @@ const resolveConvertView = (
       ? {
           fixedLabel: t('forms.transaction.valueIn'),
           counterpartLabel: t('forms.transaction.from'),
+          counterpartSheetTitle: t('forms.transaction.fromSheetTitle'),
           counterpartAmountLabel: t('forms.transaction.valueOut'),
         }
       : {
           fixedLabel: t('forms.transaction.valueOut'),
           counterpartLabel: t('forms.transaction.to'),
+          counterpartSheetTitle: t('forms.transaction.toSheetTitle'),
           counterpartAmountLabel: t('forms.transaction.valueIn'),
         };
 
@@ -995,7 +1094,7 @@ type FieldGroupProps = {
   // (which stays a bare setter) so the lookup never runs on a keystroke.
   onBlurDescription: () => void;
   descriptionPlaceholder: string;
-  // The D1 inline suggestion row, rendered directly under the description field.
+  // The inline description-suggestion row, rendered directly under the description field.
   // Null on an edit (an edit already has its description) or whenever there is
   // nothing to suggest — the component hides itself, so this is `ReactElement |
   // null` rather than a boolean gate here.
@@ -1005,7 +1104,7 @@ type FieldGroupProps = {
   onChangeTime: (timestamp: number) => void;
   t: TFunction;
   // Per-field validation-failure messages and wrapper refs, threaded straight
-  // into `ExchangeFields`/`ConvertExchangeFields` (the Task 8 props) or onto
+  // into `ExchangeFields`/`ConvertExchangeFields`'s own props or onto
   // the plain Amount `TextField` — see `fieldError`/`fieldRefsByKey` in the
   // screen component. `undefined` everywhere on a read-only row, where no
   // field ever gates Save.
@@ -1037,6 +1136,7 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         fixedValue={props.convertView.fixedValue}
         fixedSuffix={props.fixedSuffix}
         counterpartLabel={props.convertView.counterpartLabel}
+        counterpartSheetTitle={props.convertView.counterpartSheetTitle}
         counterpartPlaceholder={props.t('forms.transaction.selectHolding')}
         counterpartOptions={props.convertView.options}
         counterpartHoldingId={props.counterpartHoldingId}
@@ -1108,7 +1208,7 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         placeholder={props.descriptionPlaceholder}
       />
 
-      {/* D1: the inline tap-to-fill suggestion row, directly under the
+      {/* The inline tap-to-fill suggestion row, directly under the
         description field. It hides itself when there is nothing to offer, so it
         is rendered unconditionally here. */}
       {props.descriptionSuggestions}
@@ -1155,10 +1255,10 @@ type SplitReturnsProps = {
   // The LAST return row's own wrapper ref — a SEPARATE ref from
   // `splitReturnsFieldRef` (the CALL SITE's own wrapper, anchoring the whole
   // section for scroll-to-invalid) — so `addReturn` can scroll to whichever
-  // row is newest, via the SAME occlusion-aware `scrollToField` helper
-  // (round-6 device feedback item 3), rather than an unconditional
-  // `scrollToEnd` that used to fire even when the new row was already fully
-  // visible. `undefined` is a valid value (never passed while not split).
+  // row is newest, via the SAME occlusion-aware `scrollToField` helper,
+  // rather than an unconditional `scrollToEnd` that would fire even when
+  // the new row was already fully visible. `undefined` is a valid value
+  // (never passed while not split).
   lastRowRef?: RefObject<FieldInstance | null>;
 };
 
@@ -1179,7 +1279,7 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
       {props.returns.map((row, index) => (
         <View
           key={row.id}
-          // Only the LAST row anchors `lastRowRef` (round-6 item 3's
+          // Only the LAST row anchors `lastRowRef` (the
           // add-row scroll target) — `undefined` on every earlier row, the
           // same single-target-ref shape `contributionsFieldRef`'s own
           // index-gated assignment uses in holding-form.
@@ -1188,6 +1288,7 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
           <Box gap={2}>
             <HoldingSelectField
               label={props.t('forms.transaction.returnTo', { index: index + 1 })}
+              sheetTitle={props.t('forms.transaction.returnToSheetTitle', { index: index + 1 })}
               placeholder={props.selectHoldingPlaceholder}
               options={props.buildOptions(index)}
               selectedId={row.holdingId}
@@ -1253,6 +1354,48 @@ const showsSaveButton = (
   converting: boolean,
 ): boolean => !isReadOnly || categoryChanged || converting;
 
+// Whether the loan-payment field renders: an EXISTING debit row only (manual
+// or synced alike — `setLoanPayment`/`undoAutoLoanLink` carry no source
+// gate, same as the category field), data-driven on `loanOptions` rather
+// than a flag (a currency with no open loan holding at all simply never
+// offers the field — Guideline 5.6), and never while converting (that swaps
+// the whole field group for the convert-only inputs). Keyed off the
+// PERSISTED amount, not the live in-progress `mode` toggle, so the link's
+// own visibility never flip-flops before Save. Kept module-level and pure
+// for the same cognitive-complexity-budget reason as `showsSaveButton`
+// above.
+//
+// Also visible whenever the row already carries a link
+// (`selectedLoanHoldingId`), even with zero open loan options AND even once
+// the row is no longer a debit (a linked row later edited from debit
+// to credit must not hide the field where None/Undo live) — a filter never
+// hides an active selection: the row stays linked whose loan closed, moved
+// currency, or whose own amount sign changed, and the user must be able to
+// reach the field to see that link, Undo it, or pick "None", not just a
+// currently-open loan on a currently-eligible debit. `buildLoanOptions`
+// already unions that same loan back into `loanOptions`, so this is a
+// belt-and-suspenders direct check, not the only guard.
+const isLoanFieldVisible = (
+  existingAmountMinorUnits: number | undefined,
+  loanOptionCount: number,
+  converting: boolean,
+  selectedLoanHoldingId: string | null,
+): boolean =>
+  existingAmountMinorUnits !== undefined &&
+  !converting &&
+  (selectedLoanHoldingId !== null || (existingAmountMinorUnits < 0 && loanOptionCount > 0));
+
+// The current loan link's own two pieces, resolved together so the screen
+// body reads one call instead of two separate `?? null` chains — kept
+// module-level for the same cognitive-complexity-budget reason as
+// `isLoanFieldVisible` above.
+const resolveLoanLinkState = (
+  existing: Pick<TransactionRow, 'loanHoldingId' | 'loanLinkSource'> | undefined,
+): { selectedLoanHoldingId: string | null; loanLinkSource: 'auto' | 'manual' | null } => ({
+  selectedLoanHoldingId: existing?.loanHoldingId ?? null,
+  loanLinkSource: existing?.loanLinkSource ?? null,
+});
+
 // The category picker and "Convert to exchange" action: everything below the
 // main field group EXCEPT while converting (a convert has no category — just
 // the convert group and Save). Deleting a transaction is offered only through
@@ -1278,6 +1421,12 @@ type ModeAndActionsProps = {
   // wrapped in `categoryFieldRef` for scroll-to-invalid.
   categoryError?: string;
   categoryFieldRef?: RefObject<FieldInstance | null>;
+  loanFieldVisible: boolean;
+  loanOptions: readonly HoldingSelectOption[];
+  selectedLoanHoldingId: string | null;
+  onSelectLoanPayment: (loanHoldingId: string | null) => void;
+  loanLinkSource: 'auto' | 'manual' | null;
+  onUndoLoanLink: () => void;
 };
 
 const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null => {
@@ -1303,11 +1452,12 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
           <Box gap={1}>
             <CategoryField
               label={props.t('forms.transaction.category')}
+              sheetTitle={props.t('forms.transaction.categorySheetTitle')}
               testID="transaction-category-field"
               options={props.categoryOptions}
               selectedKey={props.selectedCategory}
               onSelect={props.onSelectCategory}
-              // A category is required only on a fresh add (isSaveDisabled
+              // A category is required only on a fresh add (`plainFieldErrors`
               // gates a create on it); an edit leaves the category optional.
               required={!props.isEditing}
             />
@@ -1315,6 +1465,29 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
             {props.categoryError !== undefined && <FieldError message={props.categoryError} />}
           </Box>
         </View>
+      )}
+
+      {/* Shown for BOTH a manual and a synced row — an existing debit's own
+        loan link is user state, not a mutation of bank-owned ledger data
+        (`transactionsRepo.setLoanPayment`/`undoAutoLoanLink` carry no source
+        gate, same as the category field above), so a read-only synced row
+        stays writable here too. Data-driven visibility, not a flag: hidden
+        outright whenever `loanOptions` is empty — see `isLoanFieldVisible`'s
+        own doc comment. */}
+      {props.loanFieldVisible && (
+        <LoanPaymentField
+          label={props.t('forms.transaction.loanPayment')}
+          sheetTitle={props.t('forms.transaction.loanPaymentSheetTitle')}
+          noneLabel={props.t('forms.transaction.loanPaymentNone')}
+          testID="transaction-loan-payment-field"
+          options={props.loanOptions}
+          selectedId={props.selectedLoanHoldingId}
+          onSelect={props.onSelectLoanPayment}
+          linkSource={props.loanLinkSource}
+          autoLinkedCaption={props.t('forms.transaction.loanLinkedAuto')}
+          undoLabel={props.t('forms.transaction.loanLinkUndo')}
+          onUndo={props.onUndoLoanLink}
+        />
       )}
 
       {/* Shown for BOTH a manual and a synced row — the action never mutates
@@ -1396,7 +1569,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // (needed to convert the entered major amount to minor units) comes from
   // filtering the full holdings list — the same approach the detail screen uses.
   const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
-  // The Exchange destination picker's account-name caption (Requirement C):
+  // The Exchange destination picker's account-name caption:
   // every account, reduced to an id -> name map so `buildExchangeOptions` can
   // thread a plain string onto each holding option without a per-row lookup
   // query.
@@ -1406,7 +1579,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // `isSyncedHolding` whether a candidate's account is connected to a sync
   // (item 6) — the name/order maps above drop the `institution` that check needs.
   const accountById = new Map(accounts.map((account) => [account.id, account]));
-  // The account display rank (F2): `accountsRepo.listQuery` is already ordered
+  // The account display rank: `accountsRepo.listQuery` is already ordered
   // by the drag-and-drop `sortOrder`, so each account's index IS its rank on
   // the Accounts screen. The picker groups its holdings under their account in
   // this same order (see `compareByAccountThenHolding`).
@@ -1414,7 +1587,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
   // Three entry points: `holdingId` = add a new manual row; `transactionId` =
   // open an existing one (edit/read-only); `duplicateOfTransactionId` = open the
-  // CREATE form pre-filled FROM an existing manual row (D2). Read once by a pure
+  // CREATE form pre-filled FROM an existing manual row. Read once by a pure
   // helper so the component body spends no `in`-check branch on any of them. In
   // add mode the by-id query runs against an empty id and returns nothing,
   // keeping the hook order stable without a conditional call.
@@ -1448,14 +1621,14 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     () => new Map(overrideRules.map((rule) => [rule.normalizedName, rule.category])),
     [overrideRules],
   );
-  // D1: the distinct past MANUAL descriptions (newest-first), reduced to a plain
+  // The distinct past MANUAL descriptions (newest-first), reduced to a plain
   // string list the inline suggestion row matches against as the user types.
   // Reactive on `'transactions'`, so a freshly saved manual row feeds the next
   // create's suggestions.
   const { data: pastDescriptionRows } = useLiveQuery(transactionsRepo.distinctDescriptionsQuery(), [
     'transactions',
   ]);
-  // Create-only (D1-Q3): an edit already has its description, so the pool is
+  // Create-only: an edit already has its description, so the pool is
   // emptied on an edit and the suggestion row hides itself. Gating here (in this
   // memo's own scope) rather than with a ternary at the render site keeps the
   // screen component's cognitive-complexity budget intact.
@@ -1477,8 +1650,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const rateTable = buildRateTable(rateRows);
 
   // The primary-holding seam: the SINGLE holding-from-state variable both the
-  // duplicate path (D2) and the empty-create picker (B) drive. D2 seeds it from
-  // the source row on mount; B seeds it from the most-recent-manual default and
+  // duplicate path and the empty-create picker drive. The duplicate path seeds
+  // it from the source row on mount; the empty-create picker seeds it from the
+  // most-recent-manual default and
   // then lets the user re-point it through the picker below. Every
   // holding-derived value (currency, amount suffix, category eligibility,
   // exchange rules) reads through it. Null on a plain add/edit, where
@@ -1545,6 +1719,23 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     holdingId,
     isExchangeCreateDestinationType,
   );
+  // The row's current loan link, resolved once and reused everywhere below
+  // (options, visibility, and the field's own render props) rather than
+  // recomputed inline at each site — that keeps every extra `??`/`?.` this
+  // task adds inside the already-budgeted `resolveLoanLinkState` helper
+  // instead of this component's own cognitive-complexity count.
+  const loanLinkState = resolveLoanLinkState(existing);
+  // The loan-payment picker's own eligible options, scoped to the payment's
+  // holding currency (see `buildLoanOptions`'s own doc comment). Read here,
+  // ahead of the field's `converting`-gated visibility below, alongside every
+  // other holdings-derived option list on this screen.
+  const loanOptions = buildLoanOptions(
+    holdings,
+    accountNameById,
+    accountOrderById,
+    currency,
+    loanLinkState.selectedLoanHoldingId,
+  );
 
   const convertView = resolveConvertView(
     existing,
@@ -1591,8 +1782,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // The LAST return row's own wrapper — a SEPARATE ref from
   // `splitReturnsFieldRef` above (which anchors the whole section for
   // scroll-to-invalid) — so `addReturn` below can scroll to whichever row is
-  // newest, via the SAME occlusion-aware `scrollToField` helper (round-6
-  // device feedback item 3), rather than an unconditional `scrollToEnd`.
+  // newest, via the SAME occlusion-aware `scrollToField` helper, rather
+  // than an unconditional `scrollToEnd`.
   const lastReturnFieldRef = useRef<FieldInstance>(null);
   const amountFieldRef = useRef<FieldInstance>(null);
   // The plain Amount field's own inner input, for a blocked Save's FOCUS
@@ -1641,6 +1832,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // blur must never overwrite that choice.
   const [userPickedCategory, setUserPickedCategory] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  // Held from the seed rather than re-resolved at Save, so a counterpart
+  // renamed mid-edit cannot turn the untouched label into stored text.
+  const [prefilledLabel, setPrefilledLabel] = useState<string | null>(null);
+  const blankLabel = resolveBlankLabel({ existing, holding, holdings, t });
   // Whether the user has pressed Save at least once. Save is always enabled;
   // this latches the inline reason on so it only ever appears after a press
   // that `disableSave` blocked, never live while the user is still filling
@@ -1675,44 +1870,49 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       primaryHoldingId,
       currency,
       defaultPrimaryHoldingId,
+      blankLabel,
     });
 
-    if (plan.kind === 'seedHolding') {
-      setPrimaryHoldingId(plan.holdingId);
-      // Close the latch only for a FINAL seed (empty-create): `false` is a
-      // no-op on the duplicate step (the latch is already open), so this stays
-      // a single flat statement rather than another branch.
-      setHydrated(plan.final);
+    match(plan)
+      .with({ kind: 'seedHolding' }, (seedHoldingPlan) => {
+        setPrimaryHoldingId(seedHoldingPlan.holdingId);
+        // Close the latch only for a FINAL seed (empty-create): `false` is a
+        // no-op on the duplicate step (the latch is already open), so this stays
+        // a single flat statement rather than another branch.
+        setHydrated(seedHoldingPlan.final);
+      })
+      .with({ kind: 'seedFields' }, (seedFieldsPlan) => {
+        setAmount(seedFieldsPlan.amount);
+        setMode(seedFieldsPlan.sign);
+        setDescription(seedFieldsPlan.description);
+        setPrefilledLabel(seedFieldsPlan.prefilledLabel);
+        setSelectedCategory(seedFieldsPlan.category);
+        // A seeded non-null category counts as a user pick, so a later
+        // description blur (A1's `reseatCategoryFromName`) can never clobber it.
+        // This matters for the DUPLICATE path (`isEditing` is false there): the
+        // "duplicate a row, tweak the note" flow must keep the copied category
+        // when the retyped description matches no name rule. The edit path already
+        // guards its stored category via `isEditing`, so this is a harmless no-op
+        // there; the empty-create/fixed-holding paths seed a null category, so
+        // `userPickedCategory` stays false and A1's normal create-blur auto-seat
+        // is unaffected.
+        if (seedFieldsPlan.category !== null) {
+          setUserPickedCategory(true);
+        }
 
-      return;
-    }
+        // A null `time` keeps the field at NOW — the duplicate never copies the
+        // source timestamp; the edit path carries the stored time.
+        if (seedFieldsPlan.time !== null) {
+          setTime(seedFieldsPlan.time);
+        }
 
-    if (plan.kind === 'seedFields') {
-      setAmount(plan.amount);
-      setMode(plan.sign);
-      setDescription(plan.description);
-      setSelectedCategory(plan.category);
-      // A seeded non-null category counts as a user pick, so a later
-      // description blur (A1's `reseatCategoryFromName`) can never clobber it.
-      // This matters for the DUPLICATE path (`isEditing` is false there): the
-      // "duplicate a row, tweak the note" flow must keep the copied category
-      // when the retyped description matches no name rule. The edit path already
-      // guards its stored category via `isEditing`, so this is a harmless no-op
-      // there; the empty-create/fixed-holding paths seed a null category, so
-      // `userPickedCategory` stays false and A1's normal create-blur auto-seat
-      // is unaffected.
-      if (plan.category !== null) {
-        setUserPickedCategory(true);
-      }
-
-      // A null `time` keeps the field at NOW — the duplicate never copies the
-      // source timestamp; the edit path carries the stored time.
-      if (plan.time !== null) {
-        setTime(plan.time);
-      }
-
-      setHydrated(true);
-    }
+        setHydrated(true);
+      })
+      // Neither the source row's holding nor a default primary holding has
+      // resolved yet — nothing to seed this render; the effect re-runs once one
+      // of its dependencies (e.g. `holding`) resolves.
+      .with({ kind: 'wait' }, () => {})
+      .exhaustive();
   }, [
     existing,
     duplicateSource,
@@ -1721,6 +1921,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     hydrated,
     currency,
     defaultPrimaryHoldingId,
+    blankLabel,
   ]);
 
   // Feature 1: seed the counterpart (cash) amount from the latest cached rate at
@@ -1765,12 +1966,25 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const originalCategoryKey = existing?.category ? existing.category.toLowerCase() : null;
   const categoryChanged = selectedCategory !== null && selectedCategory !== originalCategoryKey;
 
+  const loanFieldVisible = isLoanFieldVisible(
+    existing?.amountMinorUnits,
+    loanOptions.length,
+    converting,
+    loanLinkState.selectedLoanHoldingId,
+  );
+
   // The description field's placeholder previews the label the row would carry
   // if left blank (see `resolveDescriptionPlaceholder`), and the Save button is
   // disabled for a create still missing its amount or category (see
-  // `isSaveDisabled`). Both are module-level pure helpers so their branches
-  // stay out of this component's cognitive-complexity budget.
-  const descriptionPlaceholder = resolveDescriptionPlaceholder(holding, mode, t);
+  // `transactionFieldErrors`). Both are module-level pure helpers so their
+  // branches stay out of this component's cognitive-complexity budget.
+  const descriptionPlaceholder = resolveDescriptionPlaceholder({
+    holding,
+    existing,
+    holdings,
+    mode,
+    t,
+  });
   const saveDisabledParams: SaveDisabledParams = {
     converting,
     isExchange,
@@ -1786,24 +2000,20 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     changeReturns,
     currency,
   };
-  // `saveDisabledReason` returns null in every branch exactly where
-  // `isSaveDisabled` returns false (they are twins — see the comment above
-  // `saveDisabledReason`), so it is safe to call unconditionally here rather
-  // than gating it on `disableSave` — which would cost this component's own
-  // cognitive-complexity budget one more branch for no behavioral gain.
-  const disableSave = isSaveDisabled(saveDisabledParams);
-  const disableSaveReason = saveDisabledReason(saveDisabledParams, t);
-  // `saveDisabledField` is `disableSaveReason`'s twin (see the comment above
-  // `saveDisabledField`): non-null in exactly the same branches, naming the
-  // field to scroll to and to blame instead of the translated message.
-  const disableSaveField = saveDisabledField(saveDisabledParams);
-  // Each field's own inline error: the shared reason, shown only once the
-  // user has attempted a Save AND that field is the one currently blaming it —
-  // so the SAME reason text lands beside its own field instead of stacking one
-  // copy per field. Kept as a small closure (rather than one `fieldError(key)`
-  // computed per call site) so every render reads the same two latched values.
+  // Every field's OWN independent error (see `transactionFieldErrors`'s own
+  // doc comment) — `fieldError` just applies the shared `attemptedSave` gate
+  // once here instead of at each of the eight call sites below.
+  const activeFieldErrors = transactionFieldErrors(saveDisabledParams, t);
   const fieldError = (key: SaveDisabledField): string | undefined =>
-    attemptedSave && disableSaveField === key ? (disableSaveReason ?? undefined) : undefined;
+    attemptedSave ? activeFieldErrors[key] : undefined;
+  // The first still-blocking field, in the active mode's own priority order
+  // — both the Save-block gate AND the scroll-to-first-invalid target, so
+  // the two can never disagree about which field is blocking.
+  const disableSaveField = firstInvalidField(
+    activeFieldOrder(saveDisabledParams),
+    activeFieldErrors,
+  );
+  const disableSave = disableSaveField !== null;
 
   // An explicit category pick: record the choice AND flag it, so a later
   // description blur (the A1 auto-pick) never overwrites what the user chose.
@@ -1813,7 +2023,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   };
 
   // A1's category auto-pick, factored into ONE surface both the description
-  // blur AND the D1 suggestion tap route through, so the two never stack a
+  // blur AND the suggestion tap route through, so the two never stack a
   // second independent description effect. Given a settled name and no explicit
   // user pick, pre-select the category the existing name rules map that name to;
   // a name matching no rule yields null, which clears any prior auto-pick so
@@ -1836,7 +2046,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     reseatCategoryFromName(description);
   };
 
-  // D1: tapping an inline suggestion fills the description verbatim AND re-fires
+  // Tapping an inline suggestion fills the description verbatim AND re-fires
   // A1's rule lookup on that same value, so picking a known merchant name seats
   // its category exactly as a blur would — ONE coherent description-handling
   // surface, not two competing effects.
@@ -1849,6 +2059,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   useLayoutEffect(() => {
     navigation.setOptions({ title });
   }, [navigation, title]);
+
+  const descriptionToStore = storedDescription(description, prefilledLabel);
 
   // Persist the amount/description edit on a manual row (edit vs. add). Only
   // ever called from the income/expense path (`save` branches Exchange off to
@@ -1865,7 +2077,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         transactionId: editingId,
         amountMinorUnits,
         time,
-        description,
+        description: descriptionToStore,
       });
 
       return;
@@ -1883,7 +2095,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         // only through the override rule, which returns early on a blank
         // normalized name — so a blank-description row (and any row whose
         // override the user cancelled) was written uncategorised despite
-        // `isSaveDisabled` forcing a pick on create.
+        // `plainFieldErrors` forcing a pick on create.
         category: selectedCategory,
       });
     }
@@ -1893,7 +2105,43 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // `applyOverride`, and `applyOverrideOne` each catch their own write and
   // call this rather than repeating the same two catalog keys three times.
   const showSaveErrorAlert = (): void => {
-    Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
+    alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
+  };
+
+  // The loan-payment link persists AT ONCE — no Save-button gating, unlike
+  // the category field above (see `LoanPaymentField`'s own doc comment).
+  // Both handlers are guarded on `existing` even though the field itself
+  // only ever renders once it is defined, so a stray press during the row's
+  // own unmount can never throw. A real pick is always `source: 'manual'`;
+  // "None" clears the link AND rejects it (`loanLinkRejected`), so the
+  // matcher never re-proposes a link the user just explicitly removed — see
+  // `transactionsRepo.setLoanPayment`'s own doc comment for the full
+  // contract.
+  const selectLoanPayment = async (loanHoldingId: string | null): Promise<void> => {
+    if (existing === undefined) {
+      return;
+    }
+
+    try {
+      await transactionsRepo.setLoanPayment({ transactionId: existing.id, loanHoldingId });
+    } catch {
+      showSaveErrorAlert();
+    }
+  };
+
+  // Undo an auto-suggested link (the matcher's own path): clears it and
+  // rejects it too, exactly like a manual "None" — see
+  // `transactionsRepo.undoAutoLoanLink`'s own doc comment.
+  const undoLoanLink = async (): Promise<void> => {
+    if (existing === undefined) {
+      return;
+    }
+
+    try {
+      await transactionsRepo.undoAutoLoanLink(existing.id);
+    } catch {
+      showSaveErrorAlert();
+    }
   };
 
   // Editing a category ALWAYS propagates to every same-name transaction (and to
@@ -1957,7 +2205,15 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const { onPress: onApplyOverrideOne, isSubmitting: isApplyingOverrideOne } =
     useSubmitOnce(applyOverrideOne);
 
+  // Either sheet write in flight: the sheet stays up (a scrim/back dismiss or
+  // Cancel closes nothing) until the write is done and its own `goBack` runs.
+  const isOverrideWriting = [isApplyingOverride, isApplyingOverrideOne].includes(true);
+
   const cancelOverride = (): void => {
+    if (isOverrideWriting) {
+      return;
+    }
+
     navigation.goBack();
   };
 
@@ -1983,9 +2239,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     // would still measure the PRE-add (one row shorter) layout. Same
     // deferred-RAF pattern as the categories screen's own
     // `scrollToAddCategoryForm`. Routes through the SAME occlusion-aware
-    // `scrollToField` helper `save`'s own scroll-to-invalid uses below
-    // (round-6 device feedback item 3) — an unconditional `scrollToEnd` used
-    // to fire even when the new row was already fully on screen.
+    // `scrollToField` helper `save`'s own scroll-to-invalid uses below —
+    // never an unconditional `scrollToEnd`, which would fire even when the
+    // new row was already fully on screen.
     requestAnimationFrame(() => {
       scrollToField(scrollableRef, lastReturnFieldRef, {
         currentOffset: scrollOffset.value,
@@ -2226,7 +2482,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
       // The rule keys on the synced row's own description (read-only) or the
       // just-saved manual description.
-      const name = isReadOnly ? (existing?.description ?? '') : description;
+      const name = isReadOnly ? (existing?.description ?? '') : descriptionToStore;
       const overrideRequest = resolveCategoryOverrideRequest(
         categoryChanged,
         selectedCategory,
@@ -2313,6 +2569,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
           {renderPrimaryHoldingField({
             visible: isEmptyCreate,
             label: t('forms.transaction.holding'),
+            sheetTitle: t('forms.transaction.holdingSheetTitle'),
             placeholder: t('forms.transaction.selectHolding'),
             options: primaryOptions,
             selectedId: primaryHoldingId,
@@ -2358,7 +2615,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             description,
             onChangeDescription: setDescription,
             onBlurDescription: onDescriptionBlur,
-            // D1: the inline suggestion row. Its pool is already empty on an
+            // The inline suggestion row. Its pool is already empty on an
             // edit (see the `pastDescriptions` memo), and the component itself
             // hides when there is no match or the field already equals a
             // suggestion, so it is passed unconditionally here.
@@ -2401,13 +2658,12 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             hidden wrapper out of that gap slot while the mode is not split,
             without unmounting it (so the ref stays usable the moment split
             mode is selected).
-            Round-6 device feedback item 2 (a regression this wrapper itself
-            introduced, back when it first replaced `renderSplitReturns`'s
-            Fragment as a DIRECT child of the parent `Box gap={4}`): its
-            divider/heading/rows/error/button used to be that Box's own direct
-            children, each getting the 16pt rhythm between them; wrapped in one
-            `View`, they became ONE child with nothing supplying a gap between
-            them. `styles.splitReturnsGap` gives this wrapper the SAME gap
+            This wrapper stands in place of `renderSplitReturns`'s Fragment as
+            a DIRECT child of the parent `Box gap={4}`: its
+            divider/heading/rows/error/button are wrapped in this one `View`
+            as ONE child, with nothing supplying a gap between them the way
+            the Box's own direct children would each get automatically.
+            `styles.splitReturnsGap` gives this wrapper the SAME gap
             itself, restoring the rhythm — it is harmless while hidden
             (`display: 'none'` still collapses the whole node). A plain `View`
             (not `Box`) is required here: `Box` is a non-forwarding function
@@ -2451,7 +2707,17 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             t,
             categoryError: fieldError('selectedCategory'),
             categoryFieldRef,
+            loanFieldVisible,
+            loanOptions,
+            ...loanLinkState,
+            onSelectLoanPayment: selectLoanPayment,
+            onUndoLoanLink: undoLoanLink,
           })}
+
+          {/* After description AND category — the top of the form (above
+              holding/type/amount) reads wrong for a supplementary,
+              often-empty field. */}
+          {renderCommentRow(existing?.comment, t('forms.transaction.comment'))}
         </Box>
       </Screen>
 
@@ -2460,7 +2726,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
           primary all-similar name rule; "Just for this one" (edit mode only) is
           the secondary single-row override; "Cancel" is a transparent ghost with
           a red label. Dismissing the sheet (scrim/back) behaves like Cancel — it
-          returns to the list. */}
+          returns to the list. While either write runs, its button shows a
+          spinner and the sheet stays open until the write is done. */}
       <BottomSheet
         visible={pendingOverride !== null}
         onDismiss={cancelOverride}
@@ -2480,17 +2747,31 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
           {overrideMessage}
         </Text>
 
-        <Button onPress={onApplyOverride} disabled={isApplyingOverride}>
+        <Button
+          onPress={onApplyOverride}
+          loading={isApplyingOverride}
+          disabled={isApplyingOverrideOne}
+        >
           {t('forms.transaction.apply')}
         </Button>
 
         {editingId !== null && (
-          <Button variant="secondary" onPress={onApplyOverrideOne} disabled={isApplyingOverrideOne}>
+          <Button
+            variant="secondary"
+            onPress={onApplyOverrideOne}
+            loading={isApplyingOverrideOne}
+            disabled={isApplyingOverride}
+          >
             {t('forms.transaction.applyToThisOne')}
           </Button>
         )}
 
-        <Button variant="ghost" textColor={theme.colors.negative} onPress={cancelOverride}>
+        <Button
+          variant="ghost"
+          textColor={theme.colors.negative}
+          onPress={cancelOverride}
+          disabled={isOverrideWriting}
+        >
           {t('common.cancel')}
         </Button>
       </BottomSheet>
@@ -2516,7 +2797,7 @@ const styles = StyleSheet.create((theme) => ({
   hidden: {
     display: 'none',
   },
-  // Round-6 device feedback item 2: the wrapper's own gap, matching the
+  // The wrapper's own gap, matching the
   // parent form `Box`'s `gap={4}` rhythm — see the CALL SITE comment above
   // for why this wrapper (not `renderSplitReturns` itself) owns it.
   splitReturnsGap: {

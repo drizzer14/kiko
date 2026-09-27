@@ -1,3 +1,5 @@
+import { StatementParseError } from '@kiko/statement-import/parser';
+
 import {
   alfaBusinessFixtureInput,
   monobankFixtureInput,
@@ -6,14 +8,13 @@ import {
   sensebankFixtureInput,
   ukrsibBusinessFixtureInput,
 } from '../format-test-fixtures';
-import { StatementParseError } from '../../parser';
 import { FOP_BUSINESS_COLUMN_BASE } from '../business-csv';
 
 import { COLUMN, DETECT_PREFIX, procreditBusinessCsvFormat } from '.';
 
 // The REAL uabean fixture (C.4, NOTICE.md) — confirmed ANONYMIZED via
 // uabean's own `anonymize.py` script — reused byte for byte, cp1251-encoded,
-// exactly as committed (task-5-report.md confirms the copy's checksum
+// exactly as committed (a checksum confirms the copy
 // matches the clone it came from). Decoded via the REAL `windows-1251`
 // library (see `../format-test-fixtures`), the SAME decode step the
 // screen's cp1251 fallback performs before handing text to this format —
@@ -22,15 +23,15 @@ import { COLUMN, DETECT_PREFIX, procreditBusinessCsvFormat } from '.';
 const fixtureInput = procreditBusinessFixtureInput;
 const fixtureText = fixtureInput.text;
 
-// The real fixture's own header, byte-verified (task-5-report.md) — used to
+// The real fixture's own header, byte-verified — used to
 // hand-assemble minimal malformed-row inputs, same convention as
 // Monobank/Sensebank's own malformed-row fixtures.
 const REAL_HEADER =
   'ЄДРПОУ;Код ID НБУ;Рахунок;Валюта;Дата операції;Код операції;МФО банка;Назва банка;Рахунок кореспондента;ЄДРПОУ кореспондента;Кореспондент;Номер документа;Дата документа;Дебет;Кредит;Призначення платежу;Гривневе покриття';
 
-// Task 3 review precedent (NaN guard, IMPORTANT): neither the debit nor the
-// credit cell is populated — an empty or malformed amount cell must never
-// reach `Money.fromMajor` as `NaN`; `parse` throws `StatementParseError`
+// The NaN guard: neither the debit nor the credit cell is populated — an
+// empty or malformed amount cell must never reach `Money.fromMajor` as
+// `NaN`; `parse` throws `StatementParseError`
 // instead (Monobank/Sensebank's convention).
 const malformedAmountInput = {
   text: [
@@ -60,13 +61,13 @@ const bothDebitAndCreditPopulatedInput = {
 };
 
 // The exported constants ARE the real contract a kiko:developer implements
-// `detect`/`parse` against (section C.3) — pinned here, verified against the
-// REAL fixture's bytes (task-5-report.md), so a future edit that silently
+// `detect`/`parse` against — pinned here, verified against the
+// REAL fixture's bytes, so a future edit that silently
 // drifts the 59-char detect prefix or the column order is caught by a real
 // assertion. `COLUMN`'s 16 shared indices come from
 // `FOP_BUSINESS_COLUMN_BASE` (also used by `ukrsib-business-csv`'s own
 // `COLUMN`, cross-verified against BOTH real/hand-authored fixtures at
-// authoring time, task-5-report.md); only this format's OWN divergent
+// authoring time); only this format's OWN divergent
 // column (`nbuCode`, index 1) is asserted independently here.
 describe('procredit-business-csv format constants', () => {
   it('anchors the 59-character detect prefix exactly, matching the real fixture header', () => {
@@ -171,7 +172,7 @@ describe('procreditBusinessCsvFormat.parse', () => {
   // The real fixture's `Рахунок` column spans TWO distinct accounts
   // (`UA00000001` on rows 1-3 & 6, `UA00000007` on rows 4-5) — a single
   // account export concatenated from more than one underlying account, the
-  // same shape Alfa business's own real fixture has (Controller ruling 3).
+  // same shape Alfa business's own real fixture has.
   // `account.iban` must be undefined rather than silently picking the first
   // row's account, unifying ProCredit/Ukrsib's shared core with Alfa's own
   // behavior.

@@ -36,10 +36,10 @@ export type SelectableRowProps = {
   description?: ReactNode;
   // An optional trailing node rendered on the SAME line as `label`, pinned to
   // the row's far right edge and top-aligned to the label's first line — the
-  // bank picker's capability icons are the first consumer
-  // (device-feedback-round-3 item 7: the icons sit aligned with the title,
-  // not inline inside the wrappable `description` caption below it). The
-  // caller owns any tone/size choice for whatever it renders here, the same
+  // bank picker's capability icons are the first consumer (the icons sit
+  // aligned with the title, not inline inside the wrappable `description`
+  // caption below it). The caller owns any tone/size choice for whatever it
+  // renders here, the same
   // as `description`.
   trailing?: ReactNode;
   // Forwarded to the row's Pressable so a consumer can measure each row's

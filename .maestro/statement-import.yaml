@@ -47,7 +47,7 @@ appId: com.dmytro-vasylkivskyi.kiko
 # 1. Accounts tab -> an account's detail screen
 # ---------------------------------------------------------------------------
 - tapOn:
-    id: "wallet.pass.fill"
+    id: "tray"
 - assertVisible:
     id: "accounts-grid"
 - tapOn:
@@ -82,12 +82,18 @@ appId: com.dmytro-vasylkivskyi.kiko
 - assertVisible:
     text: "4"
 
+# "Choose a holding" is now a SELECT FIELD (device-feedback-round-F1, item
+# 2) — its own caption AND its unselected placeholder value both show the
+# translated "Оберіть актив" text, so tapping by testID (not text) avoids the
+# resulting ambiguous multi-match.
 - tapOn:
-    text: "Оберіть актив"
+    id: "target-holding-field"
 - tapOn:
     text: "Монобанк"
     index: 1
 
+# Import moved into the screen's shared footer (item 1) — same button text,
+# now anchored below the scroll content instead of inline in it.
 - tapOn:
     text: "Імпортувати"
 - assertVisible:

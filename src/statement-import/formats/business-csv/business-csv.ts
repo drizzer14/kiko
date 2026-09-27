@@ -1,7 +1,7 @@
 // Shared parse core for the "columnar business CSV" shape ProCredit business
-// and Ukrsibbank business both use (section C.3): a `;`-delimited cp1251
+// and Ukrsibbank business both use: a `;`-delimited cp1251
 // export, one header row, then one data row per transaction, a Дебет XOR
-// Кредит column pair whose cell text is UNSIGNED (Controller ruling 1 —
+// Кредит column pair whose cell text is UNSIGNED —
 // different from Sensebank, whose debit cell already carries its own minus,
 // so `parse` negates the debit side manually here), and a DD.MM.YYYY
 // HH:MM:SS single-field date reusing the shared `parseDateTimeSeconds`
@@ -19,10 +19,11 @@ import type {
   StatementFormat,
   StatementFormatId,
   StatementFormatInput,
-} from '../../parser';
-import { Money } from '../../../currency/money';
-import { StatementParseError } from '../../parser';
-import { parseDateTimeSeconds } from '../../parse-date-time';
+} from '@kiko/statement-import/parser';
+import { Money } from '@kiko/currency/money';
+import { StatementParseError } from '@kiko/statement-import/parser';
+import { parseDateTimeSeconds } from '@kiko/statement-import/parse-date-time';
+
 import {
   parseFiniteAmountMajor,
   readDataRows,
@@ -33,7 +34,7 @@ import {
 // Not exported — nothing outside this file references either type by name
 // (every call site passes an inline object literal to
 // `createColumnarBusinessCsvFormat`, which TypeScript checks structurally);
-// `check:knip` flags an unused exported type as dead code (Task 5 review).
+// `check:knip` flags an unused exported type as dead code.
 type ColumnarBusinessCsvColumn = {
   account: number;
   currency: number;
@@ -56,10 +57,10 @@ type ColumnarBusinessCsvConfig = {
   column: ColumnarBusinessCsvColumn;
 };
 
-// Controller ruling 1: the Дебет cell's raw text is UNSIGNED — negate it
+// The Дебет cell's raw text is UNSIGNED — negate it
 // manually; the Кредит cell is unsigned positive, no negation. Guards
-// against ever computing a NaN `amountMinorUnits` (Task 3 review precedent)
-// when both cells are empty/malformed. A row carrying BOTH a debit AND a
+// against ever computing a NaN `amountMinorUnits` when both cells are
+// empty/malformed. A row carrying BOTH a debit AND a
 // credit is not a valid Дебет XOR Кредит row at all (money-safety review) —
 // silently preferring the debit side would drop the credit amount without a
 // trace, so this throws instead of guessing.

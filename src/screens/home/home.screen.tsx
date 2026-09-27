@@ -1,54 +1,56 @@
-import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { categoriesRepo } from '@kiko/categories/repo';
-import { holdingsRepo } from '@kiko/holdings/repo';
-import { ratesRepo } from '@kiko/rates/repo';
-import { settingsRepo } from '@kiko/settings/settings.repo';
-import { useSyncAll } from '@kiko/sync/use-sync-all';
-import { transactionsRepo } from '@kiko/transactions/repo';
-import type { CompositeScreenProps } from '@react-navigation/native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { FC, ReactElement } from 'react';
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { RefreshControl, SectionList } from 'react-native';
-import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
 import {
   buildCategoryDisplayMap,
   DEFAULT_CATEGORY_KEY,
   resolveCategoryDisplay,
   resolveCategoryKey,
-} from '../../categories/category-display';
-import type { Currency } from '../../currency/currency';
-import { defaultDateRange } from '../../dates/default-range';
-import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
-import { useLiveQuery } from '../../db/use-live-query';
-import Box from '../../design-system/components/box';
-import Card from '../../design-system/components/card';
-import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
-import MoneyText from '../../design-system/components/money-text';
-import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
-import Text from '../../design-system/components/text';
-import { resolveEntityColor } from '../../design-system/entity-tint';
-import { defaultAccountColor } from '../../holdings/entity-colors';
-import type { HomeStackParamList, TabParamList } from '../../navigation/types';
-import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
-import { activeHoldings } from '../../rates/active-holdings';
-import { buildRateTable, guardedBreakdown, guardedNetWorth } from '../../rates/net-worth-view';
-import { resolveCategoryColor } from '../../statistics/category-breakdown';
-import { type DaySection, groupByDay } from '../../transactions/group-by-day';
-import { transactionSpan } from '../../transactions/transaction-span';
+} from '@kiko/categories/category-display';
+import { ratesRepo } from '@kiko/rates/repo';
+import { accountsRepo } from '@kiko/accounts';
+import { settingsRepo } from '@kiko/settings';
+import type { FC, ReactElement } from 'react';
+import { useTranslation } from 'react-i18next';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { useSyncAll } from '@kiko/sync/use-sync-all';
+import Box from '@kiko/design-system/components/box';
+import { useDataReady, useLiveQuery } from '@kiko/db';
+import { categoriesRepo } from '@kiko/categories/repo';
+import Card from '@kiko/design-system/components/card';
+import Text from '@kiko/design-system/components/text';
+import type { Currency } from '@kiko/currency/currency';
+import { transactionsRepo } from '@kiko/transactions/repo';
+import { usePriceBook } from '@kiko/prices/use-price-book';
+import { activeHoldings } from '@kiko/rates/active-holdings';
+import { needsPriceBook } from '@kiko/holdings/priced-value';
+import Divider from '@kiko/design-system/components/divider';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
+import MoneyText from '@kiko/design-system/components/money-text';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { defaultAccountColor } from '@kiko/holdings/entity-colors';
+import { resolveEntityColor } from '@kiko/design-system/entity-tint';
+import type { CompositeScreenProps } from '@react-navigation/native';
+import { transactionSpan } from '@kiko/transactions/transaction-span';
+import { RefreshControl, ScrollView, SectionList } from 'react-native';
+import LoadingState from '@kiko/design-system/components/loading-state';
+import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { type DaySection, groupByDay } from '@kiko/transactions/group-by-day';
+import { defaultDateRange, endOfLocalDay, startOfLocalDay } from '@kiko/dates';
+import type { FilterOption } from '@kiko/design-system/components/filter-menu';
+import type { HomeStackParamList, TabParamList } from '@kiko/navigation/types';
+import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
+import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown';
+import Screen, { resolveBottomClearance } from '@kiko/design-system/components/screen';
+import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
+import { buildRateTable, guardedBreakdown, guardedNetWorth } from '@kiko/rates/net-worth-view';
 
-import AddTransactionFab from './add-transaction-fab';
-import type { FilterOption } from './filter-menu';
 import { styles } from './home.styles';
-import SyncProgressBar from './sync-progress-bar';
-import TransactionFilterBar, { FILTER_ALL } from './transaction-filter-bar';
 import TransactionRow from './transaction-row';
-import type { HomeTransactionRow } from './transaction-row/transaction-row.props';
+import SyncProgressBar from './sync-progress-bar';
+import AddTransactionFab from './add-transaction-fab';
 import { useRefreshControlSignal } from './use-refresh-control-signal';
+import TransactionFilterBar, { FILTER_ALL } from './transaction-filter-bar';
+import type { HomeTransactionRow } from './transaction-row/transaction-row.props';
 
 // Home lives in its own tab; some of its future navigation targets belong to
 // the Accounts tab's stack. Composing the Home stack props with the tab props
@@ -102,16 +104,66 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const listRef = useRef<SectionList<HomeTransactionRow, DaySection<HomeTransactionRow>>>(null);
   useScrollToTopOnTabPress(listRef);
 
-  const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
-  const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
-  const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
-  const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
-  const { data: transactions } = useLiveQuery(transactionsRepo.listAllWithContextQuery(), [
-    'transactions',
-    'holdings',
-    'accounts',
-  ]);
-  const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
+  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
+    accountsRepo.listQuery(),
+    ['accounts'],
+    true,
+    { cached: true },
+  );
+  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
+    holdingsRepo.allQuery(),
+    ['holdings'],
+    true,
+    { cached: true },
+  );
+  const { data: rates, isLoading: ratesLoading } = useLiveQuery(
+    ratesRepo.allQuery(),
+    ['currency_rates'],
+    true,
+    { cached: true },
+  );
+  // kiko-architecture: skip the price_points read while nothing rendered on
+  // this screen ever reads it — a holding whose type carries no priced spec
+  // and is not a loan (`needsPriceBook`) never touches `price_points`. It
+  // stays enabled while holdings are still on their first load, so the two
+  // reads run in parallel instead of price_points waiting on holdings. Only a
+  // loan reads the linked-payments half of the book.
+  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
+    holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
+    { cached: true },
+    holdingsLoading || holdings.some((holding) => holding.type === 'loan'),
+  );
+  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
+    settingsRepo.getQuery(),
+    ['settings'],
+    true,
+    { cached: true },
+  );
+  const { data: transactions, isLoading: transactionsLoading } = useLiveQuery(
+    transactionsRepo.listAllWithContextQuery(),
+    ['transactions', 'holdings', 'accounts'],
+    true,
+    { cached: true },
+  );
+  const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
+    categoriesRepo.allQuery(),
+    ['categories'],
+    true,
+    { cached: true },
+  );
+  // The net-worth headline (it would otherwise read 0 while still loading)
+  // and the empty-transactions text must never render while any of this
+  // screen's own queries is still on its first load (kiko-architecture's
+  // useLiveQuery consumer rule) — gated below, right at the return.
+  const isReady = useDataReady(
+    accountsLoading,
+    holdingsLoading,
+    ratesLoading,
+    priceBookLoading,
+    settingsLoading,
+    transactionsLoading,
+    categoriesLoading,
+  );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(localized label) `buildCategoryDisplayMap` resolves each default category's title through i18n (`resolveDefaultCategoryTitle`) INTERNALLY, so `i18n.language` is a real dependency Biome cannot see — without it a live language switch leaves the resolved titles in the previous language.
   const categoryByKey = useMemo(
@@ -175,6 +227,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
 
       setSelected((previous) => {
         const next = new Set(previous);
+
         if (next.has(value)) {
           next.delete(value);
         } else {
@@ -201,8 +254,8 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   );
 
   const active = activeHoldings(holdings, accounts);
-  const total = guardedNetWorth(active, baseCurrency, rateTable, now);
-  const breakdown = guardedBreakdown(active, baseCurrency, rateTable, now);
+  const total = guardedNetWorth(active, baseCurrency, rateTable, now, priceBook);
+  const breakdown = guardedBreakdown(active, baseCurrency, rateTable, now, priceBook);
 
   // The full span of transaction dates, shown as the date-range field's default
   // display when no range is active. It never filters — it only tells the user
@@ -241,6 +294,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // first-seen-wins, preserving the old `Set`-based distinctness.
   const accountOptions = useMemo(() => {
     const byName = new Map<string, FilterOption>();
+
     for (const account of accounts) {
       if (account.archivedAt != null || byName.has(account.name)) {
         continue;
@@ -251,6 +305,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
         color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
       });
     }
+
     return Array.from(byName.values());
   }, [accounts]);
   // Group and match the category filter by the STABLE `categories.key` slug,
@@ -278,8 +333,10 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(localized label) `resolveCategoryDisplay` resolves a default category's title through i18n INTERNALLY (not via a captured variable Biome can see), so `i18n.language` is a real dependency — without it a live language switch leaves the option labels in the previous language.
   const categoryOptions = useMemo(() => {
     const byKey = new Map<string, FilterOption>();
+
     for (const row of transactions) {
       const key = categoryKeyForRow(row.category);
+
       if (byKey.has(key)) {
         continue;
       }
@@ -301,6 +358,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     categories.forEach((category, index) => {
       orderByKey.set(category.key, index);
     });
+
     return Array.from(byKey.values()).sort((a, b) => {
       const orderA = orderByKey.get(a.value) ?? Number.POSITIVE_INFINITY;
       const orderB = orderByKey.get(b.value) ?? Number.POSITIVE_INFINITY;
@@ -350,7 +408,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     [navigation],
   );
 
-  // Duplicating a row opens the create form pre-filled from it (D2), stateless
+  // Duplicating a row opens the create form pre-filled from it, stateless
   // via the `duplicateOfTransactionId` route param. Stable across renders (it
   // closes over `navigation` alone), like `handleRowPress`, so the memoized
   // rows never re-render on a new handler identity.
@@ -419,6 +477,39 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     [sections],
   );
 
+  if (!isReady) {
+    return (
+      // The SAME Screen mode as the ready branch below (`bleedBottom`), the
+      // determinate sync progress bar (it shows the sync this screen's own
+      // first read is queued behind — see kiko-architecture's op-sqlite
+      // one-worker-thread section), and pull-to-refresh on the same scroll
+      // view the ready branch offers, once the accounts query has loaded, so
+      // a user can still trigger a fresh sync while this screen's own
+      // queries are still loading.
+      <Screen bleedBottom>
+        <Box gap={4} style={styles.content}>
+          <SyncProgressBar />
+          <ScrollView
+            testID="home-loading-scroll"
+            style={styles.list}
+            contentContainerStyle={styles.listContent(listBottomClearance)}
+            // `syncAll` fans a job out over the `accounts` query's own data
+            // (`useSyncAll(accounts)` above) — pulling before that query has
+            // loaded would fan out over an empty list, syncing nothing while
+            // still holding the fan-out's single-flight lock.
+            refreshControl={
+              accountsLoading ? undefined : (
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+              )
+            }
+          >
+            <LoadingState testID="home-loading" />
+          </ScrollView>
+        </Box>
+      </Screen>
+    );
+  }
+
   return (
     // The SectionList below is this screen's own scrollable surface and applies
     // the tab-bar clearance to its own content (`listContent`), so Screen must
@@ -431,7 +522,9 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             <Text variant="caption" tone="textSecondary">
               {t('home.netWorth')}
             </Text>
+
             <MoneyText money={total} context="balance" style={styles.balance} />
+
             <Box style={styles.breakdown}>
               <CurrencyBreakdown items={breakdown} />
             </Box>
@@ -450,7 +543,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             divider → filters spacing — splitting the existing card-to-filter band
             evenly around the rule instead of stacking a second, doubled gap. */}
         <Box>
-          <Box style={styles.divider} />
+          <Divider />
           <Box style={styles.filterBar}>
             <TransactionFilterBar
               accounts={accountOptions}

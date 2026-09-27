@@ -1,14 +1,16 @@
 import { guard } from 'fnts';
+import { NBU_API_ENDPOINT } from '@env';
+import type { Currency } from '@kiko/currency/currency';
 
-import type { Currency } from '../../currency/currency';
 import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
 
 /**
  * NBU's date-RANGE endpoint: one call returns the daily official rate for a
  * single currency across a `[start, end]` span, so a multi-day backfill needs
- * just one request per currency instead of one per day. Auth-free.
+ * just one request per currency instead of one per day. Auth-free. The host
+ * (`NBU_API_ENDPOINT`) is shared config; this path is specific to this call.
  */
-const RANGE_ENDPOINT = 'https://bank.gov.ua/NBU_Exchange/exchange_site';
+const RANGE_ENDPOINT = `${NBU_API_ENDPOINT}/NBU_Exchange/exchange_site`;
 
 /** One row of the NBU range payload. `rate` is UAH per `units` of `cc`. */
 type NbuRangeRow = {
@@ -47,12 +49,14 @@ const toNbuDate = (ms: number): string => {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
   const day = String(date.getUTCDate()).padStart(2, '0');
+
   return `${year}${month}${day}`;
 };
 
 /** Parse NBU's `DD.MM.YYYY` `exchangedate` into a UTC-midnight epoch-ms day. */
 const parseNbuDate = (value: string): number => {
   const [day, month, year] = value.split('.').map(Number);
+
   return Date.UTC(year, month - 1, day);
 };
 
@@ -71,7 +75,7 @@ const toEntry = (currency: Currency, row: NbuRangeRow): HistoryRateEntry => ({
 /**
  * Fetch official UAH cross rates for USD and EUR over `[start, end]` from NBU's
  * public range endpoint — one request per currency. Returns UAH-per-currency
- * entries per day, ready for the backfill to compose into stored cross pairs.
+ * entries per day, ready for the backfill to compose into stored `X:UAH` rows.
  * Requests are issued sequentially to stay gentle on the free endpoint.
  */
 export const fetchNbuHistory = async (
@@ -80,12 +84,15 @@ export const fetchNbuHistory = async (
   fetchImpl: typeof fetch = fetch,
 ): Promise<HistoryRateEntry[]> => {
   const entries: HistoryRateEntry[] = [];
+
   for (const { valcode, currency } of nbuValcodes) {
     const response = await fetchImpl(rangeUrl(valcode, start, end));
     const rows = await readRange(response);
+
     for (const row of rows) {
       entries.push(toEntry(currency, row));
     }
   }
+
   return entries;
 };

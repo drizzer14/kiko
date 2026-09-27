@@ -20,6 +20,15 @@ Rules:
   and any long build / `pod install` / device deploy. These emit no
   useful incremental output, so polling them burns tokens for zero
   signal.
+- **Mutation testing runs per SMALL change set only — never on a whole
+  project or a whole release.** There is no whole-release deep gate. Set
+  `KIKO_MUTATION_BASE` to the change set's own base commit so only its
+  files are mutated. `scripts/checks/mutation.sh` exits 2 before Stryker
+  starts when more than 30 files would be mutated (`MUTATION_FILE_CAP`);
+  `KIKO_MUTATION_FULL=1` and a `KIKO_MUTATION_BASE` that does not
+  resolve are refused directly (exit 2), and no env var bypasses the cap.
+  On that failure, split the run into smaller change sets — never raise
+  the cap.
 - Run check:deep / check:mutation in the FOREGROUND via the wrapper
   (`npm run check:deep` / `npm run check:mutation`); it is single-flighted
   and tears its own workers down. Never run `npx stryker run` directly and
@@ -80,8 +89,12 @@ motivated it. Summary — every step is required, not optional:
 
 1. Build with `FORCE_BUNDLING=1` (a Release device build can otherwise
    reuse a stale cached `main.jsbundle` and silently ship old JS).
-2. Grep the built `main.jsbundle` for a known-new string before
-   installing — this is the only proof the bundle actually regenerated.
+2. Check the built `main.jsbundle` for a known-new string before
+   installing. This is the only proof that the bundle regenerated. Pick
+   an ASCII string: Hermes stores a non-ASCII string (Cyrillic, ₴, …) as
+   UTF-16LE, so a plain grep misses it and reads a fresh bundle as
+   stale. For a non-ASCII string use
+   `python3 -c "import sys; print('<str>'.encode('utf-16-le') in open(sys.argv[1],'rb').read())" <bundle>`.
 3. Install with `devicectl`, not `xcodebuild ... install -destination
    generic/platform=iOS` — the latter reports SUCCEEDED without
    reaching the physical device.

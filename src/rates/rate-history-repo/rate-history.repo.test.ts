@@ -3,16 +3,17 @@
 // transaction handle backed by an in-memory store, so a test can prove the
 // (base, quote, day) conflict target replaces an existing row in place rather
 // than inserting a duplicate.
-let mockTx: unknown;
-jest.mock('../../db/client', () => {
-  const actual = jest.requireActual('../../db/client');
+let mockDatabaseTransaction: unknown;
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
+
   return {
     ...actual,
-    write: (work: (db: unknown) => unknown) => work(mockTx),
+    write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
   };
 });
 
-import type { CurrencyRateHistoryRow } from '../../db/schema';
+import type { CurrencyRateHistoryRow } from '@kiko/db';
 
 import { earliestRateTable, rateHistoryRepo, rateTableAt } from './rate-history.repo';
 
@@ -22,7 +23,7 @@ type HistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate'
 // plain array. The `excluded.*` set clause means "overwrite with the incoming
 // row's values", so the fake simply upserts each incoming row by the composite
 // (base, quote, day) key — replacing on match, appending otherwise.
-const makeUpsertTx = (store: HistoryRow[]): unknown => ({
+const makeUpsertDatabaseTransaction = (store: HistoryRow[]): unknown => ({
   insert: () => ({
     values: (rows: HistoryRow[]) => ({
       onConflictDoUpdate: () => {
@@ -33,12 +34,14 @@ const makeUpsertTx = (store: HistoryRow[]): unknown => ({
               existing.quote === row.quote &&
               existing.day === row.day,
           );
+
           if (index >= 0) {
             store[index] = { ...row };
           } else {
             store.push({ ...row });
           }
         }
+
         return Promise.resolve();
       },
     }),
@@ -58,7 +61,7 @@ describe('rateHistoryRepo', () => {
 
   it('replaces an existing (base, quote, day) row on a repeat upsert', async () => {
     const store: HistoryRow[] = [];
-    mockTx = makeUpsertTx(store);
+    mockDatabaseTransaction = makeUpsertDatabaseTransaction(store);
 
     await rateHistoryRepo.upsertMany([
       { base: 'USD', quote: 'UAH', day: friday, rate: '41.5', source: 'nbu' },
@@ -72,16 +75,19 @@ describe('rateHistoryRepo', () => {
   });
 
   it('chunks a large batch into insert statements under the SQLite variable limit', async () => {
-    // 12 cross pairs/day at 5 params each: a multi-year span produces tens of
-    // thousands of rows. A single insert would blow past SQLITE_MAX_VARIABLE_NUMBER
-    // (32766), so upsertMany must split the rows into bounded chunks.
+    // One X:UAH row per priced currency per day at 5 params each: a
+    // multi-year span (or a `.kiko` restore of a legacy, larger cross-join
+    // export) can still produce tens of thousands of rows. A single insert
+    // would blow past SQLITE_MAX_VARIABLE_NUMBER (32766), so upsertMany must
+    // split the rows into bounded chunks.
     const store: HistoryRow[] = [];
     const chunkSizes: number[] = [];
-    const upsertStore = makeUpsertTx(store);
-    mockTx = {
+    const upsertStore = makeUpsertDatabaseTransaction(store);
+    mockDatabaseTransaction = {
       insert: () => ({
         values: (rows: HistoryRow[]) => {
           chunkSizes.push(rows.length);
+
           return (upsertStore as { insert: () => { values: (r: HistoryRow[]) => unknown } })
             .insert()
             .values(rows);
@@ -101,6 +107,7 @@ describe('rateHistoryRepo', () => {
 
     // Every chunk stays well under the 32766 variable ceiling (chunk * 5 params).
     expect(chunkSizes.length).toBeGreaterThan(1);
+
     for (const size of chunkSizes) {
       expect(size).toBeLessThanOrEqual(2000);
       expect(size * 5).toBeLessThan(32_766);
@@ -113,9 +120,10 @@ describe('rateHistoryRepo', () => {
   it('issues no insert for an empty batch', async () => {
     const store: HistoryRow[] = [];
     let insertCalled = false;
-    mockTx = {
+    mockDatabaseTransaction = {
       insert: () => {
         insertCalled = true;
+
         return { values: () => ({ onConflictDoUpdate: () => Promise.resolve() }) };
       },
     };
@@ -132,7 +140,7 @@ describe('rateTableAt', () => {
     const rows: HistoryRow[] = [
       { base: 'USD', quote: 'UAH', day: friday, rate: '41.5', source: 'nbu' },
     ];
-    expect(rateTableAt(rows, friday)).toEqual({ 'USD:UAH': 41.5 });
+    expect(rateTableAt(rows, friday)).toEqual({ USD: 41.5 });
   });
 
   it('carries a Friday rate forward across a weekend gap (Saturday, Sunday)', () => {
@@ -140,42 +148,51 @@ describe('rateTableAt', () => {
       { base: 'USD', quote: 'UAH', day: friday, rate: '41.5', source: 'nbu' },
       { base: 'USD', quote: 'UAH', day: monday, rate: '43.0', source: 'nbu' },
     ];
-    expect(rateTableAt(rows, saturday)).toEqual({ 'USD:UAH': 41.5 });
-    expect(rateTableAt(rows, sunday)).toEqual({ 'USD:UAH': 41.5 });
+    expect(rateTableAt(rows, saturday)).toEqual({ USD: 41.5 });
+    expect(rateTableAt(rows, sunday)).toEqual({ USD: 41.5 });
     // Monday has its own row again.
-    expect(rateTableAt(rows, monday)).toEqual({ 'USD:UAH': 43.0 });
+    expect(rateTableAt(rows, monday)).toEqual({ USD: 43.0 });
   });
 
-  it('omits a pair that has no row at or before the requested day', () => {
+  it('omits a currency that has no row at or before the requested day', () => {
     const rows: HistoryRow[] = [
       { base: 'USD', quote: 'UAH', day: monday, rate: '43.0', source: 'nbu' },
     ];
     expect(rateTableAt(rows, friday)).toEqual({});
   });
 
-  it('resolves multiple pairs independently, each to its own nearest prior day', () => {
+  it('resolves multiple currencies independently, each to its own nearest prior day', () => {
     const rows: HistoryRow[] = [
       { base: 'USD', quote: 'UAH', day: friday, rate: '41.5', source: 'nbu' },
       { base: 'EUR', quote: 'UAH', day: monday, rate: '48.0', source: 'nbu' },
-      { base: 'BTC', quote: 'USD', day: saturday, rate: '65000', source: 'coingecko' },
+      { base: 'BTC', quote: 'UAH', day: saturday, rate: '2600000', source: 'coingecko' },
     ];
     // At Sunday: USD carried from Friday, BTC carried from Saturday, EUR not yet
     // present (its only row is Monday, after Sunday).
     expect(rateTableAt(rows, sunday)).toEqual({
-      'USD:UAH': 41.5,
-      'BTC:USD': 65000,
+      USD: 41.5,
+      BTC: 2600000,
     });
     // At Monday: all three resolve.
     expect(rateTableAt(rows, monday)).toEqual({
-      'USD:UAH': 41.5,
-      'EUR:UAH': 48.0,
-      'BTC:USD': 65000,
+      USD: 41.5,
+      EUR: 48.0,
+      BTC: 2600000,
     });
+  });
+
+  it('ignores a stray cross row (quote other than UAH) and a base-UAH row', () => {
+    const rows: HistoryRow[] = [
+      { base: 'USD', quote: 'UAH', day: friday, rate: '41.5', source: 'nbu' },
+      { base: 'BTC', quote: 'USD', day: friday, rate: '65000', source: 'coingecko' },
+      { base: 'UAH', quote: 'USD', day: friday, rate: '0.025', source: 'nbu' },
+    ];
+    expect(rateTableAt(rows, friday)).toEqual({ USD: 41.5 });
   });
 });
 
 describe('earliestRateTable', () => {
-  it('resolves each pair to its earliest stored day', () => {
+  it('resolves each currency to its earliest stored day', () => {
     const rows: HistoryRow[] = [
       { base: 'USD', quote: 'UAH', day: monday, rate: '43.0', source: 'nbu' },
       { base: 'USD', quote: 'UAH', day: friday, rate: '41.5', source: 'nbu' },
@@ -183,8 +200,8 @@ describe('earliestRateTable', () => {
     ];
     // USD's earliest is Friday (not the later Monday row); EUR's only day is Sunday.
     expect(earliestRateTable(rows)).toEqual({
-      'USD:UAH': 41.5,
-      'EUR:UAH': 48.0,
+      USD: 41.5,
+      EUR: 48.0,
     });
   });
 
@@ -197,5 +214,13 @@ describe('earliestRateTable', () => {
 
   it('is empty for no rows', () => {
     expect(earliestRateTable([])).toEqual({});
+  });
+
+  it('ignores a stray cross row (quote other than UAH) and a base-UAH row', () => {
+    const rows: HistoryRow[] = [
+      { base: 'BTC', quote: 'USD', day: friday, rate: '65000', source: 'coingecko' },
+      { base: 'UAH', quote: 'USD', day: friday, rate: '0.025', source: 'nbu' },
+    ];
+    expect(earliestRateTable(rows)).toEqual({});
   });
 });

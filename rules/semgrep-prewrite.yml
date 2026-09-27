@@ -1,0 +1,923 @@
+rules:
+  # rules/semgrep-prewrite.yml is the pre-write guard's OWN rule set. The
+  # guard (scripts/checks/pre-write-guard.js, a PreToolUse hook for
+  # Edit/Write/MultiEdit) loads ONLY this file — via KIKO_PREWRITE_RULES,
+  # default `$ROOT/rules/semgrep-prewrite.yml` — never
+  # rules/semgrep-mobile.yml. Every rule below is also still loaded as an
+  # ADDITIONAL --config alongside rules/semgrep-mobile.yml by
+  # scripts/checks/security.sh and scripts/checks/semgrep-rules.sh, so the
+  # project-wide checks keep proving these rules against the real tree and
+  # their rules/fixtures/ pair, exactly as before the move. Each rule
+  # carries `metadata: { fix, skill }` — the guard denies fail-closed
+  # (pre-write-guard.js's `buildFinding`) on any finding whose rule is
+  # missing `metadata.skill`, since a deny that cannot point the agent at
+  # the skill section explaining why is a guard bug, not a rule this hook
+  # can safely enforce.
+  # kiko-code-style's ts-pattern section: `switch` is banned with no exception.
+  # Every closed-set branch uses `ts-pattern`'s `match(...).exhaustive()` (or a
+  # typed `Record<Literal, X>` for a pure value lookup) instead. AST patterns,
+  # not a keyword-regex, so a comment, a string literal, or a `.switch(...)`
+  # method call never false-positives — a bare `switch ($X) { ... }` does not
+  # match a switch's case-clause list, so the two arms below anchor on a real
+  # `case`/`default` label instead.
+  - id: kiko-no-switch
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `switch` is banned, with no exception. Use `ts-pattern`'s
+      `match(...).exhaustive()` (or a typed `Record<Literal, X>` for a pure
+      value lookup) instead — see kiko-code-style's "ts-pattern for
+      exhaustive mapping".
+    metadata:
+      fix: "Use ts-pattern's `match(...).exhaustive()` (or a typed `Record<Literal, X>` for a pure value lookup) instead of `switch`."
+      skill: "kiko-code-style › ts-pattern for exhaustive mapping"
+    patterns:
+      - pattern-either:
+          - pattern: "switch ($X) { case $C: ... }"
+          - pattern: "switch ($X) { default: ... }"
+  # kiko-code-style's "Banned: the nullable-map ternary" —
+  # `x === undefined ? undefined : f(x)` (and the `null`/`== null`/
+  # list-or-empty variants) hand-rolls exactly what `fnts`'s `maybe` + `foldMap`
+  # already does, without the type making the "might be absent" case visible.
+  # Every `pattern-either` branch below is a LITERAL branch shape (the
+  # null-like sentinel is `undefined`/`null`/`[]`, spelled out at the exact AST
+  # position the comparison operator implies), not a general `$A ? $B : $C` —
+  # so a genuine default-value ternary (`x !== null ? f(x) : fallback`, where
+  # the fallback is a real value, not one of the three sentinels) never
+  # matches, and neither does a validator-error ternary that returns a real
+  # message on the ABSENT side and `undefined` on the present side (the
+  # opposite polarity from a nullable map) — both verified empirically against
+  # the negative fixture. The `===`/`==`-first and `!==`/`!=`-first pairs cover
+  # the direct and "inverted" forms; the `||`/`&&`-joined pairs cover the
+  # `x === undefined || x === null ? … : …` spelling of `== null` written out
+  # longhand. The `metavariable-pattern` below requires $E to actually
+  # reference $X somewhere — without it, a PRESENCE ternary whose present-side
+  # branch is a constant unrelated to $X (`label === undefined ? undefined :
+  # 'button'`) matches too, even though it is not a map of $X's value at all
+  # (both real sites this false-matched are in the negative fixture).
+  # Deliberately NOT scoped to `paths.exclude` test files — existing
+  # test-file instances are in scope too, unlike the Hermes TextDecoder rule
+  # (`kiko-no-textdecoder-textencoder`, which stays in
+  # `rules/semgrep-mobile.yml`).
+  - id: kiko-no-nullable-map-ternary
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Hand-rolled nullable-map ternary. `x === undefined ? undefined : f(x)`
+      (and the `null`/`== null`/list-or-empty variants) duplicates what
+      `fnts`'s `maybe` + `foldMap` already does, without the type making the
+      "might be absent" case visible at the call site. Use
+      `foldMap(maybe(x), (value) => f(value))` instead (append `?? []` for the
+      list-or-empty form) — see kiko-code-style's "Banned: the nullable-map
+      ternary".
+    metadata:
+      fix: "Use `foldMap(maybe(x), (value) => f(value))` instead (append `?? []` for the list-or-empty form)."
+      skill: "kiko-code-style › Banned: the nullable-map ternary"
+    patterns:
+      - pattern-either:
+          - pattern: "$X === undefined ? undefined : $E"
+          - pattern: "$X === undefined ? null : $E"
+          - pattern: "$X === undefined ? [] : $E"
+          - pattern: "$X === null ? undefined : $E"
+          - pattern: "$X === null ? null : $E"
+          - pattern: "$X === null ? [] : $E"
+          - pattern: "$X == null ? undefined : $E"
+          - pattern: "$X == null ? null : $E"
+          - pattern: "$X == null ? [] : $E"
+          - pattern: "$X == undefined ? undefined : $E"
+          - pattern: "undefined === $X ? undefined : $E"
+          - pattern: "$X !== undefined ? $E : undefined"
+          - pattern: "$X !== undefined ? $E : null"
+          - pattern: "$X !== undefined ? $E : []"
+          - pattern: "$X !== null ? $E : undefined"
+          - pattern: "$X !== null ? $E : null"
+          - pattern: "$X !== null ? $E : []"
+          - pattern: "$X != null ? $E : undefined"
+          - pattern: "$X != null ? $E : null"
+          - pattern: "$X != null ? $E : []"
+          - pattern: "$X != undefined ? $E : undefined"
+          - pattern: "$X === undefined || $X === null ? undefined : $E"
+          - pattern: "$X === null || $X === undefined ? undefined : $E"
+          - pattern: "$X === undefined || $X === null ? null : $E"
+          - pattern: "$X === null || $X === undefined ? null : $E"
+          - pattern: "$X === undefined || $X === null ? [] : $E"
+          - pattern: "$X === null || $X === undefined ? [] : $E"
+          - pattern: "$X !== undefined && $X !== null ? $E : undefined"
+          - pattern: "$X !== null && $X !== undefined ? $E : undefined"
+          - pattern: "$X !== undefined && $X !== null ? $E : null"
+          - pattern: "$X !== null && $X !== undefined ? $E : null"
+          - pattern: "$X !== undefined && $X !== null ? $E : []"
+          - pattern: "$X !== null && $X !== undefined ? $E : []"
+      - metavariable-pattern:
+          metavariable: $E
+          patterns:
+            - pattern: <... $X ...>
+  # skill-gap-analysis #16. AST `pattern:` (not `pattern-regex`), so a
+  # comment merely naming `useAnimatedKeyboard` — several already exist,
+  # documenting the crash this rule guards against, see
+  # `bottom-sheet.component.tsx`/`.keyboard.ts` — never matches; Semgrep
+  # patterns match the parsed syntax tree, not raw text. See
+  # `kiko-gestures`'s "`useAnimatedKeyboard()` is banned" section for the
+  # full crash chain (`REAKeyboardEventObserver` reaches
+  # `AppDelegate.window`, which this app's UIScene lifecycle does not set).
+  - id: kiko-no-use-animated-keyboard
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `useAnimatedKeyboard()` is banned. Its native observer reaches
+      `[[UIApplication sharedApplication] delegate] window]`, a legacy
+      AppDelegate-owns-the-window assumption — this app runs the iOS UIScene
+      lifecycle (SceneDelegate owns the UIWindow; AppDelegate has none), so it
+      SIGABRTs on cold launch. Drive keyboard height from RN core `Keyboard`
+      events instead, the way `bottom-sheet.component.tsx` does.
+    metadata:
+      fix: "Drive keyboard height from RN core `Keyboard` events instead, the way `bottom-sheet.component.tsx` does."
+      skill: "kiko-gestures › useAnimatedKeyboard() is banned — use RN core Keyboard events instead"
+    patterns:
+      - pattern: useAnimatedKeyboard(...)
+  # User feedback FB1: swipe actions were removed on purpose; a row's
+  # edit/delete is the long-press `CardContextMenu`. The arms: a default,
+  # named, or namespace import whose module path carries "swipe"
+  # (gesture-handler's `ReanimatedSwipeable`, a swipe-list package), a named
+  # import carrying "swipe" or "fling" (`FlingGestureHandler`, v3's
+  # `useFlingGesture`), a fling recognizer call, `PanResponder.create` (the
+  # app's own former swipe row was a PanResponder row; the app has no other
+  # PanResponder), and a JSX element named for a swipe or a fling.
+  # The bottom sheet's drag-to-dismiss is a `Gesture.Pan()` and stays
+  # allowed. AST arms, so a comment or a test-id string never matches.
+  - id: kiko-no-swipe-action
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Swipe actions are banned: they were removed on purpose. A row's
+      edit/delete is the long-press `CardContextMenu` (Edit/Duplicate/Delete
+      menu), not a swipe gesture, a `Swipeable`, a swipe-list component, or
+      a `PanResponder` row drag. For a drag that is not a row action, use a
+      gesture-handler `Gesture.Pan()` (the bottom sheet's drag-to-dismiss).
+    metadata:
+      fix: "Wrap the row in `CardContextMenu` (onEdit/onDuplicate/onDelete) instead of a swipe gesture, a Swipeable component, or a PanResponder."
+      skill: "kiko-gestures › No swipe actions — row edit/delete is the long-press CardContextMenu"
+    pattern-either:
+      - patterns:
+          - pattern: import $NAME from "$MODULE"
+          - metavariable-regex:
+              metavariable: $MODULE
+              regex: "(?i).*swipe"
+      - patterns:
+          - pattern: import { $NAME } from "$MODULE"
+          - metavariable-regex:
+              metavariable: $MODULE
+              regex: "(?i).*swipe"
+      - patterns:
+          - pattern: import * as $NAME from "$MODULE"
+          - metavariable-regex:
+              metavariable: $MODULE
+              regex: "(?i).*swipe"
+      - patterns:
+          - pattern: import { $NAME } from "$MODULE"
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: "(?i).*(swipe|fling)"
+      - pattern: Gesture.Fling(...)
+      - pattern: useFlingGesture(...)
+      - pattern: PanResponder.create(...)
+      - patterns:
+          - pattern-either:
+              - pattern: <$ELEMENT ...>...</$ELEMENT>
+              - pattern: <$ELEMENT ... />
+          - metavariable-regex:
+              metavariable: $ELEMENT
+              regex: "(?i).*(swipe|fling)"
+  # FB1 P3a: a seeded default category's stored title is its English seed
+  # text, so a message interpolating the raw `<...category>.title` shows
+  # English under `uk`. `$CATEGORY` is any expression ending in `category`
+  # (`category`, `row.category`, `selectedCategory`). A `resolveCategoryDisplay`
+  # result bound to the same name is already translated, so it is excluded.
+  - id: kiko-no-raw-category-title-in-message
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A raw stored category title is fed into a translated message. A seeded
+      default's stored title is its English seed text, so this reads English
+      under `uk`. Pass the displayed title instead:
+      `resolveDefaultCategoryTitle(category.key, category.title)`, or a
+      `resolveCategoryDisplay(...)` / `buildCategoryDisplayMap(...)` result.
+    metadata:
+      fix: "Interpolate `resolveDefaultCategoryTitle(category.key, category.title)` (or a resolveCategoryDisplay result), never the raw `category.title`."
+      skill: "kiko-translator › A seeded default category is named by its displayed title everywhere"
+    patterns:
+      - pattern-either:
+          - pattern: "t($KEY, {..., title: $CATEGORY.title, ...})"
+          - pattern: "t($KEY, {..., name: $CATEGORY.title, ...})"
+          - pattern: "i18n.t($KEY, {..., title: $CATEGORY.title, ...})"
+          - pattern: "i18n.t($KEY, {..., name: $CATEGORY.title, ...})"
+      - metavariable-regex:
+          metavariable: $CATEGORY
+          regex: "(?i).*category$"
+      - pattern-not-inside: |
+          const $CATEGORY = resolveCategoryDisplay(...);
+          ...
+  # FB1 P4: a `write` callback holds op-sqlite's one worker thread, so a
+  # where-less select of a whole table inside it stalls every read and write
+  # for the scan plus the JS filter. Anything inside a `.where(...)` or
+  # `.limit(...)` chain is excluded, and so is `settings` (a one-row table).
+  # `selectDistinct` is a different method and never matches.
+  - id: kiko-no-full-table-select-in-write
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A where-less `select().from(<table>)` inside a `write` callback reads the
+      whole table while holding op-sqlite's single worker thread. Push the
+      filter into SQL (`.where(...)`), read only the column you need
+      (`selectDistinct`), or read before the write.
+    metadata:
+      fix: "Filter the select in SQL with `.where(...)` (or `selectDistinct` one column) instead of reading the whole table inside `write`."
+      skill: "kiko-architecture › No full-table select inside a write"
+    patterns:
+      - pattern-inside: write(...)
+      - pattern: $DATABASE.select(...).from($TABLE)
+      - pattern-not-inside: $QUERY.where(...)
+      - pattern-not-inside: $QUERY.limit(...)
+      - metavariable-regex:
+          metavariable: $TABLE
+          regex: "^(?!settings$)"
+  # Mechanizes kiko-code-style's "Comments: WHY only, never history" —
+  # Class A (ERROR): see kiko-linter's own "kiko-no-history-id-comment"
+  # section for the id-family list, the string-skip anchor, the false
+  # positive tuning, and the paths.exclude scope reasoning (design notes
+  # live there ONCE, not duplicated here).
+  - id: kiko-no-history-id-comment
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A comment cites a task id, review-round id, spec/decision id, or a bug
+      number. kiko-code-style's "Comments: WHY only, never history": that
+      belongs in the commit message that made the change, or the skill
+      section that owns the rule — never left behind in a comment. Drop the
+      id and keep the WHY; if nothing but history remains, delete the
+      comment. If this is a real domain word that only coincidentally reads
+      like one of these ids, reword the comment to avoid the shape.
+    metadata:
+      fix: "Drop the id and keep the WHY; if nothing but history remains, delete the comment."
+      skill: "kiko-code-style › Comments: WHY only, never history"
+    paths:
+      exclude:
+        - "__tests__/**"
+        - "e2e/**"
+        - "scripts/**"
+        - "harness/**"
+        - "App.tsx"
+        - "drizzle.config.ts"
+    patterns:
+      - pattern-either:
+          - pattern-regex: '^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//.*\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|R\d{1,3}|F\d{1,3}|G\d{1,3}|C\d{1,3}|bug\s\d+|spec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\sruling\s\d+|section\s[A-Z]\.\d|(?:task|parity)\sbrief(?:''s)?|per\sthe\sbrief|the\sbrief''s|Review\sFocus\s\d+|Minor\s\d+|audit\s\d+|RULING\sR\d+|fix\sround\s\d+|round-\d+|device[- ]feedback|on-device\sreview|USER-DECISION)\b'
+          - pattern-regex: '^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*(?:(?!\*/)[\s\S])*?\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|R\d{1,3}|F\d{1,3}|G\d{1,3}|C\d{1,3}|bug\s\d+|spec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\sruling\s\d+|section\s[A-Z]\.\d|(?:task|parity)\sbrief(?:''s)?|per\sthe\sbrief|the\sbrief''s|Review\sFocus\s\d+|Minor\s\d+|audit\s\d+|RULING\sR\d+|fix\sround\s\d+|round-\d+|device[- ]feedback|on-device\sreview|USER-DECISION)\b(?:(?!\*/)[\s\S])*?\*/'
+  # kiko-design-system's "Token categories" — a component reads a color TOKEN
+  # (theme.colors.*/palette.ts), never a raw hex/rgba() string literal. The
+  # pattern anchors on the AST shape of a quoted string literal itself
+  # (`pattern: "'$COLOR'"` binds $COLOR to the literal's own content, with no
+  # surrounding quote characters, whether the source used single or double
+  # quotes — verified empirically), then filters its content with
+  # `metavariable-regex` — so a comment merely mentioning a hex value (several
+  # exist explaining a token's own value in theme.ts/palette.ts) never
+  # matches, since Semgrep patterns match the parsed syntax tree, not raw
+  # comment text. The regex is anchored (`^...$`) so a too-short (`#12`) or
+  # too-long (`#1234567890`) hex-shaped string, neither a real hex color,
+  # stays silent — verified empirically. `palette.ts`/`theme.ts` define the
+  # tokens themselves, and a `.test.ts`/`.test.tsx` fixture routinely needs a
+  # literal color to assert against, so both are excluded.
+  - id: kiko-no-raw-color-literal
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Raw color literal. A component or module reads a color TOKEN
+      (`theme.colors.*` or a `palette.ts` swatch), never a hardcoded hex or
+      rgba()/rgb() string — see kiko-design-system's "Token categories".
+      Reference the matching token instead, adding one to `palette.ts` only
+      when no existing token fits.
+    metadata:
+      fix: "Reference the matching theme/palette token (`theme.colors.*` or a `palette.ts` swatch) instead of the raw literal."
+      skill: "kiko-design-system › Token categories"
+    paths:
+      exclude:
+        - "src/design-system/palette/palette.ts"
+        - "src/design-system/theme/theme.ts"
+        - "*.test.ts"
+        - "*.test.tsx"
+    patterns:
+      - pattern: "'$COLOR'"
+      - metavariable-regex:
+          metavariable: $COLOR
+          regex: "^#[0-9A-Fa-f]{3,8}$|^rgba?\\("
+  # kiko-design-system's "Component set (GlassSurface)" — `GlassSurface`
+  # renders Apple's Liquid Glass material, reserved for the NAVIGATION layer
+  # (the tab bar, `BottomSheet`, the keyboard "Done" accessory, the Home
+  # add-transaction FAB). A content-layer card/list/chart reads `Card`
+  # instead (a solid, bordered fill — no glass material). `pattern-regex`
+  # over the whole import/re-export statement, not an AST `pattern:` — an
+  # import path is a plain string literal, so there is no AST shape to
+  # distinguish "the glass-surface module" from any other import beyond the
+  # path text itself. `(?:import|export)`, not a bare `import`, so a
+  # re-export (`export { default } from '.../glass-surface'`) is caught too;
+  # `glass-surface(?:/[^'"]*)?['"]` (not a bare `glass-surface['"]`) so a
+  # path ending in the component's OWN file (`glass-surface/glass-surface.
+  # component`) matches too, not only the bare module directory — both were
+  # real, unintended bypasses of this rule. `paths.exclude` is the nav-layer
+  # allowlist: extend this list for a new nav-layer surface.
+  - id: kiko-glass-surface-nav-layer-only
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `GlassSurface` is reserved for the navigation layer (tab bar,
+      `BottomSheet`, the keyboard "Done" accessory, the Home add-transaction
+      FAB). A content-layer module reads `Card` instead — see
+      kiko-design-system's "Component set (GlassSurface)".
+    metadata:
+      fix: "Import `Card` (the content-layer surface) instead of `GlassSurface`."
+      skill: "kiko-design-system › Component set (GlassSurface)"
+    paths:
+      exclude:
+        - "src/design-system/components/glass-surface/**"
+        - "src/design-system/components/bottom-sheet/**"
+        - "src/design-system/components/keyboard-done-accessory/**"
+        - "src/screens/home/add-transaction-fab/**"
+    patterns:
+      - pattern-regex: "(?:import|export)\\s[^;]*from\\s*['\"][^'\"]*glass-surface(?:/[^'\"]*)?['\"]"
+  # kiko-design-system's "Field placeholder and error copy" — a placeholder
+  # never repeats its own field's label. The object-literal shape is a
+  # `pattern-regex` with a PCRE backreference, not an AST pattern: the
+  # `*Label$`-suffix AST arm this rule shipped with first only covers a
+  # `xLabel`/`xPlaceholder` pair (4 of 44 real `*Placeholder` keys in
+  # en.ts/uk.ts) — most of the catalogue names its base key with NO suffix at
+  # all (`kind`/`kindPlaceholder`), which that filter can never match since
+  # `kind` has no `Label` to require. `(\w+?)(?:Label)?: '([^'\n]*)',` binds
+  # $1 to the key with any trailing `Label` stripped (lazy `\w+?` plus an
+  # OPTIONAL literal `Label` naturally covers both the bare-stem and
+  # `xLabel`-suffixed shapes in one capture group — verified empirically),
+  # $2 to its quoted value, then `(?:[^}\n]*\n)*?` lazily skips any
+  # intervening lines (a sibling key, a comment) up to a `\1Placeholder`
+  # key whose OWN value repeats \2. The backreference on BOTH the key stem
+  # and the value is what keeps this silent on `categories.groceries:
+  # 'Groceries'` next to the UNRELATED `categories.namePlaceholder:
+  # 'Groceries'` (different stems: `groceries` vs `name`) and on `kind:
+  # 'Kind'` next to `kindPlaceholder: 'Select an account kind'` (same stem,
+  # different value) — both real shapes in en.ts today, verified 0 hits.
+  # Single-quoted only, matching this codebase's Biome-enforced string
+  # style (no real `*Placeholder` key in en.ts/uk.ts uses double quotes). Two
+  # regex arms cover both key orders (the AST arm's own "both key orders"
+  # requirement) since a backreference only looks FORWARD from its own
+  # capture: the first arm anchors on the stem key first, `*Placeholder`
+  # second; the second arm anchors on `*Placeholder` first, the (optionally
+  # `Label`-suffixed) stem second. The JSX arm is unaffected —
+  # `placeholder`/`label` there are literal attribute names, not
+  # metavariables needing this filter. The JSX arms use a quoted-attribute
+  # shape (`label="$VALUE"`, never `label=$VALUE`) — a bare form also matches
+  # `label={sharedValue} placeholder={sharedValue}`, verified empirically
+  # against a throwaway probe rule before writing this one.
+  - id: kiko-no-placeholder-equal-to-label
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A placeholder repeats its own field's label. Write distinct placeholder
+      copy (the established form is "Select a …" for a picker/select field)
+      — see kiko-design-system's "Field placeholder and error copy".
+    metadata:
+      fix: "Write distinct placeholder copy — never the same string as the field's own label."
+      skill: "kiko-design-system › Field placeholder and error copy"
+    patterns:
+      - pattern-either:
+          - pattern-regex: "(?m)^\\s*(\\w+?)(?:Label)?: '([^'\\n]*)',\\n(?:[^}\\n]*\\n)*?\\s*\\1Placeholder: '\\2',"
+          - pattern-regex: "(?m)^\\s*(\\w+?)Placeholder: '([^'\\n]*)',\\n(?:[^}\\n]*\\n)*?\\s*\\1(?:Label)?: '\\2',"
+          - pattern-either:
+              - pattern: '<$COMPONENT placeholder="$VALUE" label="$VALUE" ...></$COMPONENT>'
+              - pattern: '<$COMPONENT placeholder="$VALUE" label="$VALUE" ... />'
+              - pattern: '<$COMPONENT label="$VALUE" placeholder="$VALUE" ...></$COMPONENT>'
+              - pattern: '<$COMPONENT label="$VALUE" placeholder="$VALUE" ... />'
+  # Known Nitro props whose native binding requires a non-null value and
+  # throws/serializes-to-null on `undefined`: `SFSymbolView.fallbackName`
+  # (see `symbol.availability.ts`'s `effectiveFallbackName` doc comment — a
+  # persistent native view's prop update, not just its initial mount, hits
+  # this path, since a changed prop that becomes `undefined` still
+  # serializes to native `null` on the very next Fabric update). Extend this
+  # list here as a new Nitro prop with the same non-null contract is found.
+  # Each of the four `undefined`-producing shapes gets its own arm (a bare
+  # `pattern: "... ? ... : ..."` ternary string MUST be quoted — an
+  # unquoted ternary is parsed as a truncated, silently-matching-nothing
+  # YAML value, see kiko-linter's "Semgrep facts"); the fifth arm is a bare
+  # optional-prop pass-through, matched on the LITERAL identifier
+  # `fallbackName` (not a metavariable) so it only fires when the JSX
+  # expression is exactly that name, never an unrelated local variable — but
+  # the literal-name match alone still can't tell a raw destructured
+  # parameter/prop apart from a local re-declared under that SAME name after
+  # already being routed through `effectiveFallbackName(...)` (`const
+  # fallbackName = effectiveFallbackName(name, x)`, then `fallbackName={
+  # fallbackName}`), which is safe. Two `pattern-not-inside` arms (a
+  # `function $FN(...) { ... }` declaration, and a `(...) => { ... }` arrow,
+  # each wrapping `const fallbackName = $ANY;`) scope the fifth arm to skip
+  # exactly that shape — but ONLY within the SAME enclosing function/arrow
+  # body as the JSX. A bare, unwrapped `...; const fallbackName = $ANY; ...`
+  # (no brace-delimited container) is NOT safe to use here: verified
+  # empirically that its ellipsis can match across an ENTIRE file's sibling
+  # top-level statements/functions, so a guarded local in one function
+  # silenced the true-positive bare pass-through in an unrelated LATER
+  # sibling function — wrapping the exclusion in the function/arrow's own
+  # braces bounds its span to that one declaration, which cannot leak past
+  # its closing `}` into a sibling. A plain `declare const fallbackName`
+  # ambient type declaration, the true-positive shape, has no `=` initializer
+  # and so never matches either exclusion arm regardless of scope.
+  - id: kiko-no-undefined-nitro-prop
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `undefined` reaching a Nitro prop with a non-null native contract
+      (`SFSymbolView.fallbackName`) serializes to native `null` and crashes
+      Release, with no redbox to catch it there. Route the value through
+      `effectiveFallbackName(...)` (`symbol.availability.ts`), which never
+      returns `undefined`, instead of passing it, a nullish-coalesced/
+      ternary expression that can still be `undefined`, or a bare optional
+      prop straight through.
+    metadata:
+      fix: "Route the value through `effectiveFallbackName(...)` instead of passing a value that can still be `undefined`."
+      skill: "kiko-design-system › Component set (SymbolIcon)"
+    patterns:
+      - pattern-either:
+          - pattern: '<SFSymbolView ... fallbackName={undefined} ...></SFSymbolView>'
+          - pattern: '<SFSymbolView ... fallbackName={undefined} ... />'
+          - pattern: '<SFSymbolView ... fallbackName={$A ?? undefined} ...></SFSymbolView>'
+          - pattern: '<SFSymbolView ... fallbackName={$A ?? undefined} ... />'
+          - pattern: '<SFSymbolView ... fallbackName={$C ? $A : undefined} ...></SFSymbolView>'
+          - pattern: '<SFSymbolView ... fallbackName={$C ? $A : undefined} ... />'
+          - pattern: '<SFSymbolView ... fallbackName={$C ? undefined : $A} ...></SFSymbolView>'
+          - pattern: '<SFSymbolView ... fallbackName={$C ? undefined : $A} ... />'
+          - patterns:
+              - pattern-either:
+                  - pattern: '<SFSymbolView ... fallbackName={fallbackName} ...></SFSymbolView>'
+                  - pattern: '<SFSymbolView ... fallbackName={fallbackName} ... />'
+              - pattern-not-inside: |
+                  function $FN(...) {
+                    ...
+                    const fallbackName = $ANY;
+                    ...
+                  }
+              - pattern-not-inside: |
+                  (...) => {
+                    ...
+                    const fallbackName = $ANY;
+                    ...
+                  }
+  # kiko-design-system's `Divider` component owns the ONE hairline-rule
+  # style. The pattern anchors on the LITERAL `height` key, never a bare
+  # `$KEY: StyleSheet.hairlineWidth` — a BORDERED field/card
+  # (`borderWidth: StyleSheet.hairlineWidth`) is a stroke around a box, a
+  # different visual from a horizontal rule, and must stay silent (verified
+  # empirically against the five real `borderWidth: StyleSheet.hairlineWidth`
+  # sites in the repo — none matched). `src/design-system/components/divider/**`
+  # is excluded: that is the real implementation, not a copy of it.
+  - id: kiko-no-hand-built-divider
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Hand-built hairline rule. `height: StyleSheet.hairlineWidth` in a style
+      object duplicates the shared `Divider` component — render `<Divider />`
+      (optionally with a `spacing` prop) instead of a bespoke style.
+    metadata:
+      fix: "Render `<Divider />` (optionally with a `spacing` prop) instead of a bespoke `height: StyleSheet.hairlineWidth` style."
+      skill: "kiko-design-system › Component set"
+    paths:
+      exclude:
+        - "src/design-system/components/divider/**"
+    patterns:
+      - pattern: "height: StyleSheet.hairlineWidth"
+  # kiko-design-system's `FieldError` component owns the ONE inline
+  # validation-failure caption (`Text variant="caption" tone="negative"`).
+  # Both attribute orders get their own arm — a JSX attribute order is not
+  # normalized by Semgrep's matcher, the same reason
+  # `kiko-no-placeholder-equal-to-label` spells out both orders for its own
+  # JSX arms. `field-error/**` is excluded (the real implementation);
+  # `field-label/**` is excluded too — its own required-field asterisk
+  # renders in the SAME caption/negative tone (see
+  # `field-label.component.tsx`'s own doc comment), a label decoration, not a
+  # validation-failure message. A `variant="body"` status line (a different
+  # variant) never matches.
+  - id: kiko-no-raw-field-error-text
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Hand-built validation-failure caption. `<Text variant="caption"
+      tone="negative">` duplicates the shared `FieldError` component — render
+      `<FieldError message={...} />` instead.
+    metadata:
+      fix: 'Render `<FieldError message={...} />` instead of a bespoke `Text variant="caption" tone="negative"`.'
+      skill: "kiko-design-system › Component set"
+    paths:
+      exclude:
+        - "src/design-system/components/field-error/**"
+        - "src/design-system/components/field-label/**"
+    patterns:
+      - pattern-either:
+          - pattern: '<Text variant="caption" tone="negative" ...></Text>'
+          - pattern: '<Text tone="negative" variant="caption" ...></Text>'
+  # kiko-design-system's `SelectableRow` component owns the ONE single-select
+  # list row (leading checkmark, optional icon/leadingText, label, optional
+  # description/trailing). A hand-built `Pressable` reproducing its
+  # selection semantics — `accessibilityState={{ selected: $S }}` or
+  # `accessibilityRole="checkbox"` — duplicates it, but ONLY when it also
+  # renders SelectableRow's own distinguishing leading checkmark
+  # (`name="checkmark"` somewhere in the Pressable's own body, via a
+  # `pattern-regex` ANDed onto each AST arm — Semgrep restricts a
+  # `pattern-regex` ANDed with a `pattern` to that pattern's own matched
+  # span, verified empirically: a second `Pressable` in the SAME file with
+  # `selected`/`checkbox` but no checkmark of its own stays silent even
+  # though the word "checkmark" appears elsewhere in the file). A tab pill,
+  # a segmented control, a chip, or an icon-only grid tile all carry
+  # `accessibilityState={{ selected: ... }}` too, but with a DIFFERENT
+  # selection vocabulary (an accent-tinted fill, not a leading checkmark) —
+  # this filter is what silences those without a `paths.exclude` entry per
+  # component. Self-closing `Pressable` forms are dropped entirely: a
+  # checkmark is a CHILD, so a self-closing (childless) Pressable can never
+  # carry one. `selectable-row/**` stays excluded regardless — the real
+  # implementation renders its own `name="checkmark"` too (see
+  # `selectable-row.component.tsx`), so this filter alone would not
+  # otherwise protect it against a future refactor of its own
+  # `accessibilityState` ternary into a shape this rule's AST arms match.
+  - id: kiko-no-hand-built-selectable-row
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Hand-built selectable-row Pressable. A `Pressable` carrying
+      `accessibilityState={{ selected: ... }}` or
+      `accessibilityRole="checkbox"`, and rendering its own leading
+      checkmark, duplicates the shared `SelectableRow` component — render
+      `<SelectableRow ... />` instead when the row is a labeled
+      single-select list item.
+    metadata:
+      fix: "Render `<SelectableRow ... />` instead of a bespoke selection Pressable, when the row is a labeled single-select list item."
+      skill: "kiko-design-system › Component set"
+    paths:
+      exclude:
+        - "src/design-system/components/selectable-row/**"
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern: |
+                  <Pressable ... accessibilityState={{ selected: $S }} ...>
+                    ...
+                  </Pressable>
+              - pattern-regex: 'name="checkmark"'
+          - patterns:
+              - pattern: |
+                  <Pressable ... accessibilityRole="checkbox" ...>
+                    ...
+                  </Pressable>
+              - pattern-regex: 'name="checkmark"'
+  # kiko-translator's never-hardcode-a-user-facing-string rule, scoped to the
+  # two sync/provider trees whose `throw new Error(...)` text reaches the
+  # user (an Alert body, a toast) without ever going through `i18n.t`. `$MSG`
+  # is filtered to a plain string OR template literal via `metavariable-
+  # pattern` — a bare `throw new Error($MSG)` pattern alone would ALSO match
+  # a legitimate `throw new Error(error.message)`/`throw new Error(someVar)`
+  # rethrow, which is not a hardcoded literal at all (verified empirically:
+  # the unfiltered pattern matched both). `"..."` and `` `...` `` are
+  # Semgrep's generic "any string literal"/"any template literal" wildcards —
+  # the latter matches a template literal WITH interpolation too (verified
+  # empirically against a `` `status ${x}` `` probe; a literal `` `$MSG` ``
+  # pattern does not). `pattern-not` on `i18n.t(...)` is the one shape that
+  # must stay silent — see `src/crypto-sync/sync/sync.ts`'s existing
+  # `i18n.t('accountDetail.noConnectionFound', ...)` throws for the pattern
+  # every sweep site now follows. `paths.include` is deliberately
+  # path-prefixed (`src/crypto-sync/**`/`src/monobank/**`), so this rule's
+  # own fixture pair is NESTED under a mirrored path — a path-prefixed
+  # include draws nothing against a fixture placed directly in
+  # rules/fixtures/ (kiko-linter's "Semgrep facts") — see
+  # `scripts/checks/semgrep-rules.sh`'s nested-fixture support.
+  - id: kiko-no-literal-sync-error
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A hardcoded literal or template string reaches `throw new Error(...)`
+      in a sync/provider module. Route it through `i18n.t('<namespace>.<key>')`
+      instead (add the key to both `src/i18n/locales/en.ts` and `uk.ts`), the
+      way `src/crypto-sync/sync/sync.ts` already does — see kiko-code-style's
+      "Externalize hardcoded config".
+    metadata:
+      fix: "Route the message through `i18n.t('<namespace>.<key>')` instead of a literal or template string, adding the key to both en.ts and uk.ts."
+      skill: "kiko-code-style › Externalize hardcoded config"
+    paths:
+      include:
+        - "src/crypto-sync/**"
+        - "src/monobank/**"
+      exclude:
+        - "*.test.ts"
+    patterns:
+      - pattern: "throw new Error($MSG)"
+      - pattern-not: "throw new Error(i18n.t(...))"
+      - metavariable-pattern:
+          metavariable: $MSG
+          patterns:
+            - pattern-either:
+                - pattern: '"..."'
+                - pattern: '`...`'
+  # kiko-translator's never-hardcode-a-user-facing-string rule, applied to the
+  # one native LocalAuthentication prompt whose button labels bypass i18n
+  # entirely (`src/auth/biometrics.ts`'s `authenticateWithOptions` call).
+  # Anchors on the LITERAL property name (`cancelLabel`/`fallbackLabel`), not
+  # a metavariable — an object literal's OTHER properties (`title`,
+  # `allowDeviceCredentials`) are out of scope, and `"..."` is Semgrep's
+  # generic "any string literal" wildcard (see `kiko-no-literal-sync-error`
+  # above), so `cancelLabel: i18n.t(...)`/`cancelLabel: someVariable` both
+  # stay silent. Not scoped by `paths.include` — this shape is not
+  # confined to one tree, so its fixture pair stays FLAT. `paths.exclude`
+  # on `*.test.ts` (mirroring `kiko-no-literal-sync-error` above) — without
+  # it, `biometrics.test.ts` asserting the real rendered label text (its own
+  # oracle) got denied by this very rule, which forced the test to assert
+  # `i18n.t(...)` instead — the SAME call the source makes, so a wrong key
+  # mapping would pass both sides identically and the test would prove
+  # nothing.
+  - id: kiko-no-literal-biometric-label
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A hardcoded string literal reaches `cancelLabel`/`fallbackLabel` on the
+      native biometric prompt. Route it through `i18n.t(...)` instead — reuse
+      an existing key (e.g. `common.cancel`, `auth.usePasscode`) rather than
+      adding a near-duplicate — see kiko-code-style's "Externalize hardcoded
+      config".
+    metadata:
+      fix: "Route the label through `i18n.t(...)`, reusing an existing key (e.g. `common.cancel`, `auth.usePasscode`) rather than adding a near-duplicate."
+      skill: "kiko-code-style › Externalize hardcoded config"
+    paths:
+      exclude:
+        - "*.test.ts"
+    patterns:
+      - pattern-either:
+          - pattern: "cancelLabel: '...'"
+          - pattern: 'cancelLabel: "..."'
+          - pattern: "fallbackLabel: '...'"
+          - pattern: 'fallbackLabel: "..."'
+  # kiko-linter's "Backlog: a rule for a plain function called inside a
+  # worklet" / kiko-gestures' "Every function called inside a worklet needs
+  # its own 'worklet' directive". A same-file helper (a `const` arrow or a
+  # `function`) called synchronously inside a reanimated worklet-hook
+  # callback (`useAnimatedStyle`, `useDerivedValue`, `useAnimatedReaction`,
+  # `useAnimatedScrollHandler`, `runOnUI`, or a `Gesture.$G().$ON(...)`
+  # worklet callback) that has no `'worklet'` directive as ITS OWN first
+  # statement is captured as a "remote function" by the worklets runtime —
+  # invisible to `tsc` and Jest (the worklet runtime is mocked there, and a
+  # DEBUG build only warns), and it only SIGABRTs on first render in a
+  # RELEASE build (builds 15/16 shipped exactly this bug, see memory
+  # `worklet-directive-debug-swallows-release-aborts`). A heuristic (spec
+  # rule 15): false negatives are accepted, but false positives must stay
+  # rare. The "$F declared somewhere in this file" half is NOT expressed
+  # with a `pattern-inside` wrapping the hook (pattern-inside requires the
+  # CALL to be a descendant of the declaration, which is never true for two
+  # sibling statements) — it is a leading/trailing `...`-bounded statement
+  # sequence instead (`... const $F = (...) => { ... } ...`), which Semgrep
+  # matches against ANY enclosing statement list, verified empirically. That
+  # same generality is exactly why a helper defined INLINE, directly inside
+  # the worklet callback (safe — already part of that worklet's own closure,
+  # never captured remotely, per kiko-gestures), would otherwise ALSO match
+  # this sequence pattern (its own immediately-enclosing block IS such a
+  # statement list) and false-positive: the two block-shaped
+  # `pattern-not-inside` arms at the bottom exist to exclude precisely that
+  # shape — scoped to `$HOOK(..., (...) => { ... const $F = ... } ...)`
+  # (the callback argument literally passed TO the hook call), not a bare
+  # `(...) => { ... }`: an unscoped arrow shape also matches a COMPONENT's or
+  # custom hook's own OUTER arrow body (any `(...) => { ...; useAnimatedStyle
+  # ...; ... }` containing both the helper and the hook call as sibling
+  # statements), which wrongly excluded that same-file, still-untagged helper
+  # too — verified empirically against a throwaway inline-arrow probe before
+  # writing this. A function imported from ANOTHER file is a known false
+  # negative — no local declaration to match — and `Gesture.$G().$ON(...)`
+  # only matches that literal two-hop chain, not this codebase's real,
+  # further-chained gesture builders (`.minDuration(...).runOnJS(true)
+  # .onStart(...)`, see `card-context-menu.component.tsx`/
+  # `bottom-sheet.component.tsx`), both accepted per the heuristic — a real
+  # sweep of `src App.tsx __tests__ e2e` drew 0 findings. The call match is
+  # focused on a function (or handler-object) ARGUMENT of the hook
+  # (`focus-metavariable: $CALLBACK`), not the whole hook call: a helper
+  # called in the dependency argument (`useAnimatedStyle(() => ...,
+  # deps(1))`) runs on the JS thread and is never captured by the worklet,
+  # so a whole-call `pattern-inside` false-positived on it. Test files are
+  # excluded: Jest mocks reanimated, so no worklet runtime ever captures a
+  # helper there and the Release-only SIGABRT cannot happen; and the
+  # `$F(...)` x statement-sequence match is quadratic on a large test file
+  # whose "Gesture" substrings (`fireGestureHandler`, `GestureRootWrapper`)
+  # defeat Semgrep's prefilter, which crossed the per-rule timeout under
+  # load and made the guard deny "could not check" at random.
+  - id: kiko-worklet-directive-required
+    languages: [typescript]
+    severity: ERROR
+    paths:
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"
+        - "__tests__/**"
+        - "e2e/**"
+    message: >
+      A same-file helper called inside a reanimated worklet-hook callback
+      (`useAnimatedStyle`, `useDerivedValue`, `useAnimatedReaction`,
+      `useAnimatedScrollHandler`, `runOnUI`, or a `Gesture...onStart`/
+      `onUpdate`/`onEnd`/`onFinalize`-style worklet callback) has no
+      `'worklet'` directive as its own first statement. The worklets runtime
+      captures it as a "remote function" instead — invisible to `tsc` and
+      Jest, and it only SIGABRTs on first render in a RELEASE build — see
+      kiko-gestures' "Every function called inside a worklet needs its own
+      'worklet' directive".
+    metadata:
+      fix: "Add `'worklet';` as the helper's own first statement, or inline the logic directly in the worklet callback instead."
+      skill: "kiko-gestures › Every function called inside a worklet needs its own 'worklet' directive"
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern-either:
+                  - pattern: "useAnimatedStyle(..., $CALLBACK, ...)"
+                  - pattern: "useDerivedValue(..., $CALLBACK, ...)"
+                  - pattern: "useAnimatedReaction(..., $CALLBACK, ...)"
+                  - pattern: "useAnimatedScrollHandler(..., $CALLBACK, ...)"
+                  - pattern: "runOnUI(..., $CALLBACK, ...)"
+                  - pattern: "Gesture.$G().$ON(..., $CALLBACK, ...)"
+              - metavariable-pattern:
+                  metavariable: $CALLBACK
+                  pattern-either:
+                    - pattern: "(...) => $BODY"
+                    - pattern: "function (...) { ... }"
+                    - pattern: "{ ... }"
+              - focus-metavariable: $CALLBACK
+      - pattern: $F(...)
+      - pattern-either:
+          - pattern-inside: |
+              ...
+              const $F = (...) => { ... }
+              ...
+          - pattern-inside: |
+              ...
+              function $F(...) { ... }
+              ...
+      - pattern-not-inside: |
+          ...
+          const $F = (...) => { 'worklet'; ... }
+          ...
+      - pattern-not-inside: |
+          ...
+          function $F(...) { 'worklet'; ... }
+          ...
+      - pattern-not-inside: |
+          $HOOK(..., (...) => {
+            ...
+            const $F = (...) => { ... }
+            ...
+          }, ...)
+      - pattern-not-inside: |
+          $HOOK(..., (...) => {
+            ...
+            function $F(...) { ... }
+            ...
+          }, ...)
+  # kiko-design-system's "Component set (Button)" — the account-detail Sync
+  # button ("accountDetail.syncNow") is pinned to `variant="secondaryTonal"`
+  # everywhere it appears. Arm one captures an explicit `variant` as
+  # `$VARIANT` (a bare `t(...)` child, or the `isSyncing ? ... : ...`
+  # ternary in BOTH branch orders, since a ternary pattern only matches the
+  # order it names) and rejects every value but `secondaryTonal`; arm two
+  # catches a Button with NO `variant` (it defaults to `primary`). Why each
+  # arm is its own `patterns:` list with a `metavariable-regex` exclusion,
+  # never `pattern-regex` plus a negative filter: kiko-linter's "Semgrep facts".
+  - id: kiko-pinned-sync-button-variant
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      The Sync button ("accountDetail.syncNow") is pinned to
+      `variant="secondaryTonal"` everywhere it appears — see
+      kiko-design-system's "Component set (Button)".
+    metadata:
+      fix: 'Use `variant="secondaryTonal"` on the Sync Button instead of any other variant.'
+      skill: "kiko-design-system › Component set (Button)"
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern-either:
+                  - pattern: |
+                      <Button ... variant="$VARIANT" ...>
+                        {t('accountDetail.syncNow')}
+                      </Button>
+                  - pattern: |
+                      <Button ... variant="$VARIANT" ...>
+                        {$COND ? $A : t('accountDetail.syncNow')}
+                      </Button>
+                  - pattern: |
+                      <Button ... variant="$VARIANT" ...>
+                        {$COND ? t('accountDetail.syncNow') : $A}
+                      </Button>
+              - metavariable-regex:
+                  metavariable: $VARIANT
+                  regex: "^(?!secondaryTonal$).*$"
+          - patterns:
+              - pattern: |
+                  <Button ...>
+                    {t('accountDetail.syncNow')}
+                  </Button>
+              - pattern-not: |
+                  <Button ... variant=$VARIANT ...>
+                    {t('accountDetail.syncNow')}
+                  </Button>
+  # kiko-design-system's "Component set (Button)" — the account-detail Change
+  # bank button ("accountDetail.changeBankAction") is pinned to
+  # `variant="secondaryTonal"`: the same two-arm shape as
+  # `kiko-pinned-sync-button-variant`, minus the ternary (this label has no
+  # in-progress alternate text).
+  - id: kiko-pinned-change-bank-button-variant
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      The Change bank button ("accountDetail.changeBankAction") is pinned to
+      `variant="secondaryTonal"` — see kiko-design-system's "Component set
+      (Button)".
+    metadata:
+      fix: 'Use `variant="secondaryTonal"` on the Change bank Button instead of any other variant.'
+      skill: "kiko-design-system › Component set (Button)"
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern: |
+                  <Button ... variant="$VARIANT" ...>
+                    {t('accountDetail.changeBankAction')}
+                  </Button>
+              - metavariable-regex:
+                  metavariable: $VARIANT
+                  regex: "^(?!secondaryTonal$).*$"
+          - patterns:
+              - pattern: |
+                  <Button ...>
+                    {t('accountDetail.changeBankAction')}
+                  </Button>
+              - pattern-not: |
+                  <Button ... variant=$VARIANT ...>
+                    {t('accountDetail.changeBankAction')}
+                  </Button>
+  # kiko-design-system's "Component set (Button)" — every sheet's Cancel
+  # button is pinned to `variant="ghost"` AND
+  # `textColor={theme.colors.negative}` together (the
+  # `confirm-sheet.component.tsx` shape). One independent arm per way the
+  # pair breaks: a non-`ghost` variant; `ghost` without that `textColor` (a
+  # `pattern-not-regex`, safe as the only text filter in its arm); no
+  # `variant` at all. Why the arms stay separate: kiko-linter's "Semgrep facts".
+  - id: kiko-pinned-cancel-button-style
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A sheet's Cancel button ("common.cancel") is pinned to
+      `variant="ghost"` AND `textColor={theme.colors.negative}` together —
+      the `confirm-sheet.component.tsx` shape. See kiko-design-system's
+      "Component set (Button)".
+    metadata:
+      fix: 'Use `variant="ghost"` and `textColor={theme.colors.negative}` together, the confirm-sheet.component.tsx shape.'
+      skill: "kiko-design-system › Component set (Button)"
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern: |
+                  <Button ... variant="$VARIANT" ...>
+                    {t('common.cancel')}
+                  </Button>
+              - metavariable-regex:
+                  metavariable: $VARIANT
+                  regex: "^(?!ghost$).*$"
+          - patterns:
+              - pattern: |
+                  <Button ... variant="ghost" ...>
+                    {t('common.cancel')}
+                  </Button>
+              - pattern-not-regex: 'textColor=\{theme\.colors\.negative\}'
+          - patterns:
+              - pattern: |
+                  <Button ...>
+                    {t('common.cancel')}
+                  </Button>
+              - pattern-not: |
+                  <Button ... variant=$VARIANT ...>
+                    {t('common.cancel')}
+                  </Button>
+  # kiko-domain's "Exchange/Convert legs": a blank row's fallback label has ONE
+  # owner, `transactionRowDescription`, which tries the exchange-leg label
+  # before the holding-name default. A surface calling
+  # `defaultTransactionDescription` itself skips that branch — the transaction
+  # form's description placeholder did, and an edited exchange leg previewed
+  # "<holding> expense" while the list showed "Exchange to <holding>".
+  # `row-description/**` is the owner; `default-description/**` holds the
+  # helper and its own unit test.
+  - id: kiko-no-direct-default-transaction-description
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `defaultTransactionDescription` is called outside its one owner. Resolve a
+      blank transaction's label (list row, preview, or form placeholder) with
+      `transactionRowDescription` from `@kiko/transactions/row-description`, so an
+      exchange leg reads "Exchange to/from <counterpart>" everywhere.
+    metadata:
+      fix: "Call `transactionRowDescription({ transaction, holdingName, holdingNameById, t })` from `@kiko/transactions/row-description` instead of `defaultTransactionDescription`."
+      skill: "kiko-domain › Exchange/Convert legs: a structural marker, a resolved label"
+    paths:
+      exclude:
+        - "src/transactions/row-description/**"
+        - "src/transactions/default-description/**"
+    pattern: defaultTransactionDescription(...)

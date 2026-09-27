@@ -1,14 +1,11 @@
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { holdingsRepo, type MonobankHolding } from '@kiko/holdings/repo';
-import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
+import { i18n } from '@kiko/i18n/init';
+import { Money } from '@kiko/currency/money';
+import { accountsRepo } from '@kiko/accounts';
+import { syncStateRepo } from '@kiko/sync-state';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { holdingsRepo, type MonobankHolding } from '@kiko/holdings/repo';
+import type { AccountRow, HoldingRow, SyncStateRow, TransactionRow } from '@kiko/db';
 
-import type { AccountRow, HoldingRow, SyncStateRow, TransactionRow } from '../../db/schema';
-import { i18n } from '../../i18n';
-import { fetchClientInfo, fetchStatement } from '../client';
-import { currencyFromCode } from '../currency-code';
-import { categoryForMcc } from '../mcc-category';
-import type { MonobankAccount, MonobankJar, MonobankStatementItem } from '../monobank.types';
 import {
   beginProgressSession,
   commitHolding,
@@ -17,8 +14,12 @@ import {
   registerWork,
   setFastPhaseDone,
 } from '../sync-status';
-import { createRequestGate, type RequestGate } from '../throttle';
 import { readToken } from '../token';
+import { categoryForMcc } from '../mcc-category';
+import { currencyFromCode } from '../currency-code';
+import { fetchClientInfo, fetchStatement } from '../client';
+import { createRequestGate, type RequestGate } from '../throttle';
+import type { MonobankAccount, MonobankJar, MonobankStatementItem } from '../monobank-types';
 
 type NewHolding = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
   Partial<Pick<HoldingRow, 'balanceMinorUnits' | 'metadata' | 'sortOrder'>>;
@@ -81,7 +82,7 @@ interface SyncAccountsRepo {
 interface SyncHoldingsRepo {
   listByAccountQuery: (accountId: string) => PromiseLike<HoldingRow[]>;
   upsertMonobankMany: (holdings: MonobankHolding[]) => Promise<unknown>;
-  setSyncedBalance: (holdingId: string, balanceMinorUnits: number) => Promise<unknown>;
+  setSyncedBalance: (holdingId: string, balance: Money) => Promise<unknown>;
   closeMany: (holdingIds: string[]) => Promise<unknown>;
 }
 
@@ -247,7 +248,7 @@ export const mapStatementItem = (
   category: categoryForMcc(item.mcc),
   comment: item.comment ?? null,
   source: 'monobank',
-  // NAMESPACED per connection (Phase 6): `${accountId}:${statementId}`. Monobank
+  // NAMESPACED per connection: `${accountId}:${statementId}`. Monobank
   // statement ids are globally unique, but the GLOBAL `(source, external_id)`
   // unique index (schema.ts) is shared with Binance, whose deposit/withdrawal
   // ids are only PER-ACCOUNT unique — so once more than one connection per
@@ -263,11 +264,13 @@ export const mapAccountToHolding = (
   monobankAccountId: string,
 ): NewHolding => {
   const currency = currencyFromCode(account.currencyCode);
+
   if (!currency) {
     throw new Error(
       i18n.t('accountDetail.unsupportedCurrencyCode', { code: account.currencyCode }),
     );
   }
+
   return {
     accountId: monobankAccountId,
     name: account.maskedPan?.[0] ?? account.type,
@@ -280,9 +283,11 @@ export const mapAccountToHolding = (
 
 const mapJarToHolding = (jar: MonobankJar, monobankAccountId: string): NewHolding => {
   const currency = currencyFromCode(jar.currencyCode);
+
   if (!currency) {
     throw new Error(i18n.t('accountDetail.unsupportedCurrencyCode', { code: jar.currencyCode }));
   }
+
   return {
     accountId: monobankAccountId,
     name: jar.title,
@@ -308,7 +313,7 @@ const monobankIdOf = (metadata: unknown): string | undefined =>
  * `sync_state` cursor, and its holdings match per account (`upsertByMetadataKey`
  * scopes by `accountId`), so a second connection can never import another's
  * cards or corrupt its cursor — the one-connection-per-institution invariant is
- * therefore retired here (multi-account plan, Phase 3). Without a
+ * therefore retired here. Without a
  * `targetAccountId` (the legacy no-target path), reuse the FIRST connected
  * Monobank account; the fan-out always passes a target now, so this path only
  * serves an already-single-connection legacy caller. If neither is available
@@ -326,8 +331,10 @@ const monobankIdOf = (metadata: unknown): string | undefined =>
 // translated (matching every other Monobank-branded catalog entry).
 const resolveMonobankAccountId = async (deps: SyncDeps): Promise<string> => {
   const accounts = await deps.accountsRepo.listQuery();
+
   if (deps.targetAccountId !== undefined) {
     const target = accounts.find((account) => account.id === deps.targetAccountId);
+
     if (!target) {
       throw new Error(i18n.t('accountDetail.noMonobankConnection'));
     }
@@ -335,9 +342,11 @@ const resolveMonobankAccountId = async (deps: SyncDeps): Promise<string> => {
     return deps.targetAccountId;
   }
   const existing = accounts.find((account) => account.institution === 'monobank');
+
   if (!existing) {
     throw new Error(i18n.t('accountDetail.noMonobankConnection'));
   }
+
   return existing.id;
 };
 
@@ -407,6 +416,7 @@ const upsertAllHoldings = async (
     }
     holdings.push({ ...mapAccountToHolding(account, accountId), monobankId: account.id });
   }
+
   for (const jar of jars ?? []) {
     // Same unrepresentable-currency carve-out as the accounts loop above: a
     // foreign-currency jar is excluded from net worth, not a fatal error.
@@ -484,6 +494,7 @@ const fetchAllStatements = async (
       windowTo = windowFrom - 1;
     }
   }
+
   return collected;
 };
 
@@ -501,12 +512,15 @@ const mapFetched = (
 /** Index a run's holdings by their Monobank id, skipping any without one. */
 const indexByMonobankId = (holdings: HoldingRow[]): Map<string, HoldingRow> => {
   const map = new Map<string, HoldingRow>();
+
   for (const holding of holdings) {
     const monobankId = monobankIdOf(holding.metadata);
+
     if (monobankId !== undefined) {
       map.set(monobankId, holding);
     }
   }
+
   return map;
 };
 
@@ -560,11 +574,13 @@ const isBalanceDiffSkip = (
   if (context.isFullFetch) {
     return false;
   }
+
   if (context.failedSet.has(account.id)) {
     return false;
   }
   const priorSynced = context.priorHoldingByMonobankId.get(account.id)?.syncedBalanceMinorUnits;
   const balanceUnchanged = priorSynced != null && priorSynced === account.balance;
+
   return balanceUnchanged && !context.holdIds.has(holding.id);
 };
 
@@ -604,13 +620,16 @@ const orderStatementQueue = (
 ): MonobankAccount[] => {
   const priority = (account: MonobankAccount): number => {
     const prior = context.priorHoldingByMonobankId.get(account.id);
-    if (prior != null && prior.balanceMinorUnits !== account.balance) {
+
+    if (prior != null && holdingsRepo.balanceOf(prior).minorUnits !== account.balance) {
       return 0;
     }
     const holding = context.holdingByMonobankId.get(account.id);
+
     if ((holding != null && context.holdIds.has(holding.id)) || context.failedSet.has(account.id)) {
       return 1;
     }
+
     return 2;
   };
 
@@ -632,11 +651,14 @@ const selectCardsToFetch = (
 ): { toFetch: { account: MonobankAccount; holding: HoldingRow }[]; skipped: number } => {
   const toFetch: { account: MonobankAccount; holding: HoldingRow }[] = [];
   let skipped = 0;
+
   for (const account of orderedAccounts) {
     const holding = holdingByMonobankId.get(account.id);
+
     if (!holding) {
       continue;
     }
+
     if (isBalanceDiffSkip(account, holding, skipContext)) {
       skipped += 1;
       continue;
@@ -662,16 +684,19 @@ export const nextFailedSet = (
 ): string[] => {
   const succeededSet = new Set(succeeded);
   const result = new Set<string>();
+
   for (const id of prior) {
     if (!succeededSet.has(id) && currentIds.has(id)) {
       result.add(id);
     }
   }
+
   for (const id of failed) {
     if (currentIds.has(id)) {
       result.add(id);
     }
   }
+
   return [...result];
 };
 
@@ -681,6 +706,7 @@ const sameIdSet = (a: string[], b: string[]): boolean => {
     return false;
   }
   const set = new Set(a);
+
   return b.every((id) => set.has(id));
 };
 
@@ -699,6 +725,7 @@ const fromCursorSeconds = (
   toSeconds: number,
 ): number => {
   const cursor = isFullFetch ? lastFullSyncAt : lastSyncAt;
+
   return cursor ? Math.floor(cursor / 1000) : toSeconds - DEFAULT_LOOKBACK_SECONDS;
 };
 
@@ -828,7 +855,10 @@ const fetchCardWithProgress = async (
     onPage,
   );
 
-  await deps.holdingsRepo.setSyncedBalance(card.holding.id, card.account.balance);
+  await deps.holdingsRepo.setSyncedBalance(
+    card.holding.id,
+    Money.of(card.holding.currency, card.account.balance),
+  );
   // Reconcile the card's work to its full up-front estimate (a card that paged
   // fewer windows than estimated still reaches its share), then complete the
   // holding for the label.
@@ -882,6 +912,7 @@ const reconcileClosedHoldings = async (
   const staleIds = current
     .filter((holding) => {
       const holdingMonobankId = monobankIdOf(holding.metadata);
+
       return (
         holdingMonobankId !== undefined &&
         !present.has(holdingMonobankId) &&
@@ -938,6 +969,7 @@ const inFlightSyncs = new Map<string, Promise<SyncResult>>();
 export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> => {
   const key = overrides.targetAccountId ?? 'institution:monobank';
   const joined = inFlightSyncs.get(key);
+
   if (joined) {
     return joined;
   }
@@ -970,6 +1002,7 @@ export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> 
   // Release on both settle paths; the returned `run` still carries the real
   // result/rejection to the caller (and to every joined trigger).
   run.then(release, release);
+
   return run;
 };
 
@@ -984,11 +1017,12 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   const accountId = await resolveMonobankAccountId(deps);
   // Ensure this connection's `sync_state` cursor row exists before any read or
   // setter below. Idempotent (`onConflictDoNothing`): an already-connected
-  // account (row created by the Phase 1 backfill migration, or a prior run) is
+  // account (row created by an earlier backfill migration, or a prior run) is
   // left untouched, so its cursor is preserved.
   await deps.syncStateRepo.ensure(accountId);
 
   const token = await deps.readToken(accountId);
+
   if (!token) {
     throw new Error(i18n.t('accountDetail.noMonobankToken'));
   }
@@ -1086,7 +1120,8 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
       return false;
     }
     const prior = priorHoldingByMonobankId.get(jar.id);
-    return prior === undefined || prior.balanceMinorUnits !== jar.balance;
+
+    return prior === undefined || holdingsRepo.balanceOf(prior).minorUnits !== jar.balance;
   }).length;
 
   // Per-card fetch plan, computed UP FRONT so the weighted progress denominator
@@ -1101,6 +1136,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
       lastFullSyncAt,
       toSeconds,
     });
+
     return { account, holding, fromSeconds, windows: estimateWindows(fromSeconds, toSeconds) };
   });
 
@@ -1115,6 +1151,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   const cardWork = toFetchPlan.reduce((sum, card) => sum + card.windows, 0);
   const syncingHoldings = fetched + changedJars;
   const totalWork = cardWork + changedJars;
+
   if (totalWork > 0) {
     registerWork(syncingHoldings, totalWork);
     // Changed jars have no statements — their balances landed in the fast-phase
@@ -1200,12 +1237,13 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // path where both sets are empty.
   const currentIds = new Set(accounts.map((account) => account.id));
   const newFailedIds = nextFailedSet(priorFailedIds, succeededIds, failedIds, currentIds);
+
   if (!sameIdSet(priorFailedIds, newFailedIds)) {
     await deps.syncStateRepo.setFailedSyncMonobankIds(accountId, failedIdsToPersist(newFailedIds));
   }
 
-  // GRADUATE the full-fetch marker EVEN ON A PARTIAL FAILURE — the key R6-1
-  // change. This now runs BEFORE the throw below, so a full fetch where one card
+  // GRADUATE the full-fetch marker EVEN ON A PARTIAL FAILURE. This runs
+  // BEFORE the throw below, so a full fetch where one card
   // failed still advances `lastFullSyncAt` and does NOT get stuck re-running a
   // slow N×60s full fetch every time (which starved the balance-diff skip once
   // the marker aged past `FULL_FETCH_INTERVAL_MS`). Nothing is lost: the failed
@@ -1244,5 +1282,6 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // right, because it is overwritten from /client-info). Advanced ONLY on a
   // fully clean run (see the partial-failure branch above).
   await deps.syncStateRepo.setLastSyncAt(accountId, toSeconds * 1000);
+
   return { importedTransactions };
 };

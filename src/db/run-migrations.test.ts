@@ -2,15 +2,20 @@
 // reference variables prefixed with `mock` (case-insensitive) — see
 // babel-plugin-jest-hoist.
 const mockExecute = jest.fn();
-const mockTxExecute = jest.fn();
-const mockTransaction = jest.fn(async (work: (tx: { execute: jest.Mock }) => Promise<void>) => {
-  await work({ execute: mockTxExecute });
-});
+const mockTransactionExecute = jest.fn();
+const mockDatabaseTransaction = jest.fn(
+  async (work: (databaseTransaction: { execute: jest.Mock }) => Promise<void>) => {
+    await work({ execute: mockTransactionExecute });
+  },
+);
 
 jest.mock('./client', () => ({
   rawDatabase: {
     execute: (...args: unknown[]) => mockExecute(...args),
-    transaction: (work: (tx: { execute: jest.Mock }) => Promise<void>) => mockTransaction(work),
+    // `transaction` here is op-sqlite's own method name (rawDatabase.transaction(...) in
+    // run-migrations.ts) — a third-party API name, not renamed.
+    transaction: (work: (databaseTransaction: { execute: jest.Mock }) => Promise<void>) =>
+      mockDatabaseTransaction(work),
   },
 }));
 
@@ -91,8 +96,8 @@ beforeEach(() => {
   jest.doMock('../../drizzle/migrations/migrations', migrationBundleFactory);
 
   mockExecute.mockReset();
-  mockTxExecute.mockReset();
-  mockTransaction.mockClear();
+  mockTransactionExecute.mockReset();
+  mockDatabaseTransaction.mockClear();
   appliedCount.current = 0;
   mockExecute.mockImplementation(async (sql: string) => {
     if (sql.includes('SELECT')) {
@@ -139,7 +144,7 @@ describe('runMigrations', () => {
     // The single read must precede the first apply transaction: read once, then
     // gate every entry against that one count snapshot.
     expect(mockExecute.mock.invocationCallOrder[selectCallIndex]).toBeLessThan(
-      mockTransaction.mock.invocationCallOrder[0],
+      mockDatabaseTransaction.mock.invocationCallOrder[0],
     );
   });
 
@@ -148,10 +153,10 @@ describe('runMigrations', () => {
 
     await runMigrations();
 
-    expect(mockTransaction).toHaveBeenCalledTimes(2);
-    expect(mockTxExecute).toHaveBeenCalledWith('CREATE TABLE a (id text);');
-    expect(mockTxExecute).toHaveBeenCalledWith('CREATE TABLE b (id text);');
-    expect(mockTxExecute).toHaveBeenCalledWith('\nCREATE TABLE c (id text);');
+    expect(mockDatabaseTransaction).toHaveBeenCalledTimes(2);
+    expect(mockTransactionExecute).toHaveBeenCalledWith('CREATE TABLE a (id text);');
+    expect(mockTransactionExecute).toHaveBeenCalledWith('CREATE TABLE b (id text);');
+    expect(mockTransactionExecute).toHaveBeenCalledWith('\nCREATE TABLE c (id text);');
   });
 
   it('filters empty statements so a trailing breakpoint never executes a blank query', async () => {
@@ -159,8 +164,8 @@ describe('runMigrations', () => {
 
     await runMigrations();
 
-    expect(mockTxExecute).not.toHaveBeenCalledWith('');
-    expect(mockTxExecute).not.toHaveBeenCalledWith('\n');
+    expect(mockTransactionExecute).not.toHaveBeenCalledWith('');
+    expect(mockTransactionExecute).not.toHaveBeenCalledWith('\n');
   });
 
   it('records each applied migration with its own journal timestamp', async () => {
@@ -168,11 +173,11 @@ describe('runMigrations', () => {
 
     await runMigrations();
 
-    expect(mockTxExecute).toHaveBeenCalledWith(
+    expect(mockTransactionExecute).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO __drizzle_migrations'),
       ['', 1000],
     );
-    expect(mockTxExecute).toHaveBeenCalledWith(
+    expect(mockTransactionExecute).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO __drizzle_migrations'),
       ['', 2000],
     );
@@ -184,9 +189,9 @@ describe('runMigrations', () => {
 
     await runMigrations();
 
-    expect(mockTransaction).toHaveBeenCalledTimes(1);
-    expect(mockTxExecute).toHaveBeenCalledWith('CREATE TABLE b (id text);');
-    expect(mockTxExecute).not.toHaveBeenCalledWith('CREATE TABLE a (id text);');
+    expect(mockDatabaseTransaction).toHaveBeenCalledTimes(1);
+    expect(mockTransactionExecute).toHaveBeenCalledWith('CREATE TABLE b (id text);');
+    expect(mockTransactionExecute).not.toHaveBeenCalledWith('CREATE TABLE a (id text);');
   });
 
   it('applies nothing when every bundled migration is already recorded', async () => {
@@ -195,7 +200,7 @@ describe('runMigrations', () => {
 
     await runMigrations();
 
-    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockDatabaseTransaction).not.toHaveBeenCalled();
   });
 
   it('coerces a string count through Number() so the gate still holds', async () => {
@@ -206,7 +211,7 @@ describe('runMigrations', () => {
 
     await runMigrations();
 
-    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockDatabaseTransaction).not.toHaveBeenCalled();
   });
 
   it('throws when a pending migration has no bundled SQL', async () => {
@@ -229,7 +234,7 @@ describe('runMigrations', () => {
 
     // Both callers share ONE run: the two bundled migrations apply once, not
     // twice, so the un-guarded CREATE TABLE cannot double-enter.
-    expect(mockTransaction).toHaveBeenCalledTimes(2);
+    expect(mockDatabaseTransaction).toHaveBeenCalledTimes(2);
   });
 
   it('memoizes a completed run so a repeat call re-executes nothing', async () => {
@@ -237,11 +242,11 @@ describe('runMigrations', () => {
 
     await runMigrations();
     mockExecute.mockClear();
-    mockTransaction.mockClear();
+    mockDatabaseTransaction.mockClear();
     await runMigrations();
 
     expect(mockExecute).not.toHaveBeenCalled();
-    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockDatabaseTransaction).not.toHaveBeenCalled();
   });
 
   it('clears the memo after a failed run so the next call retries from scratch', async () => {
@@ -251,7 +256,7 @@ describe('runMigrations', () => {
     await expect(runMigrations()).rejects.toThrow('boom');
     await expect(runMigrations()).resolves.toBeUndefined();
 
-    expect(mockTransaction).toHaveBeenCalledTimes(2);
+    expect(mockDatabaseTransaction).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -272,25 +277,25 @@ describe('runMigrations — non-monotonic journal self-heal', () => {
 
     await runMigrations();
 
-    expect(mockTransaction).toHaveBeenCalledTimes(2);
-    expect(mockTxExecute).toHaveBeenCalledWith(
+    expect(mockDatabaseTransaction).toHaveBeenCalledTimes(2);
+    expect(mockTransactionExecute).toHaveBeenCalledWith(
       expect.stringContaining('CREATE TABLE `category_overrides`'),
     );
-    expect(mockTxExecute).toHaveBeenCalledWith(
+    expect(mockTransactionExecute).toHaveBeenCalledWith(
       expect.stringContaining('ALTER TABLE `categories` ADD `color`'),
     );
     // The two applied migrations are recorded under their own (earlier) `when`.
-    expect(mockTxExecute).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO'), [
+    expect(mockTransactionExecute).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO'), [
       '',
       1788510193092,
     ]);
-    expect(mockTxExecute).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO'), [
+    expect(mockTransactionExecute).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO'), [
       '',
       1788514551234,
     ]);
     // Nothing at or before idx 6 is re-run.
-    expect(mockTxExecute).not.toHaveBeenCalledWith('UPDATE accounts SET sort_order = 0;');
-    expect(mockTxExecute).not.toHaveBeenCalledWith('CREATE TABLE accounts (id text);');
+    expect(mockTransactionExecute).not.toHaveBeenCalledWith('UPDATE accounts SET sort_order = 0;');
+    expect(mockTransactionExecute).not.toHaveBeenCalledWith('CREATE TABLE accounts (id text);');
   });
 
   it('applies ALL nine journal migrations, in order, on a fresh/empty database', async () => {
@@ -299,12 +304,12 @@ describe('runMigrations — non-monotonic journal self-heal', () => {
 
     await runMigrations();
 
-    expect(mockTransaction).toHaveBeenCalledTimes(9);
+    expect(mockDatabaseTransaction).toHaveBeenCalledTimes(9);
     // The tail schema (the previously-skipped migrations) is built.
-    expect(mockTxExecute).toHaveBeenCalledWith(
+    expect(mockTransactionExecute).toHaveBeenCalledWith(
       expect.stringContaining('CREATE TABLE `category_overrides`'),
     );
-    expect(mockTxExecute).toHaveBeenCalledWith(
+    expect(mockTransactionExecute).toHaveBeenCalledWith(
       expect.stringContaining('ALTER TABLE `categories` ADD `color`'),
     );
   });
@@ -315,7 +320,7 @@ describe('runMigrations — non-monotonic journal self-heal', () => {
 
     await expect(runMigrations()).resolves.toBeUndefined();
 
-    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockDatabaseTransaction).not.toHaveBeenCalled();
   });
 
   it('never re-runs an already-recorded migration even though a later entry has an earlier `when`', async () => {
@@ -328,10 +333,10 @@ describe('runMigrations — non-monotonic journal self-heal', () => {
 
     await runMigrations();
 
-    expect(mockTxExecute).not.toHaveBeenCalledWith(
+    expect(mockTransactionExecute).not.toHaveBeenCalledWith(
       expect.stringContaining('CREATE TABLE `category_overrides`'),
     );
-    expect(mockTxExecute).not.toHaveBeenCalledWith(
+    expect(mockTransactionExecute).not.toHaveBeenCalledWith(
       expect.stringContaining('ALTER TABLE `categories` ADD `color`'),
     );
   });

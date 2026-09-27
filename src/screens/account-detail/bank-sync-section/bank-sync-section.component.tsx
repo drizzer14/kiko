@@ -1,29 +1,25 @@
 import { useState } from 'react';
-import { Alert } from 'react-native';
 import type { FC, ReactNode } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useSync } from '@kiko/sync/use-sync';
 import { useTranslation } from 'react-i18next';
-import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
-
-import {
-  bankProviderIdOf,
-  isBankProviderId,
-  type BankProviderId,
-} from '../../../bank-sync/provider';
-import { saveToken } from '../../../monobank/token';
-import type { AccountRow } from '../../../db/schema';
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import { useLiveQuery } from '../../../db/use-live-query';
-import Button from '../../../design-system/components/button';
-import SymbolIcon from '../../../design-system/components/symbol';
-import { bankProviderRegistry } from '../../../bank-sync/registry';
-import ConfirmSheet from '../../../design-system/components/confirm-sheet';
+import { syncStateRepo } from '@kiko/sync-state';
+import { saveToken } from '@kiko/monobank/token';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import { type AccountRow, useLiveQuery } from '@kiko/db';
+import Button from '@kiko/design-system/components/button';
+import SymbolIcon from '@kiko/design-system/components/symbol';
+import { bankProviderRegistry } from '@kiko/bank-sync/registry';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
+import MonobankConnectField from '@kiko/design-system/components/monobank-connect-field';
+import { bankProviderIdOf, isBankProviderId, type BankProviderId } from '@kiko/bank-sync/provider';
 
 import { styles } from '../account-detail.styles';
 import AddBankProviderSheet from '../add-bank-sheet';
 import { formatLastSyncAt } from '../format-last-sync';
-import MonobankConnectField from '../monobank-connect-field';
+import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
 
 type BankSyncSectionProps = {
   account: AccountRow;
@@ -95,19 +91,40 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   // per-connection `sync_state` table (de-globalized from `settings` — see
   // the `syncState` table comment in `db/schema.ts`), so a second connection
   // never shows another's time.
-  const { data: syncStateRows } = useLiveQuery(syncStateRepo.getQuery(account.id), ['sync_state']);
+  const { data: syncStateRows, isLoading: syncStateLoading } = useLiveQuery(
+    syncStateRepo.getQuery(account.id),
+    ['sync_state'],
+  );
 
   const connectedProviderId = resolveConnectedProviderId(account.institution);
-  const connectedEntry =
-    connectedProviderId === undefined ? undefined : bankProviderRegistry[connectedProviderId];
+  const connectedEntry = foldMap(maybe(connectedProviderId), (id) => bankProviderRegistry[id]);
 
-  // Which provider's connect field to show BEFORE a connection exists — set
-  // by `AddBankProviderSheet`'s selection. Reset back to `undefined` on
-  // Disconnect (below), so the picker/trigger reappears rather than
-  // re-showing the just-disconnected provider's field.
+  // Which provider's connect field the user explicitly picked THIS session
+  // (via `AddBankProviderSheet`, or cleared via "Change bank"/Disconnect
+  // below) — `undefined` means "no explicit pick yet this session", not
+  // necessarily "show the generic Add-a-bank trigger". Combined with
+  // `bankIdProviderId` below into `shownProviderId`, the value actually
+  // rendered.
   const [selectedProviderId, setSelectedProviderId] = useState<BankProviderId | undefined>(
     undefined,
   );
+  // The account's own `bankId`, resolved to a connectable
+  // provider id EVERY RENDER, live off the current `account` prop — NOT
+  // seeded once into `selectedProviderId`'s initial state: a `useState`
+  // initializer only runs at MOUNT, so it would never react to the
+  // account's OWN `bankId` changing after this component was
+  // already mounted (the account form editing the bank to Monobank, or a
+  // Disconnect — which clears `institution` but never `bankId`, see
+  // `kiko-domain`'s "bankId is identity-only, independent of institution")
+  // while `AccountDetail`/this section stayed mounted the whole time.
+  const bankIdProviderId = isBankProviderId(account.bankId) ? account.bankId : undefined;
+  // The account form's `BankTypeField` already identified this account as
+  // Monobank, so re-asking through the generic "Add a bank" picker (today a
+  // picker of exactly one entry) is redundant friction and the label was
+  // misleading ("Add a bank" on an account already known to be Monobank) —
+  // this goes straight to the Connect field instead, and keeps doing so on
+  // every later render as long as `bankId` still says so, live.
+  const shownProviderId = selectedProviderId ?? bankIdProviderId;
   const [providerPickerOpen, setProviderPickerOpen] = useState(false);
   // Whether the themed Disconnect confirm (`ConfirmSheet`) is up, replacing the
   // old native `Alert.alert`; a scrim/back dismiss behaves like Cancel.
@@ -148,7 +165,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
     try {
       await connectedEntry.disconnect(account.id);
     } catch {
-      Alert.alert(t('accountDetail.disconnectErrorTitle'), t('accountDetail.tryAgainMessage'));
+      alertOnCatch(t, 'accountDetail.disconnectErrorTitle', 'accountDetail.tryAgainMessage');
     }
   };
 
@@ -163,6 +180,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   const disconnect = (): void => {
     setDisconnectPending(false);
     setSelectedProviderId(undefined);
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) runDisconnect catches and alerts every failure itself
     runDisconnect();
   };
 
@@ -179,52 +197,43 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
             Sync and Disconnect buttons themselves sit SIDE BY SIDE in the
             single actions row below, not stacked. */}
         <Box gap={4} testID="bank-sync-status-actions">
-          <Box direction="row" gap={2} style={styles.statusLine}>
-            <SymbolIcon name="clock" tone="textSecondary" />
-            <Text variant="body" tone="textSecondary">
-              {t('accountDetail.lastSync', {
-                // The DISPLAY stamp (moves on any run that imported rows,
-                // including a partial failure), falling back to the pure
-                // statement cursor for installs that predate the display
-                // column (it reads null there).
-                time: formatLastSyncAt(
-                  syncStateRows.at(0)?.lastSyncDisplayAt ?? syncStateRows.at(0)?.lastSyncAt ?? null,
-                  t,
-                ),
-              })}
-            </Text>
-          </Box>
+          {/* The "Last sync" line reads this section's OWN sync_state query,
+              gated on its own isLoading — never the "Never" default while
+              that query is still on its first load (kiko-architecture's
+              useLiveQuery consumer rule). Sync/Disconnect below do not
+              depend on this query, so they stay available regardless. */}
+          {!syncStateLoading && (
+            <Box direction="row" gap={2} style={styles.statusLine}>
+              <SymbolIcon name="clock" tone="textSecondary" />
+              <Text variant="body" tone="textSecondary">
+                {t('accountDetail.lastSync', {
+                  // The DISPLAY stamp (moves on any run that imported rows,
+                  // including a partial failure), falling back to the pure
+                  // statement cursor for installs that predate the display
+                  // column (it reads null there).
+                  time: formatLastSyncAt(
+                    syncStateRows.at(0)?.lastSyncDisplayAt ??
+                      syncStateRows.at(0)?.lastSyncAt ??
+                      null,
+                    t,
+                  ),
+                })}
+              </Text>
+            </Box>
+          )}
 
-          {/* Sync and Disconnect share a single row. Sync is the affirmative
-              blue `primary` re-import CTA; Disconnect stays a neutral tonal
-              action beside it — never blue. */}
-          <Box direction="row" gap={2} testID="bank-sync-actions-row">
-            <Button
-              variant="primary"
-              size="small"
-              fullWidth={false}
-              onPress={() => {
-                sync(account.id);
-              }}
-              disabled={isSyncing}
-              // iOS-26 rotate glyph; the central IOS26_SYMBOL_FALLBACKS map
-              // (symbol.availability.ts) hands SymbolIcon the iOS-16-safe
-              // `arrow.triangle.2.circlepath` on a pre-26 device automatically,
-              // even through the shared Button's `icon` prop.
-              icon="arrow.trianglehead.2.clockwise.rotate.90"
-            >
-              {isSyncing ? t('accountDetail.syncing') : t('accountDetail.syncNow')}
-            </Button>
-            <Button
-              variant="secondaryTonal"
-              size="small"
-              fullWidth={false}
-              onPress={confirmDisconnect}
-              icon="lock.open"
-            >
-              {t('accountDetail.disconnectAction')}
-            </Button>
-          </Box>
+          {/* Sync and Disconnect share a single row — the shared
+              SyncDisconnectActionsRow (both the neutral `secondaryTonal`
+              treatment, never blue). */}
+          <SyncDisconnectActionsRow
+            onSync={() => {
+              // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) the shared sync action folds a failure into its error state and never rejects
+              sync(account.id);
+            }}
+            isSyncing={isSyncing}
+            onDisconnect={confirmDisconnect}
+            testID="bank-sync-actions-row"
+          />
         </Box>
 
         {error !== undefined && (
@@ -261,7 +270,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
     <Box gap={3}>
       <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
-      {selectedProviderId === undefined ? (
+      {shownProviderId === undefined ? (
         <Button
           variant="secondaryTonal"
           size="small"
@@ -273,16 +282,27 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
         </Button>
       ) : (
         <Box gap={2}>
-          {connectFieldByProviderId[selectedProviderId]}
+          {connectFieldByProviderId[shownProviderId]}
 
-          <Button
-            variant="ghost"
-            size="small"
-            fullWidth={false}
-            onPress={() => setSelectedProviderId(undefined)}
-          >
-            {t('accountDetail.changeBankAction')}
-          </Button>
+          {/* Hidden when
+              `bankId` itself already identifies Monobank — pressing it would
+              clear `selectedProviderId`, but `shownProviderId` falls
+              straight back to the live `bankIdProviderId` on the very next
+              render, so it visibly changes nothing. The bank is changed on
+              the account form instead. Still shown when the user reached
+              this field by picking a provider through `AddBankProviderSheet`
+              on an account with no `bankId` — there it genuinely clears the
+              pick and re-shows "Add a bank". */}
+          {bankIdProviderId === undefined && (
+            <Button
+              variant="secondaryTonal"
+              size="small"
+              fullWidth={false}
+              onPress={() => setSelectedProviderId(undefined)}
+            >
+              {t('accountDetail.changeBankAction')}
+            </Button>
+          )}
         </Box>
       )}
 

@@ -1,11 +1,12 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
-import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
-import '../../unistyles';
-import { i18n } from '../../../i18n';
+import type { ComponentProps } from 'react';
+import { act, fireEvent, render } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
+
+import { KIKO_CATEGORIES_ICONS } from '../icon-picker-modal';
 
 import IconEditor from '.';
-import { KIKO_CATEGORIES_ICONS } from '../icon-picker-modal/icon-pools';
 
 type Overrides = Partial<ComponentProps<typeof IconEditor>>;
 

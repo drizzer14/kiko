@@ -1,13 +1,12 @@
-// Column layout verified against docs/plans/statement-import.md section C.3
+// Column layout verified against docs/plans/statement-import.md
 // (Ukrsibbank business/FOP) — grounded in OSadovy/uabean's importer facts.
 // No uabean source is reused; this is an independent TypeScript
 // implementation. **No uabean fixture exists for this format** —
 // `__fixtures__/synthetic-ukrsib-business-sample.csv` is HAND-AUTHORED
 // synthetic data (all-fake account/EDRPOU numbers, "Test Merchant"
 // descriptions), written as real cp1251 bytes, same placeholder-style
-// convention the other hand-authored fixtures in this plan use (see
-// task-5-report.md).
-import type { StatementFormat } from '../../parser';
+// convention the other hand-authored fixtures in this plan use.
+import type { StatementFormat } from '@kiko/statement-import/parser';
 
 import { createColumnarBusinessCsvFormat, FOP_BUSINESS_COLUMN_BASE } from '../business-csv';
 
@@ -22,7 +21,7 @@ import { createColumnarBusinessCsvFormat, FOP_BUSINESS_COLUMN_BASE } from '../bu
 // ⚠️ The bank's own header spells "операцiї" (both occurrences, "Дата
 // операцiї" and "Код операцiї") with a LATIN small `i` (U+0069), NOT the
 // Cyrillic `і` (U+0456) ProCredit/Monobank use — a byte-level detect trap.
-// Verified by codepoint, not by eye (task-5-report.md).
+// Verified by codepoint, not by eye.
 export const FULL_HEADER_LINE =
   '"ЄДРПОУ";"МФО";"Рахунок";"Валюта";"Дата операцiї";"Код операцiї";"МФО банка";"Назва банка";"Рахунок кореспондента";"ЄДРПОУ кореспондента";"Кореспондент";"Номер документа";"Дата документа";"Дебет";"Кредит";"Призначення платежу";"Гривневе покриття";';
 
@@ -32,7 +31,7 @@ export const FULL_HEADER_LINE =
 export const OPERATSII_WORD = 'операцiї';
 
 // 0-based column indices against a `;`-delimited, double-quoted data row
-// (section C.3's 17 named columns; an 18th always-empty trailing column
+// (17 named columns; an 18th always-empty trailing column
 // exists too, from the header/rows' shared trailing `;`, but is never read).
 // Column 1 (`mfo`, Ukrsib's own "МФО") is this format's ONE index that
 // diverges from ProCredit business's otherwise-identical layout — see

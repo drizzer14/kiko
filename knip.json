@@ -2,7 +2,17 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": ["App.tsx", "jest/setup.js", "__tests__/**/*.{test,spec}.{ts,tsx}"],
   "project": ["**/*.{ts,tsx,js}"],
-  "ignore": ["rules/fixtures/**", "scripts/checks/kill-guard.js"],
+  "ignore": [
+    "rules/fixtures/**",
+    "scripts/checks/kill-guard.js",
+    "scripts/checks/import-order.js",
+    "scripts/checks/full-word-identifiers.js",
+    "scripts/checks/blank-line-separation.js",
+    "scripts/checks/screen-imports.js",
+    "scripts/checks/feature-imports.js",
+    "scripts/checks/specifier-scanner.js",
+    "scripts/checks/pre-write-guard.js"
+  ],
   "ignoreDependencies": [
     "@babel/runtime",
     "@typescript/native-preview",

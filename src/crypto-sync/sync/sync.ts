@@ -1,15 +1,15 @@
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
-
-import type { AccountRow, HoldingRow } from '../../db/schema';
-import { i18n } from '../../i18n';
 import {
   beginProgressSession,
   commitHolding,
   commitWork,
   endProgressSession,
   registerWork,
-} from '../../monobank/sync-status';
+} from '@kiko/monobank/sync-status';
+import { i18n } from '@kiko/i18n/init';
+import { accountsRepo } from '@kiko/accounts';
+import type { AccountRow, HoldingRow } from '@kiko/db';
+import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
+
 import { type BalanceProvider, type BalanceProviderId, providerDisplayName } from '../provider';
 
 /**
@@ -30,7 +30,8 @@ export interface BalanceSyncDeps {
   listAccounts: () => Promise<AccountRow[]>;
   updateAccount: (accountId: string, patch: Partial<AccountRow>) => Promise<unknown>;
   listHoldingsByAccount: (accountId: string) => Promise<HoldingRow[]>;
-  upsertHolding: (holding: ExchangeHolding) => Promise<unknown>;
+  /** Every returned balance upserted in ONE transaction — see `upsertExchangeMany`. */
+  upsertHoldings: (holdings: ExchangeHolding[]) => Promise<unknown>;
 }
 
 export type BalanceSyncResult = { syncedHoldings: number };
@@ -40,15 +41,15 @@ const defaultDeps: BalanceSyncDeps = {
   listAccounts: async () => accountsRepo.listQuery(),
   updateAccount: (accountId, patch) => accountsRepo.update(accountId, patch),
   listHoldingsByAccount: async (accountId) => holdingsRepo.listByAccountQuery(accountId),
-  upsertHolding: (holding) => holdingsRepo.upsertExchange(holding),
+  upsertHoldings: (holdingsList) => holdingsRepo.upsertExchangeMany(holdingsList),
 };
 
 /**
  * Resolve the account this sync writes into, mirroring
  * `resolveMonobankAccountId` (`src/monobank/sync.ts`). A `targetAccountId` sync
  * validates only that the target exists — MULTIPLE `binance` and multiple
- * `btc_wallet` connections are allowed (Task 5.2), each an independent account
- * with its own per-account secret/address and its own single-flight key.
+ * `btc_wallet` connections are allowed, each an independent account with its
+ * own per-account secret/address and its own single-flight key.
  * Re-connecting the SAME account is an idempotent re-sync. This only reads —
  * marking happens after a successful fetch, so a failed fetch never leaves a
  * half-connected account behind.
@@ -76,7 +77,7 @@ const resolveTargetAccount = async (
       throw new Error(i18n.t('accountDetail.noConnectionFound', { name }));
     }
 
-    // Multi-connection (Task 5.2): a second `binance` or `btc_wallet` account may
+    // Multi-connection: a second `binance` or `btc_wallet` account may
     // connect while another already holds that provider. Each account keys its own
     // secret (Binance credentials) / public address (wallet, per-holding), and the
     // per-account `inFlightBalanceSyncs` join keys by `targetAccountId`, so distinct
@@ -134,6 +135,7 @@ export const runBalanceSync = <Deps>(
 ): Promise<BalanceSyncResult> => {
   const key = overrides.targetAccountId ?? `institution:${provider.id}`;
   const joined = inFlightBalanceSyncs.get(key);
+
   if (joined) {
     return joined;
   }
@@ -147,6 +149,7 @@ export const runBalanceSync = <Deps>(
   // Release on both settle paths; `run` still carries the real result/rejection
   // to the caller and to every joined trigger.
   run.then(release, release);
+
   return run;
 };
 
@@ -178,23 +181,33 @@ const runBalanceSyncInner = async <Deps>(
       registerWork(balances.length, balances.length);
     }
 
-    for (const balance of balances) {
-      await deps.upsertHolding({
-        accountId,
-        name: balance.name,
-        type: 'crypto_asset',
-        currency: 'BTC',
-        balanceMinorUnits: balance.balanceMinorUnits,
-        metadata: { syncedAt },
-        metadataField: provider.metadataField,
-        metadataKey: balance.metadataKey,
-        renameFromDefault: balance.renameFromDefault,
-      });
-      // One crypto holding's balance has committed: advance the bar one work unit
-      // and complete the holding for the label.
+    // Every balance upserts in ONE transaction (mirrors the Monobank fast-phase
+    // batch, `upsertMonobankMany`) rather than one op-sqlite transaction per
+    // balance, so the reactive `holdings` callback fires once per sync. A
+    // provider that returns no balance has nothing to write, so this skips the
+    // call entirely rather than opening an empty write transaction.
+    if (balances.length > 0) {
+      await deps.upsertHoldings(
+        balances.map(({ name, balanceMinorUnits, metadataKey, renameFromDefault }) => ({
+          accountId,
+          name,
+          type: 'crypto_asset',
+          currency: 'BTC',
+          balanceMinorUnits,
+          metadata: { syncedAt },
+          metadataField: provider.metadataField,
+          metadataKey,
+          renameFromDefault,
+        })),
+      );
+    }
+
+    // One crypto holding's balance has committed: advance the bar one work unit
+    // and complete the holding for the label, once per returned balance.
+    balances.forEach(() => {
       commitWork();
       commitHolding();
-    }
+    });
 
     return { syncedHoldings: balances.length };
   } finally {

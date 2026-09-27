@@ -1,6 +1,7 @@
-import { BINANCE_API_ENDPOINT } from '@env';
 import { guard } from 'fnts';
-import either, { bifold, isRight } from 'fnts/either';
+import { i18n } from '@kiko/i18n/init';
+import { BINANCE_API_ENDPOINT } from '@env';
+import either, { bifoldr } from 'fnts/either';
 
 import { signQuery } from './binance.hmac';
 
@@ -29,7 +30,7 @@ const RECV_WINDOW_MS = 5000;
  */
 const errorSuffix = async (response: Response): Promise<string> => {
   const body = await either<unknown, unknown>(() => response.json());
-  const parsed = isRight(body) ? bifold(body) : undefined;
+  const parsed = bifoldr(body);
   const message = (parsed as { msg?: unknown } | undefined)?.msg;
 
   return typeof message === 'string' ? `: ${message}` : '';
@@ -44,7 +45,12 @@ const readBody = guard(
   [
     (response: Response) => !response.ok,
     async (response: Response): Promise<never> => {
-      throw new Error(`Binance request failed: ${response.status}${await errorSuffix(response)}`);
+      throw new Error(
+        i18n.t('accountDetail.binanceRequestFailed', {
+          status: response.status,
+          detail: await errorSuffix(response),
+        }),
+      );
     },
   ],
   (response: Response): Promise<unknown> => response.json(),
@@ -175,6 +181,7 @@ const fetchAllPositions = async <Row>(
 
     const pageRows = page.rows ?? [];
     rows.push(...pageRows);
+
     if (typeof page.total === 'number') {
       total = page.total;
     }

@@ -1,5 +1,6 @@
-import type { AccountRow } from '../../db/schema';
-import { entityColorsDark } from '../../design-system/palette';
+import type { AccountRow } from '@kiko/db';
+import { entityColorsDark } from '@kiko/design-system/palette';
+
 import { holdingTypes, holdingTypesForAccountKind } from '../holding-type';
 
 import { defaultAccountColor, defaultHoldingColor } from './entity-colors';
@@ -28,12 +29,15 @@ describe('defaultAccountColor', () => {
     }
   });
 
-  it('assigns bank white, cash khaki, crypto yellow', () => {
-    const { white, khaki, yellow } = entityColorsDark;
+  it('assigns bank white, cash khaki, crypto yellow, property brown, metals gray, debt red', () => {
+    const { white, khaki, yellow, brown, gray, red } = entityColorsDark;
 
     expect(defaultAccountColor.bank).toBe(white);
     expect(defaultAccountColor.cash).toBe(khaki);
     expect(defaultAccountColor.crypto).toBe(yellow);
+    expect(defaultAccountColor.property).toBe(brown);
+    expect(defaultAccountColor.metals).toBe(gray);
+    expect(defaultAccountColor.debt).toBe(red);
   });
 });
 
@@ -51,8 +55,8 @@ describe('defaultHoldingColor', () => {
     }
   });
 
-  it('assigns card white, term_deposit blue, bond green, jar violet, cash khaki, crypto_asset yellow', () => {
-    const { white, blue, green, violet, khaki, yellow } = entityColorsDark;
+  it('assigns card white, term_deposit blue, bond green, jar violet, cash khaki, crypto_asset yellow, property_item brown, metal gray, loan red', () => {
+    const { white, blue, green, violet, khaki, yellow, brown, gray, red } = entityColorsDark;
 
     expect(defaultHoldingColor.card).toBe(white);
     expect(defaultHoldingColor.term_deposit).toBe(blue);
@@ -60,5 +64,8 @@ describe('defaultHoldingColor', () => {
     expect(defaultHoldingColor.jar).toBe(violet);
     expect(defaultHoldingColor.cash).toBe(khaki);
     expect(defaultHoldingColor.crypto_asset).toBe(yellow);
+    expect(defaultHoldingColor.property_item).toBe(brown);
+    expect(defaultHoldingColor.metal).toBe(gray);
+    expect(defaultHoldingColor.loan).toBe(red);
   });
 });

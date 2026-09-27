@@ -35,6 +35,37 @@ fi
 out="$("$BIN" check "$TARGET" 2>&1)"
 code=$?
 if [ "$code" -ne 0 ]; then
+  # biome.json's files.includes deliberately excludes some paths (e.g.
+  # rules/fixtures/**, ios/) from linting altogether — a fixture is allowed
+  # to hold code shapes that would otherwise fail lint. Biome reports the
+  # exact same "No files were processed…" message with a non-zero exit for a
+  # target that is EXCLUDED and for a target that does not EXIST at all (an
+  # internalError/io swallowed above it) — so this must only read as
+  # "out of scope" when the target is a real file under one of biome.json's
+  # excluded roots; anything else (a typo'd or missing path) is a genuine
+  # failure, same as security.sh's own excluded-root check.
+  if printf '%s' "$out" | grep -q 'No files were processed in the specified paths\.'; then
+    if [ -f "$TARGET" ]; then
+      case "$TARGET" in
+        "$ROOT/ios/"* | ios/* | "$ROOT/vendor/"* | vendor/* | "$ROOT/coverage/"* | coverage/* \
+          | "$ROOT/rules/fixtures/"* | rules/fixtures/* | *.jsbundle)
+          [ -n "$dkey" ] && harness_mark_pass "$ROOT" "$dkey" "$fp"
+          exit 0
+          ;;
+      esac
+      # biome.json's files.includes above is a hand copy of the excluded
+      # roots; vcs.useIgnoreFile: true means Biome ALSO reports this exact
+      # message for any real file .gitignore covers (.claude/worktrees/,
+      # .stryker-tmp/, .superpowers/, scratch_*), which the hand copy can
+      # never enumerate. A file the target's own .gitignore excludes is
+      # out of scope the same way — never a lint failure.
+      if git -C "$ROOT" check-ignore -q "$TARGET" 2>/dev/null; then
+        [ -n "$dkey" ] && harness_mark_pass "$ROOT" "$dkey" "$fp"
+        exit 0
+      fi
+    fi
+  fi
+
   print_block \
     "Biome (lint + format)" \
     "Biome found lint or format violations in $TARGET." \

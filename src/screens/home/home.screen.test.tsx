@@ -1,21 +1,17 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
-import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
-import '../../design-system/unistyles';
-
-import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
-
-import { defaultDateRange } from '../../dates/default-range';
-import { DAY_MS } from '../../dates/duration';
-import { formatDate } from '../../dates/format';
-import { resolveBottomClearance } from '../../design-system/components/screen';
-import { darkTheme } from '../../design-system/theme';
-import { i18n } from '../../i18n';
-import { resolveCategoryColor } from '../../statistics/category-breakdown';
+import type { ComponentProps } from 'react';
+import { act, fireEvent, render } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
+import { darkTheme } from '@kiko/design-system/theme';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
 // resolved MoneyText `tone` via a testID — see the module for the full rationale.
-import mockTextTone from '../../test-support/mock-text-tone';
-import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
+import mockTextTone from '@kiko/test-support/mock-text-tone';
+import { DAY_MS, formatDate, defaultDateRange } from '@kiko/dates';
+import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
+import { resolveBottomClearance } from '@kiko/design-system/components/screen';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HomeScreen from './home.screen';
 
@@ -23,7 +19,7 @@ type HomeProps = ComponentProps<typeof HomeScreen>;
 
 import { FILTER_ALL } from './transaction-filter-bar';
 
-jest.mock('../../design-system/components/text', () => ({
+jest.mock('@kiko/design-system/components/text', () => ({
   __esModule: true,
   default: mockTextTone,
 }));
@@ -59,6 +55,7 @@ jest.mock('react-native-safe-area-context', () => {
 // stronger-translucent backdrop under the glass.
 jest.mock('@callstack/liquid-glass', () => {
   const { View } = require('react-native');
+
   return { LiquidGlassView: View, isLiquidGlassSupported: false };
 });
 
@@ -68,14 +65,20 @@ const liquidGlass = jest.requireMock('@callstack/liquid-glass') as {
 
 const mockUseLiveQuery = jest.fn();
 
-jest.mock('../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { listQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 jest.mock('@kiko/holdings/repo', () => ({
-  holdingsRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+  holdingsRepo: {
+    allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    balanceOf: (row: { currency: string; balanceMinorUnits: number }) => ({
+      currency: row.currency,
+      minorUnits: row.balanceMinorUnits,
+    }),
+  },
 }));
 jest.mock('@kiko/rates/repo', () => ({
   ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
@@ -84,7 +87,10 @@ jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 jest.mock('@kiko/transactions/repo', () => ({
-  transactionsRepo: { listAllWithContextQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+  transactionsRepo: {
+    listAllWithContextQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    loanLedgerPaymentsQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+  },
 }));
 jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
@@ -102,7 +108,7 @@ jest.mock('@kiko/sync/use-sync-all', () => ({
 // so a test can drive the "a sync is running" flag without a real run.
 const mockUseSyncStatus = jest.fn();
 const mockUseSyncProgress = jest.fn(() => ({ completed: 0, total: 0 }));
-jest.mock('../../monobank/sync-status', () => ({
+jest.mock('@kiko/monobank/sync-status', () => ({
   useSyncStatus: () => mockUseSyncStatus(),
   useSyncProgress: () => mockUseSyncProgress(),
 }));
@@ -111,7 +117,7 @@ jest.mock('../../monobank/sync-status', () => ({
 // a standalone screen render has none of; stand it in with a spy so this test
 // can assert the screen hands it the transaction list's own ref.
 const mockUseScrollToTopOnTabPress = jest.fn();
-jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
+jest.mock('@kiko/navigation/use-scroll-to-top-on-tab-press', () => ({
   useScrollToTopOnTabPress: (ref: unknown) => mockUseScrollToTopOnTabPress(ref),
 }));
 
@@ -126,6 +132,7 @@ const mockUseRefreshControlSignal = jest.fn();
 jest.mock('./use-refresh-control-signal', () => ({
   useRefreshControlSignal: (onRefresh: () => Promise<void>) => {
     mockUseRefreshControlSignal(onRefresh);
+
     return { refreshing: mockRefreshing(), onRefresh };
   },
 }));
@@ -138,6 +145,8 @@ type Holding = {
   currency: string;
   balanceMinorUnits: number;
   closedAt?: number | null;
+  type?: string;
+  metadata?: unknown;
 };
 type Rate = { base: string; quote: string; rate: string };
 type Settings = { baseCurrency: string };
@@ -163,6 +172,10 @@ type LiveData = {
   settings?: Settings[];
   transactions?: Transaction[];
   categories?: Category[];
+  // Per-table isLoading overrides, for the loading-gate tests only — every
+  // key defaults to `false` (an already-resolved query), so every existing
+  // call site above keeps behaving exactly as before.
+  isLoading?: Partial<Record<string, boolean>>;
 };
 
 /**
@@ -181,9 +194,13 @@ const setLiveData = (data: LiveData): void => {
     // Default to the production-seeded rows so category resolution behaves as
     // it would on device unless a test overrides it (e.g. a rename).
     categories: data.categories ?? SEEDED_CATEGORIES,
+    price_points: [],
   };
+  const isLoadingByTable = data.isLoading ?? {};
+
   mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => ({
     data: byTable[tables[0]] ?? [],
+    isLoading: isLoadingByTable[tables[0]] ?? false,
   }));
 };
 
@@ -246,13 +263,13 @@ const pressFilter = async (
   value: string,
 ): Promise<void> => {
   await act(async () => {
-    fireEvent.press(getByTestId(menuTestID));
+    await fireEvent.press(getByTestId(menuTestID));
   });
   await act(async () => {
-    fireEvent.press(getByTestId(`${menuTestID}-option-${value}`));
+    await fireEvent.press(getByTestId(`${menuTestID}-option-${value}`));
   });
   await act(async () => {
-    fireEvent.press(getByTestId(`${menuTestID}-backdrop`));
+    await fireEvent.press(getByTestId(`${menuTestID}-backdrop`));
   });
 };
 
@@ -291,7 +308,7 @@ describe('HomeScreen', () => {
     expect(getByText('Coffee')).toBeTruthy();
   });
 
-  it('renders each transaction row as the shared solid Card surface (M2 in the HIG audit)', async () => {
+  it('renders each transaction row as the shared solid Card surface (per the HIG audit)', async () => {
     const { getAllByTestId } = await renderHome();
     // Each row is wrapped in the shared content-layer `Card`, matching every
     // other content card's language, rather than a plain bordered list row.
@@ -381,7 +398,7 @@ describe('HomeScreen', () => {
     expect(rowIconTint).toBe(resolveCategoryColor(null, 'other'));
 
     await act(async () => {
-      fireEvent.press(getByTestId('category-filter-menu'));
+      await fireEvent.press(getByTestId('category-filter-menu'));
     });
 
     // The filter option icon renders through the shared SelectableRow, so it no
@@ -529,6 +546,39 @@ describe('HomeScreen', () => {
     expect(queryByTestId('net-worth-wash-svg')).toBeNull();
   });
 
+  // Net worth = assets − debt outstanding, so a debt
+  // large enough goes the headline negative — MoneyText renders it with a
+  // minus sign, colored `negative` (never `textPrimary`, the positive/zero
+  // tone the two tests above assert).
+  it('renders a negative net worth with a minus sign, toned negative, when debt outweighs assets', async () => {
+    seed({
+      holdings: [
+        UAH_HOLDING, // 1,000.00 UAH asset
+        {
+          id: 'loan-1',
+          accountId: 'a',
+          currency: 'UAH',
+          balanceMinorUnits: 0,
+          type: 'loan',
+          metadata: {
+            kind: 'mortgage',
+            principalMinorUnits: 500_000, // 5,000.00 UAH — no installment due yet
+            startDate: Date.now(),
+            annualRatePct: 10,
+            termMonths: 120,
+            schedule: 'annuity',
+          },
+        },
+      ],
+    });
+
+    const { getAllByText } = await renderHome();
+
+    // 1,000.00 asset − 5,000.00 debt = −4,000.00.
+    const [netWorth] = getAllByText(/-4,000\.00 ₴/);
+    expect(netWorth.props.testID).toBe('text-tone-negative');
+  });
+
   it('excludes holdings whose parent account is archived from the total', async () => {
     seed({ accounts: [{ ...MONOBANK, archivedAt: 123 }] });
     const { getAllByText } = await renderHome();
@@ -575,7 +625,7 @@ describe('HomeScreen', () => {
     const { getByTestId, queryByTestId } = await renderHome();
 
     await act(async () => {
-      fireEvent.press(getByTestId('account-filter-menu'));
+      await fireEvent.press(getByTestId('account-filter-menu'));
     });
 
     expect(getByTestId('account-filter-menu-option-Monobank')).toBeTruthy();
@@ -621,7 +671,7 @@ describe('HomeScreen', () => {
     const { getByTestId, getAllByTestId } = await renderHome();
 
     await act(async () => {
-      fireEvent.press(getByTestId('category-filter-menu'));
+      await fireEvent.press(getByTestId('category-filter-menu'));
     });
 
     const optionValues = getAllByTestId(/^category-filter-menu-option-/)
@@ -679,21 +729,21 @@ describe('HomeScreen', () => {
     // Open once, then toggle two categories without reopening. Each toggle
     // changes the selection state (and re-renders the sheet); it must stay open.
     await act(async () => {
-      fireEvent.press(getByTestId('category-filter-menu'));
+      await fireEvent.press(getByTestId('category-filter-menu'));
     });
     await act(async () => {
-      fireEvent.press(getByTestId('category-filter-menu-option-dining'));
+      await fireEvent.press(getByTestId('category-filter-menu-option-dining'));
     });
     expect(queryByTestId('category-filter-menu-option-transport')).toBeTruthy();
 
     await act(async () => {
-      fireEvent.press(getByTestId('category-filter-menu-option-transport'));
+      await fireEvent.press(getByTestId('category-filter-menu-option-transport'));
     });
     expect(queryByTestId('category-filter-menu-option-utilities')).toBeTruthy();
 
     // Dismiss and confirm both selections took effect.
     await act(async () => {
-      fireEvent.press(getByTestId('category-filter-menu-backdrop'));
+      await fireEvent.press(getByTestId('category-filter-menu-backdrop'));
     });
     expect(getByText('Coffee')).toBeTruthy();
     expect(getByText('Groceries')).toBeTruthy();
@@ -715,7 +765,7 @@ describe('HomeScreen', () => {
     const { getByTestId, getByText, queryByTestId } = await renderHome();
 
     await act(async () => {
-      fireEvent.press(getByTestId('category-filter-menu'));
+      await fireEvent.press(getByTestId('category-filter-menu'));
     });
 
     expect(getByTestId('category-filter-menu-option-groceries')).toBeTruthy();
@@ -768,7 +818,7 @@ describe('HomeScreen', () => {
     // the pick, so picking 3 days ago pulls the `to` bound down to it. That
     // excludes both the "Recent" (2 days ago) and "TooOld" (40 days ago) rows.
     await act(async () => {
-      fireEvent.press(getByLabelText('Date range'));
+      await fireEvent.press(getByLabelText('Date range'));
     });
     const threeDaysAgo = new Date();
     threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
@@ -783,17 +833,17 @@ describe('HomeScreen', () => {
       });
     });
     await act(async () => {
-      fireEvent.press(getByText('Apply'));
+      await fireEvent.press(getByText('Apply'));
     });
     expect(queryByText('Recent')).toBeNull();
 
     // Clearing must land back on the 30-day default, NOT on all-time: the
     // 40-day-old row stays excluded and the field shows the 30-day range again.
     await act(async () => {
-      fireEvent.press(getByLabelText('Date range'));
+      await fireEvent.press(getByLabelText('Date range'));
     });
     await act(async () => {
-      fireEvent.press(getByText('Clear'));
+      await fireEvent.press(getByText('Clear'));
     });
 
     const range = defaultDateRange();
@@ -913,16 +963,59 @@ describe('HomeScreen', () => {
     expect(getByText('No transactions')).toBeTruthy();
   });
 
-  it('reads accounts, holdings, rates, settings, then transactions in that order', async () => {
+  it('reads accounts, holdings, rates, prices with the linked loan payments, settings, then transactions in that order', async () => {
     await renderHome();
-    const tablesInOrder = mockUseLiveQuery.mock.calls.slice(0, 5).map((call) => call[1][0]);
+    const tablesInOrder = mockUseLiveQuery.mock.calls.slice(0, 7).map((call) => call[1].join(','));
     expect(tablesInOrder).toEqual([
       'accounts',
       'holdings',
       'currency_rates',
+      'price_points',
+      'transactions,holdings',
       'settings',
-      'transactions',
+      'transactions,holdings,accounts',
     ]);
+  });
+
+  // kiko-architecture: no request or query for data the user does not have —
+  // usePriceBook's price_points read is disabled while nothing on Home is a
+  // priced type (property_item/metal) or a loan.
+  it('gates the price_points read on whether any holding ever reads it', async () => {
+    setLiveData({ holdings: [{ ...UAH_HOLDING, type: 'card' }] });
+    await renderHome();
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(false);
+  });
+
+  it('enables the price_points read once a priced holding is present', async () => {
+    setLiveData({ holdings: [{ ...UAH_HOLDING, type: 'metal' }] });
+    await renderHome();
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(true);
+  });
+
+  it('reads price_points in parallel while holdings are still on their first load', async () => {
+    setLiveData({ isLoading: { holdings: true } });
+    await renderHome();
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(true);
+  });
+
+  // Only a loan reads its linked payments, so a priced-only Home never runs
+  // the linked-payments read.
+  it('reads the linked loan payments only once a loan is present', async () => {
+    const loanPaymentsCall = () =>
+      mockUseLiveQuery.mock.calls.find((call) => call[1].join(',') === 'transactions,holdings');
+
+    setLiveData({ holdings: [{ ...UAH_HOLDING, type: 'metal' }] });
+    await renderHome();
+    expect(loanPaymentsCall()?.[2]).toBe(false);
+
+    mockUseLiveQuery.mockClear();
+    setLiveData({ holdings: [{ ...UAH_HOLDING, type: 'loan' }] });
+    await renderHome();
+    expect(loanPaymentsCall()?.[2]).toBe(true);
   });
 
   it('clears the tab bar without double-counting the safe-area inset', async () => {
@@ -1004,6 +1097,59 @@ describe('HomeScreen', () => {
   });
 });
 
+describe('HomeScreen — loading gate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseSyncAll.mockReturnValue({ failures: [], syncAll: mockSyncAll });
+    mockUseSyncStatus.mockReturnValue(false);
+    mockRefreshing.mockReturnValue(false);
+  });
+
+  it('shows a loading spinner, not the net-worth zero or the empty-transactions text, while any of its own queries is on its first load', async () => {
+    seed({ transactions: [], isLoading: { holdings: true } });
+
+    const { getByTestId, queryByTestId, queryByText } = await renderHome();
+
+    expect(getByTestId('home-loading')).toBeTruthy();
+    expect(queryByTestId('home-content')).toBeNull();
+    expect(queryByText(/0\.00 ₴/)).toBeNull();
+    expect(queryByText(i18n.t('home.emptyTransactions'))).toBeNull();
+  });
+
+  it('still shows the sync progress bar and keeps pull-to-refresh available while loading', async () => {
+    // The sync this screen's own first read is queued behind — the user must
+    // still see it running, and must still be able to trigger a fresh pull,
+    // while this screen's own queries have not settled yet.
+    mockUseSyncStatus.mockReturnValue(true);
+    mockUseSyncProgress.mockReturnValue({ completed: 1, total: 3 });
+    mockRefreshing.mockReturnValue(false);
+    seed({ transactions: [], isLoading: { holdings: true } });
+
+    const { getByTestId } = await renderHome();
+
+    expect(getByTestId('sync-progress-bar')).toBeTruthy();
+    expect(getByTestId('home-loading-scroll').props.refreshControl).toBeTruthy();
+  });
+
+  it('renders the real content once every query has loaded', async () => {
+    seed({ transactions: [transaction()] });
+
+    const { getByTestId, getByText, queryByTestId } = await renderHome();
+
+    expect(getByTestId('home-content')).toBeTruthy();
+    expect(getByText('Coffee')).toBeTruthy();
+    expect(queryByTestId('home-loading')).toBeNull();
+  });
+
+  it('withholds pull-to-refresh in the loading branch while the accounts query itself is still loading (syncAll would fan out over zero accounts)', async () => {
+    seed({ transactions: [], isLoading: { accounts: true } });
+
+    const { getByTestId } = await renderHome();
+
+    expect(getByTestId('home-loading-scroll').props.refreshControl).toBeFalsy();
+  });
+});
+
 describe('HomeScreen — localization', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -1069,7 +1215,7 @@ describe('HomeScreen — localization', () => {
     // The option itself now renders the Ukrainian catalog label, still keyed
     // on the same stable `groceries` value and still checked.
     await act(async () => {
-      fireEvent.press(getByTestId('category-filter-menu'));
+      await fireEvent.press(getByTestId('category-filter-menu'));
     });
     expect(
       getByTestId('category-filter-menu-option-groceries').props.accessibilityState?.checked,

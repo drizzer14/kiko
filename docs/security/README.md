@@ -22,7 +22,7 @@ availability risk for little.
 | `api.binance.com` | `src/crypto-sync/binance/binance.client.ts` (`X-MBX-APIKEY` header) | yes — the read-only API key | **yes** | A MITM reads the API key and the full `/api/v3/account` balance response, and can replay the captured signed request inside the 5 s `recvWindow`. The HMAC secret itself never crosses the wire (`binance.hmac.ts` signs locally). |
 | `api.coingecko.com` | `src/rates/` (`coingecko`, `coingecko-history`) | no | no | Public BTC price quote, no auth header. Worst case an active MITM misreports the BTC price. |
 | `blockstream.info` | `src/crypto-sync/btc-wallet/btc-wallet.client.ts` | no | no | Public Esplora explorer, no auth header. Worst case an active MITM forges `chain_stats` and misreports the BTC balance. See the accepted risk on address disclosure below. |
-| `bank.gov.ua` | `src/rates/` (`nbu-history`, `nbu-rates`) | no | no | Public NBU historical AND current fiat rates, no auth header. `nbu-rates` is the unpinned live fallback `rates-refresh.ts` reaches for only when the cert-pinned Monobank fiat fetch fails. |
+| `bank.gov.ua` | `src/rates/` (`nbu-history`, `nbu-rates`), `src/prices/nbu-metals`, `src/bonds/nbu-register` | no | no | Public NBU historical AND current fiat rates, no auth header. `nbu-rates` is the unpinned live fallback `rates-refresh.ts` reaches for only when the cert-pinned Monobank fiat fetch fails. `nbu-metals` reads the SAME two endpoints for precious-metal (XAU/XAG/XPT/XPD) prices, refreshed only for currently held metals (`metal-refresh.ts`). `nbu-register` reads a THIRD endpoint on the same host, the public securities register, to refresh the `bond_register` cache at most once per local day (`bond-register.repo.ts`'s `refreshBondRegisterIfStale`). |
 
 ### Current chains (verified 2026-09-06)
 
@@ -108,10 +108,12 @@ and immediately if a sync starts failing with a TLS error.
   gates the repair write behind a module-level `hasRepairedAccessPolicy`
   latch, set only after the write succeeds; every read after the first
   repair is a pure Keychain read, matching `readToken` and `readDbKey`.
-- **`db-config.ts`'s doc comments now match the shipped flag values.**
-  `DB_ENCRYPTION_ENABLED` and `APP_LOCK_ENABLED` are both documented as
-  "ON in every shipping build, and it must stay on", matching their `true`
-  values, and both are asserted by `src/db/db-config.test.ts`.
+- **`db-config.ts`'s doc comment matches the shipped flag value.**
+  `DB_ENCRYPTION_ENABLED` is documented as "ON in every shipping build, and
+  it must stay on", matching its `true` value, and is asserted by
+  `src/db/db-config.test.ts`. The app lock has no build-time switch; it is
+  the live `settings.lockEnabled` toggle (see kiko-domain's "App lock /
+  security settings" section).
 
 ## Accepted risks (not mitigated by design)
 

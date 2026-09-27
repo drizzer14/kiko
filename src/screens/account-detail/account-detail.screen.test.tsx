@@ -1,34 +1,27 @@
-import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
-import type { ComponentProps, ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
-import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
+import { State } from 'react-native-gesture-handler';
+import type { ComponentProps, ReactNode } from 'react';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
-import '../../design-system/unistyles';
-
-import { formatDateTime } from '../../dates/format';
+import '@kiko/design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
+import { formatDateTime } from '@kiko/dates';
+import { darkTheme } from '@kiko/design-system/theme';
 import {
   DELETE_CONFIRM_TEST_ID,
   HOLD_GESTURE_TEST_ID,
-} from '../../design-system/components/card-context-menu';
-import { darkTheme } from '../../design-system/theme';
-import { i18n } from '../../i18n';
-import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
+} from '@kiko/design-system/components/card-context-menu';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import AccountDetailScreen from './account-detail.screen';
-
-// A grid card's delete menu is a react-native-gesture-handler long-press, so
-// the screen must mount under a GestureHandlerRootView (the app supplies one at
-// its root in production).
-const gestureRootWrapper = ({ children }: { children: ReactNode }) => (
-  <GestureHandlerRootView>{children}</GestureHandlerRootView>
-);
 
 // The Text primitive's tone -> color mapping lives in a react-native-unistyles
 // variant that the project's Jest mock strips before a test can inspect it.
 // Mock Text here — following the money-text/home test precedent — so the
 // resolved `tone` MoneyText emits is observable via a testID, while the amount
 // still renders as plain text so every getByText assertion is unaffected.
-jest.mock('../../design-system/components/text', () => {
+jest.mock('@kiko/design-system/components/text', () => {
   const { Text: RNText } = require('react-native');
 
   return {
@@ -53,7 +46,7 @@ const mockButtonProps: {
   fullWidth?: boolean;
 }[] = [];
 
-jest.mock('../../design-system/components/button', () => {
+jest.mock('@kiko/design-system/components/button', () => {
   const { Pressable, Text: RNText } = require('react-native');
 
   return {
@@ -95,6 +88,7 @@ const mockUseSync = jest.fn();
 const mockSaveToken = jest.fn();
 const mockFetchClientInfo = jest.fn();
 const mockPick = jest.fn();
+const mockKeepLocalCopy = jest.fn();
 const mockReadFile = jest.fn();
 const mockRemove = jest.fn();
 const mockReorder = jest.fn();
@@ -118,7 +112,7 @@ jest.mock('@react-navigation/native', () => ({
     goBack: jest.fn(),
   }),
 }));
-jest.mock('../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
 // `BankSyncSection` (real, unmocked here) calls `useSync` once per render for
@@ -126,17 +120,18 @@ jest.mock('../../db/use-live-query', () => ({
 jest.mock('@kiko/sync/use-sync', () => ({
   useSync: () => mockUseSync(),
 }));
-jest.mock('../../monobank/disconnect', () => ({
+jest.mock('@kiko/monobank/disconnect', () => ({
   disconnectMonobank: (...args: unknown[]) => mockDisconnect(...args),
 }));
-jest.mock('../../monobank/token', () => ({
+jest.mock('@kiko/monobank/token', () => ({
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
 }));
-jest.mock('../../monobank/client', () => ({
+jest.mock('@kiko/monobank/client', () => ({
   fetchClientInfo: (...args: unknown[]) => mockFetchClientInfo(...args),
 }));
 jest.mock('@react-native-documents/picker', () => ({
   pick: (...args: unknown[]) => mockPick(...args),
+  keepLocalCopy: (...args: unknown[]) => mockKeepLocalCopy(...args),
   types: { csv: 'text/csv', xlsx: 'application/xlsx', plainText: 'text/plain', allFiles: '*/*' },
   errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
   isErrorWithCode: (error: unknown): error is { code: string } =>
@@ -162,6 +157,10 @@ jest.mock('@kiko/holdings/repo', () => ({
     }),
     remove: (...args: unknown[]) => mockRemove(...args),
     reorder: (...args: unknown[]) => mockReorder(...args),
+    balanceOf: (row: { currency: string; balanceMinorUnits: number }) => ({
+      currency: row.currency,
+      minorUnits: row.balanceMinorUnits,
+    }),
   },
 }));
 jest.mock('@kiko/rates/repo', () => ({
@@ -180,6 +179,7 @@ jest.mock('@kiko/sync-state/sync-state.repo', () => ({
 // so the screen's kind-gating is what is under test.
 jest.mock('./crypto-sync-section', () => {
   const { View } = require('react-native');
+
   return {
     __esModule: true,
     default: ({ account }: { account: { id: string } }) => (
@@ -211,6 +211,9 @@ type Rate = { base: string; quote: string; rate: string };
 type Settings = { baseCurrency: string };
 type SyncState = { lastSyncAt?: number | null; lastSyncDisplayAt?: number | null };
 
+// One mocked `useLiveQuery` result.
+type LiveResult = { data: unknown[]; isLoading?: boolean; isFresh?: boolean };
+
 /**
  * Drive the `useLiveQuery` calls, keying on the query's `__kind` (the
  * account-by-id query subscribes to `['accounts']`, so the table name alone
@@ -224,26 +227,45 @@ const setLiveData = (data: {
   rates?: Rate[];
   settings?: Settings[];
   syncState?: SyncState[];
+  // Every flag below defaults to `false` (an already-resolved query), so
+  // every existing call site keeps behaving exactly as before; a test that
+  // cares about the loading gate passes one or more explicitly.
+  accountsIsLoading?: boolean;
+  holdingsIsLoading?: boolean;
+  ratesIsLoading?: boolean;
+  settingsIsLoading?: boolean;
+  pricePointsIsLoading?: boolean;
+  // `true` = the holdings are still the cached rows (`isFresh: false`), for
+  // the reorder-gate test only.
+  holdingsIsStale?: boolean;
 }): void => {
   const accounts = data.accounts ?? [];
+  // A per-table result map, keyed the same way the old if-chain branched —
+  // a lookup instead of a chain keeps this well under the cognitive-
+  // complexity budget (kiko-code-style).
+  const resultByTable: Record<string, LiveResult> = {
+    // A real holding row always carries a `type`; default it here so a
+    // fixture that only cares about name/currency/balance still yields a
+    // valid type for the card's color/icon derivation (an undefined type
+    // has no default color and would throw in the tint helper).
+    holdings: {
+      data: (data.holdings ?? []).map((holding) => ({ type: 'card', ...holding })),
+      isLoading: data.holdingsIsLoading ?? false,
+      isFresh: !(data.holdingsIsStale ?? false),
+    },
+    currency_rates: { data: data.rates ?? [], isLoading: data.ratesIsLoading ?? false },
+    settings: {
+      data: data.settings ?? [{ baseCurrency: 'UAH' }],
+      isLoading: data.settingsIsLoading ?? false,
+    },
+    sync_state: { data: data.syncState ?? [] },
+    price_points: { data: [], isLoading: data.pricePointsIsLoading ?? false },
+  };
+
   mockUseLiveQuery.mockImplementation((_query: { __kind?: string }, tables: string[]) => {
-    if (tables[0] === 'holdings') {
-      // A real holding row always carries a `type`; default it here so a fixture
-      // that only cares about name/currency/balance still yields a valid type
-      // for the card's color/icon derivation (an undefined type has no default
-      // color and would throw in the tint helper).
-      return { data: (data.holdings ?? []).map((holding) => ({ type: 'card', ...holding })) };
-    }
-    if (tables[0] === 'currency_rates') {
-      return { data: data.rates ?? [] };
-    }
-    if (tables[0] === 'settings') {
-      return { data: data.settings ?? [{ baseCurrency: 'UAH' }] };
-    }
-    if (tables[0] === 'sync_state') {
-      return { data: data.syncState ?? [] };
-    }
-    return { data: accounts };
+    return (
+      resultByTable[tables[0]] ?? { data: accounts, isLoading: data.accountsIsLoading ?? false }
+    );
   });
 };
 
@@ -252,6 +274,12 @@ const account = (overrides: Partial<Account> = {}): Account => ({
   name: 'Monobank',
   kind: 'bank',
   institution: null,
+  // `bankId` defaults to `null` here, matching the real `AccountRow`'s
+  // Drizzle-inferred type (a nullable column is `string | null`, never
+  // `undefined`) — `BankSyncSection`'s disconnected default reads this
+  // field directly, so a fixture that left it `undefined`
+  // crashed `isBankProviderId`'s `bankProviderIdOf` call on a real render.
+  bankId: null,
   ...overrides,
 });
 
@@ -283,8 +311,9 @@ const renderScreen = async () => {
       route={route}
       navigation={asNavigationProp<AccountDetailProps['navigation']>(navigation)}
     />,
-    { wrapper: gestureRootWrapper },
+    { wrapper: GestureRootWrapper },
   );
+
   return { ...view, navigation };
 };
 
@@ -339,18 +368,17 @@ describe('AccountDetailScreen', () => {
     expect(StyleSheet.flatten(row.props.style).flexDirection).toBe('row');
   });
 
-  it('makes the connected Sync button blue (primary) and keeps Disconnect neutral', async () => {
+  it('keeps the connected Sync button and Disconnect both neutral (secondaryTonal)', async () => {
     setLiveData({ accounts: [account({ institution: 'monobank' })] });
 
     mockButtonProps.length = 0;
     await renderScreen();
 
-    // Once connected, Sync is the affirmative re-import CTA in the solid blue
-    // `primary` fill; Disconnect stays the neutral `secondaryTonal` tint beside
-    // it (never blue).
+    // Sync is now the same lower-emphasis `secondaryTonal` tint as Disconnect
+    // beside it — the pinned account-detail Sync button style.
     const syncEntry = mockButtonProps.find((entry) => entry.children === 'Sync');
     const disconnectEntry = mockButtonProps.find((entry) => entry.children === 'Disconnect');
-    expect(syncEntry?.variant).toBe('primary');
+    expect(syncEntry?.variant).toBe('secondaryTonal');
     expect(disconnectEntry?.variant).toBe('secondaryTonal');
   });
 
@@ -361,7 +389,7 @@ describe('AccountDetailScreen', () => {
     await renderScreen();
 
     // Sync-now takes the iOS-26 rotate glyph (central availability map supplies
-    // the iOS-16-safe fallback for free); Disconnect takes the open-lock glyph.
+    // the iOS-15.1-safe fallback for free); Disconnect takes the open-lock glyph.
     const syncEntry = mockButtonProps.find((entry) => entry.children === 'Sync');
     const disconnectEntry = mockButtonProps.find((entry) => entry.children === 'Disconnect');
     expect(syncEntry?.icon).toBe('arrow.trianglehead.2.clockwise.rotate.90');
@@ -557,6 +585,7 @@ describe('AccountDetailScreen', () => {
     expect(navigation.setOptions).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Ukrsibbank Card' }),
     );
+
     for (const [options] of (navigation.setOptions as jest.Mock).mock.calls) {
       expect(options.headerTitle).toBeUndefined();
       expect(options.headerLargeTitle).toBeUndefined();
@@ -604,7 +633,7 @@ describe('AccountDetailScreen', () => {
       hidden: ['Connect Monobank', 'Sync'],
     },
     {
-      // device-feedback-round-4 item 4: an import-only bank (bankCatalog's
+      // An import-only bank (bankCatalog's
       // `connectable: false`) must show NO sync/connect affordance at all —
       // not even the disconnected "Add a bank" trigger.
       description: 'a bank account whose picked bank is import-only (e.g. PrivatBank)',
@@ -613,13 +642,14 @@ describe('AccountDetailScreen', () => {
       hidden: ['Connect Monobank', 'Sync', 'Add a bank'],
     },
     {
-      // A bank account whose picked bank IS connectable (Monobank) keeps the
-      // disconnected "Add a bank" trigger — only a KNOWN import-only bank
-      // hides the section.
+      // A bank account already identified as Monobank skips the
+      // "Add a bank" picker entirely and goes straight to Connect — only an
+      // UNIDENTIFIED bank account shows the "Add a bank" trigger, and a
+      // KNOWN import-only bank hides the section altogether.
       description: 'a bank account whose picked bank is connectable (Monobank), not yet connected',
       account: account({ kind: 'bank', bankId: 'monobank', institution: null }),
-      visible: ['Add a bank'],
-      hidden: ['Connect Monobank', 'Sync'],
+      visible: ['Connect Monobank'],
+      hidden: ['Add a bank', 'Sync'],
     },
   ];
 
@@ -628,9 +658,11 @@ describe('AccountDetailScreen', () => {
     async ({ account: testAccount, visible, hidden }) => {
       setLiveData({ accounts: testAccount ? [testAccount] : [], holdings: [] });
       const { getByText, queryByText } = await renderScreen();
+
       for (const text of visible) {
         expect(getByText(text)).toBeTruthy();
       }
+
       for (const text of hidden) {
         expect(queryByText(text)).toBeNull();
       }
@@ -638,7 +670,7 @@ describe('AccountDetailScreen', () => {
   );
 
   it('hides the whole Synchronization section (heading included) for an import-only bank account', async () => {
-    // device-feedback-round-4 item 4: a non-syncable (import-only) bank
+    // A non-syncable (import-only) bank
     // account must show NO trace of the sync section — not merely the
     // buttons the table above checks, but the "Synchronization" heading
     // itself, which `BankSyncSection` renders at its own top.
@@ -820,7 +852,7 @@ describe('AccountDetailScreen', () => {
     expect(mockRemove).toHaveBeenCalledWith('h1');
   });
 
-  it('wires an auto-scroll ref and an edge activation offset to the holdings grid (F9)', async () => {
+  it('wires an auto-scroll ref and an edge activation offset to the holdings grid', async () => {
     setLiveData({
       accounts: [account()],
       holdings: [
@@ -835,6 +867,29 @@ describe('AccountDetailScreen', () => {
     expect(grid.props.scrollableRef).toBeDefined();
     expect(grid.props.autoScrollActivationOffset).toBeGreaterThan(0);
   });
+
+  // kiko-architecture: a cached display mount shows rows that can be one read
+  // old, and a drag persists the order of the holdings on screen — so it
+  // never starts until the holdings query's own fresh read has applied.
+  it.each([
+    [true, false],
+    [false, true],
+  ])(
+    'enables the holdings drag only once the holdings are fresh (stale: %s)',
+    async (holdingsIsStale, sortEnabled) => {
+      setLiveData({
+        accounts: [account()],
+        holdings: [
+          { id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 },
+          { id: 'h2', name: 'Dollar jar', currency: 'USD', balanceMinorUnits: 5000 },
+        ],
+        holdingsIsStale,
+      });
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('sortable-grid').props.sortEnabled).toBe(sortEnabled);
+    },
+  );
 
   it('persists a reorder to holdingsRepo.reorder when a holding is dragged to a new slot', async () => {
     setLiveData({
@@ -1062,6 +1117,69 @@ describe('AccountDetailScreen', () => {
   });
 });
 
+describe('AccountDetailScreen — loading gate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockButtonProps.length = 0;
+    mockSync.mockResolvedValue(undefined);
+    mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+  });
+
+  it('shows a loading spinner, not the zero-balance content, while any of its own queries is on its first load', async () => {
+    setLiveData({ accounts: [], holdings: [], holdingsIsLoading: true });
+
+    const { getByTestId, queryByTestId, queryByText } = await renderScreen();
+
+    expect(getByTestId('account-detail-loading')).toBeTruthy();
+    expect(queryByTestId('account-detail-content')).toBeNull();
+    // 0.00 ₴ is what the real (buggy) empty-while-loading render used to show
+    // for the not-yet-loaded balance — it must never appear during loading.
+    expect(queryByText(/0\.00/)).toBeNull();
+    // The SAME Screen mode as the ready branch (`scroll`) — the first scroll
+    // view iOS walks to drive the native large-title collapse must exist
+    // from the very first render, not only once data has loaded.
+    expect(getByTestId('screen-scroll-view')).toBeTruthy();
+  });
+
+  it('renders the real content once every query has loaded', async () => {
+    setLiveData({
+      accounts: [account()],
+      holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
+    });
+
+    const { getByTestId, getByText, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('account-detail-content')).toBeTruthy();
+    expect(getByText('Black card')).toBeTruthy();
+    expect(queryByTestId('account-detail-loading')).toBeNull();
+  });
+
+  it('renders loading then loaded on ONE mounted instance — spinner first, then the real content, via rerender', async () => {
+    setLiveData({ accounts: [], holdings: [], holdingsIsLoading: true });
+    const view = await renderScreen();
+
+    expect(view.getByTestId('account-detail-loading')).toBeTruthy();
+    expect(view.queryByTestId('account-detail-content')).toBeNull();
+
+    setLiveData({
+      accounts: [account()],
+      holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
+    });
+    await act(async () => {
+      view.rerender(
+        <AccountDetailScreen
+          route={route}
+          navigation={asNavigationProp<AccountDetailProps['navigation']>(view.navigation)}
+        />,
+      );
+    });
+
+    expect(view.queryByTestId('account-detail-loading')).toBeNull();
+    expect(view.getByTestId('account-detail-content')).toBeTruthy();
+    expect(view.getByText('Black card')).toBeTruthy();
+  });
+});
+
 describe('AccountDetailScreen — statement import (footer button + pickAndOpenStatement)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -1069,6 +1187,9 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     mockSync.mockResolvedValue(undefined);
     mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
     setLiveData({ accounts: [account({ bankId: 'monobank' })], holdings: [] });
+    mockKeepLocalCopy.mockResolvedValue([
+      { status: 'success', localUri: 'file:///cache/statement.csv' },
+    ]);
   });
 
   it('renders an Import statement action beside Add holding in the footer', async () => {
@@ -1088,6 +1209,14 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     expect(importButton?.variant).toBe('secondaryTonal');
     expect(importButton?.icon).toBe('doc.badge.plus');
     expect(addHoldingButton?.variant).toBe('primary');
+  });
+
+  it('leads Add holding with the generic holding glyph', async () => {
+    await renderScreen();
+
+    const addHoldingButton = mockButtonProps.find((props) => props.children === 'Add holding');
+
+    expect(addHoldingButton?.icon).toBe('text.pad.header');
   });
 
   it('renders Import statement full-width, stacked above Add holding (not sharing a row)', async () => {
@@ -1125,9 +1254,18 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     expect(navigation.navigate).not.toHaveBeenCalledWith('StatementImport', expect.anything());
   });
 
-  it('navigates to StatementImport with the resolved filePath and accountId on success, without reading the file itself', async () => {
+  // A raw picked URI can be a transient/security-scoped
+  // external one (iCloud/Files/AirDrop) that tolerates one or two reads but
+  // not the THIRD `RNFS.readFile` the preview + two Map-Columns visits each
+  // make — `keepLocalCopy` (the same pattern `import-data.screen.tsx`
+  // already uses) copies it into the app's own cache ONCE at pick time, so
+  // every later read is of a file Kiko itself owns.
+  it('copies the picked file locally (keepLocalCopy) and navigates to StatementImport with the LOCAL copy path, without reading the file itself', async () => {
     mockPick.mockResolvedValue([
       { uri: 'file:///mock/statement.csv', name: 'statement.csv', type: 'text/csv' },
+    ]);
+    mockKeepLocalCopy.mockResolvedValue([
+      { status: 'success', localUri: 'file:///cache/statement.csv' },
     ]);
     const { getByText, navigation } = await renderScreen();
 
@@ -1135,11 +1273,33 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
       await fireEvent.press(getByText('Import statement'));
     });
 
-    // `pickAndOpenStatement` hands the picked `uri` straight to
+    expect(mockKeepLocalCopy).toHaveBeenCalledWith({
+      files: [{ uri: 'file:///mock/statement.csv', fileName: 'statement.csv' }],
+      destination: 'cachesDirectory',
+    });
+    // `pickAndOpenStatement` hands the LOCAL copy's uri to
     // `StatementImportScreen`, which owns the ONE read of this file — a
     // pre-read here would pay for the read twice and leave its own failure
     // mode unhandled at this call site (see the handler's own doc comment).
     expect(mockReadFile).not.toHaveBeenCalled();
+    expect(navigation.navigate).toHaveBeenCalledWith('StatementImport', {
+      filePath: 'file:///cache/statement.csv',
+      accountId: 'a',
+      expectedFormatId: 'monobank-csv',
+    });
+  });
+
+  it('falls back to the raw picked uri when keepLocalCopy fails', async () => {
+    mockPick.mockResolvedValue([
+      { uri: 'file:///mock/statement.csv', name: 'statement.csv', type: 'text/csv' },
+    ]);
+    mockKeepLocalCopy.mockResolvedValue([{ status: 'error', copyError: 'boom' }]);
+    const { getByText, navigation } = await renderScreen();
+
+    await act(async () => {
+      await fireEvent.press(getByText('Import statement'));
+    });
+
     expect(navigation.navigate).toHaveBeenCalledWith('StatementImport', {
       filePath: 'file:///mock/statement.csv',
       accountId: 'a',
@@ -1152,6 +1312,9 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     mockPick.mockResolvedValue([
       { uri: 'file:///mock/statement.xlsx', name: 'statement.xlsx', type: 'application/xlsx' },
     ]);
+    mockKeepLocalCopy.mockResolvedValue([
+      { status: 'success', localUri: 'file:///cache/statement.xlsx' },
+    ]);
     const { getByText, navigation } = await renderScreen();
 
     await act(async () => {
@@ -1159,9 +1322,32 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     });
 
     expect(navigation.navigate).toHaveBeenCalledWith('StatementImport', {
-      filePath: 'file:///mock/statement.xlsx',
+      filePath: 'file:///cache/statement.xlsx',
       accountId: 'a',
       expectedFormatId: 'privatbank-xlsx',
+    });
+  });
+
+  // Oschadbank has no dedicated `statement-import` parser — its import
+  // routes through the generic column-mapping screen, which
+  // `StatementImportScreen` reaches whenever `expectedFormatId` is undefined
+  // and nothing auto-detects. `pickAndOpenStatement` must not invent a format
+  // id for a bank the catalog has none for.
+  it('passes no expectedFormatId for Oschadbank (no dedicated format, falls through to column mapping)', async () => {
+    setLiveData({ accounts: [account({ bankId: 'oschadbank' })], holdings: [] });
+    mockPick.mockResolvedValue([
+      { uri: 'file:///mock/statement.csv', name: 'statement.csv', type: 'text/csv' },
+    ]);
+    const { getByText, navigation } = await renderScreen();
+
+    await act(async () => {
+      await fireEvent.press(getByText('Import statement'));
+    });
+
+    expect(navigation.navigate).toHaveBeenCalledWith('StatementImport', {
+      filePath: 'file:///cache/statement.csv',
+      accountId: 'a',
+      expectedFormatId: undefined,
     });
   });
 
@@ -1179,11 +1365,16 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     expect(queryByText('Import statement')).toBeNull();
   });
 
-  it('hides Import statement for a bank account with no bank picked (no statement format to scope to)', async () => {
+  // `isBankAccount` gates the entry point — EVERY bank account
+  // offers it, with or without a known statement format,
+  // since an unrecognized/mismatched file still routes through the generic
+  // column-mapping screen (`statement-import.screen.tsx`'s own "Map columns
+  // manually" button) rather than dead-ending.
+  it('shows Import statement for a bank account with no bank picked (no known statement format, still a bank account)', async () => {
     setLiveData({ accounts: [account({ kind: 'bank', bankId: null })], holdings: [] });
-    const { queryByText } = await renderScreen();
+    const { getByText } = await renderScreen();
 
-    expect(queryByText('Import statement')).toBeNull();
+    expect(getByText('Import statement')).toBeTruthy();
   });
 
   it('shows Import statement for a bank account whose picked bank resolves to a statement format', async () => {
@@ -1228,5 +1419,69 @@ describe('AccountDetailScreen — localization', () => {
 
     expect(view.getByText('Підключити Monobank')).toBeTruthy();
     expect(view.queryByText('Connect Monobank')).toBeNull();
+  });
+});
+
+// kiko-architecture: no request or query for data the user does not have —
+// usePriceBook's price_points read is disabled while nothing on this screen
+// is a priced type (property_item/metal) or a loan.
+describe('AccountDetailScreen — the price_points gate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('disables the price_points read when no holding needs it', async () => {
+    setLiveData({
+      accounts: [account()],
+      holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 0 }],
+    });
+    await renderScreen();
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(false);
+  });
+
+  it('enables the price_points read once a priced holding is present', async () => {
+    setLiveData({
+      accounts: [account()],
+      holdings: [
+        { id: 'h1', name: 'Gold bar', currency: 'UAH', balanceMinorUnits: 0, type: 'metal' },
+      ],
+    });
+    await renderScreen();
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(true);
+  });
+
+  it('reads price_points in parallel while holdings are still on their first load', async () => {
+    setLiveData({ accounts: [account()], holdingsIsLoading: true });
+    await renderScreen();
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(true);
+  });
+
+  // Only a loan reads its linked payments, so a priced-only screen never
+  // runs the linked-payments read.
+  it('reads the linked loan payments only once a loan is present', async () => {
+    const loanPaymentsCall = () =>
+      mockUseLiveQuery.mock.calls.find((call) => call[1].join(',') === 'transactions,holdings');
+    const holdingOfType = (type: string) => ({
+      id: 'h1',
+      name: 'Holding',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      type,
+    });
+
+    setLiveData({ accounts: [account()], holdings: [holdingOfType('metal')] });
+    await renderScreen();
+    expect(loanPaymentsCall()?.[2]).toBe(false);
+
+    mockUseLiveQuery.mockClear();
+    setLiveData({ accounts: [account()], holdings: [holdingOfType('loan')] });
+    await renderScreen();
+    expect(loanPaymentsCall()?.[2]).toBe(true);
   });
 });

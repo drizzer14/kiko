@@ -16,7 +16,12 @@
     "check:secrets": "bash scripts/checks/secrets.sh",
     "check:overrides": "bash scripts/checks/override-guard.sh",
     "check:typecheck": "bash scripts/checks/typecheck.sh",
-    "check:all": "npm run check:lint && npm run check:dup && npm run check:knip && npm run check:deps && npm run check:security && npm run check:rules && npm run check:plist && npm run check:secrets && npm run check:overrides && npm run check:typecheck",
+    "check:import-order": "bash scripts/checks/import-order.sh",
+    "check:full-word-identifiers": "bash scripts/checks/full-word-identifiers.sh",
+    "check:screen-imports": "bash scripts/checks/screen-imports.sh",
+    "check:feature-imports": "bash scripts/checks/feature-imports.sh",
+    "check:blank-line-separation": "bash scripts/checks/blank-line-separation.sh",
+    "check:all": "npm run check:lint && npm run check:dup && npm run check:knip && npm run check:deps && npm run check:security && npm run check:rules && npm run check:plist && npm run check:secrets && npm run check:overrides && npm run check:import-order && npm run check:full-word-identifiers && npm run check:screen-imports && npm run check:feature-imports && npm run check:blank-line-separation && npm run check:typecheck",
     "check:deep": "npm run check:mutation && bash scripts/checks/osv.sh",
     "start": "react-native start",
     "test": "jest",
@@ -94,7 +99,7 @@
     "typescript": "^6.0.3"
   },
   "engines": {
-    "node": ">= 22.11.0"
+    "node": ">= 22.13.0"
   },
   "overrides": {
     "@babel/core": "^7.29.6",

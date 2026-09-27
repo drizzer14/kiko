@@ -35,6 +35,15 @@ import m0030 from './0030_add_change_group_id.sql';
 import m0031 from './0031_icon_health_category.sql';
 import m0032 from './0032_icon_crypto_account.sql';
 import m0033 from './0033_add_account_bank_id.sql';
+import m0034 from './0034_add_statement_mappings.sql';
+import m0035 from './0035_add_price_points.sql';
+import m0036 from './0036_add_balance_set_at.sql';
+import m0037 from './0037_add_bond_register.sql';
+import m0038 from './0038_add_loan_link.sql';
+import m0039 from './0039_seed_loan_interest_category.sql';
+import m0040 from './0040_cleanup_stray_deposit_bond_balance.sql';
+import m0041 from './0041_add_dedup_key_upgraded.sql';
+import m0042 from './0042_uah_star_rates.sql';
 
 export default {
   journal,
@@ -73,5 +82,14 @@ export default {
     m0031,
     m0032,
     m0033,
+    m0034,
+    m0035,
+    m0036,
+    m0037,
+    m0038,
+    m0039,
+    m0040,
+    m0041,
+    m0042,
   },
 };

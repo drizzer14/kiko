@@ -1,8 +1,7 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import readXlsxFile from 'read-excel-file/node';
-
-import type { SpreadsheetCellValue, StatementFormatInput } from '../../parser';
+import type { SpreadsheetCellValue, StatementFormatInput } from '@kiko/statement-import/parser';
 
 import {
   COLUMN,
@@ -53,8 +52,8 @@ const csvInput: StatementFormatInput = {
   fileName: 'not-a-spreadsheet.csv',
 };
 
-// Regression fixture (Task 3 review, IMPORTANT): a row whose amount cell is
-// empty/malformed must never reach `Money.fromMajor` as `NaN` — it is routed
+// Regression fixture: a row whose amount cell is empty/malformed must never
+// reach `Money.fromMajor` as `NaN` — it is routed
 // to `unresolvedRows` as `invalid-amount` instead, the same "recoverable, not
 // thrown, not silently dropped" treatment `unmapped-currency` already gets.
 // Its currency word (`грн`) resolves cleanly, so `account.currency` still
@@ -92,7 +91,7 @@ const invalidAmountInput: StatementFormatInput = {
 };
 
 // The exported constants ARE the real contract a kiko:developer implements
-// `detect`/`parse` against (section C.1) — pinned here so a future edit that
+// `detect`/`parse` against — pinned here so a future edit that
 // silently drifts the title prefix, the row indices, the column order, or
 // the currency-word map is caught by a real assertion, not just documented
 // in a comment nothing enforces.
@@ -145,6 +144,19 @@ describe('privatbankXlsxFormat.parse', () => {
     expect(parsed.formatId).toBe('privatbank-xlsx');
   });
 
+  // Deliberate exclusion (see `ParsedStatement.closingBalance`'s doc comment,
+  // `parser.ts`): the fixture's own `balance`/`balanceCurrency` columns exist
+  // per-row, but a PrivatBank export can mix MULTIPLE cards in one file (this
+  // very fixture's two resolved rows carry DIFFERENT `maskedCardHint`s, see
+  // below), so a single closing balance can't be attributed to one target
+  // holding without also matching which card each row belongs to — never
+  // guessed.
+  it('never sets a closingBalance (a multi-card export has no single unambiguous balance)', async () => {
+    const parsed = privatbankXlsxFormat.parse(await fixtureInput());
+
+    expect(parsed.closingBalance).toBeUndefined();
+  });
+
   it('skips the merged A1:J1 title row and the row-2 header, starting data at row 3', async () => {
     const parsed = privatbankXlsxFormat.parse(await fixtureInput());
 
@@ -160,8 +172,8 @@ describe('privatbankXlsxFormat.parse', () => {
     expect(parsed.account.currency).toBe('UAH');
   });
 
-  // Task 3 review, CRITICAL: each row must carry ITS OWN resolved currency —
-  // a multi-currency PrivatBank file mixes UAH and USD rows, and
+  // Each row must carry ITS OWN resolved currency — a multi-currency
+  // PrivatBank file mixes UAH and USD rows, and
   // `import-statement.ts` relies on this per-row field to exclude a
   // wrong-currency row instead of writing its amount verbatim into a
   // differently-denominated holding.

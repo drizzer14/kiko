@@ -1,38 +1,42 @@
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { holdingsRepo } from '@kiko/holdings/repo';
-import { ratesRepo } from '@kiko/rates/repo';
-import { settingsRepo } from '@kiko/settings/settings.repo';
-import { pick, types } from '@react-native-documents/picker';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useLayoutEffect } from 'react';
-import { useTranslation } from 'react-i18next';
-import type { ScrollViewInstance } from 'react-native';
-import { useAnimatedRef } from 'react-native-reanimated';
+import maybe, { foldMap } from 'fnts/maybe';
+import { ratesRepo } from '@kiko/rates/repo';
 import Sortable from 'react-native-sortables';
+import { accountsRepo } from '@kiko/accounts';
+import { settingsRepo } from '@kiko/settings';
+import { useTranslation } from 'react-i18next';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
-
-import type { AccountRow } from '../../db/schema';
-import Box from '../../design-system/components/box';
-import EntityHeaderIcon from '../entity-header-icon';
-import { useLiveQuery } from '../../db/use-live-query';
-import Text from '../../design-system/components/text';
-import type { Currency } from '../../currency/currency';
-import EntityAmountHeader from '../entity-amount-header';
-import Button from '../../design-system/components/button';
-import Screen from '../../design-system/components/screen';
-import { isSyncedHolding } from '../../holdings/deletable';
-import { sumByCurrency } from '../../rates/currency-totals';
-import { accountKindSymbol } from '../../holdings/entity-symbols';
-import { defaultAccountColor } from '../../holdings/entity-colors';
-import { resolveEntityColor } from '../../design-system/entity-tint';
-import { onGridDragEnd } from '../../design-system/grid-interaction';
-import type { AccountsStackParamList } from '../../navigation/types';
-import { isConnectableBank, statementFormatIdForBank } from '../../bank-sync/bank-catalog';
-import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
-import CardContextMenu from '../../design-system/components/card-context-menu';
-import EditHeaderButton from '../../design-system/components/edit-header-button';
-import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
+import Text from '@kiko/design-system/components/text';
+import type { ScrollViewInstance } from 'react-native';
+import type { Currency } from '@kiko/currency/currency';
+import { useAnimatedRef } from 'react-native-reanimated';
+import { usePriceBook } from '@kiko/prices/use-price-book';
+import { isSyncedHolding } from '@kiko/holdings/deletable';
+import Button from '@kiko/design-system/components/button';
+import Screen from '@kiko/design-system/components/screen';
+import { sumByCurrency } from '@kiko/rates/currency-totals';
+import { needsPriceBook } from '@kiko/holdings/priced-value';
+import Divider from '@kiko/design-system/components/divider';
+import { defaultAccountColor } from '@kiko/holdings/entity-colors';
+import { resolveEntityColor } from '@kiko/design-system/entity-tint';
+import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
+import type { AccountsStackParamList } from '@kiko/navigation/types';
+import { type AccountRow, useDataReady, useLiveQuery } from '@kiko/db';
+import { fileNameOf } from '@kiko/statement-import/read-statement-file';
+import LoadingState from '@kiko/design-system/components/loading-state';
+import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
+import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import CardContextMenu from '@kiko/design-system/components/card-context-menu';
+import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon';
+import EditHeaderButton from '@kiko/design-system/components/edit-header-button';
+import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown';
+import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
+import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import { isConnectableBank, statementFormatIdForBank } from '@kiko/bank-sync/bank-catalog';
 
 import HoldingCard from './holding-card';
 import { styles } from './account-detail.styles';
@@ -50,12 +54,10 @@ import CryptoSyncSection from './crypto-sync-section';
 const accountIdentity = (
   account: AccountRow | undefined,
 ): { icon: string; color: string } | undefined =>
-  account === undefined
-    ? undefined
-    : {
-        icon: account.icon ?? accountKindSymbol[account.kind],
-        color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
-      };
+  foldMap(maybe(account), (found) => ({
+    icon: found.icon ?? accountKindSymbol[found.kind],
+    color: resolveEntityColor(found.color, defaultAccountColor[found.kind]),
+  }));
 
 type AccountDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountDetail'>;
 
@@ -63,10 +65,52 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const { accountId, name: initialName } = route.params;
   const { theme } = useUnistyles();
   const { t } = useTranslation();
-  const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts']);
-  const { data: holdings } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings']);
-  const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
-  const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
+    accountsRepo.byIdQuery(accountId),
+    ['accounts'],
+    true,
+    { cached: true },
+  );
+  const {
+    data: holdings,
+    isLoading: holdingsLoading,
+    isFresh: holdingsFresh,
+  } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings'], true, {
+    cached: true,
+  });
+  const { data: rates, isLoading: ratesLoading } = useLiveQuery(
+    ratesRepo.allQuery(),
+    ['currency_rates'],
+    true,
+    { cached: true },
+  );
+  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
+    settingsRepo.getQuery(),
+    ['settings'],
+    true,
+    { cached: true },
+  );
+  // kiko-architecture: skip the price_points read while nothing rendered on
+  // this screen ever reads it — a holding whose type carries no priced spec
+  // and is not a loan (`needsPriceBook`) never touches `price_points`. It
+  // stays enabled while holdings are still on their first load, so the two
+  // reads run in parallel instead of price_points waiting on holdings. Only a
+  // loan reads the linked-payments half of the book.
+  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
+    holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
+    { cached: true },
+    holdingsLoading || holdings.some((holding) => holding.type === 'loan'),
+  );
+  // Empty holding list / zero balance must never render while any of this
+  // screen's own queries is still on its first load (kiko-architecture's
+  // useLiveQuery consumer rule) — gated below, right at the return.
+  const isReady = useDataReady(
+    accountsLoading,
+    holdingsLoading,
+    ratesLoading,
+    settingsLoading,
+    priceBookLoading,
+  );
   const account = accounts.at(0);
 
   // The nav title shows the account NAME only — the native large title, the
@@ -100,8 +144,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // Deposit/bond holdings grow with time, so net worth is evaluated as of now —
   // otherwise their accrued value never reflects in the account balance.
   const now = Date.now();
-  const overallBalance = guardedNetWorth(activeHoldings, baseCurrency, rateTable, now);
-  const breakdown = sumByCurrency(activeHoldings, now);
+  const overallBalance = guardedNetWorth(activeHoldings, baseCurrency, rateTable, now, priceBook);
+  const breakdown = sumByCurrency(activeHoldings, now, priceBook);
   // The grid renders in the query's order — `listByAccountQuery` already sorts by
   // the user-controlled `sortOrder` (the drag-and-drop order), so manual drag
   // order is the sole ordering key and no screen-level re-sort is needed.
@@ -117,35 +161,31 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // Every bank account shows the connect/sync affordance independently — there
   // is no single-connection gate, so a second connection can connect
   // alongside the first (each binds its own per-account credential and cursor).
-  // Gated on the account's picked bank being CONNECTABLE (device-feedback-
-  // round-4 item 4 — the SAME `bankCatalog` capability BankTypeField's picker
-  // already reads): an import-only bank (e.g. PrivatBank) must show NO
+  // Gated on the account's picked bank being CONNECTABLE (the SAME
+  // `bankCatalog` capability BankTypeField's picker already reads): an
+  // import-only bank (e.g. PrivatBank) must show NO
   // sync/connect section, only the Import-statement footer button below. An
   // account with no bank picked yet (or one from before this feature)
   // defaults to connectable rather than guessing it is import-only.
   const showActionButton = isBankAccount && isConnectableBank(account?.bankId);
-  // The Import-statement footer button only makes sense once the account's
-  // picked bank resolves to a known statement format (cash/crypto accounts,
-  // and a bank account with no bank picked yet, have nothing to scope an
-  // import to).
-  const canImportStatement = statementFormatIdForBank(account?.bankId) !== undefined;
 
-  // The document-picker statement-import entry point (docs/plans/statement-
-  // import.md section B.1), same style as the create-form's `connectMonobank`
-  // closure: open the picker, then — on a real pick, not a cancel — hand the
-  // picked `uri` straight to `StatementImportScreen`, which owns the actual
-  // read/decode/detect/parse/preview. This handler does NOT pre-read the
-  // file: an earlier revision read it here too (as a validity check before
-  // navigating), but that made every pick pay for two reads of the same file
-  // and, worse, left the READ's own failure mode (an iCloud placeholder not
-  // yet downloaded, a revoked security-scoped URL) unhandled right here —
-  // the single read now lives entirely in `StatementImportScreen`, which
-  // already guards it and renders a graceful error state on failure. The
-  // accepted-type list includes xlsx from the start even though Phase 1 only
-  // ships the Monobank CSV format (PrivatBank XLSX lands in a later phase
-  // and must not need this list revisited). A cancelled picker rejects with
-  // `OPERATION_CANCELED` — caught and swallowed here, not surfaced as an
-  // error.
+  // The document-picker statement-import entry point,
+  // same style as the create-form's `connectMonobank`
+  // closure: open the picker, then — on a real pick, not a cancel — copy it
+  // to a LOCAL cache path (see the `keepLocalCopy` comment below) and hand
+  // THAT stable path to `StatementImportScreen`, which owns
+  // the actual read/decode/detect/parse/preview. This handler does NOT
+  // pre-read the file itself: an earlier revision read it here too (as a
+  // validity check before navigating), but that made every pick pay for two
+  // reads of the same file and, worse, left the READ's own failure mode (an
+  // iCloud placeholder not yet downloaded, a revoked security-scoped URL)
+  // unhandled right here — the single read now lives entirely in
+  // `StatementImportScreen`, which already guards it and renders a graceful
+  // error state on failure. The accepted-type list includes xlsx from the
+  // start even though only the Monobank CSV format ships today (PrivatBank
+  // XLSX lands later and must not need this list revisited). A
+  // cancelled picker rejects with `OPERATION_CANCELED` — caught and
+  // swallowed here, not surfaced as an error.
   const pickAndOpenStatement = async (): Promise<void> => {
     let results: Awaited<ReturnType<typeof pick>>;
 
@@ -165,12 +205,41 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
       return;
     }
 
+    // The picker hands back a security-scoped external URI
+    // (iCloud / Files / an AirDropped file) that `RNFS.readFile` cannot
+    // reliably read more than once — both `StatementImportScreen` and
+    // `ColumnMappingScreen` independently re-read THIS SAME `filePath` on
+    // every mount, so a provider that tolerates one or two reads but not the
+    // third (preview, first Map Columns, second Map Columns after Back)
+    // degrades to the generic "unrecognized format" state with no action.
+    // Copy the picked file into the app's OWN cache ONCE here, at pick time
+    // — the same `keepLocalCopy` pattern `import-data.screen.tsx` already
+    // uses — and hand both downstream screens that local copy's stable
+    // path instead, falling back to the raw picked uri only if the copy
+    // itself fails.
+    const [copied] = await keepLocalCopy({
+      files: [{ uri: picked.uri, fileName: picked.name ?? fileNameOf(picked.uri) }],
+      destination: 'cachesDirectory',
+    });
+
     navigation.navigate('StatementImport', {
-      filePath: picked.uri,
+      filePath: copied.status === 'success' ? copied.localUri : picked.uri,
       accountId,
       expectedFormatId: statementFormatIdForBank(account?.bankId),
     });
   };
+
+  if (!isReady) {
+    // The SAME Screen mode/props as the ready branch below (`scroll` +
+    // `scrollableRef`) — not a bare `<Screen>` — so the first scroll view iOS
+    // walks to drive the native large-title collapse exists from the very
+    // first render, not only once data has loaded.
+    return (
+      <Screen scroll scrollableRef={scrollableRef}>
+        <LoadingState testID="account-detail-loading" />
+      </Screen>
+    );
+  }
 
   return (
     <Screen
@@ -178,7 +247,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
       scrollableRef={scrollableRef}
       footer={
         <Box gap={2}>
-          {canImportStatement && (
+          {isBankAccount && (
             <Button
               variant="secondaryTonal"
               fullWidth
@@ -192,6 +261,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
             variant="primary"
             fullWidth
             onPress={() => navigation.navigate('HoldingForm', { accountId })}
+            icon={genericEntitySymbol.holding}
           >
             {t('accountDetail.addHolding')}
           </Button>
@@ -213,19 +283,19 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
         {isCryptoAccount && account && (
           <>
-            <Box style={styles.divider} />
+            <Divider spacing={2} />
             <CryptoSyncSection account={account} holdings={activeHoldings} />
           </>
         )}
 
         {showActionButton && account && (
           <>
-            <Box style={styles.divider} />
+            <Divider spacing={2} />
             <BankSyncSection account={account} />
           </>
         )}
 
-        <Box style={styles.divider} />
+        <Divider spacing={2} />
 
         <Box gap={3}>
           <Text variant="heading">{t('accountDetail.holdingsHeading')}</Text>
@@ -237,12 +307,15 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
               and `onGridDragEnd`. `overDrag="vertical"` keeps a dragged card on
               its vertical axis (a single column has no horizontal move to make).
               `scrollableRef` + `autoScrollActivationOffset` let a drag near an
-              edge scroll the parent list (F9). `sortEnabled` is off with a single
-              holding, where there is nothing to reorder. */}
+              edge scroll the parent list. `sortEnabled` is off with a single
+              holding, where there is nothing to reorder, and until the
+              holdings query's own fresh read has applied — a drag persists
+              the order of the rows on screen, never the cached
+              (possibly one-read-old) order (kiko-architecture). */}
           <Box testID="holdings-grid">
             <Sortable.Grid
               data={activeHoldings}
-              sortEnabled={activeHoldings.length > 1}
+              sortEnabled={holdingsFresh && activeHoldings.length > 1}
               // A subtle lift on touch-and-hold: the library default (1.1) pops
               // the card up too much, so scale it just barely (matches the
               // accounts grid).
@@ -265,6 +338,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                       now={now}
                       baseCurrency={baseCurrency}
                       rateTable={rateTable}
+                      priceBook={priceBook}
                       onOpen={() =>
                         navigation.navigate('HoldingDetail', {
                           holdingId: item.id,

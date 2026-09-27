@@ -1,12 +1,9 @@
-import { Pressable } from 'react-native';
 import { type ReactElement, useState } from 'react';
-import { useUnistyles } from 'react-native-unistyles';
-
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import SymbolIcon from '../../../design-system/components/symbol';
-import BottomSheet from '../../../design-system/components/bottom-sheet';
-import FieldTrigger from '../../../design-system/components/field-trigger';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import BottomSheet from '@kiko/design-system/components/bottom-sheet';
+import FieldTrigger from '@kiko/design-system/components/field-trigger';
+import SelectableRow from '@kiko/design-system/components/selectable-row';
 
 import { styles } from './holding-select-field.styles';
 import type { HoldingSelectFieldProps } from './holding-select-field.props';
@@ -14,20 +11,20 @@ import type { HoldingSelectFieldProps } from './holding-select-field.props';
 // A labeled single-select holding picker for the Exchange "To" field: the
 // field shows the current selection (its SF Symbol + name, or a placeholder
 // when none) and opens a bottom sheet listing every given option as a
-// vertical row. One choice; the selected row is tinted accent and carries a
-// trailing checkmark, then the sheet closes on pick. Mirrors CategoryField's
-// field-plus-sheet chrome so every form picker reads as one family. Purely
-// presentational — the caller (the exchange form) builds and filters the
-// option list; this component only renders what it is given.
+// `SelectableRow` — the shared single-select row, with its own leading
+// checkmark when selected. One choice; the sheet closes on pick. Mirrors
+// CategoryField's field-plus-sheet chrome so every form picker reads as one
+// family. Purely presentational — the caller (the exchange form) builds and
+// filters the option list; this component only renders what it is given.
 const HoldingSelectField = ({
   label,
+  sheetTitle,
   placeholder,
   options,
   selectedId,
   onSelect,
   required,
 }: HoldingSelectFieldProps): ReactElement => {
-  const { theme } = useUnistyles();
   const [open, setOpen] = useState(false);
 
   const selected = options.find((option) => option.id === selectedId) ?? null;
@@ -53,7 +50,6 @@ const HoldingSelectField = ({
             // than on Text — `TextProps['style']` deliberately admits only
             // typography keys (fontSize/fontWeight/textAlign/textTransform),
             // because `tone`/`variant` must stay the authority on styling.
-            // Same shape as the selected row's `checkmark` Box below.
             //
             // NOTE: this moved `fieldAccount` one node UP. Text forwards `style`
             // straight to RNText, so the caption WAS already right-pushed before
@@ -73,49 +69,26 @@ const HoldingSelectField = ({
         visible={open}
         onDismiss={() => setOpen(false)}
         gap={2}
-        header={<Text variant="heading">{label}</Text>}
+        header={<Text variant="heading">{sheetTitle}</Text>}
       >
         {options.map((option) => {
           const isSelected = option.id === selectedId;
 
           return (
-            <Pressable
+            <SelectableRow
               key={option.id}
-              accessibilityRole="button"
-              accessibilityState={{ selected: isSelected }}
-              accessibilityLabel={`${option.name}, ${option.accountName}`}
+              selected={isSelected}
               onPress={() => handleSelect(option.id)}
-              style={[
-                styles.option,
-                { backgroundColor: isSelected ? theme.colors.accent : 'transparent' },
-              ]}
-            >
-              {isSelected ? (
-                // The selected row sits on the accent fill, so its glyph needs
-                // the always-white `onAccent` tone to match the checkmark
-                // below — `textPrimary` flips to black on the light theme and
-                // would vanish there. SymbolIcon's `color` overrides `tone`,
-                // so it must be omitted here.
-                <SymbolIcon name={option.icon} size={theme.iconSizes.body} tone="onAccent" />
-              ) : (
-                <SymbolIcon name={option.icon} size={theme.iconSizes.body} color={option.color} />
-              )}
-
-              <Box style={styles.optionText}>
-                <Text variant="body" tone={isSelected ? 'onAccent' : 'textPrimary'}>
-                  {option.name}
-                </Text>
+              label={option.name}
+              icon={option.icon}
+              iconColor={option.color}
+              accessibilityLabel={`${option.name}, ${option.accountName}`}
+              description={
                 <Text variant="caption" tone={isSelected ? 'onAccent' : 'textSecondary'}>
                   {`${option.accountName} · ${option.currency}`}
                 </Text>
-              </Box>
-
-              {isSelected && (
-                <Box style={styles.checkmark}>
-                  <SymbolIcon name="checkmark" size={theme.iconSizes.caption} tone="onAccent" />
-                </Box>
-              )}
-            </Pressable>
+              }
+            />
           );
         })}
       </BottomSheet>

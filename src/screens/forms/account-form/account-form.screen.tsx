@@ -1,54 +1,67 @@
-import { useSync } from '@kiko/sync/use-sync';
-import { useTranslation } from 'react-i18next';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
-import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Alert, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
-import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-
-import { id } from '../../../db/id';
-import { Money } from '../../../currency/money';
-import { saveToken } from '../../../monobank/token';
-import { parseAmount } from '../../../currency/parse';
-import Box from '../../../design-system/components/box';
-import { useLiveQuery } from '../../../db/use-live-query';
-import Text from '../../../design-system/components/text';
-import Button from '../../../design-system/components/button';
-import Screen from '../../../design-system/components/screen';
-import Divider from '../../../design-system/components/divider';
-import CryptoSyncForm from '../../account-detail/crypto-sync-form';
-import TextField from '../../../design-system/components/text-field';
-import { accountKindSymbol, genericEntitySymbol } from '../../../holdings/entity-symbols';
-import { defaultAccountColor } from '../../../holdings/entity-colors';
-import { resolveEntityColor } from '../../../design-system/entity-tint';
-import type { AccountsStackParamList } from '../../../navigation/types';
-import CurrencyField from '../../../design-system/components/currency-field';
-import MonobankConnectField from '../../account-detail/monobank-connect-field';
-import { type Currency, currencySymbol, fiatCurrencyOptions } from '../../../currency/currency';
-import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
-import type { BankId } from '../../../bank-sync/bank-catalog';
-
-import ChipRow from '../chip-row';
-import ColorPicker from '../color-picker';
-import BankTypeField from '../bank-type-field';
-import { groupAmount } from '../amount-format/amount-format';
-import HoldingIdentityField from '../holding-identity-field';
-import { useSubmitOnce } from '../use-submit-once/use-submit-once';
+import { Money } from '@kiko/currency/money';
 import {
   useHeaderInset,
   scrollToField,
   type FieldInstance,
-} from '../scroll-to-field/scroll-to-field';
+} from '@kiko/design-system/scroll-to-field';
+import { useSync } from '@kiko/sync/use-sync';
+import either, { isRight } from 'fnts/either';
+import { accountsRepo } from '@kiko/accounts';
+import { useTranslation } from 'react-i18next';
+import { saveToken } from '@kiko/monobank/token';
+import { parseAmount } from '@kiko/currency/parse';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
+import Button from '@kiko/design-system/components/button';
+import Screen from '@kiko/design-system/components/screen';
+import { id, type AccountRow, useLiveQuery } from '@kiko/db';
+import Divider from '@kiko/design-system/components/divider';
+import BankTypeField from '@kiko/screens/forms/bank-type-field';
+import { groupAmount } from '@kiko/screens/forms/amount-format';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import TextField from '@kiko/design-system/components/text-field';
+import { defaultAccountColor } from '@kiko/holdings/entity-colors';
+import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
+import { type BankId, isBankId } from '@kiko/bank-sync/bank-catalog';
+import { resolveEntityColor } from '@kiko/design-system/entity-tint';
+import type { AccountsStackParamList } from '@kiko/navigation/types';
+import ColorPicker from '@kiko/design-system/components/color-picker';
+import AccountKindField from '@kiko/screens/forms/account-kind-field';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import CurrencyField from '@kiko/design-system/components/currency-field';
+import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
+import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import { KIKO_ENTITIES_ICONS } from '@kiko/design-system/components/icon-picker-modal';
+import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
+import MonobankConnectField from '@kiko/design-system/components/monobank-connect-field';
+import { type Currency, currencySymbol, fiatCurrencyOptions } from '@kiko/currency/currency';
 
 type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
 
-// The account kinds offered in this form (a subset of the `kind` enum in
-// db/schema.ts). A crypto account is created like a bank account — no initial
-// holding/currency at creation; holdings are added later — so only cash needs
-// the currency + initial-value fields below.
-const kinds = ['cash', 'bank', 'crypto'] as const;
+// The account kinds this form offers, derived from `accountKindSymbol` — a
+// `Record<AccountKind, string>` typed over the FULL `accounts.kind` schema
+// union (see entity-symbols.ts's own exhaustiveness doc comment) — rather
+// than a hand-copied array, so a later schema widening (debt, broker) is a
+// compile error here until this form (and the symbol/color/subtitle maps it
+// already forces) accounts for the new kind. A crypto account is created
+// like a bank account — no initial holding/currency at creation; holdings are
+// added later — so only cash needs the currency + initial-value fields below;
+// property and metals have no extra creation fields.
+const kinds = Object.keys(accountKindSymbol) as AccountRow['kind'][];
 type Kind = (typeof kinds)[number];
+
+// A stored `kind` can still hold a value that is no longer part of the CURRENT
+// schema enum — the schema's `enum` is TS-only (no DB CHECK constraint), so a
+// once-valid, since-removed kind (e.g. the retired `broker`) can persist.
+// Guards the edit-mode hydration below against that case so an unrecognized
+// stored kind never assigns outside `Kind`'s own type (and the symbol/color
+// lookups below never silently miss).
+const isSupportedKind = (value: string): value is Kind =>
+  (kinds as readonly string[]).includes(value);
 
 // The kind a fresh create form starts on. Its default icon (accountKindSymbol)
 // seeds the icon field so the form opens on a sensible glyph rather than the
@@ -63,6 +76,30 @@ const INITIAL_KIND: Kind = 'bank';
 // `square.grid.2x2`, per the icon rework's generic-account decision (§2.1).
 const FALLBACK_ICON = genericEntitySymbol.account;
 
+// The cash-only initial value field's own two error reasons — a blank or
+// unparseable typed value is "missing", distinct from a valid but negative one
+// (a cash balance can never be negative, but 0 is a valid typed value). Pure —
+// no closure — kept at module scope per kiko-code-style's helper placement
+// rule, and to keep this branching out of AccountFormScreen's own cognitive
+// complexity score (review decision 18).
+type InitialValueIssue = 'missing' | 'negative' | null;
+
+const initialValueIssue = (rawValue: string): InitialValueIssue => {
+  const trimmed = rawValue.trim();
+  const parsed = parseAmount(trimmed);
+
+  if (trimmed === '' || Number.isNaN(parsed)) {
+    return 'missing';
+  }
+
+  return parsed < 0 ? 'negative' : null;
+};
+
+const INITIAL_VALUE_ERROR_KEY = {
+  missing: 'forms.account.initialValueRequiredError',
+  negative: 'forms.account.initialValueNegativeError',
+} as const;
+
 const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) => {
   // An `accountId` in the route params switches the form to EDIT mode: the same
   // fields, seeded from the existing account, saving through the update path
@@ -72,7 +109,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const isEdit = editId !== undefined;
 
   const { t } = useTranslation();
-  // Human display text for the account kinds; the chip still reports the
+  // Human display text for the account kinds; the field still reports the
   // underlying value on select. Built from the catalog inside the component
   // (rather than a module-level constant) so it always reflects the active
   // language.
@@ -80,6 +117,20 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     bank: t('forms.account.bank'),
     cash: t('forms.account.cash'),
     crypto: t('forms.account.crypto'),
+    property: t('forms.account.property'),
+    metals: t('forms.account.metals'),
+    debt: t('forms.account.debt'),
+  };
+  // The one-line "which kind is this?" hint shown under each row in the
+  // AccountKindField sheet (a bare label does not say what belongs there)
+  // — see `forms.account.kindSubtitle` in en.ts/uk.ts.
+  const kindSubtitles: Record<Kind, string> = {
+    bank: t('forms.account.kindSubtitle.bank'),
+    cash: t('forms.account.kindSubtitle.cash'),
+    crypto: t('forms.account.kindSubtitle.crypto'),
+    property: t('forms.account.kindSubtitle.property'),
+    debt: t('forms.account.kindSubtitle.debt'),
+    metals: t('forms.account.kindSubtitle.metals'),
   };
 
   const [name, setName] = useState('');
@@ -99,7 +150,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // The bank the user picked in the sync section's BankTypeField, tagging the
   // created row for later provider-specific handling (import, connect status).
   // null = no bank picked — a valid, plain bank account. Never auto-seeded on a
-  // fresh bank create (no auto-jump to Monobank, device-feedback-round-1 item 3).
+  // fresh bank create (no auto-jump to Monobank).
   const [bankId, setBankId] = useState<BankId | null>(null);
   // `resolveEntityColor` — not a bare nullish-coalesce onto the kind default —
   // because `color`/`kind` here are seeded straight from a stored row
@@ -141,10 +192,14 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // must re-render; it follows the ref, reset to false on a failed create so the
   // switch re-enables when no row actually exists.
   const [accountRowStarted, setAccountRowStarted] = useState(false);
-  // Mirrors contribution-form's attempted-flag pattern: the name-required
-  // reason stays hidden until the user actually tries to Connect or Save with
-  // an empty name, rather than showing as a standing hint the whole time.
-  const [showNameError, setShowNameError] = useState(false);
+  // ONE shared attempted-submit flag for every validated field on this form
+  // (kiko-code-style's form validation model), set true by a blocked Connect
+  // OR a blocked Save — never a per-field flag: each field's own error below
+  // still derives from ONLY its own value, this just gates when either can
+  // first show, so a fresh create form shows no error before the user has
+  // tried to submit (review decision 18 for the initial value — it used to be
+  // silently clamped to 0 instead of surfacing a reason).
+  const [attemptedSave, setAttemptedSave] = useState(false);
   // DEVICE BUG fix (root cause): while the currency sheet's search field can
   // be focused, this screen's background ScrollView must NOT react to the
   // keyboard's frame change — it does not contain that responder, but
@@ -168,6 +223,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // below) — HoldingIdentityField's own `nameInputRef` prop already exposes
   // this same ref shape.
   const nameInputRef = useRef<TextInputInstance>(null);
+  // The cash-only initial-value field's own wrapper + inner TextInput refs —
+  // the SAME pair the name field above carries, so a blocked Save on it scrolls
+  // and focuses exactly like a blocked name does (it used to have no scroll
+  // target at all).
+  const initialValueFieldRef = useRef<FieldInstance>(null);
+  const initialValueInputRef = useRef<TextInputInstance>(null);
   const headerInset = useHeaderInset();
   // The ScrollView's own total content height, captured off `Screen`'s
   // `onContentSizeChange` (forwarded from its ScrollView) so `scrollToField`
@@ -187,7 +248,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     // started), so a retry after typing a name re-attempts cleanly. Save is
     // separately blocked on `!canSave`, so this also guards the programmatic path.
     if (!canSave) {
-      setShowNameError(true);
+      setAttemptedSave(true);
       scrollToField(
         scrollableRef,
         nameFieldRef,
@@ -201,15 +262,18 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       await accountsRepo.create({
         id: pendingAccountId,
         name: trimmedName,
-        // The current kind — only 'bank' or 'crypto' is reachable here, since the
-        // cash path creates through createCashAccount and returns before this.
+        // The current kind — 'bank', 'crypto', 'property', or 'metals' is
+        // reachable here, since the cash path creates through
+        // createCashAccount and returns before this.
         kind,
         color,
         bankId,
       });
+
       if (icon !== null) {
         await accountsRepo.setIcon(pendingAccountId, icon);
       }
+
       return pendingAccountId;
     })().catch((error: unknown) => {
       // A failed insert (DB locked, disk full) must not poison the session: clear
@@ -222,8 +286,20 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       throw error;
     });
     setAccountRowStarted(true);
+
     return accountCreate.current;
   };
+
+  // Shared by every field's Connect handler below: `true` once the account row
+  // exists (creating it on first call), `false` on any failure — a name-missing
+  // rejection or a failed insert — so each caller returns its own "could not
+  // connect" `false` without repeating the same try/catch three times.
+  // The thunk must itself be `async`: fnts `either` calls it OUTSIDE the
+  // promise chain, so a plain `() => ensureAccount()` lets a synchronous
+  // throw (e.g. `scrollToField` failing before the name-required reject)
+  // escape `either` entirely instead of becoming a Left.
+  const accountEnsured = async (): Promise<boolean> =>
+    isRight(await either(async () => ensureAccount()));
 
   // The bank field creates the row FIRST (Option A), then stores the validated
   // token to the Keychain keyed by the pre-generated id, then runs the first
@@ -233,14 +309,18 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // above lets the next Connect retry. The token goes ONLY to the Keychain —
   // never to the database or a log.
   const connectMonobank = async (token: string): Promise<boolean> => {
+    if (!(await accountEnsured())) {
+      return false;
+    }
+
     try {
-      await ensureAccount();
       // The token binds to the pre-generated account id (a per-account Keychain
       // item), so it can never clobber another account's secret.
       await saveToken(pendingAccountId, token);
     } catch {
       return false;
     }
+
     return syncMonobank(pendingAccountId);
   };
 
@@ -248,17 +328,16 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // against it. `CryptoSyncForm`/`BinanceCredentialsField` validate the
   // credential and write the Binance secret to the Keychain themselves, keyed by
   // the pre-generated id, before calling these — the secret never reaches this
-  // screen, the DB, or a log. A create failure is caught here and surfaced to
-  // the field as a `false` (not-connected) result, so the field shows its
-  // "could not connect" status instead of an unhandled rejection that would
-  // leave it stuck on "checking" (C-2); the ref reset above lets the next
-  // Connect retry.
+  // screen, the DB, or a log. A create failure is caught here (via
+  // `accountEnsured`) and surfaced to the field as a `false` (not-connected)
+  // result, so the field shows its "could not connect" status instead of an
+  // unhandled rejection that would leave it stuck on "checking" (C-2); the ref
+  // reset above lets the next Connect retry.
   const connectWallet = async (address: string): Promise<boolean> => {
-    try {
-      await ensureAccount();
-    } catch {
+    if (!(await accountEnsured())) {
       return false;
     }
+
     return syncCrypto({
       providerId: 'btc_wallet',
       targetAccountId: pendingAccountId,
@@ -267,11 +346,10 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   };
 
   const connectBinance = async (): Promise<boolean> => {
-    try {
-      await ensureAccount();
-    } catch {
+    if (!(await accountEnsured())) {
       return false;
     }
+
     return syncCrypto({ providerId: 'binance', targetAccountId: pendingAccountId });
   };
 
@@ -292,9 +370,15 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     }
     hydrated.current = true;
     setName(editingAccount.name);
-    setKind(editingAccount.kind);
+    setKind(isSupportedKind(editingAccount.kind) ? editingAccount.kind : INITIAL_KIND);
     setIcon(editingAccount.icon);
     setColor(editingAccount.color);
+    // The edit form seeds `bankId` too, so the picker below renders and the
+    // user can view or change an account's bank identity after create.
+    // `isBankId` guards against a
+    // stored value from a since-removed catalog entry, mirroring
+    // `isSupportedKind` above.
+    setBankId(isBankId(editingAccount.bankId) ? editingAccount.bankId : null);
   }, [isEdit, editingAccount]);
 
   // The stack sets the static "Add Account" title; in edit mode override it with
@@ -308,17 +392,42 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const trimmedName = name.trim();
   const canSave = trimmedName !== '';
 
+  const initialValueProblem = initialValueIssue(initialValue);
+  const initialValueError =
+    attemptedSave && initialValueProblem !== null
+      ? t(INITIAL_VALUE_ERROR_KEY[initialValueProblem])
+      : undefined;
+
+  // The initial-value field only exists for a NEW cash account (see its
+  // conditional render below), so it can never block Save in edit mode or
+  // for any other kind.
+  const initialValueInvalid = !isEdit && kind === 'cash' && initialValueProblem !== null;
+
   const save = async (): Promise<void> => {
-    // Block submit on an empty (or whitespace-only) name; Save is always
-    // enabled now, so this surfaces the name-required reason on press rather
-    // than a standing disabled state.
-    if (!canSave) {
-      setShowNameError(true);
+    // Every blocked field's own issue is computed up front — not one early
+    // return per field — so with BOTH the name and the initial value blank,
+    // both show together on the first Save press rather than the name error
+    // hiding the initial-value one until a second press (kiko-code-style's
+    // form validation model). Only the SCROLL target picks one: the first
+    // invalid field in the form's own top-to-bottom order (name, then
+    // initial value).
+    const scrollTargets = [
+      { invalid: !canSave, ref: nameFieldRef, focus: () => nameInputRef.current?.focus() },
+      {
+        invalid: initialValueInvalid,
+        ref: initialValueFieldRef,
+        focus: () => initialValueInputRef.current?.focus(),
+      },
+    ];
+    const firstInvalid = scrollTargets.find((target) => target.invalid);
+
+    if (firstInvalid !== undefined) {
+      setAttemptedSave(true);
       scrollToField(
         scrollableRef,
-        nameFieldRef,
+        firstInvalid.ref,
         { currentOffset: scrollOffset.value, headerInset, contentHeight: contentHeightRef.current },
-        () => nameInputRef.current?.focus(),
+        firstInvalid.focus,
       );
 
       return;
@@ -330,8 +439,10 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         // through setIcon (so a cleared icon persists an explicit null), the same
         // split the create path uses. Kind is read-only, and the cash currency +
         // initial value belong to the create-time initial holding, so neither is
-        // touched here.
-        await accountsRepo.update(editId, { name: trimmedName, color });
+        // touched here. `bankId` is editable too — this patch never
+        // carries `institution`, so a live-connected account's sync stays
+        // untouched no matter what bank identity is picked here.
+        await accountsRepo.update(editId, { name: trimmedName, color, bankId });
         await accountsRepo.setIcon(editId, icon);
         navigation.goBack();
 
@@ -339,13 +450,14 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       }
 
       if (kind === 'cash') {
-        // Clamp a negative initial value to zero — a cash balance can never be
-        // negative, and parseAmount('') is NaN so `|| 0` also covers a blank field.
-        const initialMajor = Math.max(0, parseAmount(initialValue) || 0);
+        // `initialValueInvalid` (checked in `scrollTargets` above) already
+        // blocked Save on a blank or negative value (review decision 18: it
+        // used to be silently clamped to 0 instead of surfacing a reason), so
+        // reaching here means it is a valid amount.
         await accountsRepo.createCashAccount({
           name: trimmedName,
           currency,
-          initialBalanceMinorUnits: Money.fromMajor(currency, initialMajor).minorUnits,
+          initialBalance: Money.fromMajor(currency, parseAmount(initialValue)),
           icon,
           color,
         });
@@ -354,14 +466,16 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         return;
       }
 
-      // Bank and crypto share one create path now — `kind` here is 'bank' or
-      // 'crypto' (cash returned above). A field's own Connect may already have
-      // inserted the row via ensureAccount (Option A); if so, persist any
-      // name/color/icon edited AFTER connecting rather than inserting a DUPLICATE
-      // account (the field already handled the credential + first sync). Otherwise
-      // this Save is the first write, so create the row now — an unconnected
-      // bank/crypto account is valid; the user connects a source later from its
-      // detail screen.
+      // Bank, crypto, property, and metals share one create path now — `kind`
+      // here is 'bank', 'crypto', 'property', or 'metals' (cash returned
+      // above). A field's own Connect may already have inserted the row via
+      // ensureAccount (Option A); if so, persist any name/color/icon edited
+      // AFTER connecting rather than inserting a DUPLICATE account (the field
+      // already handled the credential + first sync). Otherwise this Save is
+      // the first write, so create the row now — an unconnected bank/crypto
+      // account is valid (the user connects a source later from its detail
+      // screen), and a property or metals account has no source to connect at
+      // all — it always takes this branch.
       if (accountCreate.current !== null) {
         await accountsRepo.update(pendingAccountId, { name: trimmedName, color, bankId });
         await accountsRepo.setIcon(pendingAccountId, icon);
@@ -373,7 +487,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       // A DB write failure (disk full, locked) must not vanish silently — the
       // screen was about to navigate away with nothing saved. Keep it open and
       // say so, mirroring contribution-form's established Alert pattern.
-      Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
+      alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
     }
   };
 
@@ -421,7 +535,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             onRemoveIcon={() => setIcon(null)}
             namePlaceholder={t('forms.account.namePlaceholder')}
             required
-            error={showNameError && !canSave ? t('forms.fields.nameRequiredError') : undefined}
+            error={attemptedSave && !canSave ? t('forms.fields.nameRequiredError') : undefined}
             nameInputRef={nameInputRef}
             testID="holding-identity-name-field"
           />
@@ -437,14 +551,17 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             locks once a bank/crypto source has been connected (which already
             inserted the row): switching kind afterwards would make Save create a
             SECOND account and orphan the started row. */}
-        <ChipRow
+        <AccountKindField
           label={t('forms.account.kind')}
+          sheetTitle={t('forms.account.kindSheetTitle')}
           options={kinds}
           selected={kind}
           onSelect={handleSelectKind}
           labels={kindLabels}
+          subtitles={kindSubtitles}
           icons={accountKindSymbol}
           disabled={isEdit || accountRowStarted}
+          testID="account-kind-field"
         />
 
         {/* The currency + initial value seed the cash account's initial holding
@@ -455,6 +572,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           <>
             <CurrencyField
               label={t('forms.fields.currency')}
+              sheetTitle={t('forms.fields.currencySheetTitle')}
               selected={currency}
               onSelect={setCurrency}
               options={fiatCurrencyOptions}
@@ -462,35 +580,56 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
               testID="account-currency-field"
             />
 
-            <TextField
-              label={t('forms.account.initialValue')}
-              value={initialValue}
-              onChangeText={(text) => setInitialValue(groupAmount(text))}
-              keyboardType="decimal-pad"
-              placeholder={t('forms.account.initialValuePlaceholder')}
-              suffix={currencySymbol[currency]}
-            />
+            <View ref={initialValueFieldRef}>
+              <TextField
+                label={t('forms.account.initialValue')}
+                value={initialValue}
+                onChangeText={(text) => setInitialValue(groupAmount(text))}
+                keyboardType="decimal-pad"
+                placeholder={t('forms.account.initialValuePlaceholder')}
+                suffix={currencySymbol[currency]}
+                error={initialValueError}
+                inputRef={initialValueInputRef}
+              />
+            </View>
           </>
         )}
 
-        {/* Optional sync credentials, offered only on a bank/crypto CREATE. The
-            fields are NOT required (no asterisk): an account still creates with
-            no credentials. A secret is masked and write-only — on save it goes
-            straight to the Keychain, never into a stored row or a log. */}
-        {!isEdit && kind === 'bank' && (
+        {/* The "which bank does this account represent" identity picker
+            (Option A) — shown in BOTH create and edit mode, so the edit
+            form can view or change `bankId` too. The
+            live-sync Connect field stays CREATE-ONLY — editing an already-
+            connected account's real connection is BankSyncSection's job on
+            the account-detail screen (Monobank-only, Guideline 5.6),
+            untouched here. Changing `bankId` in this field never writes
+            `institution`/the Keychain/sync state (kiko-domain: `bankId` is
+            deliberately never read by `isSyncedAccount`), so it stays safe
+            to edit even on an already-connected Monobank account. The
+            credential field itself is NOT required (no asterisk): an
+            account still creates with no credentials — a secret is masked
+            and write-only, going straight to the Keychain on save, never
+            into a stored row or a log. */}
+        {kind === 'bank' && (
           <Box gap={4}>
             <Divider testID="form-divider" />
 
+            {/* Unconditional (not create-only): an edit render's bank block
+                otherwise sits under a bare divider with no heading naming
+                the section at all — the SAME heading create mode already
+                shows above `BankTypeField`. */}
             <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
             <BankTypeField
               label={t('forms.account.bankType')}
+              sheetTitle={t('forms.account.bankTypeSheetTitle')}
               selected={bankId}
               onSelect={setBankId}
               testID="account-bank-type-field"
             />
 
-            {bankId === 'monobank' && <MonobankConnectField onConnect={connectMonobank} />}
+            {!isEdit && bankId === 'monobank' && (
+              <MonobankConnectField onConnect={connectMonobank} />
+            )}
 
             {bankId !== null && bankId !== 'monobank' && (
               <Text variant="caption" tone="textSecondary">

@@ -3,11 +3,11 @@ import { State } from 'react-native-gesture-handler';
 import { Dimensions, Keyboard, StyleSheet, Text } from 'react-native';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
+import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
+import type { RenderedElement } from '@kiko/test-support/rendered-element';
 
-import type { RenderedElement } from '../../../test-support/rendered-element';
-import '../../unistyles';
-import { darkTheme } from '../../theme';
-import { KEYBOARD_ACCESSORY_HEIGHT } from '../keyboard-done-accessory/keyboard-done-accessory.styles';
+import { KEYBOARD_ACCESSORY_HEIGHT } from '../keyboard-done-accessory';
 
 import BottomSheet from '.';
 import { KEYBOARD_CORNER_OVERLAP, SHEET_DRAG_GESTURE_TEST_ID } from './bottom-sheet.component';
@@ -20,6 +20,7 @@ import { KEYBOARD_CORNER_OVERLAP, SHEET_DRAG_GESTURE_TEST_ID } from './bottom-sh
 // describe block below can flip it on for its own scope.
 jest.mock('@callstack/liquid-glass', () => {
   const { View } = require('react-native');
+
   return { LiquidGlassView: View, isLiquidGlassSupported: false };
 });
 
@@ -45,6 +46,7 @@ const MAX_HEIGHT_RATIO = 0.66;
 const MOCK_BOTTOM_INSET = 34;
 jest.mock('react-native-safe-area-context', () => {
   const { View } = require('react-native');
+
   return {
     SafeAreaView: View,
     SafeAreaProvider: View,
@@ -85,9 +87,38 @@ describe('BottomSheet', () => {
       </BottomSheet>,
     );
 
-    fireEvent.press(getByTestId('sheet-backdrop'));
+    await fireEvent.press(getByTestId('sheet-backdrop'));
 
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  // A real completion signal for "the sheet has actually finished closing" —
+  // RN `Modal`'s own `onDismiss` (iOS only; fires once the dismiss ANIMATION
+  // has finished, unlike `onDismiss`/`onRequestClose` above, which mean "a
+  // dismiss was requested"). Passed through as its own optional prop so a
+  // caller that needs to run something ONLY after the close animation
+  // completes (e.g. navigating away) doesn't have to guess a delay.
+  it('calls onClosed when the underlying Modal reports its own dismiss (the close animation finished)', async () => {
+    const onClosed = jest.fn();
+    const { getByTestId } = await render(
+      <BottomSheet visible onDismiss={jest.fn()} onClosed={onClosed} testID={SHEET_TEST_ID}>
+        <Text>sheet body</Text>
+      </BottomSheet>,
+    );
+
+    await fireEvent(getByTestId(`${SHEET_TEST_ID}-modal`), 'dismiss');
+
+    expect(onClosed).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not require onClosed — every other caller stays unaffected', async () => {
+    const { getByText } = await render(
+      <BottomSheet visible onDismiss={jest.fn()}>
+        <Text>sheet body</Text>
+      </BottomSheet>,
+    );
+
+    expect(getByText('sheet body')).toBeTruthy();
   });
 
   it('owns the bottom safe-area inset on top of its single base padding step', async () => {
@@ -320,7 +351,7 @@ describe('BottomSheet', () => {
     expect(childStyle.backgroundColor).not.toBe(darkTheme.colors.background);
   });
 
-  // F5 device bug: the 66% cap above was forced on every sheet, but the
+  // The 66% cap above was forced on every sheet, but the
   // primitive rendered no scroll container of its own, so a plain-Box sheet
   // (filter-menu, date-field, the transaction-form category-override
   // confirm) whose content ran taller than the cap simply got CLIPPED, with

@@ -1,40 +1,31 @@
-import type { ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
 import {
   createGestureController,
   fireGestureHandler,
   getByGestureTestId,
 } from 'react-native-gesture-handler/jest-utils';
+import { State } from 'react-native-gesture-handler';
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 // Initialize i18next so the row's and CardContextMenu's `t()` labels resolve
 // to the real catalogue instead of the raw key.
-import '../../../i18n';
-
+import '@kiko/i18n/init';
 import {
   DELETE_ACTION_TEST_ID,
   DELETE_CONFIRM_TEST_ID,
   DUPLICATE_ACTION_TEST_ID,
   HOLD_GESTURE_TEST_ID,
-} from '../../../design-system/components/card-context-menu';
-
-import type { HomeTransactionRow } from './transaction-row.props';
+} from '@kiko/design-system/components/card-context-menu';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 
 import TransactionRow from './transaction-row.component';
+import type { HomeTransactionRow } from './transaction-row.props';
 
 jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: { remove: jest.fn() },
 }));
 
 import { transactionsRepo } from '@kiko/transactions/repo';
-
-// A row's delete menu is a react-native-gesture-handler long-press (via the
-// shared CardContextMenu), so it must mount under a GestureHandlerRootView
-// (the app supplies one at its root in production).
-const wrapper = ({ children }: { children: ReactNode }) => (
-  <GestureHandlerRootView>{children}</GestureHandlerRootView>
-);
 
 const baseItem: HomeTransactionRow = {
   id: 'txn-1',
@@ -50,6 +41,7 @@ const baseItem: HomeTransactionRow = {
   holdingName: 'Card',
   holdingType: 'card',
   source: 'manual',
+  loanHoldingId: null,
 };
 
 const renderRow = (item: HomeTransactionRow, onPress = jest.fn(), onDuplicate = jest.fn()) =>
@@ -63,12 +55,24 @@ const renderRow = (item: HomeTransactionRow, onPress = jest.fn(), onDuplicate = 
       onPress={onPress}
       onDuplicate={onDuplicate}
     />,
-    { wrapper },
+    { wrapper: GestureRootWrapper },
   );
 
 describe('TransactionRow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('shows the loan-link marker when the row carries a loan link', async () => {
+    const { toJSON } = await renderRow({ ...baseItem, loanHoldingId: 'loan-1' });
+
+    expect(JSON.stringify(toJSON())).toContain('link');
+  });
+
+  it('shows no loan-link marker when the row carries none', async () => {
+    const { toJSON } = await renderRow(baseItem);
+
+    expect(JSON.stringify(toJSON())).not.toContain('"link"');
   });
 
   it('wires a manual row to the shared long-press context menu and deletes via transactionsRepo.remove', async () => {
@@ -88,16 +92,16 @@ describe('TransactionRow', () => {
     // Duplicate/Delete choice; Delete hands off to the SAME named confirm sheet
     // that routes to `transactionsRepo.remove`.
     await act(async () => {
-      fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
     });
 
     expect(getByText('Delete "Coffee"')).toBeTruthy();
-    fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+    await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
 
     expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-1');
   });
 
-  it('offers Duplicate on a manual row and routes it to onDuplicate with the row id (D2)', async () => {
+  it('offers Duplicate on a manual row and routes it to onDuplicate with the row id', async () => {
     const onDuplicate = jest.fn();
     const { getByTestId } = await renderRow(baseItem, jest.fn(), onDuplicate);
 
@@ -113,7 +117,7 @@ describe('TransactionRow', () => {
     });
 
     await act(async () => {
-      fireEvent.press(getByTestId(DUPLICATE_ACTION_TEST_ID));
+      await fireEvent.press(getByTestId(DUPLICATE_ACTION_TEST_ID));
     });
 
     expect(onDuplicate).toHaveBeenCalledWith('txn-1');
@@ -145,7 +149,7 @@ describe('TransactionRow', () => {
     const onPress = jest.fn();
     const { getByText } = await renderRow(baseItem, onPress);
 
-    fireEvent.press(getByText('Coffee'));
+    await fireEvent.press(getByText('Coffee'));
 
     expect(onPress).toHaveBeenCalledWith('txn-1');
   });
@@ -178,7 +182,7 @@ describe('TransactionRow', () => {
       hold.end();
     });
     await act(async () => {
-      fireEvent.press(getByText('Cancel'));
+      await fireEvent.press(getByText('Cancel'));
     });
 
     expect(scaleOf()).toBe(1);

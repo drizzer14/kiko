@@ -1,31 +1,32 @@
-import { type FC, useState } from 'react';
 import { match } from 'ts-pattern';
+import { type FC, useState } from 'react';
+import SettingsRow, {
+  chevronSize,
+  chevronTrailingWhitespace,
+} from '@kiko/screens/settings/settings-row';
+import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
+import { useDataReady, useLiveQuery } from '@kiko/db';
+import Text from '@kiko/design-system/components/text';
+import Card from '@kiko/design-system/components/card';
+import Screen from '@kiko/design-system/components/screen';
+import Divider from '@kiko/design-system/components/divider';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { settingsRepo } from '@kiko/settings/settings.repo';
+import { PRIVACY_POLICY_URL_EN, PRIVACY_POLICY_URL_UK } from '@env';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import type { SettingsStackParamList } from '@kiko/navigation/types';
+import LoadingState from '@kiko/design-system/components/loading-state';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import CurrencyField from '@kiko/design-system/components/currency-field';
 import { Linking, Pressable, type ScrollViewInstance } from 'react-native';
+import { type Currency, fiatCurrencyOptions } from '@kiko/currency/currency';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 
 import pkg from '../../../../package.json';
-import Box from '../../../design-system/components/box';
-import { useLiveQuery } from '../../../db/use-live-query';
-import Text from '../../../design-system/components/text';
-import Screen from '../../../design-system/components/screen';
-import Divider from '../../../design-system/components/divider';
-import type { SettingsStackParamList } from '../../../navigation/types';
-import Card from '../../../design-system/components/card';
-import CurrencyField from '../../../design-system/components/currency-field';
-import { type Currency, fiatCurrencyOptions } from '../../../currency/currency';
-import { useScrollToTopOnTabPress } from '../../../navigation/use-scroll-to-top-on-tab-press';
-
-import SettingsRow from '../settings-row';
-import { chevronSize, chevronTrailingWhitespace } from '../settings-row/settings-row.chevron';
 
 type SettingsScreenProps = NativeStackScreenProps<SettingsStackParamList, 'Settings'>;
-
-const PRIVACY_POLICY_URL_EN = 'https://drizzer14.github.io/kiko/en.html';
-const PRIVACY_POLICY_URL_UK = 'https://drizzer14.github.io/kiko';
 
 // The privacy-policy link opens the page matching the CURRENT app language,
 // not the device locale — mirrors `activeLocale()`'s uk/otherwise shape
@@ -69,35 +70,40 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   const { t, i18n } = useTranslation();
   const { theme } = useUnistyles();
 
-  const { data } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  const { data, isLoading } = useLiveQuery(settingsRepo.getQuery(), ['settings'], true, {
+    cached: true,
+  });
   const settings = data.at(0);
+  // The base-currency field must never render as "none selected" while
+  // settings is still on its own first load (kiko-architecture's
+  // useLiveQuery consumer rule).
+  const isReady = useDataReady(isLoading);
 
-  // Item 6 (device-feedback-round-4): the Import/Export card's per-row
-  // padding and leading-inset divider, both PLAIN objects built from the
-  // live theme rather than a `StyleSheet.create()` entry — `StyleSheet.create`
-  // styles are meant to be read directly on a component's OWN native element,
-  // not forwarded as a `style` prop into a DIFFERENT shared component
-  // (`SettingsRow`/`Divider`), where the unistyles runtime does not resolve
-  // them. `SettingsRow` gets its own explicit vertical+horizontal padding
-  // here (matching the `theme.spacing(3)` every OTHER single-row settings
-  // card gets for free from its own `Card` padding, since this card's own
-  // padding drops to 0 below) so each row reads as a normal native
-  // grouped-list row rather than a shorter one squeezed by an outer `Box`
-  // gap. The divider's LEFT inset lands on the row LABEL's first letter, so it
-  // must clear THREE spans, mirroring how the row itself lays the label out:
-  // the row's OWN left `paddingHorizontal` (`theme.spacing(3)`), the leading
-  // icon's width (`iconSizes.body`, the default `SettingsRow` icon size), and
-  // the icon-to-label gap (another `theme.spacing(3)`). Omitting the row's own
-  // padding lands the divider on the icon's RIGHT EDGE instead of the label
-  // (device-feedback round-8).
+  // The Import/Export card's per-row padding and leading-inset divider, both
+  // PLAIN objects built from the live theme rather than a
+  // `StyleSheet.create()` entry — `StyleSheet.create` styles are meant to be
+  // read directly on a component's OWN native element, not forwarded as a
+  // `style` prop into a DIFFERENT shared component (`SettingsRow`/`Divider`),
+  // where the unistyles runtime does not resolve them. `SettingsRow` gets its
+  // own explicit vertical+horizontal padding here (matching the
+  // `theme.spacing(3)` every OTHER single-row settings card gets for free
+  // from its own `Card` padding, since this card's own padding drops to 0
+  // below) so each row reads as a normal native grouped-list row rather than
+  // a shorter one squeezed by an outer `Box` gap. The divider's LEFT inset
+  // lands on the row LABEL's first letter, so it must clear THREE spans,
+  // mirroring how the row itself lays the label out: the row's OWN left
+  // `paddingHorizontal` (`theme.spacing(3)`), the leading icon's width
+  // (`iconSizes.body`, the default `SettingsRow` icon size), and the
+  // icon-to-label gap (another `theme.spacing(3)`). Omitting the row's own
+  // padding lands the divider on the icon's RIGHT EDGE instead of the label.
   //
-  // The RIGHT inset (round-7 item 1) terminates the divider at the visible
-  // right edge of the trailing ">" glyph, not the row's raw padding: it is
-  // the row's own `paddingHorizontal` above PLUS the trailing whitespace
-  // inside the (round-7 item 2 resized) chevron's own render frame — an SF
-  // Symbol glyph is centered in its square frame with visible space on both
-  // sides, so the frame's right edge sits past the glyph's own visible tip.
-  // Both the chevron's size and that whitespace are derived from the SAME
+  // The RIGHT inset terminates the divider at the visible right edge of the
+  // trailing ">" glyph, not the row's raw padding: it is the row's own
+  // `paddingHorizontal` above PLUS the trailing whitespace inside the
+  // chevron's own render frame — an SF Symbol glyph is centered in its
+  // square frame with visible space on both sides, so the frame's right
+  // edge sits past the glyph's own visible tip. Both the chevron's size and
+  // that whitespace are derived from the SAME
   // `settings-row.chevron.ts` helpers `SettingsRow` itself uses for the
   // glyph, so this stays in sync if that sizing ever changes.
   const dataTransferRowStyle = {
@@ -117,6 +123,17 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   const handleOpenPrivacyPolicy = (): void => {
     Linking.openURL(resolvePrivacyPolicyUrl(i18n.language));
   };
+
+  if (!isReady) {
+    // The SAME Screen mode/props as the ready branch below — the first
+    // scroll view iOS walks to drive the large-title collapse exists from
+    // the very first render.
+    return (
+      <Screen scroll scrollableRef={scrollRef}>
+        <LoadingState testID="settings-loading" />
+      </Screen>
+    );
+  }
 
   return (
     <Screen
@@ -168,11 +185,10 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
         </Card>
 
         {/* Import and Export share one card as a single "data transfer" group,
-            positioned directly BELOW System (device-feedback-round-4 item 9 —
-            round-2 asked for this and it had not landed; it previously sat
-            LAST, after Categories). Import first (the more common entry point
-            — bringing existing data in) then Export.
-            Item 6: each row now carries its own explicit vertical padding
+            positioned directly BELOW System — it previously sat LAST, after
+            Categories. Import first (the more common entry point — bringing
+            existing data in) then Export.
+            Each row now carries its own explicit vertical padding
             (`dataTransferRowStyle`, matching the Card's own padding=3 the
             OTHER single-row cards get for free) with the Card's own padding
             dropped to 0 — an outer `Box gap` no longer supplies the
@@ -186,7 +202,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
           <SettingsRow
             testID="settings-row-import-data"
             icon="square.and.arrow.down"
-            label={t('settings.dataImport.title')}
+            label={t('settings.dataImport.rowLabel')}
             onPress={() => navigation.navigate('ImportData')}
             style={dataTransferRowStyle}
           />
@@ -196,7 +212,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
           <SettingsRow
             testID="settings-row-export-data"
             icon="square.and.arrow.up"
-            label={t('settings.dataExport.title')}
+            label={t('settings.dataExport.rowLabel')}
             onPress={() => navigation.navigate('ExportData')}
             style={dataTransferRowStyle}
           />
@@ -215,6 +231,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             <CurrencyField
               testID="settings-row-base-currency"
               label={t('settings.baseCurrency')}
+              sheetTitle={t('settings.baseCurrencySheetTitle')}
               hideLabel
               selected={settings?.baseCurrency}
               onSelect={handleSelectCurrency}
@@ -227,7 +244,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
         <Card testID="settings-card-categories" padding={3}>
           <SettingsRow
             testID="settings-row-categories"
-            icon="tag"
+            icon={genericEntitySymbol.category}
             label={t('settings.categories')}
             onPress={() => navigation.navigate('Categories')}
           />

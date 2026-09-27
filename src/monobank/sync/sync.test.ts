@@ -2,17 +2,18 @@
 // sync.ts imports the repos which open the connection at load. A minimal
 // stub lets the module graph load; runSync's data access is fully injected
 // through SyncDeps, so the real repos are never exercised here.
+import { i18n } from '@kiko/i18n/init';
+import statement from '@kiko/monobank/__fixtures__/statement.json';
+import clientInfo from '@kiko/monobank/__fixtures__/client-info.json';
+import type { AccountRow, HoldingRow, TransactionRow } from '@kiko/db';
+
 import {
   getProgressSnapshot,
   isFastPhaseDone,
   getSnapshot as isSyncingSnapshot,
   subscribeProgress,
 } from '../sync-status';
-import { i18n } from '../../i18n';
-import statement from '../__fixtures__/statement.json';
-import clientInfo from '../__fixtures__/client-info.json';
-import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
-import type { MonobankAccount, MonobankJar, MonobankStatementItem } from '../monobank.types';
+import type { MonobankAccount, MonobankJar, MonobankStatementItem } from '../monobank-types';
 
 import {
   mapAccountToHolding,
@@ -27,7 +28,7 @@ describe('mapStatementItem', () => {
     const item = statement[0];
     const transaction = mapStatementItem(item, 'holding-1', 'acc-1');
     expect(transaction.source).toBe('monobank');
-    // Phase 6: the synced external id is `${accountId}:${statementId}`, so the
+    // The synced external id is `${accountId}:${statementId}`, so the
     // GLOBAL `(source, external_id)` unique index can never let a second Monobank
     // (or Binance) connection refresh another connection's row on a shared raw id.
     expect(transaction.externalId).toBe(`acc-1:${item.id}`);
@@ -228,9 +229,11 @@ const makeInMemoryDeps = (
       (holding) =>
         holding.accountId === rest.accountId && monobankIdOf(holding.metadata) === monobankId,
     );
+
     if (existing) {
       existing.balanceMinorUnits = rest.balanceMinorUnits ?? 0;
       existing.metadata = merged;
+
       return;
     }
     holdingsStore.push({
@@ -243,6 +246,9 @@ const makeInMemoryDeps = (
       // marker starts NULL. The sync advances it (via `setSyncedBalance`) only
       // after a card's statements commit — the real repository does the same.
       syncedBalanceMinorUnits: null,
+      // A synced holding's balance is never SET by a statement import — the
+      // sync pipeline owns it outright.
+      balanceSetAt: null,
       ...rest,
       // The dep's input carries neither column, but a stored row declares both
       // as `string | null` — the real repository defaults them the same way.
@@ -299,6 +305,11 @@ const makeInMemoryDeps = (
         // A synced row is never part of a split-change group — that marker is
         // written only by the manual `recordManualWithReturns` path.
         changeGroupId: null,
+        // A synced row has no loan-payment link yet — the matcher and
+        // `transactionsRepo.setLoanPayment` are the only writers of these.
+        loanHoldingId: null,
+        loanLinkSource: null,
+        loanLinkRejected: false,
         comment: input.comment ?? null,
         externalId: input.externalId ?? null,
       });
@@ -317,6 +328,7 @@ const makeInMemoryDeps = (
     listQuery: async () => accountsStore.map((account) => ({ ...account })),
     update: async (accountId, patch) => {
       const target = accountsStore.find((account) => account.id === accountId);
+
       if (target) {
         Object.assign(target, patch);
       }
@@ -331,10 +343,11 @@ const makeInMemoryDeps = (
     upsertMonobankMany,
     // The crash-safe marker write: advances a card's `syncedBalanceMinorUnits`
     // once its statements have committed, mirroring `holdingsRepo.setSyncedBalance`.
-    setSyncedBalance: async (holdingId, balanceMinorUnits) => {
+    setSyncedBalance: async (holdingId, balance) => {
       const target = holdingsStore.find((holding) => holding.id === holdingId);
+
       if (target) {
-        target.syncedBalanceMinorUnits = balanceMinorUnits;
+        target.syncedBalanceMinorUnits = balance.minorUnits;
       }
     },
     // Stale-holding reconciliation seam (mirrors `holdingsRepo.closeMany`): stamp
@@ -343,6 +356,7 @@ const makeInMemoryDeps = (
     closeMany: jest.fn(async (holdingIds: string[]): Promise<void> => {
       for (const holdingId of holdingIds) {
         const target = holdingsStore.find((holding) => holding.id === holdingId);
+
         if (target) {
           target.closedAt = 1704326400000;
         }
@@ -494,7 +508,7 @@ describe('runSync', () => {
     expect(result.importedTransactions).toBe(statement.length);
   });
 
-  // Phase 6 / Risk R-1: two Monobank connections that each fetch a statement item
+  // Two Monobank connections that each fetch a statement item
   // carrying the SAME raw id must import TWO distinct rows, one per account —
   // never let the second connection's upsert refresh the first's row on the
   // GLOBAL `(source, external_id)` index. The account-id namespace is what keeps
@@ -596,11 +610,13 @@ describe('runSync', () => {
       // At the moment fetchClientInfo resolves, the account must still be
       // unmarked — the mark can only happen after this call returns.
       expect(accountsStore[0].institution).toBeNull();
+
       return originalFetchClientInfo(token, fetchImpl);
     };
     deps.accountsRepo.update = async (accountId, patch) => {
       calls.push('updateAccount');
       const account = accountsStore.find((row) => row.id === accountId);
+
       if (account) {
         Object.assign(account, patch);
       }
@@ -779,10 +795,10 @@ describe('runSync', () => {
   // account/jar must be
   // SILENTLY SKIPPED — excluded from
   // net worth — rather than aborting the entire sync: the mappers throw on an
-  // unrepresentable currency, and `upsertHoldings` used to call them inside its
-  // loop with no guard, so ONE foreign card threw before any card imported and
-  // before the cursor was written, stranding the user in a permanent "cannot
-  // sync". The whole run must now COMPLETE: the supported card imports, the
+  // unrepresentable currency, so `upsertHoldings` must never call them inside
+  // its loop with no guard — that would let ONE foreign card throw before any
+  // card imported and before the cursor was written, stranding the user in a
+  // permanent "cannot sync". The whole run must COMPLETE: the supported card imports, the
   // unsupported account and jar are never upserted, and the cursor advances.
   it('skips an unsupported-currency account and jar, completing the sync for the supported card', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
@@ -844,6 +860,7 @@ describe('runSync', () => {
         return [];
       }
       call += 1;
+
       return call === 1 ? cappedPage : secondPage;
     };
 
@@ -888,12 +905,15 @@ describe('runSync', () => {
       if (decodeURIComponent(accountId) !== clientInfo.accounts[0].id) {
         return [];
       }
+
       if (to >= boundary + 1000) {
         return page;
       }
+
       if (to >= boundary) {
         return [straggler];
       }
+
       return [];
     }) as SyncDeps['fetchStatement'];
 
@@ -928,6 +948,7 @@ describe('runSync', () => {
       if (decodeURIComponent(accountId) !== clientInfo.accounts[0].id) {
         return [];
       }
+
       return to >= boundary ? page : [];
     }) as SyncDeps['fetchStatement'];
 
@@ -973,6 +994,7 @@ describe('runSync', () => {
     deps.now = () => {
       const value = current;
       current += 120_000;
+
       return value;
     };
 
@@ -993,7 +1015,7 @@ describe('runSync', () => {
     expect(persisted).toBe((statementTo as number) * 1000);
   });
 
-  // Phase 1: the Monobank cursor is per-connection in `sync_state`, keyed by the
+  // The Monobank cursor is per-connection in `sync_state`, keyed by the
   // resolved account id — the row is ensured to exist, read, and written all by
   // that id, so a second connection can never share or corrupt this one's cursor.
   it('ensures, reads, and writes the sync_state cursor keyed by the resolved account id', async () => {
@@ -1048,6 +1070,7 @@ describe('runSync', () => {
     });
     const fetchClientInfo = jest.fn(async () => {
       await opened;
+
       return {
         accounts: clientInfo.accounts as MonobankAccount[],
         jars: clientInfo.jars as MonobankJar[],
@@ -1085,6 +1108,7 @@ describe('runSync', () => {
     });
     const fetchClientInfo = jest.fn(async () => {
       await opened;
+
       return {
         accounts: clientInfo.accounts as MonobankAccount[],
         jars: clientInfo.jars as MonobankJar[],
@@ -1111,6 +1135,7 @@ describe('runSync', () => {
     });
     const fetchClientInfo = jest.fn(async () => {
       await opened;
+
       return {
         accounts: clientInfo.accounts as MonobankAccount[],
         jars: clientInfo.jars as MonobankJar[],
@@ -1167,15 +1192,19 @@ describe('runSync', () => {
     let failA = true;
     deps.fetchStatement = async (_token, accountId) => {
       const id = decodeURIComponent(accountId);
+
       if (id === idA) {
         if (failA) {
           throw new Error('Monobank request failed: 500');
         }
+
         return [itemA];
       }
+
       if (id === idB) {
         return [itemB];
       }
+
       return [];
     };
 
@@ -1223,9 +1252,11 @@ describe('runSync', () => {
     const { deps } = makeInMemoryDeps(() => [], [connected]);
     deps.fetchStatement = async (_token, accountId) => {
       const id = decodeURIComponent(accountId);
+
       if (id === idA) {
         throw new Error('Monobank request failed: 500');
       }
+
       return id === idB ? [itemB] : [];
     };
 
@@ -1294,8 +1325,8 @@ describe('runSync', () => {
   // A clean run that imported nothing (a re-sync with no new rows) is still a
   // real, successful sync: every card was reached, so the DISPLAY stamp moves
   // (the label means "Last sync", not "last import") AND the cursor advances
-  // (the window was fully covered). This is the BUG1 fix — the display used to
-  // freeze at the last IMPORT time and go stale on a no-new-rows re-sync.
+  // (the window was fully covered) — the display must never freeze at the
+  // last IMPORT time and go stale on a no-new-rows re-sync.
   it('stamps the display timestamp on a clean run that imported nothing', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
     const { deps } = makeInMemoryDeps(onlyFirstAccount, [connected]);
@@ -1335,6 +1366,7 @@ describe('runSync', () => {
     });
     deps.fetchClientInfo = async () => {
       await opened;
+
       return {
         accounts: clientInfo.accounts as MonobankAccount[],
         jars: clientInfo.jars as MonobankJar[],
@@ -1359,7 +1391,7 @@ describe('runSync', () => {
     expect(isSyncingSnapshot()).toBe(false);
   });
 
-  // R7 (reverting the R6-3 fast/background split): the signal that drives the
+  // Reverting the fast/background split: the signal that drives the
   // native spinner tracks the WHOLE run, not just the fast phase. It stays ON
   // across the gated per-card statement loop — at the FIRST gated fetch and
   // after the LAST card — and clears ONLY once `runSync`'s returned promise
@@ -1382,6 +1414,7 @@ describe('runSync', () => {
       if (signalDuringUpsert === undefined) {
         signalDuringUpsert = isSyncingSnapshot();
       }
+
       return baseUpsert(holdings);
     };
 
@@ -1393,13 +1426,16 @@ describe('runSync', () => {
     const baseFetchStatement = deps.fetchStatement;
     deps.fetchStatement = async (token, accountId, fromSeconds, toSeconds, fetchImpl) => {
       const id = decodeURIComponent(accountId);
+
       if (signalAtFirstFetch === undefined) {
         signalAtFirstFetch = isSyncingSnapshot();
         holdingsAtFirstFetch = holdingsStore.length;
       }
+
       if (id === idB) {
         signalAtLastCardFetch = isSyncingSnapshot();
       }
+
       return baseFetchStatement(token, accountId, fromSeconds, toSeconds, fetchImpl);
     };
 
@@ -1446,6 +1482,7 @@ describe('runSync', () => {
       if (fastPhaseDuringUpsert === undefined) {
         fastPhaseDuringUpsert = isFastPhaseDone();
       }
+
       return baseUpsert(holdings);
     };
 
@@ -1458,6 +1495,7 @@ describe('runSync', () => {
       if (fastPhaseAtFirstFetch === undefined) {
         fastPhaseAtFirstFetch = isFastPhaseDone();
       }
+
       return baseFetchStatement(token, accountId, fromSeconds, toSeconds, fetchImpl);
     };
 
@@ -1527,7 +1565,7 @@ describe('runSync', () => {
     );
   });
 
-  // The balance-diff skip (round 4-D option (a)): a steady-state incremental
+  // The balance-diff skip: a steady-state incremental
   // sync SKIPS a card whose /client-info balance is unchanged since the last
   // sync, cutting the number of gated statement fetches (N cards ⇒ ~N×60s under
   // the per-token rate limit). A card is fetched when its balance CHANGED, when
@@ -1677,7 +1715,7 @@ describe('runSync', () => {
       expect(fromSecondsForA).not.toBe(Math.floor(recentCursor / 1000));
     });
 
-    // R6-1: a full fetch where one card fails now GRADUATES `lastFullSyncAt`
+    // A full fetch where one card fails now GRADUATES `lastFullSyncAt`
     // even though it re-throws — the fix for the "permanent full-fetch" trap
     // where a partial failure never advanced the marker, so once it aged past
     // the 24h interval every sync became a slow N×60s full fetch and the
@@ -1693,6 +1731,7 @@ describe('runSync', () => {
         if (decodeURIComponent(accountId) === idA) {
           throw new Error('Monobank request failed: 500');
         }
+
         return [];
       };
       const setLastSyncAt = jest.fn(
@@ -1838,6 +1877,7 @@ describe('runSync', () => {
 
       const holdingA = holdingsStore.find((holding) => monobankIdOf(holding.metadata) === idA);
       const holdingB = holdingsStore.find((holding) => monobankIdOf(holding.metadata) === idB);
+
       if (!holdingA || !holdingB) {
         throw new Error('expected both card holdings to exist after the first sync');
       }
@@ -1893,6 +1933,7 @@ describe('runSync', () => {
     const base = deps.fetchStatement as SyncDeps['fetchStatement'];
     deps.fetchStatement = async (token, accountId, from, to, fetchImpl) => {
       samples.push({ ...getProgressSnapshot() });
+
       return base(token, accountId, from, to, fetchImpl);
     };
 
@@ -1938,6 +1979,7 @@ describe('runSync', () => {
       const snap = getProgressSnapshot();
       workTotalDuringRun = snap.workTotal;
       holdingsTotalDuringRun = snap.total;
+
       return base(token, accountId, from, to, fetchImpl);
     };
 
@@ -2106,6 +2148,7 @@ describe('runSync', () => {
         const call = (fetchStatement as jest.Mock).mock.calls.find(
           ([, accountId]) => decodeURIComponent(accountId as string) === id,
         );
+
         return call?.[2] as number | undefined;
       };
       expect(fromFor(idA)).toBe(Math.floor(lastSyncAt / 1000));
@@ -2142,12 +2185,15 @@ describe('runSync', () => {
       });
       const fetchStatement = jest.fn(async (_token: string, accountId: string) => {
         const id = decodeURIComponent(accountId);
+
         if (id === idA) {
           throw new Error('interrupted after the first card');
         }
+
         if (id === idB) {
           return [bToday];
         }
+
         return [];
       });
       deps.fetchStatement = fetchStatement as unknown as SyncDeps['fetchStatement'];
@@ -2181,6 +2227,7 @@ describe('runSync stale-holding reconciliation', () => {
     closedAt: null,
     createdAt: 0,
     syncedBalanceMinorUnits: null,
+    balanceSetAt: null,
     ...over,
   });
 

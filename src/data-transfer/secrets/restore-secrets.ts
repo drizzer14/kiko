@@ -1,5 +1,5 @@
-import { saveCredentials } from '../../crypto-sync/binance/binance.credentials';
-import { saveToken } from '../../monobank/token';
+import { saveToken } from '@kiko/monobank/token';
+import { saveCredentials } from '@kiko/crypto-sync/binance';
 
 import type { ExportSecrets } from '../payload';
 

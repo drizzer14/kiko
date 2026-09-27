@@ -1,16 +1,15 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
-
-import Box from '../../../design-system/components/box';
-import DateField from '../date-field';
-import TimeField from '../time-field';
+import Box from '@kiko/design-system/components/box';
+import DateField from '@kiko/screens/forms/date-field';
+import TimeField from '@kiko/screens/forms/time-field';
 
 import { styles } from './date-time-row.styles';
 import type { DateTimeRowProps } from './date-time-row.props';
 
-// The Дата + Час pair, rendered SIDE BY SIDE in one row (round-6 device
-// feedback item 1 — the two used to stack full-width). Both fields read and
+// The Дата + Час pair, rendered SIDE BY SIDE in one row, not stacked
+// full-width. Both fields read and
 // write the SAME `time`/`onChangeTime`: a date pick preserves the existing
 // time-of-day and a time pick preserves the existing day (DateField's and
 // TimeField's own onChange contracts), so either field can move
@@ -32,9 +31,11 @@ const DateTimeRow: FC<DateTimeRowProps> = ({
       <View style={styles.field}>
         <DateField
           label={t('forms.fields.date')}
+          sheetTitle={t('forms.fields.dateSheetTitle')}
           value={time}
           onChange={onChangeTime}
           disabled={disabled}
+          placeholder={t('forms.fields.selectDatePlaceholder')}
           testID={dateTestID}
         />
       </View>
@@ -42,9 +43,11 @@ const DateTimeRow: FC<DateTimeRowProps> = ({
       <View style={styles.field}>
         <TimeField
           label={t('forms.fields.time')}
+          sheetTitle={t('forms.fields.timeSheetTitle')}
           value={time}
           onChange={onChangeTime}
           disabled={disabled}
+          placeholder={t('forms.fields.selectTimePlaceholder')}
           testID={timeTestID}
         />
       </View>

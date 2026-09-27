@@ -1,11 +1,11 @@
 import { renderHook } from '@testing-library/react-native';
 
-import { i18n } from '../index';
+import { i18n } from '../init';
 
 import { useSyncLanguageWithSettings } from './use-sync-language-with-settings';
 
 const mockData: { language: 'en' | 'uk' | null }[] = [];
-jest.mock('../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: () => ({ data: mockData }),
 }));
 jest.mock('@kiko/settings/settings.repo', () => ({

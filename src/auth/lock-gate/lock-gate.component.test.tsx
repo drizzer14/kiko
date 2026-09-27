@@ -1,8 +1,7 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Text } from 'react-native';
-import '../../design-system/unistyles';
-import '../../i18n';
-
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import '@kiko/i18n/init';
 import MigrationsGate from '@kiko/migration/migrations-gate';
 
 import LockGate from './lock-gate.component';
@@ -10,7 +9,7 @@ import LockGate from './lock-gate.component';
 // The SF Symbol glyph is a native SFSymbolView; render it as a plain text node
 // so the lock screen's icon name is queryable without the native module (the
 // same pattern as button.component.test.tsx).
-jest.mock('../../design-system/components/symbol', () => {
+jest.mock('@kiko/design-system/components/symbol', () => {
   const { Text: RNText } = require('react-native');
 
   return {
@@ -35,14 +34,17 @@ jest.mock('../use-app-lock', () => ({
 // `settingsRepo` stub is only reached by `MigrationsGate` itself.
 type SettingsRow = { language?: string | null };
 const mockGetSettings = jest.fn<Promise<SettingsRow[]>, []>();
-jest.mock('../../db/client', () => ({ initDatabase: () => Promise.resolve() }));
-jest.mock('../../db/run-migrations', () => ({ runMigrations: () => Promise.resolve() }));
-jest.mock('../../monobank/token', () => ({ migrateLegacyToken: () => Promise.resolve() }));
+jest.mock('@kiko/db/client', () => ({ initDatabase: () => Promise.resolve() }));
+jest.mock('@kiko/db/run-migrations', () => ({ runMigrations: () => Promise.resolve() }));
+jest.mock('@kiko/monobank/token', () => ({ migrateLegacyToken: () => Promise.resolve() }));
 jest.mock('@kiko/monobank/migrate-credential', () => ({
   migrateSingleTokenToPerAccount: () => Promise.resolve(),
 }));
 jest.mock('@kiko/crypto-sync/binance/migrate-binance-credential', () => ({
   migrateBinanceCredentialToPerAccount: () => Promise.resolve(),
+}));
+jest.mock('@kiko/statement-import/upgrade-stored-dedup-keys/upgrade-stored-dedup-keys', () => ({
+  upgradeStoredDedupKeys: () => Promise.resolve(),
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { connectedQuery: () => Promise.resolve([]) },

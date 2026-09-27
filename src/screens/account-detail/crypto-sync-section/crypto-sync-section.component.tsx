@@ -1,26 +1,26 @@
-import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
-import type { TFunction } from 'i18next';
 import type { FC } from 'react';
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Alert } from 'react-native';
 import { match } from 'ts-pattern';
-
-import { disconnectCryptoAccount } from '../../../crypto-sync/disconnect';
 import {
   type BalanceProviderId,
   isBalanceProviderId,
   providerDisplayName,
-} from '../../../crypto-sync/provider';
-import { resyncRequest } from '../../../crypto-sync/resync-request';
-import type { AccountRow, HoldingRow } from '../../../db/schema';
-import Box from '../../../design-system/components/box';
-import Button from '../../../design-system/components/button';
-import ConfirmSheet from '../../../design-system/components/confirm-sheet';
-import SymbolIcon from '../../../design-system/components/symbol';
-import Text from '../../../design-system/components/text';
+} from '@kiko/crypto-sync/provider';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import type { AccountRow, HoldingRow } from '@kiko/db';
+import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
+import SymbolIcon from '@kiko/design-system/components/symbol';
+import { resyncRequest } from '@kiko/crypto-sync/resync-request';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
+import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
+import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
+
 import { styles } from '../account-detail.styles';
-import CryptoSyncForm from '../crypto-sync-form';
+import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
 import { formatLastSyncAt, latestSyncedAt } from '../format-last-sync';
 
 type CryptoSyncSectionProps = {
@@ -42,7 +42,7 @@ const disconnectMessage = (providerId: BalanceProviderId, t: TFunction): string 
 const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) => {
   const { t } = useTranslation();
   const { isSyncing, error, sync } = useCryptoSync();
-  // Multi-connection (Task 5.2): each crypto account connects independently, so
+  // Multi-connection: each crypto account connects independently, so
   // there is no "connected elsewhere" gate — another account holding this source
   // no longer blocks connecting it here.
   const connectedProvider = isBalanceProviderId(account.institution)
@@ -62,7 +62,7 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
     try {
       await disconnectCryptoAccount(account.id, providerId);
     } catch {
-      Alert.alert(t('accountDetail.disconnectErrorTitle'), t('accountDetail.tryAgainMessage'));
+      alertOnCatch(t, 'accountDetail.disconnectErrorTitle', 'accountDetail.tryAgainMessage');
     }
   };
 
@@ -76,6 +76,7 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
 
   const disconnect = (providerId: BalanceProviderId): void => {
     setDisconnectPending(false);
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) runDisconnect catches and alerts every failure itself
     runDisconnect(providerId);
   };
 
@@ -99,37 +100,18 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
             </Text>
           </Box>
 
-          {/* Sync and Disconnect share a single row. Sync is the affirmative blue
-              `primary` re-import action; Disconnect stays a neutral tonal action
-              beside it — never blue. */}
-          <Box direction="row" gap={2} testID="crypto-sync-actions-row">
-            <Button
-              variant="primary"
-              size="small"
-              fullWidth={false}
-              onPress={() => {
-                sync(resyncRequest(connectedProvider, account.id));
-              }}
-              disabled={isSyncing}
-              // iOS-26 rotate glyph; the central IOS26_SYMBOL_FALLBACKS map
-              // (symbol.availability.ts) hands SymbolIcon the iOS-16-safe
-              // `arrow.triangle.2.circlepath` on a pre-26 device for free, even
-              // through the shared Button's `icon` prop.
-              icon="arrow.trianglehead.2.clockwise.rotate.90"
-            >
-              {isSyncing ? t('accountDetail.syncing') : t('accountDetail.syncNow')}
-            </Button>
-
-            <Button
-              variant="secondaryTonal"
-              size="small"
-              fullWidth={false}
-              onPress={confirmDisconnect}
-              icon="lock.open"
-            >
-              {t('accountDetail.disconnectAction')}
-            </Button>
-          </Box>
+          {/* Sync and Disconnect share a single row — the shared
+              SyncDisconnectActionsRow (both the neutral `secondaryTonal`
+              treatment, never blue). */}
+          <SyncDisconnectActionsRow
+            onSync={() => {
+              // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) the shared sync action folds a failure into its error state and never rejects
+              sync(resyncRequest(connectedProvider, account.id));
+            }}
+            isSyncing={isSyncing}
+            onDisconnect={confirmDisconnect}
+            testID="crypto-sync-actions-row"
+          />
         </Box>
 
         {error !== undefined && (

@@ -1,7 +1,7 @@
-import { act, fireEvent, type RenderResult, render } from '@testing-library/react-native';
 import { ScrollView } from 'react-native';
-import '../../../design-system/unistyles';
-import { i18n } from '../../../i18n';
+import { act, fireEvent, type RenderResult, render } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
 
 import CategoryField from './category-field.component';
 
@@ -51,6 +51,7 @@ const renderCategoryField = (
   render(
     <CategoryField
       label="Category"
+      sheetTitle="Select a Category"
       options={OPTIONS}
       selectedKey={selectedKey}
       onSelect={onSelect}
@@ -69,6 +70,7 @@ describe('CategoryField', () => {
     const { getByText } = await render(
       <CategoryField
         label="Category"
+        sheetTitle="Select a Category"
         options={OPTIONS}
         selectedKey={null}
         onSelect={jest.fn()}
@@ -77,6 +79,16 @@ describe('CategoryField', () => {
     );
 
     expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it('shows sheetTitle, not label, as the sheet header', async () => {
+    const { getByLabelText, queryByText } = await renderCategoryField(null);
+
+    expect(queryByText('Select a Category')).toBeNull();
+
+    await fireEvent.press(getByLabelText('Category'));
+
+    expect(queryByText('Select a Category')).toBeTruthy();
   });
 
   it('shows the selected category title in the field', async () => {

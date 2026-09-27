@@ -8,6 +8,18 @@ export type BottomSheetProps = {
   visible: boolean;
   /** Called on a tap on the scrim behind the sheet, or a hardware/gesture back. */
   onDismiss: () => void;
+  /**
+   * Called when the underlying RN `Modal` reports its OWN `onDismiss` — the
+   * close ANIMATION has actually finished (iOS only; RN's `Modal` never
+   * fires this on Android). Distinct from `onDismiss` above, which means "a
+   * dismiss was REQUESTED" (a scrim tap, or `onRequestClose`) — this means
+   * "the sheet has genuinely finished closing". Optional: a caller that
+   * only needs the request signal (the vast majority) never passes it, and
+   * every existing `BottomSheet` caller is unaffected. Use this for
+   * anything that must not run until the sheet is visually gone — e.g.
+   * navigating the screen away, which would otherwise pop mid-animation.
+   */
+  onClosed?: () => void;
   /** The sheet's content, laid out in a bottom-anchored column. */
   children: ReactNode;
   /**

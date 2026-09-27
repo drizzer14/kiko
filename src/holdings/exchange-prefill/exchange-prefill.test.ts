@@ -18,7 +18,7 @@ describe('seedCounterpartMinorUnits', () => {
       sourceAmountMinorUnits: -20_00,
       sourceCurrency: 'USD',
       counterpartCurrency: 'UAH',
-      rateTable: { 'USD:UAH': 41.5 },
+      rateTable: { USD: 41.5 },
     });
 
     expect(seeded).toBe(830_00);
@@ -29,7 +29,7 @@ describe('seedCounterpartMinorUnits', () => {
       sourceAmountMinorUnits: -20_00,
       sourceCurrency: 'USD',
       counterpartCurrency: 'EUR',
-      rateTable: { 'USD:UAH': 41.5 },
+      rateTable: { USD: 41.5 },
     });
 
     expect(seeded).toBeNull();

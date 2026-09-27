@@ -1,23 +1,27 @@
-import type { Repository } from '@kiko/db/repository';
-import { appendDepositContributionTx } from '@kiko/holdings/repo';
-import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
-import { match } from 'ts-pattern';
-
-import { chunkForTable } from '../../db/chunk-for-table';
-import { database, write } from '../../db/client';
-import { id } from '../../db/id';
 import {
+  type Repository,
   accounts,
   categoryOverrides,
   type HoldingRow,
   holdings,
   type TransactionRow,
   transactions,
-} from '../../db/schema';
-import { isSyncedTransaction } from '../../holdings/deletable';
-import type { ExchangeConvertDirection } from '../../holdings/exchange-convert';
-import { exchangeReceivePath } from '../../holdings/exchange-destination';
-import type { DepositContribution } from '../../holdings/holding-metadata';
+  id,
+  database,
+  write,
+  chunkForTable,
+  chunkRows,
+} from '@kiko/db';
+import { match } from 'ts-pattern';
+import type { Currency } from '@kiko/currency/currency';
+import type { ClosingBalance } from '@kiko/statement-import/parser';
+import { exchangeReceivePath } from '@kiko/holdings/exchange-destination';
+import type { DepositContribution } from '@kiko/holdings/holding-metadata';
+import { isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
+import type { ExchangeConvertDirection } from '@kiko/holdings/exchange-convert';
+import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/repo';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
+
 import { normalizeTransactionName } from '../normalize-name';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
@@ -89,8 +93,8 @@ type ManualWithReturnsInput = {
 // (category-overrides.repo.ts) governs a SEPARATE concern: propagating that
 // pick to every OTHER same-name row, not whether this row itself is
 // categorised.
-const recordManualTx = async (
-  tx: typeof database,
+const recordManualTransaction = async (
+  databaseTransaction: typeof database,
   {
     holdingId,
     amountMinorUnits,
@@ -101,7 +105,7 @@ const recordManualTx = async (
     changeGroupId,
   }: ManualTransaction,
 ): Promise<void> => {
-  await tx.insert(transactions).values({
+  await databaseTransaction.insert(transactions).values({
     id: id(),
     holdingId,
     amountMinorUnits,
@@ -113,14 +117,14 @@ const recordManualTx = async (
     source: 'manual',
   });
 
-  const current = await tx
+  const current = await databaseTransaction
     .select({ balanceMinorUnits: holdings.balanceMinorUnits })
     .from(holdings)
     .where(eq(holdings.id, holdingId))
     .limit(1);
   const base = current.at(0)?.balanceMinorUnits ?? 0;
 
-  await tx
+  await databaseTransaction
     .update(holdings)
     .set({ balanceMinorUnits: base + amountMinorUnits })
     .where(eq(holdings.id, holdingId));
@@ -135,11 +139,11 @@ const recordManualTx = async (
 // bank-owned (synced) row is never mutated by this app and stays unmarked (see
 // the residual documented on `transactions.exchangeCounterpartHoldingId` in
 // `db/schema.ts`).
-const markExistingLegTx = async (
-  tx: typeof database,
+const markExistingLegTransaction = async (
+  databaseTransaction: typeof database,
   { existingTransactionId, counterpartHoldingId }: ExchangeCounterpartInput,
 ): Promise<void> => {
-  const existingRows = await tx
+  const existingRows = await databaseTransaction
     .select({ source: transactions.source })
     .from(transactions)
     .where(eq(transactions.id, existingTransactionId))
@@ -149,7 +153,7 @@ const markExistingLegTx = async (
     return;
   }
 
-  await tx
+  await databaseTransaction
     .update(transactions)
     .set({ exchangeCounterpartHoldingId: counterpartHoldingId })
     .where(eq(transactions.id, existingTransactionId));
@@ -196,26 +200,25 @@ const dedupByConflictKey = (inputs: NewTransaction[]): NewTransaction[] => {
 // a table's column count, which a plain scalar list has none of.
 const IN_CLAUSE_CHUNK_SIZE = 32_000;
 
-const chunkList = <T>(items: T[], size: number): T[][] => {
-  const parts: T[][] = [];
-  for (let start = 0; start < items.length; start += size) {
-    parts.push(items.slice(start, start + size));
-  }
-  return parts;
-};
-
 /**
- * How many of these rows the upsert will INSERT rather than refresh. Read inside
- * the caller's own transaction, so the count can never disagree with the write
- * it describes.
+ * The subset of these rows the upsert will INSERT rather than refresh. Read
+ * inside the caller's own transaction, so the result can never disagree with
+ * the write it describes. `addManyDedup` uses only its `.length`; the
+ * statement-import balance write (`importRows` below) additionally needs the
+ * actual rows, to sum their `amountMinorUnits` — a refreshed (already
+ * imported) row must contribute 0 to that sum, not just be excluded from the
+ * count.
  */
-const countNewRows = async (tx: typeof database, inputs: NewTransaction[]): Promise<number> => {
+const partitionNewRows = async (
+  databaseTransaction: typeof database,
+  inputs: NewTransaction[],
+): Promise<NewTransaction[]> => {
   const externalIds = inputs
     .map((input) => input.externalId)
     .filter((externalId): externalId is string => Boolean(externalId));
 
   if (externalIds.length === 0) {
-    return inputs.length;
+    return inputs;
   }
 
   const sources = Array.from(
@@ -228,8 +231,8 @@ const countNewRows = async (tx: typeof database, inputs: NewTransaction[]): Prom
   // (verified with EXPLAIN QUERY PLAN). Chunked over `externalIds` (a large
   // sync or statement import can carry tens of thousands) — see
   // `IN_CLAUSE_CHUNK_SIZE` above.
-  for (const externalIdChunk of chunkList(externalIds, IN_CLAUSE_CHUNK_SIZE)) {
-    const existing = await tx
+  for (const externalIdChunk of chunkRows(externalIds, IN_CLAUSE_CHUNK_SIZE)) {
+    const existing = await databaseTransaction
       .select({ source: transactions.source, externalId: transactions.externalId })
       .from(transactions)
       .where(
@@ -248,7 +251,150 @@ const countNewRows = async (tx: typeof database, inputs: NewTransaction[]): Prom
     const key = conflictKeyOf(input);
 
     return key === null || !known.has(key);
-  }).length;
+  });
+};
+
+/**
+ * Apply name->category override rules and upsert a batch of imported rows on
+ * the `(source, external_id)` unique index — the shared core `addManyDedup`
+ * and `importRows` (statement import's balance-write path, below) both run
+ * inside their own `write(...)` transaction. Returns the rows that were
+ * genuinely NEW — a refreshed (already-imported) row is excluded; a caller
+ * that only needs the count uses `.length`.
+ */
+const insertDedupRowsDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  inputs: NewTransaction[],
+): Promise<NewTransaction[]> => {
+  if (inputs.length === 0) {
+    return [];
+  }
+
+  const batch = dedupByConflictKey(inputs);
+  // Apply name→category override rules at insert time. Normalize each
+  // incoming description in JS (never SQL) and look the rules up by exact
+  // equality on the already-normalized key. Chunked over `keys` (a large
+  // import can carry tens of thousands of distinct descriptions) — see
+  // `IN_CLAUSE_CHUNK_SIZE` above.
+  const keys = Array.from(
+    new Set(batch.map((input) => normalizeTransactionName(input.description ?? ''))),
+  ).filter((key) => key !== '');
+  const rules: { normalizedName: string; category: string }[] = [];
+
+  for (const keyChunk of chunkRows(keys, IN_CLAUSE_CHUNK_SIZE)) {
+    rules.push(
+      ...(await databaseTransaction
+        .select()
+        .from(categoryOverrides)
+        .where(inArray(categoryOverrides.normalizedName, keyChunk))),
+    );
+  }
+  const categoryByName = new Map(rules.map((rule) => [rule.normalizedName, rule.category]));
+  const withOverrides = batch.map((input) => {
+    const override = categoryByName.get(normalizeTransactionName(input.description ?? ''));
+
+    return override ? { ...input, category: override } : input;
+  });
+  const newRows = await partitionNewRows(databaseTransaction, batch);
+  // Upsert on the `(source, external_id)` unique index: a re-fetched
+  // Monobank item is REFRESHED, not dropped. A `hold: true` authorization
+  // imports at its PROVISIONAL amount and re-syncs at the settled one, which
+  // `onConflictDoNothing` silently discarded — freezing the wrong amount
+  // forever. `excluded` is SQLite's alias for the row that would have been
+  // inserted.
+  //
+  // The update set names only the BANK-owned columns. `category` (which may
+  // be the user's own override, or a name rule's rewrite) and `comment` (the
+  // user's note) are deliberately absent, as is every structural column
+  // (`id`, `holding_id`, `exchange_counterpart_holding_id`).
+  //
+  // Manual rows are untouched either way: they carry a null `external_id`,
+  // and SQLite treats each NULL in a unique index as distinct, so two of
+  // them never conflict.
+  //
+  // Chunked per `chunkForTable`: a single unchunked insert bound one
+  // parameter per PRESENT key per row and SQLite
+  // rejects a statement over its 32766 bound-parameter ceiling — a whole
+  // statement-import file failed past ~2980 rows, a Monobank sync past
+  // ~2731. `dedupByConflictKey` already collapsed `withOverrides` to at
+  // most one row per `(source, external_id)` key BEFORE this split, so no
+  // two chunks can ever target the same conflict key — each chunk's
+  // ON CONFLICT resolves independently, with identical semantics to the
+  // old single-statement insert.
+  const rows = withOverrides.map((input) => ({ id: id(), ...input }));
+
+  for (const part of chunkForTable(transactions, rows)) {
+    await databaseTransaction
+      .insert(transactions)
+      .values(part)
+      .onConflictDoUpdate({
+        target: [transactions.source, transactions.externalId],
+        set: {
+          amountMinorUnits: sql`excluded.amount_minor_units`,
+          description: sql`excluded.description`,
+          hold: sql`excluded.hold`,
+          mcc: sql`excluded.mcc`,
+          counterIban: sql`excluded.counter_iban`,
+          time: sql`excluded.time`,
+        },
+      });
+  }
+
+  return newRows;
+};
+
+/** The LATER of two nullable instants, treating `null` as "no boundary from
+ * this source" rather than as an actual instant to compare — used by
+ * `importRows` to combine its two boundary sources (`holding.balanceSetAt`,
+ * the newest sync-source transaction) without a nested ternary. */
+const laterOf = (a: number | null, b: number | null): number | null => {
+  if (a === null) {
+    return b;
+  }
+
+  if (b === null) {
+    return a;
+  }
+
+  return Math.max(a, b);
+};
+
+type ImportBalanceDecision = {
+  nextBalance: number;
+  balanceSetAt?: number;
+};
+
+/** `importRows`'s pure balance decision, pulled out of the write closure to
+ * stay under Biome's cognitive-complexity cap — see that function's own doc
+ * comment for the full rule this implements. `balanceSetAt` is present only
+ * when a closing balance actually applied this call; the caller writes it to
+ * `holdings` alongside `nextBalance`. */
+const resolveImportBalance = (
+  holding: Pick<HoldingRow, 'balanceMinorUnits' | 'currency'>,
+  boundary: number | null,
+  newRows: NewTransaction[],
+  closingBalance: ClosingBalance | undefined,
+): ImportBalanceDecision => {
+  const netDelta = newRows
+    .filter((row) => boundary === null || row.time >= boundary)
+    .reduce((sum, row) => sum + row.amountMinorUnits, 0);
+  const useClosingBalance =
+    closingBalance !== undefined &&
+    closingBalance.currency === holding.currency &&
+    (boundary === null || closingBalance.asOfSeconds * 1000 >= boundary);
+
+  if (!useClosingBalance) {
+    return { nextBalance: holding.balanceMinorUnits + netDelta };
+  }
+
+  const postClosingNet = newRows
+    .filter((row) => row.time > closingBalance.asOfSeconds * 1000)
+    .reduce((sum, row) => sum + row.amountMinorUnits, 0);
+
+  return {
+    nextBalance: closingBalance.minorUnits + postClosingNet,
+    balanceSetAt: closingBalance.asOfSeconds * 1000,
+  };
 };
 
 export const transactionsRepo = {
@@ -288,6 +434,102 @@ export const transactionsRepo = {
       .selectDistinct({ holdingId: transactions.holdingId })
       .from(transactions)
       .where(and(eq(transactions.source, 'monobank'), eq(transactions.hold, true))),
+  /**
+   * The loan-payment matcher's own candidate read
+   * (`src/loans/payment-matcher/`): every debit, not already linked, not
+   * previously rejected (a manual "None" or Undo must stick), and not one leg
+   * of an Exchange/Convert (the structural `exchangeCounterpartHoldingId`
+   * marker, same check `exchange-exclusion.ts` makes) — filtered here in SQL,
+   * not in JS, so the matcher never even reads a row it can never link
+   * (P-NOWORK). Joined against the PAYER holding's own currency, which the
+   * matcher compares against each loan's own currency itself (this query
+   * makes no currency decision of its own).
+   *
+   * op-sqlite is a single-worker read queue every other app-open read
+   * shares, so a plain, unbounded scan of every eligible debit ever
+   * recorded would grow with the WHOLE ledger, not with what the matcher
+   * could ever possibly use — bounded to `time >= minTime` (the caller
+   * passes each loan's own earliest `startDate` minus the match window's own
+   * before-margin, so no installment's candidate window is ever excluded)
+   * and to `currencies` (only a loan's own currency can ever match rule 1,
+   * the matcher's own per-pair check makes no currency decision of its own
+   * either way — this is a P-NOWORK narrowing, not a correctness change).
+   */
+  loanMatchCandidatesQuery: (params: { minTime: number; currencies: readonly Currency[] }) =>
+    database
+      .select({
+        id: transactions.id,
+        holdingId: transactions.holdingId,
+        currency: holdings.currency,
+        amountMinorUnits: transactions.amountMinorUnits,
+        time: transactions.time,
+        description: transactions.description,
+        counterIban: transactions.counterIban,
+      })
+      .from(transactions)
+      .innerJoin(holdings, eq(transactions.holdingId, holdings.id))
+      .where(
+        and(
+          lt(transactions.amountMinorUnits, 0),
+          isNull(transactions.loanHoldingId),
+          eq(transactions.loanLinkRejected, false),
+          isNull(transactions.exchangeCounterpartHoldingId),
+          gte(transactions.time, params.minTime),
+          inArray(holdings.currency, [...params.currencies]),
+        ),
+      ),
+  /**
+   * Every transaction already linked (manual or auto alike) to one of these
+   * loan holdings — the matcher's own "taken installment" input
+   * (`LinkedLoanPayment`, `src/loans/payment-matcher/`): a link already
+   * proven against rules 1+2 must keep its installment from being handed to
+   * a DIFFERENT, later transaction on a following run —
+   * `loanMatchCandidatesQuery` above itself excludes an already-linked row,
+   * so without this separate read the matcher would never see it at all).
+   */
+  loanLinkedPaymentsQuery: (loanHoldingIds: readonly string[]) =>
+    database
+      .select({
+        loanHoldingId: transactions.loanHoldingId,
+        amountMinorUnits: transactions.amountMinorUnits,
+        time: transactions.time,
+      })
+      .from(transactions)
+      .where(inArray(transactions.loanHoldingId, [...loanHoldingIds])),
+  /**
+   * Every linked loan payment across EVERY loan, in one read, with the
+   * PAYER holding's currency — the price book's loan-payment input
+   * (`usePriceBook`, `src/prices/`), which every valuation site reads a
+   * loan's outstanding from. One query for all loans, never one per
+   * holding: op-sqlite serves the whole app from one worker thread
+   * (kiko-architecture). The currency lets the loan ledger count only a
+   * payment in the loan's own currency, the same rule the spending pie's
+   * loan-payment exclusion applies.
+   */
+  loanLedgerPaymentsQuery: () =>
+    database
+      .select({
+        loanHoldingId: transactions.loanHoldingId,
+        time: transactions.time,
+        amountMinorUnits: transactions.amountMinorUnits,
+        currency: holdings.currency,
+      })
+      .from(transactions)
+      .innerJoin(holdings, eq(transactions.holdingId, holdings.id))
+      .where(isNotNull(transactions.loanHoldingId)),
+  /**
+   * Every transaction linked (manual or auto) to one loan holding, newest
+   * first — the loan holding-detail screen's own "Linked payments" section:
+   * the loan itself is ledgerless (`isLedgerlessHoldingType`), so
+   * its own `listByHoldingQuery` would read nothing; a payment always lives
+   * on the PAYER holding instead, found only by this marker.
+   */
+  listLinkedToLoanQuery: (loanHoldingId: string) =>
+    database
+      .select()
+      .from(transactions)
+      .where(eq(transactions.loanHoldingId, loanHoldingId))
+      .orderBy(desc(transactions.time)),
   listAllWithContextQuery: () =>
     database
       .select({
@@ -314,6 +556,10 @@ export const transactionsRepo = {
         // Home reads the holding type to drop the HH:MM stamp on a
         // term_deposit/bond row (those are day-granular events).
         holdingType: holdings.type,
+        // The loan-link marker travels too: Home shows a small glyph on any
+        // row still carrying a link, regardless of `loanLinkSource` ('auto'
+        // or 'manual' read the same marker).
+        loanHoldingId: transactions.loanHoldingId,
       })
       .from(transactions)
       .innerJoin(holdings, eq(transactions.holdingId, holdings.id))
@@ -321,7 +567,7 @@ export const transactionsRepo = {
       .orderBy(desc(transactions.time)),
   /**
    * The DISTINCT, non-empty descriptions of the user's own MANUAL rows, newest
-   * first — the source of the create-form's inline description suggestions (D1).
+   * first — the source of the create-form's inline description suggestions.
    * The `source = 'manual'` filter EXCLUDES synced/bank descriptions (a Monobank
    * merchant name is not a manual entry the user re-types), and `<> ''` drops the
    * blank rows (a description-less exchange leg, a blank manual entry). Ordering
@@ -353,7 +599,9 @@ export const transactionsRepo = {
       .orderBy(desc(transactions.time))
       .limit(1),
   add: (input: NewTransaction) =>
-    write((tx) => tx.insert(transactions).values({ id: id(), ...input })),
+    write((databaseTransaction) =>
+      databaseTransaction.insert(transactions).values({ id: id(), ...input }),
+    ),
   /**
    * Record a manual transaction and adjust its holding's balance in ONE
    * op-sqlite transaction, so the ledger and the balance can never desync
@@ -361,7 +609,8 @@ export const transactionsRepo = {
    * the same transaction — not from a render snapshot — so concurrent
    * writes cannot clobber each other with a stale read-modify-write.
    */
-  recordManual: (input: ManualTransaction) => write((tx) => recordManualTx(tx, input)),
+  recordManual: (input: ManualTransaction) =>
+    write((databaseTransaction) => recordManualTransaction(databaseTransaction, input)),
   /**
    * Record an Exchange as two INDEPENDENT ledger rows in ONE transaction, tied
    * by the structural `exchangeCounterpartHoldingId` marker — each leg stores
@@ -375,12 +624,12 @@ export const transactionsRepo = {
    * render snapshot, exactly as `recordManual` does.
    */
   recordExchange: (input: ExchangeInput) =>
-    write(async (tx) => {
+    write(async (databaseTransaction) => {
       if (input.destinationHoldingId === input.sourceHoldingId) {
         throw new Error('recordExchange: destination equals source');
       }
 
-      await recordManualTx(tx, {
+      await recordManualTransaction(databaseTransaction, {
         holdingId: input.sourceHoldingId,
         amountMinorUnits: -input.valueOutMinorUnits,
         time: input.time,
@@ -394,7 +643,7 @@ export const transactionsRepo = {
 
       await match(exchangeReceivePath(input.destinationType))
         .with('plain', () =>
-          recordManualTx(tx, {
+          recordManualTransaction(databaseTransaction, {
             holdingId: input.destinationHoldingId,
             amountMinorUnits: input.valueInMinorUnits,
             time: input.time,
@@ -407,7 +656,11 @@ export const transactionsRepo = {
             date: input.time,
           };
 
-          return appendDepositContributionTx(tx, input.destinationHoldingId, contribution);
+          return appendDepositContributionDatabaseTransaction(
+            databaseTransaction,
+            input.destinationHoldingId,
+            contribution,
+          );
         })
         .with('excluded', () => {
           throw new Error(`recordExchange: ${input.destinationType} is not a valid destination`);
@@ -432,12 +685,12 @@ export const transactionsRepo = {
    * EXISTING row's holding), and the label is resolved at render time from it.
    * The EXISTING row is marked too, pointing back at the new leg's holding —
    * both halves of one movement leave the spending pie together — unless the
-   * bank owns it (see `markExistingLegTx`).
+   * bank owns it (see `markExistingLegTransaction`).
    * Balances are read INSIDE the transaction, never from a render snapshot,
    * exactly as `recordManual` does.
    */
   recordExchangeCounterpart: (input: ExchangeCounterpartInput) =>
-    write(async (tx) => {
+    write(async (databaseTransaction) => {
       if (
         input.direction === 'record-source' &&
         exchangeReceivePath(input.counterpartType) !== 'plain'
@@ -449,7 +702,7 @@ export const transactionsRepo = {
 
       await match(input.direction)
         .with('record-source', () =>
-          recordManualTx(tx, {
+          recordManualTransaction(databaseTransaction, {
             holdingId: input.counterpartHoldingId,
             amountMinorUnits: -input.amountMinorUnits,
             time: input.time,
@@ -459,7 +712,7 @@ export const transactionsRepo = {
         .with('record-destination', () =>
           match(exchangeReceivePath(input.counterpartType))
             .with('plain', () =>
-              recordManualTx(tx, {
+              recordManualTransaction(databaseTransaction, {
                 holdingId: input.counterpartHoldingId,
                 amountMinorUnits: input.amountMinorUnits,
                 time: input.time,
@@ -472,7 +725,11 @@ export const transactionsRepo = {
                 date: input.time,
               };
 
-              return appendDepositContributionTx(tx, input.counterpartHoldingId, contribution);
+              return appendDepositContributionDatabaseTransaction(
+                databaseTransaction,
+                input.counterpartHoldingId,
+                contribution,
+              );
             })
             .with('excluded', () => {
               throw new Error(
@@ -483,7 +740,7 @@ export const transactionsRepo = {
         )
         .exhaustive();
 
-      await markExistingLegTx(tx, input);
+      await markExistingLegTransaction(databaseTransaction, input);
     }),
   /**
    * Record a manual payment and N linked change-returns as N+1 INDEPENDENT
@@ -498,13 +755,13 @@ export const transactionsRepo = {
    * does.
    */
   recordManualWithReturns: (input: ManualWithReturnsInput) =>
-    write(async (tx) => {
+    write(async (databaseTransaction) => {
       const changeGroupId = id();
 
-      await recordManualTx(tx, { ...input.payment, changeGroupId });
+      await recordManualTransaction(databaseTransaction, { ...input.payment, changeGroupId });
 
       for (const change of input.returns) {
-        await recordManualTx(tx, {
+        await recordManualTransaction(databaseTransaction, {
           holdingId: change.holdingId,
           amountMinorUnits: change.amountMinorUnits,
           time: input.payment.time,
@@ -523,8 +780,8 @@ export const transactionsRepo = {
    * a missing id is a no-op rather than an error.
    */
   update: ({ transactionId, amountMinorUnits, time, description }: TransactionEdit) =>
-    write(async (tx) => {
-      const existingRows = await tx
+    write(async (databaseTransaction) => {
+      const existingRows = await databaseTransaction
         .select({
           holdingId: transactions.holdingId,
           amountMinorUnits: transactions.amountMinorUnits,
@@ -534,24 +791,26 @@ export const transactionsRepo = {
         .where(eq(transactions.id, transactionId))
         .limit(1);
       const existing = existingRows.at(0);
+
       if (existing?.source !== 'manual') {
         return;
       }
-      await tx
+      await databaseTransaction
         .update(transactions)
         .set({ amountMinorUnits, time, description: description ?? '' })
         .where(eq(transactions.id, transactionId));
       const delta = amountMinorUnits - existing.amountMinorUnits;
+
       if (delta === 0) {
         return;
       }
-      const current = await tx
+      const current = await databaseTransaction
         .select({ balanceMinorUnits: holdings.balanceMinorUnits })
         .from(holdings)
         .where(eq(holdings.id, existing.holdingId))
         .limit(1);
       const base = current.at(0)?.balanceMinorUnits ?? 0;
-      await tx
+      await databaseTransaction
         .update(holdings)
         .set({ balanceMinorUnits: base + delta })
         .where(eq(holdings.id, existing.holdingId));
@@ -566,20 +825,29 @@ export const transactionsRepo = {
    * a typed error; a missing id is a no-op rather than an error.
    */
   remove: (transactionId: string) =>
-    write(async (tx) => {
-      const rows = await tx.select().from(transactions).where(eq(transactions.id, transactionId));
+    write(async (databaseTransaction) => {
+      const rows = await databaseTransaction
+        .select()
+        .from(transactions)
+        .where(eq(transactions.id, transactionId));
       const row = rows.at(0);
+
       if (!row) {
         return;
       }
+
       if (isSyncedTransaction(row)) {
         throw new Error('transactionsRepo.remove: cannot delete a synced transaction');
       }
-      await tx.delete(transactions).where(eq(transactions.id, transactionId));
-      const holdingRows = await tx.select().from(holdings).where(eq(holdings.id, row.holdingId));
+      await databaseTransaction.delete(transactions).where(eq(transactions.id, transactionId));
+      const holdingRows = await databaseTransaction
+        .select()
+        .from(holdings)
+        .where(eq(holdings.id, row.holdingId));
       const holding = holdingRows.at(0);
+
       if (holding) {
-        await tx
+        await databaseTransaction
           .update(holdings)
           .set({ balanceMinorUnits: holding.balanceMinorUnits - row.amountMinorUnits })
           .where(eq(holdings.id, row.holdingId));
@@ -602,8 +870,169 @@ export const transactionsRepo = {
    * names only the bank-owned columns and deliberately excludes `category`.
    */
   setCategory: ({ transactionId, category }: { transactionId: string; category: string }) =>
-    write((tx) =>
-      tx.update(transactions).set({ category }).where(eq(transactions.id, transactionId)),
+    write((databaseTransaction) =>
+      databaseTransaction
+        .update(transactions)
+        .set({ category })
+        .where(eq(transactions.id, transactionId)),
+    ),
+  /**
+   * Link (or un-link) ONE transaction to a loan holding via the USER's own
+   * picker — the MANUAL write path, inside a single op-sqlite transaction.
+   * The matcher's own path is `setAutoLoanLinks` (`source: 'auto'`), a
+   * separate function: only a manual action may ever move `loanLinkRejected`.
+   *
+   * - A manual LINK (`loanHoldingId` non-null) clears `loanLinkRejected`,
+   *   un-rejecting a row the user had previously undone — a fresh manual
+   *   pick always overrides an earlier Undo.
+   * - A manual "None" (`loanHoldingId: null`) SETS `loanLinkRejected`: the
+   *   choice sticks, so the matcher never re-proposes a link on a row the
+   *   user has explicitly said is not a loan payment. This deviates from
+   *   the original design note's literal text ("a manual None clears the
+   *   flag"), which the orchestrator ruled would make "None" not stick —
+   *   the next sync would just auto-link it again.
+   *
+   * `loanLinkSource` is always cleared to null alongside a null
+   * `loanHoldingId`, keeping the two columns in lockstep. There is NO
+   * `source`-column gate, exactly like `setCategory` above and for the same
+   * reason: the link is user state, not a mutation of bank-owned ledger
+   * data, so it is allowed on a synced row too. A later re-sync never
+   * clobbers it, because `addManyDedup`'s `onConflictDoUpdate` set names
+   * only the bank-owned columns and deliberately excludes all three
+   * loan-link columns.
+   *
+   * A LINK (`loanHoldingId` non-null) is refused with a typed error when the
+   * payment's own holding currency differs from the target loan holding's
+   * currency: `loanInterestPerPaymentMinor` computes interest in the LOAN's
+   * currency, so a cross-currency link would either mislabel that amount or
+   * compare two currencies' minor units directly (`statistics/loan-payments`
+   * treats such a link, however written, as ordinary spending — this guard
+   * is what keeps one from being written in the first place). "None" never
+   * needs the check — there is no target currency to compare against.
+   */
+  setLoanPayment: ({
+    transactionId,
+    loanHoldingId,
+  }: {
+    transactionId: string;
+    loanHoldingId: string | null;
+  }) =>
+    write(async (databaseTransaction) => {
+      if (loanHoldingId !== null) {
+        const paymentRows = await databaseTransaction
+          .select({ holdingId: transactions.holdingId })
+          .from(transactions)
+          .where(eq(transactions.id, transactionId));
+        const paymentHoldingId = paymentRows.at(0)?.holdingId;
+
+        if (paymentHoldingId !== undefined) {
+          const paymentHoldingRows = await databaseTransaction
+            .select({ currency: holdings.currency })
+            .from(holdings)
+            .where(eq(holdings.id, paymentHoldingId));
+          const loanHoldingRows = await databaseTransaction
+            .select({ currency: holdings.currency })
+            .from(holdings)
+            .where(eq(holdings.id, loanHoldingId));
+          const paymentCurrency = paymentHoldingRows.at(0)?.currency;
+          const loanCurrency = loanHoldingRows.at(0)?.currency;
+
+          if (
+            paymentCurrency !== undefined &&
+            loanCurrency !== undefined &&
+            paymentCurrency !== loanCurrency
+          ) {
+            throw new Error(
+              'transactionsRepo.setLoanPayment: cannot link a payment to a loan holding in a different currency',
+            );
+          }
+        }
+      }
+
+      await databaseTransaction
+        .update(transactions)
+        .set({
+          loanHoldingId,
+          loanLinkSource: loanHoldingId === null ? null : ('manual' as const),
+          loanLinkRejected: loanHoldingId === null,
+        })
+        .where(eq(transactions.id, transactionId));
+    }),
+  /**
+   * Batch-link the matcher's PROPOSED candidates to their loan holdings, in
+   * ONE op-sqlite transaction — the auto-match write path, "one
+   * db.transaction() writes the links". Split out of `setLoanPayment`
+   * because only a MANUAL action may ever move `loanLinkRejected`: this
+   * function never sets or reads it into the write, and its own WHERE
+   * clause skips any row that is already
+   * linked (`loanHoldingId` non-null) or already rejected, so a candidate
+   * list that is stale, or a user Undo/manual-link that raced this batch,
+   * can never be silently overwritten. A link whose row fails that WHERE is
+   * simply not updated — no error, no partial side effect. An empty
+   * `links` array is a no-op.
+   *
+   * Every target loan holding is ALSO re-checked to still exist AS AN OPEN
+   * LOAN — `type = 'loan'` AND `closedAt IS NULL`, not merely that its id is
+   * still present — inside this SAME transaction, before any write: the
+   * matcher computes its candidates from a snapshot read moments earlier, so
+   * a loan holding can be deleted, closed, or (in principle) re-typed in the
+   * gap between that read and this write. `holdingsRepo.remove` clears every
+   * link that ALREADY points at a holding the instant it is deleted, but
+   * cannot clear a link this call has not written yet, and neither a close
+   * nor a re-type touches an existing link at all — only THIS re-check does.
+   * A link whose loan fails that check is simply skipped, the same
+   * no-error/no-partial-effect contract the per-row WHERE above already
+   * gives every other skip.
+   */
+  setAutoLoanLinks: (links: { transactionId: string; loanHoldingId: string }[]) =>
+    write(async (databaseTransaction) => {
+      if (links.length === 0) {
+        return;
+      }
+
+      const loanHoldingIds = Array.from(new Set(links.map((link) => link.loanHoldingId)));
+      const existingLoanHoldingRows = await databaseTransaction
+        .select({ id: holdings.id })
+        .from(holdings)
+        .where(
+          and(
+            inArray(holdings.id, loanHoldingIds),
+            eq(holdings.type, 'loan'),
+            isNull(holdings.closedAt),
+          ),
+        );
+      const existingLoanHoldingIds = new Set(existingLoanHoldingRows.map((row) => row.id));
+
+      for (const link of links) {
+        if (!existingLoanHoldingIds.has(link.loanHoldingId)) {
+          continue;
+        }
+
+        await databaseTransaction
+          .update(transactions)
+          .set({ loanHoldingId: link.loanHoldingId, loanLinkSource: 'auto' })
+          .where(
+            and(
+              eq(transactions.id, link.transactionId),
+              isNull(transactions.loanHoldingId),
+              eq(transactions.loanLinkRejected, false),
+            ),
+          );
+      }
+    }),
+  /**
+   * Undo an auto-suggested loan-payment link (false-positive handling):
+   * clears the link and sets `loanLinkRejected`, so the matcher
+   * never re-proposes the same link on this row again. A later MANUAL link
+   * (or manual "None", via `setLoanPayment`) is the only thing that clears
+   * the flag back.
+   */
+  undoAutoLoanLink: (transactionId: string) =>
+    write((databaseTransaction) =>
+      databaseTransaction
+        .update(transactions)
+        .set({ loanHoldingId: null, loanLinkSource: null, loanLinkRejected: true })
+        .where(and(eq(transactions.id, transactionId), eq(transactions.loanLinkSource, 'auto'))),
     ),
   /**
    * Upsert a batch of imported rows on the `(source, external_id)` unique index
@@ -611,78 +1040,203 @@ export const transactionsRepo = {
    * to the user as "imported".
    */
   addManyDedup: (inputs: NewTransaction[]) =>
-    write(async (tx): Promise<number> => {
-      if (inputs.length === 0) {
-        return 0;
+    write(
+      async (databaseTransaction) =>
+        (await insertDedupRowsDatabaseTransaction(databaseTransaction, inputs)).length,
+    ),
+  /**
+   * Statement import's ONE write: upsert the parsed rows (the same
+   * `(source, external_id)` dedup as `addManyDedup`) AND move the target
+   * holding's `balanceMinorUnits`, in a SINGLE op-sqlite transaction. This
+   * is the ONE full statement of the balance rule — `kiko-domain`'s
+   * "Statement import" section, `ParsedStatement.closingBalance`'s doc
+   * comment (`parser.ts`), `importStatement`'s own doc comment, and
+   * `resolveClosingBalance`'s doc comment (`monobank-csv.format.ts`) all
+   * point back here rather than restating it. The two writes MUST stay
+   * atomic in one transaction: calling only `addManyDedup` (which upserts
+   * `transactions` and never touches `holdings`) leaves an import-only
+   * holding's displayed balance stuck at 0 forever, even though its
+   * transaction list shows the real imported rows.
+   *
+   * THE BOUNDARY: every decision below is relative to one "as-of" instant —
+   * the LATER of (a) `holding.balanceSetAt` — set by `holdingsRepo.create`
+   * (a non-zero typed opening balance), `holdingsRepo.updateWithBalanceDelta`
+   * (a balance edit whose delta is non-zero, stamped at the edit's own
+   * `time`), and this function's own closing-balance write below (see "The
+   * closing-balance write" further down); NOT by `recordManual`, either leg
+   * of an exchange, a change-return row, or `accountsRepo.createCashAccount`
+   * — those write ordinary ledger entries, not a balance being SET — and (b)
+   * the newest transaction from a SYNC source (`source` not in `('manual',
+   * 'import')`). A sync-set balance is authoritative the same way an applied
+   * closing balance is, and it survives a disconnect: `accountsRepo.disconnect`
+   * clears `accounts.institution` only, so the holding keeps its
+   * `monobank`/`btc_wallet`/`binance` rows and this still finds them.
+   *
+   * `boundary` is `null` when NEITHER (a) nor (b) has ever happened for this
+   * holding: every genuinely new row moves the balance regardless of its own
+   * date, and a `closingBalance` is always eligible — this is the original
+   * bug-fix case (an import-only holding must show the statement's
+   * net/closing balance, not 0).
+   *
+   * With a boundary, each genuinely new row (from `insertDedupRowsDatabaseTransaction`) is
+   * split by its OWN `time` against it: a row dated BEFORE the boundary is
+   * HISTORY — it still inserts as a real ledger row, but contributes 0 to
+   * `netDelta`. A row dated AT/AFTER the boundary is CURRENT and counts at
+   * its full amount.
+   *
+   * The balance move is `base + netDelta` — the sum of only the CURRENT new
+   * rows — so a re-import of an already-imported file (every row refreshed,
+   * none new) leaves the balance untouched, exactly like a second identical
+   * import must. UNLESS `closingBalance` is given, is in the holding's OWN
+   * currency, and is AS OF a time at or after the boundary — then the
+   * closing balance is written outright PLUS the net of any new rows dated
+   * STRICTLY AFTER the closing balance's own as-of (normally none, since a
+   * statement's closing balance is drawn from its own newest row — see
+   * `resolveClosingBalance`, `monobank-csv.format.ts`), correcting for any
+   * drift the ledger delta alone can't see. A statement OLDER than the
+   * boundary falls back to the net-delta rule instead (where its own rows
+   * are, by construction, all history and add 0 too), so an out-of-order
+   * re-import can never regress the balance to a stale closing figure.
+   *
+   * The closing-balance write is `nextBalance = closingBalance.minorUnits +
+   * postClosingNet`, not `base + netDelta` — the implicit adjustment this
+   * makes, `D = closingBalance.minorUnits - (base + netDelta)`, is never
+   * recorded as a ledger row, it just overwrites `base`; `holding.balanceSetAt`
+   * is the only durable trace this write leaves behind, not a transaction
+   * row. For a holding with NO prior transaction (`base` is always 0, and
+   * this statement's own rows are the WHOLE history) this is exact: nothing
+   * is left unaccounted for.
+   * For a holding with pre-existing history, `D` silently absorbs whatever
+   * happened before this statement's own coverage started — a prior manual
+   * entry error, an out-of-band transfer, or a real gap this particular
+   * statement predates — the resulting balance is correct as of
+   * `asOfSeconds`, but the SIZE of `D` is never surfaced anywhere. A
+   * history-only import (rows before the boundary, inserted at 0) leaves the
+   * same kind of untracked adjustment one level down: `holdingValueAt`
+   * (`src/statistics/holding-value-at/holding-value-at.ts`) derives a holding's opening
+   * balance as `current balance - sum(all transactions)`, so those newly
+   * inserted rows shift that subtraction even though they added 0 to the
+   * current balance, moving every PAST value the net-worth series
+   * reconstructs for this holding by the same untracked amount.
+   *
+   * The eligibility comparison (`asOfSeconds * 1000 >= boundary`) is itself
+   * imprecise: `parseDateTimeSeconds` (`parse-date-time.ts`) reads a bank
+   * export's wall-clock timestamp with `Date.UTC(...)` directly, with no
+   * timezone offset applied — Ukraine is UTC+2/UTC+3, so every `asOfSeconds`
+   * (and every imported row's own `time`) is actually 2-3 hours LATER than
+   * the transaction's true UTC instant (the wall-clock digits get read as if
+   * they were already UTC, so a Kyiv-local instant is stamped 2-3 hours
+   * ahead of its real UTC value). Comparisons between two statement-derived
+   * times stay self-consistent (both carry the same skew), but a comparison
+   * against a genuinely-UTC boundary (e.g. a manual entry or edit
+   * timestamped with the real `Date.now()`) can land on the wrong side of
+   * this gate when the two times are within that 2-3 hour window: a balance
+   * hand-set at 12:00 Kyiv time, followed by a same-day PrivatBank or
+   * Sensebank import, sees its own 10:00-12:00 Kyiv rows parsed as at/after
+   * the boundary and counted as CURRENT — double-counting an amount the
+   * hand-set balance already reflects. Monobank is safe from this: its
+   * closing balance overwrites the balance outright instead of adding a net
+   * delta on top of an already-correct hand-set figure.
+   *
+   * `insertDedupRowsDatabaseTransaction`'s `(source, external_id)` dedup key includes
+   * `source` — a row from ANOTHER source (a `manual` entry, a `monobank`
+   * sync row) that happens to represent the same real-world transaction as
+   * an imported row is NOT a dedup hit; it is a genuinely new `import`-
+   * sourced row, and its amount counts fully in `netDelta` PROVIDED it is
+   * also dated at/after the boundary — exactly like any other genuinely new
+   * row. Importing a statement that covers a transaction the user already
+   * entered manually therefore double-counts that amount in the net-delta
+   * path when both land on the current side of the boundary (the
+   * closing-balance path is unaffected, since it overwrites rather than
+   * adds).
+   *
+   * A SYNCED holding (`isSyncedHolding`) is the one exception: its balance is
+   * already owned by the live sync pipeline (`upsertMonobank` et al.), so this
+   * never touches it here, even when the statement carries new rows or a
+   * fresher closing balance — the rows still import as real ledger history,
+   * they just don't move the display balance a second, competing way.
+   *
+   * NO MIGRATION was written for holdings a pre-fix build already wrote a
+   * wrong (0 or under-counted) balance into: `1.0.0` is
+   * not published — build 25 was still in App Store review when this fix
+   * landed — so no real user has broken data to repair; a corrected build
+   * simply starts applying this rule to every import going forward. The
+   * `balance_set_at` migration DOES backfill existing rows, but only as a
+   * HEURISTIC (`drizzle/migrations/0036_*.sql`): it guesses a hand-set row
+   * by shape (`description ''`, `category` NULL, no exchange/change-return
+   * marker), since pre-migration data carries no direct signal for "this
+   * manual row was a balance being SET, not an ordinary entry" — this is
+   * for backfilling PRE-migration data only, not a repair of the balance
+   * itself.
+   *
+   * A legacy `.kiko` restore backfills the same way: see
+   * `restoreDataSnapshot` (`data-transfer/snapshot/restore-snapshot.ts`).
+   */
+  importRows: (input: {
+    holdingId: string;
+    rows: NewTransaction[];
+    closingBalance?: ClosingBalance;
+  }): Promise<number> =>
+    write(async (databaseTransaction) => {
+      const holdingRows = await databaseTransaction
+        .select()
+        .from(holdings)
+        .where(eq(holdings.id, input.holdingId))
+        .limit(1);
+      const holding = holdingRows.at(0);
+
+      if (!holding) {
+        // Review follow-up (ponytail): the real caller (`importStatement`)
+        // already validates the holding exists before this ever runs — a
+        // missing holding here means a caller bug or a race, not a normal
+        // path to silently degrade into a balance-less dedup insert.
+        throw new Error(`Target holding not found: ${input.holdingId}`);
       }
-      const batch = dedupByConflictKey(inputs);
-      // Apply name→category override rules at insert time. Normalize each
-      // incoming description in JS (never SQL) and look the rules up by exact
-      // equality on the already-normalized key. Chunked over `keys` (a large
-      // import can carry tens of thousands of distinct descriptions) — see
-      // `IN_CLAUSE_CHUNK_SIZE` above.
-      const keys = Array.from(
-        new Set(batch.map((input) => normalizeTransactionName(input.description ?? ''))),
-      ).filter((key) => key !== '');
-      const rules: { normalizedName: string; category: string }[] = [];
-      for (const keyChunk of chunkList(keys, IN_CLAUSE_CHUNK_SIZE)) {
-        rules.push(
-          ...(await tx
-            .select()
-            .from(categoryOverrides)
-            .where(inArray(categoryOverrides.normalizedName, keyChunk))),
+
+      const accountRows = await databaseTransaction
+        .select({ institution: accounts.institution })
+        .from(accounts)
+        .where(eq(accounts.id, holding.accountId))
+        .limit(1);
+      const synced = isSyncedHolding(holding, accountRows.at(0));
+
+      // Read BEFORE the new rows are upserted below, so this reflects the
+      // holding's ledger as it stood going into this import — never a row
+      // this very import is about to add. This IS boundary source (b): see
+      // THE BOUNDARY in the doc comment above.
+      const syncRows = await databaseTransaction
+        .select({ time: sql<number | null>`max(${transactions.time})` })
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.holdingId, input.holdingId),
+            ne(transactions.source, 'manual'),
+            ne(transactions.source, 'import'),
+          ),
         );
-      }
-      const categoryByName = new Map(rules.map((rule) => [rule.normalizedName, rule.category]));
-      const withOverrides = batch.map((input) => {
-        const override = categoryByName.get(normalizeTransactionName(input.description ?? ''));
+      const syncBoundary = syncRows.at(0)?.time ?? null;
+      const boundary = laterOf(holding.balanceSetAt, syncBoundary);
 
-        return override ? { ...input, category: override } : input;
-      });
-      const newRows = await countNewRows(tx, batch);
-      // Upsert on the `(source, external_id)` unique index: a re-fetched
-      // Monobank item is REFRESHED, not dropped. A `hold: true` authorization
-      // imports at its PROVISIONAL amount and re-syncs at the settled one, which
-      // `onConflictDoNothing` silently discarded — freezing the wrong amount
-      // forever. `excluded` is SQLite's alias for the row that would have been
-      // inserted.
-      //
-      // The update set names only the BANK-owned columns. `category` (which may
-      // be the user's own override, or a name rule's rewrite) and `comment` (the
-      // user's note) are deliberately absent, as is every structural column
-      // (`id`, `holding_id`, `exchange_counterpart_holding_id`).
-      //
-      // Manual rows are untouched either way: they carry a null `external_id`,
-      // and SQLite treats each NULL in a unique index as distinct, so two of
-      // them never conflict.
-      //
-      // Chunked per `chunkForTable` (`src/db/chunk-for-table.ts`): a single
-      // unchunked insert binds one parameter per PRESENT key per row, and a
-      // large sync or statement import overflows SQLite's 32766
-      // bound-parameter ceiling in one statement. `dedupByConflictKey`
-      // already collapsed `withOverrides` to at most one row per
-      // `(source, external_id)` key BEFORE this split, so no two chunks can
-      // ever target the same conflict key — each chunk's ON CONFLICT
-      // resolves independently, with identical semantics to the old
-      // single-statement insert.
-      const rows = withOverrides.map((input) => ({ id: id(), ...input }));
-      for (const chunk of chunkForTable(transactions, rows)) {
-        await tx
-          .insert(transactions)
-          .values(chunk)
-          .onConflictDoUpdate({
-            target: [transactions.source, transactions.externalId],
-            set: {
-              amountMinorUnits: sql`excluded.amount_minor_units`,
-              description: sql`excluded.description`,
-              hold: sql`excluded.hold`,
-              mcc: sql`excluded.mcc`,
-              counterIban: sql`excluded.counter_iban`,
-              time: sql`excluded.time`,
-            },
-          });
+      const newRows = await insertDedupRowsDatabaseTransaction(databaseTransaction, input.rows);
+
+      if (synced) {
+        return newRows.length;
       }
 
-      return newRows;
+      const { nextBalance, balanceSetAt } = resolveImportBalance(
+        holding,
+        boundary,
+        newRows,
+        input.closingBalance,
+      );
+
+      if (nextBalance !== holding.balanceMinorUnits || balanceSetAt !== undefined) {
+        await databaseTransaction
+          .update(holdings)
+          .set({ balanceMinorUnits: nextBalance, balanceSetAt })
+          .where(eq(holdings.id, input.holdingId));
+      }
+
+      return newRows.length;
     }),
 } satisfies Repository;

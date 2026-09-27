@@ -79,7 +79,7 @@ const resolveMigrationSql = (entry: MigrationJournalEntry): string => {
 
 const applyMigration = async (entry: MigrationJournalEntry): Promise<void> => {
   // Drop empty/whitespace-only chunks so a trailing breakpoint or a
-  // hand-edited migration file cannot produce a `tx.execute('')`.
+  // hand-edited migration file cannot produce a `databaseTransaction.execute('')`.
   const statements = resolveMigrationSql(entry)
     .split(STATEMENT_BREAKPOINT)
     .filter((statement) => statement.trim() !== '');
@@ -87,15 +87,15 @@ const applyMigration = async (entry: MigrationJournalEntry): Promise<void> => {
   // Each migration's statements and its bookkeeping insert commit atomically,
   // matching drizzle's own transactional migration semantics. drizzle records
   // an empty hash for op-sqlite migrations, so this does the same.
-  await rawDatabase.transaction(async (tx) => {
+  await rawDatabase.transaction(async (databaseTransaction) => {
     for (const statement of statements) {
-      await tx.execute(statement);
+      await databaseTransaction.execute(statement);
     }
 
-    await tx.execute(`INSERT INTO ${MIGRATIONS_TABLE} ("hash", "created_at") VALUES(?, ?)`, [
-      '',
-      entry.when,
-    ]);
+    await databaseTransaction.execute(
+      `INSERT INTO ${MIGRATIONS_TABLE} ("hash", "created_at") VALUES(?, ?)`,
+      ['', entry.when],
+    );
   });
 };
 

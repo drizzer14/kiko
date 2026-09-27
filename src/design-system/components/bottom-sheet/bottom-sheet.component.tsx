@@ -1,21 +1,20 @@
-import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
-import { type FC, useEffect } from 'react';
-import { Keyboard, Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { type FC, useEffect } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Keyboard, Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 
 import Box from '../box';
 import GlassSurface from '../glass-surface';
-import { KEYBOARD_ACCESSORY_HEIGHT } from '../keyboard-done-accessory/keyboard-done-accessory.styles';
+import { KEYBOARD_ACCESSORY_HEIGHT } from '../keyboard-done-accessory';
 
-import { clampSheetTranslate, shouldDismissSheet } from './bottom-sheet.gesture';
 import {
   resolveKeyboardAwareBottomPadding,
   resolveKeyboardAwareMaxHeight,
@@ -23,6 +22,7 @@ import {
 } from './bottom-sheet.keyboard';
 import type { BottomSheetProps } from './bottom-sheet.props';
 import { SHEET_PADDING_STEP, styles } from './bottom-sheet.styles';
+import { clampSheetTranslate, shouldDismissSheet } from './bottom-sheet.gesture';
 
 // Every sheet caps at 66% of the current window height, no exceptions — a
 // tall sheet scrolls past that point instead of growing over the status bar /
@@ -41,7 +41,7 @@ const MAX_HEIGHT_RATIO = 0.66;
 // (`resolveKeyboardLift`), the keyboard's own corner curve exposes a small
 // triangular sliver of whatever sits BEHIND both of them at the top-left/
 // top-right corners — the dark modal scrim, not the sheet's glass, reading as
-// two small black notches (device bug, on-device review). Folding this extra
+// two small black notches. Folding this extra
 // distance into the SAME "accessory height" both `resolveKeyboardLift` and
 // `resolveKeyboardAwareBottomPadding` already take (see `sheetAnimatedStyle`
 // below) lifts the sheet LESS (its bottom edge now extends this far PAST the
@@ -112,7 +112,7 @@ export const SHEET_DRAG_GESTURE_TEST_ID = 'bottom-sheet-drag';
  * `glass-surface.props.d.ts`'s `material` doc for the full distinction; this
  * was `transparent` before, which painted a translucent `surfaceTranslucent`
  * backdrop UNDER the glass and muted the live sample into a near-solid dark
- * panel — device feedback). It also takes `bloom` (part of the app-wide
+ * panel). It also takes `bloom` (part of the app-wide
  * bloom rollout — see `glass-surface.props.d.ts`'s `bloom` doc): since
  * `material` already renders no backdrop on the glass path, the only change
  * `bloom` adds here is switching the native `UIGlassEffect` style from
@@ -131,6 +131,7 @@ export const SHEET_DRAG_GESTURE_TEST_ID = 'bottom-sheet-drag';
 const BottomSheet: FC<BottomSheetProps> = ({
   visible,
   onDismiss,
+  onClosed,
   children,
   header,
   gap = 3,
@@ -291,7 +292,7 @@ const BottomSheet: FC<BottomSheetProps> = ({
         translateY.value = withSpring(0, SHEET_SPRING);
       }
     });
-  // F5 device bug fix: the 66% cap above is forced on every sheet, but a
+  // The 66% cap above is forced on every sheet, but a
   // plain-Box sheet rendered no scroll container of its own, so content
   // taller than the cap was simply CLIPPED rather than scrollable. The
   // default path wraps `children` in a `ScrollView` so every sheet scrolls
@@ -314,7 +315,14 @@ const BottomSheet: FC<BottomSheetProps> = ({
   );
 
   return (
-    <Modal transparent visible={visible} animationType={animationType} onRequestClose={onDismiss}>
+    <Modal
+      transparent
+      visible={visible}
+      animationType={animationType}
+      onRequestClose={onDismiss}
+      onDismiss={onClosed}
+      testID={testID && `${testID}-modal`}
+    >
       {/* A Modal portals to its own native root OUTSIDE the app's root
           GestureHandlerRootView, so the sheet's drag Pan would never be
           recognized without this local root wrapping the overlay. */}

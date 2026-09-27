@@ -2,7 +2,7 @@ export type EntityIconTileProps = {
   // The SF Symbol name — same contract as SymbolIcon's own `name`.
   name: string;
   // The entity's resolved effective color (see `resolveEntityColor`,
-  // `design-system/entity-tint.ts`) — always an already-resolved hex, never a
+  // `design-system/entity-tint/entity-tint.ts`) — always an already-resolved hex, never a
   // raw stored/nullable value. The tile derives its gradient from this same
   // hex via `entityIconTileGradient`.
   color: string;

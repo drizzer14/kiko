@@ -50,7 +50,7 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
     //
     // `scrollable={false}`: the Remove/Cancel footer below must stay pinned at
     // the body end regardless of scroll position — BottomSheet's shared
-    // ScrollView (F5 fix) would otherwise sweep it into the same scrollable
+    // ScrollView would otherwise sweep it into the same scrollable
     // region as the grid above it, along with nesting a second same-axis
     // ScrollView around this component's own. The title renders through the
     // shared `header` prop instead (see below); the actions used to sit in a
@@ -80,14 +80,10 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
                 style={[
                   styles.option,
                   {
-                    // The grid renders inside the shared BottomSheet, whose
-                    // base is the grouped `sheetBackground` (= `surface`). An
-                    // unselected tile therefore uses `surfaceHigh` — one level
-                    // ABOVE the sheet base — so it reads as a raised control
-                    // instead of blending into the sheet (the same grouped-
-                    // elevation convention as an OptionPills pill). Selected
-                    // keeps the accent fill.
-                    backgroundColor: isSelected ? theme.colors.accent : theme.colors.surfaceHigh,
+                    // The same selection look as a ChipRow chip: the accent
+                    // fill once selected, else the faint neutral fill, which
+                    // reads as a control on the sheet without a solid pill.
+                    backgroundColor: isSelected ? theme.colors.accent : theme.colors.neutralSubtle,
                   },
                 ]}
               >
@@ -110,7 +106,12 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
           </Button>
         )}
 
-        <Button variant="secondary" fullWidth={false} onPress={onDismiss}>
+        <Button
+          variant="ghost"
+          textColor={theme.colors.negative}
+          fullWidth={false}
+          onPress={onDismiss}
+        >
           {t('common.cancel')}
         </Button>
       </SheetFooter>

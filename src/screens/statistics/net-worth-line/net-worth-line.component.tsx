@@ -1,8 +1,8 @@
 import { type FC, memo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useUnistyles } from 'react-native-unistyles';
 import { type DimensionValue, View } from 'react-native';
 import { Defs, G, Line, LinearGradient, Path, Polyline, Stop, Svg } from 'react-native-svg';
-import { useUnistyles } from 'react-native-unistyles';
 
 // react-native-svg declares `testID` (via AccessibilityProps -> CommonPathProps)
 // on its path-based primitives (Path, Line, Polyline) but omits it from
@@ -19,13 +19,13 @@ declare module 'react-native-svg' {
   }
 }
 
-import { formatDayMonth } from '../../../dates/format';
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import { activeLocale } from '../../../i18n/active-locale';
-import type { Currency } from '../../../currency/currency';
-import type { NetWorthPoint } from '../../../statistics/net-worth-series';
-import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact';
+import { formatDayMonth } from '@kiko/dates';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import { activeLocale } from '@kiko/i18n/active-locale';
+import type { Currency } from '@kiko/currency/currency';
+import type { NetWorthPoint } from '@kiko/statistics/net-worth-series';
+import { chooseCompactUnit, formatCompactMoney } from '@kiko/currency/compact';
 
 import { styles } from './net-worth-line.styles';
 
@@ -240,6 +240,7 @@ const buildXTickSet = (scales: Scales, fractions: readonly number[]): XTick[] =>
 // the evenly spaced set would otherwise stack every date on the same x.
 const buildXLabelTicks = (scales: Scales): XTick[] => {
   const timeSpan = scales.maxTime - scales.minTime;
+
   if (timeSpan <= 0) {
     return [{ key: '0.00', time: scales.minTime, leftPercent: 0, isEdge: true, isStart: true }];
   }
@@ -253,6 +254,7 @@ const buildXLabelTicks = (scales: Scales): XTick[] => {
 // old single fraction-set render filtered out of the gridlines anyway).
 const buildXGridTicks = (scales: Scales): XTick[] => {
   const timeSpan = scales.maxTime - scales.minTime;
+
   if (timeSpan <= 0) {
     return [];
   }
@@ -331,8 +333,6 @@ export const toAreaPath = (
   return `M ${vertices.join(' L ')} L ${lastX},${referenceY} L ${firstX},${referenceY} Z`;
 };
 
-// R5-D (exploratory — the user wants to SEE this, may keep or drop it; kept
-// as one cohesive, self-contained block so it reverts in a single edit).
 // Colors the net-worth STROKE by sign per segment — green where above the
 // dashed start reference, red where below — matching the FILL's own
 // crossing logic exactly rather than re-deriving it. Reuses the SAME
@@ -362,6 +362,7 @@ export const buildLineSegments = (
   // referenceY gives xCross = x2), which would otherwise duplicate it.
   const pushVertex = (vertices: string[], x: number, y: number): void => {
     const vertex = `${x},${y}`;
+
     if (vertices[vertices.length - 1] !== vertex) {
       vertices.push(vertex);
     }
@@ -669,11 +670,10 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
               />
             ) : null}
 
-            {/* R5-D (exploratory, cleanly revertible as one block — see
-                buildLineSegments above): the stroke itself now reads sign at
-                a glance, green above / red below the dashed reference, split
+            {/* See buildLineSegments above: the stroke reads sign at a
+                glance, green above / red below the dashed reference, split
                 at the SAME crossing x the fill above uses. A non-crossing
-                series still renders as exactly one segment/color. */}
+                series renders as exactly one segment/color. */}
             {buildLineSegments(points, scales, referenceY).map((segment) => (
               <Polyline
                 key={segment.key}

@@ -1,13 +1,14 @@
 import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
+import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
+import '@kiko/design-system/unistyles';
+import '@kiko/i18n/init';
+import { darkTheme } from '@kiko/design-system/theme';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
-import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
-import '../../unistyles';
-import '../../../i18n';
 import IconPickerModal from '.';
 import { KIKO_CATEGORIES_ICONS, KIKO_ENTITIES_ICONS } from './icon-pools';
-import { SEEDED_CATEGORIES } from '../../../db/__fixtures__/seeded-categories';
 
 type Overrides = Partial<ComponentProps<typeof IconPickerModal>>;
 
@@ -30,9 +31,9 @@ const setup = async (overrides: Overrides = {}) => {
 };
 
 describe('icon pools', () => {
-  it('exposes exactly 62 Kiko Entities symbols and 76 Kiko Categories symbols', () => {
+  it('exposes exactly 62 Kiko Entities symbols and 77 Kiko Categories symbols', () => {
     expect(KIKO_ENTITIES_ICONS).toHaveLength(62);
-    expect(KIKO_CATEGORIES_ICONS).toHaveLength(76);
+    expect(KIKO_CATEGORIES_ICONS).toHaveLength(77);
   });
 
   it('includes every seeded category default so each is selectable in the picker', () => {
@@ -43,6 +44,13 @@ describe('icon pools', () => {
     for (const icon of SEEDED_CATEGORIES.map((category) => category.icon)) {
       expect(KIKO_CATEGORIES_ICONS).toContain(icon);
     }
+  });
+
+  // The eleventh default category (`loan_interest`, seeded
+  // by 0039 — not part of SEEDED_CATEGORIES, see that fixture's own comment)
+  // still needs its `percent` icon selectable, same as the original ten.
+  it('includes percent, the loan_interest default icon (seeded by 0039)', () => {
+    expect(KIKO_CATEGORIES_ICONS).toContain('percent');
   });
 
   it('keeps the two pools distinct: an entities-only symbol is not a categories one, and vice versa', () => {
@@ -88,15 +96,28 @@ describe('IconPickerModal', () => {
   it('calls onSelect with the chosen icon when an option is pressed', async () => {
     const { onSelect, getByLabelText } = await setup();
 
-    fireEvent.press(getByLabelText('Choose icon basket'));
+    await fireEvent.press(getByLabelText('Choose icon basket'));
 
     expect(onSelect).toHaveBeenCalledWith('basket');
+  });
+
+  // The chip selection look: the selected tile is the accent fill, an
+  // unselected tile the faint neutral fill (ChipRow's own unselected chip).
+  it('fills the selected tile with the accent and an unselected tile with the faint neutral fill', async () => {
+    const { getByLabelText } = await setup();
+
+    expect(StyleSheet.flatten(getByLabelText('Choose icon cart').props.style).backgroundColor).toBe(
+      darkTheme.colors.accent,
+    );
+    expect(
+      StyleSheet.flatten(getByLabelText('Choose icon basket').props.style).backgroundColor,
+    ).toBe(darkTheme.colors.neutralSubtle);
   });
 
   it('calls onDismiss when the cancel control is pressed', async () => {
     const { onDismiss, getByText } = await setup();
 
-    fireEvent.press(getByText('Cancel'));
+    await fireEvent.press(getByText('Cancel'));
 
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
@@ -104,7 +125,7 @@ describe('IconPickerModal', () => {
   it('calls onDismiss when the backdrop behind the sheet is tapped', async () => {
     const { onDismiss, getByLabelText } = await setup();
 
-    fireEvent.press(getByLabelText('Dismiss icon picker'));
+    await fireEvent.press(getByLabelText('Dismiss icon picker'));
 
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
@@ -135,12 +156,12 @@ describe('IconPickerModal', () => {
     const onRemove = jest.fn();
     const { getByText } = await setup({ onRemove });
 
-    fireEvent.press(getByText('Remove'));
+    await fireEvent.press(getByText('Remove'));
 
     expect(onRemove).toHaveBeenCalledTimes(1);
   });
 
-  it('renders the Remove/Cancel footer after the icon grid, not beside the title (task C2)', async () => {
+  it('renders the Remove/Cancel footer after the icon grid, not beside the title', async () => {
     const onRemove = jest.fn();
     const { getAllByRole } = await setup({ onRemove });
 
@@ -160,9 +181,9 @@ describe('IconPickerModal', () => {
     const { getByText } = await setup({ onRemove });
 
     // Per the button-hierarchy spec, a sheet-row action MATCHES its primary
-    // sibling's size rather than shrinking to `compact` — this pins the C2 fix
-    // (the icon picker's actions used to be `size="compact"`, the app's one
-    // outlier footer at a different size than every other sheet's footer).
+    // sibling's size rather than shrinking to `compact` — the icon picker's
+    // actions used to be `size="compact"`, the app's one outlier footer at a
+    // different size than every other sheet's footer.
     const remove = ancestorWithStyle(getByText('Remove'), 'minHeight');
     const cancel = ancestorWithStyle(getByText('Cancel'), 'minHeight');
 

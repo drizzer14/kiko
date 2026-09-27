@@ -1,8 +1,8 @@
+import { Money } from '@kiko/currency/money';
 import { render } from '@testing-library/react-native';
 
-import { Money } from '../../../currency/money';
-import type { RenderedElement } from '../../../test-support/rendered-element';
-import '../../unistyles';
+import type { RenderedElement } from '@kiko/test-support/rendered-element';
+import '@kiko/design-system/unistyles';
 import CurrencyBreakdown from './currency-breakdown.component';
 
 // Flatten a (possibly nested/array) style prop into its plain object layers so a
@@ -20,8 +20,10 @@ const ancestorWith = (
   predicate: (layer: Record<string, unknown>) => boolean,
 ): Record<string, unknown> | undefined => {
   let current: RenderedElement | null = node.parent;
+
   while (current) {
     const match = styleLayers(current.props.style).find(predicate);
+
     if (match) return match;
     current = current.parent;
   }

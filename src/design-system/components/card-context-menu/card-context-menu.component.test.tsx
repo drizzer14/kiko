@@ -1,33 +1,28 @@
-import type { ReactNode } from 'react';
 import {
   createGestureController,
   fireGestureHandler,
   getByGestureTestId,
 } from 'react-native-gesture-handler/jest-utils';
+import { State } from 'react-native-gesture-handler';
 import { trigger } from 'react-native-haptic-feedback';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
-import '../../unistyles';
+import '@kiko/design-system/unistyles';
 // Real i18n init (side effect), same as App.tsx. Previously reached only by
 // accident through GlassSurface -> screenshot-mode -> i18n before the 5.6
 // screenshot-subsystem strip removed that import chain; now imported directly
 // so the sheet's `t('common.cancel')`/`t('common.delete')` resolve under test
 // the same way they do at runtime.
-import '../../../i18n';
+import '@kiko/i18n/init';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 
 import CardContextMenu, {
+  EDIT_ACTION_TEST_ID,
   DELETE_ACTION_TEST_ID,
+  HOLD_GESTURE_TEST_ID,
   DELETE_CONFIRM_TEST_ID,
   DUPLICATE_ACTION_TEST_ID,
-  HOLD_GESTURE_TEST_ID,
 } from './card-context-menu.component';
-
-// A GestureDetector must mount under a GestureHandlerRootView, so every render
-// goes through it (the app supplies one at its root in production).
-const wrapper = ({ children }: { children: ReactNode }) => (
-  <GestureHandlerRootView>{children}</GestureHandlerRootView>
-);
 
 describe('CardContextMenu', () => {
   beforeEach(() => {
@@ -40,7 +35,7 @@ describe('CardContextMenu', () => {
       <CardContextMenu name="Black card" deletable onDelete={onDelete}>
         <Text>card</Text>
       </CardContextMenu>,
-      { wrapper },
+      { wrapper: GestureRootWrapper },
     );
 
     // A hold that reaches ACTIVE (stayed still past the min duration, under the
@@ -60,7 +55,7 @@ describe('CardContextMenu', () => {
     expect(getByText('Delete "Black card"')).toBeTruthy();
     expect(onDelete).not.toHaveBeenCalled();
 
-    fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+    await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
 
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
@@ -73,10 +68,10 @@ describe('CardContextMenu', () => {
           <Text>card</Text>
         </Pressable>
       </CardContextMenu>,
-      { wrapper },
+      { wrapper: GestureRootWrapper },
     );
 
-    fireEvent.press(getByText('card'));
+    await fireEvent.press(getByText('card'));
 
     expect(onPress).toHaveBeenCalledTimes(1);
     expect(queryByText('Delete "Black card"')).toBeNull();
@@ -90,7 +85,7 @@ describe('CardContextMenu', () => {
       <CardContextMenu name="Coffee" deletable onDelete={onDelete} onDuplicate={onDuplicate}>
         <Text>card</Text>
       </CardContextMenu>,
-      { wrapper },
+      { wrapper: GestureRootWrapper },
     );
 
     await act(async () => {
@@ -108,7 +103,7 @@ describe('CardContextMenu', () => {
     expect(getByTestId(DELETE_ACTION_TEST_ID)).toBeTruthy();
     expect(queryByText('Delete "Coffee"')).toBeNull();
 
-    fireEvent.press(getByTestId(DUPLICATE_ACTION_TEST_ID));
+    await fireEvent.press(getByTestId(DUPLICATE_ACTION_TEST_ID));
 
     expect(onDuplicate).toHaveBeenCalledTimes(1);
     expect(onDelete).not.toHaveBeenCalled();
@@ -121,7 +116,7 @@ describe('CardContextMenu', () => {
       <CardContextMenu name="Coffee" deletable onDelete={onDelete} onDuplicate={onDuplicate}>
         <Text>card</Text>
       </CardContextMenu>,
-      { wrapper },
+      { wrapper: GestureRootWrapper },
     );
 
     await act(async () => {
@@ -135,16 +130,48 @@ describe('CardContextMenu', () => {
     // Choosing Delete from the action list opens the SAME named confirm sheet
     // the delete-only path uses; only its destructive confirm routes to onDelete.
     await act(async () => {
-      fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
     });
 
     expect(getByText('Delete "Coffee"')).toBeTruthy();
     expect(onDelete).not.toHaveBeenCalled();
 
-    fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+    await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
 
     expect(onDelete).toHaveBeenCalledTimes(1);
     expect(onDuplicate).not.toHaveBeenCalled();
+  });
+
+  it('offers an Edit/Delete action list on hold when onEdit is provided, routing Edit to onEdit without deleting', async () => {
+    const onEdit = jest.fn();
+    const onDelete = jest.fn();
+    const { getByTestId, queryByTestId, queryByText } = await render(
+      <CardContextMenu name="50% since 01.06.2025" deletable onDelete={onDelete} onEdit={onEdit}>
+        <Text>row</Text>
+      </CardContextMenu>,
+      { wrapper: GestureRootWrapper },
+    );
+
+    await act(async () => {
+      fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+        { state: State.BEGAN },
+        { state: State.ACTIVE },
+        { state: State.END },
+      ]);
+    });
+
+    expect(getByTestId(EDIT_ACTION_TEST_ID)).toHaveTextContent('Edit');
+    expect(getByTestId(DELETE_ACTION_TEST_ID)).toBeTruthy();
+    expect(queryByTestId(DUPLICATE_ACTION_TEST_ID)).toBeNull();
+    expect(queryByText('Delete "50% since 01.06.2025"')).toBeNull();
+
+    await act(async () => {
+      await fireEvent.press(getByTestId(EDIT_ACTION_TEST_ID));
+    });
+
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(queryByTestId(EDIT_ACTION_TEST_ID)).toBeNull();
   });
 
   it('renders a synced (non-deletable) card bare, with no gesture and no confirm sheet', async () => {
@@ -152,7 +179,7 @@ describe('CardContextMenu', () => {
       <CardContextMenu name="Synced" deletable={false} onDelete={jest.fn()}>
         <Text>card</Text>
       </CardContextMenu>,
-      { wrapper },
+      { wrapper: GestureRootWrapper },
     );
 
     expect(queryByTestId('card-context-menu')).toBeNull();
@@ -164,7 +191,7 @@ describe('CardContextMenu', () => {
       <CardContextMenu name="Coffee" deletable onDelete={jest.fn()} liftOnHold>
         <Text>card</Text>
       </CardContextMenu>,
-      { wrapper },
+      { wrapper: GestureRootWrapper },
     );
     const scaleOf = (): number | undefined =>
       StyleSheet.flatten(getByTestId('card-context-menu').props.style).transform?.[0]?.scale;
@@ -194,7 +221,7 @@ describe('CardContextMenu', () => {
       hold.end();
     });
     await act(async () => {
-      fireEvent.press(getByText('Cancel'));
+      await fireEvent.press(getByText('Cancel'));
     });
 
     expect(scaleOf()).toBe(1);
@@ -205,7 +232,7 @@ describe('CardContextMenu', () => {
       <CardContextMenu name="Black card" deletable onDelete={jest.fn()}>
         <Text>card</Text>
       </CardContextMenu>,
-      { wrapper },
+      { wrapper: GestureRootWrapper },
     );
 
     // No `liftOnHold` means the plain (non-`Animated`) `View` renders, with no

@@ -1,5 +1,5 @@
-import type { Currency } from '../../currency/currency';
-import { buildPairs } from '../rates-refresh/rates-refresh';
+import type { Currency } from '@kiko/currency/currency';
+
 import { type RateTable, rateTableFromRows } from '../conversion';
 
 /**
@@ -12,12 +12,13 @@ import { type RateTable, rateTableFromRows } from '../conversion';
  * cross-rate-only entry uses `rateCross`).
  *
  * Covers the FULL fiat set in `currencyOptions` (107 currencies, UAH
- * itself included as the `1` anchor) — the live feed happened to quote
- * every one of them against UAH at capture time, so there is no partial-
- * coverage gap to flag here. FIAT ONLY, by omission: BTC/ETH/USDT have no
- * entry, so `buildPairs` below skips every pair touching them, exactly like
- * a live run with no fetched crypto price does — crypto valuation stays a
- * separate, live-only path (see `kiko-domain`'s "Net worth").
+ * itself included as the `1` anchor, though `rateTableFromRows` below drops
+ * UAH as a key — its own price is implicit `1`) — the live feed happened to
+ * quote every one of them against UAH at capture time, so there is no
+ * partial-coverage gap to flag here. FIAT ONLY, by omission: BTC/ETH/USDT
+ * have no entry, so `FIAT_RATE_SEED_TABLE` below has no key for them either,
+ * exactly like a live run with no fetched crypto price does — crypto
+ * valuation stays a separate, live-only path (see `kiko-domain`'s "Net worth").
  */
 export const FIAT_UAH_PRICE_SEED: Partial<Record<Currency, number>> = {
   UAH: 1,
@@ -131,13 +132,16 @@ export const FIAT_UAH_PRICE_SEED: Partial<Record<Currency, number>> = {
 };
 
 /**
- * The full fiat cross-pair table composed from the static snapshot above,
- * using `buildPairs` — the SAME pair-composition logic a live `refreshRates`
- * run uses — so this seed's shape is identical to what a live refresh would
- * have produced. Computed once at module load: this is pure, static data,
- * not a live fetch. `rateTableFromRows` drops any non-finite/non-positive
- * entry the same way it does for a live DB row.
+ * The seed `RateTable`, built directly from the static UAH-price snapshot
+ * above through the SAME `rateTableFromRows` rule a live DB read uses — so
+ * `UAH` itself (implicit 1, never a stored key) and any non-finite/non-
+ * positive entry drop out identically. Computed once at module load: this is
+ * pure, static data, not a live fetch.
  */
 export const FIAT_RATE_SEED_TABLE: RateTable = rateTableFromRows(
-  buildPairs(FIAT_UAH_PRICE_SEED, 0),
+  Object.entries(FIAT_UAH_PRICE_SEED).map(([currency, rate]) => ({
+    base: currency as Currency,
+    quote: 'UAH' as const,
+    rate: String(rate),
+  })),
 );

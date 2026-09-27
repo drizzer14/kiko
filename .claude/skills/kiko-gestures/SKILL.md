@@ -46,7 +46,9 @@ called SYNCHRONOUSLY inside a reanimated worklet hook (`useAnimatedStyle`,
 `useDerivedValue`, `useAnimatedReaction`, `useAnimatedScrollHandler`, or a
 `Gesture.*` worklet callback) MUST carry its own `'worklet'` directive at
 its definition, or be defined inline in the worklet — otherwise the
-worklets runtime captures it as a "remote function." See
+worklets runtime captures it as a "remote function." The pre-write guard
+(`kiko-worklet-directive-required`) catches only a SAME-FILE helper; an
+imported helper is still a review item. See
 `src/design-system/components/bottom-sheet/bottom-sheet.keyboard.ts`'s
 `resolveKeyboardLift`/`resolveKeyboardAwareMaxHeight`/
 `resolveKeyboardAwareBottomPadding` for the worked example: each carries
@@ -74,7 +76,7 @@ none), so that call sends an unrecognized selector and SIGABRTs on cold
 launch — it hit every screen once, since the shared `BottomSheet` calls
 whatever drives its keyboard height. Mechanized as the
 `kiko-no-use-animated-keyboard` Semgrep rule (ERROR,
-`rules/semgrep-mobile.yml`, see `kiko-linter`) — any new call is a hard-fail,
+`rules/semgrep-prewrite.yml`, see `kiko-linter`) — any new call is a hard-fail,
 not just a review comment. `bottom-sheet.component.tsx` instead
 drives its `keyboardHeight` shared value by hand from RN core's `Keyboard`
 events (`keyboardWillChangeFrame` / `keyboardWillHide`); read that file's
@@ -84,6 +86,19 @@ animation — see memory `scene-lifecycle-appdelegate-window-crash` for the
 full crash chain, and the "Every function called inside a worklet..."
 rule above for the RELEASE-vs-Debug verification gap this class of bug
 shares.
+
+## No swipe actions — row edit/delete is the long-press CardContextMenu
+
+Swipe actions were removed on purpose. A row's edit/delete is the
+long-press `CardContextMenu` (Edit/Duplicate/Delete), never a swipe
+gesture. Do not propose or add one: no gesture-handler `Swipeable` /
+`ReanimatedSwipeable`, no swipe-list package (by default, named, or
+namespace import), no fling recognizer
+(`Gesture.Fling()`, `useFlingGesture`, `FlingGestureHandler`), no
+swipe-named row component, and no `PanResponder.create` (the app's own
+former swipe row was a PanResponder row). The bottom sheet's drag-to-dismiss
+(`Gesture.Pan()`) stays allowed. Mechanized as `kiko-no-swipe-action`
+(ERROR, `rules/semgrep-prewrite.yml`).
 
 ## `runOnJS(true)` for non-worklet callbacks
 
@@ -101,13 +116,38 @@ from there throws or silently no-ops.
 
 ## Sortables grid conventions
 
-Both grids — `accounts.screen.tsx` (1 column) and the account-detail
-holding grid (2 columns) — share the same tuning, so a value drifting on
-one and not the other is a bug, not a deliberate difference. Read the
-current values in both files before restating them; do not trust a copy
-in this skill. As of this writing both grids use `activeItemScale={1.03}`
-(a barely-there lift on touch-and-hold — the library default of `1.1` pops
-the card up too far) and `autoScrollActivationOffset={75}`.
+Three grids — `accounts.screen.tsx`'s main grid (1 column), its own
+"Debts" section grid below it (also 1 column — see "Section-scoped
+grids must persist the FULL order" below), and the account-detail
+holding grid (2 columns) — share the same tuning, so a value drifting
+on one and not the others is a bug, not a deliberate difference. Read
+the current values in all three before restating them; do not trust a
+copy in this skill. As of this writing all three grids use
+`activeItemScale={1.03}` (a barely-there lift on touch-and-hold — the
+library default of `1.1` pops the card up too far) and
+`autoScrollActivationOffset={75}`. (The categories grid,
+`src/screens/settings/categories/`, is a FOURTH grid with a
+deliberately different `dragActivationDelay` — see its own entry below
+— it is not part of this shared-tuning claim.)
+
+### Section-scoped grids must persist the FULL order
+
+`accountsRepo.reorder(orderedIds)` rewrites `sortOrder = index` for
+ONLY the ids it is given — its contract is "the full new front-to-back
+order", not "this grid's own ids". When a screen splits one list into
+several grids by a filter (accounts.screen.tsx's main grid vs. its
+Debts grid, by `kind === 'debt'`), persisting only the dragged grid's
+own reordered ids restarts THAT SECTION's `sortOrder` back at 0 on
+every drag, colliding with the other section's own 0-based run — every
+OTHER `listQuery` consumer that reads the full, unfiltered list
+(Statistics' account filter, the transaction-form account rank, Home,
+statement import) then sees the two sections interleaved instead of
+kept apart. Fix: each grid's `onDragEnd` persists the WHOLE order,
+splicing its own new order back into the other section's (unchanged)
+ids at the same relative position — read `accounts.screen.tsx`'s two
+`onDragEnd` handlers for the current exact shape. A screen introducing
+a THIRD such filtered section must extend this the same way, not
+revert to passing a single grid's own ids straight through.
 
 - **`scrollableRef` + `autoScrollActivationOffset`**: the grid is nested
   inside the screen's own `ScrollView`, so it needs that `ScrollView`'s

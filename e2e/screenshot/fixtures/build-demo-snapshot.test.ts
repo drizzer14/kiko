@@ -1,7 +1,11 @@
+import { buildPriceBook } from '@kiko/prices/price-book';
+import { holdingValue } from '@kiko/holdings/holding-value';
+import { readSeedCategoryColors } from '@kiko/db/__fixtures__/seed-category-colors';
+import { SEEDED_CATEGORIES, LOAN_INTEREST_CATEGORY } from '@kiko/db/__fixtures__/seeded-categories';
+
+import { ANCHOR, buildScreenshotDataset } from '../seed/screenshot-seed';
+
 import { buildDemoSnapshot } from './build-demo-snapshot';
-import { buildScreenshotDataset } from '../seed/screenshot-seed';
-import { SEEDED_CATEGORIES } from '../../../src/db/__fixtures__/seeded-categories';
-import { readSeedCategoryColors } from '../../../src/db/__fixtures__/seed-category-colors';
 
 describe('buildDemoSnapshot', () => {
   const dataset = buildScreenshotDataset('uk');
@@ -41,10 +45,73 @@ describe('buildDemoSnapshot', () => {
     expect(snapshot.transactions.every((t) => t.externalId === null)).toBe(true);
   });
 
-  it('carries the 10 default categories and an empty syncState', () => {
-    expect(snapshot.categories.map((category) => category.key)).toEqual(
-      SEEDED_CATEGORIES.map((category) => category.key),
+  it('links every loan payment to a loan holding, manually', () => {
+    const loanIds = new Set(
+      snapshot.holdings.filter((holding) => holding.type === 'loan').map((holding) => holding.id),
     );
+    const linked = snapshot.transactions.filter(
+      (transaction) => transaction.loanHoldingId !== null,
+    );
+
+    expect(linked.length).toBeGreaterThan(0);
+
+    for (const transaction of linked) {
+      expect(loanIds.has(transaction.loanHoldingId ?? '')).toBe(true);
+      expect(transaction.loanLinkSource).toBe('manual');
+    }
+  });
+
+  it('prices every holding-scoped point against a real holding', () => {
+    const holdingInstruments = new Set(snapshot.holdings.map((holding) => `holding:${holding.id}`));
+    const holdingPoints = snapshot.pricePoints.filter((point) =>
+      point.instrument.startsWith('holding:'),
+    );
+
+    expect(holdingPoints.length).toBeGreaterThan(0);
+    expect(holdingPoints.every((point) => holdingInstruments.has(point.instrument))).toBe(true);
+  });
+
+  // A holding whose metadata does not parse, or whose price is missing, reads
+  // as 0 on screen: the reviewer would see the type but not the feature.
+  it('values every holding with no ledger of its own through the app valuation', () => {
+    const book = buildPriceBook(
+      snapshot.pricePoints,
+      snapshot.transactions.map((transaction) => ({
+        loanHoldingId: transaction.loanHoldingId,
+        time: transaction.time,
+        amountMinorUnits: transaction.amountMinorUnits,
+        currency: 'UAH' as const,
+      })),
+    );
+    const ledgerless = snapshot.holdings.filter((holding) =>
+      ['term_deposit', 'bond', 'property_item', 'metal', 'loan'].includes(holding.type),
+    );
+
+    expect(ledgerless).toHaveLength(7);
+
+    for (const holding of ledgerless) {
+      expect(holdingValue(holding, ANCHOR, book).minorUnits).not.toBe(0);
+    }
+  });
+
+  it('caches the register terms of every bond added under an ISIN', () => {
+    const registerIsins = new Set(snapshot.bondRegister.map((row) => row.isin));
+    const bondIsins = snapshot.holdings
+      .filter((holding) => holding.type === 'bond')
+      .map((holding) => (holding.metadata as { isin?: string }).isin);
+
+    expect(bondIsins.length).toBeGreaterThan(0);
+    expect(bondIsins.every((isin) => isin !== undefined && registerIsins.has(isin))).toBe(true);
+  });
+
+  // A real install seeds loan_interest by its own migration; the import
+  // replaces every category, so the snapshot must carry it for the linked
+  // loan payment's interest to file under a named category.
+  it('carries the 10 default categories plus loan interest, and an empty syncState', () => {
+    expect(snapshot.categories.map((category) => category.key)).toEqual([
+      ...SEEDED_CATEGORIES.map((category) => category.key),
+      LOAN_INTEREST_CATEGORY.key,
+    ]);
     expect(snapshot.syncState).toEqual([]);
     expect(snapshot.categoryOverrides).toEqual([]);
   });
@@ -57,9 +124,19 @@ describe('buildDemoSnapshot', () => {
     // back to the same hashed `categoryColor` both here and in production.
     expect(seedColors.size).toBe(8);
 
-    for (const category of snapshot.categories) {
+    for (const category of snapshot.categories.slice(0, SEEDED_CATEGORIES.length)) {
       expect(category.color).toBe(seedColors.get(category.key) ?? null);
     }
+  });
+
+  // The color `0039_seed_loan_interest_category.sql` seeds on a fresh install.
+  it('colors loan interest the way its own migration does', () => {
+    const loanInterest = snapshot.categories.find(
+      (category) => category.key === LOAN_INTEREST_CATEGORY.key,
+    );
+
+    expect(loanInterest?.color).toBe('#5E5CE6');
+    expect(loanInterest?.sortOrder).toBe(SEEDED_CATEGORIES.length);
   });
 
   it('carries one settings row with the dataset language, UAH, and the lock OFF', () => {

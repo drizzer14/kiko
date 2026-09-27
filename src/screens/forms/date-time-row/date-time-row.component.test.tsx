@@ -1,9 +1,8 @@
-import { render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
-
-import '../../../design-system/unistyles';
-import '../../../i18n';
-import { darkTheme } from '../../../design-system/theme';
+import { render } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import '@kiko/i18n/init';
+import { darkTheme } from '@kiko/design-system/theme';
 
 import DateTimeRow from './date-time-row.component';
 
@@ -17,8 +16,8 @@ describe('DateTimeRow', () => {
     expect(getByLabelText('Time')).toBeTruthy();
   });
 
-  // Round-6 device feedback item 1: Date and Time used to stack full-width;
-  // they now render SIDE BY SIDE in one row, each taking an equal share.
+  // Date and Time render SIDE BY SIDE in one row, each taking an equal
+  // share, rather than stacked full-width.
   it('lays the two fields out in a single row with a gap, not stacked', async () => {
     const { getByLabelText } = await render(<DateTimeRow time={0} onChangeTime={noop} />);
 

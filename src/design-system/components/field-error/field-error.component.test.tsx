@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react-native';
-import '../../unistyles';
+import '@kiko/design-system/unistyles';
 import FieldError from '.';
 
 describe('FieldError', () => {

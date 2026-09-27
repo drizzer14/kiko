@@ -1,8 +1,8 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { decode as decodeWindows1251 } from 'windows-1251';
+import { StatementParseError } from '@kiko/statement-import/parser';
 
-import { StatementParseError } from '../../parser';
 import { PRIVATBANK_TITLE_PREFIX } from '../privatbank-xlsx';
 
 import {
@@ -18,12 +18,11 @@ import {
 
 // The REAL uabean fixture (C.4, NOTICE.md) — confirmed SYNTHETIC (placeholder
 // IBAN, test-card Visa number, year-2000 dates) — reused byte for byte,
-// cp1251-encoded, exactly as committed (task-4-report.md confirms the copy's
-// checksum matches the clone it came from). Decoded here via the REAL
+// cp1251-encoded, exactly as committed (a checksum confirms the copy
+// matches the clone it came from). Decoded here via the REAL
 // `windows-1251` library, the SAME decode step the screen's cp1251 fallback
 // will perform before handing text to this format — `sensebankCsvFormat`
-// itself stays text-based (section C.2's KEY DESIGN), never touching raw
-// bytes.
+// itself stays text-based, never touching raw bytes.
 const fixtureBytes = readFileSync(path.join(__dirname, '__fixtures__/uabean-sensebank-sample.csv'));
 const fixtureText = decodeWindows1251(fixtureBytes);
 const fixtureInput = { text: fixtureText, fileName: 'uabean-sensebank-sample.csv' };
@@ -53,9 +52,9 @@ const preambleLines = [
   HEADER_ROW.join(';'),
 ].join('\n');
 
-// Task 3 review precedent (NaN guard, IMPORTANT): neither the debit nor the
-// credit cell is populated — an empty or malformed amount cell must never
-// reach `Money.fromMajor` as `NaN`. Sensebank has no PrivatBank-style
+// The NaN guard: neither the debit nor the credit cell is populated — an
+// empty or malformed amount cell must never reach `Money.fromMajor` as
+// `NaN`. Sensebank has no PrivatBank-style
 // "unresolved rows" concept (its currency is a single regex match, not a
 // per-row word lookup), so this format follows Monobank's convention: throw
 // `StatementParseError` rather than silently writing `NaN`.
@@ -89,8 +88,8 @@ const noAccountLineInput = {
 };
 
 // The exported constants ARE the real contract a kiko:developer implements
-// `detect`/`parse` against (section C.2) — pinned here, verified against the
-// REAL fixture's bytes (task-4-report.md), so a future edit that silently
+// `detect`/`parse` against — pinned here, verified against the
+// REAL fixture's bytes, so a future edit that silently
 // drifts the preamble, the account-line regex, the header row (note the
 // LATIN "C" in "Cума"), the skip prefixes, the column order, or the date
 // pattern is caught by a real assertion.
@@ -118,7 +117,7 @@ describe('sensebank-csv format constants', () => {
       'Cума зарахування',
     ]);
     // U+0043 LATIN CAPITAL LETTER C, not U+0421 CYRILLIC CAPITAL LETTER ES —
-    // verified against the real fixture's own bytes (task-4-report.md); a
+    // verified against the real fixture's own bytes; a
     // hand-typed Cyrillic "С" would silently never match a real export.
     expect(HEADER_ROW[6].codePointAt(0)).toBe(0x43);
     expect(HEADER_ROW[7].codePointAt(0)).toBe(0x43);

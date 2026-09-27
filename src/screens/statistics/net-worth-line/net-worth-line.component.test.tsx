@@ -1,10 +1,10 @@
+import { i18n } from '@kiko/i18n/init';
+import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import { act, render, within } from '@testing-library/react-native';
+import type { NetWorthPoint } from '@kiko/statistics/net-worth-series';
 
-import { endOfLocalDay, startOfLocalDay } from '../../../dates/local-day';
-import { darkTheme } from '../../../design-system/theme';
-import { i18n } from '../../../i18n';
-import type { NetWorthPoint } from '../../../statistics/net-worth-series';
-import '../../../design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
+import '@kiko/design-system/unistyles';
 import NetWorthLine from './index';
 import { buildLineSegments, buildTicks, toAreaPath } from './net-worth-line.component';
 
@@ -25,7 +25,7 @@ const polylineYs = (raw: string): number[] =>
     .split(' ')
     .map((pair) => Number(pair.split(',')[1]));
 
-// R5-D split the stroke into one <Polyline> per sign-contiguous segment
+// The stroke splits into one <Polyline> per sign-contiguous segment
 // (testID `net-worth-line-polyline-<key>`) instead of a single polyline —
 // this flattens every segment's points into one Y array, the same shape
 // `polylineYs` used to return from the old single polyline, so the
@@ -121,7 +121,7 @@ describe('toAreaPath', () => {
   });
 });
 
-// R5-D: the stroke's per-sign segmentation. Reuses the exact same identity
+// The stroke's per-sign segmentation. Reuses the exact same identity
 // scale, `crossing` fixture, and `referenceY` as the `toAreaPath` suite
 // above — proving the STROKE's crossing x's (0.5, 1.625) are the FILL's own,
 // not independently re-derived.
@@ -308,7 +308,7 @@ describe('NetWorthLine', () => {
     expect(getByText('1 236 ₴')).toBeTruthy();
   });
 
-  // R5-D changed this from a single always-white polyline to sign-colored
+  // The stroke changed from a single always-white polyline to sign-colored
   // segments (see "colors the net-worth stroke by sign" below); this guard
   // now covers only the non-crossing case, where the segmentation collapses
   // back to exactly one polyline carrying one coordinate pair per point —
@@ -328,6 +328,7 @@ describe('NetWorthLine', () => {
 
     const pairs = segments[0].props.points.trim().split(' ');
     expect(pairs).toHaveLength(nonCrossingPoints.length);
+
     for (const pair of pairs) {
       expect(pair).toMatch(/^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/);
     }
@@ -489,7 +490,7 @@ describe('NetWorthLine', () => {
     expect(getByText('$0.2M')).toBeTruthy();
   });
 
-  it('offsets the X-axis label track past the Y-axis column so the dates line up with the plot (G5)', async () => {
+  it('offsets the X-axis label track past the Y-axis column so the dates line up with the plot', async () => {
     const { getByTestId } = await render(
       <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
     );
@@ -766,11 +767,10 @@ describe('NetWorthLine', () => {
     expect(redBottomY).toBeLessThan(baselineY);
     expect(redBottomY - referenceY).toBeLessThan((baselineY - referenceY) / 2);
 
-    // The opaque stop is pinned at redBottomY (offset 1). Tests render on the
-    // default (dark) theme — see unistyles.ts — where the red/negative stop
-    // is boosted to 0.5 (not the shared 0.3 green/positive uses) so the fill
-    // still reads clearly composited over OLED true-black; see
-    // NEGATIVE_AREA_OPACITY_DARK in net-worth-line.component.tsx.
+    // The opaque stop is pinned at redBottomY (offset 1). The red/negative
+    // stop is boosted to 0.5 (not the shared 0.3 green/positive uses) so the
+    // fill still reads clearly composited over OLED true-black; see
+    // NEGATIVE_AREA_OPACITY in net-worth-line.component.tsx.
     const negLine = getByTestId('net-worth-line-gradient-negative-stop-line');
     expect(negLine.props.offset).toBe('1');
     expect(negLine.props.stopOpacity).toBe(0.5);
@@ -794,10 +794,8 @@ describe('NetWorthLine', () => {
     expect(queryByTestId('net-worth-line-gradient-negative')).toBeNull();
   });
 
-  // R5-D (exploratory — kept as one cohesive block in the component, so it
-  // reverts in a single edit if dropped): the stroke is no longer a single
-  // fixed white polyline — it is sign-colored per contiguous segment,
-  // matching the fill's own green-above/red-below convention.
+  // The stroke is sign-colored per contiguous segment, matching the fill's
+  // own green-above/red-below convention, never a single fixed white line.
   it('colors the net-worth stroke by sign per segment, not a fixed white', async () => {
     const { getAllByTestId } = await render(
       <NetWorthLine points={crossingPoints} startReference={200} baseCurrency="USD" height={200} />,
@@ -828,7 +826,7 @@ describe('NetWorthLine', () => {
     expect(lastVertexOf(segments[1].props.points)).toBe(firstVertexOf(segments[2].props.points));
   });
 
-  it('splits the stroke at the SAME crossing x the fill uses, so line and fill agree (R5-D)', async () => {
+  it('splits the stroke at the SAME crossing x the fill uses, so line and fill agree', async () => {
     const { getAllByTestId, getByTestId } = await render(
       <NetWorthLine points={crossingPoints} startReference={200} baseCurrency="USD" height={200} />,
     );
@@ -867,6 +865,7 @@ describe('NetWorthLine', () => {
     // Exactly three labels (first, middle, last) — the 0.25/0.75 gridline
     // fractions get no label of their own, unlike the gridline set above.
     expect(getAllByTestId(/^net-worth-line-x-tick-/)).toHaveLength(3);
+
     for (const key of ['0.00', '0.50', '1.00']) {
       expect(getByTestId(`net-worth-line-x-tick-${key}`)).toBeTruthy();
     }

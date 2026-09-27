@@ -17,18 +17,24 @@ describe('exchangeReceivePath', () => {
     expect(exchangeReceivePath('term_deposit')).toBe('contribution');
   });
 
-  it('excludes bond and jar destinations', () => {
+  it('excludes bond, jar, property_item, metal, and loan destinations', () => {
     expect(exchangeReceivePath('bond')).toBe('excluded');
     expect(exchangeReceivePath('jar')).toBe('excluded');
+    expect(exchangeReceivePath('property_item')).toBe('excluded');
+    expect(exchangeReceivePath('metal')).toBe('excluded');
+    expect(exchangeReceivePath('loan')).toBe('excluded');
   });
 });
 
 describe('isExchangeDestinationType', () => {
-  it('accepts every non-excluded type and rejects bond/jar', () => {
+  it('accepts every non-excluded type and rejects bond/jar/property_item/metal/loan', () => {
     expect(isExchangeDestinationType('cash')).toBe(true);
     expect(isExchangeDestinationType('term_deposit')).toBe(true);
     expect(isExchangeDestinationType('bond')).toBe(false);
     expect(isExchangeDestinationType('jar')).toBe(false);
+    expect(isExchangeDestinationType('property_item')).toBe(false);
+    expect(isExchangeDestinationType('metal')).toBe(false);
+    expect(isExchangeDestinationType('loan')).toBe(false);
   });
 });
 
@@ -40,6 +46,9 @@ describe('isExchangeSourceType', () => {
     expect(isExchangeSourceType('bond')).toBe(false);
     expect(isExchangeSourceType('crypto_asset')).toBe(false);
     expect(isExchangeSourceType('jar')).toBe(false);
+    expect(isExchangeSourceType('property_item')).toBe(false);
+    expect(isExchangeSourceType('metal')).toBe(false);
+    expect(isExchangeSourceType('loan')).toBe(false);
   });
 });
 
@@ -51,6 +60,9 @@ describe('isExchangeCreateSourceType', () => {
     expect(isExchangeCreateSourceType('bond')).toBe(false);
     expect(isExchangeCreateSourceType('crypto_asset')).toBe(false);
     expect(isExchangeCreateSourceType('jar')).toBe(false);
+    expect(isExchangeCreateSourceType('property_item')).toBe(false);
+    expect(isExchangeCreateSourceType('metal')).toBe(false);
+    expect(isExchangeCreateSourceType('loan')).toBe(false);
   });
 });
 
@@ -62,5 +74,8 @@ describe('isExchangeCreateDestinationType', () => {
     expect(isExchangeCreateDestinationType('term_deposit')).toBe(false);
     expect(isExchangeCreateDestinationType('bond')).toBe(false);
     expect(isExchangeCreateDestinationType('jar')).toBe(false);
+    expect(isExchangeCreateDestinationType('property_item')).toBe(false);
+    expect(isExchangeCreateDestinationType('metal')).toBe(false);
+    expect(isExchangeCreateDestinationType('loan')).toBe(false);
   });
 });

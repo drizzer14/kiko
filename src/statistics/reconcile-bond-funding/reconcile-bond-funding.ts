@@ -1,6 +1,8 @@
-import type { Currency } from '../../currency/currency';
-import { startOfLocalDay } from '../../dates/local-day';
-import type { BondMeta } from '../../holdings/holding-metadata';
+import { startOfLocalDay } from '@kiko/dates';
+import { dayKeyOf } from '@kiko/prices/price-book';
+import type { Currency } from '@kiko/currency/currency';
+import type { BondMeta } from '@kiko/holdings/holding-metadata';
+
 import type { SeriesHolding, SeriesTransaction } from '../holding-value-at';
 
 /**
@@ -20,6 +22,27 @@ import type { SeriesHolding, SeriesTransaction } from '../holding-value-at';
  * size rather than being tuned to one datum.
  */
 const AMOUNT_TOLERANCE_FRACTION = 0.05;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How far (in CALENDAR days, either direction) a candidate funding debit may
+ * sit from the typed `purchaseDate` and still be accepted as that bond's
+ * funding outflow: 7 days. A debit further away than this is nearly always
+ * an UNRELATED spend that happens to land within the amount-tolerance band
+ * by coincidence, not the bond's own funding move — the bank statement's
+ * "Купівля облігацій" row lands within days of the typed date in every
+ * observed case, never weeks. Combined with the amount band above, this is
+ * the second axis that keeps the match specific to the real funding debit.
+ *
+ * The distance itself is measured with `dayKeyOf` (a UTC-normalized calendar
+ * date), never a raw ms difference of two `startOfLocalDay` instants: a local
+ * day is not always 24 hours (`local-day.ts`'s own DST doc comment), so on a
+ * window that crosses a fall-back change (a 25-hour local day), the raw ms
+ * gap between two dates exactly 7 CALENDAR days apart is 1 hour OVER
+ * `7 * DAY_MS`, which would wrongly exclude a genuinely-7-day-away debit.
+ */
+const FUNDING_WINDOW_DAYS = 7;
 
 /** How a bond's held cost should be recognized in the net-worth series. */
 type BondRecognition = {
@@ -73,28 +96,44 @@ type BondRecognition = {
  * the SERIES. Coupons, maturity, and the redemption ledger stay keyed off the real
  * `purchaseDate` / `purchasePriceMinorUnits` on the real holding (unchanged) — the
  * series does not compute them from this copy.
+ *
+ * `claimed` is a set of candidate keys (`holdingId:index`, one per transaction
+ * array slot) shared across every bond `buildNetWorthSeries` reconciles in one
+ * run: a candidate already claimed by an earlier bond is filtered out here, and
+ * the winning candidate's own key is added to `claimed` before returning, so
+ * two bonds priced the same week never both claim the SAME debit (the second
+ * one falls back to its own typed day/price instead). Defaults to a fresh,
+ * unshared set for a standalone call (e.g. every test above).
  */
 export const reconcileBondFunding = (
   meta: BondMeta,
   bondCurrency: Currency,
   holdings: SeriesHolding[],
-  txByHolding: Map<string, SeriesTransaction[]>,
+  transactionsByHolding: Map<string, SeriesTransaction[]>,
+  claimed: Set<string> = new Set(),
 ): BondRecognition => {
   const typedDay = startOfLocalDay(meta.purchaseDate);
+  const typedDayKey = dayKeyOf(meta.purchaseDate);
   const typedPrice = meta.purchasePriceMinorUnits;
   const tolerance = typedPrice * AMOUNT_TOLERANCE_FRACTION;
+  const windowMs = FUNDING_WINDOW_DAYS * DAY_MS;
 
   const candidates = holdings.flatMap((holding) =>
     holding.currency === bondCurrency
-      ? (txByHolding.get(holding.id) ?? [])
+      ? (transactionsByHolding.get(holding.id) ?? [])
+          .map((transaction, index) => ({ transaction, key: `${holding.id}:${index}` }))
           .filter(
-            (transaction) =>
+            ({ transaction, key }) =>
               transaction.amountMinorUnits < 0 &&
-              Math.abs(Math.abs(transaction.amountMinorUnits) - typedPrice) <= tolerance,
+              Math.abs(Math.abs(transaction.amountMinorUnits) - typedPrice) <= tolerance &&
+              Math.abs(dayKeyOf(transaction.time) - typedDayKey) <= windowMs &&
+              !claimed.has(key),
           )
-          .map((transaction) => ({
+          .map(({ transaction, key }) => ({
             day: startOfLocalDay(transaction.time),
+            dayKey: dayKeyOf(transaction.time),
             costMinorUnits: Math.abs(transaction.amountMinorUnits),
+            key,
           }))
       : [],
   );
@@ -109,7 +148,8 @@ export const reconcileBondFunding = (
   // by the amount closest to the typed price. Seeded with the first candidate
   // (never the typed day), so a lone match is returned directly.
   const best = candidates.reduce((chosen, candidate) => {
-    const dayDelta = Math.abs(candidate.day - typedDay) - Math.abs(chosen.day - typedDay);
+    const dayDelta =
+      Math.abs(candidate.dayKey - typedDayKey) - Math.abs(chosen.dayKey - typedDayKey);
 
     if (dayDelta !== 0) {
       return dayDelta < 0 ? candidate : chosen;
@@ -121,6 +161,8 @@ export const reconcileBondFunding = (
 
     return amountDelta < 0 ? candidate : chosen;
   });
+
+  claimed.add(best.key);
 
   return { recognitionDay: best.day, recognitionCostMinorUnits: best.costMinorUnits };
 };

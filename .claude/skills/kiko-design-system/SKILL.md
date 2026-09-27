@@ -1,13 +1,13 @@
 ---
 name: kiko-design-system
-description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, CurrencyField, EntityIconTile, CardContextMenu, ConfirmSheet, OptionPills, SelectableRow, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
+description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, LoadingState, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, CurrencyField, SummaryTable, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, SelectField, SelectableRow, SegmentedControl, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
 ---
 
 # Kiko design system
 
 Source of truth: `docs/superpowers/specs/2026-08-30-kiko-foundation-design.md`
 ("Design system (started here)" section) and the token module itself,
-`src/design-system/theme.ts`, which ships a single `darkTheme` (spacing,
+`src/design-system/theme/theme.ts`, which ships a single `darkTheme` (spacing,
 radii, typography, `colors`) plus its own entity/chart palette
 (`palette.ts`). The app is dark-only. This skill states the method and
 token categories; read `theme.ts`/`palette.ts` directly for the
@@ -24,8 +24,15 @@ Kiko is a native iOS app, so Apple's iOS Human Interface Guidelines
 (HIG) are the standing reference for every token, size, surface, and
 control. Apply HIG on every design task, on four axes:
 
-- **Touch targets** — every control is at least 44pt x 44pt. A small
-  glyph needs padding or `hitSlop` to reach it.
+- **Touch targets** — every control's TAP target is at least 44pt x
+  44pt, reached through `hitSlop`, never through a bigger visual: an
+  approved compact look (a `small` Button, a `ChipRow` chip) keeps its
+  visible size, and `hitSlop` restores the 44pt target around it. Never
+  grow a control's visible height or padding to meet the floor. The one
+  exception is a row whose neighbours sit too close for `hitSlop` to
+  reach 44pt without overlapping the next row's target (the raw-preview
+  header rows, `raw-preview.styles.ts`'s `ROW_MIN_HEIGHT`); there a
+  `minHeight` on the row's own layout box is the fallback.
 - **SF Symbol sizing** — a symbol reads as a peer of the text beside
   it (see `iconSizes` under "Token categories"); it scales with its
   paired type step.
@@ -42,7 +49,7 @@ to see the open findings; do not restate its findings here.
 ## Dark-only theme
 
 Kiko is dark-only: there is no appearance toggle, no light theme, and
-no runtime scheme switching. `src/design-system/unistyles.ts` registers
+no runtime scheme switching. `src/design-system/unistyles/unistyles.ts` registers
 a single `darkTheme` (`{ dark }`) with `initialTheme: 'dark'` — there
 is nothing to pick between, so `adaptiveThemes` is not used either.
 `UIUserInterfaceStyle = Dark` is pinned in `ios/Kiko/Info.plist`, which
@@ -51,7 +58,7 @@ blur, system controls, the native date picker) on the dark appearance
 regardless of the device's own OS setting — there is no
 `Appearance.setColorScheme` call anywhere driving it live. React
 Navigation's own native chrome uses `navigationDarkTheme`
-(`src/navigation/dark-theme.ts`), which now sources its `colors` from
+(`src/navigation/dark-theme/dark-theme.ts`), which now sources its `colors` from
 concrete dark hex values matching the design-system dark tokens
 directly, rather than an OS-trait-resolving `PlatformColor` — with a
 single fixed appearance there is nothing for a semantic color to
@@ -137,7 +144,7 @@ trend-filter sheet's selected manual-category row
 selected row paints the same filled `accent` background with
 `onAccent` text/icon/checkmark, REPLACING an earlier `surfaceHigh`
 selected-row treatment — the same filled-accent selection vocabulary
-as `OptionPills`/`ChipRow`, not a one-off. An UNCHECKED trend-filter
+as `ChipRow`, not a one-off. An UNCHECKED trend-filter
 row keeps its own category's identity color instead: `SymbolIcon`
 resolves an explicit `color` prop over its `tone` prop, so the row
 passes `color={checked ? undefined : option.color}` — clearing
@@ -150,7 +157,7 @@ then one of these call sites, rather than reinventing the check.
 
 `react-native-unistyles` (^3.3.0) is the styling layer. A single
 Unistyles v3 theme object — the OLED `darkTheme` above — is registered
-in `src/design-system/unistyles.ts` as `themes = { dark: darkTheme }`,
+in `src/design-system/unistyles/unistyles.ts` as `themes = { dark: darkTheme }`,
 with `settings: { initialTheme: 'dark' }`. There is no second theme to
 switch to, so there is no `adaptiveThemes` and no runtime
 `UnistylesRuntime.setTheme` call anywhere. Style components against
@@ -160,7 +167,178 @@ theme supplying values today. The token values live in `theme.ts`
 (`darkTheme`) and `palette.ts`; read those directly rather than
 restating them here.
 
+## Locked decisions (user-approved)
+
+Each entry is a visual the user approved. Never change or revert one —
+not in a refactor, a cleanup, or a HIG pass — without the user's own
+explicit approval; a change request from an agent is not approval. Add
+an entry (date + value) the moment the user approves a new visual.
+
+- **Raw-preview row height: 44pt** (2026-09-26). Every column-mapping
+  raw-preview row is a real 44pt layout box (`ROW_MIN_HEIGHT`,
+  `raw-preview.styles.ts`) — the one documented `minHeight` exception
+  to the "hitSlop, never a bigger visual" touch-target rule above.
+- **Raw preview: 5 rows from the header, with Show all / Show less**
+  (2026-09-26). The preview starts AT the header row and shows 5 rows
+  (`PREVIEW_ROW_COUNT`); the toggle below it expands to every scanned
+  row (`HEADER_SCAN_ROW_COUNT`, 10), rows above the header included,
+  and collapses back. Full contract: `kiko-statement-import`'s raw
+  preview grid entry.
+- **Native iOS chip/segment style** (2026-09-26). Chip: selected =
+  `accent` fill + `onAccent` label, unselected = the faint
+  `neutralSubtle` fill (`rgba(118,118,128,0.24)`) + `textPrimary`
+  label. Segment: the `neutralSubtle` track under a `segmentSelected`
+  thumb, `#747478`, with a `textPrimary` semibold label. The icon
+  picker's tiles follow the chip look. See `ChipRow` and
+  `SegmentedControl` under "Component set".
+- **Compact chip: 34pt visible + hitSlop** (2026-09-26). Every
+  `ChipRow` chip draws a 34pt `minHeight` pill with `spacing(1)`
+  vertical padding at every label step, and reaches the 44pt tap
+  target through `CHIP_HIT_SLOP` (`{ top: 5, bottom: 5 }`), never a
+  taller chip.
+- **Sign-colored net-worth stroke** (2026-09-26). The net-worth line's
+  stroke is `positive` green at or above the dashed start reference and
+  `negative` red below it, one `Polyline` per same-sign run, split at
+  the fill's own crossing x — never a single fixed-color stroke. See
+  `kiko-charts`' "Net-worth stroke is sign-colored per segment".
+- **Paste-glyph spacing** (2026-09-26). `ClipboardTextField`'s input
+  row `gap={1}` (4pt) plus the paste wrapper's
+  `marginHorizontal: -theme.spacing(1)` put the glyph 12pt from the
+  input and 8pt from the row's end; the `small` Button keeps its
+  44pt-wide tap target. See "The paste-icon-only ghost Button
+  convention" under `Button`.
+- **Card titles wrap; the amount keeps its width** (2026-09-27, user
+  device finding D9: a long bond name ran past the card edge and pushed
+  its amount out of view). Every card or row with a user-data title next
+  to an amount wraps the title the way `TransactionCard` does, never
+  `numberOfLines`/ellipsis: the leading cluster (icon + title) is
+  `flex: 1` with `marginRight: theme.spacing(3)`, the title sits in its
+  own `flex: 1` box (`rowDescription`; a `Text` does not shrink in a row
+  on its own), and the amount sits in a `flexShrink: 0` box (`rowAmount`,
+  or the holding card's `valueColumn`), right-aligned at its full width.
+  Short titles render exactly as before: each family keeps its own
+  vertical alignment — `TransactionCard` top-aligns (`flex-start`, a
+  body-size glyph), the holding-detail ledger rows stay `center`, and
+  the account card (`accounts.screen.tsx` `renderAccountCard`, also the
+  Property and Debts grids) and the account-detail `HoldingCard` stay
+  `center` beside their taller `EntityIconTile`. The Statistics pie legend's name
+  wraps in its own `legendLabel` (`flex: 1`) box beside the swatch; its
+  fixed-width value/percent columns are unchanged. Rows whose label is a
+  fixed short string (`SummaryTable`, the bar chart's type rows, the
+  section heading rows, upcoming payments' dates) are not this pattern.
+  Pinned per family by a style-contract test (`ancestorWithStyle`: the
+  title's own box is `flex: 1` with no row direction, no
+  `numberOfLines`). The two card tests also pin the amount's box
+  `flexShrink: 0` and the lead cluster's `flex: 1`; the pie legend test
+  pins its fixed-width value column instead (`width > 0`).
+
+## UX patterns
+
+Before acting on a UI feedback round, audit the affected screens
+against this section and against how the same pattern is already
+built elsewhere in the app; fix the pattern everywhere it appears, not
+only the reported instance (see harness-workflow's "UI feedback
+rounds: audit before fixing" — single source, do not restate its text
+here).
+
+The established patterns grouped under this heading:
+
+- The form validation pattern — `FieldError` in "Component set" below.
+- The tabs-vs-chips rule (binding) — in "Component set" below, under
+  `SegmentedControl`.
+- The capability-icon transparency principle — its own heading further
+  down this file.
+- Field placeholder and error copy — below.
+- A filter never hides an active selection: a checkable filter's
+  option list is scoped to the current data (e.g. the statistics
+  category filter is scoped to the active date range), but a value
+  the user has already SELECTED must stay listed and checked even once
+  it drops out of that scope — union it back in from wherever its
+  display data lives (Statistics: `categoryByKey`), rather than pruning
+  the selection or letting the row vanish so the user can never find
+  it to uncheck (`statistics.screen.tsx`'s
+  `categoryOptions` and its twin, `trend-filter-field.component.tsx`'s
+  `manualRows`, which has no display data for a hidden key and falls
+  back to the bare slug as its label).
+- A field's own Connect (`MonobankConnectField`, `BinanceCredentialsField`,
+  `WalletAddressField`, `src/design-system/components/`) is a PRIMARY
+  action, so it follows the same form validation model as a Save
+  button: always enabled, never `disabled={... || field.trim() ===
+  ''}`. A blank required field shows its own `*RequiredError` message
+  (via the field's `error` prop) on a Connect press instead —
+  `disabled` stays reserved for the field's own
+  in-flight `status.kind === 'checking'`.
+
+## Field placeholder and error copy
+
+A placeholder never repeats its own field's label — enforced, not
+just convention: `placeholder` is a required prop on `DateField`,
+`TimeField`, `ColumnSelectField`, and `SelectField`, so a caller must
+supply distinct wording rather than default to the label text. The
+established placeholder copy is "Select a …" for a picker/select
+field.
+
+A picker/select field's error message takes the "No X selected." form
+(Ukrainian: "X не вибрано.") — never a synonym of the placeholder's
+own verb ("choose", "pick"). Read these live keys for the exact
+current wording rather than trusting a copy of it here — a new field
+adds its own key alongside them, in this same form:
+`columnMapping.*ColumnError` (`src/i18n/locales/en.ts`,
+`src/i18n/locales/uk.ts`), `statementImport.chooseHoldingError`,
+`forms.holding.loanStartDateError`,
+`forms.holding.couponFrequencyRequiredError`.
+
+A numeric field's unit goes in `TextField`'s `suffix`, never in its
+label — "Annual rate" with a `%` suffix, not "Annual rate %" — so the
+label never doubles the unit the field already shows. Currency fields
+pass the currency glyph; every other unit is a `forms.units.*` key
+(percent, months, pieces, grams, troy ounces). A metal quantity follows
+its own unit (`metalUnitSuffix`, `src/screens/forms/metal-unit-suffix/`,
+shared by the create form and the Lot form); a field whose holding has
+no unit passes none. `fieldSuffix` (`src/test-support/field-suffix.ts`)
+reads which unit a given field shows in a test.
+
+## Calendar week start
+
+`KikoCalendar` (`src/calendar/kiko-calendar/`) starts its week on the
+DEVICE REGION's first weekday, like a native iOS calendar app — NOT
+the app language. `weekStartFor(region)`
+(`src/calendar/week-start/`) maps a 2-letter region code to `0`
+(Sunday) or `1` (Monday) off the FULL current CLDR `weekData/firstDay`
+Sunday-first territory list (unicode-org/cldr-json,
+cldr-core/supplemental/weekData.json — see the constant's own doc
+comment for the source URL and check date); every other region —
+including Ukraine and Kiko's European host countries, AU (Monday-first
+as of CLDR-14795, ~v40), and an unresolved region — falls back to
+Monday, CLDR's own default. It takes
+the region as a plain argument rather than reading it itself, so it
+stays a pure, directly unit-tested mapping; `deviceRegion()`
+(`src/i18n/device-region/`) is the actual device read, a dependency-free
+iOS-only `NativeModules.SettingsManager.settings.AppleLocale` parse —
+the sibling of `deviceLanguage()`'s `AppleLanguages` read, but a
+DIFFERENT NSLocale API (region, not display language) and a different
+identifier format (underscore-joined ICU style, not dash-joined
+BCP-47). `CalendarHeader`'s own weekday-label row rotates through the
+SAME `firstDay` prop react-native-calendars forwards to it, so the
+labels never drift out of alignment with the day grid, which the
+library rotates internally off the identical prop.
+
+The `weekStartFor` table now follows current CLDR `weekData` (source
+URL and check date in the constant's own doc comment). Hermes's
+`Intl.Locale().weekInfo` (a dependency-free ALTERNATIVE this skill
+considered and rejected — Node/V8 supports the `weekInfo` getter, but
+Hermes device support is unverified, and RN's Jest preset cannot tell
+either way) stays unverified, with no primary source, which is why the
+table path is kept. The remaining device-unverified point is only
+`deviceRegion()`'s `AppleLocale` format — a wrong table entry only ever
+misorders the calendar's cosmetic Sunday/Monday column choice, never a
+financial figure.
+
 ## Component set
+
+Every shared component here follows `kiko-code-style`'s "One component
+per file, each in its own folder" rule — read it there, not restated
+here.
 
 The primitive set has grown well past the original four. This is the
 real set — enumerated at `src/design-system/components/`; read that
@@ -180,20 +358,31 @@ new component can land between reviews of this skill:
   ScrollView is also the tab-root scroll container an active-tab
   re-tap returns to the top, where `HeaderHeightContext` is the LIVE
   header height — see
-  `src/navigation/use-scroll-to-top-on-tab-press.ts`, which targets
+  `src/navigation/use-scroll-to-top-on-tab-press/use-scroll-to-top-on-tab-press.ts`, which targets
   the tracked expanded height rather than a live height plus a band.
-  A `scroll`-mode screen also takes a `fillHeight` prop (default
-  `false`) for content — such as Settings' bottom-anchored About
-  footer (app name/version, copyright, links) — that must sit pinned
-  to the screen's true bottom edge when shorter than the viewport, yet
-  still scroll normally once it overflows: it grows the ScrollView's
-  content container (`flexGrow: 1`) so a `flex: 1` spacer among the
-  children can push trailing content down, and reserves the same
-  floating-tab-bar clearance the plain branch already reserves. This is
-  page CONTENT that scrolls away, not a pinned always-reachable action
-  — use the existing `footer` slot for that instead; read
-  `screen.props.d.ts`'s `fillHeight` doc comment for the exact
-  interaction with `footer` if both are ever passed together.
+  Settings' About block (app name/version, copyright, links) is an
+  EXCEPTION to the ordinary "use `footer` only for a pinned
+  always-reachable action" rule: it renders through the pinned
+  `footer` slot even though it is not an action, because App Store
+  Guideline 5.6 review needs it reachable without scrolling. There is
+  no `fillHeight` prop — a screen whose content
+  is shorter than the viewport just leaves it top-anchored; nothing in
+  this codebase pins non-footer content to the bottom.
+- **LoadingState** (`src/design-system/components/loading-state/`) —
+  the shared "this screen's own data has not loaded yet" visual: a
+  plain centered native `ActivityIndicator`, no text at all — a
+  spinner needs no i18n string, so a `useDataReady` consumer
+  (`kiko-architecture`'s useLiveQuery consumer rule) gating its whole
+  render, or a single component gating one value inside an
+  already-loaded parent (e.g. statement-import's
+  `example-transaction`), never has to add one. Takes an optional
+  `testID`, conventionally `<screen>-loading`. The spinner itself is
+  delayed by `SPINNER_DELAY_MS` (200ms): the container (the plain
+  background) renders immediately, but the `ActivityIndicator` only
+  mounts once the delay elapses, so a screen whose first read resolves
+  quickly (the common case, off the local op-sqlite worker) never
+  flashes a spinner at all — readiness (`useDataReady`) itself is
+  never delayed, only the visual spinner.
 - **Box** — a generic layout container reading spacing/color/direction
   tokens (padding, gap, background, `direction="row"`).
 - **Text** — the base text primitive reading the typography and tone
@@ -231,8 +420,18 @@ new component can land between reviews of this skill:
   `textTransform`: each catalogue supplies its own casing (English
   Button copy is sentence case; Ukrainian already is) — there is no
   style-layer transform and no per-language gate.
+  **`loading` — an in-flight write.** `loading` shows a native
+  `ActivityIndicator` (in the label color) over the button's label and
+  icons, which stay laid out but invisible (`hiddenContent`,
+  `button.styles.ts`), so the button keeps EXACTLY its resting size; it
+  ignores presses and reports `accessibilityState.busy`, and is NOT
+  dimmed like `disabled` (the spinner already says why). A button whose
+  press awaits a slow write (the transaction form's category-override
+  sheet: Apply and "Just for this one") passes its `useSubmitOnce`
+  `isSubmitting` as `loading`, and the surface it sits on stays open
+  until the write is done — never a hand-rolled spinner beside a button.
   The shared `DISABLED_OPACITY` token
-  (`src/design-system/disabled-opacity.ts`) is the ONE dimming a disabled
+  (`src/design-system/disabled-opacity/disabled-opacity.ts`) is the ONE dimming a disabled
   pressable applies — `Button` reads it, and any new disabled pressable
   reuses it too, never a fresh inline `opacity`. `children` is OPTIONAL:
   an `icon` (or `trailingIcon`) with no `children` renders an ICON-ONLY
@@ -249,8 +448,34 @@ new component can land between reviews of this skill:
   categories/`) both build an icon-only control this way, plus
   `fullWidth={false}`, rather than a raw `Pressable` + `SymbolIcon`.
   (There is no separate `IconButton` primitive; the old one at
-  `src/design-system/components/icon-button/` was deleted when its only
+  src/design-system/components/icon-button/ was deleted when its only
   consumer went away.)
+
+  **Three pinned button treatments, mechanized (`rules/semgrep-prewrite.yml`):**
+  the account-detail Sync button ("accountDetail.syncNow") and Change bank
+  button ("accountDetail.changeBankAction") are both pinned to
+  `variant="secondaryTonal"` everywhere (`kiko-pinned-sync-button-variant`,
+  `kiko-pinned-change-bank-button-variant`); every sheet's Cancel button
+  ("common.cancel") is pinned to `variant="ghost"` AND
+  `textColor={theme.colors.negative}` together, one red ghost Cancel
+  everywhere (`kiko-pinned-cancel-button-style`, the
+  `confirm-sheet.component.tsx` shape). A pre-write-guard deny on any of
+  these three points back here.
+
+  **Footer "Add …" buttons carry the entity's leading symbol**
+  (user-approved, D10). Same shape as account detail's "Import
+  statement" (`icon="doc.badge.plus"`): ONLY the `Button` `icon` prop —
+  no size/tint/spacing override, no new variant. The mapping, each read
+  from its one source (never a re-typed string; read the symbol names
+  in `src/holdings/entity-symbols/entity-symbols.ts`): Add holding /
+  account / category / transaction → `genericEntitySymbol.<entity>`;
+  Add lot → `holdingTypeSymbol.metal`; Add contribution →
+  `calendar.badge.plus` (the one call-site literal). "Update value" /
+  "Update outstanding" add no entity, so they stay text-only. Only
+  `genericEntitySymbol.holding` is an iOS-26 symbol — SymbolIcon's
+  central fallback (`symbol.availability.ts`) covers it below iOS 26;
+  the rest paint on the iOS 15.1 deployment target. A new footer
+  "Add …" action takes its entity's glyph the same way.
 
   **Sizes — `regular` / `compact` / `small`** (read `button.props.d.ts`'s
   `ButtonSize` for the exact current set). `regular` is the 50pt tall
@@ -278,16 +503,24 @@ new component can land between reviews of this skill:
   **The paste-icon-only ghost Button convention.** A field that reads
   the system clipboard (the Monobank token entry, both legs of the
   Binance API key/secret entry, the crypto wallet-address field —
-  `src/screens/account-detail/monobank-token-input/`,
+  `src/design-system/components/monobank-token-input/`,
   `binance-credentials-field/`, `wallet-address-field/`) pairs its
   `TextField` with an icon-only trailing `Button`:
   `variant="ghost"`, `size="small"`, `fullWidth={false}`,
   `icon="document.on.clipboard"`, `textColor={theme.colors.textSecondary}`,
   and a translated `accessibilityLabel` (VoiceOver has no label text to
-  read otherwise, per the icon-only rule above). This is a repeated
-  `Button` usage pattern at each call site, not a separate shared
-  component — a new paste affordance follows the same prop set rather
-  than inventing its own.
+  read otherwise, per the icon-only rule above). The ONE place that
+  builds this row is `ClipboardTextField`
+  (`src/design-system/components/clipboard-text-field/`) — every paste
+  field (including Settings' import-data key field) goes through it, so
+  a new paste affordance reuses it rather than re-pairing a `TextField`
+  and a `Button`. Its spacing is a compact icon-button spacing: the
+  input row's `gap={1}` (4pt) plus the paste wrapper's
+  `marginHorizontal: -theme.spacing(1)` (`clipboard-text-field.styles.ts`'s
+  `pasteButtonWrapper`) put the glyph 12pt from the input and 8pt from
+  the row's end, while the `small` Button keeps its own 44pt-wide tap
+  target (starting exactly at the input's edge, never overlapping it) —
+  the visual spacing shrinks, never the tap target.
 - **Card** (`src/design-system/components/card/`) — the shared
   CONTENT-layer surface: a solid, opaque themed fill with a defined
   hairline border, no glass/blur material at all. Every content card,
@@ -406,11 +639,12 @@ new component can land between reviews of this skill:
   `SHEET_PADDING_STEP`) stays the single inset, never stacked with a
   second one. The sheet is still a GROUPED surface: this translucent
   base (composited to ~rgb(17,17,18) over true-black — darker than
-  `surfaceHigh` #2C2C2E) sits one level BELOW the `surfaceHigh`
-  cards/controls on it, so a control (e.g. an OptionPills selected
-  pill) reads as raised instead of blending into the sheet — it used
-  `surfaceHigh` itself before, the same tone as a selected pill, then a
-  flat opaque `sheetBackground` token before this glass pass. It caps
+  `surfaceHigh` #2C2C2E) sits one level BELOW the cards/controls on
+  it, so a control reads as raised instead of blending into the sheet
+  (a chip or segment on it uses the faint `neutralSubtle` fill — see
+  `ChipRow` and `SegmentedControl` below) — it used `surfaceHigh`
+  itself before, then a flat opaque `sheetBackground` token before this
+  glass pass. It caps
   its own height at a fixed 66%-of-window ceiling and takes an optional
   `maxHeight` prop that can only tighten that cap further, plus a
   `scrollable` prop (defaults `true`) that wraps `children` in a
@@ -422,6 +656,23 @@ new component can land between reviews of this skill:
   `shouldDismissSheet`) lives in `bottom-sheet.gesture.ts` — see
   `kiko-gestures`. Read `bottom-sheet.props.d.ts` for the exact current
   prop set rather than trusting this summary if it drifts.
+
+  **`onDismiss` vs `onClosed` — a close-timing contract, not two names
+  for the same event.** `onDismiss` fires the moment a close is
+  REQUESTED (a scrim tap, or a hardware/gesture back); `onClosed`
+  (optional) fires only when the underlying RN `Modal` reports its OWN
+  `onDismiss` — the close ANIMATION has actually finished (iOS only; RN's
+  `Modal` never fires it on Android). Anything that must not run until
+  the sheet is visually gone — most importantly navigating the screen
+  away — belongs on `onClosed`, not `onDismiss`: wiring a screen
+  navigation to `onDismiss` pops the sheet mid-animation. Read
+  `bottom-sheet.props.d.ts`'s `onDismiss`/`onClosed` doc comments as the
+  source of truth. Separately, the `testID` prop produces a
+  `${testID}-modal` hook on the underlying RN `Modal` itself
+  (`bottom-sheet.component.tsx`), distinct from the separate
+  `backdropTestID` prop, which names the dismiss-scrim `Pressable` (e.g.
+  a filter menu's `${id}-backdrop`) — don't conflate the two when wiring
+  a sheet's test hooks.
 
   The full-bleed dismiss SCRIM (a sibling of the sheet card, not the
   card's own `glassFill` above) is a SEPARATE Liquid Glass layer with a
@@ -488,6 +739,65 @@ new component can land between reviews of this skill:
   `ScrollView` applies for its search field, per that file's comment); any
   new sheet content that combines a focusable input with a tappable list
   below it needs the same prop.
+- **SelectableRow** (`src/design-system/components/selectable-row/`) —
+  the shared single-select row for a `BottomSheet` list: a 44pt-minimum
+  tap target that fills with the accent background when `selected` (the
+  `ChipRow` selection vocabulary), with a leading checkmark
+  slot, an optional leading `icon` (SF Symbol) or `leadingText` mark
+  (mutually exclusive, for a glyph with no SF Symbol form — a currency
+  sign or ISO code), an optional trailing node pinned to the row's far
+  right and top-aligned to the label (the bank picker's capability
+  icons — see the transparency principle below), and an optional
+  `description` — a second line rendered below
+  the label in the SAME leading-slot-aligned column, wrapping onto
+  multiple lines rather than truncating, for a subtitle explaining what
+  the option means (the account-kind picker's "Real estate, car,
+  valuables, money you lent" hint, `AccountKindField`,
+  `src/screens/forms/account-kind-field/`). The caller owns any tone
+  switching (e.g. `onAccent` once selected) on whatever it renders in
+  `description`/`trailing` — `SelectableRow` does not inspect either.
+  This is the ONE select-sheet row: a labeled-field-plus-`BottomSheet`
+  picker (`FieldTrigger` + `BottomSheet` + a `SelectableRow` per option)
+  is the shared "select field" family replacing the older inline
+  `ChipRow` for a picker with more than a couple of options.
+  **SelectField** (`src/design-system/components/select-field/`) is the
+  GENERIC version of this shape — `label`/`sheetTitle`/`options`/
+  `selected` (nullable — see below)/`onSelect`/`labels`/optional
+  `subtitles`/optional `icons`/`placeholder`/`required`/`disabled`/
+  `error`/`testID` — and is now the ONE shared implementation: a
+  `property` account's Type-as-category field (`PropertyTypeField`,
+  replacing the generic holding-type picker for that one account
+  kind — see `kiko-domain`'s "`property_item`/`metal` create-form
+  sections"), `LoanSection`'s kind field (6 and
+  4 long option names, too wide for a `ChipRow`), the Bond form's
+  coupon-frequency picker (shared by both `BondIsinSection`'s ISIN-mode
+  unmapped-frequency picker and `ManualBondFields`'s own frequency
+  field), the holding-type picker, `AccountKindField`, and
+  `ModeSelectField` all reach for it directly. `AccountKindField` and
+  `ModeSelectField` (`src/screens/forms/`) are now thin wrappers over
+  `SelectField` — `ModeSelectField` keeps its own caller-side `visible`
+  gate (a convert has no mode toggle at all) ahead of it. `BankTypeField`
+  is the one remaining hand-rolled implementation, kept apart because it
+  carries extra behavior `SelectField` doesn't generalize (an
+  always-first "no bank" row, a Guideline-5.6 disclaimer, and dual
+  capability icons) — retrofitting it onto `SelectField` is a separate,
+  larger task. `sheetTitle` is REQUIRED and distinct from `label` — a
+  field label (sentence case) and a sheet title (Title Case) are two
+  different UI roles per `kiko-translator`'s casing-by-role rule, so the
+  sheet header can never just reuse the label verbatim. The same REQUIRED
+  `sheetTitle` prop is on every other picker-sheet field too (`DateField`,
+  `TimeField`, `CategoryField`, `BankTypeField`, `HoldingSelectField`,
+  `PaymentHoldingField`, `CurrencyField`, `FilterMenu`,
+  `ColumnSelectField`); the trigger's `label` stays its caption and
+  accessibility label. `SelectField`'s
+  `selected` accepts `null` for a picker that legitimately starts with
+  nothing chosen — the trigger then shows `placeholder` at
+  `textSecondary`, the same "no default" contract a `ChipRow` used to
+  fake by widening its option type to admit a value (`''`) that matches
+  nothing. A picker whose `selected` is never actually `null` (an
+  account always has a kind, a transaction always has a mode) still
+  supplies a `placeholder` to satisfy the contract — it is simply never
+  shown.
 - **ConfirmSheet** (`src/design-system/components/confirm-sheet/`) —
   the themed confirm-or-cancel `BottomSheet`: a title, an optional
   body `message` (omitted for a bare title-only confirm), a `confirmLabel`,
@@ -500,7 +810,11 @@ new component can land between reviews of this skill:
   `Modal`.
 - **CardContextMenu** (`src/design-system/components/card-context-menu/`)
   — wraps a grid/list card in a touch-and-hold delete (and, when an
-  `onDuplicate` handler is passed, Duplicate/Delete choice) menu: a
+  `onDuplicate` and/or `onEdit` handler is passed, an Edit/Duplicate/
+  Delete choice, in that order) menu. `onEdit` is for a row with no tap
+  target of its own: the holding detail's share-change rows (Edit +
+  Delete); a transaction row keeps tap-to-edit and passes only
+  `onDuplicate`. The menu is: a
   `Gesture.LongPress()` that raises the shared `ConfirmSheet` above on a
   still hold, while a hold that MOVES fails the gesture so an enclosing
   `react-native-sortables` drag can still claim it — see `kiko-gestures`
@@ -509,7 +823,9 @@ new component can land between reviews of this skill:
   so a synced card stays reorderable. This replaced the app's earlier
   swipe-to-reveal-delete row (`SwipeableRow`, removed) as the one
   delete-affordance pattern; a new deletable card/row wraps in this
-  rather than reintroducing a swipe gesture.
+  rather than reintroducing a swipe gesture. No swipe actions anywhere:
+  row edit/delete = long-press `CardContextMenu` (`kiko-no-swipe-action`,
+  see kiko-gestures).
 - **SymbolIcon** — wraps an SF Symbol glyph
   (`react-native-nitro-sfsymbols`); see "SF Symbol `tintColor` gotcha"
   below before passing it a color.
@@ -525,7 +841,7 @@ new component can land between reviews of this skill:
 - **TextField** — a labeled text input wrapping RN's `TextInput` with
   theme tokens. Its disabled chrome (border/background/opacity) comes
   from the shared `disabledFieldStyle(theme)` helper
-  (`src/design-system/disabled-field-style.ts`); `DateField` and
+  (`src/design-system/disabled-field-style/disabled-field-style.ts`); `DateField` and
   `TimeField` (`src/screens/forms/`) consume the SAME helper so a
   read-only date/time field renders identically to a read-only text
   field. This is a DIFFERENT token from the pressable `DISABLED_OPACITY`
@@ -538,81 +854,291 @@ new component can land between reviews of this skill:
   can wrap (see `text-field.component.test.tsx` for the two behaviors
   contrasted).
 - **FieldError** (`src/design-system/components/field-error/`) — the
-  one inline validation-failure line a form renders next to a blocked
-  field or footer Save button (`Text variant="caption" tone="negative"`,
-  the same tone `FieldLabel`'s required asterisk uses). Every form
-  composes this instead of hand-rolling its own error caption — see
-  `kiko-code-style`'s "Form validation model" section for when to show
-  it.
+  one inline validation-failure line a form renders DIRECTLY UNDER its
+  own field (`Text variant="caption" tone="negative"`, the same tone
+  `FieldLabel`'s required asterisk uses) — never next to a footer Save
+  button, and never a reserved-height slot: it fades in on failure and
+  the layout reflows, so a valid field shows no error node at all.
+  Every
+  invalid field shows its OWN error at the same Save/Import press —
+  each field's message is computed from ONLY that field's own inputs,
+  gated by the attempted-save flag, never by comparing against a
+  single shared "first failing field" reason (that shape hides every
+  error but one until the fields ahead of it are fixed one at a time,
+  and un-hides the next one instead of clearing — a real reported
+  bug, not a hypothetical). EVERY field with a visible error turns its
+  own `FieldLabel`/`TextField`/`FieldTrigger` red (`invalid`, driven
+  from that field's own `error` prop) at the same press, not just one
+  — the first-invalid field in the form's top-to-bottom order is used
+  ONLY to pick the scroll target, a SEPARATE concern from which fields
+  turn red. Save/Import is never disabled for VALIDATION; it validates
+  on press. It disables only while a submit is in flight, or when an
+  edit's saved value depends on data still loading (the holding form's
+  edit waits for the price book, kiko-pricing). Every form composes this instead of hand-rolling its own
+  error caption — see `kiko-code-style`'s "Form validation model" section for when to
+  show it.
 - **FieldTrigger** (`src/design-system/components/field-trigger/`) —
   the shared "labeled field that opens a picker sheet" trigger: a
   caption above a bordered row showing the current icon (or leading
   text mark) + value, tapping which opens the caller's own
   `BottomSheet`. `CategoryField`, `HoldingSelectField`,
-  `ModeSelectField`, `BankTypeField` (`src/screens/forms/`) and
-  `CurrencyField` below all compose this rather than re-implementing
-  the same bordered-row JSX. Lives in `design-system/components/`, not
+  `ModeSelectField`, `BankTypeField` (`src/screens/forms/`),
+  `SelectField` and `CurrencyField` below all compose this rather than
+  re-implementing the same bordered-row JSX. Lives in
+  `design-system/components/`, not
   `screens/forms/` where it used to sit — a design-system component
   must never import from `src/screens/**`, enforced by the
   `kiko-no-import-screens-outside-ui` Semgrep rule (see `kiko-linter`).
+- **No imports across screen folders.** A file under
+  `src/screens/<a>/` must never import from `src/screens/<b>/**`
+  (relative path, `@kiko/` alias, or `jest.mock`). Move shared code to
+  `src/design-system/`, a shared hook/util directory, or a barrel
+  outside `src/screens/`. Enforced by `kiko-no-cross-screen-import`
+  (`scripts/checks/screen-imports.js`, the guard and
+  `check:screen-imports`).
 - **CurrencyBreakdown** — a two-column per-currency amount grid (code
   left, formatted `MoneyText` right), filled row-major.
+- **SummaryTable** (`src/design-system/components/summary-table/`) — the
+  one shared "label left, value right" summary block: an optional `title`
+  heading row, then a stack of `rows` (`{ key, label, value: ReactNode,
+  testID? }`), each split `space-between`. Extracted from the
+  holding-detail deposit/bond value-breakdown block —
+  `HoldingDetailScreen` renders its own
+  principal/gross/interest/tax/expected-profit rows through this (and,
+  for a bond, a "Yield to maturity" text row: a two-decimal percent,
+  testID `bond-yield-to-maturity`, left out when no lot has a stored
+  price — the one text row in the interest table; the bond FORM shows
+  the same yield, formatted by the same `yieldToMaturityText`, as a
+  one-row `SummaryTable` after the purchase date with a caption
+  `textSecondary` value like its ISIN summary, testID
+  `bond-form-yield-to-maturity`), passing
+  `<MoneyText money={...} tone={...} />` as each row's `value`, with NO
+  visual change from before the extraction. The statement-import preview
+  (`StatementPreviewBlock`, `statement-import/statement-preview-block/`) and the
+  column-mapping result section (`MappingResult`) reuse the SAME row
+  layout/alignment/styling for their own summary rows (transaction count,
+  currency, date span) — never the deposit table's value/percent/tax
+  COLUMNS, only its layout. The loan detail's ledger breakdown and its
+  "Upcoming Payments" list (`UpcomingPayments`, one row per installment:
+  date label, payment over a principal / interest caption) are
+  `SummaryTable`s too. A property owned in part swaps the priced
+  Cost / Value / Gain rows for Whole value / Your share / Your value /
+  Cost (your share) / Gain (`sharedPropertyBreakdownRows`,
+  `holding-detail.screen.tsx`; testIDs `ownership-whole-value`,
+  `ownership-share`, `ownership-owned-value`, `ownership-owned-cost`,
+  `ownership-gain`); "Your share" is the one text row, a `body` `Text`
+  reading the share as typed plus its day (`1/3 · 33.33% since
+  01.06.2025`, or `50% since …` for a percent). The two-value display
+  on the holding card follows the converted-to-base line's shape: the
+  owned value stays the main `MoneyText`, and a `caption`
+  `textSecondary` line under it reads the share of the whole (`1/3 of
+  3,000,000.00 ₴`, testID `holding-card-whole`) — only when the
+  property is owned in part (`propertyOwnershipView`). `value` is always a caller-rendered `ReactNode`
+  (a plain `Text` or a `MoneyText`) — `SummaryTable` itself never formats a
+  value. A row's own `testID` wraps ONLY that row's value (never its
+  label), so a caller migrating an existing row's testID (e.g.
+  `statement-import-transaction-count`) keeps the exact same
+  `toHaveTextContent` assertion it had before, scoped to the value text
+  alone — RNTL's `toHaveTextContent` matcher requires an EXACT match by
+  default (unlike jest-dom's substring default on web), so a testID
+  spanning both label and value would break every such assertion.
 - **CurrencyField** (`src/design-system/components/currency-field/`) —
   the shared currency-picker trigger + `BottomSheet`: a labeled trigger
   showing the current selection (or a placeholder) that opens a sheet
   listing a caller-supplied `options` set (defaults to every currency;
-  the cash-account form passes fiat-only, the holding form the full
-  set). Supports `hideLabel` for a caller that already labels the
+  the cash-account form passes fiat-only, the holding form its type's
+  `holdingCurrencyOptions` — fiat-only for cash, the full set
+  otherwise). The sheet lists fiat first, then crypto; `cryptoFirst`
+  flips the two groups (each keeps its own order) — the crypto-holding
+  create form sets it. Supports `hideLabel` for a caller that already labels the
   control externally (the Settings base-currency row), `required`, and
   a `disabled` read-only state. A field opens a picker sheet for one
-  selection among many options; `OptionPills` below toggles inline
+  selection among many options; `ChipRow` below toggles inline
   among a small fixed set instead.
-- **OptionPills** (`src/design-system/components/option-pills/`) — a
-  shared row of selectable pill options; read that folder directly
-  for its current props and consumers (`LanguageSwitch`, the
-  Statistics trend-filter sheet, the icon-picker modal — grep
-  `OptionPills` for the live set) rather than assuming a fixed shape.
-  Its grid defaults to an always-2-column wrap (`LanguageSwitch`'s 2
-  options) via an optional `columns` prop (default `2`); a consumer
-  with a different, known option count that must render as a single
-  equal-width row instead of wrapping passes an explicit `columns={n}`
-  matching its own option count (the trend-filter sheet's amount/measure
-  rows do this). Do not add a second, parallel way to force a row
-  count; extend/override `columns` instead. The SELECTED pill reads as a
-  FILLED accent control: an `accent` background with an `onAccent`
-  label+icon and a semibold label, mirroring `ChipRow`'s selected chip
-  — not a low-contrast raised surface, so the selection stays clear on
-  the low-contrast sheet background. Unselected pills stay transparent
-  with a `textSecondary` label. The pill content is centered and the
-  pill holds the 44pt HIG minimum touch target. The pill label's `Text`
-  variant defaults to `body` (the original hardcoded size — every
-  existing consumer that omits the prop, e.g. `LanguageSwitch`, is
-  unaffected) and takes an optional `labelVariant`
-  override for a caller whose value sits under its own larger section
-  label and must read as visually subordinate to it — the Statistics
-  trend-filter sheet (`trend-filter-field.component.tsx`) passes
-  `labelVariant="caption"` for exactly this reason: its section labels
-  were raised from `caption` to `body` to fix an inverted
-  label-smaller-than-value hierarchy, so the values had to drop a step
-  to stay under them. The optional leading icon's size is derived from
-  the same prop (`theme.iconSizes[labelVariant]`, never a hardcoded
-  `theme.iconSizes.body`), per the "SF Symbol sizing" HIG rule — the
-  glyph stays paired with its label's type step rather than only ever
-  matching the default. The trend-filter sheet also dropped the frosted
-  `GlassSurface transparent bordered` card that used to sit behind each
-  value group — the values now sit directly on the sheet under their
-  labels (the iOS grouped-form look, no inner gray fill) — except the
-  manual-mode category list, which still needs a clipped, shrinkable
-  scroll region: that one case keeps a plain `Box` with `overflow:
-  'hidden'`, the shared radius token, and a hairline `border` (no fill),
-  reproducing only the corner-clip and shrink-to-scroll behavior
-  `GlassSurface` used to provide.
+- **ChipRow** (`src/design-system/components/chip-row/`) — the ONE
+  shared chips component: a compact wrap-flow row for a short
+  code/label chip, never an equal-width column grid. Read the folder
+  directly for the current props; the load-bearing ones beyond
+  `options`/`selected`/`onSelect`: `Option` is `string | number` (the
+  trend-filter amount pills are `1 | 2 | 3 | 4 | 5`); `selected` accepts
+  `undefined` for a PICK LIST with no single-select toggle semantics —
+  `DescriptionSuggestions` passes `undefined` so no chip ever renders
+  highlighted, rather than faking it with a value (`''`) that matches
+  nothing; `labels` is an optional value -> display-text map;
+  `labelVariant` (default `'body'`) drops the chip label a type step
+  for a value sitting under its own larger section label (the
+  trend-filter sheet's amount/measure rows pass `'caption'`). The chip
+  keeps the approved compact look at EVERY step — a 34pt visible
+  `minHeight` with `spacing(1)` vertical padding (`chip-row.styles.ts`),
+  the same visible height as `Button`'s `small` size — and restores the
+  44pt tap target with vertical `hitSlop` (`CHIP_HIT_SLOP`,
+  `chip-row.component.tsx`), never with a taller chip. `labelVariant`
+  only changes the label's type step, not the chip's size. **Selection
+  look (the user-approved native iOS filter-chip style):** a selected
+  chip is the `accent` fill with an `onAccent` label; an unselected chip
+  is the faint `neutralSubtle` fill with a `textPrimary` label — never a
+  solid dark `surface`/`surfaceHigh` pill. The icon picker's tiles
+  (`icon-picker-modal.component.tsx`) follow the same look. A chip or
+  segment on a glass sheet is a plain fill, never a `GlassSurface` (no
+  glass on glass). See
+  `kiko-statement-import`'s column-mapping section for the fullest
+  worked comparison against `SegmentedControl` below. Because a
+  design-system component may never import from `src/screens/**`
+  (`kiko-no-import-screens-outside-ui`), `ChipRow` lives in
+  `design-system/components/` since a design-system component
+  (`LanguageSwitch`) renders one — the SAME reason `FieldTrigger` lives
+  there too; a screen-level consumer imports it from there like any
+  other design-system component.
+- **SegmentedControl** (`src/design-system/components/segmented-control/`)
+  — a JS implementation of Apple's iOS `UISegmentedControl`, per the Human
+  Interface Guidelines
+  (https://developer.apple.com/design/human-interface-guidelines/segmented-controls):
+  a rounded track in the faint neutral fill (`theme.colors.neutralSubtle`,
+  the native iOS segmented track — the user-approved native style),
+  holding N equal-width segments, with the SELECTED segment a lighter
+  raised thumb (`theme.colors.segmentSelected`) under a `textPrimary`
+  semibold label. The track is translucent, so the thumb's WCAG 1.4.11
+  3:1 non-text contrast is checked against the track composited over
+  BOTH backdrops the control sits on (true-black `background` and
+  `surface`, which a card or the glass sheet composites to); that is
+  why the thumb is lighter than iOS's own `#636366`, which only reaches
+  ~2.4:1 over `surface`. Read `theme.ts`'s own doc comment on
+  `segmentSelected` for the current hex and measured ratios rather than
+  trusting a copy restated here. This is still NOT the app's other
+  filled-accent selection vocabulary (`ChipRow`/`SelectableRow`) — a
+  segmented control reads as its own distinct iOS control, never an
+  accent fill. No segmented-control
+  NATIVE library is a dependency of this app; this
+  renders the same visual/interaction contract in plain
+  `Pressable`/`Box`/`Text` instead of adding one. Touch target: each segment `Pressable` is a REAL layout box with
+  `minHeight` 44pt and no `hitSlop` (`minHeight`, not `height`, so
+  Dynamic Type can grow it). The native-matching visible track (32pt)
+  and selected pill (24pt, a 4pt ring of track around it) are
+  absolutely-positioned DECORATIVE insets (`pointerEvents="none"`), so
+  they grow with the segment. The container carries a negative
+  `marginVertical` equal to the track inset, so the parent lays the
+  control out at the 32pt track and no empty band appears above or below
+  it. The 44pt frame then overflows the parent, and RN 0.87 Fabric keeps
+  that band touchable: the parent's `overflowInset` is built from its
+  children's frames (`YogaLayoutableShadowNode::getContentBounds`), and
+  `RCTViewComponentView betterHitTest` only drops an outside-bounds touch
+  when `overflowInset` is zero or the view clips. So never wrap the
+  control in an `overflow: 'hidden'` parent. Jest cannot hit-test; see
+  `segmented-control.styles.ts` for the exact geometry rather than a copy
+  of the pixel values restated here. The selected label is semibold
+  (`fontWeight: '600'`), matching UIKit, composed alongside (not
+  duplicating) the base label's own `textAlign: 'center'`. The 32pt
+  visible track (answering a device-feedback question, "is this how iOS
+  does them?" — a segment "seeming short"): this component's
+  `TRACK_HEIGHT` constant matches `UISegmentedControl`'s commonly
+  MEASURED intrinsic height at its standard control size — there is no
+  Apple-documented public constant for this number (the HIG page above
+  covers behavior and appearance, not a numeric height), so treat 32pt
+  as a community-measured convention, not an Apple primary source, until
+  confirmed on a real device.
+  Props: `options`/`selected`/`onSelect`/`labels`/`accessibilityLabel`
+  (required — every segment folds it into its own `accessibilityHint`)
+  /`testID`. Accessibility: each segment keeps
+  `accessibilityRole="button"` with `accessibilityState={{ selected }}`
+  — NOT `"tab"`/`"tablist"`, which RN 0.87 maps to NO accessibility trait
+  on iOS (confirmed against `RCTViewManager`/Fabric's
+  `accessibilityPropsConversions` — only `"tabbar"` maps to a trait there.
+  A `"tab"`/`"tablist"` role loses
+  the Button trait VoiceOver needs to announce "can be activated"); each
+  segment's own `accessibilityLabel` is its visible text, and its
+  `accessibilityHint` folds in the group's `accessibilityLabel` plus a
+  TRANSLATED position string (`common.segmentPosition`, "N of M" — never
+  a hardcoded `"N / M"` literal, which VoiceOver would read as "N slash
+  M" and which never translates). VoiceOver behavior should still be
+  confirmed on a real device — Jest only asserts prop values.
+  `SegmentedControl` carries no VISIBLE label prop of its own (only the
+  non-visual `accessibilityLabel`) — a caller that needs a visible
+  caption above it composes its own `FieldLabel` above the control, the
+  same way `ChipRow` does internally (the crypto-sync Wallet/Binance
+  source toggle and the Bond form's "ISIN / Manual" mode both do this).
+
+  **The tabs-vs-chips rule (binding), quoted verbatim from the user:**
+  "Tabs (SegmentedControl) are used when the selection changes the
+  appearance, for example it shows different form fields (like import
+  mapping's currency field). Otherwise use chips (a value selection
+  that leaves the form the same)." A long-label option set — even one
+  that leaves the form unchanged — still uses `SelectField`'s select
+  sheet instead: a chip row's width scales with its label text, and a
+  handful of long labels (the loan-kind picker's 4 kind names —
+  Автокредит, Споживчий кредит, Іпотека, Позика в особи — already ran
+  too wide for a comfortable chip row) breaks its wrap-flow layout,
+  which `SelectField`'s list rows do not. Verify EVERY choice control
+  against this rule before adding or changing one — do not assume a
+  control's existing type is correct, and never move a control between
+  `ChipRow`/`SegmentedControl`/`SelectField` as an unrequested DEFAULT
+  without a specific instruction naming that control. Current app state:
+  - `SegmentedControl` (changes fields): the column-mapping screen's
+    amount-mode/currency-mode selectors (`AmountFields`/`CurrencyFields`);
+    the Bond form's ISIN/Manual mode (`BondIsinSection`,
+    `src/screens/forms/holding-form/bond/bond-isin-section/`); the Loan
+    form's schedule selector (`LoanSection` — `none` hides the
+    rate/term fields); the Lot form's Buy/Sell toggle (`LotFormScreen`
+    — Buy alone shows the Total-cost field); the property form's
+    ownership Percent/Fraction mode (`OwnershipField` — Percent shows one
+    field, Fraction two); the account-detail crypto
+    sync form's Wallet/Binance source toggle (`CryptoSyncForm` — each
+    shows a different credential field); the Statistics trend-filter
+    sheet's Top/Manual mode (`TrendFilterField` — Top shows the
+    amount/measure controls, Manual shows the category list; this one
+    ALSO passes `labelVariant="caption"` — it sits directly under its
+    own larger `SectionHeader`, so it stays visually subordinate to
+    that header rather than reading as a competing peer of it, the
+    same label-above-value hierarchy `ChipRow`'s `labelVariant` follows
+    elsewhere in the same sheet).
+  - `ChipRow` (leaves the form the same): the column-mapping screen's
+    encoding, delimiter, and decimal-separator pickers; the holding
+    form's metal form/unit chips, the deposit/loan term's Months/Years
+    chips (`TermField`), and the term-deposit Compounding chips; the Manual-mode bond-kind chips
+    (`ManualBondFields`); the Statistics trend-filter sheet's amount
+    (1-5) and by-measure pills; the Settings `LanguageSwitch`.
+  - `SelectField` (long list, regardless of field-change): the
+    property-category and loan-kind pickers (6 and 4 options — too
+    wide for a `ChipRow`); the bond coupon-frequency picker (shared by
+    both the ISIN mode's unmapped-frequency picker and the Manual
+    mode's own frequency field — one control everywhere it appears);
+    the holding-type picker (up to 9 long type names); the account-kind
+    and transaction-type pickers (`AccountKindField`/`ModeSelectField`,
+    both now thin wrappers over `SelectField`). The transaction-type
+    picker is a DOCUMENTED EXCEPTION to the tabs-vs-fields half of the
+    rule: its choice does change visible fields (Exchange/Split add
+    their own fields), which is tabs territory by the letter of the
+    rule, but it stays a select sheet on purpose — 4 options on create,
+    already the same shape `AccountKindField`/`BankTypeField` use, so
+    converting it to `SegmentedControl` would trade one working pattern
+    for another rather than fixing a real violation.
 - **BarChart**, **PieChart**, **NetWorthLine** — the `react-native-svg`
   visualization components; see the dedicated `kiko-charts` skill for
   their coordinate-space and testID conventions before touching any
   of the three. `PieChart` additionally supports `innerRatio` (ring
   thickness) and `centerTotal` (an amount centered in the donut hole)
   — see `kiko-charts`.
+
+## Capability icons — the transparency principle
+
+The interface must be transparent about the abilities it provides to the
+user: every capability an entity supports is visible (a capability icon
+in a picker option's `trailing`/`description`), never hidden or implied.
+A capability icon stands for exactly ONE real capability — never a
+"probably true" or "usually true" one, and never gated on a build/env
+flag (Guideline 5.6). The bank picker (`BankTypeField`,
+`src/screens/forms/bank-type-field/`) is the exemplar: `receipt` means
+"this bank has a known, dedicated statement format" — gated on the
+catalog's own `statementFormatId` field, so a column-mapping-only bank
+(no dedicated parser) does not show it, even though it still offers
+import (through the generic column-mapping screen, which
+`increase.indent` names); `increase.indent` means "column-mapping import
+is available" — shown unconditionally, since every catalog bank offers
+it, a dedicated parser or not; `arrow.trianglehead.2.clockwise.rotate.90`
+means "this bank supports a live sync connection" — gated on the
+catalog's own `connectable` field. Derive a capability icon's gate from
+catalog DATA (a field on the entry), never a hard-coded id list — a
+hard-coded list drifts the moment the catalog gains or loses an entry,
+silently misrepresenting that entry's real capabilities.
 
 ## App-lock UI
 
@@ -629,13 +1155,16 @@ An account or holding's color is never a raw hex literal at the call
 site — it goes through one shared pipeline so a swatch reads
 identically everywhere that entity appears (its card, its icon tint,
 its chart legend). Read `src/holdings/entity-colors/entity-colors.ts` and
-`src/design-system/entity-tint.ts` directly for the exact functions
+`src/design-system/entity-tint/entity-tint.ts` directly for the exact functions
 and their current shape; do not copy their signatures into prose here
 where they can drift. As of this writing the pipeline is:
 
 - `defaultAccountColor` / `defaultHoldingColor`
   (`src/holdings/entity-colors/entity-colors.ts`) — the kind/type-keyed default
-  swatch a newly-created entity gets before a user overrides it.
+  swatch a newly-created entity gets before a user overrides it. A holding
+  type's default color is set once, on its own descriptor
+  (`src/holdings/holding-descriptor/`); `defaultHoldingColor` is derived
+  from every type's descriptor, not a second hand-written map.
 - `resolveEntityColor` (`entity-tint.ts`) — the one function that
   picks an entity's EFFECTIVE color: the stored override if it is a
   valid hex, else the kind/type default if that resolves, else a safe
@@ -747,8 +1276,13 @@ before statement blocks" rule. This keeps distinct child elements
 visually distinct.
 
 Use title case for every heading and sub-heading shown in the UI —
-screen titles, section headers — styled through the typography tokens
-(see "Token categories" above). This does not cover Button labels:
-buttons are actions, not headings, and case themselves per the
-catalogue (see "Button" above) — English Button copy is sentence
-case.
+screen titles, section headers, sheet/modal titles — styled through
+the typography tokens (see "Token categories" above). This does not
+cover Button labels: buttons are actions, not headings, and case
+themselves per the catalogue (see "Button" above) — English Button
+copy is sentence case. Casing is decided per UI ROLE, not per
+component in isolation — the full rule (which roles are Title Case
+vs sentence case, the proper-noun keep-list, the uk
+sentence-case-everywhere rule, and the mechanized test) is owned by
+the `kiko-translator` skill's "Casing follows one rule per UI role"
+section; read that before adding a new heading/title/label string.

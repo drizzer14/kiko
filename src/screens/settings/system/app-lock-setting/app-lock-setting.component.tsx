@@ -1,13 +1,12 @@
-import type { TFunction } from 'i18next';
-import { type FC, useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { match } from 'ts-pattern';
-
-import { isSensorAvailable, type SensorStatus } from '../../../../auth/biometrics';
-import Card from '../../../../design-system/components/card';
-import Switch from '../../../../design-system/components/switch';
-import Text from '../../../../design-system/components/text';
-import SettingsRow from '../../settings-row';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
+import { type FC, useEffect, useState } from 'react';
+import Card from '@kiko/design-system/components/card';
+import Text from '@kiko/design-system/components/text';
+import Switch from '@kiko/design-system/components/switch';
+import SettingsRow from '@kiko/screens/settings/settings-row';
+import { isSensorAvailable, type SensorStatus } from '@kiko/auth';
 
 import type { AppLockSettingProps } from './app-lock-setting.props';
 
@@ -26,14 +25,15 @@ const sensorHint = (status: SensorStatus | undefined, t: TFunction): string | un
 // biometrics, or (passcodeOnly) the device passcode. A device with no passcode
 // gets a disabled switch and a hint instead of a lock that would fail at runtime.
 const canOfferLock = (status: SensorStatus | undefined): boolean =>
-  status?.kind === 'available' || status?.kind === 'passcodeOnly';
+  match(status?.kind)
+    .with('available', 'passcodeOnly', () => true)
+    .with(undefined, 'passcodeNotSet', 'unavailable', () => false)
+    .exhaustive();
 
 /**
  * The Settings App Lock card: a labeled switch that enables/disables the
  * biometric lock, plus a sensor-status hint. The lock is asked for only on a
- * fresh app open, so there is nothing else to configure. The screen mounts this
- * card only when `APP_LOCK_ENABLED` is on, so a safe build with the flag off
- * shows no non-functional toggle.
+ * fresh app open, so there is nothing else to configure.
  */
 const AppLockSetting: FC<AppLockSettingProps> = ({ lockEnabled, onToggle }) => {
   const { t } = useTranslation();
@@ -41,6 +41,7 @@ const AppLockSetting: FC<AppLockSettingProps> = ({ lockEnabled, onToggle }) => {
 
   useEffect(() => {
     let alive = true;
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) isSensorAvailable never rejects; a failure resolves as `unavailable`
     isSensorAvailable().then((status) => {
       if (alive) {
         setSensorStatus(status);

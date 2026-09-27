@@ -1,15 +1,16 @@
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { migrateBinanceCredentialToPerAccount } from '@kiko/crypto-sync/binance/migrate-binance-credential';
-import { initDatabase } from '@kiko/db/client';
-import { runMigrations } from '@kiko/db/run-migrations';
-import Box from '@kiko/design-system/components/box';
-import Text from '@kiko/design-system/components/text';
-import { i18n } from '@kiko/i18n';
-import { migrateSingleTokenToPerAccount } from '@kiko/monobank/migrate-credential';
-import { migrateLegacyToken } from '@kiko/monobank/token';
-import { settingsRepo } from '@kiko/settings/settings.repo';
-import { type FC, type ReactNode, useEffect, useState } from 'react';
+import { match } from 'ts-pattern';
+import { i18n } from '@kiko/i18n/init';
+import { accountsRepo } from '@kiko/accounts';
+import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
+import { initDatabase, runMigrations } from '@kiko/db';
+import Text from '@kiko/design-system/components/text';
+import { migrateLegacyToken } from '@kiko/monobank/token';
+import { type FC, type ReactNode, useEffect, useState } from 'react';
+import { migrateBinanceCredentialToPerAccount } from '@kiko/crypto-sync/binance';
+import { migrateSingleTokenToPerAccount } from '@kiko/monobank/migrate-credential';
+import { upgradeStoredDedupKeys } from '@kiko/statement-import/upgrade-stored-dedup-keys';
 
 import { styles } from './migrations.gate.styles';
 
@@ -21,7 +22,7 @@ type MigrationState =
 /**
  * Apply the persisted language before the first gate paints.
  *
- * i18next initializes with the DEVICE language (src/i18n/index.ts), and the
+ * i18next initializes with the DEVICE language (src/i18n/init/init.ts), and the
  * only `changeLanguage` caller (`useSyncLanguageWithSettings`) is mounted from
  * `AppRoot` — which renders only after this gate succeeds AND `LockGate`
  * unlocks. So a user with device `en` and `settings.language = 'uk'` read
@@ -75,7 +76,7 @@ const migratePerAccountMonobankToken = async (): Promise<void> => {
  * exact counterpart of `migratePerAccountMonobankToken` above: it runs in the boot
  * chain AFTER that Monobank migration and BEFORE any per-account credential read.
  * There is at most one connected Binance account today (the one-connection
- * invariant relaxes in Task 5.2), so the first row's id is the binding target;
+ * invariant relaxes for multi-account), so the first row's id is the binding target;
  * when none is connected the migration is a no-op that leaves the global item for a
  * later Connect to adopt — see `migrateBinanceCredentialToPerAccount`.
  */
@@ -101,11 +102,17 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
     // setter can ever run against a missing row, and a failed insert surfaces
     // as this gate's error state instead of an unhandled rejection. The
     // persisted language is applied next, before either gate paints anything
-    // user-visible. The Keychain-token migrations run last, before any token
+    // user-visible. The Keychain-token migrations run next, before any token
     // read (the auto-sync hook mounts only on success): first the legacy
     // (pre-`kiko`) -> global move, then the global -> per-account move that binds
     // the Monobank token to its connected account, then the equivalent global ->
-    // per-account move for the Binance credentials.
+    // per-account move for the Binance credentials. The dedup-key upgrade runs
+    // last of the one-shot migrations, since it only needs the settings row
+    // (already ensured above) and touches no Keychain state the credential
+    // migrations depend on — its own `.catch` below (unlike every migration
+    // ahead of it) keeps its failure from reaching the chain's own `.catch`,
+    // since it is the one non-critical step here (see that `.catch`'s doc
+    // comment).
     initDatabase()
       .then(runMigrations)
       .then(() => settingsRepo.ensure())
@@ -113,6 +120,21 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
       .then(migrateLegacyToken)
       .then(migratePerAccountMonobankToken)
       .then(migratePerAccountBinanceCredential)
+      .then(() =>
+        upgradeStoredDedupKeys().catch((error: unknown) => {
+          // Non-critical, unlike every migration above: a failed rewrite must
+          // never send the WHOLE launch to this gate's error state — the row
+          // it upgrades is already reachable through the legacy dedup key, so
+          // the app stays fully usable without it. Its own `write()`
+          // transaction leaves `settings.dedupKeysUpgraded` at `false` on any
+          // failure (upgrade-stored-dedup-keys.ts's own doc comment), so the
+          // NEXT launch retries automatically — caught and reported here the
+          // same way every other best-effort background failure in this app
+          // is (console.warn), never a new UI state.
+          // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) this catch is what keeps the failure from surfacing anywhere else (see the doc comment above) — logging it here is the only trace a failed rewrite leaves.
+          console.warn('[migrations-gate] dedup-key upgrade failed, will retry next launch', error);
+        }),
+      )
       .then(() => {
         if (!cancelled) {
           setState({ status: 'success' });
@@ -129,27 +151,23 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
     };
   }, []);
 
-  if (state.status === 'error') {
-    return (
+  return match(state)
+    .with({ status: 'error' }, (errorState) => (
       <Box testID="migrations-gate-error" style={styles.fill}>
         <Text variant="body" tone="textSecondary">
-          {t('migrations.error', { message: state.error.message })}
+          {t('migrations.error', { message: errorState.error.message })}
         </Text>
       </Box>
-    );
-  }
-
-  if (state.status === 'pending') {
-    return (
+    ))
+    .with({ status: 'pending' }, () => (
       <Box testID="migrations-gate-pending" style={styles.fill}>
         <Text variant="body" tone="textSecondary">
           {t('migrations.preparing')}
         </Text>
       </Box>
-    );
-  }
-
-  return <>{children}</>;
+    ))
+    .with({ status: 'success' }, () => <>{children}</>)
+    .exhaustive();
 };
 
 export default MigrationsGate;

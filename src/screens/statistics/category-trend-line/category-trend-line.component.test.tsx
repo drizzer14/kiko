@@ -1,7 +1,7 @@
 import { render, within } from '@testing-library/react-native';
 
-import type { CategoryTrendSeries } from '../../../statistics/category-trend';
-import '../../../design-system/unistyles';
+import type { CategoryTrendSeries } from '@kiko/statistics/category-trend';
+import '@kiko/design-system/unistyles';
 import CategoryTrendLine from './index';
 
 const JAN = Date.UTC(2025, 0, 1);
@@ -70,6 +70,7 @@ describe('CategoryTrendLine', () => {
     const raw: string = getByTestId('category-trend-line-line-groceries').props.points;
     const pairs = pairsOf(raw);
     expect(pairs).toHaveLength(3);
+
     for (const [x, y] of pairs) {
       expect(Number.isNaN(x)).toBe(false);
       expect(Number.isNaN(y)).toBe(false);
@@ -125,6 +126,7 @@ describe('CategoryTrendLine', () => {
     // date labels render (see the label test below): the gridline and label
     // fraction sets are deliberately decoupled.
     expect(getAllByTestId(/^category-trend-line-x-grid-/)).toHaveLength(3);
+
     for (const fraction of ['0.25', '0.50', '0.75']) {
       expect(getByTestId(`category-trend-line-x-grid-${fraction}`)).toBeTruthy();
     }

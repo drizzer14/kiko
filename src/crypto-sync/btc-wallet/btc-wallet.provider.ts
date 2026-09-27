@@ -1,5 +1,7 @@
-import type { HoldingRow } from '../../db/schema';
-import { walletAddressOf } from '../../holdings/holding-metadata';
+import { i18n } from '@kiko/i18n/init';
+import type { HoldingRow } from '@kiko/db';
+import { walletAddressOf } from '@kiko/holdings/holding-metadata';
+
 import type { BalanceProvider } from '../provider';
 
 import { isValidBitcoinAddress } from './bitcoin-address';
@@ -36,11 +38,11 @@ export const bitcoinWalletProvider: BalanceProvider<BitcoinWalletDeps> = {
     const address = (deps.address ?? storedAddress(target.holdings))?.trim();
 
     if (address === undefined) {
-      throw new Error('No wallet address stored; connect a wallet before syncing');
+      throw new Error(i18n.t('accountDetail.noWalletAddressStored'));
     }
 
     if (!isValidBitcoinAddress(address)) {
-      throw new Error('Invalid BTC address');
+      throw new Error(i18n.t('accountDetail.invalidBTCAddress'));
     }
 
     const balanceMinorUnits = await deps.fetchAddressBalance(address, deps.fetchImpl);

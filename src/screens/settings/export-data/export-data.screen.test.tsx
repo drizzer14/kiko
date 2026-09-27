@@ -1,17 +1,13 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
-// Side-effect import: src/i18n/index.ts calls `i18next.init()` at module
+import '@kiko/design-system/unistyles';
+// Side-effect import: src/i18n/init/init.ts calls `i18next.init()` at module
 // load. Every test file gets its own fresh module registry, so without this
 // import `useTranslation`'s `t()` returns the raw key (e.g.
 // "settings.dataExport.exportButton") instead of the real English string
 // this suite asserts on — the same reason
 // src/screens/settings/settings/settings.screen.test.tsx imports it.
-import '../../../i18n';
-import {
-  asNavigationProp,
-  asRouteProp,
-  navigationSpy,
-} from '../../../test-support/navigation-props';
+import '@kiko/i18n/init';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 const mockExportData = jest.fn();
 jest.mock('@kiko/data-transfer/export-data', () => ({
@@ -38,9 +34,8 @@ import ExportDataScreen from './export-data.screen';
 
 // The installed @testing-library/react-native (14.0.1) ships an ASYNC
 // `render` and an ASYNC `fireEvent` (both return Promises, confirmed against
-// node_modules/@testing-library/react-native/dist/{render,fire-event}.js) —
-// unlike the brief's Step 1 snippet, which assumes the older sync API. Every
-// call site here awaits both, matching the working convention already used
+// node_modules/@testing-library/react-native/dist/{render,fire-event}.js).
+// Every call site here awaits both, matching the working convention already used
 // by src/screens/settings/settings/settings.screen.test.tsx.
 const renderScreen = () =>
   render(
@@ -104,7 +99,7 @@ describe('ExportDataScreen', () => {
 
     // The key card still renders (the export itself succeeded) and no
     // error Alert copy appears.
-    expect(await findByText('Encryption Key')).toBeTruthy();
+    expect(await findByText('Encryption key')).toBeTruthy();
   });
 
   it('passes includeSecrets:true once the toggle is switched on', async () => {
@@ -169,7 +164,7 @@ describe('ExportDataScreen — copy-key feedback', () => {
       jest.advanceTimersByTime(2000);
     });
 
-    expect(getByText('Copy Key')).toBeTruthy();
+    expect(getByText('Copy key')).toBeTruthy();
   });
 
   // BLOCKING (review): a fresh Export mints a brand-new key, but the button
@@ -189,6 +184,6 @@ describe('ExportDataScreen — copy-key feedback', () => {
     mockExportData.mockResolvedValueOnce({ fileUri: '/tmp/b.kiko', keyBase64: 'keyB==' });
     await fireEvent.press(getByTestId('settings-button-export'));
 
-    expect(getByText('Copy Key')).toBeTruthy();
+    expect(getByText('Copy key')).toBeTruthy();
   });
 });

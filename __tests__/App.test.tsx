@@ -2,19 +2,19 @@
  * @format
  */
 
-import { render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
+import { render } from '@testing-library/react-native';
 
 // MigrationsGate pulls in the op-sqlite native binding, which has no jest
 // binary; stub it to render its children as if migrations already succeeded.
-jest.mock('../src/migration/migrations-gate', () => ({
+jest.mock('@kiko/migration/migrations-gate', () => ({
   __esModule: true,
   default: ({ children }: { children: ReactNode }) => children,
 }));
 
 // LockGate reads settings through useLiveQuery; stub it as a passthrough so the
 // boot smoke test reaches Home exactly as MigrationsGate is stubbed.
-jest.mock('../src/auth/lock-gate/lock-gate.component', () => ({
+jest.mock('@kiko/auth/lock-gate/lock-gate.component', () => ({
   __esModule: true,
   default: ({ children }: { children: ReactNode }) => children,
 }));
@@ -47,6 +47,7 @@ jest.mock('@kiko/settings/settings.repo', () => ({
 // through the mocked `useLiveQuery` (which ignores its query argument).
 jest.mock('@kiko/accounts/accounts.repo', () => {
   const actual = jest.requireActual('@kiko/accounts/accounts.repo');
+
   return {
     accountsRepo: {
       ...actual.accountsRepo,
@@ -59,7 +60,7 @@ jest.mock('@kiko/accounts/accounts.repo', () => {
 // useLiveQuery). This boot smoke test only asserts the screen mounts, so stub
 // the hook to return empty data rather than opening a real op-sqlite reactive
 // subscription.
-jest.mock('../src/db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: () => ({ data: [] }),
 }));
 

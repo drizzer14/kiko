@@ -7,10 +7,19 @@
 // Jest and never through the app. It still imports `../../../src/*` type
 // helpers (schema row types, `Currency`, `AppLanguage`, the palette) because
 // the shape it builds mirrors the real app's own types.
-import type { AccountRow, HoldingRow } from '../../../src/db/schema';
-import type { AppLanguage } from '../../../src/i18n';
-import type { Currency } from '../../../src/currency/currency';
-import { entityColorsDark } from '../../../src/design-system/palette';
+import type {
+  Metal,
+  BondMeta,
+  LoanMeta,
+  MetalMeta,
+  BondPayment,
+  PropertyMeta,
+  TermDepositMeta,
+} from '@kiko/holdings/holding-metadata';
+import type { Currency } from '@kiko/currency/currency';
+import type { AppLanguage } from '@kiko/i18n/device-language';
+import { entityColorsDark } from '@kiko/design-system/palette';
+import type { AccountRow, BondRegisterRow, HoldingRow } from '@kiko/db';
 
 // ---------------------------------------------------------------------------
 // Fixed constants. Every timestamp derives from ANCHOR (a literal Date.UTC, NOT
@@ -35,6 +44,17 @@ const ANCHOR_DAY = Date.UTC(2026, 8, 10);
 /** A fixed timestamp `daysAgo` days before ANCHOR. */
 const at = (daysAgo: number): number => ANCHOR - daysAgo * DAY_MS;
 
+/**
+ * 09:00 UTC on a calendar date — the same time of day as ANCHOR, so the
+ * instant falls on that date in every timezone from UTC-9 to UTC+14.
+ */
+const on = (year: number, monthIndex: number, day: number): number =>
+  Date.UTC(year, monthIndex, day, 9);
+
+/** A `price_points.day`-style key: UTC midnight standing for a calendar date. */
+const dayKey = (year: number, monthIndex: number, day: number): number =>
+  Date.UTC(year, monthIndex, day);
+
 const BASE_CURRENCY: Currency = 'UAH';
 
 // The number of whole months of monthly ledger activity on the main card. Six
@@ -58,14 +78,32 @@ type SeedTransaction = {
   // verbatim (it is demo data, not localized), so a UK or EN screenshot set
   // both show the same institution names.
   description: string;
+  // The `key` of the loan holding this payment pays down, linked manually.
+  loanHoldingKey?: string;
 };
 
+type SeedHoldingMeta = TermDepositMeta | BondMeta | PropertyMeta | MetalMeta | LoanMeta;
+
 type SeedHolding = {
+  // Lets a transaction link or a price point name this holding before the
+  // snapshot builder assigns it an id.
+  key?: string;
   name: string;
   type: HoldingRow['type'];
   currency: Currency;
   color: string;
   transactions: SeedTransaction[];
+  metadata?: SeedHoldingMeta;
+};
+
+type SeedInstrument = { kind: 'holding'; holdingKey: string } | { kind: 'metal'; metal: Metal };
+
+type SeedPricePoint = {
+  instrument: SeedInstrument;
+  day: number;
+  price: string;
+  currency: Currency;
+  source: 'manual' | 'nbu';
 };
 
 type SeedAccount = {
@@ -97,6 +135,8 @@ export type ScreenshotDataset = {
   accounts: SeedAccount[];
   rates: SeedRate[];
   history: SeedHistoryRow[];
+  pricePoints: SeedPricePoint[];
+  bondRegister: BondRegisterRow[];
 };
 
 // ---------------------------------------------------------------------------
@@ -322,6 +362,40 @@ const ONE_OFF_EXPENSES: OneOffExpense[] = [
 
 const CARD_OPENING_MINOR_UNITS = 2_000_000;
 
+const CAR_LOAN_KEY = 'car-loan';
+const PERSONAL_DEBT_KEY = 'personal-debt';
+const APARTMENT_KEY = 'apartment';
+const CAR_KEY = 'car';
+
+// A fabricated government bond: 1,000.00 nominal, a 16.2% coupon paid twice a
+// year (81.00 per bond each time). Its ISIN carries a valid check digit, so a
+// reviewer can save the bond after an edit, and sits far above the live NBU
+// issue range (UA40002391xx in 2026-09), so it never matches a real bond.
+const BOND_ISIN = 'UA4000999015';
+const BOND_FACE_VALUE_MINOR_UNITS = 100_000;
+const BOND_COUPON_PCT = 16.2;
+const BOND_MATURITY = on(2027, 7, 18);
+
+// The register's cash flows for ONE bond: a coupon every half year and the
+// face value back at maturity. The holding keeps them too, since the ISIN is
+// invented and leaves the cache on the first online register refresh.
+const BOND_PAYMENTS: BondPayment[] = [
+  { date: on(2026, 7, 19), kind: 'coupon', amount: '81' },
+  { date: on(2027, 1, 17), kind: 'coupon', amount: '81' },
+  { date: BOND_MATURITY, kind: 'coupon', amount: '81' },
+  { date: BOND_MATURITY, kind: 'redemption', amount: '1000' },
+];
+
+// The car loan's two latest installments, paid from the main card and linked
+// to the loan; its earlier installments predate the card's own history.
+const CAR_LOAN_PAYMENTS: SeedTransaction[] = [on(2026, 6, 15), on(2026, 7, 15)].map((time) => ({
+  amountMinorUnits: -1_040_000,
+  time,
+  category: 'other',
+  description: 'Погашення автокредиту',
+  loanHoldingKey: CAR_LOAN_KEY,
+}));
+
 /** The main UAH card ledger: an opening deposit, then a monthly salary + spends. */
 const buildMainCardTransactions = (): SeedTransaction[] => {
   const list: SeedTransaction[] = [
@@ -372,7 +446,7 @@ const buildMainCardTransactions = (): SeedTransaction[] => {
     }
   }
 
-  return list;
+  return [...list, ...CAR_LOAN_PAYMENTS];
 };
 
 // ---------------------------------------------------------------------------
@@ -393,6 +467,51 @@ const buildAccounts = (): SeedAccount[] => [
         currency: 'UAH',
         color: entityColorsDark.blue,
         transactions: buildMainCardTransactions(),
+      },
+      {
+        name: 'Банка «Відпустка»',
+        type: 'jar',
+        currency: 'UAH',
+        color: entityColorsDark.pink,
+        transactions: [80, 50, 20].map((daysAgo) => ({
+          amountMinorUnits: 200_000,
+          time: at(daysAgo),
+          category: null,
+          description: 'Поповнення банки',
+        })),
+      },
+      {
+        name: 'Депозит',
+        type: 'term_deposit',
+        currency: 'UAH',
+        color: entityColorsDark.mint,
+        transactions: [],
+        metadata: {
+          contributions: [{ amountMinorUnits: 5_000_000, date: on(2026, 2, 1) }],
+          annualRatePct: 13.5,
+          termMonths: 12,
+          recapitalization: true,
+          compounding: 'monthly',
+        },
+      },
+      {
+        name: 'ОВДП',
+        type: 'bond',
+        currency: 'UAH',
+        color: entityColorsDark.green,
+        transactions: [],
+        metadata: {
+          quantity: 30,
+          faceValueMinorUnits: BOND_FACE_VALUE_MINOR_UNITS,
+          couponPct: BOND_COUPON_PCT,
+          purchaseDate: on(2026, 1, 18),
+          purchasePriceMinorUnits: 3_060_000,
+          maturityDate: BOND_MATURITY,
+          bondKind: 'government',
+          couponFrequency: 'semiannually',
+          isin: BOND_ISIN,
+          payments: BOND_PAYMENTS,
+        },
       },
     ],
   },
@@ -507,6 +626,148 @@ const buildAccounts = (): SeedAccount[] => [
       },
     ],
   },
+  {
+    name: 'Нерухомість',
+    kind: 'property',
+    color: entityColorsDark.brown,
+    holdings: [
+      {
+        key: APARTMENT_KEY,
+        name: 'Квартира',
+        type: 'property_item',
+        currency: 'UAH',
+        color: entityColorsDark.brown,
+        transactions: [],
+        metadata: {
+          category: 'real_estate',
+          lots: [{ day: dayKey(2023, 5, 1), quantityDelta: '1', costMinorUnits: 320_000_000 }],
+          ownership: [{ day: dayKey(2023, 5, 1), numerator: 1, denominator: 2 }],
+          ownershipInput: 'fraction',
+        },
+      },
+      {
+        key: CAR_KEY,
+        name: 'Автомобіль',
+        type: 'property_item',
+        currency: 'UAH',
+        color: entityColorsDark.khaki,
+        transactions: [],
+        metadata: {
+          category: 'vehicle',
+          lots: [{ day: dayKey(2026, 0, 15), quantityDelta: '1', costMinorUnits: 62_000_000 }],
+        },
+      },
+    ],
+  },
+  {
+    name: 'Метали',
+    kind: 'metals',
+    color: entityColorsDark.yellow,
+    holdings: [
+      {
+        name: 'Золото',
+        type: 'metal',
+        currency: 'UAH',
+        color: entityColorsDark.yellow,
+        transactions: [],
+        metadata: {
+          metal: 'XAU',
+          form: 'bar',
+          unit: 'g',
+          purity: '0.9999',
+          lots: [{ day: dayKey(2025, 10, 20), quantityDelta: '50', costMinorUnits: 21_500_000 }],
+        },
+      },
+    ],
+  },
+  {
+    name: 'Борги',
+    kind: 'debt',
+    color: entityColorsDark.red,
+    holdings: [
+      {
+        key: CAR_LOAN_KEY,
+        name: 'Автокредит',
+        type: 'loan',
+        currency: 'UAH',
+        color: entityColorsDark.red,
+        transactions: [],
+        metadata: {
+          kind: 'car_loan',
+          principalMinorUnits: 30_000_000,
+          startDate: on(2026, 0, 15),
+          annualRatePct: 15,
+          termMonths: 36,
+          schedule: 'annuity',
+        },
+      },
+      {
+        key: PERSONAL_DEBT_KEY,
+        name: 'Борг Андрію',
+        type: 'loan',
+        currency: 'UAH',
+        color: entityColorsDark.orange,
+        transactions: [],
+        metadata: {
+          kind: 'personal',
+          principalMinorUnits: 2_000_000,
+          startDate: on(2026, 4, 1),
+          schedule: 'none',
+        },
+      },
+    ],
+  },
+];
+
+const holdingPoint = (holdingKey: string, day: number, price: string): SeedPricePoint => ({
+  instrument: { kind: 'holding', holdingKey },
+  day,
+  price,
+  currency: 'UAH',
+  source: 'manual',
+});
+
+// Monthly NBU gold quotes (UAH per troy ounce), rising from 130,000 to
+// 152,000 over the ten months to ANCHOR's month.
+const GOLD_QUOTE_MONTHS = 10;
+
+const goldQuotes = (): SeedPricePoint[] =>
+  Array.from({ length: GOLD_QUOTE_MONTHS + 1 }, (_, month) => ({
+    instrument: { kind: 'metal', metal: 'XAU' },
+    day: dayKey(2025, 10 + month, 10),
+    price: `${130_000 + month * 2_200}.00`,
+    currency: 'UAH',
+    source: 'nbu',
+  }));
+
+// A property's value series and an informal debt's outstanding are manual
+// `holding:<id>` points: each starts at the purchase or the loan day and is
+// revised once later.
+const buildPricePoints = (): SeedPricePoint[] => [
+  holdingPoint(APARTMENT_KEY, dayKey(2023, 5, 1), '3200000.00'),
+  holdingPoint(APARTMENT_KEY, dayKey(2026, 2, 1), '3450000.00'),
+  holdingPoint(CAR_KEY, dayKey(2026, 0, 15), '620000.00'),
+  holdingPoint(CAR_KEY, dayKey(2026, 6, 1), '590000.00'),
+  holdingPoint(PERSONAL_DEBT_KEY, dayKey(2026, 4, 1), '20000.00'),
+  holdingPoint(PERSONAL_DEBT_KEY, dayKey(2026, 7, 1), '12000.00'),
+  ...goldQuotes(),
+];
+
+const buildBondRegister = (): BondRegisterRow[] => [
+  {
+    isin: BOND_ISIN,
+    terms: {
+      isin: BOND_ISIN,
+      currency: 'UAH',
+      faceValueMinorUnits: BOND_FACE_VALUE_MINOR_UNITS,
+      couponPct: BOND_COUPON_PCT,
+      maturityDate: BOND_MATURITY,
+      couponFrequency: 'semiannually',
+      name: 'ОВДП',
+      payments: BOND_PAYMENTS,
+    },
+    fetchedAt: ANCHOR,
+  },
 ];
 
 /**
@@ -522,4 +783,6 @@ export const buildScreenshotDataset = (language: AppLanguage): ScreenshotDataset
   accounts: buildAccounts(),
   rates: buildRates(),
   history: buildHistory(),
+  pricePoints: buildPricePoints(),
+  bondRegister: buildBondRegister(),
 });

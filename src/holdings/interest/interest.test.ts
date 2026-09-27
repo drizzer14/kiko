@@ -4,6 +4,7 @@ import {
   biweeklyCreditDates,
   bondCouponDates,
   bondCouponMajor,
+  couponPaymentOn,
   daysBetween,
   depositAccruedMajor,
   depositLedger,
@@ -300,13 +301,13 @@ describe('depositAccruedMajor — recap-off cumulative interest', () => {
     expect(accrued).toBeCloseTo((10000 * 0.1 * 364) / 365, 6);
   });
 
-  // BUG2 regression: recap-OFF used to accrue from the contribution DATE itself,
-  // one day more than the statement-validated recap-ON engine (`depositLedger`
-  // earns each tranche from `dayAfter` it lands). Pin that the two conventions
-  // now AGREE on the first-period accrual: a single 10,000 deposit at 10% over
-  // the first full year (now = maturity), annual compounding. Compared against
-  // recap-ON's pre-tax gross for that period. Before the fix recap-OFF counted
-  // 366 days (leap year) vs recap-ON's 365, diverging by a day's interest.
+  // Pins that recap-OFF and the statement-validated recap-ON engine
+  // (`depositLedger`, which earns each tranche from `dayAfter` it lands)
+  // AGREE on the first-period accrual: a single 10,000 deposit at 10% over
+  // the first full year (now = maturity), annual compounding, compared
+  // against recap-ON's pre-tax gross for that period. Accruing from the
+  // contribution DATE itself instead of `dayAfter` would count 366 days
+  // (leap year) vs recap-ON's 365, diverging by a day's interest.
   it("agrees with the recap-ON engine's first-period accrual (day-after convention)", () => {
     const rate = 10;
     const contributionMajor = 10000;
@@ -341,7 +342,7 @@ describe('depositAccruedMajor — recap-off cumulative interest', () => {
     expect(accrued).toBeCloseTo(expected, 6);
   });
 
-  it('excludes a future-dated contribution (D2)', () => {
+  it('excludes a future-dated contribution', () => {
     const now = START + 200 * DAY;
     const past = { amountMajor: 10000, date: START };
     const future = { amountMajor: 5000, date: now + 10 * DAY };
@@ -444,5 +445,35 @@ describe('bondCouponMajor', () => {
     expect(bondCouponMajor(100_000, 12, 'quarterly')).toBeCloseTo(3000, 6);
     expect(bondCouponMajor(100_000, 12, 'monthly')).toBeCloseTo(1000, 6);
     expect(bondCouponMajor(100_000, 12, 'annually')).toBeCloseTo(12000, 6);
+  });
+});
+
+describe('couponPaymentOn', () => {
+  const beforeStep = { date: local(2027, 1, 1), amount: '0.0225' };
+  const afterStep = { date: local(2027, 7, 1), amount: '0.03' };
+
+  const schedule = [beforeStep, afterStep];
+
+  it('reads the scheduled coupon closest to a ledger date, on either side', () => {
+    expect(couponPaymentOn(schedule, local(2027, 1, 15), 'semiannually')).toBe(beforeStep);
+    expect(couponPaymentOn(schedule, local(2027, 6, 25), 'semiannually')).toBe(afterStep);
+  });
+
+  it('keeps the earlier coupon for a date exactly between two', () => {
+    const midway = (beforeStep.date + afterStep.date) / 2;
+
+    expect(couponPaymentOn(schedule, midway, 'semiannually')).toBe(beforeStep);
+  });
+
+  it('reads nothing from an empty schedule', () => {
+    expect(couponPaymentOn([], local(2027, 1, 15), 'semiannually')).toBeUndefined();
+  });
+
+  it('reads nothing when the closest coupon is more than half a period away', () => {
+    // 168 days before the first scheduled coupon: a semiannual half-period is ~91 days.
+    expect(couponPaymentOn(schedule, local(2026, 7, 15), 'semiannually')).toBeUndefined();
+    // 73 days from the closest one: a quarterly half-period is ~46 days.
+    expect(couponPaymentOn(schedule, local(2027, 3, 15), 'quarterly')).toBeUndefined();
+    expect(couponPaymentOn(schedule, local(2027, 3, 15), 'annually')).toBe(beforeStep);
   });
 });

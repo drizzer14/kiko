@@ -1,4 +1,7 @@
 import * as RNFS from 'react-native-fs';
+import { bifold, eitherSync, isLeft } from 'fnts/either';
+import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
+import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 
 import {
   decryptEnvelope,
@@ -6,15 +9,12 @@ import {
   EXPORT_VERSION,
   type ExportEnvelope,
 } from './crypto/envelope';
+import { utf8Decode } from './utf8/utf8';
 import type { ExportPayload } from './payload';
 import { decodeBase64ToBytes } from './base64/base64';
 import { restoreExportSecrets } from './secrets/restore-secrets';
 import { restoreDataSnapshot } from './snapshot/restore-snapshot';
-import { utf8Decode } from './utf8/utf8';
 
-// Not exported: nothing outside this file imports it yet (the Import Data
-// screen, Task 13, currently consumes only `importData`'s inferred return
-// type). Knip flags an exported type nothing imports as dead code.
 type ImportSummary = {
   accountsRestored: number;
   holdingsRestored: number;
@@ -72,6 +72,19 @@ const isExportPayload = (value: unknown): value is ExportPayload => {
 
 const INVALID_FILE_MESSAGE = 'data-transfer/import: not a valid Kiko export file';
 
+// Runs `action`, throwing `message` in its place instead of the original
+// error on any failure — the same rethrow shape `decryptEnvelope`
+// (`envelope.ts`) uses.
+const attemptOrThrow = <Value>(action: () => Value, message: string): Value => {
+  const attempt = eitherSync<unknown, Value>(action);
+
+  if (isLeft(attempt)) {
+    throw new Error(message);
+  }
+
+  return bifold(attempt);
+};
+
 const FILE_URI_SCHEME = 'file://';
 
 // The document picker's `pick`/`keepLocalCopy` hand back a percent-encoded
@@ -113,32 +126,23 @@ export const importData = async (options: {
 }): Promise<ImportSummary> => {
   const fileText = await RNFS.readFile(toFilePath(options.fileUri), 'utf8');
 
-  let envelope: unknown;
-  try {
-    envelope = JSON.parse(fileText);
-  } catch {
-    throw new Error(INVALID_FILE_MESSAGE);
-  }
+  const envelope = attemptOrThrow<unknown>(() => JSON.parse(fileText), INVALID_FILE_MESSAGE);
 
   if (!isExportEnvelope(envelope)) {
     throw new Error(INVALID_FILE_MESSAGE);
   }
 
-  let key: Uint8Array;
-  try {
-    key = decodeBase64ToBytes(options.keyBase64);
-  } catch {
-    throw new Error('data-transfer/decrypt: wrong key or corrupted file');
-  }
+  const key = attemptOrThrow(
+    () => decodeBase64ToBytes(options.keyBase64),
+    'data-transfer/decrypt: wrong key or corrupted file',
+  );
 
   const plaintext = decryptEnvelope(envelope, key);
 
-  let payload: unknown;
-  try {
-    payload = JSON.parse(utf8Decode(plaintext));
-  } catch {
-    throw new Error(INVALID_FILE_MESSAGE);
-  }
+  const payload = attemptOrThrow<unknown>(
+    () => JSON.parse(utf8Decode(plaintext)),
+    INVALID_FILE_MESSAGE,
+  );
 
   if (!isExportPayload(payload)) {
     throw new Error(INVALID_FILE_MESSAGE);
@@ -146,6 +150,29 @@ export const importData = async (options: {
 
   await restoreDataSnapshot(payload.tables);
   await restoreExportSecrets(payload.secrets);
+
+  // A restored foreign-currency/metal/crypto holding needs its price/rate
+  // visible without an app restart — a bulk restore bypasses the sync
+  // fan-out that normally triggers this, so trigger the SAME gated refresh
+  // explicitly here, unthrottled (a restore is a deliberate user action, not
+  // a background poll). Both steps gate themselves on data presence
+  // (kiko-architecture), so this is a no-op for a restore with neither.
+  // `refreshMarketData` never rejects and logs its own failure, so it never
+  // turns a successful import into a shown error. Fire-and-forget (not
+  // awaited): the refresh is a background nicety, not an import
+  // precondition — `importData` must resolve with its row-count summary
+  // without sitting on the network; only fire the refresh after the write
+  // commits.
+  // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshMarketData never rejects; see the comment above
+  refreshMarketData({ throttled: false, metals: true });
+  // A bulk restore bypasses the sync/import/loan-edit call sites that
+  // normally trigger the auto-link matcher — trigger it explicitly
+  // here too. `runLoanAutoLink` never rejects and returns early with no
+  // loan (its own doc comment), so this is a no-op for a restore with none;
+  // fire-and-forget for the same "background nicety, not a precondition"
+  // reason as `refreshMarketData` above.
+  // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) runLoanAutoLink never rejects; see the comment above
+  runLoanAutoLink();
 
   return {
     accountsRestored: payload.tables.accounts.length,

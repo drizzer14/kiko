@@ -1,8 +1,7 @@
+import { i18n } from '@kiko/i18n/init';
+import { formatDate } from '@kiko/dates';
 import { act, fireEvent, render } from '@testing-library/react-native';
-
-import { formatDate } from '../../../dates/format';
-import '../../../design-system/unistyles';
-import { i18n } from '../../../i18n';
+import '@kiko/design-system/unistyles';
 
 import TransactionFilterBar, { FILTER_ALL } from './transaction-filter-bar.component';
 
@@ -53,7 +52,7 @@ type BarRender = Awaited<ReturnType<typeof renderBar>>;
 // wraps the resulting state update in `act`.
 const openMenu = async (getByTestId: (id: string) => unknown, testID: string): Promise<void> => {
   await act(async () => {
-    fireEvent.press(getByTestId(testID) as Parameters<typeof fireEvent.press>[0]);
+    await fireEvent.press(getByTestId(testID) as Parameters<typeof fireEvent.press>[0]);
   });
 };
 
@@ -63,7 +62,7 @@ const pressOption = async (
   value: string,
 ): Promise<void> => {
   await act(async () => {
-    fireEvent.press(
+    await fireEvent.press(
       getByTestId(`${testID}-option-${value}`) as Parameters<typeof fireEvent.press>[0],
     );
   });
@@ -172,7 +171,7 @@ describe('TransactionFilterBar', () => {
 
       await openMenu(getByTestId, 'account-filter-menu');
       await act(async () => {
-        fireEvent.press(getByTestId('account-filter-menu-backdrop'));
+        await fireEvent.press(getByTestId('account-filter-menu-backdrop'));
       });
 
       expect(queryByTestId('account-filter-menu-option-Monobank')).toBeNull();
@@ -230,7 +229,7 @@ describe('TransactionFilterBar', () => {
       const { getByText, getByLabelText, getByTestId } = await renderBar();
 
       await act(async () => {
-        fireEvent.press(getByLabelText('Date range'));
+        await fireEvent.press(getByLabelText('Date range'));
       });
 
       expect(getByTestId('date-range-calendar')).toBeTruthy();
@@ -243,10 +242,10 @@ describe('TransactionFilterBar', () => {
       const { getByText, getByLabelText } = await renderBar({ onApplyDates });
 
       await act(async () => {
-        fireEvent.press(getByLabelText('Date range'));
+        await fireEvent.press(getByLabelText('Date range'));
       });
       await act(async () => {
-        fireEvent.press(getByText('Apply'));
+        await fireEvent.press(getByText('Apply'));
       });
 
       expect(onApplyDates).toHaveBeenCalledWith(SPAN_START, SPAN_END);
@@ -262,14 +261,14 @@ describe('TransactionFilterBar', () => {
       });
 
       await act(async () => {
-        fireEvent.press(queries.getByLabelText('Date range'));
+        await fireEvent.press(queries.getByLabelText('Date range'));
       });
       // A pick on an already-complete range RESETS: it discards both former
       // bounds and starts over at the pick as a lone single-date selection
       // (from === to === the pick) — it does NOT move whichever bound was nearer.
       await pressDay(queries, new Date(2026, 0, 12));
       await act(async () => {
-        fireEvent.press(queries.getByText('Apply'));
+        await fireEvent.press(queries.getByText('Apply'));
       });
 
       expect(onApplyDates).toHaveBeenCalledWith(new Date(2026, 0, 12), new Date(2026, 0, 12));
@@ -284,7 +283,7 @@ describe('TransactionFilterBar', () => {
       });
 
       await act(async () => {
-        fireEvent.press(queries.getByLabelText('Date range'));
+        await fireEvent.press(queries.getByLabelText('Date range'));
       });
       // The first pick resets to a lone start (Jan 12). The second pick becomes
       // the other bound, ordered so from <= to: picking an EARLIER day (Jan 8)
@@ -292,7 +291,7 @@ describe('TransactionFilterBar', () => {
       await pressDay(queries, new Date(2026, 0, 12));
       await pressDay(queries, new Date(2026, 0, 8));
       await act(async () => {
-        fireEvent.press(queries.getByText('Apply'));
+        await fireEvent.press(queries.getByText('Apply'));
       });
 
       expect(onApplyDates).toHaveBeenCalledWith(new Date(2026, 0, 8), new Date(2026, 0, 12));
@@ -309,10 +308,10 @@ describe('TransactionFilterBar', () => {
       });
 
       await act(async () => {
-        fireEvent.press(queries.getByLabelText('Date range'));
+        await fireEvent.press(queries.getByLabelText('Date range'));
       });
       await act(async () => {
-        fireEvent.press(queries.getByText('Apply'));
+        await fireEvent.press(queries.getByText('Apply'));
       });
 
       expect(onApplyDates).toHaveBeenCalledWith(new Date(2026, 0, 7), new Date(2026, 0, 7));
@@ -326,10 +325,10 @@ describe('TransactionFilterBar', () => {
       });
 
       await act(async () => {
-        fireEvent.press(getByLabelText('Date range'));
+        await fireEvent.press(getByLabelText('Date range'));
       });
       await act(async () => {
-        fireEvent.press(getByText('Clear'));
+        await fireEvent.press(getByText('Clear'));
       });
 
       expect(onClearDates).toHaveBeenCalledTimes(1);
@@ -353,7 +352,7 @@ describe('TransactionFilterBar', () => {
       expect(getByText('Рахунки')).toBeTruthy();
 
       await act(async () => {
-        fireEvent.press(getByLabelText('Період дат'));
+        await fireEvent.press(getByLabelText('Період дат'));
       });
 
       expect(getByText('Застосувати')).toBeTruthy();

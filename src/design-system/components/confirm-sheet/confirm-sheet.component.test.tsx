@@ -1,10 +1,10 @@
 import { fireEvent, render } from '@testing-library/react-native';
-import '../../unistyles';
+import '@kiko/design-system/unistyles';
 // Real i18n init (side effect), same as App.tsx. Previously reached only by
 // accident through GlassSurface -> screenshot-mode -> i18n before the 5.6
 // screenshot-subsystem strip removed that import chain; now imported directly
 // so `t('common.cancel')` resolves under test the same way it does at runtime.
-import '../../../i18n';
+import '@kiko/i18n/init';
 
 import ConfirmSheet from '.';
 
@@ -15,7 +15,7 @@ import ConfirmSheet from '.';
 // forward every prop onto a host Pressable (and render its label in a Text) so
 // the `variant` ConfirmSheet passes is the honest, assertable signal while the
 // press handler still fires.
-jest.mock('../button', () => {
+jest.mock('@kiko/design-system/components/button', () => {
   const { Pressable, Text } = require('react-native');
   const MockButton = ({ children, ...rest }: { children?: unknown }) => (
     <Pressable {...rest}>
@@ -88,7 +88,7 @@ describe('ConfirmSheet', () => {
       />,
     );
 
-    fireEvent.press(getByTestId(CONFIRM_TEST_ID));
+    await fireEvent.press(getByTestId(CONFIRM_TEST_ID));
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
@@ -105,7 +105,7 @@ describe('ConfirmSheet', () => {
       />,
     );
 
-    fireEvent.press(getByText('Cancel'));
+    await fireEvent.press(getByText('Cancel'));
 
     expect(onCancel).toHaveBeenCalledTimes(1);
   });

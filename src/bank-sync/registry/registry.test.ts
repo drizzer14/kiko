@@ -1,6 +1,6 @@
-import { hasToken } from '../../monobank/token';
-import { disconnectMonobank } from '../../monobank/disconnect';
-import { runSync as monobankRunSync } from '../../monobank/sync';
+import { hasToken } from '@kiko/monobank/token';
+import { disconnectMonobank } from '@kiko/monobank/disconnect';
+import { runSync as monobankRunSync } from '@kiko/monobank/sync';
 
 import { type BankProviderRegistryEntry, bankProviderRegistry } from './registry';
 
@@ -12,7 +12,6 @@ describe('bank provider registry', () => {
     expect(entry?.runSync).toBe(monobankRunSync);
     expect(entry?.hasCredentials).toBe(hasToken);
     expect(entry?.disconnect).toBe(disconnectMonobank);
-    expect(entry?.catalog.id).toBe('monobank');
   });
 
   it('carries exactly the one shipped provider (Guideline 5.6 remediation: Monobank-only)', () => {

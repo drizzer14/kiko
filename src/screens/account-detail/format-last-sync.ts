@@ -1,8 +1,7 @@
 import type { TFunction } from 'i18next';
-
-import { formatDateTime } from '../../dates/format';
-import type { HoldingRow } from '../../db/schema';
-import { syncedAtOf } from '../../holdings/holding-metadata';
+import type { HoldingRow } from '@kiko/db';
+import { formatDateTime } from '@kiko/dates';
+import { syncedAtOf } from '@kiko/holdings/holding-metadata';
 
 /**
  * The account's last-sync label. `t` is threaded in (rather than read off the

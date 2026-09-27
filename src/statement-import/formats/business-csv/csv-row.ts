@@ -1,4 +1,4 @@
-// Row-level helpers shared by every Phase 4 FOP/business `;`-delimited cp1251
+// Row-level helpers shared by every FOP/business `;`-delimited cp1251
 // CSV format — ProCredit business and Ukrsibbank business through
 // `createColumnarBusinessCsvFormat` (`business-csv.ts`), and Alfa business
 // directly (its own word-column sign convention and split date+time columns
@@ -6,11 +6,10 @@
 // `createColumnarBusinessCsvFormat` factory, but its row reading, currency
 // resolution, and NaN-guarded amount parsing are identical).
 import Papa from 'papaparse';
-
-import { StatementParseError } from '../../parser';
-import { parseAmount } from '../../../currency/parse';
-import { isCurrency } from '../../../currency/currency';
-import type { Currency } from '../../../currency/currency';
+import { parseAmount } from '@kiko/currency/parse';
+import { isCurrency } from '@kiko/currency/currency';
+import type { Currency } from '@kiko/currency/currency';
+import { StatementParseError } from '@kiko/statement-import/parser';
 
 // Splits `text` into `;`-delimited rows — `papaparse` de-quotes a
 // double-quoted field (Ukrsib) transparently with no extra config, so the
@@ -24,10 +23,9 @@ const readCsvRows = (text: string): string[][] =>
 
 /** Splits `text` into rows, drops the header row, and throws
  * `StatementParseError` (naming `formatLabel`) instead of returning an
- * empty array when no data row is left — every Phase 4 format's own
+ * empty array when no data row is left — every FOP/business format's own
  * `parse` starts from exactly this ("read rows, take everything after the
- * header, refuse a file with no data") rather than each re-deriving it
- * (Task 5 review). */
+ * header, refuse a file with no data") rather than each re-deriving it. */
 export const readDataRows = (text: string, formatLabel: string): string[][] => {
   const [, ...dataRows] = readCsvRows(text);
 
@@ -40,7 +38,7 @@ export const readDataRows = (text: string, formatLabel: string): string[][] => {
 
 /** Resolves a row's own currency cell to a `Currency`, throwing
  * `StatementParseError` (naming `formatLabel`) for a code Kiko doesn't
- * recognize — every Phase 4 format reads its OWN row's currency, not a
+ * recognize — every FOP/business format reads its OWN row's currency, not a
  * single file-wide constant (ProCredit/Ukrsib/Alfa each carry more than one
  * currency in a single real fixture). */
 export const resolveRowCurrency = (raw: string, formatLabel: string): Currency => {
@@ -52,9 +50,9 @@ export const resolveRowCurrency = (raw: string, formatLabel: string): Currency =
 };
 
 /** Parses an amount cell to a finite major-unit number, throwing
- * `StatementParseError` instead of ever returning `NaN` (Task 3 review
- * precedent) — an empty or malformed cell must never reach
- * `Money.fromMajor` and get written as a `NaN` `amountMinorUnits`. */
+ * `StatementParseError` instead of ever returning `NaN` — an empty or
+ * malformed cell must never reach `Money.fromMajor` and get written as a
+ * `NaN` `amountMinorUnits`. */
 export const parseFiniteAmountMajor = (raw: string, formatLabel: string): number => {
   const major = parseAmount(raw);
 
@@ -67,8 +65,8 @@ export const parseFiniteAmountMajor = (raw: string, formatLabel: string): number
 
 /** The single value every data row shares at `columnIndex`, or `undefined`
  * when the rows disagree — ProCredit's real fixture and Alfa's real fixture
- * both concatenate more than one underlying account into one export
- * (Controller ruling 3), so a file-level account hint (an IBAN/account
+ * both concatenate more than one underlying account into one export,
+ * so a file-level account hint (an IBAN/account
  * number) is only ever trustworthy when every row agrees on it; a
  * multi-account file's hint is deliberately dropped rather than silently
  * picking the first row's value. */

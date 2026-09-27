@@ -1,12 +1,12 @@
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { ratesRepo } from '@kiko/rates/repo';
-import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
-import either from 'fnts/either';
 import { useEffect, useRef } from 'react';
-
-import { refreshRates } from '../../rates/rates-refresh';
-import { bankProviderRegistry } from '../../bank-sync/registry';
-import { bankProviderIdOf, isBankProviderId } from '../../bank-sync/provider';
+import maybe, { foldMap } from 'fnts/maybe';
+import { accountsRepo } from '@kiko/accounts';
+import { syncStateRepo } from '@kiko/sync-state';
+import either, { bifold, isLeft } from 'fnts/either';
+import { bankProviderRegistry } from '@kiko/bank-sync/registry';
+import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
+import { bankProviderIdOf, isBankProviderId } from '@kiko/bank-sync/provider';
+import { refreshMarketData, warnRefreshFailure } from '@kiko/sync/refresh-market-data';
 
 import { type SyncableAccount, syncJobsFor } from '../sync-jobs';
 import { SYNC_CONCURRENCY_LIMIT, settleAllLimited } from '../settle-limited';
@@ -101,11 +101,12 @@ export const useAutoSync = (): void => {
     }
     hasRun.current = true;
 
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) either() captures every rejection as a Left
     either<unknown, void>(async () => {
       const accounts = await accountsRepo.listQuery();
       const bankAccountId = bankAccountIdFor(accounts);
       const syncStateRows =
-        bankAccountId === undefined ? [] : await syncStateRepo.getQuery(bankAccountId);
+        (await foldMap(maybe(bankAccountId), (id) => syncStateRepo.getQuery(id))) ?? [];
       const lastSyncAt = syncStateRows.at(0)?.lastSyncAt ?? null;
 
       if (!throttleElapsed(lastSyncAt, Date.now())) {
@@ -127,10 +128,15 @@ export const useAutoSync = (): void => {
       );
       const jobs = jobLists.flat();
 
-      // Only the sync FAN-OUT is gated on having jobs; the rate refresh is
-      // decoupled from it so a manual-only user still gets cross-rates cached.
-      // Running it unconditionally is safe: `refreshRates` is self-throttled by
-      // `lastRefreshAt` and hits only the PUBLIC, tokenless endpoint.
+      // Only the sync FAN-OUT is gated on having jobs; the refresh is
+      // decoupled from it so a manual-only user still gets cross-rates
+      // cached. Running it unconditionally is safe: `refreshMarketData` is
+      // self-throttled (its own `refreshRates` step) and hits only PUBLIC,
+      // tokenless endpoints. `refreshMarketData` runs rates and metals
+      // CONCURRENTLY under its own `Promise.allSettled` (twin of
+      // `useSyncAll`'s fan-out) and never rejects — it logs its own
+      // rates/metals failure and returns a Left, which this effect passes to
+      // `warnRefreshFailure` below instead of re-deriving it here.
       if (jobs.length > 0) {
         // Cap CONCURRENT syncs so a many-connection fan-out never fires N provider
         // requests at once (device load / provider rate limits) — see `settleAllLimited`.
@@ -139,8 +145,23 @@ export const useAutoSync = (): void => {
           SYNC_CONCURRENCY_LIMIT,
         );
       }
-      const lastRefreshAt = await ratesRepo.latestFetchedAt();
-      await refreshRates({ lastRefreshAt });
+
+      await refreshMarketData({ throttled: true, metals: true });
+      // Same reasoning as `refreshMarketData` just above: an on-open sync can
+      // bring in a new loan-payment debit, so the matcher runs alongside it.
+      // Never rejects (its own doc comment), so a failed auto-link stays
+      // inside this SAME swallowed-and-logged `either`, never a crash.
+      await runLoanAutoLink();
+    }).then((result) => {
+      // The outer `either` still swallows every exception this effect can
+      // throw (reading accounts/sync-state/credentials) — this hook has no
+      // UI and must never crash the app on a background sync it did not ask
+      // the user about — but a Left is now LOGGED, not silently dropped, the
+      // same "log instead of drop" contract `refreshMarketData` established
+      // for its own rates/metals steps.
+      if (isLeft(result)) {
+        warnRefreshFailure('auto-sync', bifold(result));
+      }
     });
   }, []);
 };

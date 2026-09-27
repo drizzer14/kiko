@@ -1,8 +1,8 @@
 import type { ComponentProps } from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
 import { Keyboard, StyleSheet } from 'react-native';
-import '../../../i18n';
-import '../../unistyles';
+import { fireEvent, render } from '@testing-library/react-native';
+import '@kiko/i18n/init';
+import '@kiko/design-system/unistyles';
 import TextField from '.';
 
 // Every test below renders the same TextField shape with only a couple of
@@ -130,7 +130,7 @@ describe('TextField', () => {
       keyboardType: 'decimal-pad',
     });
 
-    fireEvent.press(getByText('Done'));
+    await fireEvent.press(getByText('Done'));
 
     expect(dismissSpy).toHaveBeenCalledTimes(1);
 

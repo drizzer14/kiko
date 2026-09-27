@@ -6,38 +6,44 @@
 // (`missingDays`, `deriveLastBackfilledDay`) real, but stub `runBackfill` with a
 // never-resolving promise so the screen's mount effect leaves the line in its
 // `loading` state without hitting NBU/CoinGecko.
-const mockRunBackfill = jest.fn((..._args: unknown[]) => new Promise<never>(() => {}));
+const mockRunBackfill = jest.fn(
+  (..._args: unknown[]): Promise<BackfillStatus> => new Promise<never>(() => {}),
+);
 
-jest.mock('../../rates/history-backfill', () => {
-  const actual = jest.requireActual('../../rates/history-backfill');
+jest.mock('@kiko/rates/history-backfill', () => {
+  const actual = jest.requireActual('@kiko/rates/history-backfill');
 
   return { ...actual, runBackfill: (...args: unknown[]) => mockRunBackfill(...args) };
 });
 
-import { act, fireEvent, render, within } from '@testing-library/react-native';
-
-import { defaultDateRange } from '../../dates/default-range';
-import { formatDate } from '../../dates/format';
-import { startOfLocalDay } from '../../dates/local-day';
-import { i18n } from '../../i18n';
-import { toUtcMidnight } from '../../rates/history-entry';
-import { categoryColor } from '../../statistics/category-breakdown';
-import type { TrendFilter } from '../../statistics/trend-filter';
-import '../../design-system/unistyles';
-import { FILTER_ALL } from '../home/filter-menu';
+import { i18n } from '@kiko/i18n/init';
+import { toUtcMidnight } from '@kiko/rates/history-entry';
+import type { TrendFilter } from '@kiko/statistics/trend-filter';
+import type { BackfillStatus } from '@kiko/rates/history-backfill';
+import { categoryColor } from '@kiko/statistics/category-breakdown';
+import { formatDate, startOfLocalDay, defaultDateRange } from '@kiko/dates';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import { FILTER_ALL } from '@kiko/design-system/components/filter-menu';
 
 import StatisticsScreen from './statistics.screen';
 
 const mockUseLiveQuery = jest.fn();
 
-jest.mock('../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { listQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 jest.mock('@kiko/holdings/repo', () => ({
-  holdingsRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+  holdingsRepo: {
+    allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    balanceOf: (row: { currency: string; balanceMinorUnits: number }) => ({
+      currency: row.currency,
+      minorUnits: row.balanceMinorUnits,
+    }),
+  },
 }));
 jest.mock('@kiko/rates/repo', () => ({
   ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
@@ -50,7 +56,10 @@ jest.mock('@kiko/settings/settings.repo', () => ({
   },
 }));
 jest.mock('@kiko/transactions/repo', () => ({
-  transactionsRepo: { listAllQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+  transactionsRepo: {
+    listAllQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    loanLedgerPaymentsQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+  },
 }));
 jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
@@ -60,7 +69,7 @@ jest.mock('@kiko/categories/repo', () => ({
 // a standalone screen render lacks; stand it in with a spy so this test can
 // assert the screen hands it the scroll view's own ref.
 const mockUseScrollToTopOnTabPress = jest.fn();
-jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
+jest.mock('@kiko/navigation/use-scroll-to-top-on-tab-press', () => ({
   useScrollToTopOnTabPress: (ref: unknown, scrollOffset: unknown) =>
     mockUseScrollToTopOnTabPress(ref, scrollOffset),
 }));
@@ -71,7 +80,7 @@ jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
 // taken once at mount and held STABLE across re-renders, the same behavior the
 // screen's old `useMemo(() => Date.now(), [])` had (no test here drives a focus
 // event, so the value never needs to change mid-test).
-jest.mock('./use-focus-refreshed-now', () => {
+jest.mock('@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now', () => {
   const { useState } = jest.requireActual('react');
 
   return { useFocusRefreshedNow: () => useState(() => Date.now())[0] };
@@ -104,6 +113,7 @@ type Transaction = {
   mcc?: number | null;
   counterIban?: string | null;
   exchangeCounterpartHoldingId?: string | null;
+  loanHoldingId?: string | null;
 };
 type CategoryRow = { key: string; title: string; icon: string };
 type HistoryRow = { base: string; quote: string; day: number; rate: string; source?: string };
@@ -115,6 +125,13 @@ type LiveData = {
   transactions?: Transaction[];
   history?: HistoryRow[];
   categories?: CategoryRow[];
+  // Per-table isLoading overrides, for the loading-gate tests only — every
+  // key defaults to `false` (an already-resolved query), so every existing
+  // call site above keeps behaving exactly as before.
+  isLoading?: Partial<Record<string, boolean>>;
+  // Per-table cached-rows overrides: `true` = the table still shows the cached
+  // rows of a cached display mount, before its own fresh read has applied.
+  isCached?: Partial<Record<string, boolean>>;
 };
 
 // Feed each `useLiveQuery` call by the first table name it watches — the screen's
@@ -130,14 +147,25 @@ const setLiveData = (data: LiveData): void => {
     // `undefined` here would be a fixture artefact the device never produces.
     transactions: (data.transactions ?? []).map((row) => ({
       exchangeCounterpartHoldingId: null,
+      loanHoldingId: null,
       ...row,
     })),
     currency_rate_history: data.history ?? [],
     categories: data.categories ?? [],
+    price_points: [],
   };
-  mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => ({
-    data: byTable[tables[0]] ?? [],
-  }));
+  const isLoadingByTable = data.isLoading ?? {};
+  const isCachedByTable = data.isCached ?? {};
+
+  mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => {
+    const isLoading = isLoadingByTable[tables[0]] ?? false;
+
+    return {
+      data: byTable[tables[0]] ?? [],
+      isLoading,
+      isFresh: !isLoading && !(isCachedByTable[tables[0]] ?? false),
+    };
+  });
 };
 
 const DAY = 86_400_000;
@@ -459,13 +487,13 @@ const pressFilter = async (
   value: string,
 ): Promise<void> => {
   await act(async () => {
-    fireEvent.press(getByTestId(menuTestID));
+    await fireEvent.press(getByTestId(menuTestID));
   });
   await act(async () => {
-    fireEvent.press(getByTestId(`${menuTestID}-option-${value}`));
+    await fireEvent.press(getByTestId(`${menuTestID}-option-${value}`));
   });
   await act(async () => {
-    fireEvent.press(getByTestId(`${menuTestID}-backdrop`));
+    await fireEvent.press(getByTestId(`${menuTestID}-backdrop`));
   });
 };
 
@@ -494,6 +522,7 @@ const flattenPreOrder = (node: JSONNode): JSONNode[] => [
 
 const renderOrder = (root: Awaited<ReturnType<typeof render>>): JSONNode[] => {
   const tree = root.toJSON();
+
   if (tree === null) {
     return [];
   }
@@ -581,6 +610,51 @@ describe('StatisticsScreen', () => {
     expect(getByTestId('pie-chart-arc-b')).toBeTruthy();
   });
 
+  describe('Debts total', () => {
+    it('renders no Debts total under the account pie when there is no loan holding', async () => {
+      const { queryByTestId } = await renderScreen();
+      expect(queryByTestId('statistics-debts-total')).toBeNull();
+    });
+
+    it('renders the Debts total under the account pie, negative, excluded from the pie itself', async () => {
+      setLiveData({
+        accounts: [CASH, BANK, { id: 'd', name: 'Mortgage', kind: 'bank' }],
+        holdings: [
+          UAH_HOLDING,
+          USD_HOLDING,
+          {
+            id: 'loan-1',
+            accountId: 'd',
+            currency: 'UAH',
+            type: 'loan',
+            balanceMinorUnits: 0,
+            metadata: {
+              kind: 'mortgage',
+              principalMinorUnits: 500_000, // 5,000.00 UAH
+              startDate: Date.now(),
+              annualRatePct: 10,
+              termMonths: 120,
+              schedule: 'annuity',
+            },
+            closedAt: null,
+          },
+        ],
+        rates: [USD_UAH_RATE],
+        transactions: TRANSACTIONS,
+        history: HISTORY,
+      });
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      const debtsTotal = getByTestId('statistics-debts-total');
+      expect(within(debtsTotal).getByText(/-5,000\.00 ₴/)).toBeTruthy();
+      // A loan just started (no installment due yet) has no OTHER pie
+      // contribution of its own to worry about, but the account it lives
+      // under must still not get a negative slice.
+      expect(queryByTestId('pie-chart-arc-d')).toBeNull();
+    });
+  });
+
   it('shows the net-worth line loading state while history is empty and the backfill runs', async () => {
     setLiveData({
       accounts: [CASH, BANK],
@@ -595,6 +669,352 @@ describe('StatisticsScreen', () => {
     expect(mockRunBackfill).toHaveBeenCalled();
     expect(getByTestId('net-worth-line-loading')).toBeTruthy();
     expect(queryByTestId(/^net-worth-line-polyline-/)).toBeNull();
+  });
+
+  it('does not run the backfill while history is still on its own first load (only transactions have settled)', async () => {
+    // Once `transactions` has loaded but `currency_rate_history` has not, an
+    // empty `historyRows` reads identically to "nothing backfilled yet" —
+    // without the `historyLoading` guard the effect would re-fetch and
+    // re-write the whole span on first open, adding to the app-open DB burst.
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+      isLoading: { currency_rate_history: true },
+    });
+
+    await renderScreen();
+
+    expect(mockRunBackfill).not.toHaveBeenCalled();
+  });
+
+  it('runs the backfill once history finishes its own first load', async () => {
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+      isLoading: { currency_rate_history: true },
+    });
+
+    const { rerender } = await renderScreen();
+
+    expect(mockRunBackfill).not.toHaveBeenCalled();
+
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+    });
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalled();
+  });
+
+  // kiko-architecture: a cached display mount's rows can be one read old, and
+  // a run marks its span covered for the rest of the mount. A run planned from
+  // the cached resume point (for example, history a .kiko restore replaced)
+  // would stop the fresh read's own run from ever starting.
+  it.each(['transactions', 'currency_rate_history'])(
+    'runs the backfill only once %s has its own fresh read, never from the cached rows',
+    async (table) => {
+      const liveData: LiveData = {
+        accounts: [CASH, BANK],
+        holdings: [UAH_HOLDING, USD_HOLDING],
+        rates: [USD_UAH_RATE],
+        transactions: TRANSACTIONS,
+        history: [],
+      };
+      setLiveData({ ...liveData, isCached: { [table]: true } });
+
+      const { rerender } = await renderScreen();
+
+      expect(mockRunBackfill).not.toHaveBeenCalled();
+
+      setLiveData(liveData);
+      await act(async () => {
+        rerender(<StatisticsScreen />);
+      });
+
+      expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('does not report the backfill complete after a failed run, and retries the same span once now advances', async () => {
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+    });
+    mockRunBackfill.mockRejectedValueOnce(new Error('network down'));
+
+    // `useFocusRefreshedNow` is mocked to a stable per-instance value at the
+    // top of this file; a real focus re-entry advances it, so drive that
+    // here with a spy the test controls directly instead of a fake navigation
+    // focus event.
+    const focusModule = jest.requireMock(
+      '@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+    ) as {
+      useFocusRefreshedNow: () => number;
+    };
+    const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
+
+    const { getByTestId, queryByTestId, rerender } = await renderScreen();
+
+    await waitFor(() => expect(queryByTestId('net-worth-line-loading')).toBeNull());
+    expect(getByTestId('net-worth-line-empty')).toBeTruthy();
+    expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+
+    nowSpy.mockReturnValue(now + DAY);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(2);
+
+    nowSpy.mockRestore();
+  });
+
+  it('leaves loading once a run rejects even when a refocus interleaved first, and still retries the same span', async () => {
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+    });
+
+    let rejectFirstRun: (error: Error) => void = () => {};
+    const firstRun = new Promise<never>((_resolve, reject) => {
+      rejectFirstRun = reject;
+    });
+    mockRunBackfill.mockReturnValueOnce(firstRun);
+
+    const focusModule = jest.requireMock(
+      '@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+    ) as {
+      useFocusRefreshedNow: () => number;
+    };
+    const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
+
+    const { getByTestId, queryByTestId, rerender } = await renderScreen();
+
+    expect(getByTestId('net-worth-line-loading')).toBeTruthy();
+    expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+
+    // A refocus (a dep-change re-render, `now` advancing) arrives BEFORE the
+    // in-flight run settles. `backfillRanForSpanRef` already covers this
+    // span, so this re-render starts no second run of its own — the first
+    // run is still the only one pending.
+    nowSpy.mockReturnValue(now + DAY);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+    expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      rejectFirstRun(new Error('network down'));
+      await firstRun.catch(() => {});
+    });
+
+    // A dep-change cleanup must not drop this settle: the line leaves
+    // loading instead of staying stuck on it.
+    expect(queryByTestId('net-worth-line-loading')).toBeNull();
+
+    // The next focus retries the SAME span (the ref was reset on the reject).
+    const firstSpan = mockRunBackfill.mock.calls[0]?.[0] as { earliestDay: number };
+    nowSpy.mockReturnValue(now + 2 * DAY);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(2);
+    expect(mockRunBackfill.mock.calls[1]?.[0]).toMatchObject({
+      earliestDay: firstSpan.earliestDay,
+    });
+
+    nowSpy.mockRestore();
+  });
+
+  it('leaves loading and retries the same span when runBackfill itself resolves failed', async () => {
+    // Both providers rejected inside `runBackfill`, which resolves a Right
+    // `'failed'` status rather than rejecting its own promise — a distinct
+    // path from the rejected-promise case above, and must be handled the
+    // same way: never reported complete, and retried on the next focus.
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+    });
+    mockRunBackfill.mockResolvedValueOnce({ state: 'failed', lastDay: null });
+
+    const focusModule = jest.requireMock(
+      '@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+    ) as {
+      useFocusRefreshedNow: () => number;
+    };
+    const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
+
+    const { getByTestId, queryByTestId, rerender } = await renderScreen();
+
+    await waitFor(() => expect(queryByTestId('net-worth-line-loading')).toBeNull());
+    expect(getByTestId('net-worth-line-empty')).toBeTruthy();
+    expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+
+    const firstSpan = mockRunBackfill.mock.calls[0]?.[0] as { earliestDay: number };
+    nowSpy.mockReturnValue(now + DAY);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(2);
+    expect(mockRunBackfill.mock.calls[1]?.[0]).toMatchObject({
+      earliestDay: firstSpan.earliestDay,
+    });
+
+    nowSpy.mockRestore();
+  });
+
+  it("ignores a stale run's rejection once a later run has claimed a newly-extended span", async () => {
+    // An older transaction extends `spanStart` EARLIER while run A is still
+    // pending, so run B starts for the wider span before A ever settles. A's
+    // eventual rejection must not undo run B's own claim on the span ref —
+    // otherwise the next plain refocus would wrongly look "never run" again.
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+    });
+
+    const focusModule = jest.requireMock(
+      '@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+    ) as {
+      useFocusRefreshedNow: () => number;
+    };
+    const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
+
+    let rejectFirstRun: (error: Error) => void = () => {};
+    const firstRun = new Promise<never>((_resolve, reject) => {
+      rejectFirstRun = reject;
+    });
+    mockRunBackfill.mockReturnValueOnce(firstRun);
+
+    const { getByTestId, rerender } = await renderScreen();
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+
+    const secondRun = new Promise<never>(() => {});
+    mockRunBackfill.mockReturnValueOnce(secondRun);
+
+    const olderTransaction: Transaction = {
+      id: 't-older',
+      holdingId: 'h1',
+      time: TRANSACTIONS[0].time - 10 * DAY,
+      amountMinorUnits: 10_000,
+    };
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: [olderTransaction, ...TRANSACTIONS],
+      history: [],
+    });
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      rejectFirstRun(new Error('stale'));
+      await firstRun.catch(() => {});
+    });
+
+    // Still loading run B — the stale rejection changed neither the status
+    // nor (see the refocus below) the span ref run B already claimed.
+    expect(getByTestId('net-worth-line-loading')).toBeTruthy();
+
+    nowSpy.mockReturnValue(now + DAY);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(2);
+
+    nowSpy.mockRestore();
+  });
+
+  it("ignores a stale run's completion once a later run has claimed a newly-extended span, and applies that later run's own settle", async () => {
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+    });
+
+    let resolveFirstRun: (status: BackfillStatus) => void = () => {};
+    const firstRun = new Promise<BackfillStatus>((resolve) => {
+      resolveFirstRun = resolve;
+    });
+    mockRunBackfill.mockReturnValueOnce(firstRun);
+
+    const { getByTestId, queryByTestId, rerender } = await renderScreen();
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+
+    let resolveSecondRun: (status: BackfillStatus) => void = () => {};
+    const secondRun = new Promise<BackfillStatus>((resolve) => {
+      resolveSecondRun = resolve;
+    });
+    mockRunBackfill.mockReturnValueOnce(secondRun);
+
+    const olderTransaction: Transaction = {
+      id: 't-older',
+      holdingId: 'h1',
+      time: TRANSACTIONS[0].time - 10 * DAY,
+      amountMinorUnits: 10_000,
+    };
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: [olderTransaction, ...TRANSACTIONS],
+      history: [],
+    });
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(2);
+
+    // Run A resolves 'complete' AFTER run B already started for the wider
+    // span — a stale completion must not end run B's own loading state.
+    await act(async () => {
+      resolveFirstRun({ state: 'complete', lastDay: now });
+      await firstRun;
+    });
+    expect(getByTestId('net-worth-line-loading')).toBeTruthy();
+
+    // Run B's own settle IS applied.
+    await act(async () => {
+      resolveSecondRun({ state: 'complete', lastDay: now });
+      await secondRun;
+    });
+    expect(queryByTestId('net-worth-line-loading')).toBeNull();
   });
 
   it('drops the deselected account from both the bar and the pie when the filter narrows', async () => {
@@ -731,7 +1151,7 @@ describe('StatisticsScreen', () => {
     const { getByTestId } = await renderScreen();
 
     await act(async () => {
-      fireEvent.press(getByTestId(CATEGORY_FILTER));
+      await fireEvent.press(getByTestId(CATEGORY_FILTER));
     });
 
     // The option icon (an SFSymbolView, mocked to a View) sits inside its shared
@@ -753,7 +1173,7 @@ describe('StatisticsScreen', () => {
     const { getByTestId } = await renderScreen();
 
     await act(async () => {
-      fireEvent.press(getByTestId(CATEGORY_FILTER));
+      await fireEvent.press(getByTestId(CATEGORY_FILTER));
     });
 
     expect(
@@ -781,7 +1201,7 @@ describe('StatisticsScreen', () => {
     const view = await renderScreen();
 
     await act(async () => {
-      fireEvent.press(view.getByTestId(CATEGORY_FILTER));
+      await fireEvent.press(view.getByTestId(CATEGORY_FILTER));
     });
 
     const prefix = `${CATEGORY_FILTER}-option-`;
@@ -978,6 +1398,59 @@ describe('StatisticsScreen', () => {
     expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
   });
 
+  it('keeps a selected category checked and listed in the filter menu after the range moves away from its spending', async () => {
+    seedSpending();
+
+    const { getByTestId, getByLabelText, getByText, queryByTestId } = await renderScreen();
+
+    await pressFilter(getByTestId, CATEGORY_FILTER, 'groceries');
+
+    // Narrow the range to TODAY — outside the EXPENSES' `now - 2 * DAY`
+    // timestamp — so every category (groceries included) drops out of the
+    // range-scoped slices. The selection itself is untouched by the narrowing.
+    await act(async () => {
+      await fireEvent.press(getByLabelText('Date range'));
+    });
+    const today = new Date(now);
+    const calendar = getByTestId('date-range-calendar').props as {
+      onDayPress: (day: unknown) => void;
+    };
+    await act(async () => {
+      calendar.onDayPress({
+        year: today.getFullYear(),
+        month: today.getMonth() + 1,
+        day: today.getDate(),
+      });
+    });
+    await act(async () => {
+      await fireEvent.press(getByText('Apply'));
+    });
+
+    expect(getByTestId('category-pie-empty')).toBeTruthy();
+
+    // The menu still lists groceries, still checked, even though it has no
+    // spending in the narrowed range — hiding it would leave the selection
+    // impossible to find and uncheck.
+    await act(async () => {
+      await fireEvent.press(getByTestId(CATEGORY_FILTER));
+    });
+    expect(
+      getByTestId(`${CATEGORY_FILTER}-option-groceries`).props.accessibilityState?.checked,
+    ).toBe(true);
+
+    // The user can still uncheck it, same as any other option.
+    await act(async () => {
+      await fireEvent.press(getByTestId(`${CATEGORY_FILTER}-option-groceries`));
+    });
+    await act(async () => {
+      await fireEvent.press(getByTestId(`${CATEGORY_FILTER}-backdrop`));
+    });
+    await act(async () => {
+      await fireEvent.press(getByTestId(CATEGORY_FILTER));
+    });
+    expect(queryByTestId(`${CATEGORY_FILTER}-option-groceries`)).toBeNull();
+  });
+
   it('excludes an expense outside the active date range from the donut center total', async () => {
     // One expense inside the default 30-day window, one 60 days back (well
     // outside it). If the donut summed the whole ledger instead of the active
@@ -1086,19 +1559,59 @@ describe('StatisticsScreen', () => {
     const { getByTestId, getByText } = await renderScreen();
 
     await act(async () => {
-      fireEvent.press(getByTestId('statistics-trend-filter'));
+      await fireEvent.press(getByTestId('statistics-trend-filter'));
     });
     await act(async () => {
-      fireEvent.press(getByText('Manual'));
+      await fireEvent.press(getByText('Manual'));
     });
     await act(async () => {
-      fireEvent.press(getByTestId('statistics-trend-filter-option-transport'));
+      await fireEvent.press(getByTestId('statistics-trend-filter-option-transport'));
     });
     await act(async () => {
-      fireEvent.press(getByTestId('statistics-trend-filter-save'));
+      await fireEvent.press(getByTestId('statistics-trend-filter-save'));
     });
 
     expect(mockSetTrendFilter).toHaveBeenCalledWith({ mode: 'manual', keys: ['transport'] });
+  });
+
+  it('shows a saved manual trend key with no spending in the range with its real label and icon, still checked (not a bare slug row)', async () => {
+    // `utilities` is a seeded default category (so its title translates), but
+    // THREE_EXPENSES never spends against it — it never reaches
+    // `allCategorySlices`, the same gap `selectedCategories` already handles
+    // for the category donut (review decision 17).
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: THREE_EXPENSES,
+      history: HISTORY,
+      categories: [...CATEGORIES, { key: 'utilities', title: 'Utilities', icon: 'bolt' }],
+      settings: [{ baseCurrency: 'UAH', trendFilter: { mode: 'manual', keys: ['utilities'] } }],
+    });
+
+    const { getByTestId } = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(getByTestId('statistics-trend-filter'));
+    });
+
+    const row = getByTestId('statistics-trend-filter-option-utilities');
+
+    expect(within(row).getByText('Utilities')).toBeTruthy();
+    expect(row.queryAll((node) => node.props.name === 'bolt')).not.toHaveLength(0);
+    expect(row.props.accessibilityState.checked).toBe(true);
+
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const rowAfterSwitch = getByTestId('statistics-trend-filter-option-utilities');
+
+    expect(within(rowAfterSwitch).getByText('Комунальні послуги')).toBeTruthy();
+    expect(rowAfterSwitch.props.accessibilityState.checked).toBe(true);
+
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
   });
 
   it('shows the spending-trend empty state when there is no spending', async () => {
@@ -1127,7 +1640,7 @@ describe('StatisticsScreen', () => {
     // selection at the pick, so picking 3 days ago collapses the range to that
     // one day (from === to === narrowedDay), clearly off the default window.
     await act(async () => {
-      fireEvent.press(getByLabelText('Date range'));
+      await fireEvent.press(getByLabelText('Date range'));
     });
     const narrowedDay = new Date();
     narrowedDay.setDate(narrowedDay.getDate() - 3);
@@ -1142,19 +1655,255 @@ describe('StatisticsScreen', () => {
       });
     });
     await act(async () => {
-      fireEvent.press(getByText('Apply'));
+      await fireEvent.press(getByText('Apply'));
     });
     expect(getByText(`${formatDate(narrowedDay)} – ${formatDate(narrowedDay)}`)).toBeTruthy();
 
     // Clearing must land back on the 30-day default, NOT on all-time.
     await act(async () => {
-      fireEvent.press(getByLabelText('Date range'));
+      await fireEvent.press(getByLabelText('Date range'));
     });
     await act(async () => {
-      fireEvent.press(getByText('Clear'));
+      await fireEvent.press(getByText('Clear'));
     });
 
     expect(getByText(`${formatDate(range.from)} – ${formatDate(range.to)}`)).toBeTruthy();
+  });
+
+  describe('Loan interest', () => {
+    // A single-installment (termMonths: 1) annuity loan whose one due date
+    // falls exactly on "now" (`addMonths(startDate, 1)` reconstructs today's
+    // Y/M/D from a start one calendar month earlier), so a payment a couple
+    // of days before "now" lands comfortably inside the schedule's window.
+    // 900,000.00 principal at 12% annual (1% monthly) gives 9,000.00 interest.
+    const startDate = (() => {
+      const date = new Date(now);
+      date.setMonth(date.getMonth() - 1);
+
+      return date.getTime();
+    })();
+    const LOAN_META = {
+      kind: 'personal',
+      principalMinorUnits: 900_000_00,
+      startDate,
+      annualRatePct: 12,
+      termMonths: 1,
+      schedule: 'annuity',
+    };
+    const LOAN_HOLDING: Holding = {
+      id: 'loan1',
+      accountId: 'b',
+      currency: 'UAH',
+      type: 'loan',
+      balanceMinorUnits: 0,
+      metadata: LOAN_META,
+      closedAt: null,
+    };
+    const INFORMAL_LOAN_HOLDING: Holding = {
+      id: 'loan-informal',
+      accountId: 'b',
+      currency: 'UAH',
+      type: 'loan',
+      balanceMinorUnits: 0,
+      metadata: { kind: 'personal', principalMinorUnits: 50_000_00, startDate, schedule: 'none' },
+      closedAt: null,
+    };
+    const LOAN_CATEGORIES: CategoryRow[] = [
+      ...CATEGORIES,
+      { key: 'loan_interest', title: 'Loan interest', icon: 'percent' },
+    ];
+
+    it('a linked -12,000 payment with installment interest 9,000 shows 9,000 under Loan interest, nothing from the raw row', async () => {
+      const linkedPayment: Transaction = {
+        id: 'lp1',
+        holdingId: 'h1',
+        time: now - 2 * DAY,
+        amountMinorUnits: -12_000_00,
+        category: 'groceries',
+        loanHoldingId: 'loan1',
+      };
+
+      setLiveData({
+        accounts: [CASH, BANK],
+        holdings: [UAH_HOLDING, USD_HOLDING, LOAN_HOLDING],
+        rates: [USD_UAH_RATE],
+        transactions: [linkedPayment],
+        history: HISTORY,
+        categories: LOAN_CATEGORIES,
+      });
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      expect(getByTestId('category-pie-arc-loan_interest')).toBeTruthy();
+      expect(queryByTestId('category-pie-arc-groceries')).toBeNull();
+      const centerTotal = within(getByTestId('category-pie-center-total'));
+      expect(centerTotal.getByText('9,000.00 ₴')).toBeTruthy();
+    });
+
+    it('an informal (none-schedule) linked loan payment counts 0 interest — no slice at all', async () => {
+      const informalPayment: Transaction = {
+        id: 'lp2',
+        holdingId: 'h1',
+        time: now - 2 * DAY,
+        amountMinorUnits: -12_000_00,
+        category: 'groceries',
+        loanHoldingId: 'loan-informal',
+      };
+
+      setLiveData({
+        accounts: [CASH, BANK],
+        holdings: [UAH_HOLDING, USD_HOLDING, INFORMAL_LOAN_HOLDING],
+        rates: [USD_UAH_RATE],
+        transactions: [informalPayment],
+        history: HISTORY,
+        categories: LOAN_CATEGORIES,
+      });
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      expect(getByTestId('category-pie-empty')).toBeTruthy();
+      expect(queryByTestId('category-pie-arc-loan_interest')).toBeNull();
+      expect(queryByTestId('category-pie-arc-groceries')).toBeNull();
+    });
+
+    it('an unlinked payment counts in full under its own category', async () => {
+      const unlinkedPayment: Transaction = {
+        id: 'lp3',
+        holdingId: 'h1',
+        time: now - 2 * DAY,
+        amountMinorUnits: -12_000_00,
+        category: 'groceries',
+      };
+
+      setLiveData({
+        accounts: [CASH, BANK],
+        holdings: [UAH_HOLDING, USD_HOLDING, LOAN_HOLDING],
+        rates: [USD_UAH_RATE],
+        transactions: [unlinkedPayment],
+        history: HISTORY,
+        categories: LOAN_CATEGORIES,
+      });
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
+      expect(queryByTestId('category-pie-arc-loan_interest')).toBeNull();
+      const centerTotal = within(getByTestId('category-pie-center-total'));
+      expect(centerTotal.getByText('12,000.00 ₴')).toBeTruthy();
+    });
+
+    it('a payment linked to a MISSING loan holding counts as normal spending', async () => {
+      const danglingPayment: Transaction = {
+        id: 'lp4',
+        holdingId: 'h1',
+        time: now - 2 * DAY,
+        amountMinorUnits: -12_000_00,
+        category: 'groceries',
+        loanHoldingId: 'ghost-loan',
+      };
+
+      setLiveData({
+        accounts: [CASH, BANK],
+        // The loan holding this payment links to is absent entirely (deleted).
+        holdings: [UAH_HOLDING, USD_HOLDING],
+        rates: [USD_UAH_RATE],
+        transactions: [danglingPayment],
+        history: HISTORY,
+        categories: LOAN_CATEGORIES,
+      });
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
+      expect(queryByTestId('category-pie-arc-loan_interest')).toBeNull();
+      const centerTotal = within(getByTestId('category-pie-center-total'));
+      expect(centerTotal.getByText('12,000.00 ₴')).toBeTruthy();
+    });
+
+    it('feeds the derived interest into the spending trend too', async () => {
+      const linkedPayment: Transaction = {
+        id: 'lp1',
+        holdingId: 'h1',
+        time: now - 2 * DAY,
+        amountMinorUnits: -12_000_00,
+        category: 'groceries',
+        loanHoldingId: 'loan1',
+      };
+
+      setLiveData({
+        accounts: [CASH, BANK],
+        holdings: [UAH_HOLDING, USD_HOLDING, LOAN_HOLDING],
+        rates: [USD_UAH_RATE],
+        transactions: [linkedPayment],
+        history: HISTORY,
+        categories: LOAN_CATEGORIES,
+      });
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('category-trend-line-line-loan_interest')).toBeTruthy();
+    });
+  });
+});
+
+describe('StatisticsScreen — loading gate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('shows a loading spinner, not an empty chart, while any of its own queries is on its first load', async () => {
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: HISTORY,
+      isLoading: { transactions: true },
+    });
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('statistics-loading')).toBeTruthy();
+    expect(queryByTestId('statistics-blocks')).toBeNull();
+    // The net-worth line's own EXISTING empty-state testID (never its real
+    // "no data" state) must not render while the screen's own queries are
+    // still on their first load — that bug renders as a real chart, not
+    // this loading spinner.
+    expect(queryByTestId('net-worth-line-empty')).toBeNull();
+    expect(queryByTestId('bar-chart-empty')).toBeNull();
+  });
+
+  it('renders the real charts once every query has loaded', async () => {
+    seedFull();
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('statistics-blocks')).toBeTruthy();
+    expect(queryByTestId('statistics-loading')).toBeNull();
+  });
+
+  it('renders loading then loaded on ONE mounted instance — spinner first, then the real charts, via rerender', async () => {
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: HISTORY,
+      isLoading: { transactions: true },
+    });
+    const view = await renderScreen();
+
+    expect(view.getByTestId('statistics-loading')).toBeTruthy();
+    expect(view.queryByTestId('statistics-blocks')).toBeNull();
+
+    seedFull();
+    await act(async () => {
+      view.rerender(<StatisticsScreen />);
+    });
+
+    expect(view.queryByTestId('statistics-loading')).toBeNull();
+    expect(view.getByTestId('statistics-blocks')).toBeTruthy();
+    expect(view.getByTestId('bar-chart-bar-cash')).toBeTruthy();
   });
 });
 
@@ -1206,7 +1955,7 @@ describe('StatisticsScreen — localization', () => {
     // The option itself now renders the Ukrainian catalog label, still keyed
     // on the same stable `groceries` value and still checked.
     await act(async () => {
-      fireEvent.press(getByTestId(CATEGORY_FILTER));
+      await fireEvent.press(getByTestId(CATEGORY_FILTER));
     });
     expect(
       getByTestId(`${CATEGORY_FILTER}-option-groceries`).props.accessibilityState?.checked,
@@ -1215,5 +1964,60 @@ describe('StatisticsScreen — localization', () => {
     // legend entry — so assert at least one instance rather than a single
     // unique match.
     expect(getAllByText('Продукти').length).toBeGreaterThan(0);
+  });
+});
+
+// kiko-architecture: no request or query for data the user does not have —
+// usePriceBook's price_points read is disabled while nothing on this screen
+// is a priced type (property_item/metal) or a loan.
+describe('StatisticsScreen — the price_points gate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('disables the price_points read when no holding needs it', async () => {
+    setLiveData({
+      holdings: [{ id: 'h1', accountId: 'a', currency: 'UAH', type: 'card', balanceMinorUnits: 0 }],
+    });
+    await renderScreen();
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(false);
+  });
+
+  it('enables the price_points read once a priced holding is present', async () => {
+    setLiveData({
+      holdings: [
+        { id: 'h1', accountId: 'a', currency: 'UAH', type: 'metal', balanceMinorUnits: 0 },
+      ],
+    });
+    await renderScreen();
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(true);
+  });
+
+  it('reads price_points in parallel while holdings are still on their first load', async () => {
+    setLiveData({ isLoading: { holdings: true } });
+    await renderScreen();
+
+    const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
+    expect(priceCall?.[2]).toBe(true);
+  });
+
+  // Only a loan reads its linked payments, so a priced-only screen never
+  // runs the linked-payments read.
+  it('reads the linked loan payments only once a loan is present', async () => {
+    const loanPaymentsCall = () =>
+      mockUseLiveQuery.mock.calls.find((call) => call[1].join(',') === 'transactions,holdings');
+
+    setLiveData({ holdings: [{ ...UAH_HOLDING, type: 'metal' }] });
+    await renderScreen();
+    expect(loanPaymentsCall()?.[2]).toBe(false);
+
+    mockUseLiveQuery.mockClear();
+    setLiveData({ holdings: [{ ...UAH_HOLDING, type: 'loan' }] });
+    await renderScreen();
+    expect(loanPaymentsCall()?.[2]).toBe(true);
   });
 });

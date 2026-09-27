@@ -1,5 +1,5 @@
-import clientInfo from '../__fixtures__/client-info.json';
-import statement from '../__fixtures__/statement.json';
+import statement from '@kiko/monobank/__fixtures__/statement.json';
+import clientInfo from '@kiko/monobank/__fixtures__/client-info.json';
 
 import {
   fetchClientInfo,
@@ -20,6 +20,7 @@ describe('fetchClientInfo', () => {
     const spyFetch = (async (url: string, init: SpyFetchInit) => {
       sentUrl = url;
       sentHeaders = init.headers;
+
       return { ok: true, json: async () => clientInfo, status: 200 };
     }) as unknown as typeof fetch;
 
@@ -46,6 +47,7 @@ describe('fetchStatement', () => {
     const spyFetch = (async (url: string, init: SpyFetchInit) => {
       sentUrl = url;
       sentHeaders = init.headers;
+
       return { ok: true, json: async () => statement, status: 200 };
     }) as unknown as typeof fetch;
 
@@ -81,6 +83,7 @@ describe('429 / Retry-After handling', () => {
     let call = 0;
     const fetchImpl = jest.fn(async () => {
       call += 1;
+
       return call === 1
         ? rateLimited('2')
         : ({ ok: true, status: 200, json: async () => clientInfo } as unknown as Response);
@@ -99,6 +102,7 @@ describe('429 / Retry-After handling', () => {
     let call = 0;
     const fetchImpl = jest.fn(async () => {
       call += 1;
+
       return call === 1
         ? rateLimited(null)
         : ({ ok: true, status: 200, json: async () => clientInfo } as unknown as Response);
@@ -114,6 +118,7 @@ describe('429 / Retry-After handling', () => {
     let call = 0;
     const fetchImpl = jest.fn(async () => {
       call += 1;
+
       return call === 1
         ? rateLimited('0')
         : ({ ok: true, status: 200, json: async () => clientInfo } as unknown as Response);

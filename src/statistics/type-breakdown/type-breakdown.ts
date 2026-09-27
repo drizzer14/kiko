@@ -1,15 +1,17 @@
-import type { Currency } from '../../currency/currency';
-import { Money } from '../../currency/money';
-import type { HoldingRow } from '../../db/schema';
-import { type HoldingType, holdingTypes } from '../../holdings/holding-type';
-import { holdingValue } from '../../holdings/holding-value';
-import { convert, type RateTable } from '../../rates/conversion';
-import { canConvert } from '../../rates/net-worth-view';
+import type { HoldingRow } from '@kiko/db';
+import { Money } from '@kiko/currency/money';
+import { canConvert } from '@kiko/rates/net-worth-view';
+import type { Currency } from '@kiko/currency/currency';
+import { holdingValue } from '@kiko/holdings/holding-value';
+import { convert, type RateTable } from '@kiko/rates/conversion';
+import { holdingDescriptor } from '@kiko/holdings/holding-descriptor';
+import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
+import { type HoldingType, holdingTypes } from '@kiko/holdings/holding-type';
 
 /** A holding as the by-type bar needs it: its type plus its convertible value. */
 export type BreakdownHolding = Pick<
   HoldingRow,
-  'type' | 'currency' | 'balanceMinorUnits' | 'metadata'
+  'type' | 'currency' | 'balanceMinorUnits' | 'metadata' | 'id'
 >;
 
 /**
@@ -26,29 +28,40 @@ export type TypeSlice = { type: HoldingType; amount: number };
  * no rate (so one unconvertible holding never voids the rest of its type).
  * Types that total zero — including those whose only holdings are unconvertible —
  * are excluded, and the remaining entries are sorted by amount descending.
+ *
+ * A debt-side type (only `loan` today — `holdingDescriptor(type).side`) is
+ * excluded outright: this bar is an ASSET breakdown, and a debt's own held
+ * value is NEGATIVE (`holding-value.ts`), so it has its own
+ * "Debts" total elsewhere on Statistics (`buildDebtTotal`,
+ * `account-contribution.ts`) rather than showing up here as a negative bar.
+ * The bar is assets-only PER HOLDING, the same rule `buildAccountContribution`'s
+ * pie already follows: a NON-loan holding in debit (e.g. a credit card) is
+ * dropped BEFORE the per-type sum, not netted into it — it can never reduce
+ * a positive holding of the same type, only ever be absent.
  */
 export const buildTypeBreakdown = (input: {
   holdings: BreakdownHolding[];
   rateTable: RateTable;
   baseCurrency: Currency;
   now: number;
+  book?: PriceBook;
 }): TypeSlice[] => {
-  const { holdings, rateTable, baseCurrency, now } = input;
+  const { holdings, rateTable, baseCurrency, now, book = EMPTY_PRICE_BOOK } = input;
 
   return holdingTypes
+    .filter((type) => holdingDescriptor(type).side === 'asset')
     .map((type) => {
       const total = holdings
         .filter(
           (holding) =>
             holding.type === type && canConvert(holding.currency, baseCurrency, rateTable),
         )
-        .reduce(
-          (sum, holding) => sum.add(convert(holdingValue(holding, now), baseCurrency, rateTable)),
-          Money.of(baseCurrency, 0),
-        );
+        .map((holding) => convert(holdingValue(holding, now, book), baseCurrency, rateTable))
+        .filter((money) => money.minorUnits > 0)
+        .reduce((sum, money) => sum.add(money), Money.of(baseCurrency, 0));
 
       return { type, amount: total.minorUnits };
     })
-    .filter((slice) => slice.amount !== 0)
+    .filter((slice) => slice.amount > 0)
     .sort((a, b) => b.amount - a.amount);
 };

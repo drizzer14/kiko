@@ -1,8 +1,9 @@
 import { sql } from 'drizzle-orm';
+import { currencyOptions } from '@kiko/currency/currency';
+import type { BondTerms } from '@kiko/bonds/nbu-register';
+import type { TrendFilter } from '@kiko/statistics/trend-filter';
+import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
-
-import { currencyOptions } from '../currency/currency';
-import type { TrendFilter } from '../statistics/trend-filter';
 
 // The currency columns below are TS-enum-typed text columns (SQLite stores plain
 // text; drizzle's `enum` is a compile-time constraint, no CHECK, so widening it
@@ -13,10 +14,12 @@ import type { TrendFilter } from '../statistics/trend-filter';
 export const accounts = sqliteTable('accounts', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  kind: text('kind', { enum: ['bank', 'cash', 'crypto'] }).notNull(),
+  kind: text('kind', {
+    enum: ['bank', 'cash', 'crypto', 'property', 'metals', 'debt'],
+  }).notNull(),
   institution: text('institution'),
-  // The bank this account REPRESENTS (device-feedback-round-1 item 3,
-  // `src/bank-sync/bank-catalog/`), independent of `institution`
+  // The bank this account REPRESENTS (`src/bank-sync/bank-catalog/`),
+  // independent of `institution`
   // (which marks a LIVE sync connection). Set from the account-form's bank
   // picker at create time; import-only for 5 of the 6 catalog entries.
   // Deliberately NEVER read by `isSyncedAccount`/`isSyncedHolding`
@@ -41,7 +44,17 @@ export const holdings = sqliteTable('holdings', {
     .references(() => accounts.id),
   name: text('name').notNull(),
   type: text('type', {
-    enum: ['card', 'term_deposit', 'bond', 'cash', 'crypto_asset', 'jar'],
+    enum: [
+      'card',
+      'term_deposit',
+      'bond',
+      'cash',
+      'crypto_asset',
+      'jar',
+      'property_item',
+      'metal',
+      'loan',
+    ],
   }).notNull(),
   currency: text('currency', { enum: currencyOptions }).notNull(),
   icon: text('icon'),
@@ -65,6 +78,11 @@ export const holdings = sqliteTable('holdings', {
   // balance, so the skip cannot fire), which also RECOVERS any card the old bug
   // had stranded, and then sets the marker.
   syncedBalanceMinorUnits: integer('synced_balance_minor_units'),
+  // The instant (ms) this holding's balance was last SET, not moved — the
+  // statement-import boundary. `transactionsRepo.importRows`'s own doc
+  // comment (`transactions/repo/transactions.repo.ts`) is the ONE full
+  // statement of exactly which writes set it.
+  balanceSetAt: integer('balance_set_at'),
   metadata: text('metadata', { mode: 'json' }),
   sortOrder: integer('sort_order').notNull().default(0),
   closedAt: integer('closed_at'),
@@ -126,6 +144,38 @@ export const transactions = sqliteTable(
     // not a reserved `category` value, for the same reason the exchange marker
     // is: the category picker rewrites `category` and would destroy it.
     changeGroupId: text('change_group_id'),
+    // The loan holding this payment counts against — null for an ordinary
+    // transaction. A loan holding writes no ledger rows of its own
+    // (`isLedgerlessHoldingType`), so every payment lives on the LINKED
+    // bank holding's own row instead, tied back here. Set by the auto-matcher
+    // (`transactionsRepo.setAutoLoanLinks`) or by the user
+    // (`transactionsRepo.setLoanPayment`). Allowed on a synced (bank-owned)
+    // row, EXACTLY LIKE `category`'s own override path — the link is
+    // user/matcher state, not bank data, so `addManyDedup`'s upsert never
+    // refreshes it. Cleared (along with `loanLinkSource`) in the SAME
+    // transaction a linked loan holding is deleted, whether directly
+    // (`holdingsRepo.remove`) or via its owning account
+    // (`accountsRepo.remove`) — a dangling id is never left to rot; a
+    // cleared link counts as normal spending again.
+    loanHoldingId: text('loan_holding_id'),
+    // How `loanHoldingId` was set: 'auto' (the matcher) or 'manual' (the
+    // user), null when there is no link — kept in sync with `loanHoldingId`
+    // (both null together, never one without the other). Drives the "Linked
+    // automatically" + Undo affordance vs a plain manual link.
+    loanLinkSource: text('loan_link_source', { enum: ['auto', 'manual'] }),
+    // True once the user has explicitly rejected an auto-suggested link on
+    // this row (`transactionsRepo.undoAutoLoanLink`), so the matcher never
+    // re-proposes it — false-positive handling. Only a MANUAL action ever
+    // moves this flag: a manual LINK clears it (a fresh pick always
+    // overrides an earlier Undo), but a manual "None" SETS it — the user's
+    // explicit "not a loan payment" must stick, or the very next sync would
+    // just auto-link the row again. This deviates from the original design
+    // note's literal text ("a manual None clears the flag"). `setAutoLoanLinks`
+    // (the matcher's path) never touches this column either way; its own
+    // WHERE clause just skips a rejected row.
+    // NOT NULL default 0: every existing row (pre-migration and every
+    // ordinary transaction) has never been rejected.
+    loanLinkRejected: integer('loan_link_rejected', { mode: 'boolean' }).notNull().default(false),
     comment: text('comment'),
     // 'btc_wallet' / 'binance' double as `accounts.institution` values. The
     // BALANCE sync writes no transaction rows, but the Binance crypto sync now
@@ -310,6 +360,26 @@ export const settings = sqliteTable('settings', {
   // the balance-diff skip never engages again. Pruned to ids still present in
   // client-info. NULL means the empty set (no card is currently force-retried).
   failedSyncMonobankIds: text('failed_sync_monobank_ids', { mode: 'json' }).$type<string[]>(),
+  // The user's saved column-mapping imports
+  // (`statement-import/column-mapping/saved-mapping.ts`): a map from
+  // `mappingKeyFor(bankId, fingerprint)` (`bank:<bankId>` for a catalog bank,
+  // else `header:<fingerprint>` for "Other") to the `SavedColumnMapping` last
+  // confirmed for that key. NULL means nothing saved yet. Written (read-
+  // modify-write) by `settingsRepo.saveStatementMapping`; looked up by
+  // `findSavedMapping` to PRE-FILL the mapping form on a later import — the
+  // user still taps Import, a saved mapping never applies itself silently.
+  statementMappings: text('statement_mappings', { mode: 'json' }).$type<
+    Record<string, SavedColumnMapping>
+  >(),
+  // One-shot flag: has this device already rewritten its stored statement-
+  // import dedup keys from the pre-`␟`-separator format to the injective one
+  // (`statement-import/mapping/upgrade-dedup-key.ts`'s `upgradeLegacyDedupKey`)?
+  // Migration 0041 adds this column defaulting to `false` (unrun);
+  // `MigrationsGate` flips it to `true` after the one-time rewrite, the same
+  // shape every other one-shot migration-adjacent flag in this table uses.
+  // `restoreDataSnapshot` treats an entirely absent key (a pre-0041 `.kiko`
+  // export) as `false` too — see `restore-snapshot.ts`.
+  dedupKeysUpgraded: integer('dedup_keys_upgraded', { mode: 'boolean' }).notNull().default(false),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;
@@ -321,11 +391,11 @@ export type SettingsRow = typeof settings.$inferSelect;
  * a second connected Monobank account would have shared and corrupted the one
  * cursor. Each connected Monobank account now owns its own row here, keyed by its
  * `accounts.id`. The old `settings` columns are retained-but-dead — pinned as
- * reader-less in `src/db/settings-columns.test.ts` per the 2026-09-11
- * multi-account plan (Task 1.3), same additive-only class as `appearance` /
- * `lockGraceSeconds`. Each column mirrors the identically-named `settings` one;
- * read the comments on those columns above for the load-bearing semantics
- * (balance-diff skip, robust `lastFullSyncAt` graduation, the display stamp).
+ * reader-less in `src/db/settings-columns.test.ts`, same additive-only class
+ * as `appearance` / `lockGraceSeconds`. Each column mirrors the
+ * identically-named `settings` one; read the comments on those columns above
+ * for the load-bearing semantics (balance-diff skip, robust
+ * `lastFullSyncAt` graduation, the display stamp).
  */
 export const syncState = sqliteTable('sync_state', {
   accountId: text('account_id')
@@ -380,3 +450,55 @@ export const categoryOverrides = sqliteTable('category_overrides', {
 });
 
 export type CategoryOverrideRow = typeof categoryOverrides.$inferSelect;
+
+/**
+ * One priced point for a share/metal/holding on a given day. Keyed the
+ * same way `currencyRateHistory` keys a rate: one row per (instrument, day),
+ * carried forward across a gap by the reader (`src/prices/price-book/`), not
+ * backfilled here.
+ */
+export const pricePoints = sqliteTable(
+  'price_points',
+  {
+    /**
+     * The priced thing's key — `share:<symbol>`, `metal:<metal>`, or
+     * `holding:<holdingId>` (see `src/prices/instrument/instrument.ts`).
+     * Free-text, not an FK: it may point at a symbol/metal with no matching
+     * row anywhere, or at a holding that has since been deleted.
+     */
+    instrument: text('instrument').notNull(),
+    /**
+     * The price's day, as a normalized UTC-midnight epoch value in
+     * MILLISECONDS (00:00:00.000 UTC of that calendar day) — same convention
+     * as `currencyRateHistory.day`. One row per (instrument, day).
+     */
+    day: integer('day').notNull(),
+    price: text('price').notNull(),
+    currency: text('currency', { enum: currencyOptions }).notNull(),
+    source: text('source', { enum: ['manual', 'nbu', 'eodhd'] }).notNull(),
+  },
+  (table) => ({
+    instrumentDayUnique: uniqueIndex('price_points_instrument_day').on(table.instrument, table.day),
+  }),
+);
+
+export type PricePointRow = typeof pricePoints.$inferSelect;
+
+/**
+ * NBU securities-register cache — one row per bond ISIN,
+ * refreshed WHOLESALE (never patched field-by-field) at most once per
+ * local day by `refreshBondRegisterIfStale`
+ * (`src/bonds/bond-register-repo/`). `terms` stores the register's
+ * resolved `BondTerms` shape as JSON (`src/bonds/nbu-register/`) since the
+ * ISIN-mode bond form reads the whole object at once; `fetchedAt` is the
+ * one write-time stamp shared by every row in a given refresh, which is
+ * what makes `bondRegisterRepo.fetchedAtQuery()`'s `MAX(fetched_at)` read
+ * the same value any single row's own `fetchedAt` would.
+ */
+export const bondRegister = sqliteTable('bond_register', {
+  isin: text('isin').primaryKey(),
+  terms: text('terms', { mode: 'json' }).notNull().$type<BondTerms>(),
+  fetchedAt: integer('fetched_at').notNull(),
+});
+
+export type BondRegisterRow = typeof bondRegister.$inferSelect;

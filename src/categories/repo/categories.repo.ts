@@ -1,9 +1,15 @@
-import type { Repository } from '@kiko/db/repository';
+import {
+  type Repository,
+  id,
+  database,
+  write,
+  categories,
+  categoryOverrides,
+  settings,
+  transactions,
+} from '@kiko/db';
 import { asc, eq, sql } from 'drizzle-orm';
 
-import { database, write } from '../../db/client';
-import { id } from '../../db/id';
-import { categories, categoryOverrides, settings, transactions } from '../../db/schema';
 import { DEFAULT_CATEGORY_KEY } from '../category-display';
 
 // The next free slot for a new category: one past the current highest
@@ -12,8 +18,8 @@ import { DEFAULT_CATEGORY_KEY } from '../category-display';
 // account-scoped — the list is global, so there is no `accountId` filter. Read
 // inside the write transaction so a concurrent create cannot observe a stale
 // maximum.
-const nextSortOrder = async (tx: typeof database): Promise<number> => {
-  const rows = await tx
+const nextSortOrder = async (databaseTransaction: typeof database): Promise<number> => {
+  const rows = await databaseTransaction
     .select({ value: sql<number>`coalesce(max(${categories.sortOrder}), -1)` })
     .from(categories);
 
@@ -36,9 +42,9 @@ export const categoriesRepo = {
   // slugs, so it never collides with the canonical categories. It appends to the
   // end of the list via `sortOrder = max + 1`.
   create: (category: { title: string; icon: string; color?: string | null }) =>
-    write(async (tx) => {
-      const sortOrder = await nextSortOrder(tx);
-      await tx.insert(categories).values({
+    write(async (databaseTransaction) => {
+      const sortOrder = await nextSortOrder(databaseTransaction);
+      await databaseTransaction.insert(categories).values({
         key: id(),
         title: category.title,
         icon: category.icon,
@@ -47,15 +53,21 @@ export const categoriesRepo = {
       });
     }),
   updateTitle: (key: string, title: string) =>
-    write((tx) => tx.update(categories).set({ title }).where(eq(categories.key, key))),
+    write((databaseTransaction) =>
+      databaseTransaction.update(categories).set({ title }).where(eq(categories.key, key)),
+    ),
   updateIcon: (key: string, icon: string) =>
-    write((tx) => tx.update(categories).set({ icon }).where(eq(categories.key, key))),
+    write((databaseTransaction) =>
+      databaseTransaction.update(categories).set({ icon }).where(eq(categories.key, key)),
+    ),
   // Sets the category's color (an entity-color hex) or, with `null`, clears it
   // back to no picked color. The display/chart layer falls back to the stable
   // per-key palette hash when the stored color is null (see resolveCategoryColor
   // in statistics/category-breakdown.ts), mirroring accounts'/holdings' color.
   updateColor: (key: string, color: string | null) =>
-    write((tx) => tx.update(categories).set({ color }).where(eq(categories.key, key))),
+    write((databaseTransaction) =>
+      databaseTransaction.update(categories).set({ color }).where(eq(categories.key, key)),
+    ),
   /**
    * Delete a category, folding its data into the CURRENT default category. In
    * ONE op-sqlite transaction: read the configured default key from settings,
@@ -67,9 +79,10 @@ export const categoriesRepo = {
    * now-missing category slug.
    */
   delete: (key: string) =>
-    write(async (tx) => {
-      const settingsRows = await tx.select().from(settings);
+    write(async (databaseTransaction) => {
+      const settingsRows = await databaseTransaction.select().from(settings);
       const defaultKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
+
       if (key === defaultKey) {
         throw new Error('categoriesRepo.delete: cannot delete the default category');
       }
@@ -84,15 +97,15 @@ export const categoriesRepo = {
       // for any row written by an older build that has not re-synced yet.
       const lowercaseKey = key.toLowerCase();
 
-      await tx
+      await databaseTransaction
         .update(transactions)
         .set({ category: defaultKey })
         .where(sql`lower(${transactions.category}) = ${lowercaseKey}`);
-      await tx
+      await databaseTransaction
         .update(categoryOverrides)
         .set({ category: defaultKey })
         .where(sql`lower(${categoryOverrides.category}) = ${lowercaseKey}`);
-      await tx.delete(categories).where(eq(categories.key, key));
+      await databaseTransaction.delete(categories).where(eq(categories.key, key));
     }),
   /**
    * Persist a reorder of the categories list. `orderedKeys` is the full new
@@ -103,9 +116,9 @@ export const categoriesRepo = {
    * (`key`) and global (categories are not account-scoped).
    */
   reorder: (orderedKeys: string[]) =>
-    write(async (tx) => {
+    write(async (databaseTransaction) => {
       for (let index = 0; index < orderedKeys.length; index += 1) {
-        await tx
+        await databaseTransaction
           .update(categories)
           .set({ sortOrder: index })
           .where(eq(categories.key, orderedKeys[index]));

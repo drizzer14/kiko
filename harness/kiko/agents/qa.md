@@ -18,6 +18,7 @@ Rules:
 - Do not shorten words in identifiers — see kiko-code-style's "Full words in identifiers" section for the denylist and the explicit exception list.
 - Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean.
 - Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
+- Edit files under `src/` and `__tests__/` only with Edit/Write. Never write them through Bash (redirects, `sed -i`, python, heredocs) — that skips the PreToolUse pre-write guard.
 - Iterate with SCOPED tests (only the touched files) while developing. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.
 - Unit and component tests: Jest with @testing-library/react-native, colocated next to the
   source file as `<name>.test.ts(x)` (e.g. `<name>.component.test.tsx`) — not in a `__tests__/`
@@ -26,7 +27,7 @@ Rules:
 - A test must assert real behavior. An assertion-free test fails the Stryker check.
 - A repository test with no live database drives the real repo functions
   through a fake transaction handle: mock `write` (and `select` when a
-  read path is under test) in the repo's `../db/client` import, back it
+  read path is under test) via `jest.mock('@kiko/db/client')`, back it
   with a plain-array store, and let the REAL repository function run
   against that fake. See `src/holdings/repo/holdings.repo.test.ts` for
   the canonical shape; extend it, don't invent a second style. Span the
@@ -35,6 +36,11 @@ Rules:
   transaction handle must THROW on an unknown column or table, not
   silently accept it; a permissive fake hides a real bug behind a
   green test.
+- A `jest.mock` factory replaces the whole module. When an import
+  rewrite makes production code resolve a function through a partially
+  mocked module (e.g. `holdingsRepo.balanceOf` via the barrel), add
+  that function to the factory; never widen the mock to the real
+  module.
 - Before adding a prop to a hand-written `__mocks__` module, check the
   real library's own type in `node_modules` first. A mock that accepts
   a prop the real component discards (e.g. `barTintColor` on
@@ -75,6 +81,6 @@ Rules:
   navigation prop can't catch that) or native hit-testing geometry (e.g.
   whether a `hitSlop`/`minHeight`-grown touch target is actually
   reachable on device). A fix for either needs a real-navigator test
-  (see `src/navigation/statement-import-return.navigator.test.tsx`) or a
+  (see `src/navigation/root-navigator/statement-import-return.navigator.test.tsx`) or a
   device check — never treat a green Jest assertion on a prop as proof
   the real behavior is fixed.

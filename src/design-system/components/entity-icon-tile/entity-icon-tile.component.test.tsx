@@ -1,8 +1,7 @@
 import { render } from '@testing-library/react-native';
-import '../../unistyles';
-
-import { darkTheme } from '../../theme';
-import { entityIconTileGradient } from '../../entity-tint';
+import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
+import { entityIconTileGradient } from '@kiko/design-system/entity-tint';
 
 import EntityIconTile from '.';
 

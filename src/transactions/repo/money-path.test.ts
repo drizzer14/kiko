@@ -3,41 +3,43 @@
 // must seed the right counterpart amount without ever mutating the bank row.
 // Modeled on rates-refresh/crypto-coverage.test.ts: drive the real logic
 // through fast seams, no simulator.
-let mockTx: unknown;
-jest.mock('../../db/client', () => {
-  const actual = jest.requireActual('../../db/client');
+let mockDatabaseTransaction: unknown;
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
+
   return {
     ...actual,
-    write: (work: (db: unknown) => unknown) => work(mockTx),
+    write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
   };
 });
 
-import { holdings, transactions } from '../../db/schema';
-import { buildCategoryTrend } from '../../statistics/category-trend';
-import { seedCounterpartMinorUnits } from '../../holdings/exchange-prefill';
-import { buildCategoryBreakdown } from '../../statistics/category-breakdown';
-import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
+import { holdings, transactions } from '@kiko/db';
+import { buildCategoryTrend } from '@kiko/statistics/category-trend';
+import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
+import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
+import { buildCategoryBreakdown } from '@kiko/statistics/category-breakdown';
 
 import { transactionsRepo } from './transactions.repo';
 
-// A fake tx handle capturing inserts + balance updates in call order, answering
+// A fake database-transaction handle capturing inserts + balance updates in call order, answering
 // both the chained `.where(...).limit(1)` and the bare `await where(...)`
-// conventions — same shape as transactions.repo.test.ts's makeExchangeTx.
-const makeTx = (
+// conventions — same shape as transactions.repo.test.ts's makeExchangeDatabaseTransaction.
+const makeDatabaseTransaction = (
   selectQueue: unknown[][],
 ): {
-  tx: unknown;
+  databaseTransaction: unknown;
   inserts: Record<string, unknown>[];
   updates: { table: unknown; values: Record<string, unknown> }[];
 } => {
   const inserts: Record<string, unknown>[] = [];
   const updates: { table: unknown; values: Record<string, unknown> }[] = [];
   const queue = [...selectQueue];
-  const tx = {
+  const databaseTransaction = {
     select: () => ({
       from: () => ({
         where: () => {
           const rows = queue.shift() ?? [];
+
           return Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
         },
       }),
@@ -45,30 +47,32 @@ const makeTx = (
     insert: () => ({
       values: (values: Record<string, unknown>) => {
         inserts.push(values);
+
         return Promise.resolve();
       },
     }),
     update: (table: unknown) => ({
       set: (values: Record<string, unknown>) => {
         updates.push({ table, values });
+
         return { where: () => Promise.resolve() };
       },
     }),
   };
 
-  return { tx, inserts, updates };
+  return { databaseTransaction, inserts, updates };
 };
 
 describe('Money-path guard: split-change + convert prefill', () => {
   it('keeps net worth correct after a split-change (payment + N linked returns)', async () => {
     // Opening balances: payer 500_00, holding B 10_00, holding C 20_00 UAH.
     const opening = { 'payer-1': 500_00, 'hold-b': 10_00, 'hold-c': 20_00 };
-    const { tx, updates } = makeTx([
+    const { databaseTransaction, updates } = makeDatabaseTransaction([
       [{ balanceMinorUnits: opening['payer-1'] }],
       [{ balanceMinorUnits: opening['hold-b'] }],
       [{ balanceMinorUnits: opening['hold-c'] }],
     ]);
-    mockTx = tx;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.recordManualWithReturns({
       payment: { holdingId: 'payer-1', amountMinorUnits: -212_00, time: 1, category: 'groceries' },
@@ -80,7 +84,8 @@ describe('Money-path guard: split-change + convert prefill', () => {
 
     // Apply the captured balance writes back onto the holdings and sum net worth
     // in UAH (base == each holding's currency, so no rate needed).
-    const finalBalances = updates.map((update) => ({
+    const finalBalances = updates.map((update, index) => ({
+      id: `holding-${index}`,
       currency: 'UAH' as const,
       balanceMinorUnits: update.values.balanceMinorUnits as number,
       type: 'cash' as const,
@@ -136,11 +141,11 @@ describe('Money-path guard: split-change + convert prefill', () => {
 
     // Convert of a SYNCED (bank-owned) withdrawal: only the new cash leg is
     // written; the existing monobank row is never updated.
-    const { tx, inserts, updates } = makeTx([
+    const { databaseTransaction, inserts, updates } = makeDatabaseTransaction([
       [{ balanceMinorUnits: 0 }], // the new cash leg's balance read
       [{ source: 'monobank' }], // the existing bank row, read inside the tx
     ]);
-    mockTx = tx;
+    mockDatabaseTransaction = databaseTransaction;
 
     await transactionsRepo.recordExchangeCounterpart({
       direction: 'record-destination',

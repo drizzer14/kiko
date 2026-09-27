@@ -1,9 +1,12 @@
-import type { Currency } from '../../currency/currency';
-import type { AccountRow, HoldingRow } from '../../db/schema';
-import { resolveEntityColor } from '../../design-system/entity-tint';
-import { defaultAccountColor } from '../../holdings/entity-colors';
-import type { RateTable } from '../../rates/conversion';
-import { guardedNetWorth } from '../../rates/net-worth-view';
+import { Money } from '@kiko/currency/money';
+import type { AccountRow, HoldingRow } from '@kiko/db';
+import { canConvert } from '@kiko/rates/net-worth-view';
+import type { Currency } from '@kiko/currency/currency';
+import { holdingValue } from '@kiko/holdings/holding-value';
+import { convert, type RateTable } from '@kiko/rates/conversion';
+import { defaultAccountColor } from '@kiko/holdings/entity-colors';
+import { resolveEntityColor } from '@kiko/design-system/entity-tint';
+import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
 
 /**
  * An account as the pie chart needs it: identity, display name, and the two
@@ -15,7 +18,7 @@ export type ContributionAccount = Pick<AccountRow, 'id' | 'name' | 'kind' | 'col
 /** A holding as the pie chart needs it: its account plus its convertible value. */
 export type ContributionHolding = Pick<
   HoldingRow,
-  'accountId' | 'currency' | 'balanceMinorUnits' | 'type' | 'metadata'
+  'accountId' | 'currency' | 'balanceMinorUnits' | 'type' | 'metadata' | 'id'
 >;
 
 /**
@@ -34,13 +37,33 @@ export type AccountSlice = {
   color: string;
 };
 
+// Every holding's own value, converted to the base currency — dropping any
+// holding whose currency cannot convert (no rate), the same guard
+// `guardedNetWorth`/`buildTypeBreakdown` use. Shared by the pie (positive
+// values only) and `buildDebtTotal` (negative values only) below, so the
+// convert/guard logic lives in exactly one place.
+const convertibleValues = (
+  holdings: ContributionHolding[],
+  baseCurrency: Currency,
+  rateTable: RateTable,
+  now: number,
+  book: PriceBook,
+): Money[] =>
+  holdings
+    .filter((holding) => canConvert(holding.currency, baseCurrency, rateTable))
+    .map((holding) => convert(holdingValue(holding, now, book), baseCurrency, rateTable));
+
 /**
- * Build one pie slice per account for the "Account contribution" chart. Each
- * account's value is `guardedNetWorth` of its holdings converted to the base
- * currency at current rates; the guard silently drops any holding with no rate.
- * Accounts that end up at zero or negative — including those whose only holdings
- * are unconvertible — are filtered out, so shares are computed over the visible
- * slices alone and sum to ~1.
+ * Build one pie slice per account for the "Account contribution" chart. The
+ * pie is ASSETS ONLY: an account's `amount` sums only its POSITIVE holding
+ * values — a negative holding (a `loan`'s own value, or a non-loan holding
+ * in debit, e.g. a credit card) never reduces it, so an account can never
+ * get a negative slice, and a debt-heavy account
+ * with no positive holding at all contributes no slice rather than a
+ * negative one. See `buildDebtTotal` below for where that debt goes instead.
+ * Accounts that end up at zero — including those whose only holdings are
+ * unconvertible or negative — are filtered out, so shares are computed over
+ * the visible slices alone and sum to ~1.
  */
 export const buildAccountContribution = (input: {
   accounts: ContributionAccount[];
@@ -48,17 +71,20 @@ export const buildAccountContribution = (input: {
   rateTable: RateTable;
   baseCurrency: Currency;
   now: number;
+  book?: PriceBook;
 }): AccountSlice[] => {
-  const { accounts, holdings, rateTable, baseCurrency, now } = input;
+  const { accounts, holdings, rateTable, baseCurrency, now, book = EMPTY_PRICE_BOOK } = input;
   const accountDefaults = defaultAccountColor;
 
   const valued = accounts
     .map((account) => {
       const accountHoldings = holdings.filter((holding) => holding.accountId === account.id);
-      const amount = guardedNetWorth(accountHoldings, baseCurrency, rateTable, now).minorUnits;
-      // `resolveEntityColor` (design-system/entity-tint.ts) is the ONE function
-      // that picks an entity's effective color: a valid stored hex, else the
-      // kind default, else a safe gray. A bare `stored ?? default` let an
+      const amount = convertibleValues(accountHoldings, baseCurrency, rateTable, now, book)
+        .filter((money) => money.minorUnits > 0)
+        .reduce((sum, money) => sum.add(money), Money.of(baseCurrency, 0)).minorUnits;
+      // `resolveEntityColor` (design-system/entity-tint/entity-tint.ts) is the
+      // ONE function that picks an entity's effective color: a valid stored
+      // hex, else the kind default, else a safe gray. A bare `stored ?? default` let an
       // empty-string color and an unmapped kind (a row written under a
       // since-removed enum member — the schema enum is TS-only, no CHECK
       // constraint) reach the chart as `''`/`undefined`, so `<Path fill>` drew
@@ -77,4 +103,31 @@ export const buildAccountContribution = (input: {
   const total = valued.reduce((sum, slice) => sum + slice.amount, 0);
 
   return valued.map((slice) => ({ ...slice, share: slice.amount / total }));
+};
+
+/**
+ * The "Debts" total (Statistics screen; "Credit-card negative balances count
+ * as debt too"): the sum of every holding whose own held value is NEGATIVE,
+ * converted to the base currency — a NEGATIVE
+ * `Money`, read verbatim by `MoneyText` to render the minus sign. A `loan`
+ * holding's own value is already minus its outstanding balance
+ * (`holding-value.ts`), and a non-loan holding in debit (a credit card) is
+ * already a negative `balanceMinorUnits` — NEITHER needs a type check here,
+ * only the sign of the already-computed value. A holding whose value is
+ * zero or positive contributes nothing (it belongs to the ASSETS-only pie
+ * above instead). An unconvertible holding (no rate for its currency) is
+ * silently dropped, same guard as `guardedNetWorth`/`buildTypeBreakdown`.
+ */
+export const buildDebtTotal = (input: {
+  holdings: ContributionHolding[];
+  rateTable: RateTable;
+  baseCurrency: Currency;
+  now: number;
+  book?: PriceBook;
+}): Money => {
+  const { holdings, rateTable, baseCurrency, now, book = EMPTY_PRICE_BOOK } = input;
+
+  return convertibleValues(holdings, baseCurrency, rateTable, now, book)
+    .filter((money) => money.minorUnits < 0)
+    .reduce((sum, money) => sum.add(money), Money.of(baseCurrency, 0));
 };

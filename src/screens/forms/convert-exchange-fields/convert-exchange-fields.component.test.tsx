@@ -1,11 +1,9 @@
-import { fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
-
-import '../../../design-system/unistyles';
-import '../../../i18n';
-import { darkTheme } from '../../../design-system/theme';
-
-import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
+import { fireEvent, render } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import '@kiko/i18n/init';
+import { darkTheme } from '@kiko/design-system/theme';
+import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 import ConvertExchangeFields from './convert-exchange-fields.component';
 
@@ -24,6 +22,7 @@ const baseProps = {
   fixedLabel: 'Value Out',
   fixedValue: '1,000.00',
   counterpartLabel: 'To',
+  counterpartSheetTitle: 'Select a Destination',
   counterpartPlaceholder: 'Select holding',
   counterpartOptions: options,
   counterpartHoldingId: null,
@@ -53,6 +52,16 @@ describe('ConvertExchangeFields', () => {
     expect(getByText('$')).toBeTruthy();
   });
 
+  it("shows counterpartSheetTitle as the counterpart picker's sheet header", async () => {
+    const { getByLabelText, queryByText } = await render(<ConvertExchangeFields {...baseProps} />);
+
+    expect(queryByText('Select a Destination')).toBeNull();
+
+    await fireEvent.press(getByLabelText('To'));
+
+    expect(queryByText('Select a Destination')).toBeTruthy();
+  });
+
   it('reports the picked counterpart holding', async () => {
     const onSelectCounterpart = jest.fn();
     const { getByLabelText, getByText } = await render(
@@ -74,7 +83,7 @@ describe('ConvertExchangeFields', () => {
       />,
     );
 
-    fireEvent.changeText(getByLabelText('Value In'), '42');
+    await fireEvent.changeText(getByLabelText('Value In'), '42');
 
     expect(onChangeCounterpartAmount).toHaveBeenCalledWith('42');
   });
@@ -100,7 +109,7 @@ describe('ConvertExchangeFields', () => {
       <ConvertExchangeFields {...baseProps} counterpartError="Select a counterpart account." />,
     );
 
-    // Round-4 device feedback item 1 — a select field's error lacked the same
+    // A select field's error lacked the same
     // gap TextField's own `Box gap={1}` already gives its error line.
     const errorGroup = getByText('Select a counterpart account.').parent?.parent;
     expect(StyleSheet.flatten(errorGroup?.props.style).gap).toBe(darkTheme.spacing(1));

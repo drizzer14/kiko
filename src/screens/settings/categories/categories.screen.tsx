@@ -1,28 +1,28 @@
 import Sortable from 'react-native-sortables';
+import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
+import Card from '@kiko/design-system/components/card';
 import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
-import { settingsRepo } from '@kiko/settings/settings.repo';
+import Button from '@kiko/design-system/components/button';
+import Screen from '@kiko/design-system/components/screen';
 import { type FC, useCallback, useRef, useState } from 'react';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
+import type { SettingsStackParamList } from '@kiko/navigation/types';
+import ColorPicker from '@kiko/design-system/components/color-picker';
+import { type CategoryRow, useDataReady, useLiveQuery } from '@kiko/db';
+import LoadingState from '@kiko/design-system/components/loading-state';
+import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
+import { DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
+import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
-import ColorPicker from '../../forms/color-picker';
-import type { CategoryRow } from '../../../db/schema';
-import Box from '../../../design-system/components/box';
-import { useLiveQuery } from '../../../db/use-live-query';
-import Button from '../../../design-system/components/button';
-import Card from '../../../design-system/components/card';
-import Screen from '../../../design-system/components/screen';
-import HoldingIdentityField from '../../forms/holding-identity-field';
-import type { SettingsStackParamList } from '../../../navigation/types';
-import { DEFAULT_CATEGORY_KEY } from '../../../categories/category-display';
-import { resolveCategoryColor } from '../../../statistics/category-breakdown';
-import { onGridDragEnd } from '../../../design-system/grid-interaction';
-import ConfirmSheet from '../../../design-system/components/confirm-sheet';
-import { resolveDefaultCategoryTitle } from '../../../i18n/default-category-title';
-import { KIKO_CATEGORIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
+import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
+import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
+import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-picker-modal';
 
 import AddCategoryRow from './add-category-row';
 
@@ -57,6 +57,13 @@ const styles = StyleSheet.create(() => ({
   reorderButtons: {
     marginLeft: 'auto',
   },
+  // The footer's "Add category" button spans the full footer width (not
+  // `alignSelf: 'flex-start'`) so it reads as the row's dominant action and
+  // keeps a comfortable, easy-to-hit tap target — mirrors accounts.styles.ts's
+  // addAccountButton.
+  addCategoryButton: {
+    width: '100%',
+  },
 }));
 
 // One category, rendered as its own `Card` — the same solid content-layer
@@ -79,9 +86,8 @@ const styles = StyleSheet.create(() => ({
 // themed ConfirmSheet since it moves this category's transactions to the default)
 // renders on EVERY card, but is DISABLED on the default card — the default can
 // never be deleted, and the disabled control keeps the bottom row's layout
-// identical across all cards. Local title state is seeded from the row so
-// keystrokes show immediately, while the persisted value flows back through the
-// live query.
+// identical across all cards. Local title state follows the row so keystrokes
+// show immediately, while the persisted value flows back through the live query.
 const CategoryListRow: FC<{
   category: CategoryRow;
   isDefault: boolean;
@@ -95,6 +101,14 @@ const CategoryListRow: FC<{
   // the translated string it is shown as (see `displayTitle` below) can never
   // itself be saved as a rename.
   const [title, setTitle] = useState(category.title);
+  // The stored title `title` last took. The row is keyed by category.key, so it
+  // never remounts when a fresh row replaces the cached one (kiko-architecture:
+  // a cached display mount can be one read old); a stored title that changed
+  // while the field is not being edited — a rename made elsewhere, such as a
+  // .kiko restore — replaces the local one. Syncing on a CHANGE, not rendering
+  // `category.title` directly, keeps a just-committed rename on screen until
+  // its write flows back, instead of flashing the old title.
+  const [syncedTitle, setSyncedTitle] = useState(category.title);
   // Tracks whether the field currently has focus. While unfocused, an
   // un-renamed default shows its translated label (`resolveDefaultCategoryTitle`
   // is a no-op for a renamed/custom row, so those always show `title`
@@ -103,10 +117,19 @@ const CategoryListRow: FC<{
   // controlled `value` stays in sync with) the real stored text, not the
   // translated one.
   const [isEditing, setIsEditing] = useState(false);
+
+  if (!isEditing && category.title !== syncedTitle) {
+    setSyncedTitle(category.title);
+    setTitle(category.title);
+  }
   // Whether the themed delete confirm (`ConfirmSheet`) is up, replacing the old
   // native `ActionSheetIOS`; a scrim/back dismiss behaves like Cancel.
   const [deletePending, setDeletePending] = useState(false);
   const displayTitle = isEditing ? title : resolveDefaultCategoryTitle(category.key, title);
+  // The committed name as the user sees it (translated for an un-renamed
+  // default): every accessibility label and the delete sheet title name the
+  // category this way, never by its raw stored seed title.
+  const displayName = resolveDefaultCategoryTitle(category.key, category.title);
   // The category's EFFECTIVE color: its stored hex when picked, else the
   // stable per-key palette hash — computed once and shared by the row icon
   // and the color picker's ringed swatch, so both always agree on what "this
@@ -117,8 +140,12 @@ const CategoryListRow: FC<{
 
   const commitTitle = (): void => {
     const trimmed = title.trim();
+    // An edit that began on a cached title and ends after the fresh one arrived
+    // still holds the cached text; only text the user actually changed is a
+    // rename, so the cached title is never written back over the fresh one.
+    const isRename = trimmed !== syncedTitle && trimmed !== category.title;
 
-    if (trimmed !== '' && trimmed !== category.title) {
+    if (trimmed !== '' && isRename) {
       categoriesRepo.updateTitle(category.key, trimmed);
     }
 
@@ -175,11 +202,11 @@ const CategoryListRow: FC<{
               // still gets a hue (the same stable hash the chart already uses for it)
               // rather than staying neutral.
               iconColor={color}
-              iconAccessibilityLabel={t('categories.changeIconLabel', { title: category.title })}
+              iconAccessibilityLabel={t('categories.changeIconLabel', { title: displayName })}
               onSelectIcon={selectIcon}
               name={displayTitle}
               onChangeName={setTitle}
-              nameAccessibilityLabel={t('categories.titleFieldLabel', { title: category.title })}
+              nameAccessibilityLabel={t('categories.titleFieldLabel', { title: displayName })}
               // Swap to the raw stored title the instant the field gains focus —
               // before any keystroke can land — so what the user actually edits
               // (and what `commitTitle` diffs and persists) is always the raw
@@ -208,7 +235,7 @@ const CategoryListRow: FC<{
               fullWidth={false}
               disabled
               icon="star.fill"
-              accessibilityLabel={t('categories.isDefaultLabel', { title: category.title })}
+              accessibilityLabel={t('categories.isDefaultLabel', { title: displayName })}
               // A permanently-disabled static marker: the press never fires, so
               // it carries an inert no-op rather than the dead `setAsDefault`.
               onPress={() => {}}
@@ -219,7 +246,7 @@ const CategoryListRow: FC<{
               size="compact"
               fullWidth={false}
               icon="star"
-              accessibilityLabel={t('categories.setAsDefaultLabel', { title: category.title })}
+              accessibilityLabel={t('categories.setAsDefaultLabel', { title: displayName })}
               onPress={setAsDefault}
             />
           )}
@@ -236,7 +263,7 @@ const CategoryListRow: FC<{
         <ColorPicker
           value={color}
           onSelect={selectColor}
-          accessibilityLabelPrefix={t('categories.rowColorPrefix', { title: category.title })}
+          accessibilityLabelPrefix={t('categories.rowColorPrefix', { title: displayName })}
         />
 
         {/* The card's bottom row: the labelled destructive Delete on the left
@@ -258,7 +285,7 @@ const CategoryListRow: FC<{
             fullWidth={false}
             disabled={isDefault}
             icon="trash"
-            accessibilityLabel={t('categories.deleteLabel', { title: category.title })}
+            accessibilityLabel={t('categories.deleteLabel', { title: displayName })}
             onPress={openDeleteConfirm}
           >
             {t('common.delete')}
@@ -283,7 +310,7 @@ const CategoryListRow: FC<{
               fullWidth={false}
               icon="arrow.up.to.line"
               textColor={theme.colors.textSecondary}
-              accessibilityLabel={t('categories.moveToTopLabel', { title: category.title })}
+              accessibilityLabel={t('categories.moveToTopLabel', { title: displayName })}
               onPress={onMoveToTop}
             />
 
@@ -293,7 +320,7 @@ const CategoryListRow: FC<{
               fullWidth={false}
               icon="arrow.down.to.line"
               textColor={theme.colors.textSecondary}
-              accessibilityLabel={t('categories.moveToBottomLabel', { title: category.title })}
+              accessibilityLabel={t('categories.moveToBottomLabel', { title: displayName })}
               onPress={onMoveToBottom}
             />
           </Box>
@@ -307,7 +334,7 @@ const CategoryListRow: FC<{
           Cancel. */}
       <ConfirmSheet
         visible={deletePending}
-        title={t('common.deleteNamed', { name: category.title })}
+        title={t('common.deleteNamed', { name: displayName })}
         confirmLabel={t('common.delete')}
         onConfirm={removeCategory}
         onCancel={cancelDelete}
@@ -353,9 +380,27 @@ const categoryKeyExtractor = (category: CategoryRow): string => category.key;
 // current default category (read from settings) is marked and shielded from
 // deletion. The inline add-category affordance renders as the final card.
 const CategoriesScreen: FC<CategoriesScreenProps> = () => {
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
-  const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  // Whether the "Add category" form is mounted (review decision 19): the
+  // screen owns this, not AddCategoryRow — the footer's own "Add category"
+  // action is the only way in, and the form's Save/Cancel are the only ways
+  // out (both call `collapseAddCategoryForm` below).
+  const [addCategoryExpanded, setAddCategoryExpanded] = useState(false);
+  const {
+    data: categories,
+    isLoading: categoriesLoading,
+    isFresh: categoriesFresh,
+  } = useLiveQuery(categoriesRepo.allQuery(), ['categories'], true, { cached: true });
+  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
+    settingsRepo.getQuery(),
+    ['settings'],
+    true,
+    { cached: true },
+  );
+  // The blank list must never render while either query is still on its own
+  // first load (kiko-architecture's useLiveQuery consumer rule).
+  const isReady = useDataReady(categoriesLoading, settingsLoading);
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
 
   // The full current top-to-bottom order, the basis for both reorder buttons.
@@ -376,13 +421,23 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
   // list, not a stale snapshot captured at some earlier render.
   const orderedKeysRef = useRef(orderedKeys);
   orderedKeysRef.current = orderedKeys;
+  // Both buttons persist the WHOLE order, so neither acts until the categories
+  // query's own fresh read has applied — never on the cached (possibly
+  // one-read-old) order of a reopened screen (kiko-architecture). Read through
+  // a ref for the same stable-callback reason as `orderedKeysRef`.
+  const categoriesFreshRef = useRef(categoriesFresh);
+  categoriesFreshRef.current = categoriesFresh;
 
   const moveToTop = useCallback((key: string): void => {
-    categoriesRepo.reorder([key, ...orderedKeysRef.current.filter((other) => other !== key)]);
+    if (categoriesFreshRef.current) {
+      categoriesRepo.reorder([key, ...orderedKeysRef.current.filter((other) => other !== key)]);
+    }
   }, []);
 
   const moveToBottom = useCallback((key: string): void => {
-    categoriesRepo.reorder([...orderedKeysRef.current.filter((other) => other !== key), key]);
+    if (categoriesFreshRef.current) {
+      categoriesRepo.reorder([...orderedKeysRef.current.filter((other) => other !== key), key]);
+    }
   }, []);
 
   // Memoized on the same principle as `categoryKeyExtractor` above: with
@@ -420,8 +475,45 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
     });
   };
 
+  const expandAddCategoryForm = (): void => {
+    setAddCategoryExpanded(true);
+    scrollToAddCategoryForm();
+  };
+
+  const collapseAddCategoryForm = (): void => {
+    setAddCategoryExpanded(false);
+  };
+
+  if (!isReady) {
+    // The SAME Screen mode/props as the ready branch below — the first
+    // scroll view iOS walks to drive the large-title collapse exists from
+    // the very first render.
+    return (
+      <Screen scroll scrollableRef={scrollableRef}>
+        <LoadingState testID="categories-loading" />
+      </Screen>
+    );
+  }
+
   return (
-    <Screen scroll scrollableRef={scrollableRef}>
+    <Screen
+      scroll
+      scrollableRef={scrollableRef}
+      footer={
+        addCategoryExpanded ? undefined : (
+          <Box testID="add-category-footer" style={styles.addCategoryButton}>
+            <Button
+              variant="primary"
+              fullWidth
+              onPress={expandAddCategoryForm}
+              icon={genericEntitySymbol.category}
+            >
+              {t('categories.addCategory')}
+            </Button>
+          </Box>
+        )
+      }
+    >
       <Box gap={4}>
         {/* A single-column drag-and-drop stack of category cards, mirroring the
             accounts/holdings grids: a hold-and-move reorders (routed through the
@@ -430,11 +522,12 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
             keeps a dragged card on its vertical axis; `scrollableRef` +
             `autoScrollActivationOffset` let a drag near an edge scroll the parent
             ScrollView; `sortEnabled` is off with a single category (nothing to
-            reorder). Each card also carries move-to-top/bottom buttons for a
-            gesture-free reorder. */}
+            reorder), and until the categories query's own fresh read has
+            applied (never a drag from the cached order). Each card also
+            carries move-to-top/bottom buttons for a gesture-free reorder. */}
         <Sortable.Grid
           data={categories}
-          sortEnabled={categories.length > 1}
+          sortEnabled={categoriesFresh && categories.length > 1}
           activeItemScale={1.03}
           columns={1}
           overDrag="vertical"
@@ -458,7 +551,7 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
           }
         />
 
-        <AddCategoryRow onExpand={scrollToAddCategoryForm} />
+        {addCategoryExpanded && <AddCategoryRow onCollapse={collapseAddCategoryForm} />}
       </Box>
     </Screen>
   );

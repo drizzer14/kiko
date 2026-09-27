@@ -1,8 +1,7 @@
-import { render } from '@testing-library/react-native';
 import { Platform } from 'react-native';
-import '../../unistyles';
-
-import { darkTheme } from '../../theme';
+import { render } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
 
 // Aliased to SymbolIcon, not Symbol: importing the default export as
 // `Symbol` shadows the global `Symbol` constructor

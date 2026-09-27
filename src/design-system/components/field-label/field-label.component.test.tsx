@@ -1,6 +1,6 @@
-import { render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
-import '../../unistyles';
+import { render } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
 import FieldLabel from '.';
 
 // Text's tone -> color mapping is a react-native-unistyles variant, which
@@ -8,7 +8,7 @@ import FieldLabel from '.';
 // same limitation `use-keyboard-done-accessory.test.tsx` documents) — mock
 // Text to surface its `tone` prop through a testID instead. Children still
 // render as plain text, so every other query in this file is unaffected.
-jest.mock('../text', () => {
+jest.mock('@kiko/design-system/components/text', () => {
   const { Text: RNText } = require('react-native');
 
   return {

@@ -1,28 +1,32 @@
-import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
 
 // `updateTitle`/`updateIcon` run their update through the `write` helper (one
 // op-sqlite transaction). Override `write` to run the callback against a fake
 // transaction handle so the test can capture the update payload issued inside
 // that single transaction.
-let mockTx: unknown;
-jest.mock('../../db/client', () => {
-  const actual = jest.requireActual('../../db/client');
+let mockDatabaseTransaction: unknown;
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
+
   return {
     ...actual,
-    write: (work: (db: unknown) => unknown) => work(mockTx),
+    write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
   };
 });
 
 // CANONICAL_SEED is the canonical seed the migration must insert: one stable
-// slug per MCC category (src/monobank/mcc-category.ts) plus `other`. Task 14's
+// slug per MCC category (src/monobank/mcc-category.ts) plus `other`. The
 // MCC -> display-key mapping must produce these exact keys. Shared with the
 // screen tests via one fixture so the canonical list lives in a single place.
-import { SEEDED_CATEGORIES as CANONICAL_SEED } from '@kiko/db/__fixtures__/seeded-categories';
 import type { SQL } from 'drizzle-orm';
+import {
+  LOAN_INTEREST_CATEGORY,
+  SEEDED_CATEGORIES as CANONICAL_SEED,
+} from '@kiko/db/__fixtures__/seeded-categories';
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
 
-import { categories, categoryOverrides, transactions } from '../../db/schema';
+import { categories, categoryOverrides, transactions } from '@kiko/db';
 
 import { categoriesRepo } from './categories.repo';
 
@@ -45,13 +49,15 @@ describe('categoriesRepo', () => {
     const captured: { set?: Record<string, unknown>; whereCalled: boolean } = {
       whereCalled: false,
     };
-    mockTx = {
+    mockDatabaseTransaction = {
       update: () => ({
         set: (values: Record<string, unknown>) => {
           captured.set = values;
+
           return {
             where: () => {
               captured.whereCalled = true;
+
               return Promise.resolve();
             },
           };
@@ -69,11 +75,11 @@ describe('categoriesRepo', () => {
   // the current global max `sort_order` via `select(...).from(categories)` (to
   // append at `max + 1`), then inserts. This answers that max query with
   // `maxSortOrder` and captures the insert payload.
-  const makeCreateTx = (
+  const makeCreateDatabaseTransaction = (
     maxSortOrder = -1,
-  ): { tx: unknown; captured: { values?: Record<string, unknown> } } => {
+  ): { databaseTransaction: unknown; captured: { values?: Record<string, unknown> } } => {
     const captured: { values?: Record<string, unknown> } = {};
-    const tx = {
+    const databaseTransaction = {
       select: () => ({ from: () => Promise.resolve([{ value: maxSortOrder }]) }),
       insert: () => ({
         values: (values: Record<string, unknown>) => {
@@ -83,12 +89,13 @@ describe('categoriesRepo', () => {
         },
       }),
     };
-    return { tx, captured };
+
+    return { databaseTransaction, captured };
   };
 
   it('create inserts a new category with a generated key, title and icon', async () => {
-    const { tx, captured } = makeCreateTx();
-    mockTx = tx;
+    const { databaseTransaction, captured } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await categoriesRepo.create({ title: 'Travel', icon: 'airplane' });
 
@@ -101,8 +108,8 @@ describe('categoriesRepo', () => {
   });
 
   it('create appends the category at the global sortOrder = max + 1', async () => {
-    const { tx, captured } = makeCreateTx(4);
-    mockTx = tx;
+    const { databaseTransaction, captured } = makeCreateDatabaseTransaction(4);
+    mockDatabaseTransaction = databaseTransaction;
 
     await categoriesRepo.create({ title: 'Travel', icon: 'airplane' });
 
@@ -110,8 +117,8 @@ describe('categoriesRepo', () => {
   });
 
   it('create uses sortOrder 0 for the first category', async () => {
-    const { tx, captured } = makeCreateTx(-1);
-    mockTx = tx;
+    const { databaseTransaction, captured } = makeCreateDatabaseTransaction(-1);
+    mockDatabaseTransaction = databaseTransaction;
 
     await categoriesRepo.create({ title: 'Travel', icon: 'airplane' });
 
@@ -122,13 +129,15 @@ describe('categoriesRepo', () => {
     const captured: { set?: Record<string, unknown>; whereCalled: boolean } = {
       whereCalled: false,
     };
-    mockTx = {
+    mockDatabaseTransaction = {
       update: () => ({
         set: (values: Record<string, unknown>) => {
           captured.set = values;
+
           return {
             where: () => {
               captured.whereCalled = true;
+
               return Promise.resolve();
             },
           };
@@ -146,13 +155,15 @@ describe('categoriesRepo', () => {
     const captured: { set?: Record<string, unknown>; whereCalled: boolean } = {
       whereCalled: false,
     };
-    mockTx = {
+    mockDatabaseTransaction = {
       update: () => ({
         set: (values: Record<string, unknown>) => {
           captured.set = values;
+
           return {
             where: () => {
               captured.whereCalled = true;
+
               return Promise.resolve();
             },
           };
@@ -168,11 +179,12 @@ describe('categoriesRepo', () => {
 
   it('create persists the picked color when supplied, and null when omitted', async () => {
     const captured: { values?: Record<string, unknown> } = {};
-    mockTx = {
+    mockDatabaseTransaction = {
       select: () => ({ from: () => Promise.resolve([{ value: -1 }]) }),
       insert: () => ({
         values: (values: Record<string, unknown>) => {
           captured.values = values;
+
           return Promise.resolve();
         },
       }),
@@ -189,11 +201,12 @@ describe('categoriesRepo', () => {
 describe('categoriesRepo.reorder', () => {
   it('rewrites each category sortOrder to its 0-based index in the new order', async () => {
     const sortOrders: unknown[] = [];
-    mockTx = {
+    mockDatabaseTransaction = {
       update: () => ({
         set: (set: Record<string, unknown>) => ({
           where: () => {
             sortOrders.push(set.sortOrder);
+
             return Promise.resolve();
           },
         }),
@@ -207,31 +220,33 @@ describe('categoriesRepo.reorder', () => {
 });
 
 describe('categoriesRepo.delete', () => {
-  // Fake tx: read the single settings row (for the current default key), then
+  // Fake transaction: read the single settings row (for the current default key), then
   // the two category reassign updates (transactions + overrides) and the
   // category-row delete, each captured so the test can assert the whole
   // transaction without a real database.
-  const makeTx = (settingsRows: { defaultCategoryKey: string }[]) => {
+  const makeDatabaseTransaction = (settingsRows: { defaultCategoryKey: string }[]) => {
     const captured: {
-      txUpdate?: Record<string, unknown>;
-      txWhere?: unknown;
+      transactionUpdate?: Record<string, unknown>;
+      transactionWhere?: unknown;
       overrideUpdate?: Record<string, unknown>;
       overrideWhere?: unknown;
       deletedTable?: unknown;
     } = {};
-    const tx = {
+    const databaseTransaction = {
       select: () => ({ from: () => Promise.resolve(settingsRows) }),
       update: (table: unknown) => ({
         set: (values: Record<string, unknown>) => ({
           where: (predicate: unknown) => {
             if (table === transactions) {
-              captured.txUpdate = values;
-              captured.txWhere = predicate;
+              captured.transactionUpdate = values;
+              captured.transactionWhere = predicate;
             }
+
             if (table === categoryOverrides) {
               captured.overrideUpdate = values;
               captured.overrideWhere = predicate;
             }
+
             return Promise.resolve();
           },
         }),
@@ -239,21 +254,24 @@ describe('categoriesRepo.delete', () => {
       delete: (table: unknown) => ({
         where: () => {
           captured.deletedTable = table;
+
           return Promise.resolve();
         },
       }),
     };
 
-    return { tx, captured };
+    return { databaseTransaction, captured };
   };
 
   it('reassigns matching transactions and overrides to the default, then removes the category row', async () => {
-    const { tx, captured } = makeTx([{ defaultCategoryKey: 'other' }]);
-    mockTx = tx;
+    const { databaseTransaction, captured } = makeDatabaseTransaction([
+      { defaultCategoryKey: 'other' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await categoriesRepo.delete('groceries');
 
-    expect(captured.txUpdate).toEqual({ category: 'other' });
+    expect(captured.transactionUpdate).toEqual({ category: 'other' });
     expect(captured.overrideUpdate).toEqual({ category: 'other' });
     expect(captured.deletedTable).toBe(categories);
   });
@@ -274,20 +292,24 @@ describe('categoriesRepo.delete', () => {
   };
 
   it('reassigns a capitalized legacy category on delete', async () => {
-    const { tx, captured } = makeTx([{ defaultCategoryKey: 'other' }]);
-    mockTx = tx;
+    const { databaseTransaction, captured } = makeDatabaseTransaction([
+      { defaultCategoryKey: 'other' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await categoriesRepo.delete('groceries');
 
-    expect(renderPredicate(captured.txWhere)).toEqual({
+    expect(renderPredicate(captured.transactionWhere)).toEqual({
       sql: 'lower("transactions"."category") = ?',
       params: ['groceries'],
     });
   });
 
   it('reassigns a capitalized legacy override on delete', async () => {
-    const { tx, captured } = makeTx([{ defaultCategoryKey: 'other' }]);
-    mockTx = tx;
+    const { databaseTransaction, captured } = makeDatabaseTransaction([
+      { defaultCategoryKey: 'other' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await categoriesRepo.delete('groceries');
 
@@ -298,32 +320,38 @@ describe('categoriesRepo.delete', () => {
   });
 
   it('compares against the lowercased key even when the key itself is capitalized', async () => {
-    const { tx, captured } = makeTx([{ defaultCategoryKey: 'other' }]);
-    mockTx = tx;
+    const { databaseTransaction, captured } = makeDatabaseTransaction([
+      { defaultCategoryKey: 'other' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await categoriesRepo.delete('Groceries');
 
-    expect(renderPredicate(captured.txWhere).params).toEqual(['groceries']);
+    expect(renderPredicate(captured.transactionWhere).params).toEqual(['groceries']);
     expect(renderPredicate(captured.overrideWhere).params).toEqual(['groceries']);
   });
 
   it('reassigns to the CURRENT (configurable) default, not a hardcoded one', async () => {
-    const { tx, captured } = makeTx([{ defaultCategoryKey: 'shopping' }]);
-    mockTx = tx;
+    const { databaseTransaction, captured } = makeDatabaseTransaction([
+      { defaultCategoryKey: 'shopping' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await categoriesRepo.delete('groceries');
 
-    expect(captured.txUpdate).toEqual({ category: 'shopping' });
+    expect(captured.transactionUpdate).toEqual({ category: 'shopping' });
     expect(captured.overrideUpdate).toEqual({ category: 'shopping' });
   });
 
   it('refuses to delete the default category and writes nothing', async () => {
-    const { tx, captured } = makeTx([{ defaultCategoryKey: 'other' }]);
-    mockTx = tx;
+    const { databaseTransaction, captured } = makeDatabaseTransaction([
+      { defaultCategoryKey: 'other' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await expect(categoriesRepo.delete('other')).rejects.toThrow(/default/i);
 
-    expect(captured.txUpdate).toBeUndefined();
+    expect(captured.transactionUpdate).toBeUndefined();
     expect(captured.overrideUpdate).toBeUndefined();
     expect(captured.deletedTable).toBeUndefined();
   });
@@ -339,9 +367,11 @@ describe('categories seed migration', () => {
 
   const createMigration = (): { name: string; sql: string } => {
     const file = migrationFiles().find(({ sql }) => sql.includes('CREATE TABLE `categories`'));
+
     if (file === undefined) {
       throw new Error('No migration creates the categories table');
     }
+
     return file;
   };
 
@@ -349,9 +379,11 @@ describe('categories seed migration', () => {
     const file = migrationFiles().find(
       ({ sql }) => sql.includes('INSERT') && sql.includes('`categories`'),
     );
+
     if (file === undefined) {
       throw new Error('No migration seeds the categories table');
     }
+
     return file;
   };
 
@@ -436,8 +468,8 @@ describe('categories seed migration', () => {
     const seed = seedMigration();
 
     // The eight categories that carry a settled default color, each with the
-    // hex of its `entityColors` token (src/design-system/theme.ts). `utilities`
-    // and `entertainment` are intentionally left uncolored.
+    // hex of its `entityColors` token (src/design-system/theme/theme.ts).
+    // `utilities` and `entertainment` are intentionally left uncolored.
     const defaultColors: Record<string, string> = {
       groceries: '#30D158',
       dining: '#FF9F0A',
@@ -478,5 +510,31 @@ describe('categories seed migration', () => {
     expect(sql).toMatch(
       /UPDATE `categories` SET `icon` = 'bus' WHERE `key` = 'transport' AND `icon` = 'car'/i,
     );
+  });
+
+  it('seeds the eleventh, loan_interest category in its own, later, idempotent migration', () => {
+    const files = migrationFiles();
+    const seed = seedMigration();
+
+    const loanInterestMigration = files.find(({ sql }) =>
+      sql.includes(`'${LOAN_INTEREST_CATEGORY.key}'`),
+    );
+    expect(loanInterestMigration).toBeDefined();
+    const { name, sql } = loanInterestMigration as { name: string; sql: string };
+
+    // Its own, later migration than 0002's original ten — the same "seed
+    // lives in a distinct, later journal entry" shape 0002 itself documents.
+    expect(name > seed.name).toBe(true);
+    expect(sql).toContain('INSERT OR IGNORE INTO `categories`');
+    expect(sql).toContain(`'${LOAN_INTEREST_CATEGORY.key}'`);
+    expect(sql).toContain(`'${LOAN_INTEREST_CATEGORY.title}'`);
+    expect(sql).toContain(`'${LOAN_INTEREST_CATEGORY.icon}'`);
+    // entityColors.indigo — the next unused token the original ten's own
+    // seed migration (0017) left unpainted.
+    expect(sql).toContain("'#5E5CE6'");
+    // Appends after every existing category (mirrors accountsRepo's own
+    // "max + 1" convention) rather than tying with `groceries` at the
+    // schema's default sort_order 0.
+    expect(sql).toMatch(/coalesce\(max\(`sort_order`\), -1\) \+ 1/i);
   });
 });

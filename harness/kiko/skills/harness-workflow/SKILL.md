@@ -30,6 +30,19 @@ any drift found and commits it. The completion report names the
 drift-fix commit sha, or states "no drift found" with the retrospect
 result.
 
+## Mutation testing: small change sets only
+
+Mutation testing (`check:deep` / `check:mutation`) runs per SMALL change
+set, never on a whole project or a whole release — a whole-release run
+went 10 h 16 min with no result. There is no whole-release or
+end-of-integration deep gate. Run it on each change set with
+`KIKO_MUTATION_BASE` set to that change set's own base commit.
+`scripts/checks/mutation.sh` exits 2 before Stryker starts when more
+than 30 files would be mutated (`MUTATION_FILE_CAP`);
+`KIKO_MUTATION_FULL=1` and a `KIKO_MUTATION_BASE` that does not resolve
+are refused directly (exit 2), and no env var bypasses the cap.
+See the `ops` skill for how to launch and await a run.
+
 ## Never pattern-kill a process
 
 Never use pkill, killall, or any pattern or group kill. Stop only a
@@ -172,6 +185,14 @@ The round's report lists the classification. The scribe or developer
 adds the rules, following kiko-linter's "Adding a pre-write guard rule"
 and "Pinned-value rules for locked user-approved visuals". The
 reviewer's `mechanizable: yes/pinned/no` tag is the first draft.
+
+## Large reviews
+
+Split a big review into parallel read-only reviewer slices by commit
+range, each writing its own output file. Review a mechanical sweep by
+static proof, not by sampling: resolve every import binding and
+`jest.mock`/`require` target at both commits, count cycles, and check
+each side-effect import's predecessors.
 
 ## The Stop-hook dup check is scoped
 

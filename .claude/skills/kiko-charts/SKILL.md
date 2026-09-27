@@ -129,27 +129,30 @@ native gradient extractor masks off any alpha embedded in an rgba()
 `stopColor` and substitutes `stopOpacity` (defaulting to fully opaque)
 instead, so an rgba() color alone silently renders fully opaque.
 
-## Net-worth stroke is sign-colored per segment
+## Net-worth stroke is sign-colored per segment (approved visual)
 
-The net-worth line's `<Polyline>` STROKE is colored green where the
-line is at or above the dashed `startReference` baseline and red
-where it is below, not a single fixed color — `buildLineSegments`
+The net-worth line's `<Polyline>` STROKE is colored green
+(`theme.colors.positive`) where the line is at or above the dashed
+`startReference` baseline and red (`theme.colors.negative`) where it is
+below — the user-approved look, LOCKED: never replace it with a single
+fixed-color (white) stroke. `buildLineSegments`
 (`net-worth-line.component.tsx`) splits the plotted points into
 contiguous same-sign runs, one `<Polyline>` per run. It deliberately
 REUSES `toAreaPath`'s exact crossing-x formula so a segment's split
 lands at the identical x as the fill's own crossing, and the line and
 fill never visually disagree — read both functions together rather
-than assuming the stroke split is independently derived.
+than assuming the stroke split is independently derived. The area
+FILL stays sign-colored too (green above, red below).
 
-The stroke `testID` changed from a single `net-worth-line-polyline`
-to per-segment `net-worth-line-polyline-${segment.key}`. This is
-load-bearing for any test/consumer that queries the stroke: a fixed
-`getByTestId('net-worth-line-polyline')` no longer matches anything
-— query with a prefix match (e.g. `getAllByTestId(/^net-worth-line-polyline-/)`),
-the pattern `statistics.screen.test.tsx` and
-`net-worth-line.component.test.tsx` already use. A non-crossing series
-still renders as exactly one segment, so the prefix query also covers
-the common case.
+The stroke `testID` is per segment,
+`net-worth-line-polyline-${segment.key}` — there is no single
+`net-worth-line-polyline`. Query it with a prefix match
+(`getAllByTestId(/^net-worth-line-polyline-/)`), the pattern
+`statistics.screen.test.tsx` and `net-worth-line.component.test.tsx`
+use. A non-crossing series renders as exactly one segment, so the
+prefix query also covers the common case.
+
+## Net-worth area-fill opacity
 
 The red/negative area gradient uses a HIGHER opacity than the
 green/positive one, not the same constant for both: alpha-compositing
@@ -160,6 +163,14 @@ needs more opacity to stay visibly legible against true black. Read
 the `AREA_OPACITY`/`NEGATIVE_AREA_OPACITY` constants in
 `net-worth-line.component.tsx` for the current values rather than
 restating them here.
+
+**Net worth can go negative** (see kiko-domain "Net worth"): a debt
+outweighing assets means the line can cross 0 — this
+needed NO change to `NetWorthLine` itself: `buildLineSegments` and
+`toAreaPath` already split the stroke and the fill on sign per crossing
+(above), which is exactly the "cross 0" case. The Y axis already floors to the series' own minimum (whatever
+that is, positive or negative), so a negative range draws correctly
+with no separate floor-at-0 logic to remove.
 
 ## Legend percent labels sum to 100
 
@@ -267,6 +278,20 @@ and an all-above set (nothing to crop) both show the full legend with no
 toggle. The Expenses-by-Category donut passes `legendMinShare={0.05}`
 (`CATEGORY_LEGEND_MIN_SHARE` in `statistics.screen.tsx`); the
 account-contribution pie passes nothing, so its legend is uncropped.
+
+## The account pie excludes debts
+
+`PieChart` itself has no debt concept — the exclusion lives entirely
+in its caller. `buildAccountContribution` (`src/statistics/account-contribution/`)
+filters to `slice.amount > 0` before this component ever sees the
+slice list, so a debt account's net worth (negative, since a `loan`
+holding's own value is negative — see `kiko-domain` "Net worth")
+never reaches the ring: no negative-slice case exists inside
+`PieChart`/`allocatePercents` to handle. The SAME file's
+`buildDebtTotal` sums every `loan` holding's value into a separate
+"Debts" `Money` total, rendered on Statistics via `MoneyText` under
+the account-contribution pie card (`statistics-debts-total`), not as
+a pie slice.
 
 ## Reuse the entity-color system for fills
 

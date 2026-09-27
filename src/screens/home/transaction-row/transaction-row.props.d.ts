@@ -1,5 +1,5 @@
-import type { CategoryDisplay } from '@kiko/categories/category-display';
 import type { transactionsRepo } from '@kiko/transactions/repo';
+import type { CategoryDisplay } from '@kiko/categories/category-display';
 
 // The Home transaction list's row shape — the display projection returned by
 // `listAllWithContextQuery`, the same type `useLiveQuery` infers for that query.
@@ -16,7 +16,7 @@ export type TransactionRowProps = {
   holdingNameById: ReadonlyMap<string, string>;
   categoryKeyForRow: (raw: string | null) => string;
   onPress: (transactionId: string) => void;
-  // Open the create form pre-filled from this row (D2). Passed for MANUAL rows
+  // Open the create form pre-filled from this row. Passed for MANUAL rows
   // only; a synced row is not duplicable and never receives it, so its
   // long-press keeps offering nothing.
   onDuplicate: (transactionId: string) => void;

@@ -1,6 +1,5 @@
 import { match } from 'ts-pattern';
-
-import type { Currency } from '../../currency/currency';
+import type { Currency } from '@kiko/currency/currency';
 
 export const currencyFromCode = (code: number): Currency | undefined =>
   match(code)

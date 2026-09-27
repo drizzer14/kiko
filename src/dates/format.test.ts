@@ -14,6 +14,25 @@ describe('formatDate', () => {
 
     expect(formatDate(timestamp)).toBe('02.09.2026');
   });
+
+  it('reads UTC calendar fields when timeZone is UTC, not local ones', () => {
+    // Mirrors formatDayMonth's own UTC test: a `price_points.day`-style value
+    // is a UTC-midnight epoch standing for a LOCAL calendar day, so reading it
+    // back must use the UTC accessors regardless of the host's own timezone.
+    const originalTz = process.env.TZ;
+    process.env.TZ = 'America/Los_Angeles';
+    try {
+      const utcMidnight = Date.UTC(2026, 0, 15);
+
+      expect(formatDate(utcMidnight, { timeZone: 'UTC' })).toBe('15.01.2026');
+    } finally {
+      if (originalTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTz;
+      }
+    }
+  });
 });
 
 describe('formatDayMonth', () => {
@@ -108,6 +127,7 @@ describe('parseLocalDate', () => {
   it('does not match plain Date.parse (which reads the string as UTC midnight)', () => {
     // Guards the fix: in a non-UTC zone the two disagree by the zone offset.
     const offsetMinutes = new Date(2026, 8, 2).getTimezoneOffset();
+
     if (offsetMinutes !== 0) {
       expect(parseLocalDate('2026-09-02')).not.toBe(Date.parse('2026-09-02'));
     }

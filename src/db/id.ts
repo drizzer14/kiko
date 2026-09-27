@@ -9,13 +9,16 @@
  * for security tokens.
  */
 export const id = (): string => {
-  const cryptoObj = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
-  if (typeof cryptoObj?.randomUUID === 'function') {
-    return cryptoObj.randomUUID();
+  const platformCrypto = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+
+  if (typeof platformCrypto?.randomUUID === 'function') {
+    return platformCrypto.randomUUID();
   }
+
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
     const rand = (Math.random() * 16) | 0;
     const value = char === 'x' ? rand : (rand & 0x3) | 0x8;
+
     return value.toString(16);
   });
 };

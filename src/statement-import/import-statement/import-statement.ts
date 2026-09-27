@@ -1,43 +1,55 @@
 import { holdingsRepo } from '@kiko/holdings/repo';
+import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 
+import {
+  StatementParseError,
+  type ParsedStatement,
+  type ParsedTransaction,
+  type ParsedStatementSource,
+} from '../parser';
 import { detectFormat } from '../registry';
-import { StatementParseError } from '../parser';
 import { computeDedupKey, mapParsedTransaction } from '../mapping';
 
 export type ImportResult = {
-  formatId: string;
+  formatId: ParsedStatementSource;
   imported: number;
   total: number;
-  /** Parsed rows excluded because their OWN currency (section C.1's per-row
-   * `currency`) didn't match the target holding's — Kiko has no FX, so a
+  /** Parsed rows excluded because their OWN currency (a multi-card export's
+   * per-row `currency`) didn't match the target holding's — Kiko has no FX, so a
    * mismatched row is excluded rather than converted or written verbatim
-   * (Task 3 review, CRITICAL: a PrivatBank multi-card export can mix
-   * currencies per row; writing e.g. a $50.00 row's raw minor units into a
-   * UAH holding would silently post +₴50.00 instead of +$50.00). */
+   * (a PrivatBank multi-card export can mix currencies per row; writing
+   * e.g. a $50.00 row's raw minor units into a UAH holding would silently
+   * post +₴50.00 instead of +$50.00). */
   skippedWrongCurrency: number;
+  /** The DISTINCT skipped rows' own currency codes, alphabetically sorted —
+   * names WHICH currencies were skipped, not just how many rows — empty
+   * when `skippedWrongCurrency` is 0. */
+  skippedWrongCurrencyCodes: Currency[];
 };
 
 /**
- * Detect the format, parse it, exclude any row whose currency doesn't match
- * the TARGET HOLDING's own currency (see `ImportResult.skippedWrongCurrency`
- * above), build the per-parse dedup occurrence map over the remaining rows,
- * map each through `mapParsedTransaction`, and hand the whole batch to the
- * EXISTING `transactionsRepo.addManyDedup` in one call — see
- * `docs/plans/statement-import.md` section A.4. Takes already-read file TEXT,
- * not a path; file reading is the caller's job.
+ * Exclude any row whose currency doesn't match the TARGET HOLDING's own
+ * currency (see `ImportResult.skippedWrongCurrency` above), build the
+ * per-parse dedup occurrence map over the remaining rows, map each through
+ * `mapParsedTransaction`, and hand the whole batch — plus the parsed
+ * statement's own `closingBalance`, when it has one — to
+ * `transactionsRepo.importRows` in one call, which upserts the rows AND
+ * moves the target holding's `balanceMinorUnits` in a SINGLE db transaction
+ * (see that function's own doc comment, and `kiko-domain`'s "Statement
+ * import" section, for the exact balance rule). See
+ * `docs/plans/statement-import.md` for the row-mapping shape.
+ * Takes an already-parsed `ParsedStatement` — shared by `importStatement`
+ * (a shipped bank format) and the generic column-mapping import path, which
+ * builds its own `ParsedStatement` with
+ * `formatId: 'column-mapping'` and has no dedicated `StatementFormat` to
+ * detect/parse through.
  */
-export const importStatement = async (
-  input: { text: string; fileName: string },
+export const importParsedStatement = async (
+  parsed: ParsedStatement,
   holdingId: string,
 ): Promise<ImportResult> => {
-  const format = detectFormat(input);
-
-  if (!format) {
-    throw new StatementParseError('No known statement format matched this file');
-  }
-
-  const parsed = format.parse(input);
   const holdingRows = await holdingsRepo.byIdQuery(holdingId);
   const holding = holdingRows.at(0);
 
@@ -45,10 +57,21 @@ export const importStatement = async (
     throw new Error(`Target holding not found: ${holdingId}`);
   }
 
-  const matchingTransactions = parsed.transactions.filter(
-    (transaction) => transaction.currency === holding.currency,
-  );
-  const skippedWrongCurrency = parsed.transactions.length - matchingTransactions.length;
+  // One pass over `parsed.transactions`, not two opposite `.filter()` calls —
+  // every row lands in exactly one of the two arrays below.
+  const matchingTransactions: ParsedTransaction[] = [];
+  const skippedTransactions: ParsedTransaction[] = [];
+
+  for (const transaction of parsed.transactions) {
+    (transaction.currency === holding.currency ? matchingTransactions : skippedTransactions).push(
+      transaction,
+    );
+  }
+
+  const skippedWrongCurrency = skippedTransactions.length;
+  const skippedWrongCurrencyCodes = Array.from(
+    new Set(skippedTransactions.map((transaction) => transaction.currency)),
+  ).sort();
 
   // dedup-key -> occurrence count so far. Keyed on the SAME (holding, time,
   // amount, normalized-description) tuple `computeDedupKey` folds on —
@@ -66,12 +89,45 @@ export const importStatement = async (
 
     return mapParsedTransaction(transaction, holdingId, occurrenceIndex);
   });
-  const imported = await transactionsRepo.addManyDedup(rows);
+  const imported = await transactionsRepo.importRows({
+    holdingId,
+    rows,
+    closingBalance: parsed.closingBalance,
+  });
+
+  // Every caller of this function — the dedicated `importStatement` below
+  // AND the generic column-mapping import, which calls this directly — gets
+  // the matcher run once, right after the new rows commit; a fresh import
+  // is exactly the kind of new debit the matcher exists to catch. Never
+  // rejects on its own (see its own doc comment), so a failed auto-link
+  // never turns a successful import into a shown error.
+  await runLoanAutoLink();
 
   return {
-    formatId: format.id,
+    formatId: parsed.formatId,
     imported,
     total: parsed.transactions.length,
     skippedWrongCurrency,
+    skippedWrongCurrencyCodes,
   };
+};
+
+/**
+ * Detect the format, parse it, and hand the result to `importParsedStatement`
+ * — see that function's doc comment for the shared import logic. Takes
+ * already-read file TEXT, not a path; file reading is the caller's job.
+ */
+export const importStatement = async (
+  input: { text: string; fileName: string },
+  holdingId: string,
+): Promise<ImportResult> => {
+  const format = detectFormat(input);
+
+  if (!format) {
+    throw new StatementParseError('No known statement format matched this file');
+  }
+
+  const parsed = format.parse(input);
+
+  return importParsedStatement(parsed, holdingId);
 };

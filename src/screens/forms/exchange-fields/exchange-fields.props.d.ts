@@ -1,7 +1,6 @@
 import type { RefObject } from 'react';
-
-import type { FieldInstance } from '../scroll-to-field/scroll-to-field';
-import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 export type ExchangeFieldsProps = {
   // The outgoing amount, in the source holding's major currency units.

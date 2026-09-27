@@ -1,20 +1,15 @@
 import type { ComponentProps } from 'react';
 import { StyleSheet, TextInput } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
+import { darkTheme } from '@kiko/design-system/theme';
+import { categoryColor } from '@kiko/statistics/category-breakdown';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
-
-import { i18n } from '../../../i18n';
-import { darkTheme } from '../../../design-system/theme';
-import { categoryColor } from '../../../statistics/category-breakdown';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
-import { mockReanimatedScrollToEnd } from '../../../test-support/mock-reanimated-scroll-to-end';
-import {
-  asNavigationProp,
-  asRouteProp,
-  navigationSpy,
-} from '../../../test-support/navigation-props';
+import { mockReanimatedScrollToEnd } from '@kiko/test-support/mock-reanimated-scroll-to-end';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import CategoriesScreen from './categories.screen';
 
@@ -78,6 +73,11 @@ const mockSetDefault = jest.fn();
 let mockLiveQueryData: Array<{ key: string; title: string; icon: string; color?: string | null }> =
   [];
 let mockSettingsRows: Array<{ defaultCategoryKey: string }> = [];
+let mockCategoriesIsLoading = false;
+// `false` = the categories are still the cached rows (a cached display mount
+// before its own fresh read has applied).
+let mockCategoriesIsFresh = true;
+let mockSettingsIsLoading = false;
 
 jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: {
@@ -96,9 +96,15 @@ jest.mock('@kiko/settings/settings.repo', () => ({
     setDefaultCategoryKey: (...args: unknown[]) => mockSetDefault(...args),
   },
 }));
-jest.mock('../../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (_query: unknown, keys: string[]) =>
-    keys?.[0] === 'settings' ? { data: mockSettingsRows } : { data: mockLiveQueryData },
+    keys?.[0] === 'settings'
+      ? { data: mockSettingsRows, isLoading: mockSettingsIsLoading }
+      : {
+          data: mockLiveQueryData,
+          isLoading: mockCategoriesIsLoading,
+          isFresh: mockCategoriesIsFresh,
+        },
 }));
 
 type CategoriesProps = ComponentProps<typeof CategoriesScreen>;
@@ -106,13 +112,31 @@ type CategoriesProps = ComponentProps<typeof CategoriesScreen>;
 // The screen reads neither prop (it navigates through hooks), but React
 // Navigation still types both as required, so every render supplies the pair
 // from the shared, singly-cast test doubles.
-const renderScreen = () =>
-  render(
-    <CategoriesScreen
-      navigation={asNavigationProp<CategoriesProps['navigation']>(navigationSpy())}
-      route={asRouteProp<CategoriesProps['route']>('Categories')}
-    />,
-  );
+const screenElement = () => (
+  <CategoriesScreen
+    navigation={asNavigationProp<CategoriesProps['navigation']>(navigationSpy())}
+    route={asRouteProp<CategoriesProps['route']>('Categories')}
+  />
+);
+
+const renderScreen = () => render(screenElement());
+
+// The categories query hands back new rows (a live-query refire), so each row
+// re-renders with the same key and never remounts.
+const rerenderWithCategories = async (
+  rerender: (element: ReturnType<typeof screenElement>) => void,
+  titleByKey: Record<string, string>,
+) => {
+  mockLiveQueryData = SEEDED_CATEGORIES.map((category) => ({
+    ...category,
+    title: titleByKey[category.key] ?? category.title,
+  }));
+  mockCategoriesIsFresh = true;
+
+  await act(async () => {
+    rerender(screenElement());
+  });
+};
 
 describe('CategoriesScreen', () => {
   beforeEach(() => {
@@ -120,6 +144,9 @@ describe('CategoriesScreen', () => {
     mockLiveQueryData = SEEDED_CATEGORIES.map((category) => ({ ...category }));
     // `other` is the seeded default catch-all.
     mockSettingsRows = [{ defaultCategoryKey: 'other' }];
+    mockCategoriesIsLoading = false;
+    mockCategoriesIsFresh = true;
+    mockSettingsIsLoading = false;
   });
 
   it('lists every seeded category by its title', async () => {
@@ -130,12 +157,17 @@ describe('CategoriesScreen', () => {
     }
   });
 
-  it('renders each category as its own card, plus one trailing add-category card', async () => {
-    const { getAllByTestId, getByTestId } = await renderScreen();
+  it('renders each category as its own card, with no add-category card until the footer expands it', async () => {
+    const { getAllByTestId, getByText, getByTestId, queryByTestId } = await renderScreen();
 
     // One Card per category — not a single shared surface housing every row.
     expect(getAllByTestId('category-card')).toHaveLength(SEEDED_CATEGORIES.length);
-    // The add-category affordance is its own trailing card in the same stack.
+    // The add-category form is not mounted until the footer action is tapped
+    // (review decision 19 — the inline collapsed row is gone).
+    expect(queryByTestId('add-category-card')).toBeNull();
+
+    await fireEvent.press(getByText('Add category'));
+
     expect(getByTestId('add-category-card')).toBeTruthy();
   });
 
@@ -179,12 +211,7 @@ describe('CategoriesScreen', () => {
     mockLiveQueryData = SEEDED_CATEGORIES.map((category) => ({ ...category }));
 
     await act(async () => {
-      rerender(
-        <CategoriesScreen
-          navigation={asNavigationProp<CategoriesProps['navigation']>(navigationSpy())}
-          route={asRouteProp<CategoriesProps['route']>('Categories')}
-        />,
-      );
+      await rerender(screenElement());
     });
 
     const nextProps = mockGridSpy.mock.calls.at(-1)?.[0];
@@ -201,6 +228,59 @@ describe('CategoriesScreen', () => {
 
     expect(mockUpdateTitle).toHaveBeenCalledWith('groceries', 'Food');
     expect(getByDisplayValue('Food')).toBeTruthy();
+  });
+
+  // kiko-architecture: a cached display mount shows rows that can be one read
+  // old, and a row keyed by category.key never remounts when the fresh row
+  // arrives. A rename made elsewhere (a .kiko restore) must reach the field,
+  // and a no-op focus/blur must never write the cached title back over it.
+  describe('rename from a cached row', () => {
+    beforeEach(() => {
+      mockLiveQueryData = SEEDED_CATEGORIES.map((category) =>
+        category.key === 'groceries' ? { ...category, title: 'Food' } : { ...category },
+      );
+      mockCategoriesIsFresh = false;
+    });
+
+    it('shows the fresh title once it arrives, and a focus/blur writes nothing', async () => {
+      const { rerender, getByLabelText, getByDisplayValue, queryByDisplayValue } =
+        await renderScreen();
+
+      await rerenderWithCategories(rerender, { groceries: 'Groceries' });
+
+      expect(getByDisplayValue('Groceries')).toBeTruthy();
+      expect(queryByDisplayValue('Food')).toBeNull();
+
+      const field = getByLabelText('Groceries title');
+      await fireEvent(field, 'focus');
+      await fireEvent(field, 'endEditing');
+
+      expect(mockUpdateTitle).not.toHaveBeenCalled();
+    });
+
+    it('never writes the cached title back when the fresh title arrives mid-edit', async () => {
+      const { rerender, getByLabelText, getByDisplayValue } = await renderScreen();
+
+      await fireEvent(getByLabelText('Food title'), 'focus');
+      await rerenderWithCategories(rerender, { groceries: 'Groceries' });
+      await fireEvent(getByLabelText('Groceries title'), 'endEditing');
+
+      expect(mockUpdateTitle).not.toHaveBeenCalled();
+      expect(getByDisplayValue('Groceries')).toBeTruthy();
+    });
+
+    it('still saves a rename typed after the fresh title arrived', async () => {
+      const { rerender, getByLabelText } = await renderScreen();
+
+      await rerenderWithCategories(rerender, { groceries: 'Groceries' });
+
+      const field = getByLabelText('Groceries title');
+      await fireEvent(field, 'focus');
+      await fireEvent.changeText(field, 'Food');
+      await fireEvent(field, 'endEditing');
+
+      expect(mockUpdateTitle).toHaveBeenCalledWith('groceries', 'Food');
+    });
   });
 
   it('does not call updateTitle when the trimmed new title is empty', async () => {
@@ -263,13 +343,13 @@ describe('CategoriesScreen', () => {
     expect(queryAllByTestId('category-icon-edit-badge')).toHaveLength(0);
   });
 
-  it('reveals the inline add-category form when the add row is tapped', async () => {
-    const { getByLabelText, queryByLabelText } = await renderScreen();
+  it('reveals the add-category form when the footer action is tapped', async () => {
+    const { getByLabelText, getByText, queryByLabelText } = await renderScreen();
 
-    // The name field is absent until the collapsed "Add category" row is tapped.
+    // The name field is absent until the footer's "Add category" action is tapped.
     expect(queryByLabelText('Name')).toBeNull();
 
-    await fireEvent.press(getByLabelText('Add category'));
+    await fireEvent.press(getByText('Add category'));
 
     expect(getByLabelText('Name')).toBeTruthy();
   });
@@ -277,9 +357,9 @@ describe('CategoriesScreen', () => {
   it('focuses the name field when the add-category form is revealed, without native autoFocus', async () => {
     const focusSpy = jest.spyOn(TextInput.prototype, 'focus');
 
-    const { getByLabelText } = await renderScreen();
+    const { getByLabelText, getByText } = await renderScreen();
 
-    await fireEvent.press(getByLabelText('Add category'));
+    await fireEvent.press(getByText('Add category'));
 
     // The name field never sets native autoFocus (it would race the sibling
     // keyboard InputAccessoryView's registration) — AddCategoryRow instead
@@ -291,17 +371,20 @@ describe('CategoriesScreen', () => {
     focusSpy.mockRestore();
   });
 
-  it('scrolls the ScrollView to the newly revealed form when the add row expands', async () => {
+  it('scrolls the ScrollView to the newly revealed form when the add form expands', async () => {
     // The scroll is deferred to the next frame so the just-revealed fields are
     // measured first; run that frame synchronously to assert the effect.
-    const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-      cb(0);
-      return 0;
-    });
+    const rafSpy = jest
+      .spyOn(globalThis, 'requestAnimationFrame')
+      .mockImplementation((callback) => {
+        callback(0);
 
-    const { getByLabelText } = await renderScreen();
+        return 0;
+      });
 
-    await fireEvent.press(getByLabelText('Add category'));
+    const { getByText } = await renderScreen();
+
+    await fireEvent.press(getByText('Add category'));
 
     expect(mockScrollToEnd).toHaveBeenCalledWith({ animated: true });
 
@@ -311,7 +394,7 @@ describe('CategoriesScreen', () => {
   it('creates a category via categoriesRepo.create and clears the form after saving', async () => {
     const { getByLabelText, getByText, queryByLabelText } = await renderScreen();
 
-    await fireEvent.press(getByLabelText('Add category'));
+    await fireEvent.press(getByText('Add category'));
     await fireEvent.changeText(getByLabelText('Name'), 'Travel');
     await fireEvent.press(getByText('Save'));
 
@@ -329,7 +412,7 @@ describe('CategoriesScreen', () => {
   it('creates a category with the picked color when a swatch is tapped', async () => {
     const { getByLabelText, getByText } = await renderScreen();
 
-    await fireEvent.press(getByLabelText('Add category'));
+    await fireEvent.press(getByText('Add category'));
     await fireEvent.changeText(getByLabelText('Name'), 'Travel');
     // The add-form picker scopes its swatch labels with its own prefix, so this
     // targets it unambiguously despite the per-row pickers already on screen.
@@ -351,27 +434,40 @@ describe('CategoriesScreen', () => {
     expect(mockUpdateColor).toHaveBeenCalledWith('groceries', expect.stringMatching(/^#/));
   });
 
-  it('does not create a category when the name is empty', async () => {
-    const { getByLabelText, getByText } = await renderScreen();
+  it('shows a name-required error and creates nothing when the name is blank', async () => {
+    const { getByLabelText, getByText, findByText } = await renderScreen();
 
-    await fireEvent.press(getByLabelText('Add category'));
+    await fireEvent.press(getByText('Add category'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(await findByText('Enter a name.')).toBeTruthy();
+    expect(mockCreate).not.toHaveBeenCalled();
+
     await fireEvent.changeText(getByLabelText('Name'), '   ');
     await fireEvent.press(getByText('Save'));
 
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
+  it('leads the footer "Add category" action with the category tag glyph', async () => {
+    const { getByTestId } = await renderScreen();
+
+    const glyphs = getByTestId('add-category-footer').queryAll((node) => node.props.name === 'tag');
+
+    expect(glyphs.length).toBeGreaterThan(0);
+  });
+
   it('collapses the add-category form (and writes nothing) when Cancel is pressed', async () => {
     const { getByLabelText, getByText, queryByLabelText } = await renderScreen();
 
-    await fireEvent.press(getByLabelText('Add category'));
+    await fireEvent.press(getByText('Add category'));
     // Enter a name, then back out — Cancel must be a real escape hatch.
     await fireEvent.changeText(getByLabelText('Name'), 'Travel');
     await fireEvent.press(getByText('Cancel'));
 
-    // The form collapses back to the single "Add category" affordance...
+    // The form collapses back to the single footer "Add category" action...
     expect(queryByLabelText('Name')).toBeNull();
-    expect(getByLabelText('Add category')).toBeTruthy();
+    expect(getByText('Add category')).toBeTruthy();
     // ...without persisting anything.
     expect(mockCreate).not.toHaveBeenCalled();
   });
@@ -563,6 +659,25 @@ describe('CategoriesScreen', () => {
       ]);
     });
 
+    // kiko-architecture: a cached display mount shows rows that can be one
+    // read old. Both reorder paths persist the WHOLE order of the rows on
+    // screen, so neither may act on the cached order.
+    it('never starts a drag reorder while the categories are still the cached order', async () => {
+      mockCategoriesIsFresh = false;
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('sortable-grid').props.sortEnabled).toBe(false);
+    });
+
+    it('ignores a move-to-top press while the categories are still the cached order', async () => {
+      mockCategoriesIsFresh = false;
+      const { getByLabelText } = await renderScreen();
+
+      await fireEvent.press(getByLabelText('Move Transport to top'));
+
+      expect(mockReorder).not.toHaveBeenCalled();
+    });
+
     it('persists a drag reorder through onGridDragEnd (only when the item actually moved)', async () => {
       const { getByTestId } = await renderScreen();
 
@@ -635,7 +750,7 @@ describe('CategoriesScreen', () => {
 
       const { getByLabelText } = await renderScreen();
 
-      const field = getByLabelText('Назва Groceries');
+      const field = getByLabelText('Назва Продукти');
       await fireEvent(field, 'focus');
       await fireEvent(field, 'endEditing');
 
@@ -649,11 +764,74 @@ describe('CategoriesScreen', () => {
 
       const { getByLabelText, getByDisplayValue } = await renderScreen();
 
-      const field = getByLabelText('Назва Groceries');
+      const field = getByLabelText('Назва Продукти');
       await fireEvent(field, 'focus');
       await fireEvent(field, 'endEditing');
 
       expect(getByDisplayValue('Продукти')).toBeTruthy();
+    });
+
+    // Every per-card accessibility label names the category as the user SEES
+    // it — the translated default name, never the raw English seed title.
+    it('names an un-renamed default by its translated title in every card accessibility label under uk', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByLabelText, queryByLabelText } = await renderScreen();
+
+      for (const label of [
+        'Змінити іконку Продукти',
+        'Назва Продукти',
+        'Зробити Продукти категорією за замовчуванням',
+        'Видалити Продукти',
+        'Перемістити Продукти нагору',
+        'Перемістити Продукти вниз',
+        'Інше — категорія за замовчуванням',
+      ]) {
+        expect(getByLabelText(label)).toBeTruthy();
+      }
+
+      expect(queryByLabelText(/Groceries|Other/)).toBeNull();
+    });
+
+    it('prefixes the per-card color swatches with the translated title under uk', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getAllByLabelText, queryAllByLabelText } = await renderScreen();
+
+      expect(getAllByLabelText(/^Колір Продукти /).length).toBeGreaterThan(0);
+      expect(queryAllByLabelText(/^Колір Groceries /)).toHaveLength(0);
+    });
+
+    it('titles the delete confirm sheet with the translated name under uk', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByLabelText, getByText, queryByText } = await renderScreen();
+
+      await fireEvent.press(getByLabelText('Видалити Продукти'));
+
+      expect(getByText('Видалити «Продукти»')).toBeTruthy();
+      expect(queryByText('Видалити «Groceries»')).toBeNull();
+    });
+
+    it('keeps a renamed category verbatim in its accessibility labels and delete title under uk', async () => {
+      mockLiveQueryData = mockLiveQueryData.map((category) =>
+        category.key === 'groceries' ? { ...category, title: 'Овочі' } : category,
+      );
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByLabelText, getByText } = await renderScreen();
+
+      await fireEvent.press(getByLabelText('Видалити Овочі'));
+
+      expect(getByText('Видалити «Овочі»')).toBeTruthy();
     });
 
     it('still renames a category via updateTitle when the field is actually edited under uk', async () => {
@@ -663,12 +841,37 @@ describe('CategoriesScreen', () => {
 
       const { getByLabelText } = await renderScreen();
 
-      const field = getByLabelText('Назва Groceries');
+      const field = getByLabelText('Назва Продукти');
       await fireEvent(field, 'focus');
       await fireEvent.changeText(field, 'Овочі');
       await fireEvent(field, 'endEditing');
 
       expect(mockUpdateTitle).toHaveBeenCalledWith('groceries', 'Овочі');
     });
+  });
+});
+
+describe('CategoriesScreen — loading gate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockLiveQueryData = [];
+    mockCategoriesIsLoading = true;
+  });
+
+  it('shows a loading spinner, not a blank list, while categories is on its first load', async () => {
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('categories-loading')).toBeTruthy();
+    expect(queryByTestId('sortable-grid')).toBeNull();
+  });
+
+  it('renders the real list once categories has loaded', async () => {
+    mockCategoriesIsLoading = false;
+    mockLiveQueryData = SEEDED_CATEGORIES.map((category) => ({ ...category }));
+
+    const { getByDisplayValue, queryByTestId } = await renderScreen();
+
+    expect(getByDisplayValue(SEEDED_CATEGORIES[0].title)).toBeTruthy();
+    expect(queryByTestId('categories-loading')).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { accountsRepo } from '@kiko/accounts';
 
-import { clearCredentials } from '../binance/binance.credentials';
+import { clearCredentials } from '../binance';
 import type { BalanceProviderId } from '../provider';
 
 /**

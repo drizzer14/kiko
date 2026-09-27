@@ -2,13 +2,13 @@ import {
   type CategoryDisplay,
   resolveCategoryDisplay,
   resolveCategoryKey,
-} from '../../categories/category-display';
-import type { Currency } from '../../currency/currency';
-import { Money } from '../../currency/money';
-import type { HoldingRow, TransactionRow } from '../../db/schema';
-import { chartSeriesDark } from '../../design-system/palette';
-import { convert, type RateTable } from '../../rates/conversion';
-import { canConvert } from '../../rates/net-worth-view';
+} from '@kiko/categories/category-display';
+import { Money } from '@kiko/currency/money';
+import { canConvert } from '@kiko/rates/net-worth-view';
+import type { Currency } from '@kiko/currency/currency';
+import type { HoldingRow, TransactionRow } from '@kiko/db';
+import { chartSeriesDark } from '@kiko/design-system/palette';
+import { convert, type RateTable } from '@kiko/rates/conversion';
 
 /**
  * A transaction as the spending breakdown needs it: its stored `category` key,
@@ -60,6 +60,7 @@ export type CategorySlice = {
 export const categoryColor = (key: string): string => {
   const chartSeries = chartSeriesDark;
   let hash = 0;
+
   for (let index = 0; index < key.length; index += 1) {
     hash = (hash * 31 + key.charCodeAt(index)) >>> 0;
   }
@@ -69,7 +70,7 @@ export const categoryColor = (key: string): string => {
 
 /**
  * A category's EFFECTIVE chart color — the category analog of resolveEntityColor
- * (design-system/entity-tint.ts). A stored `#RRGGBB` hex wins; otherwise fall
+ * (design-system/entity-tint/entity-tint.ts). A stored `#RRGGBB` hex wins; otherwise fall
  * back to the stable per-key palette hash, so an uncolored category renders
  * exactly as it did before category colors existed. Guards a stored empty string
  * (which `??` would let through and a bad hex would leak downstream) the same way
@@ -98,8 +99,8 @@ const groupKey = (
 ): string => resolveCategoryKey(category, byKey, defaultKey);
 
 // Sum the POSITIVE change-returns per group so a split payment's category is
-// netted by its change (design F2-6). Returns are same-currency as their
-// payment for v1, so this sums raw minor units in the payment's own currency.
+// netted by its change. Returns are same-currency as their payment for v1,
+// so this sums raw minor units in the payment's own currency.
 // Shared shape with category-trend's own per-group return sum.
 export const sumReturnsByGroup = (
   transactions: readonly Pick<BreakdownTransaction, 'changeGroupId' | 'amountMinorUnits'>[],
@@ -178,14 +179,17 @@ export const buildCategoryBreakdown = (input: {
     if (transaction.amountMinorUnits >= 0) {
       continue;
     }
+
     if (excludedIds.has(transaction.id)) {
       continue;
     }
+
     if (!canConvert(transaction.currency, baseCurrency, rateTable)) {
       continue;
     }
 
     const key = groupKey(transaction.category, categoryDisplay, defaultCategoryKey);
+
     if (excluded.has(key)) {
       continue;
     }

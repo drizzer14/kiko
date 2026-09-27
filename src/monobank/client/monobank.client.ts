@@ -1,8 +1,8 @@
-import { MONOBANK_API_ENDPOINT } from '@env';
 import { guard } from 'fnts';
+import { i18n } from '@kiko/i18n/init';
+import { MONOBANK_API_ENDPOINT } from '@env';
 
-import { i18n } from '../../i18n';
-import type { MonobankClientInfo, MonobankStatementItem } from '../monobank.types';
+import type { MonobankClientInfo, MonobankStatementItem } from '../monobank-types';
 
 const base = MONOBANK_API_ENDPOINT;
 
@@ -63,7 +63,7 @@ const readBody = guard(
   [
     (response: Response) => !response.ok,
     (response: Response): never => {
-      throw new Error(`Monobank request failed: ${response.status}`);
+      throw new Error(i18n.t('accountDetail.monobankRequestFailed', { status: response.status }));
     },
   ],
   (response: Response): Promise<unknown> => response.json(),
@@ -81,6 +81,7 @@ const defaultSleep = (milliseconds: number): Promise<void> =>
 const retryAfterMs = (response: Response): number => {
   const header = response.headers?.get?.('Retry-After');
   const seconds = header ? Number.parseInt(header, 10) : Number.NaN;
+
   return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : RATE_LIMIT_FALLBACK_MS;
 };
 

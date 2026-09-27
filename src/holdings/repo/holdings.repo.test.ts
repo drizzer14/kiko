@@ -8,22 +8,28 @@
 // handle so the test can capture the update payload issued inside that single
 // transaction. The query-builder tests below use `database` directly, which the
 // spread of the real module leaves untouched.
-let mockTx: unknown;
-jest.mock('../../db/client', () => {
-  const actual = jest.requireActual('../../db/client');
+let mockDatabaseTransaction: unknown;
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
+
   return {
     ...actual,
-    write: (work: (db: unknown) => unknown) => work(mockTx),
+    // A jest.fn wrapper (not a bare function): `upsertExchangeMany`'s own test
+    // asserts on the CALL COUNT (one `write` per batch, not one per holding),
+    // which only a mock function tracks.
+    write: jest.fn((work: (db: unknown) => unknown) => work(mockDatabaseTransaction)),
   };
 });
 
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { captureSetTx } from '@kiko/db/capture-set-tx';
+import maybe, { foldMap } from 'fnts/maybe';
+import { Money } from '@kiko/currency/money';
+import { accountsRepo } from '@kiko/accounts';
+import { holdingValueAt } from '@kiko/statistics/holding-value-at';
+import { captureSetDatabaseTransaction } from '@kiko/db/capture-set-tx';
+import { write, accounts, holdings, pricePoints, transactions } from '@kiko/db';
+import { inArrayClauseFromCondition } from '@kiko/db/in-array-clause-test-helper';
 
-import { accounts, holdings } from '../../db/schema';
-import { holdingValueAt } from '../../statistics/holding-value-at';
-
-import { holdingsRepo } from './holdings.repo';
+import { holdingsRepo, type LoanPricePointOp } from './holdings.repo';
 
 // The NAME of the schema table an operation targeted. The name, not the drizzle
 // table object: a failed `toBe(table)` assertion makes Jest serialize that
@@ -33,7 +39,11 @@ const tableNameOf = (table: unknown): string => {
     return 'holdings';
   }
 
-  return table === accounts ? 'accounts' : 'transactions';
+  if (table === accounts) {
+    return 'accounts';
+  }
+
+  return table === pricePoints ? 'price_points' : 'transactions';
 };
 
 // A fake write-transaction handle for the create paths. `create` (and the
@@ -43,22 +53,24 @@ const tableNameOf = (table: unknown): string => {
 // captures every insert payload in issue order, alongside the name of the table
 // each one targeted (index-aligned) — a create with an opening balance writes
 // to `holdings` AND `transactions`.
-const makeCreateTx = (
+const makeCreateDatabaseTransaction = (
   maxSortOrder = -1,
-): { tx: unknown; inserts: Record<string, unknown>[]; insertTables: string[] } => {
+): { databaseTransaction: unknown; inserts: Record<string, unknown>[]; insertTables: string[] } => {
   const inserts: Record<string, unknown>[] = [];
   const insertTables: string[] = [];
-  const tx = {
+  const databaseTransaction = {
     select: () => ({ from: () => ({ where: () => Promise.resolve([{ value: maxSortOrder }]) }) }),
     insert: (table: unknown) => ({
       values: (values: Record<string, unknown>) => {
         inserts.push(values);
         insertTables.push(tableNameOf(table));
+
         return Promise.resolve();
       },
     }),
   };
-  return { tx, inserts, insertTables };
+
+  return { databaseTransaction, inserts, insertTables };
 };
 
 // A minimal in-memory fake for the transaction handle `write` hands the repo.
@@ -74,16 +86,22 @@ type Store = {
   accounts: Record<string, unknown>[];
   holdings: Record<string, unknown>[];
   transactions: Record<string, unknown>[];
+  pricePoints: Record<string, unknown>[];
 };
 
-const makeTx = (store: Store) => {
+const makeDatabaseTransaction = (store: Store) => {
   const keyOf = (table: unknown): keyof Store => {
     if (table === accounts) {
       return 'accounts';
     }
 
-    return table === holdings ? 'holdings' : 'transactions';
+    if (table === holdings) {
+      return 'holdings';
+    }
+
+    return table === pricePoints ? 'pricePoints' : 'transactions';
   };
+
   return {
     select: () => ({
       from: (table: unknown) => ({
@@ -122,6 +140,13 @@ describe('holdingsRepo', () => {
     expect(params).toContain('h1');
   });
 
+  it("balanceOf converts a stored row to Money in the row's own currency", () => {
+    const money = holdingsRepo.balanceOf({ currency: 'UAH', balanceMinorUnits: 250_00 });
+
+    expect(money.currency).toBe('UAH');
+    expect(money.minorUnits).toBe(250_00);
+  });
+
   it('allQuery orders by sortOrder', () => {
     expect(holdingsRepo.allQuery().toSQL().sql.toLowerCase()).toContain('order by');
     expect(holdingsRepo.allQuery().toSQL().sql).toContain('sort_order');
@@ -133,9 +158,29 @@ describe('holdingsRepo', () => {
     expect(sql).toContain('sort_order');
   });
 
+  it('builds a distinct-open-currencies query, excluding closed holdings and archived accounts', () => {
+    const { sql } = holdingsRepo.openCurrenciesQuery().toSQL();
+    expect(sql.toLowerCase()).toContain('distinct');
+    expect(sql).toContain('holdings');
+    expect(sql.toLowerCase()).toContain('closed_at');
+    expect(sql).toContain('accounts');
+    expect(sql.toLowerCase()).toContain('archived_at');
+  });
+
+  // The loan-payment matcher's own gate query (P-NOWORK): every OPEN loan
+  // holding, so a caller can return early — before ever reading the (larger)
+  // transaction table — the moment this is empty.
+  it('builds an open-loan-holdings query, scoped to type "loan" and excluding closed holdings', () => {
+    const { sql, params } = holdingsRepo.loanHoldingsQuery().toSQL();
+
+    expect(sql).toContain('holdings');
+    expect(sql.toLowerCase()).toContain('closed_at');
+    expect(params).toContain('loan');
+  });
+
   it('create inserts the holding and resolves to the generated id', async () => {
-    const { tx, inserts } = makeCreateTx();
-    mockTx = tx;
+    const { databaseTransaction, inserts } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     const result = await holdingsRepo.create({
       accountId: 'acc-1',
@@ -150,15 +195,15 @@ describe('holdingsRepo', () => {
   });
 
   it('create seeds an opening transaction for a non-zero opening balance', async () => {
-    const { tx, inserts, insertTables } = makeCreateTx();
-    mockTx = tx;
+    const { databaseTransaction, inserts, insertTables } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     const holdingId = await holdingsRepo.create({
       accountId: 'acc-1',
       name: 'Wallet',
       type: 'cash',
       currency: 'UAH',
-      balanceMinorUnits: 250_00,
+      openingBalance: Money.of('UAH', 250_00),
     });
 
     // Same rule the cash-account path follows: an opening balance is a manual
@@ -174,35 +219,41 @@ describe('holdingsRepo', () => {
       category: null,
     });
     expect(typeof inserts[1].time).toBe('number');
+    // A non-zero opening balance also stamps the holding's own
+    // `balanceSetAt`, at the SAME instant as the ledger row's `time` —
+    // `transactionsRepo.importRows`'s boundary reads it directly.
+    expect(inserts[0].balanceSetAt).toBe(inserts[1].time);
   });
 
   it('create seeds no transaction for a zero opening balance', async () => {
-    const { tx, insertTables } = makeCreateTx();
-    mockTx = tx;
+    const { databaseTransaction, insertTables, inserts } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.create({
       accountId: 'acc-1',
       name: 'Wallet',
       type: 'cash',
       currency: 'UAH',
-      balanceMinorUnits: 0,
+      openingBalance: Money.of('UAH', 0),
     });
 
     expect(insertTables).toEqual(['holdings']);
+    expect(inserts[0].balanceSetAt).toBeNull();
   });
 
   it('create seeds no transaction when no opening balance is given', async () => {
-    const { tx, insertTables } = makeCreateTx();
-    mockTx = tx;
+    const { databaseTransaction, insertTables, inserts } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.create({ accountId: 'acc-1', name: 'Card', type: 'card', currency: 'EUR' });
 
     expect(insertTables).toEqual(['holdings']);
+    expect(inserts[0].balanceSetAt).toBeNull();
   });
 
   it('create persists the chosen color on the inserted row', async () => {
-    const { tx, inserts } = makeCreateTx();
-    mockTx = tx;
+    const { databaseTransaction, inserts } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.create({
       accountId: 'acc-1',
@@ -216,8 +267,8 @@ describe('holdingsRepo', () => {
   });
 
   it("create appends the holding at the account's sortOrder = max + 1", async () => {
-    const { tx, inserts } = makeCreateTx(1);
-    mockTx = tx;
+    const { databaseTransaction, inserts } = makeCreateDatabaseTransaction(1);
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.create({ accountId: 'acc-1', name: 'Card', type: 'card', currency: 'EUR' });
 
@@ -225,17 +276,81 @@ describe('holdingsRepo', () => {
   });
 
   it("create uses sortOrder 0 for an account's first holding", async () => {
-    const { tx, inserts } = makeCreateTx(-1);
-    mockTx = tx;
+    const { databaseTransaction, inserts } = makeCreateDatabaseTransaction(-1);
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.create({ accountId: 'acc-1', name: 'Card', type: 'card', currency: 'EUR' });
 
     expect(inserts[0]).toMatchObject({ sortOrder: 0 });
   });
 
+  // A priced holding (property_item) writes its first `manual` price
+  // point on `holding:<id>` in the SAME transaction as the insert, so it
+  // never reads as "no price yet" the moment it is created.
+  it('create writes the first price point in the same transaction, keyed on the new holding id', async () => {
+    const { databaseTransaction, inserts, insertTables } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    const holdingId = await holdingsRepo.create({
+      accountId: 'acc-1',
+      name: 'Apartment',
+      type: 'property_item',
+      currency: 'UAH',
+      openingBalance: Money.of('UAH', 0),
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 500000 }],
+      },
+      firstPricePoint: { day: 1000, price: '5000.00' },
+    });
+
+    expect(insertTables).toEqual(['holdings', 'price_points']);
+    expect(inserts[1]).toEqual({
+      instrument: `holding:${holdingId}`,
+      day: 1000,
+      price: '5000.00',
+      currency: 'UAH',
+      source: 'manual',
+    });
+  });
+
+  it('create writes no price point when firstPricePoint is omitted', async () => {
+    const { databaseTransaction, insertTables } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await holdingsRepo.create({ accountId: 'acc-1', name: 'Card', type: 'card', currency: 'EUR' });
+
+    expect(insertTables).toEqual(['holdings']);
+  });
+
+  it('create throws when the opening balance currency does not match the holding currency', async () => {
+    const { databaseTransaction } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await expect(
+      holdingsRepo.create({
+        accountId: 'acc-1',
+        name: 'Wallet',
+        type: 'cash',
+        currency: 'UAH',
+        openingBalance: Money.of('USD', 100_00),
+      }),
+    ).rejects.toThrow(/currency/);
+  });
+
+  it('create rejects a cash holding in a crypto currency and writes nothing', async () => {
+    const { databaseTransaction, insertTables } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await expect(
+      holdingsRepo.create({ accountId: 'acc-1', name: 'Wallet', type: 'cash', currency: 'BTC' }),
+    ).rejects.toThrow(/cash holding.*BTC/);
+    expect(insertTables).toEqual([]);
+  });
+
   it('updateName writes the new name for the given holding id', async () => {
-    const { captured, tx } = captureSetTx();
-    mockTx = tx;
+    const { captured, databaseTransaction } = captureSetDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.updateName('h1', 'Renamed card');
 
@@ -244,8 +359,8 @@ describe('holdingsRepo', () => {
   });
 
   it('update writes the given partial patch for the holding id', async () => {
-    const { captured, tx } = captureSetTx();
-    mockTx = tx;
+    const { captured, databaseTransaction } = captureSetDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.update('h1', {
       name: 'Renamed',
@@ -258,8 +373,8 @@ describe('holdingsRepo', () => {
   });
 
   it('update can clear the color back to null (kind/type default)', async () => {
-    const { captured, tx } = captureSetTx();
-    mockTx = tx;
+    const { captured, databaseTransaction } = captureSetDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.update('h1', { color: null });
 
@@ -270,11 +385,12 @@ describe('holdingsRepo', () => {
 describe('holdingsRepo.reorder', () => {
   it('rewrites each holding sortOrder to its 0-based index in the new order', async () => {
     const sortOrders: unknown[] = [];
-    mockTx = {
+    mockDatabaseTransaction = {
       update: () => ({
         set: (set: Record<string, unknown>) => ({
           where: () => {
             sortOrders.push(set.sortOrder);
+
             return Promise.resolve();
           },
         }),
@@ -289,8 +405,8 @@ describe('holdingsRepo.reorder', () => {
 
 describe('holdingsRepo.setIcon', () => {
   it('sets the icon for the given holding id', async () => {
-    const { captured, tx } = captureSetTx();
-    mockTx = tx;
+    const { captured, databaseTransaction } = captureSetDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.setIcon('h1', 'star');
 
@@ -299,8 +415,8 @@ describe('holdingsRepo.setIcon', () => {
   });
 
   it('clears the icon when passed null', async () => {
-    const { captured, tx } = captureSetTx();
-    mockTx = tx;
+    const { captured, databaseTransaction } = captureSetDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.setIcon('h1', null);
 
@@ -322,8 +438,9 @@ describe('appendDepositContribution', () => {
       accounts: [],
       holdings: [{ id: 'h1', type: 'term_deposit', metadata: { ...depositMeta } }],
       transactions: [],
+      pricePoints: [],
     };
-    mockTx = makeTx(store);
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
 
     await holdingsRepo.appendDepositContribution('h1', { amountMinorUnits: 500, date: 500 });
 
@@ -350,8 +467,9 @@ describe('appendDepositContribution', () => {
         },
       ],
       transactions: [],
+      pricePoints: [],
     };
-    mockTx = makeTx(store);
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
 
     await holdingsRepo.appendDepositContribution('h1', { amountMinorUnits: 500, date: 2000 });
 
@@ -364,8 +482,9 @@ describe('appendDepositContribution', () => {
       accounts: [],
       holdings: [{ id: 'h1', type: 'card', metadata: null }],
       transactions: [],
+      pricePoints: [],
     };
-    mockTx = makeTx(store);
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
 
     await expect(
       holdingsRepo.appendDepositContribution('h1', { amountMinorUnits: 500, date: 500 }),
@@ -378,8 +497,9 @@ describe('appendDepositContribution', () => {
       accounts: [],
       holdings: [{ id: 'h1', type: 'term_deposit', metadata: { ...depositMeta } }],
       transactions: [],
+      pricePoints: [],
     };
-    mockTx = makeTx(store);
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
 
     await expect(
       holdingsRepo.appendDepositContribution('h1', { amountMinorUnits: 500, date: Number.NaN }),
@@ -392,12 +512,165 @@ describe('appendDepositContribution', () => {
       accounts: [],
       holdings: [{ id: 'h1', type: 'term_deposit', metadata: { nonsense: true } }],
       transactions: [],
+      pricePoints: [],
     };
-    mockTx = makeTx(store);
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
 
     await expect(
       holdingsRepo.appendDepositContribution('h1', { amountMinorUnits: 500, date: 500 }),
     ).rejects.toThrow(/invalid deposit metadata/);
+  });
+});
+
+describe('ownership change edits', () => {
+  const DAY = 86_400_000;
+  const day1 = Date.UTC(2025, 0, 1);
+  const day10 = day1 + 9 * DAY;
+  const lots = [{ day: day1, quantityDelta: '1', costMinorUnits: 100_000 }];
+  const propertyStore = (metadata: Record<string, unknown>): Store => ({
+    accounts: [],
+    holdings: [{ id: 'h1', type: 'property_item', metadata }],
+    transactions: [],
+    pricePoints: [],
+  });
+
+  it('edits the share and day of one change from the stored row', async () => {
+    const store = propertyStore({
+      category: 'real_estate',
+      lots,
+      ownership: [
+        { day: day1, numerator: 1, denominator: 2 },
+        { day: day10, numerator: 1, denominator: 3 },
+      ],
+      ownershipInput: 'percent',
+    });
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
+
+    await holdingsRepo.editOwnershipChange(
+      'h1',
+      day10,
+      { day: day10 + DAY, numerator: 1, denominator: 4 },
+      'fraction',
+    );
+
+    expect(store.holdings[0].metadata).toEqual({
+      category: 'real_estate',
+      lots,
+      ownership: [
+        { day: day1, numerator: 1, denominator: 2 },
+        { day: day10 + DAY, numerator: 1, denominator: 4 },
+      ],
+      ownershipInput: 'fraction',
+    });
+  });
+
+  it('replaces the change already on the day an edit moves to', async () => {
+    const store = propertyStore({
+      category: 'vehicle',
+      lots,
+      ownership: [
+        { day: day1, numerator: 1, denominator: 2 },
+        { day: day10, numerator: 1, denominator: 3 },
+      ],
+    });
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
+
+    await holdingsRepo.editOwnershipChange(
+      'h1',
+      day1,
+      { day: day10, numerator: 1, denominator: 4 },
+      'percent',
+    );
+
+    expect(store.holdings[0].metadata).toMatchObject({
+      ownership: [{ day: day10, numerator: 1, denominator: 4 }],
+    });
+  });
+
+  it('removes one change and keeps the input form', async () => {
+    const store = propertyStore({
+      category: 'real_estate',
+      lots,
+      ownership: [
+        { day: day1, numerator: 1, denominator: 2 },
+        { day: day10, numerator: 1, denominator: 3 },
+      ],
+      ownershipInput: 'fraction',
+    });
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
+
+    await holdingsRepo.removeOwnershipChange('h1', day10);
+
+    expect(store.holdings[0].metadata).toEqual({
+      category: 'real_estate',
+      lots,
+      ownership: [{ day: day1, numerator: 1, denominator: 2 }],
+      ownershipInput: 'fraction',
+    });
+  });
+
+  it('writes no ownership keys once the last change is removed', async () => {
+    const store = propertyStore({
+      category: 'real_estate',
+      lots,
+      ownership: [{ day: day1, numerator: 1, denominator: 2 }],
+      ownershipInput: 'percent',
+    });
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
+
+    await holdingsRepo.removeOwnershipChange('h1', day1);
+
+    expect(store.holdings[0].metadata).toEqual({ category: 'real_estate', lots });
+  });
+
+  it('never resurrects a change a stale cached row still shows', async () => {
+    // The screen's cached row still lists a change on day 10 that another
+    // write already deleted; a delete passes only the day key.
+    const day20 = day1 + 19 * DAY;
+    const store = propertyStore({
+      category: 'real_estate',
+      lots,
+      ownership: [
+        { day: day1, numerator: 1, denominator: 2 },
+        { day: day20, numerator: 1, denominator: 4 },
+      ],
+      ownershipInput: 'percent',
+    });
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
+
+    await holdingsRepo.removeOwnershipChange('h1', day1);
+
+    expect(store.holdings[0].metadata).toMatchObject({
+      ownership: [{ day: day20, numerator: 1, denominator: 4 }],
+    });
+  });
+
+  it('refuses a holding that is not a property', async () => {
+    const store: Store = {
+      accounts: [],
+      holdings: [{ id: 'h1', type: 'card', metadata: null }],
+      transactions: [],
+      pricePoints: [],
+    };
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
+
+    await expect(holdingsRepo.removeOwnershipChange('h1', day1)).rejects.toThrow(/not a property/);
+    expect(store.holdings[0].metadata).toBeNull();
+  });
+
+  it('refuses a property with invalid metadata', async () => {
+    const store = propertyStore({ nonsense: true });
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
+
+    await expect(
+      holdingsRepo.editOwnershipChange(
+        'h1',
+        day1,
+        { day: day1, numerator: 1, denominator: 2 },
+        'percent',
+      ),
+    ).rejects.toThrow(/invalid property metadata/);
+    expect(store.holdings[0].metadata).toEqual({ nonsense: true });
   });
 });
 
@@ -406,18 +679,23 @@ describe('appendDepositContribution', () => {
 // then — on a miss — reads the account's max `sort_order` (`where()` awaited
 // directly) and inserts; on a hit it updates. `selectResults` answers the two
 // reads in that order; every insert/update payload is captured.
-const makeUpsertTx = (
+const makeUpsertDatabaseTransaction = (
   matchRows: { id: string; name?: string }[],
   maxSortOrder = -1,
-): { tx: unknown; inserts: Record<string, unknown>[]; updates: Record<string, unknown>[] } => {
+): {
+  databaseTransaction: unknown;
+  inserts: Record<string, unknown>[];
+  updates: Record<string, unknown>[];
+} => {
   const inserts: Record<string, unknown>[] = [];
   const updates: Record<string, unknown>[] = [];
   const selectResults: unknown[][] = [matchRows, [{ value: maxSortOrder }]];
-  const tx = {
+  const databaseTransaction = {
     select: () => ({
       from: () => ({
         where: () => {
           const rows = selectResults.shift() ?? [];
+
           return Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
         },
       }),
@@ -425,6 +703,7 @@ const makeUpsertTx = (
     insert: () => ({
       values: (values: Record<string, unknown>) => {
         inserts.push(values);
+
         return Promise.resolve();
       },
     }),
@@ -432,12 +711,14 @@ const makeUpsertTx = (
       set: (values: Record<string, unknown>) => ({
         where: () => {
           updates.push(values);
+
           return Promise.resolve();
         },
       }),
     }),
   };
-  return { tx, inserts, updates };
+
+  return { databaseTransaction, inserts, updates };
 };
 
 describe('holdingsRepo.upsertExchange', () => {
@@ -453,8 +734,10 @@ describe('holdingsRepo.upsertExchange', () => {
   };
 
   it('updates balance and metadata in place when a holding with the key exists', async () => {
-    const { tx, inserts, updates } = makeUpsertTx([{ id: 'h-existing' }]);
-    mockTx = tx;
+    const { databaseTransaction, inserts, updates } = makeUpsertDatabaseTransaction([
+      { id: 'h-existing' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.upsertExchange(walletHolding);
 
@@ -471,8 +754,8 @@ describe('holdingsRepo.upsertExchange', () => {
   });
 
   it('inserts a crypto_asset holding with the key merged into metadata and a fresh sortOrder on a miss', async () => {
-    const { tx, inserts, updates } = makeUpsertTx([], 2);
-    mockTx = tx;
+    const { databaseTransaction, inserts, updates } = makeUpsertDatabaseTransaction([], 2);
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.upsertExchange(walletHolding);
 
@@ -494,8 +777,8 @@ describe('holdingsRepo.upsertExchange', () => {
   });
 
   it('keys a Binance holding on binanceAsset', async () => {
-    const { tx, inserts } = makeUpsertTx([]);
-    mockTx = tx;
+    const { databaseTransaction, inserts } = makeUpsertDatabaseTransaction([]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.upsertExchange({
       ...walletHolding,
@@ -510,8 +793,8 @@ describe('holdingsRepo.upsertExchange', () => {
   });
 
   it('defaults a missing balance to 0 on update', async () => {
-    const { tx, updates } = makeUpsertTx([{ id: 'h-existing' }]);
-    mockTx = tx;
+    const { databaseTransaction, updates } = makeUpsertDatabaseTransaction([{ id: 'h-existing' }]);
+    mockDatabaseTransaction = databaseTransaction;
 
     const { balanceMinorUnits: _omitted, ...withoutBalance } = walletHolding;
     await holdingsRepo.upsertExchange(withoutBalance);
@@ -523,8 +806,10 @@ describe('holdingsRepo.upsertExchange', () => {
   // matched holding's name STILL equals that old default, the update rewrites
   // the name; a user-edited name never matches and is left untouched.
   it('renames a matched holding whose name is still the old default', async () => {
-    const { tx, updates } = makeUpsertTx([{ id: 'h-legacy', name: 'Binance BTC' }]);
-    mockTx = tx;
+    const { databaseTransaction, updates } = makeUpsertDatabaseTransaction([
+      { id: 'h-legacy', name: 'Binance BTC' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.upsertExchange({
       ...walletHolding,
@@ -538,8 +823,10 @@ describe('holdingsRepo.upsertExchange', () => {
   });
 
   it('preserves a user-edited name even when renameFromDefault is set', async () => {
-    const { tx, updates } = makeUpsertTx([{ id: 'h-legacy', name: 'My Binance stack' }]);
-    mockTx = tx;
+    const { databaseTransaction, updates } = makeUpsertDatabaseTransaction([
+      { id: 'h-legacy', name: 'My Binance stack' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.upsertExchange({
       ...walletHolding,
@@ -550,6 +837,54 @@ describe('holdingsRepo.upsertExchange', () => {
     });
 
     expect(updates[0]).not.toHaveProperty('name');
+  });
+});
+
+describe('holdingsRepo.upsertExchangeMany', () => {
+  const balanceHolding = (metadataKey: string) => ({
+    accountId: 'acc-crypto',
+    name: 'BTC Wallet',
+    type: 'crypto_asset' as const,
+    currency: 'BTC' as const,
+    balanceMinorUnits: 1,
+    metadata: { syncedAt: 1_704_326_400_000 },
+    metadataField: 'walletAddress' as const,
+    metadataKey,
+  });
+
+  // The crypto sync used to call `upsertExchange` once per returned balance —
+  // N separate op-sqlite transactions in one run. `upsertExchangeMany` mirrors
+  // `upsertMonobankMany`: every balance upserts inside ONE transaction, so the
+  // reactive `holdings` callback fires once per sync, not once per balance.
+  it('upserts every balance in ONE write transaction, not one per balance', async () => {
+    (write as jest.Mock).mockClear();
+    const updates: Record<string, unknown>[] = [];
+    const databaseTransaction = {
+      select: () => ({
+        from: () => ({
+          where: () => {
+            const rows = [{ id: 'h-existing' }];
+
+            return Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
+          },
+        }),
+      }),
+      update: () => ({
+        set: (values: Record<string, unknown>) => ({
+          where: () => {
+            updates.push(values);
+
+            return Promise.resolve();
+          },
+        }),
+      }),
+    };
+    mockDatabaseTransaction = databaseTransaction;
+
+    await holdingsRepo.upsertExchangeMany([balanceHolding('addr-1'), balanceHolding('addr-2')]);
+
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(updates).toHaveLength(2);
   });
 });
 
@@ -565,8 +900,10 @@ describe('holdingsRepo.upsertMonobank (via the shared metadata-key helper)', () 
   };
 
   it('updates an existing card in place, merging monobankId into its metadata', async () => {
-    const { tx, inserts, updates } = makeUpsertTx([{ id: 'h-card' }]);
-    mockTx = tx;
+    const { databaseTransaction, inserts, updates } = makeUpsertDatabaseTransaction([
+      { id: 'h-card' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.upsertMonobank(cardHolding);
 
@@ -580,8 +917,8 @@ describe('holdingsRepo.upsertMonobank (via the shared metadata-key helper)', () 
   });
 
   it('inserts a new card with monobankId merged and sortOrder = max + 1 on a miss', async () => {
-    const { tx, inserts } = makeUpsertTx([], 0);
-    mockTx = tx;
+    const { databaseTransaction, inserts } = makeUpsertDatabaseTransaction([], 0);
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.upsertMonobank(cardHolding);
 
@@ -602,13 +939,32 @@ describe('holdings remove', () => {
         { id: 't1', holdingId: 'h1' },
         { id: 't2', holdingId: 'h1' },
       ],
+      pricePoints: [],
     };
-    mockTx = makeTx(store);
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
 
     await holdingsRepo.remove('h1');
 
     expect(store.holdings).toEqual([]);
     expect(store.transactions).toEqual([]);
+  });
+
+  // A property_item has no transactions, but it does have a price
+  // series keyed on `holding:<id>` — remove must clear that series too, in
+  // the SAME transaction, or a deleted holding leaves an orphaned series
+  // behind.
+  it("deletes the holding's price-point series in the same transaction", async () => {
+    const store: Store = {
+      accounts: [{ id: 'acc-1', institution: null }],
+      holdings: [{ id: 'h1', accountId: 'acc-1', type: 'property_item', metadata: null }],
+      transactions: [],
+      pricePoints: [{ instrument: 'holding:h1', day: 1000, price: '5000.00' }],
+    };
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
+
+    await holdingsRepo.remove('h1');
+
+    expect(store.pricePoints).toEqual([]);
   });
 
   it('refuses a synced holding under a connected account and leaves the row', async () => {
@@ -618,8 +974,9 @@ describe('holdings remove', () => {
         { id: 'h1', accountId: 'acc-1', type: 'card', metadata: { monobankId: 'mono-1' } },
       ],
       transactions: [{ id: 't1', holdingId: 'h1' }],
+      pricePoints: [],
     };
-    mockTx = makeTx(store);
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
 
     await expect(holdingsRepo.remove('h1')).rejects.toThrow(/synced holding/);
     expect(store.holdings).toHaveLength(1);
@@ -636,13 +993,82 @@ describe('holdings remove', () => {
         { id: 'h1', accountId: 'acc-1', type: 'card', metadata: { monobankId: 'mono-1' } },
       ],
       transactions: [{ id: 't1', holdingId: 'h1' }],
+      pricePoints: [],
     };
-    mockTx = makeTx(store);
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
 
     await holdingsRepo.remove('h1');
 
     expect(store.holdings).toEqual([]);
     expect(store.transactions).toEqual([]);
+  });
+});
+
+// A loan holding is `isLedgerlessHoldingType`
+// (no transactions of its own), but OTHER holdings' payment rows can point
+// back at it via `loanHoldingId`. Deleting the loan must clear those links in
+// the SAME transaction, so a dangling id never survives the delete — a
+// cleared link then counts as normal spending again. `makeDatabaseTransaction`'s own
+// `update`/`delete` fakes don't interpret `.where(...)` (see its doc
+// comment), so this intercepts the `transactions` update directly to prove
+// the exact payload issued, layered on top of `makeDatabaseTransaction`'s existing seeded
+// holding/account handling for everything else `remove` reads.
+// `inArrayClauseFromCondition` (asserting the exact WHERE predicate) is
+// shared with `accounts.repo.test.ts` via `@kiko/db/in-array-clause-test-helper`.
+describe('holdings remove — loan link cleanup', () => {
+  const makeRemoveTransactionWithLoanLinkCapture = (
+    store: Store,
+  ): {
+    databaseTransaction: unknown;
+    captured: { linkClearSet?: Record<string, unknown>; linkClearWhereArg?: unknown };
+  } => {
+    const base = makeDatabaseTransaction(store);
+    const captured: { linkClearSet?: Record<string, unknown>; linkClearWhereArg?: unknown } = {};
+    const databaseTransaction = {
+      ...base,
+      update: (table: unknown) => {
+        if (table !== transactions) {
+          return base.update(table);
+        }
+
+        return {
+          set: (values: Record<string, unknown>) => ({
+            where: (whereArg: unknown) => {
+              captured.linkClearSet = values;
+              captured.linkClearWhereArg = whereArg;
+
+              return Promise.resolve();
+            },
+          }),
+        };
+      },
+    };
+
+    return { databaseTransaction, captured };
+  };
+
+  it('clears loanHoldingId and loanLinkSource on transactions linked to the deleted loan, in the same transaction', async () => {
+    const store: Store = {
+      accounts: [{ id: 'acc-1', institution: null }],
+      holdings: [{ id: 'loan-1', accountId: 'acc-1', type: 'loan', metadata: null }],
+      transactions: [],
+      pricePoints: [],
+    };
+    const { databaseTransaction, captured } = makeRemoveTransactionWithLoanLinkCapture(store);
+    mockDatabaseTransaction = databaseTransaction;
+
+    await holdingsRepo.remove('loan-1');
+
+    expect(captured.linkClearSet).toEqual({ loanHoldingId: null, loanLinkSource: null });
+    // Render the predicate, not just check the update was called — a
+    // mutant swapping the WHERE column
+    // (`transactions.id` for `transactions.loanHoldingId`) must fail this.
+    expect(inArrayClauseFromCondition(captured.linkClearWhereArg)).toEqual({
+      column: 'loan_holding_id',
+      ids: ['loan-1'],
+    });
+    // The loan holding itself still deletes, in the SAME transaction.
+    expect(store.holdings).toEqual([]);
   });
 });
 
@@ -656,7 +1082,10 @@ describe('holdings remove', () => {
 // probe, which finds no `value` column here and so appends at 0) resolves the
 // table's rows. A single holding is seeded, so update `.where(...)` clauses
 // need not be interpreted either.
-const makeSharedTx = (store: Store, matches: (row: Record<string, unknown>) => boolean) => {
+const makeSharedDatabaseTransaction = (
+  store: Store,
+  matches: (row: Record<string, unknown>) => boolean,
+) => {
   const keyOf = (table: unknown): keyof Store => (table === accounts ? 'accounts' : 'holdings');
 
   return {
@@ -695,8 +1124,9 @@ describe('disconnect then reconnect', () => {
       accounts: [{ id: 'acc-1', institution: 'monobank' }],
       holdings: [],
       transactions: [],
+      pricePoints: [],
     };
-    mockTx = makeSharedTx(
+    mockDatabaseTransaction = makeSharedDatabaseTransaction(
       store,
       (row) => row.accountId === 'acc-1' && metadataOf(row).monobankId === 'mono-1',
     );
@@ -731,19 +1161,21 @@ describe('disconnect then reconnect', () => {
 // writes the patch, and inserts a ledger row only for a non-zero balance delta —
 // this captures all three, so a test can prove exactly what each write carried.
 // `stored` is the holding row that read resolves to, or `null` for a missing id.
-const makeBalanceDeltaTx = (
+const makeBalanceDeltaDatabaseTransaction = (
   stored: Record<string, unknown> | null,
 ): {
-  tx: unknown;
+  databaseTransaction: unknown;
   captured: { holdingSet?: Record<string, unknown>; inserts: Record<string, unknown>[] };
 } => {
   const captured: { holdingSet?: Record<string, unknown>; inserts: Record<string, unknown>[] } = {
     inserts: [],
   };
-  const tx = {
+  const databaseTransaction = {
     select: () => ({
       from: () => ({
-        where: () => ({ limit: () => Promise.resolve(stored === null ? [] : [stored]) }),
+        where: () => ({
+          limit: () => Promise.resolve(foldMap(maybe(stored), (row) => [row]) ?? []),
+        }),
       }),
     }),
     update: () => ({
@@ -762,21 +1194,57 @@ const makeBalanceDeltaTx = (
     }),
   };
 
-  return { tx, captured };
+  return { databaseTransaction, captured };
 };
+
+describe('holdingsRepo.updateMetadataFromStored', () => {
+  it('builds the metadata from the row stored at the time of the write', async () => {
+    const stored = { couponPct: 4.5, payments: [] };
+    const store: Store = {
+      accounts: [],
+      holdings: [{ id: 'h1', type: 'bond', name: 'Old', color: null, metadata: stored }],
+      transactions: [],
+      pricePoints: [],
+    };
+    mockDatabaseTransaction = makeDatabaseTransaction(store);
+    const buildMetadata = jest.fn(() => ({ couponPct: 6 }));
+
+    await holdingsRepo.updateMetadataFromStored(
+      'h1',
+      { name: 'New', color: '#FF0000' },
+      buildMetadata,
+    );
+
+    expect(buildMetadata).toHaveBeenCalledWith(stored);
+    expect(store.holdings[0]).toMatchObject({
+      name: 'New',
+      color: '#FF0000',
+      metadata: { couponPct: 6 },
+    });
+    expect(store.transactions).toEqual([]);
+  });
+});
 
 describe('holdingsRepo.updateWithBalanceDelta', () => {
   it('writes the balance difference as a manual transaction', async () => {
-    const { tx, captured } = makeBalanceDeltaTx({ balanceMinorUnits: 100_00 });
-    mockTx = tx;
+    const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction({
+      currency: 'UAH',
+      balanceMinorUnits: 100_00,
+    });
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.updateWithBalanceDelta(
       'h-1',
-      { balanceMinorUnits: 500_00 },
+      { balance: Money.of('UAH', 500_00) },
       1_700_000_000_000,
     );
 
-    expect(captured.holdingSet).toEqual({ balanceMinorUnits: 500_00 });
+    // A non-zero delta also stamps `balanceSetAt` at this edit's own
+    // `time`, in the SAME `.set(...)` as the balance patch.
+    expect(captured.holdingSet).toEqual({
+      balanceMinorUnits: 500_00,
+      balanceSetAt: 1_700_000_000_000,
+    });
     expect(captured.inserts).toHaveLength(1);
     expect(captured.inserts[0]).toMatchObject({
       holdingId: 'h-1',
@@ -789,10 +1257,13 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
   });
 
   it('leaves the adjustment row unlabelled and uncategorised', async () => {
-    const { tx, captured } = makeBalanceDeltaTx({ balanceMinorUnits: 100_00 });
-    mockTx = tx;
+    const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction({
+      currency: 'UAH',
+      balanceMinorUnits: 100_00,
+    });
+    mockDatabaseTransaction = databaseTransaction;
 
-    await holdingsRepo.updateWithBalanceDelta('h-1', { balanceMinorUnits: 500_00 }, 1);
+    await holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('UAH', 500_00) }, 1);
 
     // No persisted sentence: the list resolves this row's label at render time
     // through `t` (transactions/row-description.ts), so it follows a language
@@ -801,18 +1272,24 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
   });
 
   it('writes a negative delta for a decrease', async () => {
-    const { tx, captured } = makeBalanceDeltaTx({ balanceMinorUnits: 500_00 });
-    mockTx = tx;
+    const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction({
+      currency: 'UAH',
+      balanceMinorUnits: 500_00,
+    });
+    mockDatabaseTransaction = databaseTransaction;
 
-    await holdingsRepo.updateWithBalanceDelta('h-1', { balanceMinorUnits: 100_00 }, 1);
+    await holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('UAH', 100_00) }, 1);
 
     expect(captured.inserts[0]).toMatchObject({ amountMinorUnits: -400_00 });
-    expect(captured.holdingSet).toEqual({ balanceMinorUnits: 100_00 });
+    expect(captured.holdingSet).toEqual({ balanceMinorUnits: 100_00, balanceSetAt: 1 });
   });
 
   it('writes no transaction for a name-only edit', async () => {
-    const { tx, captured } = makeBalanceDeltaTx({ balanceMinorUnits: 100_00 });
-    mockTx = tx;
+    const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction({
+      currency: 'UAH',
+      balanceMinorUnits: 100_00,
+    });
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.updateWithBalanceDelta('h-1', { name: 'Renamed' }, 1);
 
@@ -820,22 +1297,42 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     expect(captured.holdingSet).toEqual({ name: 'Renamed' });
   });
 
-  it('writes no transaction for a zero delta', async () => {
-    const { tx, captured } = makeBalanceDeltaTx({ balanceMinorUnits: 100_00 });
-    mockTx = tx;
+  it('writes no transaction for a zero delta, and does not stamp balanceSetAt', async () => {
+    const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction({
+      currency: 'UAH',
+      balanceMinorUnits: 100_00,
+    });
+    mockDatabaseTransaction = databaseTransaction;
 
-    await holdingsRepo.updateWithBalanceDelta('h-1', { balanceMinorUnits: 100_00 }, 1);
+    await holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('UAH', 100_00) }, 1);
+
+    expect(captured.inserts).toHaveLength(0);
+    expect(captured.holdingSet).toEqual({ balanceMinorUnits: 100_00 });
+  });
+
+  it('writes no transaction when no holding carries the id', async () => {
+    const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction(null);
+    mockDatabaseTransaction = databaseTransaction;
+
+    await holdingsRepo.updateWithBalanceDelta('missing', { balance: Money.of('UAH', 500_00) }, 1);
 
     expect(captured.inserts).toHaveLength(0);
   });
 
-  it('writes no transaction when no holding carries the id', async () => {
-    const { tx, captured } = makeBalanceDeltaTx(null);
-    mockTx = tx;
+  // The throw guards a caller bug (a Money built in the wrong currency) before
+  // it can silently mislabel a delta; it never fires for a valid caller, which
+  // always builds the patch's `balance` in the holding's own (locked, in the
+  // form) currency.
+  it('throws when the balance currency does not match the holding currency', async () => {
+    const { databaseTransaction } = makeBalanceDeltaDatabaseTransaction({
+      currency: 'UAH',
+      balanceMinorUnits: 100_00,
+    });
+    mockDatabaseTransaction = databaseTransaction;
 
-    await holdingsRepo.updateWithBalanceDelta('missing', { balanceMinorUnits: 500_00 }, 1);
-
-    expect(captured.inserts).toHaveLength(0);
+    await expect(
+      holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('USD', 100_00) }, 1),
+    ).rejects.toThrow(/currency/);
   });
 
   // The regression this function exists to prevent: `holdingValueAt` back-derives
@@ -860,10 +1357,13 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     } as const;
     const earlier = { time: base, amountMinorUnits: 10_00 };
     const before = holdingValueAt(holding, [earlier], pastDay);
-    const { tx, captured } = makeBalanceDeltaTx({ balanceMinorUnits: holding.balanceMinorUnits });
-    mockTx = tx;
+    const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction({
+      currency: holding.currency,
+      balanceMinorUnits: holding.balanceMinorUnits,
+    });
+    mockDatabaseTransaction = databaseTransaction;
 
-    await holdingsRepo.updateWithBalanceDelta('h-1', { balanceMinorUnits: 500_00 }, editDay);
+    await holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('UAH', 500_00) }, editDay);
 
     const edited = {
       ...holding,
@@ -879,10 +1379,74 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
   });
 });
 
+describe('holdingsRepo.setSyncedBalance', () => {
+  // A fake write-transaction handle for `setSyncedBalance`: it reads the
+  // holding's own stored currency (to guard against a mismatched `Money`,
+  // mirroring `updateWithBalanceDelta`), then writes the crash-safe marker.
+  // `stored` is what that read resolves to, or `null` for a missing id.
+  const makeSetSyncedBalanceDatabaseTransaction = (
+    stored: { currency: string } | null,
+  ): {
+    databaseTransaction: unknown;
+    captured: { set?: Record<string, unknown> };
+  } => {
+    const captured: { set?: Record<string, unknown> } = {};
+    const databaseTransaction = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: () => Promise.resolve(foldMap(maybe(stored), (row) => [row]) ?? []),
+          }),
+        }),
+      }),
+      update: () => ({
+        set: (values: Record<string, unknown>) => {
+          captured.set = values;
+
+          return { where: () => Promise.resolve() };
+        },
+      }),
+    };
+
+    return { databaseTransaction, captured };
+  };
+
+  it("advances the crash-safe marker to the given Money's minor units", async () => {
+    const { databaseTransaction, captured } = makeSetSyncedBalanceDatabaseTransaction({
+      currency: 'UAH',
+    });
+    mockDatabaseTransaction = databaseTransaction;
+
+    await holdingsRepo.setSyncedBalance('h-1', Money.of('UAH', 500_00));
+
+    expect(captured.set).toEqual({ syncedBalanceMinorUnits: 500_00 });
+  });
+
+  // Never fires for a valid caller — every real caller (the Monobank sync)
+  // builds the balance in the holding's own currency.
+  it('throws when the balance currency does not match the holding currency', async () => {
+    const { databaseTransaction } = makeSetSyncedBalanceDatabaseTransaction({ currency: 'UAH' });
+    mockDatabaseTransaction = databaseTransaction;
+
+    await expect(holdingsRepo.setSyncedBalance('h-1', Money.of('USD', 500_00))).rejects.toThrow(
+      /currency/,
+    );
+  });
+
+  it('writes through when no holding is found for the id', async () => {
+    const { databaseTransaction, captured } = makeSetSyncedBalanceDatabaseTransaction(null);
+    mockDatabaseTransaction = databaseTransaction;
+
+    await holdingsRepo.setSyncedBalance('missing', Money.of('UAH', 500_00));
+
+    expect(captured.set).toEqual({ syncedBalanceMinorUnits: 500_00 });
+  });
+});
+
 describe('holdingsRepo.closeMany', () => {
   it('stamps closedAt on the given holdings in one write', async () => {
-    const { captured, tx } = captureSetTx();
-    mockTx = tx;
+    const { captured, databaseTransaction } = captureSetDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.closeMany(['h1', 'h2']);
 
@@ -894,10 +1458,172 @@ describe('holdingsRepo.closeMany', () => {
 
   it('writes nothing for an empty id set', async () => {
     const update = jest.fn();
-    mockTx = { update };
+    mockDatabaseTransaction = { update };
 
     await holdingsRepo.closeMany([]);
 
     expect(update).not.toHaveBeenCalled();
+  });
+});
+
+// A fake write-transaction handle for `updateLoan`. Captures the metadata
+// patch, the item-1 auto-links clear (a SECOND, table-distinguished
+// `update` call — `tableNameOf` tells it apart from the metadata patch's own
+// `update(holdings)`), whether `delete(pricePoints)` ran, and every
+// `insert(pricePoints)` payload — enough to prove the three `LoanPricePointOp`
+// kinds each touch exactly the tables each op promises, all inside the SAME
+// transaction (`mockDatabaseTransaction` is shared by every call the
+// function makes).
+const makeUpdateLoanDatabaseTransaction = (): {
+  databaseTransaction: unknown;
+  captured: {
+    holdingSet?: Record<string, unknown>;
+    transactionsSet?: Record<string, unknown>;
+    deleteCalls: number;
+    inserts: Record<string, unknown>[];
+  };
+} => {
+  const captured: {
+    holdingSet?: Record<string, unknown>;
+    transactionsSet?: Record<string, unknown>;
+    deleteCalls: number;
+    inserts: Record<string, unknown>[];
+  } = { deleteCalls: 0, inserts: [] };
+  const databaseTransaction = {
+    update: (table: unknown) => ({
+      set: (values: Record<string, unknown>) => {
+        if (tableNameOf(table) === 'transactions') {
+          captured.transactionsSet = values;
+        } else {
+          captured.holdingSet = values;
+        }
+
+        return { where: () => Promise.resolve() };
+      },
+    }),
+    delete: () => ({
+      where: () => {
+        captured.deleteCalls += 1;
+
+        return Promise.resolve();
+      },
+    }),
+    insert: () => ({
+      values: (values: Record<string, unknown>) => ({
+        onConflictDoUpdate: () => {
+          captured.inserts.push(values);
+
+          return Promise.resolve();
+        },
+      }),
+    }),
+  };
+
+  return { databaseTransaction, captured };
+};
+
+describe('holdingsRepo.updateLoan', () => {
+  it("writes only the metadata patch for a 'none' op — no price-point write", async () => {
+    const { databaseTransaction, captured } = makeUpdateLoanDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await holdingsRepo.updateLoan('h-1', { name: 'Renamed' }, { kind: 'none' });
+
+    expect(captured.holdingSet).toEqual({ name: 'Renamed' });
+    expect(captured.deleteCalls).toBe(0);
+    expect(captured.inserts).toHaveLength(0);
+  });
+
+  // Annuity/differentiated -> 'none' upserts today's outstanding so
+  // the debt never silently reads as 0.
+  it("(a) upserts a point for an 'upsert' op, with no delete", async () => {
+    const { databaseTransaction, captured } = makeUpdateLoanDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+    const op: LoanPricePointOp = {
+      kind: 'upsert',
+      day: 19_000,
+      price: '350000.00',
+      currency: 'UAH',
+    };
+
+    await holdingsRepo.updateLoan('h-1', { metadata: { schedule: 'none' } }, op);
+
+    expect(captured.deleteCalls).toBe(0);
+    expect(captured.inserts).toEqual([
+      {
+        instrument: 'holding:h-1',
+        day: 19_000,
+        price: '350000.00',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+  });
+
+  // A 'none' loan's principal/start-date edit moves the start-day
+  // point — delete the old day, insert the new one.
+  it("(b) deletes the old day and inserts the new one for a 'move' op", async () => {
+    const { databaseTransaction, captured } = makeUpdateLoanDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+    const op: LoanPricePointOp = {
+      kind: 'move',
+      oldDay: 18_000,
+      newDay: 18_500,
+      price: '10000.00',
+      currency: 'UAH',
+    };
+
+    await holdingsRepo.updateLoan('h-1', { metadata: { schedule: 'none' } }, op);
+
+    expect(captured.deleteCalls).toBe(1);
+    expect(captured.inserts).toEqual([
+      {
+        instrument: 'holding:h-1',
+        day: 18_500,
+        price: '10000.00',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+  });
+
+  // A 'none' loan moving to a schedule drops its start-day point, which would
+  // otherwise anchor the schedule as a correction.
+  it("(c) deletes the day and inserts nothing for a 'delete' op", async () => {
+    const { databaseTransaction, captured } = makeUpdateLoanDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await holdingsRepo.updateLoan(
+      'h-1',
+      { metadata: { schedule: 'annuity' } },
+      { kind: 'delete', day: 18_000 },
+    );
+
+    expect(captured.deleteCalls).toBe(1);
+    expect(captured.inserts).toHaveLength(0);
+  });
+
+  // A loan edit that changes its amortization schedule or a third-signal
+  // input can invalidate a previously-computed AUTO link's own rules 1/2
+  // against the NEW schedule — the caller (`use-loan-fields.ts`'s `saveEdit`) detects
+  // this and asks `updateLoan` to clear this loan's own auto links, in the
+  // SAME transaction as the metadata patch, before the fire-and-forget
+  // matcher re-run that follows.
+  it('never clears auto links when clearAutoLinks is omitted (unchanged 3-arg call)', async () => {
+    const { databaseTransaction, captured } = makeUpdateLoanDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await holdingsRepo.updateLoan('h-1', { name: 'Renamed' }, { kind: 'none' });
+
+    expect(captured.transactionsSet).toBeUndefined();
+  });
+
+  it('clears this loan holding’s own auto links (manual and rejected untouched) when clearAutoLinks is true', async () => {
+    const { databaseTransaction, captured } = makeUpdateLoanDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await holdingsRepo.updateLoan('h-1', { name: 'Renamed' }, { kind: 'none' }, true);
+
+    expect(captured.transactionsSet).toEqual({ loanHoldingId: null, loanLinkSource: null });
   });
 });

@@ -32,6 +32,11 @@ export const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
   },
+  // The name itself, in the width the swatch leaves: RN text does not shrink
+  // in a row on its own, so without this a long name runs into the value.
+  legendLabel: {
+    flex: 1,
+  },
   // The value column: a fixed width shared by every row, right-aligned so the
   // converted amounts line up on their trailing digits regardless of magnitude.
   legendValue: {

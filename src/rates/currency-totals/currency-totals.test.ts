@@ -1,5 +1,7 @@
-import { Money } from '../../currency/money';
-import { holdingValue, type ValuableHolding } from '../../holdings/holding-value';
+import { Money } from '@kiko/currency/money';
+import { buildPriceBook } from '@kiko/prices/price-book';
+import { holdingInstrument } from '@kiko/prices/instrument';
+import { holdingValue, type ValuableHolding } from '@kiko/holdings/holding-value';
 
 import { sumByCurrency } from './currency-totals';
 
@@ -7,6 +9,7 @@ const card = (
   currency: ValuableHolding['currency'],
   balanceMinorUnits: number,
 ): ValuableHolding => ({
+  id: 'card-1',
   type: 'card',
   currency,
   balanceMinorUnits,
@@ -36,6 +39,7 @@ describe('sumByCurrency', () => {
   it('values a term deposit at its net-of-tax computed value, not its raw balance', () => {
     const now = START + 365 * day;
     const deposit: ValuableHolding = {
+      id: 'deposit-1',
       type: 'term_deposit',
       currency: 'UAH',
       // Deliberately different from the computed value to prove valuation is used.
@@ -54,5 +58,47 @@ describe('sumByCurrency', () => {
 
     const result = sumByCurrency([deposit], now);
     expect(result).toEqual([Money.of('UAH', expected)]);
+  });
+
+  // With no `book` argument, a priced holding (property_item) falls back
+  // to its lots cost basis rather than reading 0.
+  it('values a property_item holding at its cost basis when no book is passed', () => {
+    const property: ValuableHolding = {
+      id: 'prop',
+      type: 'property_item',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: START, quantityDelta: '1', costMinorUnits: 500_000 }],
+      },
+    };
+
+    expect(sumByCurrency([property], START)).toEqual([Money.of('UAH', 500_000)]);
+  });
+
+  // Threading a real `PriceBook` overrides the cost-basis fallback.
+  it('values a property_item holding at its priced value when a book is passed', () => {
+    const property: ValuableHolding = {
+      id: 'prop',
+      type: 'property_item',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: START, quantityDelta: '1', costMinorUnits: 500_000 }],
+      },
+    };
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('prop'),
+        day: START,
+        price: '7000',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+
+    expect(sumByCurrency([property], START, book)).toEqual([Money.of('UAH', 700_000)]);
   });
 });

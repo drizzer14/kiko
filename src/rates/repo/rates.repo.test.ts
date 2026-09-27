@@ -24,7 +24,7 @@ jest.mock('@op-engineering/op-sqlite', () => ({
 // key is async), so the executing reads below need a live connection. Mock the
 // encrypted-open to hand back the same op-sqlite fake this file already models,
 // then `initDatabase()` once so `rawDatabase` forwards `executeRaw` to the mock.
-jest.mock('../../db/encrypted-database', () => ({
+jest.mock('@kiko/db/encrypted-database', () => ({
   openEncryptedDatabase: async () => ({
     execute: async () => ({ rows: [], rowsAffected: 0 }),
     executeRaw: (...args: unknown[]) => mockExecuteRaw(...args),
@@ -36,22 +36,23 @@ jest.mock('../../db/encrypted-database', () => ({
 // transaction handle and count invocations, so a test can prove every chunk
 // of a large batch runs inside the SAME transaction — the same pattern
 // `rateHistoryRepo`'s own chunking test uses (`rate-history.repo.test.ts`).
-let mockTx: unknown;
+let mockDatabaseTransaction: unknown;
 let writeCalls = 0;
-jest.mock('../../db/client', () => {
-  const actual = jest.requireActual('../../db/client');
+jest.mock('@kiko/db/client', () => {
+  const actual = jest.requireActual('@kiko/db/client');
+
   return {
     ...actual,
     write: (work: (db: unknown) => unknown) => {
       writeCalls += 1;
-      return work(mockTx);
+
+      return work(mockDatabaseTransaction);
     },
   };
 });
 
-import { initDatabase } from '../../db/client';
-import type { CurrencyRateRow } from '../../db/schema';
-import { currencyOptions } from '../../currency/currency';
+import { currencyOptions } from '@kiko/currency/currency';
+import { initDatabase, type CurrencyRateRow } from '@kiko/db';
 
 import { ratesRepo } from './rates.repo';
 
@@ -73,25 +74,28 @@ type NewRate = Pick<CurrencyRateRow, 'base' | 'quote' | 'rate' | 'source' | 'fet
 // A fake `insert(...).values(...).onConflictDoUpdate(...)` chain backed by a
 // plain array, recording each `.values(...)` call's row count so a test can
 // assert every executed statement stays under the bound-parameter ceiling.
-const makeUpsertTx = (store: NewRate[], chunkSizes: number[]): unknown => ({
+const makeUpsertDatabaseTransaction = (store: NewRate[], chunkSizes: number[]): unknown => ({
   insert: () => ({
     values: (rows: NewRate[]) => {
       if (rows.length * PARAMS_PER_ROW > SQLITE_MAX_VARIABLE_NUMBER) {
         throw new Error('too many SQL variables');
       }
       chunkSizes.push(rows.length);
+
       return {
         onConflictDoUpdate: () => {
           for (const row of rows) {
             const index = store.findIndex(
               (existing) => existing.base === row.base && existing.quote === row.quote,
             );
+
             if (index >= 0) {
               store[index] = { ...row };
             } else {
               store.push({ ...row });
             }
           }
+
           return Promise.resolve();
         },
       };
@@ -99,11 +103,14 @@ const makeUpsertTx = (store: NewRate[], chunkSizes: number[]): unknown => ({
   }),
 });
 
-// 110 currencies x 109 cross pairs each = 11,990 rows — the exact shape a
-// live Monobank sync's `buildPairs` (`rates-refresh.ts`) produces across
-// `currencyOptions` (`src/currency/currency/currency.ts`).
+// 110 currencies x 109 cross pairs each = 11,990 rows — the legacy cross-join
+// shape a live Monobank sync stored before the UAH-star rewrite (a live sync
+// now writes ~109 rows, one `X:UAH` per priced currency); still the largest
+// batch `upsertMany`'s chunking must survive, since a `.kiko` restore of a
+// pre-star export can still hand it a legacy-shaped batch this size.
 const buildRates = (): NewRate[] => {
   const rows: NewRate[] = [];
+
   for (const base of currencyOptions) {
     for (const quote of currencyOptions) {
       if (base === quote) {
@@ -112,6 +119,7 @@ const buildRates = (): NewRate[] => {
       rows.push({ base, quote, rate: '1.5', source: 'monobank', fetchedAt: 1_700_000_000_000 });
     }
   }
+
   return rows;
 };
 
@@ -122,6 +130,12 @@ describe('ratesRepo', () => {
 
   it('builds an all-rates query against the currency_rates table', () => {
     expect(ratesRepo.allQuery().toSQL().sql).toContain('currency_rates');
+  });
+
+  it('builds a distinct-currency presence query against the currency_rates table', () => {
+    const sql = ratesRepo.presentCurrenciesQuery().toSQL().sql;
+    expect(sql).toContain('currency_rates');
+    expect(sql.toLowerCase()).toContain('distinct');
   });
 
   it('reads the latest stored fetchedAt via a max aggregate', async () => {
@@ -144,17 +158,18 @@ describe('ratesRepo', () => {
     it('chunks a full-sync batch under the SQLite bound-parameter limit, in one transaction', async () => {
       const store: NewRate[] = [];
       const chunkSizes: number[] = [];
-      mockTx = makeUpsertTx(store, chunkSizes);
+      mockDatabaseTransaction = makeUpsertDatabaseTransaction(store, chunkSizes);
 
       const rates = buildRates();
       expect(rates).toHaveLength(11_990);
 
       await ratesRepo.upsertMany(rates);
 
-      // Every chunk stayed under the bound-parameter ceiling (the fake tx
-      // above throws otherwise), more than one chunk was needed, and no
+      // Every chunk stayed under the bound-parameter ceiling (the fake
+      // transaction above throws otherwise), more than one chunk was needed, and no
       // row was lost or duplicated across the chunk boundaries.
       expect(chunkSizes.length).toBeGreaterThan(1);
+
       for (const size of chunkSizes) {
         expect(size * PARAMS_PER_ROW).toBeLessThanOrEqual(SQLITE_MAX_VARIABLE_NUMBER);
       }
@@ -167,7 +182,7 @@ describe('ratesRepo', () => {
     it('issues no insert for an empty batch', async () => {
       const store: NewRate[] = [];
       const chunkSizes: number[] = [];
-      mockTx = makeUpsertTx(store, chunkSizes);
+      mockDatabaseTransaction = makeUpsertDatabaseTransaction(store, chunkSizes);
 
       await ratesRepo.upsertMany([]);
 

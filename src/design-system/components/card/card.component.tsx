@@ -2,8 +2,8 @@ import type { FC } from 'react';
 import { View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
-import type { CardProps } from './card.props';
 import { styles } from './card.styles';
+import type { CardProps } from './card.props';
 
 // The shared CONTENT-layer surface: a solid, opaque themed fill with a
 // defined hairline border, no glass/blur material at all. Apple's iOS Human

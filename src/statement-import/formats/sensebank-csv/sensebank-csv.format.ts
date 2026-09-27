@@ -1,7 +1,7 @@
-// Column layout verified against docs/plans/statement-import.md section C.2
+// Column layout verified against docs/plans/statement-import.md
 // (grounded in OSadovy/uabean's Sensebank CSV importer facts, cross-checked
-// against the REAL fixture bytes this task copied — see
-// src/statement-import/NOTICE.md) — see task-4-report.md for the exact
+// against the REAL fixture bytes — see
+// src/statement-import/NOTICE.md for the exact
 // per-line facts recorded from reading the fixture. No uabean source is
 // reused; this is an independent TypeScript implementation. The fixture this
 // format is tested against
@@ -9,22 +9,21 @@
 // confirmed synthetic (placeholder IBAN, test-card Visa number, year-2000
 // dates), unlike PrivatBank XLSX's hand-authored one.
 import Papa from 'papaparse';
-
 import type {
   ParsedStatement,
   ParsedTransaction,
   StatementFormat,
   StatementFormatInput,
-} from '../../parser';
-import { Money } from '../../../currency/money';
-import { StatementParseError } from '../../parser';
-import { parseAmount } from '../../../currency/parse';
-import { isCurrency } from '../../../currency/currency';
-import type { Currency } from '../../../currency/currency';
+} from '@kiko/statement-import/parser';
+import { Money } from '@kiko/currency/money';
+import { parseAmount } from '@kiko/currency/parse';
+import { isCurrency } from '@kiko/currency/currency';
+import type { Currency } from '@kiko/currency/currency';
+import { StatementParseError } from '@kiko/statement-import/parser';
 
 // Section C.2: "Detect signature — file content starts with the literal
 // preamble line `Виписка за рахунком;;;;;;;`". Verified byte-for-byte
-// against the real fixture's first line (task-4-report.md).
+// against the real fixture's first line.
 export const SENSEBANK_PREAMBLE = 'Виписка за рахунком;;;;;;;';
 
 // Section C.2: "an account line matching `Рахунок (\w+) \((\w+)\)` → IBAN +
@@ -33,7 +32,7 @@ export const SENSEBANK_PREAMBLE = 'Виписка за рахунком;;;;;;;';
 export const ACCOUNT_LINE_PATTERN = /Рахунок (\w+) \((\w+)\)/;
 
 // The repeated per-block header row, verified EXACTLY against the real
-// fixture's bytes (task-4-report.md) — note the FIRST "Cума" cell starts
+// fixture's bytes — note the FIRST "Cума" cell starts
 // with a LATIN capital "C" (U+0043), not the visually-identical Cyrillic
 // "С" (U+0421), in BOTH amount column headers. A naive hand-typed Cyrillic
 // "С" would silently never match a real Sensebank export.
@@ -84,7 +83,7 @@ const detect = (input: StatementFormatInput): boolean => input.text.startsWith(S
 const isHeaderRow = (row: string[]): boolean =>
   row.length === HEADER_ROW.length && HEADER_ROW.every((cell, index) => row[index] === cell);
 
-// Scans every row for the account preamble line (section C.2) — resolves the
+// Scans every row for the account preamble line — resolves the
 // file's single account currency (and IBAN) once, up front, rather than
 // re-deriving it per row. Throws when no such line is present at all, or the
 // captured currency word isn't one Kiko recognizes — a Sensebank file with no
@@ -128,12 +127,11 @@ const parseSensebankDateSeconds = (raw: string): number => {
   return millis / 1000;
 };
 
-// Controller ruling 3: the debit cell's raw text already carries its own
-// leading minus sign (e.g. "-150,00"); the credit cell is unsigned positive —
-// no manual negation anywhere. Controller ruling 5 (Task 3 review precedent):
-// guards against ever computing a `NaN` `amountMinorUnits` — an empty or
-// malformed debit/credit pair throws rather than silently writing `NaN`. A
-// row carrying BOTH a debit AND a credit is not a valid single-amount row at
+// The debit cell's raw text already carries its own leading minus sign
+// (e.g. "-150,00"); the credit cell is unsigned positive — no manual
+// negation anywhere. An empty or malformed debit/credit pair throws
+// rather than silently computing a `NaN` `amountMinorUnits`. A row carrying
+// BOTH a debit AND a credit is not a valid single-amount row at
 // all (money-safety review, mirrors `business-csv`'s Дебет/Кредит guard) —
 // silently preferring the debit side would drop the credit amount without a
 // trace, so this throws instead of guessing.

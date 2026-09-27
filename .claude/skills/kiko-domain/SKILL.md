@@ -21,22 +21,54 @@ an enum list copied into this prose as current. Read
 definitions before relying on a specific member being present or
 absent** — this skill states the shape and non-enum facts only:
 
-- **Account** — a bank, cash stash, or crypto wallet. `id`, `name`,
-  `kind` (see `schema.ts`'s `accounts.kind` enum for the current
-  member set), `institution` (nullable, e.g. `monobank` — marks a LIVE
-  sync connection), `bankId` (nullable, migration `0033`; see below),
-  `icon`, `color`, `sortOrder`, `archivedAt` (nullable), `createdAt`.
+- **Account** — a bank, cash stash, crypto wallet, standalone property
+  holder, standalone precious-metals holder, or debt holder. `id`,
+  `name`, `kind` (see `schema.ts`'s `accounts.kind` enum for the
+  current member set — this includes `property`, `metals`,
+  and `debt` alongside `bank`/`cash`/`crypto`; all three of the
+  non-`bank`/`cash`/`crypto` kinds are manually-created-only kinds
+  with no sync concept), `institution` (nullable, e.g. `monobank` —
+  marks a LIVE sync connection), `bankId` (nullable, migration
+  `0033`; see below), `icon`, `color`, `sortOrder`, `archivedAt`
+  (nullable), `createdAt`. `holdingTypesForAccountKind`
+  (`src/holdings/holding-type/`) maps each account kind to its
+  allowed `Holding.type` set — `property` maps to `property_item`,
+  `metals` maps to `metal`, `debt` maps to `loan` — read that file
+  rather than trusting a mapping copied here. `metal` is ALSO
+  creatable under a `bank`-kind account, gated by that bank's own
+  `sellsMetals` catalog flag (see `kiko-pricing`'s "Bank metal
+  allow-list" section) — the only holding type creatable under two
+  different account kinds by two different rules.
 
   **`bankId`** is the "which bank does this account represent" field
   set from the account-form's bank picker (`BankTypeField`,
-  `src/screens/forms/bank-type-field/`), backed by the catalog at
-  `src/bank-sync/bank-catalog/` — read that file for the current
-  6-bank set (`BankId`/`bankCatalog`) rather than trusting a list
-  copied here. It is **identity-only, independent of `institution`**:
-  only Monobank has a live API Connect today (`connectable: true` in
-  the catalog), the other 5 entries are import-only, scoping which
-  `statement-import` parser applies. `bankId` is deliberately **never
-  read** by `isSyncedAccount`/`isSyncedHolding`
+  `src/screens/forms/bank-type-field/`), rendered in BOTH create and
+  edit mode (423b6a6 — edit used to skip it entirely) with an explicit
+  no-bank row (`onSelect(null)`, `accountForm.noBank` i18n key in
+  `en.ts`/`uk.ts` — cite the key, not the rendered label, since it can
+  drift) so a Bank account can be created or
+  returned to on purpose with no bank identity at all — the intended
+  target for the generic column-mapping import when no dedicated
+  parser applies. The live-sync Connect field (Monobank) stays
+  create-only; editing `bankId` on an already-connected account never
+  writes `institution`, so its sync is untouched regardless of which
+  identity is picked. Backed by the catalog at
+  `src/bank-sync/bank-catalog/` — read that file for the current bank
+  set (`BankId`/`bankCatalog`) rather than trusting a count or list
+  copied here; it grows over time (P3 added PUMB, Oschadbank,
+  Raiffeisen, and Ukrgasbank, each with no dedicated `statement-import`
+  parser — `statementFormatId` is optional for exactly this reason). It
+  is **identity-only, independent of `institution`**: only Monobank has
+  a live API Connect today (`connectable: true` in the catalog), every
+  other entry is import-only, scoping which `statement-import` parser
+  applies when it has one. That parser is only ever a
+  PREFERENCE, not a gate: "Import statement" is offered on every bank
+  account regardless of `bankId`, and a file that doesn't match its
+  dedicated format (or has none) falls through to the generic
+  column-mapping import (`kiko-statement-import`'s "Column mapping"
+  section) — a dedicated format still wins whenever it
+  actually matches. `bankId` is deliberately **never read** by
+  `isSyncedAccount`/`isSyncedHolding`
   (`src/holdings/deletable/`) or any provider-registry lookup — those
   stay keyed on `institution` alone, so tagging an account
   `bankId: 'privatbank'` can never make it look connected. This is the
@@ -115,7 +147,8 @@ through one of them:
   `balanceMinorUnits` differs from the stored value, the DIFFERENCE as
   a `manual` row — one `db.transaction()`, delta computed from the row
   re-read inside it (never a render snapshot), no row at all for a zero
-  delta. The holding form's edit save calls this, never
+  delta. The holding form's edit save calls this (a bond edit, which
+  writes no balance, calls `updateMetadataFromStored` instead), never
   `holdingsRepo.update`, whose bare `set(patch)` stays for the
   non-balance writers (icon/color/metadata, the sync's own writes,
   reorder) and must never be handed a `balanceMinorUnits`.
@@ -129,7 +162,7 @@ through one of them:
   holding.
 
 Why it matters concretely: `holdingValueAt`
-(`src/statistics/holding-value-at.ts`) back-derives a holding's opening
+(`src/statistics/holding-value-at/holding-value-at.ts`) back-derives a holding's opening
 balance as `currentBalance - sum(allTransactions)`, so a balance written
 without its ledger row retroactively shifts the ENTIRE historical
 net-worth series by that amount, and the holding-detail transaction list
@@ -146,6 +179,155 @@ A SYNC-owned balance is the exception and writes no ledger row: the
 provider owns that number (`upsertByMetadataKey` in
 `src/holdings/`), and the form hides the balance field for a synced
 holding entirely.
+
+## Statement import moves the target holding's balance too
+
+A file-based statement import (`transactionsRepo.importRows`,
+`src/transactions/repo/transactions.repo.ts`, called from
+`importStatement`, `src/statement-import/import-statement/`) is a
+FOURTH balance writer, alongside the three above — it does NOT write
+an extra ledger row (like a manual adjustment does): the imported rows
+THEMSELVES already explain the balance move, the same way a Monobank
+sync's own upsert does. Everything (the row upsert AND the balance
+write) happens in ONE db transaction, so a partial failure can never
+leave the ledger and the balance disagreeing. This was a real, shipped
+production bug (App Store build 25): `importStatement` used to call
+only `transactionsRepo.addManyDedup`, which upserts `transactions` and
+never touches `holdings` — an import-only holding (created purely to
+receive a statement, opening balance 0, never touched by anything
+else) stayed at `balanceMinorUnits: 0` forever, so the Home headline
+and that holding's own card showed 0 even though its transaction list
+showed the real imported rows.
+
+`importRows`'s own doc comment (`transactions.repo.ts`) is the ONE
+full statement of the exact rule — the boundary, `holdings.balanceSetAt`,
+the closing-balance override, the wall-clock skew, the synced-holding
+exception, and why no migration repairs pre-fix data — read it there
+rather than trusting a restated summary here.
+
+## `property_item` / `metal` create-form sections
+
+A `property` account's Type field IS its category picker
+(`PropertyTypeField`, `src/screens/forms/holding-form/property/property-type-field/`):
+`property_item` is that account kind's only holding type
+(`holdingTypesForAccountKind`), so `HoldingFormScreen` renders this
+`SelectField` wrapper — over `propertyCategories` from
+`src/holdings/holding-metadata`, in the fixed display order Real
+estate/Vehicle/Valuable/Business share/Loan given/Other, distinct from
+`propertyCategories`' own declaration order — in the generic
+`HoldingTypeField`'s slot instead, for every OTHER account kind's
+holding form untouched. Editable in both create and edit mode (never
+disabled, unlike the generic Type field), reusing the SAME "Type"
+label/sheet-title/placeholder catalog keys. Editing an existing
+holding pre-selects the stored category via `propertyCategoryOf`
+(`holding-metadata.ts`), a LENIENT reader that falls back to `'other'`
+for a missing/unrecognized value — independent of the strict
+all-or-nothing `asPropertyMeta` parse `usePropertyFields`'s `seed`
+still uses for the holding's `lots`.
+`src/screens/forms/holding-form/property/property-section/` is now
+just the Cost field (create-only); `PropertyFormBlock` mounts it only
+in create mode. One lot
+plus one manual price point equal to that cost is what
+`usePropertyFields`'s own `createPayload`
+(`src/screens/forms/holding-form/property/use-property-fields/`)
+builds from it on save, via `holdingsRepo.create`'s
+`firstPricePoint` param — see `kiko-pricing`'s "Creating and clearing
+a priced holding's price series" section for the create/remove
+symmetry.
+
+**Ownership field.** `OwnershipField`
+(`src/screens/forms/ownership-field/`; its entry logic `ownershipEntryOf`/`enteredShare`
+lives apart in `src/screens/forms/property-ownership/property-ownership.ts`,
+and `ownership-change-form` imports both) renders
+in `PropertyFormBlock` on create AND edit for every category but
+`loan_given` (`ownershipApplies`); an edited loan given shows no
+block at all. A `SegmentedControl` Percent | Fraction (it changes
+which fields show) sits under an "Ownership" `FieldLabel`; Percent is
+one "Share" field with a `%` suffix (up to 2 decimals), Fraction is a
+"Share" and an "Out of" field stacked (whole numbers). The value is
+checked by `parsePercentShare`/`parseFractionShare`
+(`src/holdings/ownership/`); `0`, above 100%, or `n > d` blocks Save
+with `ownershipError`. Create defaults to 100% and writes NO
+`ownership`/`ownershipInput` key at 100%; any other share writes one
+change dated the lot day (the first day the holding has value; before
+its first change a property reads whole) plus `ownershipInput` (the
+picked mode). Edit
+pre-fills the stored mode and the share in effect today
+(`ownershipAt`); an "Effective from" `DateField` (default today)
+appears only once the typed share differs, and Save records it through
+`withOwnershipChange` (a same-day change is replaced, a change equal to
+the share already in effect is dropped), keeping earlier changes. A
+percent that shows the same rounded value as the share in effect
+(`33.33` for 1/3) counts as unchanged (`enteredShare`,
+`property-ownership.ts`), so re-saving never records 3333/10000. A
+category switch keeps the stored list, even to `loan_given`, which
+hides the field and ignores the list. This form never edits or
+deletes a past change; the holding detail does.
+
+**Share changes are editable.** The holding detail lists every stored
+change newest first in a "Share Changes" section (`ShareChanges`,
+`src/screens/holding-detail/share-changes/`, fed by
+`propertyShareChanges`, `property-item.descriptor.ts`): the day
+(`formatDate(day, { timeZone: 'UTC' })`) and the share through the
+same `ownershipShareDetailText` as the "Your share" row. It is hidden
+with no stored change and for `loan_given`. Each row is a `Card` in
+`CardContextMenu` (long press, `liftOnHold`) with Edit and Delete —
+no swipe. Edit opens `OwnershipChangeForm` (`{ holdingId, day }`,
+`src/screens/forms/ownership-change-form/`): the same `OwnershipField`
+with the "Effective from" `DateField` always shown, pre-filled with
+that change's share (in the stored `ownershipInput`) and day. Save
+calls `holdingsRepo.editOwnershipChange(holdingId, fromDay, change,
+input)` → `withEditedOwnershipChange` (the old change leaves first,
+then `withOwnershipChange`: moving onto a day that has a change
+replaces it; a change equal to the share already in effect is
+dropped). Delete goes through the menu's named `ConfirmSheet` to
+`holdingsRepo.removeOwnershipChange(holdingId, day)` →
+`withoutOwnershipChange` (the list is made canonical again, so a later
+change that now repeats the share before it is dropped; the last
+change removed leaves NO `ownership`/`ownershipInput` key — the whole
+asset). Both repo methods take the day key, not a row, and re-read the
+list inside one `write` (`rewriteOwnership`, `holdings.repo.ts`) — the
+kiko-architecture "write started from a cached display screen" rule —
+so a stale cached row can never put back a change another write
+removed. `ownershipMetadata` (`src/holdings/ownership/`) is the one
+builder of the ownership keys for the form and the repo.
+
+**Dated series need pinned tests.** A model of dated changes (the
+ownership series, and every future dated series) always has a pinned
+test that an edit effective on day X leaves every bucket before X
+unchanged. A value that switches source when data first arrives (a
+linked loan's linked payments vs its schedule) always has a pinned test
+that it does not step at the switch.
+`src/screens/forms/holding-form/metal/metal-section/metal-section.component.tsx`
+is the `metal` create-form section: a
+physical-form `ChipRow`, a unit `ChipRow`, a Purity `TextField`
+typed and shown as a fineness per mille (pre-filled `999.9`, suffix
+`‰`, valid above 0 and up to 1000; `MetalMeta.purity` still stores the
+0..1 ratio — `useMetalFields` shifts the point three places each way
+with `shiftDecimal` + `trimDecimal`, so `999.9` <-> `"0.9999"` and
+`1000` -> `"1"` exactly, never through a float), and the first-lot Quantity/Total-cost fields
+(create-only — see `MetalSectionProps.showFirstLot`'s own doc
+comment). Unlike `property_item`, `metal`'s create payload writes NO
+`firstPricePoint` — its price comes from the shared
+`metal:<XAU|XAG|XPT|XPD>` instrument, not a per-holding one (see
+`kiko-pricing`'s "Creating and clearing a priced holding's price
+series" section, and `useMetalFields`'s own comment
+(`src/screens/forms/holding-form/metal/use-metal-fields/`)
+on the metal CREATE payload). The metal/form/unit/purity fields stay
+user-editable in EDIT mode (metadata patch), mirroring
+`property_item`'s category-editable pattern.
+
+The metal itself is picked in the Type slot, not in `MetalSection`:
+`MetalTypeField` (`src/screens/forms/holding-form/metal/metal-type-field/`)
+is a `SelectField` whose rows are the account's other creatable types
+followed by Gold/Silver/Platinum/Palladium (no generic "Metal" row); a
+picked metal sets type `metal` plus `MetalMeta.metal`. `HoldingFormScreen`'s
+`typeSlotFor` renders it on a `metals` account, on a CREATE under a bank
+whose creatable types include `metal` (the sellsMetals allow-list — see
+kiko-pricing), and on the EDIT of a `metal` holding (metals only — the
+type is locked, the metal stays editable). The edit of any other type,
+even on a bank that sells metals, keeps the disabled generic
+`HoldingTypeField`.
 
 ## Sync-only holding types are not manually creatable
 
@@ -174,17 +356,47 @@ already owning one for it. Do not assume "sync-only type" means
 "excluded regardless of `isSynced`" — `jar` and `card` behave
 differently for exactly this reason.
 
+Which holding types record their buy/sell history through the
+dedicated Lot form (`src/screens/forms/lot-form/`, reached from
+holding-detail's `addLot` footer action) rather than a fixed one-time
+lot or a sync is a single-type entry (`metal`'s `footerAction: () =>
+'addLot'` — its price is the shared `metal:<XAU|...>` instrument, so it
+adds lots rather than updating a value) in `holdingDetailSpecs`
+(`holding-detail-spec/`) — only `metal` is eligible today. See
+`kiko-pricing`'s "Recording a lot: LotForm and the sell cost rule"
+section for the form itself.
+
 ## Entity glyphs: one source of truth
 
-The default SF Symbol for an `Account.kind` and for a `Holding.type`
-each has exactly one source of truth: `src/holdings/`
-(`accountKindSymbol`, `holdingTypeSymbol`). Every reader — the account
-card, the account-detail header, the Kind select, the holding card,
-the holding-detail header, the holding-form icon-chip fallback, the
-Type select — calls that same function; never add a second kind/type
--> glyph map in a screen module. A past `holding-icon.ts` plus a
-screen-exported `KIND_ICON` drifted from this file, so the icon a user
-picked in a select differed from the card glyph.
+The default SF Symbol/color for an `Account.kind` has one source of
+truth: `accountKindSymbol`/`defaultAccountColor`
+(`src/holdings/entity-symbols/`, `entity-colors/`). For a
+`Holding.type`, each type's own descriptor
+(`src/holdings/holding-descriptor/`) carries its `symbol`/
+`defaultColor` — the descriptor IS the source; `holdingTypeSymbol`/
+`defaultHoldingColor` are thin `recordByType` facades derived from it,
+never a second place to set a type's icon/color. Every reader — the
+account card, the account-detail header, the Kind select, the holding
+card, the holding-detail header, the holding-form icon-chip fallback,
+the Type select — calls one of these four functions; never add a
+second kind/type -> glyph map in a screen module.
+
+A `property_item`'s default glyph follows its CATEGORY, not its type:
+`propertyCategorySymbol` (same folder) maps each `PropertyCategory` to its
+own SF Symbol, and `defaultHoldingSymbol(holding)` — the category glyph
+for a `property_item` (read leniently via `propertyCategoryOf`, so
+garbled metadata still gets the Other glyph), else `holdingTypeSymbol`
+— is what every holding icon site calls as `icon ?? defaultHoldingSymbol(holding)`
+(the holding card, the holding-detail header, the holding- and
+transaction-form holding pickers, the statement-import target options).
+The holding form's untouched icon chip follows the picked category live,
+and `PropertyTypeField` shows the same glyphs on its rows. The only
+remaining `holdingTypeSymbol[...]` reader is `defaultHoldingSymbol`
+itself; the generic `HoldingTypeField` takes the whole record as its
+`icons`. A past
+`holding-icon.ts` plus a screen-exported `KIND_ICON` drifted from
+this file, so the icon a user picked in a select differed from the
+card glyph.
 
 ## The `Money` value object
 
@@ -210,7 +422,19 @@ why this is the deliberate exception to functional-first). It holds
 - Any table column holding an amount is an integer minor-units
   column (`balanceMinorUnits`, `amountMinorUnits`), never a decimal
   or float column. Convert to/from `Money` at the repository
-  boundary.
+  boundary — a raw `row.balanceMinorUnits` read for a VALUE goes
+  through `holdingsRepo.balanceOf(row): Money`, never a direct
+  member read outside a repository (mechanized, Class B:
+  `kiko-balance-through-repo` in `rules/semgrep-mobile.yml`); a WRITE
+  input takes `Money` and converts inside the repo, throwing on a
+  currency mismatch — `holdingsRepo.create`'s optional
+  `openingBalance`, `updateWithBalanceDelta`'s patch `balance`,
+  `setSyncedBalance`'s `balance`, and `accountsRepo.createCashAccount`'s
+  `initialBalance`. The sync upserts (`upsertMonobank(Many)` /
+  `upsertExchange(Many)`) are the one exception: they write a raw
+  provider-given balance straight through every run, never a typed
+  opening balance, so their own input keeps a plain
+  `balanceMinorUnits: number`.
 
 ## Currencies
 
@@ -238,6 +462,18 @@ code, change `currency.ts` only, then verify (do not re-hardcode) that
 derive from `currencyOptions` rather than carrying their own literal
 list. A Drizzle `text({ enum: [...] })` is a TS-only compile-time
 hint, not a DB constraint, so changing the set needs no migration.
+
+**A cash holding is fiat-only.** `src/holdings/holding-currency/` owns
+the rule (`holdingCurrencyOptions` for a create picker,
+`isCurrencyAllowedForHoldingType` for a write). Every path that can
+create a cash holding rejects a crypto currency: the holding form and
+cash-account form offer fiat only, `holdingsRepo.create` and
+`accountsRepo.createCashAccount` throw, and a `.kiko` restore refuses
+the whole file before touching a table
+(`data-transfer/crypto-cash-holding` prefix, mapped to
+`settings.dataImport.cryptoCashHoldingError`). Statement import and
+the syncs never create a cash holding. No migration exists for an
+already-stored crypto cash holding.
 
 ## Category color resolution
 
@@ -297,6 +533,33 @@ the exchange-exclusion module (`src/statistics/`, the exchange-marker rule)
 directly rather than trusting a restated MCC list here; see
 `kiko-architecture` for the same pointer.
 
+A linked loan payment ("interest-only
+spending") is excluded the same way, but REPLACED rather than simply
+dropped: the loan-payments module (`src/statistics/loan-payments/`)
+exports `loanPaymentExcludedTransactionIds(transactions, loanHoldings)`, which
+drops a row from the pie/trend the same way every other exclusion
+rule does, IF AND ONLY IF its `transactions.loanHoldingId` marker
+points at a holding present in `loanHoldings` — a dangling link (its loan holding was
+deleted — `holdingsRepo.remove`/`accountsRepo.remove` already clear
+the marker transactionally the moment that happens) is NOT
+excluded, so it counts as ordinary spending under its own category,
+exactly like an unlinked row. The same module's
+`loanInterestEntries({ transactions, loanHoldings })` derives one
+synthetic entry per excluded row — id `loan-interest:<txId>`,
+category the seeded `loan_interest` key
+(`drizzle/migrations/0039_seed_loan_interest_category.sql`), amount
+the NEGATIVE interest portion only (never the principal) — mapping
+the payment to the installment whose due date is nearest to its own
+local day and capping at the payment's own amount; an installment paid
+in parts counts its interest once, on the earliest parts
+(`loanInterestPerPaymentMinor`, `src/holdings/loan-schedule/`, allocated
+per loan over all of that loan's linked payments).
+`statistics.screen.tsx` feeds these derived entries into BOTH
+`buildCategoryBreakdown` and the category trend, alongside every real
+row — not into the exclusion-RULE inputs themselves (a synthetic
+entry carries no mcc/description/IBAN signal, so it plays no part in
+detecting a transfer).
+
 ## Exchange/Convert legs: a structural marker, a resolved label
 
 An Exchange/Convert leg is NOT identified by its description. Both legs
@@ -320,6 +583,17 @@ the marker on its single debit leg). Three consequences hold together:
   transaction lists via `transactionRowDescription` (`src/transactions/`). A
   persisted sentence stayed English after a language switch and went
   stale after a rename; that is the bug the column exists to prevent.
+- **`transactionRowDescription` is the ONE owner of a blank row's label.**
+  Every surface that shows it calls it: both lists, `ExampleTransaction`,
+  and the transaction form. On an edit, the form pre-fills a blank
+  stored description with that label as the field VALUE (and previews it
+  as the placeholder once cleared); Save stores `''` when the text still
+  equals the pre-filled label, and the typed text otherwise — so an
+  untouched leg keeps resolving at render time. A direct
+  `defaultTransactionDescription(` call outside
+  `src/transactions/row-description/` (or the helper's own folder)
+  skips the exchange branch and is denied by the
+  `kiko-no-direct-default-transaction-description` Semgrep rule.
 - A repository input therefore carries holding IDs, never holding
   display names, for an exchange.
 
@@ -374,24 +648,1305 @@ isn't zero (this repo's dev machine is Kyiv, UTC+2/+3) — build a new
 test with `local(...)` unless it is specifically exercising a winter
 instant the way the existing `Date.UTC` cases do.
 
+`formatDate`/`formatDayMonth` (`src/dates/format.ts`) take an optional
+`options?: { timeZone?: 'UTC' }` param: pass it when the caller's own
+instant is a UTC-midnight value standing for a LOCAL calendar date
+(e.g. `price_points.day` — see `kiko-pricing`'s `dayKeyOf` convention)
+— reading such a value with the default LOCAL `Date` getters can land
+on the previous calendar day in a negative-UTC-offset timezone. Every
+other date formatter in that file stays local-timezone by default;
+only pass this option for a value that is already a normalized UTC
+calendar day, not for an ordinary wall-clock timestamp.
+
 The recap-OFF first-accrual-day convention (what day a deposit starts
 earning when the recap toggle is off) is unresolved — it needs a real
 bank statement to confirm against, not a guess; do not implement or
 assume a specific convention for it without one.
 
+When you introduce a new epoch-ms-from-string parse of an external
+feed's calendar date (e.g. `YYYY-MM-DD`), grep every consumer's own
+get-date convention before picking UTC vs. local for the parse.
+`BondMeta.maturityDate` was first parsed from the NBU register's
+`pgs_date` as UTC midnight, but every consumer reads it through
+device-local getters — silently shifting maturity (and every derived
+coupon date) back a day west of UTC.
+
+Do not pin `process.env.TZ` mid-test to simulate a different
+timezone: in this project's `jest-environment-node`, a `TZ` mutation
+mid-test does not retarget `Date`/`Intl` local getters (confirmed in
+`bond-register.repo.test.ts` and ~8 other pre-existing "TZ-pinned"
+test files — `price-book.test.ts`, `local-day.test.ts`,
+`interest.test.ts`, `format.test.ts`, the category-trend-line/
+net-worth-line component tests, `statistics.screen.test.tsx`,
+`net-worth-series.test.ts`). These tests may not prove what they claim
+about local-day boundaries. Build fixed instants through the local
+`Date` constructor directly instead — never add a new test that pins
+`TZ` to simulate a timezone.
+
 ## Net worth
 
-Net worth is **assets-only** — liabilities and debt are out of scope
-for this sub-project. It is the sum of every non-archived holding's
-balance, each converted to the user's selected base currency (stored
-in `Settings.baseCurrency`). An archived account's or closed holding's
-balance is excluded. The headline total (`guardedNetWorth`) and the
-per-currency breakdown shown beneath it (`guardedBreakdown`) share one
-`canConvert` filter in `src/rates/`, so a currency with no resolvable
-rate is dropped from both — never included in the breakdown after
-being excluded from the total. See kiko-architecture's "Price data"
-section for how a rate is resolved (Monobank → NBU → bundled fiat
-seed); today CRYPTO is the only currency class that can still hit
-this silent-drop path (no offline seed, so an unrated crypto holding
-is excluded until a live CoinGecko price lands) — every fiat currency
-is covered by the bundled seed and effectively never drops.
+**Net worth = Σ asset values − Σ debt outstanding**, in the base
+currency — it is not assets-only. It is the sum of every non-archived holding's value
+(`holdingValue`/`holdingValueBreakdown`, `src/holdings/holding-value/`),
+each converted to the user's selected base currency (stored in
+`Settings.baseCurrency`). A `loan` holding's own value is NEGATIVE —
+minus its outstanding balance (`loanLedgerOutstandingMinorAt`,
+`src/holdings/loan-ledger/`: from its linked payments when any count,
+else the schedule — see "Debts" below) — so **no debt-aware branch exists
+anywhere in the summation path**: `netWorth`/`guardedNetWorth`
+(`src/rates/conversion/`, `src/rates/net-worth-view/`) and
+`buildNetWorthSeries` (`src/statistics/net-worth-series/`) simply add
+up every holding's own (possibly negative) value, exactly as they did
+before loans existed. A shared property counts only the owned part:
+its own value is already the whole value times the ownership share of
+that instant (kiko-pricing "Ownership share"), so a history bucket
+before a share change uses the old share and one on or after it the
+new one, again with no branch in the summation path. A credit-card negative balance already worked
+the same way (a plain negative `balanceMinorUnits`) and still does —
+a loan is just the second holding shape whose value can be negative.
+The headline can now render negative; `MoneyText` already renders a
+negative `Money` with a minus sign through `formatMoney`, so no
+special-casing was needed there either (see `kiko-charts` for the pie
+chart and net-worth line's own rules). An archived account's or
+closed holding's balance is excluded. The headline total
+(`guardedNetWorth`) and the per-currency breakdown shown beneath it
+(`guardedBreakdown`) share one `canConvert` filter in `src/rates/`,
+which is `true` exactly when BOTH the holding's currency and the base
+currency resolve a finite, positive UAH price through the same
+`rateBetween` pivot (`kiko-pricing`'s "`RateTable` is a currency ->
+UAH-price map" paragraph) — never a direct stored cross-pair lookup —
+so a currency with no resolvable rate is dropped from both — never
+included in the breakdown after being excluded from the total. See
+`kiko-pricing`'s "Currency-rate fallback chain" section for how a rate
+is resolved (Monobank → NBU → bundled fiat seed); today CRYPTO is the
+only currency class that can still hit this silent-drop path (no
+offline seed, so an unrated crypto holding is excluded until a live
+CoinGecko price lands) — every fiat currency is covered by the bundled
+seed and effectively never drops.
+
+`buildTypeBreakdown` (`src/statistics/type-breakdown/`, the by-type
+bar) is ASSETS ONLY, the same per-HOLDING rule the account pie follows
+(below): `loan` is excluded outright, and a non-loan holding in debit
+(e.g. a credit card) is dropped BEFORE the per-type sum rather than
+netted into it, so it can never reduce a positive holding of the same
+type. Debt has its own total (see below).
+
+**The account pie (`buildAccountContribution`,
+`src/statistics/account-contribution/`) is ASSETS ONLY:** an account's slice sums only its POSITIVE
+holding values; a negative holding (a `loan`'s own value, or a
+non-loan holding in debit, e.g. a credit card) never reduces it and
+never nets against a positive one in the same account. An account
+with nothing positive to show gets no slice at all, rather than a
+negative one. **The "Debts" total (`buildDebtTotal`, same file) is
+where that debt goes instead**, and — per spec §5.2, "Credit-card
+negative balances count as debt too" — it sums EVERY holding whose
+own value is negative, not loans only: a `loan`'s already-negative
+outstanding, and a non-loan holding in debit, are summed the same way,
+by sign alone, no type check. `buildDebtTotal` is called ONLY on
+Statistics (`statistics.screen.tsx`, rendered under the account pie).
+Home has no separate debts line: its `guardedNetWorth`
+headline and its `guardedBreakdown` per-currency breakdown both stay
+SIGNED (net) sums of every holding, so the breakdown still adds up to
+the headline exactly as it always did — a debt nets into its own
+currency's cell there, unlike Statistics' assets-only pie. Accounts'
+own "Debts" section (`accounts.screen.tsx`) computes its OWN section
+total independently, via `guardedNetWorth` of just the debt-kind
+accounts' holdings (every debt-kind account holds only `loan`
+holdings, so this total is always <= 0); it does not call
+`buildDebtTotal`, which sums across every account kind. A
+property-kind account gets the SAME treatment: its own "Property"
+section, its own `guardedNetWorth`-summed section total over just the
+property-kind accounts' holdings, rendered between the main grid and
+the Debts section. Read `kiko-charts` for the pie/line-specific rules.
+
+### Bond funding recognition (net-worth series only)
+
+`reconcileBondFunding` (`src/statistics/reconcile-bond-funding/`) aligns a
+bond's held-cost recognition, INSIDE `buildNetWorthSeries` only, to the real
+funding money that left another holding — never the real holding's own
+`purchaseDate`/`purchasePriceMinorUnits` (unchanged; coupons, maturity, and
+the redemption ledger still read those). It matches a DEBIT (negative
+amount) in the bond's own currency whose amount is within 5% of the typed
+price (`AMOUNT_TOLERANCE_FRACTION`) AND whose local day is within
+`FUNDING_WINDOW_DAYS` (7) of the typed `purchaseDate`'s local day — both
+axes are needed: the transaction store carries no reliable structured bond
+marker, so amount alone would false-match an unrelated same-week debit, and
+day alone would false-match an unrelated same-price one. Among candidates
+within both bands, the nearest DAY wins, tie-broken by the closest amount;
+none match → falls back to the typed day/price (a legacy, FX-funded, or
+genuinely manual bond — no regression).
+
+Each candidate carries a key (`holdingId:index`), and `buildNetWorthSeries`
+(`bondRecognitionsFor`) shares ONE `claimed: Set<string>` across every bond
+in the run, so two bonds priced the same week never both claim the SAME
+debit — the reducer filters an already-claimed candidate out, and adds the
+winner's key before returning. Because the match is a greedy per-bond
+nearest-day pick, not a global optimum, WHICH bond claims a shared candidate
+is order-dependent — bonds are reconciled in a FIXED order (typed
+`purchaseDate`, then `id`) so the result is deterministic regardless of the
+holdings array's own (user-controlled sort) order. A bond that loses the
+claim falls back to its own typed day/price, same as a genuinely unmatched
+bond.
+
+## Price series and priced holdings
+
+See `kiko-pricing` for `price_points`, `PriceBook`, priced-holding
+valuation (`property_item`/`metal`), the create-time `firstPricePoint`
+and remove-time series cleanup, and `PricePointForm` / "Update value".
+A property's price points and lots are the WHOLE asset; its owned value
+is the whole value times the ownership share of that day (kiko-pricing
+"Ownership share").
+
+## Bonds — ISIN validation and the NBU register cache
+
+`BondMeta` (`src/holdings/holding-metadata/holding-metadata.ts`)
+already carries the full bond shape a Manual-mode form writes:
+`quantity`, `faceValueMinorUnits`, `couponPct` (a plain `number`, not
+a scaled decimal string — it is a percentage, never fed through the
+BigInt decimal helper), `purchaseDate`, `purchasePriceMinorUnits`,
+`maturityDate`, `bondKind` (`'government' | 'corporate'`), and
+`couponFrequency` (`BondCouponFrequency` — `'monthly' | 'quarterly' |
+'semiannually' | 'annually'`). `purchaseDate`/`maturityDate` are raw
+epoch-ms instants (often mid-day, e.g. `Date.now()`), read through
+`startOfLocalDay` wherever a day boundary matters
+(`holding-descriptor/bond/bond.descriptor.ts`), NOT through
+`dayKeyOf`'s "a local calendar date encoded as UTC midnight"
+convention — do not conflate the two.
+
+**`asBondMeta`'s parser contract: reject bad input, default missing
+input.** `bondKind`, `couponFrequency`, `purchasePriceMinorUnits`, and
+`isin` are each optional in a STORED record (a bond saved before that
+field existed never wrote it). A genuinely ABSENT field (`undefined`)
+keeps today's documented default (`bondKind` → `'government'`,
+`couponFrequency` → `'annually'`, `purchasePriceMinorUnits` → the
+nominal `quantity * faceValueMinorUnits`, `isin` → `undefined`) — a
+stored pre-field row must still parse. A PRESENT field that fails its
+own check (an unrecognized `bondKind`/`couponFrequency` string, a
+non-number `purchasePriceMinorUnits` including `NaN`, a non-string
+`isin`) instead rejects the WHOLE record (`asBondMeta` returns `null`),
+the same as any other wrong-type field — silently defaulting corrupt
+data would hide a real bug in whatever wrote it. The one exception is
+`entryMode`, which only picks the mode the edit form opens in: an
+unknown value is dropped and the record still parses (the
+`PropertyMeta.ownershipInput` pattern). Every sibling parser in
+this file (`asTermDepositMeta`, `asPropertyMeta`, `asMetalMeta`,
+`asLoanMeta`) already rejects a present-but-invalid field the same way;
+`asBondMeta` used to be the one exception that defaulted instead.
+
+`src/bonds/isin/` validates an ISIN with no side effects:
+`normalizeIsin` trims/uppercases; `validateIsin` checks the ISO 6166
+shape (`^[A-Z]{2}[A-Z0-9]{9}[0-9]$`) and Luhn check digit, returning
+`{ ok: true, isin }` or `{ ok: false, reason: 'format' | 'checkDigit'
+}` — never throws on an expected validation failure, the standing
+domain convention.
+
+`src/bonds/nbu-register/` is the NBU securities-register client,
+mirroring `nbu-metals.ts`'s pattern (fetch + `guard`-
+based validation + a recorded JSON fixture, no network in tests) on
+the SAME `bank.gov.ua` host — no new pinning (kiko-compliance: this
+host stays keyless and unpinned; see `docs/security/README.md`'s host
+table). `fetchNbuRegister(fetchImpl)` reads `GET
+https://bank.gov.ua/depo_securities?json` and maps each record to
+`BondTerms` (`{ isin, currency, faceValueMinorUnits, couponPct,
+maturityDate, couponFrequency: BondCouponFrequency | null, name }`),
+dropping a record with an unmodeled `val_code` currency or an
+unparseable `pgs_date` rather than throwing. `nominal` ->
+`faceValueMinorUnits` goes straight through `Money.fromMajor` — it is
+an amount, not a scaled decimal-string price/quantity, so no
+`decimalFromJsonNumber` boundary conversion is needed (the same
+parity every other Money amount conversion follows). `pgs_date`
+(`YYYY-MM-DD`) is parsed as a DEVICE-LOCAL midnight instant (`new
+Date(year, month - 1, day)`), NOT through `parseDateTimeSeconds`'s
+"read a wall-clock date as UTC" convention — `BondTerms.maturityDate`
+feeds straight into `BondMeta.maturityDate` above, and every consumer
+of that field reads it through local getters, so a UTC parse would
+silently shift the maturity date (and every coupon date derived from
+it) back a day for a user west of UTC.
+`couponFrequencyFromPayPeriod(days)` maps the register's `pay_period`
+onto `BondCouponFrequency`, tolerating a ±5-day slack around each of
+the four canonical periods (30/91/182/364); a period outside every
+band resolves to `null` — the eventual ISIN-mode form falls back to
+Manual mode with the known fields pre-filled rather than guessing.
+`couponPeriodDays(frequency)` reads the same canonical periods back.
+
+**Register payments and the coupon source (USER DECISION D4, 2026-09-26).**
+`BondTerms.payments?: BondPayment[]` keeps the record's `payments[]`
+(`pay_type` `1` → `'coupon'`, `2` → `'redemption'`, read as a string
+OR a number; `pay_date` a device-local midnight like `maturityDate`;
+`pay_val` the exact decimal string for ONE bond of the register's
+`nominal` — a Eurobond pays fractions of a cent, so never minor
+units). All-or-nothing, like `asLots`: one malformed payment drops the
+whole list (`payments` absent), the same as a cache row written before
+payments were parsed — no schema change, `terms` is JSON. `couponPct`
+is the NEXT UNPAID coupon (a `pay_type` 1 dated after `now`'s local
+day; one paid today counts as paid): `pay_val` x payments per year
+(from `pay_period`: 182/183 → 2, 364/365 → 1, 91/92 → 4) / `nominal`
+x 100, exact through `multiplyToDecimal` (`src/currency/decimal/`;
+`77 * 2 / 1000 * 100` in float is `15.400000000000002`). `auk_proc`
+is only the fallback when no future coupon (or no known frequency)
+exists. A step-up bond (XS2895055981) therefore reads its CURRENT
+step. `fetchNbuRegister(fetchImpl, now)` takes `now` from
+`refreshBondRegisterIfStale`, so the cached coupon is as of the
+refresh day.
+
+**Step-up coupons: the coupon in force per payment date (USER DECISION
+2026-09-27).** No schema change: the holding KEEPS the issuer's schedule
+in its own metadata (`BondMeta.payments`, JSON), so its coupons never
+depend on the ISIN still being in the `bond_register` cache or on when
+the register last refreshed. A SAVED bond's `BondMeta.couponPct` still
+stays as saved (nothing rewrites it); it is only the fallback.
+- **The kept schedule.** `BondMeta.payments?: BondPayment[]` — the
+  register's own `{ date, kind, amount }` list, coupons AND the
+  redemption (the yield reads both): `amount` is the exact decimal per
+  ONE bond of its face value (never per 1 unit of nominal, never minor
+  units), `date` the register's device-local midnight. `BondPayment` is
+  holdings-owned (`holding-metadata.ts`); `nbu-register.ts` imports it.
+  `asBondMeta` parses it through `asBondPayments` — all-or-nothing, and a
+  present-but-invalid list (a stored `null` included) rejects the whole
+  record like every other present field. The key is TRI-STATE: absent = never captured (read the
+  cache); a non-empty list = the schedule; `[]` = the user's own coupon
+  replaced the schedule (read neither, so a matching cache cannot
+  override an edited coupon).
+- **Read order.** `holdingRegisterPayments(meta, currency, terms)`
+  (`src/bonds/nbu-register/holding-register-payments.ts`): the kept
+  schedule → the cache → null (the saved coupon). The cache step is
+  `cachedRegisterPayments(bond, currency, terms)`, the one gate: the
+  cached payments describe a bond only when `terms.isin === bond.isin`
+  AND the currency and face value match the register's, and only if they
+  parse back through `asBondPayments`; null for a Manual bond (no ISIN),
+  another ISIN, a cache without payments, or no cache.
+  `holdingRegisterCoupons(metadata, currency, terms)` keeps the
+  `'coupon'` payments (`[]` otherwise). The yield, the ledger, and the
+  expected profit all read this order.
+- **Written at save** (`bondPaymentsOnSave`,
+  `src/screens/forms/holding-form/bond/use-bond-fields/`): ISIN mode
+  copies the matched register schedule (create or edit). A Manual create
+  with an ISIN copies the matched register's schedule while its coupon %
+  (and frequency, when the register maps one) is still the matched
+  one; a coupon typed over it, or no matched register row, writes `[]`
+  (this includes an ISIN typed while the register cache is still empty,
+  e.g. a first launch offline: a step-up bond then books its typed flat
+  coupon; switching the bond to ISIN mode in Edit copies the register
+  schedule once the cache has it),
+  so the typed coupon is booked (OVERNIGHT ruling 2026-09-27, needs user
+  confirmation). A Manual create without an ISIN keeps none. An edit
+  keeps the saved schedule, or captures the matched register's for a
+  bond saved without one (a refresh can land while the form is open).
+  An edited ISIN, face value or currency drops it (key absent: another
+  bond, so the cache is read). An edited coupon % or frequency on an
+  ISIN bond in Manual mode writes `[]`, so the edited coupon is what the
+  ledger books; the form reaches this only for a bond seeded without a
+  non-empty schedule, since a kept one makes both fields read-only
+  (below). `useBondFields` compares the fields against the row it
+  seeded (`savedBondRef`), but takes the schedule it keeps from the row
+  as stored at the time of the write: the edit saves through
+  `holdingsRepo.updateMetadataFromStored`, which re-reads the metadata
+  inside its own write, because the form's own register refresh can
+  backfill a schedule after the seed and then drop the ISIN from the
+  cache (the seed-once write-back class, kiko-architecture).
+- **Backfill of bonds saved before this** (`backfillBondPayments`,
+  `src/bonds/bond-payments-backfill/`): runs inside the daily register
+  refresh (`refreshBondRegisterIfStale`), after a non-empty fetch and
+  BEFORE `replaceAll`, reading the fresh rows first and then the rows
+  still cached, so an ISIN the fresh fetch dropped is still kept. ONE
+  write for all bonds that re-reads every bond inside it (the
+  kiko-architecture display-screen write rule: never a cached row) and
+  writes only a bond whose `payments` key is still absent and whose
+  ISIN/currency/face still match; every other metadata key is kept as
+  stored (a bond without a price does not gain the nominal one). It
+  reads the cache only for the ISINs still pending. Not a render-time
+  effect: the refresh is the only place the fresh rows exist.
+- **Ledger and expected profit.** `derivedEntries(holding, now, t,
+  scheduledCoupons)` → `HoldingDescriptor.entries(…, scheduledCoupons)`
+  and `bondExpectedProfitMinor(meta, currency, scheduledCoupons)`
+  (`holding-descriptor/bond/`) build every coupon through one
+  `bondCoupons`: the ledger DATES stay `bondCouponDates` (the
+  statement's 15th, unchanged); each date's gross is the scheduled
+  coupon closest to it (`couponPaymentOn(payments, date, frequency)`,
+  `src/holdings/interest/` — the register lists it a few days off the
+  15th; an equal-distance tie keeps the earlier; a closest coupon more
+  than half a period away (months x 365 / 24 days) belongs to another
+  date and gives undefined) x `quantity` through `multiplyToMinorUnits`,
+  else the saved constant coupon. Corporate
+  tax is withheld per coupon. `BondCouponPayment` is
+  `Pick<BondPayment, 'date' | 'amount'>`: the ledger reads only a
+  coupon's date and amount, so a caller can pass the kept `BondPayment`
+  list as is. The holding detail screen passes
+  `holdingRegisterCoupons(…, registerTerms)` from
+  `useBondRegisterTerms`; the spec's `expectedProfit(holding,
+  registerTerms)` does the same.
+- **Shown coupon at read time.** `currentCouponPct(terms, now)`
+  (`nbu-register.ts`) re-applies the next-unpaid rule to the cached
+  payments against TODAY (nominal from `faceValueMinorUnits` via
+  `shiftDecimal`), falling back to the cached `couponPct`. The
+  ISIN-mode form's `useBondIsinMode` returns its matched terms with
+  this coupon (`Date.now()`), so both the shown and the filled coupon
+  move to a step on its date with no refresh (an offline phone).
+  `currentCouponPct` takes a `Pick` of `BondTerms` (currency, face,
+  coupon, frequency, payments), so a stored bond's kept schedule reads
+  through the SAME function: `{ ...meta, currency }`.
+- **Edit form coupon with a kept schedule (USER RULING (4) option (a),
+  2026-09-27).** While an edit keeps a non-empty stored schedule
+  (`keepsSavedSchedule(saved, next)` in `bond-payments-on-save.ts`: the
+  seeded bond has `payments.length > 0`, and the form still holds its
+  ISIN, face value, currency, coupon % and frequency — exactly when a
+  Manual save returns `saved.meta.payments`), `useBondFields` returns
+  `scheduledCouponPct` = `String(currentCouponPct({ ...meta, currency },
+  Date.now()))` — the coupon in force today — and the Manual coupon %
+  field shows it READ-ONLY (`TextField editable={false}`), with the
+  coupon frequency `SelectField disabled` too (the frequency sets the
+  payments per year the coupon is read with, and a changed frequency
+  drops the schedule by the same rule). The typed `couponPct` state
+  keeps the SAVED coupon, so an untouched Save writes the stored
+  `couponPct` unchanged (4.5 for XS2895055981 after its step) with the
+  schedule kept — the shown value is never written back. Without a
+  schedule (`payments` absent, or `[]` = the user's own coupon) or once
+  the ISIN, face value or currency changed (the schedule is then dropped
+  by the identity rule), both fields stay editable and show the typed
+  coupon. ISIN mode never shows an editable coupon: its summary shows the
+  matched register terms' `currentCouponPct`. Pins
+  (`use-bond-fields.test.ts`): XS2895055981 saved at 4.5 with its
+  schedule, today 2027-01-20 → shown 4.5, 2027-08-15 → shown 6, in
+  Manual AND ISIN mode; the untouched Save `toEqual`s the stored
+  metadata.
+- **Pins.** XS2895055981 cached on 2026-09-26: shown 4.5 on 2027-01-20,
+  6 on 2027-08-15 (and on 2027-02-01, that coupon counted paid); 1,000
+  bonds bought 2026-09-26 for 980.00 book coupons 22.50, then 4 x 30.00,
+  expected profit 162.50 (the saved 4.5% alone gives 132.50).
+  UA4000239115 unchanged: 15.18, ledger 75.90 per 1,000 bond with or
+  without the register coupons. A Manual bond and an ISIN bond whose
+  cache has no payments keep the saved coupon. The same XS bond with its
+  schedule kept and its cache row gone (matured/delisted) still books
+  22.50 + 4 x 30.00, expected profit 162.50; a `.kiko` restore keeps the
+  schedule (metadata is restored verbatim). The App Store demo bond
+  (invented ISIN UA4000999015, `e2e/screenshot/seed/`) keeps its
+  schedule for the same reason: the first online refresh drops it. Its
+  ISIN passes `validateIsin` (a seed test pins every dataset ISIN), so
+  a reviewer can save an edit of it in Manual or ISIN mode, and sits
+  far above the live NBU issue range (highest listed UA4000239123 on
+  2026-09-27), so it never matches a real bond.
+- **Limits.** A bond whose ISIN left the cache BEFORE any refresh ran
+  the backfill (never captured) stays on its saved coupon — for a
+  step-up bond, the step saved at create. A `.kiko` restore brings the
+  `bond_register` cache back with the holdings, so a restored bond not
+  yet backfilled reads the restored cache until the next refresh
+  backfills it. The edit form's typed coupon state still seeds the SAVED
+  coupon, and the register's coupon for the stored ISIN never replaces
+  it (`seedStoredIsin`, below); a kept schedule shows its current coupon
+  read-only instead (above). An ISIN-mode edit of a stored ISIN the
+  register no longer lists shows no coupon at all (no summary without a
+  match).
+
+**Yield to maturity (USER DECISION D4).** `src/bonds/yield-to-maturity/`:
+`yieldToMaturity(cashFlows, paidMinorUnits, lotDate)` is the effective
+annual IRR (a decimal fraction, 0.154 = 15.4%), act/365 via
+`daysBetween`, over the flows strictly after the lot's LOCAL day (a
+flow on the lot day went to the seller); null for a lot without a price
+(null/≤0), with nothing left, or whose rate is not finite (`expm1`
+overflows past a log-rate of ~709 — a half-typed price against a coupon
+days away; `Number.isFinite` once, so the form row and the detail both
+read "no answer"). Solved by bisection in ln(1 + rate) —
+monotone over all reals for positive flows, so always bracketed
+(doubling, ≤64 expansions) and deterministic (tolerance 1e-12, ≤200
+iterations); amounts stay integer minor units.
+`portfolioYieldToMaturity(lots)` weights each priced lot's yield by the
+amount paid; an unpriced lot has no weight. `bondYieldToMaturity(metadata,
+currency, registerTerms)` reads the register's payments (scaled by
+`quantity` through `multiplyToMinorUnits`) when the cache has them for
+the bond's ISIN AND the holding's face value and currency match the
+register's; otherwise it GENERATES the schedule: the ledger's own gross
+coupon (face x coupon% / payments per year) on each date stepped back
+from maturity by `couponPeriodDays` in DAYS (not calendar months — an
+NBU bond pays exactly 182 days apart, so a bond entered by hand lands on
+the register's dates), plus the nominal at maturity. A stored bond with
+no `purchasePriceMinorUnits` (legacy, or Manual saved with a blank
+price; `hasStoredBondPurchasePrice` in `holding-metadata.ts` tells it
+from `asBondMeta`'s nominal default) has no yield. Pin: 98 x UA4000239115 at 1,076.72 on
+2026-09-10 → 15.40% from the register AND from the generated schedule
+(month-stepped `bondCouponDates` would give 15.41%). The holding
+detail's bond breakdown shows it as its last row, "Yield to maturity"
+(`holdingDetail.yieldToMaturity`, a `text` row, testID
+`bond-yield-to-maturity`, 2 decimals through the shared
+`yieldToMaturityText` in the same `src/bonds/yield-to-maturity/`
+feature), reading the cached terms through `useBondRegisterTerms`
+(`src/screens/holding-detail/use-bond-register-terms/`, disabled for a
+holding without an ISIN).
+
+The bond FORM shows the same row live (USER FINDING D7 — "coupon
+maturity" meant the yield to maturity, the seller's 15.4%, not the
+coupon): create and edit, ISIN and Manual. `useBondFields` returns
+`yieldToMaturity` = `bondYieldToMaturity(buildBondMetadata(<the form
+now>), currency, registerTerms)` — the SAME function the detail calls,
+never a second implementation — so it follows every change of price,
+quantity, dates and schedule (register payments in ISIN mode, the kept
+or generated schedule in Manual). `buildBondMetadata` stands today in
+for a missing date, so `hasYieldInputs` hides the row BEFORE the call
+while the price, the purchase date or the maturity date is missing; a
+solver with no answer hides it too (no placeholder). In ISIN mode with
+no register match, `hasYieldTerms` hides it: the face, coupon and
+maturity are still a previous match's, not the typed ISIN's — except an
+edit's own stored ISIN (`isStoredIsin`), whose stored terms and schedule
+are the bond's own, so the row shows the holding detail's value. The
+yield is a `useMemo` over its inputs (`buildBondMetadata` is a
+`useCallback` over the bond fields, and `useBondIsinMode` memoizes
+`registerTerms` on the cached row), so a keystroke in Name or Notes
+does not re-solve it. `BondFormBlock`
+renders it right after the purchase date as a one-row `SummaryTable`
+with a caption `textSecondary` value (the ISIN summary's own row
+style), testID `bond-form-yield-to-maturity`. Pin: UA4000239115, 98 x
+"1 076,72", bought 2026-09-10 → 15.40% in the form, from the register
+and from the generated schedule.
+
+`src/bonds/bond-register-repo/` caches the register in the
+`bond_register` table (migration `0037`; `isin` primary key, `terms`
+a JSON `BondTerms` column, `fetchedAt`). `bondRegisterRepo` exposes
+`findByIsinQuery(isin)` and `fetchedAtQuery()` (both hand straight to
+`useLiveQuery`; `fetchedAtQuery` is also awaited directly as a
+one-shot read, the same dual-purpose pattern `ratesRepo` and
+`pricePointsRepo` establish) and `replaceAll(rows)` — a REPLACE, not
+an upsert: every existing row is deleted and the fresh set inserted in
+ONE transaction, so a matured/delisted ISIN disappears from the cache
+the same run it disappears from the live register.
+`refreshBondRegisterIfStale({ now, fetchImpl })` gates the fetch at
+most once per LOCAL calendar day, comparing the cache's single
+write-time `fetchedAt` stamp against `now` through `dayKeyOf`
+(`kiko-pricing`) — the same device-local-day convention `price_points`
+uses, not a UTC day. `src/bonds/bond-register-repo/index.ts` is a
+barrel (`export * from './bond-register.repo'`), added once the
+ISIN-mode form became a real consumer — an unused barrel would have
+been flagged by Knip.
+
+### The ISIN-mode form
+
+`BondMeta.isin?: string` (`holding-metadata.ts`) records the ISIN a
+bond was saved with — from ISIN mode or typed into Manual mode's own
+optional ISIN field, `undefined` for a bond without one. It does NOT
+tell the two modes apart; `BondMeta.entryMode` does (below). Once saved, the holding's stored terms never depend
+on the register again — nothing re-validates a stored ISIN or
+rewrites its coupon against a later register state (the detail
+screen's coupons, expected profit and yield to maturity READ the kept
+schedule, else the cached payments, above; the only register-driven
+write is the one-time schedule backfill, which never touches the
+coupon).
+
+`BondFormBlock`'s bond section has an "ISIN / Manual"
+`BondEntryMode` mode, the design-system `SegmentedControl` (not
+`ChipRow` — one control type per kind of mode choice),
+rendered by `BondIsinSection`
+(`src/screens/forms/holding-form/bond/bond-isin-section/`) — purely
+presentational, the same `MetalSection`/`PropertySection` split.
+
+**`useBondIsinMode`** (`src/screens/forms/holding-form/bond/use-bond-isin-mode/`)
+owns ALL of the ISIN-mode state, the `useLiveQuery` lookup
+(`bondRegisterRepo.findByIsinQuery`, keyed on the normalized ISIN when
+`validateIsin` passes, else an empty string that matches no row), and
+THREE SEPARATE effects — extracted out of `HoldingFormScreen`
+specifically because a single MERGED effect
+sharing one dependency array causes the cross-talk described below; the hook has its
+own cognitive-complexity budget instead of borrowing the screen's, so
+its effects stay genuinely separate with no lint-driven pressure to
+recombine them:
+- refreshes the register cache at most once per local day, fired
+  once per bond-section open (create or edit); the
+  fire-and-forget call is `either(() => refreshBondRegisterIfStale())`
+  as a bare statement (the project's standing fire-and-forget idiom —
+  `either` never rejects, so a network failure can never surface as a
+  form error or an unhandled rejection);
+- defaults `purchaseDate` to LOCAL MIDNIGHT (`startOfLocalDay`, not a
+  raw `Date.now()`) the first time ISIN mode is entered — a raw
+  `Date.now()` default would leave a LATER explicit pick composed with
+  that moment's clock time instead of a clean day, because
+  `DateField.handleDayPress` carries an existing value's own
+  time-of-day onto a newly picked day (so a paired TimeField pick is
+  never clobbered);
+- applies a found ISIN's terms once PER MATCH while in ISIN mode,
+  tracked by a REF (`lastAppliedIsinRef`, not the effect's own
+  dependency array) rather than "since `bondMode` is still isin" — the
+  register lookup itself is NOT gated on `bondMode` (a valid ISIN
+  typed in Manual mode resolves just as readily), so a match resolved
+  while the user is in Manual mode still applies the first time they
+  later switch to ISIN — keying purely on
+  `registerTerms?.isin` misses exactly this case, because the effect
+  never runs again once `bondMode` stops changing. A merged effect
+  applied on every unrelated change would silently overwrite a typed
+  name or a changed currency, and would re-fire on every re-tap of
+  "ISIN", putting the control into a loop back to Manual for an
+  unmapped-frequency match — this is why the three effects must stay
+  separate.
+
+ISIN mode shows quantity (required) and purchasePrice always. The price
+is REQUIRED in ISIN mode (USER DECISION D4 — the yield to maturity needs
+the price actually paid): `bondFieldErrors`' `purchasePriceError`
+(`forms.holding.purchasePriceRequiredError`, gated by
+`purchasePriceRequired: bondMode === 'isin'`), its own scroll target
+after quantity, and the placeholder `purchasePriceIsinPlaceholder`;
+Manual mode keeps it optional. A blank price is NOT stored (the key is
+left out, never written as the nominal): `asBondMeta` alone supplies the
+nominal default for the purchase entry and expected profit, and the
+yield shows none. Edit seeds a blank price field when the key is absent,
+so an unchanged re-save stays unpriced.
+
+The price is ENTERED PER BOND and STORED AS THE BATCH TOTAL (USER
+FINDING D6, no migration): the field (`forms.holding.purchasePrice`,
+"Purchase price per bond") takes the price of ONE bond, while
+`purchasePriceMinorUnits` keeps its meaning — the total paid — for every
+consumer (net worth, the purchase ledger entry, expected profit, yield
+to maturity, funding reconcile, export/restore). `bond-purchase-price.ts`
+(`src/screens/forms/holding-form/bond/use-bond-fields/`) owns both
+conversions: `bondPurchaseTotal` stores quantity x price per bond
+through `multiplyToMinorUnits` (exact BigInt product; the total is taken
+from the quantity at Save, so a quantity typed after the price still
+counts). It reads both fields through `parseAmount`, the SAME parser the
+validation uses (`bond-reasons.ts`), then `decimalFromJsonNumber` (a
+typed amount has far fewer than 15 significant digits, so the double
+converts back exactly): a dangling separator ("1 076,") is the whole
+amount, as in every other amount field, never a price the validation
+passes and Save silently drops (98 x "1 076," → 10_544_800; an edit to
+"1 100," keeps a price). `normalizeDecimal` rejected it and deleted the
+stored price on an edit (review I1). `pricePerBondText` seeds the edit
+field with `scaleMinorUnits(total, 1, quantity)` in one exact BigInt
+step, rounded half away from zero to the minor unit; a quantity that is
+not a whole, positive number of bonds seeds a blank price (the BigInt
+division cannot take it). A bond is a whole unit, so the quantity field
+rejects a fraction (`bond-reasons.ts`: `quantityWholeError`, "Enter a
+whole number of bonds."; blank/zero keep `quantityError`) — the
+number-pad has no separator, but a paste or a restored `.kiko` can bring
+one. An edit of a restored non-whole quantity shows that error and
+blocks Save; the stored metadata is not touched until the user types a
+whole quantity. Pins: '2.5' blocks Save; a stored 3-bond total, changed
+to 2.5 and back to 3, re-saves unchanged. While both the price and the
+quantity text still equal what the edit seeded, Save writes the stored
+total unchanged — 10 000.00 over 3 bonds seeds 3 333.33, which would
+otherwise re-save as 9 999.99. Pins: 98 x "1 076,72" → 10_551_856;
+that total seeds "1 076.72" (every seeded amount uses a dot). A bond the
+user saved by typing one bond's price into the old "total paid" field
+is stored wrong and code cannot tell; its edit shows an implausibly
+small price per bond, fixed by hand. Metal lots and property keep a
+total cost field.
+
+ISIN mode hides face
+value, coupon, maturity, kind, and frequency — a found ISIN fills all
+of them: `bondKind` is always `'government'` (the register is
+Minfin-only), `couponFrequency` only when the register's `pay_period`
+maps onto a known band; an unmapped period instead switches the form to Manual ONCE, the first time
+that match is applied, leaving every OTHER known field pre-filled,
+rather than guessing a frequency. Re-tapping "ISIN" afterward for that
+SAME match does stay in ISIN mode — but showing the register's
+summary there with no visible frequency would silently let the form
+carry the shared `couponFrequency` state's own untouched default into
+Save, which is exactly the guess this rule forbids. So ISIN mode instead
+shows its OWN coupon-frequency `SelectField` (`selected: null`) with NO
+default whenever the
+matched terms have `couponFrequency === null`
+(`needsCouponFrequencyPick`), and Save is blocked until the user picks
+one — never a frequency the user did not
+pick or the register did not give. In
+EDIT mode, a found ISIN whose currency differs from the (locked)
+holding currency is never applied at all — `isinReasonKey` returns
+`'forms.holding.isinCurrencyMismatchError'` instead, blocking Save
+(the currency field is locked
+`disabled={isEdit}`, so a silent apply used to store one currency's
+terms under a holding balance denominated in another). Outside edit
+mode a found ISIN's `currency` DOES overwrite the form's own state on
+every new match — editable afterward, but re-applied whenever the ISIN
+changes to a new found bond.
+
+The register name fills the Name field only while the user has not
+typed one (USER FINDING D5): `useBondIsinMode` takes the current
+`name`; a match sets it only when it is blank or still equals the name
+the hook itself filled last (`filledNameRef`), so ISIN B replaces ISIN
+A's automatic name but never a typed one, in either mode, in create or
+edit (an edit seeds the saved name, which the hook never filled).
+
+An EDIT seeds its stored ISIN through the hook's `seedStoredIsin`: the
+stored ISIN counts as already applied (`lastAppliedIsinRef`), so a
+register resolve or a tap on ISIN never overwrites the saved name,
+coupon, face value or frequency — without it, a step-up bond's register
+coupon replaced the saved one, and a later Manual save read that as a
+typed coupon and stored `payments: []`. The stored `couponFrequency`
+also counts as the pick (`pickedCouponFrequency`), so an ISIN-mode edit
+of an unmapped-frequency bond stays saveable. The pick clears only when
+a NEW match applies (inside the apply effect), not on every change of
+the matched ISIN. So stored values win over the register for the stored
+ISIN: a Manual bond with a typed ISIN and typed terms (say maturity
+2027-09-01 where the register says 2027-09-15), switched to ISIN mode
+on edit, keeps its typed terms on Save and saves `entryMode: 'isin'` —
+while the ISIN summary shows the register's maturity and coupon, so the
+summary can disagree with what is booked (review M2, documented limit).
+
+A CREATE defaults to `'isin'`. EDIT opens in the mode the bond was
+saved from (USER FINDING D8): `BondMeta.entryMode?: 'isin' | 'manual'`
+(`BondEntryMode`, `holding-metadata.ts` — the `PropertyMeta.ownershipInput`
+pattern: optional, an unknown value is dropped by `asBondMeta`, the
+record still parses; a `.kiko` restore copies it with the metadata).
+`buildBondMetadata` writes the mode the bond is saved from on every
+create and edit save — the unmapped-frequency auto-switch saves
+`'manual'`. `useBondFields`'s own `seed`
+(`src/screens/forms/holding-form/bond/use-bond-fields/`) calls the
+hook's `setBondMode` with it; the stored ISIN is shown, still editable,
+in either mode. A bond without `entryMode` (saved before it existed)
+opens Manual — USER RULING: "Ignore old bonds, I'll just remake them";
+there is no legacy detection code (no mode guess, no per-bond-price
+check for a price typed into the old total field).
+
+An ISIN-mode EDIT of its own stored ISIN that the register no longer
+lists (matured/delisted, or offline with an empty cache) SAVES — USER
+RULING: `useBondIsinMode` keeps the seeded `storedIsin`, and
+`bondIsinReasonKey` returns no reason while nothing matched and
+`isStoredIsin` holds: the ISIN field still holds the stored ISIN AND
+the form still holds the stored face value, coupon %, coupon frequency,
+maturity date and bond kind (`holdsStoredTerms` in `useBondFields`,
+compared as values against the seeded `savedBondRef`). USER RULING:
+nothing stored is overwritten — a change to any of those five (for
+example typed in Manual, then back to ISIN; the kind is a Manual-only
+chip, so an ISIN-mode save would store a kind the reopened bond no
+longer shows) blocks the unlisted ISIN in ISIN mode again
+with `isinNotInRegister`, and Switch to manual saves it honestly as
+Manual; the yield row hides with it. `BondIsinSection` still shows the "not in the
+register" / "not loaded" note with its Switch-to-manual button (the
+note reads `foundTerms`, not the reason). Save writes the stored terms
+unchanged (name, coupon, face, frequency, maturity, currency) with
+`entryMode: 'isin'`, and `bondPaymentsOnSave` keeps the stored schedule
+(no register payments to take, identity unchanged → `saved.meta.payments`).
+The form's yield row reads that stored schedule too, the same value as
+the holding detail. Once another ISIN's match fills the form, the
+exemption ends (`storedIsin` clears in the apply effect): retyping the
+stored ISIN is blocked again, since the form no longer holds its stored
+terms. A CREATE with an unlisted ISIN, or an edit's DIFFERENT unlisted
+ISIN, is still blocked until "Switch to manual".
+
+Validation (`isinReasonKey`, returned by the hook, backed by a
+module-level pure `bondIsinReasonKey`): required and blocking in ISIN
+mode; optional but still check-digit-validated when non-empty in
+Manual mode; `isinNotInRegister` once shape/check-digit both pass but
+the cache has no match (a genuine not-found and an
+offline-with-no-cache open the same way, since both leave the lookup's
+result `null`; an edit's own stored ISIN is exempt, above); `isinCurrencyMismatchError` in edit mode per the currency-lock rule above.
+A maturity-before-purchase reason (`bondReasonKey`, unrelated to the
+ISIN reason above) still applies unchanged in ISIN mode — a
+matured-still-registered bond (the live register still counts it)
+can pass every ISIN check yet still fail this — but ISIN mode never
+mounts the maturity `DateField`, so `BondFormBlock` shows that reason
+on the purchase date `DateField` instead, and `useBondFields.scrollTargets`
+scrolls there, the one date the user actually controls there.
+
+The five Manual-only fields (face value, coupon %, maturity date, bond
+kind, coupon frequency) are their own component,
+`ManualBondFields` (`src/screens/forms/holding-form/bond/manual-bond-fields/`):
+it takes `bondMode` as a prop and returns `null` outside Manual mode,
+rather than the caller gating `{bondMode === 'manual' && (...)}`
+around its JSX — see `kiko-code-style`'s `noExcessiveCognitiveComplexity`
+entry for why a conditional NESTED inside the bond block's own
+`{type === 'bond' && (...)}` gate needed a real extraction, not a
+`match()` trick.
+
+## Debts — the `debt` kind, `loan` type, and schedule math
+
+`accounts.kind` gains `debt` (en "Debt", uk "Борг") and
+`holdings.type` gains `loan`, TS-only enum widenings (no migration,
+same as `property`/`metals`). `loan` is `isLedgerlessHoldingType`
+(`src/holdings/holding-descriptor/holding-descriptors.ts`) — like `property_item`/`metal`, a loan
+holding writes NO `Transaction` ledger rows of its own; every payment
+lives on the LINKED bank holding instead (the `loanHoldingId`
+column). `debt` maps to `loan` alone in `holdingTypesForAccountKind`,
+and `loan` is excluded from every Exchange source/destination
+predicate in `exchange-destination.ts` (a loan is never an Exchange
+leg). Entity glyph/color: `minus.circle.fill` / `entityColorsDark.red`,
+shared between the `debt` kind and its sole `loan` type — the same
+kind-and-type icon/color reuse `property`/`property_item` and
+`metals`/`metal` already follow.
+
+`LoanMeta` (`src/holdings/holding-metadata/holding-metadata.ts`):
+`kind` (`'mortgage' | 'car_loan' | 'consumer_loan' | 'personal'` —
+`personal` is money owed to a person, not a bank), `principalMinorUnits`,
+`startDate`, `schedule` (`'annuity' | 'differentiated' | 'none'`), and
+`annualRatePct?`/`termMonths?` — both OPTIONAL, since a `none`
+(informal) loan carries no known rate/term; the create form is
+expected to require them for `annuity`/`differentiated`, not
+`asLoanMeta` itself, which accepts either shape. Three more OPTIONAL
+fields — `paymentHoldingId?`, `lenderName?`, `lenderIban?` — are the
+automatic loan-payment matcher's own inputs (below); `undefined` for
+every loan saved before they existed, same convention. A loan the user
+GAVE to someone (not owed BY them) is not a `loan` holding at all — it
+stays the existing `property` category `loan_given`, which is
+an ASSET, not a debt.
+
+`src/holdings/loan-schedule/` is the amortization math, mirroring
+`src/holdings/interest/`'s pattern (local-midnight `addMonths` due
+dates, integer-minor-unit rounding, the last period absorbing drift)
+rather than the BigInt decimal-string helpers — an interest RATE is a
+plain percentage `number`, the same convention `TermDepositMeta.annualRatePct`/
+`BondMeta.couponPct` already use, never the price/quantity/purity
+decimal-string rule.
+
+- `loanInstallments(meta)`: the full monthly amortization table for
+  `annuity`/`differentiated` (empty for `none` — an informal debt has
+  no schedule at all). `annuity` computes one constant payment per
+  period via the standard formula and rounds it ONCE; every period but
+  the last derives its principal as `roundedPayment - interest`.
+  `differentiated` instead holds a constant PRINCIPAL per period
+  (`round(principal / termMonths)`). Either way the LAST installment's
+  principal is simply whatever balance remains, so the schedule always
+  reduces to EXACTLY 0, never a stray rounding kopeck.
+- `loanOutstandingMinorAt(meta, holdingId, book, instant)`: `none` reads the manual
+  `holding:<id>` price-point series directly (the same mechanism
+  Property's "Update value" uses), clamped to never go below 0.
+  `annuity`/`differentiated` are computed AT READ TIME from the
+  schedule: the LATEST manual correction point on the loan's own
+  `holding:<id>` instrument (if any, at or before `instant`'s local
+  day) anchors a fresh baseline value; only the scheduled PRINCIPAL
+  due STRICTLY AFTER that correction's day (and at or before `instant`)
+  is subtracted from it. With no correction ever recorded, the anchor
+  is simply the loan's own principal at `startDate`. Either path
+  clamps to 0 — an overpaid/over-corrected loan reads as paid off,
+  never negative. The anchor itself is `loanAnchorAt(meta, holdingId,
+  book, instant)` — `LoanAnchor`, `{ dayKey, valueMinorUnits,
+  fromCorrection }` — shared with the loan ledger below, so both anchor
+  on the exact same correction.
+- `loanInterestPerPaymentMinor(meta, payments, plan?)` → one interest
+  amount per payment, in the given order ("interest-only spending" — the
+  derived-entry wiring itself is the "Spending-exclusion pipeline" section
+  above): `none` always counts 0 interest
+  (an informal debt has no schedule to derive interest from).
+  Otherwise each payment maps to the installment whose `dueDate` is
+  NEAREST to the payment's own local day (not necessarily the next
+  unpaid one), and each installment's scheduled interest is counted
+  ONCE across every payment mapped to it: earliest payment first, each
+  counts what is left of that interest, capped at its own `|amount|`;
+  the rest is principal. So an installment paid in two halves (9 and 10
+  Feb) counts its interest on the first half only, and a partial
+  payment never counts more interest than it actually paid. Always pass
+  ALL of one loan's counted payments together — interest per payment
+  one at a time counted a split installment's interest twice. A payment MORE THAN ONE PERIOD outside the
+  schedule (before `addMonths(startDate, 0)`, after
+  `addMonths(startDate, installments.length + 1)`) counts 0 instead of
+  still mapping to the nearest boundary installment — both bounds are
+  inclusive, only a payment strictly beyond one counts 0.
+- `loanPlanOf(meta)` → `LoanPlan` (`{ installments, dueDayKeys }`): the
+  table plus each row's day key, built ONCE per loan. `loanOutstandingMinorAt`
+  and `loanInterestPerPaymentMinor` take it as an optional last argument
+  (default: build it); every caller that repeats a read for the same loan
+  (each linked payment, each net-worth bucket, each statistics
+  transaction) builds it once and passes it. Rebuilding it per payment per
+  bucket froze Statistics (a 30-year loan with 60 linked payments over 260
+  weekly buckets took ~5-8 s; now ~16 ms — pinned by a budget test in
+  `net-worth-series.test.ts`).
+
+**The loan ledger — linked payments drive the outstanding everywhere
+(user-approved).** `src/holdings/loan-ledger/` reads the loan's linked
+payments from the `PriceBook` (`book.loanPayments`, kiko-pricing — one
+live read of every linked payment across all loans, never a query per
+holding). A payment COUNTS for an instant when it is a debit, in the
+loan's own currency (the rule `loanPaymentExcludedTransactionIds`
+applies), and its LOCAL day is on or before the instant's local day —
+the local-day rule a ledger holding's running balance follows, so a
+net-worth bucket sees the payer card's debit and the loan's drop
+together.
+
+- `loanLedgerOutstandingMinorAt(meta, loan, book, instant)` — the ONE
+  outstanding every site reads (the descriptor below: card, detail
+  Value, Home/Accounts totals, statistics, every net-worth bucket; the
+  detail's upcoming-payments guard; the form's schedule-to-`none`
+  edit). No counted payment: exactly `loanOutstandingMinorAt` (pinned —
+  a loan with no linked payment values as it always did). Otherwise:
+  the anchor minus the principal part (`|amount|` minus its
+  `loanInterestPerPaymentMinor` share) of each counted payment dated strictly
+  after the anchor's day, clamped at 0; 0 before the start day. The
+  anchor (`ledgerAnchorAt`) is the latest correction on or before the
+  instant (`loanAnchorAt`); with none, an `annuity`/`differentiated`
+  loan anchors on the SCHEDULE outstanding (`loanOutstandingMinorAt`)
+  at the end of the local day before its FIRST linked payment, because
+  auto-links only reach back as far as the bank sync window and a
+  loan's earlier payments are often never linked. So the history never
+  steps up at the first link: it follows the schedule up to that day,
+  then drops by each linked payment's principal part. A `none` loan
+  (no schedule), or a first link on or before the start day, keeps the
+  principal at the start day. A payment on or before a correction's day
+  is already inside that correction. The ledger (the `LoanPlan` plus
+  every paying-down payment with its day key and interest part) is built
+  once per `PriceBook` and cached in a `WeakMap` keyed by the book, then
+  by loan id + currency + the schedule terms (the loan form reads one
+  book with the old AND the new terms, so the terms must be in the key).
+- `loanLedgerSummary(meta, loan, book, now)` — the detail's breakdown:
+  `principalMinorUnits`, `paidSoFarMinorUnits` (Σ `|amount|`),
+  `interestPaidMinorUnits` (Σ `loanInterestPerPaymentMinor`; 0 for
+  `none`), `principalRepaidMinorUnits` (paid − interest), and
+  `outstandingMinorUnits` (the function above at `now`).
+
+Known limit: with linked payments and no correction, the outstanding
+before the first link is the schedule's, so a loan paid off faster or
+slower than its schedule before the first link reads off by that
+difference until the user records a correction ("Update
+outstanding").
+
+`holding-descriptor/loan/loan.descriptor.ts`'s valuation branch (`gross = net = -outstanding`,
+`principalOrCost = -principal`, interest/tax always 0 — a loan never
+accrues either AT VALUATION time) backs the net-worth assets-minus-debt
+rule. The `loanHoldingId` link column + its repo
+functions are covered in their own subsection below. Interest-only
+spending is wired through the "Spending-exclusion pipeline" section's
+loan-payments module, above. The transaction-form field (`LoanPaymentField`)
+and the automatic payment-linking matcher are BOTH wired — see "The
+automatic loan-payment matcher" subsection below for the matcher's own
+rules and every call site.
+
+### Loan form + detail
+
+`src/screens/forms/holding-form/loan/loan-section/` (kind `SelectField`,
+principal, start date, schedule SegmentedControl, rate/term AND the
+matcher's own optional "Paid from"/lender-name/lender-IBAN fields all
+hidden for `'none'`) and its own `use-loan-fields/` hook — a full `HoldingTypeForm`
+(`src/screens/forms/holding-form/holding-type-form/`): state,
+per-schedule `loanReasonKey` validation, edit-mode `seed`,
+`createPayload`, and `saveEdit` — mirror `useBondIsinMode`'s
+extraction, the same way every other holding type's own `use<Type>Fields`
+hook does. Unlike `PropertySection`/`MetalSection`'s
+create-only-lot fields, EVERY loan field stays editable in both create and
+edit mode (mirrors term_deposit/bond) — there is no fixed-at-creation
+"first lot" a loan's principal/dates/schedule freeze against. Its own leaf
+component (`LoanFormBlock`,
+`src/screens/forms/holding-form/loan/loan-form-block/`) renders from one
+arm of `HoldingFormScreen`'s single `match(type)…exhaustive()` — the same
+dispatch every holding type's own form block renders from;
+collapsing what used to be five independent `{type === '…' && (...)}`
+JSX gates into one match is itself what keeps the screen under its
+cognitive-complexity budget (kiko-code-style). A `'none'`-schedule CREATE
+additionally writes a first `manual` price point on the new holding's own
+`holding:<id>` series, equal to the principal at the start date
+(`buildLoanCreatePayload`,
+`src/screens/forms/holding-form/loan/use-loan-fields/`) — mirroring
+`PropertySection`'s own first-point convention, so
+`loanOutstandingMinorAt`'s manual-series read never comes up empty before
+the user records a real correction. An `'annuity'`/`'differentiated'`
+CREATE writes none — its outstanding is computed at read time from
+principal + schedule.
+
+`holding-detail.screen.tsx`: `loan`'s `holdingDetailSpecs` entry
+(`holding-detail-spec/`) gives `'updateValue'` too — it reuses
+`PricePointForm` to write a correction onto the SAME `holding:<id>`
+manual series every schedule reads a correction from (not just
+`'none'`), with the footer button's own label swapped to "Update
+outstanding" (`holdingDetail.updateOutstanding`) for that type, and
+`PricePointFormScreen` itself overriding the stack's static "Update
+Value" title to "Update Outstanding" once the holding loads as a loan.
+Every loan (any schedule, `none` included) shows the ledger breakdown
+table under the Value header — its spec entry's `breakdown` is
+`{ kind: 'loan' }`, rendered by the screen's `loanBreakdownRows` through
+the shared `SummaryTable`: Principal / Paid so far / Interest paid /
+Principal repaid / Outstanding (`loanLedgerSummary`, above; testIDs
+`loan-ledger-principal`, `-paid-so-far`, `-interest-paid`,
+`-principal-repaid`, `-outstanding`). Its Outstanding row is the same
+number as the Value header, the card, and net worth.
+An `'annuity'`/`'differentiated'` loan additionally lists EVERY remaining
+scheduled payment under an "Upcoming Payments" heading (the loan entry's
+own `upcomingInstallments` — every `loanInstallments` row due on or after
+today's local day, in schedule order; its first row is the next
+installment). `UpcomingPayments`
+(`src/screens/holding-detail/upcoming-payments/`, memoized) renders them as
+ONE shared `SummaryTable`, one row per installment: the due date as the
+label, the payment as the value, and a `holdingDetail.paymentSplit`
+caption ("Principal X · interest Y") beneath it; row testID
+`upcoming-payment-<index>`. A 30-year mortgage lists all 360 rows (the
+screen memoizes the list on the local day, so it is not rebuilt on every
+render). A `'none'` schedule and every other holding type render nothing
+there. The list is also empty once `loanLedgerOutstandingMinorAt` reads 0
+(`upcomingInstallments`' own `<= 0` guard) — a loan fully repaid by its
+linked payments, or overpaid/over-corrected, lists nothing even while
+`loanInstallments` still has future rows on the loan's ORIGINAL schedule.
+
+A loan correction (the "Update outstanding" `PricePointForm` write
+above) accepts **0**, unlike every other holding type's "Update
+value" (`> 0`): a 0 point means repaid. `loanOutstandingMinorAt`
+already clamps every read at 0, and a 0 write never deletes the
+holding's earlier points — net worth reads 0 from that day forward
+while an earlier day still reads its own, earlier correction.
+
+**Loan EDIT reconciliation** — `holdingsRepo.updateLoan` writes the
+metadata patch and a `LoanPricePointOp` in ONE transaction
+(`buildLoanPricePointOp`,
+`src/screens/forms/holding-form/loan/use-loan-fields/`, called from that
+hook's own `saveEdit`), reconciling the loan's manual `holding:<id>`
+series against what the metadata edit just changed:
+
+- (a) a schedule change INTO `'none'` (from `'annuity'`/
+  `'differentiated'`) preserves the OLD schedule's current outstanding
+  as a manual point, so the debt never silently reads as 0 the instant
+  the schedule is cleared — the outstanding every screen showed before
+  the edit (`loanLedgerOutstandingMinorAt`: the linked payments' when
+  any count, else the schedule's), so the value does not jump. Normally that point is dated TODAY. But
+  `loanOutstandingMinorAt` reads 0 for any instant before the loan's
+  own `startDate` (a future-start loan) — dating it today would then
+  write a PERMANENT 0 that outlives the start date once it arrives.
+  When today is still before the start day, the op instead writes the
+  new metadata's own PRINCIPAL at the start day, mirroring the
+  create-mode `'none'` first point.
+- (b) a `'none'` loan's principal/start-date edit MOVES its start-day
+  point — deletes the point at the OLD start day and writes the new
+  principal at the NEW start day. Any later correction point stays
+  untouched (an edge case: if the new start day lands on or after an
+  existing correction's day, that correction is overwritten or
+  shadowed — rare, and the ruling is written this way deliberately).
+- (c) a `'none'` loan moving OUT to a schedule DELETES the point at its
+  OLD start day (`{ kind: 'delete', day }`) — the first point its create
+  wrote, holding the OLD principal. Left in place, `loanAnchorAt` reads
+  it as a correction and the schedule counts down from the old principal
+  (100,000 informal -> annuity 120,000 read 63,138.55 instead of
+  83,138.55). Moving it to the new start day is NOT equivalent: a
+  correction anchor (`fromCorrection: true`) skips the ledger's
+  "schedule before the first link" anchor. Any later correction stays —
+  it is still valid for a scheduled loan.
+- (d) every other transition leaves the manual series untouched.
+
+A fresh holding (`oldMeta === null`) has nothing to reconcile.
+
+`termMonths` is capped at `MAX_TERM_MONTHS` (`src/holdings/term-limits/`,
+600 months / 50 years — comfortably above any real mortgage/car-loan
+term): an uncapped value would make `loanInstallments` build an
+unbounded row count for a degenerate but technically-valid positive
+integer. A term deposit's own `termMonths` is capped at the SAME
+shared constant, for the identical reason on its compounding math;
+there is no separate deposit-specific cap.
+
+Both terms are ENTERED in months or years and STORED as `termMonths`:
+the deposit and loan forms share one `TermField`
+(`src/screens/forms/term-field/`) — a number field whose suffix follows
+a Months/Years `ChipRow` (a unit choice that leaves the form the same,
+like the metal Unit chips). `src/screens/forms/term-reasons/` is the ONE term
+check both twins call: `termReasonKey(value, unit)` (a whole number
+above 0, at most `termMaxFor(unit)` — 600 months or 50 years, each
+with its own error key naming the unit), `termMonthsFromInput` (years
+x 12) for the payload, and `termInputFromMonths` for the edit seed (a
+whole number of years seeds Years, anything else Months). Switching the
+unit keeps the typed number and revalidates it in the new unit.
+
+### Loan-payment link column + repo
+
+Migration 0038 adds three columns to `transactions`: `loanHoldingId`
+(text, nullable — the linked loan holding), `loanLinkSource` (text enum
+`'auto' | 'manual'`, nullable), and `loanLinkRejected` (integer boolean,
+NOT NULL default `false`). The two link columns are kept in lockstep — never a
+`loanLinkSource` with no `loanHoldingId` or vice versa.
+
+**Two separate write paths, not one**: only a
+MANUAL action may ever move `loanLinkRejected`.
+
+- `transactionsRepo.setLoanPayment({ transactionId, loanHoldingId })` is the
+  MANUAL path (the user's own picker). A manual LINK
+  (`loanHoldingId` non-null) clears `loanLinkRejected`, un-rejecting a row
+  the user had previously undone — a fresh manual pick always overrides an
+  earlier Undo. A manual **"None"** (`loanHoldingId: null`) **SETS**
+  `loanLinkRejected` — the user's explicit "not a loan payment"
+  has to stick, or the very next sync would just auto-link the row again.
+  A manual None clearing the flag instead would make "None" not stick.
+  `loanHoldingId: null` also nulls `loanLinkSource`, keeping the two
+  columns in lockstep. No `source`-column gate — exactly like `setCategory`,
+  the link is user state, not a mutation of bank-owned ledger data, so it
+  is allowed on a synced (`monobank`/`binance`/`import`) row too.
+- `transactionsRepo.setAutoLoanLinks(links: { transactionId, loanHoldingId }[])`
+  is the matcher's path: writes every link in ONE `db.transaction()` call, NEVER touches
+  `loanLinkRejected`, and its own WHERE clause skips any row that is
+  already linked (`loanHoldingId` non-null) or already rejected — so a
+  stale candidate read, or a race with the user's own Undo/manual link,
+  can never silently overwrite either.
+- `transactionsRepo.undoAutoLoanLink(transactionId)` is the Undo
+  affordance: clears both link columns and sets `loanLinkRejected`, scoped
+  to `loanLinkSource = 'auto'` — calling it on a manual link is a no-op,
+  not a rejection.
+
+`transactionsRepo.addManyDedup`'s upsert (the shared `(source, external_id)`
+conflict path both the Monobank sync and statement import share) never
+refreshes any of the three loan-link columns on a re-sync — its
+`onConflictDoUpdate` `set` names only the bank-owned columns, the same
+exclusion `category`/`comment` already rely on (see that function's own
+existing doc comment). A settled-amount re-fetch of an already-linked payment
+therefore keeps its link untouched. Its underlying insert
+(`insertDedupRowsDatabaseTransaction`) is chunked through `chunkForTable` (below) — a whole
+statement-import file or Monobank sync above a few thousand rows failed
+`SQLITE_MAX_VARIABLE_NUMBER` before this.
+
+`holdingsRepo.clearLoanLinksForHoldingsDatabaseTransaction(databaseTransaction, holdingIds)` (exported, not
+private to `remove`) clears `loanHoldingId`/`loanLinkSource` on every OTHER
+holding's transaction that still points at one of `holdingIds`, in the SAME
+`write()` transaction as the delete itself (`UPDATE transactions SET
+loan_holding_id = NULL, loan_link_source = NULL WHERE loan_holding_id IN
+(...)`) — a no-op for every non-loan holding, since nothing ever points a
+`loanHoldingId` at one. Both delete paths call it: `holdingsRepo.remove`
+(one holding) AND `accountsRepo.remove` (every holding a deleted DEBT
+account owned, since a loan lives on a manual `debt` account) — a loan
+deleted either way never leaves a dangling link behind. A dangling link is
+never left to rot: once cleared, the payment counts as normal spending
+again, exactly like an unlinked transaction always has. `loanLinkRejected`
+is deliberately left untouched by this cascade — it is not part of "the
+link".
+
+`restoreDataSnapshot` inserts every `transactions` row verbatim with no
+per-row column handling for these three columns (unlike
+`holdings.balanceSetAt`'s dedicated legacy backfill), so a `.kiko` exported
+before this migration — whose transaction rows carry no
+`loanHoldingId`/`loanLinkSource`/`loanLinkRejected` keys at all — restores
+unchanged and SQLite defaults the missing columns itself (null / null /
+false), the same way `counterIban`/`changeGroupId` already do for an older
+export. Chunking every insert by a fixed row count breaks once a
+table's own column count grows: three new columns took `transactions`
+from 15 to 18 columns, so
+the OLD fixed 2000-rows-per-chunk constant bound 2000 x 18 = 36000
+parameters — over SQLite's 32766-bound-parameter ceiling — and a `.kiko`
+backup with >= 1821 transactions failed to restore. `chunkForTable`
+(`src/db/chunk-for-table.ts`, shared with `insertDedupRowsDatabaseTransaction` above) derives
+the row count per chunk from the TARGET table's own column count
+(`getTableColumns`, floor-divided into a safety margin under the ceiling)
+instead of a fixed row constant, so a future column added to any of these
+tables can never silently repeat this — the widest table just gets a
+smaller chunk automatically.
+
+### The automatic loan-payment matcher
+
+`matchLoanPayments` (`src/loans/payment-matcher/`) is a pure, idempotent
+function: `{ transactions, loans, now } -> { transactionId, loanHoldingId,
+dueDate }[]`. `loans` takes plain holding rows (`Pick<HoldingRow, 'id' |
+'currency' | 'metadata'>`) and parses `LoanMeta` internally, mirroring
+`loan-payments.ts`'s own `LoanHolding` convention. A link is proposed only
+when ALL of these hold, checked over the FULL candidate matrix (never a
+sequential filter, so an ambiguity check never depends on which one runs
+first):
+
+1. **Amount**: within the LARGER of ±1% or ±1.00 (the loan's own currency)
+   of the scheduled installment's own payment.
+2. **Date**: the transaction's local day is 3 days before to 7 days after
+   the installment's own `dueDate` — both bounds inclusive.
+3. **A third signal**, at least one of: the transaction's `holdingId`
+   equals the loan's own `paymentHoldingId`; its `counterIban` equals the
+   loan's own `lenderIban` (both compared through `normalizeIban` — strips
+   whitespace, uppercases, so a cosmetic difference between a typed IBAN and
+   a bank feed's own `counterIban` never false-negatives); or its
+   `description` contains (case-insensitive) one of a fixed keyword list
+   (`кредит`, `погашення`, `іпотек`, `позик`, `loan`, `mortgage`,
+   `repayment`) or the loan's own `lenderName` (only when
+   `lenderName.trim().length >= 3` — shorter is too likely to appear inside
+   an unrelated description by coincidence). Amount + date ALONE never links
+   (a same-size monthly rent must not false-positive).
+4. **Uniqueness**: exactly one candidate transaction per installment, and
+   that transaction matches exactly one installment of one loan — two
+   candidates for one installment, or one transaction matching two
+   installments (same loan or different), links neither.
+
+The candidate transaction itself must be a debit, not already linked
+(`loanHoldingId` null), not previously rejected (`loanLinkRejected`
+false), and not one leg of an Exchange/Convert (the structural
+`exchangeCounterpartHoldingId` marker) — `transactionsRepo.
+loanMatchCandidatesQuery({ minTime, currencies })` pre-filters all four in
+SQL (P-NOWORK: never read a row the matcher can never link) plus bounds the
+scan to `time >= minTime` and `currencies` (the caller derives `minTime`
+as the earliest open loan's own `startDate` minus the match window's
+own 3-day before-margin, and `currencies` as the open loans' own distinct
+currencies — never a whole-table scan), and the pure function also
+re-checks the four eligibility conditions itself, so it stays correct when
+unit-tested directly. An informal (`'none'`-schedule) loan is never
+matched: `loanInstallments` already returns `[]` for it, so it contributes
+no candidate installment at all — no separate schedule check is needed.
+`now` bounds installments to `dueDate <= now + 3 days` (the window's own
+before-margin) — a cheap UPPER bound only, never a lower one, so a freshly
+created/edited loan backfills its WHOLE past history the first time this
+runs.
+
+**An installment already taken by a linked row never accepts a second
+one.** `matchLoanPayments` takes an optional `linkedPayments` — every row
+ALREADY linked (manual or auto alike) to one of `loans`, read separately
+through `transactionsRepo.loanLinkedPaymentsQuery(loanHoldingIds)` — because
+`loanMatchCandidatesQuery` itself EXCLUDES an already-linked row from its
+own candidate read, so without this second list the installment that row
+already paid would look unpaid again on the very next run, and a LATER
+same-amount transaction (a same-size monthly rent, say, arriving with its
+own valid third signal) could take its place — silently double-counting one
+installment across two real payments. An installment counts as taken the
+moment ANY `linkedPayments` row for that SAME loan still passes rules 1
+(amount) and 2 (date) against it — the third signal is deliberately not
+re-checked (the link already proved it once, and `linkedPayments` carries
+no description/holdingId/counterIban to re-check it with anyway) — and a
+taken installment is removed from consideration entirely before the
+candidate matrix is built, so neither the real linked row (already excluded
+from candidates) nor any other transaction can claim it. `linkedPayments`
+defaults to none, so an existing caller/test that has no such list yet
+keeps its prior behavior unchanged.
+
+**A loan edit that changes what the matcher would now require clears that
+loan's own AUTO links first.** `holdingsRepo.updateLoan`'s optional 4th
+param `clearAutoLinks` (default `false`) clears ONLY this loan's
+`loanLinkSource = 'auto'` rows (never a manual link, never a rejected row)
+in the SAME transaction as the metadata patch. The loan form's own
+`saveEdit` (`use-loan-fields.ts`, `loanEditInvalidatesAutoLinks`) passes
+`true` when EITHER the amortization schedule itself changed — compared as
+`loanInstallments(oldMeta)` vs `loanInstallments(newMeta)` (`dueDate` +
+`paymentMinorUnits`, so a `principalMinorUnits`, `schedule`,
+`annualRatePct`, `termMonths`, OR `startDate` edit is all caught the same
+way, with no per-field list to drift out of sync with `loanInstallments`'s
+own math) — OR one of rule 3's own "paid from"/lender signals changed
+(`paymentHoldingId`, `lenderIban` compared normalized, `lenderName`): any of
+these changes what `loanInstallments` or rule 3 would derive going forward,
+so a stale AUTO link proved against the OLD terms would otherwise count as
+"taken" (above) forever, even once it no longer corresponds to any real
+installment of the new ones. A `'none'`-schedule loan has no installments at
+all regardless of principal, so it never receives an AUTO link to begin
+with — an edit to one never clears anything. Clearing it here, before the
+fire-and-forget matcher re-run that follows every loan edit, lets that
+re-run recompute cleanly.
+
+`src/loans/use-loan-auto-link/` (`runLoanAutoLink`, a plain async
+function, not a hook — so a non-component caller, e.g.
+`import-statement.ts`, can call it directly): reads
+`holdingsRepo.loanHoldingsQuery()` (every OPEN loan) FIRST and returns
+before ever touching the transaction table when it is empty, or when every
+loan holding's own metadata fails to parse (P-NOWORK — there is then no
+installment, currency, or start date to bound the read with either);
+otherwise reads `transactionsRepo.loanMatchCandidatesQuery` (bounded, above)
+and `transactionsRepo.loanLinkedPaymentsQuery` (the taken-installment input,
+above) together, runs `matchLoanPayments`, and writes any result through
+`transactionsRepo.setAutoLoanLinks`. Never rejects — every failure is
+caught and logged, the same "log instead of drop" contract
+`refresh-market-data.ts` established for its own background refreshes, so
+a failed auto-link never turns a successful sync/import/save into a shown
+error. Called after: every sync completion path (`useSync`, `useSyncAll`,
+`useAutoSync` — the same three call sites `refreshMarketData` already
+established as "every sync surface"); `importParsedStatement` (ONE
+insertion point covers both its callers — the dedicated `importStatement`
+and the column-mapping screen's direct call); a `.kiko` backup restore
+(`data-transfer/import-data.ts`, fire-and-forget, right after the same
+gated market-data refresh a restore already triggers — a bulk restore
+bypasses every OTHER call site above); and a loan CREATE or EDIT in
+`holding-form.screen.tsx` (`runLoanAutoLinkIfLoan`, gated on `type ===
+'loan'`, fire-and-forget on both paths — unlike `refreshMarketData`, which
+never fires on an edit at all, a loan's principal/schedule/
+paymentHoldingId/lenderName/lenderIban all stay editable, so an edit needs
+a fresh run too).
+
+`transactionsRepo.setAutoLoanLinks` additionally re-checks that each
+link's target loan holding still exists, INSIDE its own write
+transaction, before writing it — the matcher computes its candidates from
+a snapshot read moments earlier, so a loan holding can be deleted in the
+gap between that read and this write; a link whose loan fails that check
+is simply skipped (no error), closing the one race
+`clearLoanLinksForHoldingsDatabaseTransaction` cannot: that cascade only
+clears a link that ALREADY exists at delete time, not one this call has
+not written yet.
+
+`paymentHoldingId`/`lenderName`/`lenderIban` are entered in the loan
+form's own `LoanSection` (`PaymentHoldingField`'s "Paid from" picker plus
+two plain text fields), hidden alongside rate/term for a `'none'`
+schedule — the matcher never links against an informal debt at all, so
+they would do nothing there. None are required. `PaymentHoldingField`
+(`src/screens/forms/payment-holding-field/`) is the clearable
+single-select holding-picker chrome `LoanPaymentField` (the transaction
+form's own loan-payment field) also composes, for its own auto-link
+caption + Undo on top.
+
+`buildPaymentHoldingOptions` (`holding-form.screen.tsx`) unions the loan's
+own CURRENTLY selected `paymentHoldingId` back into the "Paid from"
+picker's options even once that holding has since closed or moved
+currency — the same "a filter never hides an active selection" rule
+`buildLoanOptions` (below) already follows on the transaction form's own
+loan-payment field, or the picker would resolve no match for a link that
+still exists in the metadata and silently show "None". `isLoanFieldVisible`
+(`transaction-form.screen.tsx`) shows that field whenever the row already
+carries `selectedLoanHoldingId`, regardless of the row's own amount
+sign — a linked row later edited from debit to credit must still reach the
+field where None/Undo live.
+
+**The loan holding-detail screen's own "Linked Payments" section is the
+only way to review an auto link** (a loan is ledgerless, so it carries no
+ledger of its own transactions worth reviewing there instead): every
+transaction linked (manual or auto) to that loan, newest first, via
+`transactionsRepo.listLinkedToLoanQuery(loanHoldingId)` — one live query,
+disabled outright for a non-loan holding. It reuses the same
+`LedgerRowItem` (and its own loan-link marker) the main ledger FlatList
+renders, as a plain `.map` rather than a second virtualized list (one
+loan's own linked payments is always small); tapping a row opens the
+transaction form, where None/Undo live. The section renders nothing at all
+once there are none — no placeholder heading over an empty list.
+
+## Adding a holding type
+
+Every per-type decision lives in one descriptor per layer, each keyed by
+`HoldingType` through an exhaustive `Record`/`satisfies` or a
+`match(...).exhaustive()` — a new type is a compile error at every site
+below until it is added there too. Seven steps, in order:
+
+1. Add the type to the `holdings.type` enum in `src/db/schema.ts` and to
+   the `holdingTypes` tuple (`src/holdings/holding-type/holding-type.ts`)
+   — the `satisfies readonly HoldingRow['type'][]` ties the two together.
+   Also decide which `AccountRow['kind']` entries in that file's own
+   `holdingTypesForAccountKind` may hold it: that map is keyed by account
+   kind, not by holding type, so tsc gives no error for a type left out
+   of every kind's list — it would simply never be manually creatable
+   anywhere. `holding-type.test.ts` asserts the map's own invariants
+   (every listed type is a real one, no kind offers an empty list) but
+   does not assert every `HoldingType` appears somewhere; add that
+   coverage yourself if the new type should be widely creatable.
+2. Add a `HoldingDescriptor` (`src/holdings/holding-descriptor/holding-descriptor.d.ts`)
+   in its own `src/holdings/holding-descriptor/<type>/` folder — named for
+   the type but not always identical to the enum value (`property_item`'s
+   descriptor folder is `property-item/`, hyphenated) — and register it in
+   `holdingDescriptors` (`holding-descriptors.ts`) — the
+   `satisfies Record<HoldingType, HoldingDescriptor>` there is the first
+   compile error a missed type produces. Build a PriceBook-valued type
+   (property_item/metal-shaped: its `breakdown` reads a stored price
+   point) through `pricedDescriptor(spec, rest)`
+   (`holding-descriptor/priced-parts/`), which ties the descriptor's
+   `priced` spec and its `breakdown` to the SAME spec by construction.
+   Build a plain stored-balance type (card/cash/crypto_asset/jar-shaped:
+   value is simply `balanceMinorUnits`, no lots, no lifecycle entries)
+   as another entry in `holding-descriptor/balance/balance.descriptors.ts`,
+   through that file's own private `balanceDescriptor` helper — that
+   helper is not exported, so a new balance-shaped type is added to that
+   ONE shared file rather than getting its own `<type>/` folder the way
+   every other (ledgered-with-history or ledgerless) type does.
+3. Add the form: a `use<Type>Fields` hook, a `<type>-section` presentational
+   component, and a `<type>-form-block` leaf component, all under a new
+   `src/screens/forms/holding-form/<type>/` folder — again not always the
+   literal enum value (`property_item`'s form folder is `property/`, no
+   `-item` suffix; mirror an existing type, e.g. `term-deposit/` or
+   `bond/`, for the folder shape). Wire the
+   hook into `HoldingFormScreen`'s own `forms: Record<HoldingType,
+   HoldingTypeForm>` record and add a `.with('<type>', () => <...
+   FormBlock .../>)` arm to its `match(type)...exhaustive()` form-block
+   dispatch (`holding-form.screen.tsx`) — both are compile errors for a
+   missed type. A ledgered type with no history of its own (a
+   balance-shaped type) can usually reuse the shared `useBalanceFields`/
+   `BalanceFormBlock` instead of writing new ones — see how
+   `card`/`cash`/`crypto_asset`/`jar` share one hook instance. Every OTHER
+   (ledgerless) type's own `createPayload` must write
+   `balanceMinorUnits: 0` unconditionally — its value derives entirely
+   from its own lots/schedule, never a typed opening balance. Only
+   `useBalanceFields.createPayload` reads its own live opening-balance
+   field; the screen calls `active.createPayload()` with no argument.
+4. Add en/uk label keys (`src/i18n/`) for `holding-form.screen.tsx`'s
+   own `typeLabels: Record<HoldingType, string>` — usually a new
+   `forms.holding.<type>` key, but `cash` reuses the account kind's own
+   `forms.account.cash` key instead (a `forms.holding.*` /
+   `forms.account.*` label key, not the enum value itself — see
+   `typeLabels`'s own literal object for the current per-type mapping).
+   The user reviews new/changed translation keys before any deploy that
+   ships them (see `kiko-translator`).
+5. Add an entry to `holdingDetailSpecs`
+   (`src/screens/holding-detail/holding-detail-spec/`): its footer add
+   action, its value-breakdown display, and its next-loan-installment
+   panel (or `noInstallment` for every type but a scheduled loan). The
+   breakdown is one of `{ kind: 'interest', principalLabelKey, expectedProfit }`
+   (the deposit/bond principal-or-cost/gross/interest/tax table), `{ kind:
+   'priced' }` (the cost/value/gain table a priced type shows — see
+   `kiko-pricing`'s "Priced holdings" section), or `null` to hide the
+   breakdown entirely. The `satisfies Record<HoldingType, HoldingDetailSpec>`
+   there is the fourth compile error a missed type produces.
+6. Fill in the new descriptor's own `exchange` row (`receivePath`,
+   `source`, `createSource`, `createDestination` — `HoldingDescriptor`'s
+   own field, not a separate registry) so `exchange-destination.ts`'s
+   predicates classify the type correctly as an Exchange/Convert leg (or
+   exclude it, the way `loan` is excluded entirely).
+7. Run `npm run check:typecheck`. Between the four `Record<HoldingType,
+   ...>` checks above (descriptors, the form record, `typeLabels`, and
+   detail specs) and the form-block's own `match(type).exhaustive()`
+   dispatch (`holding-form.screen.tsx`) — the detail screen's OWN
+   footer-button `match` dispatches on the already-bounded `FooterAction`
+   value, not on `type`, so it never needs a new arm — tsc lists every
+   remaining site the new type still needs. The enum/tuple step (1) and the
+   account-kind mapping caveat within it are the only steps it cannot
+   catch for you.

@@ -1,13 +1,12 @@
 import { Pressable } from 'react-native';
+import { formatTime } from '@kiko/dates';
 import { type FC, useState } from 'react';
+import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
+import Text from '@kiko/design-system/components/text';
+import SymbolIcon from '@kiko/design-system/components/symbol';
+import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
-
-import { formatTime } from '../../../dates/format';
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import SymbolIcon from '../../../design-system/components/symbol';
-import BottomSheet from '../../../design-system/components/bottom-sheet';
 
 import { styles } from './time-field.styles';
 import type { TimeFieldProps } from './time-field.props';
@@ -35,6 +34,7 @@ const combineDayAndTime = (dayMillis: number, picked: Date): number => {
 // of DateField, which keeps the time-of-day while replacing only the day.
 const TimeField: FC<TimeFieldProps> = ({
   label,
+  sheetTitle,
   value,
   onChange,
   placeholder,
@@ -70,7 +70,7 @@ const TimeField: FC<TimeFieldProps> = ({
           <SymbolIcon name="clock" size={theme.iconSizes.body} tone="textSecondary" />
 
           <Text variant="body" tone={disabled || value === null ? 'textSecondary' : 'textPrimary'}>
-            {value === null ? (placeholder ?? label) : formatTime(value)}
+            {value === null ? placeholder : formatTime(value)}
           </Text>
         </Box>
       </Pressable>
@@ -79,7 +79,7 @@ const TimeField: FC<TimeFieldProps> = ({
         visible={open}
         onDismiss={() => setOpen(false)}
         gap={4}
-        header={<Text variant="heading">{label}</Text>}
+        header={<Text variant="heading">{sheetTitle}</Text>}
       >
         <DateTimePicker
           testID={`${label} picker`}

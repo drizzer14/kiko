@@ -1,10 +1,9 @@
-import { act, render } from '@testing-library/react-native';
 import { StyleSheet, Text } from 'react-native';
-
+import { act, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
+import { settingsRepo } from '@kiko/settings';
 import { darkTheme } from '@kiko/design-system/theme';
-import { i18n } from '@kiko/i18n';
-import { settingsRepo } from '@kiko/settings/settings.repo';
 
 import MigrationsGate from './migrations.gate';
 
@@ -15,6 +14,7 @@ const mockRunMigrations = jest.fn<Promise<void>, []>();
 const mockMigrateLegacyToken = jest.fn<Promise<void>, []>();
 const mockMigratePerAccountToken = jest.fn<Promise<void>, [string | undefined]>();
 const mockMigratePerAccountBinance = jest.fn<Promise<void>, [string | undefined]>();
+const mockUpgradeStoredDedupKeys = jest.fn<Promise<void>, []>();
 const mockConnectedQuery = jest.fn<Promise<{ id: string }[]>, [string?]>();
 // Backs `settingsRepo.getQuery()` for `applyPersistedLanguage`. A test sets
 // `mockGetSettings.mockResolvedValue(...)` / `mockRejectedValueOnce(...)`
@@ -30,6 +30,9 @@ jest.mock('@kiko/crypto-sync/binance/migrate-binance-credential', () => ({
   migrateBinanceCredentialToPerAccount: (id: string | undefined) =>
     mockMigratePerAccountBinance(id),
 }));
+jest.mock('@kiko/statement-import/upgrade-stored-dedup-keys/upgrade-stored-dedup-keys', () => ({
+  upgradeStoredDedupKeys: () => mockUpgradeStoredDedupKeys(),
+}));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { connectedQuery: (institution?: string) => mockConnectedQuery(institution) },
 }));
@@ -44,8 +47,8 @@ const mockChangeLanguage = jest.spyOn(i18n, 'changeLanguage').mockResolvedValue(
 
 const deferred = <T,>(): { promise: Promise<T>; resolve: (value: T) => void } => {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((res) => {
-    resolve = res;
+  const promise = new Promise<T>((resolveCallback) => {
+    resolve = resolveCallback;
   });
 
   return { promise, resolve };
@@ -59,6 +62,7 @@ describe('MigrationsGate', () => {
     mockMigrateLegacyToken.mockResolvedValue(undefined);
     mockMigratePerAccountToken.mockResolvedValue(undefined);
     mockMigratePerAccountBinance.mockResolvedValue(undefined);
+    mockUpgradeStoredDedupKeys.mockResolvedValue(undefined);
     mockConnectedQuery.mockResolvedValue([]);
     (settingsRepo.ensure as jest.Mock).mockResolvedValue(undefined);
     mockGetSettings.mockResolvedValue([]);
@@ -114,6 +118,46 @@ describe('MigrationsGate', () => {
     expect(await findByText('ready')).toBeTruthy();
     expect(mockConnectedQuery).toHaveBeenCalledWith('binance');
     expect(mockMigratePerAccountBinance).toHaveBeenCalledWith('acc-binance');
+  });
+
+  it('runs the dedup-key upgrade once, after the credential migrations', async () => {
+    const order: string[] = [];
+    mockMigratePerAccountBinance.mockImplementation(async () => {
+      order.push('binance-credential');
+    });
+    mockUpgradeStoredDedupKeys.mockImplementation(async () => {
+      order.push('dedup-key-upgrade');
+    });
+
+    const { findByText } = await render(
+      <MigrationsGate>
+        <Text>ready</Text>
+      </MigrationsGate>,
+    );
+
+    expect(await findByText('ready')).toBeTruthy();
+    expect(mockUpgradeStoredDedupKeys).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(['binance-credential', 'dedup-key-upgrade']);
+  });
+
+  it('still renders children when the dedup-key upgrade rejects, rather than sending the whole launch to the error state', async () => {
+    mockUpgradeStoredDedupKeys.mockRejectedValue(new Error('disk full'));
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { findByText, queryByTestId } = await render(
+      <MigrationsGate>
+        <Text>ready</Text>
+      </MigrationsGate>,
+    );
+
+    // Non-critical, unlike every other migration above it in the chain: the
+    // dedup-key upgrade is the one step whose own failure must not lock the
+    // user out. Its own `write()` transaction (upgrade-stored-dedup-keys.ts)
+    // leaves the flag at `false` on any rejection, so the next launch
+    // retries — this gate just must not block on it meanwhile.
+    expect(await findByText('ready')).toBeTruthy();
+    expect(queryByTestId('migrations-gate-error')).toBeNull();
+    warnSpy.mockRestore();
   });
 
   it('passes undefined to the per-account migration when no Monobank account is connected', async () => {

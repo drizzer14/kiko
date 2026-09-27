@@ -1,4 +1,4 @@
-// Column layout verified against docs/plans/statement-import.md section C.1
+// Column layout verified against docs/plans/statement-import.md
 // (grounded in OSadovy/uabean's PrivatBank XLSX importer facts) — see
 // src/statement-import/NOTICE.md. No uabean source or fixture is reused; this
 // is an independent TypeScript implementation, and the fixture this format is
@@ -11,15 +11,15 @@ import type {
   StatementFormat,
   StatementFormatInput,
   UnresolvedStatementRow,
-} from '../../parser';
-import { Money } from '../../../currency/money';
-import { StatementParseError } from '../../parser';
-import { parseAmount } from '../../../currency/parse';
-import { isCurrency } from '../../../currency/currency';
-import type { Currency } from '../../../currency/currency';
-import { parseDateTimeSeconds } from '../../parse-date-time';
+} from '@kiko/statement-import/parser';
+import { Money } from '@kiko/currency/money';
+import { parseAmount } from '@kiko/currency/parse';
+import { isCurrency } from '@kiko/currency/currency';
+import type { Currency } from '@kiko/currency/currency';
+import { StatementParseError } from '@kiko/statement-import/parser';
+import { parseDateTimeSeconds } from '@kiko/statement-import/parse-date-time';
 
-// The exact PrivatBank detect signature (section C.1): cell A1 of the
+// The exact PrivatBank detect signature: cell A1 of the
 // exported sheet starts with this title prefix. Row 1 is a merged A1:J1
 // title cell; the real header sits on row 2 (index 1), data starts row 3
 // (index 2).
@@ -27,7 +27,7 @@ export const PRIVATBANK_TITLE_PREFIX = 'Виписка з Ваших карто�
 export const HEADER_ROW_INDEX = 1;
 export const DATA_START_ROW_INDEX = 2;
 
-// PrivatBank's header row column order (section C.1), 0-based against a
+// PrivatBank's header row column order, 0-based against a
 // `sheetRows` row.
 export const COLUMN = {
   date: 0,
@@ -42,7 +42,7 @@ export const COLUMN = {
   balanceCurrency: 9,
 } as const;
 
-// uabean's own map, confirmed incomplete by the plan (section C.1)
+// uabean's own map, confirmed incomplete by the plan
 // — `[VERIFY LIVE]` the full abbreviation set (e.g. фунт/GBP is deliberately
 // absent — an unmapped word surfaces as a recoverable `unresolvedRows` entry
 // below, never a throw).
@@ -77,7 +77,7 @@ type RowOutcome =
   | { kind: 'resolved'; currency: Currency; transaction: ParsedTransaction }
   | { kind: 'unresolved'; currency?: Currency; row: UnresolvedStatementRow };
 
-// MCC: PrivatBank's export carries none (section C.1) — every row maps to
+// MCC: PrivatBank's export carries none — every row maps to
 // `category: null` through the generic mapper (`mapParsedTransaction`), so
 // this never sets `mcc`. The `Категорія` text column is PrivatBank's own
 // free-text label, not an MCC code, and is deliberately not read here.
@@ -92,9 +92,9 @@ const parseDataRow = (row: SpreadsheetCellValue[]): RowOutcome => {
 
   // The CARD-currency amount pair, not the transaction-currency one (section
   // C.1) — the latter is informational and deliberately dropped. Guards
-  // against ever computing a `NaN` `amountMinorUnits` (Task 3 review,
-  // IMPORTANT): an empty or malformed amount cell is routed to
-  // `unresolvedRows` instead, never written.
+  // against ever computing a `NaN` `amountMinorUnits`: an empty or
+  // malformed amount cell is routed to `unresolvedRows` instead, never
+  // written.
   const rawAmount = cellText(row[COLUMN.cardAmount]);
   const amountMajor = parseAmount(rawAmount);
 

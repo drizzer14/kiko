@@ -1,5 +1,6 @@
+import { Money } from '@kiko/currency/money';
+
 import { convert } from '../conversion';
-import { Money } from '../../currency/money';
 
 import { fetchFiatRates } from './monobank-rates';
 
@@ -37,6 +38,7 @@ describe('fetchFiatRates', () => {
     let sentUrl = '';
     const spyFetch = (async (url: string) => {
       sentUrl = url;
+
       return { ok: true, json: async () => fixture, status: 200 };
     }) as unknown as typeof fetch;
 
@@ -66,7 +68,7 @@ describe('fetchFiatRates', () => {
     // midpoint (44.6455) would overvalue the holding by ~742 UAH.
     expect(usdUah).toEqual({ base: 'USD', quote: 'UAH', rate: 44.46, source: 'monobank' });
 
-    const rates = { [`${usdUah.base}:${usdUah.quote}`]: usdUah.rate };
+    const rates = { [usdUah.base]: usdUah.rate };
     const converted = convert(Money.fromMajor('USD', 4000), 'UAH', rates);
 
     expect(converted).toEqual(Money.fromMajor('UAH', 177840));

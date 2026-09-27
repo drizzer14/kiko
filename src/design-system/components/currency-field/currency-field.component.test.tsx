@@ -1,15 +1,28 @@
-import { fireEvent, render } from '@testing-library/react-native';
 import { Keyboard } from 'react-native';
-import '../../unistyles';
+import { fireEvent, render } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
 // Real i18n init (side effect), same as App.tsx. Previously reached only by
 // accident through GlassSurface -> screenshot-mode -> i18n before the 5.6
 // screenshot-subsystem strip removed that import chain; now imported directly
 // so the search placeholder's `t(...)` resolves under test the same way it
 // does at runtime.
-import '../../../i18n';
-import { fiatCurrencyOptions } from '../../../currency/currency';
+import '@kiko/i18n/init';
+import { fiatCurrencyOptions } from '@kiko/currency/currency';
 
 import CurrencyField from '.';
+import type { CurrencyFieldProps } from './currency-field.props';
+
+const renderCurrencyField = (overrides: Partial<CurrencyFieldProps> = {}) =>
+  render(
+    <CurrencyField
+      label="Currency"
+      sheetTitle="Select a Currency"
+      selected="UAH"
+      onSelect={jest.fn()}
+      testID="currency-field"
+      {...overrides}
+    />,
+  );
 
 const open = async (utils: Awaited<ReturnType<typeof render>>): Promise<void> => {
   await fireEvent.press(utils.getByTestId('currency-field'));
@@ -22,9 +35,7 @@ const search = async (utils: Awaited<ReturnType<typeof render>>, query: string):
 describe('CurrencyField', () => {
   it('reports the picked currency and closes the sheet', async () => {
     const onSelect = jest.fn();
-    const utils = await render(
-      <CurrencyField label="Currency" selected="UAH" onSelect={onSelect} testID="currency-field" />,
-    );
+    const utils = await renderCurrencyField({ onSelect });
     await open(utils);
     // Narrow by search first: unfiltered, USD sorts alphabetically by its
     // localized name ("US Dollar") well outside the FlatList's virtualized
@@ -34,15 +45,18 @@ describe('CurrencyField', () => {
     expect(onSelect).toHaveBeenCalledWith('USD');
   });
 
+  it('shows sheetTitle, not label, as the sheet header', async () => {
+    const utils = await renderCurrencyField();
+
+    expect(utils.queryByText('Select a Currency')).toBeNull();
+
+    await open(utils);
+
+    expect(utils.queryByText('Select a Currency')).toBeTruthy();
+  });
+
   it('filters the list by code', async () => {
-    const utils = await render(
-      <CurrencyField
-        label="Currency"
-        selected="UAH"
-        onSelect={jest.fn()}
-        testID="currency-field"
-      />,
-    );
+    const utils = await renderCurrencyField();
     await open(utils);
     await search(utils, 'chf');
     expect(utils.getByTestId('currency-option-CHF')).toBeTruthy();
@@ -50,14 +64,7 @@ describe('CurrencyField', () => {
   });
 
   it('filters the list by name', async () => {
-    const utils = await render(
-      <CurrencyField
-        label="Currency"
-        selected="UAH"
-        onSelect={jest.fn()}
-        testID="currency-field"
-      />,
-    );
+    const utils = await renderCurrencyField();
     await open(utils);
     await search(utils, 'pound');
     expect(utils.getByTestId('currency-option-GBP')).toBeTruthy();
@@ -65,15 +72,7 @@ describe('CurrencyField', () => {
   });
 
   it('restricts the list to the given options (fiat only offers no BTC)', async () => {
-    const utils = await render(
-      <CurrencyField
-        label="Currency"
-        selected="UAH"
-        onSelect={jest.fn()}
-        options={fiatCurrencyOptions}
-        testID="currency-field"
-      />,
-    );
+    const utils = await renderCurrencyField({ options: fiatCurrencyOptions });
     await open(utils);
     // Narrow by search: unfiltered, USD sorts near the end of the alphabetized
     // fiat list and falls outside the FlatList's virtualized initial window.
@@ -83,14 +82,7 @@ describe('CurrencyField', () => {
   });
 
   it('shows the text currency mark for the trigger and each option (never a generic icon)', async () => {
-    const utils = await render(
-      <CurrencyField
-        label="Currency"
-        selected="USD"
-        onSelect={jest.fn()}
-        testID="currency-field"
-      />,
-    );
+    const utils = await renderCurrencyField({ selected: 'USD' });
 
     // The trigger's own leading mark ("$" for USD) — proves CurrencyField
     // swapped from the SF Symbol `icon` path onto the text `leadingText` path.
@@ -112,14 +104,7 @@ describe('CurrencyField', () => {
   // `Keyboard.dismiss()`.
   it('dismisses the keyboard when a currency is selected', async () => {
     const dismissSpy = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
-    const utils = await render(
-      <CurrencyField
-        label="Currency"
-        selected="UAH"
-        onSelect={jest.fn()}
-        testID="currency-field"
-      />,
-    );
+    const utils = await renderCurrencyField();
     await open(utils);
     await search(utils, 'USD');
     await fireEvent.press(utils.getByTestId('currency-option-USD'));
@@ -138,14 +123,7 @@ describe('CurrencyField', () => {
   // the row's `onPress` on the first tap while still dismissing the keyboard
   // on a tap to an inert area of the list.
   it('lets a single tap select a currency row while the keyboard is still up', async () => {
-    const utils = await render(
-      <CurrencyField
-        label="Currency"
-        selected="UAH"
-        onSelect={jest.fn()}
-        testID="currency-field"
-      />,
-    );
+    const utils = await renderCurrencyField();
     await open(utils);
 
     expect(utils.getByTestId('currency-picker-list').props.keyboardShouldPersistTaps).toBe(
@@ -158,14 +136,7 @@ describe('CurrencyField', () => {
   // keeps the background scrolled even after the sheet itself closes.
   it('dismisses the keyboard when the sheet is dismissed without a selection', async () => {
     const dismissSpy = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
-    const utils = await render(
-      <CurrencyField
-        label="Currency"
-        selected="UAH"
-        onSelect={jest.fn()}
-        testID="currency-field"
-      />,
-    );
+    const utils = await renderCurrencyField();
     await open(utils);
     await fireEvent.press(utils.getByTestId('currency-picker-sheet-backdrop'));
 
@@ -181,15 +152,7 @@ describe('CurrencyField', () => {
   // open, so it must fire synchronously with every open/close transition.
   it('calls onOpenChange with true when the sheet opens', async () => {
     const onOpenChange = jest.fn();
-    const utils = await render(
-      <CurrencyField
-        label="Currency"
-        selected="UAH"
-        onSelect={jest.fn()}
-        onOpenChange={onOpenChange}
-        testID="currency-field"
-      />,
-    );
+    const utils = await renderCurrencyField({ onOpenChange });
     await open(utils);
 
     expect(onOpenChange).toHaveBeenCalledWith(true);
@@ -197,15 +160,7 @@ describe('CurrencyField', () => {
 
   it('calls onOpenChange with false when a currency is selected', async () => {
     const onOpenChange = jest.fn();
-    const utils = await render(
-      <CurrencyField
-        label="Currency"
-        selected="UAH"
-        onSelect={jest.fn()}
-        onOpenChange={onOpenChange}
-        testID="currency-field"
-      />,
-    );
+    const utils = await renderCurrencyField({ onOpenChange });
     await open(utils);
     onOpenChange.mockClear();
     await search(utils, 'USD');
@@ -216,15 +171,7 @@ describe('CurrencyField', () => {
 
   it('calls onOpenChange with false when the sheet is dismissed without a selection', async () => {
     const onOpenChange = jest.fn();
-    const utils = await render(
-      <CurrencyField
-        label="Currency"
-        selected="UAH"
-        onSelect={jest.fn()}
-        onOpenChange={onOpenChange}
-        testID="currency-field"
-      />,
-    );
+    const utils = await renderCurrencyField({ onOpenChange });
     await open(utils);
     onOpenChange.mockClear();
     await fireEvent.press(utils.getByTestId('currency-picker-sheet-backdrop'));
@@ -233,15 +180,7 @@ describe('CurrencyField', () => {
   });
 
   it('does not open the sheet when disabled', async () => {
-    const utils = await render(
-      <CurrencyField
-        label="Currency"
-        selected="BTC"
-        onSelect={jest.fn()}
-        disabled
-        testID="currency-field"
-      />,
-    );
+    const utils = await renderCurrencyField({ selected: 'BTC', disabled: true });
     await open(utils);
     expect(utils.queryByTestId('currency-option-USD')).toBeNull();
   });
@@ -251,15 +190,7 @@ describe('CurrencyField', () => {
     // Hryvnia") — restricting `options` to just these two isolates the pin
     // from the rest of the fiat set: if UAH were merely sorted in like any
     // other fiat, ARS would render first.
-    const utils = await render(
-      <CurrencyField
-        label="Currency"
-        selected="UAH"
-        onSelect={jest.fn()}
-        options={['ARS', 'UAH']}
-        testID="currency-field"
-      />,
-    );
+    const utils = await renderCurrencyField({ options: ['ARS', 'UAH'] });
     await open(utils);
 
     const rows = utils.getAllByTestId(/^currency-option-/);
@@ -271,15 +202,7 @@ describe('CurrencyField', () => {
     // ("a" is in both "ARS"/"Argentine Peso" and "UAH"/"Ukrainian Hryvnia") —
     // if the pin were still applied during a search, UAH would render first
     // despite ARS sorting first alphabetically by name.
-    const utils = await render(
-      <CurrencyField
-        label="Currency"
-        selected="UAH"
-        onSelect={jest.fn()}
-        options={['ARS', 'UAH']}
-        testID="currency-field"
-      />,
-    );
+    const utils = await renderCurrencyField({ options: ['ARS', 'UAH'] });
     await open(utils);
     await search(utils, 'a');
 
@@ -292,15 +215,7 @@ describe('CurrencyField', () => {
     // AOA before DZD, but the localized names sort the other way round
     // ("Algerian" < "Angolan") — the two orders DISAGREE, so DZD rendering
     // before AOA proves the list is sorted by name, not by code.
-    const utils = await render(
-      <CurrencyField
-        label="Currency"
-        selected="DZD"
-        onSelect={jest.fn()}
-        options={['AOA', 'DZD']}
-        testID="currency-field"
-      />,
-    );
+    const utils = await renderCurrencyField({ selected: 'DZD', options: ['AOA', 'DZD'] });
     await open(utils);
 
     const rows = utils.getAllByTestId(/^currency-option-/);
@@ -309,15 +224,7 @@ describe('CurrencyField', () => {
   });
 
   it('groups crypto (BTC, ETH, USDT) after every fiat currency, sorted alphabetically within itself', async () => {
-    const utils = await render(
-      <CurrencyField
-        label="Currency"
-        selected="UAH"
-        onSelect={jest.fn()}
-        options={['USDT', 'UAH', 'ETH', 'BTC']}
-        testID="currency-field"
-      />,
-    );
+    const utils = await renderCurrencyField({ options: ['USDT', 'UAH', 'ETH', 'BTC'] });
     await open(utils);
 
     const rows = utils.getAllByTestId(/^currency-option-/);
@@ -329,15 +236,30 @@ describe('CurrencyField', () => {
     expect(labels).toEqual(['UAH Ukrainian Hryvnia', 'BTC Bitcoin', 'ETH Ethereum', 'USDT Tether']);
   });
 
+  it('lists the crypto group before the fiat group when cryptoFirst is set', async () => {
+    const utils = await renderCurrencyField({
+      options: ['ARS', 'USDT', 'UAH', 'ETH', 'BTC'],
+      cryptoFirst: true,
+    });
+    await open(utils);
+
+    const labels = utils
+      .getAllByTestId(/^currency-option-/)
+      .map((row) => row.props.accessibilityLabel as string);
+
+    // The fiat group keeps its own order after the crypto trio: UAH pinned
+    // first, then the rest by localized name.
+    expect(labels).toEqual([
+      'BTC Bitcoin',
+      'ETH Ethereum',
+      'USDT Tether',
+      'UAH Ukrainian Hryvnia',
+      'ARS Argentine Peso',
+    ]);
+  });
+
   it('finds a currency by searching its ISO code', async () => {
-    const utils = await render(
-      <CurrencyField
-        label="Currency"
-        selected="UAH"
-        onSelect={jest.fn()}
-        testID="currency-field"
-      />,
-    );
+    const utils = await renderCurrencyField();
     await open(utils);
     await search(utils, 'USD');
     expect(utils.getByTestId('currency-option-USD')).toBeTruthy();
@@ -345,14 +267,7 @@ describe('CurrencyField', () => {
   });
 
   it('finds a currency by searching its localized name', async () => {
-    const utils = await render(
-      <CurrencyField
-        label="Currency"
-        selected="UAH"
-        onSelect={jest.fn()}
-        testID="currency-field"
-      />,
-    );
+    const utils = await renderCurrencyField();
     await open(utils);
     await search(utils, 'dollar');
     expect(utils.getByTestId('currency-option-USD')).toBeTruthy();
@@ -363,28 +278,14 @@ describe('CurrencyField', () => {
   // that already sits in the trigger's separate `leadingText` mark. The
   // trigger must mirror the option rows exactly: the localized NAME only.
   it('does not show the ISO code in the trigger value, only the localized name', async () => {
-    const utils = await render(
-      <CurrencyField
-        label="Currency"
-        selected="USD"
-        onSelect={jest.fn()}
-        testID="currency-field"
-      />,
-    );
+    const utils = await renderCurrencyField({ selected: 'USD' });
 
     expect(utils.getByText('US Dollar')).toBeTruthy();
     expect(utils.queryByText('USD — US Dollar')).toBeNull();
   });
 
   it('does not show the ISO code in the visible row label', async () => {
-    const utils = await render(
-      <CurrencyField
-        label="Currency"
-        selected="UAH"
-        onSelect={jest.fn()}
-        testID="currency-field"
-      />,
-    );
+    const utils = await renderCurrencyField();
     await open(utils);
     await search(utils, 'USD');
 

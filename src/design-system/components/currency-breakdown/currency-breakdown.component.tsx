@@ -1,12 +1,12 @@
 import type { FC } from 'react';
+import type { Money } from '@kiko/currency/money';
 
-import type { Money } from '../../../currency/money';
 import Box from '../box';
-import MoneyText from '../money-text';
 import Text from '../text';
+import MoneyText from '../money-text';
 
-import type { CurrencyBreakdownProps } from './currency-breakdown.props';
 import { styles } from './currency-breakdown.styles';
+import type { CurrencyBreakdownProps } from './currency-breakdown.props';
 
 // A single currency+amount cell: code on the left, formatted amount on the
 // right, aligned across the column via space-between.

@@ -1,7 +1,6 @@
-import { darkTheme } from '@kiko/design-system/theme';
-import type { RenderedElement } from '@kiko/test-support/rendered-element';
-import { render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
+import { darkTheme } from '@kiko/design-system/theme';
+import { render } from '@testing-library/react-native';
 // Deep import, deliberately bypassing the app-wide `jest.mock('react-native-calendars', ...)`
 // in jest/setup.js (which only intercepts the bare `'react-native-calendars'` specifier).
 // These are the actual, unmocked day-cell renderers KikoCalendar's `theme` and `markedDates`
@@ -9,10 +8,11 @@ import { StyleSheet } from 'react-native';
 // for the range sheet (DateRangeField, markingType="period"). Rendering them for real is the
 // only way to assert the *actual* text color a day cell paints, rather than just the marks
 // data Kiko hands the library (see jest.config.js's transformIgnorePatterns comment).
-import BasicDay from 'react-native-calendars/src/calendar/day/basic';
-import type { MarkingProps } from 'react-native-calendars/src/calendar/day/marking';
-import PeriodDay from 'react-native-calendars/src/calendar/day/period';
 import type { DayState } from 'react-native-calendars/src/types';
+import BasicDay from 'react-native-calendars/src/calendar/day/basic';
+import PeriodDay from 'react-native-calendars/src/calendar/day/period';
+import type { RenderedElement } from '@kiko/test-support/rendered-element';
+import type { MarkingProps } from 'react-native-calendars/src/calendar/day/marking';
 
 import { buildCalendarTheme } from './kiko-calendar.theme';
 
@@ -52,7 +52,7 @@ const dayTextColor = async (
 describe('buildCalendarTheme — transparent over the glass sheet', () => {
   // The calendar sits inside a glass BottomSheet. An opaque background would
   // paint a flat card over the glass; a transparent background lets the sheet's
-  // material show through (M1 in the iOS HIG audit).
+  // material show through, per the iOS HIG materials guidance.
   it('paints no opaque background, so the glass sheet shows through', () => {
     const built = buildCalendarTheme(darkTheme);
 

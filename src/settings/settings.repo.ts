@@ -1,11 +1,9 @@
-import type { Repository } from '@kiko/db/repository';
 import { eq } from 'drizzle-orm';
-
-import type { Currency } from '../currency/currency';
-import { database, write } from '../db/client';
-import { settings } from '../db/schema';
-import type { AppLanguage } from '../i18n';
-import type { TrendFilter } from '../statistics/trend-filter';
+import type { Currency } from '@kiko/currency/currency';
+import type { AppLanguage } from '@kiko/i18n/device-language';
+import type { TrendFilter } from '@kiko/statistics/trend-filter';
+import { type Repository, settings, database, write } from '@kiko/db';
+import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
 
 /** Settings is a single row, keyed at id = 1. */
 export const SETTINGS_ID = 1;
@@ -13,10 +11,15 @@ export const SETTINGS_ID = 1;
 export const settingsRepo = {
   getQuery: () => database.select().from(settings).where(eq(settings.id, SETTINGS_ID)),
   ensure: () =>
-    write((tx) => tx.insert(settings).values({ id: SETTINGS_ID }).onConflictDoNothing()),
+    write((databaseTransaction) =>
+      databaseTransaction.insert(settings).values({ id: SETTINGS_ID }).onConflictDoNothing(),
+    ),
   setBaseCurrency: (currency: Currency) =>
-    write((tx) =>
-      tx.update(settings).set({ baseCurrency: currency }).where(eq(settings.id, SETTINGS_ID)),
+    write((databaseTransaction) =>
+      databaseTransaction
+        .update(settings)
+        .set({ baseCurrency: currency })
+        .where(eq(settings.id, SETTINGS_ID)),
     ),
   // The Monobank sync cursor setters (`setLastSyncAt`, `setLastSyncDisplayAt`,
   // `setLastFullSyncAt`, `setFailedSyncMonobankIds`) were REMOVED here: the
@@ -25,8 +28,11 @@ export const settingsRepo = {
   // retained-but-dead (migrations here are additive-only — see their comments in
   // `db/schema.ts`), backfilled once into `sync_state` by migration 0028.
   setLockEnabled: (enabled: boolean) =>
-    write((tx) =>
-      tx.update(settings).set({ lockEnabled: enabled }).where(eq(settings.id, SETTINGS_ID)),
+    write((databaseTransaction) =>
+      databaseTransaction
+        .update(settings)
+        .set({ lockEnabled: enabled })
+        .where(eq(settings.id, SETTINGS_ID)),
     ),
   /**
    * Set the catch-all default category (a `categories.key` slug): the category a
@@ -34,11 +40,16 @@ export const settingsRepo = {
    * transactions reassign to. Chosen from the Categories screen.
    */
   setDefaultCategoryKey: (key: string) =>
-    write((tx) =>
-      tx.update(settings).set({ defaultCategoryKey: key }).where(eq(settings.id, SETTINGS_ID)),
+    write((databaseTransaction) =>
+      databaseTransaction
+        .update(settings)
+        .set({ defaultCategoryKey: key })
+        .where(eq(settings.id, SETTINGS_ID)),
     ),
   setLanguage: (language: AppLanguage) =>
-    write((tx) => tx.update(settings).set({ language }).where(eq(settings.id, SETTINGS_ID))),
+    write((databaseTransaction) =>
+      databaseTransaction.update(settings).set({ language }).where(eq(settings.id, SETTINGS_ID)),
+    ),
   /**
    * Persist (or clear) the user's saved spending-trend filter (see
    * `TrendFilter`): the whole config as JSON, or `null` to fall back to
@@ -46,7 +57,33 @@ export const settingsRepo = {
    * filter sheet's Save.
    */
   setTrendFilter: (filter: TrendFilter | null) =>
-    write((tx) =>
-      tx.update(settings).set({ trendFilter: filter }).where(eq(settings.id, SETTINGS_ID)),
+    write((databaseTransaction) =>
+      databaseTransaction
+        .update(settings)
+        .set({ trendFilter: filter })
+        .where(eq(settings.id, SETTINGS_ID)),
     ),
+  /**
+   * Saves (or overwrites) one column-mapping under `key`
+   * (`mappingKeyFor(bankId, fingerprint)`,
+   * `statement-import/column-mapping/saved-mapping.ts`), keeping every
+   * OTHER saved key untouched. Read-modify-write inside one `write()`, the
+   * same shape `upsertCategoryOverride` uses for its own select-then-update
+   * (`categories/category-overrides-repo/category-overrides.repo.ts`) — the
+   * column stores the whole map as one JSON blob, so a plain `.set()` would
+   * otherwise clobber every other bank/file's saved mapping.
+   */
+  saveStatementMapping: (key: string, mapping: SavedColumnMapping) =>
+    write(async (databaseTransaction) => {
+      const rows = await databaseTransaction
+        .select({ statementMappings: settings.statementMappings })
+        .from(settings)
+        .where(eq(settings.id, SETTINGS_ID));
+      const existing = rows[0]?.statementMappings ?? {};
+
+      await databaseTransaction
+        .update(settings)
+        .set({ statementMappings: { ...existing, [key]: mapping } })
+        .where(eq(settings.id, SETTINGS_ID));
+    }),
 } satisfies Repository;

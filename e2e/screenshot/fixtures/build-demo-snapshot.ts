@@ -6,17 +6,22 @@
 // leave the imported app with no categories and no settings row.
 import type {
   AccountRow,
-  CategoryRow,
   HoldingRow,
+  CategoryRow,
   SettingsRow,
+  PricePointRow,
   TransactionRow,
-} from '../../../src/db/schema';
+} from '@kiko/db';
+import { match } from 'ts-pattern';
+import maybe, { foldMap } from 'fnts/maybe';
+import { SETTINGS_ID } from '@kiko/settings';
+import type { DataSnapshot } from '@kiko/data-transfer';
+import { entityColorsDark } from '@kiko/design-system/palette';
+import { holdingInstrument, metalInstrument } from '@kiko/prices/instrument';
+import { readSeedCategoryColors } from '@kiko/db/__fixtures__/seed-category-colors';
+import { SEEDED_CATEGORIES, LOAN_INTEREST_CATEGORY } from '@kiko/db/__fixtures__/seeded-categories';
 
 import { ANCHOR, type ScreenshotDataset } from '../seed/screenshot-seed';
-import { SETTINGS_ID } from '../../../src/settings/settings.repo';
-import { SEEDED_CATEGORIES } from '../../../src/db/__fixtures__/seeded-categories';
-import { readSeedCategoryColors } from '../../../src/db/__fixtures__/seed-category-colors';
-import type { DataSnapshot } from '../../../src/data-transfer/snapshot/data-snapshot';
 
 /**
  * The 10 default categories, sourced from the same fixture the repo tests
@@ -32,13 +37,23 @@ import type { DataSnapshot } from '../../../src/data-transfer/snapshot/data-snap
 const buildCategories = (): CategoryRow[] => {
   const seedColors = new Map(readSeedCategoryColors().map((seed) => [seed.key, seed.color]));
 
-  return SEEDED_CATEGORIES.map((category, index) => ({
-    key: category.key,
-    title: category.title,
-    icon: category.icon,
-    color: seedColors.get(category.key) ?? null,
-    sortOrder: index,
-  }));
+  return [
+    ...SEEDED_CATEGORIES.map((category, index) => ({
+      key: category.key,
+      title: category.title,
+      icon: category.icon,
+      color: seedColors.get(category.key) ?? null,
+      sortOrder: index,
+    })),
+    // Seeded on a fresh install by its own migration
+    // (`0039_seed_loan_interest_category.sql`, colored systemIndigo), so the
+    // linked loan payment's interest files under a named category.
+    {
+      ...LOAN_INTEREST_CATEGORY,
+      color: entityColorsDark.indigo,
+      sortOrder: SEEDED_CATEGORIES.length,
+    },
+  ];
 };
 
 /** The single settings row: the dataset's language/currency, lock always OFF. */
@@ -59,6 +74,12 @@ const buildSettings = (dataset: ScreenshotDataset): SettingsRow[] => [
     trendCategoryKeys: null,
     trendFilter: null,
     failedSyncMonobankIds: null,
+    statementMappings: null,
+    // This dataset never wrote a statement-import dedup key at all (every
+    // transaction here is built by `buildLedger` below, not imported), so
+    // there is nothing for `upgradeLegacyDedupKey` to rewrite — `true` skips
+    // that pass entirely on import, the same as a real post-upgrade device.
+    dedupKeysUpgraded: true,
   },
 ];
 
@@ -68,17 +89,41 @@ type BuiltLedger = {
   transactions: TransactionRow[];
 };
 
+// `hold-1..n`, numbered across every account (not per-account) in dataset order.
+const holdingIdsByKey = (dataset: ScreenshotDataset): Map<string, string> =>
+  new Map(
+    dataset.accounts
+      .flatMap((account) => account.holdings)
+      .flatMap(
+        (holding, index) =>
+          foldMap(maybe(holding.key), (key) => [[key, `hold-${index + 1}`] as const]) ?? [],
+      ),
+  );
+
+// A key that names no holding is a broken dataset, not something to import.
+const holdingIdOf = (idsByKey: ReadonlyMap<string, string>, key: string): string => {
+  const id = idsByKey.get(key);
+
+  if (id === undefined) {
+    throw new Error(`The demo dataset names no holding with the key "${key}"`);
+  }
+
+  return id;
+};
+
 /**
  * Flattens the dataset's nested accounts/holdings/transactions into
  * deterministically-ided rows: `acc-1..n` for accounts, `hold-1..n` numbered
  * across every account (not per-account), `txn-1..n` numbered across every
  * transaction. Every `createdAt` is the dataset's own fixed `ANCHOR`, never a
- * clock, so the mapping never churns run to run.
+ * clock, so the mapping never churns run to run. A transaction that pays a
+ * loan is linked to it manually.
  */
 const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
   const accounts: AccountRow[] = [];
   const holdings: HoldingRow[] = [];
   const transactions: TransactionRow[] = [];
+  const idsByKey = holdingIdsByKey(dataset);
   let holdingCount = 0;
   let transactionCount = 0;
 
@@ -116,7 +161,8 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
         color: holding.color,
         balanceMinorUnits,
         syncedBalanceMinorUnits: null,
-        metadata: null,
+        balanceSetAt: null,
+        metadata: holding.metadata ?? null,
         sortOrder: holdingIndex,
         closedAt: null,
         createdAt: ANCHOR,
@@ -124,6 +170,8 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
 
       for (const transaction of holding.transactions) {
         transactionCount += 1;
+        const loanHoldingId =
+          foldMap(maybe(transaction.loanHoldingKey), (key) => holdingIdOf(idsByKey, key)) ?? null;
 
         transactions.push({
           id: `txn-${transactionCount}`,
@@ -137,6 +185,9 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
           counterIban: null,
           exchangeCounterpartHoldingId: null,
           changeGroupId: null,
+          loanHoldingId,
+          loanLinkSource: loanHoldingId === null ? null : 'manual',
+          loanLinkRejected: false,
           comment: null,
           source: 'manual',
           externalId: null,
@@ -147,6 +198,21 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
   });
 
   return { accounts, holdings, transactions };
+};
+
+// Each point keyed by the instrument `src/prices/instrument/` builds for it.
+const buildPricePoints = (dataset: ScreenshotDataset): PricePointRow[] => {
+  const idsByKey = holdingIdsByKey(dataset);
+
+  return dataset.pricePoints.map(({ instrument, ...point }) => ({
+    ...point,
+    instrument: match(instrument)
+      .with({ kind: 'holding' }, ({ holdingKey }) =>
+        holdingInstrument(holdingIdOf(idsByKey, holdingKey)),
+      )
+      .with({ kind: 'metal' }, ({ metal }) => metalInstrument(metal))
+      .exhaustive(),
+  }));
 };
 
 export const buildDemoSnapshot = (dataset: ScreenshotDataset): DataSnapshot => {
@@ -162,5 +228,7 @@ export const buildDemoSnapshot = (dataset: ScreenshotDataset): DataSnapshot => {
     syncState: [],
     categories: buildCategories(),
     categoryOverrides: [],
+    pricePoints: buildPricePoints(dataset),
+    bondRegister: dataset.bondRegister,
   };
 };

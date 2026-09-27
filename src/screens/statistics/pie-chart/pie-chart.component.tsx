@@ -1,16 +1,15 @@
-import { type FC, memo, useState } from 'react';
+import { Path, Svg } from 'react-native-svg';
+import { Money } from '@kiko/currency/money';
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
-import { Path, Svg } from 'react-native-svg';
+import { type FC, memo, useState } from 'react';
+import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
-
-import type { Currency } from '../../../currency/currency';
-import { Money } from '../../../currency/money';
-import Box from '../../../design-system/components/box';
-import MoneyText from '../../../design-system/components/money-text';
-import Text from '../../../design-system/components/text';
-import SymbolIcon from '../../../design-system/components/symbol';
-import type { AccountSlice } from '../../../statistics/account-contribution';
+import Text from '@kiko/design-system/components/text';
+import type { Currency } from '@kiko/currency/currency';
+import SymbolIcon from '@kiko/design-system/components/symbol';
+import MoneyText from '@kiko/design-system/components/money-text';
+import type { AccountSlice } from '@kiko/statistics/account-contribution';
 
 import { styles } from './pie-chart.styles';
 
@@ -155,9 +154,11 @@ const PieLegendEntry: FC<{
           style={[styles.swatch, { backgroundColor: slice.color }]}
         />
 
-        <Text variant="body" tone="textPrimary">
-          {slice.name}
-        </Text>
+        <View style={styles.legendLabel}>
+          <Text variant="body" tone="textPrimary">
+            {slice.name}
+          </Text>
+        </View>
       </View>
 
       <View testID={`${testID}-legend-value-${slice.accountId}`} style={styles.legendValue}>

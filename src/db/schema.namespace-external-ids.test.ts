@@ -1,9 +1,9 @@
-import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
 
 const migrationsDir = join(__dirname, '../../drizzle/migrations');
 
-// Phase 6 of the multi-account plan namespaces every SYNCED transaction's
+// The multi-account plan namespaces every SYNCED transaction's
 // `external_id` by its holding's account id (`${accountId}:${sourceId}`), so the
 // GLOBAL `(source, external_id)` unique index can no longer collide across two
 // connections of the same provider (two Binance accounts each emit a

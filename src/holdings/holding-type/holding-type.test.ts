@@ -3,7 +3,6 @@ import {
   holdingTypes,
   holdingTypesForAccountKind,
   isSyncOnlyHoldingType,
-  isTimeExemptHoldingType,
   syncOnlyHoldingTypes,
 } from './holding-type';
 
@@ -27,8 +26,14 @@ describe('holdingTypesForAccountKind', () => {
     expect(holdingTypesForAccountKind.bank).not.toContain('cash');
   });
 
-  it('allows a bank account the card, term_deposit, bond, and jar holdings', () => {
-    expect(holdingTypesForAccountKind.bank).toEqual(['card', 'term_deposit', 'bond', 'jar']);
+  it('allows a bank account the card, term_deposit, bond, jar, and metal holdings', () => {
+    expect(holdingTypesForAccountKind.bank).toEqual([
+      'card',
+      'term_deposit',
+      'bond',
+      'jar',
+      'metal',
+    ]);
   });
 
   it('constrains a cash account to cash holdings only', () => {
@@ -37,6 +42,18 @@ describe('holdingTypesForAccountKind', () => {
 
   it('constrains a crypto account to crypto_asset holdings only', () => {
     expect(holdingTypesForAccountKind.crypto).toEqual(['crypto_asset']);
+  });
+
+  it('constrains a property account to property_item holdings only', () => {
+    expect(holdingTypesForAccountKind.property).toEqual(['property_item']);
+  });
+
+  it('constrains a metals account to metal holdings only', () => {
+    expect(holdingTypesForAccountKind.metals).toEqual(['metal']);
+  });
+
+  it('constrains a debt account to loan holdings only', () => {
+    expect(holdingTypesForAccountKind.debt).toEqual(['loan']);
   });
 });
 
@@ -52,20 +69,9 @@ describe('sync-only holding types', () => {
     expect(isSyncOnlyHoldingType('bond')).toBe(false);
     expect(isSyncOnlyHoldingType('cash')).toBe(false);
     expect(isSyncOnlyHoldingType('crypto_asset')).toBe(false);
-  });
-});
-
-describe('time-exempt holding types', () => {
-  it('marks a term_deposit and a bond as time-exempt (they are not time-specific)', () => {
-    expect(isTimeExemptHoldingType('term_deposit')).toBe(true);
-    expect(isTimeExemptHoldingType('bond')).toBe(true);
-  });
-
-  it('does not mark time-specific holding types as time-exempt', () => {
-    expect(isTimeExemptHoldingType('card')).toBe(false);
-    expect(isTimeExemptHoldingType('cash')).toBe(false);
-    expect(isTimeExemptHoldingType('crypto_asset')).toBe(false);
-    expect(isTimeExemptHoldingType('jar')).toBe(false);
+    expect(isSyncOnlyHoldingType('property_item')).toBe(false);
+    expect(isSyncOnlyHoldingType('metal')).toBe(false);
+    expect(isSyncOnlyHoldingType('loan')).toBe(false);
   });
 });
 
@@ -88,8 +94,49 @@ describe('creatableHoldingTypesForAccount', () => {
     expect(creatableHoldingTypesForAccount('crypto', false)).toEqual(['crypto_asset']);
   });
 
+  it('offers property_item as the sole creatable type for a property account', () => {
+    expect(creatableHoldingTypesForAccount('property', false)).toEqual(['property_item']);
+    expect(creatableHoldingTypesForAccount('property', true)).toEqual(['property_item']);
+  });
+
+  it('offers metal as the sole creatable type for a metals account, no bankId needed', () => {
+    expect(creatableHoldingTypesForAccount('metals', false)).toEqual(['metal']);
+    expect(creatableHoldingTypesForAccount('metals', true)).toEqual(['metal']);
+  });
+
+  it('offers loan as the sole creatable type for a debt account', () => {
+    expect(creatableHoldingTypesForAccount('debt', false)).toEqual(['loan']);
+    expect(creatableHoldingTypesForAccount('debt', true)).toEqual(['loan']);
+  });
+
+  it('drops metal from a bank account with no bankId, an unlisted bankId, or monobank', () => {
+    expect(creatableHoldingTypesForAccount('bank', false)).not.toContain('metal');
+    expect(creatableHoldingTypesForAccount('bank', false, null)).not.toContain('metal');
+    expect(creatableHoldingTypesForAccount('bank', false, 'monobank')).not.toContain('metal');
+    expect(creatableHoldingTypesForAccount('bank', false, 'not-a-bank')).not.toContain('metal');
+  });
+
+  it('offers metal on a bank account allow-listed to sell metals (privatbank)', () => {
+    expect(creatableHoldingTypesForAccount('bank', false, 'privatbank')).toContain('metal');
+    // A live-synced allow-listed bank still offers it — metal is not sync-only.
+    expect(creatableHoldingTypesForAccount('bank', true, 'privatbank')).toContain('metal');
+  });
+
+  // PUMB, Oschadbank, and Ukrgasbank join the catalog's metal
+  // allow-list; Raiffeisen does not.
+  it.each(['pumb', 'oschadbank', 'ukrgasbank'])(
+    'offers metal on a bank account allow-listed to sell metals (%s)',
+    (bankId) => {
+      expect(creatableHoldingTypesForAccount('bank', false, bankId)).toContain('metal');
+    },
+  );
+
+  it('drops metal from a Raiffeisen bank account (not allow-listed to sell metals)', () => {
+    expect(creatableHoldingTypesForAccount('bank', false, 'raiffeisen')).not.toContain('metal');
+  });
+
   it('never offers an empty create set for any account kind or synced state', () => {
-    for (const kind of ['bank', 'cash', 'crypto'] as const) {
+    for (const kind of ['bank', 'cash', 'crypto', 'property', 'metals', 'debt'] as const) {
       for (const isSynced of [true, false]) {
         expect(creatableHoldingTypesForAccount(kind, isSynced).length).toBeGreaterThan(0);
       }
@@ -97,7 +144,7 @@ describe('creatableHoldingTypesForAccount', () => {
   });
 
   it('never offers jar as manually creatable, synced or not (Monobank-API-only concept)', () => {
-    for (const kind of ['bank', 'cash', 'crypto'] as const) {
+    for (const kind of ['bank', 'cash', 'crypto', 'property', 'metals', 'debt'] as const) {
       for (const isSynced of [true, false]) {
         expect(creatableHoldingTypesForAccount(kind, isSynced)).not.toContain('jar');
       }
@@ -105,8 +152,8 @@ describe('creatableHoldingTypesForAccount', () => {
   });
 
   it('never offers a sync-only type as manually creatable on a SYNCED account', () => {
-    for (const kind of ['bank', 'cash', 'crypto'] as const) {
-      for (const type of creatableHoldingTypesForAccount(kind, true)) {
+    for (const kind of ['bank', 'cash', 'crypto', 'property', 'metals', 'debt'] as const) {
+      for (const type of creatableHoldingTypesForAccount(kind, true, 'privatbank')) {
         expect(isSyncOnlyHoldingType(type)).toBe(false);
       }
     }

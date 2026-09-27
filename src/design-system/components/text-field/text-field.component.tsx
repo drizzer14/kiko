@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { TextInput } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import { deriveFieldTestID } from '@kiko/design-system/derive-field-test-id';
 
 import Box from '../box';
 import Text from '../text';
@@ -39,13 +40,6 @@ const resolveReturnKeyType = (
 
   return 'done';
 };
-
-// Derives a nested testID from the field's own outer `testID`, or `undefined`
-// when the caller passed none — shared by the error slot and its inline
-// message so both stay `undefined`-safe without repeating the ternary inline
-// (which would add to TextField's own cognitive complexity).
-const deriveTestID = (testID: TextFieldProps['testID'], suffix: string): string | undefined =>
-  testID !== undefined ? `${testID}-${suffix}` : undefined;
 
 const TextField: FC<TextFieldProps> = ({
   label,
@@ -154,7 +148,7 @@ const TextField: FC<TextFieldProps> = ({
           so every valid field shares the same height; an invalid one grows
           to fit this line the instant `error` is set — see FieldError's own
           doc comment. */}
-        {hasError && <FieldError message={error} testID={deriveTestID(testID, 'error')} />}
+        {hasError && <FieldError message={error} testID={deriveFieldTestID(testID, 'error')} />}
       </Box>
 
       {accessory}

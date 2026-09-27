@@ -1,16 +1,11 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { Alert, StyleSheet } from 'react-native';
-import '../../../design-system/unistyles';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
 import { holdingsRepo } from '@kiko/holdings/repo';
-
-import { i18n } from '../../../i18n';
-import { scrollToField } from '../scroll-to-field/scroll-to-field';
-import {
-  asNavigationProp,
-  asRouteProp,
-  navigationSpy,
-} from '../../../test-support/navigation-props';
+import { scrollToField } from '@kiko/design-system/scroll-to-field';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import ContributionFormScreen from './contribution-form.screen';
 
@@ -18,7 +13,7 @@ type ContributionFormProps = ComponentProps<typeof ContributionFormScreen>;
 
 const mockUseLiveQuery = jest.fn();
 
-jest.mock('../../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
 jest.mock('@kiko/holdings/repo', () => ({
@@ -27,7 +22,7 @@ jest.mock('@kiko/holdings/repo', () => ({
     appendDepositContribution: jest.fn(),
   },
 }));
-jest.mock('../scroll-to-field/scroll-to-field');
+jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 
 const navigation = navigationSpy();
 const route = asRouteProp<ContributionFormProps['route']>('ContributionForm', {

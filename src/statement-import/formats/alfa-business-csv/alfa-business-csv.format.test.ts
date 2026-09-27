@@ -1,3 +1,5 @@
+import { StatementParseError } from '@kiko/statement-import/parser';
+
 import {
   alfaBusinessFixtureInput,
   monobankFixtureInput,
@@ -6,7 +8,6 @@ import {
   sensebankFixtureInput,
   ukrsibBusinessFixtureInput,
 } from '../format-test-fixtures';
-import { StatementParseError } from '../../parser';
 
 import {
   alfaBusinessCsvFormat,
@@ -19,16 +20,15 @@ import {
 // The REAL uabean fixture (C.4, NOTICE.md) — confirmed SYNTHETIC (`XYZ
 // COMPANY`/`JOHN DOE` placeholders, all-1s IBANs/EDRPOU, literal
 // `[REDACTED]` markers) — reused byte for byte, cp1251-encoded, exactly as
-// committed (task-5-report.md confirms the copy's checksum matches the
+// committed (a checksum confirms the copy matches the
 // clone it came from). Decoded via the REAL `windows-1251` library (see
 // `../format-test-fixtures`), the SAME decode step the screen's cp1251
 // fallback performs before handing text to this format.
 const fixtureInput = alfaBusinessFixtureInput;
 const fixtureText = fixtureInput.text;
 
-// Task 3 review precedent (NaN guard, IMPORTANT): the unsigned `Сума` cell
-// is empty — must never reach `Money.fromMajor` as `NaN`; `parse` throws
-// `StatementParseError` instead.
+// The NaN guard: the unsigned `Сума` cell is empty — must never reach
+// `Money.fromMajor` as `NaN`; `parse` throws `StatementParseError` instead.
 const malformedAmountInput = {
   text: [
     FULL_HEADER_LINE,
@@ -61,8 +61,8 @@ const unknownOperationWordInput = {
 };
 
 // The exported constants ARE the real contract a kiko:developer implements
-// `detect`/`parse` against (section C.3), pinned here — verified against
-// the REAL fixture's bytes (task-5-report.md). Alfa's 19-column layout is
+// `detect`/`parse` against, pinned here — verified against
+// the REAL fixture's bytes. Alfa's 19-column layout is
 // genuinely unique in this plan (no shared base with ProCredit/Ukrsib
 // business, unlike those two), so instead of a hand-typed literal
 // duplicating the plain object below, every index is independently derived
@@ -195,7 +195,7 @@ describe('alfaBusinessCsvFormat.parse', () => {
   });
 
   // The real fixture's `Наш IBAN` column spans TWO distinct accounts (rows
-  // 1-5 carry one IBAN, rows 6-7 a different one) — Controller ruling 3:
+  // 1-5 carry one IBAN, rows 6-7 a different one), so
   // `account.iban` must be undefined rather than silently picking the first
   // row's IBAN. Behavior already existed; this locks it in with a real
   // assertion.
