@@ -1,8 +1,7 @@
 import { Money } from '@kiko/currency/money';
 import { parseAmount } from '@kiko/currency/parse';
 import type { Currency } from '@kiko/currency/currency';
-
-import { termReasonKey, type TermReasonKey, type TermUnit } from '../../../term-field/term-reasons';
+import { termReasonKey, type TermReasonKey, type TermUnit } from '@kiko/screens/forms/term-reasons';
 
 // `saved` marks a contribution that is already persisted in the holding's
 // stored metadata (an edit-mode hydrated row) versus one the user just added

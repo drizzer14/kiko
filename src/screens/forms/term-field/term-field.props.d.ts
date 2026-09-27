@@ -1,8 +1,7 @@
 import type { RefObject } from 'react';
 import type { TextInputInstance } from 'react-native';
+import type { TermUnit } from '@kiko/screens/forms/term-reasons';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
-
-import type { TermUnit } from './term-reasons';
 
 export type TermFieldProps = {
   // The number as typed, in `unit` — never converted while the user types,

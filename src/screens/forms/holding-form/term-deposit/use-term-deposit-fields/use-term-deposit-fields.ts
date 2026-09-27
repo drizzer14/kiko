@@ -4,6 +4,11 @@ import {
   type CompoundingFrequency,
   type TermDepositMeta,
 } from '@kiko/holdings/holding-metadata';
+import {
+  termInputFromMonths,
+  termMonthsFromInput,
+  type TermUnit,
+} from '@kiko/screens/forms/term-reasons';
 import type { HoldingRow } from '@kiko/db';
 import { parseAmount } from '@kiko/currency/parse';
 import { useCallback, useRef, useState } from 'react';
@@ -12,11 +17,6 @@ import type { Currency } from '@kiko/currency/currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 
-import {
-  termInputFromMonths,
-  termMonthsFromInput,
-  type TermUnit,
-} from '../../../term-field/term-reasons';
 import { saveMetadataEdit } from '../../save-metadata-edit';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
 

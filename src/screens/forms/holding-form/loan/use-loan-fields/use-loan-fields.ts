@@ -5,6 +5,14 @@ import {
   type LoanMeta,
   type LoanSchedule,
 } from '@kiko/holdings/holding-metadata';
+import {
+  termReasonKey,
+  type TermInput,
+  type TermUnit,
+  termInputFromMonths,
+  termMonthsFromInput,
+  type TermReasonKey,
+} from '@kiko/screens/forms/term-reasons';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
@@ -21,14 +29,6 @@ import { holdingsRepo, type LoanPricePointOp } from '@kiko/holdings/repo';
 import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 
-import {
-  termReasonKey,
-  type TermInput,
-  type TermUnit,
-  termInputFromMonths,
-  termMonthsFromInput,
-  type TermReasonKey,
-} from '../../../term-field/term-reasons';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
 
 // The literal i18n keys `loanReasonKey` below may return, so `t()` (typed

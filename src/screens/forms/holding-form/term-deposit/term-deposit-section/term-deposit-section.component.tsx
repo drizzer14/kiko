@@ -5,15 +5,16 @@ import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import DateField from '@kiko/screens/forms/date-field';
+import TermField from '@kiko/screens/forms/term-field';
 import { currencySymbol } from '@kiko/currency/currency';
 import Button from '@kiko/design-system/components/button';
 import Switch from '@kiko/design-system/components/switch';
 import Divider from '@kiko/design-system/components/divider';
 import ChipRow from '@kiko/design-system/components/chip-row';
+import { termMaxFor } from '@kiko/screens/forms/term-reasons';
 import { groupAmount } from '@kiko/screens/forms/amount-format';
 import TextField from '@kiko/design-system/components/text-field';
 import FieldError from '@kiko/design-system/components/field-error';
-import TermField, { termMaxFor } from '@kiko/screens/forms/term-field';
 import type { CompoundingFrequency } from '@kiko/holdings/holding-metadata';
 
 import {

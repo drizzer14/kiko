@@ -5,9 +5,9 @@ import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import ChipRow from '@kiko/design-system/components/chip-row';
 import TextField from '@kiko/design-system/components/text-field';
+import { termUnits, type TermUnit } from '@kiko/screens/forms/term-reasons';
 
 import type { TermFieldProps } from './term-field.props';
-import { termUnits, type TermUnit } from './term-reasons';
 
 // The deposit and loan term: a whole number typed in months or years, the
 // unit shown after it. The Months/Years choice is a ChipRow, not a
