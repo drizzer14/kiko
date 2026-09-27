@@ -39,7 +39,8 @@ end-of-integration deep gate. Run it on each change set with
 `KIKO_MUTATION_BASE` set to that change set's own base commit.
 `scripts/checks/mutation.sh` exits 2 before Stryker starts when more
 than 30 files would be mutated (`MUTATION_FILE_CAP`);
-`KIKO_MUTATION_FULL=1` hits the same cap, and no env var bypasses it.
+`KIKO_MUTATION_FULL=1` and a `KIKO_MUTATION_BASE` that does not resolve
+are refused directly (exit 2), and no env var bypasses the cap.
 See the `ops` skill for how to launch and await a run.
 
 ## Never pattern-kill a process

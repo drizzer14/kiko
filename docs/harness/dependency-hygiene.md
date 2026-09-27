@@ -85,7 +85,9 @@ justification.
 transitive dev dependency of the React Native CLI toolchain. No
 patched release exists upstream yet, so there is nothing to pin via
 `overrides`. This is accepted debt, not a suppressed finding — do
-not silence it. Re-run `npm run check:deep` periodically and upgrade
+not silence it. Re-run `bash scripts/checks/osv.sh` periodically (not
+`npm run check:deep`: its mutation step runs first and can stop at the
+mutation file cap before osv-scanner runs) and upgrade
 `image-size` (via `overrides`) the moment a fixed version ships.
 
 `check:deep` also flags `decode-uri-component` 0.2.2, advisory

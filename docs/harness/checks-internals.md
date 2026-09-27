@@ -22,7 +22,8 @@ The fingerprint helpers live in `scripts/checks/_lib.sh`.
 - `knip`, `deps`, and `mutation` fingerprint the `.ts/.tsx/.js` source
   state relative to `HEAD` plus the manifests and configs, so a
   non-source change (an icon asset, an `ios/` file, a doc) skips
-  them.
+  them. `mutation` also adds its scope (see "Mutation file cap"
+  below).
 
 The fingerprint state lives outside the repo, keyed by the worktree
 path, and is shared across sessions in that worktree — one session's
@@ -45,13 +46,19 @@ it. Stryker's own `concurrency` is 2.
 
 ## Mutation file cap
 
-After the lock and the dedup skip, `mutation.sh` selects the files to
-mutate (the diff vs `KIKO_MUTATION_BASE`'s merge-base, or the whole
-project for `KIKO_MUTATION_FULL=1` and an unresolvable base), applies
-its excludes, and counts them. Above `MUTATION_FILE_CAP` (30) it exits
-2 with the structured block before Stryker starts. No env var bypasses
-the cap: mutation testing runs per small change set, with
-`KIKO_MUTATION_BASE` set to that change set's own base commit.
+After the lock, `mutation.sh` refuses (exit 2, structured block) a
+`KIKO_MUTATION_FULL=1` run and a `KIKO_MUTATION_BASE` that does not
+resolve, directly: a whole-project run is always above the cap. It then
+selects the files to mutate (the diff vs `KIKO_MUTATION_BASE`'s
+merge-base; a failed `git diff` is a refusal too, never "nothing to
+mutate"), applies its excludes, and counts them. Above
+`MUTATION_FILE_CAP` (30) it exits 2 with the structured block before
+Stryker starts. Only then does the dedup skip run, and its fingerprint
+includes the scope (the merge-base sha and the selected file list), so
+a pass over a narrow change set never skips a wider or refused one at
+the same HEAD. No env var bypasses the cap: mutation testing runs per
+small change set, with `KIKO_MUTATION_BASE` set to that change set's
+own base commit.
 
 ## `osv-scanner` is never deduped
 

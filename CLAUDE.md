@@ -48,8 +48,9 @@ Composite scripts:
   `KIKO_MUTATION_BASE` to that change set's own base commit so only its
   files are mutated. More than 30 files to mutate (`MUTATION_FILE_CAP`
   in `scripts/checks/mutation.sh`) exits 2 before Stryker starts;
-  `KIKO_MUTATION_FULL=1` (whole project) hits the same cap, and no env
-  var bypasses it. There is no release-scope deep gate. The mutation step tees its output to a stable,
+  `KIKO_MUTATION_FULL=1` (whole project) and a `KIKO_MUTATION_BASE`
+  that does not resolve are refused directly (exit 2), and no env var
+  bypasses the cap. There is no release-scope deep gate. The mutation step tees its output to a stable,
   tailable progress log and prints an ETA from run history — a
   per-mutant rate (seconds/mutant) derived from past runs, times this
   run's actual mutant count, printed live the moment Stryker reports

@@ -25,7 +25,8 @@ Rules:
   `KIKO_MUTATION_BASE` to the change set's own base commit so only its
   files are mutated. `scripts/checks/mutation.sh` exits 2 before Stryker
   starts when more than 30 files would be mutated (`MUTATION_FILE_CAP`);
-  `KIKO_MUTATION_FULL=1` hits the same cap, and no env var bypasses it.
+  `KIKO_MUTATION_FULL=1` and a `KIKO_MUTATION_BASE` that does not
+  resolve are refused directly (exit 2), and no env var bypasses the cap.
   On that failure, split the run into smaller change sets — never raise
   the cap.
 - Run check:deep / check:mutation in the FOREGROUND via the wrapper

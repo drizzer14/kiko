@@ -92,12 +92,15 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   directly for the current filter (both the path-pattern exclusion and
   the barrel/`.styles.ts` drop-with-reinclusion step) and `CLAUDE.md`'s
   "Documented exceptions" for the mutate-set and sandbox exclusions this
-  mirrors. An empty changed set exits 0 (nothing to mutate).
-  `KIKO_MUTATION_FULL=1` forces the whole project, and an unresolvable
-  merge-base also falls back to the whole project — the gate never
-  silently mutates nothing. This keeps the manual `check:deep` cheap;
-  the diff logic is tested hermetically (a throwaway git repo, the real
-  script, an arg-capturing stub) in `__tests__/mutation-stream.test.ts`.
+  mirrors. An empty changed set exits 0 (nothing to mutate); a `git
+  diff` that fails after the base resolves exits 2 instead (an
+  unreadable list never counts as nothing). `KIKO_MUTATION_FULL=1` and
+  a base that does not resolve are refused directly (exit 2, the block
+  names which case) — the gate never falls back to the whole project
+  and never silently mutates nothing. This keeps the manual
+  `check:deep` cheap; the diff logic is tested hermetically (a
+  throwaway git repo, the real script, an arg-capturing stub) in
+  `__tests__/mutation-stream.test.ts`.
 
   `mutation.sh` also CAPS the run: after the file selection and excludes
   above, it counts the files it would mutate and, above
@@ -105,17 +108,17 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   structured block and exits 2 BEFORE Stryker starts. Mutation testing
   runs per small change set only (a whole-release run went 10 h 16 min
   with no result): the fix is `KIKO_MUTATION_BASE` set to the change
-  set's own base commit, never a raised cap. The whole-project modes
-  (`KIKO_MUTATION_FULL=1`, the unresolvable-base fallback) count every
-  tracked or unignored `.ts`/`.tsx` outside the config's
-  `ignorePatterns` directories through the same filter, so they hit the
-  same cap; a file list that cannot be read (not a git worktree) fails
-  closed. No env var bypasses the cap. The cap is tested hermetically
-  in `__tests__/mutation-cap.test.ts` (29 and 30 files run the stub; 31,
-  `KIKO_MUTATION_FULL=1` above 30, and the unresolvable-base fallback
-  fail without it). Because the real worktree is far above the cap, the
-  stream and lock tests run the wrapper inside a one-file throwaway
-  project.
+  set's own base commit, never a raised cap. No env var bypasses the
+  cap. Every refusal runs BEFORE the content-dedup skip, and the dedup
+  fingerprint includes the scope (merge-base sha + selected file list),
+  so a pass over a narrow change set never skips a wider or refused one
+  at the same HEAD. The cap and the refusals are tested hermetically in
+  `__tests__/mutation-cap.test.ts` (29 and 30 files run the stub; 31,
+  `KIKO_MUTATION_FULL=1`, a bad base, a failing `git diff` shim, and a
+  broad run after a narrow pass fail without it). The stream, lock, and
+  cap tests share their throwaway-repository and stub helpers through
+  `__tests__/test-support/mutation-repository.ts` (excluded from Jest's
+  suite list by `jest.config.js` `testPathIgnorePatterns`).
 
   `mutation.sh` also gives a watching HUMAN a live progress display and a
   per-mutant-rate ETA, so nobody polls the run — its exit code stays the only
