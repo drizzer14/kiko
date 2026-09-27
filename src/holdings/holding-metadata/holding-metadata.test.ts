@@ -189,6 +189,32 @@ describe('asBondMeta isin', () => {
   });
 });
 
+describe('asBondMeta entryMode', () => {
+  const base = {
+    quantity: 10,
+    faceValueMinorUnits: 10000,
+    couponPct: 10,
+    purchaseDate: 1000,
+    maturityDate: 2000,
+  };
+
+  it('round-trips the mode the bond was saved from', () => {
+    expect(asBondMeta({ ...base, entryMode: 'isin' })?.entryMode).toBe('isin');
+    expect(asBondMeta({ ...base, entryMode: 'manual' })?.entryMode).toBe('manual');
+  });
+
+  it('leaves the mode out for a bond saved before it was stored', () => {
+    expect(asBondMeta(base)).not.toHaveProperty('entryMode');
+  });
+
+  it('drops an unknown mode but keeps the bond', () => {
+    const result = asBondMeta({ ...base, entryMode: 'register' });
+
+    expect(result).not.toBeNull();
+    expect(result).not.toHaveProperty('entryMode');
+  });
+});
+
 describe('asBondMeta couponFrequency', () => {
   const base = {
     quantity: 10,

@@ -1,8 +1,6 @@
 import type { Currency } from '@kiko/currency/currency';
-import type { BondMeta, BondPayment } from '@kiko/holdings/holding-metadata';
 import { type BondTerms, cachedRegisterPayments } from '@kiko/bonds/nbu-register';
-
-import type { BondEntryMode } from '../bond-isin-section/bond-isin-section.props';
+import type { BondMeta, BondPayment, BondEntryMode } from '@kiko/holdings/holding-metadata';
 
 /** The fields of a bond about to be saved that decide which schedule it keeps. */
 export type BondToSave = Pick<

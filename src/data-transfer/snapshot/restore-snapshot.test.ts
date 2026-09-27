@@ -21,6 +21,7 @@ import {
 } from '@kiko/db';
 import { getTableColumns } from 'drizzle-orm';
 import { holdingValue } from '@kiko/holdings/holding-value';
+import { asBondMeta } from '@kiko/holdings/holding-metadata';
 import { holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import { computeDedupKeyBase } from '@kiko/statement-import/mapping';
 
@@ -1057,5 +1058,34 @@ describe('restoreDataSnapshot', () => {
     const [restored] = insertedRows.holdings as { metadata: unknown }[];
 
     expect(holdingRegisterCoupons(restored.metadata, 'USD', null)).toEqual(payments.slice(0, 2));
+  });
+
+  it('restores the mode a bond was saved from', async () => {
+    const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+    const bond = {
+      id: 'h1',
+      type: 'bond',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      balanceSetAt: null,
+      metadata: {
+        quantity: 10,
+        faceValueMinorUnits: 100_000,
+        couponPct: 15.18,
+        purchaseDate: Date.UTC(2026, 8, 10),
+        maturityDate: Date.UTC(2027, 8, 15),
+        isin: 'UA4000239115',
+        entryMode: 'isin',
+      },
+    };
+
+    await restoreDataSnapshot(
+      JSON.parse(JSON.stringify({ ...emptySnapshot, holdings: [bond] })) as DataSnapshot,
+    );
+
+    const [restored] = insertedRows.holdings as { metadata: unknown }[];
+
+    expect(asBondMeta(restored.metadata)?.entryMode).toBe('isin');
   });
 });

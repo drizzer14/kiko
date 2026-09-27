@@ -1,9 +1,7 @@
 import type { RefObject } from 'react';
 import type { TextInputInstance } from 'react-native';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
-import type { BondKind, BondCouponFrequency } from '@kiko/holdings/holding-metadata';
-
-import type { BondEntryMode } from '../bond-isin-section/bond-isin-section.props';
+import type { BondKind, BondEntryMode, BondCouponFrequency } from '@kiko/holdings/holding-metadata';
 
 export type ManualBondFieldsProps = {
   // Renders nothing outside Manual mode — these five fields

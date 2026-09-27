@@ -8,10 +8,8 @@ import type { HoldingType } from '@kiko/holdings/holding-type';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type BondTerms, currentCouponPct } from '@kiko/bonds/nbu-register';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
-import type { BondKind, BondCouponFrequency } from '@kiko/holdings/holding-metadata';
 import { bondRegisterRepo, refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
-
-import type { BondEntryMode } from '../bond-isin-section/bond-isin-section.props';
+import type { BondKind, BondEntryMode, BondCouponFrequency } from '@kiko/holdings/holding-metadata';
 
 // The literal i18n keys this hook's own `isinReasonKey` may return. Required
 // in ISIN mode, optional-but-must-be-valid-if-typed in Manual mode (the ISIN
@@ -146,9 +144,8 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
     setName,
   } = params;
 
-  // A CREATE defaults to 'isin'; `useBondFields`'s own `seed` calls
-  // `setBondMode('manual')` once the stored holding loads — the stored ISIN
-  // is shown there, still editable.
+  // A CREATE defaults to 'isin'; `useBondFields`'s own `seed` sets the mode
+  // the stored bond was saved from once it loads.
   const [bondMode, setBondMode] = useState<BondEntryMode>('isin');
   const [isin, setIsin] = useState('');
 

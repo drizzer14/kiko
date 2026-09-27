@@ -939,10 +939,27 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     ).toBeTruthy();
   });
 
-  it('opens edit mode in Manual with the stored ISIN shown and editable', async () => {
+  it('opens an edit of a bond saved in ISIN mode in ISIN mode', async () => {
     const screen = await renderEdit({
       ...bondHolding,
-      metadata: { ...bondHolding.metadata, isin: 'UA4000234215' },
+      metadata: { ...bondHolding.metadata, isin: 'UA4000234215', entryMode: 'isin' },
+    });
+
+    expect(
+      screen.getByTestId('bond-isin-mode-control-option-isin').props.accessibilityState.selected,
+    ).toBe(true);
+    expect(isinInput(screen).props.value).toBe('UA4000234215');
+  });
+
+  it('opens an edit of a bond saved in Manual mode in Manual, with the stored ISIN shown and editable', async () => {
+    const screen = await renderEdit({
+      ...bondHolding,
+      metadata: {
+        ...bondHolding.metadata,
+        isin: 'UA4000234215',
+        entryMode: 'manual',
+        payments: [{ date: localDay(2028, 1, 1), kind: 'redemption', amount: '1000' }],
+      },
     });
 
     expect(

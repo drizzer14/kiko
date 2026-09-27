@@ -9,13 +9,12 @@ import { currencySymbol } from '@kiko/currency/currency';
 import Divider from '@kiko/design-system/components/divider';
 import { groupAmount } from '@kiko/screens/forms/amount-format';
 import TextField from '@kiko/design-system/components/text-field';
-import type { BondCouponFrequency } from '@kiko/holdings/holding-metadata';
+import type { BondEntryMode, BondCouponFrequency } from '@kiko/holdings/holding-metadata';
 
 import BondIsinSection from '../bond-isin-section';
 import ManualBondFields from '../manual-bond-fields';
 import { fieldErrorMessage } from '../../field-error-message';
 import type { IsinReasonKey } from '../use-bond-isin-mode/use-bond-isin-mode';
-import type { BondEntryMode } from '../bond-isin-section/bond-isin-section.props';
 
 import type { BondFormBlockProps } from './bond-form-block.props';
 

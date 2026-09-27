@@ -3,6 +3,7 @@ import {
   asBondMeta,
   type BondKind,
   type BondMeta,
+  type BondEntryMode,
   type BondCouponFrequency,
   hasStoredBondPurchasePrice,
 } from '@kiko/holdings/holding-metadata';
@@ -20,7 +21,6 @@ import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 
 import { useBondIsinMode, type IsinReasonKey } from '../use-bond-isin-mode';
-import type { BondEntryMode } from '../bond-isin-section/bond-isin-section.props';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
 
 import {
@@ -30,6 +30,12 @@ import {
   type BondReasonKey,
 } from './bond-reasons';
 import { bondPaymentsOnSave, type SavedBond } from './bond-payments-on-save';
+
+// A bond saved before `entryMode` was stored does not say which mode it came
+// from. An ISIN with a kept register schedule is the best sign of an
+// ISIN-mode save; every other such bond opens Manual.
+const legacyEntryMode = (meta: BondMeta): BondEntryMode =>
+  meta.isin !== undefined && (meta.payments?.length ?? 0) > 0 ? 'isin' : 'manual';
 
 // Seed the bond number/date fields from stored metadata. Minor-unit money
 // fields (face value, purchase price) convert back to grouped major strings;
@@ -47,9 +53,9 @@ const seedBondFields = (meta: BondMeta, currency: Currency, hasStoredPrice: bool
   maturityDate: meta.maturityDate,
   bondKind: meta.bondKind,
   couponFrequency: meta.couponFrequency,
-  // Edit mode always opens Manual, with the stored ISIN (or ''
-  // for a bond saved before this field existed) shown and still editable.
+  // Shown and still editable in either mode; '' for a bond saved without one.
   isin: meta.isin ?? '',
+  bondMode: meta.entryMode ?? legacyEntryMode(meta),
 });
 
 type UseBondFieldsParams = {
@@ -217,6 +223,7 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
       // `setIsin` wrapper) — a second `normalizeIsin` call here was a
       // redundant third normalization.
       ...(isin.trim() === '' ? {} : { isin }),
+      entryMode: bondMode,
       ...foldMap(maybe(payments), (schedule) => ({ payments: schedule })),
     };
   };
@@ -266,9 +273,7 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
       setBondKind(fields.bondKind);
       setCouponFrequency(fields.couponFrequency);
       seedStoredIsin({ isin: fields.isin, couponFrequency: fields.couponFrequency });
-      // Edit always opens Manual — the register is never
-      // consulted again once a holding is saved.
-      setBondMode('manual');
+      setBondMode(fields.bondMode);
     },
     [seedStoredIsin, setBondMode],
   );

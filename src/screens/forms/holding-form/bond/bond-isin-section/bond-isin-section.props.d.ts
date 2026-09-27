@@ -2,14 +2,7 @@ import type { RefObject } from 'react';
 import type { TextInputInstance } from 'react-native';
 import type { BondTerms } from '@kiko/bonds/nbu-register';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
-import type { BondCouponFrequency } from '@kiko/holdings/holding-metadata';
-
-// "ISIN" pre-fills a found bond's terms from the NBU register; "Manual" is
-// the classic hand-entered form. A CREATE defaults to
-// 'isin'; an EDIT always opens 'manual', with the stored ISIN shown and
-// still editable — `useBondFields` owns that seeding, this
-// type is just the shared vocabulary.
-export type BondEntryMode = 'isin' | 'manual';
+import type { BondEntryMode, BondCouponFrequency } from '@kiko/holdings/holding-metadata';
 
 export type BondIsinSectionProps = {
   mode: BondEntryMode;

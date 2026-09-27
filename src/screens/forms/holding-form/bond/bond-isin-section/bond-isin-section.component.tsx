@@ -1,6 +1,11 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
 import { formatDate } from '@kiko/dates';
+import {
+  type BondEntryMode,
+  bondCouponFrequencies,
+  type BondCouponFrequency,
+} from '@kiko/holdings/holding-metadata';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { validateIsin } from '@kiko/bonds/isin';
@@ -13,9 +18,8 @@ import FieldLabel from '@kiko/design-system/components/field-label';
 import SelectField from '@kiko/design-system/components/select-field';
 import SummaryTable from '@kiko/design-system/components/summary-table';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
-import { bondCouponFrequencies, type BondCouponFrequency } from '@kiko/holdings/holding-metadata';
 
-import type { BondEntryMode, BondIsinSectionProps } from './bond-isin-section.props';
+import type { BondIsinSectionProps } from './bond-isin-section.props';
 
 const modeLabels = (t: TFunction): Record<BondEntryMode, string> => ({
   isin: t('forms.holding.isinModeIsin'),

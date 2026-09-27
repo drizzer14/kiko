@@ -123,7 +123,7 @@ describe('useBondFields kept payment schedule', () => {
 
   it('drops the kept schedule once the coupon is edited, saving the edited coupon', async () => {
     mockBondRegisterRows = [withPayments()];
-    const holding = bondHolding({ ...bondMetadata, payments });
+    const holding = bondHolding({ ...bondMetadata, entryMode: 'manual', payments });
     mockStoredMetadata = holding.metadata;
     const { result } = await renderBondFields(true);
 
@@ -211,6 +211,106 @@ describe('useBondFields kept payment schedule', () => {
     await result.current.saveEdit(context(legacy));
 
     expect(mockWrittenMetadata.at(-1)).toMatchObject({ couponPct: 12, payments: [] });
+  });
+});
+
+describe('useBondFields entry mode', () => {
+  const storedBond = (metadata: Record<string, unknown>) =>
+    ({
+      currency: 'UAH',
+      metadata: {
+        quantity: 10,
+        faceValueMinorUnits: 100_000,
+        couponPct: 9.5,
+        purchaseDate: new Date(2026, 8, 1).getTime(),
+        purchasePriceMinorUnits: 1_000_000,
+        maturityDate: new Date(2029, 5, 24).getTime(),
+        couponFrequency: 'quarterly',
+        ...metadata,
+      },
+    }) as unknown as HoldingRow;
+  const payments = [{ date: new Date(2029, 5, 24).getTime(), kind: 'redemption', amount: '1000' }];
+
+  const seededMode = async (metadata: Record<string, unknown>) => {
+    const { result } = await renderBondFields(true);
+
+    await act(async () => {
+      result.current.seed(storedBond(metadata));
+    });
+
+    return result.current.bondMode;
+  };
+
+  it('stores ISIN for a bond created in ISIN mode', async () => {
+    mockBondRegisterRows = [foundRow()];
+    const { result } = await renderBondFields();
+
+    await act(async () => {
+      result.current.setIsin(VALID_ISIN);
+    });
+
+    expect(result.current.createPayload().metadata).toMatchObject({ entryMode: 'isin' });
+  });
+
+  it('stores Manual for a bond created in Manual mode, with or without an ISIN', async () => {
+    const { result } = await renderBondFields();
+
+    await act(async () => {
+      result.current.setBondMode('manual');
+    });
+
+    expect(result.current.createPayload().metadata).toMatchObject({ entryMode: 'manual' });
+
+    await act(async () => {
+      result.current.setIsin(VALID_ISIN);
+    });
+
+    expect(result.current.createPayload().metadata).toMatchObject({ entryMode: 'manual' });
+  });
+
+  it('stores Manual once an unmapped frequency switched the form to Manual', async () => {
+    mockBondRegisterRows = [foundRow({ couponFrequency: null })];
+    const { result } = await renderBondFields();
+
+    await act(async () => {
+      result.current.setIsin(VALID_ISIN);
+    });
+
+    expect(result.current.createPayload().metadata).toMatchObject({ entryMode: 'manual' });
+  });
+
+  it('opens an edit in the mode the bond was saved from', async () => {
+    expect(await seededMode({ isin: VALID_ISIN, entryMode: 'isin' })).toBe('isin');
+    expect(await seededMode({ isin: VALID_ISIN, entryMode: 'manual', payments })).toBe('manual');
+  });
+
+  it('opens a bond saved before the mode was stored in ISIN only with an ISIN and a kept schedule', async () => {
+    expect(await seededMode({ isin: VALID_ISIN, payments })).toBe('isin');
+    expect(await seededMode({ isin: VALID_ISIN, payments: [] })).toBe('manual');
+    expect(await seededMode({ isin: VALID_ISIN })).toBe('manual');
+    expect(await seededMode({ payments })).toBe('manual');
+  });
+
+  it('saves an unchanged ISIN-mode edit as ISIN', async () => {
+    mockBondRegisterRows = [foundRow()];
+    const holding = storedBond({ isin: VALID_ISIN, entryMode: 'isin' });
+    mockStoredMetadata = holding.metadata;
+    const { result } = await renderBondFields(true);
+
+    await act(async () => {
+      result.current.seed(holding);
+    });
+    await result.current.saveEdit({
+      holdingId: 'h1',
+      name: 'Bond',
+      color: null,
+      currency: 'UAH',
+      isSynced: false,
+      editingHolding: holding,
+      book: EMPTY_PRICE_BOOK,
+    });
+
+    expect(mockWrittenMetadata.at(-1)).toMatchObject({ entryMode: 'isin', couponPct: 9.5 });
   });
 });
 

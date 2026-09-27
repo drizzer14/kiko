@@ -994,8 +994,9 @@ stays as saved (nothing rewrites it); it is only the fallback.
   step-up bond, the step saved at create. A `.kiko` restore brings the
   `bond_register` cache back with the holdings, so a restored bond not
   yet backfilled reads the restored cache until the next refresh
-  backfills it. Edit mode still seeds the SAVED coupon into Manual's
-  coupon field.
+  backfills it. Edit mode still seeds the SAVED coupon, and the
+  register's coupon for the stored ISIN never replaces it
+  (`seedStoredIsin`, below).
 
 **Yield to maturity (USER DECISION D4).** `src/bonds/yield-to-maturity/`:
 `yieldToMaturity(cashFlows, paidMinorUnits, lotDate)` is the effective
@@ -1049,10 +1050,10 @@ been flagged by Knip.
 
 ### The ISIN-mode form
 
-`BondMeta.isin?: string` (`holding-metadata.ts`) records how a bond was
-added — present for one saved through ISIN mode (or typed into
-Manual mode's own optional ISIN field), `undefined` for a legacy
-Manual-mode bond. Once saved, the holding's stored terms never depend
+`BondMeta.isin?: string` (`holding-metadata.ts`) records the ISIN a
+bond was saved with — from ISIN mode or typed into Manual mode's own
+optional ISIN field, `undefined` for a bond without one. It does NOT
+tell the two modes apart; `BondMeta.entryMode` does (below). Once saved, the holding's stored terms never depend
 on the register again — nothing re-validates a stored ISIN or
 rewrites its coupon against a later register state (the detail
 screen's coupons, expected profit and yield to maturity READ the kept
@@ -1160,11 +1161,24 @@ of an unmapped-frequency bond stays saveable. The pick clears only when
 a NEW match applies (inside the apply effect), not on every change of
 the matched ISIN.
 
-A CREATE defaults to `'isin'`; EDIT always seeds `'manual'` (the
-stored ISIN is shown there, still editable) via
-`useBondFields`'s own `seed`
-(`src/screens/forms/holding-form/bond/use-bond-fields/`),
-which also calls the hook's own `setBondMode`.
+A CREATE defaults to `'isin'`. EDIT opens in the mode the bond was
+saved from (USER FINDING D8): `BondMeta.entryMode?: 'isin' | 'manual'`
+(`BondEntryMode`, `holding-metadata.ts` — the `PropertyMeta.ownershipInput`
+pattern: optional, an unknown value is dropped by `asBondMeta`, the
+record still parses; a `.kiko` restore copies it with the metadata).
+`buildBondMetadata` writes the mode the bond is saved from on every
+create and edit save — the unmapped-frequency auto-switch saves
+`'manual'`. `useBondFields`'s own `seed`
+(`src/screens/forms/holding-form/bond/use-bond-fields/`) calls the
+hook's `setBondMode` with it; the stored ISIN is shown, still editable,
+in either mode. A bond saved before `entryMode` existed goes through
+ONE small named function, `legacyEntryMode` (PENDING USER RULING — a
+one-line edit if the user rules otherwise): an ISIN AND a non-empty
+stored `payments` array opens ISIN; every other legacy bond opens
+Manual. Accepted side effect: an ISIN-mode edit of a matured/delisted
+ISIN, or offline with an empty cache, shows "not in the register" and
+blocks Save until "Switch to manual"; a legacy bond that opens ISIN
+without a stored price must get one before Save.
 
 Validation (`isinReasonKey`, returned by the hook, backed by a
 module-level pure `bondIsinReasonKey`): required and blocking in ISIN

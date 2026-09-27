@@ -44,6 +44,15 @@ export type BondPayment = {
   amount: string;
 };
 
+// "ISIN" pre-fills a found bond's terms from the NBU register; "Manual" is
+// the classic hand-entered form.
+const bondEntryModes = ['isin', 'manual'] as const;
+
+export type BondEntryMode = (typeof bondEntryModes)[number];
+
+const isBondEntryMode = (value: unknown): value is BondEntryMode =>
+  typeof value === 'string' && (bondEntryModes as readonly string[]).includes(value);
+
 export type BondMeta = {
   quantity: number;
   faceValueMinorUnits: number;
@@ -53,12 +62,14 @@ export type BondMeta = {
   maturityDate: number;
   bondKind: BondKind;
   couponFrequency: BondCouponFrequency;
-  // The ISIN the bond was added under (the ISIN-mode form), or `undefined`
-  // for a Manual-mode bond that never carried one (including every bond
-  // saved before the ISIN-mode form existed). Once saved it never depends on
-  // the register again — this is purely a record of how the holding was
-  // added, re-shown editable in edit mode's Manual view.
+  // The ISIN the bond was saved with, from either form mode, or `undefined`
+  // for a bond that never carried one (including every bond saved before
+  // the ISIN-mode form existed). Once saved its terms never depend on the
+  // register again; it is re-shown, editable, in the edit form.
   isin?: string;
+  // The form mode the bond was last saved from; it only picks the mode the
+  // edit form opens in. Absent for a bond saved before it was stored.
+  entryMode?: BondEntryMode;
   // The issuer's schedule kept with the holding, so its coupons never depend
   // on the ISIN still being in the register cache (a matured or delisted
   // ISIN leaves it). Absent: never captured, so the cache is read instead.
@@ -276,7 +287,7 @@ export const asBondMeta = (value: unknown): BondMeta | null => {
     return null;
   }
 
-  const { couponFrequency, purchasePriceMinorUnits, payments } = value;
+  const { couponFrequency, purchasePriceMinorUnits, payments, entryMode } = value;
   const parsedPayments = foldMap(maybe(payments), asBondPayments);
 
   // A PRESENT bondKind/couponFrequency/purchasePriceMinorUnits/isin/payments
@@ -315,6 +326,7 @@ export const asBondMeta = (value: unknown): BondMeta | null => {
     bondKind: bondKind === 'corporate' ? 'corporate' : 'government',
     couponFrequency: isBondCouponFrequency(couponFrequency) ? couponFrequency : 'annually',
     isin: typeof isin === 'string' ? isin : undefined,
+    ...(isBondEntryMode(entryMode) ? { entryMode } : {}),
     ...foldMap(maybe(parsedPayments), (schedule) => ({ payments: schedule })),
   };
 };
