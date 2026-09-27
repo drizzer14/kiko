@@ -20,8 +20,8 @@ declare module 'react-native-svg' {
 }
 
 import { formatDayMonth } from '@kiko/dates';
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
 import { activeLocale } from '@kiko/i18n/active-locale';
 import type { Currency } from '@kiko/currency/currency';
 import type { NetWorthPoint } from '@kiko/statistics/net-worth-series';

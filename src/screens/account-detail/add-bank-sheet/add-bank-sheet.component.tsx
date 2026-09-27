@@ -1,13 +1,12 @@
 import type { FC } from 'react';
 import { Pressable } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
 import type { BankProviderId } from '@kiko/bank-sync/provider';
 import { bankProviderRegistry } from '@kiko/bank-sync/registry';
+import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import { type ProviderCatalogEntry, providerCatalog } from '@kiko/bank-sync/provider-catalog';
-
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import BottomSheet from '../../../design-system/components/bottom-sheet';
 
 import { styles } from './add-bank-sheet.styles';
 import type { AddBankProviderSheetProps } from './add-bank-sheet.props';

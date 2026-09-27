@@ -8,10 +8,9 @@ import { isSyncedTransaction } from '@kiko/holdings/deletable';
 import { resolveCategoryDisplay } from '@kiko/categories/category-display';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { isTimeExemptHoldingType } from '@kiko/holdings/holding-descriptor';
+import TransactionCard from '@kiko/design-system/components/transaction-card';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
-
-import TransactionCard from '../../../design-system/components/transaction-card';
 
 import { styles } from './transaction-row.styles';
 import type { TransactionRowProps } from './transaction-row.props';

@@ -8,20 +8,20 @@ import {
 } from '@kiko/crypto-sync/provider';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
 import type { AccountRow, HoldingRow } from '@kiko/db';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
+import SymbolIcon from '@kiko/design-system/components/symbol';
 import { resyncRequest } from '@kiko/crypto-sync/resync-request';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
+import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
+import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
 
 import { styles } from '../account-detail.styles';
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import SymbolIcon from '../../../design-system/components/symbol';
 import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
 import { formatLastSyncAt, latestSyncedAt } from '../format-last-sync';
-import ConfirmSheet from '../../../design-system/components/confirm-sheet';
-import CryptoSyncForm from '../../../design-system/components/crypto-sync-form';
 
 type CryptoSyncSectionProps = {
   account: AccountRow;

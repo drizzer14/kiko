@@ -41,26 +41,38 @@ import {
   buildDebtTotal,
 } from '@kiko/statistics/account-contribution';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import FilterMenu, {
+  FILTER_ALL,
+  type FilterOption,
+} from '@kiko/design-system/components/filter-menu';
 import either, { bifold, isLeft } from 'fnts/either';
+import Box from '@kiko/design-system/components/box';
 import { useDataReady, useLiveQuery } from '@kiko/db';
 import { categoriesRepo } from '@kiko/categories/repo';
+import Card from '@kiko/design-system/components/card';
+import Text from '@kiko/design-system/components/text';
 import type { ScrollViewInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
 import { ibanOf } from '@kiko/holdings/holding-metadata';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { usePriceBook } from '@kiko/prices/use-price-book';
+import Screen from '@kiko/design-system/components/screen';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import { bucketDaysForSpan } from '@kiko/statistics/buckets';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
+import MoneyText from '@kiko/design-system/components/money-text';
 import { defaultAccountColor } from '@kiko/holdings/entity-colors';
 import { buildTypeBreakdown } from '@kiko/statistics/type-breakdown';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import { transactionSpan } from '@kiko/transactions/transaction-span';
 import { buildNetWorthSeries } from '@kiko/statistics/net-worth-series';
+import LoadingState from '@kiko/design-system/components/loading-state';
+import SummaryTable from '@kiko/design-system/components/summary-table';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { SeriesTransaction } from '@kiko/statistics/holding-value-at';
+import DateRangeField from '@kiko/design-system/components/date-range-field';
 import { defaultDateRange, endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
 import { useFocusRefreshedNow } from '@kiko/design-system/use-focus-refreshed-now';
@@ -68,19 +80,6 @@ import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclus
 import { internalTransferTransactionIds } from '@kiko/statistics/internal-transfers';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
-
-import FilterMenu, {
-  FILTER_ALL,
-  type FilterOption,
-} from '../../design-system/components/filter-menu';
-import Box from '../../design-system/components/box';
-import Card from '../../design-system/components/card';
-import Text from '../../design-system/components/text';
-import Screen from '../../design-system/components/screen';
-import MoneyText from '../../design-system/components/money-text';
-import LoadingState from '../../design-system/components/loading-state';
-import SummaryTable from '../../design-system/components/summary-table';
-import DateRangeField from '../../design-system/components/date-range-field';
 
 import BarChart from './bar-chart';
 import PieChart from './pie-chart';

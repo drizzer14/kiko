@@ -10,13 +10,13 @@ import '@kiko/design-system/unistyles';
 // Initialize i18next so the row's and CardContextMenu's `t()` labels resolve
 // to the real catalogue instead of the raw key.
 import '@kiko/i18n/init';
-
 import {
   DELETE_ACTION_TEST_ID,
   DELETE_CONFIRM_TEST_ID,
   DUPLICATE_ACTION_TEST_ID,
   HOLD_GESTURE_TEST_ID,
-} from '../../../design-system/components/card-context-menu';
+} from '@kiko/design-system/components/card-context-menu';
+
 import GestureRootWrapper from '../../../test-support/gesture-root-wrapper';
 
 import TransactionRow from './transaction-row.component';

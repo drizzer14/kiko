@@ -13,7 +13,7 @@ import TrendFilterField from './trend-filter-field.component';
 // primitive with a passthrough that forwards both its `tone` AND `variant`
 // props onto the host node instead, so the test can read the PROPS that
 // drive the color and the type-scale step.
-jest.mock('../../../design-system/components/text', () => {
+jest.mock('@kiko/design-system/components/text', () => {
   const React = require('react');
   const { Text: RNText } = require('react-native');
 

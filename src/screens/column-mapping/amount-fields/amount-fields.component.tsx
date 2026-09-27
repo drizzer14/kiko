@@ -1,9 +1,9 @@
 import type { FC } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
+import SegmentedControl from '@kiko/design-system/components/segmented-control';
 
 import ColumnSelectField from '../column-select-field';
-import SegmentedControl from '../../../design-system/components/segmented-control';
 
 import type { AmountFieldsProps, AmountMode } from './amount-fields.props';
 

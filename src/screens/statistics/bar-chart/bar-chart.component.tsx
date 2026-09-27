@@ -5,14 +5,13 @@ import type { TFunction } from 'i18next';
 import { Rect, Svg } from 'react-native-svg';
 import { Money } from '@kiko/currency/money';
 import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
 import type { Currency } from '@kiko/currency/currency';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import type { TypeSlice } from '@kiko/statistics/type-breakdown';
+import MoneyText from '@kiko/design-system/components/money-text';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
-
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import MoneyText from '../../../design-system/components/money-text';
 
 import { styles } from './bar-chart.styles';
 

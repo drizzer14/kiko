@@ -1,10 +1,10 @@
 import type { FC } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
+import CurrencyField from '@kiko/design-system/components/currency-field';
+import SegmentedControl from '@kiko/design-system/components/segmented-control';
 
 import ColumnSelectField from '../column-select-field';
-import CurrencyField from '../../../design-system/components/currency-field';
-import SegmentedControl from '../../../design-system/components/segmented-control';
 
 import type { CurrencyFieldsProps, CurrencyMode } from './currency-fields.props';
 

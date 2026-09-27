@@ -8,7 +8,7 @@ import type {
 import type { Currency } from '@kiko/currency/currency';
 import type { PreviewStats } from '@kiko/statement-import/preview-stats';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
-import type { TargetHoldingOption } from '@kiko/design-system/components/target-holding-sheet/target-holding-sheet.props';
+import type { TargetHoldingOption } from '@kiko/design-system/components/target-holding-sheet';
 
 import type { AmountMode } from '../amount-fields/amount-fields.props';
 import type { CurrencyMode } from '../currency-fields/currency-fields.props';

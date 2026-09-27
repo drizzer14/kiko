@@ -3,14 +3,13 @@ import { Money } from '@kiko/currency/money';
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 import { type FC, memo, useState } from 'react';
+import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
+import Text from '@kiko/design-system/components/text';
 import type { Currency } from '@kiko/currency/currency';
+import SymbolIcon from '@kiko/design-system/components/symbol';
+import MoneyText from '@kiko/design-system/components/money-text';
 import type { AccountSlice } from '@kiko/statistics/account-contribution';
-
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import SymbolIcon from '../../../design-system/components/symbol';
-import MoneyText from '../../../design-system/components/money-text';
 
 import { styles } from './pie-chart.styles';
 

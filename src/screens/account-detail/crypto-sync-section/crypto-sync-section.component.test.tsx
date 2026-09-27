@@ -33,7 +33,7 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
 // The two fields are tested on their own; here each collapses to one pressable
 // that fires `onConnect` with a fixture, so the section's wiring is what is
 // under test.
-jest.mock('../../../design-system/components/wallet-address-field', () => {
+jest.mock('@kiko/design-system/components/wallet-address-field', () => {
   const { Pressable, Text } = require('react-native');
 
   return {
@@ -48,7 +48,7 @@ jest.mock('../../../design-system/components/wallet-address-field', () => {
     ),
   };
 });
-jest.mock('../../../design-system/components/binance-credentials-field', () => {
+jest.mock('@kiko/design-system/components/binance-credentials-field', () => {
   const { Pressable, Text } = require('react-native');
 
   return {
@@ -70,7 +70,7 @@ jest.mock('../../../design-system/components/binance-credentials-field', () => {
 // getByText/press assertion is unaffected.
 const mockButtonProps: { variant?: string; children?: ReactNode; icon?: string }[] = [];
 
-jest.mock('../../../design-system/components/button', () => {
+jest.mock('@kiko/design-system/components/button', () => {
   const { Pressable, Text: RNText } = require('react-native');
 
   return {

@@ -7,11 +7,11 @@ import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { formatDateTime } from '@kiko/dates';
 import { darkTheme } from '@kiko/design-system/theme';
-
 import {
   DELETE_CONFIRM_TEST_ID,
   HOLD_GESTURE_TEST_ID,
-} from '../../design-system/components/card-context-menu';
+} from '@kiko/design-system/components/card-context-menu';
+
 import GestureRootWrapper from '../../test-support/gesture-root-wrapper';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
@@ -22,7 +22,7 @@ import AccountDetailScreen from './account-detail.screen';
 // Mock Text here — following the money-text/home test precedent — so the
 // resolved `tone` MoneyText emits is observable via a testID, while the amount
 // still renders as plain text so every getByText assertion is unaffected.
-jest.mock('../../design-system/components/text', () => {
+jest.mock('@kiko/design-system/components/text', () => {
   const { Text: RNText } = require('react-native');
 
   return {
@@ -47,7 +47,7 @@ const mockButtonProps: {
   fullWidth?: boolean;
 }[] = [];
 
-jest.mock('../../design-system/components/button', () => {
+jest.mock('@kiko/design-system/components/button', () => {
   const { Pressable, Text: RNText } = require('react-native');
 
   return {

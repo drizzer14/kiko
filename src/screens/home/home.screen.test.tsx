@@ -7,11 +7,11 @@ import { darkTheme } from '@kiko/design-system/theme';
 import { DAY_MS, formatDate, defaultDateRange } from '@kiko/dates';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
+import { resolveBottomClearance } from '@kiko/design-system/components/screen';
 
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
 // resolved MoneyText `tone` via a testID — see the module for the full rationale.
 import mockTextTone from '../../test-support/mock-text-tone';
-import { resolveBottomClearance } from '../../design-system/components/screen';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import HomeScreen from './home.screen';
@@ -20,7 +20,7 @@ type HomeProps = ComponentProps<typeof HomeScreen>;
 
 import { FILTER_ALL } from './transaction-filter-bar';
 
-jest.mock('../../design-system/components/text', () => ({
+jest.mock('@kiko/design-system/components/text', () => ({
   __esModule: true,
   default: mockTextTone,
 }));

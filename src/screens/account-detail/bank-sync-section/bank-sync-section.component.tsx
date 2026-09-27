@@ -5,21 +5,21 @@ import { useSync } from '@kiko/sync/use-sync';
 import { useTranslation } from 'react-i18next';
 import { syncStateRepo } from '@kiko/sync-state';
 import { saveToken } from '@kiko/monobank/token';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
 import { type AccountRow, useLiveQuery } from '@kiko/db';
+import Button from '@kiko/design-system/components/button';
+import SymbolIcon from '@kiko/design-system/components/symbol';
 import { bankProviderRegistry } from '@kiko/bank-sync/registry';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
+import MonobankConnectField from '@kiko/design-system/components/monobank-connect-field';
 import { bankProviderIdOf, isBankProviderId, type BankProviderId } from '@kiko/bank-sync/provider';
 
 import { styles } from '../account-detail.styles';
 import AddBankProviderSheet from '../add-bank-sheet';
 import { formatLastSyncAt } from '../format-last-sync';
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import Button from '../../../design-system/components/button';
-import SymbolIcon from '../../../design-system/components/symbol';
 import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
-import ConfirmSheet from '../../../design-system/components/confirm-sheet';
-import MonobankConnectField from '../../../design-system/components/monobank-connect-field';
 
 type BankSyncSectionProps = {
   account: AccountRow;

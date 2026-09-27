@@ -18,14 +18,13 @@ jest.mock('@kiko/rates/history-backfill', () => {
 
 import { i18n } from '@kiko/i18n/init';
 import { toUtcMidnight } from '@kiko/rates/history-entry';
+import type { TrendFilter } from '@kiko/statistics/trend-filter';
 import type { BackfillStatus } from '@kiko/rates/history-backfill';
+import { categoryColor } from '@kiko/statistics/category-breakdown';
 import { formatDate, startOfLocalDay, defaultDateRange } from '@kiko/dates';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
-
-import type { TrendFilter } from '@kiko/statistics/trend-filter';
-import { categoryColor } from '@kiko/statistics/category-breakdown';
 import '@kiko/design-system/unistyles';
-import { FILTER_ALL } from '../../design-system/components/filter-menu';
+import { FILTER_ALL } from '@kiko/design-system/components/filter-menu';
 
 import StatisticsScreen from './statistics.screen';
 

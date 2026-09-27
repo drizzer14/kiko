@@ -12,17 +12,17 @@ import { dayKeyOf } from '@kiko/prices/price-book';
 import { formatMoney } from '@kiko/currency/format';
 import { darkTheme } from '@kiko/design-system/theme';
 import { formatDate, startOfLocalDay } from '@kiko/dates';
-import { transactionsRepo } from '@kiko/transactions/repo';
-import { loanInstallments } from '@kiko/holdings/loan-schedule';
-import type { LoanMeta } from '@kiko/holdings/holding-metadata';
-
 import {
   EDIT_ACTION_TEST_ID,
   HOLD_GESTURE_TEST_ID,
   DELETE_ACTION_TEST_ID,
   DELETE_CONFIRM_TEST_ID,
   DUPLICATE_ACTION_TEST_ID,
-} from '../../design-system/components/card-context-menu';
+} from '@kiko/design-system/components/card-context-menu';
+import { transactionsRepo } from '@kiko/transactions/repo';
+import { loanInstallments } from '@kiko/holdings/loan-schedule';
+import type { LoanMeta } from '@kiko/holdings/holding-metadata';
+
 import GestureRootWrapper from '../../test-support/gesture-root-wrapper';
 import { ancestorWithStyle } from '../../test-support/ancestor-with-style';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
@@ -38,7 +38,7 @@ type HoldingDetailProps = ComponentProps<typeof HoldingDetailScreen>;
 // formatted amount underneath (so the trailing ₴ that `amountForLabel` scans
 // for is present). The ledger's derived rows and the interest/tax breakdown
 // lines pass an explicit tone, which is exactly what these tests assert.
-jest.mock('../../design-system/components/money-text', () => {
+jest.mock('@kiko/design-system/components/money-text', () => {
   const { Text: RNText } = require('react-native');
   const { formatMoney } = require('@kiko/currency/format');
 

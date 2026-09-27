@@ -4,10 +4,10 @@ import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import SummaryTable from '@kiko/design-system/components/summary-table';
+import ExampleTransaction from '@kiko/design-system/components/example-transaction';
+import TargetHoldingField from '@kiko/design-system/components/target-holding-field';
 
 import PreviewDetailList from '../preview-detail-list';
-import ExampleTransaction from '../../../design-system/components/example-transaction';
-import TargetHoldingField from '../../../design-system/components/target-holding-field';
 
 import { styles } from './statement-preview-block.styles';
 import type { StatementPreviewBlockProps } from './statement-preview-block.props';

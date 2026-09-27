@@ -32,20 +32,20 @@ import {
   readSheetRowsSafely,
   deleteLocalStatementCopy,
 } from '@kiko/statement-import/read-statement-file';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
 import type { ScrollViewInstance } from 'react-native';
+import Screen from '@kiko/design-system/components/screen';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { previewStats } from '@kiko/statement-import/preview-stats';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import ImportResultSheet from '@kiko/design-system/components/import-result-sheet';
 import { readTableRows, findSavedMapping } from '@kiko/statement-import/column-mapping';
 import { useTargetHoldingOptions } from '@kiko/statement-import/use-target-holding-options';
 import { importStatement, type ImportResult } from '@kiko/statement-import/import-statement';
 
-import Box from '../../design-system/components/box';
-import Text from '../../design-system/components/text';
-import Screen from '../../design-system/components/screen';
 import type { AccountsStackParamList } from '../../navigation/types';
-import ImportResultSheet from '../../design-system/components/import-result-sheet';
 
 import StatementImportFooter from './statement-import-footer';
 import StatementPreviewBlock from './statement-preview-block';

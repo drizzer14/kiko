@@ -8,18 +8,16 @@ import {
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView } from 'react-native';
-
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import Button from '../../../design-system/components/button';
-import ChipRow from '../../../design-system/components/chip-row';
-import SymbolIcon from '../../../design-system/components/symbol';
-import BottomSheet from '../../../design-system/components/bottom-sheet';
-import SheetFooter from '../../../design-system/components/sheet-footer';
-import SelectableRow from '../../../design-system/components/selectable-row';
-import SegmentedControl from '../../../design-system/components/segmented-control';
-import { FILTER_ALL } from '../../../design-system/components/filter-menu/filter-menu.component';
-import type { FilterOption } from '../../../design-system/components/filter-menu/filter-menu.props';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import Button from '@kiko/design-system/components/button';
+import ChipRow from '@kiko/design-system/components/chip-row';
+import SymbolIcon from '@kiko/design-system/components/symbol';
+import BottomSheet from '@kiko/design-system/components/bottom-sheet';
+import SheetFooter from '@kiko/design-system/components/sheet-footer';
+import SelectableRow from '@kiko/design-system/components/selectable-row';
+import SegmentedControl from '@kiko/design-system/components/segmented-control';
+import { FILTER_ALL, type FilterOption } from '@kiko/design-system/components/filter-menu';
 
 import { styles } from './trend-filter-field.styles';
 import type { TrendFilterFieldProps } from './trend-filter-field.props';

@@ -7,12 +7,12 @@ import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-han
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
-import { entityIconTileGradient } from '@kiko/design-system/entity-tint';
-
 import {
   DELETE_CONFIRM_TEST_ID,
   HOLD_GESTURE_TEST_ID,
-} from '../../design-system/components/card-context-menu';
+} from '@kiko/design-system/components/card-context-menu';
+import { entityIconTileGradient } from '@kiko/design-system/entity-tint';
+
 import GestureRootWrapper from '../../test-support/gesture-root-wrapper';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 

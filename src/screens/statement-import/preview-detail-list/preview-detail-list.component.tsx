@@ -1,7 +1,6 @@
 import type { FC } from 'react';
-
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
 
 import type { PreviewDetailListProps } from './preview-detail-list.props';
 

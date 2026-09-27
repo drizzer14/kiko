@@ -1,13 +1,12 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-
-import Box from '../../../design-system/components/box';
-import DateRangeField from '../../../design-system/components/date-range-field';
-import FilterMenu, { type FilterOption } from '../../../design-system/components/filter-menu';
+import Box from '@kiko/design-system/components/box';
+import DateRangeField from '@kiko/design-system/components/date-range-field';
+import FilterMenu, { type FilterOption } from '@kiko/design-system/components/filter-menu';
 
 // Re-exported so the Home screen keeps a single import site for the sentinel
 // while the checkable-menu logic lives with the FilterMenu that owns it.
-export { FILTER_ALL } from '../../../design-system/components/filter-menu';
+export { FILTER_ALL } from '@kiko/design-system/components/filter-menu';
 
 type TransactionFilterBarProps = {
   accounts: FilterOption[];

@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
-
-import Text from '../../../design-system/components/text';
-import BottomSheet from '../../../design-system/components/bottom-sheet';
-import FieldTrigger from '../../../design-system/components/field-trigger';
-import SelectableRow from '../../../design-system/components/selectable-row';
+import Text from '@kiko/design-system/components/text';
+import BottomSheet from '@kiko/design-system/components/bottom-sheet';
+import FieldTrigger from '@kiko/design-system/components/field-trigger';
+import SelectableRow from '@kiko/design-system/components/selectable-row';
 
 import type { ColumnSelectFieldProps } from './column-select-field.props';
 

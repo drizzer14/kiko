@@ -1,11 +1,10 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import FieldError from '../../../design-system/components/field-error';
-import SummaryTable from '../../../design-system/components/summary-table';
-import ExampleTransaction from '../../../design-system/components/example-transaction';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import FieldError from '@kiko/design-system/components/field-error';
+import SummaryTable from '@kiko/design-system/components/summary-table';
+import ExampleTransaction from '@kiko/design-system/components/example-transaction';
 
 import { styles } from './mapping-result.styles';
 import type { MappingResultProps } from './mapping-result.props';
