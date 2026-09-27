@@ -214,15 +214,6 @@ const passReplayWithStubEngine = (checkout: Checkout, directory = checkout.main)
   expect(run).toEqual({ code: 0, stderr: '' });
 };
 
-// The state an older replay recorded: its mark in the per-worktree state dir.
-const recordLegacyMark = (checkout: Checkout, mark: string): void => {
-  const library = join(checkout.worktree, 'scripts/checks/_lib.sh');
-  const record = `source "${library}"; harness_mark_pass "$1" guard-replay-mark "$2"`;
-  spawnSync('bash', ['-c', record, '_', checkout.worktree, mark], {
-    env: wrapperEnvironment(checkout.state, {}),
-  });
-};
-
 const moveMain = (checkout: Checkout): void => {
   writeFile(checkout.main, 'src/other.ts', 'export const other = 1;\n');
   commitAll(checkout.main, 'main moves');
@@ -650,39 +641,6 @@ describe('guard-replay.sh', () => {
       const twoDaysLater = { KIKO_GUARD_REPLAY_NOW_SECONDS: String(unixNow() + 48 * HOUR_SECONDS) };
 
       expectSwitchFlagged(runReplay(checkout, twoDaysLater));
-    },
-    TIMEOUT,
-  );
-
-  it(
-    'seeds the mark from the mark an older replay recorded',
-    () => {
-      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
-      writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
-      commitAll(checkout.worktree, 'passed under the older replay');
-      recordLegacyMark(checkout, git(checkout.worktree, 'rev-parse', 'HEAD').trim());
-
-      expect(runReplay(checkout)).toEqual({ code: 0, stderr: '' });
-
-      writeFile(checkout.worktree, 'src/fresh.ts', SWITCH_SOURCE);
-      commitAll(checkout.worktree, 'bypass');
-      const { code, stderr } = runReplay(checkout);
-
-      expect(code).toBe(2);
-      expect(stderr).toContain('rule kiko-no-switch at src/fresh.ts:2');
-    },
-    TIMEOUT,
-  );
-
-  it(
-    'does not seed the mark from a recorded mark that is not a commit',
-    () => {
-      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
-      recordLegacyMark(checkout, '1790521477 abc123');
-      writeFile(checkout.worktree, 'src/pick.ts', SWITCH_SOURCE);
-      commitAll(checkout.worktree, 'bypass');
-
-      expectSwitchFlagged(runReplay(checkout));
     },
     TIMEOUT,
   );

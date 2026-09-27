@@ -908,7 +908,7 @@ catches these writes after they land instead.
   `npm run check:guard-replay` by hand, which records the pass. The
   floor does not slide, so a failed first replay resumed days later
   still fails. See `docs/harness/checks-internals.md` for the ref
-  layout and the one-time seed from an older replay's mark file.
+  layout.
 - **Files and BEFORE.** Every `.ts`/`.tsx` file changed in the working
   tree against HEAD (tracked and untracked, staged renames followed),
   plus every file a session commit touched. BEFORE is the file at the
@@ -973,7 +973,7 @@ catches these writes after they land instead.
   branch, one older than the floor), an unfinished merge, the fixers,
   the floor across a failed first replay (the
   `KIKO_GUARD_REPLAY_NOW_SECONDS` test seam, which only moves the clock
-  back), the seed from an older mark, the dedup skip, a crashing engine,
+  back), the dedup skip, a crashing engine,
   the deadline (a slow Semgrep stub through the
   `KIKO_GUARD_REPLAY_DEADLINE_SECONDS` test seam, a spent hook budget,
   and the clamp), and `medium.sh` itself.

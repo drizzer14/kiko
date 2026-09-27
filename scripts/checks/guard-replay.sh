@@ -66,20 +66,6 @@ if ! git rev-parse -q --verify "$FLOOR_REF" >/dev/null \
 fi
 floor="$(git cat-file blob "$FLOOR_REF" 2>/dev/null)"
 
-# An older replay kept this worktree's mark in the state dir. It seeds the
-# ref once, when it names a commit and the ref does not exist yet; either way
-# the file is then dropped.
-legacyMarkFile="$(harness_passfp_file "$ROOT" "guard-replay-mark")"
-if [ -f "$legacyMarkFile" ]; then
-  legacyMark="$(cat "$legacyMarkFile" 2>/dev/null)"
-  if ! git rev-parse -q --verify "$ref" >/dev/null \
-    && [[ "$legacyMark" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]] \
-    && git rev-parse -q --verify "$legacyMark^{commit}" >/dev/null; then
-    git update-ref "$ref" "$legacyMark"
-  fi
-  rm -f "$legacyMarkFile"
-fi
-
 planErrors="$(mktemp)"
 trap 'rm -f "$planErrors"' EXIT
 plan="$(node "$DIR/guard-replay.js" plan ${floor:+"$floor"} 2>"$planErrors")" \

@@ -100,9 +100,6 @@ repository:
   recorded again only when no mark ref exists either, so deleting it
   alone never narrows a replay; deleting every `refs/kiko/*` ref starts
   over as a first replay.
-- Migration: the mark an older replay kept in the state dir (key
-  `guard-replay-mark`) seeds this worktree's ref once, when it names a
-  commit and the ref does not exist yet. The file is then deleted.
 
 On the Stop tier (`--stop-tier <medium.sh start>`) the replay starts
 no guard call after `stopTierDeadlineSeconds` (in `guard-replay.js`)
