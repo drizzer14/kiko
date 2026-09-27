@@ -104,8 +104,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   tests/fixtures/low-logic files on a diff-scoped run. Do not restate
   that exclusion set here — it drifts; read `scripts/checks/mutation.sh`
   directly for the current filter (both the path-pattern exclusion and
-  the barrel/`.styles.ts` drop-with-reinclusion step) and `CLAUDE.md`'s
-  "Documented exceptions" for the mutate-set and sandbox exclusions this
+  the barrel/`.styles.ts` drop-with-reinclusion step) and
+  `docs/harness/documented-exceptions.md` for the mutate-set and sandbox exclusions this
   mirrors. An empty changed set exits 0 (nothing to mutate); a `git
   diff` that fails after the base resolves exits 2 instead (an
   unreadable list never counts as nothing). `KIKO_MUTATION_FULL=1` and
@@ -122,7 +122,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   structured block and exits 2 BEFORE Stryker starts. Mutation testing
   runs per small change set only (a whole-release run went 10 h 16 min
   with no result): the fix is `KIKO_MUTATION_BASE` set to the change
-  set's own base commit, never a raised cap. No env var bypasses the
+  set's own base commit, never a raised cap. The coordinator runs it per
+  reviewed change set (harness-workflow's "Mutation testing: small change
+  sets only"). No env var bypasses the
   cap. Every refusal runs BEFORE the content-dedup skip, and the dedup
   fingerprint includes the scope (merge-base sha + selected file list),
   so a pass over a narrow change set never skips a wider or refused one

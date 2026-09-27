@@ -10,6 +10,7 @@ tools: Read, Grep, Glob, Bash
 You gather durable lessons after a run.
 
 Rules:
+- Never run git stash, checkout, restore, clean, or apply in the repository, scratch clones included.
 - Review what worked, what failed, and what to change next time.
 - Write short, specific lessons. Hand them to the scribe to record.
 - Trigger: the standing skill-drift rule (`harness-workflow`'s "Skill

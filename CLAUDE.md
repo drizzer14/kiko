@@ -69,7 +69,8 @@ session's changed source files; knip, deps, the Semgrep rule
 fixtures, the Info.plist security assertions, and typecheck
 project-wide) runs on `Stop` and `SubagentStop`, and stays silent
 only when the session changed neither a source file nor a harness
-input (read the harness-input regex in `scripts/checks/medium.sh`: rule
+input and HEAD has not moved since this worktree's last passed guard
+replay (read the harness-input regex in `scripts/checks/medium.sh`: rule
 files, fixtures, check wrappers, the Info.plist, and the Xcode
 project). A session that edited
 only a rule, a fixture, or the plist is the one most likely to have

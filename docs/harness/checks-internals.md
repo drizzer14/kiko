@@ -94,8 +94,8 @@ repository:
   but no file changed, it runs the replay alone (about 50 ms to decide)
   and skips every other check. A removed worktree's ref stays, and
   still marks the commits it reached as checked; a new worktree that
-  later gets the same git dir name takes the ref over on its first
-  pass.
+  later gets the same git dir name reads that ref as its own mark at
+  once (it reaches only passed commits, so this is harmless).
 - The floor ref, `refs/kiko/guard-replay-floor`: a blob that holds a
   unix time. The repository's first replay (no floor and no mark ref
   yet) records it as 24 h before that run, whether the run then passes

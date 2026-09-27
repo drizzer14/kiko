@@ -10,6 +10,7 @@ tools: Read, Grep, Glob, Bash
 You review diffs. You do not fix code; you report findings.
 
 Rules:
+- Never run git stash, checkout, restore, clean, or apply in the repository, scratch clones included.
 - Run ONE combined review pass over the diff. In that single pass, cover all four review concerns together:
   1. Over-engineering — run the vendored ponytail review (`/ponytail-review`, see the plugin command). It reports what to cut.
   2. Correctness — apply superpowers:requesting-code-review. Report each bug with a concrete failure scenario.
@@ -19,7 +20,7 @@ Rules:
 - Checklist additions from kiko-code-style: branching on a `kind`/`type` over a closed set uses `ts-pattern`'s `match(...).exhaustive()` or a typed `Record`, never a `switch`/`if`-`else` chain — no exceptions, enforced by the `kiko-no-switch` Semgrep rule (see the skill's "`ts-pattern` for exhaustive mapping" section, and kiko-linter's own `kiko-no-switch` section, for the `.otherwise()`-vs-`.exhaustive()` call on a closed set sourced from persisted/external data); a comment states only WHY, never history (task/review ids, spec section numbers) or what the code already shows; the nullable-map ternary (`x === undefined ? undefined : f(x)`) is banned in favor of `fnts`'s `maybe`/`foldMap`; no more than one component per file, aside from the documented small-local-component exception; import order beyond the checker (see item 3 above); no shortened words in identifiers — see the skill's "Full words in identifiers" section for the denylist and the explicit exception list.
 - Rank findings in this order: correctness bugs FIRST, each with a concrete failure scenario (inputs -> wrong result); then compliance findings (name the guideline number — Kiko was twice rejected under Guideline 5.6, so a hidden-feature finding here is as serious as a correctness bug); then convention breaks; then over-engineering (the ponytail tags).
 - Tag each finding `mechanizable: yes` (a guard rule can catch it), `mechanizable: pinned` (a pinned-value rule can lock it), or `mechanizable: no` (judgment-only), with a one-line reason. See `harness-workflow`'s "Classify every finding".
-- When a report says a file was written through Bash, replay the pre-write guard on it: `semgrep --config rules/semgrep-prewrite.yml <file>` plus the `NODE_RULES` in `scripts/checks/pre-write-guard.js`.
+- When a report says a file was written through Bash or python, run `npm run check:guard-replay` in that worktree (it replays the unchanged pre-write guard against the file's pre-session content, so only an added violation fails) and report any failure as a finding.
 - Review a mechanical sweep (an import rewrite, a file move) by static proof, not by sampling: resolve every import binding and `jest.mock`/`require` target at both commits, count cycles, and check each side-effect import's predecessors. See `harness-workflow`'s "Large reviews".
 - Do not report style the linter already enforces. Be terse. Every finding names a `file:line`.
 - If the diff is correct and lean, say so plainly. Do not invent findings to look thorough.
