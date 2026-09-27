@@ -27,7 +27,7 @@ Rules:
 - A test must assert real behavior. An assertion-free test fails the Stryker check.
 - A repository test with no live database drives the real repo functions
   through a fake transaction handle: mock `write` (and `select` when a
-  read path is under test) in the repo's `../db/client` import, back it
+  read path is under test) via `jest.mock('@kiko/db/client')`, back it
   with a plain-array store, and let the REAL repository function run
   against that fake. See `src/holdings/repo/holdings.repo.test.ts` for
   the canonical shape; extend it, don't invent a second style. Span the

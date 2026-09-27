@@ -7,7 +7,7 @@ description: Invoke when touching theme tokens, react-native-unistyles styles, a
 
 Source of truth: `docs/superpowers/specs/2026-08-30-kiko-foundation-design.md`
 ("Design system (started here)" section) and the token module itself,
-`src/design-system/theme.ts`, which ships a single `darkTheme` (spacing,
+`src/design-system/theme/theme.ts`, which ships a single `darkTheme` (spacing,
 radii, typography, `colors`) plus its own entity/chart palette
 (`palette.ts`). The app is dark-only. This skill states the method and
 token categories; read `theme.ts`/`palette.ts` directly for the
@@ -49,7 +49,7 @@ to see the open findings; do not restate its findings here.
 ## Dark-only theme
 
 Kiko is dark-only: there is no appearance toggle, no light theme, and
-no runtime scheme switching. `src/design-system/unistyles.ts` registers
+no runtime scheme switching. `src/design-system/unistyles/unistyles.ts` registers
 a single `darkTheme` (`{ dark }`) with `initialTheme: 'dark'` — there
 is nothing to pick between, so `adaptiveThemes` is not used either.
 `UIUserInterfaceStyle = Dark` is pinned in `ios/Kiko/Info.plist`, which
@@ -157,7 +157,7 @@ then one of these call sites, rather than reinventing the check.
 
 `react-native-unistyles` (^3.3.0) is the styling layer. A single
 Unistyles v3 theme object — the OLED `darkTheme` above — is registered
-in `src/design-system/unistyles.ts` as `themes = { dark: darkTheme }`,
+in `src/design-system/unistyles/unistyles.ts` as `themes = { dark: darkTheme }`,
 with `settings: { initialTheme: 'dark' }`. There is no second theme to
 switch to, so there is no `adaptiveThemes` and no runtime
 `UnistylesRuntime.setTheme` call anywhere. Style components against

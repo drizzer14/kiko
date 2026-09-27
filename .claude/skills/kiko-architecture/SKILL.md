@@ -74,6 +74,8 @@ project-level pointer to this section.
   `drizzle-orm` (^0.45.2) is the ORM on top of it: open the database
   with op-sqlite's `open()`, wrap it with `drizzle(opsqliteDb)`.
 - The schema is defined in TypeScript (Drizzle schema, not raw SQL).
+  The `@kiko/db` barrel exports it as a namespace (`schema`). Mock the
+  connection with `jest.mock('@kiko/db/client')`.
 - Generate migrations with `drizzle-kit` using `driver: 'expo'` —
   this is the correct driver value for op-sqlite migration
   generation, despite the name.

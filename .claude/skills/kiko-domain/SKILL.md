@@ -1438,7 +1438,7 @@ Both terms are ENTERED in months or years and STORED as `termMonths`:
 the deposit and loan forms share one `TermField`
 (`src/screens/forms/term-field/`) — a number field whose suffix follows
 a Months/Years `ChipRow` (a unit choice that leaves the form the same,
-like the metal Unit chips). Its `term-reasons.ts` is the ONE term
+like the metal Unit chips). `src/screens/forms/term-reasons/` is the ONE term
 check both twins call: `termReasonKey(value, unit)` (a whole number
 above 0, at most `termMaxFor(unit)` — 600 months or 50 years, each
 with its own error key naming the unit), `termMonthsFromInput` (years

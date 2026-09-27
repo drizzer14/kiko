@@ -68,7 +68,7 @@ language — that would break the `typeof en` typing. The first plural in the
 app is `statistics.trendFilter.button.manual` (the trend Filters button's
 "{{count}} Category"/"Categories", Ukrainian "Категорія/Категорії/Категорій").
 i18next resolves the right form per language at `t('...', { count })` time;
-init uses the default JSON v4 plural format (see `src/i18n/index.ts`).
+init uses the default JSON v4 plural format (see `src/i18n/init/init.ts`).
 
 ## Catalogue typing: `typeof en`, never `as const`
 

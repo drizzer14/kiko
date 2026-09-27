@@ -596,7 +596,7 @@ The convention (handwritten, Prettier-only exemplar:
 - Within a group, VALUE imports come before `import type` imports
   only as an equal-length tiebreaker — length dominates.
 - A bare side-effect import (e.g.
-  `import '../../design-system/unistyles';`) is an ordering BARRIER:
+  `import '@kiko/design-system/unistyles';`) is an ordering BARRIER:
   never move an import across it — module-initialization order must
   be preserved.
 - Two adjacent groups of the SAME kind (e.g. two `../**` groups back
@@ -639,6 +639,42 @@ non-first import — see the kiko-linter skill) were re-sorted by hand.
 `src/`, `__tests__/`, `e2e/`, and `App.tsx`, and (being fast-tier
 per-file) catches new drift immediately rather than waiting for a
 reviewer to notice it.
+
+## Feature imports (B2)
+
+A FEATURE is one folder with an `index.ts` barrel. A CONTAINER is a
+folder whose subfolders are features. Read `CONTAINERS` in
+`scripts/checks/feature-imports.js` for the declared set (e.g. `rates`,
+`screens/forms`). A plain folder (e.g. `db`, `accounts`) is one feature
+with a root barrel.
+
+- Inside one feature: relative paths to files. Never import your own
+  barrel (a test of the unit's public API may use `'.'`).
+- Across features: `@kiko/<feature path>`, the barrel, never an inner
+  file.
+  Bad: `import type { FieldInstance } from '../../../design-system/scroll-to-field/scroll-to-field';`
+  Good: `import type { FieldInstance } from '@kiko/design-system/scroll-to-field';`
+- `../<sibling>` is allowed only between features of one non-screen
+  container, from a feature-root file:
+  `rates/rates-refresh/rates-refresh.ts` imports `'../conversion'`.
+  Screens never use `../` to another screen; use
+  `@kiko/screens/forms/date-field`.
+- A container has no files of its own. A new module there gets its own
+  unit folder and `index.ts`.
+- A barrel exports only its own feature. Never export a test, a test
+  helper, a fixture, or another feature's module.
+- A side-effect module has one path and no barrel re-exports it:
+  `import '@kiko/design-system/unistyles';`, `import '@kiko/i18n/init';`.
+- `jest.mock` names the file that owns the seam, e.g.
+  `jest.mock('@kiko/db/client')`. Jest mocks by resolved file, so code
+  that imports `@kiko/db` gets the mock. When you change a mock path,
+  keep the resolved file the same.
+- A test-only helper is deep-imported from tests only, and needs a
+  `TEST_ONLY` entry with a reason in `feature-imports.js`.
+
+Enforced by `kiko-feature-imports`: the pre-write guard, plus
+`check:feature-imports` (per file, then `--tree` for layout and
+feature-level value-cycle checks).
 
 ## Variable naming
 
@@ -797,7 +833,7 @@ canonical case. Import it with `import type` so the build erases it.
 Exception: a file that also exports a runtime value or runs a side
 effect stays `.ts` even if most of its content is types — for example
 `src/statistics/holding-value-at.ts` and
-`src/design-system/unistyles.ts`.
+`src/design-system/unistyles/unistyles.ts`.
 
 The repo-wide rename of existing type-only files to `.d.ts` is DONE —
 every type-only props file under `src/design-system/components/` and
@@ -895,8 +931,8 @@ Two shapes this takes today:
 Deliberate exceptions that stay flat/loose — these are not violations
 of the rule, they simply aren't "a thing" with an owner:
 
-- A module's own entry point, e.g. `src/i18n/index.ts` — it re-exports
-  the module, it doesn't have its own folder to sit in.
+- None for containers: a container has no loose files (see "Feature
+  imports (B2)").
 - A type-augmentation `.d.ts` file (an ambient/global declaration).
   This is distinct from a component's own `.props.d.ts`, which does
   live inside that component's folder as shown above.

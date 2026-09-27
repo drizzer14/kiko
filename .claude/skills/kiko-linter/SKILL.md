@@ -759,7 +759,7 @@ for the current set.
 - `check:security` honors only Semgrep's own `nosemgrep`.
 - The project-wide Node checkers (`check:import-order`,
   `check:full-word-identifiers`, `check:screen-imports`,
-  `check:blank-line-separation`) have NO inline override. A
+  `check:feature-imports`, `check:blank-line-separation`) have NO inline override. A
   `kiko-override:` gets a write past the guard, and `check:all` still
   fails on that line. A Node-rule exception needs a checker-level
   exemption (like `EXEMPTIONS` in `full-word-identifiers.js`), which is
@@ -784,6 +784,13 @@ Both run as `node scripts/checks/<name>.js <file>`, as a guard
   kiko-design-system's "Component set". It resolves
   relative specifiers against the importing file, which Semgrep cannot
   do. No `--write`.
+- `feature-imports.js` (`kiko-feature-imports`) enforces
+  kiko-code-style's "Feature imports (B2)". Per-file mode is FS-free,
+  so it works on the guard's mirror (`treeRootOf`); `--tree` checks
+  layout invariants and feature-level value cycles. Its classification
+  (`CONTAINERS`, `TEST_ONLY`) lives in the checker. No `--write`.
+- `specifier-scanner.js` is the shared import-specifier scanner. A new
+  checker that reads import specifiers reuses it.
 
 ## Pre-write guard and merge-conflict files
 
@@ -856,12 +863,17 @@ mechanizable (see harness-workflow's "Classify every finding").
    - Add `parse<Name>CheckerOutput(stdout)` returning
      `[{ line, matchedText, detailText? }]`. `matchedText` is the
      new-finding key: keep it stable under unrelated edits (no line
-     numbers). Put display-only text in `detailText`.
+     numbers). Put display-only text in `detailText`. When a finding has
+     `detailText`, the deny message prints it in place of `matchedText`,
+     so `detailText` must still name the offending code.
    - Add one `NODE_RULES` row: `ruleId`, `extensions`, `fix`, `skill`,
      `run`. `pre-write-guard.sh` needs no change.
    - Node rules have no `rules/fixtures/` pair. Prove them with
      `__tests__/<name>.test.ts` and a case in
      `__tests__/pre-write-guard.test.ts`.
+   - A new Node rule also runs on the probed negative (good) fixtures of
+     `__tests__/pre-write-guard-rules.test.ts`. Make those fixtures pass
+     the new rule, never exempt them.
    - Project-wide gate: `scripts/checks/<name>.sh` (copy
      `screen-imports.sh`), `package.json` `check:<name>` plus a
      `check:all` entry, and a `knip.json` `ignore` entry.
