@@ -335,7 +335,7 @@ verified usage, not dead weight:
   `kill-guard.js`, and `full-word-identifiers.js` are already exempt by
   extension (plain `.js`, outside the `**/*.ts`/`**/*.tsx` mutate glob),
   but `one-component-per-file.ts` (the one-exported-component-per-`.tsx`
-  Jest invariant, moved here from `src/code-style/` so it is treated the
+  Jest invariant, moved here from src/code-style/ so it is treated the
   same as the harness's other TypeScript-checked rules) needed an
   explicit pattern since it IS `.ts`. (1) **i18n locale catalogs
   (`src/i18n/locales/**`)** — pure nested string-data objects with no

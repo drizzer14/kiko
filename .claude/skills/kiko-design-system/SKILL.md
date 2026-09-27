@@ -424,7 +424,7 @@ new component can land between reviews of this skill:
   categories/`) both build an icon-only control this way, plus
   `fullWidth={false}`, rather than a raw `Pressable` + `SymbolIcon`.
   (There is no separate `IconButton` primitive; the old one at
-  `src/design-system/components/icon-button/` was deleted when its only
+  src/design-system/components/icon-button/ was deleted when its only
   consumer went away.)
 
   **Three pinned button treatments, mechanized (`rules/semgrep-prewrite.yml`):**

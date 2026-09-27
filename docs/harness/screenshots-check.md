@@ -8,10 +8,10 @@
 ## 2026-09-19 — the automated subsystem was deleted (Guideline 5.6)
 
 `check:screenshots` and its `:empty`/`:locked` siblings, the pixelmatch
-diff engine (`scripts/checks/screenshot-diff/`), the stable-glass build
+diff engine (scripts/checks/screenshot-diff/), the stable-glass build
 (`GlassSurface`'s `isStableGlassCapture()` branch and the `StableSurface`
 component it rendered), the launch-arg/native capture reader
-(`src/test-support/ui-test-capture.ts`, `ios/Kiko/KikoTestEnv.{swift,m}`),
+(src/test-support/ui-test-capture.ts, ios/Kiko/KikoTestEnv.{swift,m}),
 the boot-time seed (`seedScreenshotDataIfEnabled` in `migrations.gate.tsx`),
 and the four `.env.screenshots*` files were all **removed outright** — no
 `@env` flag, launch argument, or native module survives that makes the app

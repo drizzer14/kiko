@@ -928,7 +928,7 @@ Two shapes this takes today:
 - A **logic-unit** folder — a repository or other non-component
   module — pairs its implementation with its own test in that unit's
   feature folder, rather than a separate top-level layer folder (the
-  old `src/repositories/` split by kind, not by feature, and was
+  old src/repositories/ split by kind, not by feature, and was
   co-located away):
 
   ```

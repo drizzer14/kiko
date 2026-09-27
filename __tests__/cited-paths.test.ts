@@ -14,7 +14,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 // cites the folder before the function name. A glob, brace form or
 // placeholder (`*`, `?`, `{}`, `[]`, `<>`, `$`, `...`, `…`) is not one path,
 // so it is skipped. A root nested in a longer path (a sibling project under
-// `~/`, `$PWD/src/...`) is not a repo path either.
+// `~/`, `$PWD/src/...`) is not a repo path either. A doc that names a path
+// that is gone writes it without backticks, so it is not a citation.
 const REPOSITORY_ROOT = join(__dirname, '..');
 
 const CITED_ROOTS = ['src', 'scripts', 'rules', 'docs', '__tests__', 'e2e', 'harness', '.claude'];
@@ -26,16 +27,6 @@ const CITATION_PATTERN = new RegExp(
 
 const PLACEHOLDER_PATTERN = /[*?{}[\]<>$…]|\.\.\./;
 
-// A sentence whose prose says a path is gone may keep citing it: the old
-// path is the point of that sentence. Only the prose is read, so a path
-// that happens to contain one of these words cannot exempt itself. The
-// scope is the one sentence, not the paragraph: a long bullet paragraph
-// that says "removed" about something else would hide a real stale path.
-const REMOVED_PATH_MARKER =
-  /\b(?:removed|deleted|renamed|moved|formerly|former|old|no longer|does not exist)\b/i;
-
-const SENTENCE_END_PATTERN = /[.!?](?=\s|$)/g;
-
 const INLINE_CODE_PATTERN = /(?<!`)(`+)(?!`)([\s\S]+?)(?<!`)\1(?!`)/g;
 
 const FENCE_PATTERN = /^\s*(`{3,}|~{3,})/;
@@ -45,7 +36,7 @@ const FENCE_PATTERN = /^\s*(`{3,}|~{3,})/;
 // fails the test, so the list can only shrink.
 const KNOWN_STALE_CITATIONS: ReadonlyArray<{ file: string; path: string }> = [];
 
-type Citation = { line: number; path: string; marksRemoved: boolean };
+type Citation = { line: number; path: string };
 
 type Paragraph = { firstLine: number; text: string };
 
@@ -98,18 +89,8 @@ const paragraphsOutsideFences = (markdown: string): Paragraph[] => {
 const lineCountBefore = (text: string, offset: number): number =>
   text.slice(0, offset).split('\n').length - 1;
 
-const sentenceAround = (prose: string, offset: number): string => {
-  const sentenceEnds = [...prose.matchAll(SENTENCE_END_PATTERN)].map((end) => end.index ?? 0);
-  const start = sentenceEnds.filter((end) => end < offset).reduce((_, end) => end + 1, 0);
-  const end = sentenceEnds.find((sentenceEnd) => sentenceEnd >= offset) ?? prose.length;
-
-  return prose.slice(start, end);
-};
-
-const citationsInParagraph = (paragraph: Paragraph): Citation[] => {
-  const prose = paragraph.text.replace(INLINE_CODE_PATTERN, (span) => ' '.repeat(span.length));
-
-  return [...paragraph.text.matchAll(INLINE_CODE_PATTERN)].flatMap((span) => {
+const citationsInParagraph = (paragraph: Paragraph): Citation[] =>
+  [...paragraph.text.matchAll(INLINE_CODE_PATTERN)].flatMap((span) => {
     const spanStart = (span.index ?? 0) + span[1].length;
 
     return [...span[2].matchAll(CITATION_PATTERN)]
@@ -121,12 +102,10 @@ const citationsInParagraph = (paragraph: Paragraph): Citation[] => {
         return {
           line: paragraph.firstLine + lineCountBefore(paragraph.text, citationStart),
           path: span[2][citationEnd] === '(' ? dirname(path) : path,
-          marksRemoved: REMOVED_PATH_MARKER.test(sentenceAround(prose, citationStart)),
         };
       })
       .filter((citation) => !PLACEHOLDER_PATTERN.test(citation.path));
   });
-};
 
 const citedPaths = (markdown: string): Citation[] =>
   paragraphsOutsideFences(markdown).flatMap(citationsInParagraph);
@@ -144,25 +123,19 @@ const markdownFilesUnder = (directory: string): string[] =>
     return full.endsWith('.md') ? [full] : [];
   });
 
-const topLevelMarkdownFiles = (directory: string): string[] =>
-  readdirSync(directory)
-    .filter((entry) => entry.endsWith('.md'))
-    .map((entry) => join(directory, entry));
-
 const citingFiles = (): string[] =>
   [
     ...markdownFilesUnder(join(REPOSITORY_ROOT, '.claude/skills')).filter((file) =>
       file.endsWith('/SKILL.md'),
     ),
-    ...markdownFilesUnder(join(REPOSITORY_ROOT, 'harness/kiko/skills')),
-    ...topLevelMarkdownFiles(join(REPOSITORY_ROOT, 'harness/kiko/agents')),
-    ...topLevelMarkdownFiles(join(REPOSITORY_ROOT, 'docs/harness')),
+    ...['harness/kiko/skills', 'harness/kiko/agents', 'docs/harness'].flatMap((directory) =>
+      markdownFilesUnder(join(REPOSITORY_ROOT, directory)),
+    ),
     join(REPOSITORY_ROOT, 'CLAUDE.md'),
   ].map((file) => file.slice(REPOSITORY_ROOT.length + 1));
 
 const missingCitations = (file: string): Array<{ file: string; line: number; path: string }> =>
   citedPaths(readFileSync(join(REPOSITORY_ROOT, file), 'utf8'))
-    .filter((citation) => !citation.marksRemoved)
     .filter((citation) => !existsSync(join(REPOSITORY_ROOT, citation.path)))
     .map((citation) => ({ file, line: citation.line, path: citation.path }));
 
@@ -172,7 +145,7 @@ const citationKey = (citation: { file: string; path: string }): string =>
 describe('citedPaths', () => {
   it('finds a backticked path and its line (POSITIVE)', () => {
     expect(citedPaths('# Title\n\nSee `src/db/schema.ts` for it.\n')).toEqual([
-      { line: 3, path: 'src/db/schema.ts', marksRemoved: false },
+      { line: 3, path: 'src/db/schema.ts' },
     ]);
   });
 
@@ -198,7 +171,7 @@ describe('citedPaths', () => {
 
   it('reads a span wrapped across two lines of one paragraph at the line the path is on', () => {
     expect(citedPaths('Line one `node\nscripts/checks/lint.sh` here.\n')).toEqual([
-      { line: 2, path: 'scripts/checks/lint.sh', marksRemoved: false },
+      { line: 2, path: 'scripts/checks/lint.sh' },
     ]);
   });
 
@@ -234,14 +207,10 @@ describe('citedPaths', () => {
     ]);
   });
 
-  it('marks a citation in a sentence whose prose says the path is gone', () => {
-    const markdown = [
-      'The diff engine',
-      '(`scripts/checks/screenshot-diff/`) was',
-      'removed outright. The cache lives in `src/rates/old-cache/`.',
-    ].join('\n');
-
-    expect(citedPaths(markdown).map((citation) => citation.marksRemoved)).toEqual([true, false]);
+  it('cites a path in a sentence that says it is gone, since prose does not exempt it', () => {
+    expect(
+      pathsOf(citedPaths('The diff engine (`scripts/checks/screenshot-diff/`) was removed.')),
+    ).toEqual(['scripts/checks/screenshot-diff/']);
   });
 });
 
