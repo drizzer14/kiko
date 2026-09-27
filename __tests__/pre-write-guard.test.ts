@@ -40,6 +40,12 @@ function createTempDirectory(prefix: string): string {
 // reports back as `paths.scanned` so the guard's own "target missing from
 // paths.scanned" fail-closed check never fires against a stub that never
 // claimed to have scanned anything.
+// Bash 3.2 (the macOS /usr/bin/env bash) has no millisecond clock, so a
+// stub reads one from the Node binary the test itself runs on.
+function timingLineFor(stubName: string, phase: 'start' | 'end'): string {
+  return `if [ -n "$STUB_TIMING_FILE" ]; then printf '${stubName} ${phase} %s\\n' "$("$STUB_NODE" -p 'Date.now()')" >> "$STUB_TIMING_FILE"; fi`;
+}
+
 function writeSemgrepStub(directory: string): string {
   const stubPath = join(directory, 'semgrep-stub.sh');
   writeFileSync(
@@ -49,9 +55,11 @@ function writeSemgrepStub(directory: string): string {
       'if [ -n "$KIKO_PREWRITE_TEST_MARKER" ]; then',
       '  touch "$KIKO_PREWRITE_TEST_MARKER"',
       'fi',
+      timingLineFor('semgrep', 'start'),
       'if [ -n "$STUB_SLEEP" ]; then',
       '  sleep "$STUB_SLEEP"',
       'fi',
+      timingLineFor('semgrep', 'end'),
       'shift 9',
       'scannedParts=""',
       'for target in "$@"; do',
@@ -2160,13 +2168,22 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
 // per invocation so the test can tell "ran one after another" (roughly 5x
 // the sleep) from "ran together"
 // (roughly ONE sleep) by wall-clock alone, without depending on real
-// checker runtimes that could vary by machine.
+// checker runtimes that could vary by machine. Semgrep beside that phase
+// leaves only one sleep of margin, which process overhead under load ate,
+// so that test compares the stubs' own start/end stamps instead.
 describe('runNodeChecks concurrency (speed mitigation)', () => {
   function writeSleepingNodeStub(directory: string): string {
     const stubPath = join(directory, 'node-sleep-stub.sh');
     writeFileSync(
       stubPath,
-      ['#!/usr/bin/env bash', 'sleep "$NODE_STUB_SLEEP_SECONDS"', 'exit 0', ''].join('\n'),
+      [
+        '#!/usr/bin/env bash',
+        timingLineFor('node', 'start'),
+        'sleep "$NODE_STUB_SLEEP_SECONDS"',
+        timingLineFor('node', 'end'),
+        'exit 0',
+        '',
+      ].join('\n'),
     );
     chmodSync(stubPath, 0o755);
 
@@ -2278,8 +2295,8 @@ describe('runNodeChecks concurrency (speed mitigation)', () => {
     const rules = writeRulesStub(project);
     const nodeStub = writeSleepingNodeStub(project);
     const targetFile = join(project, 'src', 'component', 'component.tsx');
+    const timingFile = join(project, 'timing.txt');
 
-    const startTime = Date.now();
     const result = runGuard(
       payloadFor('Write', { file_path: targetFile, content: cleanComponentContent }),
       baseEnv({
@@ -2289,16 +2306,32 @@ describe('runNodeChecks concurrency (speed mitigation)', () => {
         KIKO_PREWRITE_NODE_BIN: nodeStub,
         NODE_STUB_SLEEP_SECONDS: '1',
         STUB_SLEEP: '1',
+        STUB_NODE: process.execPath,
+        STUB_TIMING_FILE: timingFile,
       }),
     );
-    const durationMilliseconds = Date.now() - startTime;
 
     expect(result.status).toBe(0);
-    // Sequential: Semgrep's own 1s sleep, THEN the (already-concurrent) 1s
-    // Node-check phase, is roughly 2000ms. Concurrent: both phases overlap,
-    // so the whole guard invocation takes roughly ONE sleep.
-    expect(durationMilliseconds).toBeGreaterThanOrEqual(900);
-    expect(durationMilliseconds).toBeLessThan(1800);
+    const stamps = readFileSync(timingFile, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => line.split(' '));
+    const stampsOf = (stubName: string, phase: string) =>
+      stamps
+        .filter(([name, stampPhase]) => name === stubName && stampPhase === phase)
+        .map(([, , time]) => Number(time));
+    const [semgrepStart] = stampsOf('semgrep', 'start');
+    const [semgrepEnd] = stampsOf('semgrep', 'end');
+    const nodeStarts = stampsOf('node', 'start');
+    const nodeEnds = stampsOf('node', 'end');
+
+    expect(nodeStarts).toHaveLength(nodeEnds.length);
+    expect(nodeStarts.length).toBeGreaterThan(0);
+    // Sequential, in either order, writes one phase's end stamp before the
+    // other phase's first start stamp; the intervals overlap only when the
+    // guard runs both phases at once, however loaded the machine is.
+    expect(semgrepStart).toBeLessThan(Math.max(...nodeEnds));
+    expect(Math.min(...nodeStarts)).toBeLessThan(semgrepEnd);
   });
 });
 
