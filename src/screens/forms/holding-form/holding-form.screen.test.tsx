@@ -1203,6 +1203,90 @@ describe('HoldingFormScreen bond ISIN mode', () => {
   });
 });
 
+// 98 x UA4000239115 bought at 1,076.72 each on 2026-09-10; the seller shows
+// a 15.40% yield to maturity.
+describe('HoldingFormScreen bond yield to maturity', () => {
+  const yieldRow = (screen: Screen) => screen.queryByTestId('bond-form-yield-to-maturity');
+
+  const pinnedRegisterRow = {
+    isin: 'UA4000239115',
+    terms: {
+      isin: 'UA4000239115',
+      currency: 'UAH',
+      faceValueMinorUnits: 100_000,
+      couponPct: 15.18,
+      maturityDate: localDay(2027, 9, 15),
+      couponFrequency: 'semiannually',
+      name: 'Середньострокові UA4000239115',
+      payments: [
+        { date: localDay(2026, 9, 16), kind: 'coupon', amount: '75.9' },
+        { date: localDay(2027, 3, 17), kind: 'coupon', amount: '75.9' },
+        { date: localDay(2027, 9, 15), kind: 'coupon', amount: '75.9' },
+        { date: localDay(2027, 9, 15), kind: 'redemption', amount: '1000' },
+      ],
+    },
+    fetchedAt: 1,
+  };
+
+  it('shows the yield of an ISIN bond from the register payments, once it has a price', async () => {
+    mockBondRegisterRows = [pinnedRegisterRow];
+    const screen = await renderScreen();
+
+    await selectHoldingType(screen, 'bond');
+    await fireEvent.changeText(screen.getByPlaceholderText('UA4000234215'), 'UA4000239115');
+    await fill(screen, 'Quantity', '98');
+    await pickDate(screen, 'Purchase date', 2026, 9, 10);
+
+    expect(yieldRow(screen)).toBeNull();
+
+    await fill(screen, 'Purchase price per bond', '1 076,72');
+
+    expect(screen.getByText('Yield to maturity')).toBeTruthy();
+    expect(yieldRow(screen)).toHaveTextContent('15.40%');
+
+    await fill(screen, 'Purchase price per bond', '1 000');
+
+    expect(yieldRow(screen)).not.toHaveTextContent('15.40%');
+  });
+
+  it('shows the same yield for a Manual bond from its generated schedule, once it has a maturity', async () => {
+    const screen = await renderScreen();
+
+    await selectHoldingType(screen, 'bond');
+    await fireEvent.press(screen.getByText('Manual'));
+    await fill(screen, 'Quantity', '98');
+    await fill(screen, 'Purchase price per bond', '1 076,72');
+    await fill(screen, 'Face value', '1000');
+    await fill(screen, 'Coupon', '15.18');
+    await pickDate(screen, 'Purchase date', 2026, 9, 10);
+
+    expect(yieldRow(screen)).toBeNull();
+
+    await pickDate(screen, 'Maturity date', 2027, 9, 15);
+
+    expect(yieldRow(screen)).toHaveTextContent('15.40%');
+  });
+
+  it('shows the yield of a stored bond in the edit form', async () => {
+    const screen = await renderEdit({
+      ...bondHolding,
+      metadata: {
+        quantity: 98,
+        faceValueMinorUnits: 100_000,
+        couponPct: 15.18,
+        purchasePriceMinorUnits: 10_551_856,
+        purchaseDate: localDay(2026, 9, 10),
+        maturityDate: localDay(2027, 9, 15),
+        bondKind: 'government',
+        couponFrequency: 'semiannually',
+        entryMode: 'manual',
+      },
+    });
+
+    expect(yieldRow(screen)).toHaveTextContent('15.40%');
+  });
+});
+
 describe('HoldingFormScreen section titles', () => {
   it('renders "Contributions" and "Terms" section titles in the term-deposit block', async () => {
     const screen = await renderScreen();

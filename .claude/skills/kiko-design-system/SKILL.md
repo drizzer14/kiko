@@ -868,7 +868,11 @@ new component can land between reviews of this skill:
   principal/gross/interest/tax/expected-profit rows through this (and,
   for a bond, a "Yield to maturity" text row: a two-decimal percent,
   testID `bond-yield-to-maturity`, left out when no lot has a stored
-  price — the one text row in the interest table), passing
+  price — the one text row in the interest table; the bond FORM shows
+  the same yield, formatted by the same `yieldToMaturityText`, as a
+  one-row `SummaryTable` after the purchase date with a caption
+  `textSecondary` value like its ISIN summary, testID
+  `bond-form-yield-to-maturity`), passing
   `<MoneyText money={...} tone={...} />` as each row's `value`, with NO
   visual change from before the extraction. The statement-import preview
   (`StatementPreviewBlock`, `statement-import/statement-preview-block/`) and the

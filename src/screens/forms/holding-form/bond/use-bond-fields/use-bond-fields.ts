@@ -17,6 +17,7 @@ import type { TextInputInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
 import type { BondTerms } from '@kiko/bonds/nbu-register';
 import type { HoldingType } from '@kiko/holdings/holding-type';
+import { bondYieldToMaturity } from '@kiko/bonds/yield-to-maturity';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 
@@ -41,6 +42,14 @@ import { bondPaymentsOnSave, type SavedBond } from './bond-payments-on-save';
 // ISIN-mode save; every other such bond opens Manual.
 const legacyEntryMode = (meta: BondMeta): BondEntryMode =>
   meta.isin !== undefined && (meta.payments?.length ?? 0) > 0 ? 'isin' : 'manual';
+
+// `buildBondMetadata` stands today in for a missing date, which would solve
+// a yield for dates the user never entered.
+const hasYieldInputs = (
+  purchasePrice: string,
+  purchaseDate: number | null,
+  maturityDate: number | null,
+): boolean => purchasePrice.trim() !== '' && purchaseDate !== null && maturityDate !== null;
 
 // Seed the bond number/date fields from stored metadata. Minor-unit money
 // fields (face value, price per bond) convert back to grouped major strings;
@@ -102,6 +111,9 @@ export type UseBondFieldsResult = HoldingTypeForm & {
   setPickedCouponFrequency: (frequency: BondCouponFrequency) => void;
   fieldErrors: BondFieldErrors;
   reasonKey: BondReasonKey | null;
+  // The yield to maturity of the bond as entered so far, read the same way
+  // the holding detail reads a saved one; null while it has none.
+  yieldToMaturity: number | null;
   refs: {
     isinFieldRef: RefObject<FieldInstance | null>;
     quantityFieldRef: RefObject<FieldInstance | null>;
@@ -250,6 +262,10 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
   const fieldErrors = bondFieldErrors(validationParams);
   const reasonKey = bondReasonKey(validationParams);
 
+  const yieldToMaturity = hasYieldInputs(purchasePrice, purchaseDate, maturityDate)
+    ? bondYieldToMaturity(buildBondMetadata(savedBondRef.current), currency, registerTerms)
+    : null;
+
   // A bond ALSO needs a valid ISIN and, while `needsCouponFrequencyPick` (an
   // unmapped-frequency ISIN-mode match), a picked coupon frequency — never
   // guess one, so Save stays blocked until `pickedCouponFrequency`
@@ -345,6 +361,7 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
     setPickedCouponFrequency,
     fieldErrors,
     reasonKey,
+    yieldToMaturity,
     isValid,
     scrollTargets: [
       {

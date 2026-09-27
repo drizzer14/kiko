@@ -42,6 +42,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { ownershipShareDetailText } from '@kiko/holdings/ownership';
+import { yieldToMaturityText } from '@kiko/bonds/yield-to-maturity';
 import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
@@ -115,14 +116,6 @@ const BreakdownValue: FC<{ row: BreakdownRow }> = ({ row }) => {
   return <MoneyText money={row.money} tone={row.tone} />;
 };
 
-// Two decimals of a percent — the precision a seller's statement shows a
-// yield in (15.40%).
-const yieldText = (rate: number): string =>
-  `${(rate * 100).toLocaleString(activeLocale(), {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}%`;
-
 // The deposit/bond breakdown: principal-or-cost, gross, interest, tax, and a
 // bond's own whole-life expected profit and yield to maturity. Only these two
 // types accrue interest/withhold tax, so this table is meaningful there.
@@ -138,7 +131,7 @@ const interestBreakdownRows = (
     foldMap(maybe(spec.yieldToMaturity(holding, registerTerms)), (rate) => [
       {
         label: t('holdingDetail.yieldToMaturity'),
-        text: yieldText(rate),
+        text: yieldToMaturityText(rate),
         testID: 'bond-yield-to-maturity',
       },
     ]) ?? [];

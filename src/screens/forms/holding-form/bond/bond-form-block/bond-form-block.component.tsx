@@ -9,6 +9,8 @@ import { currencySymbol } from '@kiko/currency/currency';
 import Divider from '@kiko/design-system/components/divider';
 import { groupAmount } from '@kiko/screens/forms/amount-format';
 import TextField from '@kiko/design-system/components/text-field';
+import { yieldToMaturityText } from '@kiko/bonds/yield-to-maturity';
+import SummaryTable from '@kiko/design-system/components/summary-table';
 import type { BondEntryMode, BondCouponFrequency } from '@kiko/holdings/holding-metadata';
 
 import BondIsinSection from '../bond-isin-section';
@@ -153,6 +155,25 @@ const BondFormBlock: FC<BondFormBlockProps> = ({ fields, attemptedSave }) => {
           )}
         />
       </View>
+
+      {fields.yieldToMaturity !== null && (
+        // Read-only and derived, so it shows in the same caption row layout
+        // as the ISIN summary above, not as a field.
+        <SummaryTable
+          rows={[
+            {
+              key: 'yieldToMaturity',
+              label: t('holdingDetail.yieldToMaturity'),
+              value: (
+                <Text variant="caption" tone="textSecondary">
+                  {yieldToMaturityText(fields.yieldToMaturity)}
+                </Text>
+              ),
+              testID: 'bond-form-yield-to-maturity',
+            },
+          ]}
+        />
+      )}
 
       <ManualBondFields
         bondMode={fields.bondMode}

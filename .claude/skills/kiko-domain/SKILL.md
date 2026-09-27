@@ -1027,10 +1027,28 @@ from `asBondMeta`'s nominal default) has no yield. Pin: 98 x UA4000239115 at 1,0
 (month-stepped `bondCouponDates` would give 15.41%). The holding
 detail's bond breakdown shows it as its last row, "Yield to maturity"
 (`holdingDetail.yieldToMaturity`, a `text` row, testID
-`bond-yield-to-maturity`, 2 decimals via `activeLocale()`), reading the
-cached terms through `useBondRegisterTerms`
+`bond-yield-to-maturity`, 2 decimals through the shared
+`yieldToMaturityText` in the same `src/bonds/yield-to-maturity/`
+feature), reading the cached terms through `useBondRegisterTerms`
 (`src/screens/holding-detail/use-bond-register-terms/`, disabled for a
 holding without an ISIN).
+
+The bond FORM shows the same row live (USER FINDING D7 — "coupon
+maturity" meant the yield to maturity, the seller's 15.4%, not the
+coupon): create and edit, ISIN and Manual. `useBondFields` returns
+`yieldToMaturity` = `bondYieldToMaturity(buildBondMetadata(<the form
+now>), currency, registerTerms)` — the SAME function the detail calls,
+never a second implementation — so it follows every change of price,
+quantity, dates and schedule (register payments in ISIN mode, the kept
+or generated schedule in Manual). `buildBondMetadata` stands today in
+for a missing date, so `hasYieldInputs` hides the row BEFORE the call
+while the price, the purchase date or the maturity date is missing; a
+solver with no answer hides it too (no placeholder). `BondFormBlock`
+renders it right after the purchase date as a one-row `SummaryTable`
+with a caption `textSecondary` value (the ISIN summary's own row
+style), testID `bond-form-yield-to-maturity`. Pin: UA4000239115, 98 x
+"1 076,72", bought 2026-09-10 → 15.40% in the form, from the register
+and from the generated schedule.
 
 `src/bonds/bond-register-repo/` caches the register in the
 `bond_register` table (migration `0037`; `isin` primary key, `terms`
