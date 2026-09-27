@@ -151,6 +151,21 @@ describe('AddCategoryRow', () => {
     );
   });
 
+  it('lets the user pick the default tag icon back after picking another', async () => {
+    const { getByLabelText, getByText } = await render(<AddCategoryRow onCollapse={onCollapse} />);
+
+    await fireEvent.press(getByLabelText('Choose new category icon'));
+    await fireEvent.press(getByLabelText('Choose icon basket'));
+    await fireEvent.press(getByLabelText('Choose new category icon'));
+    await fireEvent.press(getByLabelText('Choose icon tag'));
+    await fireEvent.changeText(getByLabelText('Name'), 'Groceries');
+    await fireEvent.press(getByText('Save'));
+
+    await waitFor(() =>
+      expect(mockCreate).toHaveBeenCalledWith({ title: 'Groceries', icon: 'tag', color: null }),
+    );
+  });
+
   it('calls onCollapse once the save resolves', async () => {
     const { getByLabelText, getByText } = await render(<AddCategoryRow onCollapse={onCollapse} />);
 

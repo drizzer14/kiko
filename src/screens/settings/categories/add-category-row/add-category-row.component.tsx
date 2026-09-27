@@ -18,9 +18,7 @@ import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-picke
 import { styles } from './add-category-row.styles';
 
 // A new category starts on the generic category glyph, 'tag', the one the
-// Categories footer "Add category" button leads with. 'tag' is not in
-// KIKO_CATEGORIES_ICONS, so the picker does not show it, and once the user
-// picks another icon they cannot pick 'tag' back.
+// Categories footer "Add category" button leads with.
 const DEFAULT_ICON = genericEntitySymbol.category;
 
 type AddCategoryRowProps = {
