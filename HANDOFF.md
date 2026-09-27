@@ -2,6 +2,16 @@
 
 
 
+## 2026-09-27 ~22:00: feat SESSION 9 (term_76d2219c-4a86-4f7b-80d1-84a1dc2e4ed3) replaced session 8 at 51%; tip 49ed0a04; queue: kill-guard fix round (git stash + unquoted heredoc deny, user-approved) -> re-review -> BATCH READY (base ccb611dd, 2 source files) + deployable (tag icon). next = e85be58c (guard replay merged). Harness-only main commit (8 agent/skill files + plugin 0.2.2) waits for the user.
+
+## 2026-09-27 ~18:00: feat/assets-debts 62c38965 MERGED into next = 13455209 (release 1.1; make verify 408/5562 coordinator-verified; 5 harness conflicts resolved feat-first + next-only lines). main unchanged. Harness text in next reaches sessions only after main + plugin bump (0.2.1 now).
+
+## 2026-09-27 day: whole-release deep gate STOPPED by the user after 10 h (mutation only on small diffs; memory mutation-only-on-small-diffs; harness cap task held for the user's OK in session 8). Session 8 = shares-assets-research-c2.
+
+## OVERNIGHT 2026-09-27 (user directive 00:58: work overnight, deep gate if in time, DEPLOY 09:30)
+02:30: session 7 handed over at 51%; feat SESSION 8 = shares-assets-research-c2 (term_845005f8-4411-4d77-9ef6-8c0953196049), tip 5ea2f805, in overnight mode (brief scratchpad brief-feat8.txt): device fix round 3 -> IMPORTS T9-T17 + review -> T43 (read-only in parallel; fixes between IMPORTS tasks) -> drift. FREEZE CANDIDATE sha by 04:30 at the latest.
+Deep gate: separate checkout ~/orca/workspaces/pff-ios/deep-gate (detached worktree, npm ci done at 6c56d31f); run KIKO_MUTATION_BASE=next make deep there on the freeze sha (best effort; no rate history -> unknown duration). Coordinator crons: 04:37 freeze fallback + deep gate start; 08:43 deploy prep (kiko:ops, standard brief) + morning summary. Overnight keys ship unapproved in the 09:30 device build; review in the morning. Silent watcher scratchpad trackwatch.sh (gauge >= 50% or idle > 60 min).
+
 ## ⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-09-26 12:55) — READ THIS FIRST
 Previous coordinator: pff-ios-9b (hands over now on user request). FIRST ACTION of the new coordinator: SendMessage your
 name to shares-assets-research-72 (feat), pre-write-guard-00 (guard) and the PM pff-ios-89; they report to "pff-ios-9b".
@@ -21,7 +31,7 @@ coordinator = SendMessage target).
 | ipad-adaptive-e7, duo-adaptive-d4 | own worktrees | — | idle, unmerged; user: KEEP |
 
 ### Next steps for the coordinator, in order (user-approved END ORDER)
-1. Guard final report -> merge pre-write-guard INTO feat/assets-debts (onto the feat tip; last known 144d2967). Expect a conflict in
+1. DONE 2026-09-26: guard merged into feat (2163a66b + fixup 5307e076, make verify 386/5003 coordinator-verified); guard worktree+branch pruned; notes copied to feat .superpowers/sdd/2026-09-25-pre-write-guard/; plugin 0.2.1 on main (4d0daf62, c22d3fb7), next == main. NEW queued feat task IMPORTS (@kiko alias + barrels across feature folders; memory imports-kiko-alias-and-barrels) after the FB1 deployable, before T43. KEYS: ALL APPROVED by the user 2026-09-26 (KEYS-overnight + KEYS-pre-write-guard) with 3 changes relayed to session 7: syncedNotice uk 'Цю транзакцію синхронізовано, тому можна змінити лише категорію та зв’язок із кредитом.'; loanLenderName uk 'Кредитор'; loanLenderNamePlaceholder without 'e.g.'. cost stays 'Вартість'; guard error keys stay separate. Was: Guard final report -> merge pre-write-guard INTO feat/assets-debts (onto the feat tip; last known 144d2967). Expect a conflict in
    src/rates/rates-refresh/rates-refresh.ts (~327: take FEAT's side, 0898a16c) and rule-11 blank-line hits in feat code (run
    node scripts/checks/blank-line-separation.js --write + import-order.js --write in a fixup commit, like 9ab2cf2f). Keep the rule
    move intact: kiko-no-switch / kiko-no-nullable-map-ternary / kiko-no-use-animated-keyboard / kiko-no-history-id-comment only in
@@ -38,8 +48,8 @@ coordinator = SendMessage target).
 6. Merge feat/assets-debts into next (release 1.1). Prune pre-write-guard worktree+branch after its merge (KEYS.md copy already saved).
 
 ### Device
-iPhone (UDID 00008130-0018712A1E32001C, app data container 11300148-8CFA-440B-8C97-DB08CEB653CA) has 5cb70fb (Release-AdHoc).
-device-deploy HEAD = 5cb70fb, npm install done (.env keys from C2). EVERY ops install brief must pin the UDID, Release-AdHoc and the
+iPhone (UDID 00008130-0018712A1E32001C, app data container 11300148-8CFA-440B-8C97-DB08CEB653CA) has ce610048 (Release-AdHoc, installed 2026-09-27 15:17, make verify 407/5552; D10 footer icons; retest RETEST-D10-addendum.md). Before: f2282acb (installed 2026-09-27 14:40, make verify 407/5545; device rounds 4+5 incl. D5-D9; retest RETEST-DEV4 + RETEST-DEV5). Before: a4e8d71d (installed 2026-09-27 ~09:00, overnight freeze; gate evidence = session 8 make verify 02:52; a re-run under Stryker load failed only on Semgrep timeouts -> re-run the gate after the deep gate). Before: 8667c8f0 (installed 2026-09-27, make verify 401/5339; retest RETEST-DEV2-addendum.md; D4 yield to maturity). Before: e1ded680 (installed 2026-09-26 20:45, make verify 399/5285; retest RETEST-DEV1-addendum.md). Before: 8adaf394 (installed 2026-09-26 19:1x, make verify 397/5206; all keys through P6 approved). User device test: RETEST-FB1-P6-addendum.md + the 3 earlier RETEST files. Was: 5cb70fb.
+device-deploy HEAD = ce610048, npm install done (.env keys from C2). EVERY ops install brief must pin the UDID, Release-AdHoc and the
 container UUID check (an ops run once installed on the iPhone 17 SIMULATOR with a Distribution config and reported SUCCESS).
 
 ### Pending for the USER (approve before a deploy that ships them)
@@ -159,7 +169,7 @@ done). Sonnet blocked until 2026-09-27 16:00 (roles on opus).
 ### Harness / infra state
 - main d0e91de: kill-guard PreToolUse hook (blocks pkill/killall/pattern kills) + CLAUDE.md line; researcher agent;
   skill drift rule. next == main. Sessions need /reload-plugins to get the hook.
-- Generic harness repo ~/Developer/Projects/harness pushed to GitHub (66045b1). Next sync later: one-component,
+- Generic harness repo ~/Developer/Projects/harness pushed to GitHub (c950940, 2026-09-27 sync: kill-guard, dispatcher, pre-write guard engine, opt-in style checkers, 30-file mutation cap, process lessons; plugin 1.1.0; npm test 404/404). Before: (66045b1). Next sync later: one-component,
   comment rule, fnts/ts-pattern ideas, kill-guard.
 - ~/.claude/settings.json: allow git push; force pushes ask.
 - device-deploy = ~/orca/workspaces/pff-ios/device-deploy (detached install checkout, NEVER prune). Phone has build
