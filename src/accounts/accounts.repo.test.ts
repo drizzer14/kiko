@@ -13,7 +13,7 @@ jest.mock('@kiko/db/client', () => {
 });
 
 import { Money } from '@kiko/currency/money';
-import { accounts, holdings, transactions } from '@kiko/db';
+import { accounts, holdings, syncState, transactions } from '@kiko/db';
 import { captureSetDatabaseTransaction } from '@kiko/db/capture-set-tx';
 import { renderCondition } from '@kiko/db/render-condition-test-helper';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
@@ -495,9 +495,10 @@ describe('accountsRepo.setIcon', () => {
 
 // Build a fake transaction handle for `remove`. `select(...).from(...).where(...)`
 // resolves queued rows in call order (first the account row, then the account's
-// holdings); each `delete(table)` records the table it targeted, in order, so a
-// test can prove the cascade deletes transactions, then holdings, then the account
-// itself — all inside the single transaction the `write` mock runs the work in.
+// holdings); each `delete(table)` records the table it targeted, in order, and
+// its `where` arg, so a test can prove the cascade deletes transactions, then
+// `sync_state`, then holdings, then the account itself — all inside the single
+// transaction the `write` mock runs the work in.
 // `update(transactions).set(...).where(...)` (`clearLoanLinksForHoldingsDatabaseTransaction`)
 // records its `set` payload and `where` arg the
 // same way, so a test can prove the loan-link cascade ran, and with which ids.
@@ -508,6 +509,7 @@ const makeRemoveDatabaseTransaction = (options: {
   databaseTransaction: unknown;
   captured: {
     deletedFrom: unknown[];
+    deleteWhereArgs: { table: unknown; whereArg: unknown }[];
     linkClearSet?: Record<string, unknown>;
     linkClearWhereArg?: unknown;
   };
@@ -515,9 +517,10 @@ const makeRemoveDatabaseTransaction = (options: {
   const selectQueue: unknown[][] = [options.account ? [options.account] : [], options.holdings];
   const captured: {
     deletedFrom: unknown[];
+    deleteWhereArgs: { table: unknown; whereArg: unknown }[];
     linkClearSet?: Record<string, unknown>;
     linkClearWhereArg?: unknown;
-  } = { deletedFrom: [] };
+  } = { deletedFrom: [], deleteWhereArgs: [] };
   const databaseTransaction = {
     select: () => ({
       from: () => ({ where: () => Promise.resolve(selectQueue.shift() ?? []) }),
@@ -525,7 +528,13 @@ const makeRemoveDatabaseTransaction = (options: {
     delete: (table: unknown) => {
       captured.deletedFrom.push(table);
 
-      return { where: () => Promise.resolve() };
+      return {
+        where: (whereArg: unknown) => {
+          captured.deleteWhereArgs.push({ table, whereArg });
+
+          return Promise.resolve();
+        },
+      };
     },
     update: (_table: unknown) => ({
       set: (values: Record<string, unknown>) => ({
@@ -671,7 +680,13 @@ describe('accountsRepo.disconnect', () => {
 
     await accountsRepo.remove('acc-1');
 
-    expect(removeCaptured.deletedFrom).toEqual([transactions, transactions, holdings, accounts]);
+    expect(removeCaptured.deletedFrom).toEqual([
+      transactions,
+      transactions,
+      syncState,
+      holdings,
+      accounts,
+    ]);
   });
 
   it('drops the stale syncedAt stamp from a wallet-synced holding but keeps its address', async () => {
@@ -722,9 +737,13 @@ describe('accountsRepo.remove', () => {
 
     await accountsRepo.remove('acc-1');
 
-    // The holding's transactions are deleted first, then the holdings, then the
-    // account row — proving the full cascade runs inside the one transaction.
-    expect(captured.deletedFrom).toEqual([transactions, holdings, accounts]);
+    // The holding's transactions are deleted first, then the account's own
+    // sync_state row (INT-1: an FK NO ACTION reference — deleting the account
+    // first would fail with a foreign key constraint error on any account that
+    // ever ran a Monobank sync, even a failed first one), then the holdings,
+    // then the account row — proving the full cascade runs inside the one
+    // transaction.
+    expect(captured.deletedFrom).toEqual([transactions, syncState, holdings, accounts]);
   });
 
   it('deletes each holding’s transactions before removing holdings and the account', async () => {
@@ -736,8 +755,31 @@ describe('accountsRepo.remove', () => {
 
     await accountsRepo.remove('acc-1');
 
-    // One transactions delete per holding, then the holdings, then the account.
-    expect(captured.deletedFrom).toEqual([transactions, transactions, holdings, accounts]);
+    // One transactions delete per holding, then sync_state, then the holdings,
+    // then the account.
+    expect(captured.deletedFrom).toEqual([
+      transactions,
+      transactions,
+      syncState,
+      holdings,
+      accounts,
+    ]);
+  });
+
+  it('deletes the account’s sync_state row scoped to that account id', async () => {
+    const { databaseTransaction, captured } = makeRemoveDatabaseTransaction({
+      account: { id: 'acc-1', institution: null },
+      holdings: [{ id: 'hold-1' }],
+    });
+    mockDatabaseTransaction = databaseTransaction;
+
+    await accountsRepo.remove('acc-1');
+
+    const syncStateDelete = captured.deleteWhereArgs.find((entry) => entry.table === syncState);
+    expect(renderCondition(syncStateDelete?.whereArg)).toEqual({
+      sql: '"sync_state"."account_id" = ?',
+      params: ['acc-1'],
+    });
   });
 
   // A debt account can hold a loan among its

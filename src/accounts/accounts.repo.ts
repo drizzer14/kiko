@@ -6,6 +6,7 @@ import {
   type AccountRow,
   accounts,
   holdings,
+  syncState,
   transactions,
 } from '@kiko/db';
 import { asc, eq, sql } from 'drizzle-orm';
@@ -281,13 +282,16 @@ export const accountsRepo = {
       }
     }),
   /**
-   * Delete a MANUAL account together with all of its holdings and every one of
-   * their transactions, in ONE op-sqlite transaction so a partial failure can
-   * never leave orphaned holdings or ledger rows behind (and so foreign-key
-   * enforcement, ON per connection, is satisfied by deleting children before
-   * parents: transactions, then holdings, then the account). A synced (monobank)
-   * account is owned by the bank connection and is refused with a typed error; a
-   * missing id is a no-op rather than an error.
+   * Delete a MANUAL account together with all of its holdings, every one of
+   * their transactions, and its `sync_state` cursor row (INT-1 — an account
+   * that ever attempted a Monobank sync, even a failed first Connect, carries
+   * one), in ONE op-sqlite transaction so a partial failure can never leave
+   * orphaned holdings, ledger rows, or a stranded cursor behind (and so
+   * foreign-key enforcement, ON per connection, is satisfied by deleting
+   * children before parents: transactions and `sync_state`, then holdings,
+   * then the account). A synced (monobank) account is owned by the bank
+   * connection and is refused with a typed error; a missing id is a no-op
+   * rather than an error.
    *
    * A debt account can hold a loan, and OTHER
    * holdings' payment rows can point back at that loan via `loanHoldingId`.
@@ -322,6 +326,15 @@ export const accountsRepo = {
           .delete(transactions)
           .where(eq(transactions.holdingId, holding.id));
       }
+      // INT-1: `sync_state.account_id` is an FK with NO ACTION (migration
+      // `0027`), so deleting `accounts` while a row still references it throws
+      // a foreign key constraint error and rolls back the whole delete — for
+      // ANY account that ever ran a Monobank sync, including one whose very
+      // first Connect attempt failed (`runSyncInner` creates this row via
+      // `syncStateRepo.ensure` before the account ever becomes synced). Delete
+      // it here, before the account row goes — mirrors the order
+      // `restoreDataSnapshot` already uses (`data-transfer/snapshot/restore-snapshot.ts`).
+      await databaseTransaction.delete(syncState).where(eq(syncState.accountId, accountId));
       await clearLoanLinksForHoldingsDatabaseTransaction(
         databaseTransaction,
         accountHoldings.map((holding) => holding.id),
