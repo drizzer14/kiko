@@ -56,4 +56,8 @@ module.exports = {
   moduleNameMapper: {
     '^@kiko/(.*)$': '<rootDir>/src/$1',
   },
+  // Jest's default testMatch runs every file under a `__tests__/` folder as a
+  // suite, so the shared harness-test helpers in `__tests__/test-support/`
+  // would each fail as an empty suite. `/node_modules/` is Jest's own default.
+  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/__tests__/test-support/'],
 };

@@ -1,15 +1,14 @@
-import {
-  chmodSync,
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+
+import {
+  mutatedFiles,
+  writeExecutable,
+  runWithArgumentStub,
+  buildMutationRepository,
+} from './test-support/mutation-repository';
 
 // scripts/checks/mutation.sh (the check:deep mutation step) must STREAM Stryker's
 // output to stdout live while preserving the exit code AND the structured failure
@@ -19,46 +18,12 @@ import { execFileSync, spawnSync } from 'node:child_process';
 // The real Stryker run takes minutes, so these drive the wrapper against a fast
 // STUB binary via the KIKO_MUTATION_BIN seam, and point TMPDIR at a fresh dir so
 // the content-dedup skip and the single-flight lock start clean.
-const SCRIPT = join(__dirname, '../scripts/checks/mutation.sh');
 const LIB = join(__dirname, '../scripts/checks/_lib.sh');
 
-const gitq = (cwd: string, ...args: string[]): void => {
-  execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' });
-};
-
-const writeFile = (root: string, rel: string, body: string): void => {
-  const abs = join(root, rel);
-  mkdirSync(dirname(abs), { recursive: true });
-  writeFileSync(abs, body);
-};
-
-// Ensure a destination directory exists and return its path (for copyFileSync).
-function mkAndReturn(root: string, rel: string): string {
-  const abs = join(root, rel);
-  mkdirSync(dirname(abs), { recursive: true });
-
-  return abs;
-}
-
-// The wrapper refuses a whole-project run above its file cap, and the real
-// worktree is far above it, so the streaming tests run a copy of the wrapper
-// inside a one-file throwaway project. The wrapper computes ROOT as
-// scripts/checks/../.. — this project — and keys its history file under TMPDIR
-// by a hash of that ROOT, so pre-seeded history must use the same root.
+// The wrapper computes ROOT as scripts/checks/../.. — this project — and keys
+// its history file under TMPDIR by a hash of that ROOT, so pre-seeded history
+// must use the same root.
 const projectRoot = (temporaryDirectory: string): string => join(temporaryDirectory, 'project');
-
-const buildOneFileProject = (temporaryDirectory: string): void => {
-  const root = projectRoot(temporaryDirectory);
-  mkdirSync(root);
-  gitq(root, 'init', '-q', '-b', 'main');
-  gitq(root, 'config', 'user.email', 'test@example.com');
-  gitq(root, 'config', 'user.name', 'Test');
-  copyFileSync(SCRIPT, mkAndReturn(root, 'scripts/checks/mutation.sh'));
-  copyFileSync(LIB, mkAndReturn(root, 'scripts/checks/_lib.sh'));
-  writeFile(root, 'src/keep.ts', 'export const a = 1;\n');
-  gitq(root, 'add', '-A');
-  gitq(root, 'commit', '-qm', 'base');
-};
 
 type Run = { code: number | null; stdout: string; stderr: string };
 
@@ -93,24 +58,17 @@ const seedCorruptHistory = (temporaryDirectory: string): void => {
   });
 };
 
-const makeStub = (temporaryDirectory: string, body: string): string => {
-  const bin = join(temporaryDirectory, 'stryker-stub');
-  writeFileSync(bin, body, { mode: 0o755 });
-  chmodSync(bin, 0o755);
+const makeStub = (temporaryDirectory: string, body: string): string =>
+  writeExecutable(join(temporaryDirectory, 'stryker-stub'), body);
 
-  return bin;
-};
-
-// The streaming tests force the whole-project path (KIKO_MUTATION_FULL=1) so
-// they are independent of the diff-scoping (tested separately, in its own
-// hermetic git repo below).
+// The project changes one source file against `main`, so the streaming tests
+// run the wrapper's default diff scope over that one file.
 const run = (bin: string, temporaryDirectory: string, callLog: string): Run => {
   const script = join(projectRoot(temporaryDirectory), 'scripts/checks/mutation.sh');
   const result = spawnSync('bash', [script], {
     env: {
       ...process.env,
       KIKO_MUTATION_BIN: bin,
-      KIKO_MUTATION_FULL: '1',
       TMPDIR: temporaryDirectory,
       KIKO_STUB_CALLS: callLog,
     },
@@ -133,7 +91,9 @@ const stubBody = (exitCode: number): string =>
 
 const freshTemporaryDirectory = (): string => {
   const temporaryDirectory = mkdtempSync(join(tmpdir(), 'kiko-mut-'));
-  buildOneFileProject(temporaryDirectory);
+  buildMutationRepository(projectRoot(temporaryDirectory), {
+    'src/changed.ts': 'export const changed = 1;\n',
+  });
 
   return temporaryDirectory;
 };
@@ -319,265 +279,103 @@ describe('scripts/checks/mutation.sh streaming', () => {
 
 // ---------------------------------------------------------------------------
 // Diff scoping: check:deep mutates only the source files THIS branch changed
-// vs the merge-base with $KIKO_MUTATION_BASE, not the whole project. These build
-// a throwaway git repo, copy the real mutation.sh + _lib.sh into it, and run it
-// there against an argument-capturing stub — so the merge-base/diff/exclude/
-// --mutate logic is exercised for real, deterministically.
+// vs the merge-base with $KIKO_MUTATION_BASE, not the whole project. The
+// wrapper runs against an argument-capturing stub, so the merge-base/diff/
+// exclude/--mutate logic is exercised for real, deterministically.
 // ---------------------------------------------------------------------------
 
-// The stub records every argument it is invoked with (one per line) so a test
-// can assert the exact --mutate list Stryker would receive.
-const ARG_STUB = ['#!/usr/bin/env bash', 'printf "%s\\n" "$@" >> "$KIKO_STUB_ARGS"', 'exit 0'].join(
-  '\n',
-);
-
-// Build a repo with `main` holding one source file, then a `feature` branch that
-// adds a mutable source file plus a test file and a fixture file (both excluded).
-const buildRepo = (): { root: string; script: string } => {
-  const root = mkdtempSync(join(tmpdir(), 'kiko-mutrepo-'));
-  gitq(root, 'init', '-q', '-b', 'main');
-  gitq(root, 'config', 'user.email', 'test@example.com');
-  gitq(root, 'config', 'user.name', 'Test');
-
-  copyFileSync(SCRIPT, mkAndReturn(root, 'scripts/checks/mutation.sh'));
-  copyFileSync(
-    join(__dirname, '../scripts/checks/_lib.sh'),
-    mkAndReturn(root, 'scripts/checks/_lib.sh'),
+const runOnFeature = (featureFiles: Record<string, string>) => {
+  const { script } = buildMutationRepository(
+    mkdtempSync(join(tmpdir(), 'kiko-mutrepo-')),
+    featureFiles,
   );
 
-  writeFile(root, 'src/keep.ts', 'export const a = 1;\n');
-  gitq(root, 'add', '-A');
-  gitq(root, 'commit', '-qm', 'base');
-
-  gitq(root, 'checkout', '-q', '-b', 'feature');
-  writeFile(root, 'src/changed.ts', 'export const b = 2;\n');
-  writeFile(root, 'src/changed.test.ts', 'test("x", () => {});\n');
-  writeFile(root, 'rules/fixtures/bad.ts', 'export const c = 3;\n');
-  // Non-logic categories excluded from the mutate-set: i18n locale catalogs
-  // (pure string-data) and type-only declarations (erased at compile).
-  writeFile(root, 'src/i18n/locales/en.ts', 'export const en = { a: "A" };\n');
-  writeFile(root, 'src/foo.d.ts', 'export type Foo = number;\n');
-  gitq(root, 'add', '-A');
-  gitq(root, 'commit', '-qm', 'feature change');
-
-  return { root, script: join(root, 'scripts/checks/mutation.sh') };
-};
-
-type DiffRun = { code: number | null; args: string[] | null };
-
-const runInRepo = (script: string, env: Record<string, string>): DiffRun => {
-  const root = dirname(dirname(dirname(script)));
-  const argsFile = join(mkdtempSync(join(tmpdir(), 'kiko-args-')), 'args');
-  const stub = join(dirname(argsFile), 'stub');
-  writeFileSync(stub, ARG_STUB, { mode: 0o755 });
-  chmodSync(stub, 0o755);
-
-  const result = spawnSync('bash', [script], {
-    cwd: root,
-    env: {
-      ...process.env,
-      KIKO_MUTATION_BIN: stub,
-      KIKO_STUB_ARGS: argsFile,
-      TMPDIR: mkdtempSync(join(tmpdir(), 'kiko-state-')),
-      ...env,
-    },
-    encoding: 'utf8',
-  });
-
-  const args = existsSync(argsFile)
-    ? readFileSync(argsFile, 'utf8').split('\n').filter(Boolean)
-    : null;
-
-  return { code: result.status, args };
+  return runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'main' });
 };
 
 describe('scripts/checks/mutation.sh diff scoping', () => {
   it('mutates only the source files changed vs the base, excluding tests, fixtures, locales, and .d.ts', () => {
-    const { script } = buildRepo();
-    // On `feature`, changed vs `main`: src/changed.ts, src/changed.test.ts,
-    // rules/fixtures/bad.ts, src/i18n/locales/en.ts, src/foo.d.ts. Only
-    // src/changed.ts is a mutable, in-scope source file.
-    const result = runInRepo(script, { KIKO_MUTATION_BASE: 'main' });
+    const result = runOnFeature({
+      'src/changed.ts': 'export const b = 2;\n',
+      'src/changed.test.ts': 'test("x", () => {});\n',
+      'rules/fixtures/bad.ts': 'export const c = 3;\n',
+      // Non-logic categories excluded from the mutate-set: i18n locale catalogs
+      // (pure string-data) and type-only declarations (erased at compile).
+      'src/i18n/locales/en.ts': 'export const en = { a: "A" };\n',
+      'src/foo.d.ts': 'export type Foo = number;\n',
+    });
 
     expect(result.code).toBe(0);
-    expect(result.args).not.toBeNull();
-    const mutate = (result.args ?? []).find((arg) => arg.startsWith('--mutate='));
-    expect(mutate).toBeDefined();
-    expect(mutate).toContain('src/changed.ts');
-    expect(mutate).not.toContain('src/changed.test.ts');
-    expect(mutate).not.toContain('rules/fixtures/bad.ts');
-    expect(mutate).not.toContain('src/keep.ts');
-    // The two non-logic categories are filtered out of the changed set.
-    expect(mutate).not.toContain('src/i18n/locales/en.ts');
-    expect(mutate).not.toContain('src/foo.d.ts');
+    expect(mutatedFiles(result.stubArguments)).toEqual(['src/changed.ts']);
   });
 
   it('passes cleanly without Stryker when the only changed mutable files are locales/.d.ts', () => {
-    const root = mkdtempSync(join(tmpdir(), 'kiko-mutrepo-'));
-    gitq(root, 'init', '-q', '-b', 'main');
-    gitq(root, 'config', 'user.email', 'test@example.com');
-    gitq(root, 'config', 'user.name', 'Test');
-    copyFileSync(SCRIPT, mkAndReturn(root, 'scripts/checks/mutation.sh'));
-    copyFileSync(
-      join(__dirname, '../scripts/checks/_lib.sh'),
-      mkAndReturn(root, 'scripts/checks/_lib.sh'),
-    );
-    writeFile(root, 'src/keep.ts', 'export const a = 1;\n');
-    gitq(root, 'add', '-A');
-    gitq(root, 'commit', '-qm', 'base');
-    gitq(root, 'checkout', '-q', '-b', 'feature');
     // ONLY excluded categories change — the filter empties the set, so the
     // "nothing to mutate, pass" early exit must still fire (stub never runs).
-    writeFile(root, 'src/i18n/locales/en.ts', 'export const en = { a: "A" };\n');
-    writeFile(root, 'src/foo.d.ts', 'export type Foo = number;\n');
-    gitq(root, 'add', '-A');
-    gitq(root, 'commit', '-qm', 'locales and d.ts only');
-
-    const result = runInRepo(join(root, 'scripts/checks/mutation.sh'), {
-      KIKO_MUTATION_BASE: 'main',
+    const result = runOnFeature({
+      'src/i18n/locales/en.ts': 'export const en = { a: "A" };\n',
+      'src/foo.d.ts': 'export type Foo = number;\n',
     });
 
     expect(result.code).toBe(0);
-    expect(result.args).toBeNull();
+    expect(result.stubArguments).toBeNull();
   });
 
   it('passes cleanly (exit 0) without invoking Stryker when nothing changed vs the base', () => {
-    const { script } = buildRepo();
-    // Run from `main` itself: merge-base(main, HEAD=main) = main, empty diff.
-    const root = dirname(dirname(dirname(script)));
-    gitq(root, 'checkout', '-q', 'main');
-
-    const result = runInRepo(script, { KIKO_MUTATION_BASE: 'main' });
+    const result = runOnFeature({});
 
     expect(result.code).toBe(0);
-    expect(result.args).toBeNull(); // the stub never ran
+    expect(result.stubArguments).toBeNull();
   });
 
   it('passes cleanly without Stryker when only test/fixture files changed', () => {
-    const root = mkdtempSync(join(tmpdir(), 'kiko-mutrepo-'));
-    gitq(root, 'init', '-q', '-b', 'main');
-    gitq(root, 'config', 'user.email', 'test@example.com');
-    gitq(root, 'config', 'user.name', 'Test');
-    copyFileSync(SCRIPT, mkAndReturn(root, 'scripts/checks/mutation.sh'));
-    copyFileSync(
-      join(__dirname, '../scripts/checks/_lib.sh'),
-      mkAndReturn(root, 'scripts/checks/_lib.sh'),
-    );
-    writeFile(root, 'src/keep.ts', 'export const a = 1;\n');
-    gitq(root, 'add', '-A');
-    gitq(root, 'commit', '-qm', 'base');
-    gitq(root, 'checkout', '-q', '-b', 'feature');
-    // ONLY a test file changes — the exclusion filter empties the set.
-    writeFile(root, 'src/keep.test.ts', 'test("x", () => {});\n');
-    gitq(root, 'add', '-A');
-    gitq(root, 'commit', '-qm', 'test only');
-
-    const result = runInRepo(join(root, 'scripts/checks/mutation.sh'), {
-      KIKO_MUTATION_BASE: 'main',
-    });
+    const result = runOnFeature({ 'src/keep.test.ts': 'test("x", () => {});\n' });
 
     expect(result.code).toBe(0);
-    expect(result.args).toBeNull();
+    expect(result.stubArguments).toBeNull();
   });
 
-  it('KIKO_MUTATION_FULL=1 runs the whole project with no --mutate flag', () => {
-    const { script } = buildRepo();
-
-    const result = runInRepo(script, { KIKO_MUTATION_FULL: '1' });
-
-    expect(result.code).toBe(0);
-    expect(result.args).not.toBeNull();
-    expect(result.args).toContain('run');
-    expect((result.args ?? []).some((arg) => arg.startsWith('--mutate'))).toBe(false);
-  });
-
-  // Part 2 file-level exclusion: barrels (**/index.ts) and pure-static
-  // *.styles.ts are dropped from the diff-scoped mutate set, EXCEPT the
-  // logic-bearing re-includes (bottom-sheet.styles.ts,
-  // entity-icon-tile.styles.ts). These must be filtered out in mutation.sh's own
-  // grep because `--mutate` REPLACES the config mutate[] (deepMerge replaces
-  // arrays), so the config negations do NOT apply on the diff-scoped run.
+  // Barrels (**/index.ts) and pure-static *.styles.ts are dropped from the
+  // diff-scoped mutate set, EXCEPT the logic-bearing re-includes
+  // (bottom-sheet.styles.ts, entity-icon-tile.styles.ts). These must be
+  // filtered out in mutation.sh's own grep because `--mutate` REPLACES the
+  // config mutate[] (deepMerge replaces arrays), so the config negations do NOT
+  // apply on the diff-scoped run.
   it('drops barrels and pure-static styles but keeps the logic-bearing re-includes', () => {
-    const root = mkdtempSync(join(tmpdir(), 'kiko-mutrepo-'));
-    gitq(root, 'init', '-q', '-b', 'main');
-    gitq(root, 'config', 'user.email', 'test@example.com');
-    gitq(root, 'config', 'user.name', 'Test');
-    copyFileSync(SCRIPT, mkAndReturn(root, 'scripts/checks/mutation.sh'));
-    copyFileSync(
-      join(__dirname, '../scripts/checks/_lib.sh'),
-      mkAndReturn(root, 'scripts/checks/_lib.sh'),
-    );
-    writeFile(root, 'src/keep.ts', 'export const a = 1;\n');
-    gitq(root, 'add', '-A');
-    gitq(root, 'commit', '-qm', 'base');
-    gitq(root, 'checkout', '-q', '-b', 'feature');
-    // A logic-bearing source file so the changed set is never empty.
-    writeFile(root, 'src/changed.ts', 'export const b = 2;\n');
-    // Barrels (DROPPED, the i18n one too) and the i18n init module (KEPT).
-    writeFile(root, 'src/foo/index.ts', "export * from './foo';\n");
-    writeFile(root, 'src/i18n/index.ts', "export * from './init';\n");
-    writeFile(root, 'src/i18n/init/init.ts', 'export const init = () => 1;\n');
-    // Styles: a pure-static one (DROPPED) and the 2 logic re-includes (KEPT).
-    writeFile(root, 'src/foo/foo.styles.ts', 'export const s = {};\n');
-    writeFile(
-      root,
-      'src/design-system/components/bottom-sheet/bottom-sheet.styles.ts',
-      'export const s = {};\n',
-    );
-    writeFile(
-      root,
-      'src/design-system/components/entity-icon-tile/entity-icon-tile.styles.ts',
-      'export const s = {};\n',
-    );
-    gitq(root, 'add', '-A');
-    gitq(root, 'commit', '-qm', 'part2 change');
-
-    const result = runInRepo(join(root, 'scripts/checks/mutation.sh'), {
-      KIKO_MUTATION_BASE: 'main',
+    const result = runOnFeature({
+      // A logic-bearing source file so the changed set is never empty.
+      'src/changed.ts': 'export const b = 2;\n',
+      // Barrels (DROPPED, the i18n one too) and the i18n init module (KEPT).
+      'src/foo/index.ts': "export * from './foo';\n",
+      'src/i18n/index.ts': "export * from './init';\n",
+      'src/i18n/init/init.ts': 'export const init = () => 1;\n',
+      // Styles: a pure-static one (DROPPED) and the 2 logic re-includes (KEPT).
+      'src/foo/foo.styles.ts': 'export const s = {};\n',
+      'src/design-system/components/bottom-sheet/bottom-sheet.styles.ts': 'export const s = {};\n',
+      'src/design-system/components/entity-icon-tile/entity-icon-tile.styles.ts':
+        'export const s = {};\n',
     });
 
     expect(result.code).toBe(0);
-    const mutate = (result.args ?? []).find((arg) => arg.startsWith('--mutate='));
-    expect(mutate).toBeDefined();
-    // In scope.
-    expect(mutate).toContain('src/changed.ts');
-    expect(mutate).toContain('src/i18n/init/init.ts');
-    expect(mutate).toContain('src/design-system/components/bottom-sheet/bottom-sheet.styles.ts');
-    expect(mutate).toContain(
-      'src/design-system/components/entity-icon-tile/entity-icon-tile.styles.ts',
+    expect(new Set(mutatedFiles(result.stubArguments))).toEqual(
+      new Set([
+        'src/changed.ts',
+        'src/i18n/init/init.ts',
+        'src/design-system/components/bottom-sheet/bottom-sheet.styles.ts',
+        'src/design-system/components/entity-icon-tile/entity-icon-tile.styles.ts',
+      ]),
     );
-    // Dropped.
-    expect(mutate).not.toContain('src/foo/index.ts');
-    expect(mutate).not.toContain('src/i18n/index.ts');
-    expect(mutate).not.toContain('src/foo/foo.styles.ts');
   });
 
   it('passes cleanly without Stryker when the only changed mutable files are barrels/styles', () => {
-    const root = mkdtempSync(join(tmpdir(), 'kiko-mutrepo-'));
-    gitq(root, 'init', '-q', '-b', 'main');
-    gitq(root, 'config', 'user.email', 'test@example.com');
-    gitq(root, 'config', 'user.name', 'Test');
-    copyFileSync(SCRIPT, mkAndReturn(root, 'scripts/checks/mutation.sh'));
-    copyFileSync(
-      join(__dirname, '../scripts/checks/_lib.sh'),
-      mkAndReturn(root, 'scripts/checks/_lib.sh'),
-    );
-    writeFile(root, 'src/keep.ts', 'export const a = 1;\n');
-    gitq(root, 'add', '-A');
-    gitq(root, 'commit', '-qm', 'base');
-    gitq(root, 'checkout', '-q', '-b', 'feature');
     // ONLY a plain barrel and a pure-static style change — the filter empties the
     // set, so the "nothing to mutate, pass" early exit must still fire.
-    writeFile(root, 'src/foo/index.ts', "export * from './foo';\n");
-    writeFile(root, 'src/foo/foo.styles.ts', 'export const s = {};\n');
-    gitq(root, 'add', '-A');
-    gitq(root, 'commit', '-qm', 'barrel and style only');
-
-    const result = runInRepo(join(root, 'scripts/checks/mutation.sh'), {
-      KIKO_MUTATION_BASE: 'main',
+    const result = runOnFeature({
+      'src/foo/index.ts': "export * from './foo';\n",
+      'src/foo/foo.styles.ts': 'export const s = {};\n',
     });
 
     expect(result.code).toBe(0);
-    expect(result.args).toBeNull();
+    expect(result.stubArguments).toBeNull();
   });
 });

@@ -1,15 +1,9 @@
-import {
-  chmodSync,
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+
+import { writeExecutable, buildMutationRepository } from './test-support/mutation-repository';
 
 // scripts/checks/mutation.sh holds a GLOBAL (machine-wide) single-flight lock so
 // only ONE Stryker runs at a time across ALL worktrees — two different worktrees
@@ -18,36 +12,17 @@ import { execFileSync, spawnSync } from 'node:child_process';
 // multi-minute mutation run: the wrapper drives a fast STUB via KIKO_MUTATION_BIN,
 // and TMPDIR is pointed at a fresh dir so the fixed global lock path is isolated
 // per test. The global lock lives at $TMPDIR/kiko-harness/mutation.global.lock.
-const SCRIPT = join(__dirname, '../scripts/checks/mutation.sh');
-const LIB = join(__dirname, '../scripts/checks/_lib.sh');
 
-const gitq = (cwd: string, ...args: string[]): void => {
-  execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' });
-};
-
-// The wrapper refuses a whole-project run above its file cap, and the real
-// worktree is far above it, so these run a copy of the wrapper inside a one-file
-// throwaway project.
+// The project changes one source file against `main`, so the wrapper's default
+// diff scope holds one file.
 const projectScript = (temporaryDirectory: string): string =>
   join(temporaryDirectory, 'project', 'scripts', 'checks', 'mutation.sh');
 
-const buildOneFileProject = (temporaryDirectory: string): void => {
-  const root = join(temporaryDirectory, 'project');
-  mkdirSync(join(root, 'scripts', 'checks'), { recursive: true });
-  mkdirSync(join(root, 'src'));
-  gitq(root, 'init', '-q', '-b', 'main');
-  gitq(root, 'config', 'user.email', 'test@example.com');
-  gitq(root, 'config', 'user.name', 'Test');
-  copyFileSync(SCRIPT, projectScript(temporaryDirectory));
-  copyFileSync(LIB, join(root, 'scripts', 'checks', '_lib.sh'));
-  writeFileSync(join(root, 'src', 'keep.ts'), 'export const a = 1;\n');
-  gitq(root, 'add', '-A');
-  gitq(root, 'commit', '-qm', 'base');
-};
-
 const freshTemporaryDirectory = (): string => {
   const temporaryDirectory = mkdtempSync(join(tmpdir(), 'kiko-lock-'));
-  buildOneFileProject(temporaryDirectory);
+  buildMutationRepository(join(temporaryDirectory, 'project'), {
+    'src/changed.ts': 'export const changed = 1;\n',
+  });
 
   return temporaryDirectory;
 };
@@ -55,19 +30,16 @@ const freshTemporaryDirectory = (): string => {
 const globalLockDir = (temporaryDirectory: string): string =>
   join(temporaryDirectory, 'kiko-harness', 'mutation.global.lock');
 
-const makeStub = (temporaryDirectory: string, exitCode: number): string => {
-  const bin = join(temporaryDirectory, 'stryker-stub');
-  const body = [
-    '#!/usr/bin/env bash',
-    'printf "%s\\n" "$$" >> "$KIKO_STUB_CALLS"',
-    'echo "STRYKER-RAN"',
-    `exit ${exitCode}`,
-  ].join('\n');
-  writeFileSync(bin, body, { mode: 0o755 });
-  chmodSync(bin, 0o755);
-
-  return bin;
-};
+const makeStub = (temporaryDirectory: string, exitCode: number): string =>
+  writeExecutable(
+    join(temporaryDirectory, 'stryker-stub'),
+    [
+      '#!/usr/bin/env bash',
+      'printf "%s\\n" "$$" >> "$KIKO_STUB_CALLS"',
+      'echo "STRYKER-RAN"',
+      `exit ${exitCode}`,
+    ].join('\n'),
+  );
 
 type Run = { code: number | null; stdout: string; stderr: string };
 
@@ -76,7 +48,6 @@ const run = (bin: string, temporaryDirectory: string, callLog: string): Run => {
     env: {
       ...process.env,
       KIKO_MUTATION_BIN: bin,
-      KIKO_MUTATION_FULL: '1',
       TMPDIR: temporaryDirectory,
       KIKO_STUB_CALLS: callLog,
     },

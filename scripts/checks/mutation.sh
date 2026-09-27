@@ -61,24 +61,15 @@ trap 'harness_unlock "$lock"' EXIT
 trap 'harness_unlock "$lock"; exit 130' INT
 trap 'harness_unlock "$lock"; exit 143' TERM
 
-# Content dedup: skip a full mutation run when no mutation-relevant source
-# changed since the last passing run. This stops a re-run after a change
-# Stryker never mutates (an icon asset, an ios/ file, a doc), the case a
-# developer agent hit when it re-ran check:deep after only an icon was added.
-fp="$(harness_code_fingerprint "$ROOT")"
-if harness_unchanged "$ROOT" "mutation" "$fp"; then
-  exit 0
-fi
-
 # A whole-release mutation run took 10 h 16 min and produced no result, so a run
 # above this many source files never starts. It is a plain assignment on purpose:
-# no env var may raise it, and KIKO_MUTATION_FULL=1 counts the whole project
-# against it too.
+# no env var may raise it.
 MUTATION_FILE_CAP=30
+CAP_REASON="A big mutation run takes hours and starves the machine (a whole-release run went 10 h 16 min with no result)."
 
 # Reads candidate .ts/.tsx paths on stdin and prints the ones Stryker would
 # mutate, excluding tests and fixtures (matching the config's own mutate
-# excludes). Part 2: it also drops zero/low-logic barrels (**/index.ts) +
+# excludes). It also drops zero/low-logic barrels (**/index.ts) +
 # pure-static *.styles.ts, preserving the 2 logic-bearing styles
 # (bottom-sheet.styles.ts, entity-icon-tile.styles.ts).
 # These MUST be filtered here too: on a diff-scoped run --mutate REPLACES
@@ -97,57 +88,73 @@ mutable_source_files() {
 # Diff-scope the mutation to the source files THIS branch changed, so the manual
 # gate is cheap. Compare against the merge-base with $KIKO_MUTATION_BASE (default
 # main) — i.e. "what this branch changed" — and mutate only those .ts/.tsx files.
-# An explicit --mutate list overrides Stryker's whole-tree glob.
-# `KIKO_MUTATION_FULL=1` forces the whole-project run; a base whose merge-base
-# cannot be resolved also falls back to the whole project (never silently mutate
-# nothing). Either way the selected set is counted against MUTATION_FILE_CAP
-# before Stryker starts.
-mutate_arg=""
-merge_base=""
-if [ -z "${KIKO_MUTATION_FULL:-}" ]; then
-  base="${KIKO_MUTATION_BASE:-main}"
-  merge_base="$(git -C "$ROOT" merge-base "$base" HEAD 2>/dev/null || true)"
+# An explicit --mutate list overrides Stryker's whole-tree glob. A whole-project
+# run is always far above MUTATION_FILE_CAP, so it is refused outright rather
+# than counted, and so is a base that does not resolve: falling back to the
+# whole project, or to "nothing to mutate", would hide the missing scope.
+if [ -n "${KIKO_MUTATION_FULL:-}" ]; then
+  print_block \
+    "Stryker (mutation testing)" \
+    "KIKO_MUTATION_FULL=1: a whole-project run is always above the cap ($MUTATION_FILE_CAP files)." \
+    "KIKO_MUTATION_FULL=1 asks Stryker to mutate every source file in the project." \
+    "$CAP_REASON" \
+    "Unset KIKO_MUTATION_FULL and set KIKO_MUTATION_BASE to the change set's own base commit so only its files are mutated." \
+    "No env override to skip the cap; do not raise the number to pass."
+  exit 2
 fi
-if [ -n "$merge_base" ]; then
-  scope="the source files changed since the merge-base with $base"
-  changed="$(git -C "$ROOT" diff --name-only --diff-filter=d "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null \
-    | mutable_source_files)"
-  if [ -z "$changed" ]; then
-    # This branch changed no mutable source file — nothing to mutate, pass.
-    exit 0
-  fi
-  csv="$(printf '%s' "$changed" | tr '\n' ',')"
-  mutate_arg="--mutate=${csv%,}"
-else
-  scope="the whole project"
-  # The whole-project run mutates by the config's own glob, so count what that
-  # glob sees: every tracked or unignored .ts/.tsx outside the config's
-  # ignorePatterns directories. An unreadable list must never count as zero.
-  if ! listed="$(git -C "$ROOT" ls-files --cached --others --exclude-standard -- '*.ts' '*.tsx' 2>/dev/null)"; then
-    print_block \
-      "Stryker (mutation testing)" \
-      "Could not list the project's source files to count them against the mutation cap." \
-      "git ls-files failed in $ROOT (not a git worktree?)." \
-      "The mutation file cap cannot be checked without the file list, and an unchecked whole-project run takes hours." \
-      "Run npm run check:mutation inside the git worktree, with KIKO_MUTATION_BASE set to the change set's own base commit." \
-      "Do not start Stryker directly to skip the cap."
-    exit 2
-  fi
-  changed="$(printf '%s\n' "$listed" \
-    | grep -Ev '(^|/)(ios|android|vendor|coverage|docs|\.superpowers)/' \
-    | mutable_source_files)"
+base="${KIKO_MUTATION_BASE:-main}"
+if ! merge_base="$(git -C "$ROOT" merge-base "$base" HEAD 2>/dev/null)" || [ -z "$merge_base" ]; then
+  print_block \
+    "Stryker (mutation testing)" \
+    "KIKO_MUTATION_BASE=$base does not resolve to a commit." \
+    "git merge-base $base HEAD failed in $ROOT, so the change set to mutate is unknown." \
+    "Without a base there is no change set to mutate, and the gate must never fall back to a whole-project run or pass with nothing mutated." \
+    "Set KIKO_MUTATION_BASE to the change set's own base commit (a branch, tag, or sha in this repository), then re-run: npm run check:mutation" \
+    "Do not start Stryker directly to skip the cap."
+  exit 2
 fi
+# An unreadable file list must never count as "nothing to mutate".
+if ! diff_names="$(git -C "$ROOT" diff --name-only --diff-filter=d "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null)"; then
+  print_block \
+    "Stryker (mutation testing)" \
+    "Could not list the files changed since the merge-base with $base." \
+    "git diff --name-only $merge_base HEAD failed in $ROOT." \
+    "The gate would otherwise pass with no mutant run." \
+    "Check that the repository can read commit $merge_base (a partial clone or a .git permission error), then re-run: npm run check:mutation" \
+    "Do not start Stryker directly to skip the cap."
+  exit 2
+fi
+changed="$(printf '%s\n' "$diff_names" | mutable_source_files)"
+if [ -z "$changed" ]; then
+  # This branch changed no mutable source file — nothing to mutate, pass.
+  exit 0
+fi
+csv="$(printf '%s' "$changed" | tr '\n' ',')"
+mutate_arg="--mutate=${csv%,}"
 
 file_count="$(printf '%s\n' "$changed" | grep -c . || true)"
 if [ "$file_count" -gt "$MUTATION_FILE_CAP" ]; then
   print_block \
     "Stryker (mutation testing)" \
     "$file_count files would be mutated (> $MUTATION_FILE_CAP)." \
-    "Scope: $scope." \
-    "A big mutation run takes hours and starves the machine (a whole-release run went 10 h 16 min with no result)." \
+    "Scope: the source files changed since the merge-base with $base." \
+    "$CAP_REASON" \
     "Run it per small change set: set KIKO_MUTATION_BASE to that change set's own base commit so only its files are mutated." \
     "No env override to skip the cap; do not raise the number to pass."
   exit 2
+fi
+
+# Content dedup: skip a mutation run when no mutation-relevant source changed
+# since the last passing run of the SAME scope. This stops a re-run after a
+# change Stryker never mutates (an icon asset, an ios/ file, a doc). It runs
+# only after every refusal above, and the scope (merge-base + file list) is part
+# of the fingerprint, so a pass over a narrow change set never skips a wider or
+# refused one at the same HEAD. An empty code fingerprint stays empty, so a
+# state that cannot be fingerprinted always runs.
+fp="$(harness_code_fingerprint "$ROOT")"
+[ -n "$fp" ] && fp="$fp $merge_base $mutate_arg"
+if harness_unchanged "$ROOT" "mutation" "$fp"; then
+  exit 0
 fi
 
 # Everything below runs only when Stryker will ACTUALLY run (past every early
@@ -163,8 +170,7 @@ fi
 # reports the count. Before the run we can only announce that: with no usable
 # history we print the plain no-estimate line. Create the empty log first so the
 # watch command works immediately. All of this is guarded: it must never change
-# the gate's exit code. `$mutate_arg` is a single token with no spaces (or
-# empty), so the unquoted expansion is safe. The ETA line goes only to stdout via
+# the gate's exit code. The ETA line goes only to stdout via
 # the filter — the tee writes the log BEFORE the filter, so `$log` (and thus
 # `out`, the count/score parse, and the failure block) stays pure Stryker output.
 log="$(harness_mutation_progress_log "$ROOT")"
@@ -179,7 +185,7 @@ fi
 printf 'Watch live progress:  tail -f %s\n' "$log"
 
 start="$(date +%s 2>/dev/null || printf '0')"
-"$BIN" run $mutate_arg 2>&1 | tee "$log" | harness_mutation_eta_filter "$rate"
+"$BIN" run "$mutate_arg" 2>&1 | tee "$log" | harness_mutation_eta_filter "$rate"
 code="${PIPESTATUS[0]}"
 end="$(date +%s 2>/dev/null || printf '0')"
 out="$(cat "$log" 2>/dev/null || true)"
