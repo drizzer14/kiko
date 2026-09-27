@@ -16,7 +16,7 @@ Rules:
 - The nullable-map ternary (`x === undefined ? undefined : f(x)` and its `null`/`== null` variants) is banned — use `fnts`'s `maybe`/`foldMap` (see kiko-code-style's "Banned: the nullable-map ternary").
 - No more than one component per file, except a small local, non-exported component extracted for readability or re-render reasons — see kiko-code-style's "One component per file" section. A mock component or fixture used by one test goes to that test's co-located test-helper file, not a new top-level component folder, unless it is reused across multiple test files.
 - Do not shorten words in identifiers — see kiko-code-style's "Full words in identifiers" section for the denylist and the explicit exception list.
-- Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean.
+- Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean, in any checkout or clone, scratch clones included — commit a WIP or copy the files aside instead.
 - Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
 - Edit files under `src/` and `__tests__/` only with Edit/Write. Never write them through Bash (redirects, `sed -i`, python, heredocs) — that skips the PreToolUse pre-write guard.
 - Iterate with SCOPED tests (only the touched files) while developing. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.

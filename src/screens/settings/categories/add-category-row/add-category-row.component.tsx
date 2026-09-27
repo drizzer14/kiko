@@ -9,6 +9,7 @@ import { type FC, useEffect, useRef, useState } from 'react';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import FieldError from '@kiko/design-system/components/field-error';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import ColorPicker from '@kiko/design-system/components/color-picker';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
@@ -16,9 +17,9 @@ import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-picke
 
 import { styles } from './add-category-row.styles';
 
-// The default icon a new category starts with — a neutral grid glyph from the
-// curated picker pool, so the chip renders a valid symbol before the user picks.
-const DEFAULT_ICON = 'tag';
+// A new category starts on the generic category glyph, the one the
+// Categories footer "Add category" button leads with.
+const DEFAULT_ICON = genericEntitySymbol.category;
 
 type AddCategoryRowProps = {
   // Runs once the form has saved or been cancelled, so the Categories screen
@@ -37,7 +38,7 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onCollapse }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const [name, setName] = useState('');
-  const [icon, setIcon] = useState(DEFAULT_ICON);
+  const [icon, setIcon] = useState<string>(DEFAULT_ICON);
   // Null until the user taps a swatch — an honest "no color picked yet" that
   // persists as null so the row falls back to the stable per-key palette hash,
   // mirroring accounts/holdings' nullable color.

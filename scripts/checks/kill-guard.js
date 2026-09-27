@@ -13,19 +13,154 @@
 // `pkill -f "cat" -U <user>` to stop its own hung `cat`. The pattern matched
 // every process with "cat" in its command line and restarted Orca helpers
 // and the iOS Simulator.
+//
+// It also denies (user-approved, and it binds the user's own sessions too):
+// any `git stash` subcommand in any directory, scratch clones included —
+// after a scratch-clone stash slip — and a heredoc whose delimiter is not
+// quoted (`<<EOF`, `<<-EOF`), after an unquoted heredoc ran backticked text
+// in its body as commands and left a stuck process.
 
-const REASON =
+const KILL_REASON =
   'Blocked: pkill, killall, and pattern or process-group kills are banned in this repo ' +
   '(a pattern kill once restarted Orca and the iOS Simulator). Stop only a process ID you ' +
   'started yourself (kill <pid>), or let the tool timeout end a hung command.';
 
-const DENY_JSON = JSON.stringify({
-  hookSpecificOutput: {
-    hookEventName: 'PreToolUse',
-    permissionDecision: 'deny',
-    permissionDecisionReason: REASON,
-  },
-});
+// The stash and heredoc denies use the WHAT/DETAILS/WHY/HOW/DO-NOT shape of
+// `_lib.sh`'s `print_block`, as plain text inside the one JSON reason field.
+const STASH_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied a git stash command.',
+  'WHY IT MATTERS: git stash is banned in every directory, scratch clones included, after a ' +
+    "scratch-clone stash slip: a repository's stash stack is shared by every worktree and " +
+    'session, so an entry is easy to pop, apply, or lose in the wrong place.',
+  'HOW TO FIX:     commit a WIP commit on your own branch, or copy the files aside to your scratchpad.',
+  'DO NOT:         route the stash through an alias, a script file, or a variable to get past this guard.',
+];
+
+const HEREDOC_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied an unquoted heredoc delimiter.',
+  'WHY IT MATTERS: an unquoted heredoc expands its body, so backticked text in it once ran as ' +
+    'commands and left a stuck process.',
+  "HOW TO FIX:     quote the delimiter — <<'EOF' (or <<\"EOF\", <<\\EOF, <<-'EOF') — so the body " +
+    'stays literal text.',
+  'DO NOT:         leave the delimiter unquoted to expand a variable in the body; build that text ' +
+    'with printf, or write it to a scratchpad file with the Write tool.',
+];
+
+function blockReason(reasonLines, detail) {
+  const [what, ...rest] = reasonLines;
+
+  return [what, `DETAILS:        ${detail}`, ...rest].join('\n');
+}
+
+const REASON_BY_KIND = {
+  kill: () => KILL_REASON,
+  stash: (finding) => blockReason(STASH_REASON_LINES, finding.detail),
+  heredoc: (finding) => blockReason(HEREDOC_REASON_LINES, finding.detail),
+};
+
+const reasonFor = (finding) => REASON_BY_KIND[finding.kind](finding);
+
+const denyJson = (reason) =>
+  JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      permissionDecisionReason: reason,
+    },
+  });
+
+// ---- pieces both scanners share ----
+
+// An unquoted `#` that starts a word comments out the rest of its line —
+// quotes in it included, so an apostrophe there must not open a string that
+// hides every later line. Skips to (not past) the newline, which still ends
+// the command.
+function skipComment(state) {
+  const newline = state.text.indexOf('\n', state.i);
+  state.i = newline === -1 ? state.text.length : newline;
+}
+
+// A `#` after one of these starts a word (`a#b`, `${#x}`, and `$#` are not
+// comments).
+const WORD_BOUNDARY = /[\s;&|()]/;
+
+// A `#` inside `${…}` (`${x/ #/}`) is part of the expansion, never a comment.
+function trackParameterBraces(state, c) {
+  if (c === '$' && state.text[state.i + 1] === '{') state.braceDepth++;
+  else if (c === '}' && state.braceDepth > 0) state.braceDepth--;
+}
+
+// ---- heredocs: a body is data for its command, not shell text ----
+
+const HEREDOC_WORD = /^(?:'[^']*'|"(?:\\.|[^"\\])*"|\\.|[^\s;&|<>()'"\\])*/;
+const QUOTED_PART = /'([^']*)'|"((?:\\.|[^"\\])*)"|\\(.)/g;
+
+// The word after `<<`/`<<-`: its raw text, and the delimiter line that ends
+// the body (the word with its quotes removed).
+function readHeredocWord(text, start) {
+  const leading = text.slice(start).match(/^[ \t]*/)[0].length;
+  const raw = text.slice(start + leading).match(HEREDOC_WORD)[0];
+  const delimiter = raw.replace(
+    QUOTED_PART,
+    (_match, single, double, escaped) => single ?? double ?? escaped,
+  );
+
+  return { raw, delimiter, end: start + leading + raw.length };
+}
+
+// Reads a `<<`, `<<-`, or `<<<` operator at `i` (a `<<<` here-string has no
+// body), or returns null.
+function readHeredocOperator(text, i) {
+  if (!text.startsWith('<<', i)) return null;
+  const symbol = ['<<<', '<<-', '<<'].find((candidate) => text.startsWith(candidate, i));
+  if (symbol === '<<<') return { symbol, raw: '', delimiter: '', end: i + symbol.length };
+
+  return { symbol, ...readHeredocWord(text, i + symbol.length) };
+}
+
+// A heredoc's body starts on the line after its operator's line.
+function queueHeredoc(state, operator, segmentIndex) {
+  if (operator.raw === '') return;
+  state.pending.push({
+    delimiter: operator.delimiter,
+    stripTabs: operator.symbol === '<<-',
+    segmentIndex,
+  });
+}
+
+// One body starting at `start`: every line up to the one that equals the
+// delimiter (after its leading tabs, for `<<-`). Null when no line does.
+function readHeredocBody(text, start, heredoc) {
+  let lineStart = start;
+  while (lineStart <= text.length) {
+    const newline = text.indexOf('\n', lineStart);
+    const lineEnd = newline === -1 ? text.length : newline;
+    const line = text.slice(lineStart, lineEnd);
+    if ((heredoc.stripTabs ? line.replace(/^\t+/, '') : line) === heredoc.delimiter) {
+      return {
+        body: text.slice(start, lineStart),
+        end: newline === -1 ? text.length : newline + 1,
+      };
+    }
+    lineStart = lineEnd + 1;
+  }
+
+  return null;
+}
+
+// Moves past the bodies queued on the line that just ended, handing each to
+// `onBody`. A body with no delimiter line ends the skip and the rest is
+// scanned as shell: bash would read it all as that body, so this only ever
+// over-denies (fail closed).
+function skipHeredocBodies(state, onBody) {
+  for (const heredoc of state.pending) {
+    const found = readHeredocBody(state.text, state.i, heredoc);
+    if (found === null) break;
+    onBody(heredoc, found.body);
+    state.i = found.end;
+  }
+  state.pending = [];
+}
 
 // ---- matchDelimited: find the close matching an already-consumed open ----
 
@@ -39,63 +174,136 @@ function stepQuoteInDelimited(state) {
   state.i++;
 }
 
-// Finds the character matching the one that opened at `start - 1` (a `(`
-// after `$`, or a backtick), honoring nested quotes and — for `(` — nested
-// parens. Returns the text between the delimiters and the index of the
+// Takes a heredoc operator and, at the newline that ends its line, the body
+// it queued, so body text never counts as a quote, a paren, or a comment.
+// Returns false (consuming nothing) for anything else.
+function skipHeredocInDelimited(state) {
+  if (state.text[state.i] === '\n' && state.pending.length > 0) {
+    state.i++;
+    skipHeredocBodies(state, () => {});
+    state.wordStart = true;
+    return true;
+  }
+  const operator = readHeredocOperator(state.text, state.i);
+  if (operator === null) return false;
+  queueHeredoc(state, operator);
+  state.i = operator.end;
+  state.wordStart = false;
+
+  return true;
+}
+
+function stepUnquotedInDelimited(state) {
+  if (skipHeredocInDelimited(state)) return;
+  const c = state.text[state.i];
+  if (c === '#' && state.wordStart) {
+    skipComment(state);
+    return;
+  }
+  trackParameterBraces(state, c);
+  state.wordStart = state.braceDepth === 0 && WORD_BOUNDARY.test(c);
+  state.i++;
+  if (c === "'" || c === '"') state.quote = c;
+  else if (c === state.open) state.depth++;
+  else if (c === state.close) state.depth--;
+}
+
+// Finds the character matching the `(` or `[` that opened at `start - 1`,
+// honoring nested quotes, parens or brackets, comments, `${…}`, and heredoc
+// bodies. Returns the text between the delimiters and the index of the
 // closing delimiter.
 function matchDelimited(text, start, open, close) {
-  const state = { text, i: start, quote: null };
-  let depth = 1;
+  const state = {
+    text,
+    i: start,
+    quote: null,
+    open,
+    close,
+    depth: 1,
+    wordStart: true,
+    braceDepth: 0,
+    pending: [],
+  };
   while (state.i < text.length) {
     if (state.quote) {
       stepQuoteInDelimited(state);
       continue;
     }
-    const c = text[state.i];
-    if (c === "'" || c === '"') {
-      state.quote = c;
-      state.i++;
-      continue;
-    }
-    if (open && c === open) {
-      depth++;
-      state.i++;
-      continue;
-    }
-    if (c === close) {
-      depth--;
-      state.i++;
-      if (depth === 0) return { content: text.slice(start, state.i - 1), end: state.i - 1 };
-      continue;
-    }
-    state.i++;
+    stepUnquotedInDelimited(state);
+    if (state.depth === 0) return { content: text.slice(start, state.i - 1), end: state.i - 1 };
   }
   return { content: text.slice(start), end: text.length };
 }
 
-// ---- scanLevel: split one line into top-level simple commands ----
+// bash ends a backtick span at the first backtick no backslash escapes;
+// quotes inside do not hide it (`echo it's`).
+function matchBacktick(text, start) {
+  let i = start;
+  while (i < text.length && text[i] !== '`') i += text[i] === '\\' ? 2 : 1;
+  const end = Math.min(i, text.length);
 
-function consumeSubshell(context, start, open, close) {
-  const { content, end } = matchDelimited(context.text, start, open, close);
-  context.nested.push(content);
-  context.buf += ' __SUBSHELL__ ';
-  context.i = end + 1;
+  return { content: text.slice(start, end), end };
 }
 
-// A `$(...)` or backtick span expands (and so is recursed into) both at top
-// level and inside double quotes — the two callers that share this check.
+// ---- scanLevel: split one line into top-level simple commands ----
+
+// Bash reads `$((…))` and `((…))` as arithmetic only when the paren that
+// opens right after the first one closes right before the last one; else
+// (`$((a) && (b))`) it is a subshell inside a command substitution. Its `<<`
+// is a shift, not a heredoc, and only its own `$(...)`/backtick spans run.
+function isArithmetic(content) {
+  return content.startsWith('(') && matchDelimited(content, 1, '(', ')').end === content.length - 1;
+}
+
+function consumeSubshell(context, match, arithmetic) {
+  if (arithmetic) {
+    context.nested.push(...scanLevel(match.content).nested);
+  } else {
+    context.nested.push(match.content);
+  }
+  context.buf += ' __SUBSHELL__ ';
+  context.i = match.end + 1;
+}
+
+// A `((…))` arithmetic command at the start of a word.
+function consumeArithmeticCommand(context) {
+  const { text, i } = context;
+  if (!text.startsWith('((', i)) return false;
+  const match = matchDelimited(text, i + 1, '(', ')');
+  if (!isArithmetic(match.content)) return false;
+  consumeSubshell(context, match, true);
+
+  return true;
+}
+
+// A `$(...)`, `$[...]` (the old arithmetic form), or backtick span expands
+// (and so is recursed into) both at top level and inside double quotes — the
+// two callers that share this check.
 function tryConsumeSubshell(context) {
   const { text, i } = context;
-  const c = text[i];
-  if (c === '$' && text[i + 1] === '(') {
-    consumeSubshell(context, i + 2, '(', ')');
+  if (text.startsWith('$(', i)) {
+    const match = matchDelimited(text, i + 2, '(', ')');
+    consumeSubshell(context, match, isArithmetic(match.content));
     return true;
   }
-  if (c === '`') {
-    consumeSubshell(context, i + 1, null, '`');
+  if (text.startsWith('$[', i)) {
+    consumeSubshell(context, matchDelimited(text, i + 2, '[', ']'), true);
+    return true;
+  }
+  if (text[i] === '`') {
+    consumeSubshell(context, matchBacktick(text, i + 1), false);
     return true;
   }
   return false;
+}
+
+// A `<(...)` / `>(...)` process substitution runs its command too.
+function tryConsumeProcessSubstitution(context) {
+  const { text, i } = context;
+  if (!text.startsWith('<(', i) && !text.startsWith('>(', i)) return false;
+  consumeSubshell(context, matchDelimited(text, i + 2, '(', ')'), false);
+
+  return true;
 }
 
 function stepSingleQuote(context) {
@@ -124,32 +332,84 @@ function stepDoubleQuote(context) {
   context.i++;
 }
 
-// Consumes an unquoted `;`, `&&`, `||`, `|`, `&`, or newline as a top-level
-// segment separator. Returns false (and consumes nothing) for anything else.
+function endSegment(context, length) {
+  context.segments.push(context.buf);
+  context.buf = '';
+  context.i += length;
+}
+
+// Consumes an unquoted `;`, `&&`, `||`, `|`, `&`, a subshell's closing `)`,
+// or a newline — after which the bodies of the heredocs its line opened are
+// taken aside — as a top-level segment separator. Returns false (and
+// consumes nothing) for anything else.
 function consumeSeparator(context) {
   const { text, i } = context;
   const c = text[i];
-  const isAndAnd = c === '&' && text[i + 1] === '&';
-  const isOrOr = c === '|' && text[i + 1] === '|';
-  if (isAndAnd || isOrOr) {
-    context.segments.push(context.buf);
-    context.buf = '';
-    context.i += 2;
+  if (text.startsWith('&&', i) || text.startsWith('||', i)) {
+    endSegment(context, 2);
     return true;
   }
-  if (c === ';' || c === '\n' || c === '&' || c === '|') {
-    context.segments.push(context.buf);
-    context.buf = '';
-    context.i += 1;
+  if (c === '\n') {
+    endSegment(context, 1);
+    skipHeredocBodies(context, (heredoc, body) => {
+      context.bodies.push({ segmentIndex: heredoc.segmentIndex, text: body });
+    });
+    return true;
+  }
+  if (';&|'.includes(c) || (c === ')' && context.braceDepth === 0)) {
+    endSegment(context, 1);
     return true;
   }
   return false;
 }
 
+// A delimiter word with a quote or backslash ANYWHERE in it (`'EOF'`,
+// `"EOF"`, `\EOF`, `E"OF"`) keeps bash from expanding the body; any other
+// word (`EOF`, `$X`, `1`, `.`) does not. An arithmetic shift never reaches
+// here: `consumeSubshell` and `consumeArithmeticCommand` take `$((…))`,
+// `$[…]`, and `((…))` whole.
+const UNQUOTED_HEREDOC_DELIMITER = /^[^'"\\]+$/;
+
+// Consumes a `<<`/`<<-` heredoc operator and its word, recording the first
+// one whose delimiter word is unquoted and queueing its body, or a `<<<`
+// here-string. Returns false (and consumes nothing) for anything else.
+function consumeHeredocOperator(context) {
+  const operator = readHeredocOperator(context.text, context.i);
+  if (operator === null) return false;
+  if (context.heredoc === null && UNQUOTED_HEREDOC_DELIMITER.test(operator.raw)) {
+    context.heredoc = `${operator.symbol}${operator.raw}`;
+  }
+  queueHeredoc(context, operator, context.segments.length);
+  context.buf += context.text.slice(context.i, operator.end);
+  context.i = operator.end;
+
+  return true;
+}
+
+// Consumes what can only start a word: a `#` comment or a `((…))`
+// arithmetic command. Returns false (and consumes nothing) otherwise.
+function consumeAtWordStart(context) {
+  if (!context.wordStart) return false;
+  if (context.text[context.i] === '#') {
+    skipComment(context);
+    return true;
+  }
+
+  return consumeArithmeticCommand(context);
+}
+
 function stepTopLevel(context) {
   const { text, i, n } = context;
   const c = text[i];
+  if (consumeAtWordStart(context)) return;
+  if (consumeSeparator(context)) {
+    context.wordStart = true;
+    return;
+  }
+  trackParameterBraces(context, c);
+  context.wordStart = context.braceDepth === 0 && WORD_BOUNDARY.test(c);
   if (c === '\\' && i + 1 < n) {
+    context.wordStart = false;
     context.buf += c + text[i + 1];
     context.i += 2;
     return;
@@ -160,19 +420,35 @@ function stepTopLevel(context) {
     context.i++;
     return;
   }
-  if (tryConsumeSubshell(context)) return;
-  if (consumeSeparator(context)) return;
+  if (tryConsumeSubshell(context) || tryConsumeProcessSubstitution(context)) return;
+  if (consumeHeredocOperator(context)) return;
   context.buf += c;
   context.i++;
 }
 
 // Splits one line of shell text into top-level simple-command segments at
-// an unquoted `;`, `&&`, `||`, `|`, `&`, or newline, and collects the text
-// of every `$(...)` / backtick span found — at top level or inside double
-// quotes, where the shell still expands them (NOT inside single quotes,
-// where it never does) — for the caller to recurse into.
+// an unquoted `;`, `&&`, `||`, `|`, `&`, `)`, or newline, and collects the
+// text of every `$(...)` / backtick span found — at top level or inside
+// double quotes, where the shell still expands them (NOT inside single
+// quotes, where it never does) — for the caller to recurse into. A `#`
+// comment is dropped. A heredoc body is never part of a segment: `bodies`
+// holds each one with the index of the segment that reads it. `heredoc` is
+// the first top-level unquoted-delimiter heredoc operator, or null.
 function scanLevel(text) {
-  const context = { text, i: 0, n: text.length, buf: '', quote: null, segments: [], nested: [] };
+  const context = {
+    text,
+    i: 0,
+    n: text.length,
+    buf: '',
+    quote: null,
+    segments: [],
+    nested: [],
+    heredoc: null,
+    wordStart: true,
+    braceDepth: 0,
+    pending: [],
+    bodies: [],
+  };
   while (context.i < context.n) {
     if (context.quote === "'") {
       stepSingleQuote(context);
@@ -185,7 +461,12 @@ function scanLevel(text) {
     stepTopLevel(context);
   }
   context.segments.push(context.buf);
-  return { segments: context.segments, nested: context.nested };
+  return {
+    segments: context.segments,
+    nested: context.nested,
+    heredoc: context.heredoc,
+    bodies: context.bodies,
+  };
 }
 
 // ---- words: word-split one simple command respecting quotes ----
@@ -251,60 +532,106 @@ function words(segment) {
 
 const basename = (token) => (token || '').split('/').pop();
 
-const PLAIN_PREFIXES = new Set(['sudo', 'nohup', 'command', 'exec']);
-const SHELLS = new Set(['sh', 'bash', 'zsh']);
+const PLAIN_PREFIXES = new Set(['nohup', 'exec', 'builtin']);
 
-function unwrapEnv(tokens) {
-  let t = tokens.slice(1);
-  while (t.length > 0 && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(t[0]) || t[0].startsWith('-'))) {
-    t = t.slice(1);
+// Wrappers that run the command after their own options, each with the
+// options that take their value as the NEXT word (`sudo -u me`, `nice -n 10`,
+// `xargs -n 1`). `timeout` also takes a duration after its options.
+const OPTION_WRAPPERS = new Map([
+  [
+    'sudo',
+    new Set(['-C', '-D', '-g', '-p', '-R', '-r', '-T', '-t', '-U', '-u', '--user', '--group']),
+  ],
+  ['nice', new Set(['-n', '--adjustment'])],
+  ['time', new Set()],
+  ['env', new Set(['-C', '-u', '--chdir', '--unset'])],
+  ['timeout', new Set(['-k', '-s', '--kill-after', '--signal'])],
+  ['xargs', new Set(['-a', '-d', '-E', '-I', '-J', '-L', '-n', '-P', '-R', '-S', '-s'])],
+]);
+
+// `env -S 'a b'` splits its one word into the command line.
+const SPLIT_STRING_OPTIONS = new Set(['-S', '--split-string']);
+
+// Words that can stand before a command in its own position.
+const RESERVED_WORDS = new Set(['!', 'if', 'then', 'elif', 'else', 'do', 'while', 'until']);
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*\+?=/;
+const GROUP_OPENERS = /^[({]+/;
+
+const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash']);
+// `-c`, and any flag group that holds it (`-lc`, `-ec`, `-xc`).
+const SHELL_COMMAND_FLAG = /^-[A-Za-z]*c[A-Za-z]*$/;
+
+// Whether an option takes its value as the NEXT word: a listed option, or a
+// flag group whose first value-taking letter comes last (`sudo -iu me`, as
+// getopt reads it; in `-uroot` the value is glued on).
+function takesNextWord(option, optionsWithValue) {
+  if (optionsWithValue.has(option)) return true;
+  if (!/^-[A-Za-z0-9]{2,}$/.test(option)) return false;
+  const letters = [...option.slice(1)];
+
+  return letters.findIndex((letter) => optionsWithValue.has(`-${letter}`)) === letters.length - 1;
+}
+
+// The tokens after a command word and its leading options.
+function skipOptions(tokens, optionsWithValue) {
+  let i = 1;
+  while (i < tokens.length && tokens[i].startsWith('-')) {
+    i += takesNextWord(tokens[i], optionsWithValue) ? 2 : 1;
   }
-  return t;
+
+  return tokens.slice(i);
 }
 
-function unwrapTimeout(tokens) {
-  let t = tokens.slice(1);
-  while (t.length > 0 && t[0].startsWith('-')) t = t.slice(1);
-  if (t.length > 0) t = t.slice(1); // the duration argument
-  return t;
+// Whether the word in command position only leads into the real command: a
+// group opener, a reserved word, a `NAME=value` assignment, an end-of-options
+// `--`, or a plain prefix.
+const isLeadIn = (word) =>
+  word === '' ||
+  word === '--' ||
+  RESERVED_WORDS.has(word) ||
+  ASSIGNMENT.test(word) ||
+  PLAIN_PREFIXES.has(basename(word));
+
+// Wrappers whose next words need more than an options skip: `command -p`
+// runs its command while `command -v`/`-V` only looks a name up, and
+// `env -S` carries the whole command line in one word. Null for any other.
+function unwrapSpecial(base, t) {
+  if (base === 'command') return t.slice(t[1] === '-p' ? 2 : 1);
+  if (base === 'env' && SPLIT_STRING_OPTIONS.has(t[1])) {
+    return [...words(t[2] || ''), ...t.slice(3)];
+  }
+
+  return null;
 }
 
-function unwrapXargs(tokens) {
-  let t = tokens.slice(1);
-  while (t.length > 0 && t[0].startsWith('-')) t = t.slice(1);
-  return t;
-}
-
-// Strips leading wrapper commands (`sudo`, `env`, `nohup`, `timeout N`,
-// `command`, `exec`, `xargs`) so the checks below see the command actually
-// being run. Returns the remaining tokens and whether an `xargs` wrapper was
-// stripped: a `kill`/`pkill`/`killall` reached through `xargs` takes its
-// targets from the piped-in input — from a pattern, by construction — so it
-// is denied unconditionally regardless of any static args that follow it.
+// Strips every lead-in and wrapper command (`sudo -u me`, `env`, `nice -n 10`,
+// `time -p`, `timeout N`, `xargs`, ...) so the checks below see the command
+// actually being run. Returns the remaining tokens and whether an `xargs`
+// wrapper was stripped: a `kill`/`pkill`/`killall` reached through `xargs`
+// takes its targets from the piped-in input — from a pattern, by
+// construction — so it is denied unconditionally regardless of any static
+// args that follow it.
 function unwrap(tokens) {
   let viaXargs = false;
   let t = tokens;
   while (t.length > 0) {
-    const base = basename(t[0]);
-    if (PLAIN_PREFIXES.has(base)) {
+    const word = t[0].replace(GROUP_OPENERS, '');
+    const base = basename(word);
+    const special = unwrapSpecial(base, t);
+    if (special !== null) {
+      t = special;
+      continue;
+    }
+    if (isLeadIn(word)) {
       t = t.slice(1);
       continue;
     }
-    if (base === 'env') {
-      t = unwrapEnv(t);
-      continue;
-    }
-    if (base === 'timeout') {
-      t = unwrapTimeout(t);
-      continue;
-    }
-    if (base === 'xargs') {
-      viaXargs = true;
-      t = unwrapXargs(t);
-      continue;
-    }
-    break;
+    if (!OPTION_WRAPPERS.has(base)) return { tokens: [word, ...t.slice(1)], viaXargs };
+    viaXargs = viaXargs || base === 'xargs';
+    t = skipOptions(t, OPTION_WRAPPERS.get(base));
+    if (base === 'timeout') t = t.slice(1);
   }
+
   return { tokens: t, viaXargs };
 }
 
@@ -339,39 +666,101 @@ function isDangerousKillTarget(target) {
   return true;
 }
 
-function segmentIsDangerous(segment, nested) {
+// Global options that take their value as the NEXT word (`-C <dir>`,
+// `--git-dir <dir>`); the `--git-dir=<dir>` spelling is one word and needs
+// no entry here.
+const GIT_OPTIONS_WITH_VALUE = new Set([
+  '-C',
+  '-c',
+  '--git-dir',
+  '--work-tree',
+  '--namespace',
+  '--config-env',
+  '--super-prefix',
+]);
+
+// A shell runs its `-c` string or, without `-c`, the heredoc bodies it reads
+// as its script.
+function queueShellScript(rest, nested, stdinBodies) {
+  const flagIndex = rest.findIndex((token, index) => index > 0 && SHELL_COMMAND_FLAG.test(token));
+  if (flagIndex === -1) nested.push(...stdinBodies);
+  else if (flagIndex + 1 < rest.length) nested.push(rest[flagIndex + 1]);
+}
+
+// Returns the finding for one simple command — `{ kind: 'kill' }` or
+// `{ kind: 'stash', detail }` — or null when it is safe. A shell's script
+// and `eval`'s joined arguments go to `nested` as command text.
+function segmentFinding(segment, nested, stdinBodies) {
   const tokens = words(segment);
-  if (tokens.length === 0) return false;
+  if (tokens.length === 0) return null;
 
   const { tokens: rest, viaXargs } = unwrap(tokens);
-  if (rest.length === 0) return false;
+  if (rest.length === 0) return null;
   const base = basename(rest[0]);
 
   if (SHELLS.has(base)) {
-    const cIndex = rest.indexOf('-c');
-    if (cIndex !== -1 && cIndex + 1 < rest.length) nested.push(rest[cIndex + 1]);
-    return false;
+    queueShellScript(rest, nested, stdinBodies);
+    return null;
   }
 
-  if (base === 'pkill' || base === 'killall') return true;
+  if (base === 'eval') {
+    nested.push(rest.slice(1).join(' '));
+    return null;
+  }
+
+  if (base === 'pkill' || base === 'killall') return { kind: 'kill' };
 
   if (base === 'kill') {
-    if (viaXargs) return true;
-    return killTargets(rest.slice(1)).some(isDangerousKillTarget);
+    const isPatternKill = viaXargs || killTargets(rest.slice(1)).some(isDangerousKillTarget);
+
+    return isPatternKill ? { kind: 'kill' } : null;
   }
 
-  return false;
+  if (base === 'git' && skipOptions(rest, GIT_OPTIONS_WITH_VALUE)[0] === 'stash') {
+    return { kind: 'stash', detail: segment.trim() };
+  }
+
+  return null;
 }
 
-// Scans one full line of shell text (recursing into `$(...)`, backticks, and
-// a quoted `-c` argument to `sh`/`bash`/`zsh`) and returns true the moment
-// anything dangerous is found anywhere in it.
-function isDangerous(line, depth) {
-  if (depth > 8) return false; // guards against pathological nesting
-  const { segments, nested } = scanLevel(line);
+function firstFinding(lines, depth, checkHeredoc) {
+  for (const line of lines) {
+    const finding = findDanger(line, depth + 1, checkHeredoc);
+    if (finding !== null) return finding;
+  }
 
-  if (segments.some((segment) => segmentIsDangerous(segment, nested))) return true;
-  return nested.some((n) => isDangerous(n, depth + 1));
+  return null;
+}
+
+// Scans one full line of shell text (recursing into `$(...)`, backticks, a
+// `-c` argument to `sh`/`bash`/`zsh`/`dash`, an `eval` string, and heredoc
+// bodies) and returns the first finding anywhere in it, or null. A heredoc
+// body is never part of the command line around it, but a body can still be
+// run (`bash <<'EOF'`, `eval "$(cat <<'EOF' …)"`, `ssh host <<'EOF'`), so
+// each body is checked on its own for a kill or a git stash. Only a body a
+// shell reads as its script is also checked for an unquoted heredoc; any
+// other body is text, so a `<<word` in it is not an operator.
+function findDanger(line, depth, checkHeredoc = true) {
+  if (depth > 8) return null; // guards against pathological nesting
+  const { segments, nested, heredoc, bodies } = scanLevel(line);
+
+  for (const [index, segment] of segments.entries()) {
+    const stdinBodies = bodies
+      .filter((body) => body.segmentIndex === index)
+      .map((body) => body.text);
+    const finding = segmentFinding(segment, nested, stdinBodies);
+    if (finding !== null) return finding;
+  }
+  if (checkHeredoc && heredoc !== null) return { kind: 'heredoc', detail: heredoc };
+
+  return (
+    firstFinding(nested, depth, checkHeredoc) ??
+    firstFinding(
+      bodies.map((body) => body.text),
+      depth,
+      false,
+    )
+  );
 }
 
 // ---- hook entry point ----
@@ -386,7 +775,8 @@ function main(raw) {
   const command = payload?.tool_input?.command;
   if (typeof command !== 'string' || command.trim() === '') return;
 
-  if (isDangerous(command, 0)) process.stdout.write(DENY_JSON);
+  const finding = findDanger(command, 0);
+  if (finding !== null) process.stdout.write(denyJson(reasonFor(finding)));
 }
 
 try {

@@ -5,7 +5,7 @@ import {
 } from './symbol.availability';
 
 describe('IOS26_SYMBOL_FALLBACKS', () => {
-  it('maps exactly the three known iOS-26 symbols to their iOS-16-safe fallbacks', () => {
+  it('maps exactly the three known iOS-26 symbols to their iOS-15.1-safe fallbacks', () => {
     expect(IOS26_SYMBOL_FALLBACKS).toEqual({
       'arrow.trianglehead.2.clockwise.rotate.90': 'arrow.triangle.2.circlepath',
       'text.pad.header': 'list.bullet.rectangle',

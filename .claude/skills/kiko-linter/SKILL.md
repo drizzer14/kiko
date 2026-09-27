@@ -62,6 +62,54 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   "Automatic wiring" and `harness/kiko/hooks/hooks.json`'s `PreToolUse`
   entry for the wiring, and `kill-guard.js` for the tokenizer.
 
+  The same tokenizer (user-approved; it binds the user's own sessions
+  too) also denies a `git stash` subcommand in command position — `git`
+  after the command-position unwrap, its global options skipped
+  (`GIT_OPTIONS_WITH_VALUE` lists the ones that consume the next word) —
+  and a top-level `<<`/`<<-` heredoc whose delimiter word is non-empty and
+  has no quote or backslash in it (`<<$X`, `<<1`, `<<.` deny too; a `<<<`
+  here-string and arithmetic `$((…))`, `((…))`, `$[…]` shifts pass).
+  The unwrap (shared by the kill and stash checks; read `unwrap` and
+  `OPTION_WRAPPERS` in `kill-guard.js` for the closed set) strips `(`/`{`
+  group openers and `)`/`}` closers, the reserved words `!` `if` `then`
+  `elif` `else` `do` `while` `until`, `NAME=value` prefixes, and wrappers
+  such as `sudo`, `nice`, `time`, `env`, `timeout`, `xargs`; any shell
+  flag group holding `c` (`-lc`, `-xc`) counts as `-c`, and `eval`'s
+  arguments are scanned as a command string. An unquoted `#` at word
+  start is a comment to the newline, so a quote inside it hides nothing;
+  a `#` inside `${…}` is not a comment, and only an unquoted `)`/`}` is
+  stripped as a closer.
+  Heredoc bodies: at the newline ending a `<<`/`<<-` operator's line,
+  each queued body is skipped up to its delimiter line (quote removal on
+  the word; `<<-` strips leading tabs; several heredocs on one line are
+  read in order). Body text is never parsed as shell, so a `#`, an
+  apostrophe, or a `<<word` in a body hides or denies nothing. Each body
+  is still checked on its own for a kill or `git stash` line, because a
+  body can run (`bash <<'EOF'`, `eval "$(cat <<'EOF' …)"`,
+  `ssh host <<'EOF'`, `cat <<'EOF' | sh`); only a body that a shell
+  without `-c` reads as its script is also checked for an unquoted
+  heredoc. An unterminated body: the rest of the input is scanned as
+  shell (fail closed). Known false positive: a body line that literally
+  is a kill or `git stash` command denies, even when the body is only
+  written to a file — write such text with the Write tool, or commit
+  with `git commit -F <file>`.
+  Known limits (heuristic tokenizer, not a shell parser; read
+  `kill-guard.js` and its tests to re-verify): NOT denied are a stash or
+  kill reached through an alias, a function, a script file, or a
+  variable (`$CMD`), and `exec -a name pkill`; a shell `-c` flag is
+  matched anywhere in the arguments, not only before the command string
+  (errs toward deny). Heredoc delimiter corner cases: a delimiter line
+  with trailing spaces does not end the body (bash agrees); `"E\"OF"`
+  keeps the backslash; bash's `EOF)` shorthand inside `$(` is not
+  recognized, so the rest is scanned as shell (fail closed); a `<<`
+  inside `$((…))` nested in a `$(…)` span is queued as a heredoc until
+  the next newline, matches no line, and skips nothing. The agent rule
+  stays absolute regardless: never `git stash` or pattern-kill in any
+  form. Both denies carry the `print_block` WHAT/DETAILS/WHY/HOW/DO-NOT
+  shape as plain text in the one JSON reason field; the kill deny keeps
+  its one-line reason. Deny/allow cases for each form live in
+  `__tests__/kill-guard.test.ts`.
+
   A THIRD exception, of yet another shape: `scripts/checks/pre-write-guard.sh`
   (+ `pre-write-guard.js`) is the `PreToolUse` hook on `Edit|Write|MultiEdit` —
   it denies a write BEFORE it lands, rather than checking a file already on
@@ -90,8 +138,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   tests/fixtures/low-logic files on a diff-scoped run. Do not restate
   that exclusion set here — it drifts; read `scripts/checks/mutation.sh`
   directly for the current filter (both the path-pattern exclusion and
-  the barrel/`.styles.ts` drop-with-reinclusion step) and `CLAUDE.md`'s
-  "Documented exceptions" for the mutate-set and sandbox exclusions this
+  the barrel/`.styles.ts` drop-with-reinclusion step) and
+  `docs/harness/documented-exceptions.md` for the mutate-set and sandbox exclusions this
   mirrors. An empty changed set exits 0 (nothing to mutate); a `git
   diff` that fails after the base resolves exits 2 instead (an
   unreadable list never counts as nothing). `KIKO_MUTATION_FULL=1` and
@@ -108,14 +156,19 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   structured block and exits 2 BEFORE Stryker starts. Mutation testing
   runs per small change set only (a whole-release run went 10 h 16 min
   with no result): the fix is `KIKO_MUTATION_BASE` set to the change
-  set's own base commit, never a raised cap. No env var bypasses the
+  set's own base commit, never a raised cap. The coordinator runs it per
+  reviewed change set (harness-workflow's "Mutation testing: small change
+  sets only"). No env var bypasses the
   cap. Every refusal runs BEFORE the content-dedup skip, and the dedup
   fingerprint includes the scope (merge-base sha + selected file list),
   so a pass over a narrow change set never skips a wider or refused one
   at the same HEAD. The cap and the refusals are tested hermetically in
   `__tests__/mutation-cap.test.ts` (29 and 30 files run the stub; 31,
   `KIKO_MUTATION_FULL=1`, a bad base, a failing `git diff` shim, and a
-  broad run after a narrow pass fail without it). The stream, lock, and
+  broad run after a narrow pass fail without it). Every doc that copies
+  the cap number is pinned to the assignment by
+  `__tests__/mutation-cap-docs.test.ts`; a doc that newly states the
+  number goes in its list. The stream, lock, and
   cap tests share their throwaway-repository, stub, and wrapper-run helpers
   through `__tests__/test-support/mutation-repository.ts` (excluded from
   Jest's suite list by `jest.config.js` `testPathIgnorePatterns`, which
@@ -886,10 +939,15 @@ catches these writes after they land instead.
 - **Which commits.** Selection is by reachability from PASSED replays,
   not by how a commit was made or which branch has it: every commit in
   HEAD (all parents, not only the first-parent line) that no mark ref
-  reaches and that is newer than the floor. Each worktree's mark is a
-  git ref, `refs/kiko/guard-replay/<worktree id>` (the id hashes the
-  worktree's git dir; see `harness_replay_ref` in `_lib.sh`), moved to
-  HEAD on a pass and never on a failure. A plain commit, an amend, a
+  reaches and that is newer than the floor or has a session commit as
+  a parent. Each worktree's mark is a git ref,
+  `refs/kiko/guard-replay/<worktree id>` (the id hashes the worktree's
+  git dir; see `harness_replay_ref` in `_lib.sh`), moved to HEAD on a
+  pass and never on a failure. A pass never moves it back: when HEAD is
+  the mark or an ancestor of it, the mark stays; a missing mark, one
+  that is not a commit, and one HEAD diverged from (a rebase, an amend)
+  move to HEAD. A mark vouches for the tree at the HEAD it recorded,
+  not for each commit it reaches; see Known limits. A plain commit, an amend, a
   rebase, a cherry-pick, a `pull --rebase`, and every commit of a topic
   branch merged in (`--no-ff` or fast-forward) are all replayed. A
   backup branch, a `switch -c`, or a worktree made from HEAD hides
@@ -899,7 +957,8 @@ catches these writes after they land instead.
   nothing.
 - **Floor and never-replayed branches.** The repository's first replay
   records `refs/kiko/guard-replay-floor` (24 h before that run), pass or
-  fail, and no run replays a commit older than it. A merge of a branch
+  fail, and no run replays a commit older than it unless one of its
+  parents is a session commit. A merge of a branch
   no replay ever passed (the first merge of `next` after the replay
   landed, or commits made by hand with no Stop hook) replays that
   branch's commits newer than the floor against their own history; they
@@ -908,7 +967,7 @@ catches these writes after they land instead.
   `npm run check:guard-replay` by hand, which records the pass. The
   floor does not slide, so a failed first replay resumed days later
   still fails. See `docs/harness/checks-internals.md` for the ref
-  layout and the one-time seed from an older replay's mark file.
+  layout.
 - **Files and BEFORE.** Every `.ts`/`.tsx` file changed in the working
   tree against HEAD (tracked and untracked, staged renames followed),
   plus every file a session commit touched. BEFORE is the file at the
@@ -956,15 +1015,37 @@ catches these writes after they land instead.
   baseline only, so a finding the change brought reads as new. All
   three fail closed (a finding reads as new, never as old). A commit
   with a forged committer date older than the floor
-  (`GIT_COMMITTER_DATE`) is skipped; that is deliberate evasion, not a
-  slip. Deleting one `refs/kiko/*` ref by hand only makes the replay
-  check more; deleting all of them starts over as a first replay (a new
-  floor, 24 h back). A branch no replay ever passed costs replay time when
-  merged (see "Floor and never-replayed branches").
+  (`GIT_COMMITTER_DATE`) whose parents are all outside the session is
+  skipped, so its own change is not replayed; it hides no commit under
+  it, and an old-dated commit on top of session commits stays in the
+  session. That is deliberate evasion, not a slip. Deleting a mark ref
+  by hand only widens the replay. Deleting the floor while no mark ref
+  exists (a first replay that failed), or deleting every `refs/kiko/*`
+  ref, records a NEW floor 24 h before the next run, later than the old
+  one, so older unchecked commits drop out. Never delete the replay's
+  refs. A mark attests its tip tree only. (1) Another worktree that
+  takes a Bash-written commit, fixes the file, and passes its replay
+  before the author's Stop makes the author's replay pass while the
+  author's tree still holds the violation, until it takes the fix.
+  (2) After a pass at a fixing commit, `git reset --hard HEAD~1` passes
+  (the mark on the fix reaches the older commit, so the plan is empty)
+  while the tree holds the violation again. The mark stays on the fix,
+  so a later revert of the fix fails; a new commit made on the older
+  commit diverges from the mark and moves it there, and the violation
+  is then taken as checked. `make verify` (full Jest + `check:all`) is
+  the backstop: `check:security` scans `rules/semgrep-prewrite.yml`
+  project-wide, and every Node rule has its own project-wide check —
+  some in `check:all`, and `kiko-one-component-per-file`'s as a Jest
+  test, which runs only under `make verify`. A branch no replay
+  ever passed costs replay time when merged (see "Floor and
+  never-replayed branches").
 - **Tests.** `__tests__/guard-replay.test.ts`: a throwaway repository
   with a linked worktree, copies of the real wrappers and rule file,
   and the real Semgrep. It covers a Bash-written violation (tracked and
-  new file), a committed one, a fixed one, a pre-existing one, rebase,
+  new file), a committed one, a fixed one, a pre-existing one, one under
+  a commit with a forged old committer date, a revert of a passed fix
+  after a reset back (the mark does not move back), the mark moving to
+  a rebased HEAD, rebase,
   reset plus cherry-pick, `pull --rebase`, a clean rebase, a backup
   branch, `switch -c`, a sibling worktree made after a flag, merges
   (fast forward and clean of work another worktree passed, joined both
@@ -973,7 +1054,7 @@ catches these writes after they land instead.
   branch, one older than the floor), an unfinished merge, the fixers,
   the floor across a failed first replay (the
   `KIKO_GUARD_REPLAY_NOW_SECONDS` test seam, which only moves the clock
-  back), the seed from an older mark, the dedup skip, a crashing engine,
+  back), the dedup skip, a crashing engine,
   the deadline (a slow Semgrep stub through the
   `KIKO_GUARD_REPLAY_DEADLINE_SECONDS` test seam, a spent hook budget,
   and the clamp), and `medium.sh` itself.

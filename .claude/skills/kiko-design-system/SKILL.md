@@ -231,6 +231,9 @@ an entry (date + value) the moment the user approves a new visual.
   `numberOfLines`). The two card tests also pin the amount's box
   `flexShrink: 0` and the lead cluster's `flex: 1`; the pie legend test
   pins its fixed-width value column instead (`width > 0`).
+- **Footer "Add …" buttons lead with their entity's symbol** (2026-09-27,
+  D10). Contract: "Footer 'Add …' buttons carry the entity's leading
+  symbol" under `Button`.
 
 ## UX patterns
 
@@ -471,10 +474,10 @@ new component can land between reviews of this skill:
   account / category / transaction → `genericEntitySymbol.<entity>`;
   Add lot → `holdingTypeSymbol.metal`; Add contribution →
   `calendar.badge.plus` (the one call-site literal). "Update value" /
-  "Update outstanding" add no entity, so they stay text-only. Only
-  `genericEntitySymbol.holding` is an iOS-26 symbol — SymbolIcon's
-  central fallback (`symbol.availability.ts`) covers it below iOS 26;
-  the rest paint on the iOS 15.1 deployment target. A new footer
+  "Update outstanding" add no entity, so they stay text-only. An
+  iOS-26 generic glyph has its fallback in `genericEntitySymbolFallback`
+  (`entity-symbols.ts`) and SymbolIcon's central map
+  (`symbol.availability.ts`); read them there. A new footer
   "Add …" action takes its entity's glyph the same way.
 
   **Sizes — `regular` / `compact` / `small`** (read `button.props.d.ts`'s

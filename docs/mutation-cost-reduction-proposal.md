@@ -1,4 +1,11 @@
-# Mutation-run cost reduction — proposal (NOT YET APPLIED)
+# Mutation-run cost reduction — proposal (record, 2026-09)
+
+> Status 2026-09-27: Part 2 is APPLIED (b5fdc600: `stryker.conf.json` mutate negations and
+> `mutable_source_files` in `scripts/checks/mutation.sh`). Part 1 is NOT applied. Since
+> de3ca55a, `mutation.sh` refuses `KIKO_MUTATION_FULL=1` and an unresolvable base, and caps a
+> run at `MUTATION_FILE_CAP`; statements below about a whole-project run or fallback, and
+> every `mutation.sh:<line>` reference, describe the script when this was written. Read
+> `scripts/checks/mutation.sh` for current behavior.
 
 Investigation only. Nothing here is implemented. `stryker.conf.json` and
 `scripts/checks/mutation.sh` are UNCHANGED by this document.
@@ -249,7 +256,7 @@ the theme-token files and `i18n/index.ts` remain in scope as before.
 
 ---
 
-## Recommended config diff (NOT YET APPLIED)
+## Recommended config diff (APPLIED in b5fdc600)
 
 ### `stryker.conf.json` — `mutate[]` additions
 

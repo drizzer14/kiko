@@ -104,10 +104,11 @@ harness_unlock() {
 
 # harness_replay_mark <root> : the HEAD sha, or nothing for an unborn HEAD.
 # guard-replay.sh reads it when a run starts and, on a pass, moves this
-# worktree's mark ref (harness_replay_ref) to it; the replay then skips every
-# commit any worktree's mark ref reaches. medium.sh compares it with this
-# worktree's mark ref to tell whether HEAD moved since the last pass, so a
-# turn that only committed still runs the replay.
+# worktree's mark ref (harness_replay_ref) to it — never back to the mark's
+# own ancestor (see record_mark there); the replay then skips every commit
+# any worktree's mark ref reaches. medium.sh compares it with this worktree's
+# mark ref to tell whether HEAD moved since the last pass, so a turn that
+# only committed still runs the replay.
 harness_replay_mark() {
   git -C "$1" rev-parse -q --verify HEAD 2>/dev/null
 }

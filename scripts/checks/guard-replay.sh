@@ -40,18 +40,32 @@ could_not_run() {
 head="$(harness_replay_mark "$ROOT")"
 ref="$(harness_replay_ref "$ROOT")" || could_not_run "git rev-parse --absolute-git-dir failed in $ROOT"
 
-# A passed replay moves this worktree's mark to the HEAD it started from; a
-# failed or stopped one never moves it.
+# A passed replay moves this worktree's mark to the HEAD it started from,
+# except back: when HEAD is the mark or one of its ancestors (a reset back, a
+# switch to an older commit) the mark stays. A mark vouches for its own tree,
+# so moving it back would make the older tree a baseline, and a later revert
+# of a passed fix would then pass. A missing mark, or one that is not a commit,
+# is replaced; so is one HEAD diverged from (a rebase, an amend, a branch
+# switch). A failed or stopped replay never moves it.
 record_mark() {
-  [ -n "$head" ] && git update-ref "$ref" "$head" 2>/dev/null
+  local current
+  [ -n "$head" ] || return 0
+  current="$(git rev-parse -q --verify "$ref^{commit}" 2>/dev/null)"
+  if [ -n "$current" ] && git merge-base --is-ancestor "$head" "$current" 2>/dev/null; then
+    return 0
+  fi
+  git update-ref "$ref" "$head" 2>/dev/null
 }
 
 # The repository's first replay (no floor and no mark ref yet) records the
-# floor, whether it then passes or fails. A commit older than the floor is
-# taken as checked, so neither that first replay nor a merge of a branch no
-# replay ever passed re-checks months of history, and a failed first replay
-# resumed days later still replays what it flagged, since the floor does not
-# slide. KIKO_GUARD_REPLAY_NOW_SECONDS moves the clock back for the tests; it
+# floor, whether it then passes or fails. A commit older than the floor with
+# no session commit as a parent is taken as checked, so neither that first
+# replay nor a merge of a branch no replay ever passed re-checks months of
+# history, and a failed first replay resumed days later still replays what it
+# flagged, since the floor does not slide. Deleting the floor while no mark
+# ref exists (a first replay that failed), or deleting every refs/kiko/* ref,
+# makes the next run a first replay again, which records a new, later floor.
+# KIKO_GUARD_REPLAY_NOW_SECONDS moves the clock back for the tests; it
 # is ignored when it would move it forward.
 if ! git rev-parse -q --verify "$FLOOR_REF" >/dev/null \
   && [ -z "$(git for-each-ref --count=1 refs/kiko/guard-replay)" ]; then
@@ -65,20 +79,6 @@ if ! git rev-parse -q --verify "$FLOOR_REF" >/dev/null \
     || could_not_run "could not record the replay floor ($FLOOR_REF)"
 fi
 floor="$(git cat-file blob "$FLOOR_REF" 2>/dev/null)"
-
-# An older replay kept this worktree's mark in the state dir. It seeds the
-# ref once, when it names a commit and the ref does not exist yet; either way
-# the file is then dropped.
-legacyMarkFile="$(harness_passfp_file "$ROOT" "guard-replay-mark")"
-if [ -f "$legacyMarkFile" ]; then
-  legacyMark="$(cat "$legacyMarkFile" 2>/dev/null)"
-  if ! git rev-parse -q --verify "$ref" >/dev/null \
-    && [[ "$legacyMark" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]] \
-    && git rev-parse -q --verify "$legacyMark^{commit}" >/dev/null; then
-    git update-ref "$ref" "$legacyMark"
-  fi
-  rm -f "$legacyMarkFile"
-fi
 
 planErrors="$(mktemp)"
 trap 'rm -f "$planErrors"' EXIT

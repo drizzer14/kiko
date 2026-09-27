@@ -30,11 +30,12 @@ Rules:
   (on next; arrives on main with release 1.1).
   On that failure, split the run into smaller change sets — never raise
   the cap.
-- Always run a mutation run through the wrapper (`make deep` /
-  `npm run check:deep` / `npm run check:mutation`); it is single-flighted
-  and tears its own workers down. Never run `npx stryker run` directly —
-  an orphaned Stryker spawns one worker per core and can overload the
-  machine.
+- Run check:deep / check:mutation only through the wrapper
+  (`npm run check:deep` / `npm run check:mutation`, or `make deep`); it is
+  single-flighted and tears its own workers down. Never run
+  `npx stryker run` directly, and never put a run in a Monitor loop or a
+  wait script — an orphaned Stryker spawns one worker per core and can
+  overload the machine.
 - **Launching a mutation run (check:deep / check:mutation): run it
   detached, never read its own progress.** Launch the command with
   `run_in_background` and await ITS exit code as the only signal —
@@ -62,7 +63,9 @@ Rules:
   (`scripts/checks/mutation.sh` prints the exact tail command near the
   start). NEVER dispatch a `kiko:ops` subagent to "run `make deep` and
   wait": a watching subagent only polls the run, burns tokens, and
-  cannot be stopped mid-flight.
+  cannot be stopped mid-flight. WHEN it runs (per reviewed change set,
+  before its merge into next) is in harness-workflow's "Mutation testing:
+  small change sets only".
 - **Track the known CVEs with `bash scripts/checks/osv.sh` on its own.**
   `check:deep` can stop at the mutation cap before it reaches osv, so
   its exit code does not prove the osv result.

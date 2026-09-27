@@ -504,11 +504,15 @@ function leakReason(ownFeature, target) {
   return reasons.find(([applies]) => applies)?.[1] ?? null;
 }
 
-const IMPORT_CLAUSE = /^import\s+(?:type\s+)?([\s\S]*?)\s*\bfrom\b/;
+// The clause ends at the LAST `from`: a binding may itself be named `from`,
+// and the blanked specifier after it holds no word.
+const IMPORT_CLAUSE = /^import\s+(?:type\s+)?([\s\S]*)\bfrom\b\s*;?\s*$/;
 const LOCAL_EXPORT_LIST = /\bexport\s+(?:type\s+)?\{([^}]*)\}(?!\s*from\b)/g;
-const DEFAULT_EXPORT_NAME = /\bexport\s+default\s+([A-Za-z_$][\w$]*)\s*(?:;|$)/gm;
+// A statement ends at `;` or the end of the source, not at a line break: the
+// formatter may break a derived value (`thing\n  .toString()`) across lines.
+const DEFAULT_EXPORT_NAME = /\bexport\s+default\s+([A-Za-z_$][\w$]*)\s*(?:;|$)/g;
 const ALIAS_EXPORT_NAME =
-  /\bexport\s+(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*(?::[^=;]+)?=\s*([A-Za-z_$][\w$]*)\s*(?:;|$)/gm;
+  /\bexport\s+(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*(?::[^=;]+)?=\s*([A-Za-z_$][\w$]*)\s*(?:;|$)/g;
 
 const withoutTypeModifier = (member) => member.trim().replace(/^type\s+/, '');
 

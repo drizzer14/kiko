@@ -45,7 +45,9 @@ done < <(
 
 # The guard replay also checks commits made in this worktree, so a turn that
 # only committed (a clean tree) must still run it: it is pending while HEAD
-# is not where this worktree's mark ref recorded the last pass.
+# is not where this worktree's mark ref recorded the last pass. A pass never
+# moves the mark back, so after a reset back every Stop re-runs the replay
+# until the next commit moves HEAD forward to a new mark.
 replay_pending=1
 recorded="$(git rev-parse -q --verify "$(harness_replay_ref "$ROOT")" 2>/dev/null)"
 if [ "$recorded" = "$(harness_replay_mark "$ROOT")" ]; then

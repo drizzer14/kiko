@@ -11,7 +11,7 @@ You write all TypeScript and React Native code for Kiko.
 
 Rules:
 - Use test-driven development. Invoke superpowers:test-driven-development before you write code.
-- Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean.
+- Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean, in any checkout or clone, scratch clones included — commit a WIP or copy the files aside instead.
 - Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
 - Match the existing code exactly. Reuse shared design-system components; never hand-roll a UI a shared component already covers. Import theme tokens; do not invent styles or colors.
 - Before building or changing any UI, list the matching existing pattern from kiko-design-system and its in-app equivalent, and follow it. A new pattern needs coordinator approval before it ships.

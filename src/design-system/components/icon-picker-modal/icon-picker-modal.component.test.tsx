@@ -31,9 +31,9 @@ const setup = async (overrides: Overrides = {}) => {
 };
 
 describe('icon pools', () => {
-  it('exposes exactly 62 Kiko Entities symbols and 77 Kiko Categories symbols', () => {
+  it('exposes exactly 62 Kiko Entities symbols and 78 Kiko Categories symbols', () => {
     expect(KIKO_ENTITIES_ICONS).toHaveLength(62);
-    expect(KIKO_CATEGORIES_ICONS).toHaveLength(77);
+    expect(KIKO_CATEGORIES_ICONS).toHaveLength(78);
   });
 
   it('includes every seeded category default so each is selectable in the picker', () => {

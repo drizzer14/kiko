@@ -117,7 +117,7 @@ describe('genericEntitySymbol', () => {
     }
   });
 
-  it('supplies the iOS-16-safe fallback for the iOS-26 holding glyph', () => {
+  it('supplies the iOS-15.1-safe fallback for the iOS-26 holding glyph', () => {
     // `text.pad.header` is an iOS-26 symbol; a consumer renders it through
     // SymbolIcon's fallback seam. The fallback is exported alongside so the
     // consumer can pass it explicitly if it renders the glyph outside SymbolIcon.

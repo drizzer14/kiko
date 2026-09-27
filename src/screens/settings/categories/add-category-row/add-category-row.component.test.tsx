@@ -4,7 +4,9 @@ import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-picker-modal';
 
 import AddCategoryRow from './add-category-row.component';
 
@@ -146,6 +148,25 @@ describe('AddCategoryRow', () => {
 
     // The seeded ring is DISPLAY-only: an untouched picker still persists null
     // so the saved row keeps its per-key palette fallback.
+    await waitFor(() =>
+      expect(mockCreate).toHaveBeenCalledWith({ title: 'Groceries', icon: 'tag', color: null }),
+    );
+  });
+
+  it('offers the default new-category icon in the category picker pool', () => {
+    expect(KIKO_CATEGORIES_ICONS).toContain(genericEntitySymbol.category);
+  });
+
+  it('lets the user pick the default tag icon back after picking another', async () => {
+    const { getByLabelText, getByText } = await render(<AddCategoryRow onCollapse={onCollapse} />);
+
+    await fireEvent.press(getByLabelText('Choose new category icon'));
+    await fireEvent.press(getByLabelText('Choose icon basket'));
+    await fireEvent.press(getByLabelText('Choose new category icon'));
+    await fireEvent.press(getByLabelText('Choose icon tag'));
+    await fireEvent.changeText(getByLabelText('Name'), 'Groceries');
+    await fireEvent.press(getByText('Save'));
+
     await waitFor(() =>
       expect(mockCreate).toHaveBeenCalledWith({ title: 'Groceries', icon: 'tag', color: null }),
     );

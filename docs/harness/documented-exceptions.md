@@ -148,8 +148,9 @@ verified usage, not dead weight:
   mirror.
 - **`knip.json` `ignore`**: `scripts/checks/kill-guard.js` — the PreToolUse
   hook script that `scripts/checks/kill-guard.sh` invokes (`node
-  kill-guard.js`) to tokenize a Bash-tool command and deny pkill/killall and
-  pattern/process-group kills (see CLAUDE.md's "Automatic wiring" and
+  kill-guard.js`) to tokenize a Bash-tool command and deny pkill/killall,
+  pattern/process-group kills, any `git stash`, and an unquoted heredoc
+  delimiter (see CLAUDE.md's "Automatic wiring" and
   `.claude/skills/kiko-linter/SKILL.md`). It is reached only from a sibling
   `.sh` wrapper's `node` invocation — never a static `import`/`require` from
   any TypeScript/JavaScript source, and never a package.json script Knip's
