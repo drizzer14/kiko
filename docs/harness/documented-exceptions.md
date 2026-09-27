@@ -245,6 +245,16 @@ verified usage, not dead weight:
   runs plus `feature-imports.sh` as a subprocess) and by
   `__tests__/pre-write-guard.test.ts`'s `kiko-feature-imports` case —
   none of which Jest's static import graph makes Knip see as reachable.
+- **`knip.json` `ignore`**: `scripts/checks/guard-replay.js` — the same
+  shape as `pre-write-guard.js` above. `scripts/checks/guard-replay.sh`
+  (the medium tier's pre-write guard replay, also `check:guard-replay`)
+  reaches it only via a `node` invocation, never a static
+  `import`/`require`. Exercised by `__tests__/guard-replay.test.ts`,
+  which spawns `guard-replay.sh` and `medium.sh` as subprocesses, so
+  Jest's import graph does not make Knip see it as reachable either.
+  The same test also loads its one export, `stopTierDeadlineSeconds`,
+  with a `require` of a computed path (`REPLAY_ENGINE`), which Knip
+  does not resolve, so the entry is still needed.
 - **`knip.json` `ignore`**: `scripts/checks/specifier-scanner.js` — the
   shared specifier scanner. Its only importers are `feature-imports.js`
   and `screen-imports.js` (a static `require`), and both are themselves

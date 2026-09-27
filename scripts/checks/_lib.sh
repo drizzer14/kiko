@@ -102,6 +102,30 @@ harness_unlock() {
   rm -rf "$1" 2>/dev/null || true
 }
 
+# harness_replay_mark <root> : the HEAD sha, or nothing for an unborn HEAD.
+# guard-replay.sh reads it when a run starts and, on a pass, moves this
+# worktree's mark ref (harness_replay_ref) to it; the replay then skips every
+# commit any worktree's mark ref reaches. medium.sh compares it with this
+# worktree's mark ref to tell whether HEAD moved since the last pass, so a
+# turn that only committed still runs the replay.
+harness_replay_mark() {
+  git -C "$1" rev-parse -q --verify HEAD 2>/dev/null
+}
+
+# harness_replay_ref <root> : this worktree's guard-replay mark ref,
+# refs/kiko/guard-replay/<id>, where <id> is the first 16 hex digits of the
+# SHA-1 of the worktree's absolute git dir (<repo>/.git for the main
+# checkout, <repo>/.git/worktrees/<name> for a linked one). That dir stays
+# the same across a branch switch and a `git worktree move`, no two live
+# worktrees share it, and the hash is ref-safe whatever the worktree is
+# called. Refs live in the shared repository, so every worktree sees every
+# worktree's mark, and a purge of TMPDIR loses none.
+harness_replay_ref() {
+  local gitDirectory
+  gitDirectory="$(git -C "$1" rev-parse --absolute-git-dir 2>/dev/null)" || return 1
+  printf 'refs/kiko/guard-replay/%s' "$(printf '%s' "$gitDirectory" | shasum 2>/dev/null | cut -c1-16)"
+}
+
 # harness_global_lock_dir : the machine-wide (per-user) single-flight lock
 # path for mutation runs. It is a FIXED path, NOT keyed by the worktree, so
 # only ONE Stryker can run at a time across ALL worktrees. TMPDIR is stable

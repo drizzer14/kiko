@@ -60,6 +60,76 @@ the same HEAD. No env var bypasses the cap: mutation testing runs per
 small change set, with `KIKO_MUTATION_BASE` set to that change set's
 own base commit.
 
+## Guard replay: fingerprint, mark, and deadline
+
+`guard-replay.sh` runs inside `medium.sh`'s lock and keeps one record
+in the per-worktree state dir and two kinds of git ref in the shared
+repository:
+
+- The dedup fingerprint (key `guard-replay`, state dir) hashes the
+  plan (each file with its BEFORE commit shas and paths, which pin the
+  BEFORE content), each working-tree file's hash, and the engine: every
+  `scripts/checks/*.js` and `*.ts`, `pre-write-guard.sh`,
+  `guard-replay.sh`, and `rules/semgrep-prewrite.yml`. A skip is
+  recorded only on a pass.
+- The mark ref, `refs/kiko/guard-replay/<worktree id>`
+  (`harness_replay_ref` in `_lib.sh`). The id is the first 16 hex
+  digits of the SHA-1 of the worktree's absolute git dir
+  (`<repo>/.git` for the main checkout, `<repo>/.git/worktrees/<name>`
+  for a linked one): the same across a branch switch and a
+  `git worktree move`, different for every live worktree, and ref-safe
+  whatever the worktree is called. The run reads HEAD
+  (`harness_replay_mark`) when it starts and moves the ref there with
+  `git update-ref` on a pass, including a dedup skip; a failed or
+  stopped run never moves it. Every run replays only commits that NO
+  worktree's mark ref reaches (`--not --glob=refs/kiko/guard-replay/*`).
+  Refs are shared by all worktrees and survive a purge of `$TMPDIR`.
+  `medium.sh` compares this worktree's ref with HEAD: when HEAD moved
+  but no file changed, it runs the replay alone (about 50 ms to decide)
+  and skips every other check. A removed worktree's ref stays, and
+  still marks the commits it reached as checked; a new worktree that
+  later gets the same git dir name takes the ref over on its first
+  pass.
+- The floor ref, `refs/kiko/guard-replay-floor`: a blob that holds a
+  unix time. The repository's first replay (no floor and no mark ref
+  yet) records it as 24 h before that run, whether the run then passes
+  or fails, and every run replays only commits newer than it
+  (`--max-age`). It never slides, so a failed first replay resumed
+  days later still replays what it flagged, and it bounds how far back
+  a merge of a branch no replay ever passed reaches. A deleted floor is
+  recorded again only when no mark ref exists either, so deleting it
+  alone never narrows a replay; deleting every `refs/kiko/*` ref starts
+  over as a first replay.
+- Migration: the mark an older replay kept in the state dir (key
+  `guard-replay-mark`) seeds this worktree's ref once, when it names a
+  commit and the ref does not exist yet. The file is then deleted.
+
+On the Stop tier (`--stop-tier <medium.sh start>`) the replay starts
+no guard call after `stopTierDeadlineSeconds` (in `guard-replay.js`)
+and then fails with a block that names how many files were left
+unchecked. The deadline is the smaller of 150 s and what the hook
+budget has left: 300 s, minus the time since `medium.sh` started (its
+lock wait and `dup.sh` count), minus the 25 s an in-flight guard call
+may still take, minus a 60 s reserve for the checks `medium.sh` runs
+after the replay (knip, deps, the rule fixtures, plist, typecheck:
+about 20 s cold, measured 2026-09-27). When the budget is already
+spent, it fails at once. The Stop hook is killed at 300 s, and a killed
+hook ends the turn with no error, so an unbounded replay would silently
+skip the check on every later Stop too.
+`KIKO_GUARD_REPLAY_DEADLINE_SECONDS` (a test seam) can only lower the
+150 s ceiling; a value above it, or one that is not a positive finite
+number, is ignored. `npm run check:guard-replay` has no deadline and
+records its pass, so the next Stop skips the same files as a duplicate.
+`KIKO_PREWRITE_TIMEOUT_MS` (the guard's own per-call budget) has no
+ceiling yet, so a large value set in the user's environment lengthens
+the in-flight tail past 25 s.
+
+Measured on 2026-09-27 (10-core Mac, Semgrep 1.175): a cold replay
+takes about 2.3 s for 1 changed file, 4.1 to 5.1 s for 5 files, and
+6.6 s for 12 files (four guard calls at a time; each is one Semgrep
+start). A dedup skip takes about 0.3 s. At about 0.5 s per file, the
+150 s deadline covers roughly 300 files.
+
 ## `osv-scanner` is never deduped
 
 `osv-scanner` is deliberately excluded from the dedup scheme: its

@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -uo pipefail
+# The Stop hook's timeout counts from here, lock wait included; the guard
+# replay sizes its deadline from what is left.
+hookStarted="$(date +%s)"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "$DIR/_lib.sh"
@@ -40,8 +43,17 @@ done < <(
     | grep -E '^(rules/.*\.ya?ml|rules/fixtures/.*|scripts/checks/.*|ios/Kiko/Info\.plist|ios/Kiko\.xcodeproj/project\.pbxproj)$'
 )
 
+# The guard replay also checks commits made in this worktree, so a turn that
+# only committed (a clean tree) must still run it: it is pending while HEAD
+# is not where this worktree's mark ref recorded the last pass.
+replay_pending=1
+recorded="$(git rev-parse -q --verify "$(harness_replay_ref "$ROOT")" 2>/dev/null)"
+if [ "$recorded" = "$(harness_replay_mark "$ROOT")" ]; then
+  replay_pending=0
+fi
+
 # Nothing relevant changed (the coordinator case): stay silent.
-if [ ${#changed[@]} -eq 0 ] && [ ${#harness_changed[@]} -eq 0 ]; then
+if [ ${#changed[@]} -eq 0 ] && [ ${#harness_changed[@]} -eq 0 ] && [ "$replay_pending" -eq 0 ]; then
   exit 0
 fi
 
@@ -65,6 +77,14 @@ fi
 if [ ${#changed[@]} -gt 0 ]; then
   "$DIR/dup.sh" "${changed[@]}" || exit 2
   "$DIR/override-guard.sh" "${changed[@]}" || exit 2
+fi
+# Session-change scope: the pre-write guard, replayed on every .ts/.tsx file
+# the session changed, whatever wrote it (guard-replay.js computes its own
+# set), with the Stop-tier deadline.
+"$DIR/guard-replay.sh" --stop-tier "$hookStarted" || exit 2
+# Only HEAD moved (a commit, no file change): the replay was the one check due.
+if [ ${#changed[@]} -eq 0 ] && [ ${#harness_changed[@]} -eq 0 ]; then
+  exit 0
 fi
 # Project-wide: knip, deps, and the Semgrep rule fixtures.
 "$DIR/knip.sh" || exit 2
