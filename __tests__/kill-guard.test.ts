@@ -74,6 +74,19 @@ const BLOCKED_COMMANDS: string[] = [
   'pgrep x | xargs -J % kill %',
   'env -S "pkill x"',
   "echo `echo it's` ; pkill x",
+  '[[ x =~ (a)#b ]]; pkill x',
+  '[[ x == (a|b)#c ]]; pkill x',
+  '[[ x =~ a|(b)#c ]]; pkill x',
+  'ls (a|b)#c ; pkill x',
+  "cat <<$'EOF'\nit's\nEOF\npkill x\n$EOF",
+  'cat <<$"EOF"\nit\'s\nEOF\npkill x\n$EOF',
+  'cat <<"E\\"OF"\nit\'s\nE"OF\npkill x\nE\\"OF',
+  'cat <<"E\\\\OF"\nit\'s\nE\\OF\npkill x\nE\\\\OF',
+  'cat <<"E\\$OF"\nit\'s\nE$OF\npkill x\nE\\$OF',
+  'cat <<"E\\`OF"\nit\'s\nE`OF\npkill x\nE\\`OF',
+  'exec -a name pkill x',
+  'echo hi |\\\npkill x',
+  'ls (a|b)#c |\\\npkill x',
 ];
 
 const ALLOWED_COMMANDS: string[] = [
@@ -98,6 +111,10 @@ const ALLOWED_COMMANDS: string[] = [
   'time npm test',
   'eval "echo hi"',
   "bash -lc 'npm test'",
+  '(echo hi)# c; pkill x',
+  "cat <<$'EOF'\nit's\nEOF",
+  'cat <<"E\\"OF"\nit\'s\nE"OF',
+  'exec -a name npm test',
 ];
 
 // A git stash in any directory — this repository, a worktree, or a scratch
@@ -152,6 +169,8 @@ const STASH_COMMANDS: string[] = [
   '(git stash) 2>&1',
   '(git stash)# c',
   'case x in a) git stash ;; esac',
+  'exec -a name git stash',
+  'npm test &&\\\ngit stash',
 ];
 
 const HEREDOC_COMMANDS: string[] = [
@@ -206,8 +225,64 @@ const ALLOWED_GIT_AND_HEREDOC_COMMANDS: string[] = [
   'diff <(ls a) <(ls b)',
 ];
 
-const denyReasonFor = (command: string): string => {
-  const result = run(payloadFor(command));
+// The hooks' dispatcher runs from the main checkout, so a conflict marker
+// there breaks every hook in every session: git apply/merge/rebase aimed at
+// it is denied, and the same commands anywhere else pass.
+const MAIN_CHECKOUT = '/Users/drizzer14/Developer/Projects/pff-ios';
+const WORKTREE = '/Users/drizzer14/orca/workspaces/pff-ios/shares-assets-research';
+
+// [payload cwd, command]
+const MAIN_CHECKOUT_COMMANDS: [string, string][] = [
+  [MAIN_CHECKOUT, 'git merge feat/x'],
+  [MAIN_CHECKOUT, 'git apply x.patch'],
+  [MAIN_CHECKOUT, 'git rebase main'],
+  [MAIN_CHECKOUT, 'git merge --ff-only feat/x'],
+  [MAIN_CHECKOUT, 'git rebase --continue'],
+  [`${MAIN_CHECKOUT}/`, 'git merge feat/x'],
+  [`${MAIN_CHECKOUT}/src/screens`, 'git apply -3 x.patch'],
+  [`${MAIN_CHECKOUT}/src`, 'git -C .. merge feat/x'],
+  [WORKTREE, `git -C ${MAIN_CHECKOUT} merge feat/x`],
+  [WORKTREE, `git -C ${MAIN_CHECKOUT}/ merge feat/x`],
+  [WORKTREE, `git -C ${MAIN_CHECKOUT}/src rebase main`],
+  [WORKTREE, `git -C ${MAIN_CHECKOUT} -c core.pager=cat merge feat/x`],
+  [WORKTREE, `cd ${MAIN_CHECKOUT} && git apply x.patch`],
+  [WORKTREE, `cd ${MAIN_CHECKOUT}; git status; git rebase main`],
+  [WORKTREE, `(cd ${MAIN_CHECKOUT} && git merge feat/x)`],
+  [WORKTREE, 'cd ../../../../Developer/Projects/pff-ios && git merge feat/x'],
+  [WORKTREE, `cd ${MAIN_CHECKOUT} && echo "$(git merge feat/x)"`],
+  [WORKTREE, `cd ${MAIN_CHECKOUT} && bash -c 'git merge feat/x'`],
+  [WORKTREE, `git --git-dir=${MAIN_CHECKOUT}/.git rebase main`],
+  [WORKTREE, `git --git-dir ${MAIN_CHECKOUT}/.git merge feat/x`],
+  [WORKTREE, `git --work-tree=${MAIN_CHECKOUT} apply x.patch`],
+  [MAIN_CHECKOUT, '(cd /tmp); git merge feat/x'],
+  [MAIN_CHECKOUT, 'sudo git merge feat/x'],
+  [MAIN_CHECKOUT, 'sh -c "git rebase main"'],
+];
+
+const ALLOWED_OUTSIDE_MAIN_CHECKOUT: [string, string][] = [
+  [WORKTREE, 'git merge feat/x'],
+  [WORKTREE, 'git apply x.patch'],
+  [WORKTREE, 'git rebase main'],
+  [`${MAIN_CHECKOUT}-other`, 'git merge feat/x'],
+  [MAIN_CHECKOUT, `git -C ${WORKTREE} merge feat/x`],
+  [MAIN_CHECKOUT, `cd ${WORKTREE} && git merge feat/x`],
+  [MAIN_CHECKOUT, `(cd ${WORKTREE} && git rebase main)`],
+  [MAIN_CHECKOUT, 'git status'],
+  [MAIN_CHECKOUT, 'git log --oneline --merges'],
+  [MAIN_CHECKOUT, 'git diff main..feat/x'],
+  [MAIN_CHECKOUT, 'git merge-base main HEAD'],
+  [MAIN_CHECKOUT, 'git merge-tree --write-tree main feat/x'],
+  [MAIN_CHECKOUT, 'git rebase --help'],
+  [MAIN_CHECKOUT, 'git merge -h'],
+  [MAIN_CHECKOUT, 'echo git merge feat/x'],
+  [MAIN_CHECKOUT, 'grep -rn "git rebase" docs/'],
+];
+
+const payloadIn = (directory: string, command: string): string =>
+  JSON.stringify({ cwd: directory, tool_input: { command } });
+
+const denyReasonFor = (command: string, payload = payloadFor(command)): string => {
+  const result = run(payload);
 
   expect(result.status).toBe(0);
   const stdout = result.stdout.trim();
@@ -250,6 +325,31 @@ describe('scripts/checks/kill-guard.sh (PreToolUse Bash guard)', () => {
 
   it.each([...ALLOWED_COMMANDS, ...ALLOWED_GIT_AND_HEREDOC_COMMANDS])('allows: %s', (command) => {
     const result = run(payloadFor(command));
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('');
+  });
+
+  it.each(MAIN_CHECKOUT_COMMANDS)(
+    'denies git apply/merge/rebase on the main checkout: in %s, %s',
+    (directory, command) => {
+      const reason = denyReasonFor(command, payloadIn(directory, command));
+
+      expectStandardBlock(reason);
+      expect(reason).toContain('main checkout');
+      expect(reason).toContain('in a worktree');
+    },
+  );
+
+  it.each(ALLOWED_OUTSIDE_MAIN_CHECKOUT)('allows: in %s, %s', (directory, command) => {
+    const result = run(payloadIn(directory, command));
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('');
+  });
+
+  it('allows git merge when the payload names no cwd', () => {
+    const result = run(payloadFor('git merge feat/x'));
 
     expect(result.status).toBe(0);
     expect(result.stdout.trim()).toBe('');
