@@ -33,6 +33,12 @@ function createTempDirectory(prefix: string): string {
   return directory;
 }
 
+// Bash 3.2 (the macOS /usr/bin/env bash) has no millisecond clock, so a
+// stub reads one from the Node binary the test itself runs on.
+function timingLineFor(stubName: string, phase: 'start' | 'end'): string {
+  return `if [ -n "$STUB_TIMING_FILE" ]; then printf '${stubName} ${phase} %s\\n' "$("$STUB_NODE" -p 'Date.now()')" >> "$STUB_TIMING_FILE"; fi`;
+}
+
 // The guard's own `runSemgrep` always sends the SAME 9 fixed flag/value
 // tokens before any target ('--metrics off --quiet --json --disable-nosem
 // --timeout <seconds> --config <rulesPath>') — `shift 9` drops exactly
@@ -40,12 +46,6 @@ function createTempDirectory(prefix: string): string {
 // reports back as `paths.scanned` so the guard's own "target missing from
 // paths.scanned" fail-closed check never fires against a stub that never
 // claimed to have scanned anything.
-// Bash 3.2 (the macOS /usr/bin/env bash) has no millisecond clock, so a
-// stub reads one from the Node binary the test itself runs on.
-function timingLineFor(stubName: string, phase: 'start' | 'end'): string {
-  return `if [ -n "$STUB_TIMING_FILE" ]; then printf '${stubName} ${phase} %s\\n' "$("$STUB_NODE" -p 'Date.now()')" >> "$STUB_TIMING_FILE"; fi`;
-}
-
 function writeSemgrepStub(directory: string): string {
   const stubPath = join(directory, 'semgrep-stub.sh');
   writeFileSync(

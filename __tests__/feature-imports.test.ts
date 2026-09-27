@@ -334,6 +334,12 @@ describe('scripts/checks/feature-imports.js --tree', () => {
       'src/rates/aliased-binding/index.ts',
       "import { thing } from '@kiko/rates/history';\nexport const alias = thing;\n",
     ],
+    [
+      'barrel-leak',
+      'src/rates/from-binding/index.ts',
+      'src/rates/from-binding/index.ts',
+      "import { from as renamed } from '@kiko/rates/history';\nexport { renamed };\n",
+    ],
   ])('reports [%s] for %s', (kind, relativePath, reportedPath, source) => {
     writeFixture('src/rates/history/index.ts', "export * from './history';\n");
     writeFixture('src/rates/history/history.ts', 'export const thing = 1;\n');
@@ -361,6 +367,23 @@ describe('scripts/checks/feature-imports.js --tree', () => {
       ].join('\n'),
     );
     writeFixture('src/rates/own/own.ts', 'export const own = 1;\n');
+
+    const result = runTree();
+
+    expect(result.stdout).toBe('');
+    expect(result.status).toBe(0);
+  });
+
+  it.each([
+    ['export const text = thing\n  .toString();'],
+    ['export default thing\n  .toString();'],
+  ])('allows a derived value the formatter broke across lines: %s', (derivedExport) => {
+    writeFixture('src/rates/history/index.ts', "export * from './history';\n");
+    writeFixture('src/rates/history/history.ts', 'export const thing = 1;\n');
+    writeFixture(
+      'src/rates/derived/index.ts',
+      ["import { thing } from '../history';", '', derivedExport, ''].join('\n'),
+    );
 
     const result = runTree();
 
