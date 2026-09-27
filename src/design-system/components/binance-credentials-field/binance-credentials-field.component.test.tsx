@@ -10,10 +10,10 @@ const mockSaveCredentials = jest.fn();
 const mockOpenURL = jest.fn();
 const mockGetString = jest.fn<Promise<string>, []>();
 
-jest.mock('../../../crypto-sync/binance/binance.client', () => ({
+jest.mock('@kiko/crypto-sync/binance/binance.client', () => ({
   fetchAccount: (...args: unknown[]) => mockFetchAccount(...args),
 }));
-jest.mock('../../../crypto-sync/binance/binance.credentials', () => ({
+jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
   saveCredentials: (...args: unknown[]) => mockSaveCredentials(...args),
 }));
 jest.mock('react-native/Libraries/Linking/Linking', () => ({

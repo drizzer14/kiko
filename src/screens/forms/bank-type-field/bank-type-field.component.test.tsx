@@ -1,9 +1,9 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import '@kiko/i18n/init';
+import { bankIds } from '@kiko/bank-sync/bank-catalog';
 
 import { darkTheme } from '../../../design-system/theme';
-import { bankIds } from '../../../bank-sync/bank-catalog';
 
 import BankTypeField from '.';
 

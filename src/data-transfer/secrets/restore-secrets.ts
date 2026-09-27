@@ -1,6 +1,7 @@
+import { saveToken } from '@kiko/monobank/token';
+import { saveCredentials } from '@kiko/crypto-sync/binance';
+
 import type { ExportSecrets } from '../payload';
-import { saveToken } from '../../monobank/token';
-import { saveCredentials } from '../../crypto-sync/binance/binance.credentials';
 
 /**
  * Restores ONLY the Monobank tokens and Binance credentials from an imported

@@ -8,15 +8,14 @@ import '@kiko/i18n/init';
 
 import type { FC } from 'react';
 import { LockGate } from '@kiko/auth';
+import { useAutoSync } from '@kiko/sync/use-auto-sync';
 import RootNavigator from '@kiko/navigation/root-navigator';
+import MigrationsGate from '@kiko/migration/migrations-gate';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { navigationDarkTheme } from '@kiko/navigation/dark-theme';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSyncLanguageWithSettings } from '@kiko/i18n/use-sync-language-with-settings';
-
-import { useAutoSync } from './src/sync/use-auto-sync';
-import MigrationsGate from './src/migration/migrations-gate';
 
 /**
  * Rendered only once `MigrationsGate` reports success, so its mount is the

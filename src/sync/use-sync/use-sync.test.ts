@@ -5,7 +5,7 @@ const mockRunSync = jest.fn();
 const mockRefreshMarketData = jest.fn();
 const mockRunLoanAutoLink = jest.fn();
 
-jest.mock('../../monobank/sync', () => ({
+jest.mock('@kiko/monobank/sync', () => ({
   runSync: (...args: unknown[]) => mockRunSync(...args),
 }));
 jest.mock('@kiko/sync/refresh-market-data', () => ({

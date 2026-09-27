@@ -3,10 +3,12 @@ import { useSync } from '@kiko/sync/use-sync';
 import either, { isRight } from 'fnts/either';
 import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
+import { saveToken } from '@kiko/monobank/token';
 import { parseAmount } from '@kiko/currency/parse';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import { id, type AccountRow, useLiveQuery } from '@kiko/db';
 import { defaultAccountColor } from '@kiko/holdings/entity-colors';
+import { type BankId, isBankId } from '@kiko/bank-sync/bank-catalog';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
@@ -15,7 +17,6 @@ import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-sy
 import { type Currency, currencySymbol, fiatCurrencyOptions } from '@kiko/currency/currency';
 
 import BankTypeField from '../bank-type-field';
-import { saveToken } from '../../../monobank/token';
 import AccountKindField from '../account-kind-field';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
@@ -31,7 +32,6 @@ import Divider from '../../../design-system/components/divider';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import TextField from '../../../design-system/components/text-field';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
-import { type BankId, isBankId } from '../../../bank-sync/bank-catalog';
 import type { AccountsStackParamList } from '../../../navigation/types';
 import ColorPicker from '../../../design-system/components/color-picker';
 import CurrencyField from '../../../design-system/components/currency-field';

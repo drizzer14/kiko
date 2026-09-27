@@ -1,6 +1,5 @@
 import { useState } from 'react';
-
-import { isFastPhaseDone, subscribeFastPhase } from '../../monobank/sync-status';
+import { isFastPhaseDone, subscribeFastPhase } from '@kiko/monobank/sync-status';
 
 /**
  * The native iOS `RefreshControl` spinner on the Home list is the PULL GESTURE

@@ -5,12 +5,12 @@
 // load — `jest/setup.js` mocks `@op-engineering/op-sqlite` globally, so this
 // module graph loads safely under Jest and `mapStatementItem` runs for real.
 import { startOfLocalDay } from '@kiko/dates';
+import { mapStatementItem } from '@kiko/monobank/sync';
 import { buildPriceBook } from '@kiko/prices/price-book';
 import type { CurrencyRateHistoryRow, HoldingRow } from '@kiko/db';
 import type { MonobankStatementItem } from '@kiko/monobank/monobank-types';
 import { holdingInstrument, metalInstrument } from '@kiko/prices/instrument';
 
-import { mapStatementItem } from '../../monobank/sync';
 import type { SeriesHolding } from '../holding-value-at';
 
 import { buildNetWorthSeries, type NetWorthSeries } from './net-worth-series';

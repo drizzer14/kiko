@@ -1,6 +1,5 @@
+import { setFastPhaseDone } from '@kiko/monobank/sync-status';
 import { act, renderHook } from '@testing-library/react-native';
-
-import { setFastPhaseDone } from '../../monobank/sync-status';
 
 import { useRefreshControlSignal } from './use-refresh-control-signal';
 

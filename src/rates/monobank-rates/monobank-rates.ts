@@ -1,9 +1,9 @@
 import { MONOBANK_API_ENDPOINT } from '@env';
 import type { Currency } from '@kiko/currency/currency';
 import { fiatCurrencyOptions } from '@kiko/currency/currency';
+import { currencyFromCode } from '@kiko/monobank/currency-code';
 
 import type { RateEntry } from '../conversion';
-import { currencyFromCode } from '../../monobank/currency-code';
 
 // The public, tokenless fiat cross-rate path on the same host
 // `MONOBANK_API_ENDPOINT` names for client-info/statement requests.

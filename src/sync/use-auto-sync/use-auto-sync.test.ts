@@ -13,7 +13,7 @@ const mockRunLoanAutoLink = jest.fn();
 const mockMonobankRun = jest.fn();
 const mockCryptoRun = jest.fn();
 
-jest.mock('../sync-jobs', () => ({
+jest.mock('@kiko/sync/sync-jobs', () => ({
   syncJobsFor: (account: { name: string; institution: string | null }) => {
     if (account.institution === 'monobank') {
       return [{ name: account.name, run: mockMonobankRun }];
@@ -26,7 +26,7 @@ jest.mock('../sync-jobs', () => ({
     return [];
   },
 }));
-jest.mock('../../bank-sync/registry', () => ({
+jest.mock('@kiko/bank-sync/registry', () => ({
   bankProviderRegistry: {
     monobank: { hasCredentials: (...args: unknown[]) => mockMonobankHasCredentials(...args) },
   },

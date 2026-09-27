@@ -22,10 +22,10 @@ jest.mock('@kiko/sync-state/sync-state.repo', () => ({
 jest.mock('@kiko/sync/use-sync', () => ({
   useSync: () => mockUseSync(),
 }));
-jest.mock('../../../monobank/token', () => ({
+jest.mock('@kiko/monobank/token', () => ({
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
 }));
-jest.mock('../../../monobank/disconnect', () => ({
+jest.mock('@kiko/monobank/disconnect', () => ({
   disconnectMonobank: (...args: unknown[]) => mockDisconnectMonobank(...args),
 }));
 // The Monobank field is tested on its own; here it collapses to one

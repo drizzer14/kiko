@@ -3,6 +3,8 @@
 // stub lets the module graph load; runSync's data access is fully injected
 // through SyncDeps, so the real repos are never exercised here.
 import { i18n } from '@kiko/i18n/init';
+import statement from '@kiko/monobank/__fixtures__/statement.json';
+import clientInfo from '@kiko/monobank/__fixtures__/client-info.json';
 import type { AccountRow, HoldingRow, TransactionRow } from '@kiko/db';
 
 import {
@@ -11,8 +13,6 @@ import {
   getSnapshot as isSyncingSnapshot,
   subscribeProgress,
 } from '../sync-status';
-import statement from '../__fixtures__/statement.json';
-import clientInfo from '../__fixtures__/client-info.json';
 import type { MonobankAccount, MonobankJar, MonobankStatementItem } from '../monobank-types';
 
 import {

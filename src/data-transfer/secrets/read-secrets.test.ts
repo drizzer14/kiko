@@ -1,8 +1,8 @@
 const mockReadToken = jest.fn();
-jest.mock('../../monobank/token', () => ({ readToken: (id: string) => mockReadToken(id) }));
+jest.mock('@kiko/monobank/token', () => ({ readToken: (id: string) => mockReadToken(id) }));
 
 const mockReadCredentials = jest.fn();
-jest.mock('../../crypto-sync/binance/binance.credentials', () => ({
+jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
   readCredentials: (id: string) => mockReadCredentials(id),
 }));
 

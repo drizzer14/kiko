@@ -1,12 +1,12 @@
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { isValidBitcoinAddress } from '@kiko/crypto-sync/btc-wallet';
 
 import Box from '../box';
 import Button from '../button';
 import SyncStatusLine from '../sync-status-line';
 import type { SyncStatus } from '../sync-status-line';
 import ClipboardTextField from '../clipboard-text-field';
-import { isValidBitcoinAddress } from '../../../crypto-sync/btc-wallet/bitcoin-address';
 
 import { styles } from './wallet-address-field.styles';
 

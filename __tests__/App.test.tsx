@@ -7,7 +7,7 @@ import { render } from '@testing-library/react-native';
 
 // MigrationsGate pulls in the op-sqlite native binding, which has no jest
 // binary; stub it to render its children as if migrations already succeeded.
-jest.mock('../src/migration/migrations-gate', () => ({
+jest.mock('@kiko/migration/migrations-gate', () => ({
   __esModule: true,
   default: ({ children }: { children: ReactNode }) => children,
 }));

@@ -84,13 +84,13 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
     update: (...args: unknown[]) => mockUpdate(...args),
   },
 }));
-jest.mock('../../../monobank/token', () => ({
+jest.mock('@kiko/monobank/token', () => ({
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
 }));
-jest.mock('../../../crypto-sync/binance/binance.credentials', () => ({
+jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
   saveCredentials: (...args: unknown[]) => mockSaveCredentials(...args),
 }));
-jest.mock('../../../crypto-sync/binance/binance.client', () => ({
+jest.mock('@kiko/crypto-sync/binance/binance.client', () => ({
   fetchAccount: (...args: unknown[]) => mockFetchAccount(...args),
 }));
 jest.mock('../../../design-system/scroll-to-field/scroll-to-field');

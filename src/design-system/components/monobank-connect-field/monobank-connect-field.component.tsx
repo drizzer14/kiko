@@ -1,12 +1,12 @@
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { fetchClientInfo } from '@kiko/monobank/client';
 
 import Box from '../box';
 import Button from '../button';
 import SyncStatusLine from '../sync-status-line';
 import type { SyncStatus } from '../sync-status-line';
 import MonobankTokenInput from '../monobank-token-input';
-import { fetchClientInfo } from '../../../monobank/client';
 
 import { styles } from './monobank-connect-field.styles';
 

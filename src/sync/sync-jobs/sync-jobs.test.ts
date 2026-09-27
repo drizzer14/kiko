@@ -1,10 +1,10 @@
 const mockRunSync = jest.fn();
 const mockRunCryptoSync = jest.fn();
 
-jest.mock('../../monobank/sync', () => ({
+jest.mock('@kiko/monobank/sync', () => ({
   runSync: (...args: unknown[]) => mockRunSync(...args),
 }));
-jest.mock('../../crypto-sync/run-crypto-sync', () => ({
+jest.mock('@kiko/crypto-sync/run-crypto-sync', () => ({
   runCryptoSync: (...args: unknown[]) => mockRunCryptoSync(...args),
 }));
 

@@ -1,8 +1,8 @@
 import type { AccountRow } from '@kiko/db';
+import { readToken } from '@kiko/monobank/token';
+import { readCredentials } from '@kiko/crypto-sync/binance';
 
 import type { ExportSecrets } from '../payload';
-import { readToken } from '../../monobank/token';
-import { readCredentials } from '../../crypto-sync/binance/binance.credentials';
 
 /**
  * Reads the two Keychain secrets this feature bundles behind the "include

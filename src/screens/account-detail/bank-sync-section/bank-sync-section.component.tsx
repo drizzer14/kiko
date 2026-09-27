@@ -4,22 +4,18 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { useSync } from '@kiko/sync/use-sync';
 import { useTranslation } from 'react-i18next';
 import { syncStateRepo } from '@kiko/sync-state';
+import { saveToken } from '@kiko/monobank/token';
 import { type AccountRow, useLiveQuery } from '@kiko/db';
+import { bankProviderRegistry } from '@kiko/bank-sync/registry';
+import { bankProviderIdOf, isBankProviderId, type BankProviderId } from '@kiko/bank-sync/provider';
 
-import {
-  bankProviderIdOf,
-  isBankProviderId,
-  type BankProviderId,
-} from '../../../bank-sync/provider';
 import { styles } from '../account-detail.styles';
-import { saveToken } from '../../../monobank/token';
 import AddBankProviderSheet from '../add-bank-sheet';
 import { formatLastSyncAt } from '../format-last-sync';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
-import { bankProviderRegistry } from '../../../bank-sync/registry';
 import { alertOnCatch } from '../../../design-system/alert-on-catch';
 import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
 import ConfirmSheet from '../../../design-system/components/confirm-sheet';

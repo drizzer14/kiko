@@ -1,4 +1,4 @@
-import type { BankId } from '../../../bank-sync/bank-catalog';
+import type { BankId } from '@kiko/bank-sync/bank-catalog';
 
 export type BankTypeFieldProps = {
   label: string;

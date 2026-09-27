@@ -1,7 +1,8 @@
-import { hasToken } from '../../monobank/token';
+import { hasToken } from '@kiko/monobank/token';
+import { disconnectMonobank } from '@kiko/monobank/disconnect';
+import { runSync as monobankRunSync } from '@kiko/monobank/sync';
+
 import type { BankProviderId } from '../provider';
-import { disconnectMonobank } from '../../monobank/disconnect';
-import { runSync as monobankRunSync } from '../../monobank/sync';
 
 export type BankProviderRegistryEntry = {
   id: BankProviderId;

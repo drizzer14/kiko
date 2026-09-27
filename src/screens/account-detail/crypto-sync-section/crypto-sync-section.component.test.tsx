@@ -19,7 +19,7 @@ jest.mock('@kiko/db/use-live-query', () => ({
 jest.mock('@kiko/sync/use-crypto-sync', () => ({
   useCryptoSync: () => mockUseCryptoSync(),
 }));
-jest.mock('../../../crypto-sync/disconnect', () => ({
+jest.mock('@kiko/crypto-sync/disconnect', () => ({
   disconnectCryptoAccount: (...args: unknown[]) => mockDisconnect(...args),
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({

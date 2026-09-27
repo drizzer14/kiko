@@ -109,7 +109,7 @@ jest.mock('@kiko/sync/use-sync-all', () => ({
 // so a test can drive the "a sync is running" flag without a real run.
 const mockUseSyncStatus = jest.fn();
 const mockUseSyncProgress = jest.fn(() => ({ completed: 0, total: 0 }));
-jest.mock('../../monobank/sync-status', () => ({
+jest.mock('@kiko/monobank/sync-status', () => ({
   useSyncStatus: () => mockUseSyncStatus(),
   useSyncProgress: () => mockUseSyncProgress(),
 }));

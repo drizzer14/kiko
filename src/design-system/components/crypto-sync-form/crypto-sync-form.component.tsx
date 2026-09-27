@@ -1,13 +1,13 @@
+import {
+  type BalanceProviderId,
+  balanceProviderIds,
+  providerDisplayName,
+} from '@kiko/crypto-sync/provider';
 import type { TFunction } from 'i18next';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import Box from '../box';
-import {
-  type BalanceProviderId,
-  balanceProviderIds,
-  providerDisplayName,
-} from '../../../crypto-sync/provider';
 import FieldLabel from '../field-label';
 import SegmentedControl from '../segmented-control';
 import WalletAddressField from '../wallet-address-field';

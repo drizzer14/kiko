@@ -1,9 +1,8 @@
 import { useState } from 'react';
+import { runSync } from '@kiko/monobank/sync';
 import either, { bifold, isLeft } from 'fnts/either';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
-
-import { runSync } from '../../monobank/sync';
 
 export type SyncAction<Input> = {
   isSyncing: boolean;

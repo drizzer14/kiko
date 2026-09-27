@@ -2,6 +2,7 @@ import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BINANCE_API_MANAGEMENT_URL } from '@env';
 import { Linking, Pressable } from 'react-native';
+import { fetchAccount, saveCredentials } from '@kiko/crypto-sync/binance';
 
 import Box from '../box';
 import Text from '../text';
@@ -9,8 +10,6 @@ import Button from '../button';
 import SyncStatusLine from '../sync-status-line';
 import type { SyncStatus } from '../sync-status-line';
 import ClipboardTextField from '../clipboard-text-field';
-import { fetchAccount } from '../../../crypto-sync/binance/binance.client';
-import { saveCredentials } from '../../../crypto-sync/binance/binance.credentials';
 
 import { styles } from './binance-credentials-field.styles';
 

@@ -5,7 +5,7 @@ import { i18n } from '@kiko/i18n/init';
 import MonobankConnectField from './monobank-connect-field.component';
 
 const mockFetchClientInfo = jest.fn();
-jest.mock('../../../monobank/client', () => ({
+jest.mock('@kiko/monobank/client', () => ({
   fetchClientInfo: (...args: unknown[]) => mockFetchClientInfo(...args),
 }));
 

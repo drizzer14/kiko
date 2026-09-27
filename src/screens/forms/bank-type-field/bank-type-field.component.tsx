@@ -3,12 +3,12 @@ import { type FC, useState } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
+import { bankCatalog, type BankId } from '@kiko/bank-sync/bank-catalog';
 
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import SymbolIcon from '../../../design-system/components/symbol';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
-import { bankCatalog, type BankId } from '../../../bank-sync/bank-catalog';
 import FieldTrigger from '../../../design-system/components/field-trigger';
 import SelectableRow from '../../../design-system/components/selectable-row';
 

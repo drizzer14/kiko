@@ -3,16 +3,16 @@
 // `jest/setup.js` lets the module graph load; runBalanceSync's data access is
 // fully injected through BalanceSyncDeps, so the real repos are never exercised
 // here.
-import { i18n } from '@kiko/i18n/init';
-import type { AccountRow, HoldingRow } from '@kiko/db';
-
 import {
   getProgressSnapshot,
   getSnapshot as isSyncingSnapshot,
   setSyncing,
   setSyncProgress,
   subscribeProgress,
-} from '../../monobank/sync-status';
+} from '@kiko/monobank/sync-status';
+import { i18n } from '@kiko/i18n/init';
+import type { AccountRow, HoldingRow } from '@kiko/db';
+
 import type { BalanceProvider, ProviderBalance, SyncTarget } from '../provider';
 
 import { type BalanceSyncDeps, runBalanceSync } from './sync';

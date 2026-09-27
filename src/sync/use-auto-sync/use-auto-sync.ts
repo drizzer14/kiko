@@ -3,13 +3,13 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { accountsRepo } from '@kiko/accounts';
 import { syncStateRepo } from '@kiko/sync-state';
 import either, { bifold, isLeft } from 'fnts/either';
+import { bankProviderRegistry } from '@kiko/bank-sync/registry';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
+import { bankProviderIdOf, isBankProviderId } from '@kiko/bank-sync/provider';
 import { refreshMarketData, warnRefreshFailure } from '@kiko/sync/refresh-market-data';
 
-import { bankProviderRegistry } from '../../bank-sync/registry';
 import { type SyncableAccount, syncJobsFor } from '../sync-jobs';
 import { SYNC_CONCURRENCY_LIMIT, settleAllLimited } from '../settle-limited';
-import { bankProviderIdOf, isBankProviderId } from '../../bank-sync/provider';
 
 /**
  * Throttle window for the automatic on-open sync. Matches the rates cache

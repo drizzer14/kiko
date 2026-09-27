@@ -1,5 +1,5 @@
-import statement from '../__fixtures__/statement.json';
-import clientInfo from '../__fixtures__/client-info.json';
+import statement from '@kiko/monobank/__fixtures__/statement.json';
+import clientInfo from '@kiko/monobank/__fixtures__/client-info.json';
 
 import {
   fetchClientInfo,

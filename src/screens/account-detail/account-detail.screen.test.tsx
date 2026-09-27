@@ -121,13 +121,13 @@ jest.mock('@kiko/db/use-live-query', () => ({
 jest.mock('@kiko/sync/use-sync', () => ({
   useSync: () => mockUseSync(),
 }));
-jest.mock('../../monobank/disconnect', () => ({
+jest.mock('@kiko/monobank/disconnect', () => ({
   disconnectMonobank: (...args: unknown[]) => mockDisconnect(...args),
 }));
-jest.mock('../../monobank/token', () => ({
+jest.mock('@kiko/monobank/token', () => ({
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
 }));
-jest.mock('../../monobank/client', () => ({
+jest.mock('@kiko/monobank/client', () => ({
   fetchClientInfo: (...args: unknown[]) => mockFetchClientInfo(...args),
 }));
 jest.mock('@react-native-documents/picker', () => ({

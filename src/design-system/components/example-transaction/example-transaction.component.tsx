@@ -12,6 +12,7 @@ import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { useDataReady, useLiveQuery } from '@kiko/db';
 import { categoriesRepo } from '@kiko/categories/repo';
+import { categoryForMcc } from '@kiko/monobank/mcc-category';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
 
@@ -20,7 +21,6 @@ import Text from '../text';
 import Divider from '../divider';
 import LoadingState from '../loading-state';
 import TransactionCard from '../transaction-card';
-import { categoryForMcc } from '../../../monobank/mcc-category';
 
 import type { ExampleTransactionProps } from './example-transaction.props';
 

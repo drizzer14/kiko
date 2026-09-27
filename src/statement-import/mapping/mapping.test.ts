@@ -1,5 +1,6 @@
+import { categoryForMcc } from '@kiko/monobank/mcc-category';
+
 import type { ParsedTransaction } from '../parser';
-import { categoryForMcc } from '../../monobank/mcc-category';
 
 import { computeDedupKey, mapParsedTransaction } from './mapping';
 

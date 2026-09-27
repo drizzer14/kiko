@@ -1,10 +1,10 @@
 const mockSaveToken = jest.fn();
-jest.mock('../../monobank/token', () => ({
+jest.mock('@kiko/monobank/token', () => ({
   saveToken: (id: string, token: string) => mockSaveToken(id, token),
 }));
 
 const mockSaveCredentials = jest.fn();
-jest.mock('../../crypto-sync/binance/binance.credentials', () => ({
+jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
   saveCredentials: (id: string, creds: unknown) => mockSaveCredentials(id, creds),
 }));
 

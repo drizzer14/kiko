@@ -13,7 +13,7 @@ import '@kiko/i18n/init';
 // hide-when-done behaviour.
 const mockUseSyncStatus = jest.fn();
 const mockUseSyncProgress = jest.fn();
-jest.mock('../../../monobank/sync-status', () => ({
+jest.mock('@kiko/monobank/sync-status', () => ({
   useSyncStatus: () => mockUseSyncStatus(),
   useSyncProgress: () => mockUseSyncProgress(),
 }));

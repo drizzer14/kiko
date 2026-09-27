@@ -21,6 +21,7 @@ import { type AccountRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
 import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { isConnectableBank, statementFormatIdForBank } from '@kiko/bank-sync/bank-catalog';
 
 import Box from '../../design-system/components/box';
 import Text from '../../design-system/components/text';
@@ -37,7 +38,6 @@ import EntityHeaderIcon from '../../design-system/components/entity-header-icon'
 import EditHeaderButton from '../../design-system/components/edit-header-button';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
 import EntityAmountHeader from '../../design-system/components/entity-amount-header';
-import { isConnectableBank, statementFormatIdForBank } from '../../bank-sync/bank-catalog';
 
 import HoldingCard from './holding-card';
 import { styles } from './account-detail.styles';

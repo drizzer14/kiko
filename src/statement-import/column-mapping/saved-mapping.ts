@@ -2,7 +2,7 @@
 // the same file shape can pre-fill the mapping form instead of asking the
 // user to remap every column again — a saved mapping only PRE-FILLS, the
 // user still taps Import; see `applyColumnMapping`'s caller.
-import { isBankId } from '../../bank-sync/bank-catalog';
+import { isBankId } from '@kiko/bank-sync/bank-catalog';
 
 import type { TableCell } from './table-rows';
 import type { ColumnMapping } from './apply-column-mapping';

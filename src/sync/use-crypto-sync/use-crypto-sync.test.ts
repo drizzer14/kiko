@@ -4,7 +4,7 @@ import { act, renderHook } from '@testing-library/react-native';
 const mockRunCryptoSync = jest.fn();
 const mockRefreshMarketData = jest.fn();
 
-jest.mock('../../crypto-sync/run-crypto-sync', () => ({
+jest.mock('@kiko/crypto-sync/run-crypto-sync', () => ({
   runCryptoSync: (...args: unknown[]) => mockRunCryptoSync(...args),
 }));
 jest.mock('@kiko/sync/refresh-market-data', () => ({
