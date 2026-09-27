@@ -117,8 +117,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   such a body is still denied). Heredoc delimiter corner cases: quote
   removal drops a `$` before `'…'` (`$'EOF'` ends at `EOF` in both
   shells); `$"EOF"` differs by shell (bash ends at `EOF`, zsh at `$EOF`),
-  so the guard ends that body at the first line matching EITHER reading
-  and scans the rest as shell (fail closed); inside
+  so a command holding `$"` is scanned once per shell reading (bash,
+  then zsh) and either finding denies; inside
   double quotes, unescapes `\"`, `\\`, `\$`, and a backslash-backtick
   (`"E\"OF"` ends at `E"OF`); a delimiter line with trailing spaces does
   not end the body (bash agrees); bash's `EOF)` shorthand inside `$(` is
@@ -139,15 +139,20 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   (read the set in `kill-guard.js`; at the time of writing: `apply`,
   `merge`, `rebase`, `pull`, `cherry-pick`, `revert`, `am`) whose write
   target (work tree or git dir) is inside `MAIN_CHECKOUT_PATH`, the one
-  constant that pins the path; a nested worktree under
-  `<main>/.claude/worktrees/<name>` is a separate worktree and is
-  excluded (`isInsideMainCheckout`). The target comes from the payload
+  constant that pins the path; a folder under
+  `<main>/.claude/worktrees/<name>` is a separate worktree, and is
+  excluded, only when `<name>/.git` exists (`isInsideMainCheckout`). The target comes from the payload
   `cwd`, from `cd`/`pushd`/`cd -` earlier in the same command — which
-  moves the directory only across `&&`, `;`, or a newline; before `&` or
-  `|` it moves nothing, before `||` both the old and new directory stay
-  possible (over-denies `cd <worktree> || exit 1; git merge x` from
-  main), a bare `pushd` keeps both the current and previous set, and a
-  subshell's `cd` ends with the subshell — from `git -C` (stacked and relative),
+  moves the directory across `&&`, `;`, or a newline; before a
+  background `&` it moves nothing. The `&` of a redirect (`2>&1`, `>&-`,
+  `<&3`, `&>file`, `&>>file`) is NOT a separator, and a redirect word is
+  never a `cd` target. A `cd` after `&&`, `||`, or `|` may not have run,
+  so both the old and new directory stay possible (after `&&` the old
+  one comes back at the next other separator); before a plain `||` both
+  stay possible too, except `cd x || exit`/`|| return`, which keeps only
+  the new directory. `pushd` pushes, a bare `pushd` swaps, `popd` pops,
+  and `+N`/`-N` leave any saved directory possible; a subshell's `cd`
+  ends with the subshell — from `git -C` (stacked and relative),
   `--git-dir`, `--work-tree`, and from `GIT_DIR=`/`GIT_WORK_TREE=`
   prefixes (also after `env`). A leading `~`, `$HOME`, or `${HOME}`
   expands to the home directory, a bare `cd` goes home, and the compare
@@ -166,7 +171,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `git -C <main> merge --ff-only <sha>`. Limits, NOT denied: a path
   through another variable, `~user`, a glob, or a symlink; a git alias,
   script, or function; `export GIT_DIR=…` as its own earlier command;
-  `env -C <main>`; `git -c pull.rebase=true pull --ff-only`; `popd`.
+  `env -C <main>`; `git -c pull.rebase=true pull --ff-only`. The
+  directory model leans to deny: a failed `cd typo; git merge` still
+  counts as moved, and `cd $VAR` counts as not main (limits).
   Over-denied: `--git-dir=<main>/.git/worktrees/<name>`; a
   `merge --ff-only` with any extra option (`-q`, `--no-edit`, `--`); and,
   with cwd = main, a heredoc body line that is itself one of the covered
@@ -178,19 +185,28 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   in the main checkout gets this deny only after the guard merges to
   main, because it runs main's own `kill-guard.js`.
 
-  Probing the kill-guard (rule): a probe that EXECUTES shell text runs
-  ONLY through the committed safe runner
-  `scripts/checks/kill-guard-probe.sh bash|zsh '<probe>'` — stubs first
-  on PATH (pkill, killall, kill, xargs, git), the kill builtin disabled,
-  it refuses to start otherwise (exit 3) and refuses unsafe probe text
-  (exit 2); read its header for the full contract. Never write a runner
-  that rewrites the kill word by string, and never execute a kill string
-  outside this runner. Incident: a string-rewrite runner once ran a real
-  `pkill x` because a line continuation (`pk\<newline>ill`) dodged the
-  rewrite. Runner limits: the probe-text refusal list is a denylist
-  (text built to evade it could pass; PATH stubs and the disabled
-  builtin still hold), and it is macOS-only in practice (`/bin/zsh`,
-  `/usr/bin/perl`).
+  Probing the kill-guard (rule): SENTINEL probes only. A probe that
+  EXECUTES shell text runs ONLY through the committed runner
+  `scripts/checks/kill-guard-probe.sh bash|zsh '<probe>'` (read its
+  header for the full contract). The probe text writes the sentinel
+  command `kg_sentinel_target` in place of any kill command, and a
+  test-only fake main folder in place of the real main checkout; judge
+  that same text with `decide(text, { sentinelKillCommands:
+  ['kg_sentinel_target'], mainCheckoutPath })`. The sentinel and `git`
+  stubs sit first on PATH and only log (git also logs its working
+  folder); no real command has the sentinel's name. The runner refuses
+  (exit 2) text that names a kill command in any case, or the real main
+  path, after joining line continuations and dropping quotes and
+  backslashes. Real kill words and the real main path appear ONLY in
+  NON-executed parser tests (node: string -> `decide()`). The
+  `decide(command, options)` options `sentinelKillCommands` and
+  `mainCheckoutPath` are test-only: the hook entry passes only
+  `{ cwd: payload.cwd }` and ignores both (tested in
+  `__tests__/kill-guard.test.ts`). The runner is NOT an OS sandbox: a
+  kill word built at run time (`a=pk; ${a}ill x`) would bypass its text
+  check, so probe authors never write one. Never write a runner that
+  rewrites a kill word by string. Incident: such a runner once ran a
+  real kill command because a line continuation dodged the rewrite.
 
   A THIRD exception, of yet another shape: `scripts/checks/pre-write-guard.sh`
   (+ `pre-write-guard.js`) is the `PreToolUse` hook on `Edit|Write|MultiEdit` —

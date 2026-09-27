@@ -18,4 +18,4 @@ Rules:
 - Report: the root cause, how you proved it, and the fix in words. Once you have proof, do not list rival theories.
 - You have no Edit or Write tool. Hand the fix to the developer.
 - You are read-only on processes: no pkill, killall, kill, or any pattern/group kill.
-- Probe a hook that parses shell text (the kill-guard) ONLY through `scripts/checks/kill-guard-probe.sh`; never a string-rewrite runner (one ran a real pkill via a line continuation). See kiko-linter's "Probing the kill-guard".
+- Execute kill-guard probe text ONLY through `scripts/checks/kill-guard-probe.sh`, with the sentinel `kg_sentinel_target` in place of any kill command and a fake main folder in place of the real one; real kill words go only in non-executed `decide()` tests. The runner is not a sandbox. See kiko-linter's "Probing the kill-guard".

@@ -16,8 +16,10 @@ Preconditions:
 - `npm run check:all` is green.
 
 Merging into `main` (coordinator ruling): never apply, merge, rebase,
-pull, cherry-pick, revert, or am in the main checkout (only
-`merge --ff-only`/`pull --ff-only` pass; the closed set is
+pull, cherry-pick, revert, or am in the main checkout (what passes:
+`-h`/`--help`, the recovery options such as `--abort`/`--continue`,
+`git apply --check`/`--stat`, and the `merge --ff-only`/`pull
+--ff-only` update forms; see `RECOVERY_OPTIONS` there; the closed set is
 `MAIN_CHECKOUT_SUBCOMMANDS` in `scripts/checks/kill-guard.js`)
 (`/Users/drizzer14/Developer/Projects/pff-ios`); every session's hooks
 run from it, so a conflict marker there breaks every hook. The
