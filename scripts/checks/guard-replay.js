@@ -11,10 +11,12 @@
 // The session's commits are the commits in HEAD that no mark ref
 // (refs/kiko/guard-replay/*, each worktree's HEAD when its replay last passed)
 // reaches and that are newer than the floor (the time guard-replay.sh
-// recorded on the repository's first replay). Only a PASSED replay is proof a
-// commit was checked, so no branch name hides a commit: a backup branch, a
-// `switch -c`, or a worktree made from HEAD leaves every unchecked commit
-// selected. That covers a plain commit, an amend, a rebase, a cherry-pick, a
+// recorded on the repository's first replay) or have a parent that is a
+// session commit. Only a PASSED replay moves a mark, and a mark vouches for
+// the working tree at the HEAD it recorded, not for each commit under it
+// (kiko-linter's "Known limits"). No branch name hides a commit: a backup
+// branch, a `switch -c`, or a worktree made from HEAD leaves every unchecked
+// commit selected. That covers a plain commit, an amend, a rebase, a cherry-pick, a
 // pull --rebase, and every commit of a topic branch merged in, alike. Commits
 // a merge brings in from a branch some worktree's replay passed are reached by
 // that worktree's mark and are not replayed; commits from a branch no replay
@@ -98,28 +100,42 @@ function git(gitArguments, encoding = 'utf8') {
 }
 
 // Parents before children, so each commit's parents already have their
-// baselines. A floor that is not a whole number of seconds bounds nothing.
+// baselines. A commit older than the floor is outside the session only when
+// none of its parents is in it: git's own `--max-age` would also drop every
+// commit under an old-dated one, so a forged committer date on top would hide
+// the session beneath it. A floor that is not a whole number of seconds
+// bounds nothing.
 function sessionCommits(floor) {
-  const newerThanFloor = /^\d+$/.test(floor ?? '') ? [`--max-age=${floor}`] : [];
+  const floorSeconds = /^\d+$/.test(floor ?? '') ? Number(floor) : Number.NEGATIVE_INFINITY;
   const output = git([
     'rev-list',
+    '--timestamp',
     '--parents',
     '--topo-order',
     '--reverse',
-    ...newerThanFloor,
     'HEAD',
     '--not',
     `--glob=${MARK_REFS}`,
   ]);
+  const inSession = new Set();
 
   return output
     .split('\n')
     .filter(Boolean)
     .map((line) => {
-      const [commit, ...parents] = line.split(' ');
+      const [timestamp, commit, ...parents] = line.split(' ');
 
-      return { commit, parents };
-    });
+      return { timestamp: Number(timestamp), commit, parents };
+    })
+    .filter(({ timestamp, commit, parents }) => {
+      const isInSession =
+        timestamp >= floorSeconds || parents.some((parent) => inSession.has(parent));
+
+      if (isInSession) inSession.add(commit);
+
+      return isInSession;
+    })
+    .map(({ commit, parents }) => ({ commit, parents }));
 }
 
 // `-z --name-status` output: a status token, then one path, or two (old, new)

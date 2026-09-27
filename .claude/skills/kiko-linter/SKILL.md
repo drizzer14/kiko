@@ -886,10 +886,15 @@ catches these writes after they land instead.
 - **Which commits.** Selection is by reachability from PASSED replays,
   not by how a commit was made or which branch has it: every commit in
   HEAD (all parents, not only the first-parent line) that no mark ref
-  reaches and that is newer than the floor. Each worktree's mark is a
-  git ref, `refs/kiko/guard-replay/<worktree id>` (the id hashes the
-  worktree's git dir; see `harness_replay_ref` in `_lib.sh`), moved to
-  HEAD on a pass and never on a failure. A plain commit, an amend, a
+  reaches and that is newer than the floor or has a session commit as
+  a parent. Each worktree's mark is a git ref,
+  `refs/kiko/guard-replay/<worktree id>` (the id hashes the worktree's
+  git dir; see `harness_replay_ref` in `_lib.sh`), moved to HEAD on a
+  pass and never on a failure. A pass never moves it back: when HEAD is
+  the mark or an ancestor of it, the mark stays; a missing mark, one
+  that is not a commit, and one HEAD diverged from (a rebase, an amend)
+  move to HEAD. A mark vouches for the tree at the HEAD it recorded,
+  not for each commit it reaches; see Known limits. A plain commit, an amend, a
   rebase, a cherry-pick, a `pull --rebase`, and every commit of a topic
   branch merged in (`--no-ff` or fast-forward) are all replayed. A
   backup branch, a `switch -c`, or a worktree made from HEAD hides
@@ -899,7 +904,8 @@ catches these writes after they land instead.
   nothing.
 - **Floor and never-replayed branches.** The repository's first replay
   records `refs/kiko/guard-replay-floor` (24 h before that run), pass or
-  fail, and no run replays a commit older than it. A merge of a branch
+  fail, and no run replays a commit older than it unless one of its
+  parents is a session commit. A merge of a branch
   no replay ever passed (the first merge of `next` after the replay
   landed, or commits made by hand with no Stop hook) replays that
   branch's commits newer than the floor against their own history; they
@@ -956,15 +962,35 @@ catches these writes after they land instead.
   baseline only, so a finding the change brought reads as new. All
   three fail closed (a finding reads as new, never as old). A commit
   with a forged committer date older than the floor
-  (`GIT_COMMITTER_DATE`) is skipped; that is deliberate evasion, not a
-  slip. Deleting one `refs/kiko/*` ref by hand only makes the replay
-  check more; deleting all of them starts over as a first replay (a new
-  floor, 24 h back). A branch no replay ever passed costs replay time when
-  merged (see "Floor and never-replayed branches").
+  (`GIT_COMMITTER_DATE`) whose parents are all outside the session is
+  skipped, so its own change is not replayed; it hides no commit under
+  it, and an old-dated commit on top of session commits stays in the
+  session. That is deliberate evasion, not a slip. Deleting a mark ref
+  by hand only widens the replay. Deleting the floor while no mark ref
+  exists (a first replay that failed), or deleting every `refs/kiko/*`
+  ref, records a NEW floor 24 h before the next run, later than the old
+  one, so older unchecked commits drop out. Never delete the replay's
+  refs. A mark attests its tip tree only. (1) Another worktree that
+  takes a Bash-written commit, fixes the file, and passes its replay
+  before the author's Stop makes the author's replay pass while the
+  author's tree still holds the violation, until it takes the fix.
+  (2) After a pass at a fixing commit, `git reset --hard HEAD~1` passes
+  (the mark on the fix reaches the older commit, so the plan is empty)
+  while the tree holds the violation again. The mark stays on the fix,
+  so a later revert of the fix fails; a new commit made on the older
+  commit diverges from the mark and moves it there, and the violation
+  is then taken as checked. `check:all` is the backstop:
+  `check:security` scans `rules/semgrep-prewrite.yml` project-wide, and
+  every Node rule has its own project-wide check. A branch no replay
+  ever passed costs replay time when merged (see "Floor and
+  never-replayed branches").
 - **Tests.** `__tests__/guard-replay.test.ts`: a throwaway repository
   with a linked worktree, copies of the real wrappers and rule file,
   and the real Semgrep. It covers a Bash-written violation (tracked and
-  new file), a committed one, a fixed one, a pre-existing one, rebase,
+  new file), a committed one, a fixed one, a pre-existing one, one under
+  a commit with a forged old committer date, a revert of a passed fix
+  after a reset back (the mark does not move back), the mark moving to
+  a rebased HEAD, rebase,
   reset plus cherry-pick, `pull --rebase`, a clean rebase, a backup
   branch, `switch -c`, a sibling worktree made after a flag, merges
   (fast forward and clean of work another worktree passed, joined both

@@ -81,9 +81,15 @@ repository:
   whatever the worktree is called. The run reads HEAD
   (`harness_replay_mark`) when it starts and moves the ref there with
   `git update-ref` on a pass, including a dedup skip; a failed or
-  stopped run never moves it. Every run replays only commits that NO
-  worktree's mark ref reaches (`--not --glob=refs/kiko/guard-replay/*`).
-  Refs are shared by all worktrees and survive a purge of `$TMPDIR`.
+  stopped run never moves it. A pass never moves it back either: when
+  HEAD is the mark or an ancestor of it (a reset back, a switch to an
+  older commit), the ref stays. A missing ref, one that is not a
+  commit, and one HEAD diverged from (a rebase, an amend, a branch
+  switch) are moved to HEAD. Every run replays only commits that NO
+  worktree's mark ref reaches (`--not --glob=refs/kiko/guard-replay/*`);
+  a mark vouches for the tree at its tip only (kiko-linter's "Known
+  limits"). Refs are shared by all worktrees and survive a purge of
+  `$TMPDIR`.
   `medium.sh` compares this worktree's ref with HEAD: when HEAD moved
   but no file changed, it runs the replay alone (about 50 ms to decide)
   and skips every other check. A removed worktree's ref stays, and
@@ -93,13 +99,18 @@ repository:
 - The floor ref, `refs/kiko/guard-replay-floor`: a blob that holds a
   unix time. The repository's first replay (no floor and no mark ref
   yet) records it as 24 h before that run, whether the run then passes
-  or fails, and every run replays only commits newer than it
-  (`--max-age`). It never slides, so a failed first replay resumed
-  days later still replays what it flagged, and it bounds how far back
-  a merge of a branch no replay ever passed reaches. A deleted floor is
-  recorded again only when no mark ref exists either, so deleting it
-  alone never narrows a replay; deleting every `refs/kiko/*` ref starts
-  over as a first replay.
+  or fails. A commit older than it (by `rev-list --timestamp`, the
+  committer date) is left out only when none of its parents is a
+  session commit, so an old-dated commit on top of session commits
+  stays in the session and hides nothing under it. It never slides,
+  so a failed first replay resumed days later still replays what it
+  flagged, and it bounds how far back a merge of a branch no replay
+  ever passed reaches. A deleted floor is recorded again only when no
+  mark ref exists either. With a mark ref present, deleting the floor
+  removes the bound (a wider replay). With none (after a first replay
+  that failed), or after deleting every `refs/kiko/*` ref, the next run
+  is a first replay again and records a new floor 24 h before it,
+  later than the old one, which drops older unchecked commits.
 
 On the Stop tier (`--stop-tier <medium.sh start>`) the replay starts
 no guard call after `stopTierDeadlineSeconds` (in `guard-replay.js`)

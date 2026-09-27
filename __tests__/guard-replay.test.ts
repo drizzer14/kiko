@@ -12,7 +12,8 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'nod
 // checkout, dated before the replay's first-run floor the way a real
 // worktree's history predates the harness, and each test works in a linked
 // worktree of it, the way an Orca worktree starts: the replay counts only the
-// commits newer than the floor that no worktree's passed-replay mark reaches.
+// commits no worktree's passed-replay mark reaches that are newer than the
+// floor or sit on top of one that is.
 const CHECKS = join(__dirname, '../scripts/checks');
 const PREWRITE_RULES = join(__dirname, '../rules/semgrep-prewrite.yml');
 const REPLAY_ENGINE = join(CHECKS, 'guard-replay.js');
@@ -124,8 +125,11 @@ const writeExecutable = (root: string, relativePath: string, body: string): stri
   return absolutePath;
 };
 
-const commitAll = (cwd: string, message: string, { hoursAgo = 0 } = {}): void => {
-  const date = `@${unixNow() - hoursAgo * HOUR_SECONDS} +0000`;
+const commitAll = (
+  cwd: string,
+  message: string,
+  { hoursAgo = 0, date = `@${unixNow() - hoursAgo * HOUR_SECONDS} +0000` } = {},
+): void => {
   git(cwd, 'add', '-A');
   execFileSync('git', ['commit', '-qm', message], {
     cwd,
@@ -213,6 +217,18 @@ const passReplayWithStubEngine = (checkout: Checkout, directory = checkout.main)
 
   expect(run).toEqual({ code: 0, stderr: '' });
 };
+
+const worktreeMark = (checkout: Checkout): string => {
+  const library = join(checkout.worktree, 'scripts/checks/_lib.sh');
+  const read = `source "${library}"; git rev-parse -q --verify "$(harness_replay_ref "$1")"`;
+
+  return execFileSync('bash', ['-c', read, '_', checkout.worktree], {
+    cwd: checkout.worktree,
+    encoding: 'utf8',
+  }).trim();
+};
+
+const headOf = (cwd: string): string => git(cwd, 'rev-parse', 'HEAD').trim();
 
 const moveMain = (checkout: Checkout): void => {
   writeFile(checkout.main, 'src/other.ts', 'export const other = 1;\n');
@@ -316,6 +332,60 @@ describe('guard-replay.sh', () => {
       commitViolationAfterAPass(checkout);
 
       expectSwitchFlagged(runReplay(checkout));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'fails a violation under a later commit whose committer date is older than the floor',
+    () => {
+      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
+      commitViolationAfterAPass(checkout);
+      writeFile(checkout.worktree, 'src/other.ts', 'export const other = 1;\n');
+      commitAll(checkout.worktree, 'forged date', { date: '@1600000000 +0000' });
+
+      expectSwitchFlagged(runReplay(checkout));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'keeps the mark on a passed fix across a reset back, so a revert of the fix fails',
+    () => {
+      const checkout = buildCheckout({ 'src/pick.ts': 'export const pick = 1;\n' });
+      commitViolationAfterAPass(checkout);
+      writeFile(checkout.worktree, 'src/pick.ts', 'export const pick = 2;\n');
+      commitAll(checkout.worktree, 'fix');
+      const fix = headOf(checkout.worktree);
+      expect(runReplay(checkout)).toEqual({ code: 0, stderr: '' });
+
+      git(checkout.worktree, 'reset', '-q', '--hard', 'HEAD~1');
+      // The mark on the fix reaches the violating commit, so the plan is
+      // empty; the mark vouches for its own tree, not for this one.
+      expect(runReplay(checkout)).toEqual({ code: 0, stderr: '' });
+      expect(worktreeMark(checkout)).toBe(fix);
+
+      git(checkout.worktree, 'reset', '-q', '--hard', fix);
+      git(checkout.worktree, 'revert', '--no-edit', fix);
+
+      expectSwitchFlagged(runReplay(checkout));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'moves the mark to a HEAD that diverged from it, such as a rebase',
+    () => {
+      const checkout = buildCheckout({});
+      writeFile(checkout.worktree, 'src/kept.ts', 'export const kept = 2;\n');
+      commitAll(checkout.worktree, 'clean');
+      expect(runReplay(checkout).code).toBe(0);
+
+      moveMain(checkout);
+      git(checkout.worktree, 'rebase', '-q', 'main');
+
+      expect(runReplay(checkout)).toEqual({ code: 0, stderr: '' });
+      expect(worktreeMark(checkout)).toBe(headOf(checkout.worktree));
     },
     TIMEOUT,
   );
