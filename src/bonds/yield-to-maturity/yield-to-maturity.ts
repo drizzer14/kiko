@@ -73,7 +73,7 @@ const bisect = (
  * (0.154 for 15.4%): the rate at which the flows received strictly after the
  * lot's local day, discounted act/365, sum to the price paid. A flow on the
  * lot day itself was paid to the seller, not to this lot. Null for a lot
- * without a price or with nothing left to receive.
+ * without a price, with nothing left to receive, or whose rate overflows.
  *
  * Solved by bisection in ln(1 + rate), where the present value of positive
  * flows falls strictly as the rate rises over the whole real line — one root
@@ -113,7 +113,11 @@ export const yieldToMaturity = (
     return null;
   }
 
-  return Math.expm1(bisect(netPresentValue, bracket[0], bracket[1]));
+  const rate = Math.expm1(bisect(netPresentValue, bracket[0], bracket[1]));
+
+  // `expm1` overflows past a log-rate of about 709, which a half-typed price
+  // against a coupon days away reaches.
+  return Number.isFinite(rate) ? rate : null;
 };
 
 /**

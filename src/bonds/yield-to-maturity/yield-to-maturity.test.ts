@@ -73,6 +73,14 @@ describe('yieldToMaturity', () => {
 
     expect(rate).toBeCloseTo(1.01 ** (365 / 6) - 1, 8);
   });
+
+  // A half-typed price (98 bonds at "1" so far) against a coupon the next
+  // day: the annual rate overflows a double.
+  it('returns no yield when the rate overflows', () => {
+    const flows = [{ date: local(2026, 9, 11), amountMinorUnits: 743_820 }];
+
+    expect(yieldToMaturity(flows, 9_800, local(2026, 9, 10))).toBeNull();
+  });
 });
 
 describe('portfolioYieldToMaturity', () => {

@@ -381,6 +381,24 @@ describe('useBondFields ISIN-mode edit of an ISIN the register does not list', (
     expect(result.current.yieldToMaturity).toBe(detailYield);
   });
 
+  it('keeps the price of an edit typed with a dangling separator', async () => {
+    mockStoredMetadata = storedMetadata;
+    const { result } = await renderBondFields(true);
+
+    await act(async () => {
+      result.current.seed(holding);
+    });
+    await act(async () => {
+      result.current.setPurchasePrice('1 100,');
+    });
+
+    expect(result.current.isValid).toBe(true);
+
+    await result.current.saveEdit(context);
+
+    expect(mockWrittenMetadata.at(-1)).toMatchObject({ purchasePriceMinorUnits: 1_100_000 });
+  });
+
   it('still blocks a create with an ISIN the register does not list', async () => {
     const { result } = await renderBondFields();
 
@@ -392,6 +410,32 @@ describe('useBondFields ISIN-mode edit of an ISIN the register does not list', (
 
     expect(result.current.isinReasonKey).toBe('forms.holding.isinNotInRegister');
     expect(result.current.isValid).toBe(false);
+  });
+});
+
+describe('useBondFields yield to maturity', () => {
+  // The face, coupon and maturity the first match filled stay in the form, but
+  // they are not the terms of the ISIN now typed.
+  it('shows no yield once a matched ISIN is changed to one the register does not list', async () => {
+    mockBondRegisterRows = [foundRow()];
+    const { result } = await renderBondFields();
+
+    await act(async () => {
+      result.current.setIsin(VALID_ISIN);
+    });
+    await act(async () => {
+      result.current.setQuantity('10');
+      result.current.setPurchasePrice('950');
+    });
+
+    expect(result.current.yieldToMaturity).not.toBeNull();
+
+    await act(async () => {
+      result.current.setIsin('XS2895055981');
+    });
+
+    expect(result.current.registerTerms).toBeNull();
+    expect(result.current.yieldToMaturity).toBeNull();
   });
 });
 

@@ -1006,7 +1006,10 @@ stays as saved (nothing rewrites it); it is only the fallback.
 annual IRR (a decimal fraction, 0.154 = 15.4%), act/365 via
 `daysBetween`, over the flows strictly after the lot's LOCAL day (a
 flow on the lot day went to the seller); null for a lot without a price
-(null/≤0) or with nothing left. Solved by bisection in ln(1 + rate) —
+(null/≤0), with nothing left, or whose rate is not finite (`expm1`
+overflows past a log-rate of ~709 — a half-typed price against a coupon
+days away; `Number.isFinite` once, so the form row and the detail both
+read "no answer"). Solved by bisection in ln(1 + rate) —
 monotone over all reals for positive flows, so always bracketed
 (doubling, ≤64 expansions) and deterministic (tolerance 1e-12, ≤200
 iterations); amounts stay integer minor units.
@@ -1043,7 +1046,15 @@ quantity, dates and schedule (register payments in ISIN mode, the kept
 or generated schedule in Manual). `buildBondMetadata` stands today in
 for a missing date, so `hasYieldInputs` hides the row BEFORE the call
 while the price, the purchase date or the maturity date is missing; a
-solver with no answer hides it too (no placeholder). `BondFormBlock`
+solver with no answer hides it too (no placeholder). In ISIN mode with
+no register match, `hasYieldTerms` hides it: the face, coupon and
+maturity are still a previous match's, not the typed ISIN's — except an
+edit's own stored ISIN (`isStoredIsin`), whose stored terms and schedule
+are the bond's own, so the row shows the holding detail's value. The
+yield is a `useMemo` over its inputs (`buildBondMetadata` is a
+`useCallback` over the bond fields, and `useBondIsinMode` memoizes
+`registerTerms` on the cached row), so a keystroke in Name or Notes
+does not re-solve it. `BondFormBlock`
 renders it right after the purchase date as a one-row `SummaryTable`
 with a caption `textSecondary` value (the ISIN summary's own row
 style), testID `bond-form-yield-to-maturity`. Pin: UA4000239115, 98 x
@@ -1147,10 +1158,20 @@ consumer (net worth, the purchase ledger entry, expected profit, yield
 to maturity, funding reconcile, export/restore). `bond-purchase-price.ts`
 (`src/screens/forms/holding-form/bond/use-bond-fields/`) owns both
 conversions: `bondPurchaseTotal` stores quantity x price per bond
-through `multiplyToMinorUnits` (exact, no float; the total is taken
+through `multiplyToMinorUnits` (exact BigInt product; the total is taken
 from the quantity at Save, so a quantity typed after the price still
-counts), and `pricePerBondText` seeds the edit field with total /
-quantity rounded to the minor unit. While both the price and the
+counts). It reads both fields through `parseAmount`, the SAME parser the
+validation uses (`bond-reasons.ts`), then `decimalFromJsonNumber` (a
+typed amount has far fewer than 15 significant digits, so the double
+converts back exactly): a dangling separator ("1 076,") is the whole
+amount, as in every other amount field, never a price the validation
+passes and Save silently drops (98 x "1 076," → 10_544_800; an edit to
+"1 100," keeps a price). `normalizeDecimal` rejected it and deleted the
+stored price on an edit (review I1). `pricePerBondText` seeds the edit
+field with `scaleMinorUnits(total, 1, quantity)` in one exact BigInt
+step, rounded half away from zero to the minor unit; a quantity that is
+not a whole, positive number of bonds seeds a blank price (the BigInt
+division cannot take it). While both the price and the
 quantity text still equal what the edit seeded, Save writes the stored
 total unchanged — 10 000.00 over 3 bonds seeds 3 333.33, which would
 otherwise re-save as 9 999.99. Pins: 98 x "1 076,72" → 10_551_856;
@@ -1203,7 +1224,12 @@ typed coupon and stored `payments: []`. The stored `couponFrequency`
 also counts as the pick (`pickedCouponFrequency`), so an ISIN-mode edit
 of an unmapped-frequency bond stays saveable. The pick clears only when
 a NEW match applies (inside the apply effect), not on every change of
-the matched ISIN.
+the matched ISIN. So stored values win over the register for the stored
+ISIN: a Manual bond with a typed ISIN and typed terms (say maturity
+2027-09-01 where the register says 2027-09-15), switched to ISIN mode
+on edit, keeps its typed terms on Save and saves `entryMode: 'isin'` —
+while the ISIN summary shows the register's maturity and coupon, so the
+summary can disagree with what is booked (review M2, documented limit).
 
 A CREATE defaults to `'isin'`. EDIT opens in the mode the bond was
 saved from (USER FINDING D8): `BondMeta.entryMode?: 'isin' | 'manual'`

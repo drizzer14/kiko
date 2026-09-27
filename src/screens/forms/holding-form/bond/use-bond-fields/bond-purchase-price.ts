@@ -1,5 +1,10 @@
+import {
+  scaleMinorUnits,
+  multiplyToMinorUnits,
+  decimalFromJsonNumber,
+} from '@kiko/currency/decimal';
+import { parseAmount } from '@kiko/currency/parse';
 import type { Currency } from '@kiko/currency/currency';
-import { multiplyToMinorUnits, normalizeDecimal } from '@kiko/currency/decimal';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 
 /** The price fields as the edit form seeded them, and the stored total behind them. */
@@ -15,6 +20,13 @@ type BondPurchaseTotalParams = {
   currency: Currency;
   seeded: SeededPurchasePrice | null;
 };
+
+// The validation reads the price and the quantity through `parseAmount`, so
+// the total reads them the same way: "1 076," is 1 076, as in every other
+// amount field, not an unreadable price that Save would silently leave out. A
+// typed amount has far fewer than 15 significant digits, so its double
+// converts back to the same decimal exactly.
+const typedDecimal = (text: string): string | null => decimalFromJsonNumber(parseAmount(text));
 
 /**
  * The batch total a bond stores for the price the form takes per bond:
@@ -34,8 +46,8 @@ export const bondPurchaseTotal = ({
     return seeded.totalMinorUnits;
   }
 
-  const quantityDecimal = normalizeDecimal(quantity);
-  const priceDecimal = normalizeDecimal(pricePerBond);
+  const quantityDecimal = typedDecimal(quantity);
+  const priceDecimal = typedDecimal(pricePerBond);
 
   if (quantityDecimal === null || priceDecimal === null) {
     return undefined;
@@ -46,21 +58,16 @@ export const bondPurchaseTotal = ({
   return totalMinorUnits > 0 ? totalMinorUnits : undefined;
 };
 
-/** The price of one bond the edit form shows for a stored batch total. */
+/**
+ * The price of one bond the edit form shows for a stored batch total. None
+ * for a quantity that is not a whole, positive number of bonds, which the
+ * exact division cannot take.
+ */
 export const pricePerBondText = (
   totalMinorUnits: number,
   quantity: number,
   currency: Currency,
-): string => {
-  if (quantity <= 0) {
-    return '';
-  }
-
-  const perBondMinorUnits = multiplyToMinorUnits(
-    [majorAmountText(currency, totalMinorUnits)],
-    currency,
-    String(quantity),
-  );
-
-  return groupAmount(majorAmountText(currency, perBondMinorUnits));
-};
+): string =>
+  Number.isInteger(quantity) && quantity > 0
+    ? groupAmount(majorAmountText(currency, scaleMinorUnits(totalMinorUnits, 1, quantity)))
+    : '';

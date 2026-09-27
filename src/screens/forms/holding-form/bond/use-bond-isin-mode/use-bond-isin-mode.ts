@@ -5,7 +5,7 @@ import { startOfLocalDay } from '@kiko/dates';
 import type { Currency } from '@kiko/currency/currency';
 import { normalizeIsin, validateIsin } from '@kiko/bonds/isin';
 import type { HoldingType } from '@kiko/holdings/holding-type';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type BondTerms, currentCouponPct } from '@kiko/bonds/nbu-register';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 import { bondRegisterRepo, refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
@@ -109,6 +109,9 @@ type UseBondIsinModeResult = {
   setIsin: (isin: string) => void;
   registerTerms: BondTerms | null;
   registerLoaded: boolean;
+  // True while an edit's ISIN field still holds its stored ISIN and the form
+  // its stored terms, which then describe the bond even with no register match.
+  isStoredIsin: boolean;
   isinReasonKey: IsinReasonKey | null;
   // True while ISIN mode has a found match whose OWN `couponFrequency` the
   // register left unmapped — never guess one, so the caller must show its
@@ -180,12 +183,16 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
   const cachedTerms: BondTerms | null =
     matchedRow !== undefined && matchedRow.isin === normalizedIsin ? matchedRow.terms : null;
   // The cache holds the coupon as of its refresh day; an offline phone must
-  // still show and fill a step-up bond's new step from its date.
-  const registerTerms: BondTerms | null =
-    foldMap(maybe(cachedTerms), (terms) => ({
-      ...terms,
-      couponPct: currentCouponPct(terms, Date.now()),
-    })) ?? null;
+  // still show and fill a step-up bond's new step from its date. Memoized, so
+  // the form's yield keeps one identity for it across unrelated renders.
+  const registerTerms = useMemo(
+    (): BondTerms | null =>
+      foldMap(maybe(cachedTerms), (terms) => ({
+        ...terms,
+        couponPct: currentCouponPct(terms, Date.now()),
+      })) ?? null,
+    [cachedTerms],
+  );
 
   // Whether the `bond_register` cache has EVER been populated — tells "no
   // cache yet" (the register was never fetched, or is fetching for the
@@ -296,13 +303,14 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
     }
   }, [registerTerms?.isin, bondMode]);
 
+  const isStoredIsin = storedIsin !== null && isin === storedIsin;
   const isinReasonKey = bondIsinReasonKey({
     bondMode,
     isin,
     isinValidation,
     registerTerms,
     registerLoaded,
-    isStoredIsin: storedIsin !== null && isin === storedIsin,
+    isStoredIsin,
     isEdit,
     currency,
   });
@@ -352,6 +360,7 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
     setIsin: setNormalizedIsin,
     registerTerms,
     registerLoaded,
+    isStoredIsin,
     isinReasonKey,
     needsCouponFrequencyPick,
     pickedCouponFrequency,

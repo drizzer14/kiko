@@ -12,10 +12,10 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { parseAmount } from '@kiko/currency/parse';
 import { holdingsRepo } from '@kiko/holdings/repo';
-import { useCallback, useRef, useState } from 'react';
 import type { TextInputInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
 import type { BondTerms } from '@kiko/bonds/nbu-register';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import { bondYieldToMaturity } from '@kiko/bonds/yield-to-maturity';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
@@ -44,6 +44,15 @@ const hasYieldInputs = (
   purchaseDate: number | null,
   maturityDate: number | null,
 ): boolean => purchasePrice.trim() !== '' && purchaseDate !== null && maturityDate !== null;
+
+// In ISIN mode with no register match, the face, coupon and maturity are still
+// a previous match's, not the typed ISIN's. An edit's own stored ISIN keeps its
+// stored terms, which do describe it.
+const hasYieldTerms = (
+  bondMode: BondEntryMode,
+  registerTerms: BondTerms | null,
+  isStoredIsin: boolean,
+): boolean => bondMode === 'manual' || registerTerms !== null || isStoredIsin;
 
 // Seed the bond number/date fields from stored metadata. Minor-unit money
 // fields (face value, price per bond) convert back to grouped major strings;
@@ -170,6 +179,7 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
     setIsin,
     registerTerms,
     registerLoaded,
+    isStoredIsin,
     isinReasonKey,
     needsCouponFrequencyPick,
     pickedCouponFrequency,
@@ -196,56 +206,74 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
   const savedBondRef = useRef<SavedBond | null>(null);
   const seededPurchasePriceRef = useRef<SeededPurchasePrice | null>(null);
 
-  const buildBondMetadata = (saved: SavedBond | null): Record<string, unknown> => {
-    const quantityValue = parseAmount(quantity) || 0;
-    const faceValueMinorUnits = Money.fromMajor(currency, parseAmount(faceValue) || 0).minorUnits;
-    const purchasePriceMinorUnits = bondPurchaseTotal({
-      quantity,
-      pricePerBond: purchasePrice,
-      currency,
-      seeded: seededPurchasePriceRef.current,
-    });
-    const couponValue = parseAmount(couponPct) || 0;
-    const payments = bondPaymentsOnSave({
-      bondMode,
-      registerTerms,
-      saved,
-      next: {
-        isin: isin.trim() === '' ? undefined : isin,
+  // A stable identity while no bond field changes, so the yield below is not
+  // solved again on every keystroke in Name or Notes.
+  const buildBondMetadata = useCallback(
+    (saved: SavedBond | null): Record<string, unknown> => {
+      const quantityValue = parseAmount(quantity) || 0;
+      const faceValueMinorUnits = Money.fromMajor(currency, parseAmount(faceValue) || 0).minorUnits;
+      const purchasePriceMinorUnits = bondPurchaseTotal({
+        quantity,
+        pricePerBond: purchasePrice,
         currency,
+        seeded: seededPurchasePriceRef.current,
+      });
+      const couponValue = parseAmount(couponPct) || 0;
+      const payments = bondPaymentsOnSave({
+        bondMode,
+        registerTerms,
+        saved,
+        next: {
+          isin: isin.trim() === '' ? undefined : isin,
+          currency,
+          faceValueMinorUnits,
+          couponPct: couponValue,
+          couponFrequency,
+        },
+      });
+
+      return {
+        quantity: quantityValue,
         faceValueMinorUnits,
         couponPct: couponValue,
+        // The total actually paid, while the form takes the price of one bond. A
+        // blank one is left out, not stored as the nominal: `asBondMeta` still
+        // reads it as nominal (par), so the purchase entry and expected profit
+        // read as break-even, while the yield to maturity, which needs the real
+        // price, shows none.
+        ...foldMap(maybe(purchasePriceMinorUnits), (total) => ({ purchasePriceMinorUnits: total })),
+        purchaseDate: purchaseDate ?? Date.now(),
+        maturityDate: maturityDate ?? Date.now(),
+        bondKind,
         couponFrequency,
-      },
-    });
-
-    return {
-      quantity: quantityValue,
-      faceValueMinorUnits,
-      couponPct: couponValue,
-      // The total actually paid, while the form takes the price of one bond. A
-      // blank one is left out, not stored as the nominal: `asBondMeta` still
-      // reads it as nominal (par), so the purchase entry and expected profit
-      // read as break-even, while the yield to maturity, which needs the real
-      // price, shows none.
-      ...foldMap(maybe(purchasePriceMinorUnits), (total) => ({ purchasePriceMinorUnits: total })),
-      purchaseDate: purchaseDate ?? Date.now(),
-      maturityDate: maturityDate ?? Date.now(),
-      bondKind,
+        // Stored as a record of how the holding was added; the
+        // save is blocked by `isinReasonKey` while Manual mode's own ISIN is
+        // non-empty but invalid, so a saved value is always well-formed. Left
+        // out entirely for a blank Manual-mode ISIN, rather than an empty
+        // string, so `asBondMeta`'s optional field round-trips as `undefined`.
+        // `isin` itself is already normalized (`useBondIsinMode`'s own
+        // `setIsin` wrapper) — a second `normalizeIsin` call here was a
+        // redundant third normalization.
+        ...(isin.trim() === '' ? {} : { isin }),
+        entryMode: bondMode,
+        ...foldMap(maybe(payments), (schedule) => ({ payments: schedule })),
+      };
+    },
+    [
+      quantity,
+      currency,
+      faceValue,
+      purchasePrice,
+      couponPct,
+      bondMode,
+      registerTerms,
+      isin,
       couponFrequency,
-      // Stored as a record of how the holding was added; the
-      // save is blocked by `isinReasonKey` while Manual mode's own ISIN is
-      // non-empty but invalid, so a saved value is always well-formed. Left
-      // out entirely for a blank Manual-mode ISIN, rather than an empty
-      // string, so `asBondMeta`'s optional field round-trips as `undefined`.
-      // `isin` itself is already normalized (`useBondIsinMode`'s own
-      // `setIsin` wrapper) — a second `normalizeIsin` call here was a
-      // redundant third normalization.
-      ...(isin.trim() === '' ? {} : { isin }),
-      entryMode: bondMode,
-      ...foldMap(maybe(payments), (schedule) => ({ payments: schedule })),
-    };
-  };
+      purchaseDate,
+      maturityDate,
+      bondKind,
+    ],
+  );
 
   const validationParams = {
     quantity,
@@ -259,9 +287,23 @@ export const useBondFields = (params: UseBondFieldsParams): UseBondFieldsResult 
   const fieldErrors = bondFieldErrors(validationParams);
   const reasonKey = bondReasonKey(validationParams);
 
-  const yieldToMaturity = hasYieldInputs(purchasePrice, purchaseDate, maturityDate)
-    ? bondYieldToMaturity(buildBondMetadata(savedBondRef.current), currency, registerTerms)
-    : null;
+  const yieldToMaturity = useMemo(
+    () =>
+      hasYieldInputs(purchasePrice, purchaseDate, maturityDate) &&
+      hasYieldTerms(bondMode, registerTerms, isStoredIsin)
+        ? bondYieldToMaturity(buildBondMetadata(savedBondRef.current), currency, registerTerms)
+        : null,
+    [
+      buildBondMetadata,
+      purchasePrice,
+      purchaseDate,
+      maturityDate,
+      bondMode,
+      registerTerms,
+      isStoredIsin,
+      currency,
+    ],
+  );
 
   // A bond ALSO needs a valid ISIN and, while `needsCouponFrequencyPick` (an
   // unmapped-frequency ISIN-mode match), a picked coupon frequency — never
