@@ -1,6 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
+# Build Release-AdHoc, check the bundle, install, and launch on an iPhone.
+# EXPECT_BUNDLE_STRING (or `make deploy EXPECT=<str>`): a string the built
+# main.jsbundle must contain, checked before install by
+# scripts/bundle-contains.js (UTF-8, plus UTF-16LE for non-ASCII). Unset:
+# the check is skipped with one line. A value that contains a single quote
+# is not supported through `make deploy`. The launch is retried once.
+
 # Resolve repo root from script location
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
