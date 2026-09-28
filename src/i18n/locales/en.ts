@@ -1086,6 +1086,15 @@ export const en = {
       pausedTitle: 'Reminders paused',
       pausedBody: 'Turn them on again in Kiko.',
     },
+    schedule: {
+      daily: 'Every day at {{time}}',
+      weekly: '{{days}} at {{time}}',
+      monthly: 'Day {{day}} of every month at {{time}}',
+      interval_one: 'Every {{count}} days at {{time}}',
+      interval_few: 'Every {{count}} days at {{time}}',
+      interval_many: 'Every {{count}} days at {{time}}',
+      interval_other: 'Every {{count}} days at {{time}}',
+    },
   },
   // The human-readable display name per ISO currency code, shown alongside the
   // code in the searchable CurrencyField (trigger label, rows, accessibility

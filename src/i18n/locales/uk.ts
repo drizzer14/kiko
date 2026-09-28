@@ -842,6 +842,15 @@ export const uk: typeof en = {
       pausedTitle: 'Нагадування призупинено',
       pausedBody: 'Увімкніть їх знову в Кіко.',
     },
+    schedule: {
+      daily: 'Щодня о {{time}}',
+      weekly: '{{days}} о {{time}}',
+      monthly: '{{day}}-го числа щомісяця о {{time}}',
+      interval_one: 'Кожен {{count}} день о {{time}}',
+      interval_few: 'Кожні {{count}} дні о {{time}}',
+      interval_many: 'Кожні {{count}} днів о {{time}}',
+      interval_other: 'Кожні {{count}} дня о {{time}}',
+    },
   },
   // Ukrainian currency display names, keyed by ISO letter code (mirrors
   // en.currencyNames). Official NBU names where the NBU exchange feed quotes the
