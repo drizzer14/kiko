@@ -55,13 +55,19 @@ export const importParsedStatement = async (
 ): Promise<ImportResult> => {
   // Both one-shot statement-import rewrites are no-ops once their own flag
   // is already `true` (the common case, after the FIRST import following
-  // launch). Running them here too — not just from `MigrationsGate` —
-  // covers the device that imports before its next cold launch ever
-  // completes the gate's own background pass. If the rezone step still
-  // hasn't flipped its flag afterward (its own `write()` failed), refuse the
-  // import outright rather than writing new-convention rows next to
-  // not-yet-rezoned old-convention ones — the screen's existing generic
-  // import-failure copy covers this, so no new i18n key is needed.
+  // launch). Running them here too — not just from `MigrationsGate`, which
+  // already awaits both before the app becomes usable — covers the device
+  // whose gate-time rezone FAILED (its own `write()` failed, caught by the
+  // gate's own `.catch`, leaving the flag `false`): this gives it one more
+  // chance right before writing any new import row. If the rezone step
+  // still hasn't flipped its flag afterward, refuse the import outright
+  // rather than writing new-convention rows next to not-yet-rezoned
+  // old-convention ones — the screen's existing generic import-failure copy
+  // covers this, so no new i18n key is needed. The dedup-key upgrade has no
+  // matching explicit check: a persistently failing rewrite here throws and
+  // blocks the import with that same generic error too, which is
+  // acceptable — the row it would have rewritten stays reachable under its
+  // legacy key either way.
   await upgradeStoredDedupKeys();
   await rezoneImportTimes();
 

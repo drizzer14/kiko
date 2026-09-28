@@ -110,9 +110,9 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
     // per-account move for the Binance credentials. The dedup-key upgrade
     // runs next, since it only needs the settings row (already ensured above)
     // and touches no Keychain state the credential migrations depend on; the
-    // Kyiv-rezone step runs right after it — a not-yet-␟-upgraded key's time
-    // token still rewrites correctly either order, but this keeps the two
-    // one-shot statement-import upgrades adjacent. Both steps' own `.catch`
+    // device-zone rezone step runs right after it — a not-yet-␟-upgraded
+    // key's time token still rewrites correctly either order, but this keeps
+    // the two one-shot statement-import upgrades adjacent. Both steps' own `.catch`
     // below (unlike every migration ahead of them) keeps a failure from
     // reaching the chain's own `.catch`, since each is non-critical here (see
     // that `.catch`'s doc comment).
