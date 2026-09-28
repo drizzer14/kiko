@@ -1715,21 +1715,23 @@ describe('runSync', () => {
       expect(fromSecondsForA).not.toBe(Math.floor(recentCursor / 1000));
     });
 
-    // A full fetch where one card fails must NOT graduate `lastFullSyncAt` —
-    // SYNC-1: a graduated marker becomes the NEXT run's from-cursor for that
-    // same failed card (`fromSecondsForCard` widens a behind-marker card to
-    // `lastFullSyncAt`), so graduating on a partial failure narrows the retry's
-    // own window and permanently drops whatever the failed run itself was
-    // supposed to cover (the 31-day first-connect lookback, or the span since
-    // the prior full fetch). The failed card is still persisted for a forced
-    // retry next run; the statement cursor still stays put so that retry
-    // re-covers the failed window from the SAME unadvanced markers (dedup
-    // keeps it idempotent). See the invariant tests below for the two
-    // end-to-end scenarios this protects.
-    it('does not graduate the full-fetch marker on a partial failure, and persists the failed card without advancing the cursor', async () => {
+    // A full fetch where one card fails must NOT GRADUATE `lastFullSyncAt` to
+    // this run's ceiling — a graduated marker becomes the NEXT run's
+    // from-cursor for that same failed card (`fromSecondsForCard` widens a
+    // behind-marker card to `lastFullSyncAt`), so graduating on a partial
+    // failure narrows the retry's own window and permanently drops whatever
+    // the failed run itself was supposed to cover. This IS the first sync
+    // ever (both cursors start null), so it still writes an ANCHOR — this
+    // run's own from-cursor, never its ceiling — so a delayed retry does not
+    // slide that window forward with the clock; see the invariant tests
+    // below for the end-to-end scenarios this protects. The failed card is
+    // also persisted for a forced retry next run; the statement cursor stays
+    // put so that retry re-covers the failed window idempotently.
+    it('anchors, but does not graduate, the full-fetch marker on a first-sync partial failure, and persists the failed card without advancing the cursor', async () => {
       const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
       const { deps } = makeInMemoryDeps(() => [], [connected]);
-      deps.now = () => 1_700_000_000_000;
+      const toSeconds = 1_700_000_000;
+      deps.now = () => toSeconds * 1000;
       // First sync ever → full fetch. Card A throws, so the run partially fails.
       deps.fetchStatement = async (_token, accountId) => {
         if (decodeURIComponent(accountId) === idA) {
@@ -1753,14 +1755,19 @@ describe('runSync', () => {
 
       await expect(runSync(deps)).rejects.toThrow();
 
-      // Neither cursor advances on the partial failure; the failed card is
-      // stored for a forced retry.
-      expect(setLastFullSyncAt).not.toHaveBeenCalled();
+      // Anchored to this run's own FROM cursor (the default 31-day lookback
+      // below the ceiling), never the ceiling itself; the failed card is
+      // stored for a forced retry; the statement cursor does not advance.
+      const defaultLookbackSeconds = 31 * 24 * 60 * 60;
+      expect(setLastFullSyncAt).toHaveBeenCalledWith(
+        expect.any(String),
+        (toSeconds - defaultLookbackSeconds) * 1000,
+      );
       expect(setFailedSyncIds).toHaveBeenCalledWith(expect.any(String), [idA]);
       expect(setLastSyncAt).not.toHaveBeenCalled();
     });
 
-    // SYNC-1 invariant, first-connect case (`lastSyncAt` null): the from-window
+    // Invariant, first-connect case (`lastSyncAt` null): the from-window
     // an immediate retry uses for the failed card must never start LATER than
     // the window the failed run itself used, or the days between them are lost
     // forever (the balance is overwritten from client-info regardless, so
@@ -1801,7 +1808,59 @@ describe('runSync', () => {
       expect(fromSecondsRun2).toBeLessThanOrEqual(fromSecondsRun1);
     });
 
-    // SYNC-1 invariant, periodic full-fetch case (`lastSyncAt` already set): same
+    // The invariant above holds at the SAME clock instant, but not yet across
+    // a delayed retry: with both cursors null, not graduating on failure
+    // alone still leaves `lastFullSyncAt` null, so the null-cursor fallback
+    // (`toSeconds - DEFAULT_LOOKBACK_SECONDS`) recomputes fresh on every
+    // attempt and SLIDES FORWARD with the real clock — a user who reopens the
+    // app days later gets a retry window that starts days later too,
+    // permanently losing the days in between (the balance still looks right,
+    // since it is overwritten from client-info regardless).
+    it("keeps the failed card's retry window fixed even when the retry happens days later", async () => {
+      const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+      const { deps, syncStateRow } = makeInMemoryDeps(() => [], [connected]);
+      const startedAt = 1_700_000_000_000;
+      let clockNow = startedAt;
+      deps.now = () => clockNow;
+      deps.syncStateRepo.setLastFullSyncAt = async (_accountId, timestamp) => {
+        syncStateRow.lastFullSyncAt = timestamp;
+      };
+      let cardAShouldFail = true;
+      const fetchStatement = jest.fn(async (_token: string, accountId: string) => {
+        if (decodeURIComponent(accountId) === idA && cardAShouldFail) {
+          throw new Error('Monobank request failed: 500');
+        }
+
+        return [] as MonobankStatementItem[];
+      });
+      deps.fetchStatement = fetchStatement as unknown as SyncDeps['fetchStatement'];
+
+      // First sync ever, card A fails: a partial failure.
+      await expect(runSync(deps)).rejects.toThrow();
+      // The OLDEST (last) paged call for A, not the first: once the retry's
+      // own span exceeds the 31-day API window (the anchor plus the elapsed
+      // delay), `fetchAllStatements` pages backward from `toSeconds` and the
+      // FIRST call's own `windowFrom` is capped to the page boundary, not the
+      // true bottom of the range — only the final page's `windowFrom`
+      // reaches the actual anchor, in both a single-page and a multi-page run.
+      const fromSecondsRun1 = (fetchStatement as jest.Mock).mock.calls
+        .filter(([, accountId]) => decodeURIComponent(accountId as string) === idA)
+        .at(-1)?.[2] as number;
+
+      fetchStatement.mockClear();
+      cardAShouldFail = false;
+      // Retry 3 days later — the user reopens the app after a while, not
+      // immediately.
+      clockNow = startedAt + 3 * 24 * 60 * 60 * 1000;
+      await runSync(deps);
+      const fromSecondsRun2 = (fetchStatement as jest.Mock).mock.calls
+        .filter(([, accountId]) => decodeURIComponent(accountId as string) === idA)
+        .at(-1)?.[2] as number;
+
+      expect(fromSecondsRun2).toBe(fromSecondsRun1);
+    });
+
+    // Invariant, periodic full-fetch case (`lastSyncAt` already set): same
     // requirement as above, but starting from a seeded prior full fetch instead
     // of a null one.
     it("keeps the failed card's retry window from widening past the failed run's own window (periodic full fetch)", async () => {
