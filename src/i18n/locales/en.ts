@@ -609,6 +609,8 @@ export const en = {
     binanceApiSecretPlaceholder: 'Binance API secret',
     binanceConnected: 'Binance connected',
     binanceFundingResponseNotArray: 'Binance funding response was not an array',
+    binanceHistoryPending:
+      'Some Binance deposit and withdrawal history is not imported yet. Kiko continues on each sync.',
     binanceKeychainDisclosure:
       "Your Binance API key is stored only in your device's Keychain, used only to fetch your own data directly from Binance, and is never sent to Kiko or any server.",
     binanceMissingBalancesArray: 'Binance account response did not contain a balances array',
