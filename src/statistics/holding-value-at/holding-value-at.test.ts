@@ -111,21 +111,38 @@ describe('createHoldingValuer', () => {
     expect(valueAt(T0 + 10 * DAY)).toBe(referenceHoldingValueAt(holding, [], T0 + 10 * DAY));
   });
 
-  it('stays well within budget across many buckets for one large-ledger holding', () => {
+  it('is at least 20x faster than the reference implementation across many buckets for one large-ledger holding', () => {
     const holding = cashHolding(0);
     const transactions = Array.from({ length: 5_000 }, (_, index) =>
       transaction(index % 400, index % 2 === 0 ? 1_000 : -700),
     );
+    const buckets = Array.from({ length: 400 }, (_, day) => T0 + day * DAY);
+
+    const optimizedStarted = performance.now();
     const valueAt = createHoldingValuer(holding, transactions);
-    const started = performance.now();
 
-    for (let day = 0; day < 400; day += 1) {
-      valueAt(T0 + day * DAY);
+    for (const t of buckets) {
+      valueAt(t);
     }
+    const optimizedElapsed = performance.now() - optimizedStarted;
 
-    // A loose budget (~5x a typical local run) — this asserts the per-bucket
-    // binary search stayed near-instant (it ran in a few ms locally), not a
-    // tight wall-clock SLA a busier CI/dev machine could miss by noise alone.
-    expect(performance.now() - started).toBeLessThan(1_000);
+    const referenceStarted = performance.now();
+
+    for (const t of buckets) {
+      referenceHoldingValueAt(holding, transactions, t);
+    }
+    const referenceElapsed = performance.now() - referenceStarted;
+
+    // A RELATIVE guard, not a wall-clock SLA — an absolute millisecond budget
+    // is only ever as tight as the SLOWEST machine it must tolerate, so it
+    // either flakes on a busy one or stops guarding anything on a fast one
+    // (the reference implementation itself ran in under the old budget here).
+    // The naive per-bucket reduce/filter is O(buckets * transactions); the
+    // precompute-once-then-binary-search shape is
+    // O(transactions log transactions + buckets log transactions) — at this
+    // scale that ratio is dramatic on ANY machine, so asserting it directly
+    // catches a regression back to the per-bucket shape regardless of
+    // absolute speed.
+    expect(optimizedElapsed).toBeLessThan(referenceElapsed / 20);
   });
 });

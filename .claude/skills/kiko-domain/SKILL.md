@@ -843,8 +843,12 @@ local-day bounds ONCE per filter run, and the `.filter` callback itself
 construction per transaction row. This shape (loop-invariant Date math
 inside a hot per-row callback) is mechanized by test, not by a Semgrep
 rule: `holding-value-at.test.ts`'s parity test against
-`referenceHoldingValueAt` plus its scaling test are what would catch a
-regression back to per-bucket Date recomputation — a static AST rule
+`referenceHoldingValueAt`, plus its RELATIVE speed guard (asserting
+`createHoldingValuer` runs at least 20x faster than
+`referenceHoldingValueAt` over the same many-bucket input, not a fixed
+millisecond budget — a wall-clock SLA is only ever as tight as the
+slowest machine it tolerates), are what would catch a regression back
+to per-bucket Date recomputation — a static AST rule
 looking for `startOfLocalDay`/`endOfLocalDay`/`new Date(...)` inside an
 array callback could not tell a genuinely hot per-bucket call site from a
 one-off, harmless one (e.g. `reconcile-bond-funding.ts`'s own
