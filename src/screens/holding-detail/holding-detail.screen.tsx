@@ -15,6 +15,7 @@ import {
   buildCategoryDisplayMap,
   DEFAULT_CATEGORY_KEY,
   resolveCategoryDisplay,
+  resolveCategoryKey,
 } from '@kiko/categories/category-display';
 import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
@@ -456,6 +457,11 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
         categoryByKey,
         defaultCategoryKey,
       );
+      const categoryKey = resolveCategoryKey(
+        transactionRow.transaction.category,
+        categoryByKey,
+        defaultCategoryKey,
+      );
 
       // The row's human-readable description, reused as both the row label and
       // the name the delete confirmation spells out ("Delete <description>").
@@ -502,10 +508,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
                       name={category.icon}
                       size={theme.iconSizes.body}
                       tone="textSecondary"
-                      color={resolveCategoryColor(
-                        category.color,
-                        transactionRow.transaction.category?.toLowerCase() || defaultCategoryKey,
-                      )}
+                      color={resolveCategoryColor(category.color, categoryKey)}
                       accessibilityLabel={category.title}
                     />
                     {/* A small "loan payment" marker, uniform with Home's
