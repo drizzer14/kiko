@@ -1,4 +1,4 @@
-import { fetchNbuHistory } from './nbu-history';
+import { fetchNbuHistory, NBU_HISTORY_REQUEST_INTERVAL_MS } from './nbu-history';
 
 type NbuRow = {
   exchangedate: string;
@@ -167,7 +167,7 @@ describe('fetchNbuHistory', () => {
     expect(sleep).toHaveBeenCalledTimes(2);
 
     for (const call of sleep.mock.calls) {
-      expect(call[0]).toBeGreaterThanOrEqual(250);
+      expect(call[0]).toBeGreaterThanOrEqual(NBU_HISTORY_REQUEST_INTERVAL_MS);
     }
   });
 });
