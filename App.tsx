@@ -15,6 +15,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { navigationDarkTheme } from '@kiko/navigation/dark-theme';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useReminderScheduler } from '@kiko/reminders/use-reminder-scheduler';
 import { useSyncLanguageWithSettings } from '@kiko/i18n/use-sync-language-with-settings';
 
 /**
@@ -23,12 +24,14 @@ import { useSyncLanguageWithSettings } from '@kiko/i18n/use-sync-language-with-s
  * `MigrationsGate`'s own init chain guarantees exists before this ever mounts.
  * Hands off to the navigation stack. `useAutoSync` kicks off a throttled
  * background sync of the connected account without blocking this first
- * render.
+ * render. `useReminderScheduler` re-plans the pending reminder notifications.
  */
 const AppRoot: FC = () => {
   useSyncLanguageWithSettings();
 
   useAutoSync();
+
+  useReminderScheduler();
 
   return (
     <NavigationContainer theme={navigationDarkTheme}>

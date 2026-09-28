@@ -3,7 +3,8 @@
  */
 
 import type { ReactNode } from 'react';
-import { render } from '@testing-library/react-native';
+import { remindersNative } from '@kiko/reminders/native';
+import { render, waitFor } from '@testing-library/react-native';
 
 // MigrationsGate pulls in the op-sqlite native binding, which has no jest
 // binary; stub it to render its children as if migrations already succeeded.
@@ -56,6 +57,17 @@ jest.mock('@kiko/accounts/accounts.repo', () => {
   };
 });
 
+// useReminderScheduler (wired into AppRoot) one-shot `await`s these directly.
+// Stub them to model a user with no reminders and no queued responses, so the
+// smoke test exercises the scheduler's real "no reminders" path on purpose
+// rather than passing through a swallowed "database not initialized" error.
+jest.mock('@kiko/reminders/repo/reminders.repo', () => ({
+  remindersRepo: {
+    hasAnyQuery: () => Promise.resolve([]),
+    recordEngagements: () => Promise.resolve(),
+  },
+}));
+
 // The Home screen is data-driven (accounts/holdings/rates/settings via
 // useLiveQuery). This boot smoke test only asserts the screen mounts, so stub
 // the hook to return empty data rather than opening a real op-sqlite reactive
@@ -70,5 +82,13 @@ describe('App', () => {
   it('boots to the Home screen', async () => {
     const { findByText } = await render(<App />);
     expect(await findByText('Home')).toBeTruthy();
+  });
+
+  it('re-plans the reminders once the app root mounts', async () => {
+    const replaceRequests = jest.spyOn(remindersNative, 'replaceRequests');
+
+    await render(<App />);
+
+    await waitFor(() => expect(replaceRequests).toHaveBeenCalledWith([], []));
   });
 });
