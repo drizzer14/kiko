@@ -1,7 +1,10 @@
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { getTableColumns } from 'drizzle-orm';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
+
+import { settings } from './schema';
 
 /**
  * A removed feature can leave a live-but-unread schema column behind
@@ -47,14 +50,12 @@ const SCHEMA_PATH = join(__dirname, 'schema.ts');
 const SELF_PATH = __filename;
 const SRC_ROOT = join(__dirname, '..');
 
-const settingsColumns = (): string[] => {
-  const source = readFileSync(SCHEMA_PATH, 'utf8');
-  const block = source
-    .split("export const settings = sqliteTable('settings', {")[1]
-    ?.split('});')[0];
-
-  return [...(block ?? '').matchAll(/^ {2}(\w+):/gm)].map((match) => match[1] as string);
-};
+// Reads the column names off the live table object, not schema.ts's own
+// text: Stryker's instrumented copy of schema.ts no longer contains the
+// literal `export const settings = sqliteTable('settings', {` a text split
+// once matched against, so a live table read is the only form immune to
+// that rewrite.
+const settingsColumns = (): string[] => Object.keys(getTableColumns(settings));
 
 const sourceFiles = (directory: string): string[] => {
   return readdirSync(directory).flatMap((entry) => {
