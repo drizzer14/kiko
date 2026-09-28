@@ -90,9 +90,42 @@ describe('scripts/checks/kill-guard-probe.sh (sentinel probe runner)', () => {
   it.each([
     ['bash', "kg_senti$''nel_target -x", `${SENTINEL} -x`],
     ['zsh', "kg_senti$''nel_target -x", `${SENTINEL} -x`],
-    ['bash', 'kg_senti{n,}el_target -x', `${SENTINEL} kg_sentiel_target -x`],
   ])('runs in %s the spelling %s when it is not refused', (shell, probe, call) => {
     expectStub(runProbe(shell, probe), call);
+  });
+
+  // A glob, an ANSI-C escape, an expansion inside a word, or a brace
+  // alternative lets the shell rebuild a word the text never spells out.
+  it.each([
+    'kg_sentinel_tar?et -x',
+    'kg_sentinel_tar*et -x',
+    'kg_sentinel_tar[g]et -x',
+    "$'kg_sentinel_t\\x61rget' -x",
+    "$'kg_sentinel_t\\141rget' -x",
+    "$'kg_sentinel_t\\u0061rget' -x",
+    'kg_sentinel_targ$@et -x',
+    `kg_sentinel_targ\${@}et -x`,
+    'kg_sentinel_targ$(:)et -x',
+    'kg_sentinel_targ$( )et -x',
+    'kg_sentinel_targ`:`et -x',
+    'kg_sentinel_targ"$(echo e)"t -x',
+    '$(:)kg_sentinel_target -x',
+    `kg_sentinel_targ\${unset}et -x`,
+    'kg_sentinel_tar{g,x}et -x',
+    'kg_sentinel_tar{g..g}et -x',
+    'cd /tmp/kg/fake{_,}main',
+  ])('refuses a spelling the shell rebuilds: %s', (probe) => {
+    const result = runProbe('bash', probe, REFUSE_ALSO);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('refused');
+    expect(result.stdout).toBe('');
+  });
+
+  it.each(SHELLS)('runs a command substitution that stands alone as a word in %s', (shell) => {
+    const result = runProbe(shell, `${SENTINEL} "$(printf a)" $(printf b)`);
+
+    expectStub(result, `${SENTINEL} a b`);
   });
 
   it('refuses a shell other than bash or zsh', () => {
