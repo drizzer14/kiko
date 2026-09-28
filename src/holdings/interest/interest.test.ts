@@ -1,7 +1,6 @@
 import {
   accruedMajor,
   addMonths,
-  biweeklyCreditDates,
   bondCouponDates,
   bondCouponMajor,
   couponPaymentOn,
@@ -359,13 +358,22 @@ describe('depositAccruedMajor — recap-off cumulative interest', () => {
   });
 });
 
-describe('biweeklyCreditDates — opening-day-anchored semi-monthly boundaries', () => {
-  it('reproduces the user statement: opened Jan 11, credits on Feb 1/12, Mar 1/12, Apr 1', () => {
-    // Opened 2024-01-11 (D=11). First accrual runs from Jan 12; each credit is a
-    // period end. Boundaries alternate mid-month (the 12th = D+1) and the 1st.
-    const dates = biweeklyCreditDates(local(2024, 0, 11), local(2024, 3, 1));
+describe('depositLedger bi-weekly period boundaries — opening-day-anchored semi-monthly', () => {
+  it('reproduces the user statement: opened Jan 11, periods end on Feb 1/12, Mar 1/12, Apr 1', () => {
+    // Opened 2024-01-11 (D=11). First accrual runs from Jan 12; each accrual's
+    // date is a period end. Boundaries alternate mid-month (the 12th = D+1)
+    // and the 1st.
+    const start = local(2024, 0, 11);
+    const ledger = depositLedger(
+      [{ amountMinor: 100_000_00, date: start }],
+      12,
+      'bi-weekly',
+      12,
+      start,
+    );
+    const dates = ledger.accruals.slice(0, 5).map((accrual) => accrual.date);
+
     expect(dates).toEqual([
-      local(2024, 0, 12), // Jan 12  (credits Period B of Jan: Jan 12 -> Feb 1)... first accrual start
       local(2024, 1, 1), // Feb 1   (credits Jan 12 -> Feb 1)
       local(2024, 1, 12), // Feb 12 (credits Feb 1 -> Feb 12)
       local(2024, 2, 1), // Mar 1   (credits Feb 12 -> Mar 1)
@@ -376,13 +384,19 @@ describe('biweeklyCreditDates — opening-day-anchored semi-monthly boundaries',
 
   it('clamps the mid-month boundary when the opening day exceeds a month length', () => {
     // Opened Jan 31 (D=31). February has 28 days, so its (D+1) mid-boundary
-    // collapses onto Mar 1: February is one whole period, not two.
-    const dates = biweeklyCreditDates(local(2023, 0, 31), local(2023, 2, 2));
-    expect(dates).toContain(local(2023, 1, 1)); // Feb 1
-    expect(dates).toContain(local(2023, 2, 1)); // Mar 1
-    // February emits no distinct mid-month credit: its only boundaries are the
-    // 1st and the next 1st (Mar), so nothing falls strictly inside the month.
-    expect(dates.some((d) => d > local(2023, 1, 1) && d < local(2023, 2, 1))).toBe(false);
+    // collapses onto Mar 1: February is one whole period (Feb 1 -> Mar 1),
+    // not split into a mid-month and a month-end period.
+    const start = local(2023, 0, 31);
+    const ledger = depositLedger(
+      [{ amountMinor: 100_000_00, date: start }],
+      12,
+      'bi-weekly',
+      12,
+      start,
+    );
+
+    expect(ledger.accruals[0].periodStart).toBe(local(2023, 1, 1)); // Feb 1
+    expect(ledger.accruals[0].date).toBe(local(2023, 2, 1)); // Mar 1
   });
 });
 
@@ -391,17 +405,16 @@ describe('depositLedger bi-weekly capitalization — one per calendar month, eve
   // year, so the collapsed mid-credit (openingDay+1 past the month end — 28
   // in non-leap Feb, 29, 30, 31) is exercised the same way a real user's
   // opening day would be. A 12-month, 12%, bi-weekly, recap-ON deposit
-  // capitalizes exactly once per calendar month over its whole life — never
-  // fewer, regardless of which day it opened on: 11 REGULAR (mid-credit)
-  // capitalizations strictly before maturity, plus the unconditional trailing
-  // period that always closes exactly AT maturity (`depositPeriods`'s own
-  // rule) for the 12th.
+  // capitalizes exactly once per calendar month over its whole life,
+  // regardless of which day it opened on, and the period ending AT maturity
+  // always capitalizes — even for an opening day of 1, where maturity would
+  // otherwise coincide with December's own plain "1st" credit.
   const openingDays = Array.from({ length: 31 }, (_, index) => index + 1);
   const years = [2023, 2024] as const;
   const cases = years.flatMap((year) => openingDays.map((day): [number, number] => [day, year]));
 
   it.each(cases)(
-    'opened on day %s of year %s still capitalizes once per elapsed month',
+    'opened on day %s of year %s still capitalizes once per elapsed month, ending at maturity',
     (day, year) => {
       const start = local(year, 0, day);
       const termMonths = 12;
@@ -415,15 +428,9 @@ describe('depositLedger bi-weekly capitalization — one per calendar month, eve
       );
 
       const capitalizations = ledger.accruals.filter((accrual) => accrual.capitalized);
-      // Opening on the exact 1st is a SEPARATE, pre-existing edge unrelated to
-      // the collapse this table exists to pin: maturity then coincides with
-      // December's own plain "1st" credit (never capitalizing) instead of
-      // falling after it, so no unconditional trailing period is appended —
-      // one fewer capitalization than every other opening day, on both the
-      // old and the fixed code.
-      const expectedCapitalizations = day === 1 ? termMonths - 1 : termMonths;
 
-      expect(capitalizations).toHaveLength(expectedCapitalizations);
+      expect(capitalizations).toHaveLength(termMonths);
+      expect(ledger.accruals[ledger.accruals.length - 1].capitalized).toBe(true);
     },
   );
 
@@ -439,6 +446,28 @@ describe('depositLedger bi-weekly capitalization — one per calendar month, eve
     );
 
     expect(ledger.currentValueMinor).not.toBe(10_000_000);
+  });
+
+  it('capitalizes the final period for a deposit opened exactly on the 1st (100,000 UAH, 12%, 12 months)', () => {
+    const start = local(2026, 0, 1);
+    const maturity = addMonths(start, 12);
+    const ledger = depositLedger(
+      [{ amountMinor: 100_000_00, date: start }],
+      12,
+      'bi-weekly',
+      12,
+      maturity,
+    );
+    const finalAccrual = ledger.accruals[ledger.accruals.length - 1];
+
+    // Opening on the 1st lands maturity on what would otherwise be a plain,
+    // non-capitalizing "1st" credit; the period ending AT maturity must still
+    // capitalize, or the deposit's value is short by a month of net interest.
+    expect(finalAccrual.date).toBe(maturity);
+    expect(finalAccrual.capitalized).toBe(true);
+    expect(ledger.currentValueMinor).toBe(
+      ledger.principalMinor + ledger.capitalizedGrossMinor - ledger.capitalizedTaxMinor,
+    );
   });
 });
 

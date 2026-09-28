@@ -123,17 +123,10 @@ type BiweeklyCredit = { instant: number; capitalizes: boolean };
 //
 // A month whose mid-credit COLLAPSES (openingDay+1 past the month's own
 // length — 28 in a non-leap February, 29, 30, 31 — see `midCredit`) lands on
-// the SAME instant as that month's plain "1st" credit would, one month later,
-// only when the FOLLOWING month's own 1st is that very date — which is
-// exactly what happens, since the collapse target IS `atDay(year, month+1,
-// 1)`. The two credits merge to one instant, and it keeps its mid-month tag
-// (`capitalizes: true`): the capitalization the calendar month was owed still
-// happens, just delayed to the next month's 1st along with that month's own
-// non-capitalizing credit. Re-deriving the tag from the instant's OWN month
-// afterward (as the code once did) cannot tell these two cases apart — Jan
-// 31's collapsed mid-credit and Feb's own "1st" credit are the identical
-// Feb-1 instant — which is what silently dropped a capitalization every time
-// the mid-credit collapsed.
+// the SAME instant as that month's own plain "1st" credit, since the collapse
+// target IS `atDay(year, month+1, 1)`. Pushing the non-capitalizing "1st" on
+// top of that instant would just duplicate it, so it is skipped and the
+// mid-credit's own capitalizing tag stands for the month.
 const biweeklyCredits = (start: number, end: number): BiweeklyCredit[] => {
   const openingDay = new Date(start).getDate();
   const first = new Date(start);
@@ -146,13 +139,12 @@ const biweeklyCredits = (start: number, end: number): BiweeklyCredit[] => {
     const mid = midCredit(year, month, openingDay);
     const nextFirst = atDay(year, month + 1, 1);
 
-    for (const credit of [
-      { instant: mid, capitalizes: true },
-      { instant: nextFirst, capitalizes: false },
-    ]) {
-      if (credit.instant > start && credit.instant <= end) {
-        credits.push(credit);
-      }
+    if (mid > start && mid <= end) {
+      credits.push({ instant: mid, capitalizes: true });
+    }
+
+    if (nextFirst !== mid && nextFirst > start && nextFirst <= end) {
+      credits.push({ instant: nextFirst, capitalizes: false });
     }
 
     if (nextFirst > end) {
@@ -166,28 +158,8 @@ const biweeklyCredits = (start: number, end: number): BiweeklyCredit[] => {
     }
   }
 
-  // The clamp case pushes both a `mid` and a `nextFirst` credit at the SAME
-  // instant — merge by instant, keeping the capitalizing tag when EITHER
-  // source credit carried it, then sort to a clean stream.
-  const capitalizesByInstant = new Map<number, boolean>();
-
-  for (const credit of credits) {
-    capitalizesByInstant.set(
-      credit.instant,
-      (capitalizesByInstant.get(credit.instant) ?? false) || credit.capitalizes,
-    );
-  }
-
-  return [...capitalizesByInstant.entries()]
-    .map(([instant, capitalizes]) => ({ instant, capitalizes }))
-    .sort((a, b) => a.instant - b.instant);
+  return credits;
 };
-
-/** The plain ordered credit instants, for a caller that only needs the dates
- * (not which ones capitalize) — `depositPeriods` uses `biweeklyCredits`
- * itself for the tag. */
-export const biweeklyCreditDates = (start: number, end: number): number[] =>
-  biweeklyCredits(start, end).map((credit) => credit.instant);
 
 // The local-midnight instant one calendar day after `instant`. Every capital
 // tranche — a contribution or a block of capitalized interest — earns from the
@@ -236,6 +208,15 @@ const depositPeriods = (
 
     if (maturity > last) {
       periods.push({ periodStart: last, periodEnd: maturity, capitalize: true });
+    }
+
+    // The period ending AT maturity always capitalizes, even when maturity
+    // coincides with what would otherwise be a plain, non-capitalizing credit
+    // (an opening day of 1 lands maturity on December's own "1st" credit).
+    const finalPeriod = periods[periods.length - 1];
+
+    if (finalPeriod !== undefined) {
+      finalPeriod.capitalize = true;
     }
 
     return periods;
