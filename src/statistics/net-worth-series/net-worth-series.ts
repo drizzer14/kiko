@@ -8,9 +8,13 @@ import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
 import { asBondMeta, type BondMeta } from '@kiko/holdings/holding-metadata';
 import { earliestRateTable, rateTableAt } from '@kiko/rates/rate-history-repo';
 
+import {
+  createHoldingValuer,
+  type SeriesHolding,
+  type SeriesTransaction,
+} from '../holding-value-at';
 import { bucketTimes } from '../buckets';
 import { reconcileBondFunding } from '../reconcile-bond-funding';
-import { holdingValueAt, type SeriesHolding, type SeriesTransaction } from '../holding-value-at';
 
 type HistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate'>;
 
@@ -166,6 +170,14 @@ export const buildNetWorthSeries = (input: {
     };
   });
 
+  // Built ONCE per holding, not once per (holding, bucket) — see
+  // `createHoldingValuer`'s own doc comment for why the per-bucket reduce/filter
+  // it replaces was loop-invariant work repeated at every point.
+  const holdingsWithValuer = valuationHoldings.map((holding) => ({
+    holding,
+    valueAt: createHoldingValuer(holding, transactionsByHolding.get(holding.id) ?? [], book),
+  }));
+
   const earliest = earliestRateTable(historyRows);
   const todayKey = toUtcMidnight(today ?? Date.now());
 
@@ -180,19 +192,11 @@ export const buildNetWorthSeries = (input: {
 
   const points = bucketTimes(range.from, range.to, bucketDays).map((t) => {
     const table = tableAt(t);
-    const total = valuationHoldings
-      .filter((holding) => canConvert(holding.currency, baseCurrency, table))
+    const total = holdingsWithValuer
+      .filter(({ holding }) => canConvert(holding.currency, baseCurrency, table))
       .reduce(
-        (sum, holding) => {
-          const value = holdingValueAt(
-            holding,
-            transactionsByHolding.get(holding.id) ?? [],
-            t,
-            book,
-          );
-
-          return sum.add(convert(Money.of(holding.currency, value), baseCurrency, table));
-        },
+        (sum, { holding, valueAt }) =>
+          sum.add(convert(Money.of(holding.currency, valueAt(t)), baseCurrency, table)),
         Money.of(baseCurrency, 0),
       );
 

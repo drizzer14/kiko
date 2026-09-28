@@ -238,6 +238,12 @@ because it can compare against the actual pinned set.
 |---|---|---|---|
 | (Jest invariant) `__tests__/mutation-cap-docs.test.ts` | The mutation file cap (`MUTATION_FILE_CAP` in `scripts/checks/mutation.sh`) is copied as a number into CLAUDE.md, the `Makefile` help, kiko-linter, ops, harness-workflow, planner.md, checks-internals.md, and the shares-property-metals-debts plan; a cap change that misses one leaves a doc naming a limit the script does not enforce | Jest invariant (reads the assignment and every listed doc) | Each doc in `DOCS_STATING_THE_CAP` must state the cap at least once, and every number any listed doc states in one of the `CAP_STATEMENTS` phrasings (whitespace-collapsed, so a line wrap still matches) must equal the assignment. `docs/harness/documented-exceptions.md` names the cap without a number, so it is checked but not required to state it. A new copy of the number goes in the list; a new phrasing goes in `CAP_STATEMENTS`. |
 
+### Enforced — round-a PERF-2 (loop-invariant Date math inside an array callback)
+
+| Rule id | Finding | Enforce via | Notes |
+|---|---|---|---|
+| `kiko-no-date-math-in-array-callback` | `holding-value-at.ts`'s per-bucket `.filter`/`.reduce` called `startOfLocalDay` on both sides for every row on every bucket a multi-year net-worth line samples — loop-invariant work repeated at every point (fixed by `createHoldingValuer`'s per-holding prefix sum) | Semgrep (`rules/semgrep-prewrite.yml`, also loaded by `check:security`/`check:rules`) | `paths.include: src/statistics/**`, so its fixture pair is nested at `rules/fixtures/kiko-no-date-math-in-array-callback/src/statistics/` (kiko-linter's "Semgrep facts"). Flags `startOfLocalDay`/`endOfLocalDay`/`new Date(...)` inside a `.filter`/`.map`/`.reduce`/`.some`/`.every` callback via a `metavariable-pattern` deep search (`<... $CALL(...) ...>`) over the callback argument. Fixing the real tree required rewriting `reconcile-bond-funding.ts`'s candidate-building `.flatMap`/`.map`/`.filter` chain into a plain nested loop (same order preserved) and `holdingValueAt`'s own reduce/filter into a single pass, since both matched too. `src/screens/home/home.screen.tsx`'s `dateRangeBounds`/`withinBounds` hoist the same way but stay outside this rule's `src/statistics/**` scope (not mechanized there). |
+
 ## Go-forward process (to wire into the retrospect/scribe loop)
 
 After each code review, triage every finding:

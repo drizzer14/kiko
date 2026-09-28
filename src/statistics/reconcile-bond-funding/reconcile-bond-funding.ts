@@ -118,25 +118,40 @@ export const reconcileBondFunding = (
   const tolerance = typedPrice * AMOUNT_TOLERANCE_FRACTION;
   const windowMs = FUNDING_WINDOW_DAYS * DAY_MS;
 
-  const candidates = holdings.flatMap((holding) =>
-    holding.currency === bondCurrency
-      ? (transactionsByHolding.get(holding.id) ?? [])
-          .map((transaction, index) => ({ transaction, key: `${holding.id}:${index}` }))
-          .filter(
-            ({ transaction, key }) =>
-              transaction.amountMinorUnits < 0 &&
-              Math.abs(Math.abs(transaction.amountMinorUnits) - typedPrice) <= tolerance &&
-              Math.abs(dayKeyOf(transaction.time) - typedDayKey) <= windowMs &&
-              !claimed.has(key),
-          )
-          .map(({ transaction, key }) => ({
-            day: startOfLocalDay(transaction.time),
-            dayKey: dayKeyOf(transaction.time),
-            costMinorUnits: Math.abs(transaction.amountMinorUnits),
-            key,
-          }))
-      : [],
-  );
+  // A plain nested loop (not a `.flatMap`/`.map`/`.filter` chain) so each
+  // candidate's local-day key is computed once, directly, rather than inside
+  // an array-callback — see kiko-domain's statistics performance note. Order
+  // is preserved exactly: holdings in their given order, then each holding's
+  // own transactions by index, matching what the replaced `.flatMap` chain
+  // produced.
+  const candidates: { day: number; dayKey: number; costMinorUnits: number; key: string }[] = [];
+
+  for (const holding of holdings) {
+    if (holding.currency !== bondCurrency) {
+      continue;
+    }
+
+    const transactions = transactionsByHolding.get(holding.id) ?? [];
+
+    for (let index = 0; index < transactions.length; index += 1) {
+      const transaction = transactions[index];
+      const key = `${holding.id}:${index}`;
+      const isCandidate =
+        transaction.amountMinorUnits < 0 &&
+        Math.abs(Math.abs(transaction.amountMinorUnits) - typedPrice) <= tolerance &&
+        Math.abs(dayKeyOf(transaction.time) - typedDayKey) <= windowMs &&
+        !claimed.has(key);
+
+      if (isCandidate) {
+        candidates.push({
+          day: startOfLocalDay(transaction.time),
+          dayKey: dayKeyOf(transaction.time),
+          costMinorUnits: Math.abs(transaction.amountMinorUnits),
+          key,
+        });
+      }
+    }
+  }
 
   // No matching outflow: recognize from the typed day at the typed price (today's
   // behavior — a legacy, FX-funded, or genuinely manual bond).

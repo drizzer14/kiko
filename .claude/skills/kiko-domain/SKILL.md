@@ -788,6 +788,37 @@ holdings array's own (user-controlled sort) order. A bond that loses the
 claim falls back to its own typed day/price, same as a genuinely unmatched
 bond.
 
+### Statistics series performance
+
+`buildNetWorthSeries` values every holding at every bucket, so anything
+loop-invariant per holding (not per bucket) must be computed ONCE, outside
+the per-bucket loop, not re-derived at every point. `createHoldingValuer`
+(`src/statistics/holding-value-at/`) is the per-holding one-time setup:
+built once per holding before the bucket loop, it groups that holding's
+transactions by local-day key and builds a running prefix sum, then returns
+a closure that answers each bucket's `valueAt(t)` with a binary search
+instead of re-scanning the whole transaction list. `holdingValueAt` (the
+original single-call function) stays, unchanged in behavior, for the
+one-off call sites that value a holding at a single instant rather than a
+whole bucketed series.
+
+A Semgrep rule (`kiko-no-date-math-in-array-callback`,
+`rules/semgrep-prewrite.yml`) mechanizes the general shape this bug took:
+`startOfLocalDay`/`endOfLocalDay`/`new Date(...)` inside a
+`.filter`/`.map`/`.reduce`/`.some`/`.every` callback anywhere under
+`src/statistics/**` is an ERROR — precompute the Date-derived value once per
+row (a plain loop, a `Map` keyed by row, or a value hoisted above the
+callback) instead. `reconcile-bond-funding.ts`'s candidate-building pass
+was rewritten from a `.flatMap`/`.map`/`.filter` chain to a plain nested
+loop for the same reason, preserving the exact same holdings-then-
+transaction-index order the chain produced.
+
+`home.screen.tsx`'s `withinBounds`/`dateRangeBounds` follow the same
+principle even though Home is outside the rule's `src/statistics/**` scope:
+`dateRangeBounds(dateFrom, dateTo)` resolves the local-day bounds ONCE per
+filter run, and the `.filter` callback itself (`withinBounds`) does only a
+plain numeric comparison — no Date construction per transaction row.
+
 ## Price series and priced holdings
 
 See `kiko-pricing` for `price_points`, `PriceBook`, priced-holding

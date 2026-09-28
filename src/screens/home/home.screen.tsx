@@ -4,6 +4,7 @@ import {
   resolveCategoryDisplay,
   resolveCategoryKey,
 } from '@kiko/categories/category-display';
+import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
@@ -61,17 +62,32 @@ type HomeScreenProps = CompositeScreenProps<
   NativeBottomTabScreenProps<TabParamList, 'HomeTab'>
 >;
 
-// Whether a transaction time falls within the (inclusive) date range. A null
-// bound is open-ended on that side. The `to` bound is pushed to the end of its
-// calendar day — the last millisecond before the NEXT local midnight
-// (DST-correct; see `endOfLocalDay`) — so a same-day transaction any time
-// that day still matches, including on a 25-hour fall-back day.
-const withinDateRange = (time: number, from: Date | null, to: Date | null): boolean => {
-  if (from !== null && time < startOfLocalDay(from.getTime())) {
+type DateRangeBounds = { from: number | undefined; to: number | undefined };
+
+/**
+ * The (inclusive) date-range bounds as raw instants, resolved ONCE per range
+ * rather than once per transaction: `startOfLocalDay`/`endOfLocalDay` are
+ * loop-invariant for every row the filter below checks against the SAME
+ * `from`/`to`, so recomputing them per row was pure waste on a long list. The
+ * `to` bound is pushed to the end of its calendar day — the last millisecond
+ * before the NEXT local midnight (DST-correct; see `endOfLocalDay`) — so a
+ * same-day transaction any time that day still matches, including on a
+ * 25-hour fall-back day. A `null` side stays open-ended.
+ */
+const dateRangeBounds = (from: Date | null, to: Date | null): DateRangeBounds => ({
+  from: foldMap(maybe(from), (date) => startOfLocalDay(date.getTime())),
+  to: foldMap(maybe(to), (date) => endOfLocalDay(date.getTime())),
+});
+
+// Whether `time` falls within already-resolved (inclusive) bounds — a plain
+// numeric comparison, so the filter that calls this per row never re-derives
+// a local-day boundary from `from`/`to` for every transaction.
+const withinBounds = (time: number, bounds: DateRangeBounds): boolean => {
+  if (bounds.from !== undefined && time < bounds.from) {
     return false;
   }
 
-  if (to !== null && time > endOfLocalDay(to.getTime())) {
+  if (bounds.to !== undefined && time > bounds.to) {
     return false;
   }
 
@@ -373,18 +389,18 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     categoryKeyForRow,
     i18n.language,
   ]);
-  const filteredTransactions = useMemo(
-    () =>
-      transactions.filter((row) => {
-        const matchesAccount = selectedAccounts.size === 0 || selectedAccounts.has(row.accountName);
-        const matchesCategory =
-          selectedCategories.size === 0 || selectedCategories.has(categoryKeyForRow(row.category));
-        const matchesDate = withinDateRange(row.time, dateFrom, dateTo);
+  const filteredTransactions = useMemo(() => {
+    const bounds = dateRangeBounds(dateFrom, dateTo);
 
-        return matchesAccount && matchesCategory && matchesDate;
-      }),
-    [transactions, selectedAccounts, selectedCategories, dateFrom, dateTo, categoryKeyForRow],
-  );
+    return transactions.filter((row) => {
+      const matchesAccount = selectedAccounts.size === 0 || selectedAccounts.has(row.accountName);
+      const matchesCategory =
+        selectedCategories.size === 0 || selectedCategories.has(categoryKeyForRow(row.category));
+      const matchesDate = withinBounds(row.time, bounds);
+
+      return matchesAccount && matchesCategory && matchesDate;
+    });
+  }, [transactions, selectedAccounts, selectedCategories, dateFrom, dateTo, categoryKeyForRow]);
 
   // Grouping/sorting happens after filtering, over the query's newest-first
   // order (transactionsRepo orders by time desc), so sections come out
