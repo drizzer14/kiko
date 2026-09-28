@@ -1077,6 +1077,7 @@ export const en = {
       statementImport: 'Reminds you to import a new statement for this account.',
       addTransactions: 'Reminds you to add new transactions to this account.',
     },
+    emptyNoKinds: 'Reminders appear here after you import a statement for this account.',
     off: 'Off',
     pausedAfterNoResponse: 'Paused after 3 reminders with no response.',
     accountArchived: 'Not sent while the account is archived.',

@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { remindersRepo } from '@kiko/reminders/repo';
 import Box from '@kiko/design-system/components/box';
 import { useDataReady, useLiveQuery } from '@kiko/db';
+import Text from '@kiko/design-system/components/text';
 import Screen from '@kiko/design-system/components/screen';
 import { eligibleReminderKinds } from '@kiko/reminders/rules';
 import ReminderRow from '@kiko/screens/settings/reminder-row';
@@ -104,6 +105,12 @@ const AccountRemindersScreen: FC<AccountRemindersScreenProps> = ({ route, naviga
           {foldMap(maybe(notice), (shown) => (
             <NoticeBanner {...shown} testID="account-reminders-notice" />
           ))}
+
+          {kinds.length === 0 && (
+            <Text variant="caption" tone="textSecondary">
+              {t('reminders.emptyNoKinds')}
+            </Text>
+          )}
 
           {kinds.map((kind) => {
             const saved = reminderOf(kind);

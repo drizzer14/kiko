@@ -138,6 +138,28 @@ describe('AccountRemindersScreen — rows', () => {
     ).toEqual(['Statement import', 'Add transactions']);
   });
 
+  it('explains an empty page on a synced account with no import', async () => {
+    seed({ account: SYNCED, hasImport: false });
+
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(
+      getByText('Reminders appear here after you import a statement for this account.'),
+    ).toBeTruthy();
+    expect(queryByText('Statement import')).toBeNull();
+    expect(queryByText('Add transactions')).toBeNull();
+  });
+
+  it('shows no empty caption while a row is listed', async () => {
+    seed({ account: SYNCED, hasImport: false, reminders: [reminder()] });
+
+    const { queryByText } = await renderScreen();
+
+    expect(
+      queryByText('Reminders appear here after you import a statement for this account.'),
+    ).toBeNull();
+  });
+
   it('keeps a saved reminder the account no longer allows, and says why', async () => {
     seed({ account: SYNCED, hasImport: false, reminders: [reminder()] });
 
