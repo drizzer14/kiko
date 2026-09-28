@@ -2,7 +2,7 @@ import { match } from 'ts-pattern';
 
 import { authenticate } from '../biometrics';
 
-export type OwnerConfirmation =
+type OwnerConfirmation =
   | { kind: 'confirmed' }
   // No owner authentication exists on this device — iOS itself asks for the
   // old passcode before it removes one, so there is nothing left to confirm

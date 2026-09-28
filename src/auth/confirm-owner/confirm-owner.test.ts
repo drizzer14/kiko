@@ -21,8 +21,9 @@ describe('confirmOwner', () => {
 
   it.each([
     ['success', { kind: 'confirmed' }],
-    // No owner authentication exists on a passcode-less device; refusing
-    // it here would just alert the user with no retry that could ever work.
+    // confirmOwner only reports noPasscode; it does not decide whether that
+    // is a refusal — each caller does (turning the lock off proceeds on it,
+    // exporting secrets refuses).
     ['passcodeNotSet', { kind: 'noPasscode' }],
     ['cancelled', { kind: 'cancelled' }],
     ['lockout', { kind: 'failed', hintKey: 'auth.hint.lockout' }],
