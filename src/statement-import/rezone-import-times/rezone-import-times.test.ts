@@ -231,16 +231,21 @@ describe('rezoneImportTimesIn (real SQLite)', () => {
     expect(afterSecondRun).toEqual(afterFirstRun);
   });
 
-  // Decision 6: without phase A's temporary key, updating rowB's key to
-  // exactly what rowA's OLD key still holds (before rowA itself is rewritten)
-  // would trip the (source, external_id) UNIQUE index mid-statement.
+  // Without phase A's temporary key, updating rowB's key to exactly what
+  // rowA's OLD key still holds (before rowA itself is rewritten) would trip
+  // the (source, external_id) UNIQUE index mid-statement.
   it('never trips the UNIQUE index on a transient key collision', async () => {
     const rawDatabase = openTestDatabase();
     const drizzleDatabase = executingDrizzle<typeof database>(rawDatabase);
 
     await drizzleDatabase.insert(settings).values({ id: SETTINGS_ID });
 
-    const legacyA = Date.UTC(2026, 0, 15, 12, 0, 0);
+    // A midnight (date-only) legacy row always noon-shifts by a real 12
+    // hours on rezone, in every device zone this app runs in — so rowA's
+    // pre-rezone digits below can never equal its own rezoned instant, which
+    // is what lets rowB's (distinct) pre-rezone time be set to exactly that
+    // rezoned instant without the seed insert itself colliding.
+    const legacyA = Date.UTC(2026, 0, 15, 0, 0, 0);
     const rezonedA = rezoneImportTime(legacyA);
     // rowB's OLD time is deliberately set to rowA's OWN rezoned instant, so
     // rowB's CURRENT key already equals what rowA's key becomes.

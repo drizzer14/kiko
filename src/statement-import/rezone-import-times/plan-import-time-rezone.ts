@@ -72,8 +72,9 @@ export const rezoneDedupKey = (
 const OCCURRENCE_SUFFIX_PATTERN = /^(.*)␟(\d+)$/;
 
 /** Splits a key into its collision-renumbering BASE and existing `␟n`
- * suffix (if any) — a legacy ` n` suffix is not stripped here (decision 6
- * only renumbers with the injective separator). */
+ * suffix (if any) — a legacy ` n` suffix is not stripped here (collision
+ * renumbering only ever adds the injective separator, never the legacy
+ * space-joined one). */
 const baseAndOccurrenceOf = (key: string): { base: string; occurrence: number | undefined } => {
   const match = OCCURRENCE_SUFFIX_PATTERN.exec(key);
 
@@ -178,9 +179,10 @@ const resolveKeyCollisions = (rows: RewrittenRow[]): Map<string, string | null> 
 /**
  * The pure planner both `rezoneImportTimes` (the launch-time executor) and
  * `withImportTimesRezoned` (the restore mirror) apply: rewrites every import
- * row's time and dedup key (decisions 6-7), and every affected holding's
- * `balanceSetAt` (decision 8, scoped to ITS OWN import rows only). Never
- * writes `balanceMinorUnits` — this function has no such field to write.
+ * row's time and dedup key, renumbering any collision the rezone creates,
+ * and every affected holding's `balanceSetAt` (scoped to ITS OWN import rows
+ * only). Never writes `balanceMinorUnits` — this function has no such field
+ * to write.
  */
 export const planImportTimeRezone = (
   importRows: RezoneTransactionInput[],
