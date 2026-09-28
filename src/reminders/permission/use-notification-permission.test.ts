@@ -80,17 +80,6 @@ describe('useNotificationPermission', () => {
     expect(result.current.status).toBe('denied');
   });
 
-  it('reads the status on demand through refresh', async () => {
-    const { result } = await renderHook(() => useNotificationPermission());
-
-    nativeStatus = 'authorized';
-    await act(async () => {
-      await result.current.refresh();
-    });
-
-    expect(result.current.status).toBe('authorized');
-  });
-
   it('keeps the last status and never rejects when the native read fails', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 

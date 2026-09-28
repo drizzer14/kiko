@@ -5,7 +5,6 @@ import { type NotificationAuthorization, remindersNative } from '@kiko/reminders
 
 type NotificationPermission = {
   status: NotificationAuthorization | undefined;
-  refresh: () => Promise<void>;
   request: () => Promise<NotificationAuthorization>;
 };
 
@@ -18,8 +17,8 @@ const warnPermissionFailure = (reason: unknown): void => {
  * The notification permission as iOS reports it. `status` is `undefined`
  * until the first read settles. It is read on mount and again whenever the
  * app becomes active, since the user may have changed it in iOS Settings.
- * Neither function rejects: a failed read keeps the last status, and a failed
- * request counts as denied.
+ * Neither the read nor `request` rejects: a failed read keeps the last status,
+ * and a failed request counts as denied.
  */
 export const useNotificationPermission = (): NotificationPermission => {
   const [status, setStatus] = useState<NotificationAuthorization | undefined>(undefined);
@@ -72,5 +71,5 @@ export const useNotificationPermission = (): NotificationPermission => {
     };
   }, [refresh]);
 
-  return { status, refresh, request };
+  return { status, request };
 };
