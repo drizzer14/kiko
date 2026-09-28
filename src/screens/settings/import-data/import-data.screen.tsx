@@ -49,12 +49,8 @@ const fileNameFrom = (value: string): string => {
 };
 
 // The error copy for a failed import, picked by the prefix `importData`'s own
-// layers put on the message (the decrypt step, the restore's crypto-cash
-// check); anything else reads as an invalid file.
-const IMPORT_ERROR_KEYS = [
-  ['data-transfer/decrypt', 'settings.dataImport.wrongKeyError'],
-  ['data-transfer/crypto-cash-holding', 'settings.dataImport.cryptoCashHoldingError'],
-] as const;
+// decrypt step puts on the message; anything else reads as an invalid file.
+const IMPORT_ERROR_KEYS = [['data-transfer/decrypt', 'settings.dataImport.wrongKeyError']] as const;
 
 const importErrorKey = (error: unknown) => {
   const message = error instanceof Error ? error.message : '';

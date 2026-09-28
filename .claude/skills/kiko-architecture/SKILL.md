@@ -185,7 +185,28 @@ project-level pointer to this section.
   `withLegacyDedupKeysUpgraded` — unlike that mirror's presence-only
   check, it ALSO rewrites an explicit `false`, since a restore replaces
   the whole database and leaves no live device to retry on its own next
-  launch. Next free migration index: `0044`.
+  launch.
+- **A data-only migration that reassigns rows between tables follows the
+  SAME derive-then-mutate, restore-mirrored shape.** Migration
+  `0044_move_crypto_cash_holdings` moves a 1.0-era `cash` holding in a
+  crypto currency (`currency IN ('BTC', 'ETH', 'USDT')`, the frozen set a
+  1.0 build could create — pinned by its own test against
+  `cryptoCurrencyOptions`) onto a `crypto_asset` holding under a crypto
+  account, keeping the holding's own `id` so every transaction, exchange
+  leg, loan link, `price_points` row, and category override attached to
+  it stays attached. Crash-safe, additive-then-mutate order (no delete):
+  a TEMP table snapshots the affected holdings, a TEMP table captures the
+  reuse target BEFORE any account is created (so a just-created account
+  is never mistaken for a pre-existing one), an `INSERT OR IGNORE`
+  creates one `crypto-from-<source account id>` account per affected
+  source ONLY when no eligible account exists, then one `UPDATE` moves
+  the holdings. `run-migrations.ts`'s single transaction makes a crash
+  mid-run roll back cleanly; a second run finds nothing left to move.
+  `restore-snapshot.ts`'s `withCryptoCashHoldingsMoved` applies the
+  IDENTICAL rule to a `.kiko` restore, sharing the SAME deterministic
+  `crypto-from-` id, so restoring an already-migrated export is a no-op
+  for the account it would otherwise recreate. Next free migration index:
+  `0045`.
 
 ## Hard rule: every write goes through `db.transaction()`
 
@@ -1522,6 +1543,20 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   rewrites an explicit `false` — a restore replaces the whole database,
   so there is no live device left to retry the rewrite on its own next
   launch, and the restored database must be final at once.
+- **A migration that reassigns rows between tables gets the SAME
+  restore-side mirror, run FIRST.** Migration 0044 moves a 1.0-era `cash`
+  holding in a crypto currency onto a `crypto_asset` holding under a
+  crypto account — a `.kiko` restore REPLACES the whole `accounts`/
+  `holdings` tables, so a pre-0044 export's stray crypto cash holding
+  needs the identical move applied on restore too, or it would land back
+  in a state no create path allows. `restoreDataSnapshot`'s
+  `withCryptoCashHoldingsMoved` applies the SAME reuse-or-create rule,
+  sharing the SAME deterministic `crypto-from-<source id>` account id the
+  SQL migration derives — this is what makes a restore of an
+  already-migrated export a no-op instead of creating a duplicate
+  account. Runs FIRST (before `withLegacyBalanceSetAtBackfilled` and
+  every later backfill), feeding its own output into every step after it,
+  since it is the one step that can add a NEW account row.
 - **A value that lives inside `holdings.metadata` needs NO restore
   mirror.** A property's dated ownership share (`metadata.ownership`,
   kiko-pricing "Ownership share") rides in the opaque JSON column: a
