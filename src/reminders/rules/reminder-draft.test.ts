@@ -6,7 +6,7 @@ import {
   draftToSchedule,
   type ReminderDraft,
   validateReminderDraft,
-} from './reminder-draft';
+} from '.';
 
 const TODAY: LocalDay = { year: 2026, month: 9, day: 29 };
 const SAVED_ANCHOR: LocalDay = { year: 2026, month: 8, day: 3 };

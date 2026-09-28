@@ -1,4 +1,4 @@
-import { eligibleReminderKinds } from './eligibility';
+import { eligibleReminderKinds } from '.';
 
 const MANUAL_ACCOUNT = { institution: null };
 const SYNCED_ACCOUNT = { institution: 'monobank' };

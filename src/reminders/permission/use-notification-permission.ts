@@ -3,7 +3,7 @@ import either, { bifoldMap } from 'fnts/either';
 import { useCallback, useEffect, useState } from 'react';
 import { type NotificationAuthorization, remindersNative } from '@kiko/reminders/native';
 
-export type NotificationPermission = {
+type NotificationPermission = {
   status: NotificationAuthorization | undefined;
   refresh: () => Promise<void>;
   request: () => Promise<NotificationAuthorization>;

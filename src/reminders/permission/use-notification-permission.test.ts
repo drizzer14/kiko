@@ -2,7 +2,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { act, renderHook } from '@testing-library/react-native';
 import { type NotificationAuthorization, remindersNative } from '@kiko/reminders/native';
 
-import { useNotificationPermission } from './use-notification-permission';
+import { useNotificationPermission } from '.';
 
 const appStateListeners: ((state: AppStateStatus) => void)[] = [];
 

@@ -24,7 +24,7 @@ export type ReminderDraft = {
   savedInterval?: { everyDays: number; anchorDay: LocalDay };
 };
 
-export type ReminderDraftErrors = { weekdaysError?: true; intervalError?: true };
+type ReminderDraftErrors = { weekdaysError?: true; intervalError?: true };
 
 const KIND_DEFAULTS: Record<
   ReminderKind,
