@@ -128,10 +128,10 @@ describe('createHoldingValuer', () => {
 
   // A DETERMINISTIC work-count guard, not a wall-clock timing — coverage
   // instrumentation and machine load skew the two timed sides of a speed
-  // comparison by different amounts, which made a wall-clock version of this
-  // guard flaky under Stryker. Counting each row the valuer actually touches
-  // (its one-time setup pass, plus each bucket's binary-search step) is
-  // immune to both.
+  // comparison by different, unpredictable amounts, so a wall-clock ratio is
+  // inherently unreliable under Stryker. Counting each row the valuer
+  // actually touches (its one-time setup pass, plus each bucket's
+  // binary-search step) is immune to both.
   it('touches a near-linear number of rows as the transaction count grows, for a fixed bucket count', () => {
     const holding = cashHolding(0);
     const buckets = Array.from({ length: 100 }, (_, day) => T0 + day * DAY);

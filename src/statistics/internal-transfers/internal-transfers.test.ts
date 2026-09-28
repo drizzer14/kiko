@@ -286,10 +286,10 @@ describe('internalTransferTxIds', () => {
 
   // A DETERMINISTIC work-count guard, not a wall-clock timing — coverage
   // instrumentation and machine load skew the two timed sides of a speed
-  // comparison by different amounts, which made a wall-clock version of this
-  // guard flaky under Stryker. Counting each credit candidate the matcher
-  // actually visits is immune to both, and still catches a regression back
-  // to the quadratic full-array scan (see the next test).
+  // comparison by different, unpredictable amounts, so a wall-clock ratio is
+  // inherently unreliable under Stryker. Counting each credit candidate the
+  // matcher actually visits is immune to both, and still catches a
+  // regression back to the quadratic full-array scan (see the next test).
   it('visits a near-linear number of credit candidates as the ledger grows', () => {
     // Same rows-per-millisecond density at every size (see `randomLedger`'s
     // own comment) — otherwise a fixed time span alone would inflate
