@@ -60,6 +60,14 @@ describe('parseAmountCell', () => {
     expect(parseAmountCell('1.234,56', ',')).toBe(1_234.56);
   });
 
+  it('accepts a leading + sign with a dot decimal separator', () => {
+    expect(parseAmountCell('+1,234.56', '.')).toBe(1_234.56);
+  });
+
+  it('accepts a leading + sign with a comma decimal separator', () => {
+    expect(parseAmountCell('+1.234,56', ',')).toBe(1_234.56);
+  });
+
   it('accepts a whole-number amount grouped by the other separator, with no decimal part at all', () => {
     expect(parseAmountCell('1,234', '.')).toBe(1_234);
   });

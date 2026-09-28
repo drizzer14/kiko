@@ -11,10 +11,12 @@ const NON_BREAKING_SPACE = ' ';
 const MINUS_SIGN = '−';
 const SPACE_PATTERN = new RegExp(`[ ${NON_BREAKING_SPACE}]`, 'g');
 const THOUSANDS_GROUP_PATTERN = /^\d{3}$/;
-// The group BEFORE the first grouping separator is never itself a full
-// 3-digit group — a leading "0" there (as opposed to a lone "0" cell with no
-// grouping at all) is not how a thousands-grouped number is ever written.
-const FIRST_GROUP_PATTERN = /^-?[1-9]\d{0,2}$/;
+// The group BEFORE the first grouping separator is 1-3 digits (it CAN be a
+// full 3-digit group, e.g. "123,456.78") with no leading zero — a leading
+// "0" there (as opposed to a lone "0" cell with no grouping at all) is not
+// how a thousands-grouped number is ever written. An optional leading sign
+// mirrors `parseAmount`'s own implicit `Number()` sign handling.
+const FIRST_GROUP_PATTERN = /^[-+]?[1-9]\d{0,2}$/;
 
 // The OTHER character is only a real thousands-grouping separator when the
 // leading group is a valid thousands-group lead-in and every group after it
