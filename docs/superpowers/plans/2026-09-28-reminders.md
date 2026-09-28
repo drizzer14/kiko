@@ -324,6 +324,19 @@ Rules (state them in the file's header comment):
 
 ## CS-C1 — Create and manage reminders per account
 
+As built, CS-C1 differs from the snippets below:
+- There is no in-form Delete. The `form.delete` and
+  `form.deleteConfirmTitle` keys are removed; delete is only the
+  page's touch-and-hold menu.
+- `notAvailable` is replaced by `unavailable.statementImport` and
+  `unavailable.addTransactions`.
+- New keys: `emptyNoKinds`, `on`, `turnOff`, `turnOn`, `schedule.at`,
+  `schedule.atEleven` (uk `{{at}}`: 'об' only for 11:xx).
+- The save flow calls `replanReminders()`, not `syncReminders(t)`.
+- The ReminderRow carries a VoiceOver pause action.
+Read `src/reminders/`, the screens, and kiko-architecture 'Reminders
+(local notifications)' before building on them.
+
 Base: CS-B tip.
 
 ### Task C1.1: Shared components (designer; tests first)

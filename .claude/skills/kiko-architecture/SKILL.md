@@ -1540,12 +1540,56 @@ what a change must keep.
   (`settingsRepo.notificationsDeliverableSinceQuery` /
   `setNotificationsDeliverableSince`). Read `schema.ts` for the
   columns; do not copy them here.
-- **Repository.** `remindersRepo`
-  (`src/reminders/repo/reminders.repo.ts`): `hasAnyQuery` (the `LIMIT
-  1` gate), `planInputsQuery` (ONE query: reminders joined to
-  accounts, plus the latest `import` and `manual` transaction
-  `created_at` per reminder account), and the writes
-  `recordEngagements`, `markBackoffPaused`, `clearSnoozes`.
+- **Repository.** `remindersRepo` (`src/reminders/repo/reminders.repo.ts`).
+  Page reads: `listByAccountQuery`, `byIdQuery`, `hasImportQuery`
+  (`LIMIT 1`, any holding of the account). User writes: `create`,
+  `update` (a changed schedule restarts `activeSince` and ends a
+  back-off pause, but not a user pause; it keeps a pending snooze,
+  because iOS keeps it), `setPaused` (resume restarts `activeSince`; a
+  no-op when already in the target state), and `remove`. The re-plan
+  side is unchanged: `hasAnyQuery`, `planInputsQuery`,
+  `recordEngagements`, `markBackoffPaused`, `clearSnoozes`. Read the
+  file for signatures.
+- **Rules.** `src/reminders/rules/` is pure.
+  `eligibleReminderKinds(account, hasImport)`: import reminders need a
+  statement import (synced accounts included); add-transactions
+  reminders need a non-synced account. The form draft: `defaultDraft(kind)`,
+  `draftFromSchedule`, `withFrequency` (switching to weekly preselects
+  today's weekday, and to every-N-days preselects 7),
+  `validateReminderDraft`, `draftToSchedule(draft, today)`. The page
+  lists eligible kinds plus any saved kind that is no longer eligible
+  (with a per-kind `reminders.unavailable.*` caption). When there are
+  none, it shows the `reminders.emptyNoKinds` caption.
+- **Summary.** `describeSchedule(schedule, t, firstDay)`
+  (`src/reminders/schedule/describe-schedule.ts`) reads the time on the
+  24-hour clock. The uk preposition comes from `{{at}}`:
+  `reminders.schedule.atEleven` ('об') for 11:00-11:59 ONLY, and
+  `reminders.schedule.at` ('о') for every other hour, 23:xx and 1:xx
+  included (a user ruling). en has both keys as 'at'.
+- **Permission.** `useNotificationPermission()`
+  (`src/reminders/permission/`) returns `{ status, request }` and never
+  rejects. It reads the status on mount and on every AppState `active`,
+  and exposes no public refresh. `useNotificationPreAlert(onAnswered?)`
+  is the one ask flow: pre-alert sheet, then `request()` after the
+  sheet has closed, then `replanReminders()`, then `onAnswered`. iOS is
+  asked only (a) on a form save while `status === 'notDetermined'` or
+  (b) from the page's NoticeBanner 'Turn on notifications' button. A
+  denied status still saves; the page's banner then offers
+  `Linking.openSettings()`.
+- **Re-plan after a write.** `replanReminders` (exported from
+  `src/reminders/use-reminder-scheduler/`) is the module-level
+  single-flight trigger that the scheduler hook ALSO uses. Every
+  reminder write (form save, pause, delete, permission answer) calls it
+  rather than `syncReminders` directly, so an older re-plan can never
+  overwrite a newer one.
+- **Screens.** `ReminderForm` (`src/screens/forms/reminder-form/`,
+  params `{ reminderId } | { accountId, kind }`) and `AccountReminders`
+  (`src/screens/settings/account-reminders/`, params `{ accountId,
+  name }`) are registered in the accounts stack. They are reached from
+  a `bell` ghost Button in `AccountDetail`'s `headerRight`, shown on
+  EVERY account. The form has NO Delete: a reminder is deleted only
+  from the page row's touch-and-hold `CardContextMenu`, the same as a
+  transaction.
 - **Planner.** `planReminder` / `planAllReminders`
   (`src/reminders/planner/`) are pure; the rules are in
   `plan-reminder.ts`'s header. The ignored count starts at the latest
@@ -1568,7 +1612,7 @@ what a change must keep.
   (`App.tsx`), below `MigrationsGate` and `LockGate`. It re-plans on
   mount, on AppState `active` and `background`, and on an i18n
   `languageChanged` event. It is single-flight with at most one queued
-  follow-up, and it never rejects (a failure is logged).
+  follow-up via `replanReminders`, and it never rejects (a failure is logged).
 - **Account delete.** `accountsRepo.remove` deletes the account's
   `reminders` rows in the same transaction, before the account row (NO
   ACTION FK), next to the `sync_state` delete.

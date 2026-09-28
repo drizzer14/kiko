@@ -1269,8 +1269,17 @@ mechanizable (see harness-workflow's "Classify every finding").
    - The guard only checks `.ts`/`.tsx` outside `rules/fixtures/`,
      `node_modules/`, `ios/`, and `android/` (`isInScope`).
 2. **Semgrep rule.**
-   - `severity: ERROR`, a `message`, `metadata.fix` (one line), and
-     `metadata.skill` (`"<skill> › <heading>"`). A finding without
+   - `severity: ERROR` by default, plus a `message`, `metadata.fix`, and
+     `metadata.skill`. One exception: a rule whose pattern already has
+     findings in the tree that a later track removes may land as
+     `severity: WARNING`. The pre-write guard denies any NEW finding
+     whatever its severity, while `check:security` only surfaces
+     WARNING (Class B) without failing. Example:
+     `kiko-no-process-env-time-zone-in-test`. Promote it to ERROR when
+     `check:security` reports 0 findings for that rule id (not when a
+     grep is empty). Record the promotion condition in the rule's
+     comment and in `docs/harness/review-to-biome-inventory.md`.
+     `metadata.skill` uses `"<skill> › <heading>"`. A finding without
      `metadata.skill` makes the guard deny "could not check".
    - The guard, `check:security`, and `check:rules` load the whole file.
      Nothing else needs wiring.
