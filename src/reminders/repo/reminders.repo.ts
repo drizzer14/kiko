@@ -1,4 +1,5 @@
 import {
+  id,
   accounts,
   database,
   holdings,
@@ -10,9 +11,15 @@ import {
 import { match } from 'ts-pattern';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import type { NotificationResponse } from '@kiko/reminders/native';
-import { and, asc, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm';
+import type { ReminderKind, ReminderSchedule } from '@kiko/reminders/schedule';
+import { and, asc, eq, inArray, isNotNull, isNull, type SQL, sql } from 'drizzle-orm';
 
 type BackoffPause = { reminderId: string; pausedAt: number };
+
+type NewReminder = { accountId: string; kind: ReminderKind; schedule: ReminderSchedule };
+
+const unlessBackoffPaused = (column: SQLiteColumn): SQL =>
+  sql`case when ${reminders.pauseReason} = 'backoff' then null else ${column} end`;
 
 // SQLite's multi-argument max() is NULL as soon as one argument is NULL, so
 // the column and the value each stand in for the other when missing.
@@ -47,6 +54,79 @@ const lastDataByAccount = () =>
 
 export const remindersRepo = {
   hasAnyQuery: () => database.select({ id: reminders.id }).from(reminders).limit(1),
+  listByAccountQuery: (accountId: string) =>
+    database
+      .select()
+      .from(reminders)
+      .where(eq(reminders.accountId, accountId))
+      .orderBy(asc(reminders.kind)),
+  byIdQuery: (reminderId: string) =>
+    database.select().from(reminders).where(eq(reminders.id, reminderId)).limit(1),
+  // Any holding of the account; one row is enough to know.
+  hasImportQuery: (accountId: string) =>
+    database
+      .select({ id: transactions.id })
+      .from(transactions)
+      .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
+      .where(and(eq(holdings.accountId, accountId), eq(transactions.source, 'import')))
+      .limit(1),
+  create: (input: NewReminder): Promise<string> =>
+    write(async (databaseTransaction) => {
+      const reminderId = id();
+
+      await databaseTransaction
+        .insert(reminders)
+        .values({ ...input, id: reminderId, activeSince: Date.now() });
+
+      return reminderId;
+    }),
+  // A changed schedule is a fresh start: the ignored count restarts, and a
+  // back-off pause ends. A pause the user made stays until they resume it.
+  // A pending snooze is kept, because iOS keeps the scheduled snooze through
+  // the edit.
+  update: async (reminderId: string, schedule: ReminderSchedule): Promise<void> => {
+    const now = Date.now();
+
+    await write((databaseTransaction) =>
+      databaseTransaction
+        .update(reminders)
+        .set({
+          schedule,
+          activeSince: now,
+          updatedAt: now,
+          pausedAt: unlessBackoffPaused(reminders.pausedAt),
+          pauseReason: unlessBackoffPaused(reminders.pauseReason),
+        })
+        .where(eq(reminders.id, reminderId)),
+    );
+  },
+  // A resume restarts the ignored count, so the reminders sent before the
+  // pause never count towards a new back-off. Pausing a paused reminder, or
+  // resuming an active one, changes nothing.
+  setPaused: async (reminderId: string, paused: boolean): Promise<void> => {
+    const now = Date.now();
+
+    await write(async (databaseTransaction) => {
+      if (paused) {
+        await databaseTransaction
+          .update(reminders)
+          .set({ pausedAt: now, pauseReason: 'user', updatedAt: now })
+          .where(and(eq(reminders.id, reminderId), isNull(reminders.pausedAt)));
+
+        return;
+      }
+
+      await databaseTransaction
+        .update(reminders)
+        .set({ pausedAt: null, pauseReason: null, activeSince: now, updatedAt: now })
+        .where(and(eq(reminders.id, reminderId), isNotNull(reminders.pausedAt)));
+    });
+  },
+  remove: async (reminderId: string): Promise<void> => {
+    await write((databaseTransaction) =>
+      databaseTransaction.delete(reminders).where(eq(reminders.id, reminderId)),
+    );
+  },
   planInputsQuery: () => {
     const lastData = lastDataByAccount();
 
