@@ -357,9 +357,10 @@ export const holdingsRepo = {
    * `updateWithBalanceDelta` (an edit) and `accountsRepo.createCashAccount`
    * (a cash account's first holding) follow, so a holding's balance is
    * explained by its ledger from the moment it exists (kiko-domain). Without
-   * it, `holdingValueAt` (statistics/holding-value-at/holding-value-at.ts) back-derives an
-   * opening balance out of `balance - sum(transactions)` that no row accounts
-   * for, and the historical net-worth series carries an unexplained step.
+   * it, `createHoldingValuer` (statistics/holding-value-at/holding-value-at.ts)
+   * back-derives an opening balance out of `balance - sum(transactions)` that
+   * no row accounts for, and the historical net-worth series carries an
+   * unexplained step.
    * The row is inserted directly rather than through
    * `transactionsRepo.recordManual`, which would add the amount to the balance
    * this insert has already set. It is the SYNC upserts (`upsertMonobank` /
@@ -477,8 +478,9 @@ export const holdingsRepo = {
    *
    * WHY: kiko-domain's invariant is that a manual balance adjustment always
    * writes a manual transaction, so a holding's balance history stays derivable
-   * from its transactions. `holdingValueAt` (statistics/holding-value-at/holding-value-at.ts)
-   * back-derives each holding's opening balance as
+   * from its transactions. `createHoldingValuer`
+   * (statistics/holding-value-at/holding-value-at.ts) back-derives each
+   * holding's opening balance as
    * `currentBalance - sum(allTransactions)`, so a bare `set({ balanceMinorUnits })`
    * retroactively shifted the ENTIRE historical net-worth series by the delta,
    * with no ledger row to explain it, and left the holding-detail transaction

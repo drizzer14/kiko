@@ -80,19 +80,6 @@ const bucketIndexFor = (time: number, buckets: readonly number[]): number => {
 const isInRange = (time: number, rangeFrom: number, rangeTo: number): boolean =>
   time >= rangeFrom && time <= rangeTo;
 
-// The normalized grouping key for a transaction's category: lowercased, with a
-// null/empty category AND a slug the display map cannot resolve both folding
-// into the DEFAULT category key — the same fold `resolveCategoryKey`
-// (categories/category-display.ts) applies, and category-breakdown.ts's own
-// `groupKey` for the donut. Keeping an unresolvable slug (e.g. a deleted
-// seeded category sync keeps re-writing) as its own bucket produced two
-// same-titled, differently-keyed lines instead of one.
-const groupKey = (
-  category: string | null,
-  byKey: ReadonlyMap<string, CategoryDisplay>,
-  defaultKey: string,
-): string => resolveCategoryKey(category, byKey, defaultKey);
-
 // Per category key: the running spend total (base minor units, for the series
 // sort), a representative raw category value (so the display resolves off the
 // same key the Home screen stored), the count of kept expense rows (the
@@ -160,7 +147,7 @@ const accumulateSpend = (input: {
       continue;
     }
 
-    const key = groupKey(transaction.category, categoryDisplay, defaultCategoryKey);
+    const key = resolveCategoryKey(transaction.category, categoryDisplay, defaultCategoryKey);
 
     if (excluded.has(key)) {
       continue;

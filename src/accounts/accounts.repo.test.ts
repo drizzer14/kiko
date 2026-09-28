@@ -384,8 +384,9 @@ describe('accountsRepo', () => {
     });
 
     // The initial balance is a manual adjustment like any other: without its own
-    // ledger row, `holdingValueAt` back-derives an opening balance the ledger
-    // cannot explain, and the whole historical net-worth series carries a step.
+    // ledger row, `createHoldingValuer` back-derives an opening balance the
+    // ledger cannot explain, and the whole historical net-worth series
+    // carries a step.
     const [, holdingInsert, openingRow] = inserts as [
       Record<string, unknown>,
       Record<string, unknown>,

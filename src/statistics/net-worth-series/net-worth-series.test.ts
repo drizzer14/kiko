@@ -822,8 +822,8 @@ describe('buildNetWorthSeries', () => {
   });
 
   // Threading a real `PriceBook` through overrides the cost-basis
-  // fallback with the priced value — proving `book` reaches `holdingValueAt`
-  // through the whole builder, not just its own default.
+  // fallback with the priced value — proving `book` reaches
+  // `createHoldingValuer` through the whole builder, not just its own default.
   it('values a property at its priced value when a PriceBook is supplied, not its cost basis', () => {
     const propertyHolding = holding({
       id: 'prop',

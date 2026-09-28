@@ -24,7 +24,7 @@ jest.mock('@kiko/db/client', () => {
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
-import { holdingValueAt } from '@kiko/statistics/holding-value-at';
+import { createHoldingValuer } from '@kiko/statistics/holding-value-at';
 import { captureSetDatabaseTransaction } from '@kiko/db/capture-set-tx';
 import { write, accounts, holdings, pricePoints, transactions } from '@kiko/db';
 import { inArrayClauseFromCondition } from '@kiko/db/in-array-clause-test-helper';
@@ -208,8 +208,9 @@ describe('holdingsRepo', () => {
 
     // Same rule the cash-account path follows: an opening balance is a manual
     // adjustment, so it gets its own ledger row inside the SAME transaction.
-    // Without it `holdingValueAt` back-derives an opening balance no ledger row
-    // explains, and the historical net-worth series carries an unexplained step.
+    // Without it `createHoldingValuer` back-derives an opening balance no
+    // ledger row explains, and the historical net-worth series carries an
+    // unexplained step.
     expect(insertTables).toEqual(['holdings', 'transactions']);
     expect(inserts[1]).toMatchObject({
       holdingId,
@@ -1335,14 +1336,14 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     ).rejects.toThrow(/currency/);
   });
 
-  // The regression this function exists to prevent: `holdingValueAt` back-derives
-  // the opening balance as `currentBalance - sum(transactions)`, so a bare
-  // balance write shifted every PAST point of the net-worth series by the delta.
-  // With the delta on the ledger, the past is unchanged and only the edit
-  // instant moves. `holdingValueAt` applies transactions by LOCAL DAY (to match
-  // the local-midnight daily buckets), so the edit and the past point it must not
-  // shift are dated on DIFFERENT calendar days here — a same-day pair would (by
-  // design) land in the same bucket.
+  // The regression this function exists to prevent: `createHoldingValuer`
+  // back-derives the opening balance as `currentBalance - sum(transactions)`,
+  // so a bare balance write shifted every PAST point of the net-worth series
+  // by the delta. With the delta on the ledger, the past is unchanged and
+  // only the edit instant moves. `createHoldingValuer` applies transactions
+  // by LOCAL DAY (to match the local-midnight daily buckets), so the edit and
+  // the past point it must not shift are dated on DIFFERENT calendar days
+  // here — a same-day pair would (by design) land in the same bucket.
   it('leaves the reconstructed history unshifted after a balance edit', async () => {
     const DAY = 86_400_000;
     const base = Date.UTC(2026, 0, 1);
@@ -1357,7 +1358,7 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
       closedAt: null,
     } as const;
     const earlier = { time: base, amountMinorUnits: 10_00 };
-    const before = holdingValueAt(holding, [earlier], pastDay);
+    const before = createHoldingValuer(holding, [earlier])(pastDay);
     const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction({
       currency: holding.currency,
       balanceMinorUnits: holding.balanceMinorUnits,
@@ -1375,8 +1376,8 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
       { time: editDay, amountMinorUnits: captured.inserts[0].amountMinorUnits as number },
     ];
 
-    expect(holdingValueAt(edited, ledger, pastDay)).toBe(before);
-    expect(holdingValueAt(edited, ledger, editDay)).toBe(500_00);
+    expect(createHoldingValuer(edited, ledger)(pastDay)).toBe(before);
+    expect(createHoldingValuer(edited, ledger)(editDay)).toBe(500_00);
   });
 });
 

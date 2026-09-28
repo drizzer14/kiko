@@ -136,10 +136,11 @@ export const accountsRepo = {
    * The opening balance is a manual adjustment like any other, so it gets its
    * own `manual` transaction (kiko-domain: a holding's balance history must stay
    * derivable from its transactions; `holdingsRepo.updateWithBalanceDelta`
-   * enforces the same invariant for a later edit). Without it, `holdingValueAt`
-   * (statistics/holding-value-at/holding-value-at.ts) back-derived the opening balance as
-   * `balance - sum(transactions)` and the whole historical net-worth series
-   * carried a step no ledger row could explain.
+   * enforces the same invariant for a later edit). Without it,
+   * `createHoldingValuer` (statistics/holding-value-at/holding-value-at.ts)
+   * back-derived the opening balance as `balance - sum(transactions)` and the
+   * whole historical net-worth series carried a step no ledger row could
+   * explain.
    *
    * The row is inserted directly rather than through
    * `transactionsRepo.recordManual`, which would ALSO add the amount to a

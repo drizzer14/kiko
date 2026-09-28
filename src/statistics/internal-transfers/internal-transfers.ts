@@ -100,13 +100,9 @@ const lowerBoundByTime = (bucket: CreditCandidate[], lowTime: number): number =>
 // would have found first, restricted up front to the handful of candidates the
 // window and the (currency, amount) bucket admit.
 const findMatchingCredit = (
-  bucket: CreditCandidate[] | undefined,
+  bucket: CreditCandidate[],
   debit: InternalTransferTransaction,
 ): CreditCandidate | undefined => {
-  if (bucket === undefined) {
-    return undefined;
-  }
-
   const lowTime = debit.time - TRANSFER_MATCH_WINDOW_MS;
   const highTime = debit.time + TRANSFER_MATCH_WINDOW_MS;
   let best: CreditCandidate | undefined;
@@ -158,7 +154,8 @@ export const internalTransferTransactionIds = (
       continue;
     }
 
-    const bucket = creditBuckets.get(creditBucketKey(debit.currency, -debit.amountMinorUnits));
+    const bucket =
+      creditBuckets.get(creditBucketKey(debit.currency, -debit.amountMinorUnits)) ?? [];
     const match = findMatchingCredit(bucket, debit);
 
     if (match !== undefined) {
