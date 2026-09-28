@@ -7,9 +7,13 @@ import {
   remindersNative,
   SNOOZE_IDENTIFIER_PREFIX,
 } from '.';
-import NativeKikoReminders from './NativeKikoReminders';
+import type { Spec } from './NativeKikoReminders';
 
-const nativeModule = jest.mocked(NativeKikoReminders);
+// Read through the registry, not a value import: only the wrapper may load
+// the native module.
+const nativeModule = jest.mocked(
+  (jest.requireMock('./NativeKikoReminders') as { default: Spec }).default,
+);
 
 const fireAt: LocalDateTime = { year: 2026, month: 10, day: 25, hour: 3, minute: 30 };
 
