@@ -394,9 +394,8 @@ describe('restoreDataSnapshot', () => {
   // keys — SQLite then defaults the missing columns itself (null / false),
   // exactly like every other nullable column added after `transactions` first
   // shipped (`counterIban`, `changeGroupId`).
-  // Mirrors migration 0044: a cash holding in a crypto currency no longer
-  // refuses the whole file — it MOVES onto a new crypto account instead,
-  // the same as a live device upgrade.
+  // Mirrors migration 0044: a cash holding in a crypto currency moves onto
+  // a new crypto account, the same as a live device upgrade.
   it('moves a cash holding in a crypto currency onto a new crypto account, deleting and inserting every table', async () => {
     const deletedTables: string[] = [];
     const insertedTables: string[] = [];
@@ -493,6 +492,83 @@ describe('restoreDataSnapshot', () => {
     expect(insertedRows.holdings).toEqual([
       fiatHolding,
       { ...cryptoCashHolding, accountId: 'crypto-from-a1', type: 'crypto_asset' },
+    ]);
+  });
+
+  // Ruling: an archived source account's holding never joins a LIVE reuse
+  // target — it would resurface under an account the user cannot see it
+  // moved out of. It gets its own `crypto-from-<source id>` account,
+  // carrying the source's own archivedAt, exactly like the no-eligible-
+  // target case, even though an eligible reuse target exists elsewhere.
+  it('never moves an archived source holding onto a live reuse target', async () => {
+    const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    const reuseTargetAccount = {
+      id: 'cold',
+      name: 'Cold',
+      kind: 'crypto',
+      institution: null,
+      bankId: null,
+      icon: null,
+      color: null,
+      sortOrder: 0,
+      archivedAt: null,
+      createdAt: 1_700_000_000_000,
+    };
+    const archivedSourceAccount = {
+      id: 'old-wallet',
+      name: 'Old wallet',
+      kind: 'cash',
+      institution: null,
+      bankId: null,
+      icon: null,
+      color: null,
+      sortOrder: 5,
+      archivedAt: 1_690_000_000_000,
+      createdAt: 1_600_000_000_000,
+    };
+    const archivedSourceHolding = {
+      id: 'h-usdt',
+      accountId: 'old-wallet',
+      name: 'Tether',
+      type: 'cash',
+      currency: 'USDT',
+      icon: null,
+      color: null,
+      balanceMinorUnits: 100,
+      syncedBalanceMinorUnits: null,
+      balanceSetAt: null,
+      metadata: null,
+      sortOrder: 0,
+      closedAt: null,
+      createdAt: 1_600_000_000_000,
+    };
+
+    await restoreDataSnapshot({
+      ...emptySnapshot,
+      accounts: [reuseTargetAccount, archivedSourceAccount] as never,
+      holdings: [archivedSourceHolding] as never,
+    });
+
+    expect(insertedRows.accounts).toEqual([
+      reuseTargetAccount,
+      archivedSourceAccount,
+      {
+        id: 'crypto-from-old-wallet',
+        name: 'Old wallet',
+        kind: 'crypto',
+        institution: null,
+        bankId: null,
+        icon: null,
+        color: null,
+        sortOrder: 5,
+        archivedAt: 1_690_000_000_000,
+        createdAt: 1_600_000_000_000,
+      },
+    ]);
+    expect(insertedRows.holdings).toEqual([
+      { ...archivedSourceHolding, accountId: 'crypto-from-old-wallet', type: 'crypto_asset' },
     ]);
   });
 

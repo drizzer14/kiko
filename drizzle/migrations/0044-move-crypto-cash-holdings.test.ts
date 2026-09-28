@@ -6,12 +6,34 @@
 // holdings/transactions/price_points/category_overrides tables op-sqlite
 // would run this against), not a hand-rolled subset — the strongest
 // available evidence for a migration that reassigns real rows by id.
-import { id } from '@kiko/db';
-import { join } from 'node:path';
-import { readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { activeHoldings } from '@kiko/rates/active-holdings';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { cryptoCurrencyOptions } from '@kiko/currency/currency';
 import { applyMigrationsThrough } from '@kiko/test-support/real-sqlite';
+
+const REPO_ROOT = join(__dirname, '..', '..');
+
+// Walks every `.sql`/`.ts`/`.tsx` file under `directories`, skipping test
+// files and fixtures: a hard-coded id in a test is a fixture's own literal,
+// not a production writer of the "crypto-from-" prefix this test pins.
+const repoFilesUnder = (...directories: string[]): string[] =>
+  directories.flatMap((directory) =>
+    readdirSync(directory).flatMap((entry) => {
+      if (entry === 'node_modules' || entry === 'fixtures' || entry === '__tests__') {
+        return [];
+      }
+
+      const full = join(directory, entry);
+
+      if (statSync(full).isDirectory()) {
+        return repoFilesUnder(full);
+      }
+
+      return /\.test\.tsx?$/.test(entry) || !/\.(sql|tsx?)$/.test(entry) ? [] : [full];
+    }),
+  );
 
 const STATEMENT_BREAKPOINT = '--> statement-breakpoint';
 
@@ -167,6 +189,28 @@ const foreignKeyCheck = (database: DatabaseSync): unknown[] =>
 
 const tempTableNames = (database: DatabaseSync): unknown[] =>
   database.prepare('SELECT name FROM sqlite_temp_master;').all();
+
+/** The sorted ids `activeHoldings` (`src/rates/active-holdings`) — the ONE
+ * net-worth-inclusion rule every screen shares — returns for `database`'s
+ * current holdings/accounts, mapped from raw dump rows into the camelCase
+ * shape that function reads. */
+const activeHoldingIds = (database: DatabaseSync): string[] => {
+  const holdingRows = dumpTable(database, 'holdings', 'id') as Record<string, unknown>[];
+  const accountRows = dumpTable(database, 'accounts', 'id') as Record<string, unknown>[];
+  const camelHoldings = holdingRows.map((row) => ({
+    id: row.id as string,
+    accountId: row.account_id as string,
+    closedAt: row.closed_at as number | null,
+  }));
+  const camelAccounts = accountRows.map((row) => ({
+    id: row.id as string,
+    archivedAt: row.archived_at as number | null,
+  }));
+
+  return activeHoldings(camelHoldings, camelAccounts)
+    .map((holding) => holding.id)
+    .sort();
+};
 
 /** Scenario A: one cash account holding a fiat, a USDT, and a BTC cash
  * holding, with 20 manual transactions on the USDT holding, an exchange pair
@@ -361,6 +405,54 @@ describe('migration 0044: moves a crypto cash holding into a crypto account', ()
     });
   });
 
+  describe('scenario C: an archived source account, with an eligible reuse target elsewhere', () => {
+    // Ruling: an archived source's holding never joins a LIVE reuse target —
+    // it would resurface under an account the user cannot see it moved out
+    // of. It gets its own crypto-from-<source id> account, carrying the
+    // source's own archived_at, exactly like the no-eligible-target case,
+    // even though 'acc-cold' below is a perfectly eligible reuse target.
+    it("creates crypto-from-<archived source id>, never 'acc-cold', and copies the source's archived_at", () => {
+      const database = openTestDatabase();
+      insertAccount(database, { id: 'acc-cold', name: 'Cold', kind: 'crypto', sortOrder: 0 });
+      insertAccount(database, {
+        id: 'acc-old-wallet',
+        name: 'Old wallet',
+        kind: 'cash',
+        sortOrder: 5,
+        archivedAt: 1_690_000_000_000,
+      });
+      insertHolding(database, {
+        id: 'h-usdt-archived',
+        accountId: 'acc-old-wallet',
+        name: 'Tether',
+        type: 'cash',
+        currency: 'USDT',
+      });
+
+      const activeBefore = activeHoldingIds(database);
+
+      runMigration(database);
+
+      const accounts = dumpTable(database, 'accounts', 'id') as Record<string, unknown>[];
+      expect(accounts).toHaveLength(3);
+      expect(accounts.find((account) => account.id === 'crypto-from-acc-old-wallet')).toMatchObject(
+        { id: 'crypto-from-acc-old-wallet', kind: 'crypto', archived_at: 1_690_000_000_000 },
+      );
+
+      const holdings = dumpTable(database, 'holdings', 'id') as Record<string, unknown>[];
+      expect(holdings.find((holding) => holding.id === 'h-usdt-archived')).toMatchObject({
+        account_id: 'crypto-from-acc-old-wallet',
+        type: 'crypto_asset',
+      });
+
+      // The moved holding sat under an archived account both before AND
+      // after — it stays excluded from net worth either way. If the bug this
+      // ruling guards against were present (a reuse onto the LIVE
+      // 'acc-cold'), this holding would wrongly become active post-migration.
+      expect(activeHoldingIds(database)).toEqual(activeBefore);
+    });
+  });
+
   it('is idempotent: a second run changes nothing', () => {
     const database = openTestDatabase();
     seedScenarioA(database);
@@ -406,19 +498,29 @@ describe('migration 0044: moves a crypto cash holding into a crypto account', ()
     expect(['BTC', 'ETH', 'USDT']).toEqual(cryptoCurrencyOptions);
   });
 
-  it('the deterministic crypto-from- id can never collide with a real account id', () => {
-    // Every real account id comes from `id()` (`src/db/id.ts`), a v4 UUID:
-    // its first block is 8 lowercase HEX digits (`0-9a-f` only). `r`, the
-    // second character of "crypto-from-", is not a hex digit, so no v4 UUID
-    // can ever start with "cr" — the deterministic id lives in a disjoint
-    // namespace from every id `id()` can produce, on both the migration and
-    // the restore-mirror path that share it.
-    for (let index = 0; index < 1000; index += 1) {
-      const generated = id();
-      expect(generated).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-      );
-      expect(generated.startsWith('crypto-from-')).toBe(false);
-    }
+  it('the "crypto-from-" id prefix is minted ONLY by this migration and its restore mirror', () => {
+    // Every real account id instead comes from `id()` (`src/db/id.ts`), a v4
+    // UUID whose first block is 8 lowercase HEX digits — 'r' (the second
+    // character of "crypto-from-") is not a hex digit, so no v4 UUID can
+    // ever collide with this prefix. Every OTHER write to `accounts` either
+    // calls `id()` (a sync connect, a manual create) or UPDATEs a row
+    // already in place, so nothing else mints a second `crypto-from-<x>` id
+    // for the same source `x` — and a post-0044 export has no `cash` +
+    // crypto rows left, so this migration's own INSERT never re-fires
+    // either. If a second place ever hard-codes this prefix, that is the
+    // one spot such a collision could be introduced, so this asserts the
+    // prefix appears in NO file but the two below (test files excluded, as
+    // a fixture's own hard-coded id is not a production writer).
+    const matches = repoFilesUnder(join(REPO_ROOT, 'drizzle'), join(REPO_ROOT, 'src'))
+      .filter((file) => readFileSync(file, 'utf8').includes('crypto-from-'))
+      .map((file) => relative(REPO_ROOT, file))
+      .sort();
+
+    expect(matches).toEqual(
+      [
+        'drizzle/migrations/0044_move_crypto_cash_holdings.sql',
+        'src/data-transfer/snapshot/restore-snapshot.ts',
+      ].sort(),
+    );
   });
 });

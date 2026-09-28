@@ -435,7 +435,7 @@ const withRatesNormalizedToUah = <T extends NormalizableRateRow>(
  * SAME rule migration 0044's `crypto_cash_reuse` TEMP table applies. String
  * comparison on `id` matches SQLite's own BINARY collation for ASCII ids. */
 const cryptoCashReuseTarget = (snapshotAccounts: AccountRow[]): AccountRow | undefined =>
-  [...snapshotAccounts]
+  snapshotAccounts
     .filter(
       (account) =>
         account.kind === 'crypto' && account.institution === null && account.archivedAt === null,
@@ -457,18 +457,19 @@ const cryptoCashReuseTarget = (snapshotAccounts: AccountRow[]): AccountRow | und
     })[0];
 
 /**
- * Mirrors migration 0044 (`drizzle/migrations/0044_move_crypto_cash_holdings.sql`)
- * for a `.kiko` restore: a `cash` holding in a crypto currency (`!isFiat`,
- * the same set the SQL's frozen `IN ('BTC', 'ETH', 'USDT')` pins for a 1.0
- * build — `0044-move-crypto-cash-holdings.test.ts` proves the two lists
- * agree) moves onto a crypto account rather than refusing the whole file.
- * Reuses the first eligible crypto account (`cryptoCashReuseTarget`);
- * otherwise appends ONE new `crypto-from-<source id>` account per affected
- * source account — the SAME deterministic id the SQL migration derives, so
- * restoring an ALREADY-migrated export (or the same file twice) never
- * creates a duplicate. A snapshot with nothing affected returns the SAME
- * array references, so a post-0044 export is a true no-op. Runs FIRST,
- * before either table is inserted.
+ * Mirrors migration 0044 (`drizzle/migrations/0044_move_crypto_cash_holdings.sql`
+ * — that file's doc comment is the full statement of the matching rule,
+ * including the archived-source carve-out) for a `.kiko` restore: a `cash`
+ * holding in a crypto currency (`!isFiat`, the same set the SQL's frozen
+ * `IN ('BTC', 'ETH', 'USDT')` pins for a 1.0 build —
+ * `0044-move-crypto-cash-holdings.test.ts` proves the two lists agree)
+ * moves onto a crypto account, using the SAME deterministic
+ * `crypto-from-<source id>` id so the two paths agree on the same account
+ * for the same source. `affected` is empty for an already-migrated export
+ * (or a second restore of the same file) — every matching holding is
+ * already `crypto_asset` — so a snapshot with nothing affected returns the
+ * SAME array references, a true no-op. Runs FIRST, before either table is
+ * inserted.
  */
 export const withCryptoCashHoldingsMoved = (
   snapshotAccounts: AccountRow[],
@@ -486,33 +487,43 @@ export const withCryptoCashHoldingsMoved = (
   const accountsById = new Map(snapshotAccounts.map((account) => [account.id, account]));
   const newAccountBySourceId = new Map<string, AccountRow>();
 
-  if (reuseTarget === undefined) {
-    for (const holding of affected) {
-      const source = accountsById.get(holding.accountId);
+  // An archived source's holding never joins a live reuse target — it would
+  // resurface under an account the user cannot see it moved out of. Only a
+  // NON-archived source with no reuse target needs its own new account.
+  for (const holding of affected) {
+    const source = accountsById.get(holding.accountId);
 
-      if (source === undefined || newAccountBySourceId.has(source.id)) {
-        continue;
-      }
-
-      newAccountBySourceId.set(source.id, {
-        id: `crypto-from-${source.id}`,
-        name: source.name,
-        kind: 'crypto',
-        institution: null,
-        bankId: null,
-        icon: null,
-        color: null,
-        sortOrder: source.sortOrder,
-        archivedAt: source.archivedAt,
-        createdAt: source.createdAt,
-      });
+    if (source === undefined || newAccountBySourceId.has(source.id)) {
+      continue;
     }
+
+    if (reuseTarget !== undefined && source.archivedAt === null) {
+      continue;
+    }
+
+    newAccountBySourceId.set(source.id, {
+      id: `crypto-from-${source.id}`,
+      name: source.name,
+      kind: 'crypto',
+      institution: null,
+      bankId: null,
+      icon: null,
+      color: null,
+      sortOrder: source.sortOrder,
+      archivedAt: source.archivedAt,
+      createdAt: source.createdAt,
+    });
   }
 
-  const targetAccountIdFor = (sourceAccountId: string): string =>
-    reuseTarget?.id ??
-    newAccountBySourceId.get(sourceAccountId)?.id ??
-    `crypto-from-${sourceAccountId}`;
+  const targetAccountIdFor = (sourceAccountId: string): string => {
+    const source = accountsById.get(sourceAccountId);
+
+    if (reuseTarget !== undefined && source?.archivedAt === null) {
+      return reuseTarget.id;
+    }
+
+    return newAccountBySourceId.get(sourceAccountId)?.id ?? `crypto-from-${sourceAccountId}`;
+  };
   const affectedIds = new Set(affected.map((holding) => holding.id));
 
   return {
@@ -559,9 +570,8 @@ export const withCryptoCashHoldingsMoved = (
  */
 export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
   write(async (databaseTransaction) => {
-    // Runs first, where the outright refusal used to run, before either
-    // table is inserted — see `withCryptoCashHoldingsMoved`'s own doc
-    // comment.
+    // Runs first, before either table is inserted — see
+    // `withCryptoCashHoldingsMoved`'s own doc comment.
     const { accounts: accountsAfterCryptoCashMove, holdings: holdingsAfterCryptoCashMove } =
       withCryptoCashHoldingsMoved(snapshot.accounts, snapshot.holdings);
 

@@ -9,7 +9,9 @@
 // gives a `.kiko` export — and runs the pure JS mirror
 // `withCryptoCashHoldingsMoved` on those rows. Comparing REAL rows on both
 // sides (not two hand-typed object literals) is what proves the two paths
-// actually agree.
+// actually agree, across every matching-rule scenario: no eligible target,
+// an eligible target competing with Binance/an archived account, a
+// sort_order tie, and an archived SOURCE account.
 import { join } from 'node:path';
 import { asc } from 'drizzle-orm';
 import { readFileSync } from 'node:fs';
@@ -24,74 +26,191 @@ const MIGRATION_0044_SQL = readFileSync(
   'utf8',
 );
 
-const openSeededDatabase = (): DatabaseSync => {
+type AccountSeed = {
+  id: string;
+  name: string;
+  kind: string;
+  institution?: string | null;
+  sortOrder?: number;
+  archivedAt?: number | null;
+  createdAt?: number;
+};
+
+const newMigratedDatabase = (): DatabaseSync => {
   const rawDatabase = new DatabaseSync(':memory:');
 
   applyMigrationsThrough(rawDatabase, '0043_add_import_times_rezoned');
   rawDatabase.exec('PRAGMA foreign_keys = ON;');
-  rawDatabase
-    .prepare(
-      "INSERT INTO accounts (id, name, kind, sort_order, created_at) VALUES ('acc-wallet', 'Wallet', 'cash', 3, 1700000000000)",
-    )
-    .run();
-  rawDatabase
-    .prepare(
-      `INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units, balance_set_at, icon, color, created_at)
-       VALUES ('h-uah', 'acc-wallet', 'Cash', 'cash', 'UAH', 250000, 1700000100000, NULL, NULL, 1700000000000)`,
-    )
-    .run();
-  rawDatabase
-    .prepare(
-      `INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units, balance_set_at, icon, color, created_at)
-       VALUES ('h-usdt', 'acc-wallet', 'Tether', 'cash', 'USDT', 150000000, 1700000100000, 'banknote', '#00FF00', 1700000000000)`,
-    )
-    .run();
-  rawDatabase
-    .prepare(
-      `INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units, created_at)
-       VALUES ('h-btc', 'acc-wallet', 'Bitcoin', 'cash', 'BTC', 12345, 1700000000000)`,
-    )
-    .run();
 
   return rawDatabase;
+};
+
+const insertAccount = (database: DatabaseSync, account: AccountSeed): void => {
+  database
+    .prepare(
+      `INSERT INTO accounts (id, name, kind, institution, sort_order, archived_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      account.id,
+      account.name,
+      account.kind,
+      account.institution ?? null,
+      account.sortOrder ?? 0,
+      account.archivedAt ?? null,
+      account.createdAt ?? 1_700_000_000_000,
+    );
+};
+
+const insertCryptoCashHolding = (
+  database: DatabaseSync,
+  holding: { id: string; accountId: string; name: string; currency: string },
+): void => {
+  database
+    .prepare(
+      `INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units, created_at)
+       VALUES (?, ?, ?, 'cash', ?, 100, 1700000000000)`,
+    )
+    .run(holding.id, holding.accountId, holding.name, holding.currency);
 };
 
 const sortedById = <Row extends { id: string }>(rows: Row[]): Row[] =>
   [...rows].sort((left, right) => left.id.localeCompare(right.id));
 
+type Scenario = { name: string; seed: (database: DatabaseSync) => void };
+
+const scenarios: Scenario[] = [
+  {
+    name: 'creates crypto-from-<source> when no eligible crypto account exists',
+    seed: (database) => {
+      insertAccount(database, { id: 'acc-wallet', name: 'Wallet', kind: 'cash', sortOrder: 3 });
+      insertCryptoCashHolding(database, {
+        id: 'h-usdt',
+        accountId: 'acc-wallet',
+        name: 'Tether',
+        currency: 'USDT',
+      });
+      insertCryptoCashHolding(database, {
+        id: 'h-btc',
+        accountId: 'acc-wallet',
+        name: 'Bitcoin',
+        currency: 'BTC',
+      });
+    },
+  },
+  {
+    // Scenario A (plan): a Binance account, an archived crypto account, and
+    // one eligible manual crypto account — the holding must go to the
+    // eligible one, never Binance or the archived one.
+    name: 'reuses the first eligible manual crypto account over Binance and an archived one',
+    seed: (database) => {
+      insertAccount(database, {
+        id: 'acc-binance',
+        name: 'Binance',
+        kind: 'crypto',
+        institution: 'binance',
+        sortOrder: 0,
+      });
+      insertAccount(database, {
+        id: 'acc-archived',
+        name: 'Old wallet',
+        kind: 'crypto',
+        sortOrder: 1,
+        archivedAt: 1_690_000_000_000,
+      });
+      insertAccount(database, { id: 'acc-cold', name: 'Cold', kind: 'crypto', sortOrder: 2 });
+      insertAccount(database, { id: 'acc-wallet', name: 'Wallet', kind: 'cash', sortOrder: 3 });
+      insertCryptoCashHolding(database, {
+        id: 'h-usdt',
+        accountId: 'acc-wallet',
+        name: 'Tether',
+        currency: 'USDT',
+      });
+    },
+  },
+  {
+    name: 'breaks a sort_order tie by created_at, then by id',
+    seed: (database) => {
+      // All three share sort_order 0. acc-x-later has the latest
+      // created_at, so it loses to the other two; those tie on created_at
+      // too, so the lower id (aaaaa-tie) wins over bbbbb-tie.
+      insertAccount(database, { id: 'acc-x-later', name: 'X', kind: 'crypto', createdAt: 200 });
+      insertAccount(database, { id: 'bbbbb-tie', name: 'B', kind: 'crypto', createdAt: 100 });
+      insertAccount(database, { id: 'aaaaa-tie', name: 'A', kind: 'crypto', createdAt: 100 });
+      insertAccount(database, { id: 'acc-wallet', name: 'Wallet', kind: 'cash', sortOrder: 3 });
+      insertCryptoCashHolding(database, {
+        id: 'h-usdt',
+        accountId: 'acc-wallet',
+        name: 'Tether',
+        currency: 'USDT',
+      });
+    },
+  },
+  {
+    // The archived-source ruling: an archived source's holding never joins
+    // a LIVE reuse target, even though 'acc-cold' is perfectly eligible.
+    name: "never moves an archived source's holding onto a live reuse target",
+    seed: (database) => {
+      insertAccount(database, { id: 'acc-cold', name: 'Cold', kind: 'crypto', sortOrder: 0 });
+      insertAccount(database, {
+        id: 'acc-archived-wallet',
+        name: 'Old wallet',
+        kind: 'cash',
+        sortOrder: 5,
+        archivedAt: 1_690_000_000_000,
+      });
+      insertCryptoCashHolding(database, {
+        id: 'h-usdt-archived',
+        accountId: 'acc-archived-wallet',
+        name: 'Tether',
+        currency: 'USDT',
+      });
+    },
+  },
+];
+
 describe('a pre-0044 .kiko restore ends byte-equal to the live migration 0044 upgrade', () => {
-  it('produces IDENTICAL accounts and holdings rows on both paths (scenario A)', async () => {
-    // Path 1: the LIVE database applies the real migration SQL directly.
-    const liveDatabase = openSeededDatabase();
-    liveDatabase.exec(MIGRATION_0044_SQL.split('--> statement-breakpoint').join('\n'));
-    const liveDrizzle = executingDrizzle<typeof database>(liveDatabase);
-    const liveAccounts = sortedById(
-      await liveDrizzle.select().from(accounts).orderBy(asc(accounts.id)),
-    );
-    const liveHoldings = sortedById(
-      await liveDrizzle.select().from(holdings).orderBy(asc(holdings.id)),
-    );
+  describe.each(scenarios)('$name', ({ seed }) => {
+    it('produces IDENTICAL accounts and holdings rows on both paths', async () => {
+      // Path 1: the LIVE database applies the real migration SQL directly.
+      const liveDatabase = newMigratedDatabase();
+      seed(liveDatabase);
+      liveDatabase.exec(MIGRATION_0044_SQL.split('--> statement-breakpoint').join('\n'));
+      const liveDrizzle = executingDrizzle<typeof database>(liveDatabase);
+      const liveAccounts = sortedById(
+        await liveDrizzle.select().from(accounts).orderBy(asc(accounts.id)),
+      );
+      const liveHoldings = sortedById(
+        await liveDrizzle.select().from(holdings).orderBy(asc(holdings.id)),
+      );
 
-    // Path 2: an IDENTICALLY seeded database, restored through the JS
-    // mirror instead of the SQL migration.
-    const restoredDatabase = openSeededDatabase();
-    const restoredDrizzle = executingDrizzle<typeof database>(restoredDatabase);
-    const preUpgradeAccounts = await restoredDrizzle.select().from(accounts);
-    const preUpgradeHoldings = await restoredDrizzle.select().from(holdings);
+      // Path 2: an IDENTICALLY seeded database, restored through the JS
+      // mirror instead of the SQL migration.
+      const restoredDatabase = newMigratedDatabase();
+      seed(restoredDatabase);
+      const restoredDrizzle = executingDrizzle<typeof database>(restoredDatabase);
+      const preUpgradeAccounts = await restoredDrizzle.select().from(accounts);
+      const preUpgradeHoldings = await restoredDrizzle.select().from(holdings);
 
-    const mirrored = withCryptoCashHoldingsMoved(preUpgradeAccounts, preUpgradeHoldings);
+      const mirrored = withCryptoCashHoldingsMoved(preUpgradeAccounts, preUpgradeHoldings);
 
-    expect(sortedById(mirrored.accounts)).toEqual(liveAccounts);
-    expect(sortedById(mirrored.holdings)).toEqual(liveHoldings);
+      expect(sortedById(mirrored.accounts)).toEqual(liveAccounts);
+      expect(sortedById(mirrored.holdings)).toEqual(liveHoldings);
+    });
   });
 
   it('is a true no-op (same array references) for a snapshot with no crypto cash holding', async () => {
-    const database_ = executingDrizzle<typeof database>(openSeededDatabase());
-    // Re-seed without any crypto currency: a plain UAH-only snapshot.
-    const fiatOnlyAccounts = (await database_.select().from(accounts)) as never[];
-    const fiatOnlyHoldings = (await database_.select().from(holdings)).filter(
-      (holding: { currency: string }) => holding.currency === 'UAH',
-    ) as never[];
+    const noOpDatabase = newMigratedDatabase();
+    insertAccount(noOpDatabase, { id: 'acc-wallet', name: 'Wallet', kind: 'cash', sortOrder: 3 });
+    noOpDatabase
+      .prepare(
+        `INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units, created_at)
+         VALUES ('h-uah', 'acc-wallet', 'Cash', 'cash', 'UAH', 250000, 1700000000000)`,
+      )
+      .run();
+    const noOpDrizzle = executingDrizzle<typeof database>(noOpDatabase);
+    const fiatOnlyAccounts = await noOpDrizzle.select().from(accounts);
+    const fiatOnlyHoldings = await noOpDrizzle.select().from(holdings);
 
     const result = withCryptoCashHoldingsMoved(fiatOnlyAccounts, fiatOnlyHoldings);
 
