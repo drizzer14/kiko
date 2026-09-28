@@ -4,7 +4,10 @@
 // Sensebank's 2-digit-year `DD.MM.YY HH:MM`), plus a few common shorter/ISO
 // variants a manually-exported statement might carry instead.
 import maybe, { foldMap } from 'fnts/maybe';
-import { utcMillisIfRoundTrips, type DateTimeParts } from '@kiko/statement-import/parse-date-time';
+import {
+  utcMillisecondsIfRoundTrips,
+  type DateTimeParts,
+} from '@kiko/statement-import/parse-date-time';
 
 import type { TableCell } from './table-rows';
 
@@ -29,10 +32,10 @@ type DatePreset = {
 // Builds UTC seconds from parsed date/time PARTS, rejecting a rollover — an
 // out-of-range day ("31.02.2026"), month ("2026-13-45"), hour, or minute
 // silently rolling into a DIFFERENT, wrong calendar instant — through the
-// shared `utcMillisIfRoundTrips` every bank-export date parser in this
+// shared `utcMillisecondsIfRoundTrips` every bank-export date parser in this
 // project uses for the same round-trip check.
 const partsToSeconds = (parts: DateTimeParts): number | undefined =>
-  foldMap(maybe(utcMillisIfRoundTrips(parts)), (milliseconds) => milliseconds / 1000);
+  foldMap(maybe(utcMillisecondsIfRoundTrips(parts)), (milliseconds) => milliseconds / 1000);
 
 // Every preset reads UTC wall-clock parts — the same `parseDateTimeSeconds`
 // convention the dedicated formats use (`../parse-date-time`), never the host

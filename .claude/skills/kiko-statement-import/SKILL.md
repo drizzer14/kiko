@@ -144,7 +144,7 @@ column mapping's own presets, `parseDateTimeSeconds`, and each
 dedicated format with its own date shape (Sensebank's `DD.MM.YY
 HH:MM`) — additionally ROUND-TRIPS every parsed component back through
 the built instant's own UTC getters via the ONE shared
-`utcMillisIfRoundTrips` (`src/statement-import/parse-date-time/`, the
+`utcMillisecondsIfRoundTrips` (`src/statement-import/parse-date-time/`, the
 same idea `parseLocalDate` already applies to a local-midnight day) —
 `Date.UTC` silently NORMALIZES an out-of-range day/month/hour/minute
 into a different, wrong instant instead of rejecting it (`31.02.2026`

@@ -295,11 +295,11 @@ export const bankOwnedTransactionSetWhere = sql.join(
 
 // The WHERE clause for `importRows`'s existing-rows-after-asOf read, exported
 // so a real-SQLite test can prove the exact predicate — both the `holdingId`
-// scope and the STRICT `gt` boundary (a row exactly AT `asOfMillis` belongs
-// to the closing balance itself, not after it) — rather than a
+// scope and the STRICT `gt` boundary (a row exactly AT `asOfMilliseconds`
+// belongs to the closing balance itself, not after it) — rather than a
 // hand-transcribed copy of it.
-export const postClosingRowsWhere = (holdingId: string, asOfMillis: number) =>
-  and(eq(transactions.holdingId, holdingId), gt(transactions.time, asOfMillis));
+export const postClosingRowsWhere = (holdingId: string, asOfMilliseconds: number) =>
+  and(eq(transactions.holdingId, holdingId), gt(transactions.time, asOfMilliseconds));
 
 /**
  * Apply name->category override rules and upsert a batch of imported rows on

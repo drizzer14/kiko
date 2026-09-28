@@ -83,7 +83,7 @@ const netAfterAsOf = (
 };
 
 describe('postClosingRowsWhere — existing-rows-after-asOf read, against a real SQLite engine', () => {
-  const ASOF_MILLIS = 1_700_000_000_000;
+  const AS_OF_MILLISECONDS = 1_700_000_000_000;
 
   it('excludes a row exactly AT asOf (the boundary belongs to the closing balance itself)', () => {
     const database = openTestDatabase();
@@ -92,10 +92,10 @@ describe('postClosingRowsWhere — existing-rows-after-asOf read, against a real
       id: 'tx-1',
       holdingId: 'h-1',
       amountMinorUnits: -500,
-      time: ASOF_MILLIS,
+      time: AS_OF_MILLISECONDS,
     });
 
-    expect(netAfterAsOf(database, 'h-1', ASOF_MILLIS)).toBeNull();
+    expect(netAfterAsOf(database, 'h-1', AS_OF_MILLISECONDS)).toBeNull();
   });
 
   it('counts a row strictly after asOf', () => {
@@ -105,10 +105,10 @@ describe('postClosingRowsWhere — existing-rows-after-asOf read, against a real
       id: 'tx-1',
       holdingId: 'h-1',
       amountMinorUnits: -500,
-      time: ASOF_MILLIS + 1_000,
+      time: AS_OF_MILLISECONDS + 1_000,
     });
 
-    expect(netAfterAsOf(database, 'h-1', ASOF_MILLIS)).toBe(-500);
+    expect(netAfterAsOf(database, 'h-1', AS_OF_MILLISECONDS)).toBe(-500);
   });
 
   it("excludes another holding's row, even one strictly after asOf", () => {
@@ -118,10 +118,10 @@ describe('postClosingRowsWhere — existing-rows-after-asOf read, against a real
       id: 'tx-1',
       holdingId: 'h-2',
       amountMinorUnits: -700,
-      time: ASOF_MILLIS + 1_000,
+      time: AS_OF_MILLISECONDS + 1_000,
     });
 
-    expect(netAfterAsOf(database, 'h-1', ASOF_MILLIS)).toBeNull();
+    expect(netAfterAsOf(database, 'h-1', AS_OF_MILLISECONDS)).toBeNull();
   });
 
   it('sums every after-asOf row for the correct holding, ignoring the at-boundary row and the other holding', () => {
@@ -131,27 +131,27 @@ describe('postClosingRowsWhere — existing-rows-after-asOf read, against a real
       id: 'tx-at-boundary',
       holdingId: 'h-1',
       amountMinorUnits: -100,
-      time: ASOF_MILLIS,
+      time: AS_OF_MILLISECONDS,
     });
     insertTransaction(database, {
       id: 'tx-other-holding',
       holdingId: 'h-2',
       amountMinorUnits: -900,
-      time: ASOF_MILLIS + 1_000,
+      time: AS_OF_MILLISECONDS + 1_000,
     });
     insertTransaction(database, {
       id: 'tx-after-1',
       holdingId: 'h-1',
       amountMinorUnits: -500,
-      time: ASOF_MILLIS + 1_000,
+      time: AS_OF_MILLISECONDS + 1_000,
     });
     insertTransaction(database, {
       id: 'tx-after-2',
       holdingId: 'h-1',
       amountMinorUnits: 200,
-      time: ASOF_MILLIS + 2_000,
+      time: AS_OF_MILLISECONDS + 2_000,
     });
 
-    expect(netAfterAsOf(database, 'h-1', ASOF_MILLIS)).toBe(-300);
+    expect(netAfterAsOf(database, 'h-1', AS_OF_MILLISECONDS)).toBe(-300);
   });
 });

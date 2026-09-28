@@ -23,7 +23,7 @@ export type DateTimeParts = {
  * getters reproduce the exact parsed components before trusting it, rather
  * than hand-rolling the same round-trip check per format.
  */
-export const utcMillisIfRoundTrips = (parts: DateTimeParts): number | undefined => {
+export const utcMillisecondsIfRoundTrips = (parts: DateTimeParts): number | undefined => {
   const { year, month, day, hour, minute, second } = parts;
   const milliseconds = Date.UTC(year, month - 1, day, hour, minute, second);
   const date = new Date(milliseconds);
@@ -56,7 +56,7 @@ export const parseDateTimeSeconds = (raw: string, formatLabel: string): number =
     throw new StatementParseError(`Unrecognized ${formatLabel} date/time: "${raw}"`);
   }
 
-  const milliseconds = utcMillisIfRoundTrips({
+  const milliseconds = utcMillisecondsIfRoundTrips({
     year: Number(match[3]),
     month: Number(match[2]),
     day: Number(match[1]),
