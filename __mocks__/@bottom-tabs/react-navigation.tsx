@@ -33,7 +33,11 @@ type MockScreenProps = {
   // native `{ sfSymbol }` descriptor rather than a React node. Surfaced here so
   // a test can assert each tab wires the intended SF Symbol (see
   // root.navigator.test.tsx) without a native tab-bar renderer.
-  options?: { title?: string; tabBarIcon?: () => { sfSymbol?: string } };
+  options?: {
+    title?: string;
+    tabBarIcon?: () => { sfSymbol?: string };
+    freezeOnBlur?: boolean;
+  };
 };
 
 // Native tab-bar appearance props the real navigator forwards to the
@@ -59,9 +63,13 @@ const TabBarView = View as ComponentType<ViewProps & MockTabBarProps>;
 
 // A host element that carries the resolved `sfSymbol` name off a tab's
 // `tabBarIcon()` descriptor so a test can read it back via `.props.sfSymbol`
-// (the same shape the native navigator hands its UITabBarItem). `View`'s own
-// type has no room for `sfSymbol`, so the cast is scoped to this mock only.
-const TabIconView = View as ComponentType<ViewProps & { sfSymbol?: string }>;
+// (the same shape the native navigator hands its UITabBarItem), plus that
+// same screen's `options.freezeOnBlur` so a test can assert which tabs opt
+// into it. `View`'s own type has no room for either, so the cast is scoped to
+// this mock only.
+const TabIconView = View as ComponentType<
+  ViewProps & { sfSymbol?: string; freezeOnBlur?: boolean }
+>;
 
 type MockNavigatorProps = MockTabBarProps & {
   children: ReactNode;
@@ -111,6 +119,7 @@ function Navigator({
             key={`icon-${screen.props.name}`}
             testID={`tab-icon-${screen.props.name}`}
             sfSymbol={screen.props.options?.tabBarIcon?.().sfSymbol}
+            freezeOnBlur={screen.props.options?.freezeOnBlur}
           />
         ))}
       </TabBarView>
