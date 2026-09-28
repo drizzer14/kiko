@@ -21,6 +21,16 @@ export const en = {
       failed: 'Authentication failed. Try again.',
     },
     locked: 'Locked',
+    // The reason string each re-authentication prompt titles its system
+    // sheet with (`confirmOwner(reason)`), one per sensitive action.
+    reason: {
+      disableLock: 'Turn off app lock',
+      exportSecrets: 'Export your saved passwords & keys',
+    },
+    reauth: {
+      failedTitle: "Couldn't confirm it's you",
+      passcodeRequired: 'Set a device passcode to export saved passwords & keys.',
+    },
     unlock: 'Unlock',
     unlockPrompt: 'Unlock Kiko',
     usePasscode: 'Use passcode',

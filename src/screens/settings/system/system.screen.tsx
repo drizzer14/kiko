@@ -1,4 +1,8 @@
+import { useRef } from 'react';
 import type { FC } from 'react';
+import { match } from 'ts-pattern';
+import { Alert } from 'react-native';
+import { confirmOwner } from '@kiko/auth';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
@@ -37,8 +41,41 @@ const SystemScreen: FC<SystemScreenProps> = () => {
     settingsRepo.setLanguage(language);
   };
 
+  const disablingLock = useRef(false);
+
   const handleToggleLock = (enabled: boolean): void => {
-    settingsRepo.setLockEnabled(enabled);
+    if (enabled) {
+      settingsRepo.setLockEnabled(true);
+
+      return;
+    }
+
+    if (disablingLock.current) {
+      return;
+    }
+
+    disablingLock.current = true;
+
+    const confirmAndDisable = async (): Promise<void> => {
+      const confirmation = await confirmOwner(t('auth.reason.disableLock'));
+
+      match(confirmation)
+        // A device with no passcode has no owner authentication to run at
+        // all — iOS itself asks for the old passcode before it removes one.
+        .with({ kind: 'confirmed' }, { kind: 'noPasscode' }, () =>
+          settingsRepo.setLockEnabled(false),
+        )
+        .with({ kind: 'cancelled' }, () => undefined)
+        .with({ kind: 'failed' }, (result) =>
+          Alert.alert(t('auth.reauth.failedTitle'), t(result.hintKey)),
+        )
+        .exhaustive();
+
+      disablingLock.current = false;
+    };
+
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) confirmOwner never rejects; confirmAndDisable re-arms its own in-flight ref
+    confirmAndDisable();
   };
 
   // The effective language shown as selected: the explicit choice if set,
