@@ -12,6 +12,7 @@ import {
 } from '@kiko/reminders/planner';
 import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
+import { settingsRepo } from '@kiko/settings';
 import { remindersRepo } from '@kiko/reminders/repo';
 import { reminderContent } from '@kiko/reminders/content';
 import { isSyncedAccount } from '@kiko/holdings/deletable';
@@ -44,12 +45,17 @@ const hasDataSinceSnooze = (row: PlanInputRow): boolean => {
   return row.lastSnoozedAt !== null && lastDataAt !== null && lastDataAt >= row.lastSnoozedAt;
 };
 
-const toPlanInput = (row: PlanInputRow, now: number): ReminderPlanInput => ({
+const toPlanInput = (
+  row: PlanInputRow,
+  deliverableSince: number,
+  now: number,
+): ReminderPlanInput => ({
   reminderId: row.id,
   accountId: row.accountId,
   kind: row.kind,
   schedule: row.schedule,
   activeSince: row.activeSince,
+  deliverableSince,
   lastEngagedAt: row.lastEngagedAt,
   lastDataAt: lastDataAtOf(row),
   lastSnoozedAt: hasDataSinceSnooze(row) ? null : row.lastSnoozedAt,
@@ -70,6 +76,24 @@ const isSnoozeStale = (row: PlanInputRow, now: number): boolean =>
 // ignored count. Only resuming in the app does.
 const isEngagement = (response: NotificationResponse): boolean =>
   response.requestIdentifier !== pausedNoticeIdentifier(response.reminderId);
+
+// iOS shows nothing while notifications are off, so no reminder was ignored
+// then: the count starts at the first sync that sees them allowed, and never
+// earlier than now while they are off, so nothing is back-off paused. The start
+// is stored so later syncs keep it, and written only when the permission
+// changes.
+const syncDeliverableSince = async (now: number): Promise<number> => {
+  const isAuthorized = (await remindersNative.authorizationStatus()) === 'authorized';
+  const [stored] = await settingsRepo.notificationsDeliverableSinceQuery();
+  const storedSince = stored?.notificationsDeliverableSince ?? null;
+  const deliverableSince = isAuthorized ? (storedSince ?? now) : null;
+
+  if (deliverableSince !== storedSince) {
+    await settingsRepo.setNotificationsDeliverableSince(deliverableSince);
+  }
+
+  return deliverableSince ?? now;
+};
 
 const toNativeRequest = (request: PlannedRequest, t: TFunction): NativeReminderRequest => ({
   identifier: request.identifier,
@@ -101,9 +125,12 @@ export const syncReminders = async (
     return responses;
   }
 
+  const deliverableSince = await syncDeliverableSince(now);
   const rows = await remindersRepo.planInputsQuery();
   const schedulableRows = rows.filter(isSchedulable);
-  const plan = planAllReminders(schedulableRows.map((row) => toPlanInput(row, now)));
+  const plan = planAllReminders(
+    schedulableRows.map((row) => toPlanInput(row, deliverableSince, now)),
+  );
 
   await remindersRepo.markBackoffPaused(plan.backoffPauses);
   await remindersRepo.clearSnoozes(

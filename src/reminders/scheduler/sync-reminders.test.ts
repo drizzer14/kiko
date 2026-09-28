@@ -12,6 +12,7 @@ jest.mock('@kiko/db/client', () => {
 
 import {
   type NativeReminderRequest,
+  type NotificationAuthorization,
   type NotificationResponse,
   remindersNative,
 } from '@kiko/reminders/native';
@@ -40,10 +41,12 @@ type ReminderSeed = {
 };
 
 let drainedResponses: NotificationResponse[] = [];
+let authorization: NotificationAuthorization = 'authorized';
 
 const replaceRequests = jest.spyOn(remindersNative, 'replaceRequests');
 
 jest.spyOn(remindersNative, 'drainResponses').mockImplementation(async () => drainedResponses);
+jest.spyOn(remindersNative, 'authorizationStatus').mockImplementation(async () => authorization);
 
 const seedAccount = (
   id: string,
@@ -102,6 +105,13 @@ const reminderColumn = (id: string, column: string): unknown =>
     }
   ).value;
 
+const deliverableSince = (): unknown =>
+  (
+    mockDatabase.prepare('SELECT notifications_deliverable_since AS value FROM settings').get() as {
+      value: unknown;
+    }
+  ).value;
+
 const lastReplace = (): { requests: NativeReminderRequest[]; keptSnoozeIds: string[] } => {
   const [requests, keptSnoozeIds] = replaceRequests.mock.calls.at(-1) ?? [[], []];
 
@@ -121,7 +131,11 @@ beforeEach(() => {
   mockDatabase = new DatabaseSync(':memory:');
   applyAllMigrations(mockDatabase);
   mockDatabase.exec('PRAGMA foreign_keys = ON');
+  mockDatabase
+    .prepare('INSERT INTO settings (id, notifications_deliverable_since) VALUES (1, ?)')
+    .run(local(9, 1));
   drainedResponses = [];
+  authorization = 'authorized';
   replaceRequests.mockResolvedValue(undefined);
 });
 
@@ -371,5 +385,75 @@ describe('syncReminders — responses, back-off, and snoozes', () => {
     await syncReminders(english, NOW);
 
     expect(reminderColumn('paused', 'last_snoozed_at')).toBeNull();
+  });
+});
+
+describe('syncReminders — notification permission', () => {
+  const seedLongIgnoredReminder = (): void => {
+    seedAccount('manual');
+    seedReminder({
+      id: 'reminder-1',
+      accountId: 'manual',
+      kind: 'add_transactions',
+      activeSince: local(9, 20, 10),
+    });
+  };
+
+  it.each<NotificationAuthorization>(['denied', 'notDetermined'])(
+    'never back-off pauses while notifications are %s, and counts from now',
+    async (status) => {
+      seedLongIgnoredReminder();
+      authorization = status;
+
+      await syncReminders(english, NOW);
+
+      expect(reminderColumn('reminder-1', 'paused_at')).toBeNull();
+      expect(fireStamps('reminder-1')).toEqual([
+        '10-1 20:0',
+        '10-2 20:0',
+        '10-3 20:0',
+        '10-4 20:0',
+      ]);
+      expect(deliverableSince()).toBeNull();
+    },
+  );
+
+  it('starts the ignored count at the first sync that sees notifications authorized', async () => {
+    seedLongIgnoredReminder();
+    authorization = 'denied';
+    await syncReminders(english, NOW);
+
+    authorization = 'authorized';
+    await syncReminders(english, local(10, 5, 12));
+
+    expect(deliverableSince()).toBe(local(10, 5, 12));
+    expect(reminderColumn('reminder-1', 'paused_at')).toBeNull();
+    expect(fireStamps('reminder-1')).toEqual(['10-5 20:0', '10-6 20:0', '10-7 20:0', '10-8 20:0']);
+
+    await syncReminders(english, local(10, 9, 12));
+
+    expect(reminderColumn('reminder-1', 'paused_at')).toBe(local(10, 8, 20));
+    expect(reminderColumn('reminder-1', 'pause_reason')).toBe('backoff');
+  });
+
+  it('writes the permission state only when it changes', async () => {
+    seedAccount('manual');
+    seedReminder({ id: 'reminder-1', accountId: 'manual', kind: 'add_transactions' });
+    authorization = 'denied';
+
+    await syncReminders(english, NOW);
+    expect(write).toHaveBeenCalledTimes(1);
+
+    jest.mocked(write).mockClear();
+    await syncReminders(english, NOW);
+    expect(write).not.toHaveBeenCalled();
+
+    authorization = 'authorized';
+    await syncReminders(english, NOW);
+    expect(write).toHaveBeenCalledTimes(1);
+
+    jest.mocked(write).mockClear();
+    await syncReminders(english, NOW);
+    expect(write).not.toHaveBeenCalled();
   });
 });

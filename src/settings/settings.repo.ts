@@ -111,6 +111,18 @@ export const settingsRepo = {
         .set({ reminderOfferDismissals: { ...existing, [accountId]: [...dismissedKinds, kind] } })
         .where(eq(settings.id, SETTINGS_ID));
     }),
+  notificationsDeliverableSinceQuery: () =>
+    database
+      .select({ notificationsDeliverableSince: settings.notificationsDeliverableSince })
+      .from(settings)
+      .where(eq(settings.id, SETTINGS_ID)),
+  setNotificationsDeliverableSince: (deliverableSince: number | null) =>
+    write((databaseTransaction) =>
+      databaseTransaction
+        .update(settings)
+        .set({ notificationsDeliverableSince: deliverableSince })
+        .where(eq(settings.id, SETTINGS_ID)),
+    ),
 } satisfies Repository;
 
 /** A dismissed reminder offer never comes back for that account. */

@@ -29,6 +29,7 @@ const input = (overrides: Partial<ReminderPlanInput> = {}): ReminderPlanInput =>
   kind: 'add_transactions',
   schedule: DAILY_AT_EIGHT_PM,
   activeSince: local(2026, 9, 24, 10),
+  deliverableSince: local(2026, 9, 1),
   lastEngagedAt: null,
   lastDataAt: null,
   lastSnoozedAt: null,
@@ -115,6 +116,32 @@ describe('planReminder — back-off', () => {
       requests: [],
       backoffPausedAt: local(2026, 9, 27, 20),
     });
+  });
+
+  it('counts no ignored fire from before notifications could be delivered', () => {
+    const { requests, backoffPausedAt } = planReminder(
+      input({ now: local(2026, 9, 27, 21), deliverableSince: local(2026, 9, 27, 20, 30) }),
+    );
+
+    expect(backoffPausedAt).toBeNull();
+    expect(firesOf(requests)).toEqual([
+      { fireAt: at(2026, 9, 28, 20, 0), variant: 'reminder' },
+      { fireAt: at(2026, 9, 29, 20, 0), variant: 'reminder' },
+      { fireAt: at(2026, 9, 30, 20, 0), variant: 'reminder' },
+      { fireAt: at(2026, 10, 1, 20, 0), variant: 'pausedNotice' },
+    ]);
+  });
+
+  it('still skips for data added before notifications could be delivered', () => {
+    const { requests } = planReminder(
+      input({
+        lastDataAt: local(2026, 9, 27, 12),
+        deliverableSince: local(2026, 9, 27, 13),
+        now: local(2026, 9, 27, 14),
+      }),
+    );
+
+    expect(firesOf(requests)[0]).toEqual({ fireAt: at(2026, 9, 28, 20, 0), variant: 'reminder' });
   });
 
   it('a tap after two ignored fires resets the count', () => {

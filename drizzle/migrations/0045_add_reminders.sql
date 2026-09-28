@@ -14,4 +14,5 @@ CREATE TABLE `reminders` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `reminders_account_kind` ON `reminders` (`account_id`,`kind`);--> statement-breakpoint
-ALTER TABLE `settings` ADD `reminder_offer_dismissals` text;
+ALTER TABLE `settings` ADD `reminder_offer_dismissals` text;--> statement-breakpoint
+ALTER TABLE `settings` ADD `notifications_deliverable_since` integer;

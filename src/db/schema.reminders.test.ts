@@ -181,13 +181,19 @@ describe('reminders migration SQL', () => {
     );
   });
 
+  it('adds the nullable notifications_deliverable_since column to settings', () => {
+    expect(migrationSql()).toContain(
+      'ALTER TABLE `settings` ADD `notifications_deliverable_since` integer;',
+    );
+  });
+
   it('is purely additive: every statement creates a table or index, or adds a column', () => {
     const statements = migrationSql()
       .split(STATEMENT_BREAKPOINT)
       .map((statement) => statement.trim())
       .filter((statement) => statement !== '');
 
-    expect(statements).toHaveLength(3);
+    expect(statements).toHaveLength(4);
 
     for (const statement of statements) {
       expect(statement).toMatch(/^(CREATE TABLE|CREATE UNIQUE INDEX|ALTER TABLE `\w+` ADD) `/);

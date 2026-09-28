@@ -709,6 +709,13 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "notifications_deliverable_since": {
+          "name": "notifications_deliverable_since",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {},

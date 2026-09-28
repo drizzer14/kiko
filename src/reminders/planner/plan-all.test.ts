@@ -19,6 +19,7 @@ const input = (overrides: Partial<ReminderPlanInput> = {}): ReminderPlanInput =>
   kind: 'add_transactions',
   schedule: { frequency: 'daily', minuteOfDay: 20 * 60 },
   activeSince: local(2026, 9, 28, 6),
+  deliverableSince: local(2026, 9, 1),
   lastEngagedAt: null,
   lastDataAt: null,
   lastSnoozedAt: null,

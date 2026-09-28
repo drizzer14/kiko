@@ -81,6 +81,7 @@ const buildSettings = (dataset: ScreenshotDataset): SettingsRow[] => [
     // that pass entirely on import, the same as a real post-upgrade device.
     dedupKeysUpgraded: true,
     reminderOfferDismissals: null,
+    notificationsDeliverableSince: null,
   },
 ];
 

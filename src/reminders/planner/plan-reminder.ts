@@ -11,8 +11,9 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { type LocalDateTime, REMINDER_IDENTIFIER_PREFIX } from '@kiko/reminders/native';
 
 // The planning rules:
-// - The anchor is the latest of `activeSince`, `lastEngagedAt` and
-//   `lastDataAt`: a tap or new data starts the ignored count again.
+// - The anchor is the latest of `activeSince`, `deliverableSince`,
+//   `lastEngagedAt` and `lastDataAt`: a tap, new data, or iOS starting to
+//   show the app's notifications starts the ignored count again.
 // - An occurrence is SKIPPED when `lastDataAt` is at or after both the
 //   previous occurrence and `activeSince`: new data arrived since the last
 //   fire. Data from before the reminder existed never skips.
@@ -38,6 +39,9 @@ export type ReminderPlanInput = {
   kind: ReminderKind;
   schedule: ReminderSchedule;
   activeSince: number;
+  // From when iOS could show the app's notifications. Only the anchor reads
+  // it: data from before it still skips an occurrence.
+  deliverableSince: number;
   lastEngagedAt: number | null;
   lastDataAt: number | null;
   // When the user last chose "Tomorrow" on this reminder's notification.
@@ -123,6 +127,7 @@ const ordinalSlots = (input: ReminderPlanInput): Slot[] => {
   const slots: Slot[] = [];
   let cursor = Math.max(
     input.activeSince,
+    input.deliverableSince,
     input.lastEngagedAt ?? Number.NEGATIVE_INFINITY,
     input.lastDataAt ?? Number.NEGATIVE_INFINITY,
   );

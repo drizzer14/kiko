@@ -391,6 +391,11 @@ export const settings = sqliteTable('settings', {
   reminderOfferDismissals: text('reminder_offer_dismissals', { mode: 'json' }).$type<
     Record<string, ReminderKind[]>
   >(),
+  // When the reminder sync first saw iOS allow this app's notifications, since
+  // they were last off. The ignored-reminder count starts no earlier, because
+  // a reminder iOS never showed was not ignored. NULL while they are off, or
+  // before the first sync.
+  notificationsDeliverableSince: integer('notifications_deliverable_since'),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;
