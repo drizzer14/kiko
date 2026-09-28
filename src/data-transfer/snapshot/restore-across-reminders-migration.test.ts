@@ -44,7 +44,8 @@ const insertReminder = (database: DatabaseSync, id: string, accountId: string): 
 };
 
 // An export from the build before the reminders migration: no `reminders`
-// key, and no `reminderOfferDismissals` on the settings row.
+// key, and no `reminderOfferDismissals` or `notificationsDeliverableSince` on
+// the settings row.
 const asPreRemindersExport = (snapshot: DataSnapshot): DataSnapshot => {
   const legacy = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
 
@@ -52,6 +53,7 @@ const asPreRemindersExport = (snapshot: DataSnapshot): DataSnapshot => {
 
   for (const row of legacy.settings as Record<string, unknown>[]) {
     delete row.reminderOfferDismissals;
+    delete row.notificationsDeliverableSince;
   }
 
   return legacy as unknown as DataSnapshot;
@@ -69,14 +71,17 @@ describe('restoring across the reminders migration', () => {
     mockDatabase = openDatabase();
     insertAccount(mockDatabase, 'on-device');
     insertReminder(mockDatabase, 'reminder-on-device', 'on-device');
+    mockDatabase.exec('UPDATE settings SET notifications_deliverable_since = 5');
 
     await restoreDataSnapshot(legacyExport);
 
     expect(tableIds('accounts')).toEqual([{ id: 'backed-up' }]);
     expect(tableIds('reminders')).toEqual([]);
-    expect(mockDatabase.prepare('SELECT reminder_offer_dismissals FROM settings').all()).toEqual([
-      { reminder_offer_dismissals: null },
-    ]);
+    expect(
+      mockDatabase
+        .prepare('SELECT reminder_offer_dismissals, notifications_deliverable_since FROM settings')
+        .all(),
+    ).toEqual([{ reminder_offer_dismissals: null, notifications_deliverable_since: null }]);
   });
 
   it('round-trips every reminder column and the offer dismissals through an export and an import', async () => {
