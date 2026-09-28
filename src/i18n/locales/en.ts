@@ -547,6 +547,7 @@ export const en = {
     // The unit a numeric field shows after its value (`TextField`'s
     // `suffix`), never inside its label.
     units: {
+      days: 'days',
       grams: 'g',
       months: 'mo',
       percent: '%',
@@ -1066,6 +1067,53 @@ export const en = {
       'Old .xls files are not supported. Save the file as .xlsx or CSV and try again.',
   },
   reminders: {
+    rowLabel: 'Reminders',
+    title: 'Reminders',
+    kind: {
+      statementImport: 'Statement import',
+      addTransactions: 'Add transactions',
+    },
+    kindHint: {
+      statementImport: 'Reminds you to import a new statement for this account.',
+      addTransactions: 'Reminds you to add new transactions to this account.',
+    },
+    off: 'Off',
+    pausedAfterNoResponse: 'Paused after 3 reminders with no response.',
+    accountArchived: 'Not sent while the account is archived.',
+    notAvailable: 'Not available while the account is connected to a bank.',
+    enabledLabel: 'Reminder on',
+    form: {
+      createTitle: 'New Reminder',
+      editTitle: 'Edit Reminder',
+      frequency: 'Repeat',
+      frequencyDaily: 'Daily',
+      frequencyWeekly: 'Weekly',
+      frequencyMonthly: 'Monthly',
+      frequencyInterval: 'Every N days',
+      time: 'Time',
+      timeSheetTitle: 'Time',
+      timePlaceholder: 'Select a time',
+      weekdays: 'Days',
+      weekdaysError: 'No days selected.',
+      dayOfMonth: 'Day of month',
+      dayOfMonthSheetTitle: 'Day of Month',
+      dayOfMonthPlaceholder: 'Select a day',
+      dayOfMonthHint: 'In shorter months, the reminder comes on the last day.',
+      intervalDays: 'Repeat every',
+      intervalDaysError: 'Enter a number of days from 2 to 365.',
+      delete: 'Delete reminder',
+      deleteConfirmTitle: 'Delete Reminder?',
+    },
+    permission: {
+      preAlertTitle: 'Reminder Notifications',
+      preAlertMessage:
+        'Kiko shows your reminders as notifications at the times you choose. Next, iOS asks whether to allow them.',
+      continue: 'Continue',
+      deniedMessage: 'Notifications are off for Kiko, so reminders can’t appear.',
+      openSettings: 'Open iOS settings',
+      notDeterminedMessage: 'Turn on notifications so your reminders can appear.',
+      turnOn: 'Turn on notifications',
+    },
     // A notification can show on the lock screen, so its text never holds an
     // account name, an identifier or an amount, and its title never names the
     // app. English selects _one/_other; the _few/_many forms exist only to
