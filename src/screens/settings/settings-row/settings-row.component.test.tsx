@@ -144,4 +144,70 @@ describe('SettingsRow', () => {
     expect(getByTestId('trailing-switch')).toBeTruthy();
     expect(getByText('Hint text below the row')).toBeTruthy();
   });
+
+  // iOS reads an accessible Pressable and its children as ONE VoiceOver
+  // element, so the row itself must carry the trailing control's action.
+  it('runs the trailing control action from the pressable row itself', async () => {
+    const onAccessibilityAction = jest.fn();
+    const { getByRole } = await render(
+      <SettingsRow
+        label="Reminder"
+        onPress={jest.fn()}
+        trailing={<RNText>toggle</RNText>}
+        accessibilityActions={[{ name: 'toggle', label: 'Turn off' }]}
+        onAccessibilityAction={onAccessibilityAction}
+      />,
+    );
+
+    const row = getByRole('button');
+    expect(row.props.accessibilityActions).toEqual([{ name: 'toggle', label: 'Turn off' }]);
+
+    await fireEvent(row, 'accessibilityAction', { nativeEvent: { actionName: 'toggle' } });
+    expect(onAccessibilityAction).toHaveBeenCalledTimes(1);
+  });
+
+  // Type level, proven by `check:typecheck`: each `@ts-expect-error` below
+  // fails tsc once the props type stops rejecting that shape.
+  it('rejects a pressable row whose trailing control VoiceOver cannot reach', () => {
+    const control = <RNText>toggle</RNText>;
+    const actions = [{ name: 'toggle', label: 'Turn off' }];
+
+    const rejected = [
+      // @ts-expect-error a pressable row with a trailing control needs the control's actions
+      <SettingsRow key="none" label="Row" onPress={jest.fn()} trailing={control} />,
+      // @ts-expect-error the actions alone never run without a handler
+      <SettingsRow
+        key="actions"
+        label="Row"
+        onPress={jest.fn()}
+        trailing={control}
+        accessibilityActions={actions}
+      />,
+      // @ts-expect-error a handler alone offers VoiceOver no action
+      <SettingsRow
+        key="handler"
+        label="Row"
+        onPress={jest.fn()}
+        trailing={control}
+        onAccessibilityAction={jest.fn()}
+      />,
+    ];
+
+    const accepted = [
+      <SettingsRow key="neither" label="Row" />,
+      <SettingsRow key="press" label="Row" onPress={jest.fn()} />,
+      <SettingsRow key="trailing" label="Row" trailing={control} />,
+      <SettingsRow
+        key="both"
+        label="Row"
+        onPress={jest.fn()}
+        trailing={control}
+        accessibilityActions={actions}
+        onAccessibilityAction={jest.fn()}
+      />,
+    ];
+
+    expect(rejected).toHaveLength(3);
+    expect(accepted).toHaveLength(4);
+  });
 });

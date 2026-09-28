@@ -67,7 +67,9 @@ const pauseAccessibility = (
   reminder: SavedReminder,
   onPausedChange: (paused: boolean) => void,
   t: TFunction,
-): Pick<ViewProps, 'accessibilityValue' | 'accessibilityActions' | 'onAccessibilityAction'> => {
+): Required<
+  Pick<ViewProps, 'accessibilityValue' | 'accessibilityActions' | 'onAccessibilityAction'>
+> => {
   const on = reminder.pausedAt === null;
 
   return {
@@ -82,6 +84,11 @@ const pauseAccessibility = (
     },
   };
 };
+
+// Not `{}`: TypeScript merges `X | {}` into one shape with every prop of X
+// optional, which loses the tie between the switch and its action that
+// SettingsRowProps requires on a pressable row.
+const NO_SWITCH = { trailing: undefined };
 
 const ReminderRow: FC<ReminderRowProps> = ({
   kind,
@@ -102,17 +109,19 @@ const ReminderRow: FC<ReminderRowProps> = ({
     <CardContextMenu name={label} deletable={reminder !== undefined} onDelete={onDelete}>
       <Card padding={3}>
         <SettingsRow
-          {...foldMap(saved, (found) => pauseAccessibility(found, onPausedChange, t))}
+          {...(foldMap(saved, (found) => ({
+            ...pauseAccessibility(found, onPausedChange, t),
+            trailing: (
+              <Switch
+                value={found.pausedAt === null}
+                onValueChange={(on) => onPausedChange(!on)}
+                accessibilityLabel={t('reminders.enabledLabel')}
+              />
+            ),
+          })) ?? NO_SWITCH)}
           icon={KIND_ICON[kind]}
           label={label}
           onPress={onOpen}
-          trailing={foldMap(saved, (found) => (
-            <Switch
-              value={found.pausedAt === null}
-              onValueChange={(on) => onPausedChange(!on)}
-              accessibilityLabel={t('reminders.enabledLabel')}
-            />
-          ))}
         >
           <Box gap={1}>
             <Text variant="caption" tone="textSecondary">

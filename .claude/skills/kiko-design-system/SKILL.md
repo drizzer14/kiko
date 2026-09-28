@@ -273,7 +273,13 @@ The established patterns grouped under this heading:
   `trailing` must give the row itself the control's
   `accessibilityValue`, plus an `accessibilityActions` entry and
   `onAccessibilityAction` for it (see `pauseAccessibility` in
-  `reminder-row.component.tsx`). RNTL `getByLabelText` still finds the
+  `reminder-row.component.tsx`). The props type enforces the two action
+  props: `SettingsRowProps` is a union, so a row with both `onPress` and
+  a `trailing` does not compile without `accessibilityActions` and
+  `onAccessibilityAction` (the `accessibilityValue` stays a review
+  item). Build the switch and its actions in ONE object and spread it
+  (`reminder-row.component.tsx`'s `NO_SWITCH` fallback shows why the
+  fallback is not `{}`). RNTL `getByLabelText` still finds the
   inner Switch, so a green test does not prove VoiceOver can reach it;
   list a device check.
 - A field's own Connect (`MonobankConnectField`, `BinanceCredentialsField`,
