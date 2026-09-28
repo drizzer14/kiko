@@ -106,6 +106,30 @@ fi
 
 echo "✓ Build succeeded"
 
+# A Release build can reuse a cached main.jsbundle and ship old JS; a
+# known-new string in the bundle is the only proof it regenerated.
+BUNDLE_PATH="$APP_PATH/main.jsbundle"
+if [[ -z "${EXPECT_BUNDLE_STRING:-}" ]]; then
+  echo "Bundle check skipped (set EXPECT_BUNDLE_STRING)"
+else
+  BUNDLE_STATUS=0
+  node "$SCRIPT_DIR/bundle-contains.js" "$BUNDLE_PATH" "$EXPECT_BUNDLE_STRING" || BUNDLE_STATUS=$?
+  case "$BUNDLE_STATUS" in
+    0)
+      echo "✓ Bundle contains $EXPECT_BUNDLE_STRING"
+      ;;
+    1)
+      echo "Stale bundle: main.jsbundle lacks \"$EXPECT_BUNDLE_STRING\"."
+      echo "The build reused an old bundle despite FORCE_BUNDLING=1. Run make clean-ios, then deploy again."
+      exit 1
+      ;;
+    *)
+      echo "Bundle check failed: no readable bundle at $BUNDLE_PATH"
+      exit 1
+      ;;
+  esac
+fi
+
 # Install app
 echo "Installing app to device..."
 INSTALL_OUTPUT=$(xcrun devicectl device install app --device "$DEVICE_ID" "$APP_PATH" 2>&1)
@@ -121,7 +145,21 @@ echo "✓ App installed (container UUID: $INSTALL_UUID)"
 
 # Launch app
 echo "Launching app..."
-LAUNCH_OUTPUT=$(xcrun devicectl device process launch --device "$DEVICE_ID" "$BUNDLE_ID" 2>&1)
+
+# A launch right after install can fail transiently, so one retry separates
+# that from a real failure. `|| true` keeps `set -e` from aborting before the
+# output is shown.
+launch_app() {
+  xcrun devicectl device process launch --device "$DEVICE_ID" "$BUNDLE_ID" 2>&1 || true
+}
+
+LAUNCH_OUTPUT=$(launch_app)
+
+if ! echo "$LAUNCH_OUTPUT" | grep -q "Launched application"; then
+  echo "Launch retry…"
+  sleep 3
+  LAUNCH_OUTPUT=$(launch_app)
+fi
 
 if echo "$LAUNCH_OUTPUT" | grep -q "Launched application"; then
   echo "✓ App launched"
