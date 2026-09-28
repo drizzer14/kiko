@@ -49,6 +49,24 @@ const PASSCODE_NOT_SET_CODE = 'PASSCODE_NOT_SET';
 const hasCode = (codes: readonly string[], code: string | undefined): boolean =>
   code !== undefined && codes.includes(code);
 
+// Shared between a native REJECTION (the real iOS shape) and a resolved
+// `success: false` result, so both classify identically off the same code.
+const classifyCode = (code: string | undefined): AuthResult => {
+  if (hasCode(CANCEL_CODES, code)) {
+    return { kind: 'cancelled' };
+  }
+
+  if (hasCode(LOCKOUT_CODES, code)) {
+    return { kind: 'lockout' };
+  }
+
+  if (code === PASSCODE_NOT_SET_CODE) {
+    return { kind: 'passcodeNotSet' };
+  }
+
+  return { kind: 'failed', code };
+};
+
 // A caught value from `either`'s left channel: either the native module's own
 // rejection (which may carry `code` or `errorCode`) or the plain `Error` a
 // missing-pod `require` throws (which carries neither). Read defensively —
@@ -134,7 +152,19 @@ export const authenticate = async (prompt: string): Promise<AuthResult> => {
   );
 
   if (isLeft(result)) {
-    return { kind: 'failed', code: thrownCode(bifold(result)) };
+    const classified = classifyCode(thrownCode(bifold(result)));
+
+    if (classified.kind !== 'failed') {
+      return classified;
+    }
+
+    // A native rejection classified as an unspecific `failed` may really mean
+    // the passcode was just removed — the sensor query disambiguates the two,
+    // since a plain "authentication failed" carries no such distinction of
+    // its own.
+    const sensorStatus = await isSensorAvailable();
+
+    return sensorStatus.kind === 'passcodeNotSet' ? { kind: 'passcodeNotSet' } : classified;
   }
 
   // Same annotation gotcha as `isSensorAvailable`'s `info`.
@@ -144,17 +174,5 @@ export const authenticate = async (prompt: string): Promise<AuthResult> => {
     return { kind: 'success' };
   }
 
-  if (hasCode(CANCEL_CODES, authResult.errorCode)) {
-    return { kind: 'cancelled' };
-  }
-
-  if (hasCode(LOCKOUT_CODES, authResult.errorCode)) {
-    return { kind: 'lockout' };
-  }
-
-  if (authResult.errorCode === PASSCODE_NOT_SET_CODE) {
-    return { kind: 'passcodeNotSet' };
-  }
-
-  return { kind: 'failed', code: authResult.errorCode };
+  return classifyCode(authResult.errorCode);
 };
