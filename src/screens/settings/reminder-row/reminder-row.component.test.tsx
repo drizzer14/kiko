@@ -116,6 +116,52 @@ describe('ReminderRow', () => {
     expect(onPausedChange).toHaveBeenLastCalledWith(false);
   });
 
+  // VoiceOver reads the row as one element, so the switch inside it is out of
+  // reach; the row itself must carry the switch's state and action.
+  it('gives VoiceOver the on state and a Turn off action on an active reminder', async () => {
+    const { getByRole, props } = await renderRow();
+    const row = getByRole('button', { name: /Add transactions/ });
+
+    expect(row.props.accessibilityValue).toEqual({ text: 'On' });
+    expect(row.props.accessibilityActions).toEqual([{ name: 'togglePaused', label: 'Turn off' }]);
+
+    await fireEvent(row, 'accessibilityAction', { nativeEvent: { actionName: 'togglePaused' } });
+
+    expect(props.onPausedChange).toHaveBeenCalledWith(true);
+  });
+
+  it('gives VoiceOver the off state and a Turn on action on a paused reminder', async () => {
+    const { getByRole, props } = await renderRow({
+      reminder: saved({ pausedAt: 1, pauseReason: 'user' }),
+    });
+    const row = getByRole('button', { name: /Add transactions/ });
+
+    expect(row.props.accessibilityValue).toEqual({ text: 'Off' });
+    expect(row.props.accessibilityActions).toEqual([{ name: 'togglePaused', label: 'Turn on' }]);
+
+    await fireEvent(row, 'accessibilityAction', { nativeEvent: { actionName: 'togglePaused' } });
+
+    expect(props.onPausedChange).toHaveBeenCalledWith(false);
+  });
+
+  it('ignores another accessibility action', async () => {
+    const { getByRole, props } = await renderRow();
+
+    await fireEvent(getByRole('button', { name: /Add transactions/ }), 'accessibilityAction', {
+      nativeEvent: { actionName: 'activate' },
+    });
+
+    expect(props.onPausedChange).not.toHaveBeenCalled();
+  });
+
+  it('offers no pause action when there is nothing saved', async () => {
+    const { getByRole } = await renderRow({ kind: 'statement_import', reminder: undefined });
+    const row = getByRole('button', { name: /Statement import/ });
+
+    expect(row.props.accessibilityActions).toBeUndefined();
+    expect(row.props.accessibilityValue?.text).toBeUndefined();
+  });
+
   it('says a reminder paused itself after no response', async () => {
     const { getByText } = await renderRow({
       reminder: saved({ pausedAt: 1, pauseReason: 'backoff' }),

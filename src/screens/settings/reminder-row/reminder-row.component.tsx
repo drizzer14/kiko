@@ -2,6 +2,7 @@ import type { FC } from 'react';
 import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
+import type { ViewProps } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import Card from '@kiko/design-system/components/card';
@@ -51,6 +52,30 @@ const statusCaptions = (
   ...(reminder.pauseReason === 'backoff' ? [t('reminders.pausedAfterNoResponse')] : []),
 ];
 
+const PAUSE_ACTION = 'togglePaused';
+
+// VoiceOver reads the row as one element, so the switch inside it is out of
+// reach; the row itself carries the switch's state and action.
+const pauseAccessibility = (
+  reminder: SavedReminder,
+  onPausedChange: (paused: boolean) => void,
+  t: TFunction,
+): Pick<ViewProps, 'accessibilityValue' | 'accessibilityActions' | 'onAccessibilityAction'> => {
+  const on = reminder.pausedAt === null;
+
+  return {
+    accessibilityValue: { text: on ? t('reminders.on') : t('reminders.off') },
+    accessibilityActions: [
+      { name: PAUSE_ACTION, label: on ? t('reminders.turnOff') : t('reminders.turnOn') },
+    ],
+    onAccessibilityAction: ({ nativeEvent }) => {
+      if (nativeEvent.actionName === PAUSE_ACTION) {
+        onPausedChange(on);
+      }
+    },
+  };
+};
+
 const ReminderRow: FC<ReminderRowProps> = ({
   kind,
   reminder,
@@ -70,6 +95,7 @@ const ReminderRow: FC<ReminderRowProps> = ({
     <CardContextMenu name={label} deletable={reminder !== undefined} onDelete={onDelete}>
       <Card padding={3}>
         <SettingsRow
+          {...foldMap(saved, (found) => pauseAccessibility(found, onPausedChange, t))}
           icon={KIND_ICON[kind]}
           label={label}
           onPress={onOpen}
