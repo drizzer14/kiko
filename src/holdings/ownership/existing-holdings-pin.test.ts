@@ -18,7 +18,7 @@ const D2 = D0 + 2 * DAY;
 
 const existingProperty: Pick<
   HoldingRow,
-  'id' | 'type' | 'currency' | 'balanceMinorUnits' | 'metadata'
+  'id' | 'type' | 'currency' | 'balanceMinorUnits' | 'metadata' | 'closedAt'
 > = {
   id: 'prop',
   type: 'property_item',
@@ -28,6 +28,7 @@ const existingProperty: Pick<
     category: 'real_estate',
     lots: [{ day: D0, quantityDelta: '1', costMinorUnits: 1_800_000_01 }],
   },
+  closedAt: null,
 };
 
 const book = buildPriceBook([

@@ -26,6 +26,7 @@ const cardHolding = (id: string, currency: SeriesHolding['currency']): SeriesHol
   type: 'card',
   balanceMinorUnits: 0,
   metadata: null,
+  closedAt: null,
 });
 
 const transaction = (time: number, amountMinorUnits: number): SeriesTransaction => ({

@@ -10,6 +10,7 @@ const cashHolding = (balanceMinorUnits: number): SeriesHolding => ({
   type: 'cash',
   balanceMinorUnits,
   metadata: null,
+  closedAt: null,
 });
 
 const transaction = (dayOffset: number, amountMinorUnits: number): SeriesTransaction => ({
@@ -65,6 +66,7 @@ describe('createHoldingValuer', () => {
       type: 'metal',
       balanceMinorUnits: 0,
       metadata: null,
+      closedAt: null,
     };
     const valueAt = createHoldingValuer(holding, []);
 

@@ -1,3 +1,5 @@
+import maybe, { foldMap } from 'fnts/maybe';
+import { startOfLocalDay } from '@kiko/dates';
 import { Money, toMajor } from '@kiko/currency/money';
 import type { CurrencyRateHistoryRow } from '@kiko/db';
 import { canConvert } from '@kiko/rates/net-worth-view';
@@ -83,10 +85,18 @@ const bondRecognitionsFor = (
 
 /**
  * Build the single converted net-worth line over `range`. For each day bucket
- * `t`, every holding is valued at `t` (via `holdingValueAt`, so past deposit
- * interest / bond coupons are correct) and converted to the base currency at
- * that day's rate table. Each point's `amount` is the absolute total in base
- * MAJOR units.
+ * `t`, every holding is valued at `t` (via `createHoldingValuer`, so past
+ * deposit interest / bond coupons are correct) and converted to the base
+ * currency at that day's rate table. Each point's `amount` is the absolute
+ * total in base MAJOR units.
+ *
+ * `holdings` must include CLOSED holdings too, not just currently-open ones —
+ * the caller applies its own account/name filter, but never a `closedAt`
+ * filter, before calling this. A closed holding's value is zeroed only for
+ * buckets AFTER its own close day (see the `holdingsWithValuer` build below);
+ * every bucket up to and including the close day still reconstructs its real
+ * historical value, so a closed holding's own past no longer vanishes from
+ * the line the moment it closes.
  *
  * The rate table for a bucket is resolved so the line reconciles end-to-end:
  * - lookups are normalized to the bucket's UTC day (`toUtcMidnight`), since
@@ -172,11 +182,33 @@ export const buildNetWorthSeries = (input: {
 
   // Built ONCE per holding, not once per (holding, bucket) — see
   // `createHoldingValuer`'s own doc comment for why the per-bucket reduce/filter
-  // it replaces was loop-invariant work repeated at every point.
-  const holdingsWithValuer = valuationHoldings.map((holding) => ({
-    holding,
-    valueAt: createHoldingValuer(holding, transactionsByHolding.get(holding.id) ?? [], book),
-  }));
+  // it replaces was loop-invariant work repeated at every point. A closed
+  // holding's reconstructed value is zeroed for every bucket AFTER its own
+  // close day (never before it, and never on the close day itself — the
+  // holding was still open some of that day): the caller now passes EVERY
+  // holding, not just currently-open ones, so a jar closed last month still
+  // contributes its real historical value up to the day it closed, instead of
+  // vanishing from every past bucket the way an "open holdings only" filter
+  // did (kiko-pricing: the history chart needs a closed holding's own past
+  // prices the same way it needs its own past lots). A plain loop (not
+  // `.map`) so each holding's close-day key is derived directly, never inside
+  // an array callback.
+  const holdingsWithValuer: { holding: SeriesHolding; valueAt: (t: number) => number }[] = [];
+
+  for (const holding of valuationHoldings) {
+    const rawValueAt = createHoldingValuer(
+      holding,
+      transactionsByHolding.get(holding.id) ?? [],
+      book,
+    );
+    const closedDay = foldMap(maybe(holding.closedAt), startOfLocalDay);
+
+    holdingsWithValuer.push({
+      holding,
+      valueAt: (t: number): number =>
+        closedDay !== undefined && startOfLocalDay(t) > closedDay ? 0 : rawValueAt(t),
+    });
+  }
 
   const earliest = earliestRateTable(historyRows);
   const todayKey = toUtcMidnight(today ?? Date.now());

@@ -17,7 +17,10 @@ const D0 = Date.UTC(2026, 0, 1);
 const D1 = D0 + DAY;
 const D2 = D0 + 2 * DAY;
 
-type PricedRow = Pick<HoldingRow, 'id' | 'type' | 'currency' | 'balanceMinorUnits' | 'metadata'>;
+type PricedRow = Pick<
+  HoldingRow,
+  'id' | 'type' | 'currency' | 'balanceMinorUnits' | 'metadata' | 'closedAt'
+>;
 
 const propertyWith = (ownership: OwnershipChange[]): PricedRow => ({
   id: 'prop',
@@ -29,6 +32,7 @@ const propertyWith = (ownership: OwnershipChange[]): PricedRow => ({
     lots: [{ day: D0, quantityDelta: '1', costMinorUnits: 20_000_00 }],
     ...(ownership.length === 0 ? {} : { ownership, ownershipInput: 'percent' }),
   },
+  closedAt: null,
 });
 
 const book = buildPriceBook([

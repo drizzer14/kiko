@@ -1354,6 +1354,7 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
       type: 'cash',
       balanceMinorUnits: 100_00,
       metadata: null,
+      closedAt: null,
     } as const;
     const earlier = { time: base, amountMinorUnits: 10_00 };
     const before = holdingValueAt(holding, [earlier], pastDay);

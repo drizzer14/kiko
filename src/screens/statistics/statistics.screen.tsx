@@ -306,20 +306,28 @@ const StatisticsScreen: FC = () => {
   );
 
   // Only non-archived accounts are ever shown; the account filter narrows within
-  // those, and a holding then feeds the charts only when it is open AND its
-  // account survived that filter. Memoized so all three builders below key off a
-  // stable collection instead of a fresh array on every render.
+  // those. `visibleHoldings` (open AND under a surviving account) feeds every
+  // "now" snapshot (the by-type bar, the account pie, the Debts total).
+  // `netWorthHoldings` feeds the net-worth LINE instead: the same account
+  // filter, but WITHOUT the `closedAt` filter — a closed holding still needs
+  // its real value on every bucket up to its own close day (buildNetWorthSeries
+  // zeros it only AFTER that day), so filtering it out entirely made it vanish
+  // from every past point the moment it closed (kiko-pricing: the history
+  // chart needs a closed holding's own past prices the same way it needs its
+  // past lots). Memoized so all four builders below key off a stable
+  // collection instead of a fresh array on every render.
   const filtered = useMemo(() => {
     const visibleAccounts = accounts.filter((account) => account.archivedAt == null);
     const filteredAccounts = visibleAccounts.filter((account) => {
       return selectedAccounts.size === 0 || selectedAccounts.has(account.name);
     });
     const filteredAccountIds = new Set(filteredAccounts.map((account) => account.id));
-    const visibleHoldings = holdings.filter((holding) => {
-      return holding.closedAt == null && filteredAccountIds.has(holding.accountId);
-    });
+    const netWorthHoldings = holdings.filter((holding) =>
+      filteredAccountIds.has(holding.accountId),
+    );
+    const visibleHoldings = netWorthHoldings.filter((holding) => holding.closedAt == null);
 
-    return { visibleAccounts, filteredAccounts, visibleHoldings };
+    return { visibleAccounts, filteredAccounts, visibleHoldings, netWorthHoldings };
   }, [accounts, holdings, selectedAccounts]);
 
   // The full transaction span drives the date field's default display, the line's
@@ -536,7 +544,7 @@ const StatisticsScreen: FC = () => {
   const netWorth = useMemo(
     () =>
       buildNetWorthSeries({
-        holdings: filtered.visibleHoldings,
+        holdings: filtered.netWorthHoldings,
         transactionsByHolding: groupByHolding(transactions),
         historyRows,
         baseCurrency,

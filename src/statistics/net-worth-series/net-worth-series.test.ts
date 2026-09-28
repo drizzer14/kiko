@@ -37,6 +37,7 @@ const holding = (over: Partial<HoldingRow> & Pick<HoldingRow, 'id'>): SeriesHold
   type: 'cash',
   balanceMinorUnits: 0,
   metadata: null,
+  closedAt: null,
   ...over,
 });
 
@@ -1195,5 +1196,108 @@ describe('buildNetWorthSeries', () => {
 
     expect(series.points).toHaveLength(260);
     expect(performance.now() - startedAt).toBeLessThan(1_000);
+  });
+
+  describe('a closed holding', () => {
+    const openDay = D0;
+    const midDay = D1;
+    const closeDay = D2;
+    const afterCloseDay = D2 + DAY;
+    const range = { from: openDay, to: afterCloseDay };
+
+    it('keeps its real reconstructed value through its own close day, then zeros afterward', () => {
+      const jar = holding({
+        id: 'jar',
+        currency: 'UAH',
+        balanceMinorUnits: 0, // fully drained on its own close day
+        closedAt: closeDay,
+      });
+      const ledger = new Map([
+        [
+          'jar',
+          [
+            { time: openDay, amountMinorUnits: 1_000_00 },
+            { time: closeDay, amountMinorUnits: -1_000_00 },
+          ],
+        ],
+      ]);
+
+      const series = buildNetWorthSeries({
+        holdings: [jar],
+        transactionsByHolding: ledger,
+        historyRows: [],
+        baseCurrency: 'UAH',
+        range,
+      });
+
+      expect(amountAt(series, openDay)).toBe(1_000);
+      expect(amountAt(series, midDay)).toBe(1_000);
+      expect(amountAt(series, closeDay)).toBe(0); // drained the same day it closed
+      expect(amountAt(series, afterCloseDay)).toBe(0);
+    });
+
+    it('does not change any past point when a zero-balance holding is closed (parity with an equivalent still-open holding)', () => {
+      const ledger = new Map([
+        [
+          'jar',
+          [
+            { time: openDay, amountMinorUnits: 1_000_00 },
+            { time: midDay, amountMinorUnits: -1_000_00 }, // drained BEFORE the close
+          ],
+        ],
+      ]);
+      const openJar = holding({ id: 'jar', currency: 'UAH', balanceMinorUnits: 0 });
+      const closedJar = holding({
+        id: 'jar',
+        currency: 'UAH',
+        balanceMinorUnits: 0,
+        closedAt: closeDay,
+      });
+
+      const openSeries = buildNetWorthSeries({
+        holdings: [openJar],
+        transactionsByHolding: ledger,
+        historyRows: [],
+        baseCurrency: 'UAH',
+        range,
+      });
+      const closedSeries = buildNetWorthSeries({
+        holdings: [closedJar],
+        transactionsByHolding: ledger,
+        historyRows: [],
+        baseCurrency: 'UAH',
+        range,
+      });
+
+      for (const point of openSeries.points) {
+        if (point.t <= closeDay) {
+          expect(amountAt(closedSeries, point.t)).toBe(point.amount);
+        }
+      }
+    });
+
+    it("zeros every bucket after the close day even when the holding's reconstructed balance would otherwise stay nonzero", () => {
+      const jar = holding({
+        id: 'jar',
+        currency: 'UAH',
+        balanceMinorUnits: 500_00,
+        closedAt: closeDay,
+      });
+      // No transactions after openDay: the UN-zeroed reconstructed balance
+      // would read 500 forever, proving the zero comes from `closedAt`, not
+      // a ledger row.
+      const ledger = new Map([['jar', [{ time: openDay, amountMinorUnits: 500_00 }]]]);
+
+      const series = buildNetWorthSeries({
+        holdings: [jar],
+        transactionsByHolding: ledger,
+        historyRows: [],
+        baseCurrency: 'UAH',
+        range,
+      });
+
+      expect(amountAt(series, closeDay)).toBe(500);
+      expect(amountAt(series, afterCloseDay)).toBe(0);
+    });
   });
 });

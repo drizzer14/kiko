@@ -5,10 +5,17 @@ import { holdingValueBreakdown } from '@kiko/holdings/holding-value';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 
-/** A holding as the series builders need it: identity, currency, and value inputs. */
+/**
+ * A holding as the series builders need it: identity, currency, and value
+ * inputs, plus `closedAt` — a null/closed-instant marker `buildNetWorthSeries`
+ * reads to zero out a closed holding's value for buckets AFTER its close (see
+ * that builder's own doc comment); `holdingValueAt`/`createHoldingValuer`
+ * themselves never read it — reconstructing a holding's value has no opinion
+ * on whether it is currently closed.
+ */
 export type SeriesHolding = Pick<
   HoldingRow,
-  'id' | 'currency' | 'type' | 'balanceMinorUnits' | 'metadata'
+  'id' | 'currency' | 'type' | 'balanceMinorUnits' | 'metadata' | 'closedAt'
 >;
 
 /** One transaction as the reconstruction needs it: when, and how much (signed). */
