@@ -394,34 +394,106 @@ describe('restoreDataSnapshot', () => {
   // keys — SQLite then defaults the missing columns itself (null / false),
   // exactly like every other nullable column added after `transactions` first
   // shipped (`counterIban`, `changeGroupId`).
-  it('rejects a snapshot with a cash holding in a crypto currency, deleting and inserting nothing', async () => {
-    const touchedTables: string[] = [];
+  // Mirrors migration 0044: a cash holding in a crypto currency no longer
+  // refuses the whole file — it MOVES onto a new crypto account instead,
+  // the same as a live device upgrade.
+  it('moves a cash holding in a crypto currency onto a new crypto account, deleting and inserting every table', async () => {
+    const deletedTables: string[] = [];
+    const insertedTables: string[] = [];
+    const insertedRows: Record<string, unknown[]> = {};
+
     mockDatabaseTransaction = {
       delete: (table: unknown) => {
-        touchedTables.push(tableNameOf(table));
+        deletedTables.push(tableNameOf(table));
 
         return Promise.resolve();
       },
       insert: (table: unknown) => ({
-        values: () => {
-          touchedTables.push(tableNameOf(table));
+        values: (rows: unknown[]) => {
+          const name = tableNameOf(table);
+          insertedTables.push(name);
+          insertedRows[name] = [...(insertedRows[name] ?? []), ...rows];
 
           return Promise.resolve();
         },
       }),
     };
 
-    await expect(
-      restoreDataSnapshot({
-        ...emptySnapshot,
-        accounts: [{ id: 'a1', kind: 'cash' }] as never,
-        holdings: [
-          { id: 'h1', accountId: 'a1', type: 'cash', currency: 'UAH' },
-          { id: 'h2', accountId: 'a1', type: 'cash', currency: 'BTC' },
-        ] as never,
-      }),
-    ).rejects.toThrow(/^data-transfer\/crypto-cash-holding: .*BTC/);
-    expect(touchedTables).toEqual([]);
+    const sourceAccount = {
+      id: 'a1',
+      name: 'Wallet',
+      kind: 'cash',
+      institution: null,
+      bankId: null,
+      icon: null,
+      color: null,
+      sortOrder: 0,
+      archivedAt: null,
+      createdAt: 1_700_000_000_000,
+    };
+    const fiatHolding = {
+      id: 'h1',
+      accountId: 'a1',
+      name: 'Cash',
+      type: 'cash',
+      currency: 'UAH',
+      icon: null,
+      color: null,
+      balanceMinorUnits: 0,
+      syncedBalanceMinorUnits: null,
+      balanceSetAt: null,
+      metadata: null,
+      sortOrder: 0,
+      closedAt: null,
+      createdAt: 1_700_000_000_000,
+    };
+    const cryptoCashHolding = {
+      ...fiatHolding,
+      id: 'h2',
+      name: 'Tether',
+      currency: 'BTC',
+      balanceMinorUnits: 12_345,
+    };
+
+    await restoreDataSnapshot({
+      ...emptySnapshot,
+      accounts: [sourceAccount] as never,
+      holdings: [fiatHolding, cryptoCashHolding] as never,
+    });
+
+    expect(deletedTables).toEqual([
+      'transactions',
+      'syncState',
+      'holdings',
+      'accounts',
+      'categoryOverrides',
+      'categories',
+      'currencyRateHistory',
+      'currencyRates',
+      'settings',
+      'pricePoints',
+      'bondRegister',
+    ]);
+    expect(insertedTables).toEqual(['accounts', 'holdings', 'categories']);
+    expect(insertedRows.accounts).toEqual([
+      sourceAccount,
+      {
+        id: 'crypto-from-a1',
+        name: 'Wallet',
+        kind: 'crypto',
+        institution: null,
+        bankId: null,
+        icon: null,
+        color: null,
+        sortOrder: 0,
+        archivedAt: null,
+        createdAt: 1_700_000_000_000,
+      },
+    ]);
+    expect(insertedRows.holdings).toEqual([
+      fiatHolding,
+      { ...cryptoCashHolding, accountId: 'crypto-from-a1', type: 'crypto_asset' },
+    ]);
   });
 
   it('restores a crypto currency on a crypto_asset holding', async () => {
