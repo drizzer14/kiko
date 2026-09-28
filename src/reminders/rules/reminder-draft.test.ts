@@ -6,6 +6,7 @@ import {
   draftToSchedule,
   type ReminderDraft,
   validateReminderDraft,
+  withFrequency,
 } from '.';
 
 const TODAY: LocalDay = { year: 2026, month: 9, day: 29 };
@@ -174,5 +175,42 @@ describe('draftFromSchedule', () => {
     expect(
       draftToSchedule({ ...draft, frequency: 'interval', everyDaysText: '3' }, TODAY),
     ).toMatchObject({ everyDays: 3, anchorDay: TODAY });
+  });
+});
+
+describe('withFrequency', () => {
+  const TUESDAY = 2;
+
+  it('preselects today’s weekday on a switch to weekly', () => {
+    const draft = withFrequency(defaultDraft('add_transactions'), 'weekly', TODAY);
+
+    expect(draft.frequency).toBe('weekly');
+    expect(draft.weekdays).toEqual([TUESDAY]);
+    expect(validateReminderDraft(draft)).toEqual({});
+  });
+
+  it('preselects 7 days on a switch to every N days', () => {
+    const draft = withFrequency(defaultDraft('statement_import'), 'interval', TODAY);
+
+    expect(draftToSchedule(draft, TODAY)).toMatchObject({ frequency: 'interval', everyDays: 7 });
+  });
+
+  it('keeps the days the user already picked', () => {
+    const draft = withFrequency(draftOf({ frequency: 'daily', weekdays: [5, 6] }), 'weekly', TODAY);
+
+    expect(draft.weekdays).toEqual([5, 6]);
+  });
+
+  it('keeps the interval the user already typed, even an invalid one', () => {
+    const draft = withFrequency(draftOf({ everyDaysText: '1' }), 'interval', TODAY);
+
+    expect(draft.everyDaysText).toBe('1');
+  });
+
+  it('changes nothing but the frequency for daily and monthly', () => {
+    const draft = draftOf({ frequency: 'weekly', weekdays: [], everyDaysText: '' });
+
+    expect(withFrequency(draft, 'daily', TODAY)).toEqual({ ...draft, frequency: 'daily' });
+    expect(withFrequency(draft, 'monthly', TODAY)).toEqual({ ...draft, frequency: 'monthly' });
   });
 });

@@ -5,6 +5,7 @@ import {
   type ReminderKind,
   type ReminderSchedule,
   type Weekday,
+  weekdayOf,
 } from '@kiko/reminders/schedule';
 import { match } from 'ts-pattern';
 
@@ -50,13 +51,38 @@ const parseEveryDays = (text: string): number | undefined => {
     : undefined;
 };
 
-// The weekday and interval fields start empty: the user picks them when they
-// choose that frequency.
+// The weekday and interval fields start empty; `withFrequency` fills them the
+// first time the user switches to that frequency.
 export const defaultDraft = (kind: ReminderKind): ReminderDraft => ({
   ...KIND_DEFAULTS[kind],
   weekdays: [],
   everyDaysText: '',
 });
+
+const PRESELECTED_EVERY_DAYS = '7';
+
+// A switch to weekly or every-N-days starts from a valid choice (today's
+// weekday, a week), so Save works at once. A value the user already entered
+// stays, since switching back and forth must not lose it.
+export const withFrequency = (
+  draft: ReminderDraft,
+  frequency: ReminderFrequency,
+  today: LocalDay,
+): ReminderDraft =>
+  match(frequency)
+    .returnType<ReminderDraft>()
+    .with('weekly', () => ({
+      ...draft,
+      frequency,
+      weekdays: draft.weekdays.length === 0 ? [weekdayOf(today)] : draft.weekdays,
+    }))
+    .with('interval', () => ({
+      ...draft,
+      frequency,
+      everyDaysText: draft.everyDaysText === '' ? PRESELECTED_EVERY_DAYS : draft.everyDaysText,
+    }))
+    .with('daily', 'monthly', () => ({ ...draft, frequency }))
+    .exhaustive();
 
 export const draftFromSchedule = (
   kind: ReminderKind,
