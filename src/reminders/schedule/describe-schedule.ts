@@ -27,10 +27,18 @@ const timeLabel = (minuteOfDay: number): string => formatTime(new Date(2000, 0, 
 const positionInWeek = (weekday: Weekday, firstDay: 0 | 1): number =>
   (weekday - firstDay + DAYS_PER_WEEK) % DAYS_PER_WEEK;
 
+// The short name the calendar header shows.
+export const weekdayName = (weekday: Weekday, t: TFunction): string =>
+  t(`calendar.weekday.${WEEKDAY_KEYS[weekday]}`);
+
+// The whole week, starting on the region's first day.
+export const weekdaysInOrder = (firstDay: 0 | 1): Weekday[] =>
+  WEEKDAY_KEYS.map((_key, offset) => ((offset + firstDay) % DAYS_PER_WEEK) as Weekday);
+
 const weekdaysLabel = (weekdays: readonly Weekday[], t: TFunction, firstDay: 0 | 1): string =>
   [...weekdays]
     .sort((left, right) => positionInWeek(left, firstDay) - positionInWeek(right, firstDay))
-    .map((weekday) => t(`calendar.weekday.${WEEKDAY_KEYS[weekday]}`))
+    .map((weekday) => weekdayName(weekday, t))
     .join(', ');
 
 // `firstDay` is the region's week start (`weekStartFor(deviceRegion())`), so
