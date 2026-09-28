@@ -202,9 +202,9 @@ showed the real imported rows.
 
 `importRows`'s own doc comment (`transactions.repo.ts`) is the ONE
 full statement of the exact rule — the boundary, `holdings.balanceSetAt`,
-the closing-balance override, the wall-clock skew, the synced-holding
-exception, and why no migration repairs pre-fix data — read it there
-rather than trusting a restated summary here.
+the closing-balance override, the synced-holding exception, and why no
+migration repairs pre-fix data — read it there rather than trusting a
+restated summary here.
 
 ## `property_item` / `metal` create-form sections
 

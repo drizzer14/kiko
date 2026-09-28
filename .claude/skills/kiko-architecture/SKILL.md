@@ -161,8 +161,31 @@ project-level pointer to this section.
   `src/data-transfer/snapshot/restore-snapshot.ts`'s
   `withRatesNormalizedToUah` applies the IDENTICAL rule to a `.kiko`
   restore, so a pre-star export normalizes exactly like a live device
-  upgrade rather than reintroducing dead cross rows. Next free
-  migration index: `0043`.
+  upgrade rather than reintroducing dead cross rows.
+- **A stored value that needs a hand-rolled zone reading, not just a
+  flag flip, still follows the flag-plus-launch-step shape.** Migration
+  `0043_add_import_times_rezoned` only adds
+  `settings.import_times_rezoned` (defaulting to `false`) — a stored
+  statement-import row's `time` was written as if its bank wall clock
+  were UTC, and rewriting it needs a real zone reading no SQL
+  expression can perform. `rezoneImportTimes`
+  (`statement-import/rezone-import-times/`) runs after
+  `upgradeStoredDedupKeys` in `MigrationsGate`, and again as the first
+  step of `importParsedStatement` (refusing the import if the flag is
+  still `false` afterward, so a new-convention row never lands next to
+  a not-yet-rezoned one): reads every `source = 'import'` row's legacy
+  `time` back as THIS DEVICE's own local zone (`planImportTimeRezone`,
+  pure), then rewrites `time` and the dedup key's time token through a
+  two-phase temp-key SQL update (SQLite checks UNIQUE per row even
+  inside one UPDATE, so a direct final-key write can transiently
+  collide with a row not yet rewritten), and moves a holding's
+  `balanceSetAt` only when it equals one of that holding's OWN import
+  rows' old time. `restore-snapshot.ts`'s `withImportTimesRezoned`
+  mirrors the identical planner for a `.kiko` restore, applied after
+  `withLegacyDedupKeysUpgraded` — unlike that mirror's presence-only
+  check, it ALSO rewrites an explicit `false`, since a restore replaces
+  the whole database and leaves no live device to retry on its own next
+  launch. Next free migration index: `0044`.
 
 ## Hard rule: every write goes through `db.transaction()`
 
@@ -1485,6 +1508,20 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   balanceSetAt/stray-balance backfills above, so order between them
   doesn't matter — it runs last only because it has to act on what's
   actually being inserted).
+- **A launch-time upgrade step whose rewrite needs a real zone reading
+  gets the SAME restore-side mirror, applied AFTER the dedup-key
+  upgrade.** Migration 0043's flag (`settings.importTimesRezoned`) and
+  its launch-time rewrite (`rezoneImportTimes`) only run on live data —
+  a `.kiko` restore REPLACES the whole `transactions`/`holdings`/`settings`
+  tables, so a pre-0043 export's legacy (wall-clock-as-UTC) import times
+  need the identical rewrite applied on restore too.
+  `restoreDataSnapshot`'s `withImportTimesRezoned` mirrors the SAME pure
+  planner (`planImportTimeRezone`) the launch step runs, applied to the
+  FINAL settings/transactions/holdings sets `withLegacyDedupKeysUpgraded`
+  produces. UNLIKE that mirror's presence-only check, this one ALSO
+  rewrites an explicit `false` — a restore replaces the whole database,
+  so there is no live device left to retry the rewrite on its own next
+  launch, and the restored database must be final at once.
 - **A value that lives inside `holdings.metadata` needs NO restore
   mirror.** A property's dated ownership share (`metadata.ownership`,
   kiko-pricing "Ownership share") rides in the opaque JSON column: a

@@ -18,6 +18,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
 import { drizzle } from 'drizzle-orm/sqlite-proxy';
+import { kyivWallClockToUtcMilliseconds } from '@kiko/dates';
 import { renderCondition } from '@kiko/db/render-condition-test-helper';
 import { accounts, categoryOverrides, holdings, transactions } from '@kiko/db';
 
@@ -2620,6 +2621,50 @@ describe('transactionsRepo.importRows', () => {
         balanceMinorUnits: 12_345,
         balanceSetAt: HAND_SET_TIME + 1,
       });
+    });
+
+    // Both `balanceSetAt` and the imported row's own `time` are now real
+    // instants (a named format's Kyiv reading; a hand-set stamp's real
+    // `Date.now()`), so a same-day Kyiv row an hour before the hand-set
+    // boundary is unambiguously history — no wall-clock skew to land it on
+    // the wrong side of the gate.
+    it('a same-day Kyiv row an hour before a hand-set boundary is history, contributing 0 to the net', async () => {
+      const boundary = kyivWallClockToUtcMilliseconds({
+        year: 2026,
+        month: 9,
+        day: 15,
+        hour: 12,
+        minute: 0,
+        second: 0,
+      }) as number;
+      const rowTime = kyivWallClockToUtcMilliseconds({
+        year: 2026,
+        month: 9,
+        day: 15,
+        hour: 11,
+        minute: 0,
+        second: 0,
+      }) as number;
+      const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
+        holding: { ...baseHolding, balanceMinorUnits: 500_00, balanceSetAt: boundary },
+        account: unsyncedAccount,
+      });
+      mockDatabaseTransaction = databaseTransaction;
+
+      const imported = await transactionsRepo.importRows({
+        holdingId: 'hold-1',
+        rows: [
+          {
+            holdingId: 'hold-1',
+            amountMinorUnits: -100_00,
+            time: rowTime,
+            source: 'import',
+          },
+        ],
+      });
+
+      expect(imported).toBe(1);
+      expect(captured.holdingSet).toBeUndefined();
     });
   });
 });
