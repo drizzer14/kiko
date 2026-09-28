@@ -337,6 +337,21 @@ const insertDedupRowsDatabaseTransaction = async (
           counterIban: sql`excluded.counter_iban`,
           time: sql`excluded.time`,
         },
+        // Every daily full fetch re-upserts every fetched row, even the
+        // (usual) case where nothing about it changed — without this, an
+        // unchanged row still ran an UPDATE and fired the `transactions`
+        // reactive-query hook for every subscriber, on every sync, for every
+        // row. `IS NOT` (not `!=`), since a bank-owned column can be NULL
+        // (`mcc`/`counterIban`/`hold`) and SQL's `!=` against NULL is never
+        // true — it would silently skip a genuine NULL-to-value change.
+        setWhere: sql`
+          ${transactions.amountMinorUnits} IS NOT excluded.amount_minor_units
+          OR ${transactions.description} IS NOT excluded.description
+          OR ${transactions.hold} IS NOT excluded.hold
+          OR ${transactions.mcc} IS NOT excluded.mcc
+          OR ${transactions.counterIban} IS NOT excluded.counter_iban
+          OR ${transactions.time} IS NOT excluded.time
+        `,
       });
   }
 
