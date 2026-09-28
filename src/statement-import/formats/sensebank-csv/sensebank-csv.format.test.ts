@@ -68,6 +68,28 @@ const malformedDateInput = {
   fileName: 'malformed-date.csv',
 };
 
+// The pattern matches (two digits per field) but the day doesn't exist —
+// `Date.UTC` would otherwise silently roll it into 1 March instead of
+// rejecting it, the same round-trip guard `parseDateTimeSeconds` and
+// `date-formats.ts`'s presets already apply.
+const rolloverDateInput = {
+  text: `${preambleLines}\n31.02.26 10:00;виконано;Інше;Rollover Date Row;Kyiv, UKR;;-1,00;`,
+  fileName: 'rollover-date.csv',
+};
+
+// 2024 is a leap year: 29 February is a real calendar day and must parse.
+const leapDayInput = {
+  text: `${preambleLines}\n29.02.24 10:00;виконано;Інше;Leap Day Row;Kyiv, UKR;;-1,00;`,
+  fileName: 'leap-day.csv',
+};
+
+// 2025 is NOT a leap year: 29 February rolls into 1 March and must be
+// rejected the same way the plain rollover case is.
+const nonLeapDayInput = {
+  text: `${preambleLines}\n29.02.25 10:00;виконано;Інше;Non-Leap Day Row;Kyiv, UKR;;-1,00;`,
+  fileName: 'non-leap-day.csv',
+};
+
 // Money-safety guard (mirrors `business-csv`'s Дебет XOR Кредит guard): a row
 // carrying BOTH a debit AND a credit amount is not a valid single-amount
 // row — silently preferring one side (the old `||` fallback) would drop the
@@ -264,6 +286,20 @@ describe('sensebankCsvFormat.parse', () => {
 
   it('throws a StatementParseError for an unparseable DD.MM.YY HH:MM date cell', () => {
     expect(() => sensebankCsvFormat.parse(malformedDateInput)).toThrow(StatementParseError);
+  });
+
+  it('throws a StatementParseError for a date that rolls over (February has no 31st)', () => {
+    expect(() => sensebankCsvFormat.parse(rolloverDateInput)).toThrow(StatementParseError);
+  });
+
+  it('accepts 29 February on a leap year (2024)', () => {
+    const parsed = sensebankCsvFormat.parse(leapDayInput);
+
+    expect(parsed.transactions[0].timeSeconds).toBe(Date.UTC(2024, 1, 29, 10, 0, 0) / 1000);
+  });
+
+  it('throws a StatementParseError for 29 February on a non-leap year (2025)', () => {
+    expect(() => sensebankCsvFormat.parse(nonLeapDayInput)).toThrow(StatementParseError);
   });
 
   it('throws a StatementParseError when no "Рахунок … (…)" account line is present', () => {

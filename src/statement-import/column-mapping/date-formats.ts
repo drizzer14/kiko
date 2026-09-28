@@ -3,6 +3,9 @@
 // dedicated bank formats (Monobank/PrivatBank's `DD.MM.YYYY HH:MM:SS`,
 // Sensebank's 2-digit-year `DD.MM.YY HH:MM`), plus a few common shorter/ISO
 // variants a manually-exported statement might carry instead.
+import maybe, { foldMap } from 'fnts/maybe';
+import { utcMillisIfRoundTrips, type DateTimeParts } from '@kiko/statement-import/parse-date-time';
+
 import type { TableCell } from './table-rows';
 
 export const dateFormatIds = [
@@ -18,42 +21,18 @@ export const dateFormatIds = [
 
 export type DateFormatId = (typeof dateFormatIds)[number];
 
-type DateParts = {
-  year: number;
-  month: number;
-  day: number;
-  hour: number;
-  minute: number;
-  second: number;
-};
-
 type DatePreset = {
   pattern: RegExp;
-  toParts: (match: RegExpExecArray) => DateParts;
+  toParts: (match: RegExpExecArray) => DateTimeParts;
 };
 
 // Builds UTC seconds from parsed date/time PARTS, rejecting a rollover — an
 // out-of-range day ("31.02.2026"), month ("2026-13-45"), hour, or minute
-// silently rolling into a DIFFERENT, wrong calendar instant (`Date.UTC`
-// normalizes every component instead of validating it) rather than failing
-// as a recoverable row error. The same round-trip idea `parseLocalDate`
-// (`src/dates/format.ts`) already applies to a local-midnight day: the
-// constructed instant's own UTC getters must reproduce the exact parsed
-// components, or the input didn't describe a real calendar instant.
-const partsToSeconds = (parts: DateParts): number | undefined => {
-  const { year, month, day, hour, minute, second } = parts;
-  const ms = Date.UTC(year, month - 1, day, hour, minute, second);
-  const date = new Date(ms);
-  const roundTrips =
-    date.getUTCFullYear() === year &&
-    date.getUTCMonth() === month - 1 &&
-    date.getUTCDate() === day &&
-    date.getUTCHours() === hour &&
-    date.getUTCMinutes() === minute &&
-    date.getUTCSeconds() === second;
-
-  return roundTrips ? ms / 1000 : undefined;
-};
+// silently rolling into a DIFFERENT, wrong calendar instant — through the
+// shared `utcMillisIfRoundTrips` every bank-export date parser in this
+// project uses for the same round-trip check.
+const partsToSeconds = (parts: DateTimeParts): number | undefined =>
+  foldMap(maybe(utcMillisIfRoundTrips(parts)), (milliseconds) => milliseconds / 1000);
 
 // Every preset reads UTC wall-clock parts — the same `parseDateTimeSeconds`
 // convention the dedicated formats use (`../parse-date-time`), never the host
