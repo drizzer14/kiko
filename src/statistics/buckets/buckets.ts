@@ -38,6 +38,15 @@ export const bucketTimes = (from: number, to: number, bucketDays: number): numbe
  * phantom zero point at the end of every per-period line. The net-worth line
  * keeps `bucketTimes`' closing `to` point on purpose (a "now" snapshot at the
  * exact range end); a per-period series uses this instead.
+ *
+ * A range short enough to fit ONE period (a single-day range with daily
+ * buckets) is the one exception: it produces exactly one point, which a
+ * `Polyline` cannot draw a visible line from (kiko-charts: a line needs >= 2
+ * points), so `to` is appended as a second point there — the same two-point
+ * shape a single-day range always had, before the trailing marker was
+ * dropped for every OTHER range. A multi-bucket range is unaffected: every
+ * real value already lands in its own period-start bucket, so no phantom
+ * point is reintroduced there.
  */
 export const periodStartBucketTimes = (from: number, to: number, bucketDays: number): number[] => {
   const step = bucketDays * DAY_MS;
@@ -45,6 +54,10 @@ export const periodStartBucketTimes = (from: number, to: number, bucketDays: num
 
   for (let t = from; t <= to; t += step) {
     times.push(t);
+  }
+
+  if (times.length === 1 && times[0] !== to) {
+    times.push(to);
   }
 
   return times;

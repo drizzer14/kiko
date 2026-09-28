@@ -69,6 +69,25 @@ describe('buildCategoryTrend', () => {
     }
   });
 
+  // A single-day range collapses to one period-start bucket, which a
+  // Polyline cannot draw a visible line from (a line needs >= 2 points) — the
+  // series must still carry a second point spanning the day, matching how a
+  // single-day range always rendered before the phantom-bucket fix.
+  it('renders a visible mark for a single-day range (at least two points)', () => {
+    const dayStart = NOW - 3 * dayMs;
+    const dayEnd = dayStart + dayMs - 1;
+    const series = buildTrend(
+      [transaction({ time: dayStart + 60 * 60 * 1000, amountMinorUnits: -20_00 })],
+      { range: { from: dayStart, to: dayEnd } },
+    );
+    const points = series[0].points;
+
+    expect(points.length).toBeGreaterThanOrEqual(2);
+    expect(points[0].t).toBe(dayStart);
+    expect(points[points.length - 1].t).toBe(dayEnd);
+    expect(points.some((point) => point.amount === 20)).toBe(true);
+  });
+
   it('buckets a same-day expense into that bucket and no other, summing in major units', () => {
     const series = buildTrend([
       transaction({ id: 'a', category: 'groceries', amountMinorUnits: -25_00, time: NOW }),

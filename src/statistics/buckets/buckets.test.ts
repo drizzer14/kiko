@@ -64,11 +64,11 @@ describe('periodStartBucketTimes', () => {
     expect(times[times.length - 1]).toBe(from + 29 * DAY);
   });
 
-  it('returns a single bucket for a single-day range', () => {
+  it('appends `to` as a second point on a single-day range, so a Polyline still has a line to draw', () => {
     const from = Date.UTC(2026, 0, 1);
     const to = from + 23 * 60 * 60 * 1000 + 59 * 60 * 1000 + 59_999;
 
-    expect(periodStartBucketTimes(from, to, 1)).toEqual([from]);
+    expect(periodStartBucketTimes(from, to, 1)).toEqual([from, to]);
   });
 
   it('includes a period start that lands exactly on `to`', () => {
