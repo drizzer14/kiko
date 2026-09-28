@@ -39,4 +39,36 @@ describe('parseAmountCell', () => {
   it('returns NaN for an empty string', () => {
     expect(parseAmountCell('', ',')).toBeNaN();
   });
+
+  // The "other" character is only a real thousands-grouping separator when
+  // every group after it is exactly 3 digits — a decimal amount misread with
+  // the wrong chip (a Ukrainian "-150,00" read with '.' picked as decimal)
+  // must fail instead of silently reading as -15000, 100x too large.
+  it('returns NaN when the other separator is not in a real thousands-group position (wrong chip, not real grouping)', () => {
+    expect(parseAmountCell('-150,00', '.')).toBeNaN();
+  });
+
+  it('returns NaN for the mirror-image case (a dot misread as the decimal separator)', () => {
+    expect(parseAmountCell('-150.00', ',')).toBeNaN();
+  });
+
+  it('still strips a genuine thousands-group comma ahead of a dot decimal', () => {
+    expect(parseAmountCell('1,234.56', '.')).toBe(1_234.56);
+  });
+
+  it('still strips a genuine thousands-group dot ahead of a comma decimal', () => {
+    expect(parseAmountCell('1.234,56', ',')).toBe(1_234.56);
+  });
+
+  it('accepts a whole-number amount grouped by the other separator, with no decimal part at all', () => {
+    expect(parseAmountCell('1,234', '.')).toBe(1_234);
+  });
+
+  it('accepts more than one real thousands group', () => {
+    expect(parseAmountCell('12,345,678.90', '.')).toBe(12_345_678.9);
+  });
+
+  it('rejects a group after the other separator that is too short even with no decimal part', () => {
+    expect(parseAmountCell('1,23', '.')).toBeNaN();
+  });
 });
