@@ -519,7 +519,10 @@ export type BondRegisterRow = typeof bondRegister.$inferSelect;
  * whole `ReminderSchedule` as JSON, since the planner reads it at once.
  * `activeSince` is when the reminder last started counting: data older than it
  * never skips an occurrence. `lastEngagedAt` is the latest tap on one of its
- * notifications, which resets the ignored-fire count. `pausedAt` with
+ * notifications, which resets the ignored-fire count. `lastSnoozedAt` is the
+ * latest "Tomorrow" tap while that snooze is still pending, so every later
+ * re-plan can skip the regular occurrence the snooze stands in for; the
+ * native queue that reported the tap is drained only once. `pausedAt` with
  * `pauseReason` is either a user pause or the automatic back-off pause.
  */
 export const reminders = sqliteTable(
@@ -535,6 +538,7 @@ export const reminders = sqliteTable(
     pauseReason: text('pause_reason', { enum: ['user', 'backoff'] }),
     activeSince: integer('active_since').notNull(),
     lastEngagedAt: integer('last_engaged_at'),
+    lastSnoozedAt: integer('last_snoozed_at'),
     createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
     updatedAt: integer('updated_at').notNull().default(sql`(unixepoch() * 1000)`),
   },

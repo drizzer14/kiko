@@ -160,6 +160,7 @@ describe('reminders migration SQL', () => {
     expect(sql).toContain('`pause_reason` text');
     expect(sql).toContain('`active_since` integer NOT NULL');
     expect(sql).toContain('`last_engaged_at` integer');
+    expect(sql).toContain('`last_snoozed_at` integer,');
     expect(sql).toContain('`created_at` integer DEFAULT (unixepoch() * 1000) NOT NULL');
     expect(sql).toContain('`updated_at` integer DEFAULT (unixepoch() * 1000) NOT NULL');
   });
@@ -226,6 +227,7 @@ describe('reminders table constraints on a migrated database', () => {
     expect(row.paused_at).toBeNull();
     expect(row.pause_reason).toBeNull();
     expect(row.last_engaged_at).toBeNull();
+    expect(row.last_snoozed_at).toBeNull();
     expect(row.created_at).toEqual(expect.any(Number));
     expect(row.updated_at).toEqual(expect.any(Number));
   });

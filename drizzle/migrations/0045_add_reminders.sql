@@ -7,6 +7,7 @@ CREATE TABLE `reminders` (
 	`pause_reason` text,
 	`active_since` integer NOT NULL,
 	`last_engaged_at` integer,
+	`last_snoozed_at` integer,
 	`created_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
 	`updated_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
 	FOREIGN KEY (`account_id`) REFERENCES `accounts`(`id`) ON UPDATE no action ON DELETE no action
