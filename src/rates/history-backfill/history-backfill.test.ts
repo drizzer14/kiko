@@ -281,10 +281,10 @@ describe('runBackfill', () => {
     expect(status).toEqual({ state: 'failed', lastDay: null });
   });
 
-  // The wider case: crypto needs the SAME-run USD:UAH anchor
-  // (`composeHistoryRows`), so a rejected NBU leg blocks BTC too even though
-  // CoinGecko itself answered — nothing composes, and the pass must report
-  // `'failed'`, never `'complete'` with zero rows silently accepted as "done".
+  // Crypto needs the SAME-run USD:UAH anchor (`composeHistoryRows`), so a
+  // rejected NBU leg blocks BTC too even though CoinGecko itself answered —
+  // nothing composes, and the pass must report `'failed'`, never `'complete'`
+  // with zero rows silently accepted as "done".
   it('reports failed, composing nothing, when NBU fails even though CoinGecko succeeds', async () => {
     const { deps, captured } = makeDeps({
       fetchNbuHistory: async () => {
@@ -302,11 +302,11 @@ describe('runBackfill', () => {
     expect(captured).toHaveLength(0);
   });
 
-  // The original case: an UNATTEMPTED leg (no crypto held at all)
-  // previously resolved fulfilled with `NO_CRYPTO_HISTORY`, so the old
-  // both-legs-rejected check never fired for a fiat-only user whose NBU
-  // fetch failed — the pass reported `'complete'` and never retried for the
-  // rest of the session. It must report `'failed'` here too.
+  // An UNATTEMPTED leg (no crypto held at all) resolves fulfilled with
+  // `NO_CRYPTO_HISTORY`, so a both-legs-rejected check alone would never fire
+  // for a fiat-only user whose NBU fetch failed — the pass must still report
+  // `'failed'` here, not `'complete'` with no retry for the rest of the
+  // session.
   it('reports failed for a fiat-only user whose NBU fetch fails, even with no crypto attempted', async () => {
     const { deps, captured } = makeDeps({
       fetchNbuHistory: async () => {

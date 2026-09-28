@@ -91,9 +91,15 @@ export const mimeWildcard = '*/*';
 // opens a match.
 
 // 14. The debugger-report family (SYNC/INT/TWIN/TX/HOLD/BAK/STAT/AUTH/PERF/
-// SEC/DEP/DEPS/V/CS, each hyphen-glued to digits) requires an EXACT
-// uppercase prefix — ordinary prose using the same words differently never
-// opens a match: the sync step finishes before the int cast runs, and the
-// api moved from v1 to v2 with no breaking change (lowercase, no hyphen
-// glued to a digit).
+// SEC/DEP/DEPS/CS, each hyphen-glued to digits) requires an EXACT uppercase
+// prefix — ordinary prose using the same words differently never opens a
+// match: the sync step finishes before the int cast runs (lowercase, no
+// hyphen glued to a digit).
 export const debuggerReportFamilyNearMiss = true;
+
+// 15. Regression lock: common technical terms shaped like WORD-digit(s)
+// that must never collide with any family above, present or future — UTF-8,
+// SHA-256, ISO-8601, and Windows-1251 (the CSV encoding this app's own
+// statement-import feature reads) are real domain vocabulary, not a
+// debugger-report id.
+export const technicalTermRegressionLock = 'UTF-8, SHA-256, ISO-8601, Windows-1251';

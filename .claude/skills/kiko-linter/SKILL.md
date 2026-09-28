@@ -546,23 +546,26 @@ ordinary prose that says "a round trip" (no hyphenated digit) never
 matches at all — see `rules/fixtures/kiko-no-history-id-comment.good.ts`.
 
 **A hyphenated debugger/verifier-report family**
-(`(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|V|CS)-\d+`,
+(`(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|CS)-\d+`,
 2026-09-28) catches a debugger or verifier report's own finding id
 (`SYNC-1`, `INT-1`, `TWIN-4`, `DEPS-3`, …) left behind in a comment —
 the multi-round bug-hunt process names findings this way in its own
 `.superpowers/sdd/` raw reports, and a fix comment citing that id
-verbatim is exactly the "history, not WHY" shape this rule bans. Unlike
-the single-letter families above, every prefix here is a WHOLE WORD
-(never a bare letter), so it does NOT need the same standalone-token
-carve-out — "room R2" collides because "R" alone is a plausible
-English word-initial, but no ordinary sentence glues "SYNC"/"DEPS"/"TWIN"
-directly to a hyphen and digits by coincidence the way it can with a
-bare letter. `round-N`'s own digit-in-the-shape argument covers `V-N`/
-`CS-N` too. A repo-wide sweep found zero existing collisions before
-this family shipped as ERROR directly (no WARNING-first rollout was
-needed, unlike the original id families above) — see the fixture pair's
-new entries (`SYNC-1`, `DEPS-3` positive; a lowercase/unhyphenated
-`sync`/`int`/`v1`/`v2` negative probe) for the worked example.
+verbatim is exactly the "history, not WHY" shape this rule bans. Every
+prefix here is at least two letters, so an ordinary sentence gluing
+"SYNC"/"DEPS"/"TWIN" directly to a hyphen and digits by coincidence is
+rare — but NOT impossible: the family originally also listed a bare
+`V`, which collided with a real "V-8" reference and was dropped before
+shipping (a single-letter member needs the same standalone-token
+carve-out the `R\d`/`F\d`/`G\d`/`C\d` families above already carry, and
+this family's whole point was to avoid that class of member). A
+repo-wide sweep found zero remaining collisions before this family
+shipped as ERROR directly (no WARNING-first rollout was needed, unlike
+the original id families above) — see the fixture pair's own entries
+(`SYNC-1`, `DEPS-3` positive; a lowercase/unhyphenated `sync`/`int`
+negative probe, plus a `UTF-8`/`SHA-256`/`ISO-8601`/`Windows-1251`
+regression lock against real WORD-digit technical vocabulary) for the
+worked example.
 
 **`Phase N` is not a family member at all** — a bare `Phase\s\d+`
 collides with ordinary engineering prose no digit-anchoring can fix
