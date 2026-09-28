@@ -1799,6 +1799,8 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
     // original expense in the spending pie (nothing pairs it: the matched-pair
     // matcher requires one currency).
     const { databaseTransaction, updates } = makeExchangeDatabaseTransaction([
+      [{ accountId: 'acc-dst', metadata: null }], // the counterpart's own holding, read by the synced guard
+      [{ institution: null }], // the counterpart's own account, read by the synced guard
       [{ balanceMinorUnits: 2_000 }], // the new leg's balance read
       [{ source: 'manual' }], // the existing row, read INSIDE the transaction
     ]);
@@ -1822,6 +1824,8 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
 
   it('never marks a SYNCED existing row (the bank owns it)', async () => {
     const { databaseTransaction, updates } = makeExchangeDatabaseTransaction([
+      [{ accountId: 'acc-dst', metadata: null }], // the counterpart's own holding, read by the synced guard
+      [{ institution: null }], // the counterpart's own account, read by the synced guard
       [{ balanceMinorUnits: 2_000 }],
       [{ source: 'monobank' }],
     ]);
@@ -1848,6 +1852,8 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
     // read (the only select call this path makes) returns the term_deposit
     // row `appendDepositContributionDatabaseTransaction` expects.
     const { databaseTransaction, inserts } = makeExchangeDatabaseTransaction([
+      [{ accountId: 'acc-dep', metadata: null }], // the counterpart's own holding, read by the synced guard
+      [{ institution: null }], // the counterpart's own account, read by the synced guard
       [{ type: 'term_deposit', metadata: depositMeta }],
     ]);
     mockDatabaseTransaction = databaseTransaction;
@@ -1911,6 +1917,32 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
         time: 1,
       }),
     ).rejects.toThrow();
+  });
+
+  // Defense in depth: the counterpart picker already excludes a synced
+  // holding (item 6), but a write reached directly (not through the picker)
+  // must refuse the same way — a sync already owns that holding's balance.
+  it('throws when the counterpart holding is synced, writing nothing', async () => {
+    const { databaseTransaction, inserts, updates } = makeExchangeDatabaseTransaction([
+      [{ accountId: 'sync-acc', metadata: { monobankId: 'mono-1' } }],
+      [{ institution: 'monobank' }],
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
+
+    await expect(
+      transactionsRepo.recordExchangeCounterpart({
+        direction: 'record-destination',
+        counterpartHoldingId: 'dst-1',
+        counterpartType: 'cash',
+        amountMinorUnits: 7_000,
+        existingTransactionId: 'existing-tx-1',
+        existingHoldingId: 'existing-1',
+        time: 123,
+      }),
+    ).rejects.toThrow();
+
+    expect(inserts).toHaveLength(0);
+    expect(updates).toHaveLength(0);
   });
 });
 

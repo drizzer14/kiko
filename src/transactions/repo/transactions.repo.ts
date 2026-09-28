@@ -729,6 +729,35 @@ export const transactionsRepo = {
    */
   recordExchangeCounterpart: (input: ExchangeCounterpartInput) =>
     write(async (databaseTransaction) => {
+      // Defense in depth: the picker already excludes a synced/syncable
+      // holding (item 6), but this write is reachable directly, so it
+      // re-reads the counterpart's OWN holding+account here, inside the
+      // transaction, rather than trust a caller-supplied flag — a sync
+      // already owns that holding's balance, and a manual leg written onto
+      // it would silently desync from the next sync run.
+      const counterpartHoldingRows = await databaseTransaction
+        .select({ accountId: holdings.accountId, metadata: holdings.metadata })
+        .from(holdings)
+        .where(eq(holdings.id, input.counterpartHoldingId))
+        .limit(1);
+      const counterpartHolding = counterpartHoldingRows.at(0);
+      const counterpartAccountRows = counterpartHolding
+        ? await databaseTransaction
+            .select({ institution: accounts.institution })
+            .from(accounts)
+            .where(eq(accounts.id, counterpartHolding.accountId))
+            .limit(1)
+        : [];
+
+      if (
+        counterpartHolding !== undefined &&
+        isSyncedHolding(counterpartHolding, counterpartAccountRows.at(0))
+      ) {
+        throw new Error(
+          `recordExchangeCounterpart: counterpart holding ${input.counterpartHoldingId} is synced`,
+        );
+      }
+
       if (
         input.direction === 'record-source' &&
         exchangeReceivePath(input.counterpartType) !== 'plain'

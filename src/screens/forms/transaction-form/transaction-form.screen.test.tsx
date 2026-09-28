@@ -2670,6 +2670,28 @@ const CONVERT_HOLDINGS: Holding[] = [
 
 const CONVERT_ACCOUNTS: Account[] = [{ id: 'acc-wallet', name: 'Wallet' }];
 
+// A synced, same-currency, open holding eligible under convert-mode's WIDER
+// destination/source rules (card qualifies both ways) — its account is
+// connected to a sync AND it carries that source's metadata key, so
+// `isSyncedHolding` is true and the convert counterpart picker must exclude
+// it (item 6 — a sync owns that holding's balance, so Save could otherwise
+// write a manual leg onto it).
+const CONVERT_SYNCED_HOLDING: Holding = {
+  id: 'synced-card-1',
+  currency: 'USD',
+  balanceMinorUnits: 0,
+  type: 'card',
+  name: 'Synced Card',
+  accountId: 'sync-acc',
+  metadata: { monobankId: 'mono-9' },
+};
+
+const CONVERT_SYNCED_ACCOUNT: Account = {
+  id: 'sync-acc',
+  name: 'Monobank',
+  institution: 'monobank',
+};
+
 const CONVERT_TRANSACTIONS: Record<string, Transaction> = {
   'expense-manual': {
     id: 'expense-manual',
@@ -2816,6 +2838,30 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     expect(getByText('Card EUR')).toBeTruthy(); // card offered
     expect(queryByText('USD Deposit')).toBeNull(); // term_deposit NOT a source
     expect(queryByText('BTC Wallet')).toBeNull(); // crypto NOT a source
+  });
+
+  it('excludes a synced/syncable holding from the convert counterpart picker (item 6)', async () => {
+    setLiveData(
+      [...CONVERT_HOLDINGS, CONVERT_SYNCED_HOLDING],
+      CONVERT_TRANSACTIONS['expense-manual'],
+      CATEGORIES,
+      [...CONVERT_ACCOUNTS, CONVERT_SYNCED_ACCOUNT],
+    );
+
+    const { getByText, getByLabelText, queryByText } = await render(
+      <TransactionFormScreen
+        route={transactionFormRoute({ transactionId: 'expense-manual' })}
+        navigation={navigationProp}
+      />,
+    );
+
+    await fireEvent.press(getByText('Exchange'));
+    await fireEvent.press(getByLabelText('To'));
+
+    // A same-currency, open, manual counterpart still qualifies...
+    expect(getByText('Cash USD')).toBeTruthy();
+    // ...but a synced/syncable holding never appears (its balance is sync-owned).
+    expect(queryByText('Synced Card')).toBeNull();
   });
 
   it('rejects a blank/zero/negative counterpart amount (no write)', async () => {

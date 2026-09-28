@@ -576,6 +576,21 @@ export const canSaveSplit = (
   return sumMinor < paymentMinor;
 };
 
+// Every holding whose account is currently sync-connected — its balance is
+// sync-owned, so it can never be the target of a manual write. Shared by
+// every holding picker on this screen that must exclude a synced/syncable
+// holding (the return-row picker, the primary-leg picker, and Convert's own
+// counterpart picker), so the exclusion rule can never drift between them.
+const syncedHoldingIds = (
+  holdings: readonly HoldingRow[],
+  accountById: ReadonlyMap<string, AccountRow>,
+): ReadonlySet<string> =>
+  new Set(
+    holdings
+      .filter((candidate) => isSyncedHolding(candidate, accountById.get(candidate.accountId)))
+      .map((candidate) => candidate.id),
+  );
+
 // The return-row picker's options: every OPEN holding in the payer's own
 // currency (v1 keeps a split single-currency), except any holding already
 // picked in ANOTHER row and except a synced/syncable holding (item 6 — a sync
@@ -584,9 +599,7 @@ export const canSaveSplit = (
 // the balance nets on the payer with no double-count, so nothing is excluded by
 // id here (`undefined` keeps `buildExchangeOptions` from dropping the payer).
 // The eligible-TYPE gate is open (`() => true`) — a change return can land on
-// any holding type. Whether a holding is synced is the shared `isSyncedHolding`
-// predicate (its account is connected to a sync AND it carries that source's
-// metadata key), mirrored here rather than reinvented.
+// any holding type.
 const buildReturnOptions = (
   holdings: readonly HoldingRow[],
   accountNameById: ReadonlyMap<string, string>,
@@ -595,11 +608,7 @@ const buildReturnOptions = (
   payerCurrency: Currency,
   pickedElsewhere: ReadonlySet<string>,
 ): HoldingSelectOption[] => {
-  const syncableIds = new Set(
-    holdings
-      .filter((candidate) => isSyncedHolding(candidate, accountById.get(candidate.accountId)))
-      .map((candidate) => candidate.id),
-  );
+  const syncableIds = syncedHoldingIds(holdings, accountById);
 
   return buildExchangeOptions(
     holdings,
@@ -752,11 +761,7 @@ const buildPrimaryOptions = (
   accountOrderById: ReadonlyMap<string, number>,
   accountById: ReadonlyMap<string, AccountRow>,
 ): HoldingSelectOption[] => {
-  const syncableIds = new Set(
-    holdings
-      .filter((candidate) => isSyncedHolding(candidate, accountById.get(candidate.accountId)))
-      .map((candidate) => candidate.id),
-  );
+  const syncableIds = syncedHoldingIds(holdings, accountById);
 
   return buildExchangeOptions(
     holdings,
@@ -1006,6 +1011,7 @@ const resolveConvertView = (
   holdings: readonly HoldingRow[],
   accountNameById: ReadonlyMap<string, string>,
   accountOrderById: ReadonlyMap<string, number>,
+  accountById: ReadonlyMap<string, AccountRow>,
   holdingId: string | undefined,
   t: TFunction,
 ): ConvertView => {
@@ -1021,14 +1027,17 @@ const resolveConvertView = (
   const direction = existing ? exchangeConvertDirection(existing.amountMinorUnits) : null;
   // An expense-sourced convert picks a DESTINATION (wider: excludes bond/jar);
   // an income-sourced convert picks a SOURCE (wider: cash/card only). Excludes
-  // the existing holding and closed holdings, and carries account names.
+  // the existing holding, closed holdings, and a synced/syncable holding
+  // (item 6 — the counterpart is a NEW manual leg `save` writes, and a sync
+  // already owns that holding's balance), and carries account names.
+  const syncableIds = syncedHoldingIds(holdings, accountById);
   const options = buildExchangeOptions(
     holdings,
     accountNameById,
     accountOrderById,
     holdingId,
     direction === 'record-source' ? isExchangeSourceType : isExchangeDestinationType,
-  );
+  ).filter((option) => !syncableIds.has(option.id));
   // The fixed side's display value: the existing amount in the existing
   // holding's currency, formatted the same way the Amount input shows it.
   const fixedValue = existing
@@ -1745,6 +1754,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     holdings,
     accountNameById,
     accountOrderById,
+    accountById,
     holdingId,
     t,
   );
