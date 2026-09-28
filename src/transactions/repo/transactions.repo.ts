@@ -13,6 +13,7 @@ import {
   chunkRows,
 } from '@kiko/db';
 import { match } from 'ts-pattern';
+import maybe, { foldMap } from 'fnts/maybe';
 import type { Currency } from '@kiko/currency/currency';
 import type { ClosingBalance } from '@kiko/statement-import/parser';
 import { exchangeReceivePath } from '@kiko/holdings/exchange-destination';
@@ -741,13 +742,14 @@ export const transactionsRepo = {
         .where(eq(holdings.id, input.counterpartHoldingId))
         .limit(1);
       const counterpartHolding = counterpartHoldingRows.at(0);
-      const counterpartAccountRows = counterpartHolding
-        ? await databaseTransaction
+      const counterpartAccountRows =
+        (await foldMap(maybe(counterpartHolding), (holding) =>
+          databaseTransaction
             .select({ institution: accounts.institution })
             .from(accounts)
-            .where(eq(accounts.id, counterpartHolding.accountId))
-            .limit(1)
-        : [];
+            .where(eq(accounts.id, holding.accountId))
+            .limit(1),
+        )) ?? [];
 
       if (
         counterpartHolding !== undefined &&
@@ -1160,13 +1162,11 @@ export const transactionsRepo = {
    * every row dated STRICTLY AFTER the closing balance's own as-of, from
    * BOTH this import's own new rows AND every row (any source) ALREADY in
    * the ledger before this import ran, read once before this import inserts
-   * anything. New-rows-only used to be the whole rule (normally none of
-   * them land after their own statement's newest row anyway — see
-   * `resolveClosingBalance`, `monobank-csv.format.ts`); the EXISTING half
-   * matters for an out-of-order statement, e.g. importing September's
-   * closing balance after an October manual row already exists — without
-   * it, September's own closing figure would silently overwrite October's
-   * already-recorded row. A statement OLDER than the boundary falls back to
+   * anything. The rows already in the ledger matter for an out-of-order
+   * statement, e.g. importing September's closing balance after an October
+   * manual row already exists — without them, September's own closing
+   * figure would silently overwrite October's already-recorded row. A
+   * statement OLDER than the boundary falls back to
    * the net-delta rule instead (where its own rows are, by construction,
    * all history and add 0 too), so an out-of-order re-import can never
    * regress the balance to a stale closing figure.
@@ -1296,7 +1296,11 @@ export const transactionsRepo = {
       // closing balance's own as-of must still count toward it; only the
       // rows THIS import adds were counted before, so a re-import (or an
       // out-of-order older statement) could erase a later row the ledger
-      // already knew about.
+      // already knew about. The query below filters by holdingId and time
+      // alone, with no source/dedup check, so a manual entry the user
+      // already logged for the same real-world transaction as an
+      // after-asOf statement row is counted here too — the same
+      // double-count risk the net-delta path already carries.
       let existingPostClosingNetMinorUnits = 0;
 
       if (!synced && input.closingBalance !== undefined) {
