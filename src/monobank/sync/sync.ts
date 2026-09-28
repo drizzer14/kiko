@@ -1295,23 +1295,8 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
     await deps.syncStateRepo.setFailedSyncMonobankIds(accountId, failedIdsToPersist(newFailedIds));
   }
 
-  // The full-fetch marker: GRADUATES on a fully clean full fetch, is left
-  // UNTOUCHED on a periodic full fetch that fails (it already had a real
-  // anchor before this run), and is ANCHORED — to this run's own from-cursor,
-  // never its ceiling — on a first-ever full fetch that fails and had no
-  // anchor at all. Graduating (or leaving null) here on that first-failure
-  // case would let `fromCursorSeconds`' null-cursor fallback slide forward
-  // with the clock on a delayed retry, permanently losing the days in
-  // between; see `resolveFullSyncAtToPersist`'s own doc for the full
-  // reasoning. A failed/behind-marker card's own from-window
-  // (`fromSecondsForCard`) widens back to whatever this marker ends up
-  // holding, not to `lastSyncAt`, so it is what a next-run retry actually
-  // derives its window from. The failed card is still force-fetched next run
-  // via `failedSyncMonobankIds`; a re-fetch is idempotent (the
-  // `(source, external_id)` upsert), so re-deriving the SAME window loses
-  // nothing and duplicates nothing. The accepted cost: a persistently flaky
-  // card keeps the account in full-fetch mode (slower, every card refetched
-  // from a fixed start) until a run finally comes back fully clean.
+  // The full-fetch marker to persist, if any — see `resolveFullSyncAtToPersist`'s
+  // own doc for the graduate/leave-untouched/anchor cases.
   const fullSyncAtToPersist = resolveFullSyncAtToPersist(
     isFullFetch,
     failures.length,

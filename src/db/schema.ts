@@ -319,18 +319,22 @@ export const settings = sqliteTable('settings', {
   // (additive-only migrations). The description below documents the live
   // semantics, which now hold on `syncState`.
   // The epoch-ms timestamp of the last FULL statement fetch (every card
-  // fetched regardless of balance). The steady-state sync SKIPS a card whose
-  // /client-info balance is unchanged since the last sync (a "balance-diff
-  // skip") to stay under Monobank's 1-req/60s-per-token limit; this timestamp
-  // drives the periodic safety net that forces an all-cards fetch, bounding
-  // the worst-case miss window for a net-zero same-window transaction pair
-  // (a +X and a -X in one sync window that leave the balance untouched, which
-  // the balance-diff skip would otherwise never catch). It is ALSO the
-  // from-cursor of that forced full fetch: the sync re-queries [lastFullSyncAt,
-  // now] so every window skipped since the last full fetch is actually
-  // re-covered — using the recent incremental cursor instead would re-query
-  // only the already-covered recent window and recover nothing. NULL ⇒ never
-  // done a full fetch, which forces one.
+  // fetched regardless of balance) — OR, on a first-ever full fetch that
+  // FAILED, that attempt's own from-cursor instead (`resolveFullSyncAtToPersist`
+  // in `monobank/sync/sync.ts`), so a delayed retry still derives the same
+  // window rather than sliding forward with the clock. The steady-state sync
+  // SKIPS a card whose /client-info balance is unchanged since the last sync
+  // (a "balance-diff skip") to stay under Monobank's 1-req/60s-per-token
+  // limit; this timestamp drives the periodic safety net that forces an
+  // all-cards fetch, bounding the worst-case miss window for a net-zero
+  // same-window transaction pair (a +X and a -X in one sync window that leave
+  // the balance untouched, which the balance-diff skip would otherwise never
+  // catch). It is ALSO the from-cursor of that forced full fetch: the sync
+  // re-queries [lastFullSyncAt, now] so every window skipped since the last
+  // full fetch is actually re-covered — using the recent incremental cursor
+  // instead would re-query only the already-covered recent window and
+  // recover nothing. NULL ⇒ never done (or even attempted) a full fetch,
+  // which forces one.
   lastFullSyncAt: integer('last_full_sync_at'),
   // DEAD (retained): the previous spending-trend selection — a JSON array of
   // stable `categories.key` slugs. Superseded by `trendFilter` below, into which

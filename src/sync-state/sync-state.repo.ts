@@ -31,10 +31,12 @@ export const syncStateRepo = {
         .where(eq(syncState.accountId, accountId)),
     ),
   /**
-   * Stamp this account's last FULL statement fetch (epoch ms) — the run that
-   * fetched every card regardless of balance. Drives the balance-diff skip's
+   * Stamp this account's full-fetch marker (epoch ms) — either the last FULL
+   * statement fetch that succeeded (every card fetched regardless of
+   * balance), or a first-ever full fetch that FAILED anchoring its own
+   * from-cursor instead of its ceiling. Drives the balance-diff skip's
    * periodic safety net; see `lastFullSyncAt` in `db/schema.ts` and
-   * `runSyncInner` in `monobank/sync.ts`.
+   * `resolveFullSyncAtToPersist` in `monobank/sync/sync.ts`.
    */
   setLastFullSyncAt: (accountId: string, timestamp: number) =>
     write((databaseTransaction) =>
