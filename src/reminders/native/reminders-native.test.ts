@@ -84,25 +84,43 @@ describe('remindersNative.registerCategories', () => {
 describe('remindersNative.drainResponses', () => {
   it('parses every valid queued response', async () => {
     const queued: NotificationResponse[] = [
-      { reminderId: 'reminder-1', action: 'open', respondedAt: 1_790_000_000_000 },
-      { reminderId: 'reminder-2', action: 'snooze', respondedAt: 1_790_000_060_000 },
+      {
+        reminderId: 'reminder-1',
+        requestIdentifier: 'kiko.reminder.reminder-1.paused',
+        action: 'open',
+        respondedAt: 1_790_000_000_000,
+      },
+      {
+        reminderId: 'reminder-2',
+        requestIdentifier: 'kiko.snooze.reminder-2',
+        action: 'snooze',
+        respondedAt: 1_790_000_060_000,
+      },
     ];
     nativeModule.drainResponses.mockResolvedValueOnce(JSON.stringify(queued));
 
     expect(await remindersNative.drainResponses()).toEqual(queued);
   });
 
-  it('drops an entry with a missing reminderId or an unknown action', async () => {
+  it('drops an entry with a missing reminderId or request identifier, or an unknown action', async () => {
+    const requestIdentifier = 'kiko.reminder.reminder-1.202610252000';
     const valid: NotificationResponse = {
       reminderId: 'reminder-1',
+      requestIdentifier,
       action: 'open',
       respondedAt: 1_790_000_000_000,
     };
     nativeModule.drainResponses.mockResolvedValueOnce(
       JSON.stringify([
-        { action: 'open', respondedAt: 1_790_000_000_000 },
-        { reminderId: 'reminder-2', action: 'dismiss', respondedAt: 1_790_000_000_000 },
-        { reminderId: 'reminder-3', action: 'snooze', respondedAt: 'yesterday' },
+        { requestIdentifier, action: 'open', respondedAt: 1_790_000_000_000 },
+        { reminderId: 'reminder-2', action: 'open', respondedAt: 1_790_000_000_000 },
+        {
+          reminderId: 'reminder-3',
+          requestIdentifier,
+          action: 'dismiss',
+          respondedAt: 1_790_000_000_000,
+        },
+        { reminderId: 'reminder-4', requestIdentifier, action: 'snooze', respondedAt: 'yesterday' },
         null,
         valid,
       ]),

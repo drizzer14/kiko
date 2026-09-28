@@ -72,7 +72,9 @@ export const remindersRepo = {
   },
   // Both a tap and a "Tomorrow" count as engagement; only the snooze is
   // pending afterwards.
-  recordEngagements: async (responses: readonly NotificationResponse[]): Promise<void> => {
+  recordEngagements: async (
+    responses: readonly Omit<NotificationResponse, 'requestIdentifier'>[],
+  ): Promise<void> => {
     if (responses.length === 0) {
       return;
     }

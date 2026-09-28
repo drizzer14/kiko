@@ -209,7 +209,7 @@ import UserNotifications
   // The queue lives in UserDefaults, not memory, so a tap or a snooze made
   // while JS is not running (a cold launch, a background action) still
   // reaches JS on its next drain.
-  func enqueueResponse(reminderId: String, action: String) {
+  func enqueueResponse(reminderId: String, requestIdentifier: String, action: String) {
     stateLock.lock()
     defer { stateLock.unlock() }
 
@@ -220,7 +220,12 @@ import UserNotifications
     }
     let respondedAt = Int64((Date().timeIntervalSince1970 * 1000).rounded())
     let queued = (stored ?? []) + [
-      QueuedResponse(reminderId: reminderId, action: action, respondedAt: respondedAt),
+      QueuedResponse(
+        reminderId: reminderId,
+        requestIdentifier: requestIdentifier,
+        action: action,
+        respondedAt: respondedAt
+      ),
     ]
     let kept = Array(queued.suffix(Self.maximumQueuedResponses))
 
@@ -298,6 +303,8 @@ struct LocalDateTime: Decodable {
 
 struct QueuedResponse: Codable {
   let reminderId: String
+  // JS tells the paused notice from a reminder by this identifier.
+  let requestIdentifier: String
   let action: String
   // Milliseconds since the epoch, the unit JS `Date` uses.
   let respondedAt: Int64

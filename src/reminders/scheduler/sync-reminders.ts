@@ -7,6 +7,7 @@ import {
   isSnoozePending,
   type PlannedRequest,
   planAllReminders,
+  pausedNoticeIdentifier,
   type ReminderPlanInput,
 } from '@kiko/reminders/planner';
 import { match } from 'ts-pattern';
@@ -54,6 +55,12 @@ const isSnoozeStale = (row: PlanInputRow, now: number): boolean =>
   (!isSchedulable(row) ||
     !isSnoozePending({ schedule: row.schedule, lastSnoozedAt: row.lastSnoozedAt, now }));
 
+// The paused notice only says the reminder has stopped; a tap on it is not a
+// sign the reminder helps, so it neither resumes the reminder nor restarts the
+// ignored count. Only resuming in the app does.
+const isEngagement = (response: NotificationResponse): boolean =>
+  response.requestIdentifier !== pausedNoticeIdentifier(response.reminderId);
+
 const toNativeRequest = (request: PlannedRequest, t: TFunction): NativeReminderRequest => ({
   identifier: request.identifier,
   reminderId: request.reminderId,
@@ -76,7 +83,7 @@ export const syncReminders = async (
 
   // The drain has already emptied the native queue, so the engagements are
   // stored before any later step can fail.
-  await remindersRepo.recordEngagements(responses);
+  await remindersRepo.recordEngagements(responses.filter(isEngagement));
 
   if ((await remindersRepo.hasAnyQuery()).length === 0) {
     await remindersNative.replaceRequests([], []);

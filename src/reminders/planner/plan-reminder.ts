@@ -140,16 +140,21 @@ const ordinalSlots = (input: ReminderPlanInput): Slot[] => {
   return slots;
 };
 
+const requestIdentifier = (reminderId: string, suffix: string): string =>
+  REMINDER_IDENTIFIER_PREFIX.concat(reminderId, '.', suffix);
+
+export const pausedNoticeIdentifier = (reminderId: string): string =>
+  requestIdentifier(reminderId, 'paused');
+
 const toRequest = (
   input: ReminderPlanInput,
   fireAt: LocalDateTime,
   variant: PlannedRequest['variant'],
 ): PlannedRequest => ({
-  identifier: REMINDER_IDENTIFIER_PREFIX.concat(
-    input.reminderId,
-    '.',
-    variant === 'pausedNotice' ? 'paused' : fireStamp(fireAt),
-  ),
+  identifier:
+    variant === 'pausedNotice'
+      ? pausedNoticeIdentifier(input.reminderId)
+      : requestIdentifier(input.reminderId, fireStamp(fireAt)),
   reminderId: input.reminderId,
   accountId: input.accountId,
   kind: input.kind,

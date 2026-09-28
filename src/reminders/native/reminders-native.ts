@@ -35,9 +35,11 @@ const notificationActions = ['open', 'snooze'] as const;
 type NotificationAction = (typeof notificationActions)[number];
 
 // `respondedAt` is milliseconds since the epoch, stamped natively when the user
-// tapped the notification or its action.
+// tapped the notification or its action. `requestIdentifier` tells which of the
+// reminder's requests was tapped, such as its paused notice.
 export type NotificationResponse = {
   reminderId: string;
+  requestIdentifier: string;
   action: NotificationAction;
   respondedAt: number;
 };
@@ -67,6 +69,7 @@ const isNotificationResponse = (entry: unknown): entry is NotificationResponse =
 
   return (
     typeof candidate.reminderId === 'string' &&
+    typeof candidate.requestIdentifier === 'string' &&
     isNotificationAction(candidate.action) &&
     typeof candidate.respondedAt === 'number'
   );

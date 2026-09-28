@@ -29,14 +29,15 @@ final class KikoNotificationDelegate: NSObject, UNUserNotificationCenterDelegate
     }
 
     let reminders = KikoRemindersCenter.shared
+    let requestIdentifier = notification.request.identifier
 
     switch response.actionIdentifier {
     case UNNotificationDefaultActionIdentifier:
-      reminders.enqueueResponse(reminderId: reminderId, action: "open")
+      reminders.enqueueResponse(reminderId: reminderId, requestIdentifier: requestIdentifier, action: "open")
       reminders.emitResponse(reminderId: reminderId)
       completionHandler()
     case KikoRemindersCenter.snoozeActionIdentifier:
-      reminders.enqueueResponse(reminderId: reminderId, action: "snooze")
+      reminders.enqueueResponse(reminderId: reminderId, requestIdentifier: requestIdentifier, action: "snooze")
       reminders.emitResponse(reminderId: reminderId)
       // The completion handler waits for the add: the system may suspend a
       // background-launched app as soon as it is called.

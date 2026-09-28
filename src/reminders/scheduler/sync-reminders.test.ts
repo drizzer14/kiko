@@ -207,11 +207,38 @@ describe('syncReminders — responses, back-off, and snoozes', () => {
   it('records a tap as engagement and returns the drained responses', async () => {
     seedAccount('manual');
     seedReminder({ id: 'reminder-1', accountId: 'manual', kind: 'add_transactions' });
-    drainedResponses = [{ reminderId: 'reminder-1', action: 'open', respondedAt: local(10, 1, 9) }];
+    drainedResponses = [
+      {
+        reminderId: 'reminder-1',
+        requestIdentifier: 'kiko.reminder.reminder-1.202609302000',
+        action: 'open',
+        respondedAt: local(10, 1, 9),
+      },
+    ];
 
     await expect(syncReminders(english, NOW)).resolves.toEqual(drainedResponses);
 
     expect(reminderColumn('reminder-1', 'last_engaged_at')).toBe(local(10, 1, 9));
+  });
+
+  it('keeps a reminder paused when the user taps its paused notice, and returns the tap', async () => {
+    seedAccount('manual');
+    seedReminder({ id: 'ignored', accountId: 'manual', kind: 'add_transactions' });
+    drainedResponses = [
+      {
+        reminderId: 'ignored',
+        requestIdentifier: 'kiko.reminder.ignored.paused',
+        action: 'open',
+        respondedAt: local(10, 4, 20, 5),
+      },
+    ];
+
+    await expect(syncReminders(english, local(10, 4, 20, 6))).resolves.toEqual(drainedResponses);
+
+    expect(reminderColumn('ignored', 'last_engaged_at')).toBeNull();
+    expect(reminderColumn('ignored', 'paused_at')).toBe(local(10, 4, 20));
+    expect(reminderColumn('ignored', 'pause_reason')).toBe('backoff');
+    expect(scheduledIds()).toEqual([]);
   });
 
   it('persists a back-off pause and schedules nothing more for that reminder', async () => {
@@ -233,7 +260,14 @@ describe('syncReminders — responses, back-off, and snoozes', () => {
   it('stores a "Tomorrow" snooze and skips its occurrence on this and every later sync', async () => {
     seedAccount('manual');
     seedReminder({ id: 'snoozed', accountId: 'manual', kind: 'add_transactions' });
-    drainedResponses = [{ reminderId: 'snoozed', action: 'snooze', respondedAt: local(10, 1, 8) }];
+    drainedResponses = [
+      {
+        reminderId: 'snoozed',
+        requestIdentifier: 'kiko.reminder.snoozed.202609302000',
+        action: 'snooze',
+        respondedAt: local(10, 1, 8),
+      },
+    ];
 
     await syncReminders(english, NOW);
 
