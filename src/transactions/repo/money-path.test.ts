@@ -13,6 +13,7 @@ jest.mock('@kiko/db/client', () => {
   };
 });
 
+import { startOfLocalDay } from '@kiko/dates';
 import { holdings, transactions } from '@kiko/db';
 import { buildCategoryTrend } from '@kiko/statistics/category-trend';
 import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
@@ -20,6 +21,16 @@ import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import { buildCategoryBreakdown } from '@kiko/statistics/category-breakdown';
 
 import { transactionsRepo } from './transactions.repo';
+
+// A real LOCAL-CALENDAR-DAY step back from `t` — never `t - n * dayMs`, which
+// can land off a real local-midnight boundary when the span crosses a DST
+// change. Matches what `statistics.screen.tsx` itself always passes as
+// `range.from` (`startOfLocalDay(dateFrom.getTime())`).
+const localDaysBefore = (t: number, days: number): number => {
+  const date = new Date(t);
+
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() - days).getTime();
+};
 
 // A fake database-transaction handle capturing inserts + balance updates in call order, answering
 // both the chained `.where(...).limit(1)` and the bare `await where(...)`
@@ -175,7 +186,6 @@ describe('Money-path guard: split-change + convert prefill', () => {
     // A fixed "today" so the range is deterministic; the split payment and its
     // two returns all fall on this same day bucket.
     const now = Date.UTC(2025, 2, 31, 12, 0, 0);
-    const dayMs = 86_400_000;
     const base = {
       mcc: null,
       counterIban: null,
@@ -214,16 +224,17 @@ describe('Money-path guard: split-change + convert prefill', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       defaultCategoryKey: 'groceries',
-      range: { from: now - 3 * dayMs, to: now },
+      range: { from: localDaysBefore(now, 3), to: now },
       bucketDays: 1,
     });
 
     // The affected day's trend value is the NET |payment| − Σreturns = 211_72
     // (211.72 in base MAJOR units), not the bare 212_00 — the trend nets exactly
-    // like the pie (same shared accumulateSpend).
+    // like the pie (same shared accumulateSpend). The transaction lands in
+    // its own LOCAL-DAY bucket, not at the exact `now` instant.
     expect(series).toHaveLength(1);
     const nonZero = series[0].points.filter((point) => point.amount !== 0);
 
-    expect(nonZero).toEqual([{ t: now, amount: 211.72 }]);
+    expect(nonZero).toEqual([{ t: startOfLocalDay(now), amount: 211.72 }]);
   });
 });
