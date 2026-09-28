@@ -217,6 +217,29 @@ export const withWalkOwnedMetadataCarried = (
   );
 };
 
+/**
+ * Strips every `walkOwnedMetadataKeys` entry from `storedMetadata` — the
+ * disconnect-side counterpart of `withWalkOwnedMetadataCarried`, so a
+ * disconnected Binance connection's watermark cannot leak into a reconnect
+ * (`disconnectCryptoAccount`, crypto-sync/disconnect.ts). `undefined` when
+ * nothing needed stripping, so a caller can skip a redundant write.
+ */
+export const withoutWalkOwnedMetadata = (
+  storedMetadata: unknown,
+): Record<string, unknown> | undefined => {
+  if (!isRecord(storedMetadata) || !walkOwnedMetadataKeys.some((key) => key in storedMetadata)) {
+    return undefined;
+  }
+
+  const stripped = { ...storedMetadata };
+
+  for (const key of walkOwnedMetadataKeys) {
+    delete stripped[key];
+  }
+
+  return stripped;
+};
+
 const asContribution = (value: unknown): DepositContribution | null => {
   if (!isRecord(value)) {
     return null;

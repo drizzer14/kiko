@@ -939,6 +939,56 @@ describe('holdingsRepo.upsertMonobank (via the shared metadata-key helper)', () 
   });
 });
 
+describe('holdingsRepo.clearBinanceHistoryCursor', () => {
+  it('strips binanceHistoryCursor from holdings that have it, and leaves every other metadata key untouched', async () => {
+    const rows = [
+      {
+        id: 'h-spot',
+        metadata: { binanceAsset: 'BTC', binanceHistoryCursor: 1_000, syncedAt: 500 },
+      },
+      { id: 'h-funding', metadata: { binanceAsset: 'BTC:funding', syncedAt: 500 } },
+    ];
+    const updates: Record<string, unknown>[] = [];
+    mockDatabaseTransaction = {
+      select: () => ({
+        from: () => ({
+          where: async () => rows,
+        }),
+      }),
+      update: () => ({
+        set: (values: Record<string, unknown>) => ({
+          where: () => {
+            updates.push(values);
+
+            return Promise.resolve();
+          },
+        }),
+      }),
+    };
+
+    await holdingsRepo.clearBinanceHistoryCursor('acc-1');
+
+    // Only the holding that actually carried the key is written.
+    expect(updates).toEqual([{ metadata: { binanceAsset: 'BTC', syncedAt: 500 } }]);
+  });
+
+  it('writes nothing when no holding under the account carries the key', async () => {
+    const update = jest.fn();
+    mockDatabaseTransaction = {
+      select: () => ({
+        from: () => ({
+          where: async () => [{ id: 'h-wallet', metadata: { walletAddress: 'bc1q' } }],
+        }),
+      }),
+      update,
+    };
+
+    await holdingsRepo.clearBinanceHistoryCursor('acc-1');
+
+    expect(update).not.toHaveBeenCalled();
+  });
+});
+
 describe('holdings remove', () => {
   it('deletes a manual holding and its transactions in one transaction', async () => {
     const store: Store = {

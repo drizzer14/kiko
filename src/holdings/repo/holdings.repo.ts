@@ -28,6 +28,7 @@ import {
   type DepositContribution,
   type ExchangeMetadataField,
   type SyncedMetadataField,
+  withoutWalkOwnedMetadata,
   withWalkOwnedMetadataCarried,
 } from '../holding-metadata';
 import { isSyncedHolding } from '../deletable';
@@ -813,6 +814,35 @@ export const holdingsRepo = {
           metadataField: 'monobankId',
           metadataKey: monobankId,
         });
+      }
+    }),
+  /**
+   * Strip the Binance history-walk cursor from every holding of one account —
+   * called on a Binance disconnect so a stale watermark cannot leak into a
+   * reconnected (possibly different) Binance account's fresh walk. Every
+   * OTHER metadata key (`binanceAsset` among them) is untouched, so a
+   * same-account reconnect still re-adopts the row. A holding that never
+   * carried the key is skipped entirely — no redundant write, no reactive
+   * `holdings` fire for it.
+   */
+  clearBinanceHistoryCursor: (accountId: string) =>
+    write(async (databaseTransaction) => {
+      const rows = await databaseTransaction
+        .select({ id: holdings.id, metadata: holdings.metadata })
+        .from(holdings)
+        .where(eq(holdings.accountId, accountId));
+
+      for (const row of rows) {
+        const stripped = withoutWalkOwnedMetadata(row.metadata);
+
+        if (stripped === undefined) {
+          continue;
+        }
+
+        await databaseTransaction
+          .update(holdings)
+          .set({ metadata: stripped })
+          .where(eq(holdings.id, row.id));
       }
     }),
   /**
