@@ -275,6 +275,19 @@ const rewriteOwnership = (holdingId: string, rewrite: OwnershipRewrite) =>
       .where(eq(holdings.id, holdingId));
   });
 
+// Skip the write entirely when the synced balance already matches —
+// `selectCardsToFetch` already skips a card whose bank-reported balance is
+// unchanged, but the daily full fetch still calls `setSyncedBalance` for
+// EVERY held card. Without this, that unconditional write fired the
+// `holdings` reactive-query hook for every subscriber, on every sync, for
+// every card, even though nothing changed. `IS NOT` (not `!=`), since a
+// never-synced-through holding's marker starts NULL and SQL's `!=` against
+// NULL is never true. Exported so
+// `holdings.repo.synced-balance-no-op.test.ts` can build the exact same
+// UPDATE statement Drizzle would, instead of hand-transcribing its SQL.
+export const syncedBalanceUpdateWhere = (holdingId: string, minorUnits: number) =>
+  and(eq(holdings.id, holdingId), sql`${holdings.syncedBalanceMinorUnits} IS NOT ${minorUnits}`);
+
 export const holdingsRepo = {
   // Ordered by the user-controlled `sortOrder` (the drag-and-drop grid order),
   // with `createdAt` as a stable tiebreak so rows sharing a rank keep a
@@ -810,23 +823,10 @@ export const holdingsRepo = {
         );
       }
 
-      // Skip the write entirely when the synced balance already matches —
-      // `selectCardsToFetch` already skips a card whose bank-reported balance
-      // is unchanged, but the daily full fetch still calls this for EVERY
-      // held card. Without the second WHERE clause, that unconditional write
-      // fired the `holdings` reactive-query hook for every subscriber, on
-      // every sync, for every card, even though nothing changed. `IS NOT`
-      // (not `!=`), since a never-synced-through holding's marker starts
-      // NULL and SQL's `!=` against NULL is never true.
       await databaseTransaction
         .update(holdings)
         .set({ syncedBalanceMinorUnits: balance.minorUnits })
-        .where(
-          and(
-            eq(holdings.id, holdingId),
-            sql`${holdings.syncedBalanceMinorUnits} IS NOT ${balance.minorUnits}`,
-          ),
-        );
+        .where(syncedBalanceUpdateWhere(holdingId, balance.minorUnits));
     }),
   /**
    * Balance-provider counterpart of `upsertMonobank`: one live balance snapshot

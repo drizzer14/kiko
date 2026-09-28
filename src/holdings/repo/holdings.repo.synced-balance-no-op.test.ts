@@ -1,76 +1,116 @@
-// Runs the ACTUAL update statement shape `setSyncedBalance` builds (a WHERE
-// clause narrowed by an `IS NOT` balance comparison), by hand against a real,
-// in-process SQLite engine (`node:sqlite`) — op-sqlite itself is a native
-// module unavailable under Jest, and the fake `databaseTransaction` double
-// `holdings.repo.test.ts` uses elsewhere never enforces real SQLite WHERE
-// semantics, so only a real engine can prove the write is skipped when the
-// synced balance already matches (and still applies when it does not).
-// Mirrors `accounts.repo.foreign-keys.test.ts`'s "real engine, not a
-// hand-traced predicate" precedent.
+// Builds the ACTUAL SQL/params Drizzle generates for `setSyncedBalance`'s
+// UPDATE — never a hand-transcribed copy of it — via a
+// `drizzle-orm/sqlite-proxy` instance whose remote callback is never invoked
+// (`.toSQL()` only compiles the query, it never executes it), reusing that
+// function's own exported `syncedBalanceUpdateWhere`. That exact SQL is then
+// run against a real, in-process `node:sqlite` engine, with the real
+// migrated schema (the same files `run-migrations.ts` loads) — op-sqlite
+// itself is a native module unavailable under Jest, and the fake
+// `databaseTransaction` double `holdings.repo.test.ts` uses elsewhere never
+// enforces real SQLite WHERE semantics, so only a real engine can prove the
+// write is skipped when the synced balance already matches (and still
+// applies when it does not). Mirrors `accounts.repo.foreign-keys.test.ts`'s
+// own "real engine, not a hand-mirrored schema" precedent.
+import { join } from 'node:path';
+import { holdings } from '@kiko/db';
+import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
+import { drizzle } from 'drizzle-orm/sqlite-proxy';
 
-const openTestDatabase = (): DatabaseSync => {
+import { syncedBalanceUpdateWhere } from './holdings.repo';
+
+const neverCalled = async (): Promise<{ rows: unknown[] }> => {
+  throw new Error('the sqlite-proxy callback must never run — this instance is toSQL()-only');
+};
+
+const proxyDb = drizzle(neverCalled);
+
+const MIGRATIONS_ROOT = join(__dirname, '..', '..', '..', 'drizzle', 'migrations');
+const STATEMENT_BREAKPOINT = '--> statement-breakpoint';
+
+const applyAllMigrations = (database: DatabaseSync): void => {
+  const journal = JSON.parse(
+    readFileSync(join(MIGRATIONS_ROOT, 'meta', '_journal.json'), 'utf8'),
+  ) as { entries: { tag: string }[] };
+
+  for (const entry of journal.entries) {
+    const sql = readFileSync(join(MIGRATIONS_ROOT, `${entry.tag}.sql`), 'utf8');
+    const statements = sql
+      .split(STATEMENT_BREAKPOINT)
+      .map((statement) => statement.trim())
+      .filter((statement) => statement !== '');
+
+    for (const statement of statements) {
+      database.exec(statement);
+    }
+  }
+};
+
+// The exact statement `setSyncedBalance` builds — mirrors it precisely,
+// since it reuses that function's own exported `syncedBalanceUpdateWhere`
+// rather than restating the WHERE clause.
+const updateSql = (minorUnits: number): { sql: string; params: unknown[] } =>
+  proxyDb
+    .update(holdings)
+    .set({ syncedBalanceMinorUnits: minorUnits })
+    .where(syncedBalanceUpdateWhere('h-1', minorUnits))
+    .toSQL();
+
+// `client.ts` enables `PRAGMA foreign_keys` in production, so `account_id`
+// needs a real target row.
+const openTestDatabase = (initialSyncedBalance: number | null): DatabaseSync => {
   const database = new DatabaseSync(':memory:');
 
-  database.exec(`
-    CREATE TABLE holdings (
-      id TEXT PRIMARY KEY,
-      synced_balance_minor_units INTEGER
-    );
-  `);
+  applyAllMigrations(database);
+  database.exec('PRAGMA foreign_keys = ON;');
   database
-    .prepare('INSERT INTO holdings (id, synced_balance_minor_units) VALUES (?, ?)')
-    .run('h-1', 5_000);
+    .prepare("INSERT INTO accounts (id, name, kind) VALUES ('a-1', 'Monobank', 'bank')")
+    .run();
+  database
+    .prepare(
+      `INSERT INTO holdings (id, account_id, name, type, currency, synced_balance_minor_units)
+       VALUES ('h-1', 'a-1', 'Card', 'card', 'UAH', ?)`,
+    )
+    .run(initialSyncedBalance);
 
   return database;
 };
 
-const storedBalance = (database: DatabaseSync): number | null => {
-  const row = database
-    .prepare('SELECT synced_balance_minor_units AS value FROM holdings WHERE id = ?')
-    .get('h-1') as { value: number | null };
+const runUpdate = (database: DatabaseSync, minorUnits: number): { changes: number | bigint } => {
+  const { sql, params } = updateSql(minorUnits);
 
-  return row.value;
+  return database.prepare(sql).run(...(params as (string | number | null)[]));
 };
 
-const clearStoredBalance = (database: DatabaseSync): void => {
-  database.prepare('UPDATE holdings SET synced_balance_minor_units = NULL WHERE id = ?').run('h-1');
-};
-
-// Same WHERE shape `holdingsRepo.setSyncedBalance` builds — `IS NOT`, not
-// `!=`, so a never-synced-through holding's NULL marker still updates on its
-// first real balance.
-const UPDATE_SQL = `
-  UPDATE holdings
-  SET synced_balance_minor_units = ?
-  WHERE id = ? AND synced_balance_minor_units IS NOT ?
-`;
+const storedBalance = (database: DatabaseSync): number | null =>
+  (
+    database
+      .prepare('SELECT synced_balance_minor_units AS value FROM holdings WHERE id = ?')
+      .get('h-1') as { value: number | null }
+  ).value;
 
 describe('setSyncedBalance update — skips a no-op write', () => {
   it('reports 0 changes when the synced balance already matches', () => {
-    const database = openTestDatabase();
+    const database = openTestDatabase(5_000);
 
-    const result = database.prepare(UPDATE_SQL).run(5_000, 'h-1', 5_000);
+    const result = runUpdate(database, 5_000);
 
     expect(result.changes).toBe(0);
   });
 
   it('still updates when the synced balance genuinely changed', () => {
-    const database = openTestDatabase();
+    const database = openTestDatabase(5_000);
 
-    const result = database.prepare(UPDATE_SQL).run(6_000, 'h-1', 6_000);
-    const stored = storedBalance(database);
+    const result = runUpdate(database, 6_000);
 
     expect(result.changes).toBe(1);
-    expect(stored).toBe(6_000);
+    expect(storedBalance(database)).toBe(6_000);
   });
 
   it('still updates a never-synced-through holding (NULL marker) on its first real balance', () => {
-    const database = openTestDatabase();
+    const database = openTestDatabase(null);
 
-    clearStoredBalance(database);
-
-    const result = database.prepare(UPDATE_SQL).run(5_000, 'h-1', 5_000);
+    const result = runUpdate(database, 5_000);
 
     expect(result.changes).toBe(1);
   });

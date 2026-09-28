@@ -254,6 +254,39 @@ const partitionNewRows = async (
   });
 };
 
+// Every bank-owned column `insertDedupRowsDatabaseTransaction`'s upsert
+// refreshes on conflict — ONE list. `bankOwnedTransactionSet` (which column
+// to overwrite, and with what) and `bankOwnedTransactionSetWhere` (skip the
+// whole write when nothing here actually changed) are both derived from it,
+// so adding a column to one can never forget to add it to the other;
+// `excluded.<db column>` is read off each column's own `.name`, not
+// hand-typed a second time, so a TS-key/DB-name mismatch cannot drift either.
+const BANK_OWNED_TRANSACTION_COLUMNS = [
+  { key: 'amountMinorUnits', column: transactions.amountMinorUnits },
+  { key: 'description', column: transactions.description },
+  { key: 'hold', column: transactions.hold },
+  { key: 'mcc', column: transactions.mcc },
+  { key: 'counterIban', column: transactions.counterIban },
+  { key: 'time', column: transactions.time },
+] as const;
+
+export const bankOwnedTransactionSet = Object.fromEntries(
+  BANK_OWNED_TRANSACTION_COLUMNS.map(({ key, column }) => [
+    key,
+    sql.raw(`excluded.${column.name}`),
+  ]),
+);
+
+// `IS NOT` (not `!=`), since a bank-owned column can be NULL
+// (`mcc`/`counterIban`/`hold`) and SQL's `!=` against NULL is never true —
+// it would silently skip a genuine NULL-to-value change.
+export const bankOwnedTransactionSetWhere = sql.join(
+  BANK_OWNED_TRANSACTION_COLUMNS.map(
+    ({ column }) => sql`${column} IS NOT ${sql.raw(`excluded.${column.name}`)}`,
+  ),
+  sql` OR `,
+);
+
 /**
  * Apply name->category override rules and upsert a batch of imported rows on
  * the `(source, external_id)` unique index — the shared core `addManyDedup`
@@ -329,29 +362,8 @@ const insertDedupRowsDatabaseTransaction = async (
       .values(part)
       .onConflictDoUpdate({
         target: [transactions.source, transactions.externalId],
-        set: {
-          amountMinorUnits: sql`excluded.amount_minor_units`,
-          description: sql`excluded.description`,
-          hold: sql`excluded.hold`,
-          mcc: sql`excluded.mcc`,
-          counterIban: sql`excluded.counter_iban`,
-          time: sql`excluded.time`,
-        },
-        // Every daily full fetch re-upserts every fetched row, even the
-        // (usual) case where nothing about it changed — without this, an
-        // unchanged row still ran an UPDATE and fired the `transactions`
-        // reactive-query hook for every subscriber, on every sync, for every
-        // row. `IS NOT` (not `!=`), since a bank-owned column can be NULL
-        // (`mcc`/`counterIban`/`hold`) and SQL's `!=` against NULL is never
-        // true — it would silently skip a genuine NULL-to-value change.
-        setWhere: sql`
-          ${transactions.amountMinorUnits} IS NOT excluded.amount_minor_units
-          OR ${transactions.description} IS NOT excluded.description
-          OR ${transactions.hold} IS NOT excluded.hold
-          OR ${transactions.mcc} IS NOT excluded.mcc
-          OR ${transactions.counterIban} IS NOT excluded.counter_iban
-          OR ${transactions.time} IS NOT excluded.time
-        `,
+        set: bankOwnedTransactionSet,
+        setWhere: bankOwnedTransactionSetWhere,
       });
   }
 

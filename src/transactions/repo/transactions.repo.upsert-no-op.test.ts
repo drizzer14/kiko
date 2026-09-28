@@ -1,62 +1,55 @@
-// Runs the ACTUAL upsert statement shape `addManyDedup`'s
-// `.onConflictDoUpdate` builds (target + set + setWhere), by hand against a
-// real, in-process SQLite engine (`node:sqlite`, built into the Node 22
-// runtime this project already requires) — op-sqlite itself is a native
-// module unavailable under Jest, and the fake `databaseTransaction` double
-// `transactions.repo.test.ts` uses elsewhere never enforces real SQLite
-// upsert/WHERE semantics, so only a real engine can prove `setWhere` actually
-// suppresses a no-op UPDATE (and still applies a genuine one). Mirrors
-// `accounts.repo.foreign-keys.test.ts`'s "real engine, not a hand-traced
-// predicate" precedent, at the single-statement scale
-// `drizzle/migrations/0040-*.test.ts` uses.
-import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
+// Builds the ACTUAL SQL/params Drizzle generates for
+// `insertDedupRowsDatabaseTransaction`'s upsert — never a hand-transcribed
+// copy of it — via a `drizzle-orm/sqlite-proxy` instance whose remote
+// callback is never invoked (`.toSQL()` only compiles the query, it never
+// executes it), reusing that function's own exported
+// `bankOwnedTransactionSet`/`bankOwnedTransactionSetWhere`. That exact SQL is
+// then run against a real, in-process `node:sqlite` engine — op-sqlite
+// itself is a native module unavailable under Jest, and the fake
+// `databaseTransaction` double `transactions.repo.test.ts` uses elsewhere
+// never enforces real SQLite upsert/WHERE semantics, so only a real engine
+// can prove `setWhere` actually suppresses a no-op UPDATE (and still applies
+// a genuine one).
+import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { transactions } from '@kiko/db';
+import { DatabaseSync } from 'node:sqlite';
+import { drizzle } from 'drizzle-orm/sqlite-proxy';
 
-const openTestDatabase = (): DatabaseSync => {
-  const database = new DatabaseSync(':memory:');
+import { bankOwnedTransactionSet, bankOwnedTransactionSetWhere } from './transactions.repo';
 
-  database.exec(`
-    CREATE TABLE transactions (
-      id TEXT PRIMARY KEY,
-      holding_id TEXT NOT NULL,
-      amount_minor_units INTEGER NOT NULL,
-      time INTEGER NOT NULL,
-      description TEXT NOT NULL DEFAULT '',
-      category TEXT,
-      mcc INTEGER,
-      hold INTEGER,
-      counter_iban TEXT,
-      source TEXT NOT NULL,
-      external_id TEXT
-    );
-    CREATE UNIQUE INDEX transactions_source_external ON transactions(source, external_id);
-  `);
-
-  return database;
+const neverCalled = async (): Promise<{ rows: unknown[] }> => {
+  throw new Error('the sqlite-proxy callback must never run — this instance is toSQL()-only');
 };
 
-// Same target/set/setWhere shape `transactions.repo.ts`'s `addManyDedup`
-// builds, transcribed to raw SQL for a real engine to run — the WHERE
-// clause is exactly what `setWhere` there produces.
-const UPSERT_SQL = `
-  INSERT INTO transactions
-    (id, holding_id, amount_minor_units, time, description, category, mcc, hold, counter_iban, source, external_id)
-  VALUES
-    (@id, @holdingId, @amountMinorUnits, @time, @description, @category, @mcc, @hold, @counterIban, @source, @externalId)
-  ON CONFLICT (source, external_id) DO UPDATE SET
-    amount_minor_units = excluded.amount_minor_units,
-    description = excluded.description,
-    hold = excluded.hold,
-    mcc = excluded.mcc,
-    counter_iban = excluded.counter_iban,
-    time = excluded.time
-  WHERE
-    transactions.amount_minor_units IS NOT excluded.amount_minor_units
-    OR transactions.description IS NOT excluded.description
-    OR transactions.hold IS NOT excluded.hold
-    OR transactions.mcc IS NOT excluded.mcc
-    OR transactions.counter_iban IS NOT excluded.counter_iban
-    OR transactions.time IS NOT excluded.time
-`;
+const proxyDb = drizzle(neverCalled);
+
+// The REAL insert Drizzle builds names every column of the real `transactions`
+// table (defaulting the ones this test never sets), so the test database must
+// have that table's REAL, full shape too — the ACTUAL shipped migration SQL
+// (the same files `run-migrations.ts` loads), applied to a real, in-process
+// `node:sqlite` engine, mirroring `accounts.repo.foreign-keys.test.ts`'s own
+// "real engine, not a hand-mirrored schema" precedent.
+const MIGRATIONS_ROOT = join(__dirname, '..', '..', '..', 'drizzle', 'migrations');
+const STATEMENT_BREAKPOINT = '--> statement-breakpoint';
+
+const applyAllMigrations = (database: DatabaseSync): void => {
+  const journal = JSON.parse(
+    readFileSync(join(MIGRATIONS_ROOT, 'meta', '_journal.json'), 'utf8'),
+  ) as { entries: { tag: string }[] };
+
+  for (const entry of journal.entries) {
+    const sql = readFileSync(join(MIGRATIONS_ROOT, `${entry.tag}.sql`), 'utf8');
+    const statements = sql
+      .split(STATEMENT_BREAKPOINT)
+      .map((statement) => statement.trim())
+      .filter((statement) => statement !== '');
+
+    for (const statement of statements) {
+      database.exec(statement);
+    }
+  }
+};
 
 type Row = {
   id: string;
@@ -66,14 +59,52 @@ type Row = {
   description: string;
   category: string | null;
   mcc: number | null;
-  hold: number | null;
+  hold: boolean | null;
   counterIban: string | null;
-  source: string;
+  source: 'manual' | 'monobank' | 'btc_wallet' | 'binance' | 'import';
   externalId: string | null;
 };
 
-const runUpsert = (database: DatabaseSync, row: Row): { changes: number | bigint } =>
-  database.prepare(UPSERT_SQL).run(row as unknown as Record<string, SQLInputValue>);
+// The exact statement `insertDedupRowsDatabaseTransaction` builds for one
+// upsert row (target + set + setWhere) — mirrors it precisely, since it
+// reuses that function's own `bankOwnedTransactionSet`/
+// `bankOwnedTransactionSetWhere` rather than restating the column list.
+const upsertSql = (row: Row): { sql: string; params: unknown[] } =>
+  proxyDb
+    .insert(transactions)
+    .values(row)
+    .onConflictDoUpdate({
+      target: [transactions.source, transactions.externalId],
+      set: bankOwnedTransactionSet,
+      setWhere: bankOwnedTransactionSetWhere,
+    })
+    .toSQL();
+
+// `client.ts` enables `PRAGMA foreign_keys` in production, so `holding_id`
+// needs a real target row — a minimal account + holding, matching
+// `accounts.repo.foreign-keys.test.ts`'s own real-FK setup.
+const openTestDatabase = (): DatabaseSync => {
+  const database = new DatabaseSync(':memory:');
+
+  applyAllMigrations(database);
+  database.exec('PRAGMA foreign_keys = ON;');
+  database
+    .prepare("INSERT INTO accounts (id, name, kind) VALUES ('a-1', 'Monobank', 'bank')")
+    .run();
+  database
+    .prepare(
+      "INSERT INTO holdings (id, account_id, name, type, currency) VALUES ('h-1', 'a-1', 'Card', 'card', 'UAH')",
+    )
+    .run();
+
+  return database;
+};
+
+const runUpsert = (database: DatabaseSync, row: Row): { changes: number | bigint } => {
+  const { sql, params } = upsertSql(row);
+
+  return database.prepare(sql).run(...(params as (string | number | null)[]));
+};
 
 const BASE_ROW: Row = {
   id: 'tx-1',
@@ -83,7 +114,7 @@ const BASE_ROW: Row = {
   description: 'Coffee shop',
   category: 'groceries',
   mcc: null,
-  hold: 0,
+  hold: false,
   counterIban: null,
   source: 'monobank',
   externalId: 'ext-1',
@@ -105,7 +136,7 @@ describe('addManyDedup upsert — setWhere suppresses a no-op UPDATE', () => {
 
     runUpsert(database, BASE_ROW);
 
-    const settled: Row = { ...BASE_ROW, amountMinorUnits: -1_200, hold: 0 };
+    const settled: Row = { ...BASE_ROW, amountMinorUnits: -1_200 };
     const result = runUpsert(database, settled);
 
     expect(result.changes).toBe(1);
