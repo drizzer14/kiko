@@ -23,6 +23,7 @@ Rules:
   agents; each role agent's own "Report back" rule (see its agent file) is what makes
   it send its result the moment it is known instead of going quiet.
 - "DEFAULT, pending user" means apply it now, not merely record the decision and leave the old behavior in place. A change that states a DEFAULT ruling must change the code in that same change — a later change should never have to circle back to actually apply a decision an earlier one only annotated.
+- User questions go through the coordinator. An orchestrator session never asks the user in its own terminal (no AskUserQuestion there). It sends each user question or blocker to the coordinator by SendMessage: the question, 2-4 options with a one-line consequence each, the recommended option, and the work it can do meanwhile. The coordinator asks the user and relays the answer in the user's own words.
 
 ## Skill drift rule
 
