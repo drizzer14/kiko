@@ -27,6 +27,14 @@ describe('Switch', () => {
   // container, and the row top-aligns to the label's first line rather than
   // vertically centering the toggle against the label's full (once wrapped,
   // multi-line) height.
+  it('names a label-less toggle for VoiceOver', async () => {
+    const { getByLabelText } = await render(
+      <Switch value onValueChange={() => {}} accessibilityLabel="Reminder on" />,
+    );
+
+    expect(getByLabelText('Reminder on').props.value).toBe(true);
+  });
+
   it('lets a long label shrink to wrap, and top-aligns the toggle to it', async () => {
     const { getByText } = await render(
       <Switch value onValueChange={() => {}} label="Follow system setting" />,
