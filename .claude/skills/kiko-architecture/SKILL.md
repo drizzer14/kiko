@@ -1529,6 +1529,16 @@ in memory for the crash history this fixed.
   `BIOMETRY_CURRENT_SET` Keychain read SIGABRTs without it. Verify the key is
   present in `ios/Kiko/Info.plist` before adding or changing any biometric
   Keychain call (see memory `biometric-keychain-needs-nsfaceidusagedescription`).
+- **`authenticate` (`src/auth/biometrics.ts`) is a TOTAL function that
+  classifies the native module's own REJECTION, not a resolved `success:
+  false` shape** — `authenticateWithOptions` rejects with an `Error` carrying
+  `code` on real iOS, so a mock in a test must reject, not resolve, to match
+  the device shape. `confirmOwner` (`src/auth/confirm-owner/`) wraps it for
+  every sensitive-action re-auth (turning the app lock off, a credential
+  export); read `docs/security/README.md`'s "App lock re-authentication" and
+  "Data export/import" sections for the full contract, including why the two
+  call sites deliberately read `confirmOwner`'s `noPasscode` result
+  oppositely.
 - **`useAnimatedKeyboard()` is banned** — see `kiko-gestures`'s "`useAnimatedKeyboard()`
   is banned" section for why, and the Semgrep ERROR rule
   `kiko-no-use-animated-keyboard` (`rules/semgrep-prewrite.yml`) that enforces it.
