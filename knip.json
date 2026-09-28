@@ -17,7 +17,8 @@
     "scripts/checks/feature-imports.js",
     "scripts/checks/specifier-scanner.js",
     "scripts/checks/pre-write-guard.js",
-    "scripts/checks/guard-replay.js"
+    "scripts/checks/guard-replay.js",
+    "scripts/checks/deps-ranges.js"
   ],
   "ignoreDependencies": [
     "@babel/runtime",

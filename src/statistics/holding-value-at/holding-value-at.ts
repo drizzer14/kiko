@@ -21,33 +21,15 @@ export type SeriesHolding = Pick<
 /** One transaction as the reconstruction needs it: when, and how much (signed). */
 export type SeriesTransaction = { time: number; amountMinorUnits: number };
 
-/**
- * Test-only instrumentation: counts each row `createHoldingValuer` touches
- * (a setup pass over the ledger, or a binary-search step per bucket), so a
- * regression back to a per-bucket full-ledger scan is provable by a
- * deterministic count instead of a wall-clock timing — coverage
- * instrumentation and machine load skew the two sides of a timed comparison
- * by different amounts, which makes a wall-clock guard flaky by design.
- */
-export type ValuerWorkCounter = { rowVisits: number };
-
 // The last cumulative-sum entry whose `day` is <= `targetDay`, or -1 when
 // every entry is after it (nothing applied yet).
-const lastIndexAtOrBefore = (
-  days: number[],
-  targetDay: number,
-  workCounter?: ValuerWorkCounter,
-): number => {
+const lastIndexAtOrBefore = (days: number[], targetDay: number): number => {
   let low = 0;
   let high = days.length - 1;
   let result = -1;
 
   while (low <= high) {
     const mid = (low + high) >>> 1;
-
-    if (workCounter) {
-      workCounter.rowVisits += 1;
-    }
 
     if (days[mid] <= targetDay) {
       result = mid;
@@ -90,7 +72,6 @@ export const createHoldingValuer = (
   holding: SeriesHolding,
   transactions: SeriesTransaction[],
   book: PriceBook = EMPTY_PRICE_BOOK,
-  workCounter?: ValuerWorkCounter,
 ): ((t: number) => number) => {
   if (isLedgerlessHoldingType(holding.type)) {
     return (t: number): number => holdingValueBreakdown(holding, t, book).net.minorUnits;
@@ -99,10 +80,6 @@ export const createHoldingValuer = (
   const sumByDay = new Map<number, number>();
 
   for (const transaction of transactions) {
-    if (workCounter) {
-      workCounter.rowVisits += 1;
-    }
-
     const day = startOfLocalDay(transaction.time);
 
     sumByDay.set(day, (sumByDay.get(day) ?? 0) + transaction.amountMinorUnits);
@@ -120,7 +97,7 @@ export const createHoldingValuer = (
   const openingBalance = holdingsRepo.balanceOf(holding).minorUnits - runningTotal;
 
   return (t: number): number => {
-    const matched = lastIndexAtOrBefore(days, startOfLocalDay(t), workCounter);
+    const matched = lastIndexAtOrBefore(days, startOfLocalDay(t));
 
     return openingBalance + (matched === -1 ? 0 : cumulativeSums[matched]);
   };
