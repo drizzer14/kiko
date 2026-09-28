@@ -27,6 +27,9 @@ Status: research done; user decisions recorded; PRIORITY: first item of 1.2 (use
 - Compliance: 2.5.4 (local notifications allowed), 2.5.16 (content relates to app), 4.5.4, 5.1.2(i) (never required); 5.6: the Reminders UI ships visible, no flag gating.
 - Contextual offer: shown only when the account has no reminder yet; one-time and dismissible per account (a dismissal is remembered, so the offer never repeats as nagging); it is an in-app, non-modal prompt, never a notification; it opens that account's reminder page prefilled with the matching type (import or add transactions).
 
+## Known limits
+- Non-Gregorian device calendar (Buddhist, Japanese, Hebrew, Islamic, …): a scheduled reminder never fires, because the trigger's floating year/month/day components (Gregorian, from JS) are matched against `Calendar.current`. Accepted for 1.2 under the only-user directive (decision 8); fix = in `KikoRemindersCenter.swift`, when `Calendar.current.identifier != .gregorian`, convert the Gregorian components to `Calendar.current` components (era included), still with no time zone. The "Tomorrow" snooze is unaffected (it uses `Calendar.current` throughout).
+
 ## Open items for the planner
 - Manual account = accounts.institution IS NULL (isSyncedAccount in src/holdings/deletable/deletable.ts); resolved by user decision 6 — import reminders apply to any account with >=1 statement import, including synced accounts; add-transaction reminders stay manual-only.
 - Device tests: reboot, app update, time-zone change, DST.

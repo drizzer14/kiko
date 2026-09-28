@@ -1525,6 +1525,24 @@ logic use the `UIWindowSceneDelegate` equivalents (`sceneWillResignActive`,
 `ios27-crash-uiscene-lifecycle-gap` and `scene-lifecycle-appdelegate-window-crash`
 in memory for the crash history this fixed.
 
+- **The notification delegate is set in `AppDelegate`.**
+  `UNUserNotificationCenter.current().delegate = KikoNotificationDelegate.shared`
+  must stay in `application(_:didFinishLaunchingWithOptions:)`, before
+  `return true`. Set later, a tap that cold-launches the app and a background
+  "Tomorrow" action are lost. It must not touch `window` (see memory
+  `scene-lifecycle-appdelegate-window-crash`). The center holds its delegate
+  weakly, so the delegate is a `static let shared`.
+- **An ObjC++ (`.mm`) file that imports `Kiko-Swift.h` must first import
+  every framework the app target's `@objc` Swift classes use.** Xcode's
+  generated `Kiko-Swift.h` declares EVERY `@objc` class in the app target,
+  internal ones included (`AppDelegate`, `SceneDelegate`, `ReactNativeDelegate`,
+  `KikoNotificationDelegate`, …). Its own `@import` lines sit inside
+  `#if __has_feature(objc_modules)`, which is off in Objective-C++, so they
+  are skipped. See the import block before `#import "Kiko-Swift.h"` in
+  `ios/Kiko/Reminders/RCTKikoReminders.mm` for the current set. When a new
+  `@objc` Swift class uses another framework in a signature, add that
+  framework's import there. Do not turn on `-fcxx-modules` instead: it
+  changes how the React C++ headers compile.
 - **Biometric Keychain reads need `NSFaceIDUsageDescription`.** A
   `BIOMETRY_CURRENT_SET` Keychain read SIGABRTs without it. Verify the key is
   present in `ios/Kiko/Info.plist` before adding or changing any biometric
