@@ -27,7 +27,6 @@ jest.mock('@kiko/reminders/repo/reminders.repo', () => ({
     byIdQuery: (reminderId: string) => ({ toSQL: () => ({ sql: '', params: [reminderId] }) }),
     create: jest.fn(async () => 'r-new'),
     update: jest.fn(async () => undefined),
-    remove: jest.fn(async () => undefined),
   },
 }));
 jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
@@ -442,34 +441,15 @@ describe('ReminderFormScreen — edit', () => {
     });
   });
 
-  it('offers no Delete while creating', async () => {
-    const screen = await renderCreate();
+  // A reminder is deleted from the page's touch-and-hold menu, the same way
+  // a transaction is.
+  it('offers no Delete in the form, while creating or editing', async () => {
+    const creating = await renderCreate();
 
-    expect(screen.queryByText('Delete reminder')).toBeNull();
-  });
+    expect(creating.queryByText('Delete reminder')).toBeNull();
 
-  it('deletes the reminder after the confirm, re-plans, and goes back', async () => {
-    const screen = await renderEdit({ frequency: 'daily', minuteOfDay: 8 * 60 });
+    const editing = await renderEdit({ frequency: 'daily', minuteOfDay: 8 * 60 });
 
-    await fireEvent.press(screen.getByText('Delete reminder'));
-
-    expect(screen.getByText('Delete Reminder?')).toBeTruthy();
-    expect(remindersRepo.remove).not.toHaveBeenCalled();
-
-    await fireEvent.press(screen.getByTestId('reminder-delete-confirm'));
-
-    expect(remindersRepo.remove).toHaveBeenCalledWith('r-1');
-    await waitFor(() => expect(mockSyncReminders).toHaveBeenCalled());
-    expect(navigation.goBack).toHaveBeenCalledTimes(1);
-  });
-
-  it('keeps the reminder when the delete is cancelled', async () => {
-    const screen = await renderEdit({ frequency: 'daily', minuteOfDay: 8 * 60 });
-
-    await fireEvent.press(screen.getByText('Delete reminder'));
-    await fireEvent.press(screen.getByText('Cancel'));
-
-    expect(remindersRepo.remove).not.toHaveBeenCalled();
-    expect(navigation.goBack).not.toHaveBeenCalled();
+    expect(editing.queryByText('Delete reminder')).toBeNull();
   });
 });

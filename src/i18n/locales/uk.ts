@@ -885,8 +885,6 @@ export const uk: typeof en = {
       dayOfMonthHint: 'У коротші місяці нагадування надійде в останній день.',
       intervalDays: 'Повторювати кожні',
       intervalDaysError: 'Введіть кількість днів від 2 до 365.',
-      delete: 'Видалити нагадування',
-      deleteConfirmTitle: 'Видалити нагадування?',
     },
     permission: {
       preAlertTitle: 'Сповіщення нагадувань',

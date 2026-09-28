@@ -1108,8 +1108,6 @@ export const en = {
       dayOfMonthHint: 'In shorter months, the reminder comes on the last day.',
       intervalDays: 'Repeat every',
       intervalDaysError: 'Enter a number of days from 2 to 365.',
-      delete: 'Delete reminder',
-      deleteConfirmTitle: 'Delete Reminder?',
     },
     permission: {
       preAlertTitle: 'Reminder Notifications',

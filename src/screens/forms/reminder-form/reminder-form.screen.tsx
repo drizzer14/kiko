@@ -34,7 +34,6 @@ import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import FieldLabel from '@kiko/design-system/components/field-label';
 import { useNotificationPreAlert } from '@kiko/reminders/permission';
 import SelectField from '@kiko/design-system/components/select-field';
-import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
 import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -112,7 +111,6 @@ const ReminderFormScreen: FC<ReminderFormScreenProps> = ({ route, navigation }) 
     defaultDraft('kind' in params ? params.kind : 'add_transactions'),
   );
   const [attemptedSave, setAttemptedSave] = useState(false);
-  const [deletePending, setDeletePending] = useState(false);
 
   const scrollableRef = useAnimatedRef<ScrollViewInstance>();
   const scrollOffset = useScrollOffset(scrollableRef);
@@ -199,27 +197,7 @@ const ReminderFormScreen: FC<ReminderFormScreenProps> = ({ route, navigation }) 
     navigation.goBack();
   };
 
-  const deleteReminder = async (): Promise<void> => {
-    setDeletePending(false);
-
-    if (reminderId === undefined) {
-      return;
-    }
-
-    try {
-      await remindersRepo.remove(reminderId);
-    } catch {
-      alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
-
-      return;
-    }
-
-    replanReminders();
-    navigation.goBack();
-  };
-
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
-  const { onPress: onConfirmDelete } = useSubmitOnce(deleteReminder);
 
   const frequencyField = match(draft.frequency)
     .with('daily', () => null)
@@ -277,22 +255,9 @@ const ReminderFormScreen: FC<ReminderFormScreenProps> = ({ route, navigation }) 
           contentHeightRef.current = height;
         }}
         footer={
-          <Box gap={2}>
-            {isEdit && (
-              <Button
-                variant="destructiveTonal"
-                fullWidth
-                icon="trash"
-                onPress={() => setDeletePending(true)}
-              >
-                {t('reminders.form.delete')}
-              </Button>
-            )}
-
-            <Button onPress={onSave} disabled={isSubmitting}>
-              {t('common.save')}
-            </Button>
-          </Box>
+          <Button onPress={onSave} disabled={isSubmitting}>
+            {t('common.save')}
+          </Button>
         }
       >
         <Box gap={4}>
@@ -337,16 +302,6 @@ const ReminderFormScreen: FC<ReminderFormScreenProps> = ({ route, navigation }) 
           />
         </Box>
       </Screen>
-
-      <ConfirmSheet
-        visible={deletePending}
-        title={t('reminders.form.deleteConfirmTitle')}
-        confirmLabel={t('common.delete')}
-        onConfirm={onConfirmDelete}
-        onCancel={() => setDeletePending(false)}
-        destructive
-        confirmTestID="reminder-delete-confirm"
-      />
 
       <NotificationPreAlertSheet {...preAlert.sheet} />
     </>
