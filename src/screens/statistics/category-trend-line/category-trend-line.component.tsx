@@ -160,12 +160,14 @@ const buildXGridTicks = (scales: Scales): XTick[] => {
 const toPolylinePoints = (points: CategoryTrendSeries['points'], scales: Scales): string =>
   points.map((point) => `${scales.x(point.t)},${scales.y(point.amount)}`).join(' ');
 
-// The buckets are LOCAL-midnight instants (`bucketTimes` steps from the
-// screen's `startOfLocalDay` range start), so the label must read LOCAL
-// calendar fields — matching net-worth-line's own `formatAxisTime` exactly.
-// Forcing `timeZone: 'UTC'` here reads the WRONG calendar day on a
-// positive-UTC-offset device: local midnight is still the previous UTC day
-// there, so the start label rendered one day early.
+// Every bucket but a possible closing one is a LOCAL-midnight instant
+// (`periodStartBucketTimes` steps from the screen's `startOfLocalDay` range
+// start; a single-period range appends the range's own `to` as a second
+// point, not a local-midnight one — see that function's own doc comment), so
+// the label must read LOCAL calendar fields — matching net-worth-line's own
+// `formatAxisTime` exactly. Forcing `timeZone: 'UTC'` here reads the WRONG
+// calendar day on a positive-UTC-offset device: local midnight is still the
+// previous UTC day there, so the start label rendered one day early.
 const formatAxisTime = (t: number): string => formatDayMonth(t);
 
 // The `%` left offset for an interior label, as an RN dimension. Built from a

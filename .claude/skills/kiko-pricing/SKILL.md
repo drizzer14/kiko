@@ -267,7 +267,7 @@ from the book (`holding-form`'s edit `saveEdit`: a loan changed into
 it is false — saved against a still-empty book, that point would be the
 schedule-only value, forever. This is the
 reactive entry point every value reader (`holdingValueBreakdown`,
-`holdingValueAt`, `buildNetWorthSeries`, `netWorth`, `guardedNetWorth`/
+`createHoldingValuer`, `buildNetWorthSeries`, `netWorth`, `guardedNetWorth`/
 `guardedBreakdown`, `sumByCurrency`, `buildTypeBreakdown`,
 `buildAccountContribution`) and every screen that renders a value
 (`home`, `accounts`, `account-detail` + its `HoldingCard`,
@@ -415,8 +415,9 @@ property.
 revaluations.** Its lots array is the only source of quantity/cost-basis
 history; a price change moves its VALUE without ever touching its
 `balanceMinorUnits` or emitting a transaction. Consequently
-`holdingValueAt` (`src/statistics/holding-value-at/holding-value-at.ts`) cannot
-back-derive a priced holding's historical value from `currentBalance -
+`createHoldingValuer`
+(`src/statistics/holding-value-at/holding-value-at.ts`) cannot back-derive a
+priced holding's historical value from `currentBalance -
 sum(transactions)` the way it does for a ledger-backed holding — it
 branches on `isLedgerlessHoldingType` and instead calls
 `holdingValueBreakdown` (with the caller's `PriceBook`) directly for

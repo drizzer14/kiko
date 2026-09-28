@@ -161,9 +161,10 @@ through one of them:
   holding, in the transaction that inserts the account and that
   holding.
 
-Why it matters concretely: `holdingValueAt`
-(`src/statistics/holding-value-at/holding-value-at.ts`) back-derives a holding's opening
-balance as `currentBalance - sum(allTransactions)`, so a balance written
+Why it matters concretely: `createHoldingValuer`
+(`src/statistics/holding-value-at/holding-value-at.ts`) back-derives a
+holding's opening balance as `currentBalance - sum(allTransactions)`, so a
+balance written
 without its ledger row retroactively shifts the ENTIRE historical
 net-worth series by that amount, and the holding-detail transaction list
 stops reconciling with its own displayed Value. None of the three routes
@@ -515,10 +516,15 @@ defaultKey` instead — it caught a null/empty category but not an
 UNRESOLVABLE one (a slug no longer in the categories table, e.g. a
 deleted seeded category sync keeps re-writing), so a deleted category
 rendered as two same-titled, differently-keyed lines on the trend chart
-while the donut correctly folded it into one. A Semgrep rule
-(`kiko-no-bare-lowercase-category-fold`, `rules/semgrep-prewrite.yml`)
-now bans a bare `<category>?.toLowerCase() || <default>` fold anywhere
-under `src/statistics/**` — use `resolveCategoryKey` instead.
+while the donut correctly folded it into one. The same shape recurred at
+`holding-detail.screen.tsx`'s ledger-row icon color (the title/icon
+resolved through `resolveCategoryDisplay`, correctly folded, but the
+color's own fallback key was re-derived from the raw, unfolded category).
+A Semgrep rule (`kiko-no-bare-lowercase-category-fold`,
+`rules/semgrep-prewrite.yml`) now bans a bare `<category>?.toLowerCase()
+|| <default>` fold anywhere under `src/**` (widened from
+`src/statistics/**` once the second site turned up outside it) — use
+`resolveCategoryKey` instead.
 
 Writers hold up the other end: a category value is persisted only as
 the lowercase `categories.key` slug. `categoryForMcc`
@@ -803,14 +809,28 @@ bond.
 `buildNetWorthSeries` values every holding at every bucket, so anything
 loop-invariant per holding (not per bucket) must be computed ONCE, outside
 the per-bucket loop, not re-derived at every point. `createHoldingValuer`
-(`src/statistics/holding-value-at/`) is the per-holding one-time setup:
-built once per holding before the bucket loop, it groups that holding's
-transactions by local-day key and builds a running prefix sum, then returns
-a closure that answers each bucket's `valueAt(t)` with a binary search
-instead of re-scanning the whole transaction list. `holdingValueAt` (the
-original single-call function) stays, unchanged in behavior, for the
-one-off call sites that value a holding at a single instant rather than a
-whole bucketed series.
+(`src/statistics/holding-value-at/`) is the ONLY holding-valuation entry
+point now — there is no separate single-call `holdingValueAt` anymore, it
+was deleted from production (its old body survives only as a local,
+un-exported `referenceHoldingValueAt` oracle inside
+`holding-value-at.test.ts`, the same "kept only as the parity oracle"
+pattern `internal-transfers.test.ts` uses for the algorithm IT replaced).
+Every call site — including a single-instant read like
+`holdingsRepo.updateWithBalanceDelta`'s own regression test — calls
+`createHoldingValuer(holding, transactions)(t)` instead; for a one-off read
+this pays the same per-holding setup cost `holdingValueAt` used to pay
+per call, which is negligible for a single call.
+
+`buildNetWorthSeries` also decides whether a holding's value counts at
+bucket `t` at all: the net-worth LINE is built from `filtered.netWorthHoldings`
+(every holding under an account the filter keeps, OPEN or CLOSED), and
+`createHoldingValuer`'s result is zeroed for any bucket `t >=
+holding.closedAt` (a raw instant compare, not a local-day one — see that
+builder's own doc comment for why a same-day compare broke the rightmost
+"now" point). Every OTHER "now" snapshot (the headline, the by-type bar,
+the account pie, the Debts total) reads `filtered.visibleHoldings` instead
+— open holdings only, under a non-archived account — so a closed holding
+contributes to the LINE's past but never to a current snapshot.
 
 `reconcile-bond-funding.ts`'s candidate-building pass was rewritten from a
 `.flatMap`/`.map`/`.filter` chain to a plain nested loop for the same
@@ -822,14 +842,38 @@ local-day bounds ONCE per filter run, and the `.filter` callback itself
 (`withinBounds`) does only a plain numeric comparison — no Date
 construction per transaction row. This shape (loop-invariant Date math
 inside a hot per-row callback) is mechanized by test, not by a Semgrep
-rule: `holding-value-at.test.ts`'s parity test against the original
-`holdingValueAt` plus its scaling test are what would catch a regression
-back to per-bucket Date recomputation — a static AST rule looking for
-`startOfLocalDay`/`endOfLocalDay`/`new Date(...)` inside an array callback
-could not tell a genuinely hot per-bucket call site from a one-off,
-harmless one (e.g. `reconcile-bond-funding.ts`'s own candidate-building
-pass, built once per net-worth-series call, not once per bucket), so it
-flagged both alike and was removed.
+rule: `holding-value-at.test.ts`'s parity test against
+`referenceHoldingValueAt` plus its scaling test are what would catch a
+regression back to per-bucket Date recomputation — a static AST rule
+looking for `startOfLocalDay`/`endOfLocalDay`/`new Date(...)` inside an
+array callback could not tell a genuinely hot per-bucket call site from a
+one-off, harmless one (e.g. `reconcile-bond-funding.ts`'s own
+candidate-building pass, built once per net-worth-series call, not once
+per bucket), so it flagged both alike and was removed.
+
+#### The "no custom range = derive the default from now" pattern
+
+Both Statistics and Home hold their active date range as `customRange`
+(`{ from: Date | null; to: Date | null } | null` — `null` means "show the
+default range"), never as `dateFrom`/`dateTo` state seeded once at mount.
+The DEFAULT range is derived fresh from `now` on every render
+(`defaultDateRange(now)`), not stored — `dateFrom`/`dateTo` are plain
+`const`s computed each render from `customRange ?? defaultDateRange(now)`,
+never `useState`. A range seeded once (the previous shape) froze at
+whatever `now` was at mount, so a tab left mounted overnight (both tabs
+stay mounted — kiko-architecture) silently stopped including "today" once
+a calendar day passed. `applyDateRange`/`clearDateRange` only ever write
+`customRange` (`clearDateRange` resets it to `null`, back to the default —
+never to a frozen "30 days as of Clear" snapshot). Statistics' own `now`
+already refreshes on focus (`useFocusRefreshedNow`); Home's `now` is a
+plain `Date.now()` read fresh every render. Deriving `dateFrom`/`dateTo`
+this way still needs care downstream: a memo that depends on them should
+key on their NUMERIC bounds (`dateRangeBounds(...)`'s own `{from, to}`
+output), not the `Date` objects themselves — two `Date` instances never
+compare equal by reference even when they hold the same instant, so keying
+a memo on the raw objects made it (and everything downstream of it)
+recompute on every render, not just a day change (see Home's own
+`filteredTransactions` memo).
 
 ## Price series and priced holdings
 
@@ -1701,7 +1745,12 @@ conflict path both the Monobank sync and statement import share) never
 refreshes any of the three loan-link columns on a re-sync — its
 `onConflictDoUpdate` `set` names only the bank-owned columns, the same
 exclusion `category`/`comment` already rely on (see that function's own
-existing doc comment). A settled-amount re-fetch of an already-linked payment
+existing doc comment). Its `setWhere` is derived from that SAME `set`
+column list (`BANK_OWNED_TRANSACTION_COLUMNS`), so the UPDATE — and the
+`transactions` reactive-query fire it would otherwise trigger — is skipped
+entirely when a re-fetched row is unchanged; the loan-link columns are
+excluded from that comparison too, since they are never in `set` either.
+A settled-amount re-fetch of an already-linked payment
 therefore keeps its link untouched. Its underlying insert
 (`insertDedupRowsDatabaseTransaction`) is chunked through `chunkForTable` (below) — a whole
 statement-import file or Monobank sync above a few thousand rows failed
