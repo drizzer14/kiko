@@ -34,11 +34,14 @@ type InternalTransferTransaction = {
 // array (so "first still-unmatched" below means earliest ORIGINAL position,
 // exactly as the array-order scan it replaces) and sorted by `time` within its
 // (currency, amount) bucket, so a debit only ever has to look at the handful
-// of credits actually within `TRANSFER_MATCH_WINDOW_MS` of it.
+// of credits actually within `TRANSFER_MATCH_WINDOW_MS` of it. Holds a
+// REFERENCE to its own input row (never a copy of `time`/`holdingId`) so the
+// window search below reads those fields from the row itself — a test that
+// instruments the input rows can then observe exactly how much of the
+// ledger the search actually touches.
 type CreditCandidate = {
   index: number;
-  time: number;
-  holdingId: string;
+  transaction: InternalTransferTransaction;
   consumed: boolean;
 };
 
@@ -61,17 +64,12 @@ const buildCreditBuckets = (
     const key = creditBucketKey(transaction.currency, transaction.amountMinorUnits);
     const bucket = buckets.get(key) ?? [];
 
-    bucket.push({
-      index,
-      time: transaction.time,
-      holdingId: transaction.holdingId,
-      consumed: false,
-    });
+    bucket.push({ index, transaction, consumed: false });
     buckets.set(key, bucket);
   });
 
   for (const bucket of buckets.values()) {
-    bucket.sort((a, b) => a.time - b.time);
+    bucket.sort((a, b) => a.transaction.time - b.transaction.time);
   }
 
   return buckets;
@@ -85,7 +83,7 @@ const lowerBoundByTime = (bucket: CreditCandidate[], lowTime: number): number =>
   while (low < high) {
     const mid = (low + high) >>> 1;
 
-    if (bucket[mid].time < lowTime) {
+    if (bucket[mid].transaction.time < lowTime) {
       low = mid + 1;
     } else {
       high = mid;
@@ -95,15 +93,6 @@ const lowerBoundByTime = (bucket: CreditCandidate[], lowTime: number): number =>
   return low;
 };
 
-/**
- * Test-only instrumentation: counts each credit candidate the matcher
- * actually visits, so a regression back to a full-array scan is provable by
- * a deterministic count instead of a wall-clock timing — coverage
- * instrumentation and machine load skew the two sides of a timed comparison
- * by different amounts, which makes a wall-clock guard flaky by design.
- */
-export type CandidateVisitCounter = { candidateVisits: number };
-
 // The earliest-original-position, still-unmatched, different-holding credit
 // within the pairing window of `debit` — the same candidate the quadratic scan
 // would have found first, restricted up front to the handful of candidates the
@@ -111,7 +100,6 @@ export type CandidateVisitCounter = { candidateVisits: number };
 const findMatchingCredit = (
   bucket: CreditCandidate[],
   debit: InternalTransferTransaction,
-  visitCounter?: CandidateVisitCounter,
 ): CreditCandidate | undefined => {
   const lowTime = debit.time - TRANSFER_MATCH_WINDOW_MS;
   const highTime = debit.time + TRANSFER_MATCH_WINDOW_MS;
@@ -120,17 +108,13 @@ const findMatchingCredit = (
   for (let cursor = lowerBoundByTime(bucket, lowTime); cursor < bucket.length; cursor += 1) {
     const candidate = bucket[cursor];
 
-    if (visitCounter) {
-      visitCounter.candidateVisits += 1;
-    }
-
-    if (candidate.time > highTime) {
+    if (candidate.transaction.time > highTime) {
       break;
     }
 
     if (
       !candidate.consumed &&
-      candidate.holdingId !== debit.holdingId &&
+      candidate.transaction.holdingId !== debit.holdingId &&
       (best === undefined || candidate.index < best.index)
     ) {
       best = candidate;
@@ -159,7 +143,6 @@ const findMatchingCredit = (
  */
 export const internalTransferTransactionIds = (
   transactions: InternalTransferTransaction[],
-  visitCounter?: CandidateVisitCounter,
 ): Set<string> => {
   const matchedIds = new Set<string>();
   const creditBuckets = buildCreditBuckets(transactions);
@@ -171,7 +154,7 @@ export const internalTransferTransactionIds = (
 
     const bucket =
       creditBuckets.get(creditBucketKey(debit.currency, -debit.amountMinorUnits)) ?? [];
-    const match = findMatchingCredit(bucket, debit, visitCounter);
+    const match = findMatchingCredit(bucket, debit);
 
     if (match !== undefined) {
       match.consumed = true;

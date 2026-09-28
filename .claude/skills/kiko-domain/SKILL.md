@@ -875,9 +875,10 @@ per-bucket call site from a one-off, harmless one (e.g.
 net-worth-series call, not once per bucket), so it flagged both alike and
 was removed.
 
-**Speed guards count real work, never wall-clock time.** Both
-`holding-value-at.test.ts` (`createHoldingValuer` vs `referenceHoldingValueAt`)
-and `internal-transfers.test.ts` (`internalTransferTransactionIds` vs
+**Speed guards count real work, never wall-clock time — and never a
+production test hook.** Both `holding-value-at.test.ts`
+(`createHoldingValuer` vs `referenceHoldingValueAt`) and
+`internal-transfers.test.ts` (`internalTransferTransactionIds` vs
 `referenceInternalTransferTransactionIds`) used to assert a RELATIVE
 `performance.now()` ratio ("the optimized side runs at least 20x faster
 than the reference over the same input") instead of a fixed millisecond
@@ -890,31 +891,63 @@ load slow the two timed sides of one comparison by DIFFERENT amounts (the
 instrumented/hot side is not slowed proportionally to the reference
 side), so the ratio itself drifts — this broke the internal-transfers
 guard's `20x` threshold under a Stryker dry run even though nothing about
-the algorithm had regressed. Both guards were rewritten to count real work
-through an optional injected counter instead of timing anything: each
-function takes an optional counter argument (`ValuerWorkCounter` /
-`CandidateVisitCounter`), incremented once per unit of real work (a row
-touched in the valuer's setup pass or a per-bucket binary-search step; a
-credit candidate actually visited in the transfer matcher) — the counter
-shapes differ per guard (`{ rowVisits }` for holding-value-at, `{
-candidateVisits }` for internal-transfers), not a generic `{ count: 0 }`;
-omitted, the parameter costs nothing measurable, so production call sites
-are untouched. Each guard then asserts two things on the COUNT, never on
-elapsed time: (1) near-linear growth — doubling the row count keeps the
-work count under 3x, checked at two doubling steps; (2) the count stays
-far below what the quadratic reference implementation reports the same
-way (under 5% of it, at thousands of rows). Which assertion actually
-catches which regression is NOT interchangeable between the two guards:
-for internal-transfers, the GROWTH check is the one that catches a
-scan-from-index-0 regression (the ratio check alone gives ~1.3% there,
-which passes); for holding-value-at, the RATIO check is the one that
-catches a per-bucket full rescan (the growth check cannot, because
+the algorithm had regressed.
+
+Both guards were then rewritten to count real work through an optional
+injected counter parameter (`ValuerWorkCounter` / `CandidateVisitCounter`)
+— but that counter was itself a test-only hook living in shipping
+production code, which the App Store build must never carry (see
+"Guideline 5.6 — no hidden features" in the root `CLAUDE.md`: test/demo
+machinery must be ABSENT from the build, not merely dormant). Both
+guards were rewritten again to count the work from OUTSIDE production
+instead, with **zero counting code left in `holding-value-at.ts` or
+`internal-transfers.ts`**: the test feeds each function input ROWS whose
+own `time` (and, for holding-value-at, `amountMinorUnits`) fields are
+getters that increment a counter local to the test on every read. A
+function's real per-unit-of-work cost then shows up automatically as a
+property read on the exact row object production was handed — no
+parameter, no branch, no `if (workCounter)` guard anywhere in the
+production file.
+
+This only works because each production function actually reads its OWN
+current-work unit fresh off the input row it was handed, rather than a
+copy taken once up front — `internal-transfers.ts`'s `CreditCandidate`
+used to copy `time`/`holdingId` out of each transaction at bucket-build
+time, which meant the per-debit window search never touched the original
+row again and a regression in that search (scanning past the window
+edge) was invisible to any read-based count. The bucket now holds a
+REFERENCE to its own input transaction instead
+(`{ index, transaction, consumed }`), so `lowerBoundByTime` and
+`findMatchingCredit`'s window scan read `.time`/`.holdingId` through that
+reference on every candidate they actually visit, making the visited-candidate
+count observable from outside again. `holding-value-at.ts` needed no such
+change: its returned closure never touches the original transaction rows at
+all after the one-time setup pass (it works over precomputed prefix sums), so
+a regression back to a per-bucket re-filter/re-reduce over the original rows
+is already externally visible as new reads at bucket-query time.
+
+Each guard then asserts two things on the READ COUNT, never on elapsed
+time: (1) near-linear growth — doubling the row count keeps the count
+under 3x, checked at two doubling steps; (2) the count stays far below
+what the quadratic reference implementation reads the same way (under 5%
+of it). Which assertion actually catches which regression is NOT
+interchangeable between the two guards: for internal-transfers, the
+GROWTH check is the one that catches a scan-from-index-0/never-break
+regression; for holding-value-at, the RATIO check is the one that catches
+a per-bucket full rescan (the growth check cannot, because
 holding-value-at's bucket count is held FIXED while only the transaction
 count scales, so a per-bucket-times-N regression still looks linear in
-N). Any NEW speed guard in this codebase must follow the same shape:
-count real work through an injected counter or a pure helper that returns
-a work count, never
-`performance.now()`/`Date.now()` deltas.
+N). `internal-transfers.test.ts` additionally keeps a LOCAL,
+self-contained mutant variant (never calling into the exported function)
+whose one window-exceeded line never breaks, proving the growth bound
+actually fails on a provably worse scan rather than passing regardless of
+what the code does.
+
+Any NEW speed guard in this codebase must follow the same shape: count
+real work by instrumenting the INPUT the test itself constructs (a getter,
+or a `Proxy`, on a row/argument passed into the real function), never by
+adding a counter parameter, a debug flag, or any other hook to the
+production function — and never `performance.now()`/`Date.now()` deltas.
 
 #### The "no custom range = derive the default from now" pattern
 

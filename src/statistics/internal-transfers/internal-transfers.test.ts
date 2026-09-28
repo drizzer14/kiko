@@ -1,4 +1,3 @@
-import type { CandidateVisitCounter } from './internal-transfers';
 import { internalTransferTransactionIds, TRANSFER_MATCH_WINDOW_MS } from './internal-transfers';
 
 type Transaction = {
@@ -19,21 +18,34 @@ const transaction = (
 
 const T = 1_000_000_000_000;
 
-const recordVisit = (visitCounter: CandidateVisitCounter | undefined): void => {
-  if (visitCounter) {
-    visitCounter.candidateVisits += 1;
-  }
-};
+/**
+ * Wraps each row's OWN `time` field in a getter that counts every read
+ * through a shared counter — the guards below prove a bounded read count
+ * from OUTSIDE `internalTransferTransactionIds`, on the exact rows the
+ * production code is handed, rather than trusting an injected
+ * candidate-visit counter production would otherwise have to carry purely
+ * for the tests' benefit.
+ */
+const toCounted = (transactions: Transaction[], readCounter: { reads: number }): Transaction[] =>
+  transactions.map((row) => {
+    const time = row.time;
+
+    return {
+      ...row,
+      get time() {
+        readCounter.reads += 1;
+
+        return time;
+      },
+    };
+  });
 
 // The quadratic implementation this module replaced, kept here ONLY as the
 // parity oracle: it is trivially correct by inspection (a direct
 // transcription of the greedy rule in this module's own doc comment), so a
 // fuzz test comparing the optimized implementation against it proves the
 // rewrite kept EXACTLY the same matching order and result.
-const referenceInternalTransferTransactionIds = (
-  transactions: Transaction[],
-  visitCounter?: CandidateVisitCounter,
-): Set<string> => {
+const referenceInternalTransferTransactionIds = (transactions: Transaction[]): Set<string> => {
   const matchedIds = new Set<string>();
   const consumedCredits = new Set<number>();
 
@@ -44,8 +56,6 @@ const referenceInternalTransferTransactionIds = (
 
     for (let index = 0; index < transactions.length; index += 1) {
       const credit = transactions[index];
-
-      recordVisit(visitCounter);
 
       if (consumedCredits.has(index) || credit.amountMinorUnits <= 0) {
         continue;
@@ -287,59 +297,74 @@ describe('internalTransferTxIds', () => {
   // A DETERMINISTIC work-count guard, not a wall-clock timing — coverage
   // instrumentation and machine load skew the two timed sides of a speed
   // comparison by different, unpredictable amounts, so a wall-clock ratio is
-  // inherently unreliable under Stryker. Counting each credit candidate the
-  // matcher actually visits is immune to both, and still catches a
-  // regression back to the quadratic full-array scan (see the next test).
-  it('visits a near-linear number of credit candidates as the ledger grows', () => {
+  // inherently unreliable under Stryker. Counting each read of an
+  // INSTRUMENTED row's own `.time` field — observed from outside
+  // `internalTransferTransactionIds`, with no hook of any kind in
+  // production — is immune to both.
+  it('reads a near-linear number of `.time` fields as the ledger grows', () => {
     // Same rows-per-millisecond density at every size (see `randomLedger`'s
     // own comment) — otherwise a fixed time span alone would inflate
     // candidate density as `size` grows, independent of the matcher itself.
     const MS_PER_ROW = 1_000_000_000 / 6_000;
 
-    const candidateVisitsFor = (size: number): number => {
-      const visitCounter: CandidateVisitCounter = { candidateVisits: 0 };
-      const ledger = randomLedger(mulberry32(7), size, size * MS_PER_ROW);
+    const timeReadsFor = (size: number): number => {
+      const readCounter = { reads: 0 };
+      const ledger = toCounted(randomLedger(mulberry32(7), size, size * MS_PER_ROW), readCounter);
 
-      internalTransferTransactionIds(ledger, visitCounter);
+      internalTransferTransactionIds(ledger);
 
-      return visitCounter.candidateVisits;
+      return readCounter.reads;
     };
 
-    const base = candidateVisitsFor(2_500);
-    const doubled = candidateVisitsFor(5_000);
-    const quadrupled = candidateVisitsFor(10_000);
+    const base = timeReadsFor(2_500);
+    const doubled = timeReadsFor(5_000);
+    const quadrupled = timeReadsFor(10_000);
 
     expect(doubled).toBeLessThan(base * 3);
     expect(quadrupled).toBeLessThan(doubled * 3);
   });
 
-  it('visits far fewer credit candidates than the quadratic reference implementation scans, on the same ledger', () => {
-    const ledger = randomLedger(mulberry32(7), 10_000);
-    const optimizedVisits: CandidateVisitCounter = { candidateVisits: 0 };
-    const referenceVisits: CandidateVisitCounter = { candidateVisits: 0 };
+  it('reads far fewer `.time` fields than the quadratic reference implementation, on the same ledger', () => {
+    // A single (currency, amount) pair forces every credit into ONE bucket,
+    // so the quadratic reference implementation's per-debit scan stays
+    // maximally expensive at a much smaller ledger size than a realistic
+    // multi-bucket mix would need, keeping this guard's own runtime short
+    // while still proving the ratio.
+    const holdingIds = ['h1', 'h2', 'h3', 'h4'];
+    const random = mulberry32(7);
+    const ledger = Array.from({ length: 4_000 }, (_, index) =>
+      transaction(
+        `t${index}`,
+        holdingIds[Math.floor(random() * holdingIds.length)],
+        (random() < 0.5 ? -1 : 1) * 1000,
+        T + Math.floor(random() * 1_000_000_000),
+      ),
+    );
+    const optimizedReadCounter = { reads: 0 };
+    const referenceReadCounter = { reads: 0 };
 
-    internalTransferTransactionIds(ledger, optimizedVisits);
-    referenceInternalTransferTransactionIds(ledger, referenceVisits);
+    internalTransferTransactionIds(toCounted(ledger, optimizedReadCounter));
+    referenceInternalTransferTransactionIds(toCounted(ledger, referenceReadCounter));
 
-    expect(optimizedVisits.candidateVisits).toBeLessThan(referenceVisits.candidateVisits * 0.05);
+    expect(optimizedReadCounter.reads).toBeLessThan(referenceReadCounter.reads * 0.05);
   });
 
   // Proves the guard above actually catches a regression, rather than
   // coincidentally passing regardless: this variant is `findMatchingCredit`
-  // with its one window-exceeded line changed from `break` to `continue`, so
-  // it re-scans the rest of every (currency, amount) bucket instead of
-  // stopping at the window edge — the same counting rule, applied to a
-  // provably worse scan.
+  // with its one window-exceeded line changed from `break` to falling
+  // through, so it re-scans the rest of every (currency, amount) bucket
+  // instead of stopping at the window edge — the same counting rule,
+  // applied to a provably worse scan.
   it('fails the near-linear growth bound once the window break becomes a continue', () => {
-    type CreditCandidate = { index: number; time: number; holdingId: string };
+    type LocalCreditCandidate = { transaction: Transaction };
 
     const bucketKey = (currency: Transaction['currency'], amountMinorUnits: number): string =>
       `${currency}:${amountMinorUnits}`;
 
-    const buildBuckets = (transactions: Transaction[]): Map<string, CreditCandidate[]> => {
-      const buckets = new Map<string, CreditCandidate[]>();
+    const buildBuckets = (transactions: Transaction[]): Map<string, LocalCreditCandidate[]> => {
+      const buckets = new Map<string, LocalCreditCandidate[]>();
 
-      transactions.forEach((current, index) => {
+      transactions.forEach((current) => {
         if (current.amountMinorUnits <= 0) {
           return;
         }
@@ -347,25 +372,25 @@ describe('internalTransferTxIds', () => {
         const key = bucketKey(current.currency, current.amountMinorUnits);
         const bucket = buckets.get(key) ?? [];
 
-        bucket.push({ index, time: current.time, holdingId: current.holdingId });
+        bucket.push({ transaction: current });
         buckets.set(key, bucket);
       });
 
       for (const bucket of buckets.values()) {
-        bucket.sort((a, b) => a.time - b.time);
+        bucket.sort((a, b) => a.transaction.time - b.transaction.time);
       }
 
       return buckets;
     };
 
-    const lowerBoundByTime = (bucket: CreditCandidate[], lowTime: number): number => {
+    const lowerBoundByTime = (bucket: LocalCreditCandidate[], lowTime: number): number => {
       let low = 0;
       let high = bucket.length;
 
       while (low < high) {
         const mid = (low + high) >>> 1;
 
-        if (bucket[mid].time < lowTime) {
+        if (bucket[mid].transaction.time < lowTime) {
           low = mid + 1;
         } else {
           high = mid;
@@ -375,38 +400,57 @@ describe('internalTransferTxIds', () => {
       return low;
     };
 
-    const countContinueMutantVisits = (transactions: Transaction[]): number => {
-      const visitCounter: CandidateVisitCounter = { candidateVisits: 0 };
-      const buckets = buildBuckets(transactions);
+    // The mutant under test: scans the WHOLE rest of the bucket from the
+    // window's lower edge onward, instead of stopping once a candidate's
+    // time exceeds the window's upper edge — extracted to its own function
+    // so the outer loop below stays within the complexity budget.
+    const scanPastWindow = (
+      bucket: LocalCreditCandidate[],
+      lowTime: number,
+      highTime: number,
+    ): number => {
+      let withinWindowCount = 0;
 
-      for (const debit of transactions) {
+      for (let cursor = lowerBoundByTime(bucket, lowTime); cursor < bucket.length; cursor += 1) {
+        if (bucket[cursor].transaction.time <= highTime) {
+          withinWindowCount += 1;
+        }
+      }
+
+      return withinWindowCount;
+    };
+
+    const countContinueMutantReads = (transactions: Transaction[]): number => {
+      const readCounter = { reads: 0 };
+      const counted = toCounted(transactions, readCounter);
+      const buckets = buildBuckets(counted);
+
+      for (const debit of counted) {
         if (debit.amountMinorUnits >= 0) {
           continue;
         }
 
         const bucket = buckets.get(bucketKey(debit.currency, -debit.amountMinorUnits)) ?? [];
-        const lowTime = debit.time - TRANSFER_MATCH_WINDOW_MS;
 
-        // The mutant under test: scans the WHOLE rest of the bucket from the
-        // window's lower edge onward, instead of breaking once a candidate's
-        // time exceeds the window's upper edge.
-        for (let cursor = lowerBoundByTime(bucket, lowTime); cursor < bucket.length; cursor += 1) {
-          visitCounter.candidateVisits += 1;
-        }
+        scanPastWindow(
+          bucket,
+          debit.time - TRANSFER_MATCH_WINDOW_MS,
+          debit.time + TRANSFER_MATCH_WINDOW_MS,
+        );
       }
 
-      return visitCounter.candidateVisits;
+      return readCounter.reads;
     };
 
     const MS_PER_ROW = 1_000_000_000 / 6_000;
-    const base = countContinueMutantVisits(randomLedger(mulberry32(7), 2_500, 2_500 * MS_PER_ROW));
-    const quadrupled = countContinueMutantVisits(
+    const base = countContinueMutantReads(randomLedger(mulberry32(7), 2_500, 2_500 * MS_PER_ROW));
+    const quadrupled = countContinueMutantReads(
       randomLedger(mulberry32(7), 10_000, 10_000 * MS_PER_ROW),
     );
 
     // The real matcher stays under 3x across a 4x ledger growth (see above);
     // scanning every bucket to its end instead of stopping at the window
-    // makes visits scale with bucket size, which itself grows with ledger
+    // makes reads scale with bucket size, which itself grows with ledger
     // size, so a 4x ledger blows well past that bound.
     expect(quadrupled).toBeGreaterThan(base * 3);
   });
