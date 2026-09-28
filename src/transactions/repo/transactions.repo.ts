@@ -260,7 +260,9 @@ const partitionNewRows = async (
 // whole write when nothing here actually changed) are both derived from it,
 // so adding a column to one can never forget to add it to the other;
 // `excluded.<db column>` is read off each column's own `.name`, not
-// hand-typed a second time, so a TS-key/DB-name mismatch cannot drift either.
+// hand-typed a second time. `key` is constrained below to `keyof typeof
+// transactions.$inferInsert`, so a typo'd key fails to compile instead of
+// silently dropping that column from the upsert `set`.
 const BANK_OWNED_TRANSACTION_COLUMNS = [
   { key: 'amountMinorUnits', column: transactions.amountMinorUnits },
   { key: 'description', column: transactions.description },
@@ -268,7 +270,10 @@ const BANK_OWNED_TRANSACTION_COLUMNS = [
   { key: 'mcc', column: transactions.mcc },
   { key: 'counterIban', column: transactions.counterIban },
   { key: 'time', column: transactions.time },
-] as const;
+] as const satisfies ReadonlyArray<{
+  key: keyof typeof transactions.$inferInsert;
+  column: unknown;
+}>;
 
 export const bankOwnedTransactionSet = Object.fromEntries(
   BANK_OWNED_TRANSACTION_COLUMNS.map(({ key, column }) => [
