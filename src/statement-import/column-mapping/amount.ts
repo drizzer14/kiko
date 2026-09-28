@@ -11,20 +11,34 @@ const NON_BREAKING_SPACE = ' ';
 const MINUS_SIGN = '−';
 const SPACE_PATTERN = new RegExp(`[ ${NON_BREAKING_SPACE}]`, 'g');
 const THOUSANDS_GROUP_PATTERN = /^\d{3}$/;
+// The group BEFORE the first grouping separator is never itself a full
+// 3-digit group — a leading "0" there (as opposed to a lone "0" cell with no
+// grouping at all) is not how a thousands-grouped number is ever written.
+const FIRST_GROUP_PATTERN = /^-?[1-9]\d{0,2}$/;
 
-// The OTHER character is only a real thousands-grouping separator when every
-// group after it is exactly 3 digits (the last group's digit run stops at
-// the REAL decimal separator, when the cell carries one) — a cell whose
-// decimal separator is actually the other character (a Ukrainian "-150,00"
-// read with '.' picked as decimal, where the "00" after the comma is a
-// fraction, not a 3-digit group) fails this shape, rather than being
-// silently read as a value 100x too large.
+// The OTHER character is only a real thousands-grouping separator when the
+// leading group is a valid thousands-group lead-in and every group after it
+// is exactly 3 digits (the last group's digit run stops at the REAL decimal
+// separator, when the cell carries one) — a cell whose decimal separator is
+// actually the other character fails this shape, rather than being silently
+// read as a value 100x too large (a Ukrainian "-150,00" read with '.' picked
+// as decimal) or with the decimal separator itself swallowed into a bogus
+// leading group (a stray "1,234.567" read with ',' as decimal, where '.'
+// lands inside the fraction rather than the integer grouping).
 const hasValidThousandsGrouping = (
   normalized: string,
   separator: ',' | '.',
   otherSeparator: ',' | '.',
 ): boolean => {
-  const groupsAfterFirst = normalized.split(otherSeparator).slice(1);
+  const [firstGroup, ...groupsAfterFirst] = normalized.split(otherSeparator);
+
+  if (groupsAfterFirst.length === 0) {
+    return true;
+  }
+
+  if (!FIRST_GROUP_PATTERN.test(firstGroup)) {
+    return false;
+  }
 
   return groupsAfterFirst.every((group, index) => {
     const isLastGroup = index === groupsAfterFirst.length - 1;

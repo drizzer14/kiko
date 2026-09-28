@@ -71,4 +71,28 @@ describe('parseAmountCell', () => {
   it('rejects a group after the other separator that is too short even with no decimal part', () => {
     expect(parseAmountCell('1,23', '.')).toBeNaN();
   });
+
+  // The first group (before the first grouping separator) must itself be a
+  // valid thousands-group lead-in: 1-3 digits, no leading zero, unless it is
+  // exactly "0" with no group following it — and the OTHER separator must
+  // never land after the decimal separator (it would then sit inside the
+  // fractional part rather than the integer grouping).
+  describe.each([
+    ['0,125', '.', true, 'a leading-zero first group followed by another group'],
+    ['1234,567', '.', true, 'a first group longer than 3 digits'],
+    ['1,234.567', ',', true, "the other separator inside the decimal separator's fraction"],
+    ['1,234', '.', false, 'a plain single thousands group'],
+    ['12,345,678.90', '.', false, 'more than one real thousands group'],
+    ['-1,234.56', '.', false, 'a negative amount with a valid thousands group'],
+  ] as const)('%s parsed with %s separator', (cell, separator, expectNaN, description) => {
+    it(`${expectNaN ? 'rejects' : 'accepts'} ${description}`, () => {
+      const result = parseAmountCell(cell, separator);
+
+      if (expectNaN) {
+        expect(result).toBeNaN();
+      } else {
+        expect(result).not.toBeNaN();
+      }
+    });
+  });
 });
