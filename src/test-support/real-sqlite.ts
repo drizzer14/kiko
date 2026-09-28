@@ -54,3 +54,58 @@ const neverCalled = async (): Promise<{ rows: unknown[] }> => {
  * a hand-transcribed copy of it.
  */
 export const toSqlOnlyDrizzle = (): SqliteRemoteDatabase => drizzle(neverCalled);
+
+type SqlParameter = string | number | bigint | null | Uint8Array;
+
+type ExecutingClient = {
+  database: SqliteRemoteDatabase;
+  write: <T>(work: (database: SqliteRemoteDatabase) => Promise<T>) => Promise<T>;
+};
+
+/**
+ * The two members of `@kiko/db/client` a repository calls, `database` and
+ * `write`, EXECUTING every query on the real engine `resolveDatabase` returns,
+ * so a repository test proves real joins, aggregates, NULL handling and
+ * foreign keys instead of a fake handle's idea of them. `write` wraps its work
+ * in BEGIN/COMMIT and rolls back on a throw, as op-sqlite's transaction does.
+ * The engine is resolved per query, so a `jest.mock` factory can build this
+ * before the test has opened its database.
+ */
+export const executingClient = (resolveDatabase: () => DatabaseSync): ExecutingClient => {
+  const database = drizzle(async (sql, params, method) => {
+    const statement = resolveDatabase().prepare(sql);
+    const parameters = params as SqlParameter[];
+
+    if (method === 'run') {
+      statement.run(...parameters);
+
+      return { rows: [] };
+    }
+
+    // Drizzle maps a selected row by column position, not by name.
+    statement.setReturnArrays(true);
+
+    return method === 'get'
+      ? { rows: statement.get(...parameters) as unknown as unknown[] }
+      : { rows: statement.all(...parameters) };
+  });
+
+  const write = async <T>(work: (database: SqliteRemoteDatabase) => Promise<T>): Promise<T> => {
+    const engine = resolveDatabase();
+
+    engine.exec('BEGIN');
+
+    try {
+      const result = await work(database);
+
+      engine.exec('COMMIT');
+
+      return result;
+    } catch (error) {
+      engine.exec('ROLLBACK');
+      throw error;
+    }
+  };
+
+  return { database, write };
+};
