@@ -20,16 +20,37 @@ export const parseDateTimeSeconds = (raw: string, formatLabel: string): number =
     throw new StatementParseError(`Unrecognized ${formatLabel} date/time: "${raw}"`);
   }
 
-  const [, day, month, year, hour, minute, second] = match;
-
-  return (
-    Date.UTC(
-      Number(year),
-      Number(month) - 1,
-      Number(day),
-      Number(hour),
-      Number(minute),
-      Number(second),
-    ) / 1000
+  const parsedYear = Number(match[3]);
+  const parsedMonthIndex = Number(match[2]) - 1;
+  const parsedDay = Number(match[1]);
+  const parsedHour = Number(match[4]);
+  const parsedMinute = Number(match[5]);
+  const parsedSecond = Number(match[6]);
+  const ms = Date.UTC(
+    parsedYear,
+    parsedMonthIndex,
+    parsedDay,
+    parsedHour,
+    parsedMinute,
+    parsedSecond,
   );
+  const date = new Date(ms);
+  // Reject rollover (e.g. 31.02.2026, or an hour/minute past 23/59): `Date.UTC`
+  // normalizes an out-of-range component into a DIFFERENT, wrong instant
+  // instead of rejecting it — the round-trip components must survive
+  // unchanged, the same guard `date-formats.ts`'s `partsToSeconds` applies for
+  // column-mapping's own preset parser.
+  const roundTrips =
+    date.getUTCFullYear() === parsedYear &&
+    date.getUTCMonth() === parsedMonthIndex &&
+    date.getUTCDate() === parsedDay &&
+    date.getUTCHours() === parsedHour &&
+    date.getUTCMinutes() === parsedMinute &&
+    date.getUTCSeconds() === parsedSecond;
+
+  if (!roundTrips) {
+    throw new StatementParseError(`Unrecognized ${formatLabel} date/time: "${raw}"`);
+  }
+
+  return ms / 1000;
 };

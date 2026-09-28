@@ -1,7 +1,7 @@
 import { dateFormatIds, dateFormatExamples, parseDateWithFormat } from './date-formats';
 
 describe('dateFormatIds', () => {
-  it('lists exactly the 7 presets in order', () => {
+  it('lists exactly the 8 presets in order', () => {
     expect(dateFormatIds).toEqual([
       'DD.MM.YYYY HH:MM:SS',
       'DD.MM.YYYY HH:MM',
@@ -10,6 +10,7 @@ describe('dateFormatIds', () => {
       'YYYY-MM-DD HH:MM:SS',
       'YYYY-MM-DD',
       'MM/DD/YYYY',
+      'DD/MM/YYYY',
     ]);
   });
 });
@@ -98,6 +99,14 @@ describe('parseDateWithFormat', () => {
     expect(parseDateWithFormat('2025-07-01', 'MM/DD/YYYY')).toBeUndefined();
   });
 
+  it('parses DD/MM/YYYY as UTC midnight seconds', () => {
+    expect(parseDateWithFormat('01/07/2025', 'DD/MM/YYYY')).toBe(1_751_328_000);
+  });
+
+  it('rejects a DD/MM/YYYY mismatch', () => {
+    expect(parseDateWithFormat('2025-07-01', 'DD/MM/YYYY')).toBeUndefined();
+  });
+
   it('trims surrounding whitespace before matching', () => {
     expect(parseDateWithFormat('  01.07.2025 10:15:00  ', 'DD.MM.YYYY HH:MM:SS')).toBe(
       1_751_364_900,
@@ -106,5 +115,49 @@ describe('parseDateWithFormat', () => {
 
   it('accepts a numeric cell by stringifying it first', () => {
     expect(parseDateWithFormat(20_250_701, 'YYYY-MM-DD')).toBeUndefined();
+  });
+
+  // Every preset's own components must survive the round trip through
+  // Date.UTC, the same rollover guard `parseLocalDate` (`src/dates/format.ts`)
+  // already applies to a local-midnight day — otherwise an out-of-range
+  // component (a day past its month's length, an hour/minute past 23/59)
+  // silently rolls into a DIFFERENT, wrong calendar instant instead of
+  // failing as a recoverable row error.
+  describe('rollover rejection — an out-of-range component must not silently roll into another date', () => {
+    it('rejects 31.02.2026 (February has no 31st) under DD.MM.YYYY', () => {
+      expect(parseDateWithFormat('31.02.2026', 'DD.MM.YYYY')).toBeUndefined();
+    });
+
+    it('rejects 31.02.2026 10:00 (February has no 31st) under DD.MM.YYYY HH:MM', () => {
+      expect(parseDateWithFormat('31.02.2026 10:00', 'DD.MM.YYYY HH:MM')).toBeUndefined();
+    });
+
+    it('rejects 31.02.2026 10:00:00 (February has no 31st) under DD.MM.YYYY HH:MM:SS', () => {
+      expect(parseDateWithFormat('31.02.2026 10:00:00', 'DD.MM.YYYY HH:MM:SS')).toBeUndefined();
+    });
+
+    it('rejects 31.02.26 10:00 (February has no 31st) under DD.MM.YY HH:MM', () => {
+      expect(parseDateWithFormat('31.02.26 10:00', 'DD.MM.YY HH:MM')).toBeUndefined();
+    });
+
+    it('rejects 2026-13-45 (month 13, day 45) under YYYY-MM-DD', () => {
+      expect(parseDateWithFormat('2026-13-45', 'YYYY-MM-DD')).toBeUndefined();
+    });
+
+    it('rejects 2026-13-45 10:00:00 (month 13, day 45) under YYYY-MM-DD HH:MM:SS', () => {
+      expect(parseDateWithFormat('2026-13-45 10:00:00', 'YYYY-MM-DD HH:MM:SS')).toBeUndefined();
+    });
+
+    it('rejects 25/01/2026 (month 25) under MM/DD/YYYY — a DD/MM file misread as MM/DD', () => {
+      expect(parseDateWithFormat('25/01/2026', 'MM/DD/YYYY')).toBeUndefined();
+    });
+
+    it('rejects 25/13/2026 (month 13) under DD/MM/YYYY', () => {
+      expect(parseDateWithFormat('25/13/2026', 'DD/MM/YYYY')).toBeUndefined();
+    });
+
+    it('rejects an out-of-range hour/minute (15.09.2026 25:99) under DD.MM.YYYY HH:MM', () => {
+      expect(parseDateWithFormat('15.09.2026 25:99', 'DD.MM.YYYY HH:MM')).toBeUndefined();
+    });
   });
 });

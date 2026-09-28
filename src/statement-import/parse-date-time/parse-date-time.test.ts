@@ -21,4 +21,20 @@ describe('parseDateTimeSeconds', () => {
       /31\/12\/2025 10:00:00/,
     );
   });
+
+  // The shape matches (two digits per field) but the calendar instant does
+  // not exist — `Date.UTC` would otherwise silently roll it into a DIFFERENT
+  // date instead of failing, same rollover guard as `date-formats.ts`'s
+  // `partsToSeconds` (column-mapping's own preset parser).
+  it('throws for a day that rolls over (February has no 31st)', () => {
+    expect(() => parseDateTimeSeconds('31.02.2026 10:00:00', 'PrivatBank')).toThrow(
+      StatementParseError,
+    );
+  });
+
+  it('throws for an out-of-range hour/minute that rolls over', () => {
+    expect(() => parseDateTimeSeconds('15.09.2026 25:61:00', 'Monobank')).toThrow(
+      StatementParseError,
+    );
+  });
 });

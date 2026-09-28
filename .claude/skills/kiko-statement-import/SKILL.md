@@ -139,7 +139,19 @@ HH:MM:SS'` string (`table-rows.ts`'s `formatUtcDateTime`) before
 parsing, so a mapping pointed at an Excel date column behaves exactly
 like one pointed at a text date column. An XLSX number cell is used
 as-is (no reformatting) — only a `Date` cell gets this wall-clock
-conversion.
+conversion. Both parsers additionally ROUND-TRIP every parsed
+component back through the built instant's own UTC getters
+(`date-formats.ts`'s `partsToSeconds`, `parse-date-time.ts`'s inline
+check, the same idea `parseLocalDate` already applies to a
+local-midnight day) — `Date.UTC` silently NORMALIZES an out-of-range
+day/month/hour/minute into a different, wrong instant instead of
+rejecting it (`31.02.2026` rolling into 3 March, `25/01/2026` read
+MM/DD-first rolling into 2028), so a mismatch there is treated exactly
+like a shape mismatch: `undefined` (a recoverable row error) for
+column mapping, a thrown `StatementParseError` for a dedicated format.
+The preset set (`dateFormatIds`) includes both `MM/DD/YYYY` and
+`DD/MM/YYYY` — read that file directly for the current member list
+rather than trusting a count restated here.
 
 The mapped `ParsedStatement` reaches the DB through the SAME
 `importParsedStatement` (`src/statement-import/import-statement/`)
