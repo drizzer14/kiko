@@ -344,18 +344,22 @@ const StatisticsScreen: FC = () => {
   const spanStart = earliestTime ?? now;
 
   // The line's effective window: the picked range when set, otherwise the full
-  // transaction span (earliest transaction to now). Both bounds are TRUE local
-  // midnight (`startOfLocalDay`/`endOfLocalDay`, same helpers Home uses), never
-  // a UTC-anchored approximation — a Kyiv (UTC+2/+3) pick using `Date.UTC(y, m,
-  // d)` instead used to exclude the first 2-3 local hours of every picked day
-  // from this range, silently dropping them from the donut and the net-worth
-  // line. `buildNetWorthSeries` (below) does its OWN UTC-day normalization per
-  // bucket internally (`toUtcMidnight`, since `currency_rate_history.day` is
-  // UTC-midnight) — that is a rate LOOKUP KEY concern, entirely separate from
-  // these user-facing range bounds, and this screen has no other UTC-day-key
-  // use, so no local `utcDayKey`-style helper is needed here. The `to` bound
-  // extends to the end of its day so a same-day pick still captures that
-  // day's buckets, DST-correct on a 23/25-hour local day.
+  // transaction span (earliest transaction to now). A PICKED bound is TRUE
+  // local midnight (`startOfLocalDay`/`endOfLocalDay`, same helpers Home
+  // uses), never a UTC-anchored approximation — a Kyiv (UTC+2/+3) pick using
+  // `Date.UTC(y, m, d)` instead would exclude the first 2-3 local hours of
+  // every picked day from this range, silently dropping them from the donut
+  // and the net-worth line. The DEFAULT (unpicked) window is NOT
+  // midnight-aligned: `rangeFrom` falls back to `spanStart` (the earliest
+  // transaction's raw time, or `now` when there is none) and `rangeTo` falls
+  // back to `now` itself. `buildNetWorthSeries` (below) does its OWN UTC-day
+  // normalization per bucket internally (`toUtcMidnight`, since
+  // `currency_rate_history.day` is UTC-midnight) — that is a rate LOOKUP KEY
+  // concern, entirely separate from these user-facing range bounds, and this
+  // screen has no other UTC-day-key use, so no local `utcDayKey`-style helper
+  // is needed here. A picked `to` bound extends to the end of its day so a
+  // same-day pick still captures that day's buckets, DST-correct on a
+  // 23/25-hour local day.
   const rangeFrom = dateFrom !== null ? startOfLocalDay(dateFrom.getTime()) : spanStart;
   const rangeTo = dateTo !== null ? endOfLocalDay(dateTo.getTime()) : now;
 

@@ -103,7 +103,7 @@ const randomLedger = (random: () => number, size: number): Transaction[] => {
   });
 };
 
-const WINDOW_S = TRANSFER_MATCH_WINDOW_MS / 1_000;
+const WINDOW_SECONDS = TRANSFER_MATCH_WINDOW_MS / 1_000;
 
 /**
  * Deliberately builds MULTIPLE valid candidate credits per debit, with their
@@ -112,17 +112,17 @@ const WINDOW_S = TRANSFER_MATCH_WINDOW_MS / 1_000;
  * BY ORIGINAL POSITION" (the real rule) from "claims the nearest one by time"
  * (a plausible but wrong optimization, since the underlying data structure
  * sorts candidates by time for its window search). Offsets straddle the
- * match window's own edge (`WINDOW_S` seconds) at -121/-120/-119/+119/+120/
+ * match window's own edge (`WINDOW_SECONDS` seconds) at -121/-120/-119/+119/+120/
  * +121 seconds, so the boundary itself is exercised alongside the tie-break.
  */
 const withMultiCandidateClusters = (random: () => number, ledger: Transaction[]): Transaction[] => {
   const offsetsSeconds = [
-    -(WINDOW_S + 1),
-    -WINDOW_S,
-    -(WINDOW_S - 1),
-    WINDOW_S - 1,
-    WINDOW_S,
-    WINDOW_S + 1,
+    -(WINDOW_SECONDS + 1),
+    -WINDOW_SECONDS,
+    -(WINDOW_SECONDS - 1),
+    WINDOW_SECONDS - 1,
+    WINDOW_SECONDS,
+    WINDOW_SECONDS + 1,
   ];
   const clustered: Transaction[] = [...ledger];
 

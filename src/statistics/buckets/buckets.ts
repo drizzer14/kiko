@@ -14,12 +14,9 @@ export const bucketDaysForSpan = (spanMs: number): number =>
 
 // The instant `index * bucketDays` CALENDAR DAYS after `from`, built from
 // LOCAL Y/M/D fields (never `from + index * bucketDays * DAY_MS`) — a fixed
-// ms step drifts across a DST change: a fall-back day is 25 hours, so
-// stepping by a flat 24h landed an hour EARLY (23:00 the previous calendar
-// day) for every bucket after it, eventually producing a duplicate calendar
-// day or an extra bucket. `from`'s own time-of-day fields are preserved, so
-// a range with no DST crossing steps by exactly `bucketDays * DAY_MS`, same
-// as before. `new Date(y, m, d + n, ...)` normalizes a day past the month's
+// ms step drifts across a DST change, since a Europe/Kyiv calendar day can be
+// 23 or 25 hours rather than a flat 24. `from`'s own time-of-day fields are
+// preserved. `new Date(y, m, d + n, ...)` normalizes a day past the month's
 // end, so no month/year wrap is needed.
 const calendarDayStep = (from: number, index: number, bucketDays: number): number => {
   const date = new Date(from);
@@ -68,11 +65,9 @@ export const bucketTimes = (from: number, to: number, bucketDays: number): numbe
  * A range short enough to fit ONE period (a single-day range with daily
  * buckets) is the one exception: it produces exactly one point, which a
  * `Polyline` cannot draw a visible line from (kiko-charts: a line needs >= 2
- * points), so `to` is appended as a second point there — the same two-point
- * shape a single-day range always had, before the trailing marker was
- * dropped for every OTHER range. A multi-bucket range is unaffected: every
- * real value already lands in its own period-start bucket, so no phantom
- * point is reintroduced there.
+ * points), so `to` is appended as a second point there. A multi-bucket range
+ * is unaffected: every real value already lands in its own period-start
+ * bucket, so no phantom point is reintroduced there.
  */
 export const periodStartBucketTimes = (from: number, to: number, bucketDays: number): number[] => {
   const times: number[] = [];

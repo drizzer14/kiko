@@ -44,11 +44,10 @@ const lastIndexAtOrBefore = (days: number[], targetDay: number): number => {
 
 /**
  * A holding's value at instant `t`, in its own currency's minor units,
- * answered for MANY buckets against the SAME holding — the per-currency
- * indexed series and the converted net-worth series both value every holding
- * at every bucket a multi-year line samples, so anything loop-invariant per
- * holding (not per bucket) is paid exactly ONCE here, before the bucket loop,
- * rather than re-derived at every point:
+ * answered for MANY buckets against the SAME holding — `buildNetWorthSeries`
+ * values every holding at every bucket a multi-year line samples, so
+ * anything loop-invariant per holding (not per bucket) is paid exactly ONCE
+ * here, before the bucket loop, rather than re-derived at every point:
  *
  * - a ledgerless type (`isLedgerlessHoldingType` — term_deposit, bond,
  *   property_item): the returned closure calls

@@ -399,9 +399,9 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // `bounds.from`/`bounds.to` are day-aligned numbers (`startOfLocalDay`/
   // `endOfLocalDay`), so they only change once per calendar day even on the
   // DEFAULT range, where `dateFrom`/`dateTo` are fresh `Date` objects on
-  // every render (see `defaultDateRange`) — keying the memo on THOSE objects
-  // instead made the filter (and the section grouping, and the SectionList
-  // it feeds) re-run on every single render, not just a day change.
+  // every render (see `defaultDateRange`) — keying the memo on those raw
+  // `Date` objects would re-run the filter (and the section grouping, and
+  // the SectionList it feeds) on every single render instead of once per day.
   const { from: boundsFrom, to: boundsTo } = dateRangeBounds(dateFrom, dateTo);
   const filteredTransactions = useMemo(() => {
     return transactions.filter((row) => {
