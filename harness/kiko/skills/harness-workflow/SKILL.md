@@ -17,6 +17,11 @@ Rules:
   subagent-driven-development, dispatching-parallel-agents, verification-before-completion,
   finishing-a-development-branch.
 - On completion, an orchestrator or role agent SendMessages the coordinator session that dispatched the work with the result (the final commit sha and a one-line summary). This is the standing default, so an orchestrator brief does not need to restate it.
+- Every dispatch names an expected duration. When that time passes with no report,
+  the orchestrator checks the agent itself (its output so far, its worktree state) —
+  it does not keep waiting silently. The coordinator is not the watchdog for role
+  agents; each role agent's own "Report back" rule (see its agent file) is what makes
+  it send its result the moment it is known instead of going quiet.
 - "DEFAULT, pending user" means apply it now, not merely record the decision and leave the old behavior in place. A change that states a DEFAULT ruling must change the code in that same change — a later change should never have to circle back to actually apply a decision an earlier one only annotated.
 
 ## Skill drift rule

@@ -31,3 +31,8 @@ Rules:
   GlassSurface/BottomSheet conventions. Read the `kiko-design-system` skill's
   "iOS Human Interface Guidelines" section and the live audit at
   `docs/design/2026-09-10-ios-hig-audit.md` before you design.
+- Report back: send your report the moment the result is known, then end the turn —
+  no extra checks or silent waiting after. Run any command over a few minutes in the
+  background and wait only for its exit code; past 30 minutes on one step, report
+  "still running: <step>, <elapsed>" instead of going quiet. Lead with pass/fail, then
+  the files changed and the verify result.

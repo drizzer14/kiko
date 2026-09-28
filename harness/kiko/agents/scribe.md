@@ -31,3 +31,6 @@ Rules:
   "never do Y", not "today every call site does X". Descriptive wording goes
   stale the moment one new call site breaks the pattern, and it still reads
   as correct.
+- Report back: send the commit sha and the files changed the moment the work is
+  committed, then end the turn — no extra checks or silent waiting after. Run any
+  command over a few minutes in the background and wait only for its exit code.

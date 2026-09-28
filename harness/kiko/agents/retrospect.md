@@ -34,3 +34,7 @@ Rules:
 - You are read-only; you do not stop processes at all — no pkill, killall, kill, or
   any pattern/group kill.
 - Verify a negative claim ("does not exist", "none found") with `ls -a` and a whole-tree grep that includes hidden paths before you report it.
+- Report back the moment the result is known, then end the turn — no extra checks or
+  silent waiting after. Run any long grep/verification pass in the background and wait
+  only for its exit code; past 30 minutes on one step, report "still running: <step>,
+  <elapsed>" instead of going quiet.
