@@ -20,7 +20,7 @@ import type { DepositContribution } from '@kiko/holdings/holding-metadata';
 import { isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
 import type { ExchangeConvertDirection } from '@kiko/holdings/exchange-convert';
 import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/repo';
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
 
 import { normalizeTransactionName } from '../normalize-name';
 
@@ -400,12 +400,17 @@ type ImportBalanceDecision = {
  * stay under Biome's cognitive-complexity cap — see that function's own doc
  * comment for the full rule this implements. `balanceSetAt` is present only
  * when a closing balance actually applied this call; the caller writes it to
- * `holdings` alongside `nextBalance`. */
+ * `holdings` alongside `nextBalance`. `existingPostClosingNetMinorUnits` is
+ * the net of every row ALREADY in the ledger (any source) dated after the
+ * closing balance's own as-of, read before this import inserted anything —
+ * an already-imported holding's later rows must not be erased by an older
+ * statement's own closing figure. */
 const resolveImportBalance = (
   holding: Pick<HoldingRow, 'balanceMinorUnits' | 'currency'>,
   boundary: number | null,
   newRows: NewTransaction[],
   closingBalance: ClosingBalance | undefined,
+  existingPostClosingNetMinorUnits: number,
 ): ImportBalanceDecision => {
   const netDelta = newRows
     .filter((row) => boundary === null || row.time >= boundary)
@@ -419,9 +424,10 @@ const resolveImportBalance = (
     return { nextBalance: holding.balanceMinorUnits + netDelta };
   }
 
-  const postClosingNet = newRows
-    .filter((row) => row.time > closingBalance.asOfSeconds * 1000)
-    .reduce((sum, row) => sum + row.amountMinorUnits, 0);
+  const postClosingNet =
+    newRows
+      .filter((row) => row.time > closingBalance.asOfSeconds * 1000)
+      .reduce((sum, row) => sum + row.amountMinorUnits, 0) + existingPostClosingNetMinorUnits;
 
   return {
     nextBalance: closingBalance.minorUnits + postClosingNet,
@@ -1121,14 +1127,20 @@ export const transactionsRepo = {
    * none new) leaves the balance untouched, exactly like a second identical
    * import must. UNLESS `closingBalance` is given, is in the holding's OWN
    * currency, and is AS OF a time at or after the boundary — then the
-   * closing balance is written outright PLUS the net of any new rows dated
-   * STRICTLY AFTER the closing balance's own as-of (normally none, since a
-   * statement's closing balance is drawn from its own newest row — see
-   * `resolveClosingBalance`, `monobank-csv.format.ts`), correcting for any
-   * drift the ledger delta alone can't see. A statement OLDER than the
-   * boundary falls back to the net-delta rule instead (where its own rows
-   * are, by construction, all history and add 0 too), so an out-of-order
-   * re-import can never regress the balance to a stale closing figure.
+   * closing balance is written outright PLUS `postClosingNet`: the net of
+   * every row dated STRICTLY AFTER the closing balance's own as-of, from
+   * BOTH this import's own new rows AND every row (any source) ALREADY in
+   * the ledger before this import ran, read once before this import inserts
+   * anything. New-rows-only used to be the whole rule (normally none of
+   * them land after their own statement's newest row anyway — see
+   * `resolveClosingBalance`, `monobank-csv.format.ts`); the EXISTING half
+   * matters for an out-of-order statement, e.g. importing September's
+   * closing balance after an October manual row already exists — without
+   * it, September's own closing figure would silently overwrite October's
+   * already-recorded row. A statement OLDER than the boundary falls back to
+   * the net-delta rule instead (where its own rows are, by construction,
+   * all history and add 0 too), so an out-of-order re-import can never
+   * regress the balance to a stale closing figure.
    *
    * The closing-balance write is `nextBalance = closingBalance.minorUnits +
    * postClosingNet`, not `base + netDelta` — the implicit adjustment this
@@ -1250,6 +1262,28 @@ export const transactionsRepo = {
       const syncBoundary = syncRows.at(0)?.time ?? null;
       const boundary = laterOf(holding.balanceSetAt, syncBoundary);
 
+      // Also read BEFORE the new rows are upserted — an EXISTING row (any
+      // source, already in the ledger before this import ran) dated after a
+      // closing balance's own as-of must still count toward it; only the
+      // rows THIS import adds were counted before, so a re-import (or an
+      // out-of-order older statement) could erase a later row the ledger
+      // already knew about.
+      let existingPostClosingNetMinorUnits = 0;
+
+      if (!synced && input.closingBalance !== undefined) {
+        const existingPostClosingRows = await databaseTransaction
+          .select({ net: sql<number | null>`sum(${transactions.amountMinorUnits})` })
+          .from(transactions)
+          .where(
+            and(
+              eq(transactions.holdingId, input.holdingId),
+              gt(transactions.time, input.closingBalance.asOfSeconds * 1000),
+            ),
+          );
+
+        existingPostClosingNetMinorUnits = existingPostClosingRows.at(0)?.net ?? 0;
+      }
+
       const newRows = await insertDedupRowsDatabaseTransaction(databaseTransaction, input.rows);
 
       if (synced) {
@@ -1261,6 +1295,7 @@ export const transactionsRepo = {
         boundary,
         newRows,
         input.closingBalance,
+        existingPostClosingNetMinorUnits,
       );
 
       if (nextBalance !== holding.balanceMinorUnits || balanceSetAt !== undefined) {
