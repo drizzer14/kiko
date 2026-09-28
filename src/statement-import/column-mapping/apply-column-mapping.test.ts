@@ -4,6 +4,19 @@ import type { TableCell } from './table-rows';
 import { applyColumnMapping } from './apply-column-mapping';
 import type { ColumnMapping } from './apply-column-mapping';
 
+// Column mapping reads a date/time cell as THIS DEVICE's own local time
+// (never Kyiv's), so every expected value below is built through the SAME
+// local `Date` constructor, never a hardcoded UTC-derived instant — the test
+// then passes under any process time zone.
+const localSeconds = (
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  second: number,
+): number => new Date(year, month - 1, day, hour, minute, second).getTime() / 1000;
+
 const HEADER_ROW: TableCell[] = ['Date', 'Description', 'Amount', 'Currency', 'Counterparty'];
 
 const singleAmountMapping: ColumnMapping = {
@@ -29,7 +42,7 @@ describe('applyColumnMapping (single-amount mode)', () => {
       {
         currency: 'UAH',
         amountMinorUnits: 12_345,
-        timeSeconds: 1_751_364_900,
+        timeSeconds: localSeconds(2025, 7, 1, 10, 15, 0),
         description: 'Coffee',
       },
     ]);
@@ -272,7 +285,7 @@ describe('applyColumnMapping (Balance column -> closingBalance)', () => {
     expect(statement.closingBalance).toEqual({
       minorUnits: 590_000,
       currency: 'UAH',
-      asOfSeconds: 1_751_450_400,
+      asOfSeconds: localSeconds(2025, 7, 2, 10, 0, 0),
     });
   });
 

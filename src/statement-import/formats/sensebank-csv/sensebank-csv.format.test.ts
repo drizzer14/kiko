@@ -227,7 +227,7 @@ describe('sensebankCsvFormat.parse', () => {
     const first = parsed.transactions[0];
 
     expect(first.amountMinorUnits).toBe(-15_000);
-    expect(first.timeSeconds).toBe(947_379_480);
+    expect(first.timeSeconds).toBe(947_372_280);
     expect(first.description).toBe('Щомісячна комісія за обслуговування пакета банківських послуг');
     expect(first.mcc).toBeUndefined();
   });
@@ -239,7 +239,7 @@ describe('sensebankCsvFormat.parse', () => {
     const second = parsed.transactions[1];
 
     expect(second.amountMinorUnits).toBe(1_000_013);
-    expect(second.timeSeconds).toBe(948_802_320);
+    expect(second.timeSeconds).toBe(948_795_120);
     expect(second.description).toBe('Перерахування чистого підприємницького доходу, без ПДВ');
     expect(second.mcc).toBeUndefined();
   });
@@ -252,7 +252,7 @@ describe('sensebankCsvFormat.parse', () => {
     const fifth = parsed.transactions[4];
 
     expect(fifth.amountMinorUnits).toBe(-158_582);
-    expect(fifth.timeSeconds).toBe(947_090_580);
+    expect(fifth.timeSeconds).toBe(947_083_380);
     expect(fifth.description).toBe('Зняття готівки в банкоматі');
     expect(fifth.mcc).toBe(6011);
   });
@@ -265,7 +265,7 @@ describe('sensebankCsvFormat.parse', () => {
     const last = parsed.transactions[5];
 
     expect(last.amountMinorUnits).toBe(160_000);
-    expect(last.timeSeconds).toBe(947_087_700);
+    expect(last.timeSeconds).toBe(947_080_500);
     expect(last.description).toBe('Переказ з картки на картку (зарахування)');
     expect(last.mcc).toBe(4829);
   });
@@ -295,7 +295,7 @@ describe('sensebankCsvFormat.parse', () => {
   it('accepts 29 February on a leap year (2024)', () => {
     const parsed = sensebankCsvFormat.parse(leapDayInput);
 
-    expect(parsed.transactions[0].timeSeconds).toBe(Date.UTC(2024, 1, 29, 10, 0, 0) / 1000);
+    expect(parsed.transactions[0].timeSeconds).toBe(Date.UTC(2024, 1, 29, 8, 0, 0) / 1000);
   });
 
   it('throws a StatementParseError for 29 February on a non-leap year (2025)', () => {

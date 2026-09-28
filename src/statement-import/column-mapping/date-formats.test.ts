@@ -1,4 +1,17 @@
-import { dateFormatIds, dateFormatExamples, parseDateWithFormat } from './date-formats';
+import { dateFormatExamples, dateFormatIds, parseDateWithFormat } from './date-formats';
+
+// A column-mapping date reads THIS DEVICE's own local time (never Kyiv's —
+// see `date-formats.ts`'s own doc comment), so every expected value here is
+// built through the SAME local `Date` constructor, never a hardcoded UTC
+// instant — the test then passes under any process time zone.
+const localSeconds = (
+  year: number,
+  month: number,
+  day: number,
+  hour = 0,
+  minute = 0,
+  second = 0,
+): number => new Date(year, month - 1, day, hour, minute, second).getTime() / 1000;
 
 describe('dateFormatIds', () => {
   it('lists exactly the 8 presets in order', () => {
@@ -29,9 +42,9 @@ describe('dateFormatExamples', () => {
       const seconds = parseDateWithFormat(dateFormatExamples[id], id);
 
       expect(seconds).toBeDefined();
-      expect(new Date((seconds ?? 0) * 1000).getUTCFullYear()).toBe(2026);
-      expect(new Date((seconds ?? 0) * 1000).getUTCMonth()).toBe(11);
-      expect(new Date((seconds ?? 0) * 1000).getUTCDate()).toBe(31);
+      expect(new Date((seconds ?? 0) * 1000).getFullYear()).toBe(2026);
+      expect(new Date((seconds ?? 0) * 1000).getMonth()).toBe(11);
+      expect(new Date((seconds ?? 0) * 1000).getDate()).toBe(31);
     }
   });
 
@@ -43,24 +56,30 @@ describe('dateFormatExamples', () => {
 });
 
 describe('parseDateWithFormat', () => {
-  it('parses DD.MM.YYYY HH:MM:SS as UTC seconds', () => {
-    expect(parseDateWithFormat('01.07.2025 10:15:00', 'DD.MM.YYYY HH:MM:SS')).toBe(1_751_364_900);
+  it('parses DD.MM.YYYY HH:MM:SS as this device local time', () => {
+    expect(parseDateWithFormat('01.07.2025 10:15:00', 'DD.MM.YYYY HH:MM:SS')).toBe(
+      localSeconds(2025, 7, 1, 10, 15, 0),
+    );
   });
 
   it('rejects a DD.MM.YYYY HH:MM:SS mismatch', () => {
     expect(parseDateWithFormat('01.07.2025', 'DD.MM.YYYY HH:MM:SS')).toBeUndefined();
   });
 
-  it('parses DD.MM.YYYY HH:MM as UTC seconds', () => {
-    expect(parseDateWithFormat('01.07.2025 10:15', 'DD.MM.YYYY HH:MM')).toBe(1_751_364_900);
+  it('parses DD.MM.YYYY HH:MM as this device local time', () => {
+    expect(parseDateWithFormat('01.07.2025 10:15', 'DD.MM.YYYY HH:MM')).toBe(
+      localSeconds(2025, 7, 1, 10, 15, 0),
+    );
   });
 
   it('rejects a DD.MM.YYYY HH:MM mismatch', () => {
     expect(parseDateWithFormat('01.07.2025 10:15:00', 'DD.MM.YYYY HH:MM')).toBeUndefined();
   });
 
-  it('parses DD.MM.YYYY as UTC midnight seconds', () => {
-    expect(parseDateWithFormat('01.07.2025', 'DD.MM.YYYY')).toBe(1_751_328_000);
+  it('parses a date-only DD.MM.YYYY as noon this device local time', () => {
+    expect(parseDateWithFormat('01.07.2025', 'DD.MM.YYYY')).toBe(
+      localSeconds(2025, 7, 1, 12, 0, 0),
+    );
   });
 
   it('rejects a DD.MM.YYYY mismatch', () => {
@@ -68,39 +87,49 @@ describe('parseDateWithFormat', () => {
   });
 
   it('parses DD.MM.YY HH:MM with a two-digit year as 20YY (Sensebank convention)', () => {
-    expect(parseDateWithFormat('09.01.00 00:58', 'DD.MM.YY HH:MM')).toBe(947_379_480);
+    expect(parseDateWithFormat('09.01.00 00:58', 'DD.MM.YY HH:MM')).toBe(
+      localSeconds(2000, 1, 9, 0, 58, 0),
+    );
   });
 
   it('rejects a DD.MM.YY HH:MM mismatch', () => {
     expect(parseDateWithFormat('09.01.2000 00:58', 'DD.MM.YY HH:MM')).toBeUndefined();
   });
 
-  it('parses YYYY-MM-DD HH:MM:SS as UTC seconds', () => {
-    expect(parseDateWithFormat('2025-07-01 10:15:00', 'YYYY-MM-DD HH:MM:SS')).toBe(1_751_364_900);
+  it('parses YYYY-MM-DD HH:MM:SS as this device local time', () => {
+    expect(parseDateWithFormat('2025-07-01 10:15:00', 'YYYY-MM-DD HH:MM:SS')).toBe(
+      localSeconds(2025, 7, 1, 10, 15, 0),
+    );
   });
 
   it('rejects a YYYY-MM-DD HH:MM:SS mismatch', () => {
     expect(parseDateWithFormat('01.07.2025 10:15:00', 'YYYY-MM-DD HH:MM:SS')).toBeUndefined();
   });
 
-  it('parses YYYY-MM-DD as UTC midnight seconds', () => {
-    expect(parseDateWithFormat('2025-07-01', 'YYYY-MM-DD')).toBe(1_751_328_000);
+  it('parses a date-only YYYY-MM-DD as noon this device local time', () => {
+    expect(parseDateWithFormat('2025-07-01', 'YYYY-MM-DD')).toBe(
+      localSeconds(2025, 7, 1, 12, 0, 0),
+    );
   });
 
   it('rejects a YYYY-MM-DD mismatch', () => {
     expect(parseDateWithFormat('01.07.2025', 'YYYY-MM-DD')).toBeUndefined();
   });
 
-  it('parses MM/DD/YYYY as UTC midnight seconds', () => {
-    expect(parseDateWithFormat('07/01/2025', 'MM/DD/YYYY')).toBe(1_751_328_000);
+  it('parses a date-only MM/DD/YYYY as noon this device local time', () => {
+    expect(parseDateWithFormat('07/01/2025', 'MM/DD/YYYY')).toBe(
+      localSeconds(2025, 7, 1, 12, 0, 0),
+    );
   });
 
   it('rejects a MM/DD/YYYY mismatch', () => {
     expect(parseDateWithFormat('2025-07-01', 'MM/DD/YYYY')).toBeUndefined();
   });
 
-  it('parses DD/MM/YYYY as UTC midnight seconds', () => {
-    expect(parseDateWithFormat('01/07/2025', 'DD/MM/YYYY')).toBe(1_751_328_000);
+  it('parses a date-only DD/MM/YYYY as noon this device local time', () => {
+    expect(parseDateWithFormat('01/07/2025', 'DD/MM/YYYY')).toBe(
+      localSeconds(2025, 7, 1, 12, 0, 0),
+    );
   });
 
   it('rejects a DD/MM/YYYY mismatch', () => {
@@ -109,7 +138,7 @@ describe('parseDateWithFormat', () => {
 
   it('trims surrounding whitespace before matching', () => {
     expect(parseDateWithFormat('  01.07.2025 10:15:00  ', 'DD.MM.YYYY HH:MM:SS')).toBe(
-      1_751_364_900,
+      localSeconds(2025, 7, 1, 10, 15, 0),
     );
   });
 
@@ -117,8 +146,8 @@ describe('parseDateWithFormat', () => {
     expect(parseDateWithFormat(20_250_701, 'YYYY-MM-DD')).toBeUndefined();
   });
 
-  // Every preset's own components must survive the round trip through
-  // Date.UTC, the same rollover guard `parseLocalDate` (`src/dates/format.ts`)
+  // Every preset's own components must survive the calendar-validity round
+  // trip, the same rollover guard `parseLocalDate` (`src/dates/format.ts`)
   // already applies to a local-midnight day — otherwise an out-of-range
   // component (a day past its month's length, an hour/minute past 23/59)
   // silently rolls into a DIFFERENT, wrong calendar instant instead of

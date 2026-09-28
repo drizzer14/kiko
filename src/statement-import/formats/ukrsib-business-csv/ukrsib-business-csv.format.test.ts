@@ -136,7 +136,7 @@ describe('ukrsibBusinessCsvFormat.parse', () => {
 
     expect(first.currency).toBe('UAH');
     expect(first.amountMinorUnits).toBe(-25_000);
-    expect(first.timeSeconds).toBe(1_770_282_900);
+    expect(first.timeSeconds).toBe(1_770_275_700);
     expect(first.description).toBe('Оплата за товар Test Merchant');
   });
 
@@ -147,7 +147,7 @@ describe('ukrsibBusinessCsvFormat.parse', () => {
 
     expect(second.currency).toBe('UAH');
     expect(second.amountMinorUnits).toBe(500_000);
-    expect(second.timeSeconds).toBe(1_770_388_200);
+    expect(second.timeSeconds).toBe(1_770_381_000);
   });
 
   // Rows 3-4 switch to a DIFFERENT account/currency (USD) — proves the
@@ -158,7 +158,7 @@ describe('ukrsibBusinessCsvFormat.parse', () => {
 
     expect(third.currency).toBe('USD');
     expect(third.amountMinorUnits).toBe(-10_050);
-    expect(third.timeSeconds).toBe(1_770_458_700);
+    expect(third.timeSeconds).toBe(1_770_451_500);
   });
 
   it('parses a USD credit row exactly', () => {
@@ -167,7 +167,7 @@ describe('ukrsibBusinessCsvFormat.parse', () => {
 
     expect(fourth.currency).toBe('USD');
     expect(fourth.amountMinorUnits).toBe(30_075);
-    expect(fourth.timeSeconds).toBe(1_770_569_100);
+    expect(fourth.timeSeconds).toBe(1_770_561_900);
   });
 
   it("detects the account currency hint (UAH) from the file's first row", () => {

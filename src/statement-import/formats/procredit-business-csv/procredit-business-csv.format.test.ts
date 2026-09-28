@@ -134,7 +134,7 @@ describe('procreditBusinessCsvFormat.parse', () => {
 
     expect(first.currency).toBe('UAH');
     expect(first.amountMinorUnits).toBe(-10_000);
-    expect(first.timeSeconds).toBe(947_927_280);
+    expect(first.timeSeconds).toBe(947_920_080);
     expect(first.description).toBe(
       "Сплата комісії за обслуговування рахунків та/чи інших зобов'язань",
     );
@@ -148,7 +148,7 @@ describe('procreditBusinessCsvFormat.parse', () => {
 
     expect(third.currency).toBe('UAH');
     expect(third.amountMinorUnits).toBe(11_704_275);
-    expect(third.timeSeconds).toBe(946_948_440);
+    expect(third.timeSeconds).toBe(946_941_240);
   });
 
   // Row 2: same file, a DIFFERENT currency (GBP) — proves the per-row
@@ -160,7 +160,7 @@ describe('procreditBusinessCsvFormat.parse', () => {
 
     expect(second.currency).toBe('GBP');
     expect(second.amountMinorUnits).toBe(-247_500);
-    expect(second.timeSeconds).toBe(946_948_440);
+    expect(second.timeSeconds).toBe(946_941_240);
   });
 
   it("detects the account currency hint (UAH) from the file's first row", () => {

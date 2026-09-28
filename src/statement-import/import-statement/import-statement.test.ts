@@ -435,9 +435,13 @@ describe('importStatement', () => {
       // A virgin holding has no boundary at all, so the mapped closing
       // balance (5,900.00 UAH -> 590_000 minor units, as of the newest row's
       // own time) applies outright, over the plain net-delta fallback.
+      // Column mapping reads this cell as THIS DEVICE's own local time
+      // (never Kyiv's), so the expected instant is built through the SAME
+      // local `Date` constructor, never a hardcoded UTC-derived one — the
+      // test then passes under any process time zone.
       expect(captured.holdingSet).toEqual({
         balanceMinorUnits: 590_000,
-        balanceSetAt: 1_751_450_400_000,
+        balanceSetAt: new Date(2025, 6, 2, 10, 0, 0).getTime(),
       });
     });
   });
@@ -588,7 +592,7 @@ describe('importStatement', () => {
       // later import.
       expect(captured.holdingSet).toEqual({
         balanceMinorUnits: 10_000_000,
-        balanceSetAt: 1_683_912_636_000,
+        balanceSetAt: 1_683_901_836_000,
       });
     });
 
@@ -655,7 +659,7 @@ describe('importStatement', () => {
       // moves `balanceSetAt` to that same instant.
       expect(captured.holdingSet).toEqual({
         balanceMinorUnits: 10_000_000,
-        balanceSetAt: 1_683_912_636_000,
+        balanceSetAt: 1_683_901_836_000,
       });
     });
 

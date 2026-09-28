@@ -1,41 +1,37 @@
+import {
+  isMidnightWallClock,
+  isRealCalendarInstant,
+  kyivWallClockToUtcMilliseconds,
+  type WallClockParts,
+} from '@kiko/dates';
+
 import { StatementParseError } from '../parser';
 
 const DATE_TIME_PATTERN = /^(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2}):(\d{2})$/;
 
 /** A calendar date/time, split into its own components — `month` is
  * 1-based, matching how every caller reads it straight off a regex match. */
-export type DateTimeParts = {
-  year: number;
-  month: number;
-  day: number;
-  hour: number;
-  minute: number;
-  second: number;
-};
+type DateTimeParts = WallClockParts;
 
 /**
- * Builds the UTC instant (milliseconds since epoch) for calendar/time PARTS,
- * or `undefined` when they don't describe a real one. `Date.UTC` silently
- * NORMALIZES an out-of-range component — an impossible day ("31.02.2026"),
- * month, hour, or minute — into a DIFFERENT, wrong instant instead of
- * rejecting it, so every bank-export date/time parser in this project builds
- * the instant through this helper and checks the constructed date's own UTC
- * getters reproduce the exact parsed components before trusting it, rather
- * than hand-rolling the same round-trip check per format.
+ * Kyiv-local reading of bank wall-clock digits — every dedicated bank format
+ * reads its own raw wall clock as Europe/Kyiv local time, never the running
+ * device's own zone (that reading is column mapping's own
+ * `deviceWallClockToLocalMilliseconds`, `column-mapping/date-formats.ts`).
+ * `00:00:00` means "date only" (a date-only preset, or an XLSX `Date` cell
+ * with no time part) and becomes 12:00 Kyiv, so the same calendar day shows
+ * from UTC-9 to UTC+12. The rollover check runs on the ORIGINAL parts first,
+ * before the noon substitution, so an impossible date is rejected on its own
+ * terms either way.
  */
-export const utcMillisecondsIfRoundTrips = (parts: DateTimeParts): number | undefined => {
-  const { year, month, day, hour, minute, second } = parts;
-  const milliseconds = Date.UTC(year, month - 1, day, hour, minute, second);
-  const date = new Date(milliseconds);
-  const roundTrips =
-    date.getUTCFullYear() === year &&
-    date.getUTCMonth() === month - 1 &&
-    date.getUTCDate() === day &&
-    date.getUTCHours() === hour &&
-    date.getUTCMinutes() === minute &&
-    date.getUTCSeconds() === second;
+export const kyivInstantMillisecondsIfRoundTrips = (parts: DateTimeParts): number | undefined => {
+  if (!isRealCalendarInstant(parts)) {
+    return undefined;
+  }
 
-  return roundTrips ? milliseconds : undefined;
+  return kyivWallClockToUtcMilliseconds(
+    isMidnightWallClock(parts) ? { ...parts, hour: 12 } : parts,
+  );
 };
 
 /**
@@ -56,7 +52,7 @@ export const parseDateTimeSeconds = (raw: string, formatLabel: string): number =
     throw new StatementParseError(`Unrecognized ${formatLabel} date/time: "${raw}"`);
   }
 
-  const milliseconds = utcMillisecondsIfRoundTrips({
+  const milliseconds = kyivInstantMillisecondsIfRoundTrips({
     year: Number(match[3]),
     month: Number(match[2]),
     day: Number(match[1]),

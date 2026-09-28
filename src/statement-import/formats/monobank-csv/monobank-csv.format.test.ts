@@ -96,7 +96,7 @@ describe('monobankCsvFormat.parse', () => {
     const first = parsed.transactions[0];
 
     expect(first.amountMinorUnits).toBe(1_932);
-    expect(first.timeSeconds).toBe(1_648_790_855);
+    expect(first.timeSeconds).toBe(1_648_780_055);
     expect(first.description).toBe('Відсотки за березень');
     expect(first.mcc).toBe(4829);
   });
@@ -107,7 +107,7 @@ describe('monobankCsvFormat.parse', () => {
     const last = parsed.transactions[3];
 
     expect(last.amountMinorUnits).toBe(-18_000);
-    expect(last.timeSeconds).toBe(1_683_912_636);
+    expect(last.timeSeconds).toBe(1_683_901_836);
     expect(last.description).toBe('Uklon');
     expect(last.mcc).toBe(4121);
   });
@@ -130,7 +130,7 @@ describe('monobankCsvFormat.parse', () => {
     expect(parsed.closingBalance).toEqual({
       minorUnits: 10_000_000,
       currency: 'UAH',
-      asOfSeconds: 1_683_912_636,
+      asOfSeconds: 1_683_901_836,
     });
   });
 
@@ -167,7 +167,7 @@ describe('monobankCsvFormat.parse', () => {
     expect(parsed.closingBalance).toEqual({
       minorUnits: 10_000_000,
       currency: 'UAH',
-      asOfSeconds: 1_683_912_636,
+      asOfSeconds: 1_683_901_836,
     });
   });
 });
