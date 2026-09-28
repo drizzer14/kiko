@@ -9,6 +9,17 @@ const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 
 const DAYS_PER_WEEK = 7;
 
+const MINUTES_PER_HOUR = 60;
+
+// The time always reads on the 24-hour clock (`formatTime`), so 11 means
+// 11:00-11:59 only; 23:00 is "twenty-three", not "eleven".
+const ELEVEN_O_CLOCK = 11;
+
+const atLabel = (minuteOfDay: number, t: TFunction): string =>
+  Math.floor(minuteOfDay / MINUTES_PER_HOUR) === ELEVEN_O_CLOCK
+    ? t('reminders.schedule.atEleven')
+    : t('reminders.schedule.at');
+
 // Any day with no DST change reads back the same wall-clock time; `Date`
 // carries the minutes past 59 into the hours.
 const timeLabel = (minuteOfDay: number): string => formatTime(new Date(2000, 0, 1, 0, minuteOfDay));
@@ -30,17 +41,18 @@ export const describeSchedule = (
   firstDay: 0 | 1,
 ): string => {
   const time = timeLabel(schedule.minuteOfDay);
+  const at = atLabel(schedule.minuteOfDay, t);
 
   return match(schedule)
-    .with({ frequency: 'daily' }, () => t('reminders.schedule.daily', { time }))
+    .with({ frequency: 'daily' }, () => t('reminders.schedule.daily', { at, time }))
     .with({ frequency: 'weekly' }, ({ weekdays }) =>
-      t('reminders.schedule.weekly', { days: weekdaysLabel(weekdays, t, firstDay), time }),
+      t('reminders.schedule.weekly', { days: weekdaysLabel(weekdays, t, firstDay), at, time }),
     )
     .with({ frequency: 'monthly' }, ({ dayOfMonth }) =>
-      t('reminders.schedule.monthly', { day: dayOfMonth, time }),
+      t('reminders.schedule.monthly', { day: dayOfMonth, at, time }),
     )
     .with({ frequency: 'interval' }, ({ everyDays }) =>
-      t('reminders.schedule.interval', { count: everyDays, time }),
+      t('reminders.schedule.interval', { count: everyDays, at, time }),
     )
     .exhaustive();
 };

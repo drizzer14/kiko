@@ -60,4 +60,41 @@ describe('describeSchedule', () => {
     expect(describeSchedule(interval(3), ukrainian, MONDAY_FIRST)).toBe('Кожні 3 дні о 08:00');
     expect(describeSchedule(interval(7), ukrainian, MONDAY_FIRST)).toBe('Кожні 7 днів о 08:00');
   });
+
+  describe('the Ukrainian preposition before the time', () => {
+    const daily = (hours: number, minutes: number) =>
+      ({ frequency: 'daily', minuteOfDay: hours * 60 + minutes }) as const;
+
+    it.each([
+      [1, 0, 'Щодня о 01:00'],
+      [11, 0, 'Щодня об 11:00'],
+      [11, 59, 'Щодня об 11:59'],
+      [20, 0, 'Щодня о 20:00'],
+      [23, 0, 'Щодня о 23:00'],
+    ])('reads %p:%p as %p', (hours, minutes, expected) => {
+      expect(describeSchedule(daily(hours, minutes), ukrainian, MONDAY_FIRST)).toBe(expected);
+    });
+
+    it('uses "об" at 11 in every frequency', () => {
+      const minuteOfDay = 11 * 60 + 30;
+
+      expect(
+        describeSchedule({ frequency: 'weekly', minuteOfDay, weekdays: [1] }, ukrainian, 1),
+      ).toBe('Пн об 11:30');
+      expect(
+        describeSchedule({ frequency: 'monthly', minuteOfDay, dayOfMonth: 5 }, ukrainian, 1),
+      ).toBe('5-го числа щомісяця об 11:30');
+      expect(
+        describeSchedule(
+          { frequency: 'interval', minuteOfDay, everyDays: 3, anchorDay: ANCHOR_DAY },
+          ukrainian,
+          1,
+        ),
+      ).toBe('Кожні 3 дні об 11:30');
+    });
+
+    it('leaves the English text as it is at 11', () => {
+      expect(describeSchedule(daily(11, 0), english, MONDAY_FIRST)).toBe('Every day at 11:00');
+    });
+  });
 });

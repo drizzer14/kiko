@@ -1086,7 +1086,11 @@ export const en = {
       pausedTitle: 'Reminders paused',
       pausedBody: 'Turn them on again in Kiko.',
     },
+    // English says "at" at every hour; the pair exists for Ukrainian's о/об
+    // (see uk.ts).
     schedule: {
+      at: 'at',
+      atEleven: 'at',
       daily: 'Every day at {{time}}',
       weekly: '{{days}} at {{time}}',
       monthly: 'Day {{day}} of every month at {{time}}',
