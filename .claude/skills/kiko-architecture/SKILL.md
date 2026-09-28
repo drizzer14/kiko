@@ -540,7 +540,9 @@ gate says there is nothing to do.
   max(day) across every stored row:
   `resolveResumeCursor` (`src/rates/history-backfill/history-backfill.ts`)
   takes the OLDEST last-backfilled day among every currently-held
-  currency — fiat as its `USD` anchor, plus every held crypto — fed by
+  currency — every fiat currency `historyCurrencies()` reports (the
+  held fiat set, not a hard-coded USD/EUR pair — see kiko-pricing's
+  "History backfill"), plus every held crypto — fed by
   `deriveLastBackfilledDayByCurrency(historyRows)`. A currency with no
   stored day at all forces the whole span from the earliest day, same
   as before; the fix is that a currency which already HAS some rows

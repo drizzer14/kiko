@@ -85,6 +85,17 @@ instead of dropping it from the leading buckets. `price_points`' own
 `priceAt` (below) mirrors this same nearest-at-or-before /
 earliest-fallback shape.
 
+`buildNetWorthSeries` (`net-worth-series.ts`) layers a THIRD, weaker
+fallback under both of these: the bundled static `FIAT_RATE_SEED_TABLE`
+(`fiat-rate-seed.ts`, covering all 107 fiat currencies). Precedence,
+weakest first: `{ ...FIAT_RATE_SEED_TABLE, ...earliestRateTable(...),
+...rateTableAt(...) }`, so a real historical row always wins over the
+earliest-known row, which always wins over the flat seed — a fiat
+currency the backfill has never fetched history for at all (it only
+fetches the currencies actually used — see "History backfill" below)
+still prices every past bucket at the seed's flat rate instead of
+dropping the holding out entirely.
+
 A legacy stored cross/inverse row (any row with `quote !== 'UAH'` or
 `base === 'UAH'`) is removed both at upgrade and at restore: migration
 `0042_uah_star_rates` deletes one from a live device (deriving a
@@ -96,17 +107,48 @@ migrations section for the full derive-then-delete shape.
 
 ### History backfill
 
+`fetchNbuHistory` (`nbu-history.ts`) is data-driven, not a hard-coded
+USD/EUR pair: it takes the currency list to fetch (`valcode =
+currency.toLowerCase()`) and settles each currency's own NBU range
+request INDEPENDENTLY (an `either`-wrapped fetch per currency, spaced
+by a `createRequestGate` at `NBU_HISTORY_REQUEST_INTERVAL_MS = 250`)
+— one currency's HTTP failure lands in its own `failedCurrencies`
+list and never discards another currency's already-fetched rows; the
+function itself never rejects. `historyCurrencies()`
+(`open-currencies-gate.ts`, a sibling of `openCurrencies` above)
+decides WHICH fiat currencies are worth fetching: the union of every
+held fiat currency (open AND closed — a closed holding still needs
+its own past-bucket history, read via `holdingsRepo
+.historyCurrenciesQuery()`, which has no `closedAt`/archived-account
+filter) and the base currency, minus `UAH` — but only when some held
+fiat currency genuinely differs from the base (nothing to convert
+otherwise, even though the union would include the base); `USD` is
+then added unconditionally whenever any crypto is held, as the crypto
+anchor, regardless of whether any fiat conversion is otherwise
+needed.
+
 `composeHistoryRows` writes one `X:UAH` row per priced currency per
-day (`USD`, `EUR`, plus every held crypto) — never a cross row
-between two non-UAH currencies, mirroring `rates-refresh.ts`'s own
-`buildUahRows` but once per historical day instead of once per live
-run. A gap in one provider's own series (NBU has no weekend/holiday
-quote; CoinGecko prices every calendar day) no longer stalls the
-OTHER currency's row: each currency's own `X:UAH` row carries forward
-from ITS OWN nearest earlier anchor independently, rather than a
-single stored cross pair carrying both legs forward as one joint
-unit — coverage is a strict superset of the old cross-join shape,
-never fewer converting buckets on a gap day.
+day (every fiat currency NBU answered for, plus every held crypto) —
+never a cross row between two non-UAH currencies, mirroring
+`rates-refresh.ts`'s own `buildUahRows` but once per historical day
+instead of once per live run. The compose list is DATA-DRIVEN, read
+directly off whichever `X:UAH` anchor timelines are present in the
+fetched entries — never a fixed currency list — so a newly used fiat
+(GBP, PLN, any of the ~40 NBU quotes) composes automatically with no
+code change. A gap in one provider's own series (NBU has no
+weekend/holiday quote; CoinGecko prices every calendar day) no longer
+stalls the OTHER currency's row: each currency's own `X:UAH` row
+carries forward from ITS OWN nearest earlier anchor independently,
+rather than a single stored cross pair carrying both legs forward as
+one joint unit — coverage is a strict superset of the old cross-join
+shape, never fewer converting buckets on a gap day.
+
+A fiat currency NBU does not quote at all (NBU covers about 40 of the
+107 supported currencies) answers with a fulfilled, EMPTY range —
+never a rejection — so it is recorded in `knownEmptyCurrenciesThisRun`
+like any other never-backfilled currency the provider answered empty
+for, and `buildNetWorthSeries`' bundled `FIAT_RATE_SEED_TABLE` (below)
+backs its value at a flat rate instead of ever dropping the holding.
 
 The Statistics screen drives an incremental, non-blocking backfill of
 `currency_rate_history` (`src/rates/history-backfill/history-backfill.ts`):
@@ -140,8 +182,9 @@ max(day) across every stored row (`resolveResumeCursor`, fed by
 `deriveLastBackfilledDayByCurrency(historyRows)` — the SAME
 `historyRows` the screen already reads for `deriveLastBackfilledDay`,
 so this needs no new query): it is the OLDEST last-backfilled day
-among every currently-held currency (fiat as its `USD` anchor, plus
-every held crypto), never the newest. A single shared cursor let a
+among every currently-held currency (every fiat currency
+`historyCurrencies()` reports, plus every held crypto), never the
+newest. A single shared cursor let a
 currency whose OWN leg kept failing hide behind a different
 currency's success — once the shared max(day) reached today (from
 whatever currency drove it there), `missingDays` reported nothing
@@ -169,6 +212,21 @@ this override it would report nothing missing and silently skip the
 newly-opened earlier span forever. A non-null caller value means no
 such earlier extension happened, so the per-currency minimum decides
 normally.
+
+`planBackfillRun` takes a fourth argument, `currenciesChanged`, so a
+NEW currency held mid-session (a GBP holding added while Statistics
+stays mounted) re-runs the backfill WITHOUT a restart, even though
+`spanStart` itself never moved: `statistics.screen.tsx` derives a
+sorted `historyCurrencyKey` from every held holding's currency plus
+the base, tracked in its own ref (`backfillRanForCurrencyKeyRef`)
+alongside the existing span ref — set the same way, and RESTORED the
+same way on a failed settle, so a retry after a rejected run still
+sees the currency set as changed if it genuinely still is. Unlike the
+earlier-extension case, a currency-set-only change resumes from the
+ORDINARY incremental cursor (not `null`): `runBackfill`'s own
+per-currency window already widens for the newly-held currency on its
+own (it has no stored day at all, so `resolveResumeCursor` treats it
+as maximally behind), so there is nothing this override needs to force.
 
 The screen's own effect must guard its async settle against a REAL unmount only (an
 `isMounted`-style ref flipped inside its own unmount-only effect) — a
@@ -594,7 +652,7 @@ new pinning (kiko-compliance: this host stays keyless and unpinned).
   (a decimal string in UAH, via `decimalFromJsonNumber`); it carries
   no day of its own — the caller stamps "today"'s local day on it.
 - `fetchNbuMetalHistory(metal, start, end, fetchImpl)` reads the SAME
-  range URL `nbu-history.ts`'s `RANGE_ENDPOINT` reads for USD/EUR, one
+  range URL `nbu-history.ts`'s `RANGE_ENDPOINT` reads per fiat currency, one
   call per metal (`valcode=xau` etc., lowercased) — the same live
   probe confirmed the range endpoint returns one row PER DAY for a
   metal (weekend/holiday days carry forward the last banking day's
