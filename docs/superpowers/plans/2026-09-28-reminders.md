@@ -51,7 +51,7 @@
 | A | Native module + JS wrapper | 14 | 2 | next 49097442 |
 | B | Storage, pure schedule/planner, scheduler, app wiring, backup | 28 | 15 | A; Round A 0043/0044 on next |
 | C1 | Per-account page, reminder form, permission flow, account-detail entry | 30 | 13 | B |
-| C2 | Settings > Reminders list + contextual offers + restore re-plan | 19 | 11 | C1 |
+| C2 | Settings > Reminders list + contextual offers + restore re-plan | 18 | 10 | C1 |
 | D | Tap routing, "Tomorrow" category, hidden-preview placeholder | 12 | 7 | C2 |
 
 \* The `mutation.sh` filter: `.ts/.tsx`, not tests, `index.ts`, `.styles.ts`, `.d.ts`, `i18n/locales/`, or `scripts/checks/`. Every CS is far below the 30-file cap.
@@ -429,13 +429,12 @@ Base: CS-C1 tip.
 **Files:**
 - Modify: `src/navigation/types/types.d.ts`: `AccountDetail: { accountId; name; reminderOffer?: 'afterImport' }`.
 - Modify: `src/screens/statement-import/statement-import.screen.tsx:439` and `src/screens/column-mapping/column-mapping.screen.tsx:856`: add `reminderOffer: 'afterImport'` to the existing `popTo('AccountDetail', …, { merge: true })` params. Nothing else changes.
-- Modify: `src/screens/account-detail/account-detail.screen.tsx`: at the top of the content, show `ReminderOfferCard` for `route.params.reminderOffer === 'afterImport'` (trigger a), or else for `manualActivity` (trigger b). Accept → `navigate('ReminderForm', { accountId, kind })` + `setParams({ reminderOffer: undefined })`. Dismiss → `dismiss()` + clear the param.
-- Modify: `src/screens/holding-detail/holding-detail.screen.tsx`: the same `manualActivity` card for the holding's account (the user returns here after adding a transaction from a holding).
+- Modify: `src/screens/account-detail/account-detail.screen.tsx`: at the top of the content, show `ReminderOfferCard` for `route.params.reminderOffer === 'afterImport'` (trigger a), or else for `manualActivity` (trigger b). Accept → `navigate('ReminderForm', { accountId, kind })` + `setParams({ reminderOffer: undefined })`. Dismiss → `dismiss()` + clear the param. Offer (b) shows here ONLY (user decision 2026-09-28, Q9): NOT on holding detail.
 - Modify: `src/screens/settings/import-data/import-data.screen.tsx`: after a successful `importData(...)`, call `syncReminders(t)`.
 - Modify: `src/i18n/locales/en.ts`, `uk.ts` (the C2 keys).
-- Tests: extend `account-detail.screen.test.tsx`, `holding-detail.screen.test.tsx`, `statement-import.screen.test.tsx`, `column-mapping.screen.test.tsx`, `import-data.screen.test.tsx`, and `src/navigation/root-navigator/statement-import-return.navigator.test.tsx` (real router: the param reaches AccountDetail after the popTo).
+- Tests: extend `account-detail.screen.test.tsx`, `statement-import.screen.test.tsx`, `column-mapping.screen.test.tsx`, `import-data.screen.test.tsx`, and `src/navigation/root-navigator/statement-import-return.navigator.test.tsx` (real router: the param reaches AccountDetail after the popTo).
 
-- [ ] Failing tests: an import Done → AccountDetail shows the import offer; Not now → gone and still gone after a remount; Set up → the form prefilled with the import kind; the second manual entry → the offer on holding detail and account detail; a restore → `syncReminders` is called once.
+- [ ] Failing tests: an import Done → AccountDetail shows the import offer; Not now → gone and still gone after a remount; Set up → the form prefilled with the import kind; the second manual entry → the offer on account detail (not holding detail); a restore → `syncReminders` is called once.
 - [ ] Implement → scoped jest PASS. Commit. `make verify` until green. BATCH READY (+ the en/uk key diff).
 
 **CS-C2 device tests:** import a statement → the offer appears once; Not now → never again for that account; add 2 manual transactions → the offer; restore a `.kiko` with reminders → the requests are re-planned (check with a near-future reminder).
@@ -569,20 +568,25 @@ Reused: `calendar.weekday.*`, `common.save`, `common.cancel`, `common.delete`.
 
 ---
 
-## Open questions for the user (each with a recommendation)
+## Open questions for the user — RESOLVED 2026-09-28 (see spec "User decisions" item 8)
 
-1. **Account-detail entry point.** A: a bell icon button in the header, left of Edit. B: a "Reminders" row card in the content, showing the status. *Recommend A*: no new shared component, and no cross-screen import of `SettingsRow`. B would need `SettingsRow` moved to the design system first.
-2. **Settings row position.** *Recommend its own card directly below System* (a system-level preference), before Import/Export.
-3. **Defaults for a new reminder.** *Recommend* import: monthly on day 1 at 19:00; add transactions: daily at 20:00.
-4. **A reminder that fires while Kiko is open.** *Recommend* showing the banner (banner + list + sound).
-5. **Interruption level.** *Recommend* Active for reminders and Passive for the one "Reminders paused" notice.
-6. **Backups carry reminders** (`.kiko` export/import). *Recommend yes*. After a restore, the Reminders pages show "Turn on notifications" until permission is granted.
-7. **Import reminder tap.** The spec says to open the account with the file picker. *Recommend keeping that*: the picker opens once, and Cancel leaves the user on the account.
-8. **Add-transactions tap on an account with several holdings.** *Recommend* opening the account detail. With exactly one open holding, open the transaction form directly.
-9. **Where offer (b) appears.** *Recommend* account detail + holding detail, but not Home (Home is not about one account).
-10. **Decision 7 reading.** "Second manual transaction" = >= 2 distinct entry times in the last 30 days (a transfer's two legs count once). *Recommend confirming this.*
-11. **Global (non-account) reminders.** The spec's storage note says "per account + global". *Recommend per-account only in 1.2* (`account_id NOT NULL`). A global reminder would need a later migration.
-12. **Monthly on day 29–31.** *Recommend* firing on the month's last day (the form shows a hint).
-13. **Every N days range.** *Recommend* 2–365.
-14. **"Tomorrow" snooze time.** *Recommend* the same time of day as the original, tomorrow.
-15. **Wording.** The en/uk key table above is waiting for your review, especially "Кожні N днів", "дн.", and the notification bodies.
+1. **Account-detail entry point.** RESOLVED: A bell icon button in the header, left of Edit.
+2. **Settings row position.** RESOLVED: its own card directly below System (a system-level preference), before Import/Export.
+3. **Defaults for a new reminder.** RESOLVED: import = monthly on day 1 at 19:00; add transactions = daily at 20:00.
+4. **A reminder that fires while Kiko is open.** RESOLVED: the banner (banner + list + sound).
+5. **Interruption level.** RESOLVED (not asked; recommendation taken as-is): Active for reminders, Passive for the one "Reminders paused" notice.
+6. **Backups carry reminders** (`.kiko` export/import). RESOLVED: yes. After a restore, the Reminders pages show "Turn on notifications" until permission is granted.
+7. **Import reminder tap.** RESOLVED (recommendation taken): open the account with the file picker; the picker opens once, and Cancel leaves the user on the account.
+8. **Add-transactions tap on an account with several holdings.** RESOLVED: open the account detail. With exactly one open holding, open the transaction form directly.
+9. **Where offer (b) appears.** RESOLVED — CHANGED from the plan's recommendation: ACCOUNT DETAIL ONLY, never holding detail. Task C2.3's holding-detail work is removed (see that task and the CS-C2 file count below).
+10. **Decision 7 reading.** RESOLVED: confirmed as >= 2 distinct entry times in the last 30 days (a transfer's two legs count once).
+11. **Global (non-account) reminders.** RESOLVED: per-account only in 1.2 (`account_id NOT NULL`). A global reminder would need a later migration.
+12. **Monthly on day 29–31.** RESOLVED: fires on the month's last day (the form shows a hint).
+13. **Every N days range.** RESOLVED: 2–365.
+14. **"Tomorrow" snooze time.** RESOLVED: the same time of day as the original, one day later.
+15. **Wording.** RESOLVED: the user reviews the en/uk key table at each BATCH READY, not once up front.
+
+## Standing directives (2026-09-28)
+
+- User questions arising during this track go to the coordinator `pff-ios-9b` by `SendMessage`, never `AskUserQuestion`.
+- Until a build passes App Store review, the user is the only user of the app: a backward-compatibility edge case (for example an old `.kiko` backup with no `reminders` key) takes the simplest option with a one-line documented known limit (it restores with no reminders) — but the migration itself stays crash-safe, and a pre-migration backup must still restore successfully after the migration runs, proven by a test.
