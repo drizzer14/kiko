@@ -2,7 +2,7 @@ import { i18n } from '@kiko/i18n/init';
 import { AppState, type AppStateStatus } from 'react-native';
 import { act, renderHook } from '@testing-library/react-native';
 
-import { useReminderScheduler } from './use-reminder-scheduler';
+import { replanReminders, useReminderScheduler } from './use-reminder-scheduler';
 
 const mockSyncReminders = jest.fn();
 
@@ -58,7 +58,13 @@ beforeEach(() => {
     });
 });
 
+// The trigger is shared across the app, so no test may leave a run open for
+// the next one.
 afterEach(async () => {
+  while (pendingRuns.length > 0) {
+    await settleNextRun();
+  }
+
   await i18n.changeLanguage('en');
 });
 
@@ -135,6 +141,33 @@ describe('useReminderScheduler', () => {
     expect(mockSyncReminders).toHaveBeenCalledTimes(2);
 
     warn.mockRestore();
+  });
+
+  it('queues a re-plan after a reminder write behind the running sync, never beside it', async () => {
+    holdEachRun();
+    await renderHook(() => useReminderScheduler());
+
+    replanReminders();
+    await transition('active');
+
+    expect(mockSyncReminders).toHaveBeenCalledTimes(1);
+
+    await settleNextRun();
+
+    expect(mockSyncReminders).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-plans after a reminder write with the active language', async () => {
+    await i18n.changeLanguage('uk');
+
+    await act(async () => {
+      replanReminders();
+    });
+
+    expect(mockSyncReminders).toHaveBeenCalledTimes(1);
+    expect(mockSyncReminders.mock.calls[0]?.[0]('reminders.notification.pausedTitle')).toBe(
+      'Нагадування призупинено',
+    );
   });
 
   it('stops listening once unmounted', async () => {

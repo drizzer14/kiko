@@ -1,5 +1,5 @@
+import { useEffect } from 'react';
 import { i18n } from '@kiko/i18n/init';
-import { useEffect, useState } from 'react';
 import either, { bifold, isLeft } from 'fnts/either';
 import { syncReminders } from '@kiko/reminders/scheduler';
 import { AppState, type AppStateStatus } from 'react-native';
@@ -50,6 +50,13 @@ const singleFlight = (task: () => Promise<void>): (() => void) => {
 };
 
 /**
+ * Re-plans after a reminder write. It shares the scheduler's one queue, so it
+ * never runs beside a re-plan an app-state change started, whose older data
+ * could otherwise replace the newer plan. Never rejects.
+ */
+export const replanReminders = singleFlight(replan);
+
+/**
  * Keeps the pending reminder notifications in step with the data: re-plans on
  * mount, when the app becomes active or goes to the background, and when the
  * language changes. Mounted in `AppRoot`, below `MigrationsGate` and
@@ -58,29 +65,27 @@ const singleFlight = (task: () => Promise<void>): (() => void) => {
  * already queued on op-sqlite's one worker ahead of this sync's `LIMIT 1` gate.
  */
 export const useReminderScheduler = (): void => {
-  const [trigger] = useState(() => singleFlight(replan));
-
   useEffect(() => {
-    trigger();
-  }, [trigger]);
+    replanReminders();
+  }, []);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
       if (REPLAN_STATES.includes(state)) {
-        trigger();
+        replanReminders();
       }
     });
 
     return () => {
       subscription.remove();
     };
-  }, [trigger]);
+  }, []);
 
   useEffect(() => {
-    i18n.on('languageChanged', trigger);
+    i18n.on('languageChanged', replanReminders);
 
     return () => {
-      i18n.off('languageChanged', trigger);
+      i18n.off('languageChanged', replanReminders);
     };
-  }, [trigger]);
+  }, []);
 };
