@@ -968,6 +968,7 @@ const StatisticsScreen: FC = () => {
     () =>
       buildCategoryMeasures({
         transactions: trendTransactions,
+        categoryDisplay: categoryByKey,
         rateTable,
         baseCurrency,
         defaultCategoryKey,
@@ -977,6 +978,7 @@ const StatisticsScreen: FC = () => {
       }),
     [
       trendTransactions,
+      categoryByKey,
       rateTable,
       baseCurrency,
       defaultCategoryKey,

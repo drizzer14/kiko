@@ -1,7 +1,11 @@
 import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
 
-import { type BreakdownTransaction, categoryColor } from '../category-breakdown';
+import {
+  type BreakdownTransaction,
+  buildCategoryBreakdown,
+  categoryColor,
+} from '../category-breakdown';
 
 import { buildCategoryMeasures, buildCategoryTrend, type TrendTransaction } from './category-trend';
 
@@ -308,6 +312,7 @@ const buildMeasures = (
 ): ReturnType<typeof buildCategoryMeasures> =>
   buildCategoryMeasures({
     transactions,
+    categoryDisplay: DISPLAY,
     rateTable: {},
     baseCurrency: 'UAH',
     defaultCategoryKey: 'other',
@@ -460,6 +465,7 @@ describe('buildCategoryTrend / buildCategoryMeasures — no phantom trailing buc
         }),
         transaction({ id: 'c', category: 'groceries', amountMinorUnits: -30_00, time: today }),
       ],
+      categoryDisplay: DISPLAY,
       rateTable: {},
       baseCurrency: 'UAH',
       defaultCategoryKey: 'other',
@@ -473,5 +479,55 @@ describe('buildCategoryTrend / buildCategoryMeasures — no phantom trailing buc
     // which flipped this same climbing spend to a NEGATIVE slope
     // ([1000, 2000, 3000, 0] regresses to -200).
     expect(measures[0].risingSlope).toBeCloseTo(1000, 5);
+  });
+});
+
+// category-trend.ts used to fold a category key with a bare
+// `category?.toLowerCase() || defaultKey` — unlike the donut
+// (`buildCategoryBreakdown`), which folds an UNRESOLVABLE slug (one no longer
+// in the category display map, e.g. a deleted seeded category sync keeps
+// re-writing) into the default too, via `resolveCategoryKey`. The trend kept
+// the stale slug as its own bucket, so a deleted category showed as two
+// separate "Other"-titled lines (same color, different key) instead of
+// folding into one.
+describe('buildCategoryTrend / buildCategoryMeasures — category-key fold parity with the donut', () => {
+  // 'dining' is not in DISPLAY — an unresolvable slug, the same shape a
+  // deleted seeded category leaves behind once sync keeps writing it.
+  const ghostCategoryExpense = transaction({
+    id: 'ghost',
+    category: 'dining',
+    amountMinorUnits: -40_00,
+    time: NOW,
+  });
+  const groceriesExpense = transaction({
+    id: 'g',
+    category: 'groceries',
+    amountMinorUnits: -10_00,
+    time: NOW,
+  });
+
+  it('folds an unresolvable category slug into the default key, the same way the donut does', () => {
+    const donutKeys = new Set(
+      buildCategoryBreakdown({
+        transactions: [ghostCategoryExpense, groceriesExpense],
+        categoryDisplay: DISPLAY,
+        rateTable: {},
+        baseCurrency: 'UAH',
+        defaultCategoryKey: 'other',
+      }).map((slice) => slice.key),
+    );
+    const trendKeys = new Set(
+      buildTrend([ghostCategoryExpense, groceriesExpense]).map((series) => series.key),
+    );
+
+    expect(trendKeys).toEqual(donutKeys);
+    expect(trendKeys.has('dining')).toBe(false);
+    expect(trendKeys.has('other')).toBe(true);
+  });
+
+  it('folds the same unresolvable slug into the default key for the Top-N measures too', () => {
+    const measures = buildMeasures([ghostCategoryExpense, groceriesExpense]);
+
+    expect(measures.map((measure) => measure.key).sort()).toEqual(['groceries', 'other']);
   });
 });

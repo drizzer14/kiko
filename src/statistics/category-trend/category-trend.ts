@@ -1,8 +1,12 @@
+import {
+  type CategoryDisplay,
+  resolveCategoryDisplay,
+  resolveCategoryKey,
+} from '@kiko/categories/category-display';
 import { Money, toMajor } from '@kiko/currency/money';
 import { canConvert } from '@kiko/rates/net-worth-view';
 import type { Currency } from '@kiko/currency/currency';
 import { convert, type RateTable } from '@kiko/rates/conversion';
-import { resolveCategoryDisplay } from '@kiko/categories/category-display';
 
 import {
   type BreakdownTransaction,
@@ -76,13 +80,18 @@ const bucketIndexFor = (time: number, buckets: readonly number[]): number => {
 const isInRange = (time: number, rangeFrom: number, rangeTo: number): boolean =>
   time >= rangeFrom && time <= rangeTo;
 
-// The normalized grouping key for a transaction's category: lowercased to match
-// `resolveCategoryDisplay`'s own lookup convention, with a null/empty category
-// folding into the DEFAULT category key so uncategorized spending merges into
-// the default's line rather than a separate one. Mirrors category-breakdown.ts.
-const groupKey = (category: string | null, defaultKey: string): string => {
-  return category?.toLowerCase() || defaultKey;
-};
+// The normalized grouping key for a transaction's category: lowercased, with a
+// null/empty category AND a slug the display map cannot resolve both folding
+// into the DEFAULT category key — the same fold `resolveCategoryKey`
+// (categories/category-display.ts) applies, and category-breakdown.ts's own
+// `groupKey` for the donut. Keeping an unresolvable slug (e.g. a deleted
+// seeded category sync keeps re-writing) as its own bucket produced two
+// same-titled, differently-keyed lines instead of one.
+const groupKey = (
+  category: string | null,
+  byKey: ReadonlyMap<string, CategoryDisplay>,
+  defaultKey: string,
+): string => resolveCategoryKey(category, byKey, defaultKey);
 
 // Per category key: the running spend total (base minor units, for the series
 // sort), a representative raw category value (so the display resolves off the
@@ -104,6 +113,7 @@ type TrendAccumulator = {
 // converted to the base currency at the current `rateTable`.
 const accumulateSpend = (input: {
   transactions: TrendTransaction[];
+  categoryDisplay: ReadonlyMap<string, CategoryDisplay>;
   rateTable: RateTable;
   baseCurrency: Currency;
   defaultCategoryKey: string;
@@ -114,6 +124,7 @@ const accumulateSpend = (input: {
 }): Map<string, TrendAccumulator> => {
   const {
     transactions,
+    categoryDisplay,
     rateTable,
     baseCurrency,
     defaultCategoryKey,
@@ -149,7 +160,7 @@ const accumulateSpend = (input: {
       continue;
     }
 
-    const key = groupKey(transaction.category, defaultCategoryKey);
+    const key = groupKey(transaction.category, categoryDisplay, defaultCategoryKey);
 
     if (excluded.has(key)) {
       continue;
@@ -213,7 +224,7 @@ const accumulateSpend = (input: {
  */
 export const buildCategoryTrend = (input: {
   transactions: TrendTransaction[];
-  categoryDisplay: ReadonlyMap<string, { title: string; icon: string; color: string | null }>;
+  categoryDisplay: ReadonlyMap<string, CategoryDisplay>;
   rateTable: RateTable;
   baseCurrency: Currency;
   defaultCategoryKey: string;
@@ -238,6 +249,7 @@ export const buildCategoryTrend = (input: {
 
   const totals = accumulateSpend({
     transactions,
+    categoryDisplay,
     rateTable,
     baseCurrency,
     defaultCategoryKey,
@@ -345,6 +357,7 @@ const linearRegressionSlope = (ys: number[]): number => {
  */
 export const buildCategoryMeasures = (input: {
   transactions: TrendTransaction[];
+  categoryDisplay: ReadonlyMap<string, CategoryDisplay>;
   rateTable: RateTable;
   baseCurrency: Currency;
   defaultCategoryKey: string;
@@ -352,13 +365,22 @@ export const buildCategoryMeasures = (input: {
   bucketDays: number;
   excludedTransactionIds?: ReadonlySet<string>;
 }): CategoryMeasure[] => {
-  const { transactions, rateTable, baseCurrency, defaultCategoryKey, range, bucketDays } = input;
+  const {
+    transactions,
+    categoryDisplay,
+    rateTable,
+    baseCurrency,
+    defaultCategoryKey,
+    range,
+    bucketDays,
+  } = input;
   const excludedIds = input.excludedTransactionIds ?? new Set<string>();
 
   const buckets = periodStartBucketTimes(range.from, range.to, bucketDays);
 
   const totals = accumulateSpend({
     transactions,
+    categoryDisplay,
     rateTable,
     baseCurrency,
     defaultCategoryKey,

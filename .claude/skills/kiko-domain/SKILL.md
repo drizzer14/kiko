@@ -506,9 +506,19 @@ resolves through `resolveCategoryKey` / `resolveCategoryDisplay`
 or unknown-to-the-categories-table slug folding onto the **default**
 key (`settings.defaultCategoryKey`, read at the call site — never a
 separate "uncategorized" bucket). One fold, one place: the spending
-breakdown's `groupKey`, Home's `categoryKeyForRow`, and every color
-lookup all go through it, so a category can never render under two
-keys — and therefore two hues — at once.
+breakdown's `groupKey`, the spending TREND's own `groupKey`
+(`src/statistics/category-trend/`), Home's `categoryKeyForRow`, and
+every color lookup all go through it, so a category can never render
+under two keys — and therefore two hues — at once. The trend's
+`groupKey` used to fold with a bare `category?.toLowerCase() ||
+defaultKey` instead — it caught a null/empty category but not an
+UNRESOLVABLE one (a slug no longer in the categories table, e.g. a
+deleted seeded category sync keeps re-writing), so a deleted category
+rendered as two same-titled, differently-keyed lines on the trend chart
+while the donut correctly folded it into one. A Semgrep rule
+(`kiko-no-bare-lowercase-category-fold`, `rules/semgrep-prewrite.yml`)
+now bans a bare `<category>?.toLowerCase() || <default>` fold anywhere
+under `src/statistics/**` — use `resolveCategoryKey` instead.
 
 Writers hold up the other end: a category value is persisted only as
 the lowercase `categories.key` slug. `categoryForMcc`
