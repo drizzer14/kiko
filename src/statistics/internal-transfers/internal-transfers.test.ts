@@ -323,4 +323,91 @@ describe('internalTransferTxIds', () => {
 
     expect(optimizedVisits.candidateVisits).toBeLessThan(referenceVisits.candidateVisits * 0.05);
   });
+
+  // Proves the guard above actually catches a regression, rather than
+  // coincidentally passing regardless: this variant is `findMatchingCredit`
+  // with its one window-exceeded line changed from `break` to `continue`, so
+  // it re-scans the rest of every (currency, amount) bucket instead of
+  // stopping at the window edge — the same counting rule, applied to a
+  // provably worse scan.
+  it('fails the near-linear growth bound once the window break becomes a continue', () => {
+    type CreditCandidate = { index: number; time: number; holdingId: string };
+
+    const bucketKey = (currency: Transaction['currency'], amountMinorUnits: number): string =>
+      `${currency}:${amountMinorUnits}`;
+
+    const buildBuckets = (transactions: Transaction[]): Map<string, CreditCandidate[]> => {
+      const buckets = new Map<string, CreditCandidate[]>();
+
+      transactions.forEach((current, index) => {
+        if (current.amountMinorUnits <= 0) {
+          return;
+        }
+
+        const key = bucketKey(current.currency, current.amountMinorUnits);
+        const bucket = buckets.get(key) ?? [];
+
+        bucket.push({ index, time: current.time, holdingId: current.holdingId });
+        buckets.set(key, bucket);
+      });
+
+      for (const bucket of buckets.values()) {
+        bucket.sort((a, b) => a.time - b.time);
+      }
+
+      return buckets;
+    };
+
+    const lowerBoundByTime = (bucket: CreditCandidate[], lowTime: number): number => {
+      let low = 0;
+      let high = bucket.length;
+
+      while (low < high) {
+        const mid = (low + high) >>> 1;
+
+        if (bucket[mid].time < lowTime) {
+          low = mid + 1;
+        } else {
+          high = mid;
+        }
+      }
+
+      return low;
+    };
+
+    const countContinueMutantVisits = (transactions: Transaction[]): number => {
+      const visitCounter: CandidateVisitCounter = { candidateVisits: 0 };
+      const buckets = buildBuckets(transactions);
+
+      for (const debit of transactions) {
+        if (debit.amountMinorUnits >= 0) {
+          continue;
+        }
+
+        const bucket = buckets.get(bucketKey(debit.currency, -debit.amountMinorUnits)) ?? [];
+        const lowTime = debit.time - TRANSFER_MATCH_WINDOW_MS;
+
+        // The mutant under test: scans the WHOLE rest of the bucket from the
+        // window's lower edge onward, instead of breaking once a candidate's
+        // time exceeds the window's upper edge.
+        for (let cursor = lowerBoundByTime(bucket, lowTime); cursor < bucket.length; cursor += 1) {
+          visitCounter.candidateVisits += 1;
+        }
+      }
+
+      return visitCounter.candidateVisits;
+    };
+
+    const MS_PER_ROW = 1_000_000_000 / 6_000;
+    const base = countContinueMutantVisits(randomLedger(mulberry32(7), 2_500, 2_500 * MS_PER_ROW));
+    const quadrupled = countContinueMutantVisits(
+      randomLedger(mulberry32(7), 10_000, 10_000 * MS_PER_ROW),
+    );
+
+    // The real matcher stays under 3x across a 4x ledger growth (see above);
+    // scanning every bucket to its end instead of stopping at the window
+    // makes visits scale with bucket size, which itself grows with ledger
+    // size, so a 4x ledger blows well past that bound.
+    expect(quadrupled).toBeGreaterThan(base * 3);
+  });
 });

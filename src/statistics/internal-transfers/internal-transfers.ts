@@ -120,12 +120,12 @@ const findMatchingCredit = (
   for (let cursor = lowerBoundByTime(bucket, lowTime); cursor < bucket.length; cursor += 1) {
     const candidate = bucket[cursor];
 
-    if (candidate.time > highTime) {
-      break;
-    }
-
     if (visitCounter) {
       visitCounter.candidateVisits += 1;
+    }
+
+    if (candidate.time > highTime) {
+      break;
     }
 
     if (
