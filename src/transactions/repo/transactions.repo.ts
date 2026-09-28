@@ -293,6 +293,14 @@ export const bankOwnedTransactionSetWhere = sql.join(
   sql` OR `,
 );
 
+// The WHERE clause for `importRows`'s existing-rows-after-asOf read, exported
+// so a real-SQLite test can prove the exact predicate — both the `holdingId`
+// scope and the STRICT `gt` boundary (a row exactly AT `asOfMillis` belongs
+// to the closing balance itself, not after it) — rather than a
+// hand-transcribed copy of it.
+export const postClosingRowsWhere = (holdingId: string, asOfMillis: number) =>
+  and(eq(transactions.holdingId, holdingId), gt(transactions.time, asOfMillis));
+
 /**
  * Apply name->category override rules and upsert a batch of imported rows on
  * the `(source, external_id)` unique index — the shared core `addManyDedup`
@@ -1307,12 +1315,7 @@ export const transactionsRepo = {
         const existingPostClosingRows = await databaseTransaction
           .select({ net: sql<number | null>`sum(${transactions.amountMinorUnits})` })
           .from(transactions)
-          .where(
-            and(
-              eq(transactions.holdingId, input.holdingId),
-              gt(transactions.time, input.closingBalance.asOfSeconds * 1000),
-            ),
-          );
+          .where(postClosingRowsWhere(input.holdingId, input.closingBalance.asOfSeconds * 1000));
 
         existingPostClosingNetMinorUnits = existingPostClosingRows.at(0)?.net ?? 0;
       }
