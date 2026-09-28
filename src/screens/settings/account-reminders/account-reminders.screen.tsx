@@ -84,7 +84,8 @@ const AccountRemindersScreen: FC<AccountRemindersScreenProps> = ({ route, naviga
       actionLabel: t('reminders.permission.turnOn'),
       onAction: preAlert.open,
     }))
-    .otherwise(() => undefined);
+    .with('authorized', undefined, () => undefined)
+    .exhaustive();
 
   const writeThenReplan = async (write: () => Promise<void>): Promise<void> => {
     try {
