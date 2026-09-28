@@ -1,6 +1,6 @@
 import { settingsRepo } from '@kiko/settings';
 import { holdingsRepo } from '@kiko/holdings/repo';
-import { isCrypto, type Currency, type CryptoCurrency } from '@kiko/currency/currency';
+import { isFiat, isCrypto, type Currency, type CryptoCurrency } from '@kiko/currency/currency';
 
 /** The data-presence gate result a rate/price refresh reads before running. */
 export type OpenCurrencies = {
@@ -49,4 +49,50 @@ export const openCurrencies = async (): Promise<OpenCurrencies> => {
     cryptoCurrencies: currencies.filter(isCrypto),
     nonBaseCurrencies,
   };
+};
+
+/** The history-backfill gate result: exactly the fiat/crypto currencies whose own NBU/CoinGecko range history is worth fetching. */
+export type HistoryCurrencies = { fiatCurrencies: Currency[]; cryptoCurrencies: CryptoCurrency[] };
+
+/**
+ * The history backfill's own data-presence gate (kiko-architecture) — a
+ * sibling of `openCurrencies` above, scoped to what NBU history is worth
+ * fetching rather than what a live rate refresh needs. Reads EVERY holding,
+ * open and closed (`holdingsRepo.historyCurrenciesQuery`), because the
+ * net-worth line's past buckets still need a closed holding's own currency
+ * converted.
+ *
+ * `fiatCurrencies` is the union of every held fiat currency and the base
+ * currency, minus `UAH` (the implicit pivot, never a stored `X:UAH` row's own
+ * `base`) — the base's own history is needed to convert ANY foreign holding
+ * into it — but ONLY when some held fiat currency genuinely differs from the
+ * base; when every held fiat currency already equals the base (or none is
+ * held at all), there is nothing to convert, so the set collapses to empty
+ * even though the union would otherwise include the base. `USD` is added
+ * afterward, unconditionally, whenever any crypto is held — crypto's own
+ * `X:UAH` row composes through a `USD` anchor (kiko-pricing's "History
+ * backfill"), regardless of whether any fiat conversion is otherwise needed.
+ * A fiat currency that is the base but not itself the anchor for a live
+ * holding still falls back to the bundled seed's flat rate rather than a
+ * live fetch — an accepted flat-history trade-off for that case.
+ */
+export const historyCurrencies = async (): Promise<HistoryCurrencies> => {
+  const [settingsRows, currencyRows] = await Promise.all([
+    settingsRepo.getQuery(),
+    holdingsRepo.historyCurrenciesQuery(),
+  ]);
+  const base = settingsRows.at(0)?.baseCurrency ?? 'UAH';
+  const currencies = currencyRows.map((row) => row.currency);
+  const heldFiat = currencies.filter(isFiat);
+  const cryptoCurrencies = currencies.filter(isCrypto);
+  const needsFiatConversion = heldFiat.some((currency) => currency !== base);
+  const fiatCurrencies = needsFiatConversion
+    ? [...new Set([...heldFiat, base])].filter((currency) => currency !== 'UAH')
+    : [];
+
+  if (cryptoCurrencies.length > 0 && !fiatCurrencies.includes('USD')) {
+    fiatCurrencies.push('USD');
+  }
+
+  return { fiatCurrencies, cryptoCurrencies };
 };

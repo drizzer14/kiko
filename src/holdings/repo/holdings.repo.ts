@@ -323,6 +323,16 @@ export const holdingsRepo = {
       .innerJoin(accounts, eq(holdings.accountId, accounts.id))
       .where(and(isNull(holdings.closedAt), isNull(accounts.archivedAt))),
   /**
+   * The DISTINCT currencies among EVERY holding, open AND closed — the
+   * history currency gate's own input (`historyCurrencies`,
+   * `open-currencies-gate.ts`): a closed holding still needs its own
+   * `X:UAH` history rows for the net-worth line's past buckets, so this
+   * query has no `closedAt`/archived-account filter at all, unlike
+   * `openCurrenciesQuery` above.
+   */
+  historyCurrenciesQuery: () =>
+    database.selectDistinct({ currency: holdings.currency }).from(holdings),
+  /**
    * Every OPEN loan holding — the loan-payment matcher's own gate query
    * (`src/loans/payment-matcher/`, `src/loans/use-loan-auto-link/`): it reads
    * this FIRST and returns early when it is empty, so a user with no debts

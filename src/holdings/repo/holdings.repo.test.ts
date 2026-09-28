@@ -167,6 +167,14 @@ describe('holdingsRepo', () => {
     expect(sql.toLowerCase()).toContain('archived_at');
   });
 
+  it('builds a distinct-currencies query over EVERY holding, open and closed, with no join', () => {
+    const { sql } = holdingsRepo.historyCurrenciesQuery().toSQL();
+    expect(sql.toLowerCase()).toContain('distinct');
+    expect(sql).toContain('holdings');
+    expect(sql.toLowerCase()).not.toContain('closed_at');
+    expect(sql.toLowerCase()).not.toContain('accounts');
+  });
+
   // The loan-payment matcher's own gate query (P-NOWORK): every OPEN loan
   // holding, so a caller can return early — before ever reading the (larger)
   // transaction table — the moment this is empty.
