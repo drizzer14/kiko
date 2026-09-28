@@ -47,3 +47,11 @@ export const isRealCalendarInstant = ({
  * caller reads it, so the same calendar day shows from UTC-9 to UTC+12. */
 export const isMidnightWallClock = (parts: WallClockParts): boolean =>
   parts.hour === 0 && parts.minute === 0 && parts.second === 0;
+
+/** `parts` with `hour` bumped to noon when it's date-only (`isMidnightWallClock`
+ * above), unchanged otherwise — shared by every zone reader
+ * (`kyivInstantMillisecondsIfRoundTrips`, column mapping's `partsToSeconds`,
+ * `rezoneImportTime`) so the same date-only convention applies identically
+ * regardless of which zone resolves the result. */
+export const noonIfMidnight = (parts: WallClockParts): WallClockParts =>
+  isMidnightWallClock(parts) ? { ...parts, hour: 12 } : parts;

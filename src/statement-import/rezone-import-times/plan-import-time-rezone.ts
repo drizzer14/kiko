@@ -1,6 +1,6 @@
 import maybe, { bind, foldMap } from 'fnts/maybe';
 import type { HoldingRow, TransactionRow } from '@kiko/db';
-import { deviceWallClockToLocalMilliseconds, isMidnightWallClock, utcDigitsOf } from '@kiko/dates';
+import { deviceWallClockToLocalMilliseconds, noonIfMidnight, utcDigitsOf } from '@kiko/dates';
 
 export type RezoneTransactionInput = Pick<
   TransactionRow,
@@ -24,12 +24,9 @@ type ImportTimeRezonePlan = {
  * `deviceWallClockToLocalMilliseconds` is never expected to reject them —
  * the `?? legacyTimeMilliseconds` fallback is a safety net, not a real path.
  */
-export const rezoneImportTime = (legacyTimeMilliseconds: number): number => {
-  const parts = utcDigitsOf(legacyTimeMilliseconds);
-  const noonParts = isMidnightWallClock(parts) ? { ...parts, hour: 12 } : parts;
-
-  return deviceWallClockToLocalMilliseconds(noonParts) ?? legacyTimeMilliseconds;
-};
+export const rezoneImportTime = (legacyTimeMilliseconds: number): number =>
+  deviceWallClockToLocalMilliseconds(noonIfMidnight(utcDigitsOf(legacyTimeMilliseconds))) ??
+  legacyTimeMilliseconds;
 
 /**
  * Rewrites a dedup key's second space-separated token (`computeDedupKeyBase`:
