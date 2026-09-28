@@ -1,4 +1,4 @@
-import { bucketDaysForSpan, bucketTimes } from './buckets';
+import { bucketDaysForSpan, bucketTimes, periodStartBucketTimes } from './buckets';
 
 const DAY = 86_400_000;
 
@@ -41,5 +41,40 @@ describe('bucketTimes', () => {
     expect(times[times.length - 1]).toBe(to);
     // from, from+7d, then the closing `to` (from+10d).
     expect(times).toEqual([from, from + 7 * DAY, to]);
+  });
+});
+
+describe('periodStartBucketTimes', () => {
+  it('steps daily from `from`, stopping at the last period that starts at or before `to`', () => {
+    const from = Date.UTC(2026, 0, 1);
+    // `to` sits 12 hours into day 2 — not a period-start instant, unlike
+    // bucketTimes' own always-append-`to` behavior.
+    const to = from + 2 * DAY + 12 * 60 * 60 * 1000;
+
+    expect(periodStartBucketTimes(from, to, 1)).toEqual([from, from + DAY, from + 2 * DAY]);
+  });
+
+  it('never appends a trailing bucket past the last period start (no phantom point)', () => {
+    const from = Date.UTC(2026, 0, 1);
+    const to = from + 29 * DAY + 23 * 60 * 60 * 1000 + 59 * 60 * 1000 + 59_999;
+
+    const times = periodStartBucketTimes(from, to, 1);
+
+    expect(times).toHaveLength(30);
+    expect(times[times.length - 1]).toBe(from + 29 * DAY);
+  });
+
+  it('returns a single bucket for a single-day range', () => {
+    const from = Date.UTC(2026, 0, 1);
+    const to = from + 23 * 60 * 60 * 1000 + 59 * 60 * 1000 + 59_999;
+
+    expect(periodStartBucketTimes(from, to, 1)).toEqual([from]);
+  });
+
+  it('includes a period start that lands exactly on `to`', () => {
+    const from = Date.UTC(2026, 0, 1);
+    const to = from + 3 * DAY;
+
+    expect(periodStartBucketTimes(from, to, 1)).toEqual([from, from + DAY, from + 2 * DAY, to]);
   });
 });

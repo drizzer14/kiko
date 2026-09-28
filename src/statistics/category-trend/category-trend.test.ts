@@ -1,3 +1,4 @@
+import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
 
 import { type BreakdownTransaction, categoryColor } from '../category-breakdown';
@@ -398,5 +399,79 @@ describe('buildCategoryMeasures', () => {
 
   it('returns an empty array for empty input', () => {
     expect(buildMeasures([])).toEqual([]);
+  });
+});
+
+// Production always calls with `range.to = endOfLocalDay(...)` — the LAST
+// millisecond of a day, never a period-start instant — unlike DEFAULT_RANGE
+// above, whose `to` happens to land exactly on what would be the next
+// period-start (so it never exercised this bug). This block uses the
+// production shape instead.
+describe('buildCategoryTrend / buildCategoryMeasures — no phantom trailing bucket', () => {
+  const today = startOfLocalDay(NOW);
+  const PRODUCTION_RANGE = { from: today - 2 * dayMs, to: endOfLocalDay(NOW) };
+
+  it('emits exactly one point per real period, with no phantom point past the last one', () => {
+    const series = buildTrend([transaction({ time: NOW, amountMinorUnits: -50_00 })], {
+      range: PRODUCTION_RANGE,
+    });
+    const points = series[0].points;
+
+    expect(points).toHaveLength(3);
+    expect(points[points.length - 1].t).toBe(today);
+  });
+
+  it("puts today's spend on the last (real) point, not a trailing zero after it", () => {
+    const series = buildTrend([transaction({ id: 'today', time: NOW, amountMinorUnits: -75_00 })], {
+      range: PRODUCTION_RANGE,
+    });
+
+    expect(series[0].points[series[0].points.length - 1]).toEqual({ t: today, amount: 75 });
+  });
+
+  it('keeps the sum of every series point equal to the category total', () => {
+    const series = buildTrend(
+      [
+        transaction({ id: 'a', time: today - 2 * dayMs, amountMinorUnits: -10_00 }),
+        transaction({ id: 'b', time: today - dayMs, amountMinorUnits: -20_00 }),
+        transaction({ id: 'c', time: NOW, amountMinorUnits: -30_00 }),
+      ],
+      { range: PRODUCTION_RANGE },
+    );
+    const pointSum = series[0].points.reduce((sum, point) => sum + point.amount, 0);
+
+    expect(pointSum).toBeCloseTo(60, 5);
+  });
+
+  it('reports a genuinely positive rising slope for climbing spend, unskewed by a phantom trailing zero', () => {
+    const measures = buildCategoryMeasures({
+      transactions: [
+        transaction({
+          id: 'a',
+          category: 'groceries',
+          amountMinorUnits: -10_00,
+          time: today - 2 * dayMs,
+        }),
+        transaction({
+          id: 'b',
+          category: 'groceries',
+          amountMinorUnits: -20_00,
+          time: today - dayMs,
+        }),
+        transaction({ id: 'c', category: 'groceries', amountMinorUnits: -30_00, time: today }),
+      ],
+      rateTable: {},
+      baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
+      range: PRODUCTION_RANGE,
+      bucketDays: DEFAULT_BUCKET_DAYS,
+    });
+
+    // `total`/`risingSlope` are base MINOR units, so [-10_00, -20_00, -30_00]
+    // folds to per-bucket magnitudes [1000, 2000, 3000], whose least-squares
+    // slope is exactly 1000; the phantom-bucket bug appended a 4th (0) point,
+    // which flipped this same climbing spend to a NEGATIVE slope
+    // ([1000, 2000, 3000, 0] regresses to -200).
+    expect(measures[0].risingSlope).toBeCloseTo(1000, 5);
   });
 });

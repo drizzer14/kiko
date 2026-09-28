@@ -25,3 +25,27 @@ export const bucketTimes = (from: number, to: number, bucketDays: number): numbe
 
   return times;
 };
+
+/**
+ * The PERIOD-START instants only — `from`, then one per `bucketDays` step, up
+ * to and including the last period that starts at or before `to` — with no
+ * separate closing marker at `to` itself. A per-period series (the category
+ * trend) folds every value into the period-start bucket that contains it
+ * (`bucketIndexFor`), so `to` is virtually never a period-start instant itself
+ * (production always passes an `endOfLocalDay` — the last MILLISECOND of a
+ * day, not its start): `bucketTimes`' own trailing `push(to)` therefore added
+ * an extra bucket instant that could never receive a real value, a permanent
+ * phantom zero point at the end of every per-period line. The net-worth line
+ * keeps `bucketTimes`' closing `to` point on purpose (a "now" snapshot at the
+ * exact range end); a per-period series uses this instead.
+ */
+export const periodStartBucketTimes = (from: number, to: number, bucketDays: number): number[] => {
+  const step = bucketDays * DAY_MS;
+  const times: number[] = [];
+
+  for (let t = from; t <= to; t += step) {
+    times.push(t);
+  }
+
+  return times;
+};

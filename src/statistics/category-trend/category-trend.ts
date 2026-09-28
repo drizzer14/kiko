@@ -10,7 +10,7 @@ import {
   resolveCategoryColor,
   sumReturnsByGroup,
 } from '../category-breakdown';
-import { bucketTimes } from '../buckets';
+import { periodStartBucketTimes } from '../buckets';
 
 /**
  * One point on a category's spending line: `amount` is that category's total
@@ -27,9 +27,9 @@ export type CategoryTrendPoint = { t: number; amount: number };
  * category's stored color when set, else its stable categorical-palette hue (see
  * resolveCategoryColor). `points` is ordered by `t` ascending and carries a
  * point at EVERY bucket in the active range (0 where that category had no
- * spend in that bucket), so every line shares one set of X positions — the
- * SAME positions `buildNetWorthSeries` plots for the same `range`/`bucketDays`
- * (see `bucketTimes`).
+ * spend in that bucket) — PERIOD-START instants (see `periodStartBucketTimes`),
+ * not `buildNetWorthSeries`' own `bucketTimes` positions, which also close on
+ * `to` itself.
  */
 export type CategoryTrendSeries = {
   key: string;
@@ -48,20 +48,18 @@ export type CategoryTrendSeries = {
 export type TrendTransaction = BreakdownTransaction & { time: number };
 
 // Assign a transaction's `time` to the bucket PERIOD that CONTAINS it: the
-// LARGEST bucket instant at or before `time`. `bucketTimes` returns each
-// bucket's PERIOD-START marker for every entry except the last, which is
-// forced to `range.to` (a period-END marker, closing the final — possibly
-// short — period). Walking from the end and returning the first
-// `buckets[i] <= time` finds the bucket whose `[buckets[i], nextBucket)`
-// period actually contains `time`, so a mid-period expense stays in its own
-// bucket rather than being shifted forward into the NEXT one (a ceiling
-// search would do that: it would match the period-start marker AHEAD of the
-// expense instead of the one it actually falls after). The last bucket
-// (`range.to`) still catches everything up to and including the range's own
-// end, since it is the largest instant a valid (already range-filtered) time
-// can be. A time before `buckets[0]` (unreachable — every caller filters
-// `time` into `[buckets[0], buckets[buckets.length - 1]]` first) falls back
-// to bucket 0.
+// LARGEST bucket instant at or before `time`. `periodStartBucketTimes` returns
+// only PERIOD-START markers (no separate closing marker at `range.to`).
+// Walking from the end and returning the first `buckets[i] <= time` finds the
+// bucket whose `[buckets[i], nextBucket)` period actually contains `time`, so
+// a mid-period expense stays in its own bucket rather than being shifted
+// forward into the NEXT one (a ceiling search would do that: it would match
+// the period-start marker AHEAD of the expense instead of the one it actually
+// falls after). The LAST bucket still catches everything up to and including
+// the range's own end, since it is the largest period-start instant a valid
+// (already range-filtered) time can be. A time before `buckets[0]`
+// (unreachable — every caller filters `time` into `[buckets[0],
+// buckets[buckets.length - 1]]` first) falls back to bucket 0.
 const bucketIndexFor = (time: number, buckets: readonly number[]): number => {
   for (let i = buckets.length - 1; i >= 0; i -= 1) {
     if (buckets[i] <= time) {
@@ -111,6 +109,7 @@ const accumulateSpend = (input: {
   defaultCategoryKey: string;
   excluded: ReadonlySet<string>;
   excludedIds: ReadonlySet<string>;
+  range: { from: number; to: number };
   buckets: readonly number[];
 }): Map<string, TrendAccumulator> => {
   const {
@@ -120,10 +119,15 @@ const accumulateSpend = (input: {
     defaultCategoryKey,
     excluded,
     excludedIds,
+    range,
     buckets,
   } = input;
-  const rangeFrom = buckets[0];
-  const rangeTo = buckets[buckets.length - 1];
+  // The real range bounds, NOT `buckets[0]`/`buckets[buckets.length - 1]`:
+  // `buckets` (period-START instants only) no longer closes on `range.to`
+  // itself, so deriving the upper bound from it would wrongly exclude a
+  // transaction dated after the last period's own start.
+  const rangeFrom = range.from;
+  const rangeTo = range.to;
   const totals = new Map<string, TrendAccumulator>();
   // Sum the POSITIVE change-returns per group so a split payment's trend value is
   // netted by its change, exactly as buildCategoryBreakdown nets the pie.
@@ -192,9 +196,13 @@ const accumulateSpend = (input: {
  * `rateTable`. Every kept expense folds into the bucket its `time` falls in
  * (see `bucketIndexFor`), and each category's point for a bucket is that
  * bucket's summed spend magnitude in base MAJOR units — a per-period figure,
- * never cumulative. The bucket set is `bucketTimes(range.from, range.to,
- * bucketDays)` — the SAME positions `buildNetWorthSeries` plots for the same
- * `range`/`bucketDays`, so both charts share one X-axis convention. Every
+ * never cumulative. The bucket set is `periodStartBucketTimes(range.from,
+ * range.to, bucketDays)` — PERIOD-START instants only, unlike
+ * `buildNetWorthSeries`' own `bucketTimes`, which also closes on `to` itself:
+ * a per-period series has no use for that extra closing instant (it can never
+ * receive a real value, since every expense already folds into the
+ * period-start bucket that contains it), so keeping it would leave a
+ * permanent phantom zero point at the end of every line. Every
  * returned series carries a point at every bucket (0 where that category had
  * no spend there). An expense whose `time` falls OUTSIDE `range` is dropped
  * entirely — it affects neither a series' points nor its sort total. Each
@@ -226,7 +234,7 @@ export const buildCategoryTrend = (input: {
   const excluded = input.excludedCategories ?? new Set<string>();
   const excludedIds = input.excludedTransactionIds ?? new Set<string>();
 
-  const buckets = bucketTimes(range.from, range.to, bucketDays);
+  const buckets = periodStartBucketTimes(range.from, range.to, bucketDays);
 
   const totals = accumulateSpend({
     transactions,
@@ -235,6 +243,7 @@ export const buildCategoryTrend = (input: {
     defaultCategoryKey,
     excluded,
     excludedIds,
+    range,
     buckets,
   });
 
@@ -346,7 +355,7 @@ export const buildCategoryMeasures = (input: {
   const { transactions, rateTable, baseCurrency, defaultCategoryKey, range, bucketDays } = input;
   const excludedIds = input.excludedTransactionIds ?? new Set<string>();
 
-  const buckets = bucketTimes(range.from, range.to, bucketDays);
+  const buckets = periodStartBucketTimes(range.from, range.to, bucketDays);
 
   const totals = accumulateSpend({
     transactions,
@@ -355,6 +364,7 @@ export const buildCategoryMeasures = (input: {
     defaultCategoryKey,
     excluded: new Set<string>(),
     excludedIds,
+    range,
     buckets,
   });
 
