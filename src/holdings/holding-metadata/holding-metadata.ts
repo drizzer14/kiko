@@ -218,26 +218,33 @@ export const withWalkOwnedMetadataCarried = (
 };
 
 /**
- * Strips every `walkOwnedMetadataKeys` entry from `storedMetadata` — the
- * disconnect-side counterpart of `withWalkOwnedMetadataCarried`, so a
- * disconnected Binance connection's watermark cannot leak into a reconnect
- * (`disconnectCryptoAccount`, crypto-sync/disconnect.ts). `undefined` when
- * nothing needed stripping, so a caller can skip a redundant write.
+ * Resets every `walkOwnedMetadataKeys` entry already on `storedMetadata` to
+ * `floorMs` — the disconnect-side counterpart of `withWalkOwnedMetadataCarried`,
+ * so a disconnected Binance connection's watermark cannot leak into a
+ * DIFFERENTLY-owned reconnect (`disconnectCryptoAccount`,
+ * crypto-sync/disconnect.ts). Setting the floor rather than deleting the key
+ * matters: a deleted key falls back to the legacy `latestTransactionTime`
+ * cursor, which a reconnected DIFFERENT Binance account would inherit as if it
+ * were its own already-imported history. `undefined` when nothing needed
+ * resetting, so a caller can skip a redundant write.
  */
-export const withoutWalkOwnedMetadata = (
+export const withWalkOwnedMetadataResetToFloor = (
   storedMetadata: unknown,
+  floorMs: number,
 ): Record<string, unknown> | undefined => {
   if (!isRecord(storedMetadata) || !walkOwnedMetadataKeys.some((key) => key in storedMetadata)) {
     return undefined;
   }
 
-  const stripped = { ...storedMetadata };
+  const reset = { ...storedMetadata };
 
   for (const key of walkOwnedMetadataKeys) {
-    delete stripped[key];
+    if (key in storedMetadata) {
+      reset[key] = floorMs;
+    }
   }
 
-  return stripped;
+  return reset;
 };
 
 const asContribution = (value: unknown): DepositContribution | null => {

@@ -28,9 +28,9 @@ import {
   type DepositContribution,
   type ExchangeMetadataField,
   type SyncedMetadataField,
-  withoutWalkOwnedMetadata,
   withWalkOwnedMetadataCarried,
   BINANCE_HISTORY_CURSOR_FIELD,
+  withWalkOwnedMetadataResetToFloor,
 } from '../holding-metadata';
 import { isSyncedHolding } from '../deletable';
 import { isCurrencyAllowedForHoldingType } from '../holding-currency';
@@ -139,7 +139,7 @@ export type LoanPricePointOp =
 // object — a routine balance sync's `metadata: { syncedAt }` would otherwise
 // wipe it every run, since `merged` is built from the CALLER-supplied
 // `metadata` alone, never the stored row.
-export const upsertByMetadataKeyDatabaseTransaction = async (
+const upsertByMetadataKey = async (
   databaseTransaction: typeof database,
   { metadataField, metadataKey, metadata, renameFromDefault, ...rest }: SyncedHolding,
 ): Promise<void> => {
@@ -792,7 +792,7 @@ export const holdingsRepo = {
     }),
   upsertMonobank: ({ monobankId, ...rest }: MonobankHolding) =>
     write((databaseTransaction) =>
-      upsertByMetadataKeyDatabaseTransaction(databaseTransaction, {
+      upsertByMetadataKey(databaseTransaction, {
         ...rest,
         metadataField: 'monobankId',
         metadataKey: monobankId,
@@ -810,7 +810,7 @@ export const holdingsRepo = {
   upsertMonobankMany: (holdings: MonobankHolding[]) =>
     write(async (databaseTransaction) => {
       for (const { monobankId, ...rest } of holdings) {
-        await upsertByMetadataKeyDatabaseTransaction(databaseTransaction, {
+        await upsertByMetadataKey(databaseTransaction, {
           ...rest,
           metadataField: 'monobankId',
           metadataKey: monobankId,
@@ -818,15 +818,17 @@ export const holdingsRepo = {
       }
     }),
   /**
-   * Strip the Binance history-walk cursor from every holding of one account —
-   * called on a Binance disconnect so a stale watermark cannot leak into a
-   * reconnected (possibly different) Binance account's fresh walk. Every
-   * OTHER metadata key (`binanceAsset` among them) is untouched, so a
-   * same-account reconnect still re-adopts the row. A holding that never
+   * Reset the Binance history-walk cursor to `floorMs` on every holding of one
+   * account — called on a Binance disconnect so a stale, FORWARD watermark
+   * cannot leak into a reconnected DIFFERENT Binance account's fresh walk
+   * (which would otherwise fall back to `latestTransactionTime` and skip that
+   * account's own older history). Every OTHER metadata key (`binanceAsset`
+   * among them) is untouched, so a same-account reconnect still re-adopts the
+   * row and simply re-walks from the floor (idempotent). A holding that never
    * carried the key is skipped entirely — no redundant write, no reactive
    * `holdings` fire for it.
    */
-  clearBinanceHistoryCursor: (accountId: string) =>
+  resetBinanceHistoryCursor: (accountId: string, floorMs: number) =>
     write(async (databaseTransaction) => {
       const rows = await databaseTransaction
         .select({ id: holdings.id, metadata: holdings.metadata })
@@ -834,15 +836,15 @@ export const holdingsRepo = {
         .where(eq(holdings.accountId, accountId));
 
       for (const row of rows) {
-        const stripped = withoutWalkOwnedMetadata(row.metadata);
+        const reset = withWalkOwnedMetadataResetToFloor(row.metadata, floorMs);
 
-        if (stripped === undefined) {
+        if (reset === undefined) {
           continue;
         }
 
         await databaseTransaction
           .update(holdings)
-          .set({ metadata: stripped })
+          .set({ metadata: reset })
           .where(eq(holdings.id, row.id));
       }
     }),
@@ -851,15 +853,29 @@ export const holdingsRepo = {
    * merging it into whatever is currently stored rather than replacing the
    * whole object — the write-side counterpart of `withWalkOwnedMetadataCarried`,
    * which only stops a DIFFERENT write (a balance sync) from wiping this value;
-   * this is the one call that actually sets it.
+   * this is the one call that actually sets it. A walk holds the account's
+   * credentials for its whole run, so a disconnect can commit WHILE a walk is
+   * still in flight; the read-then-write below checks, inside the SAME write,
+   * that the holding's account is STILL `institution = 'binance'` and is a
+   * no-op otherwise — a late-arriving window commit from a walk started
+   * before the disconnect must never resurrect a watermark on an
+   * already-disconnected account (undoing `resetBinanceHistoryCursor`'s own
+   * floor write, which runs as part of that same disconnect).
    */
   setBinanceHistoryCursor: (holdingId: string, cursorMs: number) =>
     write(async (databaseTransaction) => {
       const rows = await databaseTransaction
-        .select({ metadata: holdings.metadata })
+        .select({ metadata: holdings.metadata, institution: accounts.institution })
         .from(holdings)
+        .innerJoin(accounts, eq(holdings.accountId, accounts.id))
         .where(eq(holdings.id, holdingId));
-      const stored = (rows.at(0)?.metadata as Record<string, unknown> | null) ?? {};
+      const row = rows.at(0);
+
+      if (row === undefined || row.institution !== 'binance') {
+        return;
+      }
+
+      const stored = (row.metadata as Record<string, unknown> | null) ?? {};
 
       await databaseTransaction
         .update(holdings)
@@ -908,9 +924,7 @@ export const holdingsRepo = {
    * number, not a statement.
    */
   upsertExchange: (holding: ExchangeHolding) =>
-    write((databaseTransaction) =>
-      upsertByMetadataKeyDatabaseTransaction(databaseTransaction, holding),
-    ),
+    write((databaseTransaction) => upsertByMetadataKey(databaseTransaction, holding)),
   /**
    * Upsert EVERY balance-provider snapshot from ONE sync run in a SINGLE
    * transaction, mirroring `upsertMonobankMany` — the per-balance
@@ -923,7 +937,7 @@ export const holdingsRepo = {
   upsertExchangeMany: (holdingsList: ExchangeHolding[]) =>
     write(async (databaseTransaction) => {
       for (const holding of holdingsList) {
-        await upsertByMetadataKeyDatabaseTransaction(databaseTransaction, holding);
+        await upsertByMetadataKey(databaseTransaction, holding);
       }
     }),
   /**

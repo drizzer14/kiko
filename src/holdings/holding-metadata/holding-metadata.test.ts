@@ -14,8 +14,8 @@ import {
   hasStoredBondPurchasePrice,
   syncedAtOf,
   walletAddressOf,
-  withoutWalkOwnedMetadata,
   withWalkOwnedMetadataCarried,
+  withWalkOwnedMetadataResetToFloor,
 } from './holding-metadata';
 import type {
   BondMeta,
@@ -353,21 +353,27 @@ describe('withWalkOwnedMetadataCarried', () => {
   });
 });
 
-describe('withoutWalkOwnedMetadata', () => {
-  it('strips a stored walk-owned key, leaving every other key untouched', () => {
+describe('withWalkOwnedMetadataResetToFloor', () => {
+  it('resets a stored walk-owned key to the given floor, leaving every other key untouched', () => {
     const stored = { binanceAsset: 'BTC', binanceHistoryCursor: 1_000, syncedAt: 500 };
 
-    expect(withoutWalkOwnedMetadata(stored)).toEqual({ binanceAsset: 'BTC', syncedAt: 500 });
+    expect(withWalkOwnedMetadataResetToFloor(stored, 100)).toEqual({
+      binanceAsset: 'BTC',
+      binanceHistoryCursor: 100,
+      syncedAt: 500,
+    });
   });
 
   it('returns undefined (nothing to change) when no walk-owned key is stored', () => {
-    expect(withoutWalkOwnedMetadata({ binanceAsset: 'BTC', syncedAt: 500 })).toBeUndefined();
-    expect(withoutWalkOwnedMetadata({ walletAddress: 'bc1q' })).toBeUndefined();
+    expect(
+      withWalkOwnedMetadataResetToFloor({ binanceAsset: 'BTC', syncedAt: 500 }, 100),
+    ).toBeUndefined();
+    expect(withWalkOwnedMetadataResetToFloor({ walletAddress: 'bc1q' }, 100)).toBeUndefined();
   });
 
   it('returns undefined for null or non-object metadata', () => {
-    expect(withoutWalkOwnedMetadata(null)).toBeUndefined();
-    expect(withoutWalkOwnedMetadata('not-an-object')).toBeUndefined();
+    expect(withWalkOwnedMetadataResetToFloor(null, 100)).toBeUndefined();
+    expect(withWalkOwnedMetadataResetToFloor('not-an-object', 100)).toBeUndefined();
   });
 });
 

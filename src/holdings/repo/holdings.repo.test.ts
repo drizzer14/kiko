@@ -939,8 +939,8 @@ describe('holdingsRepo.upsertMonobank (via the shared metadata-key helper)', () 
   });
 });
 
-describe('holdingsRepo.clearBinanceHistoryCursor', () => {
-  it('strips binanceHistoryCursor from holdings that have it, and leaves every other metadata key untouched', async () => {
+describe('holdingsRepo.resetBinanceHistoryCursor', () => {
+  it('resets binanceHistoryCursor to the given floor on holdings that have it, and leaves every other metadata key untouched', async () => {
     const rows = [
       {
         id: 'h-spot',
@@ -966,10 +966,12 @@ describe('holdingsRepo.clearBinanceHistoryCursor', () => {
       }),
     };
 
-    await holdingsRepo.clearBinanceHistoryCursor('acc-1');
+    await holdingsRepo.resetBinanceHistoryCursor('acc-1', 100);
 
-    // Only the holding that actually carried the key is written.
-    expect(updates).toEqual([{ metadata: { binanceAsset: 'BTC', syncedAt: 500 } }]);
+    // Only the holding that actually carried the key is written, to the floor.
+    expect(updates).toEqual([
+      { metadata: { binanceAsset: 'BTC', binanceHistoryCursor: 100, syncedAt: 500 } },
+    ]);
   });
 
   it('writes nothing when no holding under the account carries the key', async () => {
@@ -983,19 +985,27 @@ describe('holdingsRepo.clearBinanceHistoryCursor', () => {
       update,
     };
 
-    await holdingsRepo.clearBinanceHistoryCursor('acc-1');
+    await holdingsRepo.resetBinanceHistoryCursor('acc-1', 100);
 
     expect(update).not.toHaveBeenCalled();
   });
 });
 
 describe('holdingsRepo.setBinanceHistoryCursor', () => {
-  it('merges the cursor into the stored metadata, preserving every other key', async () => {
+  // The write joins `accounts` to gate on `institution = 'binance'` (item 2:
+  // a walk holds the account's credentials for its whole run, so a disconnect
+  // can commit while it is still in flight) — the fake transaction below
+  // chains `.innerJoin` between `.from` and `.where`, mirroring the real query.
+  const makeJoinedTransaction = (
+    row: { metadata: unknown; institution: string | null } | undefined,
+  ): { transaction: unknown; updates: Record<string, unknown>[] } => {
     const updates: Record<string, unknown>[] = [];
-    mockDatabaseTransaction = {
+    const transaction = {
       select: () => ({
         from: () => ({
-          where: async () => [{ metadata: { binanceAsset: 'BTC', syncedAt: 500 } }],
+          innerJoin: () => ({
+            where: async () => foldMap(maybe(row), (value) => [value]) ?? [],
+          }),
         }),
       }),
       update: () => ({
@@ -1008,6 +1018,16 @@ describe('holdingsRepo.setBinanceHistoryCursor', () => {
         }),
       }),
     };
+
+    return { transaction, updates };
+  };
+
+  it('merges the cursor into the stored metadata, preserving every other key, for a still-connected Binance account', async () => {
+    const { transaction, updates } = makeJoinedTransaction({
+      metadata: { binanceAsset: 'BTC', syncedAt: 500 },
+      institution: 'binance',
+    });
+    mockDatabaseTransaction = transaction;
 
     await holdingsRepo.setBinanceHistoryCursor('h-spot', 1_704_326_400_000);
 
@@ -1017,27 +1037,36 @@ describe('holdingsRepo.setBinanceHistoryCursor', () => {
   });
 
   it('writes the cursor alone when the holding had no metadata yet', async () => {
-    const updates: Record<string, unknown>[] = [];
-    mockDatabaseTransaction = {
-      select: () => ({
-        from: () => ({
-          where: async () => [{ metadata: null }],
-        }),
-      }),
-      update: () => ({
-        set: (values: Record<string, unknown>) => ({
-          where: () => {
-            updates.push(values);
-
-            return Promise.resolve();
-          },
-        }),
-      }),
-    };
+    const { transaction, updates } = makeJoinedTransaction({
+      metadata: null,
+      institution: 'binance',
+    });
+    mockDatabaseTransaction = transaction;
 
     await holdingsRepo.setBinanceHistoryCursor('h-spot', 1_000);
 
     expect(updates).toEqual([{ metadata: { binanceHistoryCursor: 1_000 } }]);
+  });
+
+  it('is a no-op when the holding’s account is no longer connected to Binance', async () => {
+    const { transaction, updates } = makeJoinedTransaction({
+      metadata: { binanceAsset: 'BTC', syncedAt: 500 },
+      institution: null,
+    });
+    mockDatabaseTransaction = transaction;
+
+    await holdingsRepo.setBinanceHistoryCursor('h-spot', 1_000);
+
+    expect(updates).toEqual([]);
+  });
+
+  it('is a no-op when the holding no longer exists', async () => {
+    const { transaction, updates } = makeJoinedTransaction(undefined);
+    mockDatabaseTransaction = transaction;
+
+    await holdingsRepo.setBinanceHistoryCursor('h-spot', 1_000);
+
+    expect(updates).toEqual([]);
   });
 });
 

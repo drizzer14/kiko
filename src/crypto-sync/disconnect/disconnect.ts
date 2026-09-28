@@ -1,14 +1,18 @@
 import { accountsRepo } from '@kiko/accounts';
 import { holdingsRepo } from '@kiko/holdings/repo';
 
-import { clearCredentials } from '../binance';
 import type { BalanceProviderId } from '../provider';
+import { clearCredentials, HISTORY_FLOOR_MS } from '../binance';
 
 /**
  * Disconnect a wallet- or Binance-connected account, the required first step
  * before it can be deleted. Mirrors `monobank/disconnect.ts`: for Binance, the
- * history-walk cursor (`holdings.metadata.binanceHistoryCursor`) is cleared
- * FIRST — a failure after this only causes a harmless re-walk from the floor,
+ * history-walk cursor (`holdings.metadata.binanceHistoryCursor`) is RESET TO
+ * THE FLOOR (`HISTORY_FLOOR_MS`) FIRST — never stripped: a stripped cursor
+ * falls back to `latestTransactionTime`, which a reconnected DIFFERENT
+ * Binance account would inherit as if it were its own already-imported
+ * history, silently skipping that account's own older records. A failure
+ * after this only causes a harmless, idempotent re-walk from the floor,
  * whereas leaving it until after `accountsRepo.disconnect` risks a crash in
  * between stranding a stale watermark on an already-disconnected account. The
  * DB mutation (`accountsRepo.disconnect` — clear `institution`, drop the stale
@@ -25,7 +29,7 @@ export const disconnectCryptoAccount = async (
   providerId: BalanceProviderId,
 ): Promise<void> => {
   if (providerId === 'binance') {
-    await holdingsRepo.clearBinanceHistoryCursor(accountId);
+    await holdingsRepo.resetBinanceHistoryCursor(accountId, HISTORY_FLOOR_MS);
   }
 
   await accountsRepo.disconnect(accountId);
