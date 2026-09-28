@@ -1,5 +1,3 @@
-import maybe, { foldMap } from 'fnts/maybe';
-import { startOfLocalDay } from '@kiko/dates';
 import { Money, toMajor } from '@kiko/currency/money';
 import type { CurrencyRateHistoryRow } from '@kiko/db';
 import { canConvert } from '@kiko/rates/net-worth-view';
@@ -183,16 +181,16 @@ export const buildNetWorthSeries = (input: {
   // Built ONCE per holding, not once per (holding, bucket) — see
   // `createHoldingValuer`'s own doc comment for why the per-bucket reduce/filter
   // it replaces was loop-invariant work repeated at every point. A closed
-  // holding's reconstructed value is zeroed for every bucket AFTER its own
-  // close day (never before it, and never on the close day itself — the
-  // holding was still open some of that day): the caller now passes EVERY
-  // holding, not just currently-open ones, so a jar closed last month still
-  // contributes its real historical value up to the day it closed, instead of
-  // vanishing from every past bucket the way an "open holdings only" filter
-  // did (kiko-pricing: the history chart needs a closed holding's own past
-  // prices the same way it needs its own past lots). A plain loop (not
-  // `.map`) so each holding's close-day key is derived directly, never inside
-  // an array callback.
+  // holding's reconstructed value is zeroed for every bucket AT OR AFTER its
+  // own `closedAt` instant (a raw comparison, never a local-day one — a
+  // same-day compare left a holding closed earlier today still counted at
+  // the rightmost "now" bucket, while the screen's own now-snapshots exclude
+  // it as soon as it is closed at all): the caller now passes EVERY holding,
+  // not just currently-open ones, so a jar closed last month still
+  // contributes its real historical value up to the instant it closed,
+  // instead of vanishing from every past bucket the way an "open holdings
+  // only" filter did (kiko-pricing: the history chart needs a closed
+  // holding's own past prices the same way it needs its own past lots).
   const holdingsWithValuer: { holding: SeriesHolding; valueAt: (t: number) => number }[] = [];
 
   for (const holding of valuationHoldings) {
@@ -201,12 +199,11 @@ export const buildNetWorthSeries = (input: {
       transactionsByHolding.get(holding.id) ?? [],
       book,
     );
-    const closedDay = foldMap(maybe(holding.closedAt), startOfLocalDay);
+    const closedAt = holding.closedAt;
 
     holdingsWithValuer.push({
       holding,
-      valueAt: (t: number): number =>
-        closedDay !== undefined && startOfLocalDay(t) > closedDay ? 0 : rawValueAt(t),
+      valueAt: (t: number): number => (closedAt !== null && t >= closedAt ? 0 : rawValueAt(t)),
     });
   }
 
