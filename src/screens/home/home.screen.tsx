@@ -394,18 +394,25 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     categoryKeyForRow,
     i18n.language,
   ]);
+  // Computed every render (cheap — two Date constructions, not the filter
+  // below), but its VALUES are what `filteredTransactions` keys its memo on:
+  // `bounds.from`/`bounds.to` are day-aligned numbers (`startOfLocalDay`/
+  // `endOfLocalDay`), so they only change once per calendar day even on the
+  // DEFAULT range, where `dateFrom`/`dateTo` are fresh `Date` objects on
+  // every render (see `defaultDateRange`) — keying the memo on THOSE objects
+  // instead made the filter (and the section grouping, and the SectionList
+  // it feeds) re-run on every single render, not just a day change.
+  const { from: boundsFrom, to: boundsTo } = dateRangeBounds(dateFrom, dateTo);
   const filteredTransactions = useMemo(() => {
-    const bounds = dateRangeBounds(dateFrom, dateTo);
-
     return transactions.filter((row) => {
       const matchesAccount = selectedAccounts.size === 0 || selectedAccounts.has(row.accountName);
       const matchesCategory =
         selectedCategories.size === 0 || selectedCategories.has(categoryKeyForRow(row.category));
-      const matchesDate = withinBounds(row.time, bounds);
+      const matchesDate = withinBounds(row.time, { from: boundsFrom, to: boundsTo });
 
       return matchesAccount && matchesCategory && matchesDate;
     });
-  }, [transactions, selectedAccounts, selectedCategories, dateFrom, dateTo, categoryKeyForRow]);
+  }, [transactions, selectedAccounts, selectedCategories, boundsFrom, boundsTo, categoryKeyForRow]);
 
   // Grouping/sorting happens after filtering, over the query's newest-first
   // order (transactionsRepo orders by time desc), so sections come out
