@@ -12,6 +12,7 @@ import {
   fetchWithdrawHistory,
   HISTORY_PAGE_LIMIT,
   type HistoryWindow,
+  type WithdrawHistoryPage,
 } from './binance.client';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 
@@ -108,7 +109,7 @@ export type BinanceTransactionSyncDeps = {
     secret: string,
     window: HistoryWindow,
     options?: FetchAccountOptions,
-  ) => Promise<BinanceWithdrawal[]>;
+  ) => Promise<WithdrawHistoryPage>;
 };
 
 const defaultBinanceTransactionDeps: BinanceTransactionSyncDeps = {
@@ -305,9 +306,11 @@ const windowRows = async (
     window.start,
     window.end,
   );
+  // `usedUidWeight1m` is not read here — the budgeted, cooldown-aware walk that
+  // consumes it lands separately; this page-fetch keeps only the rows.
   const withdrawals = await fetchAllInWindow(
     gate,
-    (page) => deps.fetchWithdrawHistory(apiKey, secret, page, options),
+    async (page) => (await deps.fetchWithdrawHistory(apiKey, secret, page, options)).rows,
     window.start,
     window.end,
   );

@@ -44,6 +44,9 @@ const withdrawal = (over: Partial<BinanceWithdrawal> = {}): BinanceWithdrawal =>
   ...over,
 });
 
+/** `fetchWithdrawHistory`'s page shape, with no used-UID-weight in the fixture. */
+const withdrawPage = (rows: BinanceWithdrawal[]) => ({ rows, usedUidWeight1m: undefined });
+
 // A typed, empty deposit-history mock. The explicit params type `mock.calls[n][2]`
 // as the HistoryWindow so the window-walk assertions read it without a cast.
 const emptyDepositFetch = () =>
@@ -58,7 +61,7 @@ const makeDeps = (over: Partial<BinanceTransactionSyncDeps> = {}): BinanceTransa
   latestTransactionTime: async () => undefined,
   addTransactions: jest.fn(async (rows: BinanceTransactionRow[]) => rows.length),
   fetchDepositHistory: jest.fn(async () => []),
-  fetchWithdrawHistory: jest.fn(async () => []),
+  fetchWithdrawHistory: jest.fn(async () => withdrawPage([])),
   ...over,
 });
 
@@ -80,7 +83,7 @@ describe('syncBinanceTransactions', () => {
     const deps = makeDeps({
       latestTransactionTime: async () => NOW - 10 * DAY,
       fetchDepositHistory: jest.fn(async () => [deposit()]),
-      fetchWithdrawHistory: jest.fn(async () => [withdrawal()]),
+      fetchWithdrawHistory: jest.fn(async () => withdrawPage([withdrawal()])),
     });
 
     const result = await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
@@ -163,10 +166,9 @@ describe('syncBinanceTransactions', () => {
         deposit({ id: '2', status: 0 }),
         deposit({ id: '3' }),
       ]),
-      fetchWithdrawHistory: jest.fn(async () => [
-        withdrawal({ id: '8', status: 3 }),
-        withdrawal({ id: '7' }),
-      ]),
+      fetchWithdrawHistory: jest.fn(async () =>
+        withdrawPage([withdrawal({ id: '8', status: 3 }), withdrawal({ id: '7' })]),
+      ),
     });
 
     await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
