@@ -1379,24 +1379,32 @@ than restated here:
   walk existed: some transactions, no watermark yet) starts from the
   legacy cursor exactly as before, then adopts the watermark from its very
   first committed window.
-- **`upsertByMetadataKeyDatabaseTransaction` carries the watermark across a
-  balance sync.** A balance sync's own upsert (`runBalanceSyncInner` ->
-  `upsertExchangeMany`) writes a FRESH `{ syncedAt }` metadata object on
-  every run, for every provider — a blind overwrite that would otherwise
-  wipe `binanceHistoryCursor` the instant the NEXT balance sync ran (the
+- **`upsertByMetadataKey` carries the watermark across a balance sync.** A
+  balance sync's own upsert (`runBalanceSyncInner` -> `upsertExchangeMany`)
+  writes a FRESH `{ syncedAt }` metadata object on every run, for every
+  provider — a blind overwrite that would otherwise wipe
+  `binanceHistoryCursor` the instant the NEXT balance sync ran (the
   Binance arm always runs balance-then-history in the same invocation, so
   this bites on literally every subsequent sync). The upsert now reads the
   stored row's metadata inside the same write and carries over any
-  `walkOwnedMetadataKeys` entry (today only the history cursor) the
-  caller's own object doesn't set; every other key is still fully replaced
-  exactly as before. This is a no-op for Monobank/wallet holdings, which
-  never carry a walk-owned key.
+  `walkOwnedMetadataKeys` entry (today only the history cursor):
+  `withWalkOwnedMetadataCarried` ALWAYS overwrites the target's own key
+  with the stored value when the stored row has it, regardless of
+  whether the caller's object also set that key; every other key is still
+  fully replaced exactly as before. This is a no-op for Monobank/wallet
+  holdings, which never carry a walk-owned key.
 - **Per-window commit order, crash-safe.** The walk goes oldest -> newest.
   A window's rows commit (`transactionsRepo.addManyDedup`) BEFORE its
   watermark advances (`setBinanceHistoryCursor`) — two SEPARATE writes, not
   one transaction, so a crash between them just re-imports that window
   idempotently on the next run rather than losing progress or re-marking
-  a window that never actually committed.
+  a window that never actually committed. `setBinanceHistoryCursor` also
+  gates the write on the holding's OWN account still being
+  `institution = 'binance'` (joined in the same query) and is a no-op
+  otherwise — a walk holds the account's credentials for its whole run, so
+  a disconnect can commit while a window write is still in flight; without
+  the gate that late write would resurrect a forward watermark over the
+  floor `resetBinanceHistoryCursor` just wrote (see below).
 - **A withdraw-history call budget, refreshed from Binance's own header.**
   At most `WITHDRAW_CALLS_PER_RUN_FALLBACK` (9) withdraw-history calls per
   run, or fewer once `X-SAPI-USED-UID-WEIGHT-1M` (parsed by
@@ -1411,26 +1419,41 @@ than restated here:
   `{ imported, complete }` — `complete: false` means history remains
   behind and a later run (or sync press) resumes from the watermark.
 - **A 429/418 sets a per-account cooldown and stops cleanly, without
-  failing the balance sync.** `signedRequest` (`binance.client.ts`) throws
-  `BinanceRateLimitError(status, retryAfterMs)` for a 429 or 418, checked
-  BEFORE the body is read (`retryAfterMs` from `Retry-After`, seconds ->
-  ms, defaulting to 60s on a missing/non-positive header). The walk catches
-  ONLY this error type, sets a module-level `cooldownUntilByAccount` entry
+  failing the balance sync.** `signedRequestPage` (`binance.client.ts`)
+  throws `BinanceRateLimitError(status, retryAfterMs)` for a 429 or 418,
+  checked BEFORE the body is read (`retryAfterMs` from `Retry-After`,
+  seconds -> ms, defaulting to 60s on a missing/non-positive header). The
+  cooldown (`binance.cooldown.ts`'s `setBinanceCooldownUntil` /
+  `isBinanceCoolingDown`) is SHARED between the history walk and the
+  balance sync — a 429/418 from EITHER path means the same UID is over its
+  weight budget. The walk catches ONLY this error type, sets the cooldown
   to `now + retryAfterMs`, and returns `complete: false` without
   rethrowing — every EARLIER window's commit stays in place. Any OTHER
   error still rethrows (unchanged: the Binance arm's own `either` wrapper
-  logs it and never fails the balance sync). A run started while its
-  account is still cooling down makes ZERO Binance requests.
-- **Disconnect clears the watermark, not the whole metadata object.**
-  `disconnectCryptoAccount`'s Binance path calls
-  `holdingsRepo.clearBinanceHistoryCursor(accountId)` (built on
-  `withoutWalkOwnedMetadata`) BEFORE `accountsRepo.disconnect` — a failure
-  after the clear only causes a harmless re-walk from the floor. It strips
-  ONLY `binanceHistoryCursor`; `binanceAsset`/`walletAddress` are
-  untouched, so a SAME-account reconnect still re-adopts the holding
-  (`upsertByMetadataKeyDatabaseTransaction`'s match-by-key). Connecting a
-  DIFFERENT Binance account afterward walks its own history from the
-  floor instead of inheriting a stale watermark.
+  logs it and never fails the balance sync). The balance sync
+  (`binanceProvider.fetchBalances`) checks the SAME cooldown before its
+  first request and makes ZERO Binance requests while it is active
+  (returning no balances — a quiet skip, never a thrown error, so a
+  history-walk-caused cooldown can never fail the balance sync); a 429/418
+  from the Spot balance request ITSELF also sets the cooldown and is
+  surfaced as the localized `accountDetail.binanceRequestFailed` message
+  (never the raw `BinanceRateLimitError` text) — Spot's failure still
+  fails the whole balance sync, per its own strict rule above.
+- **Disconnect resets the watermark to the floor, not the whole metadata
+  object, and never strips it.** `disconnectCryptoAccount`'s Binance path
+  calls `holdingsRepo.resetBinanceHistoryCursor(accountId, HISTORY_FLOOR_MS)`
+  (built on `withWalkOwnedMetadataResetToFloor`) BEFORE `accountsRepo.disconnect`
+  — a failure after the reset only causes a harmless, idempotent re-walk
+  from the floor. It touches ONLY `binanceHistoryCursor`, setting it to
+  `HISTORY_FLOOR_MS` rather than deleting it: a DELETED cursor falls back
+  to the legacy `latestTransactionTime` cursor, which a reconnected
+  DIFFERENT Binance account would inherit as if it were its own
+  already-imported history, silently skipping that account's own older
+  records. `binanceAsset`/`walletAddress` are untouched, so a SAME-account
+  reconnect still re-adopts the holding (`upsertByMetadataKey`'s
+  match-by-key) and simply re-walks from the floor. Connecting a DIFFERENT
+  Binance account afterward walks its own history from the floor instead
+  of inheriting a stale, forward watermark.
 - **The lagging-history caption.** `isBinanceHistoryBehind` /
   `historyCursorOf` (`screens/account-detail/crypto-sync-section/binance-history-status.ts`)
   derive purely from the account's own `holdings` (already a screen prop —
