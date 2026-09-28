@@ -211,23 +211,28 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // second, separately-timed `Date.now()` read.
   const now = Date.now();
 
-  // The date-range bounds; a null bound is ignored so the range is open-ended
-  // on that side. Both default to the last 30 days on mount — a user pick can
-  // still set either to null (open-ended) via the date-range field.
-  const [dateFrom, setDateFrom] = useState<Date | null>(() => defaultDateRange(now).from);
-  const [dateTo, setDateTo] = useState<Date | null>(() => defaultDateRange(now).to);
+  // `customRange` holds an explicit user pick; `null` means "show the default
+  // (last-30-days) range". The default is derived FRESH from `now` on every
+  // render instead of being frozen once in a `useState` initializer — this
+  // tab stays mounted after it is left, so a range seeded only at mount (or
+  // at the last Clear) silently stopped including "today" once a calendar day
+  // had passed. A user pick still stays exactly as given, even one side left
+  // null (open-ended) via the date-range field.
+  const [customRange, setCustomRange] = useState<{ from: Date | null; to: Date | null } | null>(
+    null,
+  );
+  const defaultRange = defaultDateRange(now);
+  const dateFrom = customRange !== null ? customRange.from : defaultRange.from;
+  const dateTo = customRange !== null ? customRange.to : defaultRange.to;
 
   const clearDateRange = (): void => {
-    const range = defaultDateRange();
-    setDateFrom(range.from);
-    setDateTo(range.to);
+    setCustomRange(null);
   };
 
   // The date-range modal commits both bounds at once on Apply; either may be
   // null when that side of the range is left open-ended.
   const applyDateRange = (from: Date | null, to: Date | null): void => {
-    setDateFrom(from);
-    setDateTo(to);
+    setCustomRange({ from, to });
   };
 
   // The `FILTER_ALL` chip clears the dimension; any other value toggles in/out.

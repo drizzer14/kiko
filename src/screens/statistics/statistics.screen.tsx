@@ -255,20 +255,26 @@ const StatisticsScreen: FC = () => {
   // memoization — only a re-focus advances it.
   const now = useFocusRefreshedNow();
 
-  // The date-range bounds default to the last 30 days on mount; a user pick
-  // can still set either to null (open-ended) via the date-range field.
-  const [dateFrom, setDateFrom] = useState<Date | null>(() => defaultDateRange(now).from);
-  const [dateTo, setDateTo] = useState<Date | null>(() => defaultDateRange(now).to);
+  // `customRange` holds an explicit user pick; `null` means "show the default
+  // (last-30-days) range". The default is derived FRESH from `now` on every
+  // render instead of being frozen once in a `useState` initializer — a tab
+  // stays mounted after it is left, so a range seeded only at mount (or at the
+  // last Clear) silently stopped including "today" from the next calendar day
+  // onward. A user pick still stays exactly as given, even one side left null
+  // (open-ended) via the date-range field.
+  const [customRange, setCustomRange] = useState<{ from: Date | null; to: Date | null } | null>(
+    null,
+  );
+  const defaultRange = defaultDateRange(now);
+  const dateFrom = customRange !== null ? customRange.from : defaultRange.from;
+  const dateTo = customRange !== null ? customRange.to : defaultRange.to;
 
   const applyDateRange = (from: Date | null, to: Date | null): void => {
-    setDateFrom(from);
-    setDateTo(to);
+    setCustomRange({ from, to });
   };
 
   const clearDateRange = (): void => {
-    const range = defaultDateRange();
-    setDateFrom(range.from);
-    setDateTo(range.to);
+    setCustomRange(null);
   };
 
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';

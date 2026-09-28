@@ -85,14 +85,39 @@ jest.mock('@kiko/navigation/use-scroll-to-top-on-tab-press', () => ({
 
 // useFocusRefreshedNow also reads the navigation context (useFocusEffect) via
 // the same real-context requirement as the hook above; a standalone screen
-// render has none, so stand it in with a `useState`-seeded read — a `Date.now()`
-// taken once at mount and held STABLE across re-renders, the same behavior the
-// screen's old `useMemo(() => Date.now(), [])` had (no test here drives a focus
-// event, so the value never needs to change mid-test).
-jest.mock('@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now', () => {
-  const { useState } = jest.requireActual('react');
+// render has none, so stand it in with a `useState`-seeded read, STABLE across
+// an ordinary re-render (matching the real hook's own "only a re-focus
+// advances it" contract) but externally advanceable via `advanceFocusedNow`
+// (below) for the tests that simulate a refocus.
+let mockNow = Date.now();
+const mockNowListeners = new Set<(value: number) => void>();
 
-  return { useFocusRefreshedNow: () => useState(() => Date.now())[0] };
+// Simulates a real focus event's `setNow(Date.now())`: advances every
+// currently-mounted `useFocusRefreshedNow` instance, wrapped in `act` by the
+// caller.
+const advanceFocusedNow = (value: number): void => {
+  mockNow = value;
+  mockNowListeners.forEach((listener) => {
+    listener(value);
+  });
+};
+
+jest.mock('@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now', () => {
+  const { useEffect, useState } = jest.requireActual('react');
+
+  return {
+    useFocusRefreshedNow: () => {
+      const [now, setNow] = useState(() => mockNow);
+
+      useEffect(() => {
+        mockNowListeners.add(setNow);
+
+        return () => mockNowListeners.delete(setNow);
+      }, [setNow]);
+
+      return now;
+    },
+  };
 });
 
 type Account = {
@@ -1803,6 +1828,49 @@ describe('StatisticsScreen', () => {
     });
 
     expect(getByText(`${formatDate(range.from)} – ${formatDate(range.to)}`)).toBeTruthy();
+  });
+
+  // The default range used to be seeded once in a `useState` initializer, so
+  // a tab that stayed mounted overnight kept showing yesterday's window and
+  // silently dropped today's activity. The default must instead be derived
+  // fresh from `now` (which itself refreshes on focus) on every render.
+  it("advances the default range's end to include a transaction from the day after mount, once refocused", async () => {
+    mockNow = now;
+
+    const tomorrow: Transaction = {
+      id: 'tomorrow',
+      holdingId: 'h1',
+      time: now + DAY + 60 * 60 * 1000,
+      amountMinorUnits: -50_00,
+      category: 'groceries',
+    };
+
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: [tomorrow],
+      history: HISTORY,
+      categories: CATEGORIES,
+    });
+
+    const { getByTestId, getByText } = await renderScreen();
+
+    // Not yet focus-refreshed past `now`: tomorrow's expense falls outside the
+    // default range, so the donut shows its empty state.
+    expect(getByTestId('category-pie-empty')).toBeTruthy();
+
+    await act(async () => {
+      advanceFocusedNow(now + DAY);
+    });
+
+    const centerTotal = within(getByTestId('category-pie-center-total'));
+    const advancedRange = defaultDateRange(now + DAY);
+
+    expect(centerTotal.getByText('50.00 ₴')).toBeTruthy();
+    expect(
+      getByText(`${formatDate(advancedRange.from)} – ${formatDate(advancedRange.to)}`),
+    ).toBeTruthy();
   });
 
   describe('Loan interest', () => {
