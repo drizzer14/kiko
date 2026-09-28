@@ -6,7 +6,7 @@ const DAYS_PER_YEAR = 365;
 
 // Calendar-anniversary compounding frequencies. `bi-weekly` is excluded: it is
 // opening-day-anchored semi-monthly, whose period boundaries come from
-// `biweeklyCreditDates` rather than the whole-month `periodBoundary` path (both
+// `biweeklyCredits` rather than the whole-month `periodBoundary` path (both
 // feed the shared step-by-step `depositLedger` engine).
 type CalendarCompounding = Exclude<CompoundingFrequency, 'bi-weekly'>;
 
@@ -127,6 +127,13 @@ type BiweeklyCredit = { instant: number; capitalizes: boolean };
 // target IS `atDay(year, month+1, 1)`. Pushing the non-capitalizing "1st" on
 // top of that instant would just duplicate it, so it is skipped and the
 // mid-credit's own capitalizing tag stands for the month.
+//
+// This collapse is also why `capitalizes` can never be re-derived from an
+// instant's own date value: a collapsed mid-credit and an ordinary
+// non-capitalizing "1st" credit both land on the 1st of a month — the same
+// shape of instant means opposite things depending on which month produced
+// it — so only the tag recorded here, read straight off the credit that
+// produced it, tells the two apart.
 const biweeklyCredits = (start: number, end: number): BiweeklyCredit[] => {
   const openingDay = new Date(start).getDate();
   const first = new Date(start);
@@ -197,26 +204,20 @@ const depositPeriods = (
     // credit closes a period, capitalizing exactly when THAT credit's own tag
     // says so (see `biweeklyCredits`'s comment for why this must read the tag
     // off the credit itself rather than re-derive it from the date alone).
+    // The period ending AT maturity always capitalizes, even when maturity
+    // coincides with what would otherwise be a plain, non-capitalizing credit
+    // (an opening day of 1 lands maturity on December's own "1st" credit).
     for (let i = 0; i < credits.length - 1; i += 1) {
       periods.push({
         periodStart: credits[i].instant,
         periodEnd: credits[i + 1].instant,
-        capitalize: credits[i + 1].capitalizes,
+        capitalize: credits[i + 1].capitalizes || credits[i + 1].instant === maturity,
       });
     }
     const last = credits[credits.length - 1]?.instant ?? start;
 
     if (maturity > last) {
       periods.push({ periodStart: last, periodEnd: maturity, capitalize: true });
-    }
-
-    // The period ending AT maturity always capitalizes, even when maturity
-    // coincides with what would otherwise be a plain, non-capitalizing credit
-    // (an opening day of 1 lands maturity on December's own "1st" credit).
-    const finalPeriod = periods[periods.length - 1];
-
-    if (finalPeriod !== undefined) {
-      finalPeriod.capitalize = true;
     }
 
     return periods;
@@ -449,8 +450,8 @@ export const bondCouponDates = (
   }
 
   // A month-end maturity can step onto the same 15th twice once `addMonths`
-  // clamps, so de-dup before sorting — the same `new Set` pass
-  // `biweeklyCreditDates` uses for its own clamp collision.
+  // clamps two different `k` steps onto the same calendar day, so de-dup via
+  // `Set` before sorting into ascending coupon-date order.
   return [...new Set(dates)].sort((a, b) => a - b);
 };
 
