@@ -74,14 +74,14 @@ describe('reminderContent — reminders', () => {
     const noData = request({ kind: 'add_transactions', daysSinceData: null });
 
     expect(reminderContent(noData, english).body).toBe('No transactions added yet.');
-    expect(reminderContent(noData, ukrainian).body).toBe('Транзакцій ще не додано.');
+    expect(reminderContent(noData, ukrainian).body).toBe('Жодної транзакції ще не додано.');
   });
 
   it('says no statements were imported yet when there is no data', () => {
     const noData = request({ daysSinceData: null });
 
     expect(reminderContent(noData, english).body).toBe('No statements imported yet.');
-    expect(reminderContent(noData, ukrainian).body).toBe('Виписок ще не імпортовано.');
+    expect(reminderContent(noData, ukrainian).body).toBe('Жодної виписки ще не імпортовано.');
   });
 });
 
